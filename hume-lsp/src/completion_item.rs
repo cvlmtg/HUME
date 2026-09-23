@@ -80,24 +80,29 @@ pub fn parse_additional_text_edits_lenient(
 }
 
 /// Decodes a `textDocument/completion` response: a bare `CompletionItem[]`
-/// (`isIncomplete` implicitly `false`) or a `CompletionList` object
-/// (`{isIncomplete, items}`). `None` for any other shape, or an object
-/// missing (or malformed) `items` — the caller treats that the same as an
-/// error response, rather than silently completing nothing. A missing or
+/// (which has no `isIncomplete` field of its own — the outer `Option`
+/// distinguishes this from a `CompletionList`'s explicit flag, so a caller
+/// that wants an `#:incomplete` argument of its own to still apply can tell
+/// the two shapes apart) or a `CompletionList` object (`{isIncomplete,
+/// items}`). `None` for any other shape, or an object missing (or
+/// malformed) `items` — the caller treats that the same as an error
+/// response, rather than silently completing nothing. A missing or
 /// non-bool `isIncomplete` on a `CompletionList` counts as `false` — this
 /// is the response-level counterpart of the same lenient-everywhere-but-
 /// the-one-required-field discipline the completion store itself uses to
 /// decode each item (`hume-editor`'s own `CompletionItem::from_json`).
-pub fn completion_response_items(v: &serde_json::Value) -> Option<(&[serde_json::Value], bool)> {
+pub fn completion_response_items(
+    v: &serde_json::Value,
+) -> Option<(&[serde_json::Value], Option<bool>)> {
     match v {
-        serde_json::Value::Array(items) => Some((items, false)),
+        serde_json::Value::Array(items) => Some((items, None)),
         serde_json::Value::Object(_) => {
             let items = v.get("items")?.as_array()?;
             let incomplete = v
                 .get("isIncomplete")
                 .and_then(|x| x.as_bool())
                 .unwrap_or(false);
-            Some((items, incomplete))
+            Some((items, Some(incomplete)))
         }
         _ => None,
     }

@@ -433,6 +433,85 @@ fn a_raising_source_is_not_retried_on_every_keystroke() {
     );
 }
 
+// ── JSON handle responses ───────────────────────────────────────────────────
+
+/// A bare `CompletionItem[]` handle has no `isIncomplete` field of its own,
+/// so an explicit `#:incomplete #t` still applies and the source is
+/// reinvoked on the next keystroke — same as the plain-list `Items` shape.
+#[test]
+fn a_bare_array_handle_honors_incomplete() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(define calls 0)
+           (register-completion-source! "test"
+             (lambda (id bid prefix)
+               (set! calls (+ calls 1))
+               (completion-emit! id (json-parse "[{\"label\": \"foobar\"}]") #:incomplete #t))
+             #:target 'buffer)
+           (define-command! "report" "" (lambda () (log! 'info (number->string calls))))"#,
+    );
+    ed.feed_key(key('f'));
+    ed.settle();
+    ed.feed_key(key('o'));
+    ed.settle();
+    ed.execute_keymap_command("report".into(), None, false);
+    assert_eq!(status(&ed), "3", "one trigger call plus one per keystroke");
+}
+
+/// A handle that isn't a `textDocument/completion` response shape (here, an
+/// object with no `items`) raises rather than silently completing nothing —
+/// `completion-emit!`'s decode is a caller contract, not a best-effort one.
+#[test]
+fn a_non_completion_handle_raises() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "test"
+             (lambda (id bid prefix)
+               (completion-emit! id (json-parse "{\"isIncomplete\": false}")))
+             #:target 'buffer)"#,
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("completion-emit!")),
+        "expected a raised completion-emit! error in the message log"
+    );
+}
+
+/// A `CompletionList` handle's own `isIncomplete` conflicting with an
+/// explicit `#:incomplete #t` still raises — this is a characterization
+/// test, not new behavior (the pre-fix code rejected this combination for
+/// every handle, this one included).
+#[test]
+fn a_completion_list_handle_rejects_incomplete() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "test"
+             (lambda (id bid prefix)
+               (completion-emit! id
+                 (json-parse "{\"items\": [{\"label\": \"foobar\"}], \"isIncomplete\": false}")
+                 #:incomplete #t))
+             #:target 'buffer)"#,
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("completion-emit!")),
+        "expected a raised completion-emit! error in the message log"
+    );
+}
+
 /// The old answer stays ranked (against the new token text) until the
 /// re-invocation's own answer lands — the menu never blinks empty.
 #[test]

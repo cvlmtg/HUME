@@ -49,18 +49,23 @@ pub struct PendingCompletionSource {
 /// layer decoded it. `Items` is the explicit shape: JSON already converted
 /// from whatever Steel values the source built (hashmaps, bare strings —
 /// see `builtins/completion.rs`'s own decode), with its own `incomplete`
-/// flag. `LspResponse` is one opaque handle wrapping a whole LSP
-/// `textDocument/completion` response — see [`crate::json::JsonHandle`]'s
-/// own doc for why a source hands one over instead of a decoded list; its
-/// `isIncomplete`/`items` are read once it reaches the host implementation,
-/// which alone knows the LSP response shape (`hume-scripting` itself does
-/// not).
+/// flag. `LspResponse` carries the handle itself — no deep copy at this
+/// layer — plus the caller's own `#:incomplete` request; the host
+/// implementation alone knows the LSP response shape
+/// (`hume_lsp::completion_item::completion_response_items`), so it decides
+/// there whether `response` is a `CompletionList` with its own flag (which
+/// then wins over `incomplete`) or a bare array (which has none, so
+/// `incomplete` applies) — see [`crate::json::JsonHandle`]'s own doc for
+/// why a source hands over a handle instead of a decoded list.
 pub enum CompletionAnswer {
     Items {
         items: Vec<serde_json::Value>,
         incomplete: bool,
     },
-    LspResponse(serde_json::Value),
+    LspResponse {
+        response: crate::json::JsonHandle,
+        incomplete: bool,
+    },
 }
 
 /// Completion session orchestration — accessed through
@@ -72,7 +77,10 @@ pub trait CompletionHost {
     /// no longer the latest call of any source in the open session
     /// (superseded by a later keystroke, or the session was replaced or
     /// dismissed): expected-normal for a late async source, never an error.
-    fn completion_emit(&mut self, id: u64, answer: CompletionAnswer) -> bool;
+    /// `Err` for an `LspResponse` handle that isn't a `textDocument/completion`
+    /// response shape, or whose `CompletionList.isIncomplete` conflicts with
+    /// an explicit `#:incomplete #t` — a caller error, not silently dropped.
+    fn completion_emit(&mut self, id: u64, answer: CompletionAnswer) -> Result<bool, String>;
 
     /// `(completion-top n)` — up to `n` ranked items as hashmaps, `[]` with
     /// no open session.

@@ -125,9 +125,12 @@ pub(crate) fn register_completion_source(
 /// Scheme wrapper supplies `#:incomplete`'s `#f` default. `items` is either
 /// a list of decoded `CompletionItem` hashmaps/bare-string labels, or one
 /// `JsonHandle` wrapping a whole LSP `textDocument/completion` response —
-/// the two decode into [`CompletionAnswer`]'s own two shapes; a handle
-/// carries its own `isIncomplete`, so combining it with `#:incomplete #t`
-/// is a caller error. Returns whether the answer applied (`#f` for a
+/// the two decode into [`CompletionAnswer`]'s own two shapes. A handle's
+/// own shape (bare array vs. `CompletionList`) is only known once it
+/// reaches the host implementation, so `incomplete` is passed through
+/// unconditionally rather than decided here; the host raises if the
+/// handle turns out to be a `CompletionList` whose own `isIncomplete`
+/// conflicts with it. Returns whether the answer applied (`#f` for a
 /// superseded or already-closed invocation).
 pub(crate) fn completion_emit(
     ctx: &mut SteelCtx,
@@ -138,14 +141,10 @@ pub(crate) fn completion_emit(
     let id = usize_arg(id, "completion-emit! id")? as u64;
     let incomplete = bool_arg(incomplete, "completion-emit! #:incomplete")?;
     let answer = match downcast_json_handle(&items) {
-        // `#:incomplete` has no meaning against a whole LSP response — its
-        // own `isIncomplete` field is the one source of truth, decoded once
-        // the handle reaches the host implementation (the one place that
-        // knows the response shape).
-        Some(_) if incomplete => steel::stop!(Generic =>
-            "completion-emit!: #:incomplete #t has no effect on a JSON handle response — \
-             the response's own isIncomplete field is used instead"),
-        Some(handle) => CompletionAnswer::LspResponse(handle.value().clone()),
+        Some(response) => CompletionAnswer::LspResponse {
+            response,
+            incomplete,
+        },
         None => {
             let mut parsed = Vec::new();
             for entry in list_items(items, "completion-emit! items")? {
@@ -157,8 +156,9 @@ pub(crate) fn completion_emit(
             }
         }
     };
-    let applied =
-        require_cap(ctx.host.completions(), "completion-emit!")?.completion_emit(id, answer);
+    let applied = require_cap(ctx.host.completions(), "completion-emit!")?
+        .completion_emit(id, answer)
+        .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
 }
 

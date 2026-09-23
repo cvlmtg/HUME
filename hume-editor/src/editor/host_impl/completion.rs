@@ -75,31 +75,41 @@ impl crate::editor::Editor {
 }
 
 impl<'a> CompletionHost for EditorHostImpl<'a> {
-    fn completion_emit(&mut self, id: u64, answer: host::CompletionAnswer) -> bool {
+    fn completion_emit(&mut self, id: u64, answer: host::CompletionAnswer) -> Result<bool, String> {
         // `hume-scripting` decodes `completion-emit!`'s two item-input
         // shapes but knows nothing about LSP response shapes itself (the
         // handle is opaque to it, by design — see `JsonHandle`'s own doc);
-        // decoding a `LspResponse` into its own items/isIncomplete happens
+        // deciding a `LspResponse` handle's own items/isIncomplete happens
         // here, the one place that already depends on both `hume_lsp` and
-        // this store's `CompletionItem`. An unrecognized shape (a plugin
-        // handed `completion-emit!` an `lsp-request` handle that isn't
-        // actually a completion response) lands as an empty answer rather
-        // than leaving the invocation stuck pending forever.
+        // this store's `CompletionItem`. Both error cases below are caller
+        // mistakes (a handle that isn't a completion response, or a
+        // `CompletionList` whose own flag conflicts with an explicit
+        // `#:incomplete #t`), so both raise rather than leaving the
+        // invocation stuck pending forever on a silent empty answer.
         let (items, incomplete) = match answer {
             host::CompletionAnswer::Items { items, incomplete } => (items, incomplete),
-            host::CompletionAnswer::LspResponse(response) => {
-                match hume_lsp::completion_item::completion_response_items(&response) {
-                    Some((items, incomplete)) => (items.to_vec(), incomplete),
-                    None => {
-                        self.state.report(
-                            Severity::Trace,
-                            "completion-emit!: handle is not a completion response shape"
-                                .to_string(),
-                        );
-                        (Vec::new(), false)
-                    }
+            host::CompletionAnswer::LspResponse {
+                response,
+                incomplete: requested,
+            } => match hume_lsp::completion_item::completion_response_items(response.value()) {
+                Some((_, Some(own))) if requested => {
+                    return Err(format!(
+                        "completion-emit!: #:incomplete #t has no effect on a CompletionList \
+                         response — the response's own isIncomplete field is used instead \
+                         (here, {})",
+                        if own { "#t" } else { "#f" }
+                    ));
                 }
-            }
+                Some((items, Some(own))) => (items.to_vec(), own),
+                Some((items, None)) => (items.to_vec(), requested),
+                None => {
+                    return Err(
+                        "completion-emit!: handle is not a textDocument/completion response \
+                         shape (expected a CompletionItem[] array or a CompletionList object)"
+                            .to_string(),
+                    );
+                }
+            },
         };
         // A malformed item (missing the spec-required `label`) is skipped,
         // not fatal to the whole batch — one bad item from a misbehaving
@@ -115,7 +125,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 ),
             }
         }
-        self.state.contribute(self.view, id, parsed, incomplete)
+        Ok(self.state.contribute(self.view, id, parsed, incomplete))
     }
 
     fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {

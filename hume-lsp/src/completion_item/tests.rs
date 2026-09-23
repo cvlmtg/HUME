@@ -116,11 +116,11 @@ fn parse_additional_text_edits_lenient_is_empty_when_the_key_is_absent() {
 // ── completion_response_items ────────────────────────────────────────────────
 
 #[test]
-fn completion_response_items_from_a_bare_array_is_not_incomplete() {
+fn completion_response_items_from_a_bare_array_has_no_incomplete_flag() {
     let v = serde_json::json!([{"label": "a"}, {"label": "b"}]);
     let (items, incomplete) = completion_response_items(&v).expect("a bare array is well-formed");
     assert_eq!(items.len(), 2);
-    assert!(!incomplete);
+    assert_eq!(incomplete, None);
 }
 
 #[test]
@@ -129,14 +129,14 @@ fn completion_response_items_from_a_completion_list_reads_is_incomplete() {
     let (items, incomplete) =
         completion_response_items(&v).expect("a CompletionList is well-formed");
     assert_eq!(items.len(), 1);
-    assert!(incomplete);
+    assert_eq!(incomplete, Some(true));
 }
 
 #[test]
 fn completion_response_items_missing_is_incomplete_defaults_to_false() {
     let v = serde_json::json!({"items": []});
     let (_, incomplete) = completion_response_items(&v).expect("items alone is well-formed");
-    assert!(!incomplete);
+    assert_eq!(incomplete, Some(false));
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn completion_response_items_non_bool_is_incomplete_defaults_to_false() {
     let v = serde_json::json!({"items": [], "isIncomplete": "yes"});
     let (_, incomplete) =
         completion_response_items(&v).expect("a malformed isIncomplete is tolerated");
-    assert!(!incomplete);
+    assert_eq!(incomplete, Some(false));
 }
 
 #[test]
