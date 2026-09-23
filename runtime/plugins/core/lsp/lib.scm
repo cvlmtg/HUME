@@ -71,14 +71,11 @@
         (string-append "lsp " what ": "
                        (if (string? err) err (hash-ref err "message")))))
 
-;;; `TextEdit` hashmap -> the tuple shape `apply-text-edits!` expects.
+;;; `TextEdit` JSON handle -> the tuple shape `apply-text-edits!` expects.
 (define (lsp/text-edit->tuple te)
-  (let* ((range (hash-ref te "range"))
-         (start (hash-ref range "start"))
-         (end (hash-ref range "end")))
-    (list (cons (hash-ref start "line") (hash-ref start "character"))
-          (cons (hash-ref end "line") (hash-ref end "character"))
-          (hash-ref te "newText"))))
+  (list (cons (json-ref te "range" "start" "line") (json-ref te "range" "start" "character"))
+        (cons (json-ref te "range" "end" "line") (json-ref te "range" "end" "character"))
+        (json-ref te "newText")))
 
 ;; ── Viewport ────────────────────────────────────────────────────────────────
 

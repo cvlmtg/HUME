@@ -8,10 +8,12 @@
   (hash "tabSize" (get-option "tab-width")
         "insertSpaces" (equal? (get-option "tab-style") "soft")))
 
+;;; `res` is void (null) or a JSON array handle — `json-list` on an empty
+;;; array already gives `'()`, so no separate empty check is needed.
 (define (lsp/format-edits res)
-  (if (or (void? res) (null? res))
+  (if (void? res)
       (list)
-      (map lsp/text-edit->tuple res)))
+      (map lsp/text-edit->tuple (json-list res))))
 
 (define (lsp/format-apply! bid gen edits)
   (if (null? edits)
@@ -43,7 +45,8 @@
                     (set-box! edits (append (unbox edits) (lsp/format-edits res)))
                     (set-box! pending (- (unbox pending) 1))
                     (when (= (unbox pending) 0)
-                      (lsp/format-apply! bid gen (unbox edits)))))))))
+                      (lsp/format-apply! bid gen (unbox edits)))))))
+          #:raw #t))
       ranges)))
 
 (define (lsp/format-linewise! bid gen td ranges)
@@ -55,7 +58,8 @@
           ((and (> n 1) (lsp/cap-flag? "documentRangeFormattingProvider" "rangesSupport"))
            (lsp-request #f "textDocument/rangesFormatting"
              (hash "textDocument" td "ranges" ranges "options" (lsp/format-options))
-             (lsp/format-callback bid gen)))
+             (lsp/format-callback bid gen)
+             #:raw #t))
           ((> n cap)
            (log! 'info
                  (string-append (number->string n)
@@ -82,7 +86,8 @@
                (lambda ()
                  (lsp-request #f "textDocument/formatting"
                    (hash "textDocument" td "options" (lsp/format-options))
-                   (lsp/format-callback bid gen)))))
+                   (lsp/format-callback bid gen)
+                   #:raw #t))))
             (else (log! 'info "mixed whole-line and partial selections — nothing formatted")))))))
 
 (define-command! "lsp-fmt"
