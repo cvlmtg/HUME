@@ -1,10 +1,7 @@
 use super::*;
 
-/// End-to-end: `from_typed` only strips when the server declared
-/// `insertTextFormat: Snippet` (2) — a plain-text item's `$` literals
-/// must survive untouched.
 #[test]
-fn from_typed_strips_snippet_insert_text_only_when_format_is_snippet() {
+fn strips_snippet_insert_text_only_when_format_is_snippet() {
     let v = serde_json::json!({
         "label": "foo",
         "insertText": "${1:foo}(${2:bar})",
@@ -20,7 +17,7 @@ fn from_typed_strips_snippet_insert_text_only_when_format_is_snippet() {
 }
 
 #[test]
-fn from_typed_leaves_insert_text_untouched_without_snippet_format() {
+fn leaves_insert_text_untouched_without_snippet_format() {
     let v = serde_json::json!({
         "label": "foo",
         "insertText": "$100 literal",
@@ -30,7 +27,7 @@ fn from_typed_leaves_insert_text_untouched_without_snippet_format() {
 }
 
 #[test]
-fn from_typed_strips_snippet_text_edit_new_text() {
+fn strips_snippet_text_edit_new_text() {
     let v = serde_json::json!({
         "label": "foo",
         "insertTextFormat": 2,
@@ -43,78 +40,32 @@ fn from_typed_strips_snippet_text_edit_new_text() {
     assert_eq!(item.text_edit.unwrap().new_text, "foo");
 }
 
-/// `from_json_lenient` (the recovery path for an off-spec item) must
-/// strip snippet syntax too — not just the strict `from_typed` path.
 #[test]
-fn from_json_lenient_also_strips_snippet_insert_text() {
-    // A non-numeric `kind` forces the whole item through the lenient
-    // fallback (same trick as `string_kind_recovers_via_lenient_fallback`
-    // below), while `insertTextFormat`/`insertText` stay well-formed.
-    let v = serde_json::json!({
-        "label": "foo",
-        "kind": "Function",
-        "insertTextFormat": 2,
-        "insertText": "${1:foo}",
-    });
-    assert_strict_parse_fails(&v);
-    let item = CompletionItem::from_json(v).expect("label present — must recover");
-    assert_eq!(item.insert_text, "foo");
-    assert_eq!(
-        item.raw.get("insertText").and_then(|v| v.as_str()),
-        Some("${1:foo}"),
-        "raw must keep the pristine snippet text"
-    );
-}
-
-/// Independent oracle: strict `lsp_types::CompletionItem` deserialize
-/// really does reject `v` on its own — otherwise a test using this
-/// wouldn't be exercising `from_json_lenient` at all, just re-testing
-/// the strict path.
-fn assert_strict_parse_fails(v: &serde_json::Value) {
-    assert!(
-        serde_json::from_value::<lsp_types::CompletionItem>(v.clone()).is_err(),
-        "test input must be strict-parse-rejecting to exercise the lenient fallback: {v}"
-    );
-}
-
-#[test]
-fn well_formed_item_never_touches_the_lenient_path() {
-    // Sanity check for the two tests below: a spec-compliant item must
-    // NOT need `from_json_lenient` — if this failed, `strict_parse_fails`
-    // in those tests wouldn't prove anything.
-    let v = serde_json::json!({"label": "ok", "kind": 3});
-    assert!(serde_json::from_value::<lsp_types::CompletionItem>(v.clone()).is_ok());
-    let item = CompletionItem::from_json(v).expect("well-formed item");
-    assert_eq!(&*item.label, "ok");
-    assert_eq!(item.kind, Some(3));
-}
-
-#[test]
-fn string_kind_recovers_via_lenient_fallback() {
+fn a_string_kind_is_dropped_not_faked_as_a_default() {
     // A server sending a human-readable kind string instead of the LSP
-    // numeric enum: `CompletionItemKind` is a transparent i32 newtype,
-    // so a JSON string for `kind` fails strict deserialize of the whole
-    // item, not just that field.
+    // numeric enum: `CompletionItemKind` is a transparent i32 newtype, so
+    // this can't be made sense of — dropped, not defaulted.
     let v = serde_json::json!({"label": "foo", "kind": "Function"});
-    assert_strict_parse_fails(&v);
-
-    let item = CompletionItem::from_json(v).expect("label present — must recover");
+    let item = CompletionItem::from_json(v).expect("label present");
     assert_eq!(&*item.label, "foo");
-    // The lenient reader can't make sense of a non-numeric kind either
-    // — dropped, not faked as some default kind.
     assert_eq!(item.kind, None);
-    // Undefaulted text fields still fall back to `label`, same as the
-    // strict path's `unwrap_or_else(|| label.clone())`.
+    // Undefaulted text fields fall back to `label`.
     assert_eq!(item.sort_text, "foo");
     assert_eq!(item.filter_text, "foo");
     assert_eq!(item.insert_text, "foo");
 }
 
 #[test]
-fn malformed_text_edit_recovers_the_item_without_the_edit() {
-    // `newText` missing fails both `CompletionTextEdit` union variants
-    // (`Edit`/`InsertAndReplace`), which fails the whole item's strict
-    // parse even though only the edit is broken.
+fn a_numeric_kind_decodes_to_its_typed_constant() {
+    let v = serde_json::json!({"label": "ok", "kind": 3});
+    let item = CompletionItem::from_json(v).expect("well-formed item");
+    assert_eq!(&*item.label, "ok");
+    assert_eq!(item.kind, Some(lsp_types::CompletionItemKind::FUNCTION));
+}
+
+#[test]
+fn a_malformed_text_edit_drops_just_the_edit_not_the_item() {
+    // `newText` missing fails both wire shapes (`Edit`/`InsertAndReplace`).
     let v = serde_json::json!({
         "label": "bar",
         "detail": "a detail",
@@ -125,9 +76,7 @@ fn malformed_text_edit_recovers_the_item_without_the_edit() {
             },
         },
     });
-    assert_strict_parse_fails(&v);
-
-    let item = CompletionItem::from_json(v).expect("label present — must recover");
+    let item = CompletionItem::from_json(v).expect("label present");
     assert_eq!(&*item.label, "bar");
     assert_eq!(item.detail.as_deref(), Some("a detail"));
     assert!(
@@ -137,11 +86,59 @@ fn malformed_text_edit_recovers_the_item_without_the_edit() {
 }
 
 #[test]
-fn missing_label_is_rejected_by_both_strict_and_lenient() {
+fn missing_label_is_rejected() {
     let v = serde_json::json!({"kind": 1});
-    assert_strict_parse_fails(&v);
     assert!(
-        CompletionItem::from_json(v).is_err(),
-        "no label recoverable — item must still be dropped"
+        CompletionItem::from_json(v).is_none(),
+        "no label recoverable — item must be dropped"
     );
+}
+
+#[test]
+fn non_string_label_is_rejected() {
+    let v = serde_json::json!({"label": 42});
+    assert!(CompletionItem::from_json(v).is_none());
+}
+
+// ── additionalTextEdits presence ─────────────────────────────────────────────
+//
+// `has_additional_text_edits` distinguishes "the server answered this key"
+// from "the key is absent" — only the latter licenses `completionItem/
+// resolve` (see the field's own doc). A JSON `null` must count as absent,
+// the same as the key being missing entirely, not as "present."
+
+#[test]
+fn a_missing_additional_text_edits_key_is_absent() {
+    let v = serde_json::json!({"label": "foo"});
+    let item = CompletionItem::from_json(v).expect("well-formed item");
+    assert!(!item.has_additional_text_edits);
+}
+
+#[test]
+fn a_null_additional_text_edits_counts_as_absent_not_present() {
+    let v = serde_json::json!({"label": "foo", "additionalTextEdits": null});
+    let item = CompletionItem::from_json(v).expect("well-formed item");
+    assert!(!item.has_additional_text_edits);
+}
+
+#[test]
+fn an_empty_additional_text_edits_array_is_present() {
+    let v = serde_json::json!({"label": "foo", "additionalTextEdits": []});
+    let item = CompletionItem::from_json(v).expect("well-formed item");
+    assert!(item.has_additional_text_edits);
+    assert!(item.additional_text_edits.is_empty());
+}
+
+#[test]
+fn a_non_empty_additional_text_edits_array_is_present() {
+    let v = serde_json::json!({
+        "label": "foo",
+        "additionalTextEdits": [{
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}},
+            "newText": "use foo;\n",
+        }],
+    });
+    let item = CompletionItem::from_json(v).expect("well-formed item");
+    assert!(item.has_additional_text_edits);
+    assert_eq!(item.additional_text_edits.len(), 1);
 }

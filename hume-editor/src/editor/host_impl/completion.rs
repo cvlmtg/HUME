@@ -81,16 +81,17 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         items: Vec<serde_json::Value>,
         incomplete: bool,
     ) -> bool {
-        // A malformed item (e.g. missing the spec-required `label`) is
-        // skipped, not fatal to the whole batch — one bad item from a
-        // misbehaving server must not silently drop every good one.
+        // A malformed item (missing the spec-required `label`) is skipped,
+        // not fatal to the whole batch — one bad item from a misbehaving
+        // server must not silently drop every good one.
         let mut parsed = Vec::with_capacity(items.len());
         for v in items {
             match crate::editor::completion::CompletionItem::from_json(v) {
-                Ok(item) => parsed.push(item),
-                Err(e) => self.state.report(
+                Some(item) => parsed.push(item),
+                None => self.state.report(
                     Severity::Trace,
-                    format!("completion-emit!: skipped malformed item: {e}"),
+                    "completion-emit!: skipped malformed item: missing or non-string label"
+                        .to_string(),
                 ),
             }
         }
