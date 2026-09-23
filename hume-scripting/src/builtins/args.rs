@@ -242,17 +242,37 @@ pub(crate) fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, Stee
         .collect()
 }
 
-/// Converts `val` to the wire-shaped JSON a request/notification `params`
-/// (or an `#:init-options`/`#:settings` blob) expects — always an object (or
-/// array), never a bare scalar. Rejects a bool explicitly: several callers
-/// pass through a value that is `#f` when absent, and without this check
-/// that would silently reach the wire as `params: false` instead of
-/// erroring at the boundary.
-pub(crate) fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, SteelErr> {
+/// The single entry point for a JSON-shaped argument that might already be
+/// a [`JsonHandle`](crate::json::JsonHandle) — an `lsp-request` response
+/// threaded straight back in, e.g. `codeAction/resolve`'s params, or a
+/// WorkspaceEdit/Location a plugin got from one and hands to
+/// `apply-workspace-edit!`/`goto-location!` — or ordinary Steel data a
+/// plugin built by hand (`(hash "line" 0 ...)`). A handle crosses at the
+/// cost of one `Arc` clone (via `steel_to_json`'s own handle arm); anything
+/// else is converted once and wrapped fresh. Rejects a bool explicitly:
+/// several callers pass through a value that is `#f` when absent, and
+/// without this check that would silently reach a JSON consumer as `false`
+/// instead of erroring at the boundary.
+pub(crate) fn json_arg(val: SteelVal, ctx_name: &str) -> Result<crate::json::JsonHandle, SteelErr> {
     if matches!(val, SteelVal::BoolV(_)) {
-        steel::stop!(TypeMismatch => "{}: expected a hashmap, got a boolean", ctx_name);
+        steel::stop!(TypeMismatch => "{}: expected a hashmap or JSON handle, got a boolean", ctx_name);
     }
-    crate::json::steel_to_json(&val).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
+    if let Some(handle) = crate::json::downcast_json_handle(&val) {
+        return Ok(handle);
+    }
+    let json =
+        crate::json::steel_to_json(&val).map_err(|e| generic_err(format!("{ctx_name}: {e}")))?;
+    Ok(crate::json::JsonHandle::new(json))
+}
+
+/// Converts `val` to the wire-shaped JSON a request/notification `params`
+/// (or an `#:init-options`/`#:settings` blob) expects — an owned `Value` for
+/// a caller that has to build an outgoing message (the value must outlive
+/// this call to reach the wire). A host-trait method that only *reads* the
+/// JSON takes [`json_arg`]'s handle directly instead, borrowing rather than
+/// cloning.
+pub(crate) fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, SteelErr> {
+    Ok(json_arg(val, ctx_name)?.value().clone())
 }
 
 /// A JSON-blob argument that may be `#f` (absent).

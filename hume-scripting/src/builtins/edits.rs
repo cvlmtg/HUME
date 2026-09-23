@@ -6,11 +6,10 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::json::steel_to_json;
 
 use super::SteelResult;
 use super::args::{
-    BidArg, checked_fields, list_items, optional_usize_arg, string_arg, usize_arg,
+    BidArg, checked_fields, json_arg, list_items, optional_usize_arg, string_arg, usize_arg,
     wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
@@ -43,19 +42,19 @@ pub(crate) fn apply_text_edits(
         .map_err(generic_err)
 }
 
-/// `(%apply-workspace-edit! wsedit)` — `wsedit`: the decoded `WorkspaceEdit`
-/// hashmap (JSON↔SteelVal shape). Returns the number of buffers modified;
-/// the `apply-workspace-edit!` Scheme wrapper reports that count.
+/// `(%apply-workspace-edit! wsedit)` — `wsedit`: a `WorkspaceEdit` hashmap
+/// or JSON handle. Returns the number of buffers modified; the
+/// `apply-workspace-edit!` Scheme wrapper reports that count.
 pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> SteelResult {
-    let json = steel_to_json(&wsedit).map_err(generic_err)?;
+    let handle = json_arg(wsedit, "apply-workspace-edit!")?;
     let count = require_cap(ctx.host.edits(), "apply-workspace-edit!")?
-        .apply_workspace_edit(json)
+        .apply_workspace_edit(handle.value())
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(count as isize))
 }
 
 /// `(goto-location! loc)` — `loc` is one of two shapes, dispatched here (not
-/// in Scheme): a raw `Location`/`LocationLink` hashmap (wire
+/// in Scheme): a raw `Location`/`LocationLink` hashmap or JSON handle (wire
 /// position, decoded and converted using the focused buffer's server
 /// encoding — correct because the caller is that server's own response
 /// callback), or `(list target line char-col)` with char-indexed
@@ -63,10 +62,10 @@ pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> Stee
 /// string.
 pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
     match &loc {
-        SteelVal::HashMapV(_) => {
-            let json = steel_to_json(&loc).map_err(generic_err)?;
+        SteelVal::HashMapV(_) | SteelVal::Custom(_) => {
+            let handle = json_arg(loc, "goto-location!")?;
             require_cap(ctx.host.edits(), "goto-location!")?
-                .goto_location_value(json)
+                .goto_location_value(handle.value())
                 .map(|()| SteelVal::Void)
                 .map_err(generic_err)
         }
@@ -97,7 +96,7 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
             }
         }
         _ => steel::stop!(TypeMismatch =>
-            "goto-location!: expected a Location hashmap or (list target line char-col)"),
+            "goto-location!: expected a Location hashmap/handle or (list target line char-col)"),
     }
 }
 

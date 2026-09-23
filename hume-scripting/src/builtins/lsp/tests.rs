@@ -1,4 +1,5 @@
 use super::*;
+use crate::json::JsonHandle;
 use crate::test_support::SteelCtxTestHarness;
 use hume_engine::pipeline::BufferId;
 use steel::HashMap as SteelHashMap;
@@ -690,4 +691,78 @@ fn lsp_label_offsets_to_text_errors_on_a_non_string_label() {
     );
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+}
+
+// ── JsonHandle arguments (json_arg funnel) ─────────────────────────────────────
+
+#[test]
+fn lsp_position_to_offset_accepts_a_json_handle() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let position = JsonHandle::new(serde_json::json!({"line": 0, "character": 0})).into_steel_val();
+    let result = lsp_position_to_offset(&mut ctx, BidArg(BufferId::default()), position);
+    // No LSP host in the harness — #f, same as the hashmap-shaped test above,
+    // proving the handle decoded successfully rather than erroring.
+    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+}
+
+#[test]
+fn lsp_range_to_offsets_accepts_a_json_handle() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let range = JsonHandle::new(serde_json::json!({
+        "start": {"line": 0, "character": 0},
+        "end": {"line": 0, "character": 3},
+    }))
+    .into_steel_val();
+    let result = lsp_range_to_offsets(&mut ctx, BidArg(BufferId::default()), range);
+    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+}
+
+#[test]
+fn lsp_label_offsets_to_text_accepts_a_json_array_handle() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let offsets = JsonHandle::new(serde_json::json!([7, 13])).into_steel_val();
+    let result = lsp_label_offsets_to_text(
+        &mut ctx,
+        BidArg(BufferId::default()),
+        SteelVal::StringV("fn foo(a: i32)".into()),
+        offsets,
+    );
+    assert_eq!(result.unwrap(), SteelVal::BoolV(false));
+}
+
+#[test]
+fn lsp_label_offsets_to_text_errors_on_a_wrong_length_array_handle() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let offsets = JsonHandle::new(serde_json::json!([7])).into_steel_val();
+    let result = lsp_label_offsets_to_text(
+        &mut ctx,
+        BidArg(BufferId::default()),
+        SteelVal::StringV("fn foo(a: i32)".into()),
+        offsets,
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(msg.contains("lsp-label-offsets->text"), "got: {msg}");
+}
+
+#[test]
+fn lsp_locations_to_display_parts_accepts_a_list_of_json_handles() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let locs: SteelVal = vec![
+        JsonHandle::new(serde_json::json!({
+            "uri": "file:///a.rs",
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+        }))
+        .into_steel_val(),
+    ]
+    .into_steelval()
+    .unwrap();
+    let msg = lsp_locations_to_display_parts(&mut ctx, locs)
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("no LSP state available"), "got: {msg}");
 }

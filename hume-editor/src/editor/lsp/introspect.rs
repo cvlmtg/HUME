@@ -504,7 +504,7 @@ pub(in crate::editor) fn location_display_parts(
     state: &EditorState,
     lsp: &LspState,
     focused_bid: BufferId,
-    locs: &[serde_json::Value],
+    locs: &[&serde_json::Value],
 ) -> Result<Vec<hume_scripting::host::LocationDisplay>, String> {
     let encoding = encoding_for_buffer(state, lsp, focused_bid);
     let mut open_buffer_cache: rustc_hash::FxHashMap<std::path::PathBuf, Option<BufferId>> =

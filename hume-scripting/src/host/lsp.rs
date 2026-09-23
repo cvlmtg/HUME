@@ -123,7 +123,7 @@ pub trait LspHost {
     /// See `decode_location`'s doc for the full rule.
     fn lsp_locations_display_parts(
         &self,
-        locs: Vec<serde_json::Value>,
+        locs: &[&serde_json::Value],
     ) -> Result<Vec<LocationDisplay>, String>;
 }
 

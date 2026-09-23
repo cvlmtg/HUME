@@ -33,22 +33,26 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         crate::editor::lsp::edits::apply_text_edits(self.state, lsp, bid, typed_edits, expect_gen)
     }
 
-    fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String> {
+    fn apply_workspace_edit(&mut self, edit: &serde_json::Value) -> Result<usize, String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("apply-workspace-edit!: no LSP state available".to_string());
         };
-        let we: lsp_types::WorkspaceEdit =
-            serde_json::from_value(edit).map_err(|e| format!("malformed WorkspaceEdit: {e}"))?;
+        // Deserializes from the `&Value` reference (serde_json implements
+        // `Deserializer` for `&Value` as well as `Value`) rather than
+        // `serde_json::from_value`, which needs ownership — the caller's
+        // `JsonHandle`/hashmap argument is read here, never consumed.
+        let we: lsp_types::WorkspaceEdit = serde::Deserialize::deserialize(edit)
+            .map_err(|e: serde_json::Error| format!("malformed WorkspaceEdit: {e}"))?;
         let summary =
             crate::editor::lsp::edits::apply_workspace_edit(self.state, self.view, lsp, we)?;
         Ok(summary.buffers_modified)
     }
 
-    fn goto_location_value(&mut self, loc: serde_json::Value) -> Result<(), String> {
+    fn goto_location_value(&mut self, loc: &serde_json::Value) -> Result<(), String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("goto-location!: no LSP state available".to_string());
         };
-        let wl = hume_lsp::location::decode_location(&loc, "goto-location!")?;
+        let wl = hume_lsp::location::decode_location(loc, "goto-location!")?;
         let target = crate::editor::lsp::edits::GotoTarget::Wire {
             uri: wl.uri,
             pos: wl.pos,

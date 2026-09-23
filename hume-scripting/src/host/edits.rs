@@ -22,14 +22,17 @@ pub trait EditHost {
         expect_gen: Option<u64>,
     ) -> Result<(), String>;
 
-    /// `(apply-workspace-edit! edit)` — `edit` is a decoded LSP
-    /// `WorkspaceEdit` JSON blob. Returns the number of buffers modified.
-    fn apply_workspace_edit(&mut self, edit: serde_json::Value) -> Result<usize, String>;
+    /// `(apply-workspace-edit! edit)` — `edit` is an LSP `WorkspaceEdit`
+    /// wire JSON blob, read-only here (deserialized into a typed
+    /// `WorkspaceEdit` without needing ownership), so the builtin passes a
+    /// borrow of its `JsonHandle`/hashmap argument rather than cloning it.
+    /// Returns the number of buffers modified.
+    fn apply_workspace_edit(&mut self, edit: &serde_json::Value) -> Result<usize, String>;
 
-    /// `(goto-location! target)`, raw `Location`/`LocationLink` hashmap
+    /// `(goto-location! target)`, raw `Location`/`LocationLink` hashmap/handle
     /// shape — `loc` decoded through `hume_lsp::location::decode_location`,
     /// the same decoder `lsp-locations->display-parts` uses for drawer rows.
-    fn goto_location_value(&mut self, loc: serde_json::Value) -> Result<(), String>;
+    fn goto_location_value(&mut self, loc: &serde_json::Value) -> Result<(), String>;
 
     /// `(goto-location! target)`, `(list target line char-col)` shape with a
     /// path or `file://` URI string target — already char-indexed. `line` is

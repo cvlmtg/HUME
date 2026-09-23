@@ -103,12 +103,12 @@ impl<'a> LspHost for EditorHostImpl<'a> {
 
     fn lsp_locations_display_parts(
         &self,
-        locs: Vec<serde_json::Value>,
+        locs: &[&serde_json::Value],
     ) -> Result<Vec<LocationDisplay>, String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("lsp-locations->display-parts: no LSP state available".to_string());
         };
         let bid = crate::editor::commands::focused_buffer_id(self.state, self.view);
-        crate::editor::lsp::introspect::location_display_parts(self.state, lsp, bid, &locs)
+        crate::editor::lsp::introspect::location_display_parts(self.state, lsp, bid, locs)
     }
 }

@@ -6,14 +6,14 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::json::{json_to_steel, steel_to_json};
+use crate::json::json_to_steel;
 use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServerOp};
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    BidArg, bool_arg, cons_pair, json_params, list_items, list_to_env_pairs, list_to_strings,
-    optional_json_arg, optional_string_arg, string_arg, usize_arg,
+    BidArg, bool_arg, cons_pair, json_arg, json_params, list_items, list_to_env_pairs,
+    list_to_strings, optional_json_arg, optional_string_arg, string_arg,
 };
 use super::errors::generic_err;
 
@@ -363,6 +363,17 @@ fn wire_position(
     }
 }
 
+/// A non-negative JSON integer, for a field read directly off a
+/// `serde_json::Value` rather than decoded through a `SteelVal` arg (see
+/// `super::args::usize_arg`'s Steel-side counterpart).
+fn json_usize(v: &serde_json::Value, ctx_name: &str) -> Result<usize, SteelErr> {
+    v.as_u64().map(|n| n as usize).ok_or_else(|| {
+        generic_err(format!(
+            "{ctx_name}: expected a non-negative integer, got {v}"
+        ))
+    })
+}
+
 /// `(lsp-position->offset bid position)` → `bid`'s char offset for the wire
 /// `{"line" "character"}` hashmap `position`, converted using `bid`'s
 /// attached server's negotiated encoding — or `#f` if `bid` has no attached
@@ -378,9 +389,8 @@ pub(crate) fn lsp_position_to_offset(
     position: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
-    let position_json =
-        steel_to_json(&position).map_err(|e| generic_err(format!("lsp-position->offset: {e}")))?;
-    let pos = wire_position(&position_json, "lsp-position->offset")?;
+    let handle = json_arg(position, "lsp-position->offset")?;
+    let pos = wire_position(handle.value(), "lsp-position->offset")?;
     Ok(
         match ctx
             .host
@@ -403,8 +413,8 @@ pub(crate) fn lsp_range_to_offsets(
     range: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
-    let range_json =
-        steel_to_json(&range).map_err(|e| generic_err(format!("lsp-range->offsets: {e}")))?;
+    let handle = json_arg(range, "lsp-range->offsets")?;
+    let range_json = handle.value();
     let start_json = range_json
         .get("start")
         .ok_or_else(|| generic_err("lsp-range->offsets: range missing 'start'"))?;
@@ -430,11 +440,13 @@ pub(crate) fn lsp_range_to_offsets(
 /// `#f` if `bid` has no attached server (no negotiated encoding to count the
 /// offsets in).
 ///
-/// `offsets` is the raw two-element list straight off the wire, handed over
-/// undecoded the way `goto-location!` takes a raw `Location`. The offsets
-/// count code units in the negotiated encoding, so Scheme can neither
-/// convert them nor index by them — that is the whole reason this builtin
-/// exists rather than a Scheme helper.
+/// `offsets` is the raw two-element `[start, end)` array straight off the
+/// wire, handed over undecoded the way `goto-location!` takes a raw
+/// `Location` — either a Steel list (the ordinary hashmap-decode shape) or a
+/// JSON array handle, both routed through `json_arg` onto the one
+/// JSON-native decode below. The offsets count code units in the negotiated
+/// encoding, so Scheme can neither convert them nor index by them — that is
+/// the whole reason this builtin exists rather than a Scheme helper.
 pub(crate) fn lsp_label_offsets_to_text(
     ctx: &mut SteelCtx,
     bid: BidArg,
@@ -443,15 +455,19 @@ pub(crate) fn lsp_label_offsets_to_text(
 ) -> SteelResult {
     let id = bid.0;
     let label = string_arg(label, "lsp-label-offsets->text label")?;
-    let items = list_items(offsets, "lsp-label-offsets->text offsets")?;
-    let [start, end] = <[SteelVal; 2]>::try_from(items).map_err(|got| {
-        generic_err(format!(
-            "lsp-label-offsets->text: offsets must be a two-element (start end) list, got {} element(s)",
-            got.len()
-        ))
+    let handle = json_arg(offsets, "lsp-label-offsets->text offsets")?;
+    let arr = handle.value().as_array().ok_or_else(|| {
+        generic_err("lsp-label-offsets->text: offsets must be a two-element (start end) array")
     })?;
-    let start = usize_arg(start, "lsp-label-offsets->text offsets")?;
-    let end = usize_arg(end, "lsp-label-offsets->text offsets")?;
+    let [start, end]: [&serde_json::Value; 2] =
+        arr.iter().collect::<Vec<_>>().try_into().map_err(|got: Vec<&serde_json::Value>| {
+            generic_err(format!(
+                "lsp-label-offsets->text: offsets must be a two-element (start end) array, got {} element(s)",
+                got.len()
+            ))
+        })?;
+    let start = json_usize(start, "lsp-label-offsets->text offsets")?;
+    let end = json_usize(end, "lsp-label-offsets->text offsets")?;
     Ok(
         match ctx
             .host
@@ -477,15 +493,17 @@ pub(crate) fn lsp_label_offsets_to_text(
 /// rule and why a location that can't be decoded at all aborts the whole
 /// call rather than producing a degraded entry.
 pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
-    let mut parsed = Vec::new();
-    for entry in list_items(locs, "lsp-locations->display-parts locs")? {
-        parsed.push(steel_to_json(&entry).map_err(generic_err)?);
-    }
+    let handles = list_items(locs, "lsp-locations->display-parts locs")?
+        .into_iter()
+        .map(|entry| json_arg(entry, "lsp-locations->display-parts locs"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let refs: Vec<&serde_json::Value> =
+        handles.iter().map(crate::json::JsonHandle::value).collect();
     let parts = ctx
         .host
         .lsp()
         .ok_or_else(|| generic_err("lsp-locations->display-parts: no LSP state available"))?
-        .lsp_locations_display_parts(parsed)
+        .lsp_locations_display_parts(&refs)
         .map_err(generic_err)?;
     let entries: Vec<SteelVal> = parts
         .into_iter()
