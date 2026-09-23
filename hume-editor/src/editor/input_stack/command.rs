@@ -230,23 +230,31 @@ fn execute_command(ed: &mut Editor, input: &str) {
 
 // ── Typed-command helpers ─────────────────────────────────────────────────────
 
-/// Parse a typed-command string into `(cmd, force, arg)`.
-///
-/// Command name = longest `[A-Za-z_-]` prefix. Digits are deliberately
-/// excluded (Vim convention) so `:b1` parses as `cmd="b"` `arg="1"` — see
-/// `:help :command-name`. One optional trailing `!` is consumed as
-/// `force = true`. Everything after is the argument (whitespace-trimmed).
-/// Matches Vim's ex-parser so `:b#`, `:e!/path`, `:list-buffers`, and
-/// `:w foo.txt` all parse correctly.
-pub(in crate::editor) fn parse_typed_command(input: &str) -> (&str, bool, Option<&str>) {
+/// The command name's own `[A-Za-z_-]` prefix, one optional trailing `!`
+/// consumed as `force`, and the byte offset one past both — shared by
+/// [`parse_typed_command`] (which also needs the trimmed argument past
+/// that point) and `orchestrate.rs`'s `target_command_name` (which only
+/// needs the offset, to test whether the cursor has moved past the name —
+/// the same name-shape rule this function applies, so completion never
+/// disagrees with what `execute_command` would actually run). Digits are
+/// deliberately excluded from the name (Vim convention) so `:b1` ends the
+/// name at `"b"`, `"1"` becoming the argument — see `:help :command-name`.
+pub(in crate::editor) fn scan_command_name(input: &str) -> (&str, bool, usize) {
     let name_end = input
         .char_indices()
         .find(|(_, c)| !(c.is_ascii_alphabetic() || *c == '-' || *c == '_'))
         .map(|(i, _)| i)
         .unwrap_or(input.len());
     let force = input[name_end..].starts_with('!');
-    let cmd_end = name_end + usize::from(force);
-    let cmd = &input[..name_end];
+    (&input[..name_end], force, name_end + usize::from(force))
+}
+
+/// Parse a typed-command string into `(cmd, force, arg)` — everything past
+/// [`scan_command_name`]'s own offset is the argument (whitespace-trimmed).
+/// Matches Vim's ex-parser so `:b#`, `:e!/path`, `:list-buffers`, and
+/// `:w foo.txt` all parse correctly.
+pub(in crate::editor) fn parse_typed_command(input: &str) -> (&str, bool, Option<&str>) {
+    let (cmd, force, cmd_end) = scan_command_name(input);
     let rest = input[cmd_end..].trim();
     let arg = if rest.is_empty() { None } else { Some(rest) };
     (cmd, force, arg)

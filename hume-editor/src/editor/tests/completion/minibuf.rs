@@ -396,6 +396,35 @@ fn tab_on_buffer_arg_completes_buffer_names() {
     );
 }
 
+/// `:b1<Tab>` (the alias `b`, an argument starting with a digit, no space)
+/// must complete `1` as `:buffer`'s own argument, not as a command name
+/// still being typed — `scan_command_name`'s letter-only name rule (shared
+/// with `parse_typed_command`, what `execute_command` itself uses) ends
+/// the name at `b`, matching what Enter would actually run.
+#[test]
+fn tab_mid_alias_with_no_space_completes_the_declared_arg_not_the_command_name() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("1-notes.rs");
+    std::fs::write(&path, "a\n").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut buf = Buffer::new(BufferText::from("a\n"), SelectionSet::default());
+    buf.set_path(Some(path));
+    ed.open_buffer(buf);
+
+    command_line(&mut ed, "b1");
+    ed.handle_key(key_tab());
+    // A sole candidate applies silently (the `:` line's eager policy) —
+    // the buffer-name completer's own full-path insert_text lands in place
+    // of "1" if (and only if) it's the source that actually answered.
+    assert!(
+        minibuf_input(&ed).ends_with("1-notes.rs"),
+        "the alias's own arg completer (buffer-name) must answer, not the \
+         command-name universe (no command starts with \"1\"): {:?}",
+        minibuf_input(&ed)
+    );
+}
+
 // ── :set completion ───────────────────────────────────────────────────────────
 
 #[test]

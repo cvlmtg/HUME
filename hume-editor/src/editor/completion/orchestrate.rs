@@ -204,7 +204,8 @@ impl EditorState {
         if mb.prompt != ":" {
             return None;
         }
-        Some(target_command_name(&mb.input, mb.cursor)?.to_owned())
+        let (name, _) = target_command_name(&mb.input, mb.cursor)?;
+        Some(name.to_owned())
     }
 
     /// The first Tab on the `:` line: resolves the one source the input
@@ -220,7 +221,8 @@ impl EditorState {
             return;
         }
         let (input, cursor) = (mb.input.clone(), mb.cursor);
-        let Some(name) = resolve_minibuf_source(&self.config.registry, &input, cursor) else {
+        let Some((name, floor)) = resolve_minibuf_source(&self.config.registry, &input, cursor)
+        else {
             return;
         };
         let Some(id) = self.config.completion_sources.minibuf_id_of(&name) else {
@@ -247,6 +249,7 @@ impl EditorState {
             id,
             &input,
             cursor,
+            floor,
         );
         if let Some((proc, args)) = call {
             self.queue_steel_call(proc, args);
@@ -470,6 +473,14 @@ fn invoke_buffer_sources(
 /// together. Every other body gets the whitespace-delimited argument span
 /// computed here, upfront, the same way a `Buffer` source's span is always
 /// the word before the cursor (`invoke_buffer_sources`).
+/// `floor` is the byte offset the `'arg` span's backward scan must not
+/// cross — 0 while still completing the command name itself, or the
+/// command name's own end once `resolve_minibuf_source` has resolved past
+/// it. Without this, `arg_span`'s "last space before the cursor" rule has
+/// nothing to anchor on for a no-space argument (`:b1`, the alias `b`
+/// immediately followed by its argument) and falls back to `start = 0`,
+/// swallowing the command name itself into the span it hands the resolved
+/// completer.
 fn invoke_minibuf_source(
     sources: &SourceRegistry,
     ctx: &CompletionCtx<'_>,
@@ -477,12 +488,16 @@ fn invoke_minibuf_source(
     id: MinibufSourceId,
     input: &str,
     cursor: usize,
+    floor: usize,
 ) -> Option<SteelCall> {
     let entry = sources.minibuf_get(id);
+    let arg = || {
+        let span = arg_span(input, cursor, ' ', &[' ']);
+        span.start.max(floor)..span.end
+    };
     match &entry.body {
         MinibufBody::NativeUniverse(f) => {
-            let span = arg_span(input, cursor, ' ', &[' ']);
-            let invocation_id = session.invoke(id, Invocation::minibuf(span));
+            let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
             session.contribute(invocation_id, f(ctx), false);
             None
         }
@@ -493,8 +508,7 @@ fn invoke_minibuf_source(
             None
         }
         MinibufBody::Steel(proc) => {
-            let span = arg_span(input, cursor, ' ', &[' ']);
-            let invocation_id = session.invoke(id, Invocation::minibuf(span));
+            let invocation_id = session.invoke(id, Invocation::minibuf(arg()));
             Some((
                 proc.clone(),
                 vec![
@@ -507,31 +521,35 @@ fn invoke_minibuf_source(
     }
 }
 
-/// The `:` line's own command name, stripped of a trailing `!` (alias →
-/// command), if the cursor sits past it — in its argument, not still typing
-/// the name itself. Shared by [`resolve_minibuf_source`] and
-/// [`EditorState::minibuf_target_command`], the one place both need to
-/// agree on what "past the command name" means.
-fn target_command_name(input: &str, cursor: usize) -> Option<&str> {
-    let (cmd_raw, _) = input.split_once(' ')?;
-    if cursor <= cmd_raw.len() {
-        return None;
-    }
-    Some(cmd_raw.strip_suffix('!').unwrap_or(cmd_raw))
+/// The `:` line's own command name and the byte offset one past it (and
+/// its optional trailing `!`) — `None` if the cursor hasn't moved past the
+/// name yet, still typing it. Shared by [`resolve_minibuf_source`] (which
+/// also uses the offset as [`invoke_minibuf_source`]'s own argument-span
+/// floor) and [`EditorState::minibuf_target_command`] — the one place both
+/// need to agree on what "past the command name" means, using the same
+/// name-shape rule `execute_command` itself uses
+/// (`input_stack::command::scan_command_name`), so completion never picks
+/// a different command than Enter would actually run.
+fn target_command_name(input: &str, cursor: usize) -> Option<(&str, usize)> {
+    let (cmd, _, cmd_end) = crate::editor::input_stack::command::scan_command_name(input);
+    (cursor > cmd_end).then_some((cmd, cmd_end))
 }
 
 /// Resolves which registered source applies to the current `(input,
-/// cursor)` shape: the command name itself while the cursor is within it
+/// cursor)` shape — the command name itself while the cursor is within it
 /// (no space yet, or moved left past the space), else the resolved
-/// command's declared argument completer.
+/// command's declared argument completer — and the byte offset
+/// [`invoke_minibuf_source`]'s own argument span must not cross: `0` for
+/// the command-name case (the whole prefix typed so far is the token), the
+/// name's own end for the argument case.
 fn resolve_minibuf_source(
     registry: &CommandRegistry,
     input: &str,
     cursor: usize,
-) -> Option<std::borrow::Cow<'static, str>> {
+) -> Option<(std::borrow::Cow<'static, str>, usize)> {
     use std::borrow::Cow;
     match target_command_name(input, cursor) {
-        None => Some(Cow::Borrowed(super::COMMAND_SOURCE)),
-        Some(cmd) => registry.get_typed(cmd)?.completer.clone(),
+        None => Some((Cow::Borrowed(super::COMMAND_SOURCE), 0)),
+        Some((cmd, cmd_end)) => Some((registry.get_typed(cmd)?.completer.clone()?, cmd_end)),
     }
 }
