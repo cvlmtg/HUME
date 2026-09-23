@@ -44,7 +44,7 @@ fn all_variants() -> Vec<EditorEvent> {
         },
         EditorEvent::OnCompletionAccept {
             buffer,
-            item: serde_json::json!({"label": "foo"}),
+            item: std::sync::Arc::new(serde_json::json!({"label": "foo"})),
         },
         EditorEvent::OnOptionChange {
             key: "lsp.inlay-hints".to_string(),
@@ -236,7 +236,7 @@ fn on_completion_accept_item_crosses_as_a_json_handle() {
     let item = serde_json::json!({"label": "foo", "kind": 3});
     let event = EditorEvent::OnCompletionAccept {
         buffer,
-        item: item.clone(),
+        item: std::sync::Arc::new(item.clone()),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 2);

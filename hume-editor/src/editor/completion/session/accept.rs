@@ -409,7 +409,7 @@ impl BufferSession {
         };
         state.queue_event(EditorEvent::OnCompletionAccept {
             buffer: bid,
-            item: hook_item,
+            item: std::sync::Arc::new(hook_item),
         });
 
         if may_resolve && !item.has_additional_text_edits {

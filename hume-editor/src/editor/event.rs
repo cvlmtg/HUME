@@ -116,10 +116,12 @@ pub(in crate::editor) enum EditorEvent {
     /// `completionItem/resolve` — Rust owns all three atomically, so this is
     /// a plain extension point for anything the completion store doesn't
     /// itself parse (e.g. `command`), not a place that needs to apply edits.
-    /// `item` is the accepted `CompletionItem`'s raw JSON.
+    /// `item` is the accepted `CompletionItem`'s raw JSON, `Arc`-wrapped at
+    /// the one queue site (`session/accept.rs`) so a large LSP item isn't
+    /// cloned again here just to hand it to `to_steel_handle`.
     OnCompletionAccept {
         buffer: BufferId,
-        item: serde_json::Value,
+        item: std::sync::Arc<serde_json::Value>,
     },
     /// Fires when a buffer's text changes — user edits, undo, redo, `:e!`
     /// reload, and read-only view refreshes (`:messages`, `:ls`,
@@ -282,7 +284,7 @@ impl EditorEvent {
             EditorEvent::OnCompletionAccept { buffer, item } => {
                 vec![
                     SteelBufferId::new(*buffer).into_steel_val(),
-                    to_steel_handle(std::sync::Arc::new(item.clone())),
+                    to_steel_handle(std::sync::Arc::clone(item)),
                 ]
             }
             EditorEvent::OnOptionChange { key, value } => {
