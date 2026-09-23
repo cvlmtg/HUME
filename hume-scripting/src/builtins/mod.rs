@@ -271,6 +271,12 @@ macro_rules! builtins {
 // why steel-core's original print fns are captured before PRINT_GATE_SHIMS
 // redefines the names). Shared by every shim's
 // explicit-port branch.
+//
+// json-ref/json-contains? — `(json-ref j "a" 0 "b")` reads a JsonHandle's
+// "a"[0]"b" field. Variadic keyword-free sugar over %json-ref, which takes
+// the path as one list — Steel doesn't support a variadic Rust builtin
+// registered via register_fn, so the rest-arg collection happens here
+// instead.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,

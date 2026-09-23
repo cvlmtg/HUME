@@ -73,11 +73,19 @@ Every feature file shares these:
   `completion-set-trigger-chars!` instead — the editor invokes that source
   directly against its own trigger chars, no hook round trip. Both tables are
   keyed `(source, language)`, so a second language attaching under the same
-  `source-name` gets its own entry rather than clobbering the first.
+  `source-name` gets its own entry rather than clobbering the first. At attach,
+  the capability's own `"triggerCharacters"` array is unpacked with `json-list`
+  inline (unlike `lsp/cap-field`'s other, scalar-only callers) rather than
+  folding an array-vs-scalar branch into `lsp/cap-field`'s own contract.
 - **Viewport** — `lsp/visible-lines` wraps the synchronous `viewport-range` builtin,
   which is 0-based end-exclusive, so the visible-line count is just the range's width
-  (no `+ 1`). Its two callers are hover's popup-docking threshold and inlay hints'
-  refresh trigger.
+  (no `+ 1`); `#f` when `bid` isn't shown in a pane on the active tab, including a
+  buffer visible only in a background tab. Its two callers are hover's popup-docking
+  threshold and inlay hints' refresh trigger.
+- **Text edit conversion** — `lsp/text-edit->tuple` turns a wire `TextEdit` handle
+  into the `((start-line . start-col) (end-line . end-col) new-text)` list shape
+  `apply-text-edits!` expects; `format.scm` and `actions.scm`'s resolve-fallback
+  path both build their edit lists through it.
 - **Location display** — a raw `Location`/`LocationLink` hashmap's `{uri, range}`-vs-
   `{targetUri, targetRange}` shape dispatch lives in one place,
   `hume_lsp::location::decode_location` (Rust), shared by `goto-location!` (the jump)

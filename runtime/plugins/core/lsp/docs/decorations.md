@@ -26,6 +26,52 @@ puts each severity's own name first so a theme can colour all four from one
 `error`/`warning`/`info`/`hint` entry through the usual dot-notation fallback, which
 is exactly what a theme that declares none of them gets.
 
+`lsp/first-line`, which both the popup and the EOL summary use for a message's first
+line, calls `split-once` rather than `split-many` — a multi-line rustc message is
+routinely 5-20 lines, and every row is rebuilt on every publish, so splitting the
+whole message just to keep the first line would allocate and discard the rest for
+nothing. `split-once` answers `#t` (not `#f`) when the pattern isn't found, so `pair?`
+— not truthiness — is what tells "found a split" from "no newline in this message"
+apart; a bare `(if parts (car parts) text)` would call `(car #t)` on every
+single-line message, which is most of them.
+
+`lsp/diag-jump-to!` takes `bid` explicitly rather than reading `(current-buffer)` —
+the diagnostics drawer stays open across a buffer switch by design (browse-while-
+editing, below), so a row selected there must jump into the buffer it was listed
+for, not whichever buffer happens to be focused when Enter is pressed.
+
+`diagnostics-for-buffer` sorts and deep-clones up to 1000 diagnostics' whole raw LSP
+JSON, so every hook below fetches it once and threads the result through to both the
+decorations refresh and the drawer refresh, rather than each calling it separately.
+
+## Diagnostics drawer
+
+`:diagnostics` opens a drawer the plugin then owns refreshing itself: unlike a
+one-shot picker, this drawer's rows must track the buffer's diagnostics live as
+`on-diagnostics-changed` keeps firing. `lsp/*diag-drawer*` holds `#f` when no
+drawer is open, or `(bid tok diags)` — one value, not three hand-synced globals, so
+"closed" is structural rather than an invariant that would have to hold across three
+separately-cleared fields. `tok` is `show-drawer-list!`'s own return, threaded into
+every later call (`update-drawer-list!`, `close-drawer!`, `drawer-selected-index`);
+Rust ignores any of them the moment `tok` no longer names the open drawer (closed,
+replaced, or never this plugin's), so a stale or foreign drawer can never be touched
+by mistake, even lazily — every path that could invalidate `tok` (an `Esc` close, a
+replacing drawer) is caught the next time this plugin visits it, since every mutator
+is already token-guarded. `show-drawer-list!`'s own `#f` return (a stale async open)
+leaves tracking untouched — there is no drawer to track.
+
+On refresh, `lsp/diag-refresh-index` picks which row stays selected out of NEW-DIAGS
+(guaranteed non-empty — its sole caller guards on `(null? diags)` first): the
+surviving diagnostic (`lsp/diag-best-match`, below), or the old index clamped into
+the new list's bounds as a fallback — the item now at that position, i.e. the next
+one when the selected diagnostic itself was the one fixed. `lsp/diag-best-match`
+finds OLD's nearest surviving match in NEW-DIAGS by message + severity — position
+stays out of the key on purpose, since the fix's own edit can shift other
+diagnostics' lines; ties (the same message twice) break toward the nearest line, and
+`#f` means nothing matched. `lsp/diag-refresh-index` and `update-drawer-list!` both
+clamp into the new list already, so the selection index passes through raw with no
+separate Scheme-side clamp.
+
 ## Gutter signs
 
 Gutter signs are the same pull, one call further: `lsp/refresh-diagnostic-decorations`
@@ -71,7 +117,10 @@ covers undo/redo and any other edit that neither scrolls the viewport nor provok
 diagnostics republish, so a hint dropped because its anchor character was deleted
 comes back once that edit is undone. Debounced 200ms per buffer via `debounce-by` (not
 `debounce`) so a diagnostics batch touching two buffers can't have the second buffer's
-call cancel the first's pending refresh. A hint whose wire position can't be converted
+call cancel the first's pending refresh. Building the request's own params fails as
+`#f` the same way a hint's position does — the buffer can't be resolved (hidden or
+detached by the time a debounced refresh actually fires) — and the refresh simply
+skips sending anything that round. A hint whose wire position can't be converted
 to a buffer offset — the buffer detached between the request firing and the response
 arriving — is silently dropped rather than raising. A legitimate empty/null response
 still clears any hints left from a prior, larger response; only a genuine request
@@ -81,4 +130,6 @@ The render bridge itself is deliberately *not* gated on the `lsp.inlay-hints` op
 the hint store is per-source, so an unrelated plugin's hints must not vanish just
 because this one setting toggles. This plugin instead owns clearing its own source
 when the setting turns off, and re-requesting hints for every visible buffer when it
-turns back on.
+turns back on; the `on-option-change` handler reads the option back via `get-option`
+(already coerced to a bool) rather than trusting the hook's own raw `:set`/
+`set-option!` string value.

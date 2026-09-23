@@ -6,10 +6,6 @@
 ;; ── Response handling ────────────────────────────────────────────────────────
 ;; Shared by all four goto-family methods and `lsp-references` below.
 
-;;; `res` is void (null), a JSON array handle (unpacked to a Steel list of
-;;; Location/LocationLink handles — `length`/`car`/`null?` need list
-;;; operations, not JSON handle ones), or a single Location/LocationLink
-;;; handle.
 (define (lsp/goto-response err res #:always-drawer? [always-drawer? #f]
                                     #:what [what "goto"]
                                     #:not-found-msg [not-found-msg "No definition found"])

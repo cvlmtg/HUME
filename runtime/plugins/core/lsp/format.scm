@@ -8,8 +8,6 @@
   (hash "tabSize" (get-option "tab-width")
         "insertSpaces" (equal? (get-option "tab-style") "soft")))
 
-;;; `res` is void (null) or a JSON array handle — `json-list` on an empty
-;;; array already gives `'()`, so no separate empty check is needed.
 (define (lsp/format-edits res)
   (if (void? res)
       (list)
@@ -66,7 +64,6 @@
                                  ") — nothing formatted")))
           (else (lsp/format-fan-out! bid gen td ranges)))))))
 
-;;; Shared body behind `lsp-fmt` and `:format-source` — see docs/features.md.
 (define (lsp/format-source!)
   (let* ((bid (current-buffer))
          (rp (lsp-linewise-ranges-params bid)))

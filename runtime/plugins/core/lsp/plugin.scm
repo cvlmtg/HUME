@@ -20,7 +20,8 @@
 
 (lsp/register-installed-servers!)
 
-;; Default keybindings — see docs/architecture.md.
+;; ── Default keybindings ───────────────────────────────────────────────────────
+
 (bind-key! 'normal "g d" "lsp-goto-definition")
 (bind-key! 'normal "g D" "lsp-goto-declaration")
 (bind-key! 'normal "g y" "lsp-goto-type-definition")

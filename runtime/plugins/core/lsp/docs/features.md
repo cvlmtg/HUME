@@ -84,15 +84,19 @@ rust-analyzer (confirmed) gates diagnostic-derived quickfixes on this, withholdi
 them for an empty array; `diagnostics-for-buffer`'s `"raw"` field carries these
 through unmodified for exactly this reason. A `CodeAction` is filtered out of the menu
 if it carries a truthy `"disabled"` field (LSP 3.16); v1 doesn't otherwise pre-filter
-by `kind`. `lsp/primary-selection-range` returns `#f` when there's no primary
-selection, which `diagnostics-for-buffer`'s `#:range` filter reads as "no range
-filter" (not "empty range"). Applying an action runs its `edit` first, then its
-`command`, per spec order; an action with neither is lazily-resolved via
-`codeAction/resolve` first, bounded to a single round trip so a non-conforming server
-that re-resolves to a still-empty edit/command can't loop. The bare legacy `Command`
-shape (a plain top-level `command` string, no `edit` key) is handled by passing the
-whole action object through as the `Command` — its shape already matches what the
-executor expects.
+by `kind`. `lsp/primary-selection-range` returns `(start . end)` (end exclusive), or
+`#f` when there's no primary selection, which `diagnostics-for-buffer`'s `#:range`
+filter reads as "no range filter" (not "empty range"). Applying an action runs its
+`edit` first, then its `command`, per spec order; an action with neither is
+lazily-resolved via `codeAction/resolve` first, bounded to a single round trip so a
+non-conforming server that re-resolves to a still-empty edit/command can't loop. The
+bare legacy `Command` shape (a plain top-level `command` string, no `edit` key) is
+handled by passing the whole action object through as the `Command` — its shape
+already matches what the executor expects. An action, and a command's `"arguments"`
+array, cross straight back out to `codeAction/resolve`/`workspace/executeCommand` as
+the `JsonHandle` they arrived as — `steel_to_json`'s handle arm resolves a nested
+handle to its own value once the enclosing hash goes out over the wire, so nothing
+here has to read a field just to re-send it unmodified.
 
 ## Formatting
 

@@ -6,12 +6,22 @@
 receipt as the install commit point, and calls `registration.scm`'s scan
 (`lsp/register-installed-servers!`) directly afterward so the server attaches
 immediately — no cross-plugin notify, since install and registration are the same
-plugin. That scan independently reads the seeded `runtime/scheme/lsp-servers.scm`
+plugin. That scan is passive (registers already-installed servers only, no subprocess,
+no network) and independently reads the seeded `runtime/scheme/lsp-servers.scm`
 catalog and `<data>/servers/` for receipts, registering (`register-lsp-server!`) every
 installed server it finds; `plugin.scm` runs it once at its own top level, so it also
 happens at load or lazy activation. It's the *only* registrar for managed servers.
 `:lsp-rescan-servers` exposes the same scan for a server installed outside
-`:lsp-install`.
+`:lsp-install`. A server directory with no readable `receipt.scm` — pure data,
+`((name . "X") (version . "V") (bin . "relative/bin/path"))` — is treated as an
+interrupted install, logged as a warning naming it, rather than silently skipped.
+
+`registration.scm`'s `lsp/servers-catalog` is a read-only accessor onto the seeded
+catalog hash — callers must not mutate the value it returns, since Scheme itself
+enforces nothing here. Every catalog entry, in both `*lsp-servers*` and
+`*lsp-sources*`, is a tagged alist tail (`(key . value)` or `(key sub…)`, never a
+positional tuple), so `lsp/field`'s `car`-based lookup works uniformly across both
+catalogs and every field shape in them.
 
 Installing (or reinstalling) a single server always starts from a clean slate — this
 also serves as the repair/upgrade path, and covers reinstalling over a running client
@@ -20,6 +30,15 @@ language, reaping any running client; (3) purge any existing install (the receip
 with it); (4) download, verify, and unpack (github), or run `npm install`/`cargo
 install`; (5) write the receipt — the commit point; (6) a `$PATH` notice, if the
 seeded command also happens to resolve there independently of the managed install.
+The github path's own download step recreates the install directory right after
+step 3 purges it — `curl -o` needs the parent directory to already exist, and
+nothing else recreates it between the purge and the download.
+
+`:lsp-install`'s own `#:complete` source lists every language a server is seeded
+for (the same set its own "no language server is seeded for" check reads against);
+`:lsp-uninstall`'s lists every server with an install directory on disk, seeded or
+orphan alike, since its own `(path-exists? dir)` check — not the seeded catalog —
+decides what's really there to remove.
 
 `--locked` on the cargo path is the closest cargo analog to the sha256 pin github
 assets get — it builds with upstream's published `Cargo.lock`. The npm path's bin
@@ -37,7 +56,9 @@ instead of treating them as already taken. `apply_pending_lsp_server_reg`
 Rust side for every registration this queues.
 
 `:lsp-uninstall` takes a user-typed server name straight into a path join, so it
-validates the name via `core:stdlib`'s `stdlib/safe-path-segment?` before touching disk;
+validates the name via `core:stdlib`'s `stdlib/safe-path-segment?` before touching disk
+— checked with `(eq? #t ...)`, not a bare truthiness test, matching every other call
+site's own convention (see `core:stdlib`'s README for why);
 `lsp-install` never needs this validation since its name always comes from the seeded
 language-to-server index, never a raw argument. An orphan directory (on disk, no
 seeded catalog entry) skips the unregister step and only removes the directory.
@@ -96,10 +117,11 @@ hint's gate.
 
 `on-language-set` nudges once per language per session: if a buffer's language has a
 seeded server that's installable but not yet installed, it suggests `:lsp-install`.
-The dedup marker is set regardless of outcome, so a disqualified language (no seeded
-server, or blocked on this platform) is never re-evaluated either. Logged `'warn`, not
-`'info` — `Severity::Info` is display-only and never reaches `:messages`, so a nudge
-missed at the moment it fires must stay reviewable afterward.
+The dedup marker — `*lsp-hinted-languages*`, a session-scoped set — is set regardless
+of outcome, so a disqualified language (no seeded server, or blocked on this
+platform) is never re-evaluated either. Logged `'warn`, not `'info` —
+`Severity::Info` is display-only and never reaches `:messages`, so a nudge missed at
+the moment it fires must stay reviewable afterward.
 
 ## Runtime management
 

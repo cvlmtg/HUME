@@ -9,8 +9,6 @@
 
 ;; ── Server catalog ────────────────────────────────────────────────────────────
 
-;;; Hash: name → server-entry fields, the tagged-alist tail from
-;;; lsp-servers.scm: (languages ...) (command . cmd) (args ...) (config . …).
 (define *lsp-servers* (hash))
 
 (define (lsp/declare-server! entry)
@@ -21,15 +19,10 @@
     (path-join (runtime-dir) "scheme" "lsp-servers.scm")
     read))
 
-;;; The seeded server catalog: name → server-entry fields. Read-only accessor
-;;; — callers must not mutate the returned hash.
 (define (lsp/servers-catalog) *lsp-servers*)
 
 ;; ── Field access ──────────────────────────────────────────────────────────────
-;; Catalog entries are tagged alists — `(key . value)` or `(key sub…)`, never
-;; positional tuples — `car` works on both shapes.
 
-;;; First element of `fields` whose car is `key` (a symbol), or `#f`.
 (define (lsp/field fields key)
   (cond ((null? fields) #f)
         ((equal? (car (car fields)) key) (car fields))
@@ -42,11 +35,7 @@
 (define (lsp/receipt-path name) (path-join (lsp/server-dir name) "receipt.scm"))
 
 ;; ── Receipts ──────────────────────────────────────────────────────────────────
-;; receipt.scm is the install commit point: pure data
-;; `((name . "X") (version . "V") (bin . "relative/bin/path"))`. A server dir
-;; without a readable receipt is an interrupted install.
 
-;;; Read `name`'s receipt, or `#f` if missing/unreadable (interrupted install).
 (define (lsp/read-receipt name)
   (with-handler (lambda (err) #f)
     (call-with-input-file (lsp/receipt-path name) read)))
@@ -56,8 +45,6 @@
 
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
-;;; Registers `name` for every language it serves that isn't registered
-;;; yet — see docs/servers.md.
 (define (lsp/register-server-languages! name cmd)
   (let* ((fields   (hash-ref *lsp-servers* name))
          (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
@@ -77,8 +64,6 @@
 
 ;; ── Startup server registration ───────────────────────────────────────────────
 
-;;; Passive: registers already-installed servers only, no subprocess, no
-;;; network. The *only* registrar for managed servers — see docs/servers.md.
 (define (lsp/register-installed-servers!)
   (let ((sdir (lsp/servers-dir)))
     (when (path-exists? sdir)

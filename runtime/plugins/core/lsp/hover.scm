@@ -4,9 +4,6 @@
 
 ;; ── Response decoding ───────────────────────────────────────────────────────
 
-;;; `MarkedString` (bare string or `{language, value}`) vs `MarkupContent`
-;;; (`{kind, value}`) — told apart by key. `ms` is a native string or a JSON
-;;; object handle (`res` — this file's whole response — is one too).
 (define (lsp/marked-string->text ms)
   (cond
     ((string? ms) ms)
@@ -20,7 +17,6 @@
     ((json-array? contents) (string-join (map lsp/marked-string->text (json-list contents)) "\n\n"))
     (else (lsp/marked-string->text contents))))
 
-;;; Grammar name to highlight through, or `#f` for plain text.
 (define (lsp/hover-lang contents)
   (if (and (json-object? contents)
            (json-contains? contents "kind")
@@ -50,7 +46,6 @@
           (lambda (err res)
             (cond
               (err (lsp/report-error "hover" err))
-              ;; JSON null decodes to Steel void, not #f.
               ((void? res) (log! 'info "No hover info"))
               (else (let ((contents (json-ref res "contents")))
                       (lsp/show-hover (lsp/hover-contents->text contents)
