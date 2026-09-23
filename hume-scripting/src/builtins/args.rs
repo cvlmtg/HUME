@@ -276,8 +276,9 @@ pub(crate) fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::V
     }
     match crate::json::downcast_json_handle(&val) {
         Some(handle) => Ok(handle.value().clone()),
-        None => crate::json::steel_to_json(&val)
-            .map_err(|e| generic_err(format!("{ctx_name}: {e}"))),
+        None => {
+            crate::json::steel_to_json(&val).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
+        }
     }
 }
 
