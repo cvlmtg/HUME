@@ -14,19 +14,19 @@ use hume_editing::tab_style::TabStyle;
 
 pub(in crate::editor) const SET_SOURCE: &str = "set";
 
-/// Prefix-filter `items` and wrap each into a `CompletionItem` with an
-/// empty `sort_text` — a `Delegated` source's own order is what the
-/// session's rank key preserves (see `MatchKind::Delegated`'s doc), so
-/// these are sorted right here rather than left to that tiebreak. A fully-
-/// typed value is filtered out later, by `CompletionSession::rank`'s own
-/// no-op check — not here.
+/// Prefix-filter `items` and wrap each into a `CompletionItem`, sorted
+/// alphabetically — a `Delegated` source's own order is what the session's
+/// rank key preserves (see `MatchKind::Delegated`'s doc), so the order is
+/// established right here rather than left to a tiebreak. A fully-typed
+/// value is filtered out later, by `CompletionSession::rank`'s own no-op
+/// check — not here.
 fn prefix_completions<'a>(
     items: impl Iterator<Item = &'a str>,
     prefix: &str,
 ) -> Vec<CompletionItem> {
     let mut candidates: Vec<CompletionItem> = items
         .filter(|s| s.starts_with(prefix))
-        .map(|s| CompletionItem::plain(s.to_owned(), s.to_owned(), String::new()))
+        .map(|s| CompletionItem::plain(s.to_owned(), s.to_owned()))
         .collect();
     candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
     candidates
@@ -107,7 +107,10 @@ fn complete_set_value(
     } else if let Some(values) = static_value_candidates(key) {
         prefix_completions(values.iter().copied(), value_prefix)
     } else if key == THEME_KEY {
-        theme_name_candidates(value_prefix, true)
+        prefix_completions(
+            theme_name_candidates().iter().map(String::as_str),
+            value_prefix,
+        )
     } else {
         Vec::new()
     }

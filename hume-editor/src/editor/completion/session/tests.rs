@@ -8,7 +8,7 @@ use hume_editing::changeset::ChangeSetBuilder;
 use steel::rvals::SteelVal;
 
 fn item(label: &str) -> CompletionItem {
-    CompletionItem::plain(label.into(), label.into(), label.into())
+    CompletionItem::plain(label.into(), label.into())
 }
 
 fn items(labels: &[&str]) -> Vec<CompletionItem> {

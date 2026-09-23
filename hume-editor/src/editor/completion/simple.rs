@@ -20,7 +20,7 @@ pub(super) fn complete_command(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
     names.dedup();
     names
         .into_iter()
-        .map(|name| CompletionItem::plain(name.to_owned(), name.to_owned(), name.to_owned()))
+        .map(|name| CompletionItem::plain(name.to_owned(), name.to_owned()))
         .collect()
 }
 
@@ -73,7 +73,7 @@ pub(super) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionIte
             } else {
                 base
             };
-            CompletionItem::plain(label.clone(), insert_text, label)
+            CompletionItem::plain(label, insert_text)
         })
         .collect()
 }
@@ -82,11 +82,14 @@ pub(super) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionIte
 
 pub(in crate::editor) const THEME_SOURCE: &str = "theme";
 
-/// Every installed theme name for `:theme` — see [`super::theme_name_candidates`]
-/// (called here with an empty prefix — an unfiltered universe, narrowed
-/// generically by the session's own `MatchKind::String`).
+/// Every installed theme name for `:theme` — the unfiltered universe (see
+/// [`super::theme_name_candidates`]), narrowed generically by the session's
+/// own `MatchKind::String`.
 pub(super) fn complete_theme(_ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
-    super::theme_name_candidates("", false)
+    super::theme_name_candidates()
+        .into_iter()
+        .map(|stem| CompletionItem::plain(stem.clone(), stem))
+        .collect()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

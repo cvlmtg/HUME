@@ -62,10 +62,11 @@ use super::registry::{BufferSourceId, MinibufSourceId, SourceRegistry};
 ///   `MatchKind::String` arm.
 /// - `Delegated` — the source computed its own finished, already-ordered
 ///   result fresh from the live input (a directory read, a multi-phase
-///   parse); this session does no scoring of its own for these items. Given
-///   a tied score and an empty `sort_text` at construction (see the item
-///   constructor `Delegated` sources use), the rank key's final tiebreak —
-///   index ascending — preserves the source's own order.
+///   parse); this session does no scoring of its own for these items: a
+///   tied score, and `rank`'s own sort key skips the sortText tiebreak for
+///   a `Delegated` slot entirely, so the final index-ascending tiebreak
+///   preserves the source's own order regardless of what `sort_text` an
+///   item happens to carry.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) enum MatchKind {
     Fuzzy,
@@ -962,20 +963,37 @@ impl CompletionSession {
                 mt.menu_anchor = anchor;
             }
         }
-        let item_of = |s: u32, i: u32| -> &CompletionItem {
+        // A `Delegated` slot contributes no distinguishing sortText to the
+        // tiebreak below, regardless of what its own items' `sort_text`
+        // field holds (every `plain()` item now sets it to `label`, purely
+        // for a `String`-kind source's own tiebreak) — this is where that
+        // exclusion belongs, in the one place that reads the key, rather
+        // than relying on a `Delegated` source's item constructor to leave
+        // it empty by convention.
+        let sort_key_of = |s: u32, i: u32| -> &str {
             match &*target {
-                Target::Buffer { slots, .. } => slots[s as usize].item(i as usize),
-                Target::Minibuf { slots, .. } => slots[s as usize].item(i as usize),
+                Target::Buffer { slots, .. } => {
+                    let slot = &slots[s as usize];
+                    if sources.buffer_get(slot.source).match_kind == MatchKind::Delegated {
+                        ""
+                    } else {
+                        &slot.item(i as usize).sort_text
+                    }
+                }
+                Target::Minibuf { slots, .. } => {
+                    let slot = &slots[s as usize];
+                    if sources.minibuf_get(slot.source).match_kind == MatchKind::Delegated {
+                        ""
+                    } else {
+                        &slot.item(i as usize).sort_text
+                    }
+                }
             }
         };
         ctx.rank_scratch.sort_unstable_by(|a, b| {
             b.0.cmp(&a.0)
                 .then_with(|| b.1.cmp(&a.1))
-                .then_with(|| {
-                    item_of(a.2, a.3)
-                        .sort_text
-                        .cmp(&item_of(b.2, b.3).sort_text)
-                })
+                .then_with(|| sort_key_of(a.2, a.3).cmp(sort_key_of(b.2, b.3)))
                 .then((a.2, a.3).cmp(&(b.2, b.3)))
         });
     }

@@ -44,21 +44,21 @@ pub(in crate::editor) struct CompletionItem {
 
 impl CompletionItem {
     /// Builds a non-LSP item — every minibuffer completer's constructor.
-    /// `filter_text` is always `label` (what the user sees is what a
-    /// `MatchKind::String` source matches against); `sort_text` is the
-    /// caller's own tiebreak key — the item's own `label` for a `String`
-    /// source (alphabetical), or empty for a `MatchKind::Delegated` source,
-    /// so the rank key's final
-    /// index-ascending tiebreak preserves the delegate's own return order
-    /// instead of re-sorting it. Every LSP-only field defaults inert:
-    /// `kind`/`detail`/`text_edit` absent, no `additionalTextEdits`, `raw`
-    /// null — nothing here is a wire concern.
-    pub(super) fn plain(label: String, insert_text: String, sort_text: String) -> Self {
+    /// `filter_text`/`sort_text` are both always `label`: `filter_text`
+    /// because what the user sees is what a `MatchKind::String` source
+    /// matches against, `sort_text` because it's the only tiebreak key a
+    /// `String` source's items need (alphabetical) — a `MatchKind::Delegated`
+    /// source's own order is instead preserved by `rank`'s Delegated arm,
+    /// which skips the sortText tiebreak key entirely rather than relying on
+    /// every Delegated constructor leaving it empty by convention. Every
+    /// LSP-only field defaults inert: `kind`/`detail`/`text_edit` absent, no
+    /// `additionalTextEdits`, `raw` null — nothing here is a wire concern.
+    pub(super) fn plain(label: String, insert_text: String) -> Self {
         Self {
             filter_text: label.clone(),
+            sort_text: label.clone(),
             label,
             insert_text,
-            sort_text,
             kind: None,
             detail: None,
             text_edit: None,

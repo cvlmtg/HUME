@@ -116,31 +116,18 @@ pub(in crate::editor) fn arg_span(
     start..token_end_at(input, cursor, fwd_stops)
 }
 
-/// Scan `themes/*.toml` in every search path and return the stems that start
-/// with `prefix` (a fully-typed theme name is filtered out later, by
-/// `CompletionSession::rank`'s own no-op check — not here). User themes
-/// (earlier in the search path list) shadow bundled themes with the same
-/// stem.
-///
-/// Shared by `:theme` ([`complete_theme`], called with an empty prefix — a
-/// `String`-kind source's full universe) and `:set global theme=`'s value
-/// phase ([`set::complete_set`], `Delegated`, called with the real typed
-/// prefix) so the candidate set stays in sync between the two — but the two
-/// callers' `MatchKind`s disagree on who does the sorting, so `delegated`
-/// picks the right one: `false` (`complete_theme`) sets `sort_text = stem`
-/// and leaves the list in scan order, so the session's own `String`-kind
-/// tiebreak (`sort_text` ascending) alphabetizes it; `true` (`complete_set`)
-/// sorts alphabetically here and gives every item an empty `sort_text`, so
-/// the rank key's index-ascending tiebreak preserves *this* order — the
-/// contract every other `Delegated` source's own item constructor follows
-/// (see `MatchKind::Delegated`'s doc). Leaving `sort_text = stem` for the
-/// `Delegated` caller would violate that contract while still looking
-/// alphabetized by accident (`sort_text` ascending happens to equal what an
-/// explicit sort produces) — this makes the alphabetizing the source's own
-/// doing instead of a side effect nothing enforces.
-fn theme_name_candidates(prefix: &str, delegated: bool) -> Vec<CompletionItem> {
+/// Every installed theme's name (file stem), directory-scanned across
+/// `theme_search_paths()` once each — a stem in an earlier search path
+/// shadows a same-named one in a later path. Shared by `:theme`
+/// ([`simple::complete_theme`], a `String`-kind source's full universe —
+/// no prefix filtering here, since that source's own token-vs-item scoring
+/// happens later, at rank time) and `:set global theme=`'s value phase
+/// ([`set::complete_set_value`], `Delegated`, filtered by the typed prefix
+/// through [`set::prefix_completions`]) — the one place both need to agree
+/// on which theme names exist and which one wins under a shared stem.
+fn theme_name_candidates() -> Vec<String> {
     let mut seen: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
-    let mut candidates = Vec::new();
+    let mut stems = Vec::new();
 
     for dir in &super::theme_search_paths() {
         let entries = match std::fs::read_dir(dir) {
@@ -156,28 +143,13 @@ fn theme_name_candidates(prefix: &str, delegated: bool) -> Vec<CompletionItem> {
                 continue;
             };
             // User themes (earlier in search_dirs) shadow bundled themes.
-            if !seen.insert(stem.to_owned()) {
-                continue;
-            }
-            if stem.starts_with(prefix) {
-                let sort_text = if delegated {
-                    String::new()
-                } else {
-                    stem.to_owned()
-                };
-                candidates.push(CompletionItem::plain(
-                    stem.to_owned(),
-                    stem.to_owned(),
-                    sort_text,
-                ));
+            if seen.insert(stem.to_owned()) {
+                stems.push(stem.to_owned());
             }
         }
     }
 
-    if delegated {
-        candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
-    }
-    candidates
+    stems
 }
 
 // ── Shared test support ───────────────────────────────────────────────────────

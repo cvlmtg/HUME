@@ -101,10 +101,7 @@ where
             let label = format!("{name}{suffix}");
             // Build the full insert text: dir_str + name + suffix.
             let insert_text = format!("{dir_str}{name}{suffix}");
-            // Empty sort_text: a `Delegated` source's own order is what the
-            // session's rank key preserves (see `MatchKind::Delegated`'s
-            // doc) — sorted right here, not left to that tiebreak.
-            Some(CompletionItem::plain(label, insert_text, String::new()))
+            Some(CompletionItem::plain(label, insert_text))
         })
         .collect();
     candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
