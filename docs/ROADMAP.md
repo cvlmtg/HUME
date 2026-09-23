@@ -60,7 +60,7 @@ Structural work found during a cheap-wins sweep. Each is real but wants a design
 - [ ] PLUM: pin plugins to commit / tag / branch.
 - [ ] `core:lsp` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
 - [ ] `core:lsp` install support for `pkg:golang` (gopls) and `pkg:pypi` source kinds — currently fail loudly as unsupported (see `docs/LSP-INSTALL.md`'s "v1 scope and limitations").
-- [ ] `:lsp-install` argument completion — a `#:target 'minibuf` source over the installable server names, declared via `define-typed-command!`'s `#:complete`.
+- [x] `:lsp-install` argument completion — a `#:target 'minibuf` source over the installable server names, declared via `define-typed-command!`'s `#:complete`.
 
 ## Open questions
 
