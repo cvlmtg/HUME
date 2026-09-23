@@ -296,7 +296,7 @@ impl Editor {
             Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
             None => steel::rvals::SteelVal::BoolV(false),
         };
-        let params_val = hume_scripting::json::json_to_steel(&params);
+        let params_val = hume_scripting::json::to_steel_handle(std::sync::Arc::new(params));
         for handler in handlers {
             self.state
                 .queue_steel_call(handler, vec![server_val.clone(), params_val.clone()]);

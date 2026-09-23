@@ -53,15 +53,15 @@ Every feature file shares these:
 - **`lsp/report-error`** takes either a `{"code" "message"}` hashmap or the bare
   string `"timeout"` and logs one `'error` line either way.
 - **Capability guards** (`lsp/supports?`, `lsp/supports-for-buffer?`,
-  `lsp/guard-capability`) read `(lsp-capabilities server)`, a hash of provider
-  capabilities. `lsp/caps-has-cap?` treats a capability as present only when the hash
-  exists, contains the key, and that key isn't explicitly `#f` — a provider
-  capability can be declared and then disabled with `#f`, which is different from
-  never being declared. `lsp/cap-field`/`lsp/cap-flag?` read a nested field off a
-  capability that can be the bare `#t` or an options hash (e.g.
-  `codeActionProvider.resolveProvider`, `completionProvider.triggerCharacters`,
-  `documentRangeFormattingProvider.rangesSupport`), returning a caller-supplied
-  default on every kind of miss alike.
+  `lsp/guard-capability`) read `(lsp-capabilities server)`, a `JsonHandle` onto the
+  server's provider capabilities, via `json-ref`/`json-contains?`. `lsp/caps-has-cap?`
+  treats a capability as present only when the handle exists, contains the key, and
+  that key isn't explicitly `#f` — a provider capability can be declared and then
+  disabled with `#f`, which is different from never being declared. `lsp/cap-field`/
+  `lsp/cap-flag?` read a nested field off a capability that can be the bare `#t` or an
+  options object (e.g. `codeActionProvider.resolveProvider`,
+  `completionProvider.triggerCharacters`, `documentRangeFormattingProvider.rangesSupport`),
+  returning a caller-supplied default on every kind of miss alike.
 
 ## Shared helpers (`lib.scm`)
 

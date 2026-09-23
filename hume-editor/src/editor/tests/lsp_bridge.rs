@@ -339,7 +339,7 @@ fn on_lsp_notification_fires_the_registered_handler() {
         &mut ed,
         &mut host,
         r#"(on-lsp-notification "custom/event" (lambda (server params)
-             (when (equal? (hash-ref params "x") 1)
+             (when (equal? (json-ref params "x") 1)
                (call! "move-right"))))"#,
         tmp.path(),
     );
