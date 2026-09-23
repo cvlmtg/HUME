@@ -141,6 +141,52 @@ fn popup_shows_the_fixture_content() {
     );
 }
 
+/// `contents` as a `MarkedString[]` (the deprecated-but-still-emitted array
+/// shape), mixing a bare string entry with a `{language, value}` entry —
+/// the one branch of `lsp/marked-string->text`/`lsp/hover-contents->text`
+/// `popup_shows_the_fixture_content`'s single-`MarkupContent` fixture never
+/// reaches.
+#[test]
+fn popup_joins_a_marked_string_array_with_language_fences() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard, _sid) = setup(
+        file_dir.path(),
+        tmp.path(),
+        serde_json::json!({"capabilities": {"hoverProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/hover",
+                serde_json::json!({
+                    "contents": [
+                        "plain note",
+                        {"language": "rust", "value": "fn main()"}
+                    ],
+                    "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 7}}
+                }),
+            );
+        },
+    );
+
+    run_hover(&mut ed);
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    assert_eq!(
+        popup_lines(&ed),
+        Some(vec![
+            "plain note".to_string(),
+            "".to_string(),
+            "```rust".to_string(),
+            "fn main()".to_string(),
+            "```".to_string(),
+        ]),
+        "array entries join with a blank line; the language entry fences as a code block"
+    );
+}
+
 #[test]
 fn null_result_logs_and_shows_no_popup() {
     let tmp = safe_tempdir();
