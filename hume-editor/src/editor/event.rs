@@ -6,7 +6,7 @@
 
 use hume_engine::pipeline::BufferId;
 use hume_scripting::SteelBufferId;
-use hume_scripting::json::json_to_steel;
+use hume_scripting::json::to_steel_handle;
 use steel::rvals::SteelVal;
 
 use super::Mode;
@@ -227,7 +227,7 @@ editor_event_names! {
 impl EditorEvent {
     /// The single definition of every event's Steel arg shape — the SSOT
     /// `user-manual/docs/plugins.md`'s hook table is checked against, and
-    /// the only place `IntoSteelVal`/`json_to_steel` is invoked for events.
+    /// the only place `IntoSteelVal`/`to_steel_handle` is invoked for events.
     /// Called at drain, after the `has_hook_handlers` early-exit, so an
     /// event nobody subscribes to never allocates a `SteelVal`.
     pub(in crate::editor) fn steel_args(&self) -> Vec<SteelVal> {
@@ -282,7 +282,7 @@ impl EditorEvent {
             EditorEvent::OnCompletionAccept { buffer, item } => {
                 vec![
                     SteelBufferId::new(*buffer).into_steel_val(),
-                    json_to_steel(item),
+                    to_steel_handle(std::sync::Arc::new(item.clone())),
                 ]
             }
             EditorEvent::OnOptionChange { key, value } => {

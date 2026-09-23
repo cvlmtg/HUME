@@ -441,7 +441,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
         &format!(
             "{ACCEPT_0}\n{}",
             r#"(register-hook! 'on-completion-accept (lambda (bid item)
-                 (log! 'info (hash-ref item "extra"))))"#
+                 (log! 'info (json-ref item "extra"))))"#
         ),
     );
     accept_via_steel(&mut ed);
@@ -468,7 +468,7 @@ fn accept_fires_on_completion_accept_with_a_synthesized_label_for_a_plain_item()
         &format!(
             "{ACCEPT_0}\n{}",
             r#"(register-hook! 'on-completion-accept (lambda (bid item)
-                 (log! 'info (hash-ref item "label"))))"#
+                 (log! 'info (json-ref item "label"))))"#
         ),
     );
     accept_via_steel(&mut ed);

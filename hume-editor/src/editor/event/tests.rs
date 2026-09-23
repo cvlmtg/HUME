@@ -228,10 +228,10 @@ fn on_trigger_char_sends_char_as_a_one_char_string() {
     assert_eq!(steel_string(&args, 2), "lsp");
 }
 
-/// `OnCompletionAccept`'s item JSON round-trips through `json_to_steel`,
-/// not a hand-rolled conversion left over at the raise site.
+/// `OnCompletionAccept`'s item crosses as an opaque `JsonHandle` onto the
+/// original JSON, not a hand-rolled conversion or a decoded hashmap.
 #[test]
-fn on_completion_accept_json_round_trips_through_json_to_steel() {
+fn on_completion_accept_item_crosses_as_a_json_handle() {
     let buffer = BufferId::default();
     let item = serde_json::json!({"label": "foo", "kind": 3});
     let event = EditorEvent::OnCompletionAccept {
@@ -241,7 +241,9 @@ fn on_completion_accept_json_round_trips_through_json_to_steel() {
     let args = event.steel_args();
     assert_eq!(args.len(), 2);
     assert_steel_buffer_id(&args, 0, buffer);
-    assert_eq!(args[1], hume_scripting::json::json_to_steel(&item));
+    let handle = hume_scripting::json::downcast_json_handle(&args[1])
+        .expect("item must cross as a JsonHandle");
+    assert_eq!(handle.value(), &item);
 }
 
 #[test]
