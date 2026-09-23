@@ -247,22 +247,16 @@ pub(crate) fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, Stee
 /// threaded straight back in, e.g. `codeAction/resolve`'s params, or a
 /// WorkspaceEdit/Location a plugin got from one and hands to
 /// `apply-workspace-edit!`/`goto-location!` — or ordinary Steel data a
-/// plugin built by hand (`(hash "line" 0 ...)`). A handle crosses at the
-/// cost of one `Arc` clone (via `steel_to_json`'s own handle arm); anything
-/// else is converted once and wrapped fresh. Rejects a bool explicitly:
-/// several callers pass through a value that is `#f` when absent, and
-/// without this check that would silently reach a JSON consumer as `false`
-/// instead of erroring at the boundary.
+/// plugin built by hand (`(hash "line" 0 ...)`). An already-handle `val`
+/// returns it as-is, no clone; anything else is converted once via
+/// [`json_params`] and wrapped fresh. Delegating the non-handle path to
+/// `json_params` (rather than the reverse) means the handle path here
+/// never pays for a conversion it doesn't need.
 pub(crate) fn json_arg(val: SteelVal, ctx_name: &str) -> Result<crate::json::JsonHandle, SteelErr> {
-    if matches!(val, SteelVal::BoolV(_)) {
-        steel::stop!(TypeMismatch => "{}: expected a hashmap or JSON handle, got a boolean", ctx_name);
-    }
     if let Some(handle) = crate::json::downcast_json_handle(&val) {
         return Ok(handle);
     }
-    let json =
-        crate::json::steel_to_json(&val).map_err(|e| generic_err(format!("{ctx_name}: {e}")))?;
-    Ok(crate::json::JsonHandle::new(json))
+    Ok(crate::json::JsonHandle::new(json_params(val, ctx_name)?))
 }
 
 /// Converts `val` to the wire-shaped JSON a request/notification `params`
@@ -270,9 +264,21 @@ pub(crate) fn json_arg(val: SteelVal, ctx_name: &str) -> Result<crate::json::Jso
 /// a caller that has to build an outgoing message (the value must outlive
 /// this call to reach the wire). A host-trait method that only *reads* the
 /// JSON takes [`json_arg`]'s handle directly instead, borrowing rather than
-/// cloning.
+/// cloning. An already-handle `val` costs one clone of its resolved value
+/// (unavoidable — the wire message needs an owned copy); ordinary Steel
+/// data is converted once via `steel_to_json`, not converted then cloned
+/// again. Rejects a bool explicitly: several callers pass through a value
+/// that is `#f` when absent, and without this check that would silently
+/// reach a JSON consumer as `false` instead of erroring at the boundary.
 pub(crate) fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, SteelErr> {
-    Ok(json_arg(val, ctx_name)?.value().clone())
+    if matches!(val, SteelVal::BoolV(_)) {
+        steel::stop!(TypeMismatch => "{}: expected a hashmap or JSON handle, got a boolean", ctx_name);
+    }
+    match crate::json::downcast_json_handle(&val) {
+        Some(handle) => Ok(handle.value().clone()),
+        None => crate::json::steel_to_json(&val)
+            .map_err(|e| generic_err(format!("{ctx_name}: {e}"))),
+    }
 }
 
 /// A JSON-blob argument that may be `#f` (absent).

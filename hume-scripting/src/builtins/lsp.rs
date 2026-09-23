@@ -470,13 +470,12 @@ pub(crate) fn lsp_label_offsets_to_text(
     let arr = handle.value().as_array().ok_or_else(|| {
         generic_err("lsp-label-offsets->text: offsets must be a two-element (start end) array")
     })?;
-    let [start, end]: [&serde_json::Value; 2] =
-        arr.iter().collect::<Vec<_>>().try_into().map_err(|got: Vec<&serde_json::Value>| {
-            generic_err(format!(
-                "lsp-label-offsets->text: offsets must be a two-element (start end) array, got {} element(s)",
-                got.len()
-            ))
-        })?;
+    let [start, end] = arr.as_slice() else {
+        return Err(generic_err(format!(
+            "lsp-label-offsets->text: offsets must be a two-element (start end) array, got {} element(s)",
+            arr.len()
+        )));
+    };
     let start = json_usize(start, "lsp-label-offsets->text offsets")?;
     let end = json_usize(end, "lsp-label-offsets->text offsets")?;
     Ok(
