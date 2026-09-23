@@ -63,8 +63,8 @@ pub(in crate::editor) struct CompletionCtx<'a> {
 /// Correct only for a *single*-argument command, where "everything after
 /// the command name" genuinely is the one argument (`path.rs`'s own
 /// `:e`/`:w`/`:cd` callers) — a multi-argument command's own argument span
-/// is `orchestrate.rs`'s `arg_span`, which finds the *last* space before
-/// the cursor instead.
+/// is [`arg_span`], which finds the *last* stop char before the cursor
+/// instead.
 pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
     let up_to_cursor = &input[..cursor.min(input.len())];
     match up_to_cursor.find(' ') {
@@ -89,6 +89,31 @@ pub(in crate::editor) fn token_end_at(input: &str, cursor: usize, stops: &[char]
     input[from..]
         .find(|c: char| stops.contains(&c))
         .map_or(input.len(), |i| from + i)
+}
+
+/// The `[start, end)` span of the token at `cursor`: `start` is one past
+/// the last `back_stop` at or before `cursor` (0 if none), `end` is
+/// [`token_end_at`]'s forward scan for the first of `fwd_stops`. `back_stop`
+/// is a single char, not a slice like `fwd_stops` — every caller's forward
+/// and backward separator alphabets already differ (a `:set` key stops
+/// backward at `' '` but forward at `[' ', '=']`, so a completed key's span
+/// doesn't swallow a following `=value`; a `:set` value stops backward at
+/// `'='` and forward at `[' ']` only, since the value itself may contain
+/// `=`), and every one of them backs up to exactly one separator, never a
+/// choice of several. Shared by [`super::orchestrate`]'s whitespace-
+/// delimited `'arg` span (`back_stop`/`fwd_stops` both `' '`) and `set.rs`'s
+/// three phases.
+pub(in crate::editor) fn arg_span(
+    input: &str,
+    cursor: usize,
+    back_stop: char,
+    fwd_stops: &[char],
+) -> std::ops::Range<usize> {
+    let up_to = &input[..cursor.min(input.len())];
+    let start = up_to
+        .rfind(back_stop)
+        .map_or(0, |i| i + back_stop.len_utf8());
+    start..token_end_at(input, cursor, fwd_stops)
 }
 
 /// Scan `themes/*.toml` in every search path and return the stems that start

@@ -3,7 +3,7 @@ use std::ops::Range;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceRender, WrapMode};
 
-use super::{CompletionCtx, CompletionItem, theme_name_candidates, token_end_at};
+use super::{CompletionCtx, CompletionItem, arg_prefix, arg_span, theme_name_candidates};
 use crate::editor::settings::{
     LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
     all_setting_keys, setting_scopes,
@@ -57,9 +57,8 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
 }
 
 /// Phase 1: completing the scope token (`global`/`buffer`/`pane`).
-fn complete_set_scope(prefix: &str, span_start: usize) -> (usize, Vec<CompletionItem>) {
-    let candidates = prefix_completions(Scope::ALL.iter().map(|s| s.as_str()), prefix);
-    (span_start, candidates)
+fn complete_set_scope(prefix: &str) -> Vec<CompletionItem> {
+    prefix_completions(Scope::ALL.iter().map(|s| s.as_str()), prefix)
 }
 
 /// Phase 2: completing the key. Surface every declared key whose scopes
@@ -67,17 +66,16 @@ fn complete_set_scope(prefix: &str, span_start: usize) -> (usize, Vec<Completion
 /// only for buffer, so it's chained in when the scope matches. An unparseable
 /// `scope` token (mid-typing garbage) yields no candidates, same as any real
 /// key that doesn't accept it.
-fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> (usize, Vec<CompletionItem>) {
+fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
     let Ok(scope) = scope.parse::<Scope>() else {
-        return (span_start, Vec::new());
+        return Vec::new();
     };
     let scope_keys = all_setting_keys()
         .iter()
         .copied()
         .filter(|k| setting_scopes(k).contains(&scope));
     let language = (scope == Scope::Buffer).then_some(LANGUAGE_KEY);
-    let candidates = prefix_completions(scope_keys.chain(language), rest);
-    (span_start, candidates)
+    prefix_completions(scope_keys.chain(language), rest)
 }
 
 /// Phase 3: completing the value. Static enum/bool lists come from
@@ -91,15 +89,14 @@ fn complete_set_value(
     scope: &str,
     key: &str,
     value_prefix: &str,
-    span_start: usize,
     ctx: &CompletionCtx<'_>,
-) -> (usize, Vec<CompletionItem>) {
+) -> Vec<CompletionItem> {
     // `language` has no `setting_scopes` entry by design (see settings.rs) —
     // valid only for buffer scope, checked directly instead of through the
     // generic gate below. An unparseable `scope` token falls through both
     // branches to the same empty result as a real key rejecting that scope.
     let scope = scope.parse::<Scope>().ok();
-    let candidates = if key == LANGUAGE_KEY {
+    if key == LANGUAGE_KEY {
         if scope == Some(Scope::Buffer) {
             prefix_completions(ctx.languages.iter_names(), value_prefix)
         } else {
@@ -113,8 +110,7 @@ fn complete_set_value(
         theme_name_candidates(value_prefix, true)
     } else {
         Vec::new()
-    };
-    (span_start, candidates)
+    }
 }
 
 /// Completes `:set <scope> <key>=<value>` arguments. `Delegated`: the
@@ -141,12 +137,18 @@ pub(super) fn complete_set(
     cursor: usize,
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
-    let up_to = &input[..cursor.min(input.len())];
-    // Argument region begins after the command word ("set ").
-    let Some(arg_start) = up_to.find(' ').map(|i| i + 1) else {
-        return (up_to.len()..up_to.len(), Vec::new());
-    };
-    let arg = up_to[arg_start..].trim_start();
+    // Argument region begins after the command word ("set "). `arg_start ==
+    // 0` means `arg_prefix` found no space yet — still typing "set" itself,
+    // not its argument. Unreachable via `resolve_minibuf_source` (which
+    // only invokes this completer once the cursor is past the command
+    // name, which requires a space), kept for callers that hand this
+    // function malformed input directly.
+    let (arg_start, arg) = arg_prefix(input, cursor);
+    if arg_start == 0 {
+        let at = cursor.min(input.len());
+        return (at..at, Vec::new());
+    }
+    let arg = arg.trim_start();
 
     match arg.split_once(' ') {
         None => {
@@ -155,10 +157,9 @@ pub(super) fn complete_set(
             // robust to stray extra whitespace. `'='` is an extra stop on
             // the forward side purely for symmetry with the key phase below
             // — a scope name never contains one, so it never fires here.
-            let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
-            let span_end = token_end_at(input, cursor, &[' ', '=']);
-            let (_, candidates) = complete_set_scope(arg, span_start);
-            (span_start..span_end, candidates)
+            let span = arg_span(input, cursor, ' ', &[' ', '=']);
+            let candidates = complete_set_scope(arg);
+            (span, candidates)
         }
         Some((scope, rest)) => {
             let rest = rest.trim_start();
@@ -169,20 +170,18 @@ pub(super) fn complete_set(
                     // whitespace — or completing `:set global th|eme=x`
                     // would swallow the `=x` into the replaced span instead
                     // of leaving it after the completed key.
-                    let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
-                    let span_end = token_end_at(input, cursor, &[' ', '=']);
-                    let (_, candidates) = complete_set_key(scope, rest, span_start);
-                    (span_start..span_end, candidates)
+                    let span = arg_span(input, cursor, ' ', &[' ', '=']);
+                    let candidates = complete_set_key(scope, rest);
+                    (span, candidates)
                 }
                 Some((key, value)) => {
                     // Value token: bounded by '=' on the start, whitespace
                     // only on the end — a value can legitimately contain an
                     // internal '=' or spaces (e.g. a `statusline` format
                     // string), so only whitespace ends it.
-                    let span_start = up_to.rfind('=').map_or(0, |i| i + 1);
-                    let span_end = token_end_at(input, cursor, &[' ']);
-                    let (_, candidates) = complete_set_value(scope, key, value, span_start, ctx);
-                    (span_start..span_end, candidates)
+                    let span = arg_span(input, cursor, '=', &[' ']);
+                    let candidates = complete_set_value(scope, key, value, ctx);
+                    (span, candidates)
                 }
             }
         }

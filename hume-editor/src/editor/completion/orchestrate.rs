@@ -21,7 +21,7 @@ use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
 use super::session::{CompletionSession, Invocation, LiveDoc};
-use super::{CompletionCtx, CompletionItem, token_end_at};
+use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{CompletionLayer, InsertLayer, LayerRef};
 use crate::editor::registry::CommandRegistry;
@@ -479,8 +479,8 @@ fn invoke_minibuf_source(
     let entry = sources.minibuf_get(id);
     match &entry.body {
         MinibufBody::NativeUniverse(f) => {
-            let invocation_id =
-                session.invoke_minibuf(id, Invocation::minibuf(arg_span(input, cursor)))?;
+            let span = arg_span(input, cursor, ' ', &[' ']);
+            let invocation_id = session.invoke_minibuf(id, Invocation::minibuf(span))?;
             session.contribute(sources, invocation_id, f(ctx), false);
             None
         }
@@ -491,8 +491,8 @@ fn invoke_minibuf_source(
             None
         }
         MinibufBody::Steel(proc) => {
-            let invocation_id =
-                session.invoke_minibuf(id, Invocation::minibuf(arg_span(input, cursor)))?;
+            let span = arg_span(input, cursor, ' ', &[' ']);
+            let invocation_id = session.invoke_minibuf(id, Invocation::minibuf(span))?;
             Some((
                 proc.clone(),
                 vec![
@@ -503,22 +503,6 @@ fn invoke_minibuf_source(
             ))
         }
     }
-}
-
-/// The whitespace-delimited argument token the cursor is in — the `'arg`
-/// span every minibuffer source but `NativeDelegated` gets, shared by
-/// [`invoke_minibuf_source`]'s `NativeUniverse` and `Steel` arms. Finds the
-/// *last* space at or before the cursor, not the first — a typed command
-/// with more than one argument (`:mycmd alpha be|`) has the cursor in its
-/// second token, not everything after the command name; `arg_prefix`'s own
-/// "first space" split is right for `path.rs`'s single-argument commands
-/// only (its own doc names those as its actual callers), never for this.
-/// Same technique `set.rs`'s own multi-phase parser already uses for the
-/// identical shape (`up_to.rfind(' ')`).
-fn arg_span(input: &str, cursor: usize) -> std::ops::Range<usize> {
-    let up_to = &input[..cursor.min(input.len())];
-    let start = up_to.rfind(' ').map_or(0, |i| i + 1);
-    start..token_end_at(input, cursor, &[' '])
 }
 
 /// The `:` line's own command name, stripped of a trailing `!` (alias →
