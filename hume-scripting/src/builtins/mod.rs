@@ -272,11 +272,6 @@ macro_rules! builtins {
 // redefines the names). Shared by every shim's
 // explicit-port branch.
 //
-// json-ref/json-contains? — `(json-ref j "a" 0 "b")` reads a JsonHandle's
-// "a"[0]"b" field. Variadic keyword-free sugar over %json-ref, which takes
-// the path as one list — Steel doesn't support a variadic Rust builtin
-// registered via register_fn, so the rest-arg collection happens here
-// instead.
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,
@@ -412,11 +407,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "buffer-id=?" ids::buffer_id_equal(a: SteelVal, b: SteelVal);
         plain "json-parse" json::json_parse(s: SteelVal);
         plain "pane-id=?" ids::pane_id_equal(a: SteelVal, b: SteelVal);
-        // JsonHandle accessors — %json-ref/%json-contains? back the variadic
-        // json-ref/json-contains? wrappers in bootstrap.scm; json-list and
-        // the two predicates are fixed-arity and registered directly.
-        plain "%json-ref" json::json_ref(handle: SteelVal, segs: SteelVal);
-        plain "%json-contains?" json::json_contains(handle: SteelVal, segs: SteelVal);
+        // json-list and the two predicates are fixed-arity, registered
+        // directly here; json-ref/json-contains?/json-ref-or take a
+        // variadic path and are registered as raw FuncVs below instead
+        // (see that registration's own comment).
         plain "json-list" json::json_list(handle: SteelVal);
         plain "json-array?" json::is_json_array(val: SteelVal);
         plain "json-object?" json::is_json_object(val: SteelVal);
@@ -575,10 +569,15 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
     // Context-free builtins that don't fit the typed-arity table above: raw
     // `&[SteelVal]` FuncV, no SteelCtx. `path-join` is a pure string helper;
-    // `hume-target` reads platform info, not directory state.
+    // `hume-target` reads platform info, not directory state; `json-ref`/
+    // `json-contains?`/`json-ref-or` take a variadic path (`j seg ...`),
+    // which the typed-arity table's fixed parameter list can't express.
     steel.register_value("hume-target", SteelVal::FuncV(install::hume_target));
     steel.register_value("path-join", SteelVal::FuncV(fs::path_join));
     steel.register_value("path->display", SteelVal::FuncV(fs::path_to_display));
+    steel.register_value("json-ref", SteelVal::FuncV(json::json_ref));
+    steel.register_value("json-contains?", SteelVal::FuncV(json::json_contains));
+    steel.register_value("json-ref-or", SteelVal::FuncV(json::json_ref_or));
 
     // Evaluate the Scheme bootstrap (defines `load-plugin`, and — at its
     // tail — captures steel-core's original print functions/port before

@@ -1,5 +1,17 @@
 use super::*;
 
+/// Test-only stand-in for `EditorHostImpl::completion_emit`'s real call:
+/// wraps `v` as the sole element of a one-item response handle and decodes
+/// it through the real `from_json`, so `item.raw` (when present) resolves
+/// back to `v` exactly as it would in production.
+fn from_json(v: serde_json::Value) -> Option<CompletionItem> {
+    let response = hume_scripting::json::JsonHandle::new(serde_json::json!([v]));
+    let serde_json::Value::Array(items) = response.value() else {
+        unreachable!("just constructed as a one-element array")
+    };
+    CompletionItem::from_json(&items[0], RawItem::new(response.clone(), 0))
+}
+
 #[test]
 fn strips_snippet_insert_text_only_when_format_is_snippet() {
     let v = serde_json::json!({
@@ -7,10 +19,13 @@ fn strips_snippet_insert_text_only_when_format_is_snippet() {
         "insertText": "${1:foo}(${2:bar})",
         "insertTextFormat": 2,
     });
-    let item = CompletionItem::from_json(v).expect("well-formed item");
+    let item = from_json(v).expect("well-formed item");
     assert_eq!(item.insert_text, "foo(bar)");
     assert_eq!(
-        item.raw.get("insertText").and_then(|v| v.as_str()),
+        item.raw
+            .as_ref()
+            .and_then(|r| r.value().get("insertText"))
+            .and_then(|v| v.as_str()),
         Some("${1:foo}(${2:bar})"),
         "raw must keep the pristine snippet text for on-completion-accept/resolve"
     );
@@ -22,7 +37,7 @@ fn leaves_insert_text_untouched_without_snippet_format() {
         "label": "foo",
         "insertText": "$100 literal",
     });
-    let item = CompletionItem::from_json(v).expect("well-formed item");
+    let item = from_json(v).expect("well-formed item");
     assert_eq!(item.insert_text, "$100 literal");
 }
 
@@ -36,7 +51,7 @@ fn strips_snippet_text_edit_new_text() {
             "newText": "${1:foo}",
         },
     });
-    let item = CompletionItem::from_json(v).expect("well-formed item");
+    let item = from_json(v).expect("well-formed item");
     assert_eq!(item.text_edit.unwrap().new_text, "foo");
 }
 
@@ -46,7 +61,7 @@ fn a_string_kind_is_dropped_not_faked_as_a_default() {
     // numeric enum: `CompletionItemKind` is a transparent i32 newtype, so
     // this can't be made sense of — dropped, not defaulted.
     let v = serde_json::json!({"label": "foo", "kind": "Function"});
-    let item = CompletionItem::from_json(v).expect("label present");
+    let item = from_json(v).expect("label present");
     assert_eq!(&*item.label, "foo");
     assert_eq!(item.kind, None);
     // Undefaulted text fields fall back to `label`.
@@ -58,7 +73,7 @@ fn a_string_kind_is_dropped_not_faked_as_a_default() {
 #[test]
 fn a_numeric_kind_decodes_to_its_typed_constant() {
     let v = serde_json::json!({"label": "ok", "kind": 3});
-    let item = CompletionItem::from_json(v).expect("well-formed item");
+    let item = from_json(v).expect("well-formed item");
     assert_eq!(&*item.label, "ok");
     assert_eq!(item.kind, Some(lsp_types::CompletionItemKind::FUNCTION));
 }
@@ -76,7 +91,7 @@ fn a_malformed_text_edit_drops_just_the_edit_not_the_item() {
             },
         },
     });
-    let item = CompletionItem::from_json(v).expect("label present");
+    let item = from_json(v).expect("label present");
     assert_eq!(&*item.label, "bar");
     assert_eq!(item.detail.as_deref(), Some("a detail"));
     assert!(
@@ -88,14 +103,14 @@ fn a_malformed_text_edit_drops_just_the_edit_not_the_item() {
 #[test]
 fn a_bare_string_decodes_as_a_plain_item_with_that_label() {
     let v = serde_json::json!("foobar");
-    let item = CompletionItem::from_json(v).expect("a bare string is a well-formed item");
+    let item = from_json(v).expect("a bare string is a well-formed item");
     assert_eq!(&*item.label, "foobar");
     assert_eq!(item.sort_text, "foobar");
     assert_eq!(item.filter_text, "foobar");
     assert_eq!(item.insert_text, "foobar");
     assert_eq!(item.kind, None);
     assert!(
-        item.raw.is_null(),
+        item.raw.is_none(),
         "no wire payload to keep — nothing parsed it from JSON"
     );
 }
@@ -104,7 +119,7 @@ fn a_bare_string_decodes_as_a_plain_item_with_that_label() {
 fn missing_label_is_rejected() {
     let v = serde_json::json!({"kind": 1});
     assert!(
-        CompletionItem::from_json(v).is_none(),
+        from_json(v).is_none(),
         "no label recoverable — item must be dropped"
     );
 }
@@ -112,7 +127,7 @@ fn missing_label_is_rejected() {
 #[test]
 fn non_string_label_is_rejected() {
     let v = serde_json::json!({"label": 42});
-    assert!(CompletionItem::from_json(v).is_none());
+    assert!(from_json(v).is_none());
 }
 
 // ── additionalTextEdits presence ─────────────────────────────────────────────
@@ -125,21 +140,21 @@ fn non_string_label_is_rejected() {
 #[test]
 fn a_missing_additional_text_edits_key_is_absent() {
     let v = serde_json::json!({"label": "foo"});
-    let item = CompletionItem::from_json(v).expect("well-formed item");
+    let item = from_json(v).expect("well-formed item");
     assert!(!item.has_additional_text_edits);
 }
 
 #[test]
 fn a_null_additional_text_edits_counts_as_absent_not_present() {
     let v = serde_json::json!({"label": "foo", "additionalTextEdits": null});
-    let item = CompletionItem::from_json(v).expect("well-formed item");
+    let item = from_json(v).expect("well-formed item");
     assert!(!item.has_additional_text_edits);
 }
 
 #[test]
 fn an_empty_additional_text_edits_array_is_present() {
     let v = serde_json::json!({"label": "foo", "additionalTextEdits": []});
-    let item = CompletionItem::from_json(v).expect("well-formed item");
+    let item = from_json(v).expect("well-formed item");
     assert!(item.has_additional_text_edits);
     assert!(item.additional_text_edits.is_empty());
 }
@@ -153,7 +168,7 @@ fn a_non_empty_additional_text_edits_array_is_present() {
             "newText": "use foo;\n",
         }],
     });
-    let item = CompletionItem::from_json(v).expect("well-formed item");
+    let item = from_json(v).expect("well-formed item");
     assert!(item.has_additional_text_edits);
     assert_eq!(item.additional_text_edits.len(), 1);
 }

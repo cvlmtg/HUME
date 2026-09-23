@@ -402,10 +402,9 @@ impl BufferSession {
         // label-only item (`plain()`'s own constructor, `core:buffer-words`'
         // bare-string answers) has no real wire payload to hand over —
         // `{"label": …}` is a more useful hook payload than a bare `null`.
-        let hook_item = if item.raw.is_null() {
-            serde_json::json!({"label": &item.label})
-        } else {
-            item.raw.clone()
+        let hook_item = match &item.raw {
+            Some(raw) => raw.value().clone(),
+            None => serde_json::json!({"label": &item.label}),
         };
         state.queue_event(EditorEvent::OnCompletionAccept {
             buffer: bid,
@@ -439,6 +438,14 @@ fn maybe_send_resolve(
     if !introspect::completion_resolve_provider(lsp, server_id) {
         return;
     }
+    // A `#:resolve #t` source's items are always real LSP items in
+    // practice, so `raw` is always `Some` here — but resolving is
+    // best-effort by this function's own contract, so a plain item (no
+    // wire payload to resolve against) is skipped rather than assumed
+    // impossible.
+    let Some(raw) = &item.raw else {
+        return;
+    };
 
     // Same discipline `lsp-request` itself uses (bridge.rs): a request
     // minted here must not reach the wire ahead of the didChange
@@ -452,8 +459,12 @@ fn maybe_send_resolve(
         deadline,
     };
     let gen_after = state.buffers.get(bid).text_gen;
-    let Some(id) = lsp.send_request(server_id, "completionItem/resolve", item.raw.clone(), meta)
-    else {
+    let Some(id) = lsp.send_request(
+        server_id,
+        "completionItem/resolve",
+        raw.value().clone(),
+        meta,
+    ) else {
         return; // server gone between the capability check and now
     };
     let callback: LspCallback = Box::new(move |editor, outcome| match outcome {

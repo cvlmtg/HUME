@@ -9,9 +9,7 @@
         "insertSpaces" (equal? (get-option "tab-style") "soft")))
 
 (define (lsp/format-edits res)
-  (if (void? res)
-      (list)
-      (map lsp/text-edit->tuple (json-list res))))
+  (if (void? res) (list) (json-list res)))
 
 (define (lsp/format-apply! bid gen edits)
   (if (null? edits)

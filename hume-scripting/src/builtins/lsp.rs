@@ -3,8 +3,6 @@
 //! completion, edit/navigation primitives, and the minibuffer prompt live in
 //! their own modules — LSP is a client of those, not their owner.
 
-use std::sync::Arc;
-
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
@@ -15,7 +13,7 @@ use crate::{PendingLspServerReg, SteelCtx};
 use super::SteelResult;
 use super::args::{
     BidArg, bool_arg, cons_pair, json_arg, json_params, list_items, list_to_env_pairs,
-    list_to_strings, optional_json_arg, optional_string_arg, string_arg,
+    list_to_strings, optional_json_arg, optional_string_arg, string_arg, wire_position,
 };
 use super::errors::generic_err;
 
@@ -23,20 +21,11 @@ use super::errors::generic_err;
 /// attached server, handshake incomplete, …) → `#f`. Shared by the three
 /// params-builder introspection builtins below — every field in these is
 /// HUME-computed, not server JSON, so they stay a native decode; see
-/// `handle_or_false` for `lsp-capabilities`, which isn't.
+/// `lsp_capabilities`, which instead converts via `to_steel_handle` since
+/// its own JSON isn't HUME-computed.
 fn json_or_false(json: Option<serde_json::Value>) -> SteelVal {
     match json {
         Some(json) => json_to_steel(&json),
-        None => SteelVal::BoolV(false),
-    }
-}
-
-/// `Some(json)` → an opaque `JsonHandle` sharing `json`'s own `Arc`; `None`
-/// → `#f`. `lsp-capabilities`'s own converter — the server's own wire JSON,
-/// unlike the params builders `json_or_false` serves.
-fn handle_or_false(json: Option<Arc<serde_json::Value>>) -> SteelVal {
-    match json {
-        Some(json) => crate::json::to_steel_handle(json),
         None => SteelVal::BoolV(false),
     }
 }
@@ -218,11 +207,11 @@ pub(crate) fn on_lsp_notification(
 /// finished its handshake. Read it with `json-ref`/`json-contains?`.
 pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
     let server = optional_string_arg(server, "lsp-capabilities server")?;
-    Ok(handle_or_false(
-        ctx.host
-            .lsp()
-            .and_then(|lsp| lsp.lsp_capabilities(server.as_deref())),
-    ))
+    Ok(ctx
+        .host
+        .lsp()
+        .and_then(|lsp| lsp.lsp_capabilities(server.as_deref()))
+        .map_or(SteelVal::BoolV(false), crate::json::to_steel_handle))
 }
 
 /// `(lsp-server-status)` → list of `{"language" "root" "state" "pending"}`.
@@ -345,29 +334,6 @@ pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, bid: BidArg) -> Ste
             .lsp()
             .and_then(|lsp| lsp.lsp_linewise_ranges_params(id)),
     ))
-}
-
-/// Decodes a wire `{"line" "character"}` hashmap. `what` names the calling
-/// builtin in the error message — `wire_to_char` (the eventual conversion)
-/// is total and clamps rather than errors, so this boundary check is the
-/// only place a malformed shape gets caught instead of silently producing a
-/// plausible-looking offset.
-fn wire_position(
-    v: &serde_json::Value,
-    what: &str,
-) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
-    match (
-        v.get("line").and_then(serde_json::Value::as_u64),
-        v.get("character").and_then(serde_json::Value::as_u64),
-    ) {
-        (Some(line), Some(character)) => Ok(hume_rope::position_encoding::WirePos {
-            line: line as usize,
-            character: character as usize,
-        }),
-        _ => Err(generic_err(format!(
-            "{what}: position must be a hashmap with numeric 'line' and 'character' keys, got {v}"
-        ))),
-    }
 }
 
 /// A non-negative JSON integer, for a field read directly off a

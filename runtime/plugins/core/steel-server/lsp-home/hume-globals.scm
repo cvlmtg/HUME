@@ -187,6 +187,7 @@
 (#%register-global "json-object?")
 (#%register-global "json-parse")
 (#%register-global "json-ref")
+(#%register-global "json-ref-or")
 (#%register-global "jump-backward")
 (#%register-global "jump-forward")
 (#%register-global "keep-primary-selection")

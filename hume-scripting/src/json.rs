@@ -163,9 +163,11 @@ fn type_name(v: &SteelVal) -> &'static str {
 /// array index. Only ever appended to a handle's path after a navigation
 /// step has already proven it resolves — see [`JsonHandle::resolve`] — so a
 /// handle's path is always valid against its own root by construction.
+/// `Arc<str>` (not `Box<str>`) so extending a path by one `Seg` is a
+/// refcount bump per existing segment, not a string copy.
 #[derive(Debug, Clone)]
 pub(crate) enum Seg {
-    Key(Box<str>),
+    Key(Arc<str>),
     Index(usize),
 }
 
@@ -181,8 +183,8 @@ pub(crate) enum Seg {
 ///
 /// `root` is `Arc`-backed so cloning a handle (including through the Steel
 /// value system's own `Clone` requirements) never re-clones the response
-/// itself; `path` is `Arc`-backed for the same reason a child handle can
-/// share it structurally with a sibling built from the same parent.
+/// itself; `path` is `Arc`-backed so extending it for a child handle is one
+/// allocation (see [`scalar_or_child`]) rather than growing a `Vec` by hand.
 #[derive(Debug, Clone)]
 pub struct JsonHandle {
     root: Arc<serde_json::Value>,
@@ -198,6 +200,36 @@ fn step<'v>(v: &'v serde_json::Value, seg: &Seg) -> Option<&'v serde_json::Value
         (serde_json::Value::Object(map), Seg::Key(k)) => map.get(k.as_ref()),
         (serde_json::Value::Array(arr), Seg::Index(i)) => arr.get(*i),
         _ => None,
+    }
+}
+
+/// The wrong-kind/missing-key/out-of-range text `resolve` raises, given the
+/// value a failed step started from, the segment that failed, and the path
+/// so far. Re-matches `(current, seg)` to classify *why* [`step`] returned
+/// `None` — the same four shapes `step` itself distinguishes.
+fn miss_reason(current: &serde_json::Value, seg: &Seg, so_far: &[Seg], ctx_name: &str) -> String {
+    match (current, seg) {
+        (serde_json::Value::Object(_), Seg::Key(k)) => {
+            format!("{ctx_name}: no key {k:?} at {}", path_repr(so_far))
+        }
+        (serde_json::Value::Array(arr), Seg::Index(i)) => format!(
+            "{ctx_name}: index {i} out of range (length {}) at {}",
+            arr.len(),
+            path_repr(so_far)
+        ),
+        (serde_json::Value::Object(_), Seg::Index(i)) => format!(
+            "{ctx_name}: expected an array to index {i} at {}, found an object",
+            path_repr(so_far)
+        ),
+        (serde_json::Value::Array(_), Seg::Key(k)) => format!(
+            "{ctx_name}: expected an object to look up {k:?} at {}, found an array",
+            path_repr(so_far)
+        ),
+        (_, seg) => format!(
+            "{ctx_name}: cannot look up {} at {} — not an object or array",
+            seg_repr(seg),
+            path_repr(so_far)
+        ),
     }
 }
 
@@ -229,25 +261,25 @@ fn seg_repr(seg: &Seg) -> String {
 }
 
 /// The Rust→Steel funnel every external JSON value crosses through: a
-/// container (object/array) becomes a [`JsonHandle`], a scalar crosses
-/// natively (so `(string=? s "x")`/`(= n 5)` just work with no accessor),
-/// and `null` is `Void` — same three-way split `json_to_steel` uses for a
-/// scalar, but a container never gets walked into Steel structures here.
+/// container (object/array) becomes a [`JsonHandle`] at `path()`, a scalar
+/// crosses natively via [`json_to_steel`] (so `(string=? s "x")`/`(= n 5)`
+/// just work with no accessor) — same three-way split `json_to_steel` uses
+/// for a scalar, but a container never gets walked into Steel structures
+/// here. `path` is a closure rather than an already-built `Arc<[Seg]>` so a
+/// scalar result (most `json-list` elements, most object fields) costs no
+/// path allocation at all — only a container result ever calls it.
 fn scalar_or_child(
     v: &serde_json::Value,
     root: &Arc<serde_json::Value>,
-    path: Vec<Seg>,
+    path: impl FnOnce() -> Arc<[Seg]>,
 ) -> SteelVal {
     match v {
-        serde_json::Value::Null => SteelVal::Void,
-        serde_json::Value::Bool(b) => SteelVal::BoolV(*b),
-        serde_json::Value::Number(n) => number_to_steel(n),
-        serde_json::Value::String(s) => SteelVal::StringV(s.as_str().into()),
         serde_json::Value::Array(_) | serde_json::Value::Object(_) => JsonHandle {
             root: Arc::clone(root),
-            path: Arc::from(path),
+            path: path(),
         }
         .into_steel_val(),
+        scalar => json_to_steel(scalar),
     }
 }
 
@@ -255,20 +287,18 @@ fn scalar_or_child(
 /// representation via [`scalar_or_child`], rooted at `value` itself. The one
 /// call every external crossing makes instead of `json_to_steel`.
 pub fn to_steel_handle(value: Arc<serde_json::Value>) -> SteelVal {
-    scalar_or_child(value.as_ref(), &value, Vec::new())
+    scalar_or_child(value.as_ref(), &value, || Arc::from(Vec::new()))
 }
 
 impl JsonHandle {
     /// Wraps a value as a handle unconditionally, even when it happens to be
     /// a scalar — for a caller that already knows it wants a handle
-    /// regardless. `json_arg`'s fallback path (`builtins/args.rs`) is the
-    /// one caller: a hand-built Steel value it has just converted via
-    /// `steel_to_json` is always meant to reach a JSON-consuming builtin as
-    /// a handle, the same shape an already-handle argument would take.
-    /// [`to_steel_handle`] is the general funnel for a value whose shape
-    /// isn't known ahead of time; this is for a caller that already knows.
+    /// regardless (`json_arg`'s fallback path, `builtins/args.rs`).
     pub fn new(value: serde_json::Value) -> Self {
-        Self::from(Arc::new(value))
+        Self {
+            root: Arc::new(value),
+            path: Arc::from(Vec::new()),
+        }
     }
 
     /// The value this handle points at, resolved by walking its `path` from
@@ -284,79 +314,65 @@ impl JsonHandle {
         v
     }
 
-    /// `(json-ref j seg ...)`'s implementation. Walks `path` from this
-    /// handle's own position and funnels the result through
-    /// [`scalar_or_child`]. `Err` names the full path and the reason: a
-    /// missing key, an out-of-range index, or indexing into the wrong
-    /// container kind (or a scalar).
+    /// Walks `path` from this handle's own position, `None` if any step
+    /// doesn't resolve. Shared by [`JsonHandle::contains`] (yes/no),
+    /// [`JsonHandle::resolve`] (`json-ref`'s success case), and
+    /// `json-ref-or`'s host builtin — the one navigation every accessor
+    /// funnels through, `step` doing the actual per-segment work.
+    pub(crate) fn lookup(&self, path: &[Seg]) -> Option<SteelVal> {
+        let current = path.iter().try_fold(self.value(), step)?;
+        Some(scalar_or_child(current, &self.root, || {
+            self.path.iter().chain(path).cloned().collect()
+        }))
+    }
+
+    /// `(json-ref j seg ...)`'s implementation. `Err` names the full path
+    /// and the reason: a missing key, an out-of-range index, or indexing
+    /// into the wrong container kind (or a scalar) — [`miss_reason`]
+    /// re-walks `path` only in this (cold) failure case to classify which.
     pub(crate) fn resolve(&self, path: &[Seg], ctx_name: &str) -> Result<SteelVal, String> {
-        let mut current = self.value();
-        let mut so_far: Vec<Seg> = self.path.to_vec();
-        for seg in path {
-            current = match (current, seg) {
-                (serde_json::Value::Object(map), Seg::Key(k)) => map
-                    .get(k.as_ref())
-                    .ok_or_else(|| format!("{ctx_name}: no key {k:?} at {}", path_repr(&so_far)))?,
-                (serde_json::Value::Array(arr), Seg::Index(i)) => arr.get(*i).ok_or_else(|| {
-                    format!(
-                        "{ctx_name}: index {i} out of range (length {}) at {}",
-                        arr.len(),
-                        path_repr(&so_far)
-                    )
-                })?,
-                (serde_json::Value::Object(_), Seg::Index(i)) => {
-                    return Err(format!(
-                        "{ctx_name}: expected an array to index {i} at {}, found an object",
-                        path_repr(&so_far)
-                    ));
+        self.lookup(path).ok_or_else(|| {
+            let mut current = self.value();
+            for (i, seg) in path.iter().enumerate() {
+                match step(current, seg) {
+                    Some(next) => current = next,
+                    None => {
+                        let so_far: Vec<Seg> =
+                            self.path.iter().chain(&path[..i]).cloned().collect();
+                        return miss_reason(current, seg, &so_far, ctx_name);
+                    }
                 }
-                (serde_json::Value::Array(_), Seg::Key(k)) => {
-                    return Err(format!(
-                        "{ctx_name}: expected an object to look up {k:?} at {}, found an array",
-                        path_repr(&so_far)
-                    ));
-                }
-                (_, seg) => {
-                    return Err(format!(
-                        "{ctx_name}: cannot look up {} at {} — not an object or array",
-                        seg_repr(seg),
-                        path_repr(&so_far)
-                    ));
-                }
-            };
-            so_far.push(seg.clone());
-        }
-        Ok(scalar_or_child(current, &self.root, so_far))
+            }
+            unreachable!("resolve's Err case implies lookup found a failing step")
+        })
     }
 
     /// `(json-contains? j seg ...)`'s implementation. `#t` iff `path`
     /// resolves — a `null` value at the end still counts as present, same
-    /// as `hash-contains?` on a decoded hashmap.
+    /// as `hash-contains?` on a decoded hashmap. Doesn't route through
+    /// [`JsonHandle::lookup`]: a container match there still pays for a
+    /// child handle nobody wants, where this only needs a yes/no.
     pub(crate) fn contains(&self, path: &[Seg]) -> bool {
-        let mut current = self.value();
-        for seg in path {
-            match step(current, seg) {
-                Some(v) => current = v,
-                None => return false,
-            }
-        }
-        true
+        path.iter().try_fold(self.value(), step).is_some()
     }
 
     /// `(json-list j)`'s implementation. `Err` if this handle isn't an
     /// array.
     pub(crate) fn list_items(&self, ctx_name: &str) -> Result<Vec<SteelVal>, String> {
         match self.value() {
-            serde_json::Value::Array(arr) => {
-                let mut path = self.path.to_vec();
-                let mut out = Vec::with_capacity(arr.len());
-                for (i, item) in arr.iter().enumerate() {
-                    path.push(Seg::Index(i));
-                    out.push(scalar_or_child(item, &self.root, path.clone()));
-                    path.pop();
-                }
-                Ok(out)
-            }
+            serde_json::Value::Array(arr) => Ok(arr
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    scalar_or_child(item, &self.root, || {
+                        self.path
+                            .iter()
+                            .cloned()
+                            .chain(std::iter::once(Seg::Index(i)))
+                            .collect()
+                    })
+                })
+                .collect()),
             _ => Err(format!("{ctx_name}: expected a JSON array")),
         }
     }
@@ -366,19 +382,6 @@ impl JsonHandle {
     /// into_steel_val`'s own reasoning.
     pub fn into_steel_val(self) -> SteelVal {
         self.into_steelval().expect("JsonHandle into_steelval")
-    }
-}
-
-impl From<Arc<serde_json::Value>> for JsonHandle {
-    /// Zero-copy wrap of a value a caller already holds behind an `Arc` —
-    /// `lsp-capabilities` (backed by `LspClient::caps_json`) and a
-    /// diagnostic's wire `"raw"` field both share their store's own `Arc`
-    /// this way instead of cloning the value to build a handle.
-    fn from(root: Arc<serde_json::Value>) -> Self {
-        Self {
-            root,
-            path: Arc::from(Vec::new()),
-        }
     }
 }
 

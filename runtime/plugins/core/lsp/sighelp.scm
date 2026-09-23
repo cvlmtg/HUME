@@ -13,7 +13,8 @@
 
 (define (lsp/sighelp-text bid sig active-idx)
   (let* ((label (json-ref sig "label"))
-         (params (if (json-contains? sig "parameters") (json-list (json-ref sig "parameters")) (list))))
+         (params-field (json-ref-or sig #f "parameters"))
+         (params (if params-field (json-list params-field) (list))))
     (if (or (not active-idx) (null? params))
         label
         (let* ((idx (lsp/clamp-index active-idx params))
@@ -24,10 +25,10 @@
   (let ((sigs (json-list (json-ref res "signatures"))))
     (if (null? sigs)
         (close-popup!)
-        (let* ((active-sig-idx (if (json-contains? res "activeSignature") (json-ref res "activeSignature") 0))
+        (let* ((active-sig-idx (json-ref-or res 0 "activeSignature"))
                (idx (lsp/clamp-index active-sig-idx sigs))
                (sig (list-ref sigs idx))
-               (active-param-idx (if (json-contains? res "activeParameter") (json-ref res "activeParameter") #f)))
+               (active-param-idx (json-ref-or res #f "activeParameter")))
           (show-popup! (lsp/sighelp-text bid sig active-param-idx))))))
 
 (define lsp/sighelp-request

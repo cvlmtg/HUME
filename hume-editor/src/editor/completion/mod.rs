@@ -26,7 +26,7 @@ mod session;
 mod set;
 mod simple;
 
-pub(in crate::editor) use item::CompletionItem;
+pub(in crate::editor) use item::{CompletionItem, RawItem};
 pub(in crate::editor) use orchestrate::Trigger;
 pub(in crate::editor) use path::{PATH_DIRS_ONLY_SOURCE, PATH_SOURCE};
 pub(in crate::editor) use registry::{

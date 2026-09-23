@@ -317,7 +317,7 @@ fn item_with_edits(
         text_edit,
         additional_text_edits,
         has_additional_text_edits,
-        raw: serde_json::Value::Null,
+        raw: None,
     }
 }
 

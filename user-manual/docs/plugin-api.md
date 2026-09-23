@@ -113,7 +113,7 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 
 | Call | Effect |
 |------|--------|
-| `(apply-text-edits! bid edits #:expect-generation)` | Apply a list of `((start-line . start-char) (end-line . end-char) text)` wire-position edits to `bid` |
+| `(apply-text-edits! bid edits #:expect-generation)` | Apply a list of edits to `bid` — each entry either a `((start-line . start-char) (end-line . end-char) text)` wire-position tuple, or a JSON handle onto a wire `TextEdit` (e.g. a `textDocument/formatting` response element, passed straight through) |
 | `(apply-workspace-edit! wsedit)` | Apply a decoded LSP `WorkspaceEdit` hashmap across every buffer it touches; returns the count of buffers modified |
 | `(goto-location! loc)` | Jump to `loc` — a raw LSP `Location`/`LocationLink` hashmap, or `(list target line char-col)` with `target` a BufferId, path, or `file://` URI and `line`/`char-col` char-indexed |
 
@@ -288,6 +288,7 @@ decoded hashmaps. Read one with these instead of `hash-ref`/`hash?`/`list?`:
 | Call | Effect |
 |------|--------|
 | `(json-ref j seg ...)` | Look up a path of string keys / integer indices inside handle `j`. A nested object or array field comes back as another handle; a scalar field comes back as a native string/number/boolean; a `null` field comes back as void. Errors, naming the full path, on a missing key, an out-of-range index, or indexing into the wrong container kind |
+| `(json-ref-or j default seg ...)` | `json-ref`, but `default` in place of erroring when the path doesn't resolve — a present `null` still comes back as void, not `default` |
 | `(json-contains? j seg ...)` | `#t` iff the path resolves — a `null` value at the end still counts as present |
 | `(json-list j)` | `j`, a JSON array handle, as a Steel list of its elements (each one funneled through the same handle/native-value rule as `json-ref`). Errors if `j` isn't an array |
 | `(json-array? v)`, `(json-object? v)` | `#t` if `v` is a JSON handle onto an array/object, `#f` for anything else (including a non-handle value) |

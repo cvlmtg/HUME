@@ -64,9 +64,6 @@
                                                      #:supersede [supersede #f])
   (%lsp-request server method params callback allow-stale supersede))
 
-(define (json-ref j . segs) (%json-ref j segs))
-(define (json-contains? j . segs) (%json-contains? j segs))
-
 (define (get-option . args)
   (let ([n (length args)])
     (cond

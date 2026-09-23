@@ -10,8 +10,7 @@
            (cons (min a h) (+ (max a h) 1))))))
 
 (define (lsp/action-disabled? action)
-  (and (json-contains? action "disabled")
-       (not (equal? (json-ref action "disabled") #f))))
+  (not (equal? (json-ref-or action #f "disabled") #f)))
 
 (define (lsp/action-title action)
   (json-ref action "title"))
@@ -22,9 +21,7 @@
 (define (lsp/exec-command cmd-obj)
   (lsp-request #f "workspace/executeCommand"
     (hash "command" (json-ref cmd-obj "command")
-          "arguments" (if (json-contains? cmd-obj "arguments")
-                           (json-ref cmd-obj "arguments")
-                           (list)))
+          "arguments" (json-ref-or cmd-obj (list) "arguments"))
     (lambda (err res) (when err (lsp/report-error "code action" err)))))
 
 (define (lsp/run-action action #:resolved? [resolved? #f])

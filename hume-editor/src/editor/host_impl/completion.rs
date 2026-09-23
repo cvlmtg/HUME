@@ -75,24 +75,27 @@ impl crate::editor::Editor {
 }
 
 impl<'a> CompletionHost for EditorHostImpl<'a> {
-    fn completion_emit(&mut self, id: u64, answer: host::CompletionAnswer) -> Result<bool, String> {
-        // `hume-scripting` decodes `completion-emit!`'s two item-input
-        // shapes but knows nothing about LSP response shapes itself (the
-        // handle is opaque to it, by design — see `JsonHandle`'s own doc);
-        // deciding a `LspResponse` handle's own items/isIncomplete happens
-        // here, the one place that already depends on both `hume_lsp` and
-        // this store's `CompletionItem`. Both error cases below are caller
-        // mistakes (a handle that isn't a completion response, or a
-        // `CompletionList` whose own flag conflicts with an explicit
-        // `#:incomplete #t`), so both raise rather than leaving the
-        // invocation stuck pending forever on a silent empty answer.
-        let (items, incomplete) = match answer {
-            host::CompletionAnswer::Items { items, incomplete } => (items, incomplete),
-            host::CompletionAnswer::LspResponse {
-                response,
-                incomplete: requested,
-            } => match hume_lsp::completion_item::completion_response_items(response.value()) {
-                Some((_, Some(own))) if requested => {
+    fn completion_emit(
+        &mut self,
+        id: u64,
+        response: hume_scripting::json::JsonHandle,
+        incomplete: bool,
+    ) -> Result<bool, String> {
+        // `hume-scripting` funnels both of `completion-emit!`'s item-input
+        // shapes (a plain Steel list, or an `lsp-request` response passed
+        // straight through) into one `JsonHandle` — it knows nothing about
+        // LSP response shapes itself (the handle is opaque to it, by
+        // design — see `JsonHandle`'s own doc). Deciding the response's own
+        // items/isIncomplete happens here, the one place that already
+        // depends on both `hume_lsp` and this store's `CompletionItem`.
+        // Both error cases below are caller mistakes (a handle that isn't a
+        // completion response, or a `CompletionList` whose own flag
+        // conflicts with an explicit `#:incomplete #t`), so both raise
+        // rather than leaving the invocation stuck pending forever on a
+        // silent empty answer.
+        let (items, incomplete) =
+            match hume_lsp::completion_item::completion_response_items(response.value()) {
+                Some((_, Some(own))) if incomplete => {
                     return Err(format!(
                         "completion-emit!: #:incomplete #t has no effect on a CompletionList \
                          response — the response's own isIncomplete field is used instead \
@@ -100,8 +103,8 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                         if own { "#t" } else { "#f" }
                     ));
                 }
-                Some((items, Some(own))) => (items.to_vec(), own),
-                Some((items, None)) => (items.to_vec(), requested),
+                Some((items, Some(own))) => (items, own),
+                Some((items, None)) => (items, incomplete),
                 None => {
                     return Err(
                         "completion-emit!: handle is not a textDocument/completion response \
@@ -109,14 +112,14 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                             .to_string(),
                     );
                 }
-            },
-        };
+            };
         // A malformed item (missing the spec-required `label`) is skipped,
         // not fatal to the whole batch — one bad item from a misbehaving
         // server must not silently drop every good one.
         let mut parsed = Vec::with_capacity(items.len());
-        for v in items {
-            match crate::editor::completion::CompletionItem::from_json(v) {
+        for (i, v) in items.iter().enumerate() {
+            let raw_item = crate::editor::completion::RawItem::new(response.clone(), i);
+            match crate::editor::completion::CompletionItem::from_json(v, raw_item) {
                 Some(item) => parsed.push(item),
                 None => self.state.report(
                     Severity::Trace,

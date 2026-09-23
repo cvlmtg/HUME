@@ -14,9 +14,11 @@ use super::args::{
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(%apply-text-edits! bid edits expect-gen)` — `edits`: list of `((start-
-/// line . start-character) (end-line . end-character) text)`, wire positions
-/// as dotted pairs.
+/// `(%apply-text-edits! bid edits expect-gen)` — `edits`: a list whose
+/// entries are each either a `((start-line . start-character) (end-line .
+/// end-character) text)` dotted-pair tuple, or a `JsonHandle` onto a wire
+/// `TextEdit` (an unconverted response element, e.g. from
+/// `textDocument/formatting`) — see `wire_text_edit_arg`.
 ///
 /// `edits` decodes manually via `wire_text_edit_arg` per entry rather than a
 /// typed `Vec<WireTextEdit>` param — steel-core's blanket

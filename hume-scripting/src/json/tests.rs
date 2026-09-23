@@ -235,7 +235,8 @@ fn negative_zero_and_zero_handles_share_a_hash_key() {
 #[test]
 fn navigating_a_container_shares_the_root_arc() {
     let root = std::sync::Arc::new(json!({"a": {"b": 1}}));
-    let handle = JsonHandle::from(std::sync::Arc::clone(&root));
+    let handle = downcast_json_handle(&to_steel_handle(std::sync::Arc::clone(&root)))
+        .expect("an object roots as a JsonHandle");
     let sub = handle
         .resolve(&[Seg::Key("a".into())], "test")
         .expect("path resolves");

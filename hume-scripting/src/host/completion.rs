@@ -45,42 +45,37 @@ pub struct PendingCompletionSource {
     pub resolve: bool,
 }
 
-/// A source's answer to an invocation, as `completion-emit!`'s builtin
-/// layer decoded it. `Items` is the explicit shape: JSON already converted
-/// from whatever Steel values the source built (hashmaps, bare strings —
-/// see `builtins/completion.rs`'s own decode), with its own `incomplete`
-/// flag. `LspResponse` carries the handle itself — no deep copy at this
-/// layer — plus the caller's own `#:incomplete` request; the host
-/// implementation alone knows the LSP response shape
-/// (`hume_lsp::completion_item::completion_response_items`), so it decides
-/// there whether `response` is a `CompletionList` with its own flag (which
-/// then wins over `incomplete`) or a bare array (which has none, so
-/// `incomplete` applies) — see [`crate::json::JsonHandle`]'s own doc for
-/// why a source hands over a handle instead of a decoded list.
-pub enum CompletionAnswer {
-    Items {
-        items: Vec<serde_json::Value>,
-        incomplete: bool,
-    },
-    LspResponse {
-        response: crate::json::JsonHandle,
-        incomplete: bool,
-    },
-}
-
 /// Completion session orchestration — accessed through
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
     /// `(completion-emit! id items #:incomplete f)` — a source's answer to
-    /// invocation `id`, an empty `Items` list meaning "nothing from this
-    /// source". Returns whether the answer applied — `false` when `id` is
-    /// no longer the latest call of any source in the open session
-    /// (superseded by a later keystroke, or the session was replaced or
-    /// dismissed): expected-normal for a late async source, never an error.
-    /// `Err` for an `LspResponse` handle that isn't a `textDocument/completion`
-    /// response shape, or whose `CompletionList.isIncomplete` conflicts with
-    /// an explicit `#:incomplete #t` — a caller error, not silently dropped.
-    fn completion_emit(&mut self, id: u64, answer: CompletionAnswer) -> Result<bool, String>;
+    /// invocation `id`. `response` is `items` funneled through `json_arg`
+    /// (`builtins/completion.rs`): an already-handle argument (an
+    /// `lsp-request` response passed straight through) crosses as-is; a
+    /// plain Steel list (of item hashmaps/bare strings) becomes a handle
+    /// onto a fresh JSON array, no deep copy either way — an empty list
+    /// meaning "nothing from this source". `incomplete` is the caller's
+    /// own `#:incomplete` request. The host implementation alone knows the
+    /// LSP response shape (`hume_lsp::completion_item::
+    /// completion_response_items`), so it decides there whether `response`
+    /// is a `CompletionList` with its own flag (which then wins over
+    /// `incomplete`) or a bare array (which has none, so `incomplete`
+    /// applies) — see [`crate::json::JsonHandle`]'s own doc for why a
+    /// source hands over a handle instead of a decoded list either way.
+    ///
+    /// Returns whether the answer applied — `false` when `id` is no longer
+    /// the latest call of any source in the open session (superseded by a
+    /// later keystroke, or the session was replaced or dismissed):
+    /// expected-normal for a late async source, never an error. `Err` for a
+    /// `response` that isn't a `textDocument/completion` response shape, or
+    /// whose `CompletionList.isIncomplete` conflicts with an explicit
+    /// `#:incomplete #t` — a caller error, not silently dropped.
+    fn completion_emit(
+        &mut self,
+        id: u64,
+        response: crate::json::JsonHandle,
+        incomplete: bool,
+    ) -> Result<bool, String>;
 
     /// `(completion-top n)` — up to `n` ranked items as hashmaps, `[]` with
     /// no open session.

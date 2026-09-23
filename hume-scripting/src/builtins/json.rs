@@ -17,7 +17,7 @@ use steel::rvals::SteelVal;
 use crate::json::{JsonHandle, Seg, downcast_json_handle, to_steel_handle};
 
 use super::SteelResult;
-use super::args::{list_items, string_arg};
+use super::args::string_arg;
 use super::errors::generic_err;
 
 /// `(json-parse str)` -> the decoded value, via the same handle funnel
@@ -36,16 +36,22 @@ pub(crate) fn json_parse(s: SteelVal) -> SteelResult {
 }
 
 // ── JsonHandle accessors ──────────────────────────────────────────────────────
+//
+// `json-ref`/`json-contains?`/`json-ref-or` take a variadic path (`j seg
+// ...`), which `register_fn!`'s typed-arity table (`builtins/mod.rs`) can't
+// express — so, like `path-join`, these are registered directly as
+// `SteelVal::FuncV(fn(&[SteelVal]) -> SteelResult)` rather than going
+// through that table. This also drops the `%json-ref`/`%json-contains?`
+// plus `bootstrap.scm` rest-arg-collecting wrapper layer the table would
+// otherwise force: the path never round-trips through a Steel list.
 
-fn handle_arg(val: SteelVal, ctx_name: &str) -> Result<JsonHandle, steel::rerrs::SteelErr> {
-    downcast_json_handle(&val)
+fn handle_arg(val: &SteelVal, ctx_name: &str) -> Result<JsonHandle, steel::rerrs::SteelErr> {
+    downcast_json_handle(val)
         .ok_or_else(|| generic_err(format!("{ctx_name}: expected a JSON handle, got {val:?}")))
 }
 
 /// A path segment: a string (or symbol) object key, or a non-negative
-/// integer array index — the same two shapes `json-ref`/`json-contains?`'s
-/// variadic Scheme wrappers (`bootstrap.scm`) collect into the list this
-/// decodes.
+/// integer array index.
 fn seg_arg(val: &SteelVal, ctx_name: &str) -> Result<Seg, steel::rerrs::SteelErr> {
     match val {
         SteelVal::StringV(s) => Ok(Seg::Key(s.as_str().into())),
@@ -56,39 +62,62 @@ fn seg_arg(val: &SteelVal, ctx_name: &str) -> Result<Seg, steel::rerrs::SteelErr
     }
 }
 
-fn path_arg(segs: SteelVal, ctx_name: &str) -> Result<Vec<Seg>, steel::rerrs::SteelErr> {
-    list_items(segs, ctx_name)?
-        .iter()
-        .map(|v| seg_arg(v, ctx_name))
-        .collect()
+fn path_arg(segs: &[SteelVal], ctx_name: &str) -> Result<Vec<Seg>, steel::rerrs::SteelErr> {
+    segs.iter().map(|v| seg_arg(v, ctx_name)).collect()
 }
 
-/// `(%json-ref handle segs)` — Rust side of `(json-ref handle seg ...)`.
-/// Raises naming the full path on a missing key, an out-of-range index, or
-/// indexing into the wrong container kind — see `JsonHandle::resolve`.
-pub(crate) fn json_ref(handle: SteelVal, segs: SteelVal) -> SteelResult {
+/// `(json-ref j seg ...)`. Raises naming the full path on a missing key, an
+/// out-of-range index, or indexing into the wrong container kind — see
+/// `JsonHandle::resolve`.
+pub(crate) fn json_ref(args: &[SteelVal]) -> SteelResult {
+    let [handle, segs @ ..] = args else {
+        steel::stop!(ArityMismatch => "json-ref expects a handle and at least one path segment, got {}", args.len());
+    };
+    if segs.is_empty() {
+        steel::stop!(ArityMismatch => "json-ref: expected at least one path segment");
+    }
     let handle = handle_arg(handle, "json-ref")?;
     let path = path_arg(segs, "json-ref")?;
-    if path.is_empty() {
-        steel::stop!(Generic => "json-ref: expected at least one path segment");
-    }
     handle.resolve(&path, "json-ref").map_err(generic_err)
 }
 
-/// `(%json-contains? handle segs)` — Rust side of `(json-contains? handle
-/// seg ...)`. `#t` iff the path resolves; a `null` at the end still counts
-/// as present, matching `hash-contains?`'s own rule on a decoded hashmap.
-pub(crate) fn json_contains(handle: SteelVal, segs: SteelVal) -> SteelResult {
+/// `(json-contains? j seg ...)`. `#t` iff the path resolves; a `null` at
+/// the end still counts as present, matching `hash-contains?`'s own rule
+/// on a decoded hashmap.
+pub(crate) fn json_contains(args: &[SteelVal]) -> SteelResult {
+    let [handle, segs @ ..] = args else {
+        steel::stop!(ArityMismatch => "json-contains? expects a handle and zero or more path segments, got {}", args.len());
+    };
     let handle = handle_arg(handle, "json-contains?")?;
     let path = path_arg(segs, "json-contains?")?;
     Ok(SteelVal::BoolV(handle.contains(&path)))
+}
+
+/// `(json-ref-or j default seg ...)` — `json-ref`, but `default` (evaluated
+/// eagerly, like `hash-ref`'s own optional third argument) in place of
+/// raising when the path doesn't resolve. Still raises if `j` isn't a
+/// handle — a caller check we don't want silently swallowed by `default`.
+/// Collapses the `(if (json-contains? j seg ...) (json-ref j seg ...)
+/// default)` idiom several `core:lsp` files repeated, which walked the path
+/// twice; this walks it once via `JsonHandle::lookup`.
+pub(crate) fn json_ref_or(args: &[SteelVal]) -> SteelResult {
+    let [handle, default, segs @ ..] = args else {
+        steel::stop!(ArityMismatch =>
+            "json-ref-or expects a handle, a default, and at least one path segment, got {}", args.len());
+    };
+    if segs.is_empty() {
+        steel::stop!(ArityMismatch => "json-ref-or: expected at least one path segment");
+    }
+    let handle = handle_arg(handle, "json-ref-or")?;
+    let path = path_arg(segs, "json-ref-or")?;
+    Ok(handle.lookup(&path).unwrap_or_else(|| default.clone()))
 }
 
 /// `(json-list j)` — a JSON array handle to a Steel list of its elements
 /// (sub-handles for a container element, native values for a scalar one).
 /// Raises if `j` isn't an array.
 pub(crate) fn json_list(handle: SteelVal) -> SteelResult {
-    let handle = handle_arg(handle, "json-list")?;
+    let handle = handle_arg(&handle, "json-list")?;
     let items = handle.list_items("json-list").map_err(generic_err)?;
     Ok(SteelVal::ListV(items.into()))
 }

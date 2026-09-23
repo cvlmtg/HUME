@@ -2,15 +2,13 @@
 ;;; docs/architecture.md.
 
 (provide lsp/supports? lsp/supports-for-buffer? lsp/guard-capability lsp/report-error
-         lsp/visible-lines lsp/show-locations! lsp/text-edit->tuple
+         lsp/visible-lines lsp/show-locations!
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
 (define (lsp/caps-has-cap? caps cap-key)
-  (and caps
-       (json-contains? caps cap-key)
-       (not (equal? (json-ref caps cap-key) #f))))
+  (and caps (not (equal? (json-ref-or caps #f cap-key) #f))))
 
 (define (lsp/supports? cap-key)
   (lsp/caps-has-cap? (lsp-capabilities #f) cap-key))
@@ -30,9 +28,7 @@
 (define (lsp/cap-field caps cap-key field default)
   (if (and caps (json-contains? caps cap-key))
       (let ((cap (json-ref caps cap-key)))
-        (if (and (json-object? cap) (json-contains? cap field))
-            (json-ref cap field)
-            default))
+        (if (json-object? cap) (json-ref-or cap default field) default))
       default))
 
 (define (lsp/cap-flag? cap-key field)
@@ -49,11 +45,8 @@
     (lambda (bid server-name)
       (let ((caps (lsp-capabilities server-name)))
         (when (and caps (json-contains? caps cap-key))
-          (let* ((cap (json-ref caps cap-key))
-                 (trigger-chars (if (and (json-object? cap) (json-contains? cap "triggerCharacters"))
-                                     (json-list (json-ref cap "triggerCharacters"))
-                                     (list))))
-            (set-chars! server-name (append extra-chars trigger-chars)))))))
+          (let ((tc (lsp/cap-field caps cap-key "triggerCharacters" #f)))
+            (set-chars! server-name (append extra-chars (if tc (json-list tc) (list)))))))))
   (register-hook! 'on-lsp-detach
     (lambda (bid server-name)
       (set-chars! server-name '())))
@@ -67,11 +60,6 @@
   (log! 'error
         (string-append "lsp " what ": "
                        (if (string? err) err (hash-ref err "message")))))
-
-(define (lsp/text-edit->tuple te)
-  (list (cons (json-ref te "range" "start" "line") (json-ref te "range" "start" "character"))
-        (cons (json-ref te "range" "end" "line") (json-ref te "range" "end" "character"))
-        (json-ref te "newText")))
 
 ;; ── Viewport ────────────────────────────────────────────────────────────────
 

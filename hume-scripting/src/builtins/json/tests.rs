@@ -3,8 +3,10 @@ use crate::json::JsonHandle;
 use serde_json::json;
 use steel::rvals::IntoSteelVal;
 
-fn steel_list(vals: Vec<SteelVal>) -> SteelVal {
-    SteelVal::ListV(vals.into())
+/// Builds the `&[SteelVal]` a `FuncV` accessor sees: `handle` followed by
+/// its path segments.
+fn call_args(handle: SteelVal, segs: Vec<SteelVal>) -> Vec<SteelVal> {
+    std::iter::once(handle).chain(segs).collect()
 }
 
 #[test]
@@ -48,19 +50,19 @@ fn handle(v: serde_json::Value) -> SteelVal {
 #[test]
 fn json_ref_reads_a_scalar_field() {
     let h = handle(json!({"a": {"b": 5}}));
-    let path = steel_list(vec![
-        SteelVal::StringV("a".into()),
-        SteelVal::StringV("b".into()),
-    ]);
-    let result = json_ref(h, path).expect("path resolves");
+    let args = call_args(
+        h,
+        vec![SteelVal::StringV("a".into()), SteelVal::StringV("b".into())],
+    );
+    let result = json_ref(&args).expect("path resolves");
     assert_eq!(result, SteelVal::IntV(5));
 }
 
 #[test]
 fn json_ref_returns_a_sub_handle_for_a_container() {
     let h = handle(json!({"a": {"b": 5}}));
-    let path = steel_list(vec![SteelVal::StringV("a".into())]);
-    let result = json_ref(h, path).expect("path resolves");
+    let args = call_args(h, vec![SteelVal::StringV("a".into())]);
+    let result = json_ref(&args).expect("path resolves");
     let sub = crate::json::downcast_json_handle(&result).expect("container -> sub-handle");
     assert_eq!(sub.value(), &json!({"b": 5}));
 }
@@ -68,27 +70,33 @@ fn json_ref_returns_a_sub_handle_for_a_container() {
 #[test]
 fn json_ref_indexes_arrays_by_integer() {
     let h = handle(json!({"items": [10, 20, 30]}));
-    let path = steel_list(vec![SteelVal::StringV("items".into()), SteelVal::IntV(1)]);
-    let result = json_ref(h, path).expect("path resolves");
+    let args = call_args(
+        h,
+        vec![SteelVal::StringV("items".into()), SteelVal::IntV(1)],
+    );
+    let result = json_ref(&args).expect("path resolves");
     assert_eq!(result, SteelVal::IntV(20));
 }
 
 #[test]
 fn json_ref_null_field_is_void() {
     let h = handle(json!({"a": null}));
-    let path = steel_list(vec![SteelVal::StringV("a".into())]);
-    let result = json_ref(h, path).expect("path resolves");
+    let args = call_args(h, vec![SteelVal::StringV("a".into())]);
+    let result = json_ref(&args).expect("path resolves");
     assert!(matches!(result, SteelVal::Void));
 }
 
 #[test]
 fn json_ref_raises_on_missing_key_naming_the_path() {
     let h = handle(json!({"a": {}}));
-    let path = steel_list(vec![
-        SteelVal::StringV("a".into()),
-        SteelVal::StringV("missing".into()),
-    ]);
-    let err = json_ref(h, path).unwrap_err();
+    let args = call_args(
+        h,
+        vec![
+            SteelVal::StringV("a".into()),
+            SteelVal::StringV("missing".into()),
+        ],
+    );
+    let err = json_ref(&args).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("missing"), "got: {msg}");
     assert!(
@@ -100,8 +108,11 @@ fn json_ref_raises_on_missing_key_naming_the_path() {
 #[test]
 fn json_ref_raises_on_out_of_range_index() {
     let h = handle(json!({"items": [1]}));
-    let path = steel_list(vec![SteelVal::StringV("items".into()), SteelVal::IntV(5)]);
-    let err = json_ref(h, path).unwrap_err();
+    let args = call_args(
+        h,
+        vec![SteelVal::StringV("items".into()), SteelVal::IntV(5)],
+    );
+    let err = json_ref(&args).unwrap_err();
     assert!(err.to_string().contains("out of range"));
 }
 
@@ -109,42 +120,93 @@ fn json_ref_raises_on_out_of_range_index() {
 fn json_ref_raises_on_wrong_container_kind() {
     let h = handle(json!({"a": [1, 2]}));
     // "a" is an array — looking up a string key on it is a kind mismatch.
-    let path = steel_list(vec![
-        SteelVal::StringV("a".into()),
-        SteelVal::StringV("b".into()),
-    ]);
-    let err = json_ref(h, path).unwrap_err();
+    let args = call_args(
+        h,
+        vec![SteelVal::StringV("a".into()), SteelVal::StringV("b".into())],
+    );
+    let err = json_ref(&args).unwrap_err();
     assert!(err.to_string().contains("array"));
 }
 
 #[test]
 fn json_ref_rejects_a_non_handle() {
-    let err = json_ref(
-        SteelVal::IntV(1),
-        steel_list(vec![SteelVal::StringV("a".into())]),
-    )
-    .unwrap_err();
+    let args = call_args(SteelVal::IntV(1), vec![SteelVal::StringV("a".into())]);
+    let err = json_ref(&args).unwrap_err();
+    assert!(err.to_string().contains("json-ref"));
+}
+
+#[test]
+fn json_ref_raises_on_no_path_segments() {
+    let err = json_ref(&[handle(json!({"a": 1}))]).unwrap_err();
     assert!(err.to_string().contains("json-ref"));
 }
 
 #[test]
 fn json_contains_true_for_a_present_path_including_null() {
     let h = handle(json!({"a": null, "b": 1}));
-    assert!(
-        json_contains(h.clone(), steel_list(vec![SteelVal::StringV("a".into())])).unwrap()
-            == SteelVal::BoolV(true)
-    );
-    assert!(
-        json_contains(h, steel_list(vec![SteelVal::StringV("b".into())])).unwrap()
-            == SteelVal::BoolV(true)
-    );
+    let a_args = call_args(h.clone(), vec![SteelVal::StringV("a".into())]);
+    assert_eq!(json_contains(&a_args).unwrap(), SteelVal::BoolV(true));
+    let b_args = call_args(h, vec![SteelVal::StringV("b".into())]);
+    assert_eq!(json_contains(&b_args).unwrap(), SteelVal::BoolV(true));
 }
 
 #[test]
 fn json_contains_false_for_a_missing_path() {
     let h = handle(json!({"a": 1}));
-    let result = json_contains(h, steel_list(vec![SteelVal::StringV("z".into())])).unwrap();
+    let args = call_args(h, vec![SteelVal::StringV("z".into())]);
+    let result = json_contains(&args).unwrap();
     assert_eq!(result, SteelVal::BoolV(false));
+}
+
+#[test]
+fn json_ref_or_returns_the_value_when_present() {
+    let h = handle(json!({"a": 5}));
+    let args = call_args(
+        h,
+        vec![SteelVal::BoolV(false), SteelVal::StringV("a".into())],
+    );
+    assert_eq!(json_ref_or(&args).unwrap(), SteelVal::IntV(5));
+}
+
+#[test]
+fn json_ref_or_returns_void_for_a_present_null() {
+    let h = handle(json!({"a": null}));
+    let args = call_args(h, vec![SteelVal::IntV(9), SteelVal::StringV("a".into())]);
+    assert!(matches!(json_ref_or(&args).unwrap(), SteelVal::Void));
+}
+
+#[test]
+fn json_ref_or_returns_the_default_on_a_missing_key() {
+    let h = handle(json!({"a": 1}));
+    let args = call_args(
+        h,
+        vec![SteelVal::IntV(9), SteelVal::StringV("missing".into())],
+    );
+    assert_eq!(json_ref_or(&args).unwrap(), SteelVal::IntV(9));
+}
+
+#[test]
+fn json_ref_or_returns_the_default_through_wrong_container_kind() {
+    let h = handle(json!({"a": [1, 2]}));
+    let args = call_args(
+        h,
+        vec![
+            SteelVal::IntV(9),
+            SteelVal::StringV("a".into()),
+            SteelVal::StringV("b".into()),
+        ],
+    );
+    assert_eq!(json_ref_or(&args).unwrap(), SteelVal::IntV(9));
+}
+
+#[test]
+fn json_ref_or_rejects_a_non_handle() {
+    let args = call_args(
+        SteelVal::IntV(1),
+        vec![SteelVal::BoolV(false), SteelVal::StringV("a".into())],
+    );
+    let err = json_ref_or(&args).unwrap_err();
+    assert!(err.to_string().contains("json-ref-or"));
 }
 
 #[test]

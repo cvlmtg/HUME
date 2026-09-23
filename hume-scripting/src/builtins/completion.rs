@@ -4,13 +4,13 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{CompletionAnswer, CompletionSourceTarget, MatchKind};
-use crate::json::{downcast_json_handle, json_to_steel, steel_to_json};
+use crate::host::{CompletionSourceTarget, MatchKind};
+use crate::json::json_to_steel;
 use crate::{Effect, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    bool_arg, callable_arg, chars_arg, int_arg, list_items, string_arg, symbol_enum_arg, usize_arg,
+    bool_arg, callable_arg, chars_arg, int_arg, json_arg, string_arg, symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -123,15 +123,17 @@ pub(crate) fn register_completion_source(
 
 /// `(%completion-emit! id items incomplete)` — the `completion-emit!`
 /// Scheme wrapper supplies `#:incomplete`'s `#f` default. `items` is either
-/// a list of decoded `CompletionItem` hashmaps/bare-string labels, or one
-/// `JsonHandle` wrapping a whole LSP `textDocument/completion` response —
-/// the two decode into [`CompletionAnswer`]'s own two shapes. A handle's
-/// own shape (bare array vs. `CompletionList`) is only known once it
-/// reaches the host implementation, so `incomplete` is passed through
-/// unconditionally rather than decided here; the host raises if the
-/// handle turns out to be a `CompletionList` whose own `isIncomplete`
-/// conflicts with it. Returns whether the answer applied (`#f` for a
-/// superseded or already-closed invocation).
+/// a list of `CompletionItem` hashmaps/bare-string labels, or one
+/// `JsonHandle` wrapping a whole LSP `textDocument/completion` response,
+/// passed straight through — `json_arg` (the same funnel every other
+/// JSON-taking builtin uses) takes it as either, with no deep copy either
+/// way: an already-handle argument crosses as-is, a plain list becomes a
+/// handle onto a fresh JSON array. The handle's own shape (bare array vs.
+/// `CompletionList`) is only known once it reaches the host implementation,
+/// so `incomplete` is passed through unconditionally rather than decided
+/// here; the host raises if the handle turns out to be a `CompletionList`
+/// whose own `isIncomplete` conflicts with it. Returns whether the answer
+/// applied (`#f` for a superseded or already-closed invocation).
 pub(crate) fn completion_emit(
     ctx: &mut SteelCtx,
     id: SteelVal,
@@ -140,24 +142,9 @@ pub(crate) fn completion_emit(
 ) -> SteelResult {
     let id = usize_arg(id, "completion-emit! id")? as u64;
     let incomplete = bool_arg(incomplete, "completion-emit! #:incomplete")?;
-    let answer = match downcast_json_handle(&items) {
-        Some(response) => CompletionAnswer::LspResponse {
-            response,
-            incomplete,
-        },
-        None => {
-            let mut parsed = Vec::new();
-            for entry in list_items(items, "completion-emit! items")? {
-                parsed.push(steel_to_json(&entry).map_err(generic_err)?);
-            }
-            CompletionAnswer::Items {
-                items: parsed,
-                incomplete,
-            }
-        }
-    };
+    let response = json_arg(items, "completion-emit! items")?;
     let applied = require_cap(ctx.host.completions(), "completion-emit!")?
-        .completion_emit(id, answer)
+        .completion_emit(id, response, incomplete)
         .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
 }

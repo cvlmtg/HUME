@@ -10,8 +10,8 @@
 
 (define (lsp/hint->store-entry bid hint)
   (let* ((text (lsp/inlay-hint-text hint))
-         (pad-left (and (json-contains? hint "paddingLeft") (equal? (json-ref hint "paddingLeft") #t)))
-         (pad-right (and (json-contains? hint "paddingRight") (equal? (json-ref hint "paddingRight") #t)))
+         (pad-left (equal? (json-ref-or hint #f "paddingLeft") #t))
+         (pad-right (equal? (json-ref-or hint #f "paddingRight") #t))
          (text (if pad-left (string-append " " text) text))
          (text (if pad-right (string-append text " ") text))
          (offset (lsp-position->offset bid (json-ref hint "position"))))

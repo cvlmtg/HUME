@@ -291,3 +291,59 @@ fn wire_text_edit_arg_rejects_malformed_position() {
     let err = wire_text_edit_arg(val).unwrap_err();
     assert!(err.to_string().contains("(line . character)"), "got: {err}");
 }
+
+/// A `JsonHandle` onto a wire `TextEdit` — an unconverted element straight
+/// from a `textDocument/formatting`-shaped response — decodes the same as
+/// the hand-built tuple shape.
+#[test]
+fn wire_text_edit_arg_decodes_a_json_handle() {
+    let val = crate::json::JsonHandle::new(serde_json::json!({
+        "range": {"start": {"line": 1, "character": 2}, "end": {"line": 1, "character": 5}},
+        "newText": "abc",
+    }))
+    .into_steel_val();
+    let edit = wire_text_edit_arg(val).unwrap();
+    assert_eq!((edit.range.start.line, edit.range.start.character), (1, 2));
+    assert_eq!((edit.range.end.line, edit.range.end.character), (1, 5));
+    assert_eq!(edit.new_text, "abc");
+}
+
+/// A list of edits may mix handle and tuple elements — `apply-text-edits!`
+/// decodes each entry independently via `wire_text_edit_arg`.
+#[test]
+fn wire_text_edit_arg_handle_and_tuple_forms_agree() {
+    let handle_edit = crate::json::JsonHandle::new(serde_json::json!({
+        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+        "newText": "abc",
+    }))
+    .into_steel_val();
+    let tuple_edit: SteelVal = vec![
+        pos_pair(0, 0),
+        pos_pair(0, 3),
+        SteelVal::StringV("abc".into()),
+    ]
+    .into_steelval()
+    .unwrap();
+    let from_handle = wire_text_edit_arg(handle_edit).unwrap();
+    let from_tuple = wire_text_edit_arg(tuple_edit).unwrap();
+    assert_eq!(
+        (
+            from_handle.range.start.line,
+            from_handle.range.start.character
+        ),
+        (
+            from_tuple.range.start.line,
+            from_tuple.range.start.character
+        )
+    );
+    assert_eq!(from_handle.new_text, from_tuple.new_text);
+}
+
+/// A handle missing `range`/`newText` raises naming the missing field,
+/// same discipline as the tuple shape's arity check.
+#[test]
+fn wire_text_edit_arg_rejects_a_malformed_handle() {
+    let val = crate::json::JsonHandle::new(serde_json::json!({"range": {}})).into_steel_val();
+    let err = wire_text_edit_arg(val).unwrap_err();
+    assert!(err.to_string().contains("apply-text-edits!"), "got: {err}");
+}

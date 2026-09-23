@@ -264,22 +264,18 @@ pub(crate) fn json_arg(val: SteelVal, ctx_name: &str) -> Result<crate::json::Jso
 /// a caller that has to build an outgoing message (the value must outlive
 /// this call to reach the wire). A host-trait method that only *reads* the
 /// JSON takes [`json_arg`]'s handle directly instead, borrowing rather than
-/// cloning. An already-handle `val` costs one clone of its resolved value
-/// (unavoidable — the wire message needs an owned copy); ordinary Steel
-/// data is converted once via `steel_to_json`, not converted then cloned
-/// again. Rejects a bool explicitly: several callers pass through a value
-/// that is `#f` when absent, and without this check that would silently
-/// reach a JSON consumer as `false` instead of erroring at the boundary.
+/// cloning. `steel_to_json`'s own `Custom` arm already unwraps a `JsonHandle`
+/// to its resolved value's clone, so an already-handle `val` costs exactly
+/// that one clone (unavoidable — the wire message needs an owned copy) with
+/// no separate handle check here. Rejects a bool explicitly: several callers
+/// pass through a value that is `#f` when absent, and without this check
+/// that would silently reach a JSON consumer as `false` instead of erroring
+/// at the boundary.
 pub(crate) fn json_params(val: SteelVal, ctx_name: &str) -> Result<serde_json::Value, SteelErr> {
     if matches!(val, SteelVal::BoolV(_)) {
         steel::stop!(TypeMismatch => "{}: expected a hashmap or JSON handle, got a boolean", ctx_name);
     }
-    match crate::json::downcast_json_handle(&val) {
-        Some(handle) => Ok(handle.value().clone()),
-        None => {
-            crate::json::steel_to_json(&val).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
-        }
-    }
+    crate::json::steel_to_json(&val).map_err(|e| generic_err(format!("{ctx_name}: {e}")))
 }
 
 /// A JSON-blob argument that may be `#f` (absent).
@@ -474,16 +470,80 @@ pub(crate) fn wire_pos_arg(
     })
 }
 
-/// Decodes a
+/// Decodes a wire `{"line" "character"}` hashmap. `what` names the calling
+/// builtin in the error message — `wire_to_char` (the eventual conversion)
+/// is total and clamps rather than errors, so this boundary check is the
+/// only place a malformed shape gets caught instead of silently producing a
+/// plausible-looking offset.
+pub(crate) fn wire_position(
+    v: &serde_json::Value,
+    what: &str,
+) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
+    match (
+        v.get("line").and_then(serde_json::Value::as_u64),
+        v.get("character").and_then(serde_json::Value::as_u64),
+    ) {
+        (Some(line), Some(character)) => Ok(hume_rope::position_encoding::WirePos {
+            line: line as usize,
+            character: character as usize,
+        }),
+        _ => Err(generic_err(format!(
+            "{what}: position must be a hashmap with numeric 'line' and 'character' keys, got {v}"
+        ))),
+    }
+}
+
+/// Decodes a wire `{"range" {"start" ... "end" ...} "newText" ...}`
+/// `TextEdit` — a `JsonHandle`'s own resolved value, e.g. one element of a
+/// `textDocument/formatting` response handed straight to
+/// `apply-text-edits!` — into a [`WireTextEdit`](crate::host::WireTextEdit).
+fn wire_text_edit_from_json(
+    v: &serde_json::Value,
+    ctx_name: &str,
+) -> Result<crate::host::WireTextEdit, SteelErr> {
+    let range = v
+        .get("range")
+        .ok_or_else(|| generic_err(format!("{ctx_name}: text edit handle has no 'range' field")))?;
+    let start = range
+        .get("start")
+        .ok_or_else(|| generic_err(format!("{ctx_name}: text edit range has no 'start' field")))
+        .and_then(|s| wire_position(s, ctx_name))?;
+    let end = range
+        .get("end")
+        .ok_or_else(|| generic_err(format!("{ctx_name}: text edit range has no 'end' field")))
+        .and_then(|e| wire_position(e, ctx_name))?;
+    let new_text = v
+        .get("newText")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            generic_err(format!(
+                "{ctx_name}: text edit handle has no string 'newText' field"
+            ))
+        })?
+        .to_string();
+    Ok(crate::host::WireTextEdit {
+        range: hume_rope::offset::ExclusiveRange::new(start, end),
+        new_text,
+    })
+}
+
+/// Decodes one `apply-text-edits!` entry into a
+/// [`WireTextEdit`](crate::host::WireTextEdit) — either a `JsonHandle` onto
+/// a wire `TextEdit` (an unconverted element straight from a
+/// `textDocument/formatting`-shaped response, via [`wire_text_edit_from_json`])
+/// or the pre-existing
 /// `((start-line . start-character) (end-line . end-character) text)`
-/// LSP text edit entry — outer 3-tuple is a list, inner positions are dotted
-/// pairs — into a [`WireTextEdit`](crate::host::WireTextEdit).
+/// tuple shape (outer 3-tuple a list, inner positions dotted pairs) a
+/// plugin builds by hand.
 pub(crate) fn wire_text_edit_arg(val: SteelVal) -> Result<crate::host::WireTextEdit, SteelErr> {
+    if let Some(handle) = crate::json::downcast_json_handle(&val) {
+        return wire_text_edit_from_json(handle.value(), "apply-text-edits!");
+    }
     let fields = checked_fields(
         val,
         "text edit",
         3..=3,
-        "((start-line . start-character) (end-line . end-character) text)",
+        "((start-line . start-character) (end-line . end-character) text) or a JSON handle",
     )?;
     let start = wire_pos_arg(fields[0].clone())?;
     let end = wire_pos_arg(fields[1].clone())?;

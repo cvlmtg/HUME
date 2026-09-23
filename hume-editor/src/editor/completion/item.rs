@@ -10,13 +10,46 @@
 //! name here is this store's own item.
 
 use hume_lsp::completion_item::{parse_additional_text_edits_lenient, strip_snippet};
+use hume_scripting::json::JsonHandle;
+
+/// A completion item's location inside the response it came from — `raw`'s
+/// representation, replacing an owned per-item JSON clone. Re-resolving
+/// through `response`/`index` costs an `Arc` clone plus a cheap shape match
+/// (`completion_response_items`), not a walk of the item's own JSON, so
+/// [`CompletionItem::from_json`] no longer pays a deep clone per item on
+/// ingest — `on-completion-accept`/`completionItem/resolve` pay one clone
+/// each, only for the one item actually accepted.
+pub(in crate::editor) struct RawItem {
+    response: JsonHandle,
+    index: usize,
+}
+
+impl RawItem {
+    pub(in crate::editor) fn new(response: JsonHandle, index: usize) -> Self {
+        Self { response, index }
+    }
+
+    /// This item's own pristine wire JSON, re-resolved from `response`.
+    /// `expect`s the response still decodes as a completion-response shape
+    /// and `index` is in range — sound because `index` was only ever
+    /// produced by iterating that exact response's own items (see
+    /// `EditorHostImpl::completion_emit`), never stored independently of
+    /// the `response` it indexes into.
+    pub(in crate::editor) fn value(&self) -> &serde_json::Value {
+        let (items, _) =
+            hume_lsp::completion_item::completion_response_items(self.response.value())
+                .expect("RawItem's response was already validated as a completion response");
+        &items[self.index]
+    }
+}
 
 /// One item, decoded from a `textDocument/completion` response element.
 /// `insert_text`/`text_edit` have snippet syntax (`${n:default}`, `$n`)
 /// already stripped when the server declared `insertTextFormat: Snippet` —
 /// see [`strip_snippet`]. `raw` keeps the pristine, unstripped JSON (Steel's
 /// `on-completion-accept` hook and `completionItem/resolve` both see the
-/// server's original text).
+/// server's original text) — `None` for a non-LSP item with no real wire
+/// payload ([`Self::plain`]).
 pub(in crate::editor) struct CompletionItem {
     pub(super) label: String,
     /// Display-only (icon choice) — no v1 reader maps it to a name.
@@ -39,7 +72,7 @@ pub(in crate::editor) struct CompletionItem {
     /// feature might eventually want. Deliberately the *pristine* item
     /// (snippet syntax included) — Steel/resolve should see exactly what
     /// the server sent, not this store's stripped/narrowed projection.
-    pub(super) raw: serde_json::Value,
+    pub(super) raw: Option<RawItem>,
 }
 
 impl CompletionItem {
@@ -52,7 +85,7 @@ impl CompletionItem {
     /// which skips the sortText tiebreak key entirely rather than relying on
     /// every Delegated constructor leaving it empty by convention. Every
     /// LSP-only field defaults inert: `kind`/`detail`/`text_edit` absent, no
-    /// `additionalTextEdits`, `raw` null — nothing here is a wire concern.
+    /// `additionalTextEdits`, `raw` absent — nothing here is a wire concern.
     pub(super) fn plain(label: String, insert_text: String) -> Self {
         Self {
             filter_text: label.clone(),
@@ -64,7 +97,7 @@ impl CompletionItem {
             text_edit: None,
             additional_text_edits: Vec::new(),
             has_additional_text_edits: false,
-            raw: serde_json::Value::Null,
+            raw: None,
         }
     }
 
@@ -72,19 +105,21 @@ impl CompletionItem {
     /// itself — every other field already defaults sensibly (falling back
     /// to `label`, or absent). `None` only when `label` is missing or
     /// non-string; callers skip the item and report a Trace line rather
-    /// than fabricating a placeholder. Reads against `&v` and moves `v`
-    /// into `raw` at the end, so every item in a response pays one JSON
-    /// walk, not a clone plus a second deserialize pass.
+    /// than fabricating a placeholder. Reads `v` by reference throughout —
+    /// `raw` stores `raw_item` (a location, not a clone of `v`), so parsing
+    /// a whole response costs one JSON walk per item, no per-item clone.
     ///
     /// A bare JSON string decodes as [`Self::plain`] with that string as
     /// its own label — the completion-emit! shape a source with nothing
     /// but a label needs (`core:buffer-words`, a word list) uses, without
-    /// building `{"label": …}` by hand for every candidate.
-    pub(in crate::editor) fn from_json(v: serde_json::Value) -> Option<Self> {
+    /// building `{"label": …}` by hand for every candidate. `raw_item` is
+    /// ignored on this path: a label-only item has no real wire payload,
+    /// same as [`Self::plain`].
+    pub(in crate::editor) fn from_json(v: &serde_json::Value, raw_item: RawItem) -> Option<Self> {
         use serde::Deserialize;
 
         if let serde_json::Value::String(label) = v {
-            return Some(Self::plain(label.clone(), label));
+            return Some(Self::plain(label.clone(), label.clone()));
         }
         let label = v.get("label")?.as_str()?.to_string();
         let kind = v
@@ -118,7 +153,7 @@ impl CompletionItem {
         // means "the server answered this and there's nothing more to
         // resolve" (see this field's own doc).
         let has_additional_text_edits = v.get("additionalTextEdits").is_some_and(|x| !x.is_null());
-        let additional_text_edits = parse_additional_text_edits_lenient(&v);
+        let additional_text_edits = parse_additional_text_edits_lenient(v);
         Some(Self {
             label,
             kind,
@@ -129,7 +164,7 @@ impl CompletionItem {
             text_edit,
             additional_text_edits,
             has_additional_text_edits,
-            raw: v,
+            raw: Some(raw_item),
         })
     }
 

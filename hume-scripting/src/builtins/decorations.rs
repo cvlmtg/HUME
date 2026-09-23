@@ -411,29 +411,24 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
     insert("end-line", SteelVal::IntV(entry.end_line as isize));
     insert("char-col", SteelVal::IntV(entry.char_col as isize));
     insert("grapheme-col", SteelVal::IntV(entry.grapheme_col as isize));
-    insert(
-        "severity",
-        SteelVal::StringV(entry.severity.as_str().into()),
-    );
+    insert("severity", SteelVal::StringV(entry.severity.into()));
     insert(
         "severity-rank",
         SteelVal::IntV(entry.severity_rank as isize),
     );
-    insert("message", SteelVal::StringV(entry.message.as_str().into()));
+    insert("message", SteelVal::StringV(entry.message.into()));
     // `None` -> Void, matching json_to_steel's null mapping.
     insert(
         "code",
-        match entry.code {
-            Some(c) => SteelVal::StringV(c.as_str().into()),
-            None => SteelVal::Void,
-        },
+        entry
+            .code
+            .map_or(SteelVal::Void, |c| SteelVal::StringV(c.into())),
     );
     insert(
         "source",
-        match entry.source {
-            Some(s) => SteelVal::StringV(s.as_str().into()),
-            None => SteelVal::Void,
-        },
+        entry
+            .source
+            .map_or(SteelVal::Void, |s| SteelVal::StringV(s.into())),
     );
     insert("raw", to_steel_handle(entry.raw));
     SteelVal::HashMapV(Gc::new(hm).into())
