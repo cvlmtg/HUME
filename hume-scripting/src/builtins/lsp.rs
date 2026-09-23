@@ -134,6 +134,11 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
 /// `SteelCtx` has no route to the transport (crate fence), and queuing
 /// keeps every LSP send on one chokepoint regardless of which eval kind
 /// (command, hook, or a queued callback) triggered it.
+// Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
+// `lsp-request`'s own Steel signature — bundling them into a struct would
+// break that direct correspondence for no benefit, since every arg is
+// already decoded and validated independently right below.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsp_request(
     ctx: &mut SteelCtx,
     server: SteelVal,
