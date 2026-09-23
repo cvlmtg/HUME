@@ -4,17 +4,14 @@
 
 (require "lib.scm")
 
-;; ── Response decoding ───────────────────────────────────────────────────────
-
-;;; `res`: a bare `CompletionItem[]` (incomplete implicitly `#f`) or a
-;;; `CompletionList` hashmap `{isIncomplete, items}`.
-(define (lsp/completion-response->items res)
-  (if (list? res)
-      (list res #f)
-      (list (hash-ref res "items")
-            (if (hash-contains? res "isIncomplete") (hash-ref res "isIncomplete") #f))))
-
 ;; ── The source ───────────────────────────────────────────────────────────────
+;;
+;; #:raw #t: this source never reads a field of the response — it hands the
+;; whole thing straight to `completion-emit!`, which decodes its own
+;; `isIncomplete`/`items` on the Rust side (`hume_lsp::completion_item::
+;; completion_response_items`). See `JsonHandle`'s own doc
+;; (`hume-scripting/src/json.rs`) for why this skips the ordinary
+;; Steel<->JSON round trip.
 
 (register-completion-source! "lsp"
   (lambda (id bid prefix)
@@ -25,10 +22,8 @@
               (err (lsp/report-error "completion" err)
                    (completion-emit! id '()))
               ((void? res) (completion-emit! id '()))
-              (else
-                (let ((decoded (lsp/completion-response->items res)))
-                  (completion-emit! id (car decoded) #:incomplete (cadr decoded))))))
-          #:supersede "completion")
+              (else (completion-emit! id res))))
+          #:supersede "completion" #:raw #t)
         (completion-emit! id '())))
   #:target 'buffer #:priority 10 #:resolve #t)
 

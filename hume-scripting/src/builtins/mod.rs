@@ -446,7 +446,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-restart!" lsp::lsp_restart(language: SteelVal);
         cmd "lsp-show-status!" lsp::lsp_show_status();
         // Generic LSP bridge — any protocol method reachable from Steel.
-        cmd "%lsp-request" lsp::lsp_request(server: SteelVal, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal);
+        cmd "%lsp-request" lsp::lsp_request(server: SteelVal, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, raw: SteelVal);
         cmd "lsp-notify" lsp::lsp_notify(server: SteelVal, method: SteelVal, params: SteelVal);
         config "on-lsp-notification" lsp::on_lsp_notification(method: SteelVal, handler: SteelVal);
         // Introspection

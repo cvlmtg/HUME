@@ -68,7 +68,11 @@ answer when the buffer's server has no `completionProvider`. Never passes
 `#:allow-stale` to `lsp-request` — unlike hover, a stale completion response is
 auto-cancelled/dropped rather than shown; a re-request can go out before a prior
 response lands, so it's sent with `#:supersede "completion"`, and an answer to a call
-the editor has since superseded is dropped by the editor anyway. Snippet stripping
+the editor has since superseded is dropped by the editor anyway. Also sent with
+`#:raw #t` — this source never reads a field of its own response, so it hands the
+opaque handle straight to `completion-emit!` unopened rather than paying for a
+decode into Steel structures nothing here touches; `completion-emit!` reads the
+handle's `isIncomplete`/`items` itself, in Rust. Snippet stripping
 happens in Rust at the store ingress, so items arriving here already have plain
 `insertText`/`textEdit.newText`. There's deliberately no `on-completion-accept`
 handler: Rust applies the main edit, `additionalTextEdits`, and

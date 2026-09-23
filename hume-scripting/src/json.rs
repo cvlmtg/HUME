@@ -21,10 +21,12 @@
 //!
 //! This is deliberately generic JSON — it knows nothing about LSP shapes.
 
+use std::sync::Arc;
+
 use num_traits::ToPrimitive;
 use steel::HashMap as SteelHashMap;
-use steel::gc::Gc;
-use steel::rvals::SteelVal;
+use steel::gc::{Gc, ShareableMut as _};
+use steel::rvals::{Custom, IntoSteelVal as _, SteelVal};
 
 /// Converts a `serde_json::Value` into the equivalent `SteelVal`. Total —
 /// every JSON value has a representation, so this never fails.
@@ -134,6 +136,56 @@ fn type_name(v: &SteelVal) -> &'static str {
         SteelVal::VectorV(_) | SteelVal::MutableVector(_) => "vector",
         SteelVal::CharV(_) => "char",
         _ => "unsupported value",
+    }
+}
+
+/// Opaque handle wrapping a JSON value Scheme never reads a field of —
+/// `core:lsp`'s own `textDocument/completion` answer, which its own source
+/// (`register-completion-source!`'s proc) hands straight to
+/// `completion-emit!` without inspecting it. Steel's own decode (via
+/// `json_to_steel`/`steel_to_json`) materializes every field into Steel
+/// structures — documentation, `data`, per-item edits, all of it — only to
+/// have `completion-emit!` immediately convert it right back to JSON, none
+/// of it ever read by the source in between. Wrapping the response instead
+/// skips both directions of that round trip for data nothing in Scheme
+/// touches. `Arc`-backed so cloning the handle (e.g. through the Steel
+/// value system's own `Clone` requirements) never re-clones the response
+/// itself. No accessor exists — the one reader is `hume-editor`'s own
+/// `completion_response_items`, in Rust, once the handle crosses back out
+/// through `completion-emit!`.
+#[derive(Debug, Clone)]
+pub struct JsonHandle(Arc<serde_json::Value>);
+
+impl JsonHandle {
+    pub fn new(value: serde_json::Value) -> Self {
+        Self(Arc::new(value))
+    }
+
+    pub fn value(&self) -> &serde_json::Value {
+        &self.0
+    }
+
+    /// Convert to a `SteelVal` without returning `Result` — `IntoSteelVal`
+    /// for custom types is infallible, matching `SteelBufferId::
+    /// into_steel_val`'s own reasoning.
+    pub fn into_steel_val(self) -> SteelVal {
+        self.into_steelval().expect("JsonHandle into_steelval")
+    }
+}
+
+impl Custom for JsonHandle {
+    fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
+        Some(Ok("#<json>".to_string()))
+    }
+}
+
+/// `Some` if `val` is a [`JsonHandle`] — the one place `completion-emit!`
+/// tells "a whole LSP response" apart from "a list of items".
+pub fn downcast_json_handle(val: &SteelVal) -> Option<JsonHandle> {
+    if let SteelVal::Custom(v) = val {
+        v.read().as_any_ref().downcast_ref::<JsonHandle>().cloned()
+    } else {
+        None
     }
 }
 

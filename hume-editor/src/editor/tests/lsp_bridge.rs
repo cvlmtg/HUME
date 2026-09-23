@@ -182,6 +182,79 @@ fn response_delivers_decoded_result_to_callback() {
     );
 }
 
+/// `#:raw #t` skips the ordinary `json_to_steel` decode — the callback's
+/// `result` is an opaque handle, not a hashmap, for a real (non-null)
+/// response.
+#[test]
+fn raw_request_delivers_an_opaque_handle_not_a_hashmap() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |b, _sid| {
+        b.respond_to(
+            "textDocument/completion",
+            serde_json::json!({"items": [], "isIncomplete": false}),
+        );
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
+             (lsp-request #f "textDocument/completion" (hash) (lambda (err result)
+               (when (not (hash? result))
+                 (call! "move-right")))
+             #:raw #t)))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let before = state(&ed);
+    type_cmd(&mut ed, ":test-cmd");
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "a #:raw response must not decode into a hashmap"
+    );
+}
+
+/// A `null` response still crosses as `Void` under `#:raw` — the
+/// `(void? result)` check every LSP feature already uses to detect a
+/// server declining with no data stays meaningful regardless.
+#[test]
+fn raw_request_with_a_null_response_still_gives_void() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |b, _sid| {
+        b.respond_to("textDocument/completion", serde_json::Value::Null);
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
+             (lsp-request #f "textDocument/completion" (hash) (lambda (err result)
+               (when (void? result)
+                 (call! "move-right")))
+             #:raw #t)))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let before = state(&ed);
+    type_cmd(&mut ed, ":test-cmd");
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "a null response must still cross as Void even with #:raw"
+    );
+}
+
 #[test]
 fn protocol_error_delivers_err_hashmap_to_callback() {
     let tmp = safe_tempdir();

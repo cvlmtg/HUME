@@ -61,8 +61,9 @@
   (%register-lsp-server! language command args root-markers init-options settings env))
 
 (define (lsp-request server method params callback #:allow-stale [allow-stale #f]
-                                                     #:supersede [supersede #f])
-  (%lsp-request server method params callback allow-stale supersede))
+                                                     #:supersede [supersede #f]
+                                                     #:raw [raw #f])
+  (%lsp-request server method params callback allow-stale supersede raw))
 
 (define (get-option . args)
   (let ([n (length args)])

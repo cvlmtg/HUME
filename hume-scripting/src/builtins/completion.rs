@@ -4,8 +4,8 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
-use crate::host::{CompletionSourceTarget, MatchKind};
-use crate::json::{json_to_steel, steel_to_json};
+use crate::host::{CompletionAnswer, CompletionSourceTarget, MatchKind};
+use crate::json::{downcast_json_handle, json_to_steel, steel_to_json};
 use crate::{Effect, SteelCtx};
 
 use super::SteelResult;
@@ -122,9 +122,13 @@ pub(crate) fn register_completion_source(
 }
 
 /// `(%completion-emit! id items incomplete)` — the `completion-emit!`
-/// Scheme wrapper supplies `#:incomplete`'s `#f` default. `items`: list of
-/// decoded `CompletionItem` hashmaps. Returns whether the answer applied
-/// (`#f` for a superseded or already-closed invocation).
+/// Scheme wrapper supplies `#:incomplete`'s `#f` default. `items` is either
+/// a list of decoded `CompletionItem` hashmaps/bare-string labels, or one
+/// `JsonHandle` wrapping a whole LSP `textDocument/completion` response —
+/// the two decode into [`CompletionAnswer`]'s own two shapes; a handle
+/// carries its own `isIncomplete`, so combining it with `#:incomplete #t`
+/// is a caller error. Returns whether the answer applied (`#f` for a
+/// superseded or already-closed invocation).
 pub(crate) fn completion_emit(
     ctx: &mut SteelCtx,
     id: SteelVal,
@@ -133,12 +137,28 @@ pub(crate) fn completion_emit(
 ) -> SteelResult {
     let id = usize_arg(id, "completion-emit! id")? as u64;
     let incomplete = bool_arg(incomplete, "completion-emit! #:incomplete")?;
-    let mut parsed = Vec::new();
-    for entry in list_items(items, "completion-emit! items")? {
-        parsed.push(steel_to_json(&entry).map_err(generic_err)?);
-    }
-    let applied = require_cap(ctx.host.completions(), "completion-emit!")?
-        .completion_emit(id, parsed, incomplete);
+    let answer = match downcast_json_handle(&items) {
+        // `#:incomplete` has no meaning against a whole LSP response — its
+        // own `isIncomplete` field is the one source of truth, decoded once
+        // the handle reaches the host implementation (the one place that
+        // knows the response shape).
+        Some(_) if incomplete => steel::stop!(Generic =>
+            "completion-emit!: #:incomplete #t has no effect on a JSON handle response — \
+             the response's own isIncomplete field is used instead"),
+        Some(handle) => CompletionAnswer::LspResponse(handle.value().clone()),
+        None => {
+            let mut parsed = Vec::new();
+            for entry in list_items(items, "completion-emit! items")? {
+                parsed.push(steel_to_json(&entry).map_err(generic_err)?);
+            }
+            CompletionAnswer::Items {
+                items: parsed,
+                incomplete,
+            }
+        }
+    };
+    let applied =
+        require_cap(ctx.host.completions(), "completion-emit!")?.completion_emit(id, answer);
     Ok(SteelVal::BoolV(applied))
 }
 

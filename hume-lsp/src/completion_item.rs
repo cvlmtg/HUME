@@ -79,5 +79,29 @@ pub fn parse_additional_text_edits_lenient(
         .unwrap_or_default()
 }
 
+/// Decodes a `textDocument/completion` response: a bare `CompletionItem[]`
+/// (`isIncomplete` implicitly `false`) or a `CompletionList` object
+/// (`{isIncomplete, items}`). `None` for any other shape, or an object
+/// missing (or malformed) `items` — the caller treats that the same as an
+/// error response, rather than silently completing nothing. A missing or
+/// non-bool `isIncomplete` on a `CompletionList` counts as `false` — this
+/// is the response-level counterpart of the same lenient-everywhere-but-
+/// the-one-required-field discipline the completion store itself uses to
+/// decode each item (`hume-editor`'s own `CompletionItem::from_json`).
+pub fn completion_response_items(v: &serde_json::Value) -> Option<(&[serde_json::Value], bool)> {
+    match v {
+        serde_json::Value::Array(items) => Some((items, false)),
+        serde_json::Value::Object(_) => {
+            let items = v.get("items")?.as_array()?;
+            let incomplete = v
+                .get("isIncomplete")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(false);
+            Some((items, incomplete))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -124,3 +124,24 @@ fn flip_check_object_keys_would_fail_if_symbols_leaked() {
         _ => unreachable!(),
     }
 }
+
+// ── JsonHandle ────────────────────────────────────────────────────────────────
+
+#[test]
+fn json_handle_round_trips_through_a_steel_val() {
+    let v = json!({"items": [1, 2, 3], "isIncomplete": true});
+    let handle = JsonHandle::new(v.clone());
+    let steel = handle.into_steel_val();
+    let back = downcast_json_handle(&steel).expect("must downcast back to a JsonHandle");
+    assert_eq!(back.value(), &v);
+}
+
+#[test]
+fn downcast_json_handle_rejects_an_unrelated_value() {
+    assert!(downcast_json_handle(&SteelVal::IntV(1)).is_none());
+    let other = json_to_steel(&json!({"foo": 1}));
+    assert!(
+        downcast_json_handle(&other).is_none(),
+        "an ordinary converted hashmap is not a JsonHandle"
+    );
+}

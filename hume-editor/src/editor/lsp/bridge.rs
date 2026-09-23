@@ -79,8 +79,9 @@ impl Editor {
         // below needs its own copy of the callback to fire immediately,
         // since the success-path closure already moved one in.
         let callback_for_send = req.callback.clone();
+        let raw = req.raw;
         let lsp_callback: super::LspCallback = Box::new(move |editor, outcome| {
-            let (err, result) = outcome_to_steel(outcome);
+            let (err, result) = outcome_to_steel(outcome, raw);
             editor
                 .state
                 .queue_steel_call(callback_for_send, vec![err, result]);
@@ -150,9 +151,23 @@ impl Editor {
 }
 
 /// `Outcome` → the `(err result)` pair delivered to a Steel callback —
-/// exactly one of the two is non-`#f`.
-fn outcome_to_steel(outcome: Outcome) -> (SteelVal, SteelVal) {
+/// exactly one of the two is non-`#f`. `raw` (the request's own `#:raw`)
+/// picks how a successful `value` crosses: the ordinary full
+/// `json_to_steel` decode, or one opaque `JsonHandle` for a caller that
+/// never reads a field of it in Scheme — see `JsonHandle`'s own doc
+/// (`hume-scripting/src/json.rs`) for why.
+fn outcome_to_steel(outcome: Outcome, raw: bool) -> (SteelVal, SteelVal) {
     match outcome {
+        // `null` still crosses as `Void`, exactly as the ordinary
+        // `json_to_steel` path maps it — every existing `(void? res)`
+        // check (a server declining with no completions) stays meaningful
+        // regardless of `raw`. Only a real, non-null response pays for
+        // (or skips) the deep conversion, which is where the cost
+        // actually lives anyway.
+        Outcome::Ok(value) if raw && !value.is_null() => (
+            SteelVal::BoolV(false),
+            hume_scripting::json::JsonHandle::new(value).into_steel_val(),
+        ),
         Outcome::Ok(value) => (SteelVal::BoolV(false), json_to_steel(&value)),
         Outcome::Err(e) => {
             let mut map = steel::HashMap::new();

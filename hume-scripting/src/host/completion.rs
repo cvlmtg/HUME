@@ -45,19 +45,34 @@ pub struct PendingCompletionSource {
     pub resolve: bool,
 }
 
+/// A source's answer to an invocation, as `completion-emit!`'s builtin
+/// layer decoded it. `Items` is the explicit shape: JSON already converted
+/// from whatever Steel values the source built (hashmaps, bare strings —
+/// see `builtins/completion.rs`'s own decode), with its own `incomplete`
+/// flag. `LspResponse` is one opaque handle wrapping a whole LSP
+/// `textDocument/completion` response — see [`crate::json::JsonHandle`]'s
+/// own doc for why a source hands one over instead of a decoded list; its
+/// `isIncomplete`/`items` are read once it reaches the host implementation,
+/// which alone knows the LSP response shape (`hume-scripting` itself does
+/// not).
+pub enum CompletionAnswer {
+    Items {
+        items: Vec<serde_json::Value>,
+        incomplete: bool,
+    },
+    LspResponse(serde_json::Value),
+}
+
 /// Completion session orchestration — accessed through
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
     /// `(completion-emit! id items #:incomplete f)` — a source's answer to
-    /// invocation `id`: `items` is a list of decoded `CompletionItem`
-    /// hashmaps (JSON already converted by the caller), an empty list
-    /// meaning "nothing from this source". Returns whether the answer
-    /// applied — `false` when `id` is no longer the latest call of any
-    /// source in the open session (superseded by a later keystroke, or the
-    /// session was replaced or dismissed): expected-normal for a late async
-    /// source, never an error.
-    fn completion_emit(&mut self, id: u64, items: Vec<serde_json::Value>, incomplete: bool)
-    -> bool;
+    /// invocation `id`, an empty `Items` list meaning "nothing from this
+    /// source". Returns whether the answer applied — `false` when `id` is
+    /// no longer the latest call of any source in the open session
+    /// (superseded by a later keystroke, or the session was replaced or
+    /// dismissed): expected-normal for a late async source, never an error.
+    fn completion_emit(&mut self, id: u64, answer: CompletionAnswer) -> bool;
 
     /// `(completion-top n)` — up to `n` ranked items as hashmaps, `[]` with
     /// no open session.

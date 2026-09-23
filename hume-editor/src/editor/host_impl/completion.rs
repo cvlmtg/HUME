@@ -75,12 +75,32 @@ impl crate::editor::Editor {
 }
 
 impl<'a> CompletionHost for EditorHostImpl<'a> {
-    fn completion_emit(
-        &mut self,
-        id: u64,
-        items: Vec<serde_json::Value>,
-        incomplete: bool,
-    ) -> bool {
+    fn completion_emit(&mut self, id: u64, answer: host::CompletionAnswer) -> bool {
+        // `hume-scripting` decodes `completion-emit!`'s two item-input
+        // shapes but knows nothing about LSP response shapes itself (the
+        // handle is opaque to it, by design — see `JsonHandle`'s own doc);
+        // decoding a `LspResponse` into its own items/isIncomplete happens
+        // here, the one place that already depends on both `hume_lsp` and
+        // this store's `CompletionItem`. An unrecognized shape (a plugin
+        // handed `#:raw #t`'s handle something that isn't actually a
+        // completion response) lands as an empty answer rather than
+        // leaving the invocation stuck pending forever.
+        let (items, incomplete) = match answer {
+            host::CompletionAnswer::Items { items, incomplete } => (items, incomplete),
+            host::CompletionAnswer::LspResponse(response) => {
+                match hume_lsp::completion_item::completion_response_items(&response) {
+                    Some((items, incomplete)) => (items.to_vec(), incomplete),
+                    None => {
+                        self.state.report(
+                            Severity::Trace,
+                            "completion-emit!: handle is not a completion response shape"
+                                .to_string(),
+                        );
+                        (Vec::new(), false)
+                    }
+                }
+            }
+        };
         // A malformed item (missing the spec-required `label`) is skipped,
         // not fatal to the whole batch — one bad item from a misbehaving
         // server must not silently drop every good one.

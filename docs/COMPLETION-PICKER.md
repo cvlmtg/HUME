@@ -223,7 +223,7 @@ the sources with a ranked candidate.
 | Builtin | Notes |
 |---|---|
 | `(register-completion-source! name proc #:target #:match ['fuzzy] #:priority [0] #:resolve [#f])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); `#:target` picks one of two separate namespaces (`'buffer`, `'minibuf`) — re-registering a name replaces it, natives included, *within that namespace*; the same name in the other namespace is a second, unrelated source, since there is no shared id space between them to collide in. `#:resolve #t` (`'buffer` only) claims this source's items are wire items from the buffer's attached server, licensing `completionItem/resolve` on accept |
-| `(completion-emit! id items #:incomplete [#f])` | the one way items enter a session; `#f` once `id` is stale. Each of `items` is either an LSP `CompletionItem` hashmap or a bare string — `"foo"` decodes the same as `(hash "label" "foo")`, for a source with nothing but a label (`core:buffer-words`'s word list) |
+| `(completion-emit! id items #:incomplete [#f])` | the one way items enter a session; `#f` once `id` is stale. `items` is a list — each entry an LSP `CompletionItem` hashmap or a bare string (`"foo"` decodes the same as `(hash "label" "foo")`, for a source with nothing but a label, e.g. `core:buffer-words`'s word list) — or a single `lsp-request #:raw #t` handle wrapping a whole `textDocument/completion` response, decoded in Rust rather than per item; `#:incomplete` and a handle conflict (the handle's own `isIncomplete` is used) |
 | `(completion-top n)`, `(completion-accept! idx)`, `(completion-dismiss!)` | unchanged |
 | `(register-trigger-chars! source language chars)` + `on-trigger-char` | shared, listener-agnostic table (signature help uses it) — *not* how a `'buffer` completion source's own trigger chars are joined |
 | `(completion-set-trigger-chars! source language chars)` | a `'buffer` completion source's own trigger chars for `language`, replacing that pair's previous set; the editor invokes `source` directly when one lands, no hook round trip. Crosses as `Effect::SetCompletionTriggerChars` (a `register-completion-source!` queued earlier in the same eval may still be the one supplying `source`); `source` naming no registered `'buffer` source at apply time is reported as a log message, not raised back to the caller |
@@ -232,9 +232,10 @@ the sources with a ranked candidate.
 
 `core:lsp/completion.scm` is the reference source: `register-completion-
 source! "lsp"` with `#:priority 10 #:resolve #t`, whose proc sends
-`textDocument/completion` (`#:supersede "completion"`) and answers with the
-decoded list and its `isIncomplete` flag, declining with an empty answer when
-the buffer's server has no `completionProvider`; `lsp/setup-trigger-chars!`
+`textDocument/completion` with `#:supersede "completion" #:raw #t` (it never
+reads a field of the response itself, so the handle goes straight to
+`completion-emit!` unopened) and declines with an empty answer when the
+buffer's server has no `completionProvider`; `lsp/setup-trigger-chars!`
 registers the server's trigger characters as `"lsp"`'s own, via
 `completion-set-trigger-chars!`.
 
@@ -279,6 +280,7 @@ registers the server's trigger characters as `"lsp"`'s own, via
 | Cross-source dedup | **Rank-time, priority-ordered, plain items only (`BufferSession::recompute_dedup`), `Buffer`-target only** | See Q-A1, below — the same identifier from two sources otherwise shows twice. `Minibuf` invokes exactly one source, so it carries no dedup mask at all rather than an always-empty one. |
 | Trigger-char join for `Buffer` sources | **A source's own table (`completion-set-trigger-chars!`, `BufferSourceEntry::trigger_chars`), not `register-trigger-chars!`'s shared, listener-agnostic one** | The shared table has to accept an unknown name (it serves non-completion listeners too), so a typo on either side of the join silently disabled trigger-char completion with no error anywhere. The new table validates against the `Buffer` namespace and errors on a miss. `register-trigger-chars!`/`on-trigger-char` are unchanged for every other listener (signature help). |
 | Item schema | **LSP `CompletionItem` JSON shape as lingua franca, plus a bare string as sugar for the label-only case** | The store already parses the hashmap form with label-fallbacks; the minimal item is `{"label": …}`, and a bare string decodes identically without the wrapping — a non-LSP source omits `textEdit` either way and rides the token-span accept path. |
+| LSP-origin answer transport | **One opaque `lsp-request #:raw #t` handle, not a decoded list** | `core:lsp`'s completion source never reads a field of its own response — the ordinary Steel⟷JSON decode (`json_to_steel` in, `steel_to_json` back out) was pure round-trip cost for data nothing in Scheme touched. `completion-emit!` decodes the handle's `isIncomplete`/`items` in Rust instead (`hume_lsp::completion_item::completion_response_items`). Scoped to completion — the same idea for every other `lsp-request` caller (hover, sighelp, actions, goto, rename, format, inlay) is a separate, larger piece of work, not done here; see `docs/LSP.md`'s own decision row for detail this doc doesn't duplicate. |
 | Completion vs picker core | **Siblings sharing the matcher, not a shared session type** | See `hume-editor/src/editor/input_stack/picker/session.rs`. |
 
 ## Open questions
