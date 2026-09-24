@@ -34,11 +34,16 @@
 //! `Editor` + `EditorHostImpl` instead (see
 //! `hume-editor/src/editor/tests/plugins.rs`).
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::BufferId;
+use hume_scripting::PaneHandle;
 use hume_scripting::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
     SettingsHost,
 };
+
+/// One recorded `run_command_sync` call: `(name, pane, count, extend,
+/// register)` — see [`MockHost::dispatched_native`]'s own doc.
+pub type DispatchedNativeCall = (String, PaneHandle, Option<usize>, bool, Option<char>);
 
 pub struct MockHost {
     pub settings: hume::editor::settings::EditorSettings,
@@ -52,11 +57,21 @@ pub struct MockHost {
     /// (all commands return `Ok(false)`).  Tests populate this to exercise
     /// the `run_command_sync` path.
     pub native_names: rustc_hash::FxHashSet<String>,
-    /// Record of every `run_command_sync` call: `(name, count, extend, register)`.
-    /// `count` is `None` when the Steel side passed `0` ("no count typed").
-    pub dispatched_native: Vec<(String, Option<usize>, bool, Option<char>)>,
+    /// Record of every `run_command_sync` call. `count` is `None`
+    /// when the Steel side passed `0` ("no count typed"). Unlike
+    /// `EditorHostImpl`, this mock has no pane model to resolve `pane`
+    /// against, so every call is recorded regardless of `pane` — see
+    /// `run_command_sync`'s own doc.
+    pub dispatched_native: Vec<DispatchedNativeCall>,
     /// Lazy activation stubs registered via `register_lazy_command`.
     pub lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::PluginId>,
+    /// Buffer ids `buffer_exists` answers `true` for — empty by default, so
+    /// every id (including `focused_pane()`'s own `BufferId::default()`)
+    /// is "stale" from an explicit-`pane` builtin's point of view unless a
+    /// test opts one in. A test whose scenario needs a buffer to read as
+    /// live (e.g. `get-buffer-option` reaching the host at all) inserts it
+    /// here first.
+    pub live_buffer_ids: rustc_hash::FxHashSet<BufferId>,
 }
 
 impl MockHost {
@@ -69,6 +84,7 @@ impl MockHost {
             native_names: rustc_hash::FxHashSet::default(),
             dispatched_native: Vec::new(),
             lazy_cmds: rustc_hash::FxHashMap::default(),
+            live_buffer_ids: rustc_hash::FxHashSet::default(),
         }
     }
 
@@ -121,11 +137,20 @@ impl BufferHost for MockHost {
     fn buffer_ids(&self) -> Vec<BufferId> {
         Vec::new()
     }
-    fn pane_ids(&self) -> Vec<PaneId> {
+    fn panes(&self) -> Vec<PaneHandle> {
         Vec::new()
     }
-    fn buffer_exists(&self, _id: BufferId) -> bool {
-        false
+    fn focused_pane(&self) -> PaneHandle {
+        PaneHandle::buffer_only(BufferId::default())
+    }
+    fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {
+        vec![pane]
+    }
+    fn require_focused_pane(&self, _pane: PaneHandle) -> Result<(), String> {
+        Err("MockHost: require_focused_pane not available".into())
+    }
+    fn buffer_exists(&self, id: BufferId) -> bool {
+        self.live_buffer_ids.contains(&id)
     }
     fn buffer_path(&self, _id: BufferId) -> Option<std::path::PathBuf> {
         None
@@ -148,7 +173,7 @@ impl BufferHost for MockHost {
     fn close_buffer(&mut self, _id: BufferId) -> Result<BufferId, String> {
         Err("MockHost: close_buffer not available".into())
     }
-    fn switch_to_buffer(&mut self, _current: BufferId, _target: BufferId) -> Result<(), String> {
+    fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {
         Err("MockHost: switch_to_buffer not available".into())
     }
     fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
@@ -172,9 +197,9 @@ impl BufferHost for MockHost {
     }
     fn viewport_range(
         &self,
-        _id: BufferId,
-    ) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>> {
-        None
+        _pane: PaneHandle,
+    ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
+        Err("MockHost: viewport_range not available".into())
     }
 }
 
@@ -194,11 +219,15 @@ impl SettingsHost for MockHost {
         // MockHost models no buffers — no per-buffer override to write to.
         Err("MockHost: set_buffer_option not available".into())
     }
-    fn get_option(&self, key: &str, _bid: BufferId) -> Result<OptionValue, String> {
+    fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
+        hume::editor::settings::setting_value(key, &self.settings, None)
+            .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
+    }
+    fn get_buffer_option(&self, key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         // MockHost models no buffers, so there is no per-buffer override to
         // resolve — every key reads its global value.
         hume::editor::settings::setting_value(key, &self.settings, None)
-            .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
+            .ok_or_else(|| format!("get-buffer-option: unknown setting '{key}'"))
     }
     fn configure_statusline(
         &mut self,
@@ -274,12 +303,20 @@ impl CommandHost for MockHost {
     fn run_command_sync(
         &mut self,
         name: &str,
+        pane: PaneHandle,
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<bool, String> {
+        // Unlike `EditorHostImpl::run_command_sync`, this mock has no pane
+        // model at all, so it can't resolve `pane` against a command's
+        // `TargetCategory` the way the real host does — it accepts and
+        // records any `pane` unconditionally. Resolution (whether `pane`
+        // names a live pane, the focused pane, or is out of reach) is the
+        // real host's job; a test that needs to assert on a resolution
+        // failure exercises `EditorHostImpl` directly, not this mock.
         self.dispatched_native
-            .push((name.to_owned(), count, extend, register));
+            .push((name.to_owned(), pane, count, extend, register));
         Ok(true)
     }
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
@@ -363,22 +400,22 @@ impl CommandHost for MockHost {
 }
 
 impl CursorHost for MockHost {
-    fn current_line_number(&self) -> Option<usize> {
+    fn buffer_cursor_line(&self, _pane: PaneHandle) -> Result<usize, String> {
+        Err("MockHost: buffer_cursor_line not available".into())
+    }
+    fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String> {
+        Err("MockHost: buffer_selections not available".into())
+    }
+    fn offset_to_line(&self, _bid: BufferId, _idx: usize) -> Option<usize> {
         None
     }
-    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
-        None
+    fn symbol_under_cursor(&self, _pane: PaneHandle) -> Result<String, String> {
+        Err("MockHost: symbol_under_cursor not available".into())
     }
-    fn char_index_to_line(&self, _idx: usize) -> Option<usize> {
-        None
+    fn selections_linewise(&self, _pane: PaneHandle) -> Result<bool, String> {
+        Err("MockHost: selections_linewise not available".into())
     }
-    fn symbol_under_cursor(&self, _bid: BufferId) -> String {
-        String::new()
-    }
-    fn selections_linewise(&self, _bid: BufferId) -> bool {
-        false
-    }
-    fn selections_charwise(&self, _bid: BufferId) -> bool {
-        false
+    fn selections_charwise(&self, _pane: PaneHandle) -> Result<bool, String> {
+        Err("MockHost: selections_charwise not available".into())
     }
 }

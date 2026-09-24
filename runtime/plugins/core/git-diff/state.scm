@@ -4,6 +4,9 @@
          git-diff/buffer-entry git-diff/entry-set! git-diff/ensure-entry!
          git-diff/toggle-flag! git-diff/cancel-job!)
 
+;;; Keyed by `(buffer-key pane)`, not `pane` itself — two panes on the same
+;;; buffer (a command's own pane vs. a hook's pane-less value) must resolve
+;;; to the same entry.
 (define git-diff/*buffers* (box (hash)))
 
 ;;; SSOT for a buffer's starting shape.
@@ -11,44 +14,45 @@
   (hash "signs?" signs? "inline?" inline?
         "ref-text" #f "hunks" '() "job" #f "ref" #f "branch-job" #f))
 
-(define (git-diff/buffer-entry bid)
-  (let ([table (unbox git-diff/*buffers*)])
-    (and (hash-contains? table bid) (hash-ref table bid))))
+(define (git-diff/buffer-entry pane)
+  (let ([table (unbox git-diff/*buffers*)]
+        [key (buffer-key pane)])
+    (and (hash-contains? table key) (hash-ref table key))))
 
-(define (git-diff/init-buffer! bid signs? inline?)
+(define (git-diff/init-buffer! pane signs? inline?)
   (set-box! git-diff/*buffers*
-            (hash-insert (unbox git-diff/*buffers*) bid
+            (hash-insert (unbox git-diff/*buffers*) (buffer-key pane)
                          (git-diff/fresh-entry signs? inline?))))
 
-(define (git-diff/remove-buffer! bid)
-  (set-box! git-diff/*buffers* (hash-remove (unbox git-diff/*buffers*) bid)))
+(define (git-diff/remove-buffer! pane)
+  (set-box! git-diff/*buffers* (hash-remove (unbox git-diff/*buffers*) (buffer-key pane))))
 
-;;; No-op when `bid` has no tracked entry — see docs/architecture.md.
-(define (git-diff/entry-set! bid key value)
-  (let ([entry (git-diff/buffer-entry bid)])
+;;; No-op when `pane`'s buffer has no tracked entry — see docs/architecture.md.
+(define (git-diff/entry-set! pane key value)
+  (let ([entry (git-diff/buffer-entry pane)])
     (when entry
       (set-box! git-diff/*buffers*
-                (hash-insert (unbox git-diff/*buffers*) bid (hash-insert entry key value))))))
+                (hash-insert (unbox git-diff/*buffers*) (buffer-key pane) (hash-insert entry key value))))))
 
 ;;; Unlike `entry-set!`, resurrects a missing entry rather than no-opping —
 ;;; see docs/architecture.md.
-(define (git-diff/ensure-entry! bid)
-  (unless (git-diff/buffer-entry bid)
+(define (git-diff/ensure-entry! pane)
+  (unless (git-diff/buffer-entry pane)
     (set-box! git-diff/*buffers*
-              (hash-insert (unbox git-diff/*buffers*) bid (git-diff/fresh-entry #f #f)))))
+              (hash-insert (unbox git-diff/*buffers*) (buffer-key pane) (git-diff/fresh-entry #f #f)))))
 
 ;;; Flips `key` (one of "signs?"/"inline?") and returns the new value.
-(define (git-diff/toggle-flag! bid key)
-  (git-diff/ensure-entry! bid)
-  (let ([new? (not (hash-ref (git-diff/buffer-entry bid) key))])
-    (git-diff/entry-set! bid key new?)
+(define (git-diff/toggle-flag! pane key)
+  (git-diff/ensure-entry! pane)
+  (let ([new? (not (hash-ref (git-diff/buffer-entry pane) key))])
+    (git-diff/entry-set! pane key new?)
     new?))
 
 ;;; Shared by `diff.scm`'s and `branch.scm`'s cancel functions — see
 ;;; docs/architecture.md.
-(define (git-diff/cancel-job! bid key)
-  (let ([entry (git-diff/buffer-entry bid)])
+(define (git-diff/cancel-job! pane key)
+  (let ([entry (git-diff/buffer-entry pane)])
     (when entry
       (let ([job (hash-ref entry key)])
         (when job (cancel-async! job)))
-      (git-diff/entry-set! bid key #f))))
+      (git-diff/entry-set! pane key #f))))

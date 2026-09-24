@@ -12,8 +12,8 @@ fn prompt_confirm_calls_callback_with_typed_text() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (prompt! "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (prompt! pane "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Command);
@@ -35,8 +35,8 @@ fn prompt_esc_calls_callback_with_false_exactly_once() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (prompt! "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (prompt! pane "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -55,8 +55,8 @@ fn prompt_prefill_is_visible_and_editable() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (prompt! "Name: " (lambda (s) (log! 'info (to-string s))) #:prefill "old")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (prompt! pane "Name: " (lambda (s) (log! 'info (to-string s))) #:prefill "old")))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -83,9 +83,9 @@ fn second_prompt_while_one_is_open_errors() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (prompt! "a" (lambda (s) (log! 'info "cb1")))
-             (prompt! "b" (lambda (s) (log! 'info "cb2")))))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (prompt! pane "a" (lambda (s) (log! 'info "cb1")))
+             (prompt! pane "b" (lambda (s) (log! 'info "cb2")))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -123,8 +123,10 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let token = open_drawer_via_host(&mut ed, &["a"]);
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.prompt(
+        pane,
         "Name: ".to_string(),
         String::new(),
         steel::rvals::SteelVal::Void,
@@ -162,8 +164,8 @@ fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (prompt! "Name: " (lambda (s) (void)))))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (prompt! pane "Name: " (lambda (s) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert!(ed.state.minibuf().is_some(), "sanity: prompt owns the row");
@@ -191,9 +193,9 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (prompt! "x: " (lambda (s) (void)))))
-           (register-hook! 'on-mode-change (lambda (old new) (call! "move-right")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (prompt! pane "x: " (lambda (s) (void)))))
+           (register-hook! 'on-mode-change (lambda (old new) (call! "move-right" (focused-pane))))"#,
     );
 
     let before = state(&ed);
@@ -232,8 +234,8 @@ fn prompt_from_insert_ends_the_insert_session_cleanly() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (after 0 (lambda () (prompt! "x: " (lambda (s) (void)))))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (pane)
+             (after 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -275,8 +277,8 @@ fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (after 0 (lambda () (prompt! "x: " (lambda (s) (void)))))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (pane)
+             (after 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -312,7 +314,7 @@ fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
 /// same as a hook or async LSP callback would) must be a no-op — it has no
 /// `Insert` layer to end, so it must not cancel an unrelated `Prompt`
 /// session that happens to be the current mode layer. `cmd_exit_insert` is
-/// a registered mappable command reachable via `(call! "exit-insert")` from
+/// a registered mappable command reachable via `(call! "exit-insert" bid)` from
 /// any mode, not gated on Insert actually being current.
 ///
 /// Fail oracle: if `end_insert_session` truncated `mode_layer()`
@@ -328,9 +330,9 @@ fn exit_insert_outside_insert_does_not_cancel_an_unrelated_prompt() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (after 0 (lambda () (call! "exit-insert")))
-             (prompt! "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (after 0 (lambda () (call! "exit-insert" (focused-pane))))
+             (prompt! pane "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert!(ed.state.minibuf().is_some(), "sanity: prompt is open");
@@ -358,11 +360,7 @@ fn symbol_under_cursor_on_a_word_char_returns_the_whole_word() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("foo -[b]>ar baz\n");
     assert_eq!(
-        log_probe(
-            &mut ed,
-            tmp.path(),
-            "(symbol-under-cursor (current-buffer))"
-        ),
+        log_probe(&mut ed, tmp.path(), "(symbol-under-cursor bid)"),
         "bar"
     );
 }
@@ -375,7 +373,7 @@ fn symbol_under_cursor_on_whitespace_returns_empty() {
         log_probe(
             &mut ed,
             tmp.path(),
-            r#"(to-string "[" (symbol-under-cursor (current-buffer)) "]")"#
+            r#"(to-string "[" (symbol-under-cursor bid) "]")"#
         ),
         "[  ]"
     );
@@ -389,7 +387,7 @@ fn symbol_under_cursor_on_punctuation_returns_empty() {
         log_probe(
             &mut ed,
             tmp.path(),
-            r#"(to-string "[" (symbol-under-cursor (current-buffer)) "]")"#
+            r#"(to-string "[" (symbol-under-cursor bid) "]")"#
         ),
         "[  ]"
     );
@@ -420,17 +418,22 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
-             (equal? (symbol-under-cursor hidden) "bar"))"#,
+        r#"(let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
+                  (shown (car (buffer-panes hidden))))
+             (equal? (symbol-under-cursor shown) "bar"))"#,
     );
     assert!(
         fired,
-        "symbol-under-cursor must resolve bid in whichever pane currently shows it, not just the focused one"
+        "symbol-under-cursor must resolve bid in whichever pane currently shows it, named via buffer-panes"
     );
 }
 
+/// `symbol-under-cursor` needs a pane, not just a buffer — kind-B fail-fast
+/// (see `docs/LESSONS.md`'s L19 and `commands::resolve_pane`'s doc): a
+/// pane-less handle (`(buffers)`'s own return shape) raises, replacing the
+/// old "no pane shows it → \"\"" degrade.
 #[test]
-fn symbol_under_cursor_is_empty_once_no_pane_shows_the_buffer() {
+fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("foo -[b]>ar baz\n");
 
@@ -443,15 +446,25 @@ fn symbol_under_cursor_is_empty_once_no_pane_shows_the_buffer() {
     let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
     ed.switch_to_buffer_with_jump(other_bid);
 
-    let fired = run_probe(
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
         &mut ed,
-        ScriptingHost::new(),
+        &mut host,
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (let ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers)))))
+               (symbol-under-cursor hidden))))"#,
         tmp.path(),
-        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
-             (equal? (symbol-under-cursor hidden) ""))"#,
     );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":probe");
+    let msg = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("symbol-under-cursor on a paneless handle must raise");
     assert!(
-        fired,
-        "symbol-under-cursor must return \"\" once the buffer is shown in no pane, not the stale cursor's word"
+        msg.contains("pane"),
+        "error must name the missing pane; got: {msg}"
     );
 }

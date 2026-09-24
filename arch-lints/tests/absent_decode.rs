@@ -4,7 +4,7 @@
 //! Decoding that convention (`#f` -> `None`, anything else -> `Some(...)`) is
 //! `hume-scripting/src/builtins/args.rs`'s `optional_*` family
 //! (`optional_string_arg`, `optional_path_arg`, `optional_usize_arg`,
-//! `optional_json_arg`, `optional_bid_arg`, `optional_symbol_arg`,
+//! `optional_json_arg`, `optional_symbol_arg`,
 //! `optional_pair_fields`) — one vocabulary, so every builtin's
 //! `#f`-means-absent behavior and error wording agree.
 //!

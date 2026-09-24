@@ -94,7 +94,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right")))"#,
+        r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right" (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -249,7 +249,7 @@ fn queued_hooks_require_explicit_settle() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -303,8 +303,8 @@ fn on_buffer_open_queued_after_on_language_set() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))
-           (register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))
+           (register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -331,7 +331,7 @@ fn on_buffer_open_queued_after_on_language_set() {
         .iter()
         .filter_map(|w| match w {
             crate::editor::event::PendingWork::Event(e) => Some(e.name()),
-            crate::editor::event::PendingWork::Call(..) => None,
+            crate::editor::event::PendingWork::Call { .. } => None,
         })
         .collect();
     assert_eq!(
@@ -372,8 +372,8 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))
-           (register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))
+           (register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -400,7 +400,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
         .iter()
         .filter_map(|w| match w {
             crate::editor::event::PendingWork::Event(e) => Some(e.name()),
-            crate::editor::event::PendingWork::Call(..) => None,
+            crate::editor::event::PendingWork::Call { .. } => None,
         })
         .collect();
     assert_eq!(
@@ -461,7 +461,7 @@ fn hook_call_is_dispatched() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-open (lambda (bid) (call! "move-right" (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -536,7 +536,7 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (call! "move-right" (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -586,8 +586,8 @@ fn fifo_order_preserved_across_call_and_event_items() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (log! 'trace "event")))
-           (define-typed-command! "arm" "" (lambda ()
-             (prompt! "x" (lambda (s) (log! 'trace "call-0")))))
+           (define-typed-command! "arm" "" (lambda (pane)
+             (prompt! pane "x" (lambda (s) (log! 'trace "call-0")))))
            (define-typed-command! "start" "" (lambda ()
              (after 0 (lambda () (log! 'trace "call-a")))
              (after 0 (lambda () (log! 'trace "call-b")))))"#,
@@ -697,7 +697,7 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -726,6 +726,154 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
         state(&ed),
         before,
         "settle() must fire the hook prepare_frame left untouched"
+    );
+}
+
+/// **Pane refactor regression, paneless case**: `on-buffer-save`'s own
+/// payload is a *buffer*-level handle (see `docs/LESSONS.md`'s L19 and
+/// `EditorEvent::steel_args`'s doc) — it never carries a pane, even for a
+/// buffer that happens to be shown somewhere, so a hook that wants to reach
+/// a `Pane`-category native command must resolve one explicitly via
+/// `(buffer-panes bid)` rather than handing the hook's own `bid` straight to
+/// `call!`. B here is open but shown in no pane at all, so `(buffer-panes
+/// bid)` is empty and the hook's own `error` fires — `delete` never runs on
+/// the wrong buffer.
+///
+/// Two buffers, one `on-buffer-save` hook queued per buffer (mirroring what
+/// two `:wa` writes would queue), both drained in the same `settle()` batch.
+///
+/// Fail oracle: falling back to the focused pane instead of erroring on an
+/// empty `(buffer-panes bid)` → both hook runs silently delete from A
+/// (whichever buffer is focused), so A ends up with both chars removed and
+/// B untouched, with no error in the message log — the exact "wrong buffer"
+/// bug this test exists to catch.
+#[test]
+fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
+    use hume_editing::selection::SelectionSet;
+    use hume_editing::text::BufferText;
+
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("aaa\n"),
+        SelectionSet::default(),
+    ));
+    let bid_a = ed.focused_buffer_id();
+    let bid_b = ed.open_buffer(Buffer::new(
+        BufferText::from("bbb\n"),
+        SelectionSet::default(),
+    ));
+    // `open_buffer` does not move focus, nor show the buffer in any pane —
+    // A stays focused, B is paneless.
+    assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
+
+    let tmp = safe_tempdir();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-hook! 'on-buffer-save (lambda (bid)
+             (let ((panes (buffer-panes bid)))
+               (if (null? panes)
+                   (error "not shown in any pane")
+                   (call! "delete" (car panes))))))"#,
+    );
+
+    // Queued in buffer order, same as two sequential :wa writes would.
+    ed.queue_buffer_save(bid_a);
+    ed.queue_buffer_save(bid_b);
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid_a).text().to_string(),
+        "aa\n",
+        "A (focused, and its own bid) must have its own hook's delete applied"
+    );
+    assert_eq!(
+        ed.state.buffers.get(bid_b).text().to_string(),
+        "bbb\n",
+        "B (paneless) must be untouched — its hook run errored instead \
+         of silently deleting from A"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("not shown in any pane"),
+        "B's hook run must report it has no pane to act through: {log:?}"
+    );
+}
+
+/// **Pane refactor regression, remote-pane case**: the mirror of the
+/// paneless test above — B is shown in a non-focused split, so
+/// `(buffer-panes bid)` names its own pane and the resulting `call!`
+/// succeeds, editing B while leaving A (and focus) untouched. This is the
+/// actual feature the explicit-bid *and* explicit-pane refactors add
+/// together: a native `call!` no longer requires its target to be the
+/// focused buffer, only that some pane shows it — and a hook now names that
+/// pane itself rather than relying on `call!` to guess it.
+#[test]
+fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
+    use crate::editor::commands::open_pane_in_layout;
+    use hume_editing::selection::SelectionSet;
+    use hume_editing::text::BufferText;
+    use hume_engine::pipeline::Direction;
+
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("aaa\n"),
+        SelectionSet::default(),
+    ));
+    let bid_a = ed.focused_buffer_id();
+    let pid_a = ed.state.focus.id();
+    let bid_b = ed.open_buffer(Buffer::new(
+        BufferText::from("bbb\n"),
+        SelectionSet::default(),
+    ));
+    open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid_b,
+        Direction::Horizontal,
+    )
+    .expect("split onto B must succeed");
+    // The split moves focus onto the new pane in production
+    // (`split_pane_onto`/`:vsplit`), but `open_pane_in_layout` itself does
+    // not — restore focus to A explicitly so this test's premise (A stays
+    // focused, B lives in a background split) holds regardless.
+    ed.state.focus.set_for_test(pid_a);
+    assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
+
+    let tmp = safe_tempdir();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-hook! 'on-buffer-save (lambda (bid)
+             (let ((panes (buffer-panes bid)))
+               (if (null? panes)
+                   (error "not shown in any pane")
+                   (call! "delete" (car panes))))))"#,
+    );
+
+    ed.queue_buffer_save(bid_a);
+    ed.queue_buffer_save(bid_b);
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid_a).text().to_string(),
+        "aa\n",
+        "A (focused) must have its own hook's delete applied"
+    );
+    assert_eq!(
+        ed.state.buffers.get(bid_b).text().to_string(),
+        "bb\n",
+        "B (shown in a non-focused split) must also have its own hook's \
+         delete applied — a native call! no longer requires focus"
+    );
+    assert_eq!(
+        ed.state.focus.id(),
+        pid_a,
+        "a remote dispatch on B must not move focus off A"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("not shown in any pane") && !log.contains("focused"),
+        "neither hook run should have errored: {log:?}"
     );
 }
 
@@ -794,7 +942,7 @@ fn headless_step_then_settle_fires_a_queued_hook() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right")))"#,
+        r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right" (focused-pane))))"#,
         &mut mock,
     )
     .unwrap();
@@ -1065,7 +1213,7 @@ fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_ca
                    (log! 'trace "entered")
                    (when (not switched)
                      (set! switched #t)
-                     (switch-to-buffer! (open-buffer! "{other_path}")))))"#
+                     (switch-to-buffer! bid (open-buffer! "{other_path}")))))"#
         ),
         tmp.path(),
     );
@@ -1189,7 +1337,7 @@ fn typing_one_character_fires_on_text_changed_once() {
     host.eval_source(
         r#"(register-hook! 'on-text-changed
              (lambda (bid)
-               (log! 'trace (if (equal? bid (current-buffer)) "correct-bid" "wrong-bid"))))"#,
+               (log! 'trace (if (equal? (buffer-key bid) (buffer-key (focused-pane))) "correct-bid" "wrong-bid"))))"#,
         &mut mock,
     )
     .unwrap();
@@ -1467,9 +1615,9 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
         &mut host,
         r#"(register-hook! 'on-text-changed
              (lambda (bid)
-               (call! "make-text-uppercase")
-               (call! "make-text-lowercase")))
-           (define-typed-command! "kick" "" (lambda () (call! "make-text-uppercase")))"#,
+               (call! "make-text-uppercase" (focused-pane))
+               (call! "make-text-lowercase" (focused-pane))))
+           (define-typed-command! "kick" "" (lambda () (call! "make-text-uppercase" (focused-pane))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1492,16 +1640,19 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
     );
 }
 
-/// A buffer replaced in place via the last-buffer scratch swap
-/// (`close_buffer`'s Case C, see `p6_close_last_buffer_becomes_scratch`) is a
-/// content change under a surviving `BufferId` — `on-text-changed` must fire
-/// once for it, not be silently swallowed by the swap resetting the
-/// observation baseline back to a matching 0/0.
+/// Closing the last buffer frees its slot and opens a fresh scratch buffer
+/// under a brand new `BufferId` (`close_buffer`'s last-buffer branch) — a
+/// close+open pair, not a content swap under a surviving id. `on-text-
+/// changed` must never fire for it (no surviving buffer's content changed);
+/// the new scratch buffer instead announces its own `on-buffer-open`, like
+/// any other freshly opened buffer.
 ///
-/// Fail oracle: drop the `text_gen`/`announced_text_gen` carry-forward in
-/// `replace_buffer_in_place` → zero fires.
+/// Fail oracle: if `close_buffer`'s last-buffer branch still swapped content
+/// in place under the closed id, `focused_buffer_id()` would equal the
+/// closed `bid` and `on-text-changed` would fire once instead of
+/// `on-buffer-open`.
 #[test]
-fn last_buffer_close_fires_on_text_changed() {
+fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
     use crate::testing::MockHost;
     use hume_scripting::ScriptingHost;
 
@@ -1510,7 +1661,8 @@ fn last_buffer_close_fires_on_text_changed() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))"#,
+        r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))
+           (register-hook! 'on-buffer-open (lambda (bid) (log! 'trace "opened")))"#,
         &mut mock,
     )
     .unwrap();
@@ -1520,20 +1672,35 @@ fn last_buffer_close_fires_on_text_changed() {
     ed.close_buffer(bid);
     ed.settle();
 
-    assert_eq!(
-        ed.focused_buffer_id(),
-        bid,
-        "the scratch swap reuses the same buffer id"
+    let new_bid = ed.focused_buffer_id();
+    assert_ne!(
+        new_bid, bid,
+        "the last-buffer close must allocate a fresh BufferId, not reuse the closed one"
     );
-    let fires = ed
+    assert!(
+        ed.state.buffers.try_get(bid).is_none(),
+        "the closed buffer's slot must actually be freed"
+    );
+
+    let changed_fires = ed
         .state
         .message_log
         .entries()
         .filter(|e| e.severity == Severity::Trace && e.text == "changed")
         .count();
     assert_eq!(
-        fires, 1,
-        "the last-buffer scratch swap must announce as one on-text-changed"
+        changed_fires, 0,
+        "no surviving buffer changed content — on-text-changed must not fire"
+    );
+    let opened_fires = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace && e.text == "opened")
+        .count();
+    assert_eq!(
+        opened_fires, 1,
+        "the fresh scratch buffer must announce on-buffer-open exactly once"
     );
 }
 
@@ -1878,7 +2045,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
         &mut host,
         r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))
            (define-typed-command! "start" ""
-             (lambda () (after 0 (lambda () (close-buffer! (current-buffer))))))"#,
+             (lambda (bid) (after 0 (lambda () (close-buffer! bid)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1994,5 +2161,95 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
         count(&ed) - before,
         1,
         "a mouse click into another pane must raise exactly one OnBufferEnter"
+    );
+}
+
+/// Hole F regression: `run_pending_batch` must skip *any* buffer-scoped
+/// event whose buffer has died since it was queued, not just
+/// `OnTextChanged`. Queues `OnDiagnosticsChanged` for `bid`, then closes
+/// `bid` before the batch drains — reproducing "something else that ran
+/// first closed the buffer this event was about", the same race an
+/// intervening timer thunk or async callback in the same batch would cause.
+///
+/// Fail oracle: without `EditorEvent::buffer()`'s generalized check,
+/// `fire_one_event` would run the handler against a dead bid, or —
+/// depending on what the handler's body reads — hit a `LiveBid` raise
+/// logged as a spurious hook error instead of being silently skipped.
+#[test]
+fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.open_buffer(Buffer::new(
+        hume_editing::text::BufferText::from("x\n"),
+        hume_editing::selection::SelectionSet::default(),
+    ));
+    let bid = ed.focused_buffer_id();
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (log! 'trace "diagnostics-fired")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    ed.queue_diagnostics_changed(bid);
+    // Reproduces "something else in the same batch closed bid first" —
+    // here, a direct close between queueing and the drain, rather than a
+    // timer thunk queued ahead of the event; the observable failure mode
+    // (the batch reaches a dead bid) is identical either way.
+    ed.close_buffer(bid);
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("diagnostics-fired"),
+        "the handler must not fire for a buffer that closed before the batch drained: {log:?}"
+    );
+    assert!(
+        !log.contains("hook error"),
+        "the event must be silently skipped, not surface as a hook error: {log:?}"
+    );
+}
+
+/// Hole G regression: two handlers registered for the same event, in a
+/// batch where the first raises, must both run — a plugin bug in one
+/// handler must not silently drop every handler registered after it for
+/// the same event.
+///
+/// Fail oracle: without `run_steel_calls`'s per-call isolation, the first
+/// handler's raise aborts the whole `with_mut_reference` session and
+/// "second-fired" never lands in the message log.
+#[test]
+fn a_raising_hook_handler_does_not_drop_the_next_handler_for_the_same_event() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (car '())))
+           (register-hook! 'on-buffer-save (lambda (bid) (log! 'trace "second-fired")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    let bid = ed.focused_buffer_id();
+    ed.queue_buffer_save(bid);
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("second-fired"),
+        "the second handler must still run despite the first raising: {log:?}"
+    );
+    assert!(
+        log.contains("hook error") || log.contains("steel call error"),
+        "the first handler's raise must still be reported, not silently swallowed: {log:?}"
     );
 }

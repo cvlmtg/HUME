@@ -175,3 +175,44 @@ fn null_result_reports_no_references() {
         "expected a no-references message, got {msg:?}"
     );
 }
+
+/// The user is free to switch buffers while a `textDocument/references`
+/// request is in flight — same async-round-trip race `lsp-hover`'s own
+/// `#:require-focus` guards against. Unlike single-location goto (a
+/// navigation the user asked for, completed regardless of focus),
+/// references always opens a drawer — cursor-anchored UI that must not
+/// appear over whatever the user switched to.
+///
+/// Fail oracle: `lsp-references` (`goto.scm`) sending its `lsp-request`
+/// without `#:require-focus` — the drawer would open regardless of which
+/// buffer answered.
+#[test]
+fn stale_response_after_a_buffer_switch_opens_no_drawer() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/references",
+            serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
+        );
+    });
+
+    // Sends the request synchronously; deliberately no settle() before the
+    // switch below — same technique as `lsp_hover.rs`'s own
+    // `stale_response_after_a_buffer_switch_shows_no_popup`.
+    ed.execute_keymap_command("lsp-references".into(), Some(1), false);
+
+    let other = file_dir.path().join("other.rs");
+    std::fs::write(&other, "\n").unwrap();
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+
+    ed.drain_lsp();
+    ed.settle();
+
+    assert!(
+        ed.state.views.drawer.read().is_none(),
+        "a references response for a buffer that's no longer focused must not open a drawer"
+    );
+}

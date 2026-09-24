@@ -966,7 +966,7 @@ fn macro_replay_runs_a_replayed_keys_own_hook_before_the_next_replayed_key() {
 
     const HOOK: &str = r#"(register-hook! 'on-mode-change (lambda (from to)
         (when (equal? to "insert")
-          (set-buffer-option! (current-buffer) "tab-style" "soft"))))"#;
+          (set-buffer-option! (focused-pane) "tab-style" "soft"))))"#;
 
     let mut recorded = editor_from("-[a]>b\n");
     attach_host(&mut recorded, HOOK);

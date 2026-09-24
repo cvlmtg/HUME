@@ -6,8 +6,7 @@
 //! `SteelCtx`).
 //!
 //! The `impl Editor` choke-points (`open_buffer`, `close_buffer`,
-//! `switch_to_buffer_with_jump`, `replace_buffer_in_place`) are thin
-//! delegators; all logic lives here.
+//! `switch_to_buffer_with_jump`) are thin delegators; all logic lives here.
 
 use slotmap::SecondaryMap;
 
@@ -173,14 +172,20 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 
 // ── close_buffer ──────────────────────────────────────────────────────────────
 
-/// Remove buffer `id`, handling both cases:
+/// Remove buffer `id`. Every pane showing it (active tab or not) redirects
+/// to the MRU replacement buffer — or, when `id` was the only buffer, to a
+/// freshly allocated scratch buffer (via [`open_buffer`], seeded with
+/// `undo_levels`, the current global `undo-levels` setting), the same way
+/// any other buffer open would be. `id`'s own slot is always freed: a
+/// versioned key is never reused for different content, so a captured `id`
+/// can never silently start naming the replacement — the failure mode a
+/// same-slot in-place replace (the previous design) left open for any
+/// `LivePane` builtin whose bid outlived the close.
 ///
-/// - At least one other buffer: redirect every pane viewing `id` to the
-///   MRU replacement, then free the slot.
-/// - Only buffer: replace in-place with a fresh scratch buffer, seeded with
-///   `undo_levels` (the current global `undo-levels` setting).
-///
-/// Returns the `BufferId` that the focused pane is now viewing.
+/// Returns `(new_focused, opened)`: the `BufferId` the focused pane is now
+/// viewing, and — only when the last-buffer branch fired — the freshly
+/// allocated scratch buffer's id, for [`close_buffer_and_notify`] to
+/// announce with [`queue_open_announcement`] exactly like any other open.
 pub(in crate::editor) fn close_buffer(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
@@ -189,32 +194,38 @@ pub(in crate::editor) fn close_buffer(
     focused_pane_id: PaneId,
     id: BufferId,
     undo_levels: usize,
-) -> BufferId {
-    match buffers.mru_excluding(id) {
-        Some(next) => {
-            // Collect before mutating (borrow checker); n≈1 in the single-pane case.
-            // Every pane showing `id` must redirect, active tab or not.
-            let panes_to_redirect: Vec<PaneId> = ev
-                .panes
-                .every_pane_across_all_tabs()
-                .filter(|(_, p)| p.buffer_id == id)
-                .map(|(pid, _)| pid)
-                .collect();
-            for pid in panes_to_redirect {
-                switch_pane_to_buffer(ev, buffers, pane_state, pid, next);
-            }
-            buffers.close(id);
-            ev.buffers.remove(id);
-            forget_buffer_in_all_panes(ev, pane_state, pane_jumps, id);
-            ev.panes[focused_pane_id].buffer_id
-        }
+) -> (BufferId, Option<BufferId>) {
+    let (next, opened) = match buffers.mru_excluding(id) {
+        Some(next) => (next, None),
         None => {
-            let mut scratch = Buffer::scratch();
-            scratch.set_undo_levels(undo_levels);
-            replace_buffer_in_place(ev, buffers, pane_state, pane_jumps, id, scratch);
-            id
+            let bid = open_buffer(
+                ev,
+                buffers,
+                pane_state,
+                focused_pane_id,
+                Buffer::scratch(),
+                undo_levels,
+            );
+            (bid, Some(bid))
         }
+    };
+    // Collect before mutating (borrow checker); n≈1 in the single-pane case.
+    // Every pane showing `id` must redirect, active tab or not — in the
+    // last-buffer case this is *every* pane, since `id` was the only buffer
+    // any of them could have been showing.
+    let panes_to_redirect: Vec<PaneId> = ev
+        .panes
+        .every_pane_across_all_tabs()
+        .filter(|(_, p)| p.buffer_id == id)
+        .map(|(pid, _)| pid)
+        .collect();
+    for pid in panes_to_redirect {
+        switch_pane_to_buffer(ev, buffers, pane_state, pid, next);
     }
+    buffers.close(id);
+    ev.buffers.remove(id);
+    forget_buffer_in_all_panes(ev, pane_state, pane_jumps, id);
+    (ev.panes[focused_pane_id].buffer_id, opened)
 }
 
 /// [`close_buffer`] plus the pre-close LSP sync and post-close cleanup
@@ -254,19 +265,18 @@ pub(in crate::editor) fn close_buffer_and_notify(
     }
     state.config.decorations.remove_buffer(id);
     state.config.statusline_text.remove(&id);
-    // A reload confirm naming `id` would otherwise outlive its subject: the
-    // slot is freed below, or — in the last-buffer branch — reused in place
-    // for a fresh scratch, so `reload_buffer_from_disk` would bail on
-    // `try_get` or on the scratch's missing path and the user's `r` would do
-    // nothing. Retire the question rather than leave one that can't be
-    // answered; with `can_open_confirm`'s no-other-overlay guard, leaving it
-    // would also block every later prompt until some stray key happened to
-    // dismiss it. See `EditorState::retire_stale_confirm` for why this is a
-    // retirement (`excise_layer`), not a `truncate_layers`.
+    // A reload confirm naming `id` would otherwise outlive its subject — the
+    // slot is always freed below, whether or not another buffer existed to
+    // replace it. `reload_buffer_from_disk` would bail on `try_get` and the
+    // user's `r` would do nothing. Retire the question rather than leave one
+    // that can't be answered; with `can_open_confirm`'s no-other-overlay
+    // guard, leaving it would also block every later prompt until some stray
+    // key happened to dismiss it. See `EditorState::retire_stale_confirm`
+    // for why this is a retirement (`excise_layer`), not a `truncate_layers`.
     state.retire_stale_confirm(ev, |c| c.targets_buffer(id));
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;
-    let new_focused = close_buffer(
+    let (new_focused, opened) = close_buffer(
         ev,
         &mut state.buffers,
         &mut state.panes.state,
@@ -275,6 +285,12 @@ pub(in crate::editor) fn close_buffer_and_notify(
         id,
         state.settings.undo_levels,
     );
+    // The last-buffer branch fired: a fresh scratch buffer was allocated in
+    // `id`'s place and must announce its own `OnBufferOpen` like any other
+    // open — it is a genuinely new `BufferId`, not `id` reused.
+    if let Some(bid) = opened {
+        queue_open_announcement(state, bid);
+    }
     if open_announced {
         // Fire with the ID that was closed, not the new current buffer.
         state.queue_event(EditorEvent::OnBufferClose { buffer: id });
@@ -282,48 +298,8 @@ pub(in crate::editor) fn close_buffer_and_notify(
     new_focused
 }
 
-// ── replace_buffer_in_place ───────────────────────────────────────────────────
-
-/// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.
-///
-/// Used by the last-buffer case of `close_buffer`.
-/// Caller contract: `new_doc.search_pattern` must be `None`.
-pub(in crate::editor) fn replace_buffer_in_place(
-    ev: &mut EngineView,
-    buffers: &mut BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
-    id: BufferId,
-    mut new_doc: Buffer,
-) {
-    debug_assert!(
-        new_doc.search_pattern.is_none(),
-        "replace_buffer_in_place: new_doc must have no active search state",
-    );
-    let prev = buffers.get(id);
-    // Carry the stamp forward past whatever `new_doc`'s constructor set it
-    // to (always 0) — see `Buffer::replace_stamp`'s doc for why this bump,
-    // not the buffer's content, is what marks `id` as "not the same buffer
-    // instance a snapshot taken before this call meant".
-    new_doc.replace_stamp = prev.replace_stamp.wrapping_add(1);
-    // `text_gen`/`announced_text_gen` are a per-`BufferId` observation baseline,
-    // not per-`Buffer`-instance state: `take_text_changed` diffs them to raise
-    // `on-text-changed`. Letting `new_doc`'s constructor reset both to 0 would
-    // make a total content replacement under a live id read as "nothing
-    // happened". Carry the baseline forward and bump past it so the swap
-    // announces itself exactly once.
-    new_doc.text_gen = prev.text_gen + 1;
-    new_doc.announced_text_gen = prev.announced_text_gen;
-    // The new doc carries no syntax attachment (Buffer.syntax = None by
-    // construction — the flip made this assignment alone sufficient to drop
-    // any stale committed layers, since they now live inside Buffer.syntax).
-    *buffers.get_mut(id) = new_doc;
-    reseed_panes_after_content_reset(ev, buffers, pane_state, pane_jumps, id);
-}
-
 /// Reseed every per-pane store keyed to `id` after its content was reset
-/// wholesale — a full `Buffer` swap ([`replace_buffer_in_place`]) or
-/// `set_view_content`'s history-resetting in-place replace
+/// wholesale — `set_view_content`'s history-resetting in-place replace
 /// (`Editor::open_read_only_view`) — as opposed to an edit, which has a
 /// `ChangeSet` to remap positions through instead of discarding them.
 ///

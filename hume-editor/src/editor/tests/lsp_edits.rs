@@ -5,20 +5,27 @@
 use std::path::Path;
 
 use super::*;
+use crate::editor::buffer::Buffer;
 use crate::editor::lsp::LspState;
+use hume_editing::selection::SelectionSet;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 
 /// Attaches the focused buffer to a `Running` scripted server negotiated on
-/// UTF-8. Negotiating the non-default encoding here does not by itself
-/// prove `apply-text-edits!` consults it rather than assuming UTF-16 — a
-/// wire offset only diverges between the two encodings on a line with a
-/// multi-byte character, so most fixtures below (all ASCII) would pass
-/// identically either way. The actual proof is
+/// UTF-8, after handing `configure` the backend to script canned responses
+/// on (called before the handshake, matching `lsp_bridge.rs`'s `setup_with`
+/// convention). Negotiating the non-default encoding here does not by
+/// itself prove `apply-text-edits!` consults it rather than assuming
+/// UTF-16 — a wire offset only diverges between the two encodings on a line
+/// with a multi-byte character, so most fixtures below (all ASCII) would
+/// pass identically either way. The actual proof is
 /// `apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units`, whose
 /// fixture is chosen specifically to make that divergence observable.
-fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
+fn attach_running_utf8_server_with(
+    ed: &mut Editor,
+    configure: impl FnOnce(&mut InlineLspBackend, ServerId),
+) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to(
         "initialize",
@@ -27,6 +34,7 @@ fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
     let sid = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
         .unwrap();
+    configure(&mut backend, sid);
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     client.start_handshake(&mut backend);
     let (sid2, ev) = backend.drain().into_iter().next().unwrap();
@@ -41,24 +49,68 @@ fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
     sid
 }
 
+/// [`attach_running_utf8_server_with`] for a test with no canned response of
+/// its own to script.
+fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
+    attach_running_utf8_server_with(ed, |_, _| {})
+}
+
+/// One wire `TextEdit` JSON object, the shape `apply-text-edits!` now
+/// requires every entry to be tagged as (via a real response) — the
+/// `((start-line . start-char) (end-line . end-char) text)` hand-built
+/// tuple shape this used to build directly no longer exists.
+fn wire_edit(start: (u32, u32), end: (u32, u32), new_text: &str) -> serde_json::Value {
+    serde_json::json!({
+        "range": {
+            "start": {"line": start.0, "character": start.1},
+            "end": {"line": end.0, "character": end.1},
+        },
+        "newText": new_text,
+    })
+}
+
+/// Sends `edits` (built with [`wire_edit`]) through a scripted
+/// `test/textEdits` request/response round trip and applies the response to
+/// the focused buffer via `apply-text-edits!` — the one way a test can hand
+/// it a server-tagged value, now that the hand-built tuple shape is gone.
+/// `expect_gen_clause` is spliced into the call verbatim (empty string to
+/// omit `#:expect-generation`).
+fn apply_wire_text_edits(
+    ed: &mut Editor,
+    tmp: &std::path::Path,
+    edits: Vec<serde_json::Value>,
+    expect_gen_clause: &str,
+) {
+    attach_running_utf8_server_with(ed, |backend, _sid| {
+        backend.respond_to("test/textEdits", serde_json::Value::Array(edits));
+    });
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"(define-typed-command! "go" "" (lambda (bid)
+                 (lsp-request bid "test/textEdits" (hash) (lambda (err res)
+                   (apply-text-edits! bid (json-list res){expect_gen_clause})))))"#
+        ),
+    );
+    type_cmd(ed, ":go");
+    ed.drain_lsp();
+    ed.settle();
+}
+
 // ── apply-text-edits! ───────────────────────────────────────────────────────
 
 #[test]
 fn apply_text_edits_single_edit() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
-    let bid = ed.focused_buffer_id();
-    run(
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 1) (cons 0 3) "XY")))))"#,
+        vec![wire_edit((0, 1), (0, 3), "XY")],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "aXYdef\n");
-    let _ = bid;
 }
 
 /// A server can send `new_text` in its own platform's line-ending
@@ -68,15 +120,12 @@ fn apply_text_edits_single_edit() {
 fn apply_text_edits_normalizes_crlf_in_new_text() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
-    run(
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 1) (cons 0 3) "X\r\nY")))))"#,
+        vec![wire_edit((0, 1), (0, 3), "X\r\nY")],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "aX\nYdef\n");
 }
 
@@ -90,15 +139,12 @@ fn apply_text_edits_normalizes_crlf_in_new_text() {
 fn apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>ébcdef\n");
-    attach_running_utf8_server(&mut ed);
-    run(
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 3) (cons 0 4) "X")))))"#,
+        vec![wire_edit((0, 3), (0, 4), "X")],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "aéXcdef\n");
 }
 
@@ -106,19 +152,17 @@ fn apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units() {
 fn apply_text_edits_multiple_edits_same_line_apply_descending() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
-    run(
+    // Two edits on the same line, given out of order — must not corrupt
+    // each other's offsets (the classic ascending-with-fixups bug).
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             ; Two edits on the same line, given out of order — must not
-             ; corrupt each other's offsets (the classic ascending-with-
-             ; fixups bug).
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 0) (cons 0 1) "Z")
-                     (list (cons 0 4) (cons 0 5) "W")))))"#,
+        vec![
+            wire_edit((0, 0), (0, 1), "Z"),
+            wire_edit((0, 4), (0, 5), "W"),
+        ],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "ZbcdWf\n");
 }
 
@@ -131,16 +175,15 @@ fn apply_text_edits_multiple_edits_same_line_apply_descending() {
 fn apply_text_edits_same_position_inserts_apply_in_array_order() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
-    run(
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 0) (cons 0 0) "1")
-                     (list (cons 0 0) (cons 0 0) "2")))))"#,
+        vec![
+            wire_edit((0, 0), (0, 0), "1"),
+            wire_edit((0, 0), (0, 0), "2"),
+        ],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(
         ed.doc().text().to_string(),
         "12abcdef\n",
@@ -152,16 +195,15 @@ fn apply_text_edits_same_position_inserts_apply_in_array_order() {
 fn apply_text_edits_adjacent_not_overlapping_accepted() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
-    run(
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 0) (cons 0 2) "AA")
-                     (list (cons 0 2) (cons 0 4) "BB")))))"#,
+        vec![
+            wire_edit((0, 0), (0, 2), "AA"),
+            wire_edit((0, 2), (0, 4), "BB"),
+        ],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "AABBef\n");
 }
 
@@ -169,16 +211,15 @@ fn apply_text_edits_adjacent_not_overlapping_accepted() {
 fn apply_text_edits_overlapping_rejected() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
-    run(
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 0) (cons 0 3) "A")
-                     (list (cons 0 2) (cons 0 5) "B")))))"#,
+        vec![
+            wire_edit((0, 0), (0, 3), "A"),
+            wire_edit((0, 2), (0, 5), "B"),
+        ],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(
         ed.doc().text().to_string(),
         "abcdef\n",
@@ -190,15 +231,12 @@ fn apply_text_edits_overlapping_rejected() {
 fn apply_text_edits_reversed_range_rejected() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
-    run(
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 3) (cons 0 0) "X")))))"#,
+        vec![wire_edit((0, 3), (0, 0), "X")],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(
         ed.doc().text().to_string(),
         "abcdef\n",
@@ -210,16 +248,15 @@ fn apply_text_edits_reversed_range_rejected() {
 fn apply_text_edits_is_one_undo_step() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
-    run(
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 0) (cons 0 1) "Z")
-                     (list (cons 0 5) (cons 0 6) "W")))))"#,
+        vec![
+            wire_edit((0, 0), (0, 1), "Z"),
+            wire_edit((0, 5), (0, 6), "W"),
+        ],
+        "",
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "Zbcdew\n".replace('w', "W"));
 
     ed.handle_key(key('u'));
@@ -234,7 +271,6 @@ fn apply_text_edits_is_one_undo_step() {
 fn apply_text_edits_version_mismatch_rejected() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    attach_running_utf8_server(&mut ed);
     let stale_gen = ed.doc().text_gen;
     // Make an unrelated edit first so the buffer's generation moves past
     // what the (fictional) LSP response was computed against.
@@ -242,18 +278,13 @@ fn apply_text_edits_version_mismatch_rejected() {
     ed.handle_key(key('!'));
     ed.handle_key(key_esc());
 
-    run(
+    let before = ed.doc().text().to_string();
+    apply_wire_text_edits(
         &mut ed,
         tmp.path(),
-        &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (apply-text-edits! (current-buffer)
-                   (list (list (cons 0 0) (cons 0 1) "Z"))
-                   #:expect-generation {stale_gen})))"#
-        ),
+        vec![wire_edit((0, 0), (0, 1), "Z")],
+        &format!(" #:expect-generation {stale_gen}"),
     );
-    let before = ed.doc().text().to_string();
-    type_cmd(&mut ed, ":go");
     assert_eq!(
         ed.doc().text().to_string(),
         before,
@@ -261,7 +292,57 @@ fn apply_text_edits_version_mismatch_rejected() {
     );
 }
 
+/// `apply-text-edits!` only accepts server-tagged wire edits (via a real
+/// response) — a hand-built entry (constructed directly in Scheme, never
+/// crossed through a response) has no producing server to have negotiated
+/// an encoding with, and is rejected before ever reaching the host, rather
+/// than silently guessing UTF-16 the way the removed `encoding_for_buffer`
+/// once did.
+#[test]
+fn apply_text_edits_rejects_a_hand_built_edit() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    attach_running_utf8_server(&mut ed);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (apply-text-edits! bid
+               (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                       "end" (hash "line" 0 "character" 1))
+                      "newText" "X")))))"#,
+    );
+    let before = ed.doc().text().to_string();
+    type_cmd(&mut ed, ":go");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "a hand-built (untagged) edit must be rejected, not applied with a guessed encoding"
+    );
+}
+
 // ── apply-workspace-edit! ────────────────────────────────────────────────────
+
+/// Sends `wsedit` (a `WorkspaceEdit` JSON blob) through a scripted
+/// `test/workspaceEdit` request/response round trip and applies the
+/// response via `apply-workspace-edit!` — the one way a test can hand it a
+/// server-tagged value, now that `#:from`/a hand-built hashmap no longer
+/// carries any encoding at all.
+fn apply_wire_workspace_edit(ed: &mut Editor, tmp: &std::path::Path, wsedit: serde_json::Value) {
+    attach_running_utf8_server_with(ed, |backend, _sid| {
+        backend.respond_to("test/workspaceEdit", wsedit);
+    });
+    run(
+        ed,
+        tmp,
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (lsp-request bid "test/workspaceEdit" (hash) (lambda (err res)
+               (apply-workspace-edit! bid res)))))"#,
+    );
+    type_cmd(ed, ":go");
+    ed.drain_lsp();
+    ed.settle();
+}
 
 #[test]
 fn apply_workspace_edit_changes_shape() {
@@ -272,21 +353,14 @@ fn apply_workspace_edit_changes_shape() {
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    run(
+    apply_wire_workspace_edit(
         &mut ed,
         tmp.path(),
-        &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (apply-workspace-edit!
-                   (hash "changes"
-                     (hash {:?}
-                       (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
-                                               "end" (hash "line" 0 "character" 3))
-                              "newText" "XYZ")))))))"#,
-            uri.as_str()
-        ),
+        serde_json::json!({"changes": {uri.as_str(): [
+            {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+             "newText": "XYZ"},
+        ]}}),
     );
-    type_cmd(&mut ed, ":go");
     assert_eq!(
         std::fs::read_to_string(&file).unwrap(),
         "abcdef\n",
@@ -309,23 +383,53 @@ fn apply_workspace_edit_document_changes_shape() {
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    run(
+    apply_wire_workspace_edit(
         &mut ed,
         tmp.path(),
-        &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (apply-workspace-edit!
-                   (hash "documentChanges"
-                     (list (hash "textDocument" (hash "uri" {:?} "version" void)
-                                 "edits" (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
-                                                                "end" (hash "line" 0 "character" 1))
-                                                "newText" "Z"))))))))"#,
-            uri.as_str()
-        ),
+        serde_json::json!({"documentChanges": [
+            {"textDocument": {"uri": uri.as_str(), "version": null},
+             "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                         "newText": "Z"}]},
+        ]}),
     );
-    type_cmd(&mut ed, ":go");
     let bid = ed.state.buffers.find_by_path(&canonical).unwrap();
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "Zbcdef\n");
+}
+
+/// `apply-workspace-edit!` decodes the whole edit in the *response's own*
+/// tagged encoding, not the (possibly brand-new, unattached) target file's
+/// — the Steel-entry-point counterpart to
+/// `server_initiated_apply_edit_into_unopened_file_uses_the_requesting_servers_encoding`.
+/// Same divergent fixture: byte offset 3 is `b`, UTF-16 code-unit offset 3
+/// is `c`.
+#[test]
+fn apply_workspace_edit_into_unopened_file_uses_the_responses_encoding() {
+    let tmp = safe_tempdir();
+    let file = tmp.path().join("new.txt");
+    std::fs::write(&file, "aébcdef\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    apply_wire_workspace_edit(
+        &mut ed,
+        tmp.path(),
+        serde_json::json!({"changes": {uri.as_str(): [
+            {"range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 4}},
+             "newText": "X"},
+        ]}}),
+    );
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical)
+        .expect("file must have been opened as a buffer");
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "aéXcdef\n",
+        "must decode the edit in the response's own UTF-8 encoding, not guess UTF-16"
+    );
 }
 
 #[test]
@@ -345,24 +449,20 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
         .unwrap();
     assert!(ed.state.buffers.find_by_path(&unopened_canonical).is_none());
 
-    run(
+    apply_wire_workspace_edit(
         &mut ed,
         tmp.path(),
-        &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (apply-workspace-edit!
-                   (hash "changes"
-                     (hash {:?} (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
-                                                        "end" (hash "line" 0 "character" 1))
-                                       "newText" "H"))
-                          {:?} (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
-                                                        "end" (hash "line" 0 "character" 1))
-                                       "newText" "W")))))))"#,
-            opened_uri.as_str(),
-            unopened_uri.as_str()
-        ),
+        serde_json::json!({"changes": {
+            opened_uri.as_str(): [
+                {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                 "newText": "H"},
+            ],
+            unopened_uri.as_str(): [
+                {"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                 "newText": "W"},
+            ],
+        }}),
     );
-    type_cmd(&mut ed, ":go");
 
     let opened_bid = ed.state.buffers.find_by_path(&opened_canonical).unwrap();
     assert_eq!(
@@ -397,30 +497,21 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
         hume_lsp::uri::path_to_uri(&std::fs::canonicalize(&invalid_dir).unwrap()).unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    run(
+    apply_wire_workspace_edit(
         &mut ed,
         tmp.path(),
-        &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (apply-workspace-edit!
-                   (hash "documentChanges"
-                     (list
-                       ; The invalid entry is listed FIRST — documentChanges is an
-                       ; ordered list (unlike `changes`' hashmap), so validation
-                       ; reaches it before ever touching the valid file.
-                       (hash "textDocument" (hash "uri" {:?} "version" void)
-                             "edits" (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
-                                                            "end" (hash "line" 0 "character" 1))
-                                            "newText" "Z")))
-                       (hash "textDocument" (hash "uri" {:?} "version" void)
-                             "edits" (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
-                                                            "end" (hash "line" 0 "character" 1))
-                                            "newText" "Z"))))))))"#,
-            invalid_uri.as_str(),
-            ok_uri.as_str()
-        ),
+        // The invalid entry is listed FIRST — documentChanges is an ordered
+        // list (unlike `changes`' hashmap), so validation reaches it before
+        // ever touching the valid file.
+        serde_json::json!({"documentChanges": [
+            {"textDocument": {"uri": invalid_uri.as_str(), "version": null},
+             "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                         "newText": "Z"}]},
+            {"textDocument": {"uri": ok_uri.as_str(), "version": null},
+             "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                         "newText": "Z"}]},
+        ]}),
     );
-    type_cmd(&mut ed, ":go");
 
     assert_eq!(
         std::fs::read_to_string(&ok_path).unwrap(),
@@ -446,26 +537,18 @@ fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_pani
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    run(
+    apply_wire_workspace_edit(
         &mut ed,
         tmp.path(),
-        &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (apply-workspace-edit!
-                   (hash "documentChanges"
-                     (list
-                       (hash "textDocument" (hash "uri" {0:?} "version" void)
-                             "edits" (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
-                                                            "end" (hash "line" 0 "character" 1))
-                                            "newText" "X")))
-                       (hash "textDocument" (hash "uri" {0:?} "version" void)
-                             "edits" (list (hash "range" (hash "start" (hash "line" 0 "character" 1)
-                                                            "end" (hash "line" 0 "character" 2))
-                                            "newText" "Y"))))))))"#,
-            uri.as_str()
-        ),
-    );
-    type_cmd(&mut ed, ":go"); // must not panic
+        serde_json::json!({"documentChanges": [
+            {"textDocument": {"uri": uri.as_str(), "version": null},
+             "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                         "newText": "X"}]},
+            {"textDocument": {"uri": uri.as_str(), "version": null},
+             "edits": [{"range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 2}},
+                         "newText": "Y"}]},
+        ]}),
+    ); // must not panic
 
     let bid = ed
         .state
@@ -489,8 +572,8 @@ fn goto_location_same_buffer_char_indexed_shape() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (goto-location! (list (current-buffer) 0 3))))"#,
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (list bid 0 3))))"#,
     );
     let before = state(&ed);
     type_cmd(&mut ed, ":go");
@@ -512,8 +595,8 @@ fn goto_location_noop_does_not_clobber_forward_history() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (goto-location! (list (current-buffer) 0 0))))"#,
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (list bid 0 0))))"#,
     );
 
     // `%` — jump-flagged, moves elsewhere, records a jump.
@@ -562,8 +645,8 @@ fn goto_location_other_open_buffer_by_path_string() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (goto-location! (list {:?} 0 1))))"#,
+            r#"(define-typed-command! "go" "" (lambda (bid)
+                 (goto-location! bid (list {:?} 0 1))))"#,
             file.to_str().unwrap()
         ),
     );
@@ -583,8 +666,8 @@ fn goto_location_unopened_path_opens_it() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (goto-location! (list {:?} 0 2))))"#,
+            r#"(define-typed-command! "go" "" (lambda (bid)
+                 (goto-location! bid (list {:?} 0 2))))"#,
             file.to_str().unwrap()
         ),
     );
@@ -600,8 +683,8 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (goto-location! (list (current-buffer) 999 0))))"#,
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (list bid 999 0))))"#,
     );
     type_cmd(&mut ed, ":go");
     let len_chars = ed.doc().text().end();
@@ -647,8 +730,8 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (goto-location! (list (current-buffer) 20 0))))"#,
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (list bid 20 0))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -682,8 +765,8 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-             (goto-location! (list {dir_target:?} 0 0))))"#
+            r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (list {dir_target:?} 0 0))))"#
         ),
     );
     let before = state(&ed);
@@ -695,7 +778,57 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
     assert_eq!(state(&ed), before);
 }
 
-/// `(goto-location! (list path line char-col))` on a path that doesn't exist yet
+/// `(goto-location! loc)`'s wire shape decodes `loc`'s position in the
+/// response's own tagged encoding — same divergent fixture as
+/// `apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units`: on
+/// "aébcdef", byte offset 3 is `b`, UTF-16 code-unit offset 3 is `c`.
+///
+/// Fail oracle: guessing UTF-16 instead of reading the response's own tag
+/// would land on `c` instead of `b`.
+#[test]
+fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
+    let tmp = safe_tempdir();
+    let file = tmp.path().join("target.txt");
+    std::fs::write(&file, "aébcdef\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    attach_running_utf8_server_with(&mut ed, |backend, _sid| {
+        backend.respond_to(
+            "test/gotoTarget",
+            serde_json::json!({
+                "uri": uri.as_str(),
+                "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 3}},
+            }),
+        );
+    });
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (bid)
+             (lsp-request bid "test/gotoTarget" (hash) (lambda (err res)
+               (goto-location! bid res)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.drain_lsp();
+    ed.settle();
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical)
+        .expect("goto-location! must have opened the target file");
+    assert_eq!(ed.focused_buffer_id(), bid);
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        co(2),
+        "byte offset 3 on \"aébcdef\" names char index 2 ('b') — a UTF-16 guess would land on \
+         char index 3 ('c') instead"
+    );
+}
+
+/// `(goto-location! bid (list path line char-col))` on a path that doesn't exist yet
 /// must open a new-file buffer and jump to it, the same tolerance `:e` has —
 /// `resolve_path_or_uri` shares `Editor::resolve_open_path`'s
 /// `Buffer::from_file_or_new` chokepoint.
@@ -709,8 +842,8 @@ fn goto_missing_path_opens_new_file_buffer() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-             (goto-location! (list {target_str:?} 0 0))))"#
+            r#"(define-typed-command! "go" "" (lambda (bid)
+             (goto-location! bid (list {target_str:?} 0 0))))"#
         ),
     );
     let start_bid = ed.focused_buffer_id();
@@ -727,6 +860,51 @@ fn goto_missing_path_opens_new_file_buffer() {
 
 // ── workspace/applyEdit server-request swap ──────────────────────────────────
 
+/// A server-initiated `workspace/applyEdit` into a file this edit is
+/// opening for the *first time* must still decode positions in the
+/// requesting server's own negotiated encoding — the new buffer has no
+/// attached server yet (`detect_pending_languages` only runs after this
+/// returns), so resolving the encoding from the *target* buffer instead of
+/// the *requesting server* would silently fall back to UTF-16 and corrupt
+/// any non-ASCII line. Same fixture divergence as
+/// `apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units`: byte
+/// offset 3 is `b` (`a`, then `é`'s 2 bytes, then `b`), but UTF-16 code-unit
+/// offset 3 is `c` (`é` is one code unit).
+#[test]
+fn server_initiated_apply_edit_into_unopened_file_uses_the_requesting_servers_encoding() {
+    let tmp = safe_tempdir();
+    let file = tmp.path().join("new.txt");
+    std::fs::write(&file, "aébcdef\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    let sid = attach_running_utf8_server(&mut ed);
+    let params = serde_json::json!({
+        "edit": {
+            "changes": {
+                uri.as_str(): [{
+                    "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 4}},
+                    "newText": "X",
+                }]
+            }
+        }
+    });
+    let result = ed.apply_edit_request_response(&params, sid).unwrap();
+    assert_eq!(result["applied"], serde_json::json!(true));
+
+    let bid = ed
+        .state
+        .buffers
+        .find_by_path(&canonical)
+        .expect("workspace/applyEdit must have opened the file as a buffer");
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "aéXcdef\n",
+        "must decode the edit in the requesting server's UTF-8 encoding, not guess UTF-16"
+    );
+}
+
 #[test]
 fn server_initiated_apply_edit_actually_applies_and_answers_true() {
     let tmp = safe_tempdir();
@@ -736,6 +914,7 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = editor_from("-[x]>\n");
+    let sid = attach_running_utf8_server(&mut ed);
     let params = serde_json::json!({
         "edit": {
             "changes": {
@@ -746,7 +925,7 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
             }
         }
     });
-    let result = ed.apply_edit_request_response(&params).unwrap();
+    let result = ed.apply_edit_request_response(&params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(true));
 
     let bid = ed
@@ -776,6 +955,7 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
     let uri = hume_lsp::uri::path_to_uri(&canonical).unwrap();
 
     let mut ed = editor_from("-[x]>\n");
+    let sid = attach_running_utf8_server(&mut ed);
     ed.state
         .config
         .languages
@@ -796,7 +976,7 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
             }
         }
     });
-    let result = ed.apply_edit_request_response(&params).unwrap();
+    let result = ed.apply_edit_request_response(&params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(true));
 
     let bid = ed
@@ -814,10 +994,11 @@ fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
 #[test]
 fn server_initiated_apply_edit_answers_false_with_a_reason_on_bad_uri() {
     let mut ed = editor_from("-[x]>\n");
+    let sid = attach_running_utf8_server(&mut ed);
     let params = serde_json::json!({
         "edit": { "changes": { "not-a-uri": [] } }
     });
-    let result = ed.apply_edit_request_response(&params).unwrap();
+    let result = ed.apply_edit_request_response(&params, sid).unwrap();
     assert_eq!(result["applied"], serde_json::json!(false));
     assert!(result["failureReason"].is_string());
 }

@@ -166,6 +166,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     fn run_command_sync(
         &mut self,
         name: &str,
+        pane: hume_scripting::PaneHandle,
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
@@ -178,6 +179,19 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 "{name} is not a native command — use call! instead of call-native!"
             ));
         }
+        // Resolve `pane` against `cmd`'s own `TargetCategory` — the pane it
+        // acts through, and whether that makes this dispatch `Scope::Focus`
+        // or `Scope::Remote` for the bookkeeping steps below. See
+        // `commands::pipeline`'s `resolve_pane`/`Scope` doc for the full
+        // rule; resolved *before* arming the register prefix, so a refusal
+        // here leaves no prefix armed behind it.
+        let (target, scope) = crate::editor::commands::resolve_pane(
+            self.state,
+            self.view,
+            pane,
+            cmd.target_category(),
+        )
+        .map_err(|e| format!("'{name}': {e}"))?;
         // Arm the register prefix so register-aware commands (yank, delete,
         // paste-after, …) route to the right destination.
         if let Some(r) = register {
@@ -186,11 +200,14 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         }
         // Delegate to the shared pipeline — all bookkeeping (paste session, jump
         // list, dot-repeat) lives there so the sync path is identical to the
-        // keypress path.
-        let ran = crate::editor::commands::run_dispatch_pipeline(
+        // keypress path, except that `Scope::Remote` skips the focus-bound
+        // steps (see `run_resolved`'s doc).
+        let ran = crate::editor::commands::run_resolved(
             self.state,
             self.view,
             cmd,
+            target,
+            scope,
             crate::editor::dispatch::CmdCtx {
                 // `count` came from `parse_count_extend`, which decodes a
                 // Steel-side count of 0 to `None` — the script's way of asking

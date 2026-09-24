@@ -469,18 +469,18 @@ fn on_language_set_hook_configures_word_chars() {
     assert_eq!(state(&ed), "foo-bar-[ baz]>\n");
 }
 
-/// `(get-option bid "word-chars")` round-trips the raw string — covers the
-/// new `option_value!` arm.
+/// `(get-buffer-option bid "word-chars")` round-trips the raw string —
+/// covers the new `option_value!` arm.
 #[test]
-fn get_option_round_trips_word_chars() {
+fn get_buffer_option_round_trips_word_chars() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
     ed.state.settings.word_chars = "-".into();
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "check" "" (lambda ()
-             (log! 'info (get-option (current-buffer) "word-chars"))))"#,
+        r#"(define-typed-command! "check" "" (lambda (bid)
+             (log! 'info (get-buffer-option bid "word-chars"))))"#,
     );
     type_cmd(&mut ed, ":check");
     assert_eq!(ed.state.status_msg.clone().unwrap(), "-");
@@ -525,7 +525,7 @@ fn set_buffer_option_wrap_mode_from_hook_changes_the_open_pane() {
 /// scripting context while the hook's own `bid` may name a background
 /// buffer.
 ///
-/// Fail oracle: implement the builtin against `(current-buffer)` instead of
+/// Fail oracle: implement the builtin against `(focused-pane)` instead of
 /// the explicit `bid` argument — both assertions below would fail (the
 /// focused buffer would get the override, the background buffer would not).
 #[test]
@@ -554,17 +554,17 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
     );
 }
 
-/// `get-option`'s optional leading-bid argument, mirrored here at the host
-/// layer (`SettingsHost::get_option` takes an explicit `bid`, same as
-/// `set_buffer_option`), reads the *named* buffer's override — not the
-/// focused buffer's — the read-side half of the same hook-bid distinction
+/// `get-buffer-option`'s explicit `bid` argument, mirrored here at the host
+/// layer (`SettingsHost::get_buffer_option`, same as `set_buffer_option`),
+/// reads the *named* buffer's override — not the focused buffer's — the
+/// read-side half of the same hook-bid distinction
 /// `set_buffer_option_targets_hook_bid_not_focused_buffer` pins for writes.
 ///
-/// Fail oracle: pass `ctx.focused_buffer_id` unconditionally instead of the
-/// decoded bid argument — this would read the focused buffer's default (4)
+/// Fail oracle: read `self.focused_buffer_id()` unconditionally instead of
+/// the `bid` argument — this would read the focused buffer's default (4)
 /// instead of bid2's override (8).
 #[test]
-fn get_option_explicit_bid_reads_hook_target_not_focused_buffer() {
+fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
     use hume_scripting::host::{EditorHost, OptionValue};
 
     let mut ed = editor_from("-[a]>b\n");
@@ -585,16 +585,47 @@ fn get_option_explicit_bid_reads_hook_target_not_focused_buffer() {
 
     let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert_eq!(
-        host.settings().get_option("tab-width", bid2).unwrap(),
+        host.settings()
+            .get_buffer_option("tab-width", bid2)
+            .unwrap(),
         OptionValue::Int(8),
         "explicit bid must read the hook's target buffer's override"
     );
     assert_eq!(
         host.settings()
-            .get_option("tab-width", focused_bid)
+            .get_buffer_option("tab-width", focused_bid)
             .unwrap(),
         OptionValue::Int(4),
         "the focused (non-target) buffer must still resolve to the global default"
+    );
+}
+
+/// `get-buffer-option` on a closed buffer id must error, matching
+/// `set-buffer-option!`'s own `try_get` guard (`EditorHostImpl::set_buffer_option`)
+/// — a stale bid is invalid input, not a request for "whatever the global
+/// default is".
+///
+/// Fail oracle: without the `try_get` check, this silently returns the
+/// global `tab-width` default instead of erroring.
+#[test]
+fn get_buffer_option_closed_bid_errors() {
+    use hume_scripting::host::EditorHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let bid2 = ed.open_buffer(Buffer::new(
+        BufferText::from("x\n"),
+        SelectionSet::default(),
+    ));
+    ed.close_buffer(bid2);
+
+    let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let err = host
+        .settings()
+        .get_buffer_option("tab-width", bid2)
+        .expect_err("a closed bid must error, not silently read the global default");
+    assert!(
+        err.contains("invalid buffer id"),
+        "error must name the actual problem (invalid bid), not an unrelated message; got: {err}"
     );
 }
 

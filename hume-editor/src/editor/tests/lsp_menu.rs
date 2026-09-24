@@ -12,8 +12,8 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
     run(
         ed,
         tmp,
-        r#"(define-typed-command! "go" "" (lambda ()
-             (show-menu! (list "Extract function" "Inline variable" "Rename")
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-menu! pane (list "Extract function" "Inline variable" "Rename")
                (lambda (idx) (log! 'info (to-string idx))))))"#,
     );
     type_cmd(ed, ":go");
@@ -140,8 +140,10 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_menu(
+        pane,
         vec!["a".to_string(), "b".to_string()],
         steel::rvals::SteelVal::Void,
     )
@@ -179,8 +181,9 @@ fn show_menu_from_insert_drops_silently_as_a_mode_layer_race() {
         .filter(|e| e.severity == Severity::Trace)
         .count();
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
         result.is_ok(),
         "a mode-layer race must never error — it would abort the whole call batch"
@@ -206,8 +209,9 @@ fn show_menu_accepted_in_normal_mode() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(result.is_ok());
     assert!(ed.state.input.menu().is_some());
 }
@@ -237,8 +241,9 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
         .filter(|e| e.severity == Severity::Trace)
         .count();
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
         result.is_ok(),
         "a stale async response must never error — it would abort the whole call batch"
@@ -278,14 +283,15 @@ fn show_menu_opens_over_an_open_drawer() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (show-drawer-list! (list "one.rs:1") (lambda (idx) (void)))))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-drawer-list! pane (list "one.rs:1") (lambda (idx) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
     assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
 
     assert!(result.is_ok());
     assert!(
@@ -312,13 +318,16 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_menu(vec!["old".to_string()], steel::rvals::SteelVal::Void)
+    host.show_menu(pane, vec!["old".to_string()], steel::rvals::SteelVal::Void)
         .unwrap();
     assert!(ed.state.input.menu().is_some(), "sanity: first menu open");
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(
+        pane,
         vec!["new-a".to_string(), "new-b".to_string()],
         steel::rvals::SteelVal::Void,
     );
@@ -332,7 +341,7 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     assert!(
         matches!(
             ed.state.config.pending_work.front(),
-            Some(crate::editor::event::PendingWork::Call(_, args))
+            Some(crate::editor::event::PendingWork::Call { args, .. })
                 if matches!(args.as_slice(), [steel::rvals::SteelVal::BoolV(false)])
         ),
         "the outgoing menu's callback must fire with #f"
@@ -354,8 +363,8 @@ fn selected_row_renders_with_the_menu_selected_scope() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (show-menu! (list "Extract function" "Inline variable")
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-menu! pane (list "Extract function" "Inline variable")
                (lambda (idx) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");

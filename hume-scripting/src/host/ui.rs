@@ -12,6 +12,8 @@ use termina::event::KeyEvent;
 
 use hume_engine::types::TruncateEnd;
 
+use crate::types::PaneHandle;
+
 /// How an open popup reacts to key and mouse input — `show-popup!`'s
 /// `#:kind` symbol, decoded once at the builtin boundary
 /// (`builtins::ui::show_popup`) and carried as-is into the editor's own
@@ -131,6 +133,7 @@ pub trait UiHost {
     /// invoked inline. Errors if a minibuffer session is already open.
     fn prompt(
         &mut self,
+        pane: PaneHandle,
         label: String,
         prefill: String,
         callback: steel::rvals::SteelVal,
@@ -151,6 +154,7 @@ pub trait UiHost {
     /// plain text.
     fn show_popup(
         &mut self,
+        pane: PaneHandle,
         text: String,
         kind: PopupKind,
         docked: bool,
@@ -179,6 +183,7 @@ pub trait UiHost {
     /// request is a refresh, not staleness.
     fn show_menu(
         &mut self,
+        pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String>;
@@ -213,6 +218,7 @@ pub trait UiHost {
     /// minting one — `open_picker` has no such path to report.
     fn show_drawer_list(
         &mut self,
+        pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<Option<u64>, String>;
@@ -280,6 +286,7 @@ pub trait UiHost {
     /// same selected-payload argument and exactly-once, queued contract.
     fn open_picker(
         &mut self,
+        pane: PaneHandle,
         items: Vec<(String, steel::rvals::SteelVal)>,
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
@@ -306,6 +313,7 @@ pub trait UiHost {
     /// through a nested Steel handler corrupts the VM's continuation stack.
     fn open_live_picker(
         &mut self,
+        pane: PaneHandle,
         on_select: steel::rvals::SteelVal,
         opts: LivePickerOpts,
     ) -> Result<u64, String>;

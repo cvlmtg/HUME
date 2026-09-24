@@ -80,7 +80,7 @@
 
 (define-typed-command! "plum-install-theme"
   "Install (or reinstall) a theme repo's themes/*.toml by \"user/repo\" GitHub slug, always from a clean re-clone."
-  (lambda (arg)
+  (lambda (pane arg)
     (let ((slug (plum/parse-slug "plum-install-theme" arg)))
       (when slug
         (let* ((src-dir (plum/theme-src-dir slug))
@@ -137,7 +137,7 @@
 
 (define-typed-command! "plum-remove-theme"
   "Remove an installed theme repo's themes/*.toml and its clone, by \"user/repo\" GitHub slug."
-  (lambda (arg)
+  (lambda (pane arg)
     (let ((slug (plum/parse-slug "plum-remove-theme" arg)))
       (when slug
         (let ((src-dir (plum/theme-src-dir slug))

@@ -6,7 +6,9 @@ use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
 use super::super::{EditorState, Severity};
-use super::{cmd_redo, cmd_undo, current_jump_entry, record_jump_if_moved};
+use super::{
+    CommandPane, FocusedPane, cmd_redo, cmd_undo, current_jump_entry, record_jump_if_moved,
+};
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
@@ -482,12 +484,13 @@ pub(in crate::editor) fn typed_goto_line(
     let line0 = hume_rope::line::ContentLine::from_number(n)
         .ok_or_else(|| CommandError::transient(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
+    let t = FocusedPane::current(&ed.state).target();
     // Snapshot before moving so Ctrl-o can return here — pushed only if
     // `:goto` actually lands somewhere else (record_jump_if_moved).
-    let entry = current_jump_entry(&ed.state, &ed.view);
+    let entry = current_jump_entry(&ed.state, &ed.view, t);
 
-    let pid = ed.state.focus.id();
-    let bid = ed.focused_buffer_id();
+    let pid = t.pid();
+    let bid = t.bid(&ed.view);
     crate::editor::pane_state::park_cursor_at(
         &mut ed.state.panes.state,
         &ed.state.buffers,
@@ -496,7 +499,7 @@ pub(in crate::editor) fn typed_goto_line(
         line0,
         hume_rope::column::GraphemeCol::new(0),
     );
-    record_jump_if_moved(&mut ed.state, &ed.view, entry);
+    record_jump_if_moved(&mut ed.state, &ed.view, t, entry);
     Ok(())
 }
 
@@ -590,7 +593,8 @@ pub(in crate::editor) fn typed_sort(
 
     let pre_len = ed.doc().text().len_chars();
     let pre_sels = ed.current_selections().clone();
-    super::apply_focused_edit(&mut ed.state, &ed.view, move |text, sels| {
+    let t = FocusedPane::current(&ed.state).target();
+    super::apply_pane_edit(&mut ed.state, &ed.view, t, move |text, sels| {
         debug_assert_eq!(
             text.len_chars(),
             pre_len,
@@ -645,8 +649,13 @@ fn parse_travel_spec(raw: &str) -> Result<TravelSpec, CommandError> {
 /// `cmd_undo`/`cmd_redo` themselves — the same function `u`/`Ctrl-r` dispatch
 /// to, `refuse_if_read_only` guard and `history_step`'s own exhaustion report
 /// included, rather than a second hand-copied `(walk, exhausted_msg)` pair.
-type TravelStepFn =
-    fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>;
+type TravelStepFn = fn(
+    &mut EditorState,
+    &mut EngineView,
+    CommandPane,
+    usize,
+    MotionMode,
+) -> Result<(), CommandError>;
 
 /// `Buffer::undo_steps_older_than`/`redo_steps_newer_than` — resolves a
 /// `TravelSpec::Age` to the step count [`TravelStepFn`] takes. `Err(n)` means
@@ -692,10 +701,11 @@ fn travel(
         return Err(CommandError::transient(format!("`:{name}` takes no `!`")));
     }
     let spec = parse_travel_spec(arg.unwrap_or("1"))?;
+    let t = FocusedPane::current(&ed.state).target();
     // Checked before resolving `spec` into a step count: an age spec walks
     // the buffer's whole history, work `step` below would refuse anyway on
     // a read-only buffer.
-    if super::refuse_if_read_only(&mut ed.state, &ed.view) {
+    if super::refuse_if_read_only(&mut ed.state, &ed.view, t) {
         return Ok(());
     }
     let steps = match spec {
@@ -709,7 +719,7 @@ fn travel(
             resolve_age(ed.state.buffers.get(buf), age).unwrap_or_else(|avail| avail + 1)
         }
     };
-    step(&mut ed.state, &mut ed.view, steps, MotionMode::Move)
+    step(&mut ed.state, &mut ed.view, t, steps, MotionMode::Move)
 }
 
 /// `:earlier [N|age]` — step back `N` revisions (default 1), or back to the

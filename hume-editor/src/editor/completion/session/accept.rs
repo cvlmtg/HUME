@@ -3,7 +3,7 @@
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
 
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
@@ -12,7 +12,9 @@ use super::super::item::CompletionItem;
 use super::buffer::{BufferSession, BufferSpan};
 use super::contains_cursor;
 use crate::editor::event::EditorEvent;
-use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
+use crate::editor::lsp::{
+    LspCallback, LspState, ResponseAnchor, edits, introspect, wire_range_to_chars,
+};
 use crate::editor::{EditorState, Severity};
 use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
 
@@ -71,14 +73,29 @@ impl BufferSession {
         edits::checked_buffer(state, bid, Some(self.generation))?;
         // A source that hasn't declared `#:resolve` isn't claiming to be
         // genuine LSP-server-origin (that flag's own doc), so its own
-        // `textEdit`/`additionalTextEdits` have no wire encoding to honor —
-        // the buffer's *attached-server* negotiated encoding would silently
-        // misinterpret positions a plugin author never meant in that unit.
+        // `textEdit`/`additionalTextEdits` have no wire encoding to honor.
         // `Utf32` (LSP 3.17's own third `PositionEncodingKind` — `character`
         // counts chars, never code units) is the spec-defined choice for
-        // "no server involved."
+        // "no server involved." A `#:resolve` item reads its encoding off
+        // its own `raw` response tag instead of the buffer's *currently*
+        // attached server — the response may have been produced by a server
+        // since restarted or detached, which could negotiate differently.
         let encoding = if may_resolve {
-            introspect::encoding_for_buffer(state, lsp, bid)
+            match &item.raw {
+                Some(raw) => raw.position_encoding("completion-accept!")?,
+                // Not assumed impossible (same discipline as
+                // `maybe_send_resolve`'s own `raw` check below) — a
+                // #:resolve source's items are always real LSP items in
+                // practice, but this function's contract doesn't get to
+                // lean on "in practice."
+                None => {
+                    return Err(
+                        "completion-accept!: a #:resolve source's item has no wire payload to \
+                         decode positions from"
+                            .to_string(),
+                    );
+                }
+            }
         } else {
             hume_rope::position_encoding::PositionEncoding::Utf32
         };
@@ -309,7 +326,7 @@ impl BufferSession {
         // composed in) before propagating the error.
         // `commit_char_edits` is a no-op `Ok(None)` for an empty batch, so no
         // separate `is_empty()` branch is needed here.
-        let cs_additional = match edits::commit_char_edits(state, bid, additional_char_edits) {
+        let cs_additional = match edits::commit_char_edits(state, pid, bid, additional_char_edits) {
             Ok(cs) => cs,
             Err(e) => {
                 if opened_group {
@@ -403,16 +420,19 @@ impl BufferSession {
         // bare-string answers) has no real wire payload to hand over —
         // `{"label": …}` is a more useful hook payload than a bare `null`.
         let hook_item = match &item.raw {
-            Some(raw) => raw.value().clone(),
-            None => serde_json::json!({"label": &item.label}),
+            Some(raw) => raw.clone(),
+            None => {
+                hume_scripting::json::JsonHandle::new(serde_json::json!({"label": &item.label}))
+            }
         };
         state.queue_event(EditorEvent::OnCompletionAccept {
             buffer: bid,
-            item: std::sync::Arc::new(hook_item),
+            pane: pid,
+            item: hook_item,
         });
 
         if may_resolve && !item.has_additional_text_edits {
-            maybe_send_resolve(bid, state, lsp, item, rope_pre, accept_cs, encoding);
+            maybe_send_resolve(pid, bid, state, lsp, item, rope_pre, accept_cs, encoding);
         }
         Ok(())
     }
@@ -421,9 +441,13 @@ impl BufferSession {
 /// Sends `completionItem/resolve` when the server advertised
 /// `completionProvider.resolveProvider` — best-effort: a resolution error,
 /// timeout, or a server that's gone by send time only logs, it never fails
-/// the accept that already landed. `bid` is `accept`'s own buffer — its
-/// only caller.
+/// the accept that already landed. `bid`/`pid` are `accept`'s own buffer and
+/// (already-validated) pane — its only caller. `pid` rides along in the
+/// response callback's own closure rather than being re-read from live focus
+/// when the response arrives, so a focus change while the request is in
+/// flight can't redirect the resolved edit to the wrong pane.
 fn maybe_send_resolve(
+    pid: PaneId,
     bid: BufferId,
     state: &mut EditorState,
     lsp: &mut LspState,
@@ -455,7 +479,6 @@ fn maybe_send_resolve(
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     let meta = hume_lsp::client::RequestMeta {
         method: "completionItem/resolve".to_string(),
-        allow_stale: false,
         deadline,
     };
     let gen_after = state.buffers.get(bid).text_gen;
@@ -467,7 +490,7 @@ fn maybe_send_resolve(
     ) else {
         return; // server gone between the capability check and now
     };
-    let callback: LspCallback = Box::new(move |editor, outcome| match outcome {
+    let callback: LspCallback = Box::new(move |editor, _server_id, outcome| match outcome {
         hume_lsp::client::Outcome::Ok(resolved) => {
             let resolved_edits = parse_additional_text_edits_lenient(&resolved);
             let result = edits::build_edits_from_earlier_document(
@@ -476,7 +499,9 @@ fn maybe_send_resolve(
                 encoding,
                 &resolved_edits,
             )
-            .and_then(|char_edits| edits::commit_char_edits(&mut editor.state, bid, char_edits));
+            .and_then(|char_edits| {
+                edits::commit_char_edits(&mut editor.state, pid, bid, char_edits)
+            });
             if let Err(e) = result {
                 editor.report(Severity::Error, format!("lsp completion resolve: {e}"));
             }
@@ -494,5 +519,12 @@ fn maybe_send_resolve(
             );
         }
     });
-    lsp.register_callback(server_id, id, Some((bid, gen_after)), callback);
+    let anchor = ResponseAnchor {
+        bid,
+        pane: Some(pid),
+        text_gen: gen_after,
+        allow_stale: false,
+        require_focus: false,
+    };
+    lsp.register_callback(server_id, id, anchor, callback);
 }

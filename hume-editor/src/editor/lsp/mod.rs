@@ -19,7 +19,7 @@ use std::time::Instant;
 
 use rustc_hash::FxHashMap;
 
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, PaneId};
 use hume_lsp::backend::{LspBackend, ServerId, ThreadedLspBackend};
 use hume_lsp::client::{LspClient, Outcome, RequestMeta, ServerState};
 use hume_lsp::codec::RequestId;
@@ -60,14 +60,55 @@ pub(in crate::editor) fn wire_range_to_chars(
 /// `send_request`/`take_completed`/`drain_pending`. `pub(in crate::editor)`
 /// for the same reason as `wire_range_to_chars` above — the completion
 /// accept path builds one for its `completionItem/resolve` round trip.
-pub(in crate::editor) type LspCallback = Box<dyn FnOnce(&mut Editor, Outcome)>;
+///
+/// Takes the answering `ServerId` alongside the outcome — `bridge.rs`'s own
+/// callback needs it to tag a successful `Ok(value)`'s `JsonHandle` with the
+/// server's negotiated encoding (`introspect::server_encoding`) at dispatch
+/// time, not send time (a `Starting` server hasn't negotiated yet when the
+/// request goes out). A callback with no use for it (e.g. completion's
+/// resolve, which decodes `additionalTextEdits` through its own already-
+/// resolved `encoding`) just ignores the parameter.
+pub(in crate::editor) type LspCallback = Box<dyn FnOnce(&mut Editor, ServerId, Outcome)>;
+
+/// Everything a registered callback needs checked against once its response
+/// lands — gathered at send time (from `PendingLspRequest`, or an internal
+/// caller building its own request) so `Editor::anchor_admits` (`drain.rs`)
+/// has one place to apply both checks, instead of one living in a per-request
+/// closure and the other read off `hume_lsp::client::RequestMeta`. Not
+/// optional: `bid` is mandatory on every request source (`PendingLspRequest`,
+/// `completionItem/resolve`), so every callback has one.
+///
+/// `Copy`: a queued `PendingWork::Call` carries its own copy alongside the
+/// `CallbackEntry`'s (`Editor::run_pending_batch` re-checks it at dequeue
+/// time — see that function's doc for why one check at drain isn't enough),
+/// and the struct is four primitives, cheap to duplicate.
+#[derive(Debug, Clone, Copy)]
+pub(in crate::editor) struct ResponseAnchor {
+    pub(in crate::editor) bid: BufferId,
+    /// The pane the request was made from, if any — `#:require-focus`'s own
+    /// comparison target, never re-derived from `bid` alone (which would
+    /// admit any pane still showing it, not the exact one the request was
+    /// made from). `None` when the request's own `pane` carried none;
+    /// `%lsp-request`'s decode already refuses to queue a `#:require-focus`
+    /// request with no pane, so `require_focus` is only ever `true` here
+    /// when this is `Some`.
+    pub(in crate::editor) pane: Option<PaneId>,
+    /// If `bid` has moved past this generation by drain time, the outcome is
+    /// dropped silently unless `allow_stale` opts out — the parse-worker
+    /// staleness discipline.
+    pub(in crate::editor) text_gen: u64,
+    /// `#:allow-stale` — skips the `text_gen` check above.
+    pub(in crate::editor) allow_stale: bool,
+    /// `#:require-focus` — the outcome is dropped (Trace-logged) unless
+    /// `pane` is still the focused pane, and still shows `bid`, when the
+    /// response lands, for a request whose only purpose is opening
+    /// cursor-anchored UI.
+    pub(in crate::editor) require_focus: bool,
+}
 
 struct CallbackEntry {
     callback: LspCallback,
-    /// If `Some((bid, text_gen))` and the buffer has moved past `text_gen`
-    /// by drain time, the outcome is dropped silently unless the request's
-    /// `allow_stale` opts out — the parse-worker staleness discipline.
-    stale_check: Option<(BufferId, u64)>,
+    anchor: ResponseAnchor,
 }
 
 /// Everything tracked per running (or starting) LSP server, one entry per
@@ -454,16 +495,11 @@ impl LspState {
         &mut self,
         server: ServerId,
         id: RequestId,
-        stale_check: Option<(BufferId, u64)>,
+        anchor: ResponseAnchor,
         callback: LspCallback,
     ) {
-        self.callbacks.insert(
-            (server, id),
-            CallbackEntry {
-                callback,
-                stale_check,
-            },
-        );
+        self.callbacks
+            .insert((server, id), CallbackEntry { callback, anchor });
     }
 
     /// Sends a request through `server`'s client, if one is registered.

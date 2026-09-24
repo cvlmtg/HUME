@@ -31,11 +31,11 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/completion" (hash)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
                #:supersede "k")
-             (lsp-request #f "textDocument/completion" (hash)
+             (lsp-request bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
                #:supersede "k")))"#,
         tmp.path(),
@@ -121,9 +121,9 @@ fn callback_fires_normally_without_an_intervening_edit() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-typed-command! "test-cmd" "" (lambda ()
-                 (lsp-request #f "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
-                   (call! "move-right")))))"#
+            r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+                 (lsp-request bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
+                   (call! "move-right" bid)))))"#
         ),
         tmp.path(),
     );
@@ -155,9 +155,9 @@ fn stale_response_is_dropped_without_allow_stale() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-typed-command! "test-cmd" "" (lambda ()
-                 (lsp-request #f "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
-                   (call! "move-right")))))"#
+            r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+                 (lsp-request bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
+                   (call! "move-right" bid)))))"#
         ),
         tmp.path(),
     );
@@ -195,9 +195,9 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-typed-command! "test-cmd" "" (lambda ()
-                 (lsp-request #f "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
-                   (call! "move-right")) #:allow-stale #t)))"#
+            r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+                 (lsp-request bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
+                   (call! "move-right" bid)) #:allow-stale #t)))"#
         ),
         tmp.path(),
     );
@@ -219,6 +219,85 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
     );
 }
 
+/// Same staleness drop as `stale_response_is_dropped_without_allow_stale`,
+/// but with params that carry no `textDocument` at all — proving the check
+/// is keyed off the request's own `bid` (mandatory on every `lsp-request`),
+/// not off sniffing `params.textDocument.uri` the way it used to be.
+#[test]
+fn stale_response_without_text_document_is_dropped() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    let (_bid, _uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
+        b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
+    });
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+               (call! "move-right" bid)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+
+    let before = state(&ed);
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(
+        state(&ed),
+        before,
+        "params with no textDocument must still be dropped as stale — the \
+         check reads the request's bid, not the wire params"
+    );
+}
+
+/// `#:allow-stale` still opts out with no `textDocument` in params — same
+/// flip oracle as `stale_response_without_text_document_is_dropped`.
+#[test]
+fn allow_stale_without_text_document_delivers() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    let (_bid, _uri) = setup_with_real_file(&mut ed, file_dir.path(), |b, _sid| {
+        b.respond_to("textDocument/hover", serde_json::json!({"contents": "ok"}));
+    });
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+               (call! "move-right" bid)) #:allow-stale #t)))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+
+    let before = state(&ed);
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "#:allow-stale must opt out of the staleness drop even with no textDocument in params"
+    );
+}
+
 /// Regression: a Steel command that edits the buffer (queuing an LSP
 /// `didChange`) and then immediately fires an `lsp-request` — the same
 /// shape as a trigger-char hook firing right after the edit that triggered
@@ -237,6 +316,14 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let (mut raw_backend, log) = OrderedLogBackend::new();
     raw_backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
+    // `apply-text-edits!` now only accepts a server-tagged wire edit (via a
+    // real response) — this canned response is what the `:stash` dispatch
+    // below turns into one, ahead of (and logged separately from) the
+    // dispatch under test.
+    raw_backend.respond_to(
+        "test/textEdits",
+        serde_json::json!([{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "newText": "Z"}]),
+    );
     let sid = raw_backend
         .start("rust-analyzer", &[], Path::new("."), &[])
         .unwrap();
@@ -255,12 +342,22 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (apply-text-edits! (current-buffer) (list (list (cons 0 0) (cons 0 0) "Z")))
-             (lsp-request #f "textDocument/hover" (hash) (lambda (err result) (begin)))))"#,
+        r#"(define stashed-edits (box #f))
+           (define-typed-command! "stash" "" (lambda (bid)
+             (lsp-request bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
+           (define-typed-command! "test-cmd" "" (lambda (bid)
+             (apply-text-edits! bid (json-list (unbox stashed-edits)))
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result) (begin)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
+
+    // Runs (and drains) as its own dispatch, well before the one under
+    // test, so the didChange it sends doesn't pollute the log below.
+    type_cmd(&mut ed, ":stash");
+    ed.drain_lsp();
+    ed.settle();
+    log.borrow_mut().clear();
 
     type_cmd(&mut ed, ":test-cmd");
 

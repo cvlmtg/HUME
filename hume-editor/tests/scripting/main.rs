@@ -9,7 +9,7 @@
 extern crate hume_editor as hume;
 
 use hume::testing::MockHost;
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::BufferId;
 use hume_scripting::EvalWatchdog;
 use hume_scripting::host::BindMode;
 use hume_scripting::*;

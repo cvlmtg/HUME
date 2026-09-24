@@ -10,17 +10,17 @@ use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::host::DiagnosticEntry;
-use crate::json::to_steel_handle;
-use crate::types::VirtualLineSpec;
+use crate::json::{WireOrigin, to_steel_handle};
+use crate::types::{PaneHandle, VirtualLineSpec};
 
 use super::SteelResult;
 use super::args::{
-    BidArg, cons_pair, int_arg, list_items, optional_pair_fields, optional_symbol_arg, string_arg,
+    ArgPane, cons_pair, int_arg, list_items, optional_pair_fields, optional_symbol_arg, string_arg,
     symbol_enum_arg, tuple_list, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(set-inlay-hints! source bid hints)` — `hints`: list of `(offset text
+/// `(set-inlay-hints! source pane hints)` — `hints`: list of `(offset text
 /// 'before|'after)`, `offset` a char offset. LSP wire `{"line"
 /// "character"}` positions convert via `lsp-position->offset` before
 /// reaching this builtin — the Steel decoration surface speaks editor-native
@@ -29,11 +29,11 @@ use super::errors::{generic_err, require_cap};
 pub(crate) fn set_inlay_hints(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: BidArg,
+    pane: PaneHandle,
     hints: SteelVal,
 ) -> SteelResult {
+    let bid = pane.buffer();
     let source = string_arg(source, "set-inlay-hints! source")?;
-    let id = bid.0;
     let parsed = tuple_list(
         hints,
         "set-inlay-hints! hints",
@@ -55,13 +55,13 @@ pub(crate) fn set_inlay_hints(
         },
     )?;
     require_cap(ctx.host.decorations(), "set-inlay-hints!")?
-        .set_inlay_hints(source, id, parsed)
+        .set_inlay_hints(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(register-sign-source! name bid priority)` — declares a sign channel
-/// *for `bid`*: its gutter slot is this call's rank among every source
+/// `(register-sign-source! name pane priority)` — declares a sign channel
+/// *for `pane`'s buffer*: its gutter slot is this call's rank among every source
 /// registered for that same buffer, by `(priority desc, name asc)` — a
 /// property of the *source*, not of any one `set-signs!` call, and scoped to
 /// that buffer, not shared with any other. A slot is reserved the first time
@@ -69,38 +69,39 @@ pub(crate) fn set_inlay_hints(
 /// — this is what keeps the gutter width stable as signs come and go,
 /// instead of tracking whichever priorities happen to be live right now.
 /// There is no `unregister-sign-source!`: a source holds its slot in a
-/// buffer for that buffer's life. Re-registering `name` for the same `bid`
+/// buffer for that buffer's life. Re-registering `name` for the same buffer
 /// replaces its priority and re-sorts it, same as `register-lsp-server!`'s
 /// last-wins semantics.
 pub(crate) fn register_sign_source(
     ctx: &mut SteelCtx,
     name: SteelVal,
-    bid: BidArg,
+    pane: PaneHandle,
     priority: SteelVal,
 ) -> SteelResult {
+    let bid = pane.buffer();
     let name = string_arg(name, "register-sign-source! name")?;
     if name.trim().is_empty() {
         steel::stop!(Generic => "register-sign-source!: name must not be empty");
     }
     let priority = int_arg(priority, "register-sign-source! priority")?;
     require_cap(ctx.host.decorations(), "register-sign-source!")?
-        .register_sign_source(name, bid.0, priority)
+        .register_sign_source(name, bid, priority)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(set-signs! source bid signs)` — `signs`: list of `(line text scope)`.
+/// `(set-signs! source pane signs)` — `signs`: list of `(line text scope)`.
 /// `source` selects the already-registered channel (see
 /// `register-sign-source!`) whose slot every entry here renders in; an
 /// unregistered `source` errors rather than being silently dropped.
 pub(crate) fn set_signs(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: BidArg,
+    pane: PaneHandle,
     signs: SteelVal,
 ) -> SteelResult {
+    let bid = pane.buffer();
     let source = string_arg(source, "set-signs! source")?;
-    let id = bid.0;
     let parsed = tuple_list(
         signs,
         "set-signs! signs",
@@ -129,12 +130,12 @@ pub(crate) fn set_signs(
         },
     )?;
     require_cap(ctx.host.decorations(), "set-signs!")?
-        .set_signs(source, id, parsed)
+        .set_signs(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(set-virtual-lines! source bid lines)` — `lines`: list of hashmaps, each
+/// `(set-virtual-lines! source pane lines)` — `lines`: list of hashmaps, each
 /// with required `'line`/`'text`, plus optional `'anchor` (`'before` or
 /// `'after`, default `'after`), `'scope` (whole-line base style — `ui.virtual`
 /// fallback when absent), and `'segments` (list of `(start end scope)` char
@@ -144,14 +145,14 @@ pub(crate) fn set_signs(
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: BidArg,
+    pane: PaneHandle,
     lines: SteelVal,
 ) -> SteelResult {
+    let bid = pane.buffer();
     let source = string_arg(source, "set-virtual-lines! source")?;
-    let id = bid.0;
     let parsed = virtual_line_specs(lines)?;
     require_cap(ctx.host.decorations(), "set-virtual-lines!")?
-        .set_virtual_lines(source, id, parsed)
+        .set_virtual_lines(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
@@ -260,17 +261,17 @@ fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String
     )
 }
 
-/// `(set-eol-text! source bid lines)` — `lines`: list of `(line text
+/// `(set-eol-text! source pane lines)` — `lines`: list of `(line text
 /// scope)`. Not diagnostics-specific — the diagnostics plugin is its first
 /// client, not its owner, same as every other decoration kind is to LSP.
 pub(crate) fn set_eol_text(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: BidArg,
+    pane: PaneHandle,
     lines: SteelVal,
 ) -> SteelResult {
+    let bid = pane.buffer();
     let source = string_arg(source, "set-eol-text! source")?;
-    let id = bid.0;
     let parsed = tuple_list(
         lines,
         "set-eol-text! lines",
@@ -285,20 +286,20 @@ pub(crate) fn set_eol_text(
         },
     )?;
     require_cap(ctx.host.decorations(), "set-eol-text!")?
-        .set_eol_text(source, id, parsed)
+        .set_eol_text(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(set-extra-highlights! source bid spans)` — `spans`: list of `(start end scope)`.
+/// `(set-extra-highlights! source pane spans)` — `spans`: list of `(start end scope)`.
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: BidArg,
+    pane: PaneHandle,
     spans: SteelVal,
 ) -> SteelResult {
+    let bid = pane.buffer();
     let source = string_arg(source, "set-extra-highlights! source")?;
-    let id = bid.0;
     let parsed = tuple_list(
         spans,
         "set-extra-highlights! spans",
@@ -313,23 +314,23 @@ pub(crate) fn set_extra_highlights(
         },
     )?;
     require_cap(ctx.host.decorations(), "set-extra-highlights!")?
-        .set_extra_highlights(source, id, parsed)
+        .set_extra_highlights(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(set-line-backgrounds! source bid entries)` — `entries`: list of `(line
+/// `(set-line-backgrounds! source pane entries)` — `entries`: list of `(line
 /// scope)`. A full-row background tint on each named line. No `priority`
 /// field — unlike signs, row tints have no single-slot contention; same-line
 /// entries from different sources break ties by source name.
 pub(crate) fn set_line_backgrounds(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: BidArg,
+    pane: PaneHandle,
     entries: SteelVal,
 ) -> SteelResult {
+    let bid = pane.buffer();
     let source = string_arg(source, "set-line-backgrounds! source")?;
-    let id = bid.0;
     let parsed = tuple_list(
         entries,
         "set-line-backgrounds! entries",
@@ -343,39 +344,40 @@ pub(crate) fn set_line_backgrounds(
         },
     )?;
     require_cap(ctx.host.decorations(), "set-line-backgrounds!")?
-        .set_line_backgrounds(source, id, parsed)
+        .set_line_backgrounds(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(set-statusline-text! source bid text)` — replaces `source`'s
-/// statusline text for `bid` wholesale. Rendered by the `steel:<source>`
+/// `(set-statusline-text! source pane text)` — replaces `source`'s
+/// statusline text for `pane`'s buffer wholesale. Rendered by the `steel:<source>`
 /// statusline element (see `configure-statusline!`) — placing it is a
 /// separate step, this only pushes the value a placed element will show.
 pub(crate) fn set_statusline_text(
     ctx: &mut SteelCtx,
     source: SteelVal,
-    bid: BidArg,
+    pane: PaneHandle,
     text: SteelVal,
 ) -> SteelResult {
+    let bid = pane.buffer();
     let source = string_arg(source, "set-statusline-text! source")?;
     let text = string_arg(text, "set-statusline-text! text")?;
     require_cap(ctx.host.decorations(), "set-statusline-text!")?
-        .set_statusline_text(source, bid.0, text)
+        .set_statusline_text(source, bid, text)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(%diagnostics-for-buffer bid severity range)` — the `diagnostics-for-buffer`
+/// `(%diagnostics-for-buffer pane severity range)` — the `diagnostics-for-buffer`
 /// Scheme wrapper supplies `#:severity`/`#:range` defaults. `severity`: a
 /// symbol or `#f`. `range`: a `(start . end)` dotted pair or `#f`.
 pub(crate) fn diagnostics_for_buffer(
     ctx: &mut SteelCtx,
-    bid: BidArg,
+    pane: ArgPane,
     severity: SteelVal,
     range: SteelVal,
 ) -> SteelResult {
-    let id = bid.0;
+    let id = pane.0.buffer();
     let floor = optional_symbol_arg(severity, "diagnostics-for-buffer #:severity")?;
     let range = optional_pair_fields(range, "diagnostics-for-buffer", "(start . end)")?
         .map(|(start, end)| {
@@ -430,13 +432,16 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
             .source
             .map_or(SteelVal::Void, |s| SteelVal::StringV(s.into())),
     );
-    insert("raw", to_steel_handle(entry.raw));
+    insert(
+        "raw",
+        to_steel_handle(entry.raw, WireOrigin::Server(entry.encoding)),
+    );
     SteelVal::HashMapV(Gc::new(hm).into())
 }
 
-/// `(diagnostic-counts bid)` → `(errors . warnings)` dotted pair.
-pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
+/// `(diagnostic-counts pane)` → `(errors . warnings)` dotted pair.
+pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
+    let id = pane.0.buffer();
     let (errors, warnings) = ctx
         .host
         .decorations()

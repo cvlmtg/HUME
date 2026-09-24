@@ -23,10 +23,19 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         crate::editor::settings::ops::apply_buffer(self.state, bid, key, value)
     }
 
-    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        let overrides = self.state.buffers.try_get(bid).map(|b| &b.overrides);
-        crate::editor::settings::setting_value(key, &self.state.settings, overrides)
+    fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
+        crate::editor::settings::setting_value(key, &self.state.settings, None)
             .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
+    }
+
+    fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
+        // Same `try_get` guard as `set_buffer_option` above — a stale `bid`
+        // is invalid input, not a request to fall back to the global value.
+        let Some(buf) = self.state.buffers.try_get(bid) else {
+            return Err(format!("get-buffer-option: invalid buffer id {bid:?}"));
+        };
+        crate::editor::settings::setting_value(key, &self.state.settings, Some(&buf.overrides))
+            .ok_or_else(|| format!("get-buffer-option: unknown setting '{key}'"))
     }
 
     fn configure_statusline(

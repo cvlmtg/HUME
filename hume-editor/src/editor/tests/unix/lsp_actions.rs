@@ -239,6 +239,55 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
     );
 }
 
+/// `workspace/executeCommand`'s params carry no `textDocument`, so it has
+/// no self-derived buffer id to anchor a staleness check against the way
+/// `textDocument/codeAction` or `textDocument/hover` do — it relies on
+/// `#:allow-stale #t` (`lsp/exec-command`, `actions.scm`) instead. An edit
+/// between the command being sent and its response draining must not
+/// suppress this error report.
+///
+/// Fail oracle: `lsp/exec-command` sending without `#:allow-stale` — the
+/// bridge's own bid-anchored staleness check (now applied to every request,
+/// `textDocument`-bearing or not) would drop this response, and the error
+/// would never reach the log.
+#[test]
+fn a_command_execution_error_is_still_reported_after_an_intervening_edit() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, _uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/codeAction",
+            serde_json::json!([command_action("Run the thing")]),
+        );
+        backend.fail_with("workspace/executeCommand", -32603, "command exploded");
+    });
+
+    run_actions(&mut ed);
+    ed.handle_key(key_enter());
+    ed.settle();
+    // Edit the buffer before draining executeCommand's response.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+    ed.drain_lsp();
+    ed.settle();
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("code action") && e.contains("command exploded")),
+        "an executeCommand error must still be reported after an intervening edit, got {errors:?}"
+    );
+}
+
 #[test]
 fn disabled_actions_are_filtered_out() {
     let tmp = safe_tempdir();
@@ -471,5 +520,47 @@ fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
             .iter()
             .any(|e| e.contains("code action") && e.contains("resolve exploded")),
         "expected a reported codeAction/resolve error, got {errors:?}"
+    );
+}
+
+/// The user is free to switch buffers while a `textDocument/codeAction`
+/// request is in flight — same async-round-trip race `lsp-hover`'s own
+/// `#:require-focus` guards against. A response for a buffer that's no
+/// longer focused must not open a menu over whatever the user switched to.
+///
+/// Fail oracle: `lsp-code-actions` (`actions.scm`) sending its
+/// `lsp-request` without `#:require-focus` — the menu would open
+/// regardless of which buffer answered.
+#[test]
+fn stale_response_after_a_buffer_switch_opens_no_menu() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/codeAction",
+            serde_json::json!([edit_action("Fix the thing", &uri)]),
+        );
+    });
+
+    // Sends the request synchronously; deliberately no settle() before the
+    // switch below — settle() unconditionally drains LSP, which would
+    // deliver the response (and close the race window) before the switch
+    // ever happens. Same technique as `lsp_hover.rs`'s own
+    // `stale_response_after_a_buffer_switch_shows_no_popup`.
+    ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false);
+
+    let other = file_dir.path().join("other.rs");
+    std::fs::write(&other, "\n").unwrap();
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(
+        menu_items(&ed),
+        Vec::<String>::new(),
+        "a code-action response for a buffer that's no longer focused must not open a menu"
     );
 }

@@ -736,13 +736,15 @@ macro_rules! define_settings {
             }
         }
 
-        // ── setting_value (get-option) ────────────────────────────────────────
+        // ── setting_value (get-option / get-buffer-option) ─────────────────────
 
-        /// The effective value of `key` for `(get-option key)`: `overrides`'
-        /// value if `Some` and the key is buffer-scoped, else the global
-        /// default. `None` for a key with no generic storage — covers only
-        /// `"language"` today, which has no getter (it lives on the
-        /// buffer's language identity — use `(buffer-language bid)`
+        /// The effective value of `key`: `overrides`' value if `Some` and
+        /// the key is buffer-scoped, else the global default. Backs
+        /// `(get-option key)` (`overrides` always `None` — global only) and
+        /// `(get-buffer-option bid key)` (`overrides` from `bid`'s stored
+        /// `BufferOverrides`). `None` for a key with no generic storage —
+        /// covers only `"language"` today, which has no getter (it lives on
+        /// the buffer's language identity — use `(buffer-language bid)`
         /// instead).
         pub fn setting_value(
             key: &str,
@@ -1107,7 +1109,7 @@ fn parse_show_newline(s: &str) -> Result<bool, String> {
 
 /// Render a `whitespace-newline` value back to the wire format
 /// [`parse_show_newline`] accepts — the inverse, used by
-/// `(get-option "whitespace-newline")`.
+/// `(get-buffer-option bid "whitespace-newline")`.
 fn format_show_newline(value: bool) -> &'static str {
     if value { "all" } else { "none" }
 }

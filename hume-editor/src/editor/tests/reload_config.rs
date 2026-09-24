@@ -325,7 +325,7 @@ fn reset_clears_buffer_overrides() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "widen-tabs" "" (lambda () (set-buffer-option! (current-buffer) "tab-width" 8)))"#,
+        r#"(define-typed-command! "widen-tabs" "" (lambda (bid) (set-buffer-option! bid "tab-width" 8)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -419,9 +419,9 @@ fn reset_clears_plugin_decorations() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "mark" "" (lambda ()
-             (register-sign-source! "linter" (current-buffer) 7)
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))))"#,
+        r#"(define-typed-command! "mark" "" (lambda (bid)
+             (register-sign-source! "linter" bid 7)
+             (set-signs! "linter" bid (list (list 0 "!" "warn-scope")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -500,8 +500,10 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[a]>b\n");
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_drawer_list(
+        pane,
         vec!["one".to_string(), "two".to_string()],
         steel::rvals::SteelVal::Void,
     )
@@ -543,8 +545,8 @@ fn reset_tears_down_an_open_prompt_session_completely() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "go" "" (lambda ()
-             (prompt! "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (prompt! pane "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -776,14 +778,13 @@ fn resync_refires_lsp_attach_for_a_running_server() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (when (equal? server-name "rust") (call! "move-right"))))"#,
+             (when (equal? server-name "rust") (call! "move-right" (focused-pane)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
     let before = state(&ed);
 
-    let snapshot =
-        ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
     ed.resync_config_state(&snapshot);
     ed.settle();
 
@@ -818,14 +819,13 @@ fn resync_does_not_refire_attach_for_a_starting_server() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (when (equal? server-name "rust") (call! "move-right"))))"#,
+             (when (equal? server-name "rust") (call! "move-right" (focused-pane)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
     let before = state(&ed);
 
-    let snapshot =
-        ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
     ed.resync_config_state(&snapshot);
     ed.drain_pending_work();
 
@@ -865,7 +865,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-open (lambda (bid)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -875,8 +875,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     // check can't distinguish "every open buffer fired once" from "only one
     // of them fired" (the bug a `.take(1)` mutation to the resync loop would
     // leave undetected with a single-buffer fixture).
-    let snapshot =
-        ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
     ed.resync_config_state(&snapshot);
     ed.settle();
 
@@ -919,15 +918,14 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
 
     // Snapshotted before the new buffer opens — mirrors `reset_config_state`
     // capturing its `ReloadSnapshot` before `init_scripting` runs.
-    let snapshot =
-        ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-open (lambda (bid)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1036,8 +1034,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
         "sanity: decorations must actually be empty before resync"
     );
 
-    let snapshot =
-        ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
     ed.resync_config_state(&snapshot);
     ed.settle();
 
@@ -1136,8 +1133,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
         "sanity: decorations must actually be empty before resync"
     );
 
-    let snapshot =
-        ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
     ed.resync_config_state(&snapshot);
     ed.settle();
 
@@ -1193,13 +1189,12 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid first end)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
 
-    let snapshot =
-        ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id), &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
     ed.resync_config_state(&snapshot);
     ed.settle();
 
@@ -1252,14 +1247,14 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid first end)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
 
     // Snapshot covers only `first_bid` — `second_bid` is treated as opened
     // during this same reload.
-    let snapshot = ReloadSnapshot::for_test([first_bid], &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test([first_bid]);
     ed.resync_config_state(&snapshot);
     ed.settle();
 
@@ -1304,12 +1299,12 @@ fn resync_refires_buffer_enter_for_the_focused_buffer() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-enter (lambda (bid)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
 
-    let snapshot = ReloadSnapshot::for_test([bid], &ed.state.buffers);
+    let snapshot = ReloadSnapshot::for_test([bid]);
     ed.resync_config_state(&snapshot);
     ed.settle();
 

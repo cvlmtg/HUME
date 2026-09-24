@@ -10,7 +10,7 @@
 //! every script by hand. A word this returns is, by construction, exactly
 //! what a `w` motion would select. `word_chars` is threaded straight
 //! through, so tokenization is settings-aware per call: `core:buffer-words`
-//! reads the calling buffer's own `word-chars` (`(get-option bid
+//! reads the calling buffer's own `word-chars` (`(get-buffer-option bid
 //! "word-chars")`) once per reindex and passes it into every `split-words`
 //! call for that walk, so `foo-bar` splits into two words by default but
 //! stays one wherever `word-chars` includes `-` (a CSS buffer, say).
@@ -27,7 +27,7 @@ use super::errors::generic_err;
 /// `(split-words line word-chars)` -> list of word strings, in order.
 ///
 /// Validates `word_chars` first — unlike `core:buffer-words`' own calls
-/// (which read an already-validated `get-option bid "word-chars"` once per
+/// (which read an already-validated `get-buffer-option bid "word-chars"` once per
 /// reindex), this builtin's input is untrusted Steel-side data, the same as
 /// `buffer-lines`' range args, so a value `WordChars::classify` couldn't
 /// handle correctly (e.g. a whitespace character other than the four

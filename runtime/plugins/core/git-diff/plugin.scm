@@ -16,46 +16,49 @@
 (define git-diff/ref (call! "stdlib/config-string" "core:git-diff" git-diff/cfg "ref" "HEAD"))
 
 ;;; See docs/architecture.md's "Ref handling".
-(define (git-diff/buffer-ref bid)
-  (let ([entry (git-diff/buffer-entry bid)])
+(define (git-diff/buffer-ref pane)
+  (let ([entry (git-diff/buffer-entry pane)])
     (or (and entry (hash-ref entry "ref")) git-diff/ref)))
 
-(define (git-diff/buffer-hunks bid)
-  (let ([entry (git-diff/buffer-entry bid)])
+(define (git-diff/buffer-hunks pane)
+  (let ([entry (git-diff/buffer-entry pane)])
     (if entry (hash-ref entry "hunks") '())))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 (register-hook! 'on-buffer-open
-  (lambda (bid)
-    (git-diff/init-buffer! bid git-diff/signs-default git-diff/inline-default)
-    (git-diff/schedule-refresh! bid (git-diff/buffer-ref bid))))
+  (lambda (pane)
+    (git-diff/init-buffer! pane git-diff/signs-default git-diff/inline-default)
+    (git-diff/schedule-refresh! pane (git-diff/buffer-ref pane))))
 
 (register-hook! 'on-buffer-enter
-  (lambda (bid) (git-diff/schedule-branch-refresh! bid)))
+  (lambda (pane) (git-diff/schedule-branch-refresh! pane)))
 
 ;;; Drives the branch fetch in the moment `"steel:git-branch"` is placed —
-;;; see docs/pipeline.md's "Branch tracking".
+;;; see docs/pipeline.md's "Branch tracking". `on-option-change` fires for a
+;;; *global* setting write with no buffer of its own — `(focused-pane)` is
+;;; the right read here, not a captured pane value: this is genuinely
+;;; follow-the-user code, refreshing whatever's on screen right now.
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "statusline")
-      (git-diff/schedule-branch-refresh! (current-buffer)))))
+      (git-diff/schedule-branch-refresh! (focused-pane)))))
 
 (register-hook! 'on-text-changed
-  (lambda (bid) (git-diff/schedule-refresh! bid (git-diff/buffer-ref bid))))
+  (lambda (pane) (git-diff/schedule-refresh! pane (git-diff/buffer-ref pane))))
 
 (register-hook! 'on-buffer-save
-  (lambda (bid)
-    (git-diff/cancel-fetch! bid)
-    (git-diff/entry-set! bid "ref-text" #f)
-    (git-diff/schedule-refresh! bid (git-diff/buffer-ref bid))
-    (git-diff/schedule-branch-refresh! bid)))
+  (lambda (pane)
+    (git-diff/cancel-fetch! pane)
+    (git-diff/entry-set! pane "ref-text" #f)
+    (git-diff/schedule-refresh! pane (git-diff/buffer-ref pane))
+    (git-diff/schedule-branch-refresh! pane)))
 
 (register-hook! 'on-buffer-close
-  (lambda (bid)
-    (git-diff/cancel-fetch! bid)
-    (git-diff/cancel-branch-fetch! bid)
-    (git-diff/remove-buffer! bid)))
+  (lambda (pane)
+    (git-diff/cancel-fetch! pane)
+    (git-diff/cancel-branch-fetch! pane)
+    (git-diff/remove-buffer! pane)))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
@@ -65,9 +68,13 @@
 ;;; `git-diff/fetch-branch!` (branch.scm). Answers `'()` on any failure (no
 ;;; path, not a repo, git missing) — a ref name is a nice-to-have
 ;;; completion, never worth erroring the command line over.
+;;; A minibuffer-target source: `id`/`input`/`cursor` only, no pane of its
+;;; own. `(focused-pane)` is the buffer that opened the `:` command line
+;;; this completes for — the same one its typed command will receive as its
+;;; own leading pane when Enter is pressed.
 (register-completion-source! "git-diff:refs"
   (lambda (id input cursor)
-    (let ([path (buffer-path (current-buffer))])
+    (let ([path (buffer-path (focused-pane))])
       (if (not path)
           (completion-emit! id '())
           (spawn-async! "git"
@@ -82,30 +89,30 @@
 
 ;;; Shared body for both toggles below — see docs/architecture.md's "Ref
 ;;; handling" for the ref-argument contract.
-(define (git-diff/run-toggle! bid key label arg)
+(define (git-diff/run-toggle! pane key label arg)
   (let ([enabled?
          (if (string? arg)
-             (begin (git-diff/ensure-entry! bid)
-                    (git-diff/entry-set! bid key #t)
-                    (git-diff/entry-set! bid "ref" arg)
-                    (git-diff/entry-set! bid "ref-text" #f)
+             (begin (git-diff/ensure-entry! pane)
+                    (git-diff/entry-set! pane key #t)
+                    (git-diff/entry-set! pane "ref" arg)
+                    (git-diff/entry-set! pane "ref-text" #f)
                     #t)
-             (git-diff/toggle-flag! bid key))])
+             (git-diff/toggle-flag! pane key))])
     (if enabled?
         (begin
-          (git-diff/render-for! key bid (git-diff/buffer-hunks bid))
-          (git-diff/force-refresh! bid (git-diff/buffer-ref bid)))
-        (git-diff/render-for! key bid '()))
+          (git-diff/render-for! key pane (git-diff/buffer-hunks pane))
+          (git-diff/force-refresh! pane (git-diff/buffer-ref pane)))
+        (git-diff/render-for! key pane '()))
     (log! 'info (if enabled?
-                    (string-append "git-diff: " label " on (" (git-diff/buffer-ref bid) ")")
+                    (string-append "git-diff: " label " on (" (git-diff/buffer-ref pane) ")")
                     (string-append "git-diff: " label " off")))))
 
 (define-typed-command! "toggle-git-signs"
   "Toggle gutter +/~ signs and deletion boundary marks for the current buffer's git diff. Optional argument: a git ref to diff against, e.g. :toggle-git-signs HEAD~2 (default: the `ref` config value, shared with toggle-inline-diff)."
-  (lambda (arg) (git-diff/run-toggle! (current-buffer) "signs?" "signs" arg))
+  (lambda (pane arg) (git-diff/run-toggle! pane "signs?" "signs" arg))
   #:complete "git-diff:refs")
 
 (define-typed-command! "toggle-inline-diff"
   "Toggle inline git diff rendering (virtual deleted lines, word highlights, background tint). Optional argument: a git ref to diff against, e.g. :toggle-inline-diff HEAD~2 (default: the `ref` config value, shared with toggle-git-signs)."
-  (lambda (arg) (git-diff/run-toggle! (current-buffer) "inline?" "inline diff" arg))
+  (lambda (pane arg) (git-diff/run-toggle! pane "inline?" "inline diff" arg))
   #:complete "git-diff:refs")

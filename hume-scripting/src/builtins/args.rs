@@ -1,14 +1,19 @@
-//! One marshalling vocabulary for builtins: plain `SteelVal` decoders, a
-//! `FromSteelVal` newtype for buffer-id params, free-fn decoders for wire
-//! position / text-edit params (`WirePos` is a `hume-rope` type, so the
-//! orphan rule rules out `FromSteelVal for WirePos` here — a plain function
-//! is used for its sibling `WireTextEdit` decoder too, for one calling
-//! convention across both), and the shared list/tuple decoders every
-//! multi-field setter builds on.
+//! One marshalling vocabulary for builtins: plain `SteelVal` decoders,
+//! `FromSteelVal` newtypes for pane params (`ArgPane`/`LivePane`, plus
+//! `Usize`/`OptUsize`/`OptString` for a `LivePane`-sibling argument that
+//! needs the same steel-core-driven, ahead-of-the-closure-body decode —
+//! see `BuiltinArg`, the seam that runs `LivePane`'s liveness check),
+//! free-fn decoders for wire position / text-edit params (`WirePos` is a
+//! `hume-rope` type, so the orphan rule rules out `FromSteelVal for
+//! WirePos` here — a plain function is used for its sibling
+//! `WireTextEdit` decoder too, for one calling convention across both),
+//! and the shared list/tuple decoders every multi-field setter builds on.
 //!
-//! `#f`-means-absent is decoded only by this module's `optional_*` family —
-//! enforced by `cargo test absent_marker_is_decoded_only_in_args_rs`
-//! (`arch-lints/tests/absent_decode.rs`).
+//! `#f`-means-absent is decoded only by this module's `optional_*` family
+//! (plus `OptUsize`/`OptString`'s own `FromSteelVal` impls, which live in
+//! this same file) — enforced by `cargo test
+//! absent_marker_is_decoded_only_in_args_rs` (`arch-lints/tests/
+//! absent_decode.rs`).
 
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
@@ -17,6 +22,8 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
 
 use hume_engine::pipeline::BufferId;
+
+use crate::types::PaneHandle;
 
 use super::errors::generic_err;
 
@@ -419,76 +426,253 @@ pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, St
 // `from_steelval` failure automatically, so these messages carry no
 // `ctx_name` of their own.
 
-/// A decoded `BufferId` argument. Avoids the inline
-/// `downcast_buffer_id(...).ok_or_else(...)` pattern every buffer-touching
-/// builtin would otherwise repeat.
+/// A decoded [`PaneHandle`] argument, tolerant of a since-closed buffer —
+/// for a builtin whose own contract is "answer `#f`/empty for a `pane`
+/// this host doesn't currently show anything for," where a closed buffer is
+/// just one more case of that, not a distinct error (`buffer-path`,
+/// `lsp-capabilities`, …). [`LivePane`] is the counterpart for a builtin
+/// that must raise on a closed buffer instead. Neither checks the pane half
+/// live — a builtin that needs the pane itself (kind A/B, see
+/// `hume-editor`'s `resolve_pane`) resolves and checks it through the host,
+/// not here; a kind-C builtin never looks at `.pane()` at all.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct BidArg(pub(crate) BufferId);
+pub(crate) struct ArgPane(pub(crate) PaneHandle);
 
-impl FromSteelVal for BidArg {
+impl FromSteelVal for ArgPane {
     fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        super::ids::downcast_buffer_id(val)
-            .map(BidArg)
-            .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "expected buffer-id".to_string()))
+        super::ids::downcast_pane(val)
+            .map(ArgPane)
+            .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "expected pane".to_string()))
     }
 }
 
-impl BidArg {
-    /// Checks the wrapped id against `ctx.host.buffers().buffer_exists`,
-    /// returning it unwrapped on success — the shared "does this bid still
-    /// name an open buffer" existence check every mutating buffer builtin
-    /// opens with. `BidArg` itself only validates *type* (that the Steel
-    /// value was a buffer-id at all); this is the *liveness* half.
-    pub(crate) fn require_live(
+/// A [`PaneHandle`] argument checked live during decoding (see
+/// [`BuiltinArg`]'s impl below) — the funnel every explicit-pane builtin
+/// that must raise on a closed buffer (rather than answer `#f`/empty, see
+/// [`ArgPane`]) declares its `pane` parameter as, in the `builtins!` table.
+/// The private field keeps `FromSteelVal` (type only) and `BuiltinArg`
+/// (type + liveness) as the only two ways to produce one — a builtin can't
+/// accidentally skip the liveness half by constructing this directly.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LivePane(PaneHandle);
+
+impl FromSteelVal for LivePane {
+    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        super::ids::downcast_pane(val)
+            .map(LivePane)
+            .ok_or_else(|| SteelErr::new(ErrorKind::TypeMismatch, "expected pane".to_string()))
+    }
+}
+
+/// One marshalling step every ctx-taking `builtins!` table entry (`cmd`,
+/// `config`, `open`) runs each declared argument through, right after its
+/// `FromSteelVal` decode and its eval-mode gate — the seam [`LivePane`]'s
+/// liveness check hooks into without every builtin body repeating
+/// `ctx.host.buffers().buffer_exists(...)` by hand. Every other declared
+/// arg type is `Self`-identity here: decode is already everything they
+/// need. `name` is the registered Steel name (the same `$name` the gate
+/// gets), so a `LivePane` failure's message names the builtin without the
+/// function body supplying it.
+pub(crate) trait BuiltinArg {
+    type Out;
+    fn resolve(self, ctx: &mut crate::SteelCtx, name: &'static str) -> Result<Self::Out, SteelErr>;
+}
+
+impl BuiltinArg for SteelVal {
+    type Out = SteelVal;
+    fn resolve(
+        self,
+        _ctx: &mut crate::SteelCtx,
+        _name: &'static str,
+    ) -> Result<Self::Out, SteelErr> {
+        Ok(self)
+    }
+}
+
+impl BuiltinArg for String {
+    type Out = String;
+    fn resolve(
+        self,
+        _ctx: &mut crate::SteelCtx,
+        _name: &'static str,
+    ) -> Result<Self::Out, SteelErr> {
+        Ok(self)
+    }
+}
+
+impl BuiltinArg for bool {
+    type Out = bool;
+    fn resolve(
+        self,
+        _ctx: &mut crate::SteelCtx,
+        _name: &'static str,
+    ) -> Result<Self::Out, SteelErr> {
+        Ok(self)
+    }
+}
+
+impl BuiltinArg for ArgPane {
+    type Out = ArgPane;
+    fn resolve(
+        self,
+        _ctx: &mut crate::SteelCtx,
+        _name: &'static str,
+    ) -> Result<Self::Out, SteelErr> {
+        Ok(self)
+    }
+}
+
+impl BuiltinArg for LivePane {
+    type Out = PaneHandle;
+    fn resolve(
         self,
         ctx: &mut crate::SteelCtx,
-        builtin_name: &str,
-    ) -> Result<BufferId, SteelErr> {
-        if ctx.host.buffers().buffer_exists(self.0) {
+        name: &'static str,
+    ) -> Result<PaneHandle, SteelErr> {
+        if ctx.host.buffers().buffer_exists(self.0.buffer()) {
             Ok(self.0)
         } else {
-            Err(self.not_live_err(builtin_name))
+            Err(generic_err(format!(
+                "{name}: invalid buffer id {:?}",
+                self.0.buffer()
+            )))
         }
     }
+}
 
-    /// The shared "this bid names no open buffer" error — the wording behind
-    /// [`require_live`](Self::require_live), for a builtin whose own host
-    /// call already does the liveness lookup (so a second `buffer_exists`
-    /// check would be redundant) but still needs `require_live`'s message.
-    pub(crate) fn not_live_err(self, builtin_name: &str) -> SteelErr {
-        generic_err(format!("{builtin_name}: invalid buffer id {:?}", self.0))
+/// [`usize_arg`]'s `FromSteelVal` counterpart — for a `LivePane`-sibling
+/// argument that must decode (via steel-core's own per-argument
+/// `FromSteelVal` pass, left to right, ahead of every builtin body) before
+/// `LivePane`'s liveness check ever runs, so a malformed sibling argument
+/// isn't masked behind a stale-buffer error. `usize_arg`'s plain-function
+/// form stays the one every other (no-`LivePane`) builtin decodes its own
+/// integer arguments with — this exists only where the ordering matters.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Usize(pub(crate) usize);
+
+impl FromSteelVal for Usize {
+    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        match val {
+            SteelVal::IntV(n) if *n >= 0 => Ok(Usize(*n as usize)),
+            _ => Err(SteelErr::new(
+                ErrorKind::TypeMismatch,
+                "expected a non-negative integer".to_string(),
+            )),
+        }
     }
 }
 
-/// A buffer-id argument that may be `#f` (absent — caller wants the
-/// implicit default, e.g. `get-option`'s focused-buffer fallback).
-pub(crate) fn optional_bid_arg(
-    val: SteelVal,
-    ctx_name: &str,
-) -> Result<Option<BufferId>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        other => Ok(Some(super::ids::downcast_buffer_id(&other).ok_or_else(
-            || {
-                SteelErr::new(
-                    ErrorKind::TypeMismatch,
-                    format!("{ctx_name}: expected buffer-id or #f"),
-                )
-            },
-        )?)),
+impl BuiltinArg for Usize {
+    type Out = usize;
+    fn resolve(self, _ctx: &mut crate::SteelCtx, _name: &'static str) -> Result<usize, SteelErr> {
+        Ok(self.0)
     }
 }
 
-/// Decodes a `(line . character)` dotted pair into a
-/// [`WirePos`](hume_rope::position_encoding::WirePos).
-pub(crate) fn wire_pos_arg(
-    val: SteelVal,
-) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
-    let (line, character) = pair_fields(val, "position", "(line . character)")?;
-    Ok(hume_rope::position_encoding::WirePos {
-        line: usize_arg(line, "position")?,
-        character: usize_arg(character, "position")?,
-    })
+/// [`Usize`], but `#f` decodes to `None` — [`optional_usize_arg`]'s
+/// `FromSteelVal` counterpart.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OptUsize(pub(crate) Option<usize>);
+
+impl FromSteelVal for OptUsize {
+    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        match val {
+            SteelVal::BoolV(false) => Ok(OptUsize(None)),
+            other => Usize::from_steelval(other).map(|Usize(n)| OptUsize(Some(n))),
+        }
+    }
+}
+
+impl BuiltinArg for OptUsize {
+    type Out = Option<usize>;
+    fn resolve(
+        self,
+        _ctx: &mut crate::SteelCtx,
+        _name: &'static str,
+    ) -> Result<Option<usize>, SteelErr> {
+        Ok(self.0)
+    }
+}
+
+/// [`string_arg`]'s `FromSteelVal` counterpart, with `#f` decoding to
+/// `None` (like [`optional_string_arg`]) — for `set-buffer-language!`'s
+/// `lang`, the one other `LivePane`-sibling argument needing decode-before-
+/// liveness ordering.
+#[derive(Debug, Clone)]
+pub(crate) struct OptString(pub(crate) Option<String>);
+
+impl FromSteelVal for OptString {
+    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        match val {
+            SteelVal::BoolV(false) => Ok(OptString(None)),
+            SteelVal::StringV(s) => Ok(OptString(Some(s.to_string()))),
+            SteelVal::SymbolV(s) => Ok(OptString(Some(s.to_string()))),
+            _ => Err(SteelErr::new(
+                ErrorKind::TypeMismatch,
+                "expected a string".to_string(),
+            )),
+        }
+    }
+}
+
+impl BuiltinArg for OptString {
+    type Out = Option<String>;
+    fn resolve(
+        self,
+        _ctx: &mut crate::SteelCtx,
+        _name: &'static str,
+    ) -> Result<Option<String>, SteelErr> {
+        Ok(self.0)
+    }
+}
+
+/// `(lsp-stop! target)` / `(lsp-restart! target)`'s `target` argument, ahead
+/// of [`BuiltinArg::resolve`]'s liveness check on the `Buffer` case — a pane
+/// decodes like [`LivePane`] (only its buffer is used: this is a kind-C,
+/// buffer-only operation), a string or symbol names a language (like
+/// [`OptString`], but required: there is no "focused buffer" fallback left
+/// to decode `#f` into).
+#[derive(Debug)]
+pub(crate) enum LspTargetArg {
+    Buffer(BufferId),
+    Language(String),
+}
+
+impl FromSteelVal for LspTargetArg {
+    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
+        if let Some(handle) = super::ids::downcast_pane(val) {
+            return Ok(LspTargetArg::Buffer(handle.buffer()));
+        }
+        match val {
+            SteelVal::StringV(s) => Ok(LspTargetArg::Language(s.to_string())),
+            SteelVal::SymbolV(s) => Ok(LspTargetArg::Language(s.to_string())),
+            _ => Err(SteelErr::new(
+                ErrorKind::TypeMismatch,
+                "expected a buffer-id or a language name".to_string(),
+            )),
+        }
+    }
+}
+
+impl BuiltinArg for LspTargetArg {
+    type Out = crate::types::LspServerTarget;
+    fn resolve(
+        self,
+        ctx: &mut crate::SteelCtx,
+        name: &'static str,
+    ) -> Result<crate::types::LspServerTarget, SteelErr> {
+        match self {
+            LspTargetArg::Buffer(bid) if ctx.host.buffers().buffer_exists(bid) => {
+                Ok(crate::types::LspServerTarget::Buffer(bid))
+            }
+            LspTargetArg::Buffer(bid) => {
+                Err(generic_err(format!("{name}: invalid buffer id {bid:?}")))
+            }
+            LspTargetArg::Language(language) => {
+                Ok(crate::types::LspServerTarget::Language(language))
+            }
+        }
+    }
 }
 
 /// Decodes a wire `{"line" "character"}` hashmap. `what` names the calling
@@ -518,8 +702,11 @@ pub(crate) fn wire_position(
 /// `TextEdit` — a `JsonHandle`'s own resolved value, e.g. one element of a
 /// `textDocument/formatting` response handed straight to
 /// `apply-text-edits!` — into a [`WireTextEdit`](crate::host::WireTextEdit).
+/// `encoding` is the handle's own tag, passed in rather than re-read here so
+/// this stays the plain JSON-shape decoder [`wire_position`] already is.
 fn wire_text_edit_from_json(
     v: &serde_json::Value,
+    encoding: hume_rope::position_encoding::PositionEncoding,
     ctx_name: &str,
 ) -> Result<crate::host::WireTextEdit, SteelErr> {
     let range = v
@@ -545,33 +732,28 @@ fn wire_text_edit_from_json(
     Ok(crate::host::WireTextEdit {
         range: hume_rope::offset::ExclusiveRange::new(start, end),
         new_text,
+        encoding,
     })
 }
 
 /// Decodes one `apply-text-edits!` entry into a
-/// [`WireTextEdit`](crate::host::WireTextEdit) — either a `JsonHandle` onto
-/// a wire `TextEdit` (an unconverted element straight from a
-/// `textDocument/formatting`-shaped response, via [`wire_text_edit_from_json`])
-/// or the pre-existing
-/// `((start-line . start-character) (end-line . end-character) text)`
-/// tuple shape (outer 3-tuple a list, inner positions dotted pairs) a
-/// plugin builds by hand.
+/// [`WireTextEdit`](crate::host::WireTextEdit) — a `JsonHandle` onto a wire
+/// `TextEdit` (an unconverted element straight from a
+/// `textDocument/formatting`-shaped response), never a hand-built shape: a
+/// hand-built tuple would have no producing server to read an encoding off,
+/// and guessing one is exactly what `JsonHandle::position_encoding` refuses
+/// to do.
 pub(crate) fn wire_text_edit_arg(val: SteelVal) -> Result<crate::host::WireTextEdit, SteelErr> {
-    if let Some(handle) = crate::json::downcast_json_handle(&val) {
-        return wire_text_edit_from_json(handle.value(), "apply-text-edits!");
-    }
-    let fields = checked_fields(
-        val,
-        "text edit",
-        3..=3,
-        "((start-line . start-character) (end-line . end-character) text) or a JSON handle",
-    )?;
-    let start = wire_pos_arg(fields[0].clone())?;
-    let end = wire_pos_arg(fields[1].clone())?;
-    Ok(crate::host::WireTextEdit {
-        range: hume_rope::offset::ExclusiveRange::new(start, end),
-        new_text: string_arg(fields[2].clone(), "text edit")?,
-    })
+    let Some(handle) = crate::json::downcast_json_handle(&val) else {
+        return Err(SteelErr::new(
+            ErrorKind::TypeMismatch,
+            "apply-text-edits!: expected a JSON handle onto a wire TextEdit".to_string(),
+        ));
+    };
+    let encoding = handle
+        .position_encoding("apply-text-edits!")
+        .map_err(generic_err)?;
+    wire_text_edit_from_json(handle.value(), encoding, "apply-text-edits!")
 }
 
 #[cfg(test)]

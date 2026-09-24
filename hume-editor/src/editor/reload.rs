@@ -24,12 +24,13 @@ use crate::editor::error::CommandError;
 /// two halves.
 #[derive(Default)]
 pub(crate) struct ReloadSnapshot {
-    /// `(bid, replace_stamp)` for every buffer open when the reload started,
-    /// as of that moment. `Buffer::replace_stamp`'s doc explains why a
-    /// versioned `BufferId` alone isn't enough to tell "the same buffer
-    /// this snapshot meant" apart from "a fresh scratch buffer that reused
-    /// the same key in place".
-    buffer_stamps: rustc_hash::FxHashMap<BufferId, u64>,
+    /// Every buffer open when the reload started. A versioned `BufferId` can
+    /// never silently start naming different content — `close_buffer`'s
+    /// last-buffer branch allocates a fresh key for its scratch replacement
+    /// rather than reusing the closed one in place — so membership in this
+    /// set plus current liveness is sufficient identity; no generation stamp
+    /// is needed to rule out a same-key content swap the way one used to be.
+    pre_reload_bids: rustc_hash::FxHashSet<BufferId>,
     /// `(bid, explicit-language-name)` for every buffer whose language was
     /// an explicit assertion (`:set buffer language=`/`set-buffer-language!`)
     /// rather than detection. `None` means the user explicitly cleared the
@@ -40,21 +41,17 @@ pub(crate) struct ReloadSnapshot {
 }
 
 impl ReloadSnapshot {
-    /// `true` when `bid` is still the same buffer instance this snapshot
-    /// captured. `false` both for a bid the snapshot never saw (a buffer
-    /// `init.scm` opened fresh this reload) and for a bid whose buffer was
-    /// silently swapped in place since (`close_buffer`'s last-buffer scratch
-    /// replacement) — see `Buffer::replace_stamp`.
+    /// `true` when `bid` predates this reload and is still a live buffer.
+    /// `false` for a bid the snapshot never saw (a buffer `init.scm` opened
+    /// fresh this reload) or one that has since closed — a versioned
+    /// `BufferId` can never alias a different buffer's content, so liveness
+    /// alone settles the latter case now.
     pub(super) fn survives(
         &self,
         bid: BufferId,
         buffers: &super::buffer::store::BufferStore,
     ) -> bool {
-        self.buffer_stamps.get(&bid).is_some_and(|&stamp| {
-            buffers
-                .try_get(bid)
-                .is_some_and(|buf| buf.replace_stamp == stamp)
-        })
+        self.pre_reload_bids.contains(&bid) && buffers.try_get(bid).is_some()
     }
 
     /// Take ownership of the explicit-language snapshot, leaving this
@@ -66,21 +63,14 @@ impl ReloadSnapshot {
     }
 
     /// Build a snapshot as if every id in `pre_reload_bids` predated the
-    /// reload, using each buffer's *current* `replace_stamp` — mirrors what
-    /// `reset_config_state` itself captures. Test-only: production always
-    /// gets a `ReloadSnapshot` from `reset_config_state`; this exists for
-    /// `resync_config_state` unit tests that exercise the replay in
-    /// isolation, without a full reset.
+    /// reload — mirrors what `reset_config_state` itself captures.
+    /// Test-only: production always gets a `ReloadSnapshot` from
+    /// `reset_config_state`; this exists for `resync_config_state` unit
+    /// tests that exercise the replay in isolation, without a full reset.
     #[cfg(test)]
-    pub(in crate::editor) fn for_test(
-        pre_reload_bids: impl IntoIterator<Item = BufferId>,
-        buffers: &super::buffer::store::BufferStore,
-    ) -> Self {
+    pub(in crate::editor) fn for_test(pre_reload_bids: impl IntoIterator<Item = BufferId>) -> Self {
         Self {
-            buffer_stamps: pre_reload_bids
-                .into_iter()
-                .filter_map(|bid| buffers.try_get(bid).map(|buf| (bid, buf.replace_stamp)))
-                .collect(),
+            pre_reload_bids: pre_reload_bids.into_iter().collect(),
             explicit_languages: Vec::new(),
         }
     }
@@ -107,16 +97,10 @@ impl Editor {
     /// dropped first, before the engine itself goes away — so nothing here
     /// ever gets invoked against the *new* engine that didn't create it.
     pub(in crate::editor) fn reset_config_state(&mut self) -> ReloadSnapshot {
-        // Captured before anything below runs: `replace_stamp` is buffer
-        // identity bookkeeping, untouched by this reset, but must reflect
-        // each buffer's stamp *as of reload start* — see
-        // `Buffer::replace_stamp`'s doc.
-        let buffer_stamps = self
-            .state
-            .buffers
-            .iter()
-            .map(|(bid, buf)| (bid, buf.replace_stamp))
-            .collect();
+        // Captured before anything below runs: the set of buffers open *as
+        // of reload start*, so a buffer `init.scm` opens fresh during this
+        // reload is never mistaken for one that predates it.
+        let pre_reload_bids = self.state.buffers.iter().map(|(bid, _)| bid).collect();
 
         // ── Steel values rooted in the outgoing engine ──
         //
@@ -209,7 +193,7 @@ impl Editor {
         super::settings::ops::reset_globals(&mut self.state, &mut self.view);
 
         ReloadSnapshot {
-            buffer_stamps,
+            pre_reload_bids,
             explicit_languages,
         }
     }
@@ -234,17 +218,15 @@ impl Editor {
     ///
     /// `snapshot` — captured by `reset_config_state` before this reload's
     /// reset ran — filters every loop below to buffers that (a) predate this
-    /// reload and (b) are still the *same* buffer instance, per
-    /// `Buffer::replace_stamp`. Without (a): the ordinary open path
+    /// reload and (b) are still live. Without (a): the ordinary open path
     /// (`detect_pending_languages`, run inside `init_scripting` before this
     /// function is called) already fires hooks once for a genuinely new
     /// buffer, and by the time this function runs its `open_hook_pending` is
     /// already `false` again, same as every pre-reload buffer — so a buffer
     /// `init.scm` itself opens while re-running (a session-restore plugin, a
     /// first-run `open-buffer!`) would double-fire without this filter.
-    /// Without (b): a bid whose only buffer `init.scm` closed (reusing the
-    /// slot in place for a fresh scratch — see `close_buffer`) would have
-    /// its pre-reload hooks replayed against unrelated scratch content.
+    /// Without (b): a bid whose only buffer `init.scm` closed would have its
+    /// pre-reload hooks replayed against a buffer that no longer exists.
     ///
     /// No `OnBufferClose` counterpart: that hook would have to run against
     /// the outgoing engine, before the reset, tearing down state the reset
@@ -303,12 +285,12 @@ impl Editor {
         // time the pane's viewport genuinely moves — which a reload alone
         // never causes — so a clean buffer would show no inlay hints until
         // the user scrolls. Active-tab panes only: a background-tab pane's
-        // `viewport-range` reads `#f` (`pane_showing_buffer`'s active-tab
-        // restriction), so the same handlers this is meant to repopulate
-        // would just skip. A hidden pane's own repopulation happens when its
-        // tab is next focused — `queue_viewport_change`'s active-tab guard
-        // dropped its `last_viewport_key`, so that pane's first visible
-        // frame reads as a change.
+        // geometry isn't kept in sync per frame (`sync_viewport_dims`
+        // resizes active-tab panes only), so firing here for one would hand
+        // a handler stale bounds. A hidden pane's own repopulation happens
+        // when its tab is next focused — `queue_viewport_change`'s
+        // active-tab guard dropped its `last_viewport_key`, so that pane's
+        // first visible frame reads as a change.
         for pane_id in self.view.active_pane_ids() {
             if snapshot.survives(self.view.panes[pane_id].buffer_id, &self.state.buffers) {
                 self.queue_viewport_change(pane_id);

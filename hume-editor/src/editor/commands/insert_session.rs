@@ -13,16 +13,15 @@ use crate::editor::replay::InsertSession;
 use hume_ops::edit::clear_blank_line_indent;
 
 use super::{
-    apply_focused_edit_grouped, apply_focused_motion, begin_edit_group_current,
-    commit_edit_group_current, current_selections, doc, focused_buffer_id, refuse_if_read_only,
+    FocusedPane, apply_focused_edit_grouped, apply_pane_motion, begin_edit_group_current,
+    commit_edit_group_current, doc, pane_selections, refuse_if_read_only,
 };
 
 /// `true` when the focused (pane, buffer) has an open edit group.
 fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
-    let bid = focused_buffer_id(state, view);
-    state.panes.state[state.focus.id()][bid]
-        .edit_group
-        .is_some()
+    let fp = FocusedPane::current(state);
+    let bid = fp.bid(view);
+    state.panes.state[fp.pid()][bid].edit_group.is_some()
 }
 
 /// `true` if any current selection is a collapsed cursor sitting on a blank
@@ -40,8 +39,9 @@ pub(in crate::editor::commands::insert_session) fn has_blank_line_cursor(
     view: &EngineView,
     allowed: &[ExclusiveRange<CharOffset>],
 ) -> bool {
-    let text = doc(state, view).text();
-    current_selections(state, view)
+    let t = FocusedPane::current(state).target();
+    let text = doc(state, view, t).text();
+    pane_selections(state, view, t)
         .iter_sorted()
         .enumerate()
         .any(|(i, sel)| {
@@ -66,10 +66,10 @@ pub(in crate::editor) fn autoindent_owned(
     state: &EditorState,
     view: &EngineView,
 ) -> Vec<ExclusiveRange<CharOffset>> {
-    let pid = state.focus.id();
-    let bid = focused_buffer_id(state, view);
-    let sel_count = current_selections(state, view).len();
-    match &state.panes.state[pid][bid].autoindent {
+    let fp = FocusedPane::current(state);
+    let bid = fp.bid(view);
+    let sel_count = pane_selections(state, view, fp.target()).len();
+    match &state.panes.state[fp.pid()][bid].autoindent {
         Some(ranges) if ranges.len() == sel_count => ranges.clone(),
         _ => Vec::new(),
     }
@@ -87,8 +87,9 @@ pub(in crate::editor) fn arm_autoindent(state: &mut EditorState, view: &EngineVi
     if !is_group_open_current(state, view) {
         return;
     }
-    let text = doc(state, view).text();
-    let ranges: Vec<ExclusiveRange<CharOffset>> = current_selections(state, view)
+    let fp = FocusedPane::current(state);
+    let text = doc(state, view, fp.target()).text();
+    let ranges: Vec<ExclusiveRange<CharOffset>> = pane_selections(state, view, fp.target())
         .iter_sorted()
         .map(|sel| {
             let head = sel.head();
@@ -97,9 +98,8 @@ pub(in crate::editor) fn arm_autoindent(state: &mut EditorState, view: &EngineVi
             ExclusiveRange::new(line_start, head)
         })
         .collect();
-    let pid = state.focus.id();
-    let bid = focused_buffer_id(state, view);
-    state.panes.state[pid][bid].autoindent = Some(ranges);
+    let bid = fp.bid(view);
+    state.panes.state[fp.pid()][bid].autoindent = Some(ranges);
 }
 
 /// Where an *empty* typed run's cursor lands on exit — see
@@ -140,13 +140,13 @@ pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView, exit: 
     if !is_group_open_current(state, view) {
         return;
     }
-    let heads: Vec<CharOffset> = current_selections(state, view)
+    let fp = FocusedPane::current(state);
+    let heads: Vec<CharOffset> = pane_selections(state, view, fp.target())
         .iter_sorted()
         .map(|s| s.head())
         .collect();
-    let pid = state.focus.id();
-    let bid = focused_buffer_id(state, view);
-    let pbs = &mut state.panes.state[pid][bid];
+    let bid = fp.bid(view);
+    let pbs = &mut state.panes.state[fp.pid()][bid];
     // `ends` starts equal to `anchors` — an empty run — and is pushed
     // forward only by actual insertions (see `TypedRun::ends`'s own doc).
     pbs.typed_run = Some(TypedRun {
@@ -180,7 +180,8 @@ pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
 /// `i`/`a`/`o` entry; use [`begin_insert_session`], which clears the prefix
 /// as those commands require.
 pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, view: &EngineView) {
-    if refuse_if_read_only(state, view) {
+    let fp = FocusedPane::current(state);
+    if refuse_if_read_only(state, view, fp.target()) {
         return;
     }
     // Guard is load-bearing for dot-repeat replay: `replay_dot` opens
@@ -194,7 +195,7 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
     // transaction / begin-edit-group builtin, and none should ever be added:
     // fine-grained undo grouping belongs to native commands, not scripts.
     if !is_group_open_current(state, view) {
-        begin_edit_group_current(state, view);
+        begin_edit_group_current(state, view, fp);
         state.insert_session = Some(InsertSession {
             keystrokes: Vec::new(),
         });
@@ -208,7 +209,7 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
 /// Exit Insert mode: truncates the `Insert` layer, running
 /// [`tear_down_insert`] via `EditorState::tear_down`. A no-op if no `Insert`
 /// layer is open — `cmd_exit_insert` is a registered mappable command, so
-/// `(call! "exit-insert")` can reach here from any mode (a hook, a timer, an
+/// `(call! "exit-insert" bid)` can reach here from any mode (a hook, a timer, an
 /// async LSP callback), not only from a key path that already proved
 /// `Insert` is current. Truncating `state.input.mode_layer()` unconditionally
 /// used to cancel whatever mode layer happened to be current — a `prompt!`
@@ -244,13 +245,14 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     // `has_blank_line_cursor` also skips the edit in the common case —
     // cursor not on a line this session owns — rather than running an
     // identity one on every Insert-mode exit.
+    let fp = FocusedPane::current(state);
     let allowed = autoindent_owned(state, view);
     if has_blank_line_cursor(state, view, &allowed) {
-        apply_focused_edit_grouped(state, view, move |b, s| {
+        apply_focused_edit_grouped(state, view, fp, move |b, s| {
             clear_blank_line_indent(b, s, &allowed)
         });
     }
-    commit_edit_group_current(state, view);
+    commit_edit_group_current(state, view, fp);
     if let (Some(session), Some(action)) = (
         state.insert_session.take(),
         state.last_repeatable_action.as_mut(),
@@ -264,9 +266,8 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
     let (typed_run, step_back, kill_opened) = {
-        let pid = state.focus.id();
-        let bid = focused_buffer_id(state, view);
-        let pbs = &mut state.panes.state[pid][bid];
+        let bid = fp.bid(view);
+        let pbs = &mut state.panes.state[fp.pid()][bid];
         (
             pbs.typed_run.take(),
             std::mem::take(&mut pbs.step_back_on_exit),
@@ -280,10 +281,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
         stamp.seq = state.buffers.edit_seq();
     }
-    let sel_count = current_selections(state, view).len();
+    let sel_count = pane_selections(state, view, fp.target()).len();
     let valid_run = typed_run.filter(|r| r.anchors.len() == sel_count);
     let spans: Option<Vec<Option<InclusiveRange<CharOffset>>>> = valid_run.map(|run| {
-        let text = doc(state, view).text();
+        let text = doc(state, view, fp.target()).text();
         run.anchors
             .iter()
             .zip(run.ends.iter())
@@ -297,7 +298,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     if let Some(spans) = &spans {
         let stashed: Vec<InclusiveRange<CharOffset>> = spans.iter().flatten().copied().collect();
         if !stashed.is_empty() {
-            let bid = focused_buffer_id(state, view);
+            let bid = fp.bid(view);
             let buf = state.buffers.get_mut(bid);
             let text_gen = buf.text_gen;
             buf.last_insert = Some(LastInsert {
@@ -307,12 +308,12 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
         }
     }
 
-    let select_on_exit = doc(state, view)
+    let select_on_exit = doc(state, view, fp.target())
         .overrides
         .select_inserted_text(&state.settings);
     let spans = spans.filter(|_| select_on_exit);
     if spans.is_some() || step_back {
-        apply_focused_motion(state, view, move |b, sels| {
+        apply_pane_motion(state, view, fp.target(), move |b, sels| {
             let mut spans = spans.into_iter().flatten();
             sels.map(|sel| match spans.next().flatten() {
                 Some(r) => Selection::new(r.start, r.end),

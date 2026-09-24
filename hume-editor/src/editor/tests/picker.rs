@@ -400,7 +400,7 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 /// stay open.
 #[test]
 fn close_picker_tears_down_an_insert_session_stacked_above_it() {
-    use crate::editor::commands::cmd_insert_before;
+    use crate::editor::commands::{FocusedPane, cmd_insert_before};
     use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[a]>bc\n");
@@ -408,7 +408,8 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
     assert!(ed.state.input.picker().is_some(), "sanity: picker open");
 
     // Lands above the picker the same ungated way a timer would.
-    cmd_insert_before(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    let fp = FocusedPane::current(&ed.state);
+    cmd_insert_before(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
     assert_eq!(
         ed.state.mode(),
         Mode::Insert,
@@ -491,9 +492,11 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     use hume_scripting::host::{PickerFeedMode, PickerOpts, UiHost};
 
     let mut ed = editor_from("-[a]>bc\n");
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let token = host
         .open_picker(
+            pane,
             vec![],
             SteelVal::Void,
             PickerOpts {
@@ -503,6 +506,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
         )
         .unwrap();
 
+    let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
         token + 1,
@@ -527,15 +531,18 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
     use hume_scripting::host::{PickerFeedMode, PickerOpts, UiHost};
 
     let mut ed = editor_from("-[a]>bc\n");
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let token = host
         .open_picker(
+            pane,
             vec![("a".to_string(), SteelVal::StringV("a".into()))],
             SteelVal::Void,
             PickerOpts::default(),
         )
         .unwrap();
 
+    let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert!(!host.picker_feed(
         token + 1,

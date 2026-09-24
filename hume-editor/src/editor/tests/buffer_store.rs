@@ -52,7 +52,9 @@ fn p6_close_buffer_redirects_to_mru() {
     );
 }
 
-/// `close_buffer` on the last buffer replaces it with scratch (Case C).
+/// `close_buffer` on the last buffer frees its slot and opens a fresh
+/// scratch buffer under a new `BufferId` (Case C) — not a content swap
+/// under the closed id, which a captured `bid` could then alias.
 #[test]
 fn p6_close_last_buffer_becomes_scratch() {
     let mut ed = Editor::for_testing(Buffer::new(
@@ -61,16 +63,56 @@ fn p6_close_last_buffer_becomes_scratch() {
     ));
     let bid = ed.focused_buffer_id();
     ed.close_buffer(bid);
-    // Buffer id stays valid but content is now scratch.
-    assert_eq!(
+    assert!(
+        ed.state.buffers.try_get(bid).is_none(),
+        "the closed buffer's own slot must be freed, not reused"
+    );
+    assert_ne!(
         ed.focused_buffer_id(),
         bid,
-        "same buffer id after scratch replacement"
+        "the fresh scratch buffer must have its own, different BufferId"
     );
     assert_eq!(
         ed.doc().text().to_string(),
         "\n",
         "scratch buffer has structural newline only"
+    );
+}
+
+/// Hole D regression: a bid captured before `:bd` on the last buffer must
+/// read as dead afterward — the exact case a same-slot in-place replace
+/// (the previous design) defeated every `LiveBid`-checked builtin against,
+/// since the closed id would still `try_get` successfully against unrelated
+/// scratch content.
+///
+/// Fail oracle: if `close_buffer`'s last-buffer branch still reused `id` in
+/// place, `get-buffer-option` would succeed against the scratch buffer
+/// instead of raising "invalid buffer id".
+#[test]
+fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("only\n"),
+        SelectionSet::default(),
+    ));
+    let tmp = safe_tempdir();
+    // `bid` is the typed command's own injected leading param — the only
+    // buffer, so it's the one `close-buffer!` below closes. Reusing that
+    // same captured Scheme value afterward is exactly "a bid captured
+    // before the close, read after".
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "close-and-probe" "" (lambda (bid)
+             (close-buffer! bid)
+             (get-buffer-option bid "tab-width")))"#,
+    );
+    type_cmd(&mut ed, ":close-and-probe");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("invalid buffer id"),
+        "a get-buffer-option on the just-closed bid must raise, not read the scratch \
+         replacement's tab-width: {log:?}"
     );
 }
 
@@ -156,25 +198,30 @@ fn goto_next_prev_buffer_cycle() {
         SelectionSet::default(),
     ));
     // Still focused on a. goto-next-buffer → b.
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-next-buffer", Some(1), false, None)
+        .run_command_sync("goto-next-buffer", pane, Some(1), false, None)
         .expect("goto-next-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_b, "advances to b");
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-next-buffer", Some(1), false, None)
+        .run_command_sync("goto-next-buffer", pane, Some(1), false, None)
         .expect("goto-next-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_c, "advances to c");
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-next-buffer", Some(1), false, None)
+        .run_command_sync("goto-next-buffer", pane, Some(1), false, None)
         .expect("goto-next-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_a, "wraps to a");
     // goto-prev-buffer from a → c.
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-prev-buffer", Some(1), false, None)
+        .run_command_sync("goto-prev-buffer", pane, Some(1), false, None)
         .expect("goto-prev-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_c, "wraps to c");
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-prev-buffer", Some(1), false, None)
+        .run_command_sync("goto-prev-buffer", pane, Some(1), false, None)
         .expect("goto-prev-buffer must not error");
     assert_eq!(ed.focused_buffer_id(), bid_b, "back to b");
 }
@@ -545,5 +592,45 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
     assert_eq!(
         found, None,
         "a verbatim UNC path must not match its plain-UNC form"
+    );
+}
+
+/// `(buffer-live? bid)` — the non-raising idiom for a timer/debounce/async
+/// continuation to check its captured `bid` before acting on it. `#t` for
+/// an open buffer, `#f` for one that closed since — never raises either
+/// way, unlike a `LiveBid`-checked builtin.
+#[test]
+fn buffer_live_reflects_open_and_closed_state() {
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("a\n"),
+        SelectionSet::default(),
+    ));
+    // A second buffer so the probe's own close below frees its slot
+    // outright rather than hitting the last-buffer scratch-replacement
+    // branch.
+    ed.open_buffer(Buffer::new(
+        BufferText::from("b\n"),
+        SelectionSet::default(),
+    ));
+
+    let tmp = safe_tempdir();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (log! 'trace (string-append "before: " (to-string (buffer-live? bid))))
+             (close-buffer! bid)
+             (log! 'trace (string-append "after: " (to-string (buffer-live? bid))))))"#,
+    );
+    type_cmd(&mut ed, ":probe");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("before: #t"),
+        "an open buffer must read as live: {log:?}"
+    );
+    assert!(
+        log.contains("after: #f"),
+        "the just-closed buffer must read as dead, not raise: {log:?}"
     );
 }

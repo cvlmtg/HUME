@@ -215,7 +215,8 @@ fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
     );
 
     // lsp-fmt is key-bindable, not typed — dispatch through the keymap
-    // pipeline, the way an `on-buffer-save` hook's `(call! "lsp-fmt")` would.
+    // pipeline, the way an `on-buffer-save` hook's `(call! "lsp-fmt" bid)`
+    // would.
     ed.execute_keymap_command("lsp-fmt".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();

@@ -10,7 +10,7 @@ fn define_typed_command_registers_into_typed_table() {
     let mut mock = MockHost::new();
 
     h.eval_source(
-        r#"(define-typed-command! "greet" "doc" (lambda (arg) (+ 1 0)))"#,
+        r#"(define-typed-command! "greet" "doc" (lambda (bid arg) (+ 1 0)))"#,
         &mut mock,
     )
     .expect("define-typed-command! must succeed");
@@ -212,14 +212,7 @@ fn call_steel_cmd_watchdog_aborts_runaway() {
 
     let start = std::time::Instant::now();
     let err = h
-        .call_steel_cmd(
-            &cmd_name,
-            None,
-            vec![],
-            PaneId::default(),
-            BufferId::default(),
-            &mut mock,
-        )
+        .call_steel_cmd(&cmd_name, None, vec![], &mut mock)
         .unwrap_err();
 
     assert!(
@@ -257,14 +250,7 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     mock.settings.steel_command_budget_ms = 50;
 
     let err = h
-        .call_steel_cmd(
-            &cmd_name,
-            None,
-            vec![],
-            PaneId::default(),
-            BufferId::default(),
-            &mut mock,
-        )
+        .call_steel_cmd(&cmd_name, None, vec![], &mut mock)
         .unwrap_err();
 
     assert!(
@@ -292,15 +278,8 @@ fn call_steel_cmd_set_option_from_body_applies_the_setting() {
     )
     .unwrap();
 
-    h.call_steel_cmd(
-        "try-set",
-        None,
-        vec![],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    )
-    .unwrap();
+    h.call_steel_cmd("try-set", None, vec![], &mut mock)
+        .unwrap();
 
     assert_eq!(mock.settings.tab_width, 8, "tab-width must be applied");
 }

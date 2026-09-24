@@ -8,7 +8,7 @@ use hume_ops::selection_cmd::{
     cmd_split_selection_on_newlines, cmd_trim_selection_whitespace,
 };
 
-use super::builder::ecmd;
+use super::builder::ecmd_pane;
 
 impl CommandRegistry {
     pub(super) fn register_selections(&mut self) {
@@ -93,7 +93,7 @@ impl CommandRegistry {
         // flag is inert on replay (`cmd_copy_selection_on_next_line` ignores
         // `MotionMode`), but is still recorded faithfully for the recipe's
         // own bookkeeping.
-        ecmd(
+        ecmd_pane(
             "copy-selection-on-next-line",
             "Duplicate each selection on the line below.",
             cmd_copy_selection_on_next_line,
@@ -101,7 +101,7 @@ impl CommandRegistry {
         .composes_selection()
         .extendable()
         .reg(self);
-        ecmd(
+        ecmd_pane(
             "copy-selection-on-prev-line",
             "Duplicate each selection on the line above.",
             cmd_copy_selection_on_prev_line,

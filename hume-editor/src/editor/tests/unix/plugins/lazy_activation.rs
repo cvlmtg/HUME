@@ -39,7 +39,7 @@ fn lazy_stub_present_after_init() {
 fn first_dispatch_activates_plugin_and_runs() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
-        r#"(define-typed-command! "bar" "doc" (lambda () (call! "move-right")))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda () (call! "move-right" (focused-pane))))"#,
     );
     let before = state(&ed);
 
@@ -72,7 +72,7 @@ fn first_dispatch_activates_plugin_and_runs() {
 fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:typed-commands '("myfetch"))"#,
-        r#"(define-typed-command! "myfetch" "doc" (lambda (arg) (log! 'info arg)) #:complete "path")"#,
+        r#"(define-typed-command! "myfetch" "doc" (lambda (bid arg) (log! 'info arg)) #:complete "path")"#,
     );
     let files_dir = safe_tempdir();
     std::fs::write(files_dir.path().join("hello.txt"), b"").unwrap();
@@ -248,7 +248,7 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
         .iter()
         .filter_map(|w| match w {
             crate::editor::event::PendingWork::Event(e) => Some(e),
-            crate::editor::event::PendingWork::Call(..) => None,
+            crate::editor::event::PendingWork::Call { .. } => None,
         })
         .collect();
     assert_eq!(
@@ -308,8 +308,8 @@ fn body_error_removes_stub_and_marks_failed() {
     );
 }
 
-/// `:bar arg` on a lazy command: the arg is correctly passed to a 1-arity
-/// command on first call (after activation).
+/// `:bar arg` on a lazy command: the arg is correctly passed to a
+/// `(bid arg)`-arity command on first call (after activation).
 ///
 /// Flip: if arg were silently dropped, the Steel command would receive false
 /// (#f) instead of the string and the test string would not appear as output.
@@ -317,12 +317,12 @@ fn body_error_removes_stub_and_marks_failed() {
 fn lazy_cmd_arg_passed_on_first_call() {
     use hume_scripting::attribution::PluginId;
 
-    // The plugin defines a 1-arity "bar" that does nothing visible — we just
-    // verify that after activation the command is SteelBacked (i.e. arg was
-    // accepted, no arity error), and the plugin is Loaded.
+    // The plugin defines a `(bid x)`-arity "bar" that does nothing visible —
+    // we just verify that after activation the command is SteelBacked (i.e.
+    // arg was accepted, no arity error), and the plugin is Loaded.
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
-        r#"(define-typed-command! "bar" "doc" (lambda (x) (+ 1 0)))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda (bid x) (+ 1 0)))"#,
     );
 
     // Dispatch ":bar hello" — would fail at arity check if arg were dropped.
@@ -359,7 +359,7 @@ fn key_press_activates_lazy_plugin_via_keymap() {
     use crate::editor::keymap::BindMode;
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
-        r#"(define-command! "bar" "doc" (lambda () (call! "move-right")))"#,
+        r#"(define-command! "bar" "doc" (lambda () (call! "move-right" (focused-pane))))"#,
     );
     // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
     // the key lands in the editor's actual keymap.

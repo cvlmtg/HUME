@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::NativeBody;
-use crate::editor::registry::{CommandRegistry, EditorCmdFn, MappableCommand, SelectionTracking};
+use crate::editor::registry::{
+    BufferCmdFn, CommandRegistry, EditorCmdBody, FocusedCmdFn, GlobalCmdFn, MappableCommand,
+    PaneCmdFn, SelectionTracking,
+};
 
 // Builder for EditorCmd registration. Each method sets one field (a bool,
 // except the two `selection_tracking` setters below); .reg(registry)
@@ -10,7 +13,7 @@ use crate::editor::registry::{CommandRegistry, EditorCmdFn, MappableCommand, Sel
 pub(super) struct EditorCmdBuilder {
     name: &'static str,
     doc: &'static str,
-    fun: EditorCmdFn,
+    fun: EditorCmdBody,
     defers_paste_commit: bool,
     repeatable: bool,
     jump: bool,
@@ -76,6 +79,7 @@ impl EditorCmdBuilder {
         r.register(MappableCommand::EditorCmd {
             name: Cow::Borrowed(self.name),
             doc: Cow::Borrowed(self.doc),
+            category: self.fun.category(),
             fun: NativeBody::new(self.fun),
             defers_paste_commit: self.defers_paste_commit,
             repeatable: self.repeatable,
@@ -87,9 +91,8 @@ impl EditorCmdBuilder {
         });
     }
 }
-// Construct a builder for an EditorCmd. All handlers share one shape:
-// fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>.
-pub(super) fn ecmd(name: &'static str, doc: &'static str, fun: EditorCmdFn) -> EditorCmdBuilder {
+
+fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> EditorCmdBuilder {
     EditorCmdBuilder {
         name,
         doc,
@@ -102,4 +105,47 @@ pub(super) fn ecmd(name: &'static str, doc: &'static str, fun: EditorCmdFn) -> E
         clears_extend: false,
         selection_tracking: SelectionTracking::Untracked,
     }
+}
+
+// Four constructors, one per `TargetCategory` — a call site names its
+// command's category by which one it calls, and the compiler rejects a
+// function pointer of the wrong shape (see `EditorCmdBody`'s own doc). No
+// bare `ecmd` that takes a pre-built `EditorCmdBody`: that would let a
+// registration build the enum value without ever naming its category at the
+// call site, the one thing this four-way split exists to force.
+
+/// A command needing any pane showing the target buffer — not necessarily
+/// the focused one. See [`crate::editor::registry::TargetCategory::Pane`].
+pub(super) fn ecmd_pane(name: &'static str, doc: &'static str, fun: PaneCmdFn) -> EditorCmdBuilder {
+    ecmd_builder(name, doc, EditorCmdBody::Pane(fun))
+}
+
+/// A command needing the *focused* pane to show the target buffer. See
+/// [`crate::editor::registry::TargetCategory::FocusedPane`].
+pub(super) fn ecmd_focused(
+    name: &'static str,
+    doc: &'static str,
+    fun: FocusedCmdFn,
+) -> EditorCmdBuilder {
+    ecmd_builder(name, doc, EditorCmdBody::FocusedPane(fun))
+}
+
+/// A command needing only the target buffer, no pane. See
+/// [`crate::editor::registry::TargetCategory::Buffer`].
+pub(super) fn ecmd_buffer(
+    name: &'static str,
+    doc: &'static str,
+    fun: BufferCmdFn,
+) -> EditorCmdBuilder {
+    ecmd_builder(name, doc, EditorCmdBody::Buffer(fun))
+}
+
+/// A command needing no buffer at all. See
+/// [`crate::editor::registry::TargetCategory::Global`].
+pub(super) fn ecmd_global(
+    name: &'static str,
+    doc: &'static str,
+    fun: GlobalCmdFn,
+) -> EditorCmdBuilder {
+    ecmd_builder(name, doc, EditorCmdBody::Global(fun))
 }

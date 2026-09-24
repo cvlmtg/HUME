@@ -415,11 +415,11 @@ pub(in crate::editor) fn build_pane(
 impl super::EditorState {
     /// `bid`'s state *as seen in the focused pane*, or `None` when `bid` is
     /// unseeded there — a stale id, or `bid` not open in the focused pane.
-    /// `bid` is caller-supplied (e.g. from a Steel `(current-buffer)` call),
-    /// so this always looks the pane state up by the explicit id rather than
-    /// assuming it matches the focused buffer. Strictly focused-pane callers
-    /// only — a `bid` that may be shown in a *different* pane, or in none,
-    /// wants [`shown_buffer_state`](Self::shown_buffer_state) instead.
+    /// `bid` is caller-supplied, so this always looks the pane state up by
+    /// the explicit id rather than assuming it matches the focused buffer.
+    /// Strictly focused-pane callers only — a caller with an explicit
+    /// [`crate::editor::commands::CommandPane`] (not necessarily focused)
+    /// reads `state.panes.state[t.pid()][t.bid(view)]` directly instead.
     pub(in crate::editor) fn focused_buffer_state(
         &self,
         bid: BufferId,
@@ -444,79 +444,35 @@ impl super::EditorState {
         )
     }
 
-    /// The pane currently showing `bid`, restricted to the active tab: the
-    /// focused pane if it shows `bid`, else the first *active-tab* pane
-    /// (`view.active_pane_ids`' own leaf order) that does, else `None` —
-    /// including when `bid` is shown only in a *background* tab's pane, not
-    /// just when it's paneless entirely.
-    ///
-    /// The active-tab restriction is for callers that use the returned id as
-    /// "the pane to act on" rather than merely "some cursor to read" —
-    /// currently only `lsp/introspect.rs`'s `viewport_range`, since a
-    /// background-tab pane's viewport can be stale: active-tab panes are
-    /// the only ones `sync_viewport_dims` resizes per frame, so an inactive
-    /// tab's pane reflects whatever geometry was current whenever its tab
-    /// was last on screen, not the current terminal. A cursor reader wants
-    /// `pane_with_buffer` below instead — its selections stay live no matter
-    /// which tab is active.
-    pub(in crate::editor) fn pane_showing_buffer(
-        &self,
-        view: &EngineView,
-        bid: BufferId,
-    ) -> Option<PaneId> {
-        if view
-            .panes
-            .get(self.focus.id())
-            .is_some_and(|p| p.buffer_id == bid)
-        {
-            return Some(self.focus.id());
+    /// Every pane currently showing `bid`, in the order `(buffer-panes
+    /// pane)` hands back to Steel: the focused pane first (if it shows
+    /// `bid`), then the rest of the active tab (`view.active_pane_ids`'s own
+    /// leaf order), then every other tab
+    /// (`view.panes.every_pane_across_all_tabs`'s order). Explicit
+    /// enumeration in place of the single-pane guess this design removes
+    /// (see `docs/LESSONS.md`'s L19) — `.first()` reproduces that guess for
+    /// a caller that wants it, chosen rather than applied silently.
+    pub(in crate::editor) fn buffer_panes(&self, view: &EngineView, bid: BufferId) -> Vec<PaneId> {
+        let focused = self.focus.id();
+        let shows_bid = |pid: PaneId| view.panes[pid].buffer_id == bid;
+        let mut out = Vec::new();
+        if view.panes.get(focused).is_some_and(|p| p.buffer_id == bid) {
+            out.push(focused);
         }
-        view.active_pane_ids()
-            .into_iter()
-            .find(|&pid| view.panes[pid].buffer_id == bid)
-    }
-
-    /// The pane whose *cursor state* should answer for `bid`: same as
-    /// `pane_showing_buffer`, but falls further back to any pane in the pool
-    /// showing `bid` — including a background tab's — rather than giving up.
-    /// A pane's selections are live regardless of which tab is active; only
-    /// its viewport is tied to on-screen geometry (see `pane_showing_buffer`'s
-    /// doc), so this wider fallback is safe exactly for callers that never
-    /// read one. `shown_buffer_state` is the only caller.
-    fn pane_with_buffer(&self, view: &EngineView, bid: BufferId) -> Option<PaneId> {
-        if let Some(pid) = self.pane_showing_buffer(view, bid) {
-            return Some(pid);
-        }
-        // Cursor read only, not a viewport — see this fn's own doc.
-        view.panes
-            .every_pane_across_all_tabs()
-            .find(|(_, p)| p.buffer_id == bid)
-            .map(|(pid, _)| pid)
-    }
-
-    /// `bid`'s state as seen in the pane currently showing it, or `None`
-    /// when no pane shows `bid`.
-    ///
-    /// A `PaneBufferState` outlives the pane's visit to `bid` — that's what
-    /// restores your cursor when you switch back to a buffer — so scanning
-    /// the *seeded* maps for "any pane that ever showed `bid`" can answer
-    /// with the cursor of a pane that moved on long ago. Resolving against
-    /// `EngineView`'s live `pane.buffer_id` instead (via `pane_with_buffer`)
-    /// is what makes one `bid` mean one cursor across every surface that
-    /// asks: `symbol-under-cursor`, `selections-linewise?`, and the
-    /// `lsp-*-params` builders all read through this rather than
-    /// `focused_buffer_state`, since a caller-supplied `bid` (a Steel
-    /// `(current-buffer)` snapshot, or one carried across a debounce or an
-    /// async LSP round-trip) may no longer be the buffer the focused pane
-    /// shows, or may be shown in a pane belonging to a different tab —
-    /// active or not, since none of these callers read a viewport.
-    pub(in crate::editor) fn shown_buffer_state(
-        &self,
-        view: &EngineView,
-        bid: BufferId,
-    ) -> Option<&PaneBufferState> {
-        self.panes
-            .buffer_state(self.pane_with_buffer(view, bid)?, bid)
+        out.extend(
+            view.active_pane_ids()
+                .into_iter()
+                .filter(|&pid| pid != focused && shows_bid(pid)),
+        );
+        let active: std::collections::HashSet<PaneId> =
+            view.active_pane_ids().into_iter().collect();
+        out.extend(
+            view.panes
+                .every_pane_across_all_tabs()
+                .filter(|&(pid, p)| pid != focused && !active.contains(&pid) && p.buffer_id == bid)
+                .map(|(pid, _)| pid),
+        );
+        out
     }
 }
 

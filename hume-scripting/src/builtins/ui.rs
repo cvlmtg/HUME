@@ -15,6 +15,7 @@ use hume_engine::types::TruncateEnd;
 use crate::SteelCtx;
 use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
 use crate::keys::parse_key_sequence;
+use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
@@ -31,6 +32,7 @@ use super::errors::{generic_err, require_cap};
 /// [`PopupKind`].
 pub(crate) fn show_popup(
     ctx: &mut SteelCtx,
+    pane: PaneHandle,
     text: SteelVal,
     anchor: SteelVal,
     kind: SteelVal,
@@ -54,7 +56,7 @@ pub(crate) fn show_popup(
     )?;
     let lang = optional_string_arg(lang, "show-popup! #:lang")?;
     require_cap(ctx.host.ui(), "show-popup!")?
-        .show_popup(text, kind, docked, lang)
+        .show_popup(pane, text, kind, docked, lang)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
@@ -69,10 +71,15 @@ pub(crate) fn close_popup(ctx: &mut SteelCtx) -> SteelResult {
 
 /// `(show-menu! items on-select)` — no keyword defaults, so this registers
 /// directly (no `%`-prefix wrapper needed).
-pub(crate) fn show_menu(ctx: &mut SteelCtx, items: SteelVal, on_select: SteelVal) -> SteelResult {
+pub(crate) fn show_menu(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    items: SteelVal,
+    on_select: SteelVal,
+) -> SteelResult {
     let items = list_to_strings(items, "show-menu! items")?;
     require_cap(ctx.host.ui(), "show-menu!")?
-        .show_menu(items, on_select)
+        .show_menu(pane, items, on_select)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
@@ -95,12 +102,13 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
 /// rather than treat as a live drawer's token.
 pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
+    pane: PaneHandle,
     items: SteelVal,
     on_select: SteelVal,
 ) -> SteelResult {
     let items = list_to_strings(items, "show-drawer-list! items")?;
     match require_cap(ctx.host.ui(), "show-drawer-list!")?
-        .show_drawer_list(items, on_select)
+        .show_drawer_list(pane, items, on_select)
         .map_err(generic_err)?
     {
         Some(token) => Ok(SteelVal::IntV(token as isize)),
@@ -154,6 +162,7 @@ pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> Stee
 /// (queued, never inline) — with the confirmed text, or `#f` on cancel.
 pub(crate) fn prompt(
     ctx: &mut SteelCtx,
+    pane: PaneHandle,
     label: SteelVal,
     prefill: SteelVal,
     on_confirm: SteelVal,
@@ -161,7 +170,7 @@ pub(crate) fn prompt(
     let label = string_arg(label, "prompt! label")?;
     let prefill = string_arg(prefill, "prompt! prefill")?;
     require_cap(ctx.host.ui(), "prompt!")?
-        .prompt(label, prefill, on_confirm)
+        .prompt(pane, label, prefill, on_confirm)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
@@ -234,6 +243,7 @@ fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelE
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn picker(
     ctx: &mut SteelCtx,
+    pane: PaneHandle,
     items: SteelVal,
     on_select: SteelVal,
     prompt: SteelVal,
@@ -256,7 +266,7 @@ pub(crate) fn picker(
         actions,
     };
     let token = require_cap(ctx.host.ui(), "picker!")?
-        .open_picker(items, on_select, opts)
+        .open_picker(pane, items, on_select, opts)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(token as isize))
 }
@@ -271,6 +281,7 @@ pub(crate) fn picker(
 /// runtime one.
 pub(crate) fn live_picker(
     ctx: &mut SteelCtx,
+    pane: PaneHandle,
     on_select: SteelVal,
     prompt: SteelVal,
     query: SteelVal,
@@ -291,7 +302,7 @@ pub(crate) fn live_picker(
         actions,
     };
     let token = require_cap(ctx.host.ui(), "live-picker!")?
-        .open_live_picker(on_select, opts)
+        .open_live_picker(pane, on_select, opts)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(token as isize))
 }

@@ -44,6 +44,14 @@ fn editor_from_kitty(input: &str) -> Editor {
     ed
 }
 
+/// `ed`'s focused pane, as the `PaneHandle` a `%call-native!`/builtin call
+/// site (`run_command_sync`, a direct builtin call) now takes in place of a
+/// bare `BufferId` — the test-harness counterpart of what dispatch injects
+/// for a real keypress.
+fn focused_pane(ed: &Editor) -> hume_scripting::PaneHandle {
+    hume_scripting::PaneHandle::with_pane(ed.focused_buffer_id(), ed.state.focus.id())
+}
+
 /// Pin the focused pane to `WrapMode::None`, so a display line is a buffer
 /// line regardless of the global default, which wraps (`DEFAULT_WRAP_STYLE`,
 /// `hume-engine/src/pane.rs`). Shared by every test that reasons about
@@ -170,7 +178,7 @@ fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals
         .pending_work
         .iter()
         .filter_map(|w| match w {
-            crate::editor::event::PendingWork::Call(proc, args) => Some((proc, args)),
+            crate::editor::event::PendingWork::Call { proc, args, .. } => Some((proc, args)),
             crate::editor::event::PendingWork::Event(_) => None,
         })
         .collect()
@@ -237,8 +245,10 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
+    let pane = focused_pane(ed);
     EditorHostImpl::new(&mut ed.state, &mut ed.view)
         .show_drawer_list(
+            pane,
             items.iter().map(|s| s.to_string()).collect(),
             steel::rvals::SteelVal::Void,
         )
@@ -992,7 +1002,8 @@ fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
 }
 
 /// Runs `body` as a Steel command; the command moves the cursor iff `body`'s
-/// own assertion (embedded in the Scheme source) held.
+/// own assertion (embedded in the Scheme source) held. `body` may reference
+/// `bid`, the buffer the probe command was dispatched against.
 fn run_probe(
     ed: &mut Editor,
     host: hume_scripting::ScriptingHost,
@@ -1000,7 +1011,7 @@ fn run_probe(
     body: &str,
 ) -> bool {
     let source = format!(
-        r#"(define-typed-command! "probe" "" (lambda () (when (begin {body}) (call! "move-right"))))"#
+        r#"(define-typed-command! "probe" "" (lambda (bid) (when (begin {body}) (call! "move-right" bid))))"#
     );
     install_source(ed, host, &source, tmp);
     let before = state(ed);
@@ -1011,9 +1022,11 @@ fn run_probe(
 /// [`run_probe`]'s "log a value" sibling: defines a `:check` command that
 /// logs `expr`'s value via `log! 'info`, dispatches it, and returns the
 /// resulting status message — for a test that wants one Scheme
-/// expression's value read back, not a boolean signal.
+/// expression's value read back, not a boolean signal. `expr` may
+/// reference `bid`, the buffer the check command was dispatched against.
 fn log_probe(ed: &mut Editor, tmp: &std::path::Path, expr: &str) -> String {
-    let source = format!(r#"(define-typed-command! "check" "" (lambda () (log! 'info {expr})))"#);
+    let source =
+        format!(r#"(define-typed-command! "check" "" (lambda (bid) (log! 'info {expr})))"#);
     run(ed, tmp, &source);
     type_cmd(ed, ":check");
     ed.state.status_msg.clone().unwrap()
@@ -1293,6 +1306,7 @@ mod macros;
 mod messages;
 mod mouse;
 mod multi_pane;
+mod native_call_targeting;
 mod object_jump_align;
 mod page_scroll;
 mod pane_focus;

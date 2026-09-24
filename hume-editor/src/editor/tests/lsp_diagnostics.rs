@@ -418,13 +418,14 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-close (lambda (bid) (log! 'warn "close-hook-fired")))
-           (define-typed-command! "go" "" (lambda () (close-buffer! (current-buffer))))"#,
+           (define-typed-command! "go" "" (lambda (bid) (close-buffer! bid)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
 
-    // `bid` is the focused buffer here (opened via `:e` above) — `(current-buffer)`
-    // resolves to it, so `:go` needs no path/id embedded in the Steel source.
+    // `bid` is the focused buffer here (opened via `:e` above), and `:go`
+    // now receives it as its own leading parameter — no path/id embedded
+    // in the Steel source.
     type_cmd(&mut ed, ":go");
     // Hooks queued during dispatch fire on an explicit drain, not automatically
     // (`Editor::step`, which `type_cmd` rides, deliberately doesn't drain).
@@ -489,7 +490,9 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
         "seed publish must land"
     );
 
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
 
     assert_eq!(
         ed.lsp.diagnostic_counts_for_test(bid),
@@ -544,7 +547,9 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
     ed.feed_key(key_enter());
     ed.feed_key(key_esc());
 
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
 
     assert_eq!(
         ed.state.buffers.get(bid).text().rope().to_string(),

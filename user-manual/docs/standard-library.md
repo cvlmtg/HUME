@@ -22,7 +22,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 | `(call! "stdlib/selection-head" sel)` | Head char offset of the selection triple `sel`, or `#f` |
 | `(call! "stdlib/selection-primary?" sel)` | `#t` if the selection triple `sel` is the primary selection, or `#f` |
 
-`sels` is whatever `(current-selections)` returns — a list of opaque `(anchor head primary?)` triples, char offsets rather than grapheme ordinals. Go through these accessors instead of `car`/`cadr`/`caddr`; all seven accept `#f` and return `#f`, so you only need to check `(current-selections)` for `#f` once, at the call site, rather than inside every helper. `(char-index->line idx)` converts an offset to a line number when you need one.
+`sels` is whatever `(buffer-selections pane)` returns — a list of opaque `(anchor head primary?)` triples, char offsets rather than grapheme ordinals. Go through these accessors instead of `car`/`cadr`/`caddr`; all seven pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(offset->line pane idx)` converts an offset to a line number when you need one.
 
 ## Filesystem
 
@@ -58,17 +58,17 @@ Both answer for HUME's own working directory (`:pwd`), not necessarily the curre
 
 | Call | Effect |
 |------|--------|
-| `(call! "stdlib/resolve-lang-arg" cmd arg)` | A typed language-name argument, else the current buffer's language, else `#f` after a warning naming `cmd` |
+| `(call! "stdlib/resolve-lang-arg" pane cmd arg)` | A typed language-name argument, else `pane`'s buffer's language, else `#f` after a warning naming `cmd` |
 
-Use this for a `:` command that takes an optional language name — `arg` is whatever the user typed after the command, or `#f` if they typed nothing. Falling back to the current buffer's language covers the common case of acting on the language you're already looking at; when neither is available, it logs a warning naming `cmd` and returns `#f` so your command can bail out cleanly.
+Use this for a `:` command that takes an optional language name — `arg` is whatever the user typed after the command, or `#f` if they typed nothing. Falling back to the invoking buffer's language covers the common case of acting on the language of the buffer the command was invoked for; when neither is available, it logs a warning naming `cmd` and returns `#f` so your command can bail out cleanly.
 
 ## Word tokenization
 
 | Call | Effect |
 |------|--------|
-| `(call! "stdlib/split-words" bid str)` | Every word in `str`, tokenized using `bid`'s own `word-chars` setting |
+| `(call! "stdlib/split-words" pane str)` | Every word in `str`, tokenized using `pane`'s buffer's own `word-chars` setting |
 
-Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-option bid "word-chars"))` — use it whenever `str` is `bid`'s own content (typically one of its lines) and you want that buffer's own notion of a word. Tokenizing many of `bid`'s lines in a loop? Fetch `(get-option bid "word-chars")` once and call `(split-words line word-chars)` per line instead, rather than re-deriving the same setting every time. Call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from `bid`'s setting.
+Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-buffer-option pane "word-chars"))` — use it whenever `str` is that buffer's own content (typically one of its lines) and you want that buffer's own notion of a word. Tokenizing many of a buffer's lines in a loop? Fetch `(get-buffer-option pane "word-chars")` once and call `(split-words line word-chars)` per line instead, rather than re-deriving the same setting every time. Call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from that buffer's setting.
 
 ## Plugin configuration
 

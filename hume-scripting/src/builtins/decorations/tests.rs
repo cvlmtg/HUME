@@ -1,6 +1,5 @@
 use super::*;
-use crate::test_support::SteelCtxTestHarness;
-use hume_engine::pipeline::BufferId;
+use crate::test_support::{SteelCtxTestHarness, default_pane};
 use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
 use steel::rvals::IntoSteelVal as _;
@@ -51,7 +50,7 @@ fn set_inlay_hints_without_decoration_host_errors() {
     let result = set_inlay_hints(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         empty,
     );
     assert_names_builtin(result, "set-inlay-hints!");
@@ -64,7 +63,7 @@ fn register_sign_source_without_decoration_host_errors() {
     let result = register_sign_source(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         SteelVal::IntV(10),
     );
     assert_names_builtin(result, "register-sign-source!");
@@ -77,7 +76,7 @@ fn register_sign_source_rejects_an_empty_name() {
     let result = register_sign_source(
         &mut ctx,
         SteelVal::StringV("  ".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         SteelVal::IntV(10),
     );
     let msg = result.unwrap_err().to_string();
@@ -92,7 +91,7 @@ fn set_signs_without_decoration_host_errors() {
     let result = set_signs(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         empty,
     );
     assert_names_builtin(result, "set-signs!");
@@ -116,7 +115,7 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
     let result = set_signs(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         list(vec![sign]),
     );
     let msg = result.unwrap_err().to_string();
@@ -141,7 +140,7 @@ fn set_signs_accepts_a_multi_codepoint_glyph() {
     let result = set_signs(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         list(vec![sign]),
     );
     // The harness has no decoration host, so validation passing means the
@@ -157,7 +156,7 @@ fn set_virtual_lines_without_decoration_host_errors() {
     let result = set_virtual_lines(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         empty,
     );
     assert_names_builtin(result, "set-virtual-lines!");
@@ -171,7 +170,7 @@ fn set_eol_text_without_decoration_host_errors() {
     let result = set_eol_text(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         empty,
     );
     assert_names_builtin(result, "set-eol-text!");
@@ -185,7 +184,7 @@ fn set_extra_highlights_without_decoration_host_errors() {
     let result = set_extra_highlights(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         empty,
     );
     assert_names_builtin(result, "set-extra-highlights!");
@@ -198,7 +197,7 @@ fn set_statusline_text_without_decoration_host_errors() {
     let result = set_statusline_text(
         &mut ctx,
         SteelVal::StringV("test".into()),
-        BidArg(BufferId::default()),
+        default_pane(),
         SteelVal::StringV("main".into()),
     );
     assert_names_builtin(result, "set-statusline-text!");

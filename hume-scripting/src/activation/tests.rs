@@ -541,14 +541,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
     )
     .expect("defining outer-a must not error");
 
-    let result = host.call_steel_cmd(
-        "outer-a",
-        None,
-        vec![],
-        hume_engine::pipeline::PaneId::default(),
-        hume_engine::pipeline::BufferId::default(),
-        &mut editor_host,
-    );
+    let result = host.call_steel_cmd("outer-a", None, vec![], &mut editor_host);
 
     let err = result.expect_err("outer-a's intentional error must propagate");
     assert!(

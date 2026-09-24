@@ -5,8 +5,6 @@
 
 use std::sync::{Arc, atomic::AtomicBool};
 
-use hume_engine::pipeline::{BufferId, PaneId};
-
 use crate::attribution::PluginStack;
 use crate::builtins::dirs::ScriptDirs;
 use crate::context::SteelCtx;
@@ -14,6 +12,31 @@ use crate::log::LogLevel;
 use crate::null_host::NullHost;
 use crate::types::QueuedEffect;
 use crate::{HostBundle, ScriptingRegistries};
+
+/// A stand-in bid for a builtin test that doesn't care which buffer it
+/// names — [`NullHost`]/[`crate::testing`] mocks don't track real buffers,
+/// so any value type-checks the same. A direct Rust call to a builtin
+/// function (every caller of this) never runs `LivePane`'s liveness check at
+/// all — that only happens inside the `builtins!`-registered Steel
+/// closure — so this needs no "live" counterpart.
+pub(crate) fn default_bid() -> hume_engine::pipeline::BufferId {
+    hume_engine::pipeline::BufferId::default()
+}
+
+/// [`default_bid`]'s `PaneHandle` counterpart — a pane-less handle, for a
+/// direct Rust call into a builtin now typed for `PaneHandle`/`ArgPane`/
+/// `LivePane` rather than a bare `BufferId`.
+pub(crate) fn default_pane() -> crate::types::PaneHandle {
+    crate::types::PaneHandle::buffer_only(default_bid())
+}
+
+/// [`default_pane`], but with a pane half too — for a builtin whose own
+/// contract needs one present (`#:require-focus`'s "needs a pane" check,
+/// a kind-A/B builtin exercised only for its decode, never resolved against
+/// real editor state through `NullHost`).
+pub(crate) fn default_pane_with_pane() -> crate::types::PaneHandle {
+    crate::types::PaneHandle::with_pane(default_bid(), hume_engine::pipeline::PaneId::default())
+}
 
 /// Backing storage for [`SteelCtx`] in scripting-crate unit tests.
 ///
@@ -168,8 +191,6 @@ impl SteelCtxTestHarness {
                 dirs,
                 interrupt_flag,
             ),
-            PaneId::default(),
-            BufferId::default(),
             None,
         )
     }
@@ -200,8 +221,6 @@ impl SteelCtxTestHarness {
                 dirs,
                 interrupt_flag,
             ),
-            PaneId::default(),
-            BufferId::default(),
             None,
         )
     }

@@ -5,9 +5,9 @@
 ;; ── The source ───────────────────────────────────────────────────────────────
 
 (register-completion-source! "lsp"
-  (lambda (id bid prefix)
-    (if (lsp/supports-for-buffer? bid "completionProvider")
-        (lsp-request #f "textDocument/completion" (lsp-position-params bid)
+  (lambda (id pane prefix)
+    (if (lsp/supports? pane "completionProvider")
+        (lsp-request pane "textDocument/completion" (lsp-position-params pane)
           (lambda (err res)
             (cond
               (err (lsp/report-error "completion" err)

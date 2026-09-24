@@ -50,7 +50,7 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (when (equal? server-name "rust") (call! "move-right"))))"#,
+             (when (equal? server-name "rust") (call! "move-right" (focused-pane)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -90,13 +90,15 @@ fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-lsp-detach (lambda (bid server-name)
-             (when (equal? server-name "rust") (call! "move-right"))))"#,
+             (when (equal? server-name "rust") (call! "move-right" (focused-pane)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
 
     let before = state(&ed);
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
     ed.settle();
 
     assert_ne!(
@@ -130,7 +132,7 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
         &mut host,
         r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
              (register-trigger-chars! "test" server-name '("."))))
-           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right")))"#,
+           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -205,7 +207,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
         r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
              (register-trigger-chars! "test" server-name
                (if (equal? server-name "rust") '(".") '(",")))))
-           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right")))"#,
+           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -316,7 +318,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-diagnostics-changed (lambda (bid) (call! "move-right" (focused-pane))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -350,7 +352,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid first end) (call! "move-right")))"#,
+        r#"(register-hook! 'on-viewport-change (lambda (bid first end) (call! "move-right" bid)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -386,7 +388,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
         r#"(register-trigger-chars! "test" "rust" '("."))
            (register-hook! 'on-trigger-char (lambda (bid ch source)
              (when (equal? ch ".")
-               (call! "move-right"))))"#,
+               (call! "move-right" bid))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -439,7 +441,7 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
         &mut ed,
         &mut host,
         r#"(register-trigger-chars! "test" "rust" '("."))
-           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right")))"#,
+           (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

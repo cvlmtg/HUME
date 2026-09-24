@@ -31,7 +31,7 @@ use crate::editor::registry::{MappableCommand, TypedBody};
 fn lazy_command_first_dispatch_via_keypress() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
-        r#"(define-command! "bar" "" (lambda () (call! "delete")) #:repeatable #t)"#,
+        r#"(define-command! "bar" "" (lambda () (call! "delete" (focused-pane))) #:repeatable #t)"#,
     );
     let before = snapshot_bookkeeping(&ed);
     ed.execute_keymap_command("bar".into(), Some(1), false);
@@ -61,7 +61,7 @@ fn lazy_command_first_dispatch_via_keypress() {
 fn lazy_typed_command_first_dispatch_via_command_line() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:typed-commands '("echo-arg"))"#,
-        r#"(define-typed-command! "echo-arg" "" (lambda (x) (when (string? x) (call! x))))"#,
+        r#"(define-typed-command! "echo-arg" "" (lambda (bid x) (when (string? x) (call! x bid))))"#,
     );
     let before = state(&ed);
 

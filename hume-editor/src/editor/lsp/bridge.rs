@@ -1,58 +1,44 @@
 //! The generic LSP bridge: sends `(lsp-request …)` / `(lsp-notify …)` calls
 //! Steel queued this eval, one at a time as `Editor::apply_script_effects`
 //! encounters each `Effect::LspRequest`/`Effect::LspNotify` in emission
-//! order, resolving `server` and (for requests) wiring the callback to fire
-//! through the queued-Steel-call mechanism once a response, error, or
-//! timeout arrives.
+//! order, resolving `bid`'s attached server and (for requests) wiring the
+//! callback to fire through the queued-Steel-call mechanism once a
+//! response, error, or timeout arrives.
 
 use std::time::{Duration, Instant};
 
-use hume_engine::pipeline::BufferId;
-use hume_lsp::backend::ServerId;
 use hume_lsp::client::{Outcome, RequestMeta};
 use hume_scripting::{PendingLspNotify, PendingLspRequest};
 use steel::rvals::SteelVal;
 
-use super::Editor;
+use super::{Editor, ResponseAnchor};
 use crate::editor::message_log::Severity;
 
 impl Editor {
-    /// Resolves `server` — a registered language name, or `None` for "the
-    /// focused buffer's attached server" — to a running `ServerId`. Shared
-    /// with the introspection builtins via `super::introspect::resolve_server`.
-    fn resolve_lsp_server(&self, server: Option<&str>) -> Result<ServerId, String> {
-        let bid = self.focused_buffer_id();
-        super::introspect::resolve_server(&self.state, &self.lsp, bid, server)
-    }
-
-    /// If `params` carries a `textDocument.uri` matching an open buffer,
-    /// tags the request with that buffer's current `text_gen` — the
-    /// staleness check drops the response if the buffer has moved on by the
-    /// time it lands (unless the caller passed `#:allow-stale`).
-    fn stale_check_for_params(&self, params: &serde_json::Value) -> Option<(BufferId, u64)> {
-        let uri_str = params.get("textDocument")?.get("uri")?.as_str()?;
-        let uri: lsp_types::Uri = uri_str.parse().ok()?;
-        let path = hume_lsp::uri::uri_to_path(&uri).ok()?;
-        let canonical = path.canonicalize().ok()?;
-        let bid = self.state.buffers.find_by_path(&canonical)?;
-        Some((bid, self.state.buffers.get(bid).text_gen))
-    }
-
     /// Sends one queued `(lsp-request …)` call. Called from
     /// `Editor::apply_script_effects` for each `Effect::LspRequest`, in
     /// emission order — after `flush_lsp_pending_changes` so a request
     /// minted against text just edited doesn't reach the wire ahead of the
     /// `didChange` describing that edit.
     pub(in crate::editor) fn send_one_lsp_request(&mut self, req: PendingLspRequest) {
-        let server_id = match self.resolve_lsp_server(req.server.as_deref()) {
-            Ok(id) => id,
-            Err(e) => {
-                self.report(Severity::Error, format!("lsp-request: {e}"));
-                self.fail_lsp_request_callback(req.callback, &e);
-                return;
-            }
+        let server_id =
+            match super::introspect::resolve_server_for_buffer(&self.state, &self.lsp, req.bid) {
+                Ok(id) => id,
+                Err(e) => {
+                    self.report(Severity::Error, format!("lsp-request: {e}"));
+                    self.fail_lsp_request_callback(req.callback, &e);
+                    return;
+                }
+            };
+        // `req.bid` is mandatory (unlike the old URI-sniffed staleness
+        // check), so a stale bid is caught here rather than silently
+        // skipping the text-gen half of the anchor below.
+        let Some(text_gen) = self.state.buffers.try_get(req.bid).map(|b| b.text_gen) else {
+            let msg = format!("invalid buffer id {:?}", req.bid);
+            self.report(Severity::Error, format!("lsp-request: {msg}"));
+            self.fail_lsp_request_callback(req.callback, &msg);
+            return;
         };
-        let stale_check = self.stale_check_for_params(&req.params);
         let timeout_ms = self.state.settings.lsp_request_timeout_ms as u64;
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
 
@@ -74,19 +60,28 @@ impl Editor {
             }
         }
 
+        let anchor = ResponseAnchor {
+            bid: req.bid,
+            pane: req.pane,
+            text_gen,
+            allow_stale: req.allow_stale,
+            require_focus: req.require_focus,
+        };
         // Cloned (SteelVal is Rc-based, cheap): the send-failure branch
         // below needs its own copy of the callback to fire immediately,
-        // since the success-path closure already moved one in.
+        // since the success-path closure already moved one in. `anchor` is
+        // `Copy` — the closure gets its own copy to carry into the queued
+        // `PendingWork::Call` (re-checked at dequeue time, see that variant's
+        // doc), `register_callback` below still gets the original.
         let callback_for_send = req.callback.clone();
-        let lsp_callback: super::LspCallback = Box::new(move |editor, outcome| {
-            let (err, result) = outcome_to_steel(outcome);
+        let lsp_callback: super::LspCallback = Box::new(move |editor, server_id, outcome| {
+            let (err, result) = outcome_to_steel(editor, server_id, outcome);
             editor
                 .state
-                .queue_steel_call(callback_for_send, vec![err, result]);
+                .queue_steel_call_anchored(callback_for_send, vec![err, result], anchor);
         });
         let meta = RequestMeta {
             method: req.method.clone(),
-            allow_stale: req.allow_stale,
             deadline,
         };
         // Send first, register second: `register_callback` keys off the id
@@ -105,7 +100,7 @@ impl Editor {
             self.lsp.supersede.insert((server_id, key), id.clone());
         }
         self.lsp
-            .register_callback(server_id, id, stale_check, lsp_callback);
+            .register_callback(server_id, id, anchor, lsp_callback);
     }
 
     /// Fires an `(lsp-request …)` callback immediately with an error —
@@ -128,13 +123,14 @@ impl Editor {
     /// only failure mode. Called from `Editor::apply_script_effects` for
     /// each `Effect::LspNotify`.
     pub(in crate::editor) fn send_one_lsp_notify(&mut self, notif: PendingLspNotify) {
-        let server_id = match self.resolve_lsp_server(notif.server.as_deref()) {
-            Ok(id) => id,
-            Err(e) => {
-                self.report(Severity::Error, format!("lsp-notify: {e}"));
-                return;
-            }
-        };
+        let server_id =
+            match super::introspect::resolve_server_for_buffer(&self.state, &self.lsp, notif.bid) {
+                Ok(id) => id,
+                Err(e) => {
+                    self.report(Severity::Error, format!("lsp-notify: {e}"));
+                    return;
+                }
+            };
         let Some((client, backend)) = self.lsp.client_and_backend(server_id) else {
             return;
         };
@@ -156,12 +152,35 @@ impl Editor {
 /// `null` is `Void` — every existing `(void? res)` check (a server
 /// declining with no completions) stays meaningful. See `JsonHandle`'s own
 /// doc (`hume-scripting/src/json.rs`) for the full rationale.
-fn outcome_to_steel(outcome: Outcome) -> (SteelVal, SteelVal) {
+///
+/// Tags a successful `value`'s handle with `server_id`'s *current*
+/// negotiated encoding, read at dispatch time rather than carried from send
+/// time — a `Starting` server (queued, not yet negotiated, when the request
+/// went out) has negotiated by the time its response drains. `Err`s if the
+/// server is no longer tracked (crashed or stopped between sending and
+/// draining): the caller has no client-side generation to check this
+/// against, unlike the buffer-side staleness `ResponseAnchor` already
+/// covers, so a value whose encoding can no longer be resolved is refused
+/// rather than guessed.
+fn outcome_to_steel(
+    editor: &Editor,
+    server_id: hume_lsp::backend::ServerId,
+    outcome: Outcome,
+) -> (SteelVal, SteelVal) {
     match outcome {
-        Outcome::Ok(value) => (
-            SteelVal::BoolV(false),
-            hume_scripting::json::to_steel_handle(std::sync::Arc::new(value)),
-        ),
+        Outcome::Ok(value) => match super::introspect::server_encoding(&editor.lsp, server_id) {
+            Some(encoding) => (
+                SteelVal::BoolV(false),
+                hume_scripting::json::to_steel_handle(
+                    std::sync::Arc::new(value),
+                    hume_scripting::json::WireOrigin::Server(encoding),
+                ),
+            ),
+            None => (
+                SteelVal::StringV("lsp server no longer tracked".into()),
+                SteelVal::BoolV(false),
+            ),
+        },
         Outcome::Err(e) => {
             let mut map = steel::HashMap::new();
             map.insert(

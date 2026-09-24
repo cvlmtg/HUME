@@ -43,7 +43,7 @@ on `on-buffer-open` and (debounced 150ms) `on-text-changed`, the same shape
 
 The rebuild walks outward from the cursor's line in both directions, one
 bounded batch of lines (`"lines"`) per direction per tick, fetched with
-`(buffer-lines bid #:start #:end)` and scanned to completion in the same
+`(buffer-lines pane #:start #:end)` and scanned to completion in the same
 tick — a word can't span two lines, so there's nothing to carry across a
 tick boundary. Each tick yields back to the editor loop via a short `after`
 delay before the next runs (see below for why not zero). That buys three
@@ -68,7 +68,7 @@ The walk fetches by line, not by re-slicing a plain string at a char
 offset: finding an arbitrary offset in a UTF-8 string costs time
 proportional to that offset, on every call, so a chunked walk built that
 way would cost *more* total work than one unchunked pass, growing
-quadratically with buffer size. `(buffer-lines bid #:start #:end)` doesn't
+quadratically with buffer size. `(buffer-lines pane #:start #:end)` doesn't
 have that problem — it seeks into the buffer's rope by line index, not by
 scanning from the start — so fetching a growing window of lines is genuinely
 cheap however far into the buffer that window is. No giant in-memory list of
@@ -90,11 +90,12 @@ prioritized separately from it. This is a minor reordering of *when* a word
 is found relative to the old char-offset split, never a change to whether
 it's found.
 
-The anchor line comes from `(current-line-number)`, which takes no `bid`
-and always answers for the focused buffer — there is no way to read
-another buffer's cursor position at all. A background buffer (never
-focused, or edited by a script or an LSP `applyEdit`) walks from the top
-instead, since it has no meaningful cursor to anchor to.
+The anchor line comes from `(buffer-cursor-line pane)`, resolved through
+`(buffer-panes pane)` first since `buffer-cursor-line` itself now raises
+rather than answering `#f` for a pane-less value or a buffer no pane shows
+— a background buffer (never focused, or edited by a script or an LSP
+`applyEdit`) walks from the top instead, since it has no meaningful cursor
+to anchor to.
 
 Each tick re-reads the buffer's entry fresh from the shared table rather
 than trusting a binding captured before the previous tick's update —
@@ -149,17 +150,13 @@ for a range past the buffer's new end, which `buffer-lines` raises on rather
 than clamps.
 
 Closing the buffer this plugin's entry belongs to doesn't always mean the
-entry should be dropped for good. Closing the *last* open buffer reuses that
-same `BufferId` in place for a fresh scratch buffer rather than opening a new
-one — and that reuse fires no `on-buffer-open`, only the `on-text-changed`
-this plugin already reacts to (the swap still bumps the buffer's text
-generation). `bw/forget!` drops the entry on `on-buffer-close` as usual;
-`bw/reindex!` resurrects a missing entry before indexing rather than
-no-opping, so the debounced `on-text-changed` that follows a few keystrokes
-into the replacement scratch buffer rebuilds it instead of leaving the index
-dead for the rest of the session. The resurrection is gated on the buffer
-still being open (`(member bid (buffers))`) — a debounced reindex that
-outlives a *genuine* close, with nothing reusing the id, must not
+entry should be dropped for good. `bw/forget!` drops the entry on
+`on-buffer-close` as usual; `bw/reindex!` resurrects a missing entry before
+indexing rather than no-opping, so a debounced `on-text-changed` tick that
+outlives its own entry (queued before a close, draining after) rebuilds it
+instead of leaving the index dead for the rest of the session. The
+resurrection is gated on the buffer still being open (`(buffer-live? pane)`)
+— a debounced reindex that outlives a *genuine* close must not
 resurrect state for a buffer that's actually gone, the same reason
 `core:git-diff`'s `entry-set!` no-ops rather than resurrects
 (`runtime/plugins/core/git-diff/state.scm`) while its own `ensure-entry!`
@@ -306,7 +303,7 @@ Rust-side event this plugin cannot add on its own.
 
 Steel has no Unicode character-category table (no `char-alphabetic?`, no
 regex), so classification isn't done in Steel at all — `bw/reindex!` reads
-`bid`'s own `word-chars` once per walk and the scan calls native
+`pane`'s own `word-chars` once per walk and the scan calls native
 `(split-words line word-chars)` per line, a builtin that tokenizes a whole
 line at once using `hume-editing`'s `WordChars`/`CharClass` machinery, the
 same classifier `w`/`b` motions and text objects already use. A word this

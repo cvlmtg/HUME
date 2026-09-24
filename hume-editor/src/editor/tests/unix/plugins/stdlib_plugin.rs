@@ -333,11 +333,12 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
 /// string, and return `#f` plus a `cmd`-naming warning when neither is
 /// available.
 ///
-/// `current-buffer`/`set-buffer-language!` refuse outside dispatch (`Init`
-/// session evals reject `current-buffer`), so unlike the other `stdlib`
-/// command tests this defines a throwaway probe command and dispatches it
-/// via `:`, the same shape `run_probe` (`tests/mod.rs`) uses — rather than
-/// `eval_source`'s bare init-mode assertions.
+/// `bid` only exists as a dispatched command's own injected leading
+/// parameter — an `Init` session eval has no dispatch to inject it from — so
+/// unlike the other `stdlib` command tests this defines a throwaway probe
+/// command and dispatches it via `:`, the same shape `run_probe`
+/// (`tests/mod.rs`) uses — rather than `eval_source`'s bare init-mode
+/// assertions.
 ///
 /// Independent oracle: the buffer's language is set via `set-buffer-language!`
 /// (a command already covered elsewhere), and the expected fallback value is
@@ -350,13 +351,13 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
 
     let define_probe = r#"
 (define-typed-command! "probe-resolve-lang-arg" ""
-  (lambda ()
-    (unless (equal? (call! "stdlib/resolve-lang-arg" "probe-cmd" "rust") "rust")
+  (lambda (bid)
+    (unless (equal? (call! "stdlib/resolve-lang-arg" bid "probe-cmd" "rust") "rust")
       (error "resolve-lang-arg: typed string argument must win"))
-    (unless (equal? (call! "stdlib/resolve-lang-arg" "probe-cmd" 1) #f)
+    (unless (equal? (call! "stdlib/resolve-lang-arg" bid "probe-cmd" 1) #f)
       (error "resolve-lang-arg: no typed arg and no buffer language must return #f"))
-    (set-buffer-language! (current-buffer) "python")
-    (unless (equal? (call! "stdlib/resolve-lang-arg" "probe-cmd" 1) "python")
+    (set-buffer-language! bid "python")
+    (unless (equal? (call! "stdlib/resolve-lang-arg" bid "probe-cmd" 1) "python")
       (error "resolve-lang-arg: non-string arg must fall back to the buffer's language"))))
 "#;
     {
@@ -394,26 +395,26 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
 }
 
 /// `stdlib/split-words` must tokenize using the *given* buffer's own
-/// `word-chars` — pulled via `get-option` internally, not a value the
+/// `word-chars` — pulled via `get-buffer-option` internally, not a value the
 /// caller fetches and passes itself (the SSOT concern a bare `split-words`
 /// call site would otherwise have to manage by hand). Independent oracle:
 /// each expected token list is hand-written from the literal input.
-/// `current-buffer`/`set-buffer-option!` aren't available during init
-/// evaluation, so this runs the assertions from inside a typed command
-/// (`:probe-split-words`), the same shape
-/// `core_stdlib_resolve_lang_arg_falls_back_then_warns` uses above.
+/// `bid` only exists as a dispatched command's own injected leading
+/// parameter, unavailable during init evaluation, so this runs the
+/// assertions from inside a typed command (`:probe-split-words`), the same
+/// shape `core_stdlib_resolve_lang_arg_falls_back_then_warns` uses above.
 #[test]
 fn core_stdlib_split_words_uses_the_buffers_own_word_chars() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
     let define_probe = r#"
 (define-typed-command! "probe-split-words" ""
-  (lambda ()
-    (unless (equal? (call! "stdlib/split-words" (current-buffer) "foo-bar baz")
+  (lambda (bid)
+    (unless (equal? (call! "stdlib/split-words" bid "foo-bar baz")
                     (list "foo" "bar" "baz"))
       (error "split-words: default word-chars must split on '-'"))
-    (set-buffer-option! (current-buffer) "word-chars" "-")
-    (unless (equal? (call! "stdlib/split-words" (current-buffer) "foo-bar baz")
+    (set-buffer-option! bid "word-chars" "-")
+    (unless (equal? (call! "stdlib/split-words" bid "foo-bar baz")
                     (list "foo-bar" "baz"))
       (error "split-words: must pick up the buffer's own word-chars setting"))))
 "#;

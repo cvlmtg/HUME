@@ -33,7 +33,7 @@ fn typed_command_body_entering_insert_stays_in_insert() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (call! "insert-before")))"#,
+        r#"(define-typed-command! "go" "" (lambda () (call! "insert-before" (focused-pane))))"#,
     );
 
     type_cmd(&mut ed, ":go");

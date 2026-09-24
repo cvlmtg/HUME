@@ -32,8 +32,10 @@ would fetch and diff independently.
 
 ## State (`state.scm`)
 
-One `(box (hash))` keyed by buffer id — the same per-key mutable-table idiom
-`debounce-by` uses (`hume-scripting/src/builtins/bootstrap.scm`). Steel's `hash` is
+One `(box (hash))` keyed by `(buffer-key pane)`, not by a pane value itself — a command's
+own pane and a hook's pane-less value for the same buffer must resolve to the same entry.
+The same per-key mutable-table idiom `debounce-by` uses (`hume-scripting/src/builtins/
+bootstrap.scm`), also keyed by `buffer-key` here for the same reason. Steel's `hash` is
 persistent, so mutation is swap-the-box, not in-place update. Each entry, built from the
 single `fresh-entry` SSOT, holds:
 
@@ -55,8 +57,8 @@ single `fresh-entry` SSOT, holds:
 - `"branch-job"` — the in-flight branch-fetch `spawn-async!` id, or `#f` — `branch.scm`'s
   own cancel slot, independent of `"job"` (the diff fetch's).
 
-`entry-set!` is a no-op when `bid` has no tracked entry — a late `spawn-async!` callback
-for a buffer closed while its fetch was in flight must not resurrect state for it.
+`entry-set!` is a no-op when `pane`'s buffer has no tracked entry — a late `spawn-async!`
+callback for a buffer closed while its fetch was in flight must not resurrect state for it.
 `ensure-entry!` is the opposite: it resurrects a missing entry from `fresh-entry` rather
 than no-opping, for a write path (an explicit-ref or bare toggle invocation) that must
 succeed even for a buffer whose `on-buffer-open` never fired — an activation list can
@@ -66,7 +68,7 @@ loads on the first toggle command. `toggle-flag!` is built from `ensure-entry!` 
 back is just an extra `hash-ref` around the two, not a reason to duplicate them.
 
 `cancel-job!` cancels any in-flight `spawn-async!` job stored under a given key
-(`"job"`/`"branch-job"`) for `bid`, without firing its callback — shared by `diff.scm`'s
+(`"job"`/`"branch-job"`) for `pane`'s buffer, without firing its callback — shared by `diff.scm`'s
 and `branch.scm`'s otherwise-identical cancel functions, only the slot key differs
 between them.
 

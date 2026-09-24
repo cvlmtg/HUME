@@ -61,6 +61,13 @@ pub(crate) type SteelResult = Result<SteelVal, SteelErr>;
 /// expands to a closure with exactly that parameter list, so a mismatch
 /// against the real function's signature is a compile error — a
 /// compile-time link between a builtin's registered name and its gate.
+///
+/// Every ctx-taking kind (`cmd`/`config`/`open`) runs each decoded argument
+/// through `args::BuiltinArg::resolve` right after the gate, shadowing
+/// `$arg` with its `Out` type — the seam `args::LivePane` (raises on a
+/// closed buffer, resolving to a plain `PaneHandle`) hooks into; every
+/// other declared type resolves to itself. `plain` (no ctx) never runs this
+/// step, so it can't declare a `LivePane` argument.
 macro_rules! builtins {
     (@one cmd, $steel:expr, $name:literal, $($modpath:ident)::+, ($($arg:ident : $ty:ty),*)) => {
         $steel.register_fn_with_ctx(
@@ -68,6 +75,7 @@ macro_rules! builtins {
             $name,
             move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
                 crate::builtins::errors::require_cmd(ctx, $name)?;
+                $(let $arg = crate::builtins::args::BuiltinArg::resolve($arg, ctx, $name)?;)*
                 $($modpath)::+(ctx $(, $arg)*)
             },
         );
@@ -78,6 +86,7 @@ macro_rules! builtins {
             $name,
             move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
                 crate::builtins::errors::require_config(ctx, $name)?;
+                $(let $arg = crate::builtins::args::BuiltinArg::resolve($arg, ctx, $name)?;)*
                 $($modpath)::+(ctx $(, $arg)*)
             },
         );
@@ -87,6 +96,7 @@ macro_rules! builtins {
             HUME_CTX,
             $name,
             move |ctx: &mut crate::context::SteelCtx $(, $arg: $ty)*| {
+                $(let $arg = crate::builtins::args::BuiltinArg::resolve($arg, ctx, $name)?;)*
                 $($modpath)::+(ctx $(, $arg)*)
             },
         );
@@ -179,16 +189,14 @@ macro_rules! builtins {
 // every later plugin's body, each blamed as "failed to load" for hitting the
 // same stale flag.
 //
-// lsp-request — generic LSP bridge. server: registered language name, or #f
-// for the focused buffer's attached server. callback: (lambda (err result)),
-// exactly one non-#f. #:allow-stale skips the staleness check. #:supersede
-// <key> cancels the caller's own previous still-pending request filed under
-// the same (server, key) — opt-in, not automatic by method/buffer.
-//
-// get-option — rest-only parameter list, not a mixed fixed-plus-rest one: a
-// 2+-positional call site compiled inside a required module hits the
-// steel-core 0.8.2 limitation in io.rs's module doc, and every plugin body is
-// a required module. Arity dispatch and semantics: settings.rs's %get-option.
+// lsp-request — generic LSP bridge. pane: the buffer (and, for
+// #:require-focus, the exact pane) whose attached server receives the
+// request. callback: (lambda (err result)), exactly one non-#f.
+// #:allow-stale skips the staleness check. #:supersede <key> cancels the
+// caller's own previous still-pending request filed under the same (server,
+// key) — opt-in, not automatic by method/buffer. #:require-focus drops the
+// callback unless pane is still the focused pane when the response arrives
+// — see lsp_request's own doc (builtins/lsp.rs) for which requests want this.
 //
 // debounce — trailing-edge: each call reschedules proc `ms` out, cancelling
 // any still-pending call from a prior invocation. Pure Scheme, no Rust
@@ -199,12 +207,13 @@ macro_rules! builtins {
 // cancellable but still ticking, to fire a stray duplicate later. Routine
 // under settle()'s always-draining loop, not a corner case.
 //
-// debounce-by — as debounce, but keyed per first-argument value instead of one
-// shared pending timer, with the same current-entry check per key: a call
-// keyed k1 never cancels a call keyed k2. The key is `(car args)`, not a
-// separate keyfn argument, matching the single-bid handler shape every
-// debounce call site already uses — so swapping one for the other at an
-// existing site needs no further change.
+// debounce-by — as debounce, but keyed per `#:key`'s own read of the
+// debounced proc's arguments (default: the first argument, unapplied — the
+// old `(car args)` behavior) instead of one shared pending timer, with the
+// same current-entry check per key: a call keyed k1 never cancels a call
+// keyed k2. A caller whose first argument is a pane that may arrive with or
+// without a pane component for the same buffer passes `#:key (lambda (p .
+// _) (buffer-key p))` so both still coalesce.
 //
 // picker!/live-picker! — two constructors over one Rust store
 // (hume-editor::editor::input_stack::picker::PickerSession): picker! stays a plain
@@ -335,8 +344,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
     builtins! { steel,
         // Config / settings
         open "set-option!" settings::set_option(key: String, value: SteelVal);
-        cmd  "set-buffer-option!" settings::set_buffer_option(bid: args::BidArg, key: String, value: SteelVal);
-        open "%get-option" settings::get_option(key: String, bid: SteelVal);
+        cmd  "set-buffer-option!" settings::set_buffer_option(pane: args::LivePane, key: String, value: SteelVal);
+        open "get-option" settings::get_option(key: String);
+        cmd  "get-buffer-option" settings::get_buffer_option(pane: args::LivePane, key: String);
         open "configure-statusline!" statusline::configure_statusline(left: SteelVal, center: SteelVal, right: SteelVal);
 
         // Step budget
@@ -425,12 +435,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // display, print, println, newline) — see io.rs and PRINT_GATE_SHIMS above.
         open "%stdout-gate!" io::stdout_gate();
 
-        // Opaque ID predicates and equality — context-free; no SteelCtx needed.
-        plain "buffer-id?" ids::is_buffer_id(val: SteelVal);
-        plain "pane-id?" ids::is_pane_id(val: SteelVal);
-        plain "buffer-id=?" ids::buffer_id_equal(a: SteelVal, b: SteelVal);
+        // Opaque pane predicate — context-free; no SteelCtx needed. Equality
+        // is `equal?` (Custom::equality_hint), not a dedicated builtin.
+        plain "pane?" ids::is_pane(val: SteelVal);
         plain "json-parse" json::json_parse(s: SteelVal);
-        plain "pane-id=?" ids::pane_id_equal(a: SteelVal, b: SteelVal);
         // json-list and the two predicates are fixed-arity, registered
         // directly here; json-ref/json-contains?/json-ref-or take a
         // variadic path and are registered as raw FuncVs below instead
@@ -442,27 +450,28 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "split-words" words::split_words(line: SteelVal, word_chars: SteelVal);
 
         // Multi-buffer read-only builtins
-        cmd "current-buffer" buffers::current_buffer();
-        cmd "current-pane" buffers::current_pane();
+        cmd "focused-pane" buffers::focused_pane();
         cmd "buffers" buffers::buffers();
         cmd "panes" buffers::panes();
-        cmd "buffer-path" buffers::buffer_path(bid: args::BidArg);
-        cmd "buffer-display-path" buffers::buffer_display_path(bid: args::BidArg);
-        cmd "buffer-name" buffers::buffer_name(bid: args::BidArg);
-        cmd "buffer-dirty?" buffers::buffer_dirty(bid: args::BidArg);
-        cmd "buffer-text" buffers::buffer_text(bid: args::BidArg);
-        cmd "buffer-line-count" buffers::buffer_line_count(bid: args::BidArg);
-        cmd "%buffer-lines" buffers::buffer_lines(bid: args::BidArg, start: SteelVal, end: SteelVal);
+        cmd "buffer-panes" buffers::buffer_panes(pane: args::LivePane);
+        cmd "buffer-key" buffers::buffer_key(pane: args::ArgPane);
+        cmd "buffer-path" buffers::buffer_path(pane: args::LivePane);
+        cmd "buffer-display-path" buffers::buffer_display_path(pane: args::LivePane);
+        cmd "buffer-name" buffers::buffer_name(pane: args::LivePane);
+        cmd "buffer-dirty?" buffers::buffer_dirty(pane: args::LivePane);
+        cmd "buffer-text" buffers::buffer_text(pane: args::LivePane);
+        cmd "buffer-line-count" buffers::buffer_line_count(pane: args::LivePane);
+        cmd "%buffer-lines" buffers::buffer_lines(pane: args::LivePane, start: args::OptUsize, end: args::OptUsize);
         // Live cursor read — reflects synchronous edits in the same eval.
-        cmd "current-line-number" buffers::current_line_number();
-        cmd "current-selections" buffers::current_selections();
-        cmd "char-index->line" buffers::char_index_to_line(idx: SteelVal);
-        cmd "line->offset" buffers::line_to_offset(bid: args::BidArg, line: SteelVal);
+        cmd "buffer-cursor-line" buffers::buffer_cursor_line(pane: args::LivePane);
+        cmd "buffer-selections" buffers::buffer_selections(pane: args::LivePane);
+        cmd "offset->line" buffers::offset_to_line(pane: args::LivePane, idx: args::Usize);
+        cmd "line->offset" buffers::line_to_offset(pane: args::LivePane, line: args::Usize);
 
         // Multi-buffer mutating builtins
         cmd "open-buffer!" buffers::open_buffer(path: String);
-        cmd "close-buffer!" buffers::close_buffer(bid: args::BidArg);
-        cmd "switch-to-buffer!" buffers::switch_to_buffer(bid: args::BidArg);
+        cmd "close-buffer!" buffers::close_buffer(pane: args::LivePane);
+        cmd "switch-to-buffer!" buffers::switch_to_buffer(pane: args::LivePane, target: args::LivePane);
 
         // Language identity and grammar builtins
         config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal, lsp_language_id_val: SteelVal);
@@ -474,51 +483,52 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "%register-lsp-server!" lsp::register_lsp_server(language: SteelVal, command: SteelVal, args_val: SteelVal, root_markers_val: SteelVal, init_options: SteelVal, settings: SteelVal, env_val: SteelVal);
         open "unregister-lsp-server!" lsp::unregister_lsp_server(language: SteelVal);
         // Lifecycle — stop/restart a running server, or open the status view.
-        cmd "lsp-stop!" lsp::lsp_stop(language: SteelVal);
-        cmd "lsp-restart!" lsp::lsp_restart(language: SteelVal);
-        cmd "lsp-show-status!" lsp::lsp_show_status();
+        cmd "lsp-stop!" lsp::lsp_stop(target: args::LspTargetArg);
+        cmd "lsp-restart!" lsp::lsp_restart(target: args::LspTargetArg);
+        cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
         // Generic LSP bridge — any protocol method reachable from Steel.
-        cmd "%lsp-request" lsp::lsp_request(server: SteelVal, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal);
-        cmd "lsp-notify" lsp::lsp_notify(server: SteelVal, method: SteelVal, params: SteelVal);
+        cmd "%lsp-request" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal);
+        cmd "lsp-notify" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal);
         config "on-lsp-notification" lsp::on_lsp_notification(method: SteelVal, handler: SteelVal);
         // Introspection
-        cmd  "lsp-capabilities" lsp::lsp_capabilities(server: SteelVal);
+        cmd  "lsp-capabilities" lsp::lsp_capabilities(pane: args::ArgPane);
         cmd  "lsp-server-status" lsp::lsp_server_status();
-        cmd  "lsp-server-for-buffer" lsp::lsp_server_for_buffer(bid: args::BidArg);
+        cmd  "lsp-server-for-buffer" lsp::lsp_server_for_buffer(pane: args::ArgPane);
         open "lsp-registered-for-language?" lsp::lsp_registered_for_language(language: SteelVal);
-        cmd "lsp-position-params" lsp::lsp_position_params(bid: args::BidArg);
-        cmd "lsp-primary-range-params" lsp::lsp_primary_range_params(bid: args::BidArg);
-        cmd "lsp-linewise-ranges-params" lsp::lsp_linewise_ranges_params(bid: args::BidArg);
-        cmd "lsp-position->offset" lsp::lsp_position_to_offset(bid: args::BidArg, position: SteelVal);
-        cmd "lsp-range->offsets" lsp::lsp_range_to_offsets(bid: args::BidArg, range: SteelVal);
-        cmd "lsp-label-offsets->text" lsp::lsp_label_offsets_to_text(bid: args::BidArg, label: SteelVal, offsets: SteelVal);
+        cmd "lsp-position-params" lsp::lsp_position_params(pane: args::LivePane);
+        cmd "lsp-primary-range-params" lsp::lsp_primary_range_params(pane: args::LivePane);
+        cmd "lsp-linewise-ranges-params" lsp::lsp_linewise_ranges_params(pane: args::LivePane);
+        cmd "lsp-position->offset" lsp::lsp_position_to_offset(pane: args::LivePane, position: SteelVal);
+        cmd "lsp-range->offsets" lsp::lsp_range_to_offsets(pane: args::LivePane, range: SteelVal);
+        cmd "lsp-label-offsets->text" lsp::lsp_label_offsets_to_text(label: SteelVal, offsets: SteelVal);
         cmd "lsp-locations->display-parts" lsp::lsp_locations_to_display_parts(locs: SteelVal);
-        cmd "viewport-range" buffers::viewport_range(bid: args::BidArg);
-        cmd "buffer-generation" buffers::buffer_generation(bid: args::BidArg);
+        cmd "viewport-range" buffers::viewport_range(pane: args::LivePane);
+        cmd "buffer-generation" buffers::buffer_generation(pane: args::LivePane);
+        cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);
         open "register-trigger-chars!" completion::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
 
         // Decoration stores + diagnostics pull.
-        cmd "set-inlay-hints!" decorations::set_inlay_hints(source: SteelVal, bid: args::BidArg, hints: SteelVal);
-        open "register-sign-source!" decorations::register_sign_source(name: SteelVal, bid: args::BidArg, priority: SteelVal);
-        cmd "set-signs!" decorations::set_signs(source: SteelVal, bid: args::BidArg, signs: SteelVal);
-        cmd "set-virtual-lines!" decorations::set_virtual_lines(source: SteelVal, bid: args::BidArg, lines: SteelVal);
-        cmd "set-eol-text!" decorations::set_eol_text(source: SteelVal, bid: args::BidArg, lines: SteelVal);
-        cmd "set-extra-highlights!" decorations::set_extra_highlights(source: SteelVal, bid: args::BidArg, spans: SteelVal);
-        cmd "set-line-backgrounds!" decorations::set_line_backgrounds(source: SteelVal, bid: args::BidArg, entries: SteelVal);
-        cmd "set-statusline-text!" decorations::set_statusline_text(source: SteelVal, bid: args::BidArg, text: SteelVal);
-        cmd "%diagnostics-for-buffer" decorations::diagnostics_for_buffer(bid: args::BidArg, severity: SteelVal, range: SteelVal);
-        cmd "diagnostic-counts" decorations::diagnostic_counts(bid: args::BidArg);
+        cmd "set-inlay-hints!" decorations::set_inlay_hints(source: SteelVal, pane: args::LivePane, hints: SteelVal);
+        open "register-sign-source!" decorations::register_sign_source(name: SteelVal, pane: args::LivePane, priority: SteelVal);
+        cmd "set-signs!" decorations::set_signs(source: SteelVal, pane: args::LivePane, signs: SteelVal);
+        cmd "set-virtual-lines!" decorations::set_virtual_lines(source: SteelVal, pane: args::LivePane, lines: SteelVal);
+        cmd "set-eol-text!" decorations::set_eol_text(source: SteelVal, pane: args::LivePane, lines: SteelVal);
+        cmd "set-extra-highlights!" decorations::set_extra_highlights(source: SteelVal, pane: args::LivePane, spans: SteelVal);
+        cmd "set-line-backgrounds!" decorations::set_line_backgrounds(source: SteelVal, pane: args::LivePane, entries: SteelVal);
+        cmd "set-statusline-text!" decorations::set_statusline_text(source: SteelVal, pane: args::LivePane, text: SteelVal);
+        cmd "%diagnostics-for-buffer" decorations::diagnostics_for_buffer(pane: args::ArgPane, severity: SteelVal, range: SteelVal);
+        cmd "diagnostic-counts" decorations::diagnostic_counts(pane: args::ArgPane);
 
         // Edit + navigation primitives.
-        cmd "%apply-text-edits!" edits::apply_text_edits(bid: args::BidArg, edits: SteelVal, expect_gen: SteelVal);
-        cmd "%apply-workspace-edit!" edits::apply_workspace_edit(wsedit: SteelVal);
-        cmd "goto-location!" edits::goto_location(loc: SteelVal);
-        cmd "selections-linewise?" buffers::selections_linewise(bid: args::BidArg);
-        cmd "selections-charwise?" buffers::selections_charwise(bid: args::BidArg);
+        cmd "%apply-text-edits!" edits::apply_text_edits(pane: args::LivePane, edits: SteelVal, expect_gen: SteelVal);
+        cmd "%apply-workspace-edit!" edits::apply_workspace_edit(pane: args::LivePane, wsedit: SteelVal);
+        cmd "%goto-location!" edits::goto_location(pane: args::LivePane, loc: SteelVal);
+        cmd "selections-linewise?" buffers::selections_linewise(pane: args::LivePane);
+        cmd "selections-charwise?" buffers::selections_charwise(pane: args::LivePane);
 
         // Minibuffer prompt.
-        cmd "%prompt!" ui::prompt(label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);
-        cmd "symbol-under-cursor" buffers::symbol_under_cursor(bid: args::BidArg);
+        cmd "%prompt!" ui::prompt(pane: args::LivePane, label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);
+        cmd "symbol-under-cursor" buffers::symbol_under_cursor(pane: args::LivePane);
 
         // Completion: sources register at config time; answers, the ranked
         // view, and accept/dismiss are command-time.
@@ -530,22 +540,22 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "completion-set-trigger-chars!" completion::completion_set_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
 
         // Cursor-anchored popup widget.
-        cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);
+        cmd "%show-popup!" ui::show_popup(pane: args::LivePane, text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);
         cmd "close-popup!" ui::close_popup();
 
         // Selection menu widget.
-        cmd "show-menu!" ui::show_menu(items: SteelVal, on_select: SteelVal);
+        cmd "show-menu!" ui::show_menu(pane: args::LivePane, items: SteelVal, on_select: SteelVal);
         cmd "close-menu!" ui::close_menu();
 
         // Bottom drawer.
-        cmd "show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal);
+        cmd "show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: SteelVal);
         cmd "close-drawer!" ui::close_drawer(token: SteelVal);
         cmd "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: SteelVal, selected: SteelVal);
         cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
 
         // Fuzzy-picker widget.
-        cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
-        cmd "%live-picker!" ui::live_picker(on_select: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
+        cmd "%picker!" ui::picker(pane: args::LivePane, items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
+        cmd "%live-picker!" ui::live_picker(pane: args::LivePane, on_select: SteelVal, prompt: SteelVal, query: SteelVal, on_query_change: SteelVal, truncate: SteelVal, actions: SteelVal);
         cmd "picker-push!" ui::picker_push(token: SteelVal, items: SteelVal);
         cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
@@ -578,11 +588,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
 
         cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
-        cmd "diff-buffer-lines" diff::diff_buffer_lines(bid: args::BidArg, ref_text: SteelVal);
+        cmd "diff-buffer-lines" diff::diff_buffer_lines(pane: args::LivePane, ref_text: SteelVal);
         cmd "diff-words" diff::diff_words(old: SteelVal, new: SteelVal);
         open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
-        cmd "buffer-language" buffers::buffer_language(bid: args::BidArg);
-        cmd "set-buffer-language!" buffers::set_buffer_language_steel(bid: args::BidArg, lang: SteelVal);
+        cmd "buffer-language" buffers::buffer_language(pane: args::LivePane);
+        cmd "set-buffer-language!" buffers::set_buffer_language_steel(pane: args::LivePane, lang: args::OptString);
 
         // Editor-integration directory info, read from `ctx.dirs` (computed
         // once by `ScriptingHost::new`). Callable from anywhere (`open`) —

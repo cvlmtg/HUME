@@ -115,12 +115,10 @@ fn diff_lines_reports_an_unsupported_host() {
 }
 
 /// `diff-buffer-lines` on a host with no `DiffHost` capability raises an
-/// error naming the builtin, same as `diff-lines`/`diff-words` — it has no
-/// separate `require_live` gate of its own (the liveness check lives inside
-/// `DiffHost::diff_buffer_lines` itself, since it needs the buffer's text
-/// either way), so `require_cap` is the first and only gate reached here.
-/// The `BidArg::not_live_err` wording that path would raise against a real
-/// host is pinned directly in `args::tests::not_live_err_matches_require_live_wording`.
+/// error naming the builtin, same as `diff-lines`/`diff-words` — `bid`'s
+/// own liveness is already checked at decode time (`LiveBid`, in the
+/// `builtins!`-registered closure, unreachable from this direct call), so
+/// `require_cap` is the first gate this call actually reaches.
 ///
 /// Fail oracle: `ctx.host.diff().map(...).unwrap_or_default()` instead of
 /// `require_cap` — a host that cannot diff at all would silently report
@@ -129,8 +127,8 @@ fn diff_lines_reports_an_unsupported_host() {
 fn diff_buffer_lines_reports_an_unsupported_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let bid = BidArg(hume_engine::pipeline::BufferId::default());
-    let result = diff_buffer_lines(&mut ctx, bid, SteelVal::StringV("a\n".into()));
+    let pane = crate::types::PaneHandle::buffer_only(hume_engine::pipeline::BufferId::default());
+    let result = diff_buffer_lines(&mut ctx, pane, SteelVal::StringV("a\n".into()));
     assert!(result.is_err());
     assert!(
         result

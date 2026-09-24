@@ -190,11 +190,13 @@ impl crate::host::CommandHost for ValidNameHost {
     fn run_command_sync(
         &mut self,
         name: &str,
+        pane: crate::types::PaneHandle,
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<bool, String> {
-        self.inner.run_command_sync(name, count, extend, register)
+        self.inner
+            .run_command_sync(name, pane, count, extend, register)
     }
     fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
         self.inner.register_command(def)
@@ -278,11 +280,13 @@ impl crate::host::CommandHost for RegisterCapableHost {
     fn run_command_sync(
         &mut self,
         name: &str,
+        pane: crate::types::PaneHandle,
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<bool, String> {
-        self.inner.run_command_sync(name, count, extend, register)
+        self.inner
+            .run_command_sync(name, pane, count, extend, register)
     }
     fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
         self.inner.register_command(def)

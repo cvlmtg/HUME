@@ -602,6 +602,14 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
         },
     );
 
+    // `apply-text-edits!` now only accepts a server-tagged wire edit (via a
+    // real response) — this canned response is what the `:stash` dispatch
+    // below turns into one.
+    backend.respond_to(
+        "test/textEdits",
+        serde_json::json!([{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "newText": "X"}]),
+    );
+
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     ed.lsp.insert_client_for_test(client);
@@ -625,10 +633,15 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (apply-text-edits! (current-buffer)
-               (list (list (cons 0 0) (cons 0 0) "X")))))"#,
+        r#"(define stashed-edits (box #f))
+           (define-typed-command! "stash" "" (lambda (bid)
+             (lsp-request bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
+           (define-typed-command! "go" "" (lambda (bid)
+             (apply-text-edits! bid (json-list (unbox stashed-edits)))))"#,
     );
+    type_cmd(&mut ed, ":stash");
+    ed.drain_lsp();
+    ed.settle();
     type_cmd(&mut ed, ":go");
     ed.drain_lsp();
 

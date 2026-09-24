@@ -1,8 +1,8 @@
 //! Editor-level command functions.
 //!
 //! Each function in this module is a command operating on
-//! `&mut EditorState` + `&mut EngineView` (the `EditorCmdFn` shape, see
-//! `registry/command.rs` — never `&mut Editor`) — composite operations
+//! `&mut EditorState` + `&mut EngineView` (the native `EditorCmd` shape, see
+//! `registry/command.rs`'s `EditorCmdBody` — never `&mut Editor`) — composite operations
 //! involving mode changes, registers, undo groups, or parameterized motions
 //! (find/till/replace).
 //!
@@ -75,74 +75,83 @@ impl EditorState {
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────
 
 /// Buffer id the focused pane is viewing.
+///
+/// A genuine focus read, for callers that legitimately have no target of
+/// their own (LSP goto, `Editor::focused_buffer_id`, the Steel dispatch
+/// path). A Pane/Buffer-category command body has its own target parameter
+/// (`CommandPane::bid`/the `BufferId` itself) and should read that instead —
+/// see `commands/pipeline.rs`'s `CommandPane`/`FocusedPane` doc.
 pub(super) fn focused_buffer_id(state: &EditorState, view: &EngineView) -> BufferId {
     view.panes[state.focus.id()].buffer_id
 }
 
-/// Shared reference to the focused buffer.
-pub(super) fn doc<'a>(state: &'a EditorState, view: &EngineView) -> &'a Buffer {
-    state.buffers.get(focused_buffer_id(state, view))
+/// Reference to `t`'s buffer.
+pub(super) fn doc<'a>(state: &'a EditorState, view: &EngineView, t: CommandPane) -> &'a Buffer {
+    state.buffers.get(t.bid(view))
 }
 
-/// Apply a motion to the focused (pane, buffer) pair.
+/// Apply a motion to `t`'s (pane, buffer) pair.
 ///
-/// Thin wrapper around [`doc_ops::apply_doc_motion`] that resolves the
-/// focused pane/buffer so call sites don't repeat that lookup.
-pub(super) fn apply_focused_motion(
+/// Thin wrapper around [`doc_ops::apply_doc_motion`] that resolves `t`'s
+/// buffer so call sites don't repeat that lookup.
+pub(super) fn apply_pane_motion(
     state: &mut EditorState,
     view: &EngineView,
+    t: CommandPane,
     f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
-    let focused = state.focus.id();
-    let buf = focused_buffer_id(state, view);
-    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, f);
+    let buf = t.bid(view);
+    doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, t.pid(), buf, f);
 }
 
-/// Apply an edit to the focused (pane, buffer) pair.
+/// Apply an edit to `t`'s (pane, buffer) pair.
 ///
-/// Thin wrapper around [`doc_ops::apply_doc_edit`]; see [`apply_focused_motion`].
-pub(in crate::editor::commands) fn apply_focused_edit(
+/// Thin wrapper around [`doc_ops::apply_doc_edit`]; see [`apply_pane_motion`].
+pub(in crate::editor::commands) fn apply_pane_edit(
     state: &mut EditorState,
     view: &EngineView,
+    t: CommandPane,
     cmd: impl FnOnce(
         BufferText,
         SelectionSet,
     ) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
 ) {
-    let focused = state.focus.id();
-    let buf = focused_buffer_id(state, view);
+    let buf = t.bid(view);
     doc_ops::apply_doc_edit(
         &mut state.buffers,
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
-        focused,
+        t.pid(),
         buf,
         cmd,
     );
 }
 
 /// Apply a grouped edit (inside an open insert/paste session) to the focused
-/// (pane, buffer) pair.
+/// (pane, buffer) pair. Takes [`FocusedPane`], not [`CommandPane`]: an edit
+/// group only ever exists on the pane the user is looking at (see
+/// `pane_state.rs`'s module doc), so a `Pane`-category body — which may
+/// target a pane other than focus — has no business opening one.
 ///
 /// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`]; see
-/// [`apply_focused_motion`].
+/// [`apply_pane_motion`].
 pub(in crate::editor::commands) fn apply_focused_edit_grouped(
     state: &mut EditorState,
     view: &EngineView,
+    fp: FocusedPane,
     cmd: impl FnOnce(
         BufferText,
         SelectionSet,
     ) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
 ) {
-    let focused = state.focus.id();
-    let buf = focused_buffer_id(state, view);
+    let buf = fp.bid(view);
     doc_ops::apply_doc_edit_grouped(
         &mut state.buffers,
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
-        focused,
+        fp.pid(),
         buf,
         cmd,
     );
@@ -160,8 +169,9 @@ pub(in crate::editor::commands) fn apply_focused_edit_grouped(
 pub(in crate::editor::commands) fn refuse_if_read_only(
     state: &mut EditorState,
     view: &EngineView,
+    t: CommandPane,
 ) -> bool {
-    if !doc(state, view).is_read_only() {
+    if !doc(state, view, t).is_read_only() {
         return false;
     }
     state.register_prefix = None;
@@ -170,44 +180,53 @@ pub(in crate::editor::commands) fn refuse_if_read_only(
     true
 }
 
-/// Focused pane's selections for the current buffer.
-pub(super) fn current_selections<'a>(
+/// `t`'s pane's selections for `t`'s buffer.
+pub(super) fn pane_selections<'a>(
     state: &'a EditorState,
     view: &EngineView,
+    t: CommandPane,
 ) -> &'a SelectionSet {
-    let bid = focused_buffer_id(state, view);
-    state.focused_buffer_state_or_panic(bid).selections()
+    state.panes.state[t.pid()][t.bid(view)].selections()
 }
 
-/// The most-recently-focused buffer other than the current one.
-pub(super) fn alternate_buffer(state: &EditorState, view: &EngineView) -> Option<BufferId> {
-    state.buffers.mru_excluding(focused_buffer_id(state, view))
+/// The most-recently-focused buffer other than `t`'s.
+pub(super) fn alternate_buffer(
+    state: &EditorState,
+    view: &EngineView,
+    t: CommandPane,
+) -> Option<BufferId> {
+    state.buffers.mru_excluding(t.bid(view))
 }
 
-/// Open a new edit group on the focused (pane, buffer) pair.
-pub(super) fn begin_edit_group_current(state: &mut EditorState, view: &EngineView) {
-    let pid = state.focus.id();
-    let bid = focused_buffer_id(state, view);
-    doc_ops::begin_edit_group(&state.buffers, &mut state.panes.state, pid, bid);
+/// Open a new edit group on the focused (pane, buffer) pair. See
+/// [`apply_focused_edit_grouped`]'s doc for why this takes [`FocusedPane`].
+pub(super) fn begin_edit_group_current(
+    state: &mut EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+) {
+    let bid = fp.bid(view);
+    doc_ops::begin_edit_group(&state.buffers, &mut state.panes.state, fp.pid(), bid);
 }
 
 /// Commit and close the open edit group on the focused (pane, buffer) pair.
-pub(super) fn commit_edit_group_current(state: &mut EditorState, view: &EngineView) {
-    let pid = state.focus.id();
-    let bid = focused_buffer_id(state, view);
-    doc_ops::commit_edit_group(&mut state.buffers, &mut state.panes.state, pid, bid);
+/// See [`apply_focused_edit_grouped`]'s doc for why this takes [`FocusedPane`].
+pub(super) fn commit_edit_group_current(
+    state: &mut EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+) {
+    let bid = fp.bid(view);
+    doc_ops::commit_edit_group(&mut state.buffers, &mut state.panes.state, fp.pid(), bid);
 }
 
-/// Active search pattern on the focused buffer, if any.
+/// Active search pattern on `t`'s buffer, if any.
 pub(super) fn search_pattern<'a>(
     state: &'a EditorState,
     view: &EngineView,
+    t: CommandPane,
 ) -> Option<&'a SearchPattern> {
-    state
-        .buffers
-        .get(focused_buffer_id(state, view))
-        .search_pattern
-        .as_ref()
+    state.buffers.get(t.bid(view)).search_pattern.as_ref()
 }
 
 /// Viewport state of pane `pid`.
@@ -302,65 +321,74 @@ pub(super) fn pane_display_lines<'a>(
     (dlm, viewport)
 }
 
-/// Snapshot the focused pane's current cursor as a `JumpEntry`.
-pub(super) fn current_jump_entry(state: &EditorState, view: &EngineView) -> JumpEntry {
-    let pid = state.focus.id();
-    let bid = focused_buffer_id(state, view);
-    let sels = state.panes.state[pid][bid].selections().clone();
+/// Snapshot `t`'s pane's current cursor as a `JumpEntry`.
+pub(super) fn current_jump_entry(
+    state: &EditorState,
+    view: &EngineView,
+    t: CommandPane,
+) -> JumpEntry {
+    let bid = t.bid(view);
+    let sels = state.panes.state[t.pid()][bid].selections().clone();
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
 /// Push `pre` — a [`current_jump_entry`] snapshot taken before some
-/// navigation, however long ago — only if the focused buffer or its
-/// selections have actually changed since. `JumpList::push` truncates
-/// forward history unconditionally, so a caller that pushes unconditionally
+/// navigation, however long ago — only if `t`'s buffer or its selections
+/// have actually changed since. `JumpList::push` truncates forward history
+/// unconditionally, so a caller that pushes unconditionally
 /// (`:42` already on line 42, `goto-definition` invoked on the definition
 /// itself, a search confirmed on the match already under the cursor) can
 /// wipe Ctrl-i history for a keypress that moved nothing. Mirrors the
 /// native command pipeline's own `moved` guard (`step_record_jump`) for the
 /// callers here that push directly instead of going through `CmdMeta`.
-pub(super) fn record_jump_if_moved(state: &mut EditorState, view: &EngineView, pre: JumpEntry) {
-    let post_bid = focused_buffer_id(state, view);
-    if pre.buffer_id != post_bid || pre.selections != *current_selections(state, view) {
-        state.panes.jumps[state.focus.id()].push(pre);
+pub(super) fn record_jump_if_moved(
+    state: &mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+    pre: JumpEntry,
+) {
+    let post_bid = t.bid(view);
+    if pre.buffer_id != post_bid || pre.selections != *pane_selections(state, view, t) {
+        state.panes.jumps[t.pid()].push(pre);
     }
 }
 
-/// Redirect the focused pane to `target` without recording a jump.
+/// Redirect `t`'s pane to `target` without recording a jump.
 pub(super) fn switch_to_buffer_without_jump(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     target: BufferId,
 ) {
-    let pid = state.focus.id();
     super::buffer::lifecycle::switch_pane_to_buffer(
         view,
         &state.buffers,
         &mut state.panes.state,
-        pid,
+        t.pid(),
         target,
     );
 }
 
-/// Replace the focused pane's selections for the current buffer.
-pub(super) fn set_current_selections(
+/// Replace `t`'s pane's selections for `t`'s buffer.
+pub(super) fn set_pane_selections(
     state: &mut EditorState,
     view: &EngineView,
+    t: CommandPane,
     sels: SelectionSet,
 ) {
-    let bid = focused_buffer_id(state, view);
-    state.panes.state[state.focus.id()][bid].set_selections(sels);
+    let bid = t.bid(view);
+    state.panes.state[t.pid()][bid].set_selections(sels);
 }
 
-/// Replace the primary selection in the focused pane (merging overlaps).
+/// Replace the primary selection in `t`'s pane (merging overlaps).
 pub(super) fn set_primary_selection(
     state: &mut EditorState,
     view: &EngineView,
+    t: CommandPane,
     new_sel: hume_editing::selection::Selection,
 ) {
-    let pid = state.focus.id();
-    let bid = focused_buffer_id(state, view);
-    let pbs = &mut state.panes.state[pid][bid];
+    let bid = t.bid(view);
+    let pbs = &mut state.panes.state[t.pid()][bid];
     let idx = pbs.selections().primary_index();
     let old_head = pbs.selections().primary().head();
     let sels = pbs.take_selections();
@@ -423,7 +451,9 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane_in_layout;
 pub(in crate::editor) use pipeline::{
-    NativeBody, run_dispatch_pipeline, run_native_body, step_paste_commit, step_stamp_repeatable,
+    CommandPane, FocusedPane, NativeBody, resolve_command_pane, resolve_focused_pane, resolve_pane,
+    run_dispatch_pipeline, run_native_body_on_focus, run_resolved, step_paste_commit,
+    step_stamp_repeatable,
 };
 
 // DisplayLineMap-dependent commands live in visual_move.rs; re-export for the registry glob.

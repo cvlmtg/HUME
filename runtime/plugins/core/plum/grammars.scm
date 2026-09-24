@@ -115,8 +115,8 @@
 
 ;;; A string argument wins; otherwise falls back to the current buffer's
 ;;; language. Returns the name, or #f after reporting a status message.
-(define (plum/resolve-grammar-arg cmd arg)
-  (let ((name (call! "stdlib/resolve-lang-arg" cmd arg)))
+(define (plum/resolve-grammar-arg pane cmd arg)
+  (let ((name (call! "stdlib/resolve-lang-arg" pane cmd arg)))
     (cond ((not name) #f)
           ((not (grammar-source-known? name))
            (log! 'info (string-append cmd ": unknown grammar \"" name "\" — see :plum-list-grammars"))
@@ -166,8 +166,8 @@
 
 (define-typed-command! "plum-install-grammar"
   "Install (or repair) a tree-sitter grammar by name, always from a clean re-clone (default: the current buffer's language)."
-  (lambda (arg)
-    (let ((name (plum/resolve-grammar-arg "plum-install-grammar" arg)))
+  (lambda (pane arg)
+    (let ((name (plum/resolve-grammar-arg pane "plum-install-grammar" arg)))
       (when name
         (log! 'info (string-append "PLUM: installing grammar for " name))
         (with-handler

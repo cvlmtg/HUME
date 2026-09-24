@@ -34,11 +34,9 @@ fn failed_command_eval_effects_do_not_leak() {
     }
     .expect("define-command! must succeed");
 
-    let pid = ed.state.focus.id();
-    let bid = ed.focused_buffer_id();
     let result = {
         let mut ih = init_host!(ed);
-        host.call_steel_cmd("efx-fail", None, vec![], pid, bid, &mut ih)
+        host.call_steel_cmd("efx-fail", None, vec![], &mut ih)
     };
     assert!(
         result.is_err(),

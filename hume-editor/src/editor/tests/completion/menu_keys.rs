@@ -27,9 +27,16 @@ fn completion_over_a_live_scrollable_popup_clears_it() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.feed_key(key('i'));
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_popup("hover".to_string(), PopupKind::Scrollable, false, None)
-        .expect("show-popup! must succeed");
+    host.show_popup(
+        pane,
+        "hover".to_string(),
+        PopupKind::Scrollable,
+        false,
+        None,
+    )
+    .expect("show-popup! must succeed");
     assert!(ed.state.input.popup().is_some(), "sanity: popup open");
 
     open_completion_session(&mut ed, &["foo"]);
@@ -52,8 +59,9 @@ fn completion_over_a_sticky_popup_leaves_it_open() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.feed_key(key('i'));
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_popup("sig-help".to_string(), PopupKind::Sticky, false, None)
+    host.show_popup(pane, "sig-help".to_string(), PopupKind::Sticky, false, None)
         .expect("show-popup! must succeed");
     assert!(ed.state.input.popup().is_some(), "sanity: sighelp open");
 
@@ -87,9 +95,16 @@ fn a_popup_landing_above_a_live_session_does_not_strand_it() {
         "sanity: session open"
     );
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_popup("hover".to_string(), PopupKind::Scrollable, false, None)
-        .expect("show-popup! must succeed");
+    host.show_popup(
+        pane,
+        "hover".to_string(),
+        PopupKind::Scrollable,
+        false,
+        None,
+    )
+    .expect("show-popup! must succeed");
     assert!(
         ed.state.input.popup().is_some(),
         "sanity: popup landed above the session"
@@ -118,9 +133,16 @@ fn dismissing_the_session_leaves_a_popup_above_it_open() {
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["foo"]);
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_popup("hover".to_string(), PopupKind::Scrollable, false, None)
-        .expect("show-popup! must succeed");
+    host.show_popup(
+        pane,
+        "hover".to_string(),
+        PopupKind::Scrollable,
+        false,
+        None,
+    )
+    .expect("show-popup! must succeed");
     assert!(
         ed.state.input.popup().is_some(),
         "sanity: popup landed above the session"
@@ -548,17 +570,32 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
 fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
+    super::super::lsp_bridge::setup_with(&mut ed, |backend, _sid| {
+        // `apply-text-edits!` now only accepts a server-tagged wire edit
+        // (via a real response) — this canned response is what `:stash`
+        // (dispatched below, before Insert mode) turns into one.
+        backend.respond_to(
+            "test/textEdits",
+            serde_json::json!([{"range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 6}}, "newText": "BCDEF"}]),
+        );
+    });
     run(
         &mut ed,
         tmp.path(),
         &format!(
             "{}\n{}",
             completion_source("test", &completion_labels(&["x"]), ""),
-            r#"(define-command! "corrupt" "" (lambda ()
-                 (apply-text-edits! (current-buffer)
-                   (list (list (cons 0 1) (cons 0 6) "BCDEF")))))"#
+            r#"(define stashed-edits (box #f))
+               (define-typed-command! "stash" "" (lambda (bid)
+                 (lsp-request bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
+               (define-command! "corrupt" "" (lambda (bid)
+                 (apply-text-edits! bid (json-list (unbox stashed-edits)))))"#
         ),
     );
+    type_cmd(&mut ed, ":stash");
+    ed.drain_lsp();
+    ed.settle();
+
     ed.feed_key(key('i'));
     trigger(&mut ed);
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");

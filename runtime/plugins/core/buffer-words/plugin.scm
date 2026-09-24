@@ -22,12 +22,13 @@
 (define (bw/fresh-entry)
   (hash "words" #f "building" #f "timer" #f "gen" 0 "live-id" #f))
 
-(define (bw/entry bid)
-  (let ([table (unbox bw/*buffers*)])
-    (and (hash-contains? table bid) (hash-ref table bid))))
+(define (bw/entry pane)
+  (let ([table (unbox bw/*buffers*)]
+        [key (buffer-key pane)])
+    (and (hash-contains? table key) (hash-ref table key))))
 
-(define (bw/install! bid entry)
-  (set-box! bw/*buffers* (hash-insert (unbox bw/*buffers*) bid entry)))
+(define (bw/install! pane entry)
+  (set-box! bw/*buffers* (hash-insert (unbox bw/*buffers*) (buffer-key pane) entry)))
 
 ;;; Cancels `entry`'s pending tick, if any — see README.md's "Cursor-
 ;;; outward, line-windowed indexing" for why `"gen"` is what actually makes
@@ -36,10 +37,10 @@
   (let ([timer (hash-ref entry "timer")])
     (when timer (cancel-timer! timer))))
 
-(define (bw/forget! bid)
-  (let ([entry (bw/entry bid)])
+(define (bw/forget! pane)
+  (let ([entry (bw/entry pane)])
     (when entry (bw/cancel-timer! entry)))
-  (set-box! bw/*buffers* (hash-remove (unbox bw/*buffers*) bid)))
+  (set-box! bw/*buffers* (hash-remove (unbox bw/*buffers*) (buffer-key pane))))
 
 ;; ── Scanning ──────────────────────────────────────────────────────────────────
 
@@ -84,14 +85,16 @@
   (foldl (lambda (line words) (foldl (lambda (w s) (bw/add-word s w)) words (split-words line wc)))
          set lines))
 
-;;; 0-indexed cursor line, or the top of the buffer for a background bid.
-(define (bw/anchor-line bid)
-  (if (equal? bid (current-buffer))
-      (let ([n (current-line-number)])
-        (if n (- n 1) 0))
-      0))
+;;; 0-indexed cursor line, or the top of the buffer when no pane shows it.
+;;; `pane` may carry no pane of its own (`on-buffer-open`/`on-text-changed`
+;;; hand a pane-less value) — resolved explicitly via `(buffer-panes pane)`
+;;; rather than passed straight to `buffer-cursor-line`, which raises
+;;; (kind-B fail-fast) instead of answering `#f` for a buffer no pane shows.
+(define (bw/anchor-line pane)
+  (let ([panes (buffer-panes pane)])
+    (if (null? panes) 0 (- (buffer-cursor-line (car panes)) 1))))
 
-;;; See README.md's "Double-buffered cache". Pure — does not install `bid`'s
+;;; See README.md's "Double-buffered cache". Pure — does not install `pane`'s
 ;;; entry or push anything; `bw/walk!` (the one caller) does both once it
 ;;; has the finished entry in hand.
 (define (bw/finish-entry entry building)
@@ -115,68 +118,71 @@
 ;;; this a *second* background walk finishing while the same menu is still
 ;;; open would re-emit under the same still-live id and reset the menu's
 ;;; selection a second time, with no new trigger to justify it.
-(define (bw/push-finished-answer! bid entry)
+(define (bw/push-finished-answer! pane entry)
   (let ([id (hash-ref entry "live-id")])
     (when id
       (completion-emit! id (hash-ref entry "words"))
-      (bw/install! bid (hash-insert entry "live-id" #f)))))
+      (bw/install! pane (hash-insert entry "live-id" #f)))))
 
 ;;; One reindex tick — see README.md's "Cursor-outward, line-windowed
 ;;; indexing".
-(define (bw/walk! bid gen wc fwd-line bwd-line)
-  (let ([entry (bw/entry bid)])
+(define (bw/walk! pane gen wc fwd-line bwd-line)
+  (let ([entry (bw/entry pane)])
     (when (and entry (= (hash-ref entry "gen") gen))
-      (let* ([total (buffer-line-count bid)]
+      (let* ([total (buffer-line-count pane)]
              [fwd-hi (min total (+ fwd-line bw/lines-per-tick))]
-             [fwd-lines (if (< fwd-line fwd-hi) (buffer-lines bid #:start fwd-line #:end fwd-hi) '())]
+             [fwd-lines (if (< fwd-line fwd-hi) (buffer-lines pane #:start fwd-line #:end fwd-hi) '())]
              [bwd-hi (min bwd-line total)]
              [bwd-lo (max 0 (- bwd-hi bw/lines-per-tick))]
-             [bwd-lines (if (< bwd-lo bwd-hi) (buffer-lines bid #:start bwd-lo #:end bwd-hi) '())]
+             [bwd-lines (if (< bwd-lo bwd-hi) (buffer-lines pane #:start bwd-lo #:end bwd-hi) '())]
              [building (bw/add-lines (bw/add-lines (or (hash-ref entry "building") (hashset)) fwd-lines wc)
                                       bwd-lines wc)])
         (if (and (>= fwd-hi total) (<= bwd-lo 0))
             (let ([finished (bw/finish-entry entry building)])
-              (bw/install! bid finished)
-              (bw/push-finished-answer! bid finished))
-            (bw/install! bid
+              (bw/install! pane finished)
+              (bw/push-finished-answer! pane finished))
+            (bw/install! pane
               (bw/continue-entry entry building
                                   (after bw/tick-delay-ms
-                                    (lambda () (bw/walk! bid gen wc fwd-hi bwd-lo))))))))))
+                                    (lambda () (bw/walk! pane gen wc fwd-hi bwd-lo))))))))))
 
-;;; Cancels any in-flight walk and restarts it fresh, resurrecting `bid`'s
+;;; Cancels any in-flight walk and restarts it fresh, resurrecting `pane`'s
 ;;; entry first if missing — see README.md's "Double-buffered cache" and
 ;;; "Cursor-outward, line-windowed indexing". Clears `"building"` along with
 ;;; bumping `"gen"`: `bw/walk!` reads it back as its own starting set, and
 ;;; without this a cancelled walk's partial (and possibly now-stale — the
 ;;; reindex was likely triggered by an edit) set would carry into the fresh
 ;;; one instead of that one starting empty.
-(define (bw/reindex! bid)
-  (unless (bw/entry bid)
-    (when (member bid (buffers))
-      (bw/install! bid (bw/fresh-entry))))
-  (let ([entry (bw/entry bid)])
+(define (bw/reindex! pane)
+  (unless (bw/entry pane)
+    (when (buffer-live? pane)
+      (bw/install! pane (bw/fresh-entry))))
+  (let ([entry (bw/entry pane)])
     (when entry
       (bw/cancel-timer! entry)
-      (let* ([anchor (bw/anchor-line bid)]
+      (let* ([anchor (bw/anchor-line pane)]
              [gen (+ (hash-ref entry "gen") 1)]
-             [wc (get-option bid "word-chars")])
-        (bw/install! bid (hash-insert (hash-insert entry "gen" gen) "building" #f))
-        (bw/walk! bid gen wc anchor anchor)))))
+             [wc (get-buffer-option pane "word-chars")])
+        (bw/install! pane (hash-insert (hash-insert entry "gen" gen) "building" #f))
+        (bw/walk! pane gen wc anchor anchor)))))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 (register-hook! 'on-buffer-open
-  (lambda (bid)
-    (bw/forget! bid)
-    (bw/reindex! bid)))
+  (lambda (pane)
+    (bw/forget! pane)
+    (bw/reindex! pane)))
 
-(define bw/schedule-reindex! (debounce-by 150 bw/reindex!))
+;;; Keyed per buffer (not per pane) — a command's own pane and a
+;;; hook's pane-less value for the same buffer must still coalesce.
+(define bw/schedule-reindex!
+  (debounce-by 150 bw/reindex! #:key (lambda (p . _) (buffer-key p))))
 
 (register-hook! 'on-text-changed
-  (lambda (bid) (bw/schedule-reindex! bid)))
+  (lambda (pane) (bw/schedule-reindex! pane)))
 
 (register-hook! 'on-buffer-close
-  (lambda (bid) (bw/forget! bid)))
+  (lambda (pane) (bw/forget! pane)))
 
 ;;; Reindexes every open buffer on a global `word-chars` change — see
 ;;; README.md's "word-chars invalidation" for the buffer-scoped gap this
@@ -192,8 +198,8 @@
 ;;; cache" and "Matching". The typed word itself is not filtered out
 ;;; here — the editor's own ranking drops any item that's a no-op against
 ;;; what's typed, the same rule every other completion source relies on.
-(define (bw/items bid)
-  (let ([entry (bw/entry bid)])
+(define (bw/items pane)
+  (let ([entry (bw/entry pane)])
     (if (not entry)
         '()
         (let ([ready (hash-ref entry "words")])
@@ -206,15 +212,15 @@
 
 ;;; Stashes `id` as the invocation a still-in-progress walk should push its
 ;;; finished answer to — see `bw/push-finished-answer!` and README.md's
-;;; "Pushing a finished index to an open menu". A no-op if `bid` has no
+;;; "Pushing a finished index to an open menu". A no-op if `pane` has no
 ;;; entry (the source answered empty and there's nothing to track).
-(define (bw/set-live-id! bid id)
-  (let ([entry (bw/entry bid)])
+(define (bw/set-live-id! pane id)
+  (let ([entry (bw/entry pane)])
     (when entry
-      (bw/install! bid (hash-insert entry "live-id" id)))))
+      (bw/install! pane (hash-insert entry "live-id" id)))))
 
 (register-completion-source! "buffer-words"
-  (lambda (id bid prefix)
-    (bw/set-live-id! bid id)
-    (completion-emit! id (bw/items bid)))
+  (lambda (id pane prefix)
+    (bw/set-live-id! pane id)
+    (completion-emit! id (bw/items pane)))
   #:target 'buffer #:match bw/match)

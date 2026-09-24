@@ -2,8 +2,8 @@
 
 (require "lib.scm")
 
-(define (lsp/primary-selection-range)
-  (let ((primary (call! "stdlib/primary-selection" (current-selections))))
+(define (lsp/primary-selection-range pane)
+  (let ((primary (call! "stdlib/primary-selection" (buffer-selections pane))))
     (and primary
          (let ((a (call! "stdlib/selection-anchor" primary))
                (h (call! "stdlib/selection-head" primary)))
@@ -15,48 +15,63 @@
 (define (lsp/action-title action)
   (json-ref action "title"))
 
-(define (lsp/action-resolve-provider?)
-  (lsp/cap-flag? "codeActionProvider" "resolveProvider"))
+(define (lsp/action-resolve-provider? pane)
+  (lsp/cap-flag? pane "codeActionProvider" "resolveProvider"))
 
-(define (lsp/exec-command cmd-obj)
-  (lsp-request #f "workspace/executeCommand"
+;;; `pane` is the buffer the action came from — captured by
+;;; `"lsp-code-actions"` when the request was sent, threaded through the
+;;; menu selection and (for an unresolved action) the `codeAction/resolve`
+;;; round trip, never re-read from focus. Both round trips are async (the
+;;; user picks a menu item, then waits on the network), so this is the same
+;;; capture-at-source discipline every other chained LSP request here uses.
+;;; `#:allow-stale #t`: `workspace/executeCommand`'s params carry no
+;;; `textDocument`, so the bridge's own text-gen anchor has nothing buffer-
+;;; specific to check against `pane` — without this, the anchor's fallback
+;;; (its own current generation vs. `pane`'s at drain time) would drop the
+;;; response on any intervening edit. Safe to skip: this callback only
+;;; reports an error; the command's actual edits (if any) arrive separately
+;;; via a server-initiated `workspace/applyEdit`, which carries its own
+;;; positions and is never subject to this staleness check.
+(define (lsp/exec-command pane cmd-obj)
+  (lsp-request pane "workspace/executeCommand"
     (hash "command" (json-ref cmd-obj "command")
           "arguments" (json-ref-or cmd-obj (list) "arguments"))
-    (lambda (err res) (when err (lsp/report-error "code action" err)))))
+    (lambda (err res) (when err (lsp/report-error "code action" err)))
+    #:allow-stale #t))
 
-(define (lsp/run-action action #:resolved? [resolved? #f])
+(define (lsp/run-action pane action #:resolved? [resolved? #f])
   (let ((edit (json-ref-or action #f "edit"))
         (command (json-ref-or action #f "command")))
     (cond
       ((or edit command)
-       (when edit (apply-workspace-edit! edit))
-       (when command (lsp/exec-command (if (string? command) action command))))
-      ((and (not resolved?) (lsp/action-resolve-provider?))
-       (lsp-request #f "codeAction/resolve" action
+       (when edit (apply-workspace-edit! pane edit))
+       (when command (lsp/exec-command pane (if (string? command) action command))))
+      ((and (not resolved?) (lsp/action-resolve-provider? pane))
+       (lsp-request pane "codeAction/resolve" action
          (lambda (err resolved)
            (cond
              (err (lsp/report-error "code action" err))
              ((void? resolved) (log! 'info "Code action has no edit or command"))
-             (else (lsp/run-action resolved #:resolved? #t))))))
+             (else (lsp/run-action pane resolved #:resolved? #t))))))
       (else (log! 'info "Code action has no edit or command")))))
 
 (define-command! "lsp-code-actions" "Show available code actions for the cursor or selection."
-  (lambda ()
-    (let ((bid (current-buffer)))
-      (lsp/guard-capability "codeActionProvider"
-        (lambda ()
-          (let* ((diags (diagnostics-for-buffer bid #:range (lsp/primary-selection-range)))
-                 (context (hash "diagnostics" (map (lambda (d) (hash-ref d "raw")) diags)
-                                "triggerKind" 1)))
-            (lsp-request #f "textDocument/codeAction"
-              (hash-insert (lsp-primary-range-params bid) "context" context)
-              (lambda (err res)
-                (cond
-                  (err (lsp/report-error "code action" err))
-                  ((void? res) (log! 'info "No code actions"))
-                  (else
-                    (let ((actions (filter (lambda (a) (not (lsp/action-disabled? a))) (json-list res))))
-                      (if (null? actions)
-                          (log! 'info "No code actions")
-                          (show-menu! (map lsp/action-title actions)
-                            (lambda (idx) (when idx (lsp/run-action (list-ref actions idx)))))))))))))))))
+  (lambda (pane)
+    (lsp/guard-capability pane "codeActionProvider"
+      (lambda ()
+        (let* ((diags (diagnostics-for-buffer pane #:range (lsp/primary-selection-range pane)))
+               (context (hash "diagnostics" (map (lambda (d) (hash-ref d "raw")) diags)
+                              "triggerKind" 1)))
+          (lsp-request pane "textDocument/codeAction"
+            (hash-insert (lsp-primary-range-params pane) "context" context)
+            (lambda (err res)
+              (cond
+                (err (lsp/report-error "code action" err))
+                ((void? res) (log! 'info "No code actions"))
+                (else
+                  (let ((actions (filter (lambda (a) (not (lsp/action-disabled? a))) (json-list res))))
+                    (if (null? actions)
+                        (log! 'info "No code actions")
+                        (show-menu! pane (map lsp/action-title actions)
+                          (lambda (idx) (when idx (lsp/run-action pane (list-ref actions idx))))))))))
+            #:require-focus #t))))))

@@ -35,10 +35,13 @@ nothing. `split-once` answers `#t` (not `#f`) when the pattern isn't found, so `
 apart; a bare `(if parts (car parts) text)` would call `(car #t)` on every
 single-line message, which is most of them.
 
-`lsp/diag-jump-to!` takes `bid` explicitly rather than reading `(current-buffer)` —
-the diagnostics drawer stays open across a buffer switch by design (browse-while-
-editing, below), so a row selected there must jump into the buffer it was listed
-for, not whichever buffer happens to be focused when Enter is pressed.
+`lsp/diag-jump-to!` takes its diagnostic's own pane value explicitly, as
+`goto-location!`'s *target* only — never as its invocation pane, which is always
+`(focused-pane)` instead — the diagnostics drawer stays open across a buffer switch
+by design (browse-while-editing, below), so a row selected there must jump into the
+buffer it was listed for, not whichever buffer happens to be focused when Enter is
+pressed, and the pane that opened the drawer may no longer show that buffer at all
+by the time a row is picked.
 
 `diagnostics-for-buffer` sorts and deep-clones up to 1000 diagnostics' whole raw LSP
 JSON, so every hook below fetches it once and threads the result through to both the
@@ -49,9 +52,13 @@ decorations refresh and the drawer refresh, rather than each calling it separate
 `:diagnostics` opens a drawer the plugin then owns refreshing itself: unlike a
 one-shot picker, this drawer's rows must track the buffer's diagnostics live as
 `on-diagnostics-changed` keeps firing. `lsp/*diag-drawer*` holds `#f` when no
-drawer is open, or `(bid tok diags)` — one value, not three hand-synced globals, so
-"closed" is structural rather than an invariant that would have to hold across three
-separately-cleared fields. `tok` is `show-drawer-list!`'s own return, threaded into
+drawer is open, or `((buffer-key pane) tok diags)` — one value, not three
+hand-synced globals, so "closed" is structural rather than an invariant that would
+have to hold across three separately-cleared fields. The first element is a
+`buffer-key`, not the pane value `:diagnostics` was invoked with — `on-diagnostics-
+changed`'s own `pane` carries no pane of its own, so the refresh path compares by
+buffer identity, not by the drawer-opening command's (possibly no-longer-focused)
+pane. `tok` is `show-drawer-list!`'s own return, threaded into
 every later call (`update-drawer-list!`, `close-drawer!`, `drawer-selected-index`);
 Rust ignores any of them the moment `tok` no longer names the open drawer (closed,
 replaced, or never this plugin's), so a stale or foreign drawer can never be touched

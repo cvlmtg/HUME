@@ -161,8 +161,9 @@ pub trait EditorHost {
     fn output(&mut self) -> Option<&mut dyn OutputHost> {
         None
     }
-    /// Live cursor/selection reads — required: every host has some notion
-    /// (even if only "nothing is focused") of the focused buffer's cursor.
+    /// Live cursor/selection reads for an explicit `bid` — required: every
+    /// host has some notion (even if only "nothing is shown anywhere") of a
+    /// buffer's cursor.
     fn cursor(&mut self) -> &mut dyn CursorHost;
     /// Command registry queries, synchronous native dispatch, and
     /// registration — required: every host has some notion of its command

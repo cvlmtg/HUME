@@ -45,7 +45,7 @@ fn show_popup_populates_the_view_after_a_frame() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello")))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -65,7 +65,7 @@ fn close_popup_clears_the_view() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello")))
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello")))
            (define-typed-command! "gone" "" (lambda () (close-popup!)))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -92,8 +92,8 @@ fn show_popup_replaces_not_stacks() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "arm-first" "" (lambda () (show-popup! "first")))
-           (define-typed-command! "arm-second" "" (lambda () (show-popup! "second")))"#,
+        r#"(define-typed-command! "arm-first" "" (lambda (pane) (show-popup! pane "first")))
+           (define-typed-command! "arm-second" "" (lambda (pane) (show-popup! pane "second")))"#,
     );
     type_cmd(&mut ed, ":arm-first");
     type_cmd(&mut ed, ":arm-second");
@@ -113,7 +113,7 @@ fn show_popup_rejects_an_unknown_anchor() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hi" #:anchor 'top)))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hi" #:anchor 'top)))"#,
     );
     type_cmd(&mut ed, ":go");
     let msg = ed.state.status_msg.clone().unwrap_or_default();
@@ -145,8 +145,10 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
 
     // Direct host call, not a real `:` keystroke — the picker is
     // full-modal and would swallow it before it ever reached Command mode.
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
+        pane,
         "hi".to_string(),
         hume_scripting::host::PopupKind::Scrollable,
         false,
@@ -182,7 +184,7 @@ fn docked_popup_resolves_into_the_band_view_not_the_cursor_overlay() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello" #:anchor 'bottom)))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello" #:anchor 'bottom)))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -205,7 +207,7 @@ fn close_popup_clears_the_band_view_too() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello" #:anchor 'bottom)))
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello" #:anchor 'bottom)))
            (define-typed-command! "gone" "" (lambda () (close-popup!)))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -237,7 +239,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -295,7 +297,7 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello" #:kind 'scrollable #:anchor 'bottom)))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello" #:kind 'scrollable #:anchor 'bottom)))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -333,7 +335,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -383,7 +385,7 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{tall}" #:kind 'scrollable #:anchor 'bottom)))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -437,7 +439,7 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "docked hover text" #:anchor 'bottom)))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "docked hover text" #:anchor 'bottom)))"#,
     );
     type_cmd(&mut ed, ":go");
     let rect = Rect::new(0, 0, 40, 10);
@@ -455,8 +457,8 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (show-popup! "one two three four five six seven eight nine ten")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-popup! pane "one two three four five six seven eight nine ten")))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -488,8 +490,8 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (show-popup! "one two three four five six seven eight nine ten")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (show-popup! pane "one two three four five six seven eight nine ten")))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -537,7 +539,7 @@ fn popup_content_is_rebuilt_after_a_theme_reload() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello")))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -573,7 +575,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{tall}" #:kind 'scrollable)))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -643,7 +645,7 @@ fn wrap_cache_stays_shared_across_frames_even_once_the_popup_scrolls() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{tall}" #:kind 'scrollable)))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -697,7 +699,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{tall}" #:kind 'scrollable)))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -751,7 +753,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello" #:kind 'scrollable)))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello" #:kind 'scrollable)))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -787,7 +789,7 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello")))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -830,7 +832,7 @@ fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello" #:kind 'scrollable)))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello" #:kind 'scrollable)))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -862,7 +864,7 @@ fn a_mouse_click_closes_a_scrollable_popup() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello" #:kind 'scrollable)))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello" #:kind 'scrollable)))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -893,7 +895,7 @@ fn a_sticky_popup_survives_mouse_input() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello")))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -934,7 +936,7 @@ fn scrollable_popup_paints_its_scrolled_window() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#
+            r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "{tall}" #:kind 'scrollable)))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -964,7 +966,7 @@ fn popup_never_paints_outside_the_pane_rect() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hover text")))"#,
+        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hover text")))"#,
     );
     type_cmd(&mut ed, ":go");
     let rect = Rect::new(0, 0, 30, 8);

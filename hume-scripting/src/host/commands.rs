@@ -2,7 +2,7 @@
 //! command registration.
 
 use crate::attribution::PluginId;
-use crate::types::{SteelCmdDef, SteelTypedCmdDef};
+use crate::types::{PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
 /// Command registry queries, synchronous native dispatch, and Steel command
 /// registration — accessed through [`EditorHost::commands`](super::EditorHost::commands).
@@ -25,6 +25,20 @@ pub trait CommandHost {
     /// implementation self-guards, so the caller need not pre-check via
     /// `command_is_native` (though doing so avoids a wasted lookup).
     ///
+    /// `pane` names the pane (and its buffer) the command acts on, resolved
+    /// against the command's own target requirement rather than always
+    /// meaning "the focused pane": a command that needs any pane (`delete`,
+    /// `yank`, …) runs through `pane.pane()` directly — it must still be
+    /// live and show `pane.buffer()`, but need not be focused; a command
+    /// bound to the focused pane specifically (`insert-before`, a paste or
+    /// search-prompt entry, …) requires `pane.pane()` to be the focused one;
+    /// a command needing only the buffer (`clear-search`) or no buffer at
+    /// all (`toggle-extend`) accepts any `pane`, live or not, with or
+    /// without a pane. Either way the implementation errors rather than
+    /// silently falling back to whatever is focused, so a hook or async
+    /// callback whose captured `pane` no longer resolves gets a loud
+    /// failure instead of quietly editing the wrong buffer.
+    ///
     /// `count`: `None` means "as if no count was typed" — for `move-down`/`move-up`
     /// this selects visual-line movement instead of buffer-line movement (every other
     /// native command treats `None` the same as `Some(1)`). `parse_count_extend`
@@ -43,12 +57,15 @@ pub trait CommandHost {
     /// one that exhausts mid-count without ever refusing (undo/redo past the
     /// last step), still returns `Ok(true)`. This is the value `(call! …)`
     /// yields for a native command.
-    /// Returns `Err(msg)` when the name is not found or is not a native command.
+    /// Returns `Err(msg)` when the name is not found, is not a native
+    /// command, `pane`'s buffer isn't live, or `pane` doesn't resolve
+    /// against the command's own target requirement (see above).
     ///
     /// Valid only in command mode; gated by the caller's `cmd`-kind registration.
     fn run_command_sync(
         &mut self,
         name: &str,
+        pane: PaneHandle,
         count: Option<usize>,
         extend: bool,
         register: Option<char>,

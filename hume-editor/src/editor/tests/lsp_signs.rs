@@ -17,7 +17,8 @@ use super::*;
 /// one frame — the harness every plugin-sign test below needs, differing
 /// only in what `arm_body` does (typically a `register-sign-source!` call
 /// per source, then a `set-signs!` per source) and whether the column is
-/// pinned.
+/// pinned. `arm_body` may reference `bid`, the buffer the "arm" command was
+/// dispatched against.
 fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, PaneId) {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -26,7 +27,7 @@ fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, Pane
         let bid = ed.focused_buffer_id();
         ed.state.buffers.get_mut(bid).overrides.signcolumn = Some(signcolumn.parse().unwrap());
     }
-    let source = format!(r#"(define-typed-command! "arm" "" (lambda () {arm_body}))"#);
+    let source = format!(r#"(define-typed-command! "arm" "" (lambda (bid) {arm_body}))"#);
     run(&mut ed, tmp.path(), &source);
     type_cmd(&mut ed, ":arm");
 
@@ -77,8 +78,8 @@ fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (set-signs! "nope" (current-buffer) (list (list 0 "!" "sc")))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-signs! "nope" bid (list (list 0 "!" "sc")))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -96,9 +97,9 @@ fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
 fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
     let (mut ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "a" (current-buffer) 2)
-           (register-sign-source! "b" (current-buffer) 1)
-           (set-signs! "a" (current-buffer) (list (list 0 "+" "sc")))"#,
+        r#"(register-sign-source! "a" bid 2)
+           (register-sign-source! "b" bid 1)
+           (set-signs! "a" bid (list (list 0 "+" "sc")))"#,
     );
     assert_eq!(
         sign_column_width(&ed, pid),
@@ -111,8 +112,8 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "arm-b" "" (lambda ()
-             (set-signs! "b" (current-buffer) (list (list 0 "-" "sc")))))"#,
+        r#"(define-typed-command! "arm-b" "" (lambda (bid)
+             (set-signs! "b" bid (list (list 0 "-" "sc")))))"#,
     );
     type_cmd(&mut ed, ":arm-b");
     render(&mut ed);
@@ -126,8 +127,8 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "clear-b" "" (lambda ()
-             (set-signs! "b" (current-buffer) '())))"#,
+        r#"(define-typed-command! "clear-b" "" (lambda (bid)
+             (set-signs! "b" bid '())))"#,
     );
     type_cmd(&mut ed, ":clear-b");
     render(&mut ed);
@@ -142,11 +143,11 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
 fn re_registering_a_sign_source_updates_its_priority_and_slot() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "a" (current-buffer) 1)
-           (register-sign-source! "b" (current-buffer) 2)
-           (set-signs! "a" (current-buffer) (list (list 0 "A" "sc")))
-           (set-signs! "b" (current-buffer) (list (list 0 "B" "sc")))
-           (register-sign-source! "a" (current-buffer) 10)"#,
+        r#"(register-sign-source! "a" bid 1)
+           (register-sign-source! "b" bid 2)
+           (set-signs! "a" bid (list (list 0 "A" "sc")))
+           (set-signs! "b" bid (list (list 0 "B" "sc")))
+           (register-sign-source! "a" bid 10)"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -166,8 +167,8 @@ fn re_registering_a_sign_source_updates_its_priority_and_slot() {
 fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "linter" (current-buffer) 7)
-           (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))"#,
+        r#"(register-sign-source! "linter" bid 7)
+           (set-signs! "linter" bid (list (list 0 "!" "warn-scope")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -200,10 +201,10 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "linter" (current-buffer) 3)
-           (register-sign-source! "vcs" (current-buffer) 9)
-           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
+        r#"(register-sign-source! "linter" bid 3)
+           (register-sign-source! "vcs" bid 9)
+           (set-signs! "linter" bid (list (list 0 "!" "a")))
+           (set-signs! "vcs" bid (list (list 0 "+" "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -232,10 +233,10 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
 fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
     let (ed, pid) = plugin_sign_editor(
         Some("auto"),
-        r#"(register-sign-source! "linter" (current-buffer) 3)
-           (register-sign-source! "vcs" (current-buffer) 9)
-           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
+        r#"(register-sign-source! "linter" bid 3)
+           (register-sign-source! "vcs" bid 9)
+           (set-signs! "linter" bid (list (list 0 "!" "a")))
+           (set-signs! "vcs" bid (list (list 0 "+" "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -259,16 +260,16 @@ fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
 fn auto_size_grows_to_five_registered_sources() {
     let (ed, pid) = plugin_sign_editor(
         None,
-        r#"(register-sign-source! "a" (current-buffer) 5)
-           (register-sign-source! "b" (current-buffer) 4)
-           (register-sign-source! "c" (current-buffer) 3)
-           (register-sign-source! "d" (current-buffer) 2)
-           (register-sign-source! "e" (current-buffer) 1)
-           (set-signs! "a" (current-buffer) (list (list 0 "5" "sc")))
-           (set-signs! "b" (current-buffer) (list (list 0 "4" "sc")))
-           (set-signs! "c" (current-buffer) (list (list 0 "3" "sc")))
-           (set-signs! "d" (current-buffer) (list (list 0 "2" "sc")))
-           (set-signs! "e" (current-buffer) (list (list 0 "1" "sc")))"#,
+        r#"(register-sign-source! "a" bid 5)
+           (register-sign-source! "b" bid 4)
+           (register-sign-source! "c" bid 3)
+           (register-sign-source! "d" bid 2)
+           (register-sign-source! "e" bid 1)
+           (set-signs! "a" bid (list (list 0 "5" "sc")))
+           (set-signs! "b" bid (list (list 0 "4" "sc")))
+           (set-signs! "c" bid (list (list 0 "3" "sc")))
+           (set-signs! "d" bid (list (list 0 "2" "sc")))
+           (set-signs! "e" bid (list (list 0 "1" "sc")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -292,10 +293,10 @@ fn auto_size_grows_to_five_registered_sources() {
 fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:1"),
-        r#"(register-sign-source! "linter" (current-buffer) 3)
-           (register-sign-source! "vcs" (current-buffer) 9)
-           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
+        r#"(register-sign-source! "linter" bid 3)
+           (register-sign-source! "vcs" bid 9)
+           (set-signs! "linter" bid (list (list 0 "!" "a")))
+           (set-signs! "vcs" bid (list (list 0 "+" "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -319,10 +320,10 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
 fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "vcs" (current-buffer) 5)
-           (register-sign-source! "linter" (current-buffer) 5)
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))
-           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))"#,
+        r#"(register-sign-source! "vcs" bid 5)
+           (register-sign-source! "linter" bid 5)
+           (set-signs! "vcs" bid (list (list 0 "+" "b")))
+           (set-signs! "linter" bid (list (list 0 "!" "a")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -348,10 +349,10 @@ fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
 fn wider_signcolumn_keeps_multiple_signs_per_line() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "linter" (current-buffer) 3)
-           (register-sign-source! "vcs" (current-buffer) 9)
-           (set-signs! "linter" (current-buffer) (list (list 0 "!" "a")))
-           (set-signs! "vcs" (current-buffer) (list (list 0 "+" "b")))"#,
+        r#"(register-sign-source! "linter" bid 3)
+           (register-sign-source! "vcs" bid 9)
+           (set-signs! "linter" bid (list (list 0 "!" "a")))
+           (set-signs! "vcs" bid (list (list 0 "+" "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -380,12 +381,12 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
 fn a_source_ranked_past_the_resolved_slot_count_is_hidden_not_miscast_into_slot_zero() {
     let (ed, pid) = plugin_sign_editor(
         Some("always:2"),
-        r#"(register-sign-source! "a" (current-buffer) 3)
-           (register-sign-source! "b" (current-buffer) 2)
-           (register-sign-source! "c" (current-buffer) 1)
-           (set-signs! "a" (current-buffer) (list (list 0 "3" "sc")))
-           (set-signs! "b" (current-buffer) (list (list 0 "2" "sc")))
-           (set-signs! "c" (current-buffer) (list (list 0 "1" "sc")))"#,
+        r#"(register-sign-source! "a" bid 3)
+           (register-sign-source! "b" bid 2)
+           (register-sign-source! "c" bid 1)
+           (set-signs! "a" bid (list (list 0 "3" "sc")))
+           (set-signs! "b" bid (list (list 0 "2" "sc")))
+           (set-signs! "c" bid (list (list 0 "1" "sc")))"#,
     );
 
     let signs = pane_signs(&ed, pid);

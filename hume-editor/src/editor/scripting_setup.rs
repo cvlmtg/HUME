@@ -78,8 +78,23 @@ impl Editor {
                 }
                 Effect::LspServerOp(op) => self.apply_lsp_server_op(op),
                 Effect::SetBufferLanguage { buffer, language } => {
-                    let lang_id = language.map(|name| self.state.config.languages.intern(&name));
-                    self.set_buffer_language_explicit(buffer, lang_id)
+                    // `buffer` may have closed between the Steel call that
+                    // queued this effect and this drain (e.g. `(set-buffer-
+                    // language! bid "rust") (close-buffer! bid)` in one
+                    // eval) — same shape as `LspRequest`/`LspNotify`'s own
+                    // `try_get` guard in `bridge.rs`. `set_buffer_language_
+                    // explicit` uses the panicking `get_mut`, so this must
+                    // check first rather than let it panic.
+                    if self.state.buffers.try_get(buffer).is_none() {
+                        self.report(
+                            Severity::Trace,
+                            format!("set-buffer-language!: buffer {buffer:?} no longer exists"),
+                        );
+                    } else {
+                        let lang_id =
+                            language.map(|name| self.state.config.languages.intern(&name));
+                        self.set_buffer_language_explicit(buffer, lang_id)
+                    }
                 }
                 Effect::GrammarSweep(name) => {
                     let id = self.state.config.languages.id_of(&name).expect(
@@ -227,15 +242,15 @@ impl Editor {
             .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
     }
 
-    /// Fire `OnViewportChange (bid first-line end-line)` for `pane_id` —
+    /// Fire `OnViewportChange (pane first-line end-line)` for `pane_id` —
     /// called only when its debounce timer actually fires (`timer_bridge`),
     /// reading the pane's *current* bounds rather than whatever they were
     /// when the timer was armed. A no-op if the pane closed in the meantime,
     /// or if its tab went to the background before the (debounced) timer
     /// fired: `prepare_frame` stops maintaining a backgrounded pane's
-    /// viewport (see `pane_showing_buffer`'s doc), so firing with its frozen
-    /// bounds would hand a handler geometry the code itself no longer
-    /// trusts. `prepare_frame` drops that pane's `last_viewport_key` when its
+    /// viewport, so firing with its frozen bounds would hand a handler
+    /// geometry the code itself no longer trusts. `prepare_frame` drops that
+    /// pane's `last_viewport_key` when its
     /// tab backgrounds, so the pane's first frame back on screen reads as a
     /// fresh change and re-arms this on its own — this guard only skips the
     /// fire for the frames spent hidden, not the one on return.
@@ -251,6 +266,7 @@ impl Editor {
         let range = super::lsp::introspect::pane_visible_range(pane, content_lines);
         self.state.queue_event(EditorEvent::OnViewportChange {
             buffer: bid,
+            pane: pane_id,
             first_line: range.start,
             end_line: range.end,
         });
@@ -393,8 +409,10 @@ impl Editor {
         if self.state.last_entered_buffer != Some(now) {
             self.state.last_entered_buffer = Some(now);
             self.state.buffers.touch_mru(now);
-            self.state
-                .queue_event(EditorEvent::OnBufferEnter { buffer: now });
+            self.state.queue_event(EditorEvent::OnBufferEnter {
+                buffer: now,
+                pane: self.state.focus.id(),
+            });
         }
     }
 
@@ -460,35 +478,58 @@ impl Editor {
     }
 
     /// Run one snapshot of `pending_work` in queued order: event handlers
-    /// fire one event at a time, and a contiguous run of `Call`s batches
-    /// into one Steel session before the next `Event` (or end of batch).
+    /// fire one event at a time, and a contiguous run of unanchored `Call`s
+    /// batches into one Steel session before the next `Event` (or end of
+    /// batch). An anchored `Call` (an `lsp-request` callback) always runs
+    /// alone in its own session, its anchor re-checked immediately first —
+    /// see the `Call` match arm's own comment for why it can't be batched.
     fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
         while let Some(item) = items.pop_front() {
             match item {
                 PendingWork::Event(event) => {
-                    // `OnTextChanged` is queued from a live-buffer sweep at
-                    // the top of a drain pass, but fires behind whatever
-                    // `Call` items (timer thunks, async callbacks) were
-                    // already queued ahead of it in the same batch — one of
-                    // those can close `buffer` first. Checked here, ahead of
-                    // both `react_to_event` and `fire_one_event`, so neither
-                    // ever sees a dead id. `OnBufferClose` is deliberately
-                    // exempt from this shape: it is raised for an id that's
-                    // already gone by design (see `lifecycle.rs`'s pairing
-                    // check).
-                    if let EditorEvent::OnTextChanged { buffer } = &event
-                        && self.state.buffers.try_get(*buffer).is_none()
+                    // Any buffer-scoped event is queued from a point earlier
+                    // than this drain (a live-buffer sweep, an LSP dispatch,
+                    // a completion accept), but fires behind whatever `Call`
+                    // items (timer thunks, async callbacks) or earlier
+                    // `Event`s were already queued ahead of it in the same
+                    // batch — one of those can close the buffer first.
+                    // Checked here, ahead of both `react_to_event` and
+                    // `fire_one_event`, so neither ever sees a dead id.
+                    // `OnBufferClose` is deliberately exempt: it is raised
+                    // for an id that's already gone by design (see
+                    // `lifecycle.rs`'s pairing check) — checking it here
+                    // would drop every `OnBufferClose` outright.
+                    if !matches!(event, EditorEvent::OnBufferClose { .. })
+                        && let Some(buffer) = event.buffer()
+                        && self.state.buffers.try_get(buffer).is_none()
                     {
                         continue;
                     }
                     self.react_to_event(&event);
                     self.fire_one_event(event);
                 }
-                PendingWork::Call(proc, args) => {
+                PendingWork::Call { proc, args, anchor } => {
+                    if let Some(anchor) = anchor {
+                        // Never grouped into a multi-item batch with a
+                        // sibling call: `anchor_admits` must run immediately
+                        // before *this* call, not before some earlier
+                        // sibling in the same batch has had a chance to run
+                        // and change the state the check depends on (a
+                        // `switch-to-buffer!`, an edit) — batching first and
+                        // checking every anchor up front would defeat the
+                        // re-check, since all the checks would still land
+                        // before any of the calls actually ran. One call,
+                        // one session, one check, one run — see
+                        // `PendingWork::Call`'s own doc.
+                        if self.anchor_admits(&anchor) {
+                            self.run_call_batch(vec![(proc, args)]);
+                        }
+                        continue;
+                    }
                     let mut calls = vec![(proc, args)];
-                    while matches!(items.front(), Some(PendingWork::Call(..))) {
-                        let Some(PendingWork::Call(proc, args)) = items.pop_front() else {
-                            unreachable!("front() just confirmed a Call variant")
+                    while matches!(items.front(), Some(PendingWork::Call { anchor: None, .. })) {
+                        let Some(PendingWork::Call { proc, args, .. }) = items.pop_front() else {
+                            unreachable!("front() just confirmed an unanchored Call variant")
                         };
                         calls.push((proc, args));
                     }
@@ -512,7 +553,7 @@ impl Editor {
     /// than silently doing nothing.
     fn react_to_event(&mut self, event: &EditorEvent) {
         match event {
-            EditorEvent::OnBufferEnter { buffer } => self.enter_buffer_disk_check(*buffer),
+            EditorEvent::OnBufferEnter { buffer, .. } => self.enter_buffer_disk_check(*buffer),
             EditorEvent::OnFocusGained => self.check_all_disk_state(DiskCheckTrigger::Ambient),
             EditorEvent::OnBufferOpen { .. }
             | EditorEvent::OnBufferClose { .. }
@@ -547,8 +588,6 @@ impl Editor {
         // Built only once a handler is confirmed registered — an event
         // nobody subscribes to never allocates a `SteelVal`.
         let args = event.steel_args();
-        let pid = self.state.focus.id();
-        let bid = self.focused_buffer_id();
         let result = {
             let host_scr = self.scripting.as_mut().expect("checked above");
             let mut impl_host = EditorHostImpl::full(
@@ -560,7 +599,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            host_scr.fire_hook(name, &args, pid, bid, &mut impl_host)
+            host_scr.fire_hook(name, &args, &mut impl_host)
         };
         self.flush_script_messages();
         // A hook body's own `call!` to an `#:inline-output` command is
@@ -574,8 +613,6 @@ impl Editor {
     /// `run_steel_calls`' existing "one session, first error aborts the
     /// rest" semantics for calls that were queued back-to-back.
     fn run_call_batch(&mut self, calls: Vec<(SteelVal, Vec<SteelVal>)>) {
-        let pid = self.state.focus.id();
-        let bid = self.focused_buffer_id();
         let Some(host_scr) = self.scripting.as_mut() else {
             return;
         };
@@ -589,7 +626,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
+            host_scr.run_steel_calls(calls, &mut impl_host)
         };
         self.flush_script_messages();
         if result.is_err() {
@@ -810,11 +847,9 @@ impl Editor {
                 continue;
             }
             if let Some(name) = explicit_restore.get(&bid) {
-                // Only valid if `bid` is still the same buffer instance the
-                // snapshot meant — `close_buffer`'s last-buffer scratch
-                // replacement can otherwise alias a closed buffer's explicit
-                // language onto unrelated fresh content (see
-                // `ReloadSnapshot::survives`).
+                // Redundant with the `try_get` skip above in production (no
+                // Steel eval runs between the two), but `survives` also
+                // checks `bid` predates this reload — see its own doc.
                 if snapshot.survives(bid, &self.state.buffers) {
                     match name {
                         Some(name) => match self.state.config.languages.id_of(name) {

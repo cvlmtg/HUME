@@ -200,150 +200,209 @@ fn optional_pair_fields_false_is_none_pair_is_some() {
     );
 }
 
-// ── BidArg ────────────────────────────────────────────────────────────────
+// ── ArgPane ───────────────────────────────────────────────────────────────
 
-/// `BidArg::from_steelval` rejects a non-buffer-id `SteelVal`, preserving
-/// the "expected buffer-id" substring every buffer-touching builtin's
+/// `ArgPane::from_steelval` rejects a non-pane `SteelVal`, preserving
+/// the "expected pane" substring every buffer-touching builtin's
 /// wrong-type test asserts on.
 ///
 /// Fail oracle: return `Ok` for any value → any argument would silently
-/// decode as a buffer-id.
+/// decode as a pane.
 #[test]
-fn bid_arg_rejects_non_buffer_id() {
-    let err = BidArg::from_steelval(&SteelVal::StringV("not-an-id".into())).unwrap_err();
-    assert!(err.to_string().contains("expected buffer-id"), "got: {err}");
+fn arg_pane_rejects_non_pane() {
+    let err = ArgPane::from_steelval(&SteelVal::StringV("not-a-pane".into())).unwrap_err();
+    assert!(err.to_string().contains("expected pane"), "got: {err}");
 }
 
 #[test]
-fn bid_arg_accepts_a_real_buffer_id() {
-    use crate::builtins::ids::SteelBufferId;
-    let val = SteelBufferId(BufferId::default()).into_steelval().unwrap();
-    assert_eq!(BidArg::from_steelval(&val).unwrap().0, BufferId::default());
+fn arg_pane_accepts_a_real_pane() {
+    use crate::builtins::ids::SteelPane;
+    let val = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
+    assert_eq!(
+        ArgPane::from_steelval(&val).unwrap().0.buffer(),
+        BufferId::default()
+    );
 }
 
-/// `BidArg::not_live_err`'s wording matches `require_live`'s own — the two
-/// must stay identical since callers whose own host call already does the
-/// liveness lookup (e.g. `diff-buffer-lines`) use `not_live_err` directly
-/// instead of a second `require_live` check.
+// ── LivePane ─────────────────────────────────────────────────────────────
+
+/// `LivePane::from_steelval` — type check only, same as `ArgPane`'s; the
+/// liveness half is `BuiltinArg::resolve`'s job (proven through a real
+/// `ScriptingHost`, `builtins::tests::
+/// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration` —
+/// a direct call here has no `SteelCtx`/host to check liveness against).
+#[test]
+fn live_pane_rejects_non_pane() {
+    let err = LivePane::from_steelval(&SteelVal::StringV("not-a-pane".into())).unwrap_err();
+    assert!(err.to_string().contains("expected pane"), "got: {err}");
+}
+
+#[test]
+fn live_pane_accepts_a_real_pane() {
+    use crate::builtins::ids::SteelPane;
+    let val = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
+    assert_eq!(
+        LivePane::from_steelval(&val).unwrap().0.buffer(),
+        BufferId::default()
+    );
+}
+
+// ── Usize / OptUsize / OptString ────────────────────────────────────────────
+
+#[test]
+fn usize_newtype_rejects_negative_and_non_integer() {
+    assert!(Usize::from_steelval(&SteelVal::IntV(-1)).is_err());
+    assert!(Usize::from_steelval(&SteelVal::StringV("x".into())).is_err());
+}
+
+#[test]
+fn usize_newtype_accepts_non_negative() {
+    assert_eq!(Usize::from_steelval(&SteelVal::IntV(4)).unwrap().0, 4);
+}
+
+#[test]
+fn opt_usize_newtype_false_is_none_int_is_some() {
+    assert_eq!(
+        OptUsize::from_steelval(&SteelVal::BoolV(false)).unwrap().0,
+        None
+    );
+    assert_eq!(
+        OptUsize::from_steelval(&SteelVal::IntV(4)).unwrap().0,
+        Some(4)
+    );
+    assert!(OptUsize::from_steelval(&SteelVal::IntV(-1)).is_err());
+}
+
+#[test]
+fn opt_string_newtype_false_is_none_string_and_symbol_are_some() {
+    assert_eq!(
+        OptString::from_steelval(&SteelVal::BoolV(false)).unwrap().0,
+        None
+    );
+    assert_eq!(
+        OptString::from_steelval(&SteelVal::StringV("rust".into()))
+            .unwrap()
+            .0,
+        Some("rust".to_string())
+    );
+    assert_eq!(
+        OptString::from_steelval(&SteelVal::SymbolV("rust".into()))
+            .unwrap()
+            .0,
+        Some("rust".to_string())
+    );
+    assert!(OptString::from_steelval(&SteelVal::IntV(1)).is_err());
+}
+
+// ── LspTargetArg ─────────────────────────────────────────────────────────
+
+/// `LspTargetArg::from_steelval` — type check only, deciding `Buffer` vs
+/// `Language`; the `Buffer` case's liveness half is `BuiltinArg::resolve`'s
+/// job (proven through a real `ScriptingHost`, `builtins::tests::
+/// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`'s
+/// `lsp-stop!`/`lsp-restart!` rows).
+#[test]
+fn lsp_target_arg_accepts_a_pane() {
+    use crate::builtins::ids::SteelPane;
+    let val = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
+    assert!(matches!(
+        LspTargetArg::from_steelval(&val).unwrap(),
+        LspTargetArg::Buffer(bid) if bid == BufferId::default()
+    ));
+}
+
+#[test]
+fn lsp_target_arg_accepts_a_string_or_symbol_language() {
+    assert!(matches!(
+        LspTargetArg::from_steelval(&SteelVal::StringV("rust".into())).unwrap(),
+        LspTargetArg::Language(lang) if lang == "rust"
+    ));
+    assert!(matches!(
+        LspTargetArg::from_steelval(&SteelVal::SymbolV("rust".into())).unwrap(),
+        LspTargetArg::Language(lang) if lang == "rust"
+    ));
+}
+
+/// No fallback left to decode `#f` into — the typed-command wrapper
+/// (`registration.scm`) supplies the focused buffer explicitly instead.
 ///
-/// Fail oracle: let the two messages drift (e.g. hand-roll a different
-/// string at one of the two call sites) — a plugin matching on this error's
-/// text would then behave differently depending on which builtin raised it.
+/// Fail oracle: `#f` decoding to a "no target" variant instead of erroring.
 #[test]
-fn not_live_err_matches_require_live_wording() {
-    let bid = BidArg(BufferId::default());
-    let err = bid.not_live_err("diff-buffer-lines");
-    assert!(err.to_string().contains("invalid buffer id"), "got: {err}");
-    assert!(err.to_string().contains("diff-buffer-lines"), "got: {err}");
-}
-
-// ── wire_pos_arg ─────────────────────────────────────────────────────────
-
-fn pos_pair(line: isize, character: isize) -> SteelVal {
-    cons_pair(SteelVal::IntV(line), SteelVal::IntV(character)).unwrap()
-}
-
-#[test]
-fn wire_pos_arg_decodes_line_character_pair() {
-    let pos = wire_pos_arg(pos_pair(3, 7)).unwrap();
-    assert_eq!((pos.line, pos.character), (3, 7));
-}
-
-#[test]
-fn wire_pos_arg_rejects_proper_list() {
-    let val: SteelVal = vec![SteelVal::IntV(3), SteelVal::IntV(7)]
-        .into_steelval()
-        .unwrap();
-    let err = wire_pos_arg(val).unwrap_err();
-    assert!(err.to_string().contains("(line . character)"), "got: {err}");
-}
-
-#[test]
-fn wire_pos_arg_rejects_non_pair_scalar() {
-    assert!(wire_pos_arg(SteelVal::IntV(3)).is_err());
+fn lsp_target_arg_rejects_false() {
+    let err = LspTargetArg::from_steelval(&SteelVal::BoolV(false)).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("expected a buffer-id or a language name"),
+        "got: {err}"
+    );
 }
 
 // ── wire_text_edit_arg ───────────────────────────────────────────────────
 
-#[test]
-fn wire_text_edit_arg_decodes_start_end_text() {
-    let val: SteelVal = vec![
-        pos_pair(0, 0),
-        pos_pair(0, 3),
-        SteelVal::StringV("abc".into()),
-    ]
-    .into_steelval()
-    .unwrap();
-    let edit = wire_text_edit_arg(val).unwrap();
-    assert_eq!((edit.range.start.line, edit.range.start.character), (0, 0));
-    assert_eq!((edit.range.end.line, edit.range.end.character), (0, 3));
-    assert_eq!(edit.new_text, "abc");
-}
-
-#[test]
-fn wire_text_edit_arg_rejects_malformed_position() {
-    let bad_start: SteelVal = vec![SteelVal::IntV(0), SteelVal::IntV(0)] // proper list, not a pair
-        .into_steelval()
-        .unwrap();
-    let val: SteelVal = vec![bad_start, pos_pair(0, 3), SteelVal::StringV("abc".into())]
-        .into_steelval()
-        .unwrap();
-    let err = wire_text_edit_arg(val).unwrap_err();
-    assert!(err.to_string().contains("(line . character)"), "got: {err}");
-}
-
 /// A `JsonHandle` onto a wire `TextEdit` — an unconverted element straight
-/// from a `textDocument/formatting`-shaped response — decodes the same as
-/// the hand-built tuple shape.
+/// from a `textDocument/formatting`-shaped response — decodes, and carries
+/// its tagged server encoding forward.
 #[test]
 fn wire_text_edit_arg_decodes_a_json_handle() {
-    let val = crate::json::JsonHandle::new(serde_json::json!({
-        "range": {"start": {"line": 1, "character": 2}, "end": {"line": 1, "character": 5}},
-        "newText": "abc",
-    }))
+    let val = crate::json::JsonHandle::server_for_test(
+        serde_json::json!({
+            "range": {"start": {"line": 1, "character": 2}, "end": {"line": 1, "character": 5}},
+            "newText": "abc",
+        }),
+        hume_rope::position_encoding::PositionEncoding::Utf8,
+    )
     .into_steel_val();
     let edit = wire_text_edit_arg(val).unwrap();
     assert_eq!((edit.range.start.line, edit.range.start.character), (1, 2));
     assert_eq!((edit.range.end.line, edit.range.end.character), (1, 5));
     assert_eq!(edit.new_text, "abc");
+    assert_eq!(
+        edit.encoding,
+        hume_rope::position_encoding::PositionEncoding::Utf8
+    );
 }
 
-/// A list of edits may mix handle and tuple elements — `apply-text-edits!`
-/// decodes each entry independently via `wire_text_edit_arg`.
+/// A handle missing `range`/`newText` raises naming the missing field.
 #[test]
-fn wire_text_edit_arg_handle_and_tuple_forms_agree() {
-    let handle_edit = crate::json::JsonHandle::new(serde_json::json!({
-        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
-        "newText": "abc",
-    }))
+fn wire_text_edit_arg_rejects_a_malformed_handle() {
+    let val = crate::json::JsonHandle::server_for_test(
+        serde_json::json!({"range": {}}),
+        hume_rope::position_encoding::PositionEncoding::Utf16,
+    )
     .into_steel_val();
-    let tuple_edit: SteelVal = vec![
-        pos_pair(0, 0),
-        pos_pair(0, 3),
+    let err = wire_text_edit_arg(val).unwrap_err();
+    assert!(err.to_string().contains("apply-text-edits!"), "got: {err}");
+}
+
+/// Not a `JsonHandle` at all (the removed hand-built tuple shape, or any
+/// other scalar) — rejected outright, not silently decoded as if it had no
+/// encoding.
+#[test]
+fn wire_text_edit_arg_rejects_a_non_handle() {
+    let val: SteelVal = vec![
+        cons_pair(SteelVal::IntV(0), SteelVal::IntV(0)).unwrap(),
+        cons_pair(SteelVal::IntV(0), SteelVal::IntV(3)).unwrap(),
         SteelVal::StringV("abc".into()),
     ]
     .into_steelval()
     .unwrap();
-    let from_handle = wire_text_edit_arg(handle_edit).unwrap();
-    let from_tuple = wire_text_edit_arg(tuple_edit).unwrap();
-    assert_eq!(
-        (
-            from_handle.range.start.line,
-            from_handle.range.start.character
-        ),
-        (
-            from_tuple.range.start.line,
-            from_tuple.range.start.character
-        )
-    );
-    assert_eq!(from_handle.new_text, from_tuple.new_text);
+    let err = wire_text_edit_arg(val).unwrap_err();
+    assert!(err.to_string().contains("JSON handle"), "got: {err}");
 }
 
-/// A handle missing `range`/`newText` raises naming the missing field,
-/// same discipline as the tuple shape's arity check.
+/// A hand-built (`JsonHandle::new`, untagged) handle is rejected the same
+/// way — it decodes as JSON fine, but has no server to read an encoding
+/// from.
 #[test]
-fn wire_text_edit_arg_rejects_a_malformed_handle() {
-    let val = crate::json::JsonHandle::new(serde_json::json!({"range": {}})).into_steel_val();
+fn wire_text_edit_arg_rejects_an_untagged_handle() {
+    let val = crate::json::JsonHandle::new(serde_json::json!({
+        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 3}},
+        "newText": "abc",
+    }))
+    .into_steel_val();
     let err = wire_text_edit_arg(val).unwrap_err();
-    assert!(err.to_string().contains("apply-text-edits!"), "got: {err}");
+    assert!(
+        err.to_string().contains("not a value from an LSP server"),
+        "got: {err}"
+    );
 }

@@ -125,7 +125,7 @@ Two verbs, matching the two kinds of command described in [Command mode](command
 
 `define-command!` registers an editor command — bind it to a key, or dispatch it with `call!`; it's never reachable from the command mode prompt. `define-typed-command!` registers a typed command — reachable only as `:typed-command-name`; it's never bindable to a key and never reachable through `call!`. Both take the same first two arguments: a name and a one-line description of what the command does.
 
-An editor command's lambda receives the leading arguments its declared arity asks for — `()`, `(count)`, or `(count extend)` — `count` is what a key press's count prefix injects (`0` means "no count typed"), `extend` whether Extend mode is active. A typed command's lambda instead receives `()`, `(arg)`, or `(arg force)` — `arg` is the text typed after the command name (a string, or `#f` if none was typed), `force` whether `!` was appended.
+An editor command's lambda receives the leading arguments its declared arity asks for — `()`, `(pane)`, `(pane count)`, or `(pane count extend)` — `pane` is the pane the command was invoked through, `count` is what a key press's count prefix injects (`0` means "no count typed"), `extend` whether Extend mode is active. A typed command's lambda instead receives `()`, `(pane)`, `(pane arg)`, or `(pane arg force)` — `arg` is the text typed after the command name (a string, or `#f` if none was typed), `force` whether `!` was appended. `pane` is always the leading parameter, before whichever of the others the command also declares — a command that only touches selections and doesn't care about `count`/`extend` still declares just `(pane)`, not `(pane count extend)`.
 
 For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword — accepted by both verbs. The alt-screen opens on the command's first real output — not eagerly at the start — so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it. This applies no matter how the command is reached — a key binding, `:`, or `call!` from another command's body, a hook, or a timer — and a command `call!`'d from inside another `#:inline-output` command shares its already-open screen and single keypress prompt rather than opening a second one.
 
@@ -146,8 +146,8 @@ For editor commands that should support dot-repeat (`.`), add `#:repeatable #t` 
 ```scheme
 (define-command! "delete-and-repeat"
   "Delete the current selection; dot-repeatable."
-  (lambda ()
-    (call! "delete-selection"))
+  (lambda (pane)
+    (call! "delete-selection" pane))
   #:repeatable #t)
 ```
 
@@ -158,14 +158,16 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 ```scheme
 (define-command! "delete-and-deselect"
   "Delete the selection, then collapse the cursor."
-  (lambda ()
-    (call! "delete-selection")
-    (call! "collapse-selection")))
+  (lambda (pane)
+    (call! "delete-selection" pane)
+    (call! "collapse-selection" pane)))
 ```
 
 `call!` dispatches any editor command — built-in and Scheme-defined alike — activating the target plugin on demand.
 
-For a built-in command, `call!` returns `#f` when the command refused (a too-small split, the last pane, …) or the name didn't resolve, and `#t` otherwise — not a guarantee anything changed, just that nothing was refused. A Scheme-defined command returns whatever its own body returns.
+A built-in command has no lambda parameter list of its own to receive one, so `call!` requires a pane as its first *argument* instead — always the pane the command should act through: `(call! "delete-selection" pane)`, `(call! "move-right" pane 5)`. Most built-ins act through whatever pane the value names, not necessarily the one you're focused on — as long as that pane still exists and still shows the buffer the value names; a few (entering insert mode, an open prompt, pane focus/split/close, …) still require it to be the pane you're actually focused on — see [Builtin Commands](builtin-commands.md) for the full breakdown. A Scheme-defined command receives `pane` as its own first parameter already (see above), so `call!` passes whatever arguments that command declares — including `pane` itself, if the caller wants to forward the one it's acting through.
+
+For a built-in command, `call!` returns `#f` when the command refused (a too-small split, the last pane, …) or the name didn't resolve, and `#t` otherwise — not a guarantee anything changed, just that nothing was refused; it errors if `pane` doesn't resolve for that command (see above). A Scheme-defined command returns whatever its own body returns.
 
 ::: warning `call!` can't run typed commands
 Typed commands like `write`, `quit`, or `edit` are not reachable through `call!` — only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
@@ -175,24 +177,25 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 
 ### Reading selections
 
-`(current-selections)` returns the focused buffer's selections as a list of opaque `(anchor head primary?)` triples — char offsets, not grapheme ordinals. Don't index into the tuple directly; go through `core:stdlib`'s helpers instead, which is what they're for:
+`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of opaque `(anchor head primary?)` triples — char offsets, not grapheme ordinals. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. Don't index into the tuple directly; go through `core:stdlib`'s helpers instead, which is what they're for:
 
 ```scheme
-(call! "stdlib/single-selection?" (current-selections))
-(call! "stdlib/all-single-char?" (current-selections))
-(call! "stdlib/cursor-char-index" (current-selections))
+(define-command! "example" "" (lambda (pane)
+  (call! "stdlib/single-selection?" (buffer-selections pane))
+  (call! "stdlib/all-single-char?" (buffer-selections pane))
+  (call! "stdlib/cursor-char-index" (buffer-selections pane))))
 ```
 
 Those three read the whole list. To work with a single triple — the primary selection, say — use these accessors instead of `car`/`cadr`/`caddr`:
 
 ```scheme
-(call! "stdlib/primary-selection" (current-selections))
+(call! "stdlib/primary-selection" (buffer-selections pane))
 (call! "stdlib/selection-anchor" primary)
 (call! "stdlib/selection-head" primary)
 (call! "stdlib/selection-primary?" primary)
 ```
 
-`(char-index->line idx)` converts a char offset to a line number when you need one — it's a separate call rather than a field on every selection, since deriving it needs rope access a plain tuple doesn't have.
+`(offset->line pane idx)` converts a char offset to a line number when you need one — it's a separate call rather than a field on every selection, since deriving it needs rope access a plain tuple doesn't have.
 
 See [Plugin API → Standard Library](plugin-api.md#selections) for the full list of selection helpers.
 
@@ -225,8 +228,8 @@ Some commands need a character argument from the user (like surround operations)
 ```scheme
 (define-command! "my-surround"
   "Select the surrounding pair, then replace it with the next typed char."
-  (lambda ()
-    (call! "surround-paren")
+  (lambda (pane)
+    (call! "surround-paren" pane)
     (request-wait-char! "replace")))
 ```
 
@@ -239,9 +242,9 @@ To make subsequent `(call! …)` invocations in a command body target a specific
 ```scheme
 (define-command! "paste-kill-ring-after"
   "Paste the kill-ring head after the selection (same as \"kp)."
-  (lambda ()
+  (lambda (pane)
     (set-register-prefix! "k")
-    (call! "paste-after")))
+    (call! "paste-after" pane)))
 ```
 
 The prefix persists for the rest of the command body.
@@ -251,9 +254,9 @@ Target the black hole register (`"b"`) to discard a selection without touching t
 ```scheme
 (define-command! "delete-without-clobbering"
   "Delete the selection without overwriting the kill ring (same as \"bd)."
-  (lambda ()
+  (lambda (pane)
     (set-register-prefix! "b")
-    (call! "delete")))
+    (call! "delete" pane)))
 ```
 
 ### Hooks
@@ -262,29 +265,29 @@ Plugins react to editor lifecycle events by registering a hook handler with `reg
 
 ```scheme
 (register-hook! 'on-buffer-save
-  (lambda (buffer-id)
-    (log! 'info (string-append "saved buffer " (to-string buffer-id)))))
+  (lambda (pane)
+    (log! 'info (string-append "saved " (buffer-name pane)))))
 ```
 
-Available hooks and their lambda signatures:
+Available hooks and their lambda signatures. Every `pane` argument below is the same opaque value a command's own leading parameter is (see [Defining commands](#defining-commands)) — pass it straight into any builtin that takes one. For a hook about a buffer with no pane of its own (most of them), that value carries no particular pane; for `on-buffer-enter`, `on-viewport-change`, `on-trigger-char`, and `on-completion-accept`, it names the exact pane the event happened in:
 
 | Hook | Fires when | Lambda args |
 |------|------------|-------------|
-| `on-buffer-open` | A buffer is opened | `(buffer-id)` |
-| `on-buffer-close` | A buffer is about to close | `(buffer-id)` |
-| `on-buffer-save` | A buffer is saved | `(buffer-id)` |
-| `on-buffer-enter` | The focused buffer changes | `(buffer-id)` |
+| `on-buffer-open` | A buffer is opened | `(pane)` |
+| `on-buffer-close` | A buffer is about to close | `(pane)` |
+| `on-buffer-save` | A buffer is saved | `(pane)` |
+| `on-buffer-enter` | The focused buffer changes | `(pane)` |
 | `on-focus-gained` | The terminal regains focus | `()` |
 | `on-mode-change` | The editor mode changes | `(old new)` — mode strings |
-| `on-language-set` | A buffer's language is detected or changed | `(buffer-id lang)` — `lang` is a string or `#f` |
-| `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(buffer-id)` — pull details with `diagnostics-for-buffer` |
-| `on-lsp-attach` | A language server attaches to a buffer | `(buffer-id server-name)` |
-| `on-lsp-detach` | A language server detaches from a buffer | `(buffer-id server-name)` |
-| `on-viewport-change` | The visible region of a pane changes | `(buffer-id first-line end-line)` — 0-based, end-exclusive |
-| `on-trigger-char` | A registered trigger character is typed | `(buffer-id char source)` |
-| `on-completion-accept` | A completion entry is accepted | `(buffer-id item)` |
+| `on-language-set` | A buffer's language is detected or changed | `(pane lang)` — `lang` is a string or `#f` |
+| `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(pane)` — pull details with `diagnostics-for-buffer` |
+| `on-lsp-attach` | A language server attaches to a buffer | `(pane server-name)` |
+| `on-lsp-detach` | A language server detaches from a buffer | `(pane server-name)` |
+| `on-viewport-change` | The visible region of a pane changes | `(pane first-line end-line)` — 0-based, end-exclusive |
+| `on-trigger-char` | A registered trigger character is typed | `(pane char source)` |
+| `on-completion-accept` | A completion entry is accepted | `(pane item)` |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)` — both strings |
-| `on-text-changed` | A buffer's text changes | `(buffer-id)` |
+| `on-text-changed` | A buffer's text changes | `(pane)` |
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
 
@@ -294,19 +297,19 @@ For lazy plugins, declare the events that should trigger activation via `#:event
 
 `set-option!` works from a hook or command handler too, not just at the top level of your plugin — it changes the *global* default, so use it there when that's really what you want.
 
-For a per-buffer override, `(set-buffer-option! buffer-id "option" value)` sets an option just on the buffer named by `buffer-id`, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the buffer id the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, see [Reading options from Scheme](#reading-options-from-scheme) below.
+For a per-buffer override, `(set-buffer-option! pane "option" value)` sets an option just on `pane`'s buffer, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the value the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, see [Reading options from Scheme](#reading-options-from-scheme) below.
 
 A few more examples:
 
 ```scheme
 ; format on save
 (register-hook! 'on-buffer-save
-  (lambda (bid) (call! "lsp-fmt")))
+  (lambda (pane) (call! "lsp-fmt" pane)))
 
 ; react to diagnostics
 (register-hook! 'on-diagnostics-changed
-  (lambda (bid)
-    (let ((errs (diagnostics-for-buffer bid #:severity 'error)))
+  (lambda (pane)
+    (let ((errs (diagnostics-for-buffer pane #:severity 'error)))
       (log! 'info (string-append (to-string (length errs)) " errors")))))
 ```
 
@@ -314,14 +317,14 @@ A few more examples:
 
 ```scheme
 (get-option "option-name")
-(get-option bid "option-name")
+(get-buffer-option pane "option-name")
 ```
 
-Returns the effective value of an option: called with just an option name, the focused buffer's override if one is set, else the global default. Pass a buffer id first (e.g. inside an `on-language-set` hook, whose handler receives the buffer id as an argument) to read that buffer's value instead of the focused one. Errors on an unknown option name; `language` has no getter — read it with `(buffer-language bid)` instead. For `wrap-mode`, this reads the buffer/global level only — a pane pinned with `:set pane wrap-mode=…` can show a different style than what `get-option` reports.
+`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value: its own override if one is set, else the global default — pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name; `language` has no getter — read it with `(buffer-language pane)` instead. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only — a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
 
 ```scheme
-(get-option "tab-width")       ; the focused buffer's effective tab-width
-(get-option bid "tab-width")   ; bid's effective tab-width
+(get-option "tab-width")           ; the global default tab-width
+(get-buffer-option pane "tab-width") ; pane's effective tab-width
 ```
 
 ### Default activation
@@ -407,33 +410,33 @@ Only install or overwrite files under `(data-dir)` unless you have a specific re
 ### Reading buffer text
 
 ```scheme
-(buffer-text bid)
+(buffer-text pane)
 ```
 
 Returns a buffer's full live content as a string — including any unsaved edits, not what's on disk. The string always ends with a trailing newline. Line endings in the returned string are always `\n`, even for a file saved with `\r\n`.
 
 ```scheme
-(buffer-lines bid)
-(buffer-lines bid #:start start #:end end)
+(buffer-lines pane)
+(buffer-lines pane #:start start #:end end)
 ```
 
-Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines bid #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range bid)` to read only what's currently on screen — it returns the same 0-based, end-exclusive range shape, so its pair passes straight through as `#:start`/`#:end`. Guard against `#f`, which `viewport-range` returns for a buffer not currently shown in a pane on the active tab — including one open only in a background tab, since `(panes)` spans every tab but `viewport-range` doesn't:
+Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines pane #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range pane)` to read only what's currently on screen — it returns the same 0-based, end-exclusive range shape, so its pair passes straight through as `#:start`/`#:end`:
 
 ```scheme
-(let ((vr (viewport-range bid)))
-  (and vr (buffer-lines bid #:start (car vr) #:end (cdr vr))))
+(let ((vr (viewport-range pane)))
+  (buffer-lines pane #:start (car vr) #:end (cdr vr)))
 ```
 
-If you're about to diff a buffer's content against another text, reach for `(diff-buffer-lines bid ref-text)` instead of `(buffer-text bid)`, especially from a hook that fires on every keystroke.
+If you're about to diff a buffer's content against another text, reach for `(diff-buffer-lines pane ref-text)` instead of `(buffer-text pane)`, especially from a hook that fires on every keystroke.
 
 ```scheme
-(buffer-line-count bid)
+(buffer-line-count pane)
 ```
 
-Returns the buffer's content line count as an integer, same count `buffer-lines` returns lines for. If all you need is the count, reach for this instead of `(length (buffer-lines bid))` — that idiom builds and throws away a full list of line strings just to measure it.
+Returns the buffer's content line count as an integer, same count `buffer-lines` returns lines for. If all you need is the count, reach for this instead of `(length (buffer-lines pane))` — that idiom builds and throws away a full list of line strings just to measure it.
 
 ```scheme
-(line->offset bid line)
+(line->offset pane line)
 ```
 
 Returns the 0-based char offset where content line `line` (0-based) starts — the conversion decoration builtins that take char offsets (like `set-extra-highlights!`) need when all you have is a line number, e.g. from a diff hunk. Raises if `line` is at or past the buffer's content line count.
@@ -455,10 +458,10 @@ Splits both `old-text` and `new-text` into lines the same way HUME treats file c
 `old-start`/`new-start` are 0-based line numbers, `old-count`/`new-count` are how many lines the hunk covers on each side, and `old-lines`/`new-lines` are the line contents themselves (no trailing newline). A pure insertion has `old-count` `0`; a pure deletion has `new-count` `0` — either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
 
 ```scheme
-(diff-buffer-lines bid ref-text)
+(diff-buffer-lines pane ref-text)
 ```
 
-Same result, but compares `ref-text` against the current, unsaved content of the buffer named by `bid` — the buffer never has to be pulled through a builtin as one big string first. This is the one to use in a hook that fires on every keystroke.
+Same result, but compares `ref-text` against the current, unsaved content of the buffer named by `pane` — the buffer never has to be pulled through a builtin as one big string first. This is the one to use in a hook that fires on every keystroke.
 
 For a finer-grained comparison inside a single changed line — highlighting exactly which words differ rather than the whole line:
 
@@ -475,8 +478,10 @@ plugin can drive — `core:pickers`' own file and buffer finders are built from 
 but this API.
 
 ```scheme
-(picker! items on-select #:prompt "buffers: ")
+(picker! pane items on-select #:prompt "buffers: ")
 ```
+
+`pane` must still be the one you're looking at when the picker opens — pass through whatever pane value the enclosing command or hook was itself given, or `(focused-pane)` if there's none in scope.
 
 `items` is a list of `(display . payload)` pairs — `display` is the string shown and
 matched against, `payload` is anything you like (a path, a buffer id, a hashmap); HUME
@@ -497,7 +502,7 @@ For anything enumeration-scale (file lists, grep-style output), open the picker 
 and stream an external command's output straight into it instead:
 
 ```scheme
-(define token (picker! '() (lambda (path) (when path (open-buffer! path))) #:prompt "files: "))
+(define token (picker! pane '() (lambda (path) (when path (open-buffer! path))) #:prompt "files: "))
 (picker-source-spawn! token "git" '("ls-files" "-z" "--cached" "--others" "--exclude-standard") #:nul #t)
 ```
 
@@ -531,7 +536,7 @@ preview, where a head-cut would swallow the path and show only preview text.
 accept it:
 
 ```scheme
-(picker! items on-select #:prompt "files: "
+(picker! pane items on-select #:prompt "files: "
   #:actions (call! "stdlib/buffer-actions" on-select))
 ```
 
@@ -572,8 +577,8 @@ A picker whose query should re-run an external command with the new pattern on e
 keystroke — a live grep, say — uses `live-picker!` instead of `picker!`:
 
 ```scheme
-(define (grep/open! seed)
-  (live-picker! (lambda (row) (when row (goto-location! (grep/parse row))))
+(define (grep/open! pane seed)
+  (live-picker! pane (lambda (row) (when row (goto-location! pane (grep/parse row))))
                 #:prompt "grep: " #:query seed
                 #:command (lambda (query)
                             (and (not (equal? query ""))

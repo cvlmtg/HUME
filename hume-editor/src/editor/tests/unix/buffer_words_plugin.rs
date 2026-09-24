@@ -626,12 +626,12 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     wait_for_word(&mut ed, "buried_word");
 }
 
-/// Closing the *last* open buffer reuses its `BufferId` in place for a
-/// fresh scratch buffer rather than opening a new one — see
-/// README.md's "Cursor-outward, line-windowed indexing". Nothing fires
-/// `on-buffer-open` for that reuse, only the `on-text-changed` this plugin
-/// already reacts to, so a naive `bw/reindex!` that no-ops on a missing
-/// entry leaves the index dead for the rest of the session.
+/// Closing the *last* open buffer frees its slot and opens a fresh scratch
+/// buffer under a brand new `BufferId` — a genuine open, so `bw/reindex!`
+/// picks it up via the plugin's own `on-buffer-open` handler like any other
+/// freshly opened buffer, not via the `on-text-changed` fallback this test
+/// used to be the only regression guard for (see README.md's
+/// "Cursor-outward, line-windowed indexing").
 #[test]
 fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() {
     let tmp = safe_tempdir();
@@ -644,8 +644,8 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
     // `Editor::open` always seeds a startup scratch buffer alongside `bid`
     // (`Editor::open`'s own doc), so `bid` isn't the *only* open buffer yet
     // — closing it now would just switch focus to that scratch, not hit
-    // the reuse path. Switch to it and close it first, so `bid` really is
-    // the last buffer standing when it's closed next.
+    // the last-buffer path. Switch to it and close it first, so `bid` really
+    // is the last buffer standing when it's closed next.
     type_cmd(&mut ed, ":bprev");
     ed.execute_typed("bd", None).unwrap();
     assert_eq!(
@@ -655,10 +655,14 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
     );
 
     ed.execute_typed("bd", None).unwrap();
-    assert_eq!(
+    assert!(
+        ed.state.buffers.try_get(bid).is_none(),
+        "the closed buffer's own slot must be freed, not reused"
+    );
+    assert_ne!(
         ed.focused_buffer_id(),
         bid,
-        "closing the last buffer must reuse its BufferId for the replacement scratch"
+        "the fresh scratch buffer must have its own, different BufferId"
     );
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "resurrected_word ");

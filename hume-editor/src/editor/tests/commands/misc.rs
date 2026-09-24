@@ -46,7 +46,7 @@ fn extend_preserved_after_yank() {
 }
 
 /// `toggle-extend` reached from a non-`Base` mode layer (a hook, timer, or
-/// async callback calling `(call! "toggle-extend")` while Insert is open —
+/// async callback calling `(call! "toggle-extend" bid)` while Insert is open —
 /// unreachable via a key, since there's no `e` binding in the Insert
 /// keymap) must not arm Extend on `Base` invisibly. `set_extend` itself
 /// "does not gate on the current mode layer" and always writes `Base`'s
@@ -92,8 +92,10 @@ fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[h]>ello\n");
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.show_popup(
+        pane,
         "hi".to_string(),
         hume_scripting::host::PopupKind::Sticky,
         false,
@@ -266,21 +268,50 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
     ed
 }
 
-/// arity-1 + typed arg: the arg reaches the lambda as `StringV`, queued as a
-/// command name via `call!`, which runs `move-right`.
-/// Oracle: state changes → cursor moved → arg was forwarded.
-/// Verification: changing "move-right" in the assert to something else → fails.
+/// arity-1 (`bid` alone — no arg): the rule supplies only the leading bid,
+/// never the typed arg. A string-type lambda that checks `(string? x)` never
+/// sees a string, so it never fires the wrapped `call!` and the cursor never
+/// moves, regardless of whether an arg was typed.
 #[test]
-fn typed_arity_rule_forwards_string_arg_to_arity_1() {
+fn typed_arity_rule_supplies_bid_only_at_arity_1() {
     let mut ed = setup_typed_arity_test(
-        r#"(define-typed-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
+        r#"(define-typed-command! "echo-cmd" "" (lambda (bid) (when (string? bid) (call! bid))))"#,
         "echo-cmd",
         1,
         false,
     );
 
     let before = state(&ed);
-    // `:echo-cmd move-right<Enter>` — arity-1 rule passes "move-right" as StringV.
+    // `:echo-cmd move-right<Enter>` — arity-1 rule supplies bid only; the typed
+    // arg "move-right" never reaches the lambda.
+    ed.handle_key(key(':'));
+    for ch in "echo-cmd move-right".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(
+        state(&ed),
+        before,
+        "arity-1 rule must not forward the typed arg; cursor must not move"
+    );
+}
+
+/// arity-2 (`bid arg`): the typed arg reaches the lambda as `StringV`, queued
+/// as a command name via `call!`, which runs `move-right`.
+/// Oracle: state changes → cursor moved → arg was forwarded.
+/// Verification: changing "move-right" in the assert to something else → fails.
+#[test]
+fn typed_arity_rule_forwards_string_arg_to_arity_2() {
+    let mut ed = setup_typed_arity_test(
+        r#"(define-typed-command! "echo-cmd" "" (lambda (bid x) (when (string? x) (call! x bid))))"#,
+        "echo-cmd",
+        2,
+        false,
+    );
+
+    let before = state(&ed);
+    // `:echo-cmd move-right<Enter>` — arity-2 rule passes "move-right" as StringV.
     ed.handle_key(key(':'));
     for ch in "echo-cmd move-right".chars() {
         ed.handle_key(key(ch));
@@ -290,25 +321,25 @@ fn typed_arity_rule_forwards_string_arg_to_arity_1() {
     assert_ne!(
         state(&ed),
         before,
-        "arity-1 rule must forward arg as StringV; cursor must have moved"
+        "arity-2 rule must forward arg as StringV; cursor must have moved"
     );
 }
 
-/// arity-1 + no arg: the rule passes `#f` (Scheme's spelling of "no argument
+/// arity-2 + no arg: the rule passes `#f` (Scheme's spelling of "no argument
 /// typed"), not a sentinel string or a fabricated count. A string-type lambda
 /// that checks `(string? x)` gets a boolean, fails the check, and does
 /// nothing — cursor stays put.
 #[test]
 fn typed_arity_rule_passes_false_when_no_arg() {
     let mut ed = setup_typed_arity_test(
-        r#"(define-typed-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
+        r#"(define-typed-command! "echo-cmd" "" (lambda (bid x) (when (string? x) (call! x bid))))"#,
         "echo-cmd",
-        1,
+        2,
         false,
     );
 
     let before = state(&ed);
-    // `:echo-cmd<Enter>` — no arg → arity-1 rule passes #f; string guard rejects it.
+    // `:echo-cmd<Enter>` — no arg → arity-2 rule passes #f; string guard rejects it.
     ed.handle_key(key(':'));
     for ch in "echo-cmd".chars() {
         ed.handle_key(key(ch));
@@ -318,19 +349,19 @@ fn typed_arity_rule_passes_false_when_no_arg() {
     assert_eq!(
         state(&ed),
         before,
-        "arity-1 with no arg must not crash or move cursor"
+        "arity-2 with no arg must not crash or move cursor"
     );
 }
 
-/// arity-2 (`arg force`, the most a typed command can receive): both values
-/// reach the lambda — the arg as `StringV`, `!` as `#t`.
+/// arity-3 (`bid arg force`, the most a typed command can receive): both
+/// values reach the lambda — the arg as `StringV`, `!` as `#t`.
 #[test]
-fn typed_arity_rule_forwards_arg_and_force_to_arity_2() {
+fn typed_arity_rule_forwards_arg_and_force_to_arity_3() {
     let mut ed = setup_typed_arity_test(
         r#"(define-typed-command! "echo-cmd" ""
-             (lambda (x force) (when (and (string? x) force) (call! x))))"#,
+             (lambda (bid x force) (when (and (string? x) force) (call! x bid))))"#,
         "echo-cmd",
-        2,
+        3,
         false,
     );
 
@@ -345,24 +376,24 @@ fn typed_arity_rule_forwards_arg_and_force_to_arity_2() {
     assert_ne!(
         state(&ed),
         before,
-        "arity-2 rule must forward both arg and force; cursor must have moved"
+        "arity-3 rule must forward both arg and force; cursor must have moved"
     );
 }
 
-/// arity-3 (more than a typed command can supply): the rule reports an error
+/// arity-4 (more than a typed command can supply): the rule reports an error
 /// and never invokes the command. Cursor stays; error is logged. The command
 /// needs no real lambda — the early return fires before call_steel_cmd.
 #[test]
-fn typed_arity_rule_errors_on_arity_3() {
+fn typed_arity_rule_errors_on_arity_4() {
     use crate::editor::registry::{TypedBody, TypedCommand};
 
     let mut ed = editor_from("-[a]>b\n");
     ed.state.config.registry.register_typed(TypedCommand {
-        name: "needs-three".to_owned().into(),
+        name: "needs-four".to_owned().into(),
         doc: std::borrow::Cow::Borrowed(""),
         aliases: &[],
         body: TypedBody::Steel {
-            arity: 3,
+            arity: 4,
             is_variadic: false,
             inline_output: false,
         },
@@ -370,9 +401,9 @@ fn typed_arity_rule_errors_on_arity_3() {
     });
 
     let before = state(&ed);
-    // `:needs-three<Enter>` — arity-3 command, typed dispatch supplies at most 2.
+    // `:needs-four<Enter>` — arity-4 command, typed dispatch supplies at most 3.
     ed.handle_key(key(':'));
-    for ch in "needs-three".chars() {
+    for ch in "needs-four".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
@@ -386,7 +417,7 @@ fn typed_arity_rule_errors_on_arity_3() {
         ed.state
             .message_log
             .entries()
-            .any(|e| e.text.contains("supplies at most 2")),
+            .any(|e| e.text.contains("supplies at most 3")),
         "arity rule must log a user-facing error"
     );
 }

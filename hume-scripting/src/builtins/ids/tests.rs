@@ -1,65 +1,56 @@
 use super::*;
+use crate::types::PaneHandle;
+use hume_engine::pipeline::PaneId;
 use steel::rvals::IntoSteelVal;
 
-fn buffer_id_val() -> SteelVal {
-    SteelBufferId(BufferId::default()).into_steelval().unwrap()
-}
-
-fn pane_id_val() -> SteelVal {
-    SteelPaneId(PaneId::default()).into_steelval().unwrap()
+fn pane_val(handle: PaneHandle) -> SteelVal {
+    SteelPane(handle).into_steelval().unwrap()
 }
 
 #[test]
-fn buffer_id_predicate_true() {
-    assert!(is_buffer_id(buffer_id_val()));
+fn pane_predicate_true() {
+    assert!(is_pane(pane_val(PaneHandle::buffer_only(
+        BufferId::default()
+    ))));
 }
 
 #[test]
-fn buffer_id_predicate_false_for_pane() {
-    assert!(!is_buffer_id(pane_id_val()));
+fn pane_predicate_false_for_string() {
+    assert!(!is_pane(SteelVal::StringV("hello".into())));
 }
 
 #[test]
-fn buffer_id_predicate_false_for_string() {
-    assert!(!is_buffer_id(SteelVal::StringV("hello".into())));
-}
-
-#[test]
-fn pane_id_predicate_true() {
-    assert!(is_pane_id(pane_id_val()));
-}
-
-#[test]
-fn pane_id_predicate_false_for_buffer() {
-    assert!(!is_pane_id(buffer_id_val()));
-}
-
-#[test]
-fn buffer_id_equality() {
-    let a = SteelBufferId(BufferId::default());
-    let b = SteelBufferId(BufferId::default());
+fn pane_equality_same_buffer_and_pane() {
+    let bid = BufferId::default();
+    let pid = PaneId::default();
+    let a = SteelPane(PaneHandle::with_pane(bid, pid));
+    let b = SteelPane(PaneHandle::with_pane(bid, pid));
     assert_eq!(a, b);
 }
 
 #[test]
-fn pane_id_equality() {
-    let a = SteelPaneId(PaneId::default());
-    let b = SteelPaneId(PaneId::default());
-    assert_eq!(a, b);
+fn pane_inequality_same_buffer_different_pane_presence() {
+    let bid = BufferId::default();
+    let pid = PaneId::default();
+    let with_pane = SteelPane(PaneHandle::with_pane(bid, pid));
+    let no_pane = SteelPane(PaneHandle::buffer_only(bid));
+    assert_ne!(with_pane, no_pane);
 }
 
 #[test]
-fn buffer_id_display() {
-    let id = SteelBufferId(BufferId::default());
-    let s = id.fmt().unwrap().unwrap();
-    assert!(s.starts_with("#<buffer-id "), "got: {s}");
+fn pane_display_with_pane() {
+    let handle = PaneHandle::with_pane(BufferId::default(), PaneId::default());
+    let s = SteelPane(handle).fmt().unwrap().unwrap();
+    assert!(s.starts_with("#<pane buffer="), "got: {s}");
+    assert!(s.contains("pane="), "got: {s}");
 }
 
 #[test]
-fn pane_id_display() {
-    let id = SteelPaneId(PaneId::default());
-    let s = id.fmt().unwrap().unwrap();
-    assert!(s.starts_with("#<pane-id "), "got: {s}");
+fn pane_display_buffer_only() {
+    let handle = PaneHandle::buffer_only(BufferId::default());
+    let s = SteelPane(handle).fmt().unwrap().unwrap();
+    assert!(s.starts_with("#<pane buffer="), "got: {s}");
+    assert!(!s.contains("pane="), "got: {s}");
 }
 
 /// Exercises `equal?`'s real dispatch through a full Steel eval (not just
@@ -67,7 +58,7 @@ fn pane_id_display() {
 /// `equal?` machinery). Without `equality_hint`/`try_as_dyn_hash`
 /// (implemented above), steel-core's default `equality_hint` returns `true`
 /// for any same-type `Custom` pair regardless of contents, making
-/// same-value and different-value ids indistinguishable under `equal?`.
+/// same-value and different-value panes indistinguishable under `equal?`.
 /// With them, this eval correctly reports `(#t #f)`.
 #[test]
 fn equal_compares_by_value_through_a_real_steel_eval() {
@@ -82,9 +73,9 @@ fn equal_compares_by_value_through_a_real_steel_eval() {
     };
     assert_ne!(id, other, "test setup: need two distinct BufferIds");
 
-    steel.register_value("a", SteelBufferId(id).into_steelval().unwrap());
-    steel.register_value("b", SteelBufferId(id).into_steelval().unwrap());
-    steel.register_value("c", SteelBufferId(other).into_steelval().unwrap());
+    steel.register_value("a", pane_val(PaneHandle::buffer_only(id)));
+    steel.register_value("b", pane_val(PaneHandle::buffer_only(id)));
+    steel.register_value("c", pane_val(PaneHandle::buffer_only(other)));
 
     let results = steel
         .compile_and_run_raw_program("(list (equal? a b) (equal? a c))")
@@ -97,21 +88,21 @@ fn equal_compares_by_value_through_a_real_steel_eval() {
     assert_eq!(
         items,
         vec![SteelVal::BoolV(true), SteelVal::BoolV(false)],
-        "equal? must be #t for two wrappings of the same BufferId and #f for \
-             different BufferIds"
+        "equal? must be #t for two wrappings of the same PaneHandle and #f for \
+             different ones"
     );
 }
 
-/// A `SteelBufferId` must be usable as a Steel hash key: two distinct
-/// wrappings of the same `BufferId` must hash-collide and `hash-ref` the
-/// same entry — the concrete capability per-buffer plugin state needs.
+/// A `SteelPane` must be usable as a Steel hash key: two distinct wrappings
+/// of the same `PaneHandle` must hash-collide and `hash-ref` the same entry —
+/// the concrete capability per-(buffer,pane) plugin state needs.
 #[test]
-fn buffer_id_is_usable_as_a_steel_hash_key() {
+fn pane_is_usable_as_a_steel_hash_key() {
     let mut steel = steel::steel_vm::engine::Engine::new();
     crate::builtins::register_all(&mut steel);
-    let id = BufferId::default();
-    steel.register_value("a", SteelBufferId(id).into_steelval().unwrap());
-    steel.register_value("b", SteelBufferId(id).into_steelval().unwrap());
+    let handle = PaneHandle::with_pane(BufferId::default(), PaneId::default());
+    steel.register_value("a", pane_val(handle));
+    steel.register_value("b", pane_val(handle));
 
     let results = steel
         .compile_and_run_raw_program("(hash-ref (hash-insert (hash) a 42) b)")
@@ -119,33 +110,20 @@ fn buffer_id_is_usable_as_a_steel_hash_key() {
     assert_eq!(results.into_iter().next().unwrap(), SteelVal::IntV(42));
 }
 
+/// `buffer-key`'s whole point: two panes on the same buffer must hash/compare
+/// equal once narrowed to `SteelBufferKey`, even though the `SteelPane`
+/// values themselves differ (see `pane_inequality_same_buffer_different_pane_presence`).
 #[test]
-fn buffer_id_equal_same_value() {
-    // Two different SteelVal wrappings of the same BufferId must be equal.
-    let id = BufferId::default();
-    let a = SteelBufferId(id).into_steelval().unwrap();
-    let b = SteelBufferId(id).into_steelval().unwrap();
-    assert!(buffer_id_equal(a, b), "same BufferId must be equal");
+fn buffer_key_equal_across_different_panes_on_same_buffer() {
+    let bid = BufferId::default();
+    let a = SteelBufferKey(bid);
+    let b = SteelBufferKey(bid);
+    assert_eq!(a, b);
 }
 
 #[test]
-fn buffer_id_equal_rejects_wrong_type() {
-    let a = SteelBufferId(BufferId::default()).into_steelval().unwrap();
-    let b = SteelVal::BoolV(true);
-    assert!(!buffer_id_equal(a, b));
-}
-
-#[test]
-fn pane_id_equal_same_value() {
-    let id = PaneId::default();
-    let a = SteelPaneId(id).into_steelval().unwrap();
-    let b = SteelPaneId(id).into_steelval().unwrap();
-    assert!(pane_id_equal(a, b), "same PaneId must be equal");
-}
-
-#[test]
-fn pane_id_equal_rejects_wrong_type() {
-    let a = SteelPaneId(PaneId::default()).into_steelval().unwrap();
-    let b = SteelVal::BoolV(false);
-    assert!(!pane_id_equal(a, b));
+fn buffer_key_display() {
+    let key = SteelBufferKey(BufferId::default());
+    let s = key.fmt().unwrap().unwrap();
+    assert!(s.starts_with("#<buffer-key "), "got: {s}");
 }

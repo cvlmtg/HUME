@@ -3,15 +3,17 @@
 use std::sync::Arc;
 
 use hume_engine::pipeline::BufferId;
+use hume_rope::position_encoding::PositionEncoding;
+
+use crate::types::PaneHandle;
 
 /// LSP server introspection — accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
 pub trait LspHost {
-    /// The wire `ServerCapabilities` for `server` (a registered language
-    /// name, or `None` for the focused buffer's attached server) — `None` if
-    /// unresolvable or the server hasn't finished its handshake yet.
-    /// `Arc`-wrapped so the `JsonHandle` `(lsp-capabilities …)` hands Steel
-    /// shares this allocation instead of a value rebuilt per call.
-    fn lsp_capabilities(&self, server: Option<&str>) -> Option<Arc<serde_json::Value>>;
+    /// The wire `ServerCapabilities` for `bid`'s attached server — `None` if
+    /// `bid` has none attached, or the server hasn't finished its handshake
+    /// yet. `Arc`-wrapped so the `JsonHandle` `(lsp-capabilities …)` hands
+    /// Steel shares this allocation instead of a value rebuilt per call.
+    fn lsp_capabilities(&self, bid: BufferId) -> Option<Arc<serde_json::Value>>;
 
     /// One entry per running (language, root) server.
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry>;
@@ -31,38 +33,50 @@ pub trait LspHost {
     fn lsp_registered_for_language(&self, language: &str) -> bool;
 
     /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
-    /// params for `id`'s primary cursor head, in its attached server's
-    /// negotiated encoding — `None` if `id` has no path, no attached server,
-    /// or isn't currently shown in any pane.
-    fn lsp_position_params(&self, id: BufferId) -> Option<serde_json::Value>;
+    /// params for the primary cursor head in `pane`'s own pane, in its
+    /// buffer's attached server's negotiated encoding — `Ok(None)` if the
+    /// buffer has no path or no attached server. `Err` (kind-B fail-fast)
+    /// when `pane` carries no pane, a closed one, or one that no longer
+    /// shows `pane`'s buffer.
+    fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<serde_json::Value>, String>;
 
     /// Same as [`lsp_position_params`](Self::lsp_position_params) but a
     /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
     /// primary selection alone.
-    fn lsp_primary_range_params(&self, id: BufferId) -> Option<serde_json::Value>;
+    fn lsp_primary_range_params(
+        &self,
+        pane: PaneHandle,
+    ) -> Result<Option<serde_json::Value>, String>;
 
     /// `{"textDocument" {"uri"} "ranges" [...]}` — one wire range per
-    /// *linewise* selection in `id`'s buffer, coalescing any run of
+    /// *linewise* selection in `pane`'s own pane, coalescing any run of
     /// selections that touch end-to-end into a single range (an LSP range
     /// is naturally contiguous, so a touching run needs no splitting). A
     /// non-linewise selection is skipped, not an error — `ranges` is simply
-    /// empty when none of `id`'s selections are linewise. `None` (as
-    /// opposed to an empty `ranges`) only for the same reasons
-    /// `lsp_primary_range_params` returns `None`: no path, no attached
-    /// server, or the buffer isn't shown in any pane.
-    fn lsp_linewise_ranges_params(&self, id: BufferId) -> Option<serde_json::Value>;
+    /// empty when none of the selections are linewise. `Ok(None)` (as
+    /// opposed to an empty `ranges`) only for the same reason
+    /// `lsp_primary_range_params` returns `Ok(None)`: no path or no attached
+    /// server. `Err` per [`lsp_position_params`](Self::lsp_position_params).
+    fn lsp_linewise_ranges_params(
+        &self,
+        pane: PaneHandle,
+    ) -> Result<Option<serde_json::Value>, String>;
 
-    /// A [`WirePos`](hume_rope::position_encoding::WirePos) → char offset in
-    /// `id`'s attached server's negotiated encoding — backs
-    /// `lsp-range->offsets`. `None` if `id` is unknown or has no attached
-    /// server (no negotiated encoding to convert with). Clamps rather than
-    /// refuses an out-of-range `line`/`character` (a range's `end` can
-    /// legitimately land at the buffer's char length); point-anchored
-    /// callers want [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
+    /// A [`WirePos`](hume_rope::position_encoding::WirePos) → char offset,
+    /// decoded in `encoding` — backs `lsp-range->offsets`. `encoding` comes
+    /// from the caller's own tagged `JsonHandle` (the response the position
+    /// was read out of), not from `id`'s *currently* attached server: the
+    /// two can diverge (a restart renegotiates, a detach leaves none), and
+    /// the tag is always the encoding the position was actually written in.
+    /// `None` if `id` is unknown. Clamps rather than refuses an out-of-range
+    /// `line`/`character` (a range's `end` can legitimately land at the
+    /// buffer's char length); point-anchored callers want
+    /// [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
     fn lsp_wire_to_char(
         &self,
         id: BufferId,
         pos: hume_rope::position_encoding::WirePos,
+        encoding: PositionEncoding,
     ) -> Option<usize>;
 
     /// Same conversion as [`lsp_wire_to_char`](Self::lsp_wire_to_char), but
@@ -75,28 +89,29 @@ pub trait LspHost {
         &self,
         id: BufferId,
         pos: hume_rope::position_encoding::WirePos,
+        encoding: PositionEncoding,
     ) -> Option<usize>;
 
-    /// Backs `(lsp-label-offsets->text bid label offsets)` — the
-    /// `[start, end)` slice of `label` named by a
-    /// `ParameterInformation.label` wire offset pair (unpacked from that
-    /// builtin's `offsets` list), in the encoding `id`'s attached server
-    /// negotiated. `None` if `id` is unknown or has no attached server.
+    /// Backs `(lsp-label-offsets->text label offsets)` — the `[start, end)`
+    /// slice of `label` named by a `ParameterInformation.label` wire offset
+    /// pair, in `encoding` (the builtin's own read of `offsets`'s tagged
+    /// producing-server encoding — `offsets` is itself drawn from the same
+    /// response `label` came from, via `json-ref`).
     ///
     /// `label` is server-authored display text (a
     /// `SignatureInformation.label`), never document text, so no buffer
-    /// holds it and the other converters here don't fit. `id` names the
-    /// server, not the text being indexed.
+    /// holds it and the other converters here don't fit — this needs no
+    /// `BufferId` at all, only the encoding.
     fn lsp_label_offsets_to_text(
         &self,
-        id: BufferId,
         label: &str,
         start: usize,
         end: usize,
-    ) -> Option<String>;
+        encoding: PositionEncoding,
+    ) -> String;
 
     /// `(lsp-locations->display-parts locs)` — the filesystem path, wire
-    /// line, and column of each raw `Location`/`LocationLink` hashmap in
+    /// line, and column of each raw `Location`/`LocationLink` handle in
     /// `locs`, decoded through the same `hume_lsp::location::decode_location`
     /// `goto-location!` uses. Backs `lsp/location-display`'s drawer rows:
     /// `goto-location!` already converts wire positions correctly for the
@@ -112,22 +127,25 @@ pub trait LspHost {
     /// The path and line ride along with the column because all three come
     /// from one decode: reading `range.start.line` a second time in Scheme
     /// to render the row prefix is how a row ends up naming a position that
-    /// doesn't match the one its column was read from. Every location shares
-    /// the encoding negotiated by the currently focused buffer's attached
-    /// server, same as `goto-location!`'s wire shape.
+    /// doesn't match the one its column was read from. Each entry's own
+    /// `JsonHandle` carries its own producing-server encoding — same
+    /// rationale `GotoTarget::Wire` uses for the actual jump — so a batch
+    /// built from locations spanning more than one response decodes each
+    /// correctly rather than assuming they share one server.
     ///
     /// `Err` — aborting the whole batch, not just one row — only for a
     /// location whose shape can't be decoded at all (missing `uri`/`range`,
-    /// unparseable URI): such a location names no destination `goto-location!`
-    /// could reach either, so a drawer row for it would be unselectable by
-    /// construction. Degrading only this builtin wouldn't help either — the
-    /// same malformed location would still abort three lines later inside
-    /// `lsp/location-display`, which is why both routes decode through the
-    /// one shared `decode_location` instead of tolerating a bad shape here.
-    /// See `decode_location`'s doc for the full rule.
+    /// unparseable URI, or untagged): such a location names no destination
+    /// `goto-location!` could reach either, so a drawer row for it would be
+    /// unselectable by construction. Degrading only this builtin wouldn't
+    /// help either — the same malformed location would still abort three
+    /// lines later inside `lsp/location-display`, which is why both routes
+    /// decode through the one shared `decode_location` instead of
+    /// tolerating a bad shape here. See `decode_location`'s doc for the
+    /// full rule.
     fn lsp_locations_display_parts(
         &self,
-        locs: &[&serde_json::Value],
+        locs: &[crate::json::JsonHandle],
     ) -> Result<Vec<LocationDisplay>, String>;
 }
 

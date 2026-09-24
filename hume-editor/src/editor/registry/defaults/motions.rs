@@ -10,7 +10,7 @@ use hume_ops::motion::{
     cmd_select_prev_word,
 };
 
-use super::builder::ecmd;
+use super::builder::ecmd_pane;
 
 impl CommandRegistry {
     pub(super) fn register_motions(&mut self) {
@@ -27,7 +27,7 @@ impl CommandRegistry {
             "Move cursors one grapheme to the left.",
             cmd_move_left
         );
-        ecmd(
+        ecmd_pane(
             "move-down",
             "Move cursors down one visual line (one buffer line with a count).",
             cmd_visual_move_down,
@@ -35,7 +35,7 @@ impl CommandRegistry {
         .extendable()
         .visual_move()
         .reg(self);
-        ecmd(
+        ecmd_pane(
             "move-up",
             "Move cursors up one visual line (one buffer line with a count).",
             cmd_visual_move_up,

@@ -4,9 +4,9 @@
 //! compiles in this type, only the `&str` names and `SteelVal` args produced
 //! here (see `hume_scripting::host::EventHost`).
 
-use hume_engine::pipeline::BufferId;
-use hume_scripting::SteelBufferId;
-use hume_scripting::json::to_steel_handle;
+use hume_engine::pipeline::{BufferId, PaneId};
+use hume_scripting::json::JsonHandle;
+use hume_scripting::{PaneHandle, SteelPane};
 use steel::rvals::SteelVal;
 
 use super::Mode;
@@ -39,9 +39,12 @@ pub(in crate::editor) enum EditorEvent {
     /// single one of those covers both, so neither alone can host the raise.
     /// Fires once at startup (the initial buffer entering focus) and once
     /// more per subsequent switch, coalescing a pane-focus move and a buffer
-    /// switch in the same `settle()` pass into a single event.
+    /// switch in the same `settle()` pass into a single event. `pane` is the
+    /// focused pane at raise time — always `Some`, since a buffer only
+    /// "enters" by way of some pane showing it.
     OnBufferEnter {
         buffer: BufferId,
+        pane: PaneId,
     },
     /// Fires when the terminal regains focus, or the editor otherwise regains
     /// control of it (return from an inline shell command) — every open
@@ -95,19 +98,24 @@ pub(in crate::editor) enum EditorEvent {
     /// (`lsp.viewport-debounce-ms`) so a scroll burst fires once. `first_line`
     /// / `end_line` are the visible range, end-exclusive (matching
     /// `viewport-range`'s convention) — no registered handler currently reads
-    /// either arg (each re-reads live state via `(viewport-range bid)`
+    /// either arg (each re-reads live state via `(viewport-range pane)`
     /// instead), so this is a payload shape, not a behavior guarantee.
+    /// `pane` is the pane whose viewport actually scrolled — not necessarily
+    /// the focused one.
     OnViewportChange {
         buffer: BufferId,
+        pane: PaneId,
         first_line: hume_rope::line::ContentLine,
         end_line: hume_rope::line::ContentLine,
     },
     /// Fires in Insert mode after a registered trigger char (see
     /// `register-trigger-chars!`) has been inserted into the buffer — once
     /// per source registered for that char under the buffer's language, so
-    /// two sources sharing a char each get their own fire.
+    /// two sources sharing a char each get their own fire. `pane` is the
+    /// focused pane at raise time (Insert mode only ever types into it).
     OnTriggerChar {
         buffer: BufferId,
+        pane: PaneId,
         ch: char,
         source: String,
     },
@@ -116,12 +124,16 @@ pub(in crate::editor) enum EditorEvent {
     /// `completionItem/resolve` — Rust owns all three atomically, so this is
     /// a plain extension point for anything the completion store doesn't
     /// itself parse (e.g. `command`), not a place that needs to apply edits.
-    /// `item` is the accepted `CompletionItem`'s raw JSON, `Arc`-wrapped at
-    /// the one queue site (`session/accept.rs`) so a large LSP item isn't
-    /// cloned again here just to hand it to `to_steel_handle`.
+    /// `item` is the accepted `CompletionItem`'s raw JSON as a `JsonHandle`
+    /// (built at the one queue site, `session/accept.rs`) rather than a bare
+    /// `Arc<Value>` — a handle shares the same underlying `Arc` just as
+    /// cheaply, and keeps the item's `WireOrigin` tag alive for a handler
+    /// that reads a position back out of it. `pane` is the completion
+    /// session's own pane, not necessarily the focused one at fire time.
     OnCompletionAccept {
         buffer: BufferId,
-        item: std::sync::Arc<serde_json::Value>,
+        pane: PaneId,
+        item: JsonHandle,
     },
     /// Fires when a buffer's text changes — user edits, undo, redo, `:e!`
     /// reload, and read-only view refreshes (`:messages`, `:ls`,
@@ -147,9 +159,7 @@ pub(in crate::editor) enum EditorEvent {
     /// for every `:messages`/`:ls`/`:plugin-status` refresh of an
     /// already-open view buffer, even a byte-identical one — a handler that
     /// resolves the buffer's path must handle `#f` (these buffers have none).
-    /// Also fires, exactly once, for a buffer replaced in place under a
-    /// surviving `BufferId` (`close_buffer`'s last-buffer scratch swap) —
-    /// see `Buffer::announced_text_gen`'s doc.
+    /// See `Buffer::announced_text_gen`'s doc.
     OnTextChanged {
         buffer: BufferId,
     },
@@ -169,6 +179,34 @@ pub(in crate::editor) enum EditorEvent {
         key: String,
         value: String,
     },
+}
+
+impl EditorEvent {
+    /// The buffer this event concerns, if any — `None` for a buffer-less
+    /// event (`OnFocusGained`, `OnModeChange`, `OnOptionChange`). Exhaustive
+    /// match, no `_` arm: a future variant with a `buffer` field must be
+    /// added here explicitly or this fails to compile — same discipline
+    /// `Editor::react_to_event`'s own match uses, for the same reason (a
+    /// forgotten variant should be a compile error, not a silent `None`).
+    pub(in crate::editor) fn buffer(&self) -> Option<BufferId> {
+        match self {
+            EditorEvent::OnBufferOpen { buffer }
+            | EditorEvent::OnBufferClose { buffer }
+            | EditorEvent::OnBufferSave { buffer }
+            | EditorEvent::OnBufferEnter { buffer, .. }
+            | EditorEvent::OnLanguageSet { buffer, .. }
+            | EditorEvent::OnLspAttach { buffer, .. }
+            | EditorEvent::OnLspDetach { buffer, .. }
+            | EditorEvent::OnDiagnosticsChanged { buffer }
+            | EditorEvent::OnViewportChange { buffer, .. }
+            | EditorEvent::OnTriggerChar { buffer, .. }
+            | EditorEvent::OnCompletionAccept { buffer, .. }
+            | EditorEvent::OnTextChanged { buffer } => Some(*buffer),
+            EditorEvent::OnFocusGained
+            | EditorEvent::OnModeChange { .. }
+            | EditorEvent::OnOptionChange { .. } => None,
+        }
+    }
 }
 
 /// Pairs each `EditorEvent` variant with its Steel-facing name, once, and
@@ -237,10 +275,12 @@ impl EditorEvent {
             EditorEvent::OnBufferOpen { buffer }
             | EditorEvent::OnBufferClose { buffer }
             | EditorEvent::OnBufferSave { buffer }
-            | EditorEvent::OnBufferEnter { buffer }
             | EditorEvent::OnDiagnosticsChanged { buffer }
             | EditorEvent::OnTextChanged { buffer } => {
-                vec![SteelBufferId::new(*buffer).into_steel_val()]
+                vec![SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val()]
+            }
+            EditorEvent::OnBufferEnter { buffer, pane } => {
+                vec![SteelPane::new(PaneHandle::with_pane(*buffer, *pane)).into_steel_val()]
             }
             EditorEvent::OnFocusGained => vec![],
             EditorEvent::OnModeChange { from, to } => {
@@ -254,37 +294,46 @@ impl EditorEvent {
                     Some(name) => SteelVal::StringV(name.as_str().into()),
                     None => SteelVal::BoolV(false),
                 };
-                vec![SteelBufferId::new(*buffer).into_steel_val(), lang_val]
+                vec![
+                    SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val(),
+                    lang_val,
+                ]
             }
             EditorEvent::OnLspAttach { buffer, server }
             | EditorEvent::OnLspDetach { buffer, server } => {
                 vec![
-                    SteelBufferId::new(*buffer).into_steel_val(),
+                    SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val(),
                     SteelVal::StringV(server.as_str().into()),
                 ]
             }
             EditorEvent::OnViewportChange {
                 buffer,
+                pane,
                 first_line,
                 end_line,
             } => {
                 vec![
-                    SteelBufferId::new(*buffer).into_steel_val(),
+                    SteelPane::new(PaneHandle::with_pane(*buffer, *pane)).into_steel_val(),
                     SteelVal::IntV(first_line.index() as isize),
                     SteelVal::IntV(end_line.index() as isize),
                 ]
             }
-            EditorEvent::OnTriggerChar { buffer, ch, source } => {
+            EditorEvent::OnTriggerChar {
+                buffer,
+                pane,
+                ch,
+                source,
+            } => {
                 vec![
-                    SteelBufferId::new(*buffer).into_steel_val(),
+                    SteelPane::new(PaneHandle::with_pane(*buffer, *pane)).into_steel_val(),
                     SteelVal::StringV(ch.to_string().into()),
                     SteelVal::StringV(source.as_str().into()),
                 ]
             }
-            EditorEvent::OnCompletionAccept { buffer, item } => {
+            EditorEvent::OnCompletionAccept { buffer, pane, item } => {
                 vec![
-                    SteelBufferId::new(*buffer).into_steel_val(),
-                    to_steel_handle(std::sync::Arc::clone(item)),
+                    SteelPane::new(PaneHandle::with_pane(*buffer, *pane)).into_steel_val(),
+                    item.clone().into_steel_val(),
                 ]
             }
             EditorEvent::OnOptionChange { key, value } => {
@@ -317,7 +366,19 @@ pub(in crate::editor) enum PendingWork {
     /// `lsp-request` callback, a timer thunk, a prompt/menu/drawer/picker
     /// callback. Delivered to exactly that closure, not to every handler for
     /// a name.
-    Call(SteelVal, Vec<SteelVal>),
+    ///
+    /// `anchor`: `Some` only for an `lsp-request` callback, carrying the same
+    /// `ResponseAnchor` already checked once at LSP drain time
+    /// (`Editor::anchor_admits`) — re-checked here, at dequeue, because
+    /// arbitrary other queued work (an earlier `Call` in the same batch, a
+    /// hook) can run first and change the state the drain-time check saw.
+    /// `None` for every other source (a timer thunk, a picker callback, …),
+    /// which never had an anchor to begin with.
+    Call {
+        proc: SteelVal,
+        args: Vec<SteelVal>,
+        anchor: Option<super::lsp::ResponseAnchor>,
+    },
     /// An editor event to fire by name at drain time. Args are built by
     /// `steel_args()` only if a handler is actually registered.
     Event(EditorEvent),

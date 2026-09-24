@@ -52,9 +52,9 @@ Every feature file shares these:
   plugin checks `(void? res)` for "no results", never `(not res)`.
 - **`lsp/report-error`** takes either a `{"code" "message"}` hashmap or the bare
   string `"timeout"` and logs one `'error` line either way.
-- **Capability guards** (`lsp/supports?`, `lsp/supports-for-buffer?`,
-  `lsp/guard-capability`) read `(lsp-capabilities server)`, a `JsonHandle` onto the
-  server's provider capabilities, via `json-ref`/`json-contains?`. `lsp/caps-has-cap?`
+- **Capability guards** (`lsp/supports?`, `lsp/guard-capability`) read
+  `(lsp-capabilities pane)`, a `JsonHandle` onto `pane`'s buffer's attached server's
+  provider capabilities, via `json-ref`/`json-contains?`. `lsp/caps-has-cap?`
   treats a capability as present only when the handle exists, contains the key, and
   that key isn't explicitly `#f` — a provider capability can be declared and then
   disabled with `#f`, which is different from never being declared. `lsp/cap-field`/
@@ -79,9 +79,13 @@ Every feature file shares these:
   present, empty otherwise.
 - **Viewport** — `lsp/visible-lines` wraps the synchronous `viewport-range` builtin,
   which is 0-based end-exclusive, so the visible-line count is just the range's width
-  (no `+ 1`); `#f` when `bid` isn't shown in a pane on the active tab, including a
-  buffer visible only in a background tab. Its two callers are hover's popup-docking
-  threshold and inlay hints' refresh trigger.
+  (no `+ 1`). `viewport-range` raises (kind-B fail-fast) rather than answering `#f` for
+  a pane that doesn't show its buffer, so every caller either already holds a real,
+  live pane (hover and signature help both pass their own request's invocation pane,
+  confirmed still focused by `#:require-focus`) or resolves one explicitly first via
+  `lsp/resolve-pane` (inlay hints, for the hooks whose own pane value carries none).
+  `lsp/visible-lines`'s two callers are hover's popup-docking threshold and inlay
+  hints' refresh trigger.
 - **Location display** — a raw `Location`/`LocationLink` hashmap's `{uri, range}`-vs-
   `{targetUri, targetRange}` shape dispatch lives in one place,
   `hume_lsp::location::decode_location` (Rust), shared by `goto-location!` (the jump)

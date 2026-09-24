@@ -12,7 +12,7 @@ fn after_fires_once_past_its_deadline() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "start" "" (lambda () (after 0 (lambda () (call! "move-right")))))"#,
+        r#"(define-typed-command! "start" "" (lambda () (after 0 (lambda () (call! "move-right" (focused-pane))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -36,7 +36,7 @@ fn a_timer_not_yet_due_does_not_fire() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "start" "" (lambda () (after 100000 (lambda () (call! "move-right")))))"#,
+        r#"(define-typed-command! "start" "" (lambda () (after 100000 (lambda () (call! "move-right" (focused-pane))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -61,7 +61,7 @@ fn cancel_timer_before_it_fires_prevents_the_thunk() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "start-and-cancel" "" (lambda ()
-             (define id (after 0 (lambda () (call! "move-right"))))
+             (define id (after 0 (lambda () (call! "move-right" (focused-pane)))))
              (cancel-timer! id)))"#,
         tmp.path(),
     );
@@ -86,7 +86,7 @@ fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define tick (debounce 0 (lambda () (call! "move-right"))))
+        r#"(define tick (debounce 0 (lambda () (call! "move-right" (focused-pane)))))
            (define-typed-command! "burst" "" (lambda () (tick) (tick) (tick)))"#,
         tmp.path(),
     );
@@ -180,7 +180,7 @@ fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "boom" "" (lambda () (after 0 (lambda () (car '())))))
-           (define-typed-command! "start" "" (lambda () (after 0 (lambda () (call! "move-right")))))"#,
+           (define-typed-command! "start" "" (lambda () (after 0 (lambda () (call! "move-right" (focused-pane))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

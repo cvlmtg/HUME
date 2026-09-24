@@ -27,28 +27,27 @@
 
 ;; ── Popup: cursor or docked ──────────────────────────────────────────────────
 
-(define (lsp/show-hover text lang)
-  (let* ((bid (current-buffer))
-         (visible (lsp/visible-lines bid))
-         (threshold (if visible (quotient visible 3) 15))
+(define (lsp/show-hover pane text lang)
+  (let* ((threshold (quotient (lsp/visible-lines pane) 3))
          (lines (split-many text "\n")))
     (if (<= (length lines) threshold)
-        (show-popup! text #:kind 'scrollable #:lang lang)
-        (show-popup! text #:kind 'scrollable #:lang lang #:anchor 'bottom))))
+        (show-popup! pane text #:kind 'scrollable #:lang lang)
+        (show-popup! pane text #:kind 'scrollable #:lang lang #:anchor 'bottom))))
 
 ;; ── Command ─────────────────────────────────────────────────────────────────
 
 (define-command! "lsp-hover" "Show hover info for the symbol under the cursor."
-  (lambda ()
+  (lambda (pane)
     (close-popup!)
-    (lsp/guard-capability "hoverProvider"
+    (lsp/guard-capability pane "hoverProvider"
       (lambda ()
-        (lsp-request #f "textDocument/hover" (lsp-position-params (current-buffer))
+        (lsp-request pane "textDocument/hover" (lsp-position-params pane)
           (lambda (err res)
             (cond
               (err (lsp/report-error "hover" err))
               ((void? res) (log! 'info "No hover info"))
               (else (let ((contents (json-ref res "contents")))
-                      (lsp/show-hover (lsp/hover-contents->text contents)
+                      (lsp/show-hover pane (lsp/hover-contents->text contents)
                                        (lsp/hover-lang contents))))))
-          #:allow-stale #t)))))
+          #:allow-stale #t
+          #:require-focus #t)))))

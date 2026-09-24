@@ -370,12 +370,14 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 // Fix 1 — closing the last buffer must clear stale engine syntax state
 // ---------------------------------------------------------------------------
 
-/// Regression: closing the last open buffer (which swaps it for a fresh
-/// scratch buffer in place — `buffer::lifecycle::close_buffer`'s `None`
-/// branch) must clear the syntax attachment (and with it, the committed
-/// tree it owns) rather than leaving the old grammar's stale tree behind.
+/// Regression: closing the last open buffer (`buffer::lifecycle::
+/// close_buffer`'s `None` branch — frees `bid`'s slot outright and opens a
+/// fresh scratch buffer under a new id) must not leak the closed buffer's
+/// syntax attachment (and the committed tree it owns) anywhere the engine
+/// can still reach it — `bid`'s own slot must be gone, and the new scratch
+/// buffer must start with no syntax attached, not inherit the old tree.
 ///
-/// Flip: if the whole-`Buffer` swap were skipped, the assert fails.
+/// Flip: if `ev.buffers.remove(id)` were skipped, `bid`'s slot check fails.
 #[test]
 fn closing_the_last_buffer_clears_engine_syntax_state() {
     require_grammars(&["json"]);
@@ -396,13 +398,19 @@ fn closing_the_last_buffer_clears_engine_syntax_state() {
     );
 
     // `bid` is the only open buffer, so this hits close_buffer's last-buffer
-    // branch: a fresh scratch buffer (no path, language=None) replaces it
-    // in place under the same id, rather than freeing the slot.
+    // branch: `bid`'s slot is freed outright and a fresh scratch buffer
+    // (no path, language=None, no syntax) opens under a new id.
     ed.close_buffer(bid);
 
     assert!(
-        ed.state.buffers.get(bid).syntax.is_none(),
-        "stale syntax (and its committed tree) must be cleared when the last buffer is replaced"
+        ed.state.buffers.try_get(bid).is_none(),
+        "the closed buffer's slot, and the stale syntax tree it owned, must be gone entirely"
+    );
+    let new_bid = ed.focused_buffer_id();
+    assert_ne!(new_bid, bid, "the fresh scratch buffer must have a new id");
+    assert!(
+        ed.state.buffers.get(new_bid).syntax.is_none(),
+        "the fresh scratch buffer must not inherit the closed buffer's syntax attachment"
     );
 }
 

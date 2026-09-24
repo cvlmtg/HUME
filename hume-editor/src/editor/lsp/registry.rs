@@ -76,10 +76,10 @@ impl Editor {
                 // no-ops — `:lsp-uninstall` of an orphan or never-spawned
                 // server must succeed silently.
                 self.lsp.configs.remove(&language);
-                self.lsp_stop(Some(&language));
+                self.lsp_stop(&hume_scripting::LspServerTarget::Language(language));
             }
-            hume_scripting::PendingLspServerOp::Stop { language } => {
-                let n = self.lsp_stop(language.as_deref());
+            hume_scripting::PendingLspServerOp::Stop { target } => {
+                let n = self.lsp_stop(&target);
                 if n == 0 {
                     self.report(
                         Severity::Info,
@@ -89,8 +89,8 @@ impl Editor {
                     self.report(Severity::Info, format!("lsp: stopped {n} server(s)"));
                 }
             }
-            hume_scripting::PendingLspServerOp::Restart { language } => {
-                let n = self.lsp_restart(language.as_deref());
+            hume_scripting::PendingLspServerOp::Restart { target } => {
+                let n = self.lsp_restart(&target);
                 if n == 0 {
                     self.report(
                         Severity::Info,
@@ -270,23 +270,27 @@ impl Editor {
         }
     }
 
-    /// Resolves `:lsp-stop [language]` / `:lsp-restart [language]`'s target
-    /// set: every server whose key's language matches, or — with no
-    /// argument — just the focused buffer's server (if any).
-    fn lsp_targets(&self, language: Option<&str>) -> Vec<hume_lsp::backend::ServerId> {
-        match language {
-            Some(lang) => self
+    /// Resolves `:lsp-stop`/`(lsp-stop! target)` (and `:lsp-restart`/
+    /// `(lsp-restart! target)`)'s target set: every server registered for a
+    /// `Language`, or `Buffer(bid)`'s own attached server (if any — `bid`
+    /// may have since detached, so this is not a panic-on-miss `get`).
+    fn lsp_targets(
+        &self,
+        target: &hume_scripting::LspServerTarget,
+    ) -> Vec<hume_lsp::backend::ServerId> {
+        match target {
+            hume_scripting::LspServerTarget::Language(lang) => self
                 .lsp
                 .servers
                 .iter()
-                .filter(|(_, e)| e.language.as_deref() == Some(lang))
+                .filter(|(_, e)| e.language.as_deref() == Some(lang.as_str()))
                 .map(|(&id, _)| id)
                 .collect(),
-            None => self
+            hume_scripting::LspServerTarget::Buffer(bid) => self
                 .state
                 .buffers
-                .get(self.focused_buffer_id())
-                .lsp_server
+                .try_get(*bid)
+                .and_then(|buf| buf.lsp_server)
                 .into_iter()
                 .collect(),
         }
@@ -379,9 +383,12 @@ impl Editor {
         }
     }
 
-    /// `:lsp-stop [language]`. Returns the number of servers stopped.
-    pub(in crate::editor) fn lsp_stop(&mut self, language: Option<&str>) -> usize {
-        let targets = self.lsp_targets(language);
+    /// `(lsp-stop! target)`. Returns the number of servers stopped.
+    pub(in crate::editor) fn lsp_stop(
+        &mut self,
+        target: &hume_scripting::LspServerTarget,
+    ) -> usize {
+        let targets = self.lsp_targets(target);
         let count = targets.len();
         for server_id in targets {
             self.lsp_stop_one(server_id);
@@ -389,12 +396,15 @@ impl Editor {
         count
     }
 
-    /// `:lsp-restart [language]`. Stops each target server, then re-attaches
+    /// `(lsp-restart! target)`. Stops each target server, then re-attaches
     /// every buffer that was on it through `lsp_attach_buffer` — the exact
     /// registration spawn path, not a duplicate. Returns the number of servers
     /// restarted.
-    pub(in crate::editor) fn lsp_restart(&mut self, language: Option<&str>) -> usize {
-        let targets = self.lsp_targets(language);
+    pub(in crate::editor) fn lsp_restart(
+        &mut self,
+        target: &hume_scripting::LspServerTarget,
+    ) -> usize {
+        let targets = self.lsp_targets(target);
         let count = targets.len();
         for server_id in targets {
             let bids: Vec<BufferId> = self

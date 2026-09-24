@@ -25,14 +25,7 @@ fn arity1_list_command_rejects_false_arg() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd(
-            "needs-list",
-            None,
-            vec![SteelVal::BoolV(false)],
-            PaneId::default(),
-            BufferId::default(),
-            &mut mock,
-        )
+        .call_steel_cmd("needs-list", None, vec![SteelVal::BoolV(false)], &mut mock)
         .unwrap_err();
     assert!(
         err.message.contains("requires a non-empty list"),
@@ -62,14 +55,7 @@ fn arity1_list_command_accepts_list_arg() {
     .unwrap();
     let items: Vec<SteelVal> = vec!["rust".into_steelval().unwrap()];
     let list_val = items.into_steelval().unwrap();
-    let result = h.call_steel_cmd(
-        "needs-list",
-        None,
-        vec![list_val],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    );
+    let result = h.call_steel_cmd("needs-list", None, vec![list_val], &mut mock);
     assert!(
         result.is_ok(),
         "expected Ok for valid list arg, got: {:?}",
@@ -95,14 +81,7 @@ fn load_plugin_runtime_guard_fires() {
     .unwrap();
 
     let err = h
-        .call_steel_cmd(
-            "try-load",
-            None,
-            vec![],
-            PaneId::default(),
-            BufferId::default(),
-            &mut mock,
-        )
+        .call_steel_cmd("try-load", None, vec![], &mut mock)
         .unwrap_err();
     assert!(
         err.message.contains("top level") || err.message.contains("init.scm"),

@@ -202,7 +202,6 @@ mod next_wake_covers_client_state {
 
         let meta = RequestMeta {
             method: "textDocument/hover".to_string(),
-            allow_stale: false,
             deadline: Instant::now() + Duration::from_secs(10),
         };
         ed.lsp
@@ -242,7 +241,6 @@ mod next_wake_covers_client_state {
             serde_json::Value::Null,
             RequestMeta {
                 method: "textDocument/hover".to_string(),
-                allow_stale: false,
                 deadline: Instant::now() + Duration::from_secs(20),
             },
         );
@@ -252,7 +250,6 @@ mod next_wake_covers_client_state {
             serde_json::Value::Null,
             RequestMeta {
                 method: "textDocument/hover".to_string(),
-                allow_stale: false,
                 deadline: Instant::now() + Duration::from_secs(2),
             },
         );

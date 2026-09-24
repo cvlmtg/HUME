@@ -13,8 +13,8 @@ fn pushed_text_renders_for_the_focused_buffer() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (set-statusline-text! "greeting" (current-buffer) "hello")))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-statusline-text! "greeting" bid "hello")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -36,9 +36,9 @@ fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-typed-command! "arm" "" (lambda ()
-                 (set-statusline-text! "greeting" (current-buffer) "hello")
-                 (switch-to-buffer! (open-buffer! "{other_str}"))))"#
+            r#"(define-typed-command! "arm" "" (lambda (bid)
+                 (set-statusline-text! "greeting" bid "hello")
+                 (switch-to-buffer! bid (open-buffer! "{other_str}"))))"#
         ),
         tmp.path(),
     );
@@ -88,10 +88,10 @@ fn empty_text_clears_a_previously_pushed_value() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (set-statusline-text! "greeting" (current-buffer) "hello")))
-           (define-typed-command! "unarm" "" (lambda ()
-             (set-statusline-text! "greeting" (current-buffer) "")))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-statusline-text! "greeting" bid "hello")))
+           (define-typed-command! "unarm" "" (lambda (bid)
+             (set-statusline-text! "greeting" bid "")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -134,7 +134,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
     assert!(
         entries.iter().any(|e| e.severity == Severity::Error
             && e.text.contains("set-statusline-text!")
-            && e.text.contains("unknown buffer")),
+            && e.text.contains("invalid buffer id")),
         "a stale bid must surface as a Steel error naming the builtin, got: {entries:?}"
     );
 }
@@ -151,8 +151,8 @@ fn set_statusline_text_on_an_unplaceable_name_raises_an_error() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (set-statusline-text! "a,b" (current-buffer) "hello")))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-statusline-text! "a,b" bid "hello")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

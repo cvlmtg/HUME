@@ -166,15 +166,7 @@ impl Editor {
             // opened it (e.g. `close-buffer!` in the same eval) before this
             // drain runs — `close-buffer!` mutates synchronously, unlike this
             // deferred detection. Skip rather than hit `BufferStore::get`'s
-            // "unseeded BufferId" panic.
-            //
-            // `open_hook_pending` additionally covers the case where `bid`
-            // survives (`try_get` succeeds) but is no longer the buffer that
-            // was opened: `close_buffer`'s last-buffer branch reuses `bid`'s
-            // slot in place for a fresh scratch buffer, which defaults the
-            // flag to `false` — so this still correctly skips rather than
-            // detecting a language for (and firing `OnBufferOpen` on behalf
-            // of) that unrelated scratch buffer. Skipping the corresponding
+            // "unseeded BufferId" panic. Skipping the corresponding
             // `OnBufferClose` for a since-closed, never-opened buffer is
             // `close_buffer_and_notify`'s job, not this drain's — see its doc.
             if self

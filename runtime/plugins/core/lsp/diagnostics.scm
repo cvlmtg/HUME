@@ -26,29 +26,35 @@
   (let ((before (filter (lambda (d) (< (hash-ref d "start") head)) diags)))
     (if (null? before) (car (reverse diags)) (car (reverse before)))))
 
-(define (lsp/diag-jump-to! bid d)
-  (goto-location! (list bid (hash-ref d "line") (hash-ref d "char-col"))))
+;;; `pane` names the diagnostic's own buffer (the drawer target when this is
+;;; the select-callback path — see docs/decorations.md) — used only as
+;;; `goto-location!`'s *target*, never as its invocation pane: the drawer
+;;; stays open across a buffer switch by design, so by the time a row is
+;;; selected the pane that opened it may no longer show that buffer at all.
+;;; `(focused-pane)` is always the pane that actually navigates.
+(define (lsp/diag-jump-to! pane d)
+  (goto-location! (focused-pane) (list pane (hash-ref d "line") (hash-ref d "char-col"))))
 
-(define (lsp/diag-jump direction)
-  (let ((diags (diagnostics-for-buffer (current-buffer))))
+(define (lsp/diag-jump pane direction)
+  (let ((diags (diagnostics-for-buffer pane)))
     (if (null? diags)
         (log! 'info "No diagnostics")
-        (let* ((head (call! "stdlib/cursor-char-index" (current-selections)))
+        (let* ((head (call! "stdlib/cursor-char-index" (buffer-selections pane)))
                (target (if (> direction 0)
                            (lsp/first-after diags head)
                            (lsp/last-before diags head))))
-          (lsp/diag-jump-to! (current-buffer) target)
-          (show-popup! (hash-ref target "message") #:kind 'scrollable)))))
+          (lsp/diag-jump-to! pane target)
+          (show-popup! pane (hash-ref target "message") #:kind 'scrollable)))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 
 (define-command! "goto-next-diagnostic"
   "Jump to the next diagnostic after the cursor (wraps to the first)."
-  (lambda () (lsp/diag-jump 1)))
+  (lambda (pane) (lsp/diag-jump pane 1)))
 
 (define-command! "goto-prev-diagnostic"
   "Jump to the previous diagnostic before the cursor (wraps to the last)."
-  (lambda () (lsp/diag-jump -1)))
+  (lambda (pane) (lsp/diag-jump pane -1)))
 
 (define (lsp/diag-row d)
   (string-append (lsp/severity-glyph (hash-ref d "severity")) " "
@@ -57,21 +63,20 @@
 
 (define lsp/*diag-drawer* #f)
 
-(define (lsp/diag-select-callback bid diags)
+(define (lsp/diag-select-callback pane diags)
   (lambda (idx)
     (when idx
-      (lsp/diag-jump-to! bid (list-ref diags idx)))))
+      (lsp/diag-jump-to! pane (list-ref diags idx)))))
 
 (define-typed-command! "diagnostics" ":diagnostics — list this buffer's diagnostics."
-  (lambda ()
-    (let ((diags (diagnostics-for-buffer (current-buffer))))
+  (lambda (pane)
+    (let ((diags (diagnostics-for-buffer pane)))
       (if (null? diags)
           (log! 'info "No diagnostics")
-          (let* ((bid (current-buffer))
-                 (tok (show-drawer-list! (map lsp/diag-row diags)
-                                         (lsp/diag-select-callback bid diags))))
+          (let* ((tok (show-drawer-list! pane (map lsp/diag-row diags)
+                                         (lsp/diag-select-callback pane diags))))
             (when tok
-              (set! lsp/*diag-drawer* (list bid tok diags))))))))
+              (set! lsp/*diag-drawer* (list (buffer-key pane) tok diags))))))))
 
 (define (lsp/diag-best-match old new-diags)
   (let ((old-msg (hash-ref old "message"))
@@ -94,8 +99,12 @@
         (old (and (< old-idx (length old-diags)) (list-ref old-diags old-idx))))
     (if old (or (lsp/diag-best-match old new-diags) fallback) fallback)))
 
-(define (lsp/refresh-diagnostics-drawer bid diags)
-  (when (and lsp/*diag-drawer* (equal? bid (car lsp/*diag-drawer*)))
+;;; Compares by `(buffer-key pane)`, not `pane` itself — the drawer was
+;;; opened from `:diagnostics`'s own (focused) pane, but this refresh
+;;; runs from `on-diagnostics-changed`, whose `pane` carries no pane of
+;;; its own; the two must still match on the same buffer.
+(define (lsp/refresh-diagnostics-drawer pane diags)
+  (when (and lsp/*diag-drawer* (equal? (buffer-key pane) (car lsp/*diag-drawer*)))
     (let ((tok (cadr lsp/*diag-drawer*)))
       (if (null? diags)
           (begin (close-drawer! tok) (set! lsp/*diag-drawer* #f))
@@ -104,9 +113,9 @@
                 (set! lsp/*diag-drawer* #f)
                 (let ((idx (lsp/diag-refresh-index (caddr lsp/*diag-drawer*) sel diags)))
                   (if (update-drawer-list! tok (map lsp/diag-row diags)
-                                           (lsp/diag-select-callback bid diags)
+                                           (lsp/diag-select-callback pane diags)
                                            idx)
-                      (set! lsp/*diag-drawer* (list bid tok diags))
+                      (set! lsp/*diag-drawer* (list (buffer-key pane) tok diags))
                       (set! lsp/*diag-drawer* #f)))))))))
 
 ;; ── Diagnostic decorations: EOL summary + gutter signs ──────────────────────
@@ -168,30 +177,30 @@
              (list line "●" (hash-ref (lsp/most-severe line-diags) "severity"))))
          groups)))
 
-(define (lsp/refresh-diagnostic-decorations bid diags)
-  (register-sign-source! "lsp-diagnostics" bid lsp/*sign-priority*)
-  (set-eol-text! "lsp-diagnostics" bid
+(define (lsp/refresh-diagnostic-decorations pane diags)
+  (register-sign-source! "lsp-diagnostics" pane lsp/*sign-priority*)
+  (set-eol-text! "lsp-diagnostics" pane
     (map lsp/line-group->entry (lsp/group-by-line diags)))
-  (set-signs! "lsp-diagnostics" bid (lsp/diagnostic-signs diags)))
+  (set-signs! "lsp-diagnostics" pane (lsp/diagnostic-signs diags)))
 
 (register-hook! 'on-diagnostics-changed
-  (lambda (bid)
-    (let ((diags (diagnostics-for-buffer bid)))
-      (lsp/refresh-diagnostic-decorations bid diags)
-      (lsp/refresh-diagnostics-drawer bid diags))))
+  (lambda (pane)
+    (let ((diags (diagnostics-for-buffer pane)))
+      (lsp/refresh-diagnostic-decorations pane diags)
+      (lsp/refresh-diagnostics-drawer pane diags))))
 
 (register-hook! 'on-lsp-detach
-  (lambda (bid server-name)
-    (register-sign-source! "lsp-diagnostics" bid lsp/*sign-priority*)
-    (set-eol-text! "lsp-diagnostics" bid '())
-    (set-signs! "lsp-diagnostics" bid '())
-    (lsp/refresh-diagnostics-drawer bid '())))
+  (lambda (pane server-name)
+    (register-sign-source! "lsp-diagnostics" pane lsp/*sign-priority*)
+    (set-eol-text! "lsp-diagnostics" pane '())
+    (set-signs! "lsp-diagnostics" pane '())
+    (lsp/refresh-diagnostics-drawer pane '())))
 
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.diagnostics-severity-floor")
-      (for-each (lambda (bid)
-                  (let ((diags (diagnostics-for-buffer bid)))
-                    (lsp/refresh-diagnostic-decorations bid diags)
-                    (lsp/refresh-diagnostics-drawer bid diags)))
+      (for-each (lambda (pane)
+                  (let ((diags (diagnostics-for-buffer pane)))
+                    (lsp/refresh-diagnostic-decorations pane diags)
+                    (lsp/refresh-diagnostics-drawer pane diags)))
                 (buffers)))))

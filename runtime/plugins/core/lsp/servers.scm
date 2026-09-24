@@ -224,8 +224,8 @@
 
 (define-typed-command! "lsp-install"
   "Download and verify the language server for a language (default: the current buffer's language), then register it."
-  (lambda (arg)
-    (let ((lang (call! "stdlib/resolve-lang-arg" "lsp-install" arg)))
+  (lambda (pane arg)
+    (let ((lang (call! "stdlib/resolve-lang-arg" pane "lsp-install" arg)))
       (cond
         ((not lang) (begin))
         ((not (hash-contains? *lsp-lang->server* lang))
@@ -245,7 +245,7 @@
 
 (define-typed-command! "lsp-uninstall"
   "Shut down and remove an installed language server by name."
-  (lambda (arg)
+  (lambda (pane arg)
     (cond
       ((not (string? arg))
        (log! 'info "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
@@ -297,7 +297,7 @@
 ;; ── Discovery hint ────────────────────────────────────────────────────────────
 
 (register-hook! 'on-language-set
-  (lambda (bid lang)
+  (lambda (pane lang)
     (when (and (string? lang) (not (hash-contains? *lsp-hinted-languages* lang)))
       (set! *lsp-hinted-languages* (hash-insert *lsp-hinted-languages* lang #t))
       (when (hash-contains? *lsp-lang->server* lang)

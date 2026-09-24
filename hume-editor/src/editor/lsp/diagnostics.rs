@@ -13,6 +13,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
 
+use super::introspect;
 use crate::editor::Editor;
 use crate::editor::message_log::Severity;
 use hume_decorations::{Positioned, RangeAnchored, SourceStore};
@@ -83,6 +84,12 @@ pub(in crate::editor) struct StoredDiag {
     /// each entry's `"raw"` to Scheme as a `JsonHandle` sharing this same
     /// allocation, instead of cloning the value to build one.
     pub(in crate::editor) raw: Arc<serde_json::Value>,
+    /// The publishing server's negotiated encoding at ingest time — tags
+    /// `raw`'s `JsonHandle` (`introspect::diagnostics_for_buffer`) so a
+    /// wire position inside it (`context.diagnostics`' own positions, once
+    /// a plugin reads them back out) decodes correctly even after the
+    /// server that sent it has since restarted or detached.
+    pub(in crate::editor) encoding: hume_rope::position_encoding::PositionEncoding,
 }
 
 impl Positioned for StoredDiag {
@@ -329,12 +336,17 @@ impl Editor {
             return None;
         }
 
-        let encoding = self
-            .lsp
-            .servers
-            .get(&server_id)
-            .map(|e| e.client.encoding())
-            .unwrap_or(hume_rope::position_encoding::PositionEncoding::Utf16);
+        // No silent UTF-16 guess: an untracked server (crashed or stopped
+        // between sending this and it being drained) has no negotiated
+        // encoding to decode against, and a wrong silent answer is only
+        // visible on a non-ASCII line.
+        let Some(encoding) = introspect::server_encoding(&self.lsp, server_id) else {
+            self.report(
+                Severity::Trace,
+                "lsp: dropping publishDiagnostics from an untracked server".to_string(),
+            );
+            return None;
+        };
         let rope = self.state.buffers.get(bid).text().rope().clone();
 
         let stored: Vec<StoredDiag> = parsed
@@ -359,6 +371,7 @@ impl Editor {
                     }),
                     source: d.source,
                     raw,
+                    encoding,
                 }
             })
             .collect();

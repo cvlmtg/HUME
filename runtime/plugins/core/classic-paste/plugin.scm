@@ -4,27 +4,27 @@
 
 (define-command! "classic-ring-after"
   "Paste the kill-ring head after the selection (same as \"kp)."
-  (lambda ()
+  (lambda (pane)
     (set-register-prefix! "k")
-    (call! "paste-after")))
+    (call! "paste-after" pane)))
 
 (define-command! "classic-ring-before"
   "Paste the kill-ring head before the selection (same as \"kP)."
-  (lambda ()
+  (lambda (pane)
     (set-register-prefix! "k")
-    (call! "paste-before")))
+    (call! "paste-before" pane)))
 
 (define-command! "classic-clipboard-after"
   "Paste the OS clipboard after the selection (same as \"cp)."
-  (lambda ()
+  (lambda (pane)
     (set-register-prefix! "c")
-    (call! "paste-after")))
+    (call! "paste-after" pane)))
 
 (define-command! "classic-clipboard-before"
   "Paste the OS clipboard before the selection (same as \"cP)."
-  (lambda ()
+  (lambda (pane)
     (set-register-prefix! "c")
-    (call! "paste-before")))
+    (call! "paste-before" pane)))
 
 ;; ── Keybindings ───────────────────────────────────────────────────────────────
 (bind-key! 'normal "p" "classic-ring-after")

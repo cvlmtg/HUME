@@ -1,58 +1,66 @@
-//! Opaque `BufferId` and `PaneId` Steel types for the scripting surface.
+//! Opaque Steel types for buffer/pane identity.
 //!
-//! Plugins receive and pass these values between builtins but cannot construct
-//! or inspect them arithmetically — they are purely opaque handles.
+//! [`SteelPane`] is the crossing-boundary value: every command, hook,
+//! completion source, and builtin argument or return that used to be a bare
+//! buffer-id is now a `PaneHandle` wrapped in `SteelPane`. Plugins receive
+//! and pass these between builtins but cannot construct or inspect them
+//! arithmetically — they are purely opaque handles. [`SteelBufferKey`] is
+//! `(buffer-key pane)`'s own return type: a per-buffer hash/comparison key,
+//! deliberately undecodable by [`super::args::ArgPane`]/[`super::args::LivePane`]
+//! so a key can't be passed back into a builtin expecting a pane — see
+//! `docs/LESSONS.md`'s L19 and this crate's `types::PaneHandle` doc for why
+//! a pane value and a plain per-buffer key must stay two distinct kinds of
+//! thing, not the same value with its pane field cleared.
 //!
-//! Display uses the slotmap `as_ffi` u64 so that `(log! "info" (current-buffer))`
-//! prints something readable without revealing internal structure.
+//! Display uses the slotmap `as_ffi` u64 so that `(log! "info" pane)` prints
+//! something readable without revealing internal structure.
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::BufferId;
 use slotmap::Key as _;
 use steel::{
     gc::ShareableMut as _,
     rvals::{Custom, IntoSteelVal as _, SteelVal, as_underlying_type},
 };
 
+use crate::types::PaneHandle;
+
 // ── Wrapper types ─────────────────────────────────────────────────────────────
 
-/// Opaque Steel handle for a `BufferId`.
+/// Opaque Steel handle for a [`PaneHandle`] — see this module's own doc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SteelBufferId(pub(crate) BufferId);
+pub struct SteelPane(pub(crate) PaneHandle);
 
-impl SteelBufferId {
-    /// Wrap a `BufferId` into a Steel-facing opaque handle.
-    pub fn new(id: BufferId) -> Self {
-        Self(id)
+impl SteelPane {
+    /// Wrap a `PaneHandle` into a Steel-facing opaque handle.
+    pub fn new(handle: PaneHandle) -> Self {
+        Self(handle)
     }
-}
 
-/// Opaque Steel handle for a `PaneId`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct SteelPaneId(pub(crate) PaneId);
-
-impl SteelBufferId {
     /// Convert to a `SteelVal` without returning `Result`.
     ///
     /// `IntoSteelVal` for custom types is infallible; this avoids `.expect()` at
-    /// every call site that wraps a `BufferId` for hook args or builtin returns.
+    /// every call site that wraps a `PaneHandle` for hook args or builtin returns.
     pub fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("SteelBufferId into_steelval")
+        self.into_steelval().expect("SteelPane into_steelval")
     }
 }
 
-impl SteelPaneId {
-    /// Convert to a `SteelVal` without returning `Result`.
-    ///
-    /// Mirrors [`SteelBufferId::into_steel_val`] — `IntoSteelVal` for custom
-    /// types is infallible.
-    pub(crate) fn into_steel_val(self) -> SteelVal {
-        self.into_steelval().expect("SteelPaneId into_steelval")
-    }
-}
+/// `(buffer-key pane)`'s return: `pane`'s buffer, with no pane component —
+/// see this module's own doc for why this is a distinct type rather than a
+/// [`SteelPane`] with its pane field cleared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct SteelBufferKey(pub(crate) BufferId);
 
-impl Custom for SteelBufferId {
+impl Custom for SteelPane {
     fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!("#<buffer-id {}>", self.0.data().as_ffi())))
+        Some(Ok(match self.0.pane() {
+            Some(pid) => format!(
+                "#<pane buffer={} pane={}>",
+                self.0.buffer().data().as_ffi(),
+                pid.data().as_ffi()
+            ),
+            None => format!("#<pane buffer={}>", self.0.buffer().data().as_ffi()),
+        }))
     }
 
     fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
@@ -64,9 +72,9 @@ impl Custom for SteelBufferId {
     }
 }
 
-impl Custom for SteelPaneId {
+impl Custom for SteelBufferKey {
     fn fmt(&self) -> Option<Result<String, std::fmt::Error>> {
-        Some(Ok(format!("#<pane-id {}>", self.0.data().as_ffi())))
+        Some(Ok(format!("#<buffer-key {}>", self.0.data().as_ffi())))
     }
 
     fn equality_hint(&self, other: &dyn steel::rvals::CustomType) -> bool {
@@ -80,71 +88,26 @@ impl Custom for SteelPaneId {
 
 // ── Predicate builtins ────────────────────────────────────────────────────────
 
-/// `(buffer-id? v)` — return `#t` if `v` is an opaque `BufferId`.
-pub(crate) fn is_buffer_id(val: SteelVal) -> bool {
+/// `(pane? v)` — return `#t` if `v` is an opaque pane handle.
+pub(crate) fn is_pane(val: SteelVal) -> bool {
     if let SteelVal::Custom(v) = &val {
-        v.read()
-            .as_any_ref()
-            .downcast_ref::<SteelBufferId>()
-            .is_some()
+        v.read().as_any_ref().downcast_ref::<SteelPane>().is_some()
     } else {
         false
     }
 }
 
-/// `(pane-id? v)` — return `#t` if `v` is an opaque `PaneId`.
-pub(crate) fn is_pane_id(val: SteelVal) -> bool {
-    if let SteelVal::Custom(v) = &val {
-        v.read()
-            .as_any_ref()
-            .downcast_ref::<SteelPaneId>()
-            .is_some()
-    } else {
-        false
-    }
-}
+// ── Decode ────────────────────────────────────────────────────────────────────
 
-// ── Value-equality builtins ───────────────────────────────────────────────────
-// `equal?` and hash-keying compare by value (see the `Custom::equality_hint`
-// / `try_as_dyn_hash` impls above) — a SteelBufferId can be used as a hash key
-// and `equal?` returns `#t` for two wrappings of the same BufferId. These
-// builtins are an explicit, type-narrowed alternative for plugin code that
-// only wants to compare ids and reject any other value outright.
-
-pub(crate) fn downcast_buffer_id(val: &SteelVal) -> Option<BufferId> {
+pub(crate) fn downcast_pane(val: &SteelVal) -> Option<PaneHandle> {
     if let SteelVal::Custom(v) = val {
         v.read()
             .as_any_ref()
-            .downcast_ref::<SteelBufferId>()
-            .map(|b| b.0)
-    } else {
-        None
-    }
-}
-
-fn downcast_pane_id(val: &SteelVal) -> Option<PaneId> {
-    if let SteelVal::Custom(v) = val {
-        v.read()
-            .as_any_ref()
-            .downcast_ref::<SteelPaneId>()
+            .downcast_ref::<SteelPane>()
             .map(|p| p.0)
     } else {
         None
     }
-}
-
-/// `(buffer-id=? a b)` — value-equality for opaque `BufferId` handles.
-///
-/// Returns `#t` if both `a` and `b` are buffer-ids wrapping the same
-/// underlying `BufferId`.  Prefer this over `equal?`, which only returns
-/// `#t` when both values share the same `Arc`.
-pub(crate) fn buffer_id_equal(a: SteelVal, b: SteelVal) -> bool {
-    matches!((downcast_buffer_id(&a), downcast_buffer_id(&b)), (Some(x), Some(y)) if x == y)
-}
-
-/// `(pane-id=? a b)` — value-equality for opaque `PaneId` handles.
-pub(crate) fn pane_id_equal(a: SteelVal, b: SteelVal) -> bool {
-    matches!((downcast_pane_id(&a), downcast_pane_id(&b)), (Some(x), Some(y)) if x == y)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

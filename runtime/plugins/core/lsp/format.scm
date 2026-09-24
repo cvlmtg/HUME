@@ -4,32 +4,32 @@
 
 (require "lib.scm")
 
-(define (lsp/format-options)
-  (hash "tabSize" (get-option "tab-width")
-        "insertSpaces" (equal? (get-option "tab-style") "soft")))
+(define (lsp/format-options pane)
+  (hash "tabSize" (get-buffer-option pane "tab-width")
+        "insertSpaces" (equal? (get-buffer-option pane "tab-style") "soft")))
 
 (define (lsp/format-edits res)
   (if (void? res) (list) (json-list res)))
 
-(define (lsp/format-apply! bid gen edits)
+(define (lsp/format-apply! pane gen edits)
   (if (null? edits)
       (log! 'info "Already formatted")
-      (apply-text-edits! bid edits #:expect-generation gen)))
+      (apply-text-edits! pane edits #:expect-generation gen)))
 
-(define (lsp/format-callback bid gen)
+(define (lsp/format-callback pane gen)
   (lambda (err res)
     (if err
         (lsp/report-error "lsp-fmt" err)
-        (lsp/format-apply! bid gen (lsp/format-edits res)))))
+        (lsp/format-apply! pane gen (lsp/format-edits res)))))
 
-(define (lsp/format-fan-out! bid gen td ranges)
+(define (lsp/format-fan-out! pane gen td ranges)
   (let ((pending (box (length ranges)))
         (edits (box (list)))
         (aborted (box #f))
-        (opts (lsp/format-options)))
+        (opts (lsp/format-options pane)))
     (for-each
       (lambda (range)
-        (lsp-request #f "textDocument/rangeFormatting"
+        (lsp-request pane "textDocument/rangeFormatting"
           (hash "textDocument" td "range" range "options" opts)
           (lambda (err res)
             (unless (unbox aborted)
@@ -41,51 +41,50 @@
                     (set-box! edits (append (unbox edits) (lsp/format-edits res)))
                     (set-box! pending (- (unbox pending) 1))
                     (when (= (unbox pending) 0)
-                      (lsp/format-apply! bid gen (unbox edits)))))))))
+                      (lsp/format-apply! pane gen (unbox edits)))))))))
       ranges)))
 
-(define (lsp/format-linewise! bid gen td ranges)
-  (lsp/guard-capability "documentRangeFormattingProvider"
+(define (lsp/format-linewise! pane gen td ranges)
+  (lsp/guard-capability pane "documentRangeFormattingProvider"
     (lambda ()
       (let ((n (length ranges))
             (cap (get-option "lsp.format-max-ranges")))
         (cond
-          ((and (> n 1) (lsp/cap-flag? "documentRangeFormattingProvider" "rangesSupport"))
-           (lsp-request #f "textDocument/rangesFormatting"
-             (hash "textDocument" td "ranges" ranges "options" (lsp/format-options))
-             (lsp/format-callback bid gen)))
+          ((and (> n 1) (lsp/cap-flag? pane "documentRangeFormattingProvider" "rangesSupport"))
+           (lsp-request pane "textDocument/rangesFormatting"
+             (hash "textDocument" td "ranges" ranges "options" (lsp/format-options pane))
+             (lsp/format-callback pane gen)))
           ((> n cap)
            (log! 'info
                  (string-append (number->string n)
                                  " ranges exceeds lsp.format-max-ranges ("
                                  (number->string cap)
                                  ") — nothing formatted")))
-          (else (lsp/format-fan-out! bid gen td ranges)))))))
+          (else (lsp/format-fan-out! pane gen td ranges)))))))
 
-(define (lsp/format-source!)
-  (let* ((bid (current-buffer))
-         (rp (lsp-linewise-ranges-params bid)))
+(define (lsp/format-source! pane)
+  (let ((rp (lsp-linewise-ranges-params pane)))
     (if (not rp)
-        (log! 'info (if (lsp-server-for-buffer bid)
+        (log! 'info (if (lsp-server-for-buffer pane)
                          "buffer has no path — nothing to format"
                          "no LSP server attached to this buffer"))
         (let* ((td (hash-ref rp "textDocument"))
                (ranges (hash-ref rp "ranges"))
-               (gen (buffer-generation bid)))
+               (gen (buffer-generation pane)))
           (cond
-            ((selections-linewise? bid) (lsp/format-linewise! bid gen td ranges))
-            ((selections-charwise? bid)
-             (lsp/guard-capability "documentFormattingProvider"
+            ((selections-linewise? pane) (lsp/format-linewise! pane gen td ranges))
+            ((selections-charwise? pane)
+             (lsp/guard-capability pane "documentFormattingProvider"
                (lambda ()
-                 (lsp-request #f "textDocument/formatting"
-                   (hash "textDocument" td "options" (lsp/format-options))
-                   (lsp/format-callback bid gen)))))
+                 (lsp-request pane "textDocument/formatting"
+                   (hash "textDocument" td "options" (lsp/format-options pane))
+                   (lsp/format-callback pane gen)))))
             (else (log! 'info "mixed whole-line and partial selections — nothing formatted")))))))
 
 (define-command! "lsp-fmt"
   "Format the buffer via LSP — bind this to a key, or call it from a hook (e.g. `on-buffer-save`)."
-  (lambda () (lsp/format-source!)))
+  (lambda (pane) (lsp/format-source! pane)))
 
 (define-typed-command! "format-source"
   ":format-source — format the buffer via LSP from the command line."
-  (lambda () (lsp/format-source!)))
+  (lambda (pane) (lsp/format-source! pane)))

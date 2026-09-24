@@ -18,21 +18,21 @@
 
 (define-command! "helix-delete-surround"
   "Delete the surrounding delimiter pair (md + char)."
-  (lambda ()
+  (lambda (pane)
     (let ((cmd (surround-cmd-for (pending-char))))
       (when cmd
-        (call! cmd)
-        (call! "delete")))))
+        (call! cmd pane)
+        (call! "delete" pane)))))
 
 ;; ── replace-surround ─────────────────────────────────────────────────────────
 ;; Selects the pair, then hands off to `replace`'s wait-char; see README.
 
 (define-command! "helix-replace-surround"
   "Replace the surrounding delimiter pair (mr + old_char + new_char)."
-  (lambda ()
+  (lambda (pane)
     (let ((cmd (surround-cmd-for (pending-char))))
       (when cmd
-        (call! cmd)
+        (call! cmd pane)
         (request-wait-char! "replace")))))
 
 ;; ── keybindings ──────────────────────────────────────────────────────────────

@@ -23,18 +23,31 @@ pub trait SettingsHost {
     /// goes through the editor's validating chokepoint regardless of caller.
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String>;
 
-    /// `(set-buffer-option! bid key value)` — writes `key`'s per-buffer
-    /// override on `bid`. Command/hook context (`cmd` kind), unlike
-    /// `set_global_option`. `Err` for a stale `bid`, a global-only key, or a
-    /// bad value.
+    /// `(set-buffer-option! pane key value)` — writes `key`'s per-buffer
+    /// override on `pane`'s buffer. Command/hook context (`cmd` kind),
+    /// unlike `set_global_option`. `Err` for a stale buffer, a global-only
+    /// key, or a bad value. Kind-C: only the buffer matters, `pane`'s own
+    /// pane (if any) is ignored — the builtin layer narrows the decoded
+    /// `PaneHandle` to a plain `bid` before this is called.
     fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String>;
 
-    /// `(get-option [bid] key)` — the effective value of `key`:
-    /// `bid`'s buffer override if one is set, else the global default. `Err`
-    /// for an unknown key. No eval-mode gate (`open` kind): callable from
-    /// `init.scm` too — a stale or default `bid` degrades gracefully to the
-    /// global default rather than erroring.
-    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
+    /// `(get-option key)` — `key`'s global value, ignoring any buffer
+    /// override even if one exists. `Err` for an unknown key. No eval-mode
+    /// gate (`open` kind), mirroring `set_global_option`: callable from
+    /// `init.scm` too.
+    fn get_global_option(&self, key: &str) -> Result<OptionValue, String>;
+
+    /// `(get-buffer-option pane key)` — the effective value of `key` for
+    /// `pane`'s buffer: its buffer override if one is set, else the global
+    /// default. `Err` for an unknown key or a stale buffer — same guard as
+    /// `set_buffer_option`; a closed buffer's override no longer exists to
+    /// read, so silently falling back to the global value would hide a
+    /// caller acting on a buffer that already went away. Command/hook
+    /// context (`cmd` kind): the idiomatic caller is a hook handler that
+    /// received the target pane as an explicit argument (e.g.
+    /// `on-language-set`, whose buffer may differ from the focused one).
+    /// Kind-C, same as `set_buffer_option`.
+    fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
 
     /// Init-only; the editor parses element names into `StatusElement`.
     fn configure_statusline(

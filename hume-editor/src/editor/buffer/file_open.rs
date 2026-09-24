@@ -163,11 +163,8 @@ impl Editor {
         bid
     }
 
-    /// Remove buffer `id`, handling two cases:
-    ///
-    /// - At least one other buffer: redirect every pane viewing `id` to the
-    ///   MRU replacement, then free the slot.
-    /// - Only buffer: replace in-place with a fresh scratch buffer.
+    /// Remove buffer `id` — see [`lifecycle::close_buffer`]'s own doc for
+    /// the last-buffer case (a fresh scratch buffer, not `id` reused).
     pub(in crate::editor) fn close_buffer(&mut self, id: BufferId) {
         lifecycle::close_buffer_and_notify(
             &mut self.view,
@@ -175,14 +172,22 @@ impl Editor {
             Some(&mut self.lsp),
             id,
         );
+        // Mirrors `open_buffer`'s own call, right above: the last-buffer
+        // case queues a fresh scratch buffer for language detection and
+        // `OnBufferOpen` (`close_buffer_and_notify`'s `queue_open_announcement`
+        // call) — this is `(close-buffer! id)`'s Steel path's own capability
+        // (`apply_script_effects` calls this unconditionally at the end of
+        // every command dispatch), but a direct `&mut Editor` caller like
+        // this one has no such funnel to fall back on.
+        self.detect_pending_languages();
     }
 
     /// Reload buffer `id` with `new_doc`'s content in place, preserving the
     /// undo tree and the primary cursor line/column across the reload.
     ///
-    /// Unlike `replace_buffer_in_place` (which
-    /// swaps the whole `Buffer` and discards `History`), this delegates to
-    /// [`Buffer::reload_from_text`] — see its doc for the history/undo mechanics.
+    /// Unlike `set_view_content` (which discards `History` on a full
+    /// `Buffer` swap), this delegates to [`Buffer::reload_from_text`] — see
+    /// its doc for the history/undo mechanics.
     ///
     /// Each pane's primary cursor is captured as `(line, char_col)` before the
     /// reload and restored against the new content; multi-selections collapse
@@ -446,8 +451,7 @@ impl Editor {
             // `set_view_content` resets history — a regenerated view buffer
             // (`[messages]`, `[buffers]`) shares nothing but its id with the
             // old content, so every per-pane store keyed to it is stale, not
-            // just the jump list. Same reseed `replace_buffer_in_place` runs
-            // after a full `Buffer` swap.
+            // just the jump list.
             lifecycle::reseed_panes_after_content_reset(
                 &mut self.view,
                 &self.state.buffers,

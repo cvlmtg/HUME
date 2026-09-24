@@ -203,7 +203,7 @@ impl Editor {
                 // `workspace/applyEdit` needs `&mut Editor` (the edit engine) —
                 // every other request answers from the pure lookup table.
                 let result = if method == lsp_types::request::ApplyWorkspaceEdit::METHOD {
-                    self.apply_edit_request_response(&params)
+                    self.apply_edit_request_response(&params, server_id)
                 } else {
                     let settings = introspect::server_language(&self.lsp, server_id)
                         .and_then(|lang| self.lsp.configs.get(&lang))
@@ -290,13 +290,29 @@ impl Editor {
             return;
         }
         // The registered language is the "server name" the Steel surface deals
-        // in, since that's what `register-lsp-server!` and `lsp-request`'s
-        // `server` argument both use.
+        // in, since that's what `register-lsp-server!` uses — the sole
+        // remaining server-name-string argument on the LSP builtins surface,
+        // now that `lsp-request` resolves its server from a `bid` instead.
         let server_val = match introspect::server_language(&self.lsp, server_id) {
             Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
             None => steel::rvals::SteelVal::BoolV(false),
         };
-        let params_val = hume_scripting::json::to_steel_handle(std::sync::Arc::new(params));
+        // No untagged fallback: a notification's params may carry wire
+        // positions (e.g. a server-defined custom notification echoing a
+        // range), so an untracked server (crashed between sending this and
+        // it being drained) is dropped rather than tagged with a guessed
+        // encoding.
+        let Some(encoding) = introspect::server_encoding(&self.lsp, server_id) else {
+            self.report(
+                Severity::Trace,
+                format!("{name}: dropping {method} from an untracked server"),
+            );
+            return;
+        };
+        let params_val = hume_scripting::json::to_steel_handle(
+            std::sync::Arc::new(params),
+            hume_scripting::json::WireOrigin::Server(encoding),
+        );
         for handler in handlers {
             self.state
                 .queue_steel_call(handler, vec![server_val.clone(), params_val.clone()]);
@@ -340,13 +356,58 @@ impl Editor {
             // goes through the staleness check below like any other outcome.
         }
 
-        if let Some((bid, text_gen)) = entry.stale_check {
-            let current = self.state.buffers.try_get(bid).map(|b| b.text_gen);
-            if current != Some(text_gen) && !meta.allow_stale {
-                return; // dropped silently — parse-worker staleness discipline
-            }
+        if !self.anchor_admits(&entry.anchor) {
+            return;
         }
 
-        (entry.callback)(self, outcome);
+        (entry.callback)(self, server_id, outcome);
+    }
+
+    /// Whether a completed request's callback should actually fire, per its
+    /// `ResponseAnchor` — the one place both of a callback's drop conditions
+    /// are checked, so a caller only has to gather the anchor at send time
+    /// rather than repeat either check itself. Text-gen first: `#:allow-stale`
+    /// is the more targeted opt-out (a single request's own reason for
+    /// tolerating staleness), so it decides before focus is even considered.
+    ///
+    /// Two call points, not one: [`Self::dispatch_completed`] (this file)
+    /// checks it at LSP drain time — the only gate at all for a response
+    /// with no Steel callback to queue (`completionItem/resolve`'s inline
+    /// Rust path), and an early drop for a Steel one, before its `(proc,
+    /// args)` is even queued. `Editor::run_pending_batch`
+    /// (`scripting_setup.rs`) re-checks the same anchor for a queued Steel
+    /// callback right before it actually runs — arbitrary other queued work
+    /// (a hook, an earlier callback in the same batch) can execute between
+    /// the two checks and change the state the first one saw, so admission
+    /// at drain time alone doesn't guarantee admission at run time.
+    pub(in crate::editor) fn anchor_admits(&mut self, anchor: &super::ResponseAnchor) -> bool {
+        let current_gen = self.state.buffers.try_get(anchor.bid).map(|b| b.text_gen);
+        if current_gen != Some(anchor.text_gen) && !anchor.allow_stale {
+            return false; // dropped silently — parse-worker staleness discipline
+        }
+        if anchor.require_focus {
+            // Dropped the same way `async_opener_stale` drops a menu/drawer
+            // open whose stack has moved on — the response is for UI
+            // anchored to `anchor.pane`, and the user has since navigated
+            // elsewhere (moved focus to another pane, even one still
+            // showing `anchor.bid`, or the pane now shows a different
+            // buffer), so delivering it would show hover/signature-help/a
+            // code-action menu over the wrong pane. `anchor.pane` is always
+            // `Some` here — `%lsp-request`'s decode refuses to queue a
+            // `#:require-focus` request with no pane.
+            let admitted = anchor.pane.is_some_and(|pid| {
+                pid == self.state.focus.id()
+                    && self.view.panes.get(pid).map(|p| p.buffer_id) == Some(anchor.bid)
+            });
+            if !admitted {
+                self.report(
+                    Severity::Trace,
+                    "lsp-request: the focused pane moved before the response could open — ignored"
+                        .to_string(),
+                );
+                return false;
+            }
+        }
+        true
     }
 }

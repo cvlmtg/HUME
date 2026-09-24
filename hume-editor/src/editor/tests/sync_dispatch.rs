@@ -41,11 +41,13 @@ fn run_command_sync_motion_moves_cursor() {
     // "-[a]>bc\n" — cursor at position 0.
     let mut ed = editor_from("-[a]>bc\n");
     assert_eq!(state(&ed), "-[a]>bc\n", "cursor must start at 0");
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
 
     {
         let mut host = live_host!(ed);
         // move-right is a Motion — must dispatch synchronously.
-        host.run_command_sync("move-right", Some(1), false, None)
+        host.run_command_sync("move-right", pane, Some(1), false, None)
             .expect("run_command_sync must not error for move-right");
     }
 
@@ -73,10 +75,12 @@ fn run_command_sync_editor_cmd_runs_sync() {
         "-[b]>c\n",
         "pre-condition: cursor at 0 after delete"
     );
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
 
     {
         let mut host = live_host!(ed);
-        host.run_command_sync("undo", Some(1), false, None)
+        host.run_command_sync("undo", pane, Some(1), false, None)
             .expect("run_command_sync must not error for undo");
     }
 
@@ -92,8 +96,10 @@ fn run_command_sync_editor_cmd_runs_sync() {
 #[test]
 fn run_command_sync_unknown_name_errors() {
     let mut ed = editor_from("-[a]>bc\n");
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     let mut host = live_host!(ed);
-    let result = host.run_command_sync("no-such-command-xyzzy", Some(1), false, None);
+    let result = host.run_command_sync("no-such-command-xyzzy", pane, Some(1), false, None);
     assert!(result.is_err(), "unknown command must return Err");
 }
 
@@ -115,10 +121,12 @@ fn run_command_sync_returns_false_when_the_split_is_refused() {
     ed.sync_viewport_dims(20, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
 
     let ran = {
         let mut host = live_host!(ed);
-        host.run_command_sync("pane-vsplit", Some(1), false, None)
+        host.run_command_sync("pane-vsplit", pane, Some(1), false, None)
             .expect("a refused split is Ok(false), not an Err")
     };
 
@@ -142,10 +150,12 @@ fn run_command_sync_returns_true_on_a_successful_split() {
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
 
     let ran = {
         let mut host = live_host!(ed);
-        host.run_command_sync("pane-vsplit", Some(1), false, None)
+        host.run_command_sync("pane-vsplit", pane, Some(1), false, None)
             .expect("run_command_sync must not error for a fitting split")
     };
 
@@ -165,17 +175,21 @@ fn run_command_sync_returns_true_on_a_successful_split() {
 fn current_line_number_reads_live_position() {
     // Two-line buffer: "ab\ncd\n"; cursor on line 1.
     let mut ed = editor_from("-[a]>b\ncd\n");
-    let before = live_host!(ed).current_line_number().expect("line before");
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
+    let before = live_host!(ed)
+        .buffer_cursor_line(pane)
+        .expect("line before");
     assert_eq!(before, 1, "cursor starts on line 1");
 
     // move-down crosses to line 2.
     {
         live_host!(ed)
-            .run_command_sync("move-down", Some(1), false, None)
+            .run_command_sync("move-down", pane, Some(1), false, None)
             .unwrap();
     }
 
-    let after = live_host!(ed).current_line_number().expect("line after");
+    let after = live_host!(ed).buffer_cursor_line(pane).expect("line after");
     assert_eq!(
         after, 2,
         "current_line_number must reflect the sync move to line 2"
@@ -188,10 +202,12 @@ fn current_line_number_reads_live_position() {
 fn run_command_sync_selection_updates_sel() {
     // "-[a]>bc\n" — cursor at 0, single-char selection covering 'a'.
     let mut ed = editor_from("-[a]>bc\n");
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     {
         let mut host = live_host!(ed);
         // select-line is a Selection command.
-        host.run_command_sync("select-line", Some(1), false, None)
+        host.run_command_sync("select-line", pane, Some(1), false, None)
             .expect("run_command_sync must not error for select-line");
     }
     // select-line covers the full line "abc\n" (inclusive); head lands on '\n' at position 3.
@@ -204,10 +220,10 @@ fn run_command_sync_selection_updates_sel() {
 
 // ── Native arg validation (classify-then-parse) ───────────────────────────────
 
-/// `(call! "move-right" 5)` from Steel moves the cursor 5 positions synchronously.
+/// `(call! "move-right" bid 5)` from Steel moves the cursor 5 positions synchronously.
 ///
 /// Verifies the native count path: classify → `Ok(true)` → `parse_count_extend`
-/// extracts `count=5` → `run_command_sync("move-right", 5, false)` runs immediately.
+/// extracts `count=5` → `run_command_sync("move-right", pane, 5, false)` runs immediately.
 /// Fail oracle: change expected cursor to 1 — test fails.
 #[test]
 fn call_bang_count_arg_dispatches_synchronously() {
@@ -215,7 +231,7 @@ fn call_bang_count_arg_dispatches_synchronously() {
 
     attach_steel(
         &mut ed,
-        r#"(define-command! "move-right-5" "" (lambda () (call! "move-right" 5)))"#,
+        r#"(define-command! "move-right-5" "" (lambda (bid) (call! "move-right" bid 5)))"#,
     );
     ed.execute_keymap_command("move-right-5".into(), Some(1), false);
 
@@ -234,11 +250,11 @@ fn call_bang_count_arg_dispatches_synchronously() {
     assert_eq!(
         idx,
         co(5),
-        "cursor must be at position 5 after (call! \"move-right\" 5)"
+        "cursor must be at position 5 after (call! \"move-right\" bid 5)"
     );
 }
 
-/// `(call! "move-right" "garbage")` must raise a Steel error and NOT move the cursor.
+/// `(call! "move-right" bid "garbage")` must raise a Steel error and NOT move the cursor.
 ///
 /// Verifies fail-fast: classify happens before `run_command_sync`, so the command
 /// never executes. The error message must mention the malformed args.
@@ -250,7 +266,7 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 
     attach_steel(
         &mut ed,
-        r#"(define-command! "move-right-bad" "" (lambda () (call! "move-right" "garbage")))"#,
+        r#"(define-command! "move-right-bad" "" (lambda (bid) (call! "move-right" bid "garbage")))"#,
     );
 
     // execute_keymap_command reports errors to the status bar rather than panicking;
@@ -266,13 +282,14 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 
 // ── Case B integration test ───────────────────────────────────────────────────
 
-/// **Case B** — a Steel function can observe the effect of `(move-down)` in
-/// the same eval via `(current-line-number)`.
+/// **Case B** — a Steel function can observe the effect of `(move-down bid)` in
+/// the same eval via `(buffer-cursor-line bid)`.
 ///
 /// The discriminating logic:
-/// - Start on line 1.  Call `(move-down)`.
-/// - Cursor is immediately on line 2, so the `(when (= (current-line-number) 2) ...)`
-///   arm fires and calls `(move-down)` a second time → final line 3.
+/// - Start on line 1.  Call `(move-down bid)`.
+/// - Cursor is immediately on line 2, so the `(when (= (buffer-cursor-line
+///   bid) 2) ...)` arm fires and calls `(move-down bid)` a second time → final
+///   line 3.
 ///
 /// Fail oracle: if dispatch defers commands → cursor lands on line 2 instead of 3.
 #[test]
@@ -283,10 +300,10 @@ fn case_b_sync_cursor_read_reflects_motion() {
     attach_steel(
         &mut ed,
         r#"(define-command! "test-case-b" "Case B probe"
-                 (lambda ()
-                   (move-down)
-                   (when (= (current-line-number) 2)
-                     (move-down))))"#,
+                 (lambda (bid)
+                   (move-down bid)
+                   (when (= (buffer-cursor-line bid) 2)
+                     (move-down bid))))"#,
     );
 
     ed.execute_keymap_command("test-case-b".into(), Some(1), false);
@@ -296,17 +313,17 @@ fn case_b_sync_cursor_read_reflects_motion() {
     // Fail oracle: if dispatch defers → cursor on line 2, "a\n-[b]>\nc\n".
     assert_eq!(
         final_state, "a\nb\n-[c]>\n",
-        "sync dispatch: (current-line-number) must reflect (move-down) effect within same eval"
+        "sync dispatch: (buffer-cursor-line bid) must reflect (move-down) effect within same eval"
     );
 }
 
 // ── Steel deferred dot-repeat ────────────────────────────────────────────────
 
-/// A Steel command that calls `(call! "repeat-last-action")` must actually replay
+/// A Steel command that calls `(call! "repeat-last-action" bid)` must actually replay
 /// the last editing action when its key is pressed.
 ///
-/// `(call! "repeat-last-action")` is a sync EditorCmd dispatch: it calls
-/// `run_command_sync("repeat-last-action")`, which runs `cmd_repeat` and sets
+/// `(call! "repeat-last-action" bid)` is a sync EditorCmd dispatch: it calls
+/// `run_command_sync("repeat-last-action", bid)`, which runs `cmd_repeat` and sets
 /// `state.pending_repeat`. The replay then fires in `replay_dot` at the
 /// tail of the enclosing `handle_key` call — NOT during the Steel eval.
 ///
@@ -326,7 +343,7 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     attach_steel(
         &mut ed,
         r#"(define-command! "steel-dot-repeat" "Repeat last action via Steel"
-                 (lambda () (call! "repeat-last-action")))"#,
+                 (lambda (bid) (call! "repeat-last-action" bid)))"#,
     );
 
     // Bind the Steel command to an unoccupied key (F2) in Normal mode.
@@ -350,7 +367,7 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
         "setup: last_repeatable_action must be set"
     );
 
-    // Move to "bar" and press F2 — the Steel command fires `(call! "repeat-last-action")`,
+    // Move to "bar" and press F2 — the Steel command fires `(call! "repeat-last-action" bid)`,
     // setting pending_repeat during eval; handle_key tail drains it, deleting the
     // selection. "bar" is the first (and only) word on its line, so its leading
     // space is indentation and is never absorbed, and there's no trailing space
@@ -363,7 +380,7 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
     assert_eq!(
         ed.doc().text().to_string(),
         " \n",
-        "Steel (call! \"repeat-last-action\") must replay the delete via handle_key drain"
+        "Steel (call! \"repeat-last-action\" bid) must replay the delete via handle_key drain"
     );
 }
 
@@ -458,7 +475,7 @@ fn classification_sites_all_agree() {
 // produces the same bookkeeping as a direct keypress on the same command.
 // Flip any assertion to confirm it catches a regression.
 
-/// **Finding 1 — register prefix**: `(set-register-prefix! "a") (call! "yank")` must
+/// **Finding 1 — register prefix**: `(set-register-prefix! "a") (call! "yank" bid)` must
 /// route the yank to named register `a`, not to the kill ring or clipboard.
 ///
 /// Fail oracle: comment out `register: ctx.current_register_prefix` in
@@ -471,9 +488,9 @@ fn steel_call_native_respects_register_prefix() {
     attach_steel(
         &mut ed,
         r#"(define-command! "yank-to-0" ""
-                 (lambda ()
+                 (lambda (bid)
                    (set-register-prefix! "0")
-                   (call! "yank")))"#,
+                   (call! "yank" bid)))"#,
     );
     ed.execute_keymap_command("yank-to-0".into(), Some(1), false);
 
@@ -504,14 +521,14 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
     attach_steel(
         &mut ed,
         r#"(define-command! "steel-delete" ""
-                 (lambda () (call! "delete")))"#,
+                 (lambda (bid) (call! "delete" bid)))"#,
     );
 
     ed.execute_keymap_command("steel-delete".into(), Some(1), false);
     // `delete` is repeatable — last_repeatable_action must be set.
     assert!(
         ed.state.last_repeatable_action.is_some(),
-        "last_repeatable_action must be set after Steel (call! \"delete\")"
+        "last_repeatable_action must be set after Steel (call! \"delete\" bid)"
     );
     assert_eq!(
         ed.state
@@ -546,23 +563,24 @@ fn steel_call_jump_cmd_records_jump_entry() {
     attach_steel(
         &mut ed,
         r#"(define-command! "steel-goto-end" ""
-                 (lambda () (call! "goto-last-line")))"#,
+                 (lambda (bid) (call! "goto-last-line" bid)))"#,
     );
 
     let pane_id = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
+    let _pane = focused_pane(&ed);
     // Fresh editor: no jump entries yet.
     let had_entries_before = ed.state.panes.jumps[pane_id].entries_for_buffer(bid);
     ed.execute_keymap_command("steel-goto-end".into(), Some(1), false);
     let has_entries_after = ed.state.panes.jumps[pane_id].entries_for_buffer(bid);
     assert!(
         !had_entries_before && has_entries_after,
-        "jump list must gain entries after Steel (call! \"goto-last-line\")"
+        "jump list must gain entries after Steel (call! \"goto-last-line\" bid)"
     );
 }
 
-/// **Finding 5 — paste session**: `(call! "paste-after")` followed by
-/// `(call! "move-down")` in one body must commit the paste session so that
+/// **Finding 5 — paste session**: `(call! "paste-after" bid)` followed by
+/// `(call! "move-down" bid)` in one body must commit the paste session so that
 /// one undo step reverts the paste cleanly.
 ///
 /// Fail oracle: remove the `step_paste_commit` call from `run_dispatch_pipeline`
@@ -577,9 +595,9 @@ fn steel_call_paste_then_motion_commits_paste_session() {
     attach_steel(
         &mut ed,
         r#"(define-command! "paste-and-move" ""
-                 (lambda ()
-                   (call! "paste-after")
-                   (call! "move-down")))"#,
+                 (lambda (bid)
+                   (call! "paste-after" bid)
+                   (call! "move-down" bid)))"#,
     );
     ed.execute_keymap_command("paste-and-move".into(), Some(1), false);
 
@@ -598,7 +616,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
     );
 }
 
-/// **Finding 7 — source order**: a Steel body `(call! my-steel-cmd) (call! "delete")`
+/// **Finding 7 — source order**: a Steel body `(call! my-steel-cmd) (call! "delete" bid)`
 /// must execute the Steel command first, then the delete — not reversed.
 ///
 /// Under the in-Steel dispatch model: `steel-move-right` is applied inline as a Steel
@@ -619,11 +637,11 @@ fn steel_call_source_order_native_after_steel() {
     attach_steel(
         &mut ed,
         r#"(define-command! "steel-move-right" ""
-                 (lambda () (call! "move-right")))
+                 (lambda (bid) (call! "move-right" bid)))
                (define-command! "order-test" ""
-                 (lambda ()
-                   (call! "steel-move-right")
-                   (call! "delete")))"#,
+                 (lambda (bid)
+                   (call! "steel-move-right" bid)
+                   (call! "delete" bid)))"#,
     );
     ed.execute_keymap_command("order-test".into(), Some(1), false);
 
@@ -639,11 +657,11 @@ fn steel_call_source_order_native_after_steel() {
 /// **Finding 7 — native count preserved across plugin→native chain**: a native
 /// command that follows a plugin command in the same body must use its own count.
 ///
-/// `noop-steel` is applied inline (no effect); `(call! "move-down" 3)` dispatches
+/// `noop-steel` is applied inline (no effect); `(call! "move-down" bid 3)` dispatches
 /// via `%call-native!` → `parse_count_extend` extracts `count=3` →
-/// `run_command_sync("move-down", 3, false)` → lands on line 4.
+/// `run_command_sync("move-down", pane, 3, false)` → lands on line 4.
 ///
-/// Fail oracle: replace `(call! "move-down" 3)` with `(call! "move-down" 1)` →
+/// Fail oracle: replace `(call! "move-down" bid 3)` with `(call! "move-down" bid 1)` →
 /// cursor lands on line 2 instead of 4; the count-preservation assertion fails.
 #[test]
 fn steel_native_via_call_preserves_own_count() {
@@ -656,14 +674,16 @@ fn steel_native_via_call_preserves_own_count() {
         &mut ed,
         r#"(define-command! "noop-steel" "" (lambda () #t))
                (define-command! "count-chain-test" ""
-                 (lambda ()
+                 (lambda (bid)
                    (call! "noop-steel")
-                   (call! "move-down" 3)))"#,
+                   (call! "move-down" bid 3)))"#,
     );
     ed.execute_keymap_command("count-chain-test".into(), Some(1), false);
 
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     let host = live_host!(ed);
-    let line = host.current_line_number().expect("current_line_number");
+    let line = host.buffer_cursor_line(pane).expect("buffer_cursor_line");
     // Started on line 1, moved down 3 → should be on line 4.
     assert_eq!(
         line, 4,
@@ -685,10 +705,10 @@ fn steel_unknown_cmd_errors_and_continues() {
     attach_steel(
         &mut ed,
         r#"(define-command! "warn-test" ""
-                 (lambda ()
-                   (call! "move-right")
+                 (lambda (bid)
+                   (call! "move-right" bid)
                    (call! "this-command-does-not-exist")
-                   (call! "move-right")))"#,
+                   (call! "move-right" bid)))"#,
     );
     ed.execute_keymap_command("warn-test".into(), Some(1), false);
 
@@ -730,6 +750,7 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     // Seed a pending hook (OnBufferSave — no handler registered, so
     // settle() skips the Steel call but still removes it from the queue).
     let bid = ed.focused_buffer_id();
+    let _pane = focused_pane(&ed);
     ed.state
         .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     assert!(
@@ -771,19 +792,20 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
 //   arity ≥ 2 or variadic → [count, extend]
 // The body then decides what to repeat / extend.
 
-/// A `(lambda (count extend))` command receives the keymap count and extend flag.
+/// A `(lambda (bid count extend))` command receives the leading bid, the
+/// keymap count, and the extend flag.
 ///
-/// Fail oracle: without injection, `(call! "move-right" count)` always passes 1
+/// Fail oracle: without injection, `(call! "move-right" bid count)` always passes 1
 /// and the cursor lands at column 1 instead of `count`.
 #[test]
-fn steel_lambda_receives_count_and_extend() {
+fn steel_lambda_receives_bid_count_and_extend() {
     // 10-char buffer; cursor starts at 0.
     let mut ed = editor_from("-[a]>bcdefghij\n");
 
     attach_steel(
         &mut ed,
         r#"(define-command! "step-right" ""
-             (lambda (count extend) (call! "move-right" count extend)))"#,
+             (lambda (bid count extend) (call! "move-right" bid count extend)))"#,
     );
 
     // Dispatch with count=4: cursor must land at position 4.
@@ -837,10 +859,12 @@ fn steel_lambda_receives_count_and_extend() {
 fn steel_zero_arity_lambda_ignores_injection() {
     let mut ed = editor_from("-[a]>bc\n");
 
-    // 0-arg lambda: always moves right 1.
+    // 0-arg lambda: always moves right 1. No `bid` parameter in scope (arity 0
+    // means dispatch injects nothing), so the native `move-right` call reads
+    // `(focused-pane)` for its own required bid argument instead.
     attach_steel(
         &mut ed,
-        r#"(define-command! "fixed-right" "" (lambda () (call! "move-right")))"#,
+        r#"(define-command! "fixed-right" "" (lambda () (call! "move-right" (focused-pane))))"#,
     );
 
     // Dispatch with count=5: the 0-arg lambda ignores count, moves exactly 1.
@@ -884,19 +908,78 @@ fn steel_zero_arity_lambda_ignores_injection() {
     );
 }
 
-/// A `(lambda (count))` command receives only the repeat count — no extend arg.
+/// A `(lambda (bid))` command receives only the leading bid — no count, no
+/// extend. `bid` is the leading slot at every non-zero arity, so arity 1
+/// means "receives bid", never "receives count".
 ///
-/// Fail oracle: if the arity-1 branch injected `[count, extend]` instead of
-/// `[count]`, Steel would call `(apply proc (list 4 #f))` on a 1-param lambda
-/// and raise an arity error; the cursor would not move.
+/// Fail oracle: if the arity-1 branch injected `[count]` instead of `[bid]`,
+/// `bid` would be bound to the count value and any buffer builtin called on
+/// it would error on a non-buffer-id argument, or (as here) count injection
+/// would silently apply and the cursor would move 5 instead of 1.
 #[test]
-fn steel_arity_1_lambda_receives_count_only() {
+fn steel_arity_1_lambda_receives_bid_only() {
+    let mut ed = editor_from("-[a]>bc\n");
+
+    attach_steel(
+        &mut ed,
+        r#"(define-command! "step-bid-only" ""
+             (lambda (bid) (buffer-language bid) (call! "move-right" bid)))"#,
+    );
+
+    // Dispatch with count=5: an arity-1 lambda ignores count (it isn't
+    // injected), so the cursor moves exactly 1.
+    let before = ed
+        .state
+        .panes
+        .state
+        .get(ed.state.focus.id())
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()
+        .selections()
+        .primary()
+        .head();
+    ed.execute_keymap_command("step-bid-only".into(), Some(5), false);
+    let after = ed
+        .state
+        .panes
+        .state
+        .get(ed.state.focus.id())
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()
+        .selections()
+        .primary()
+        .head();
+    assert_eq!(
+        after,
+        before.shift(1),
+        "arity-1 lambda must ignore count and move exactly 1; got {after:?}"
+    );
+
+    // No arity error was produced, and `bid` resolved to a real buffer id
+    // (the `buffer-language` call above would itself error otherwise).
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .all(|e| !matches!(e.severity, crate::editor::Severity::Error)),
+        "arity-1 Steel command must not produce an error on injection"
+    );
+}
+
+/// A `(lambda (bid count))` command receives the leading bid and the keymap
+/// count — no extend.
+#[test]
+fn steel_arity_2_lambda_receives_bid_and_count() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
 
     attach_steel(
         &mut ed,
         r#"(define-command! "step-count-only" ""
-             (lambda (count) (call! "move-right" count)))"#,
+             (lambda (bid count) (buffer-language bid) (call! "move-right" bid count)))"#,
     );
 
     // Dispatch with count=3: cursor must land 3 positions to the right.
@@ -925,7 +1008,7 @@ fn steel_arity_1_lambda_receives_count_only() {
             .message_log
             .entries()
             .all(|e| !matches!(e.severity, crate::editor::Severity::Error)),
-        "arity-1 Steel command must not produce an error on injection"
+        "arity-2 Steel command must not produce an error on injection"
     );
 }
 
@@ -933,13 +1016,13 @@ fn steel_arity_1_lambda_receives_count_only() {
 /// `(delete)` while Extend mode is active must exit Extend, even though
 /// `SteelBacked.clears_extend` is always `false`.
 ///
-/// The mechanism: `(call! "delete")` routes through `run_command_sync` →
+/// The mechanism: `(call! "delete" bid)` routes through `run_command_sync` →
 /// `run_dispatch_pipeline`, which runs `delete`'s own `step_clear_extend` with
 /// `clears_extend=true`.  Mode is still `Extend` when the inner pipeline fires,
 /// so it flips to Normal.  The outer Steel dispatch branch deliberately omits
 /// `step_clear_extend` — the inner command's meta drives the transition.
 ///
-/// Fail oracle: replace `(call! "delete")` with `(+ 1 0)` (no-op body) →
+/// Fail oracle: replace `(call! "delete" bid)` with `(+ 1 0)` (no-op body) →
 /// mode stays `Extend` → the mode assertion fails, proving the test is not vacuous.
 #[test]
 fn steel_call_delete_in_extend_exits_extend_mode() {
@@ -947,7 +1030,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 
     attach_steel(
         &mut ed,
-        r#"(define-command! "wrap-delete" "" (lambda () (call! "delete")))"#,
+        r#"(define-command! "wrap-delete" "" (lambda (bid) (call! "delete" bid)))"#,
     );
     ed.state.input.set_extend(true);
 
@@ -956,7 +1039,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
     assert_eq!(
         ed.state.mode(),
         Mode::Normal,
-        "Steel wrapping (call! \"delete\") must exit Extend via inner command's clears_extend"
+        "Steel wrapping (call! \"delete\" bid) must exit Extend via inner command's clears_extend"
     );
     // Also confirm the delete actually ran — the selection "hell" must be gone.
     assert_eq!(
@@ -978,7 +1061,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 // (commands/pipeline.rs) to revert to confirm the assertion breaks on that field.
 
 /// **Parity: repeatable edit** — `delete` dispatched via keypress vs via Steel
-/// `(call! "delete")` must produce the same `last_repeatable`.
+/// `(call! "delete" bid)` must produce the same `last_repeatable`.
 ///
 /// Fail oracle (last_repeatable): comment out the `if is_repeatable { … }` block
 ///   at commands/pipeline.rs:213–220 → snap_steel.last_repeatable is None; assertion fails.
@@ -990,11 +1073,11 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
     ed_key.execute_keymap_command("delete".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
-    // Path B — Steel (call! "delete").
+    // Path B — Steel (call! "delete" bid).
     let mut ed_steel = editor_from("-[f]>oo\n");
     attach_steel(
         &mut ed_steel,
-        r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#,
+        r#"(define-command! "steel-delete" "" (lambda (bid) (call! "delete" bid)))"#,
     );
     let before_steel = snapshot_bookkeeping(&ed_steel);
     ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false);
@@ -1014,7 +1097,7 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
 }
 
 /// **Parity: explicit jump command** — `goto-last-line` dispatched via keypress vs
-/// via Steel `(call! "goto-last-line")` must push the same number of jump entries.
+/// via Steel `(call! "goto-last-line" bid)` must push the same number of jump entries.
 ///
 /// Fail oracle (jump_len): comment out the `pre_jump` / jump-list push block
 ///   at commands/pipeline.rs:181–197 → snap_steel.jump_len stays 0; assertion fails.
@@ -1027,11 +1110,11 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
     ed_key.execute_keymap_command("goto-last-line".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
-    // Path B — Steel (call! "goto-last-line").
+    // Path B — Steel (call! "goto-last-line" bid).
     let mut ed_steel = editor_from(content);
     attach_steel(
         &mut ed_steel,
-        r#"(define-command! "steel-goto-end" "" (lambda () (call! "goto-last-line")))"#,
+        r#"(define-command! "steel-goto-end" "" (lambda (bid) (call! "goto-last-line" bid)))"#,
     );
     ed_steel.execute_keymap_command("steel-goto-end".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
@@ -1076,7 +1159,7 @@ fn parity_steel_branch_cluster_vs_native() {
     let mut ed_steel = editor_from("-[f]>oo\n");
     attach_steel(
         &mut ed_steel,
-        r#"(define-command! "steel-del" "" (lambda () (call! "delete")) #:repeatable #t)"#,
+        r#"(define-command! "steel-del" "" (lambda (bid) (call! "delete" bid)) #:repeatable #t)"#,
     );
     ed_steel.execute_keymap_command("steel-del".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
@@ -1154,11 +1237,11 @@ fn parity_steel_branch_cluster_vs_native() {
 }
 
 /// **Parity: Extend-exit via inner native dispatch** — `delete` from Extend mode
-/// dispatched via keypress vs via a Steel `(call! "delete")` wrapper must both
+/// dispatched via keypress vs via a Steel `(call! "delete" bid)` wrapper must both
 /// land in `Mode::Normal`. This is the mode-exit parity test that gives the
 /// `BookkeepingSnapshot.mode` field its teeth.
 ///
-/// Inner mechanism: `(call! "delete")` routes through `run_command_sync` →
+/// Inner mechanism: `(call! "delete" bid)` routes through `run_command_sync` →
 /// `run_dispatch_pipeline`, which runs `step_clear_extend` with `delete`'s
 /// `clears_extend=true`. Mode is `Extend` when the inner pipeline fires, so both
 /// paths exit to Normal.
@@ -1173,12 +1256,12 @@ fn parity_extend_exit_keypress_vs_steel() {
     ed_key.execute_keymap_command("delete".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
-    // Path B — Steel (call! "delete").
+    // Path B — Steel (call! "delete" bid).
     let mut ed_steel = editor_from("-[f]>oo\n");
     ed_steel.state.input.set_extend(true);
     attach_steel(
         &mut ed_steel,
-        r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#,
+        r#"(define-command! "steel-delete" "" (lambda (bid) (call! "delete" bid)))"#,
     );
     ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
@@ -1191,7 +1274,7 @@ fn parity_extend_exit_keypress_vs_steel() {
 
 /// **Parity: typed-run invalidation from Insert mode** — a motion reached
 /// while still in Insert mode must clear a pinned typed run identically via
-/// native dispatch and via a Steel `(call! "move-left")` wrapper.
+/// native dispatch and via a Steel `(call! "move-left" bid)` wrapper.
 /// `step_clear_typed_run` (`commands/pipeline.rs`) is the shared funnel this
 /// pins on: every route into a native command — key press, Steel `call!`, a
 /// hook, `run_command_sync` — clears the run identically, so Esc never goes
@@ -1214,13 +1297,13 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
         "sanity: native dispatch must clear the pinned typed run"
     );
 
-    // Path B — Steel (call! "move-left") while in Insert mode.
+    // Path B — Steel (call! "move-left" bid) while in Insert mode.
     let mut ed_steel = editor_from("-[h]>ello\n");
     ed_steel.handle_key(key('i'));
     ed_steel.handle_key(key('X'));
     attach_steel(
         &mut ed_steel,
-        r#"(define-command! "steel-move-left" "" (lambda () (call! "move-left")))"#,
+        r#"(define-command! "steel-move-left" "" (lambda (bid) (call! "move-left" bid)))"#,
     );
     ed_steel.execute_keymap_command("steel-move-left".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
@@ -1241,8 +1324,8 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
 /// the inner command's effect via a state read in the same body.
 ///
 /// `inner-move` is applied inline (plugin funcall in the VM), so the cursor is
-/// on line 2 by the time `(current-line-number)` is evaluated → the `(when …)`
-/// branch fires → second move-down → line 3.
+/// on line 2 by the time `(buffer-cursor-line bid)` is evaluated → the
+/// `(when …)` branch fires → second move-down → line 3.
 ///
 /// Fail oracle: comment out the `if proc { apply proc args }` branch in
 /// `%dispatch-command` so all commands fall through to `%call-native!` — the
@@ -1259,12 +1342,12 @@ fn plugin_calls_plugin_cursor_read_is_live() {
     attach_steel(
         &mut ed,
         r#"(define-command! "inner-move" ""
-                 (lambda () (call! "move-down")))
+                 (lambda () (call! "move-down" (focused-pane))))
                (define-command! "outer-cmd" ""
-                 (lambda ()
+                 (lambda (bid)
                    (call! "inner-move")
-                   (when (> (current-line-number) 1)
-                     (call! "move-down"))))"#,
+                   (when (> (buffer-cursor-line bid) 1)
+                     (call! "move-down" bid))))"#,
     );
     ed.execute_keymap_command("outer-cmd".into(), Some(1), false);
 
@@ -1403,7 +1486,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::ev
     f2
 }
 
-/// A Steel `#:repeatable` command that calls `(call! "insert-before")` must
+/// A Steel `#:repeatable` command that calls `(call! "insert-before" bid)` must
 /// record typed text in `insert_keys` and replay it on `.`.
 ///
 /// Fail oracle:
@@ -1417,7 +1500,7 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
     let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "steel-ins" "enter insert before selection"
-             (lambda () (call! "insert-before"))
+             (lambda () (call! "insert-before" (focused-pane)))
              #:repeatable #t)"#,
         "steel-ins",
     );
@@ -1459,7 +1542,7 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 }
 
 /// The `selection_recipe` snapshot taken before the Steel body runs must NOT be
-/// clobbered by an inner `(call! "insert-before")` dispatch.
+/// clobbered by an inner `(call! "insert-before" bid)` dispatch.
 ///
 /// Fail oracle (Gap A): without the pre-body `.clone()` snapshot in the Steel
 /// `dispatch` path, `step_stamp_repeatable` would read whatever
@@ -1477,7 +1560,7 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
     let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "steel-ins" "enter insert before selection"
-             (lambda () (call! "insert-before"))
+             (lambda () (call! "insert-before" (focused-pane)))
              #:repeatable #t)"#,
         "steel-ins",
     );
@@ -1529,7 +1612,7 @@ fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
     let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "vim-copy-wrapper" "wraps copy-selection-on-next-line"
-             (lambda () (call! "copy-selection-on-next-line" 1)))"#,
+             (lambda () (call! "copy-selection-on-next-line" (focused-pane) 1)))"#,
         "vim-copy-wrapper",
     );
 
@@ -1599,7 +1682,7 @@ fn steel_repeatable_insert_dot_repeat_single_undo() {
     let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "steel-ins" "enter insert before selection"
-             (lambda () (call! "insert-before"))
+             (lambda () (call! "insert-before" (focused-pane)))
              #:repeatable #t)"#,
         "steel-ins",
     );
@@ -1636,7 +1719,7 @@ fn steel_repeatable_change_via_call_records_insert_keys() {
     let f2 = setup_steel_f2(
         &mut ed,
         r#"(define-command! "steel-chg" "change selection"
-             (lambda () (call! "change"))
+             (lambda () (call! "change" (focused-pane)))
              #:repeatable #t)"#,
         "steel-chg",
     );
@@ -1684,22 +1767,22 @@ fn steel_repeatable_change_via_call_records_insert_keys() {
 /// the dispatch falls through to Steel with too few args, producing a raw
 /// Steel arity-mismatch error instead of a friendly editor message.
 #[test]
-fn keymap_dispatch_arity_over_2_reports_error() {
+fn keymap_dispatch_arity_over_3_reports_error() {
     let mut ed = editor_from("-[a]>b\n");
-    // A 3-param lambda is valid for `call!` use — only keymap dispatch rejects it.
+    // A 4-param lambda is valid for `call!` use — only keymap dispatch rejects it.
     attach_steel(
         &mut ed,
-        r#"(define-command! "three-params" "" (lambda (a b c) (+ a b c)))"#,
+        r#"(define-command! "four-params" "" (lambda (a b c d) (+ a b c d)))"#,
     );
 
-    ed.execute_keymap_command("three-params".into(), Some(1), false);
+    ed.execute_keymap_command("four-params".into(), Some(1), false);
 
     assert!(
         ed.state
             .message_log
             .entries()
             .any(|e| e.severity == crate::editor::Severity::Error),
-        "dispatch of arity-3 command via keymap must report a user-facing error"
+        "dispatch of arity-4 command via keymap must report a user-facing error"
     );
 }
 
@@ -1730,7 +1813,7 @@ fn steel_dispatch_consumes_pending_char() {
         // `#:repeatable #t` so the dot-repeat extension below has an action
         // to replay.
         r#"(define-command! "probe-char" ""
-             (lambda () (if (pending-char) (call! "move-right" 1) (+ 1 0)))
+             (lambda () (if (pending-char) (call! "move-right" (focused-pane) 1) (+ 1 0)))
              #:repeatable #t)"#,
         &mut init_host,
     )
@@ -1784,20 +1867,22 @@ fn steel_dispatch_consumes_pending_char() {
     );
 }
 
-// ── current_selections / char_index_to_line ───────────────────────────────────
+// ── buffer_selections / offset_to_line ───────────────────────────────────
 
-/// `current_selections` returns all selections sorted by start, one per cursor.
+/// `buffer_selections` returns all selections sorted by start, one per cursor.
 ///
 /// Fail oracle: hardcoding a single-element result would pass for one cursor
 /// but fail here, where two cursors must both appear in start order.
 #[test]
-fn current_selections_sorted_multi_cursor() {
+fn buffer_selections_sorted_multi_cursor() {
     // "-[ab]>c -[de]>f\n" — text "abc def\n": selection 1 anchor=0 head=1,
     // selection 2 anchor=4 head=5 (hand-counted from the annotated buffer).
     let mut ed = editor_from("-[ab]>c -[de]>f\n");
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     let host = live_host!(ed);
     let sels = host
-        .current_selections()
+        .buffer_selections(pane)
         .expect("pane state must be seeded");
     assert_eq!(
         sels,
@@ -1806,18 +1891,20 @@ fn current_selections_sorted_multi_cursor() {
     );
 }
 
-/// `current_selections` must preserve backward direction (anchor > head),
+/// `buffer_selections` must preserve backward direction (anchor > head),
 /// never normalize it.
 ///
 /// Fail oracle: normalizing to `(min, max)` would report `(0, 1, true)`
 /// instead of `(1, 0, true)`.
 #[test]
-fn current_selections_preserves_backward_direction() {
+fn buffer_selections_preserves_backward_direction() {
     // "<[ab]-c\n" — backward selection: head=0, anchor=1 (hand-counted).
     let mut ed = editor_from("<[ab]-c\n");
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     let host = live_host!(ed);
     let sels = host
-        .current_selections()
+        .buffer_selections(pane)
         .expect("pane state must be seeded");
     assert_eq!(
         sels,
@@ -1832,7 +1919,7 @@ fn current_selections_preserves_backward_direction() {
 /// Fail oracle: always flagging index 0 as primary would report
 /// `(0, 0, true)` instead of `(4, 4, true)`.
 #[test]
-fn current_selections_primary_flag_follows_primary_index() {
+fn buffer_selections_primary_flag_follows_primary_index() {
     use hume_editing::selection::{Selection, SelectionSet};
 
     let mut ed = editor_from("-[a]>bcde\n");
@@ -1840,9 +1927,11 @@ fn current_selections_primary_flag_follows_primary_index() {
         vec![Selection::collapsed(co(0)), Selection::collapsed(co(4))],
         1,
     ));
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     let host = live_host!(ed);
     let sels = host
-        .current_selections()
+        .buffer_selections(pane)
         .expect("pane state must be seeded");
     assert_eq!(
         sels,
@@ -1851,58 +1940,63 @@ fn current_selections_primary_flag_follows_primary_index() {
     );
 }
 
-/// `char_index_to_line` maps a 0-indexed char offset to its 1-indexed line.
+/// `offset_to_line` maps a 0-indexed char offset to its 1-indexed line.
 ///
 /// Independent oracle: expected lines are hand-counted from the buffer text,
 /// not derived via `char_to_line` or any shared helper.
 #[test]
-fn char_index_to_line_maps_offsets() {
+fn offset_to_line_maps_offsets() {
     // "ab\ncd\n" — a=0 b=1 \n=2 c=3 d=4 \n=5 (6 chars).
     let mut ed = editor_from("-[a]>b\ncd\n");
+    let bid = ed.focused_buffer_id();
+    let _pane = focused_pane(&ed);
     let host = live_host!(ed);
     assert_eq!(
-        host.char_index_to_line(0),
+        host.offset_to_line(bid, 0),
         Some(1),
         "offset 0 ('a') is on line 1"
     );
     assert_eq!(
-        host.char_index_to_line(3),
+        host.offset_to_line(bid, 3),
         Some(2),
         "offset 3 ('c') is on line 2"
     );
 }
 
-/// `char_index_to_line` returns `None` for an offset past the buffer's length,
+/// `offset_to_line` returns `None` for an offset past the buffer's length,
 /// but still succeeds at the exact boundary (`idx == len_chars()`).
 #[test]
-fn char_index_to_line_out_of_range_returns_none() {
+fn offset_to_line_out_of_range_returns_none() {
     // "ab\ncd\n" — 6 chars, len_chars() == 6. Every buffer ends with a
     // structural '\n' (HUME invariant), so ropey counts a trailing virtual
     // empty line after it: line 1 "ab\n", line 2 "cd\n", line 3 "" — idx 6
     // (== len_chars()) sits on that third, empty line.
     let mut ed = editor_from("-[a]>b\ncd\n");
+    let bid = ed.focused_buffer_id();
+    let _pane = focused_pane(&ed);
     let host = live_host!(ed);
     assert_eq!(
-        host.char_index_to_line(7),
+        host.offset_to_line(bid, 7),
         None,
         "offset past len_chars() must be None"
     );
     assert_eq!(
-        host.char_index_to_line(6),
+        host.offset_to_line(bid, 6),
         Some(3),
         "offset exactly at len_chars() is still a valid boundary (trailing virtual line)"
     );
 }
 
-/// End-to-end: a Steel command reads `(current-selections)` and compares it
-/// against a literal quoted list — pins the exact ints/bools/list shape that
-/// crosses the Steel boundary, not just the Rust-side tuple data.
+/// End-to-end: a Steel command reads `(buffer-selections bid)` and compares
+/// it against a literal quoted list — pins the exact
+/// ints/bools/list shape that crosses the Steel boundary, not just the
+/// Rust-side tuple data.
 ///
 /// Fail oracle: if the Steel-visible shape were wrong (wrong index order,
 /// wrong types), `equal?` would fail, the `unless` would fire, and `delete`
 /// would mutate the buffer — the assertion on `state(&ed)` catches that.
 #[test]
-fn current_selections_steel_roundtrip() {
+fn buffer_selections_steel_roundtrip() {
     let mut ed = editor_from("-[a]>bc\n");
 
     let names: Vec<String> = ed
@@ -1920,9 +2014,9 @@ fn current_selections_steel_roundtrip() {
     let mut init_host = live_host!(ed);
     host.eval_source(
         r#"(define-command! "probe-selections-roundtrip" ""
-             (lambda ()
-               (unless (equal? (current-selections) (list (list 0 0 #t)))
-                 (call! "delete" 1))))"#,
+             (lambda (bid)
+               (unless (equal? (buffer-selections bid) (list (list 0 0 #t)))
+                 (call! "delete" bid 1))))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1933,6 +2027,6 @@ fn current_selections_steel_roundtrip() {
     assert_eq!(
         state(&ed),
         "-[a]>bc\n",
-        "buffer must be untouched: (current-selections) must equal '((0 0 #t))"
+        "buffer must be untouched: (buffer-selections bid) must equal '((0 0 #t))"
     );
 }

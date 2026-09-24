@@ -69,16 +69,10 @@
                                         #:env [env '()])
   (%register-lsp-server! language command args root-markers init-options settings env))
 
-(define (lsp-request server method params callback #:allow-stale [allow-stale #f]
-                                                     #:supersede [supersede #f])
-  (%lsp-request server method params callback allow-stale supersede))
-
-(define (get-option . args)
-  (let ([n (length args)])
-    (cond
-      [(= n 1) (%get-option (car args) #f)]
-      [(= n 2) (%get-option (cadr args) (car args))]
-      [else (error "get-option: expected (get-option key) or (get-option bid key)")])))
+(define (lsp-request pane method params callback #:allow-stale [allow-stale #f]
+                                                   #:supersede [supersede #f]
+                                                   #:require-focus [require-focus #f])
+  (%lsp-request pane method params callback allow-stale supersede require-focus))
 
 (define (debounce ms proc)
   (let ((pending (box #f)))
@@ -93,39 +87,49 @@
                       (apply proc args))))
         (set-box! pending (unbox my-id))))))
 
-(define (debounce-by ms proc)
+;; `#:key` is applied to the debounced proc's own arguments, the same way
+;; `proc` itself is (`(apply key args)`, not `(key args)`) — its default,
+;; `(lambda (first . _) first)`, is the old behavior of keying directly on
+;; the first argument. A caller whose first argument is a pane that may
+;; arrive with or without a pane component for the same buffer (a command's
+;; own vs. a hook's pane-less one) passes `#:key (lambda (p . _) (buffer-key
+;; p))` instead, so both coalesce into the same pending slot.
+(define (debounce-by ms proc #:key [key (lambda (first . _) first)])
   (let ((pending (box (hash))))
     (lambda args
-      (let* ((key (car args))
+      (let* ((k (apply key args))
              (table (unbox pending)))
-        (when (hash-contains? table key)
-          (cancel-timer! (hash-ref table key)))
+        (when (hash-contains? table k)
+          (cancel-timer! (hash-ref table k)))
         (let ((my-id (box #f)))
           (set-box! my-id
             (after ms (lambda ()
                         (let ((table (unbox pending)))
-                          (when (and (hash-contains? table key)
-                                     (equal? (hash-ref table key) (unbox my-id)))
-                            (set-box! pending (hash-remove table key))))
+                          (when (and (hash-contains? table k)
+                                     (equal? (hash-ref table k) (unbox my-id)))
+                            (set-box! pending (hash-remove table k))))
                         (apply proc args))))
-          (set-box! pending (hash-insert (unbox pending) key (unbox my-id))))))))
+          (set-box! pending (hash-insert (unbox pending) k (unbox my-id))))))))
 
-(define (diagnostics-for-buffer bid #:severity [severity #f] #:range [range #f])
-  (%diagnostics-for-buffer bid severity range))
+(define (diagnostics-for-buffer pane #:severity [severity #f] #:range [range #f])
+  (%diagnostics-for-buffer pane severity range))
 
-(define (buffer-lines bid #:start [start #f] #:end [end #f])
-  (%buffer-lines bid start end))
+(define (buffer-lines pane #:start [start #f] #:end [end #f])
+  (%buffer-lines pane start end))
 
-(define (apply-text-edits! bid edits #:expect-generation [gen #f])
-  (%apply-text-edits! bid edits gen))
+(define (apply-text-edits! pane edits #:expect-generation [gen #f])
+  (%apply-text-edits! pane edits gen))
 
-(define (apply-workspace-edit! wsedit)
-  (let ((n (%apply-workspace-edit! wsedit)))
+(define (apply-workspace-edit! pane wsedit)
+  (let ((n (%apply-workspace-edit! pane wsedit)))
     (log! 'info (to-string n " buffers modified — :wa writes all"))
     n))
 
-(define (prompt! label on-confirm #:prefill [prefill ""])
-  (%prompt! label prefill on-confirm))
+(define (goto-location! pane target)
+  (%goto-location! pane target))
+
+(define (prompt! pane label on-confirm #:prefill [prefill ""])
+  (%prompt! pane label prefill on-confirm))
 
 ;; The bound identifier is `match-kind`, not `match` — `match` is Steel's own
 ;; pattern-matching macro (steel-core's `match.scm`), and the reader can't
@@ -146,13 +150,13 @@
     (unless (= code 0)
       (error (string-append cmd ": failed (exit " (number->string code) ")")))))
 
-(define (show-popup! text #:anchor [anchor 'cursor] #:kind [kind 'sticky] #:lang [lang #f])
-  (%show-popup! text anchor kind lang))
+(define (show-popup! pane text #:anchor [anchor 'cursor] #:kind [kind 'sticky] #:lang [lang #f])
+  (%show-popup! pane text anchor kind lang))
 
-(define (picker! items on-select #:prompt [prompt ""] #:pending [pending #f]
-                                  #:query [query ""] #:truncate [truncate 'head]
-                                  #:actions [actions '()])
-  (%picker! items on-select prompt pending query truncate actions))
+(define (picker! pane items on-select #:prompt [prompt ""] #:pending [pending #f]
+                                       #:query [query ""] #:truncate [truncate 'head]
+                                       #:actions [actions '()])
+  (%picker! pane items on-select prompt pending query truncate actions))
 
 ;; The `'(0)` default `picker-source-spawn!` and `live-picker!` both need for
 ;; `#:ok-exit-codes` — one literal, so the two keyword defaults can't drift.
@@ -162,7 +166,7 @@
                                               #:ok-exit-codes [ok-exit-codes %picker-source-default-ok-exit-codes])
   (%picker-source-spawn! token cmd args cwd nul ok-exit-codes))
 
-(define (live-picker! on-select #:command command
+(define (live-picker! pane on-select #:command command
                        #:prompt [prompt ""] #:query [query ""]
                        #:debounce-ms [debounce-ms 150]
                        #:cwd [cwd #f] #:nul [nul #f]
@@ -199,7 +203,7 @@
                       (with-handler
                         (lambda (e) (picker-replace! token '()) (raise-error e))
                         (spawn-for token q))))]
-         [token (%live-picker! on-select prompt query
+         [token (%live-picker! pane on-select prompt query
                   (lambda (token q)
                     (picker-source-stop! token)
                     (respawn token q))

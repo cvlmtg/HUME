@@ -67,7 +67,13 @@ fn tab_new_mappable_command_opens_a_fresh_tab_viewing_the_focused_buffer() {
     let bid_a = ed.focused_buffer_id();
 
     live_host!(ed)
-        .run_command_sync("tab-new", None, false, None)
+        .run_command_sync(
+            "tab-new",
+            hume_scripting::PaneHandle::buffer_only(bid_a),
+            None,
+            false,
+            None,
+        )
         .expect("tab-new must not error");
 
     assert_eq!(ed.state.tabs.len(), 2, "tab-new must add a tab");
@@ -489,7 +495,13 @@ fn goto_next_tab_via_call_while_in_insert_exits_insert_and_commits_the_outgoing_
     assert_eq!(ed.state.mode(), Mode::Insert, "setup: still typing in A");
 
     live_host!(ed)
-        .run_command_sync("goto-next-tab", None, false, None)
+        .run_command_sync(
+            "goto-next-tab",
+            hume_scripting::PaneHandle::buffer_only(bid_a),
+            None,
+            false,
+            None,
+        )
         .expect("goto-next-tab must not error");
 
     assert_eq!(
@@ -741,7 +753,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid first end)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -782,7 +794,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid first end)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -832,7 +844,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-viewport-change (lambda (bid first end)
-             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+             (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

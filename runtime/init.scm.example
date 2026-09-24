@@ -37,6 +37,6 @@
 ;; fixed global defaults. This treats '-' as a word character in CSS-family
 ;; buffers, so `w`/`b`/`mm`/`*` see "foo-bar" as one word instead of three.
 ;; (register-hook! 'on-language-set
-;;   (lambda (bid lang)
+;;   (lambda (pane lang)
 ;;     (when (member lang '("css" "scss" "less"))
-;;       (set-buffer-option! bid "word-chars" "-"))))
+;;       (set-buffer-option! pane "word-chars" "-"))))

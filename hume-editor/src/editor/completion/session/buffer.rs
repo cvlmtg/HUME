@@ -201,6 +201,10 @@ impl BufferSession {
         self.bid
     }
 
+    pub(in crate::editor) fn pane_id(&self) -> PaneId {
+        self.pane_id
+    }
+
     /// Whether this session's pane/buffer/generation still match live state
     /// — `Editor::dismiss_invalid_completion`'s settle-time check. A coarse
     /// yes/no, unlike `accept`'s own preconditions (`checked_buffer`, the

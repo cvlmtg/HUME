@@ -18,7 +18,7 @@ fn event_trigger_activates_on_first_fire() {
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:events '(on-buffer-save))"#,
-        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
         user: "user".to_string(),
@@ -79,7 +79,7 @@ fn event_trigger_idempotent_on_second_fire() {
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:events '(on-buffer-save))"#,
-        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
         user: "user".to_string(),
@@ -130,14 +130,14 @@ fn event_trigger_one_to_many_activates_all() {
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
         dir_a.join("plugin.scm"),
-        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" (focused-pane))))"#,
     )
     .unwrap();
     let dir_b = dir.path().join("plugins").join("user").join("tp2");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
         dir_b.join("plugin.scm"),
-        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right")))"#,
+        r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" (focused-pane))))"#,
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");
@@ -336,7 +336,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
         dir_a.join("plugin.scm"),
-        r#"(define-command! "a-cmd" "doc" (lambda () (call! "move-right")))"#,
+        r#"(define-command! "a-cmd" "doc" (lambda () (call! "move-right" (focused-pane))))"#,
     )
     .unwrap();
     // Plugin B — command activation entry; b-cmd's body calls "a-cmd" inline

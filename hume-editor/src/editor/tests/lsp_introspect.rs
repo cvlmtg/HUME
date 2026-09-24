@@ -6,8 +6,11 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
+use crate::editor::buffer::Buffer;
 use crate::editor::commands::open_pane_in_layout;
 use crate::editor::lsp::LspState;
+use hume_editing::selection::SelectionSet;
+use hume_editing::text::BufferText;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -39,6 +42,60 @@ fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) 
     sid
 }
 
+/// [`attach_running_server`] plus one canned response for `"test/echo"` —
+/// the setup every `lsp-position->offset`/`lsp-range->offsets` test below
+/// needs to hand the builtin a position that carries a real producing-server
+/// tag, now that an untagged (hand-built) hash is rejected outright.
+fn attach_running_server_with_echo(
+    ed: &mut Editor,
+    initialize_result: serde_json::Value,
+    echo: serde_json::Value,
+) -> ServerId {
+    let mut backend = InlineLspBackend::new();
+    backend.respond_to("initialize", initialize_result);
+    backend.respond_to("test/echo", echo);
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+
+    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
+    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
+    for action in actions {
+        ed.dispatch_lsp_action(sid2, action);
+    }
+    sid
+}
+
+/// [`run_probe`]'s async-response sibling: dispatches a `test/echo` request
+/// (queued by [`attach_running_server_with_echo`]'s canned response) and
+/// evaluates `assertion` — a Scheme expression referencing `bid` and `res`
+/// (the echoed, now-tagged value) — once it lands, moving the cursor iff it
+/// holds.
+fn run_tagged_probe(ed: &mut Editor, tmp: &std::path::Path, assertion: &str) -> bool {
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"(define-typed-command! "probe" "" (lambda (bid)
+                 (lsp-request bid "test/echo" (hash) (lambda (err res)
+                   (when {assertion} (call! "move-right" bid))))))"#
+        ),
+    );
+    let before = state(ed);
+    type_cmd(ed, ":probe");
+    ed.drain_lsp();
+    ed.settle();
+    state(ed) != before
+}
+
 #[test]
 fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
     let tmp = safe_tempdir();
@@ -52,7 +109,7 @@ fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (json-ref (lsp-capabilities #f) "hoverProvider") #t)"#,
+        r#"(equal? (json-ref (lsp-capabilities bid) "hoverProvider") #t)"#,
     );
     assert!(
         fired,
@@ -82,7 +139,7 @@ fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (json-ref (lsp-capabilities #f) "documentRangeFormattingProvider" "rangesSupport")
+        r#"(equal? (json-ref (lsp-capabilities bid) "documentRangeFormattingProvider" "rangesSupport")
                    #t)"#,
     );
     assert!(
@@ -112,7 +169,7 @@ fn lsp_capabilities_is_false_before_running() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (lsp-capabilities #f) #f)"#,
+        r#"(equal? (lsp-capabilities bid) #f)"#,
     );
     assert!(
         fired,
@@ -151,7 +208,7 @@ fn lsp_server_for_buffer_reflects_attachment() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (lsp-server-for-buffer (current-buffer)) "rust")"#,
+        r#"(equal? (lsp-server-for-buffer bid) "rust")"#,
     );
     assert!(
         fired,
@@ -208,7 +265,7 @@ fn buffer_generation_changes_after_an_edit() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "snap" "" (lambda () (log! 'info (to-string (buffer-generation (current-buffer))))))"#,
+        r#"(define-typed-command! "snap" "" (lambda (bid) (log! 'info (to-string (buffer-generation bid)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -249,7 +306,7 @@ fn lsp_position_params_uses_the_negotiated_utf16_encoding_for_multibyte_chars() 
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((p (lsp-position-params (current-buffer))))
+        r#"(let ((p (lsp-position-params bid)))
              (and p
                   (equal? (hash-ref (hash-ref p "position") "line") 0)
                   (equal? (hash-ref (hash-ref p "position") "character") 2)))"#,
@@ -275,7 +332,7 @@ fn lsp_position_params_uses_the_negotiated_utf8_encoding_for_multibyte_chars() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((p (lsp-position-params (current-buffer))))
+        r#"(let ((p (lsp-position-params bid)))
              (and p
                   (equal? (hash-ref (hash-ref p "position") "character") 4)))"#,
     );
@@ -299,7 +356,7 @@ fn lsp_primary_range_params_reflects_the_primary_selection() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((p (lsp-primary-range-params (current-buffer)))
+        r#"(let* ((p (lsp-primary-range-params bid))
                   (r (hash-ref p "range")))
              (and (equal? (hash-ref (hash-ref r "start") "character") 1)
                   (equal? (hash-ref (hash-ref r "end") "character") 4)))"#,
@@ -330,7 +387,7 @@ fn lsp_linewise_ranges_params_coalesces_touching_selections() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((p (lsp-linewise-ranges-params (current-buffer)))
+        r#"(let* ((p (lsp-linewise-ranges-params bid))
                   (ranges (hash-ref p "ranges"))
                   (r (car ranges))
                   (start (hash-ref r "start"))
@@ -366,7 +423,7 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (length (hash-ref (lsp-linewise-ranges-params (current-buffer)) "ranges")) 2)"#,
+        r#"(equal? (length (hash-ref (lsp-linewise-ranges-params bid) "ranges")) 2)"#,
     );
     assert!(
         fired,
@@ -396,7 +453,7 @@ fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_sele
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (length (hash-ref (lsp-linewise-ranges-params (current-buffer)) "ranges")) 2)"#,
+        r#"(equal? (length (hash-ref (lsp-linewise-ranges-params bid) "ranges")) 2)"#,
     );
     assert!(
         fired,
@@ -423,7 +480,7 @@ fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (hash-ref (lsp-linewise-ranges-params (current-buffer)) "ranges") '())"#,
+        r#"(equal? (hash-ref (lsp-linewise-ranges-params bid) "ranges") '())"#,
     );
     assert!(
         fired,
@@ -451,7 +508,7 @@ fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((p (lsp-linewise-ranges-params (current-buffer)))
+        r#"(let* ((p (lsp-linewise-ranges-params bid))
                   (ranges (hash-ref p "ranges"))
                   (r (car ranges))
                   (end (hash-ref r "end")))
@@ -476,7 +533,7 @@ fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((p (lsp-linewise-ranges-params (current-buffer))))
+        r#"(let ((p (lsp-linewise-ranges-params bid)))
              (and p
                   (hash-contains? p "textDocument")
                   (equal? (hash-ref p "ranges") '())))"#,
@@ -514,7 +571,7 @@ fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let* ((p (lsp-primary-range-params (current-buffer)))
+        r#"(let* ((p (lsp-primary-range-params bid))
                   (r (hash-ref p "range")))
              (equal? (hash-ref (hash-ref r "end") "character") 5))"#,
     );
@@ -553,7 +610,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
         &mut ed,
         host,
         tmp.path(),
-        r#"(equal? *captured* (viewport-range (current-buffer)))"#,
+        r#"(equal? *captured* (viewport-range bid))"#,
     );
     assert!(
         fired,
@@ -579,7 +636,7 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (cdr (viewport-range (current-buffer))) 3)"#,
+        r#"(equal? (cdr (viewport-range bid)) 3)"#,
     );
     assert!(
         fired,
@@ -599,20 +656,24 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 fn viewport_range_end_is_one_past_the_last_visible_row() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\n");
     ed.viewport_mut().height = 3;
-    let bid = ed.focused_buffer_id();
+    let t = crate::editor::commands::FocusedPane::current(&ed.state).target();
 
-    let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, bid);
+    let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, t);
     assert_eq!(
         got,
-        Some(hume_rope::offset::ExclusiveRange::new(
+        hume_rope::offset::ExclusiveRange::new(
             hume_rope::line::ContentLine::new(0),
             hume_rope::line::ContentLine::new(3),
-        ))
+        )
     );
 }
 
+/// `(viewport-range pane)` needs a pane, not just a buffer — kind-B fail-fast
+/// (see `docs/LESSONS.md`'s L19 and `commands::resolve_pane`'s doc): a
+/// pane-less handle (`(buffers)`'s own return shape) raises, replacing the
+/// old "not shown anywhere → `#f`" degrade.
 #[test]
-fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
+fn viewport_range_raises_for_a_paneless_buffer_handle() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
 
@@ -632,31 +693,43 @@ fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
         "test setup: the extra buffer must not be focused"
     );
 
-    // Only two buffers exist, so "the one that isn't the focused buffer"
-    // unambiguously picks out the hidden one — relies on `equal?`/hash
-    // (`equality_hint`) for buffer-id comparison across independently
-    // decoded `(buffers)` entries.
-    let fired = run_probe(
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
         &mut ed,
-        ScriptingHost::new(),
+        &mut host,
+        // Only two buffers exist, so "the one that isn't the focused
+        // buffer" unambiguously picks out the hidden one — relies on
+        // `equal?`/hash (`equality_hint`) for pane comparison across
+        // independently decoded `(buffers)` entries.
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (let ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers)))))
+               (viewport-range hidden))))"#,
         tmp.path(),
-        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
-             (equal? (viewport-range hidden) #f))"#,
     );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":probe");
+    let msg = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("viewport-range on a paneless handle must raise");
     assert!(
-        fired,
-        "a buffer not shown in any pane must yield #f from viewport-range"
+        msg.contains("pane"),
+        "error must name the missing pane; got: {msg}"
     );
 }
 
 /// A buffer shown only in a *background* tab's pane — not paneless, unlike
-/// the sibling test above — must also yield `None`/`#f`. Its pane's viewport
-/// can be stale (unresized since its tab was last active — see
+/// the sibling test above — still resolves: `resolve_pane`'s `Pane` category
+/// only checks that the pane is live and shows the buffer, not which tab
+/// it's on. The returned range may be stale (unresized since its tab was
+/// last active — see
 /// `editor::tests::tab::resizing_while_a_tab_is_hidden_leaves_it_stale_until_refocused`),
-/// so a stale-but-present pane is no more trustworthy a source of "what's
-/// currently visible" than no pane at all.
+/// which is the caller's own tradeoff for naming a background pane
+/// explicitly (`buffer-panes`) rather than the removed active-tab guess.
 #[test]
-fn viewport_range_is_false_for_a_buffer_shown_only_in_a_background_tab() {
+fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
     let tmp = safe_tempdir();
     let path = tmp.path().join("hidden.rs");
     std::fs::write(&path, "fn hidden() {}\n").unwrap();
@@ -664,6 +737,7 @@ fn viewport_range_is_false_for_a_buffer_shown_only_in_a_background_tab() {
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.execute_typed("tabnew", Some(path.to_str().unwrap()))
         .unwrap();
+    let hidden_pid = ed.state.focus.id();
     let hidden_bid = ed.focused_buffer_id();
     ed.execute_typed("tabprev", None).unwrap();
     assert_ne!(
@@ -672,18 +746,27 @@ fn viewport_range_is_false_for_a_buffer_shown_only_in_a_background_tab() {
         "test setup: back on the original tab, hidden_bid's tab now in the background"
     );
 
-    let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, hidden_bid);
+    let t = crate::editor::commands::resolve_command_pane(
+        &ed.state,
+        &ed.view,
+        hume_scripting::PaneHandle::with_pane(hidden_bid, hidden_pid),
+    )
+    .expect("a background-tab pane must still resolve");
+    let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, t);
     assert_eq!(
-        got, None,
-        "a buffer shown only in a background tab's pane must yield None from viewport_range"
+        got.start,
+        hume_rope::line::ContentLine::new(0),
+        "a background-tab pane still resolves and reports its own (possibly stale) geometry"
     );
 }
 
-/// Pins `LspHost::lsp_position_params`'s own trait doc: `#f` once `id`
-/// "isn't currently shown in any pane" — even though `id` is attached to a
-/// running server and still has a seeded (now stale) pane state.
+/// `lsp-position-params` needs a pane, not just a buffer — kind-B fail-fast
+/// (see `docs/LESSONS.md`'s L19 and `commands::resolve_pane`'s doc): a
+/// pane-less handle (`(buffers)`'s own return shape) raises, even when the
+/// buffer is attached to a running server and still has a seeded (now
+/// stale) pane state.
 #[test]
-fn lsp_position_params_is_false_for_a_buffer_shown_in_no_pane() {
+fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.doc_mut()
@@ -700,23 +783,35 @@ fn lsp_position_params_is_false_for_a_buffer_shown_in_no_pane() {
         .expect("extra file must be open in the buffer list");
     ed.switch_to_buffer_with_jump(other_bid);
 
-    let fired = run_probe(
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
         &mut ed,
-        ScriptingHost::new(),
+        &mut host,
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (let ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers)))))
+               (lsp-position-params hidden))))"#,
         tmp.path(),
-        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
-             (equal? (lsp-position-params hidden) #f))"#,
     );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":probe");
+    let msg = ed
+        .state
+        .status_msg
+        .clone()
+        .expect("lsp-position-params on a paneless handle must raise");
     assert!(
-        fired,
-        "lsp-position-params must return #f once the buffer is shown in no pane, not the stale cursor's position"
+        msg.contains("pane"),
+        "error must name the missing pane; got: {msg}"
     );
 }
 
-/// Characterization (behavior unchanged, no red run needed): a buffer shown
-/// in a *non-focused* pane still resolves — this is the inlay-hints-in-a-
-/// split path (`inlay.scm`'s refresh fires from `on-viewport-change`, which
-/// fires for any pane, not just the focused one).
+/// A buffer shown in a *non-focused* pane still resolves — this is the
+/// inlay-hints-in-a-split path (`inlay.scm`'s refresh fires from
+/// `on-viewport-change`, which fires for any pane, not just the focused
+/// one) — but only once the caller names that pane explicitly via
+/// `(buffer-panes hidden)`; a bare buffer handle (`(buffers)`'s own shape)
+/// no longer resolves on its own (see the sibling `_raises_` test above).
 #[test]
 fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
     let tmp = safe_tempdir();
@@ -748,23 +843,24 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
-             (and (lsp-position-params hidden) #t))"#,
+        r#"(let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
+                  (shown (car (buffer-panes hidden))))
+             (and (lsp-position-params shown) #t))"#,
     );
     assert!(
         fired,
-        "lsp-position-params must still resolve a buffer shown in a non-focused pane"
+        "lsp-position-params must still resolve a buffer shown in a non-focused pane, named via buffer-panes"
     );
 }
 
-/// Regression: `pane_showing_buffer`'s active-tab restriction used to be
-/// `shown_buffer_state`'s only resolver too — but none of its callers
-/// (`lsp-position-params` among them) ever read a viewport, only a cursor,
-/// which stays live no matter which tab is active. A buffer shown only in a
-/// *background* tab's pane must still resolve, the same as one shown in a
-/// non-focused *pane* does above (that's the active-tab restriction working
-/// as intended, for the one caller — `viewport_range` — that actually needs
-/// it).
+/// Regression: the removed `pane_showing_buffer`'s active-tab restriction
+/// used to gate `shown_buffer_state`'s resolution too — but none of its
+/// callers (`lsp-position-params` among them) ever read a viewport, only a
+/// cursor, which stays live no matter which tab is active. A buffer shown
+/// only in a *background* tab's pane must still resolve via `buffer-panes`,
+/// the same as one shown in a non-focused *pane* does above (that's the
+/// active-tab restriction working as intended, for the one caller —
+/// `viewport-range` — that actually needs it).
 #[test]
 fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
     let tmp = safe_tempdir();
@@ -784,12 +880,13 @@ fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
-             (and (lsp-position-params hidden) #t))"#,
+        r#"(let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
+                  (shown (car (buffer-panes hidden))))
+             (and (lsp-position-params shown) #t))"#,
     );
     assert!(
         fired,
-        "lsp-position-params must still resolve a buffer shown only in a background tab"
+        "lsp-position-params must still resolve a buffer shown only in a background tab, named via buffer-panes"
     );
 }
 
@@ -803,28 +900,29 @@ fn lsp_position_params_is_false_for_an_unattached_buffer() {
         &mut ed,
         host,
         tmp.path(),
-        r#"(equal? (lsp-position-params (current-buffer)) #f)"#,
+        r#"(equal? (lsp-position-params bid) #f)"#,
     );
     assert!(fired, "no attached server must yield #f, not an error");
 }
 
 #[test]
-fn lsp_position_to_offset_uses_the_negotiated_utf16_encoding() {
+fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
     let tmp = safe_tempdir();
     // "🎉" is 1 char, 2 UTF-16 code units — wire character 2 (the emoji's
     // full UTF-16 width) must land on char index 1, the char right after it.
     let mut ed = editor_from("-[x]>🎉rest\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-position-to-offset.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}})); // UTF-16 default
-
-    let fired = run_probe(
+    attach_running_server_with_echo(
         &mut ed,
-        ScriptingHost::new(),
+        serde_json::json!({"capabilities": {}}), // UTF-16 default
+        serde_json::json!({"line": 0, "character": 2}),
+    );
+
+    let fired = run_tagged_probe(
+        &mut ed,
         tmp.path(),
-        r#"(equal? (lsp-position->offset (current-buffer)
-                     (hash "line" 0 "character" 2))
-                   1)"#,
+        r#"(equal? (lsp-position->offset bid res) 1)"#,
     );
     assert!(
         fired,
@@ -833,24 +931,22 @@ fn lsp_position_to_offset_uses_the_negotiated_utf16_encoding() {
 }
 
 #[test]
-fn lsp_position_to_offset_uses_the_negotiated_utf8_encoding() {
+fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
     let tmp = safe_tempdir();
     // "🎉" is 4 UTF-8 bytes — wire character 4 must land on char index 1.
     let mut ed = editor_from("-[x]>🎉rest\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-position-to-offset-utf8.rs")));
-    attach_running_server(
+    attach_running_server_with_echo(
         &mut ed,
         serde_json::json!({"capabilities": {"positionEncoding": "utf-8"}}),
+        serde_json::json!({"line": 0, "character": 4}),
     );
 
-    let fired = run_probe(
+    let fired = run_tagged_probe(
         &mut ed,
-        ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (lsp-position->offset (current-buffer)
-                     (hash "line" 0 "character" 4))
-                   1)"#,
+        r#"(equal? (lsp-position->offset bid res) 1)"#,
     );
     assert!(
         fired,
@@ -858,18 +954,78 @@ fn lsp_position_to_offset_uses_the_negotiated_utf8_encoding() {
     );
 }
 
+/// `lsp-position->offset` reads the position's own tagged producing-server
+/// encoding — an untagged (hand-built) hash must error, not silently
+/// resolve via `bid`'s currently attached server the way this builtin used
+/// to (the exact bug `a548a117` fixed everywhere else in this crate, missed
+/// here).
+///
+/// Fail oracle: without `JsonHandle::position_encoding`'s `Err`, this would
+/// silently decode against the running UTF-16 server instead of erroring.
 #[test]
-fn lsp_position_to_offset_is_false_for_an_unattached_buffer() {
+fn lsp_position_to_offset_untagged_handle_errors() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    // No server attached at all — no negotiated encoding to convert with.
-    let fired = run_probe(
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    run(
         &mut ed,
-        ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (lsp-position->offset (current-buffer) (hash "line" 0 "character" 0)) #f)"#,
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (lsp-position->offset bid (hash "line" 0 "character" 0))))"#,
     );
-    assert!(fired, "no attached server must yield #f, not a guess");
+    type_cmd(&mut ed, ":probe");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("not a value from an LSP server"),
+        "an untagged position must error, not silently decode via bid's attached server: {log:?}"
+    );
+}
+
+/// The other half of the fix this holds regression for: a *tagged* position
+/// decodes correctly even when `bid` currently has no server attached at
+/// all — the encoding travels with the response, not with `bid`'s live
+/// attachment. The request is dispatched (and its response tagged) while
+/// the server is still attached; `bid`'s attachment is cleared directly
+/// before the response is drained, so only the tag remains by the time
+/// `lsp-position->offset` actually runs, mirroring
+/// `lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_err`'s
+/// own detach-after-send shape.
+#[test]
+fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>🎉rest\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-lsp-position-detached.rs")));
+    attach_running_server_with_echo(
+        &mut ed,
+        serde_json::json!({"capabilities": {}}), // UTF-16
+        serde_json::json!({"line": 0, "character": 2}),
+    );
+
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (lsp-request bid "test/echo" (hash) (lambda (err res)
+               (when (equal? (lsp-position->offset bid res) 1)
+                 (call! "move-right" bid))))))"#,
+    );
+    let before = state(&ed);
+    let bid = ed.focused_buffer_id();
+    type_cmd(&mut ed, ":probe");
+    // The request is already in flight — detaching now proves the later
+    // decode reads the response's own tag, not bid's live attachment.
+    ed.state.buffers.get_mut(bid).lsp_server = None;
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "a tagged position must still decode correctly with no server attached"
+    );
 }
 
 #[test]
@@ -885,15 +1041,16 @@ fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_li
     let mut ed = editor_from("-[x]>abc\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-position-phantom-line.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-
-    let fired = run_probe(
+    attach_running_server_with_echo(
         &mut ed,
-        ScriptingHost::new(),
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!({"line": 5, "character": 0}),
+    );
+
+    let fired = run_tagged_probe(
+        &mut ed,
         tmp.path(),
-        r#"(equal? (lsp-position->offset (current-buffer)
-                     (hash "line" 5 "character" 0))
-                   #f)"#,
+        r#"(equal? (lsp-position->offset bid res) #f)"#,
     );
     assert!(
         fired,
@@ -910,16 +1067,19 @@ fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
     let mut ed = editor_from("-[x]>🎉bcdef\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-range-to-offsets.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}})); // UTF-16 default
-
-    let fired = run_probe(
+    attach_running_server_with_echo(
         &mut ed,
-        ScriptingHost::new(),
+        serde_json::json!({"capabilities": {}}), // UTF-16 default
+        serde_json::json!({
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 0, "character": 2},
+        }),
+    );
+
+    let fired = run_tagged_probe(
+        &mut ed,
         tmp.path(),
-        r#"(equal? (lsp-range->offsets (current-buffer)
-                     (hash "start" (hash "line" 0 "character" 0)
-                           "end" (hash "line" 0 "character" 2)))
-                   (cons 0 1))"#,
+        r#"(equal? (lsp-range->offsets bid res) (cons 0 1))"#,
     );
     assert!(
         fired,
@@ -941,16 +1101,19 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
     let mut ed = editor_from("-[x]>abc\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-range-end-at-length.rs")));
-    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
-
-    let fired = run_probe(
+    attach_running_server_with_echo(
         &mut ed,
-        ScriptingHost::new(),
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!({
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 5, "character": 0},
+        }),
+    );
+
+    let fired = run_tagged_probe(
+        &mut ed,
         tmp.path(),
-        r#"(equal? (lsp-range->offsets (current-buffer)
-                     (hash "start" (hash "line" 0 "character" 0)
-                           "end" (hash "line" 5 "character" 0)))
-                   (cons 0 5))"#,
+        r#"(equal? (lsp-range->offsets bid res) (cons 0 5))"#,
     );
     assert!(
         fired,
@@ -958,18 +1121,52 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
     );
 }
 
+/// `lsp-range->offsets`'s own untagged-handle counterpart to
+/// `lsp_position_to_offset_untagged_handle_errors`.
 #[test]
-fn lsp_range_to_offsets_is_false_for_an_unattached_buffer() {
+fn lsp_range_to_offsets_untagged_handle_errors() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let fired = run_probe(
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    run(
         &mut ed,
-        ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (lsp-range->offsets (current-buffer)
-                     (hash "start" (hash "line" 0 "character" 0)
-                           "end" (hash "line" 0 "character" 1)))
-                   #f)"#,
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (lsp-range->offsets bid
+               (hash "start" (hash "line" 0 "character" 0)
+                     "end" (hash "line" 0 "character" 1)))))"#,
     );
-    assert!(fired, "no attached server must yield #f, not a guess");
+    type_cmd(&mut ed, ":probe");
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("not a value from an LSP server"),
+        "an untagged range must error, not silently decode via bid's attached server: {log:?}"
+    );
+}
+
+/// `lsp-locations->display-parts` reads each location's own tagged
+/// producing-server encoding — an untagged (hand-built) handle must error,
+/// not silently resolve to the UTF-16 default the way the removed
+/// `encoding_for_buffer` once did.
+///
+/// Fail oracle: without `JsonHandle::position_encoding`'s `Err` (a guessed
+/// UTF-16 fallback instead), this would return `Ok(vec![...])` for a
+/// well-formed but untagged location instead of erroring before ever
+/// measuring it.
+#[test]
+fn lsp_locations_display_parts_untagged_handle_errors() {
+    let ed = editor_from("-[a]>bcdef\n");
+    let handle = hume_scripting::json::JsonHandle::new(serde_json::json!({
+        "uri": "file:///a.rs",
+        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+    }));
+
+    let err = crate::editor::lsp::introspect::location_display_parts(&ed.state, &[handle])
+        .expect_err("an untagged handle must error, not silently guess an encoding");
+    assert!(
+        err.contains("not a value from an LSP server"),
+        "error must name the actual problem (no server tag); got: {err}"
+    );
 }

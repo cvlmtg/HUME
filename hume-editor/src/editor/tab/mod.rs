@@ -61,7 +61,7 @@ pub(in crate::editor) fn take_live(
 /// `resync_viewport_dims`/`begin_frame` run here, not just at the next
 /// frame's own `sync_viewport_dims`/`prepare_frame`: a command dispatch that
 /// switches tabs and then reads pane geometry in the same call (a scroll
-/// bound after a tab-switch key, a Steel body chaining `(call! "goto-next-tab")`
+/// bound after a tab-switch key, a Steel body chaining `(call! "goto-next-tab" bid)`
 /// onto a motion) would otherwise see the outgoing tab's stale viewport and
 /// an un-rewound line store for the incoming one. This does not touch the
 /// *hidden* tab's staleness model — a backgrounded pane is still untouched

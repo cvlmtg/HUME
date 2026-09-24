@@ -61,9 +61,10 @@ state's untouched value and `apply-hunks!` would skip clearing it.
 used both by a newer refresh superseding an older fetch, and from `on-buffer-close`
 (`state.scm` has no async awareness of its own).
 
-`schedule-refresh!` uses `debounce-by`, not `debounce` — keyed per `bid`, so one buffer's
-edits never cancel another's pending refresh (`core:lsp`'s `inlay.scm` uses the same
-rationale). It debounces at 150ms rather than `core:lsp`'s 200ms LSP round-trip budget —
+`schedule-refresh!` uses `debounce-by`, not `debounce` — keyed per `(buffer-key pane)`,
+not the pane value itself, so a command's own pane and a hook's pane-less value for the
+same buffer still coalesce, and one buffer's edits never cancel another's pending refresh
+(`core:lsp`'s `inlay.scm` uses the same rationale). It debounces at 150ms rather than `core:lsp`'s 200ms LSP round-trip budget —
 once the ref is cached, a refresh is a local diff, not a network request.
 
 ## Branch tracking (`branch.scm`)
@@ -93,11 +94,11 @@ worth it), so `branch.scm` has no `force-refresh!`/`'unavailable` equivalent.
 
 Both `refresh-branch!` and `handle-branch-result!` gate on `git-diff/buffer-entry` before
 touching anything that can outlive the buffer — `buffer-path` and
-`set-statusline-text!`, unlike this plugin's own state writes, hard-error on a closed bid
-rather than no-opping. That's safe even for a debounce timer or a `spawn-async!` callback
-that fires *after* the buffer closes: `on-buffer-close` removes the entry synchronously,
-before either can run, so `buffer-entry` returning `#f` is a reliable "this bid is dead"
-signal — the same reasoning `apply-hunks!` and `handle-fetch-result!` already rely on for
+`set-statusline-text!`, unlike this plugin's own state writes, hard-error on a closed
+buffer rather than no-opping. That's safe even for a debounce timer or a `spawn-async!`
+callback that fires *after* the buffer closes: `on-buffer-close` removes the entry
+synchronously, before either can run, so `buffer-entry` returning `#f` is a reliable
+"this buffer is dead" signal — the same reasoning `apply-hunks!` and `handle-fetch-result!` already rely on for
 the diff pipeline above.
 
 Severity is simpler than the diff pipeline's three-tier split, too: exit `-1` (git

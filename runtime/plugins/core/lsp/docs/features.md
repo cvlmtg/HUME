@@ -28,6 +28,13 @@ signature help it has no natural end-of-session to tie its lifetime to. Any key,
 paste, or mouse input other than a scrolling Ctrl-u/d closes it and still does its
 own job — no dismiss code needed here.
 
+`lsp-hover`'s request passes `#:require-focus #t`, so the bridge drops the
+response if the focused buffer has moved on by the time it lands — the
+request is async, so the user is free to switch buffers while it's in
+flight, and a popup for a symbol they're no longer looking at would be worse
+than no popup. Signature help and code actions pass the same flag for the
+same reason.
+
 ## Signature help
 
 The popup uses `#:kind 'sticky`, the default: it lives in the editor's current-mode
@@ -104,11 +111,18 @@ Format-on-save is not wired by default — v1 is manual `:lsp-fmt` only. To opt 
 uncomment `format.scm`'s commented-out hook:
 
 ```scheme
-(register-hook! 'on-buffer-save (lambda (bid) (call! "lsp-fmt")))
+(register-hook! 'on-buffer-save
+  (lambda (pane)
+    ;; `on-buffer-save`'s own `pane` carries no pane of its own — `lsp-fmt`
+    ;; needs one (it reads the live selection set), so this resolves one
+    ;; explicitly first (`(car (buffer-panes pane))`, via `lsp/resolve-pane`)
+    ;; rather than passing the pane-less value straight through.
+    (let ((resolved (lsp/resolve-pane pane)))
+      (when resolved (call! "lsp-fmt" resolved)))))
 ```
 
-`:lsp-fmt` classifies the selection set with `(selections-linewise? bid)` and
-`(selections-charwise? bid)`, and reads `(lsp-linewise-ranges-params bid)`'s
+`:lsp-fmt` classifies the selection set with `(selections-linewise? pane)` and
+`(selections-charwise? pane)`, and reads `(lsp-linewise-ranges-params pane)`'s
 `"ranges"` as payload only: all selections linewise formats those ranges (touching
 selections coalesced, disjoint ones kept separate — an LSP range is one contiguous
 span, so a gap can't be expressed as a single range), none linewise formats the whole

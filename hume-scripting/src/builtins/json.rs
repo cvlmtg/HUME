@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use steel::rvals::SteelVal;
 
-use crate::json::{JsonHandle, Seg, downcast_json_handle, to_steel_handle};
+use crate::json::{JsonHandle, Seg, WireOrigin, downcast_json_handle, to_steel_handle};
 
 use super::SteelResult;
 use super::args::string_arg;
@@ -32,7 +32,7 @@ pub(crate) fn json_parse(s: SteelVal) -> SteelResult {
     let s = string_arg(s, "json-parse")?;
     let value: serde_json::Value =
         serde_json::from_str(&s).map_err(|e| generic_err(format!("json-parse: {e}")))?;
-    Ok(to_steel_handle(Arc::new(value)))
+    Ok(to_steel_handle(Arc::new(value), WireOrigin::Local))
 }
 
 // ── JsonHandle accessors ──────────────────────────────────────────────────────

@@ -1589,7 +1589,7 @@ fn wrap_toggle_affects_only_focused_pane() {
 /// still list the just-closed pane, handing focus to a dead `PaneId`.
 #[test]
 fn close_then_focus_next_without_reframe_lands_on_live_pane() {
-    use crate::editor::commands::cmd_pane_focus_next;
+    use crate::editor::commands::{FocusedPane, cmd_pane_focus_next};
     use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -1606,7 +1606,8 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
     // Close B, then immediately focus-next — no `prepare_frame` in between.
     ed.execute_typed("quit", None).unwrap();
     assert_eq!(ed.view.panes.len(), 1, "sanity: B is closed");
-    cmd_pane_focus_next(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    let fp = FocusedPane::current(&ed.state);
+    cmd_pane_focus_next(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
 
     assert_eq!(
         ed.state.focus.id(),
@@ -1622,7 +1623,7 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
 /// command would silently no-op instead of moving to the new pane.
 #[test]
 fn split_then_focus_left_without_reframe_reaches_new_pane() {
-    use crate::editor::commands::cmd_pane_focus_left;
+    use crate::editor::commands::{FocusedPane, cmd_pane_focus_left};
     use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -1639,7 +1640,8 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
     let pid_b = ed.state.focus.id();
     assert_ne!(pid_a, pid_b);
 
-    cmd_pane_focus_left(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    let fp = FocusedPane::current(&ed.state);
+    cmd_pane_focus_left(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
     assert_eq!(
         ed.state.focus.id(),
         pid_a,

@@ -13,10 +13,19 @@
 //! - **Lazy activation commands** (unactivated plugin): `%dispatch-command`
 //!   activates the owner inline via `%activate-plugin-inline`, then retries.
 //! - **Native commands**: forwarded to `%call-native!` → `run_command_sync` inline.
-//!   `call!` returns `#f` if the body refused outright (a too-small split, the
-//!   last pane, …) and `#t` otherwise — see `run_command_sync`'s own doc for
-//!   why `#t` is not proof anything changed. Init mode: warns, skips, and
-//!   returns `#f` (buffer access not available during init).
+//!   A native command has no lambda parameter list to inject a leading `bid`
+//!   into (unlike a Steel command, which always receives one as its first
+//!   parameter), so `call!` requires it as the first *argument* instead:
+//!   `(call! "delete" bid)`, `(call! "move-right" bid 5)`. `bid` need not be
+//!   the focused buffer — `run_command_sync` resolves it against the
+//!   command's own target requirement (a pane showing it, the focused pane
+//!   specifically, the buffer alone, or nothing at all) and errors only when
+//!   that resolution fails — see `run_command_sync`'s own doc for the full
+//!   rule. `call!` returns `#f` if the body refused outright (a
+//!   too-small split, the last pane, …) and `#t` otherwise — see
+//!   `run_command_sync`'s own doc for why `#t` is not proof anything changed.
+//!   Init mode: warns, skips, and returns `#f` (buffer access not available
+//!   during init).
 //! - **Unknown**: forwarded to `%call-native!` → error logged, `#f` returned.
 //!
 //! `request-wait-char!` allows a Steel command to request that after the
@@ -28,7 +37,7 @@
 //! lambdas alike — are invoked uniformly by string name with optional args:
 //!
 //! ```scheme
-//! (call! "collapse-selection")        ; built-in, no args
+//! (call! "collapse-selection" bid)    ; built-in, needs its own buffer id
 //! (call! "my-plugin-cmd" "arg1")      ; Steel command with one arg
 //! ```
 
@@ -122,12 +131,13 @@ fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result
 /// `repeatable` and `inline_output` are mutually exclusive — passing both
 /// `#t` raises a Steel error.
 ///
-/// When triggered by a key binding the lambda receives leading `count` and
-/// `extend` arguments based on its declared arity:
-/// - `(lambda ())` — no injection; 0-arg commands keep working as before.
-/// - `(lambda (count))` — receives the repeat count (integer ≥ 1).
-/// - `(lambda (count extend))` — receives count and `#t`/`#f` extend flag.
-/// - Variadic lambdas receive both count and extend.
+/// When triggered by a key binding the lambda receives leading `bid`,
+/// `count`, and `extend` arguments based on its declared arity:
+/// - `(lambda ())` — no injection.
+/// - `(lambda (bid))` — receives the buffer id the command was invoked for.
+/// - `(lambda (bid count))` — bid and the repeat count (integer ≥ 1).
+/// - `(lambda (bid count extend))` — bid, count, and `#t`/`#f` extend flag.
+/// - Variadic lambdas receive all three.
 ///
 /// Raises a Steel error if:
 /// - `name` conflicts with a core built-in command.
@@ -184,11 +194,12 @@ pub(crate) fn define_command(
 /// dot-repeat is meaningless for a `:` command, so there is nothing to
 /// mutually-exclude against `inline_output` the way `define-command!` does.
 ///
-/// When dispatched, the lambda receives leading `arg`/`force` arguments based
-/// on its declared arity:
+/// When dispatched, the lambda receives leading `bid`/`arg`/`force`
+/// arguments based on its declared arity:
 /// - `(lambda ())` — no injection.
-/// - `(lambda (arg))` — the typed argument (a string), or `#f` if none.
-/// - `(lambda (arg force))` — the argument and whether `!` was appended.
+/// - `(lambda (bid))` — the buffer id the command was invoked for.
+/// - `(lambda (bid arg))` — bid and the typed argument (a string), or `#f` if none.
+/// - `(lambda (bid arg force))` — bid, the argument, and whether `!` was appended.
 ///
 /// Raises a Steel error under the same conditions as `define-command!`.
 pub(crate) fn define_typed_command(
@@ -234,8 +245,14 @@ pub(crate) fn define_typed_command(
 /// and has no lazy activation command owner (i.e. it is a native or unknown command).
 ///
 /// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): in command mode,
-///   validates count/extend args and runs synchronously via `run_command_sync`,
-///   returning its `#t`/`#f` outcome to the Steel caller unchanged. In init
+///   decodes `bid` (a native command's leading arg — it has no lambda
+///   parameter list of its own to carry one, so `call!` supplies it
+///   positionally, same as a Steel command's injected leading parameter),
+///   validates the remaining count/extend args, and runs synchronously via
+///   `run_command_sync`, returning its `#t`/`#f` outcome to the Steel caller
+///   unchanged. `run_command_sync` resolves `bid` against the command's own
+///   target requirement — see its own doc — and errors only when that
+///   resolution fails, not merely because `bid` isn't focused. In init
 ///   mode, logs a warning, skips, and returns `#f` — native commands touch
 ///   buffers, which are not available during init.scm evaluation.
 /// - **Steel-but-not-in-table** (`Ok(false)`): logs an `Error` naming the
@@ -270,11 +287,19 @@ pub(crate) fn call_command_primitive(
                 );
                 return Ok(SteelVal::BoolV(false));
             }
-            let (count, extend) = parse_count_extend(&args_vec)
-                .map_err(|e| generic_err(format!("%call-native!: {e}")))?;
+            let (pane, rest) = args_vec.split_first().ok_or_else(|| {
+                generic_err(format!(
+                    "%call-native!: '{name}' needs a pane: (call! \"{name}\" pane [count [extend]])"
+                ))
+            })?;
+            let pane = super::ids::downcast_pane(pane).ok_or_else(|| {
+                generic_err(format!("%call-native!: '{name}': first arg must be a pane"))
+            })?;
+            let (count, extend) =
+                parse_count_extend(rest).map_err(|e| generic_err(format!("%call-native!: {e}")))?;
             ctx.host
                 .commands()
-                .run_command_sync(&name, count, extend, ctx.current_register_prefix)
+                .run_command_sync(&name, pane, count, extend, ctx.current_register_prefix)
                 .map(SteelVal::BoolV)
                 .map_err(|e| generic_err(format!("%call-native!: {e}")))
         }
@@ -384,7 +409,7 @@ fn steel_list_to_vec(val: SteelVal) -> Result<Vec<SteelVal>, SteelErr> {
 /// user types becomes `pending_char` and `cmd-name` is dispatched.
 ///
 /// Typical use: composing surround-select with replace.
-///   `(call! "surround-paren") (request-wait-char! "replace")`
+///   `(call! "surround-paren" bid) (request-wait-char! "replace")`
 /// selects the surrounding `()` pair, then waits for the replacement char.
 ///
 /// Only valid inside a `SteelBacked` command invocation.

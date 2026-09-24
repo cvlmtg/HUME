@@ -171,7 +171,6 @@ where
 #[derive(Debug, Clone)]
 pub struct RequestMeta {
     pub method: String,
-    pub allow_stale: bool,
     pub deadline: Instant,
 }
 
@@ -507,7 +506,6 @@ impl LspClient {
             id.clone(),
             RequestMeta {
                 method: lsp_types::request::Initialize::METHOD.to_string(),
-                allow_stale: false,
                 deadline: Instant::now() + INITIALIZE_TIMEOUT,
             },
         );
@@ -677,7 +675,6 @@ impl LspClient {
                 id.clone(),
                 RequestMeta {
                     method: lsp_types::request::Shutdown::METHOD.to_string(),
-                    allow_stale: false,
                     deadline: Instant::now() + SHUTDOWN_TIMEOUT,
                 },
             );

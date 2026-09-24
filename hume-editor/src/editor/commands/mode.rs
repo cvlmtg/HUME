@@ -16,7 +16,7 @@ use super::super::input_stack::{BaseLayer, CommandLayer};
 use super::super::replay::PendingRepeat;
 use super::super::{EditorState, MiniBuffer};
 use super::{
-    ExitCursor, apply_focused_edit_grouped, apply_focused_motion, arm_autoindent,
+    ExitCursor, FocusedPane, apply_focused_edit_grouped, apply_pane_motion, arm_autoindent,
     begin_insert_session, begin_typed_run, end_insert_session,
 };
 use crate::editor::error::CommandError;
@@ -26,10 +26,11 @@ use crate::editor::error::CommandError;
 pub(in crate::editor) fn cmd_insert_before(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_focused_motion(state, view, |_b, sels| {
+    apply_pane_motion(state, view, fp.target(), |_b, sels| {
         sels.map(|s| Selection::collapsed(s.start()))
     });
     begin_insert_session(state, view);
@@ -40,10 +41,11 @@ pub(in crate::editor) fn cmd_insert_before(
 pub(in crate::editor) fn cmd_insert_after(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_focused_motion(state, view, |b, s| {
+    apply_pane_motion(state, view, fp.target(), |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
@@ -54,10 +56,11 @@ pub(in crate::editor) fn cmd_insert_after(
 pub(in crate::editor) fn cmd_insert_at_line_start(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_focused_motion(state, view, |b, s| {
+    apply_pane_motion(state, view, fp.target(), |b, s| {
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view);
@@ -68,10 +71,11 @@ pub(in crate::editor) fn cmd_insert_at_line_start(
 pub(in crate::editor) fn cmd_insert_at_line_end(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_focused_motion(state, view, |b, s| {
+    apply_pane_motion(state, view, fp.target(), |b, s| {
         // Move to line content-end, then step right onto the \n slot — unless the
         // line is empty, in which case line-end is already the \n and stepping past
         // it would land on the next line.
@@ -98,10 +102,11 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
 pub(in crate::editor) fn cmd_insert_at_selection_start(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_focused_motion(state, view, |_b, sels| {
+    apply_pane_motion(state, view, fp.target(), |_b, sels| {
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
     begin_insert_session(state, view);
@@ -123,10 +128,11 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
 pub(in crate::editor) fn cmd_insert_at_selection_end(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_focused_motion(state, view, |b, sels| {
+    apply_pane_motion(state, view, fp.target(), |b, sels| {
         // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
         let max = b.last_char();
         sels.map(|sel| {
@@ -157,14 +163,15 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
 pub(in crate::editor) fn cmd_open_line_below(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view);
-    apply_focused_motion(state, view, |b, s| {
+    apply_pane_motion(state, view, fp.target(), |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
-    apply_focused_edit_grouped(state, view, |b, s| insert_newline_indent(b, s, &[]));
+    apply_focused_edit_grouped(state, view, fp, |b, s| insert_newline_indent(b, s, &[]));
     // Pin after the structural newline, not before — the anchor must mark
     // the start of typed content, not the blank line's own `\n`.
     begin_typed_run(state, view, ExitCursor::StepBack);
@@ -178,14 +185,15 @@ pub(in crate::editor) fn cmd_open_line_below(
 pub(in crate::editor) fn cmd_open_line_above(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view);
-    apply_focused_motion(state, view, |b, s| {
+    apply_pane_motion(state, view, fp.target(), |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });
-    apply_focused_edit_grouped(state, view, open_line_above);
+    apply_focused_edit_grouped(state, view, fp, open_line_above);
     // Pin after the indent + the structural newline `open_line_above` leaves
     // the cursor on — same reasoning as `cmd_open_line_below`.
     begin_typed_run(state, view, ExitCursor::StepBack);
@@ -212,6 +220,7 @@ pub(in crate::editor) fn cmd_command_mode(
 pub(in crate::editor) fn cmd_exit_insert(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -226,6 +235,7 @@ pub(in crate::editor) fn cmd_exit_insert(
 pub(in crate::editor) fn cmd_completion_trigger(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -262,10 +272,11 @@ pub(in crate::editor) fn cmd_toggle_extend(
 fn do_collapse_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: super::CommandPane,
     collapse: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
     state.input.set_extend(false);
-    apply_focused_motion(state, view, collapse);
+    apply_pane_motion(state, view, t, collapse);
 }
 
 /// Collapse each selection to its cursor (head) and exit extend mode.
@@ -274,10 +285,11 @@ fn do_collapse_and_exit_extend(
 pub(in crate::editor) fn cmd_collapse_to_head_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_collapse_and_exit_extend(state, view, |b, s| {
+    do_collapse_and_exit_extend(state, view, fp.target(), |b, s| {
         cmd_collapse_selection_to_head(b, s, 0, MotionMode::Move)
     });
     Ok(())
@@ -292,10 +304,11 @@ pub(in crate::editor) fn cmd_collapse_to_head_and_exit_extend(
 pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_collapse_and_exit_extend(state, view, |b, s| {
+    do_collapse_and_exit_extend(state, view, fp.target(), |b, s| {
         cmd_collapse_selection_to_anchor(b, s, 0, MotionMode::Move)
     });
     Ok(())
@@ -319,12 +332,13 @@ pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
 /// The handler only enqueues a `PendingRepeat` marker; the actual replay
 /// (edit-group bracketing, re-dispatch, insert-key replay) runs in
 /// `replay_dot` at the tail of `handle_key`, where `&mut Editor` is available
-/// for `run_native_body`/`run_steel_command` and `handle_insert`. This keeps
-/// the invariant that no `EditorCmd` handler takes `&mut Editor` (see
-/// `EditorCmdFn` in `registry/command.rs`).
+/// for `run_native_body_on_focus`/`run_steel_command` and `handle_insert`. This
+/// keeps the invariant that no `EditorCmd` handler takes `&mut Editor` (see
+/// `EditorCmdBody` in `registry/command.rs`).
 pub(in crate::editor) fn cmd_repeat(
     state: &mut EditorState,
     _view: &mut EngineView,
+    _fp: FocusedPane,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {

@@ -266,9 +266,9 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     run(
         &mut ed,
         &tmp,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (register-sign-source! "linter" (current-buffer) 20)
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! "linter" bid 20)
+             (set-signs! "linter" bid (list (list 0 "!" "warn-scope")))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -332,9 +332,9 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
     run(
         &mut ed,
         &tmp,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (register-sign-source! "git-diff" (current-buffer) 0)
-             (set-signs! "git-diff" (current-buffer) (list (list 0 "+" "diff.plus")))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! "git-diff" bid 0)
+             (set-signs! "git-diff" bid (list (list 0 "+" "diff.plus")))))"#,
     );
     type_cmd(&mut ed, ":arm");
 

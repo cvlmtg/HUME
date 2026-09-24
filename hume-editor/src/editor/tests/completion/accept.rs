@@ -191,14 +191,35 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
 fn a_buffer_edit_the_session_never_saw_invalidates_it() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
+    super::super::lsp_bridge::setup_with(&mut ed, |backend, _sid| {
+        // `apply-text-edits!` now only accepts a server-tagged wire edit
+        // (via a real response) — this canned response is what the
+        // `:stash` dispatch below (run before `finish`, which reads it
+        // back) turns into one.
+        backend.respond_to(
+            "test/textEdits",
+            serde_json::json!([{"range": {"start": {"line": 0, "character": 6}, "end": {"line": 0, "character": 6}}, "newText": "Q"}]),
+        );
+    });
     raw_insert_with_source(
         &mut ed,
         tmp.path(),
         r#"(list (hash "label" "x" "insertText" "z"))"#,
-        r#"(define-command! "finish" "" (lambda ()
-             (apply-text-edits! (current-buffer) (list (list (cons 0 6) (cons 0 6) "Q")))
+        r#"(define stashed-edits (box #f))
+           (define-typed-command! "stash" "" (lambda (bid)
+             (lsp-request bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
+           (define-command! "finish" "" (lambda (bid)
+             (apply-text-edits! bid (json-list (unbox stashed-edits)))
              (completion-accept! 0)))"#,
     );
+    // `raw_insert_with_source` already entered Insert mode with the
+    // completion session open — `run_typed_steel_command`, not
+    // `type_cmd`'s keystroke typing, so `:stash` dispatches as a command
+    // (it's Steel-backed, unlike what `execute_typed` supports) instead of
+    // literal text.
+    assert!(ed.run_typed_steel_command("stash", None, None, false));
+    ed.drain_lsp();
+    ed.settle();
     accept_via_steel(&mut ed);
     assert_eq!(
         ed.doc().text().to_string(),

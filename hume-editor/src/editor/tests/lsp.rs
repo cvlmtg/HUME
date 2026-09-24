@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::editor::lsp::LspState;
+use crate::editor::lsp::{LspState, ResponseAnchor};
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::{LspClient, Outcome, RequestMeta, ServerState};
 use hume_lsp::inline::InlineLspBackend;
@@ -28,6 +28,19 @@ fn wire_client(ed: &mut Editor, backend: InlineLspBackend, sid: ServerId) {
     ed.lsp.insert_client_for_test(client);
 }
 
+/// A `ResponseAnchor` that never drops the response — for a test exercising
+/// something other than the anchor's own text-gen/focus checks.
+/// `allow_stale: true` makes `bid`/`text_gen` irrelevant to admission.
+fn no_drop_anchor(ed: &Editor) -> ResponseAnchor {
+    ResponseAnchor {
+        bid: ed.focused_buffer_id(),
+        pane: Some(ed.state.focus.id()),
+        text_gen: 0,
+        allow_stale: true,
+        require_focus: false,
+    }
+}
+
 #[test]
 fn callback_fires_with_ok_outcome_on_response() {
     let mut ed = editor_from("-[w]>ord\n");
@@ -42,7 +55,6 @@ fn callback_fires_with_ok_outcome_on_response() {
     let result_in_closure = result.clone();
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + Duration::from_secs(10),
     };
     let id = ed
@@ -52,8 +64,8 @@ fn callback_fires_with_ok_outcome_on_response() {
     ed.lsp.register_callback(
         sid,
         id,
-        None,
-        Box::new(move |_ed, outcome| {
+        no_drop_anchor(&ed),
+        Box::new(move |_ed, _server_id, outcome| {
             *result_in_closure.borrow_mut() = Some(outcome);
         }),
     );
@@ -77,7 +89,6 @@ fn callback_never_fires_for_a_request_with_no_response() {
     let fired_in_closure = fired.clone();
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + Duration::from_secs(10),
     };
     let id = ed
@@ -87,8 +98,8 @@ fn callback_never_fires_for_a_request_with_no_response() {
     ed.lsp.register_callback(
         sid,
         id,
-        None,
-        Box::new(move |_ed, _outcome| {
+        no_drop_anchor(&ed),
+        Box::new(move |_ed, _server_id, _outcome| {
             *fired_in_closure.borrow_mut() = true;
         }),
     );
@@ -116,7 +127,6 @@ fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace()
     let result_in_closure = result.clone();
     let meta = RequestMeta {
         method: "textDocument/completion".to_string(),
-        allow_stale: false,
         deadline: Instant::now() - Duration::from_millis(1),
     };
     let id = ed
@@ -131,8 +141,8 @@ fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace()
     ed.lsp.register_callback(
         sid,
         id,
-        None,
-        Box::new(move |_ed, outcome| {
+        no_drop_anchor(&ed),
+        Box::new(move |_ed, _server_id, outcome| {
             result_in_closure.borrow_mut().push(outcome);
         }),
     );
@@ -166,7 +176,6 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
     let fired_in_closure = fired.clone();
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + Duration::from_secs(10),
     };
     let id = ed
@@ -176,8 +185,14 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
     ed.lsp.register_callback(
         sid,
         id,
-        Some((bid, sent_gen)),
-        Box::new(move |_ed, _outcome| {
+        ResponseAnchor {
+            bid,
+            pane: None,
+            text_gen: sent_gen,
+            allow_stale: false,
+            require_focus: false,
+        },
+        Box::new(move |_ed, _server_id, _outcome| {
             *fired_in_closure.borrow_mut() = true;
         }),
     );
@@ -208,7 +223,6 @@ fn allow_stale_delivers_despite_buffer_moving_past_text_gen() {
     let fired_in_closure = fired.clone();
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: true,
         deadline: Instant::now() + Duration::from_secs(10),
     };
     let id = ed
@@ -218,8 +232,14 @@ fn allow_stale_delivers_despite_buffer_moving_past_text_gen() {
     ed.lsp.register_callback(
         sid,
         id,
-        Some((bid, sent_gen)),
-        Box::new(move |_ed, _outcome| {
+        ResponseAnchor {
+            bid,
+            pane: None,
+            text_gen: sent_gen,
+            allow_stale: true,
+            require_focus: false,
+        },
+        Box::new(move |_ed, _server_id, _outcome| {
             *fired_in_closure.borrow_mut() = true;
         }),
     );
@@ -270,7 +290,6 @@ fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadl
     let result_in_closure = result.clone();
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + Duration::from_secs(3600),
     };
     let id = ed
@@ -280,8 +299,8 @@ fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadl
     ed.lsp.register_callback(
         sid,
         id,
-        None,
-        Box::new(move |_ed, outcome| {
+        no_drop_anchor(&ed),
+        Box::new(move |_ed, _server_id, outcome| {
             *result_in_closure.borrow_mut() = Some(outcome);
         }),
     );
@@ -548,7 +567,6 @@ fn lsp_stop_dispatches_timed_out_for_in_flight_callbacks_instead_of_orphaning_th
     let result_in_closure = result.clone();
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + Duration::from_secs(10),
     };
     let id = ed
@@ -558,13 +576,15 @@ fn lsp_stop_dispatches_timed_out_for_in_flight_callbacks_instead_of_orphaning_th
     ed.lsp.register_callback(
         sid,
         id,
-        None,
-        Box::new(move |_ed, outcome| {
+        no_drop_anchor(&ed),
+        Box::new(move |_ed, _server_id, outcome| {
             result_in_closure.borrow_mut().push(outcome);
         }),
     );
 
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
 
     {
         let outcomes = result.borrow();

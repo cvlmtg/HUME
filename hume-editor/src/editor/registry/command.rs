@@ -1,13 +1,110 @@
 use std::borrow::Cow;
 
-use crate::editor::commands::NativeBody;
+use crate::editor::commands::{CommandPane, FocusedPane, NativeBody};
 use crate::editor::error::CommandError;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{BufferId, EngineView};
 use hume_ops::{MotionMode, WordCtx};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
+
+// ── Native command target category ───────────────────────────────────────────
+
+/// What buffer/pane an [`EditorCmd`](MappableCommand::EditorCmd) body needs
+/// to run — the compiler-enforced answer to "can `(call! \"cmd\" bid)` act on
+/// a `bid` other than the focused buffer, and if so, through which pane".
+/// Motion/Selection/Edit have no field for this: every one of them is
+/// [`Self::Pane`], since a pure `fn(&BufferText, SelectionSet, ...)`/
+/// `fn(BufferText, SelectionSet) -> ...` body has no way to reach anything
+/// *but* the buffer it's handed.
+///
+/// One variant per [`EditorCmdBody`] arm — `EditorCmdBuilder::reg`
+/// (`registry/defaults/builder.rs`) derives this from the very
+/// `EditorCmdBody` value a registration passes, so the two can never
+/// disagree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum TargetCategory {
+    /// Needs any pane showing the target buffer — not necessarily focus.
+    Pane,
+    /// Needs the *focused* pane to show the target buffer (an open Insert or
+    /// paste session, a pane-focus/split command, a prompt layer — state
+    /// that only ever exists on the pane the user is looking at).
+    FocusedPane,
+    /// Needs only the target buffer — no pane at all.
+    Buffer,
+    /// Needs no buffer.
+    Global,
+}
+
+/// Function pointer for an [`EditorCmdBody::Pane`] handler: acts on `bid`
+/// through `t`, a pane proven (by [`crate::editor::commands::resolve_focus`]/
+/// [`crate::editor::commands::resolve_for_buffer`]) to show it — not
+/// necessarily the focused pane.
+pub(in crate::editor) type PaneCmdFn = fn(
+    &mut super::super::EditorState,
+    &mut EngineView,
+    CommandPane,
+    usize,
+    MotionMode,
+) -> Result<(), CommandError>;
+
+/// Function pointer for an [`EditorCmdBody::FocusedPane`] handler: acts on
+/// `bid` through the *focused* pane, proven by construction — see
+/// [`FocusedPane`]'s own doc for what that licenses.
+pub(in crate::editor) type FocusedCmdFn = fn(
+    &mut super::super::EditorState,
+    &mut EngineView,
+    FocusedPane,
+    usize,
+    MotionMode,
+) -> Result<(), CommandError>;
+
+/// Function pointer for an [`EditorCmdBody::Buffer`] handler: acts on `bid`
+/// directly, no pane involved.
+pub(in crate::editor) type BufferCmdFn = fn(
+    &mut super::super::EditorState,
+    &mut EngineView,
+    BufferId,
+    usize,
+    MotionMode,
+) -> Result<(), CommandError>;
+
+/// Function pointer for an [`EditorCmdBody::Global`] handler: acts on no
+/// buffer at all.
+pub(in crate::editor) type GlobalCmdFn = fn(
+    &mut super::super::EditorState,
+    &mut EngineView,
+    usize,
+    MotionMode,
+) -> Result<(), CommandError>;
+
+/// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field, one variant
+/// per [`TargetCategory`]. Wrapped in [`NativeBody`] like every other native
+/// variant's body — see [`NativeBody`]'s own doc for why the wrapping
+/// matters; this enum is what decides *which* signature a given command's
+/// function pointer must have, checked at registration time by
+/// `registry/defaults/builder.rs`'s four `ecmd_*` constructors (one per
+/// variant — a call site names its category by which constructor it calls,
+/// and the compiler rejects a function pointer of the wrong shape).
+#[derive(Clone, Copy)]
+pub(in crate::editor) enum EditorCmdBody {
+    Pane(PaneCmdFn),
+    FocusedPane(FocusedCmdFn),
+    Buffer(BufferCmdFn),
+    Global(GlobalCmdFn),
+}
+
+impl EditorCmdBody {
+    pub(in crate::editor) fn category(&self) -> TargetCategory {
+        match self {
+            Self::Pane(_) => TargetCategory::Pane,
+            Self::FocusedPane(_) => TargetCategory::FocusedPane,
+            Self::Buffer(_) => TargetCategory::Buffer,
+            Self::Global(_) => TargetCategory::Global,
+        }
+    }
+}
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
 
@@ -145,21 +242,6 @@ impl CmdMeta {
     }
 }
 
-/// Function pointer for an [`EditorCmd`] handler.
-///
-/// All handlers share one shape: `(&mut EditorState, &mut EngineView, usize, MotionMode)`.
-/// Handlers that need no viewport access bind the view parameter as `_view`.
-/// This single shape is synchronous, Steel-eval-safe (no `&mut Editor` needed),
-/// and reachable from both the keypress path and `run_command_sync`.
-///
-/// [`EditorCmd`]: MappableCommand::EditorCmd
-pub(in crate::editor) type EditorCmdFn = fn(
-    &mut super::super::EditorState,
-    &mut EngineView,
-    usize,
-    MotionMode,
-) -> Result<(), CommandError>;
-
 /// Function pointer for an [`Edit`](MappableCommand::Edit) handler.
 pub(in crate::editor) type EditFn =
     fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet);
@@ -291,9 +373,8 @@ pub(in crate::editor) enum MappableCommand {
         /// for internal primitives like `delete-char-backward`.
         repeatable: bool,
     },
-    /// Editor-level command operating on `EditorState` + `EngineView`.
-    ///
-    /// Signature: `fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>`
+    /// Editor-level command operating on `EditorState` + `EngineView`, plus
+    /// whatever target its [`TargetCategory`] demands — see [`EditorCmdBody`].
     ///
     /// Covers composite operations: mode changes, register access, undo group
     /// management, and parameterized motions (find/till/replace). Returns
@@ -307,7 +388,14 @@ pub(in crate::editor) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: NativeBody<EditorCmdFn>,
+        fun: NativeBody<EditorCmdBody>,
+        /// [`EditorCmdBody::category`] of `fun`'s enum tag — stored
+        /// alongside rather than re-derived at dispatch time, since `fun.0`
+        /// is [`NativeBody`]-fenced and unreadable outside `commands::
+        /// pipeline`. Set once, in `registry/defaults/builder.rs`'s
+        /// `EditorCmdBuilder::reg`, from the very `EditorCmdBody` value a
+        /// registration passed — the two can't disagree.
+        category: TargetCategory,
         /// Whether this command defers the paste-session commit.
         /// `true` only for ring-cycle commands (`[` / `]`).
         /// See [`CmdMeta::defers_paste_commit`] for the full rationale.
@@ -527,6 +615,27 @@ impl MappableCommand {
             Self::EditorCmd { extendable, .. } => *extendable,
         }
     }
+
+    /// What buffer/pane this native command's body needs — see
+    /// [`TargetCategory`]. `Motion`/`Selection`/`Edit` are always `Pane`,
+    /// their body signature's only option; `EditorCmd` carries its own
+    /// field, set from its `EditorCmdBody` at registration time.
+    ///
+    /// Only meaningful for a native command — `resolve_focus`/
+    /// `resolve_for_buffer` (`commands/pipeline.rs`) are the only callers,
+    /// and both are reached only after `is_native()` is already known true
+    /// (`Editor::dispatch`'s branch, `run_command_sync`'s native check).
+    pub(in crate::editor) fn target_category(&self) -> TargetCategory {
+        match self {
+            Self::Motion { .. } | Self::Selection { .. } | Self::Edit { .. } => {
+                TargetCategory::Pane
+            }
+            Self::EditorCmd { category, .. } => *category,
+            Self::SteelBacked { .. } | Self::Lazy { .. } => {
+                unreachable!("target_category is only meaningful for a native command")
+            }
+        }
+    }
 }
 
 // ── TypedCommand ──────────────────────────────────────────────────────────────
@@ -586,7 +695,7 @@ pub(in crate::editor) enum TypedBody {
     /// A command implemented in Rust. Receives the editor, an optional
     /// argument (e.g. a file path), and whether `!` was appended.
     ///
-    /// Kept as `&mut Editor` rather than [`EditorCmdFn`]'s `(&mut
+    /// Kept as `&mut Editor` rather than a native `EditorCmd`'s `(&mut
     /// EditorState, &mut EngineView, …)` shape, for three reasons: the only
     /// callers are the `:` command line and tests, so `&mut Editor` here
     /// never runs while the Steel engine is borrowed; some handlers

@@ -485,8 +485,8 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
 
 /// The staleness half of the resolve contract: a resolve response arriving
 /// after the user has typed more text must be dropped, not applied against
-/// stale positions (same discipline `stale_check` already gives every other
-/// `lsp-request`).
+/// stale positions (same discipline `ResponseAnchor` already gives every
+/// other `lsp-request`).
 #[test]
 fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     let tmp = safe_tempdir();
@@ -524,7 +524,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     // synchronously — the main edit lands and the resolve request is *sent*
     // in this call, but its scripted response isn't drained until the next
     // `drain_lsp`. Typing `X` right here, before any drain, bumps text_gen
-    // past what the resolve request's `stale_check` was armed with.
+    // past what the resolve request's `ResponseAnchor` was armed with.
     ed.feed_key(key_enter());
     ed.feed_key(key('X'));
 
@@ -575,7 +575,9 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
         "sanity: resolve must have been sent before the stop"
     );
 
-    ed.lsp_stop(Some("rust")); // sweeps the in-flight resolve as TimedOut
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    )); // sweeps the in-flight resolve as TimedOut
 
     assert_eq!(
         ed.doc().text().to_string(),
@@ -799,7 +801,9 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
         |_backend, _sid| {},
     );
 
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
     ed.settle(); // on-lsp-detach clears the "lsp" trigger chars
 
     ed.feed_key(key('i'));
@@ -845,7 +849,9 @@ fn detach_dismisses_an_open_completion_session_for_that_buffer() {
         "sanity: a session must be open"
     );
 
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
 
     assert!(
         ed.state.input.buffer_completion().is_none(),

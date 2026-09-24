@@ -6,19 +6,18 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
+use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    BidArg, checked_fields, json_arg, list_items, optional_usize_arg, string_arg, usize_arg,
+    checked_fields, json_arg, list_items, optional_usize_arg, string_arg, usize_arg,
     wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(%apply-text-edits! bid edits expect-gen)` — `edits`: a list whose
-/// entries are each either a `((start-line . start-character) (end-line .
-/// end-character) text)` dotted-pair tuple, or a `JsonHandle` onto a wire
-/// `TextEdit` (an unconverted response element, e.g. from
-/// `textDocument/formatting`) — see `wire_text_edit_arg`.
+/// `(%apply-text-edits! pane edits expect-gen)` — `edits`: a list of
+/// `JsonHandle`s onto wire `TextEdit`s (unconverted response elements, e.g.
+/// from `textDocument/formatting`) — see `wire_text_edit_arg`.
 ///
 /// `edits` decodes manually via `wire_text_edit_arg` per entry rather than a
 /// typed `Vec<WireTextEdit>` param — steel-core's blanket
@@ -27,11 +26,10 @@ use super::errors::{generic_err, require_cap};
 /// `wire_text_edit_arg`'s specific shape-error text.
 pub(crate) fn apply_text_edits(
     ctx: &mut SteelCtx,
-    bid: BidArg,
+    pane: PaneHandle,
     edits: SteelVal,
     expect_gen: SteelVal,
 ) -> SteelResult {
-    let id = bid.0;
     let expect_gen =
         optional_usize_arg(expect_gen, "apply-text-edits! expect-gen")?.map(|n| n as u64);
     let parsed = list_items(edits, "apply-text-edits! edits")?
@@ -39,35 +37,57 @@ pub(crate) fn apply_text_edits(
         .map(wire_text_edit_arg)
         .collect::<Result<Vec<_>, SteelErr>>()?;
     require_cap(ctx.host.edits(), "apply-text-edits!")?
-        .apply_text_edits(id, parsed, expect_gen)
+        .apply_text_edits(pane, parsed, expect_gen)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
 
-/// `(%apply-workspace-edit! wsedit)` — `wsedit`: a `WorkspaceEdit` hashmap
-/// or JSON handle. Returns the number of buffers modified; the
-/// `apply-workspace-edit!` Scheme wrapper reports that count.
-pub(crate) fn apply_workspace_edit(ctx: &mut SteelCtx, wsedit: SteelVal) -> SteelResult {
+/// `(apply-workspace-edit! pane wsedit)` — `wsedit`: a `WorkspaceEdit`
+/// hashmap or JSON handle. Its positions decode using the handle's own
+/// tagged encoding (the server that produced it — see
+/// `JsonHandle::position_encoding`), so unlike `goto-location!`'s
+/// char-indexed shape this errors on a hand-built (untagged) value: there
+/// is no server to have negotiated an encoding with. Returns the number of
+/// buffers modified; the `apply-workspace-edit!` Scheme wrapper reports
+/// that count.
+pub(crate) fn apply_workspace_edit(
+    ctx: &mut SteelCtx,
+    pane: PaneHandle,
+    wsedit: SteelVal,
+) -> SteelResult {
     let handle = json_arg(wsedit, "apply-workspace-edit!")?;
+    let encoding = handle
+        .position_encoding("apply-workspace-edit!")
+        .map_err(generic_err)?;
     let count = require_cap(ctx.host.edits(), "apply-workspace-edit!")?
-        .apply_workspace_edit(handle.value())
+        .apply_workspace_edit(pane, handle.value(), encoding)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(count as isize))
 }
 
-/// `(goto-location! loc)` — `loc` is one of two shapes, dispatched here (not
-/// in Scheme): a raw `Location`/`LocationLink` hashmap or JSON handle (wire
-/// position, decoded and converted using the focused buffer's server
-/// encoding — correct because the caller is that server's own response
-/// callback), or `(list target line char-col)` with char-indexed
-/// `line`/`char-col` and `target` a `bid`, a path string, or a `file://` URI
-/// string.
-pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
+/// `(goto-location! pane loc)` — `loc` is one of two shapes, dispatched here
+/// (not in Scheme):
+///
+/// - a raw `Location`/`LocationLink` hashmap or JSON handle: wire position,
+///   decoded and converted using the handle's own tagged encoding — the
+///   server that produced the response negotiated it for the request that's
+///   being answered, regardless of which file the location points into (an
+///   LSP round-trip is async; the user is free to switch panes while a
+///   request is in flight, which is exactly why the jump lands in `pane`,
+///   not necessarily the focused one). Errors on an untagged (hand-built)
+///   value, same as `apply-workspace-edit!`.
+/// - `(list target line char-col)`, already char-indexed — `target` is a
+///   path string, a `file://` URI string, or a pane. This shape never
+///   touches server encoding.
+pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal) -> SteelResult {
     match &loc {
         SteelVal::HashMapV(_) | SteelVal::Custom(_) => {
             let handle = json_arg(loc, "goto-location!")?;
+            let encoding = handle
+                .position_encoding("goto-location!")
+                .map_err(generic_err)?;
             require_cap(ctx.host.edits(), "goto-location!")?
-                .goto_location_value(handle.value())
+                .goto_location_value(pane, handle.value(), encoding)
                 .map(|()| SteelVal::Void)
                 .map_err(generic_err)
         }
@@ -84,15 +104,15 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
                 "goto-location! line",
             )?);
             let char_col = usize_arg(fields[2].clone(), "goto-location! char-col")?;
-            if let Some(bid) = super::ids::downcast_buffer_id(&target) {
+            if let Some(handle) = super::ids::downcast_pane(&target) {
                 require_cap(ctx.host.edits(), "goto-location!")?
-                    .goto_location_buffer(bid, line, char_col)
+                    .goto_location_buffer(pane, handle.buffer(), line, char_col)
                     .map(|()| SteelVal::Void)
                     .map_err(generic_err)
             } else {
                 let s = string_arg(target, "goto-location! target")?;
                 require_cap(ctx.host.edits(), "goto-location!")?
-                    .goto_location_path(s, line, char_col)
+                    .goto_location_path(pane, s, line, char_col)
                     .map(|()| SteelVal::Void)
                     .map_err(generic_err)
             }

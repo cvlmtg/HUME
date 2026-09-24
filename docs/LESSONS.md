@@ -52,6 +52,11 @@ numbers directly.
   worth the churn" never license a known-wrong design; either fix it or
   measure the cost and report the number. N=1 is the template for N=2, not
   an exemption.
+- **L19** — "Every path that names a buffer now takes it explicitly" doesn't
+  cover a path that used to act on one *implicitly*, with no parameter to
+  make explicit at all. Map the funnel that has no name, not just the ones
+  that do — and re-derive downstream invariants (a versioned key's identity
+  guarantee) rather than patching around a design that quietly violates them.
 
 ---
 
@@ -879,3 +884,66 @@ made.
 should have shipped in `3514a4b9`), `hume-editor/src/editor/keymap/mod.rs`,
 `hume-editor/src/editor/picker.rs` (`actions` field and its formerly
 rationalizing doc comment).
+
+---
+
+## L19 — An "every explicit-bid path" refactor missed the one path with no parameter to make explicit (2026-09-24)
+
+**Root cause:** The explicit-buffer-targeting refactor (9cebd29e..1804caf2)
+correctly threaded `bid` through every Steel *entry point* — keymap dispatch,
+typed-command dispatch, `lsp-request` callbacks, hooks — each of which had a
+leading-parameter slot the injection could land in. `(call! "native-cmd")`
+has no such slot: a native command's Rust body has never taken a buffer
+parameter at all, so there was nothing to make explicit, and the seam was
+missed entirely. `run_command_sync` kept reading live focus, meaning a
+`call!` to a native command from a hook or async callback silently acted on
+whatever buffer was focused when it ran — the exact bug class the refactor
+existed to remove, surviving in the one place the "add a parameter" pattern
+didn't apply.
+
+A second, independent gap in the same refactor: `close_buffer`'s
+last-buffer branch reused the closed buffer's `BufferId` in place for a
+fresh scratch buffer, rather than freeing the slot. This wasn't a missed
+seam so much as an unexamined downstream consequence — every other part of
+the codebase relies on a versioned slotmap key being unable to alias a
+different buffer's content once closed (that's the whole *point* of using
+one), and this one code path quietly violated it. `Buffer::replace_stamp`
+existed only to patch around the violation for `:reload-config`'s own
+snapshot/resync, rather than removing it.
+
+**Concrete instance:** user asked for an audit of the refactor's own
+back-and-forth, suspecting an unresolved problem. Three parallel Explore
+agents found: native `call!` has no bid parameter to inject into at all
+(`run_command_sync` had none); `ResponseAnchor` was checked once at LSP
+drain time but the Steel callback only runs later, after arbitrary other
+queued work; `lsp-position->offset`/`lsp-range->offsets` took a tagged
+`JsonHandle` and discarded the tag, re-resolving encoding from the buffer's
+*current* attachment (the exact bug `a548a117` fixed everywhere else,
+missed on these two); and the last-buffer scratch replacement. All four
+were fixed at the funnel each one's own class of bug lived in, not patched
+locally.
+
+**Prevention rule:** "Every path that does X now takes Y explicitly" is a
+claim about paths that already had a parameter list for Y to join. It says
+nothing about a path that acted on Y *implicitly*, with no parameter at
+all — `call!` to a native command reads focus not because a bid parameter
+was left unfilled, but because there was never a parameter to fill. When
+auditing or writing this class of refactor, explicitly enumerate every way
+the *old* implicit behavior was reached, not just every explicit parameter
+list added — a grep for "takes bid" finds every site that already has one;
+it structurally cannot find the site that doesn't.
+
+The second half generalizes further: an explicit-identity refactor is only
+as strong as the identity invariant it depends on. Before trusting a
+versioned key as sufficient proof of "not aliased," check every path that
+mutates the underlying store for one that swaps content in place under a
+surviving key — the exact class of shortcut a versioned-key design is
+supposed to make impossible to take.
+
+**Files:** `hume-editor/src/editor/host_impl/commands.rs`
+(`run_command_sync`'s focused-buffer check), `hume-scripting/src/host/commands.rs`,
+`hume-editor/src/editor/buffer/lifecycle.rs` (`close_buffer`'s last-buffer
+branch), `hume-editor/src/editor/lsp/mod.rs` (`ResponseAnchor`),
+`hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`'s
+per-call anchor re-check), `hume-scripting/src/builtins/lsp.rs`
+(`lsp-position->offset`/`lsp-range->offsets`).

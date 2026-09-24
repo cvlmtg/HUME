@@ -11,7 +11,7 @@ use hume_ops::text_object::{
     cmd_inner_word, cmd_select_uppercase_word, cmd_select_word,
 };
 
-use super::builder::ecmd;
+use super::builder::ecmd_pane;
 
 impl CommandRegistry {
     pub(super) fn register_text_objects(&mut self) {
@@ -56,7 +56,7 @@ impl CommandRegistry {
         // `.establishes_selection()`: same in-place establishing semantics
         // as `select-word` (`mm`, a plain `Selection`) — replayable on its
         // own from a fresh cursor.
-        ecmd(
+        ecmd_pane(
             "select-word-nearest-on-line",
             "Select the word under the cursor, or the nearest word on the same visual line \
              when on whitespace; span follows word-selects-whitespace.",

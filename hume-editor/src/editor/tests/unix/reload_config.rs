@@ -541,7 +541,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
         plugin_dir.join("plugin.scm"),
         format!(
             r#"(register-hook! 'on-buffer-open (lambda (bid)
-                 (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))
+                 (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))
                (open-buffer! "{companion_str}")"#
         ),
     )
@@ -894,25 +894,23 @@ fn reload_config_twice_in_a_row_both_apply_cleanly() {
 }
 
 // ---------------------------------------------------------------------------
-// :reload-config's explicit-language restore vs. an in-place buffer swap
+// :reload-config's explicit-language restore skips a closed buffer
 // ---------------------------------------------------------------------------
 
-/// Regression test: `close_buffer`'s last-buffer branch reuses the closed
-/// buffer's `BufferId` in place for a fresh scratch buffer — a versioned
-/// slotmap key alone can't tell that apart from "the same buffer the
-/// snapshot meant" (see `Buffer::replace_stamp`'s doc). Before that stamp
-/// existed, the explicit-language snapshot's liveness check was a bare
-/// `buffers.try_get(bid)`, which the fresh scratch buffer also passes — so
-/// a reload landing after such a swap would apply the *closed* buffer's
-/// language onto unrelated scratch content.
+/// A bid whose buffer closed between the snapshot and the resync sweep must
+/// not have its pre-reload explicit language restored — `ReloadSnapshot::
+/// survives` reads `bid`'s current liveness, not a stale stamp, so a closed
+/// bid (its slot genuinely freed — see `close_buffer`, which allocates a
+/// fresh `BufferId` for its last-buffer scratch replacement rather than
+/// reusing the closed one) never passes.
 ///
 /// Drives `reset_config_state`/`init_scripting` directly (not the full
-/// `:reload-config` command) so the in-place swap can be simulated
-/// deterministically — bumping `replace_stamp` by hand — rather than
-/// depending on exact Steel plugin-activation reentrancy timing to land a
-/// real `close-buffer!` inside the sweep's window.
+/// `:reload-config` command) so the close can land deterministically between
+/// the snapshot and the sweep, rather than depending on exact Steel
+/// plugin-activation reentrancy timing to land a real `close-buffer!` inside
+/// the sweep's window.
 #[test]
-fn reload_config_explicit_language_restore_skips_a_bid_whose_buffer_was_swapped_in_place() {
+fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_snapshot() {
     let init_scm = r#"(%define-language! "notes" '() '() '() #f)"#;
     let fixture = ReloadFixture::new(init_scm);
 
@@ -933,28 +931,31 @@ fn reload_config_explicit_language_restore_skips_a_bid_whose_buffer_was_swapped_
         Some("notes"),
         "sanity: the explicit :set must have applied"
     );
+    // A second buffer so `bid`'s close below frees its slot outright instead
+    // of hitting the last-buffer scratch-replacement branch.
+    use hume_editing::selection::SelectionSet;
+    use hume_editing::text::BufferText;
+    ed.open_buffer(Buffer::new(
+        BufferText::from("x\n"),
+        SelectionSet::default(),
+    ));
 
     let mut snapshot = ed.reset_config_state();
     ed.scripting = None;
 
-    // Simulate `close_buffer`'s last-buffer in-place swap landing between
-    // the snapshot and the sweep that would otherwise restore onto `bid` —
-    // same effect on `replace_stamp` as a real `replace_buffer_in_place`
-    // call, without needing to land a real reentrant `close-buffer!` inside
-    // the sweep's window.
-    ed.state.buffers.get_mut(bid).replace_stamp += 1;
+    // The close lands between the snapshot and the sweep that would
+    // otherwise restore onto `bid` — `bid`'s slot is now genuinely freed.
+    ed.close_buffer(bid);
+    assert!(
+        ed.state.buffers.try_get(bid).is_none(),
+        "setup: bid's slot must actually be freed"
+    );
 
     ed.init_scripting(&mut snapshot);
 
-    assert_eq!(
-        ed.state.buffers.get(bid).language,
-        None,
-        "a bid whose buffer was swapped in place after the snapshot must \
-         not have the old buffer's explicit language restored onto it"
-    );
     assert!(
-        !ed.state.buffers.get(bid).language_explicit,
-        "nor should it be left marked explicit"
+        ed.state.buffers.try_get(bid).is_none(),
+        "bid must still be gone — nothing should have resurrected it"
     );
 
     drop(fixture);

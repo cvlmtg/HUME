@@ -355,7 +355,7 @@ fn handshake_failure_response_crashes() {
 
 /// Pins that the `initialize` response is discriminated by the id stashed
 /// in `initialize_id`, not by matching on the method string — a Steel
-/// plugin issuing `(lsp-request "initialize" ...)` through the generic
+/// plugin issuing `(lsp-request bid "initialize" ...)` through the generic
 /// bridge must get an ordinary correlated response, never be mistaken
 /// for the handshake and hijack the client into `BecameRunning`/`Crashed`.
 #[test]
@@ -365,7 +365,6 @@ fn generic_initialize_request_is_not_hijacked_by_the_handshake_discriminator() {
 
     let meta = RequestMeta {
         method: "initialize".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + std::time::Duration::from_secs(10),
     };
     let sent_id = client.send_request(&mut backend, "initialize", serde_json::Value::Null, meta);
@@ -462,7 +461,6 @@ fn earliest_deadline_is_min() {
         serde_json::Value::Null,
         RequestMeta {
             method: "foo".to_string(),
-            allow_stale: false,
             deadline: now + std::time::Duration::from_secs(5),
         },
     );
@@ -472,7 +470,6 @@ fn earliest_deadline_is_min() {
         serde_json::Value::Null,
         RequestMeta {
             method: "bar".to_string(),
-            allow_stale: false,
             deadline: now + std::time::Duration::from_secs(1),
         },
     );
@@ -541,7 +538,6 @@ fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
     client.start_handshake(&mut backend);
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + std::time::Duration::from_secs(10),
     };
     let sent_id = client.send_request(
@@ -771,7 +767,6 @@ fn send_request_after_crashed_times_out_immediately_via_the_sweep() {
     let far_future = Instant::now() + std::time::Duration::from_secs(30);
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: far_future,
     };
     let id = client.send_request(
@@ -947,7 +942,6 @@ fn send_request_delivers_response_via_take_completed() {
 
     let meta = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + std::time::Duration::from_secs(10),
     };
     let sent_id = client.send_request(
@@ -987,7 +981,6 @@ fn cancel_removes_pending_and_sends_cancel_notification() {
 
     let meta = RequestMeta {
         method: "textDocument/definition".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + std::time::Duration::from_secs(10),
     };
     let id = client.send_request(
@@ -1037,7 +1030,6 @@ fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
 
     let meta = RequestMeta {
         method: "textDocument/definition".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + std::time::Duration::from_secs(10),
     };
     let id = client.send_request(
@@ -1054,7 +1046,6 @@ fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
 
     let meta2 = RequestMeta {
         method: "textDocument/hover".to_string(),
-        allow_stale: false,
         deadline: Instant::now() - std::time::Duration::from_millis(1),
     };
     client.send_request(
@@ -1091,7 +1082,6 @@ fn cancelled_request_is_not_flushed_after_handshake_completes() {
 
     let meta = RequestMeta {
         method: "textDocument/definition".to_string(),
-        allow_stale: false,
         deadline: Instant::now() + std::time::Duration::from_secs(10),
     };
     let id = client.send_request(
@@ -1129,7 +1119,6 @@ fn take_completed_reports_timeout_and_sends_cancel_request() {
     let (mut backend, mut client) = make_running_client();
     let meta = RequestMeta {
         method: "textDocument/completion".to_string(),
-        allow_stale: false,
         deadline: Instant::now() - std::time::Duration::from_millis(1),
     };
     let id = client.send_request(

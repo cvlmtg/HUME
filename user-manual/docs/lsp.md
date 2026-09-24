@@ -297,7 +297,7 @@ Not on by default. Add this to your `init.scm` to run `lsp-fmt` every time you s
 
 ```scheme
 (register-hook! 'on-buffer-save
-  (lambda (bid) (call! "lsp-fmt")))
+  (lambda (pane) (call! "lsp-fmt" pane)))
 ```
 
 ## Managing servers
@@ -322,14 +322,14 @@ returns its generated code:
 
 ```scheme
 (define-command! "rust-expand-macro" "Show the expansion of the macro under the cursor."
-  (lambda ()
-    (lsp-request #f "rust-analyzer/expandMacro" (lsp-position-params (current-buffer))
+  (lambda (pane)
+    (lsp-request pane "rust-analyzer/expandMacro" (lsp-position-params pane)
       (lambda (err res)
         (cond
           (err (log! 'error (string-append "expand macro: "
                                            (if (string? err) err (hash-ref err "message")))))
           ((void? res) (log! 'info "Not inside a macro"))
-          (else (show-popup! (json-ref res "expansion"))))))))
+          (else (show-popup! pane (json-ref res "expansion"))))))))
 ```
 
 The shape is always the same three steps: send a request built from `lsp-position-params` or
@@ -341,6 +341,6 @@ on it, the way every built-in feature does. `res` is a JSON handle — read a fi
 `err`, when set, is an ordinary hashmap (`"code"`, `"message"`) or the string `"timeout"` — read
 it with `hash-ref`, not `json-ref`.
 
-`lsp-request` also takes two keyword args for requests that fire more than once. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key — the server gets `$/cancelRequest` and the old callback never fires — which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful.
+`lsp-request` also takes three keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key — the server gets `$/cancelRequest` and the old callback never fires — which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives — used by hover, signature help, and code actions, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file.
 
 A server's response sometimes carries its own position or range rather than the one you sent — a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->offset`/`lsp-range->offsets` before using it with any editing command; both return `#f` if the buffer has no server attached to convert against.

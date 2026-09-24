@@ -21,7 +21,7 @@ fn lazy_repeatable_round_trip() {
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(
         plugin_dir.join("plugin.scm"),
-        r#"(define-command! "tp-del" "" (lambda () (call! "delete")) #:repeatable #t)"#,
+        r#"(define-command! "tp-del" "" (lambda () (call! "delete" (focused-pane))) #:repeatable #t)"#,
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");

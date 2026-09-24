@@ -75,8 +75,8 @@ No history builtins exist at all. `undo`/`redo` in the generated globals list
 are just the two native command names (`(undo)`, `(redo)`) — there is no
 `can-undo?`, no revision id, no revision list, no `goto-revision!`.
 
-Needed: two builtins, e.g. `(buffer-undo-tree bid)` (returns per-node id,
-parent, seconds-ago, current?, saved?) and `(goto-revision! bid id)`, backed
+Needed: two builtins, e.g. `(buffer-undo-tree pane)` (returns per-node id,
+parent, seconds-ago, current?, saved?) and `(goto-revision! pane id)`, backed
 by new `BufferHost`/`EditHost` methods. Registering them requires
 regenerating `runtime/plugins/core/steel-server/lsp-home/hume-globals.scm`
 (`HUME_WRITE_STEEL_GLOBALS=1 cargo test -p hume-editor
@@ -97,7 +97,7 @@ The docked-pane route is blocked three ways specifically:
    `Editor::open_read_only_view` (used for `[messages]`, `[buffers]`,
    `[plugin-status]`, `[lsp-status]`) is the right shape but takes a
    `&'static str` label — a Steel-facing version needs an owned `String`.
-2. **Panes are write-only from Steel.** `current-pane`/`panes` return
+2. **Panes are write-only from Steel.** `focused-pane`/`panes` return
    `PaneId`s, but no builtin accepts one as input. `(pane-vsplit)` takes no
    arguments and splits the focused pane onto the *same* buffer; `:split
    <path>` is a typed command, and typed commands aren't callable from Steel.
@@ -144,7 +144,7 @@ undo graph reads well in a terminal, and whether jump-by-node feels good.
       distinguishable from `Took(0)`, since it has no outer
       `refuse_if_read_only` of its own to fall back on
 - [ ] `BufferHost`/`EditHost` methods backing the above (`hume-scripting`)
-- [ ] `(buffer-undo-tree bid)` and `(goto-revision! bid id)` builtins, plus
+- [ ] `(buffer-undo-tree pane)` and `(goto-revision! pane id)` builtins, plus
       regenerated `hume-globals.scm` (`hume-scripting`)
 - [ ] Graph renderer — pure Scheme, git-log-style lane assignment over the
       parent/children lists (`core:git-diff`'s `render.scm` is the shape:

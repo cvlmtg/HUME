@@ -235,8 +235,11 @@ fn negative_zero_and_zero_handles_share_a_hash_key() {
 #[test]
 fn navigating_a_container_shares_the_root_arc() {
     let root = std::sync::Arc::new(json!({"a": {"b": 1}}));
-    let handle = downcast_json_handle(&to_steel_handle(std::sync::Arc::clone(&root)))
-        .expect("an object roots as a JsonHandle");
+    let handle = downcast_json_handle(&to_steel_handle(
+        std::sync::Arc::clone(&root),
+        WireOrigin::Local,
+    ))
+    .expect("an object roots as a JsonHandle");
     let sub = handle
         .resolve(&[Seg::Key("a".into())], "test")
         .expect("path resolves");
@@ -281,4 +284,69 @@ fn contains_true_for_null_present_field() {
 fn contains_false_for_absent_field() {
     let handle = JsonHandle::new(json!({"a": 1}));
     assert!(!handle.contains(&[Seg::Key("z".into())]));
+}
+
+// ── WireOrigin propagation ──────────────────────────────────────────────────
+
+/// `JsonHandle::new` — every hand-built handle (a `json-parse` result, a
+/// plugin's own hashmap) is untagged: `position_encoding` refuses.
+#[test]
+fn new_is_untagged() {
+    let handle = JsonHandle::new(json!({"a": 1}));
+    assert!(handle.position_encoding("test").is_err());
+}
+
+/// A server-tagged handle reports the encoding it was tagged with.
+#[test]
+fn server_for_test_reports_its_tagged_encoding() {
+    let handle = JsonHandle::server_for_test(json!({"a": 1}), PositionEncoding::Utf8);
+    assert_eq!(handle.position_encoding("test"), Ok(PositionEncoding::Utf8));
+}
+
+/// A child produced by `resolve` (`json-ref`'s implementation) inherits its
+/// parent's tag.
+#[test]
+fn resolve_inherits_the_parent_tag() {
+    let handle = JsonHandle::server_for_test(json!({"a": {"b": 1}}), PositionEncoding::Utf16);
+    let resolved = handle
+        .resolve(&[Seg::Key("a".into())], "test")
+        .expect("path resolves");
+    let child = downcast_json_handle(&resolved).expect("a container field resolves to a handle");
+    assert_eq!(child.position_encoding("test"), Ok(PositionEncoding::Utf16));
+}
+
+/// A child produced by `lookup` (`json-ref-or`'s implementation) inherits
+/// its parent's tag.
+#[test]
+fn lookup_inherits_the_parent_tag() {
+    let handle = JsonHandle::server_for_test(json!({"a": {"b": 1}}), PositionEncoding::Utf8);
+    let child = downcast_json_handle(
+        &handle
+            .lookup(&[Seg::Key("a".into())])
+            .expect("path resolves"),
+    )
+    .unwrap();
+    assert_eq!(child.position_encoding("test"), Ok(PositionEncoding::Utf8));
+}
+
+/// Every element `list_items` (`json-list`'s implementation) pulls out of an
+/// array inherits the parent's tag.
+#[test]
+fn list_items_inherit_the_parent_tag() {
+    let handle = JsonHandle::server_for_test(json!([{"a": 1}, {"b": 2}]), PositionEncoding::Utf16);
+    for item in handle.list_items("test").expect("array") {
+        let child = downcast_json_handle(&item).unwrap();
+        assert_eq!(child.position_encoding("test"), Ok(PositionEncoding::Utf16));
+    }
+}
+
+/// `indexed_child` (the Rust-side slice a `textDocument/completion` response
+/// hands off) inherits the parent's tag.
+#[test]
+fn indexed_child_inherits_the_parent_tag() {
+    let handle = JsonHandle::server_for_test(json!({"items": [{"a": 1}]}), PositionEncoding::Utf8);
+    let child = handle
+        .indexed_child(Some("items"), 0)
+        .expect("path resolves");
+    assert_eq!(child.position_encoding("test"), Ok(PositionEncoding::Utf8));
 }

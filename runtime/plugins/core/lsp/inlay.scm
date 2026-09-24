@@ -8,56 +8,67 @@
         label
         (string-join (map (lambda (part) (json-ref part "value")) (json-list label)) ""))))
 
-(define (lsp/hint->store-entry bid hint)
+(define (lsp/hint->store-entry pane hint)
   (let* ((text (lsp/inlay-hint-text hint))
          (pad-left (equal? (json-ref-or hint #f "paddingLeft") #t))
          (pad-right (equal? (json-ref-or hint #f "paddingRight") #t))
          (text (if pad-left (string-append " " text) text))
          (text (if pad-right (string-append text " ") text))
-         (offset (lsp-position->offset bid (json-ref hint "position"))))
+         (offset (lsp-position->offset pane (json-ref hint "position"))))
     (and offset (list offset text 'before))))
 
-(define (lsp/inlay-hint-params bid first end)
-  (let ((pp (lsp-position-params bid)))
+(define (lsp/inlay-hint-params pane first end)
+  (let ((pp (lsp-position-params pane)))
     (and pp
          (hash "textDocument" (hash-ref pp "textDocument")
                "range" (hash "start" (hash "line" first "character" 0)
                               "end" (hash "line" end "character" 0))))))
 
+;;; `pane` must already be a real, live pane still showing its buffer —
+;;; `on-viewport-change` hands one directly; every other caller below
+;;; resolves one first via `lsp/resolve-pane`, since `on-diagnostics-
+;;; changed`/`on-text-changed`/`(buffers)` carry no pane of their own.
 (define lsp/refresh-hints
   (debounce-by 200
-    (lambda (bid)
-      (let ((range (viewport-range bid))
-            (server (lsp-server-for-buffer bid)))
-        (when (and range server (get-option "lsp.inlay-hints")
-                   (lsp/supports-for-buffer? bid "inlayHintProvider"))
-          (let ((params (lsp/inlay-hint-params bid (car range) (cdr range))))
+    (lambda (pane)
+      (let ((range (viewport-range pane)))
+        (when (and (get-option "lsp.inlay-hints")
+                   (lsp/supports? pane "inlayHintProvider"))
+          (let ((params (lsp/inlay-hint-params pane (car range) (cdr range))))
             (when params
-              (lsp-request server "textDocument/inlayHint" params
+              (lsp-request pane "textDocument/inlayHint" params
                 (lambda (err res)
                   (unless err
-                    (set-inlay-hints! "lsp-inlay-hints" bid
+                    (set-inlay-hints! "lsp-inlay-hints" pane
                       (if (void? res)
                           '()
                           (filter (lambda (e) e)
-                                  (map (lambda (h) (lsp/hint->store-entry bid h)) (json-list res)))))))))))))))
+                                  (map (lambda (h) (lsp/hint->store-entry pane h)) (json-list res)))))))))))))
+    #:key (lambda (p . _) (buffer-key p))))
 
 (register-hook! 'on-viewport-change
-  (lambda (bid first end) (lsp/refresh-hints bid)))
+  (lambda (pane first end) (lsp/refresh-hints pane)))
 
 (register-hook! 'on-diagnostics-changed
-  (lambda (bid) (lsp/refresh-hints bid)))
+  (lambda (pane)
+    (let ((resolved (lsp/resolve-pane pane)))
+      (when resolved (lsp/refresh-hints resolved)))))
 
 (register-hook! 'on-text-changed
-  (lambda (bid) (lsp/refresh-hints bid)))
+  (lambda (pane)
+    (let ((resolved (lsp/resolve-pane pane)))
+      (when resolved (lsp/refresh-hints resolved)))))
 
 (register-hook! 'on-lsp-detach
-  (lambda (bid server-name) (set-inlay-hints! "lsp-inlay-hints" bid '())))
+  (lambda (pane server-name) (set-inlay-hints! "lsp-inlay-hints" pane '())))
 
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.inlay-hints")
       (if (get-option "lsp.inlay-hints")
-          (for-each lsp/refresh-hints (buffers))
-          (for-each (lambda (bid) (set-inlay-hints! "lsp-inlay-hints" bid '()))
+          (for-each (lambda (pane)
+                      (let ((resolved (lsp/resolve-pane pane)))
+                        (when resolved (lsp/refresh-hints resolved))))
+                    (buffers))
+          (for-each (lambda (pane) (set-inlay-hints! "lsp-inlay-hints" pane '()))
                     (buffers))))))

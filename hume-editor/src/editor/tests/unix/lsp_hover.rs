@@ -509,6 +509,59 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
     );
 }
 
+/// The user is free to switch buffers while a hover request is in flight —
+/// an LSP round-trip is async. If the response lands after that, showing
+/// hover text for a symbol the user is no longer looking at would be worse
+/// than showing nothing: `lsp-hover` sends its request with
+/// `#:require-focus #t`, which drops the callback (never even reaching
+/// `hover.scm`'s own body) once the focused buffer no longer matches the
+/// buffer that sent the request.
+///
+/// Fail oracle: drop `#:require-focus` from `hover.scm`'s `lsp-request`
+/// call — the popup would show regardless of which buffer answered, since a
+/// queued callback's `(focused-pane)` is live focus at drain time, not
+/// the buffer the request was sent for.
+#[test]
+fn stale_response_after_a_buffer_switch_shows_no_popup() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard, _sid) = setup(
+        file_dir.path(),
+        tmp.path(),
+        serde_json::json!({"capabilities": {"hoverProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/hover",
+                serde_json::json!({"contents": "fn main()"}),
+            );
+        },
+    );
+
+    // Sends the request synchronously; deliberately no settle() before the
+    // switch below — settle() unconditionally drains LSP, which would
+    // deliver the response (and close the race window) before the switch
+    // ever happens.
+    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+
+    let other = file_dir.path().join("other.rs");
+    std::fs::write(&other, "\n").unwrap();
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+
+    ed.drain_lsp();
+    ed.settle();
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    assert_eq!(
+        popup_lines(&ed),
+        None,
+        "a hover response for a buffer that's no longer focused must not surface a popup"
+    );
+}
+
 #[test]
 fn allow_stale_is_honored_despite_an_intervening_edit() {
     let tmp = safe_tempdir();

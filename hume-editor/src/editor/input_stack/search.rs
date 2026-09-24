@@ -98,7 +98,8 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             if let Some(sels) = pre_sels {
                 let bid = ed.focused_buffer_id();
                 let entry = JumpEntry::new(sels, ed.doc().text(), bid);
-                commands::record_jump_if_moved(&mut ed.state, &ed.view, entry);
+                let t = commands::FocusedPane::current(&ed.state).target();
+                commands::record_jump_if_moved(&mut ed.state, &ed.view, t, entry);
             }
             // search_pattern stays alive on the buffer for immediate n/N
             // without recompile — the stash is already taken above, so

@@ -841,8 +841,10 @@ fn stale_confirm_retirement_does_not_take_a_prompt_above_it_with_it() {
         "sanity: confirm open on A"
     );
 
+    let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.prompt(
+        pane,
         "Name: ".to_string(),
         String::new(),
         steel::rvals::SteelVal::Void,
@@ -878,7 +880,7 @@ fn stale_confirm_retirement_does_not_take_a_prompt_above_it_with_it() {
             .config
             .pending_work
             .iter()
-            .any(|w| matches!(w, crate::editor::event::PendingWork::Call(..))),
+            .any(|w| matches!(w, crate::editor::event::PendingWork::Call { .. })),
         "the surviving prompt's callback must not have fired"
     );
 }
@@ -1049,8 +1051,8 @@ fn statusline_seam_hides_a_confirm_buried_under_a_prompt() {
     run(
         &mut ed,
         script_tmp.path(),
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (after 0 (lambda () (prompt! "x: " (lambda (s) (void)))))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (pane)
+             (after 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -1389,7 +1391,7 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
 /// restoring the pre-search selection the user is still actively editing.
 #[test]
 fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() {
-    use crate::editor::commands::cmd_search_forward;
+    use crate::editor::commands::{FocusedPane, cmd_search_forward};
     use hume_ops::MotionMode;
 
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello world\n", "hello world\n");
@@ -1410,7 +1412,8 @@ fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() 
 
     // Lands above the confirm the same ungated way a timer's `prompt!`
     // would (`push_mode_layer` never gates on what's already open).
-    cmd_search_forward(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    let fp = FocusedPane::current(&ed.state);
+    cmd_search_forward(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
     for ch in "world".chars() {
         ed.handle_key(key(ch));
     }
@@ -2009,9 +2012,9 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (picker! (list (cons "target" "{path}"))
-                   (lambda (p) (when p (switch-to-buffer! (open-buffer! p)))))))"#
+            r#"(define-typed-command! "go" "" (lambda (pane)
+                 (picker! pane (list (cons "target" "{path}"))
+                   (lambda (p) (when p (switch-to-buffer! pane (open-buffer! p)))))))"#
         ),
         tmp.path(),
     );

@@ -1313,7 +1313,7 @@ fn steel_dot_repeatable_round_trip() {
     let mut ed = editor_with_steel(
         "-[foo]> bar\n",
         r#"(define-command! "del-sel" ""
-             (lambda () (call! "delete"))
+             (lambda () (call! "delete" (focused-pane)))
              #:repeatable #t)"#,
     );
 
@@ -1354,7 +1354,7 @@ fn steel_dot_repeatable_round_trip() {
 fn steel_command_is_not_repeatable() {
     let mut ed = editor_with_steel(
         "-[foo]> bar\n",
-        r#"(define-command! "del-sel" "" (lambda () (call! "delete")))"#,
+        r#"(define-command! "del-sel" "" (lambda () (call! "delete" (focused-pane))))"#,
     );
 
     // Establish a known repeatable native action first.
@@ -1369,7 +1369,7 @@ fn steel_command_is_not_repeatable() {
         "setup: last_repeatable_action must be 'delete' after d"
     );
 
-    // Run the Steel command — it calls (call! "delete") internally.
+    // Run the Steel command — it calls (call! "delete" (focused-pane)) internally.
     ed.execute_keymap_command("del-sel".into(), Some(1), false);
 
     // last_repeatable_action must still be "delete", not "del-sel".
@@ -1394,7 +1394,7 @@ fn steel_command_is_not_repeatable() {
 fn non_repeatable_steel_does_not_hijack_dot() {
     let mut ed = editor_with_steel(
         "-[foo]> bar\n",
-        r#"(define-command! "noop-move" "" (lambda () (call! "move-right")))"#,
+        r#"(define-command! "noop-move" "" (lambda () (call! "move-right" (focused-pane))))"#,
     );
 
     // Establish a known repeatable native action first.

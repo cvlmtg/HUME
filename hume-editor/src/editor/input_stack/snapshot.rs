@@ -17,7 +17,6 @@ use hume_editing::selection::SelectionSet;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use super::super::EditorState;
-use super::super::commands;
 use super::super::pane_state::PaneBufferState;
 
 /// `pane`'s selections as they were the moment this session opened, plus the
@@ -55,7 +54,13 @@ impl PaneSnapshot {
     /// selections — instead of the mid-session preview a construction-time
     /// capture would have caught.
     pub(in crate::editor) fn capture(&mut self, state: &EditorState, view: &EngineView) {
-        self.pre_sels = Some(commands::current_selections(state, view).clone());
+        // `self.pane`'s own selections, not the focused pane's — see this
+        // type's own doc. The two coincide at every existing call site
+        // (`/`-search and sift always open on the pane that's about to be
+        // focused), but reading `self.pane` directly is what makes that true
+        // by construction instead of by accident.
+        let bid = self.buffer_id(view);
+        self.pre_sels = Some(state.panes.state[self.pane][bid].selections().clone());
     }
 
     /// The captured selections, still held — for a live preview that needs

@@ -419,6 +419,123 @@ fn goto_to_an_unopened_file_detects_its_language() {
     );
 }
 
+/// A wire `Location`'s server encoding must come from the buffer that sent
+/// the request (`bid`, captured by `lsp/goto-request` before the request
+/// went out), never from whatever is focused when the response callback
+/// happens to run — an LSP round-trip is async, so the user is free to
+/// switch buffers while it's in flight.
+///
+/// `main.rs`'s line 1 is `let π = 1;` — under this test's UTF-8-negotiated
+/// server, wire `character: 7` (a byte offset) decodes to char offset 6
+/// (`=`, since `π` occupies 2 bytes but 1 char); under the UTF-16 default
+/// (code-unit offset), the same wire value decodes to char offset 7 (the
+/// space after `=`). The test switches focus to an unrelated, server-less
+/// buffer between sending the request and draining its response — the
+/// pre-fix code read that live-focused buffer's encoding (UTF-16 default)
+/// at decode time, landing one char short of where the requesting server
+/// (`main.rs`'s, UTF-8) actually meant.
+///
+/// Fail oracle: `resolve_goto_target`'s Wire arm reading live focus instead
+/// of `origin` lands the cursor at char offset 7, not 6.
+#[test]
+fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    std::fs::write(&file, "fn main() {\nlet \u{3c0} = 1;\n}\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
+
+    let guard = RealRuntimeGuard::new();
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+
+    let mut backend = InlineLspBackend::new();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({"capabilities": {
+            "definitionProvider": true,
+            "positionEncoding": "utf-8"
+        }}),
+    );
+    backend.respond_to("textDocument/definition", loc(&uri, 1, 7));
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid_a = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid_a).lsp_server = Some(sid);
+
+    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
+    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
+    for action in actions {
+        ed.dispatch_lsp_action(sid2, action);
+    }
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:lsp")"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    // Send the request from `main.rs` (`bid_a`, UTF-8 server) — dispatches
+    // synchronously, so the request has already left with `bid_a` captured
+    // by the time this returns. Deliberately no `settle()` here:
+    // `InlineLspBackend::send` queues the canned response for the *next*
+    // drain rather than answering inline, but `settle()` itself drains LSP
+    // (`drain_async_sources` → `drain_lsp`) — calling it now would close the
+    // race window before this test ever opens it.
+    ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
+
+    // Switch focus to an unrelated, server-less buffer *before* the
+    // response arrives — this is the race window.
+    let other = file_dir.path().join("other.rs");
+    std::fs::write(&other, "\n").unwrap();
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+    assert_ne!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "sanity: focus must have actually moved before the response drains"
+    );
+
+    // Now let the response land.
+    ed.drain_lsp();
+    ed.settle();
+
+    let line1_start = hume_rope::lines::line_start_char(
+        ed.doc().text().rope(),
+        hume_rope::line::RopeyLine::new(1),
+    );
+    let head = ed.current_selections().primary().head();
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "goto must have jumped back into main.rs"
+    );
+    assert_eq!(
+        head.chars_since(line1_start),
+        6,
+        "must decode with main.rs's own UTF-8 server, landing on '=' (char 6), \
+         not the UTF-16 default the newly-focused buffer would fall back to (char 7)"
+    );
+
+    drop(guard);
+}
+
 /// A target whose path genuinely can't be opened (here: it's a directory,
 /// not a file — `Buffer::from_file_or_new` only tolerates `NotFound`) must
 /// still error and leave the cursor untouched.

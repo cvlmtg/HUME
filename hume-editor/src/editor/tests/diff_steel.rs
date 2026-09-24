@@ -44,7 +44,7 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (diff-buffer-lines (current-buffer) "a\nB\nc\n")
+        r#"(equal? (diff-buffer-lines bid "a\nB\nc\n")
                    (list (list 1 1 1 1 (list "B") (list "b"))))"#,
     );
     assert!(
@@ -54,19 +54,18 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 }
 
 /// `diff-buffer-lines` on a stale bid raises "invalid buffer id", not a
-/// silent "no differences" — `DiffHost::diff_buffer_lines` is the one
-/// `DiffHost` call that skips `BidArg::require_live` (its own buffer-text
-/// lookup already doubles as the liveness check), so this is the only path
-/// that exercises `BidArg::not_live_err` end to end. Errors raised inside a
+/// silent "no differences" — `bid`'s liveness is checked at argument-resolve
+/// time (`args::LiveBid`'s `BuiltinArg::resolve`, in the `builtins!`-
+/// registered closure), before `diff_buffer_lines`'s body — and thus
+/// `DiffHost::diff_buffer_lines` itself — ever runs. Errors raised inside a
 /// `define-command!` body surface as a `Severity::Error` message-log entry
 /// prefixed `"steel call error: "` (`scripting_setup.rs`'s `run_call_batch`
 /// → `apply_script_result`), not as a Rust panic or a silent no-op — hence
 /// checking the log instead of a `run_probe` boolean.
 ///
-/// Fail oracle: swap `DiffHost::diff_buffer_lines`'s `None` return for
-/// `Some(Vec::new())` on an unknown bid — this assertion goes red while
-/// every other test in this file, none of which pass a stale bid, stays
-/// green.
+/// Fail oracle: revert `diff-buffer-lines`'s `builtins!` table entry from
+/// `args::LiveBid` to `args::BidArg` — this assertion goes red while every
+/// other test in this file, none of which pass a stale bid, stays green.
 #[test]
 fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     let tmp = safe_tempdir();

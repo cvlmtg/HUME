@@ -5,7 +5,7 @@ use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::doc_ops;
-use super::{pane_display_lines, viewport};
+use super::{CommandPane, pane_display_lines, viewport};
 use crate::editor::error::CommandError;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
@@ -117,38 +117,38 @@ fn scroll_page(
 pub(in crate::editor) fn cmd_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focus.id();
-    scroll_page(state, view, pid, mode, false, true)
+    scroll_page(state, view, t.pid(), mode, false, true)
 }
 pub(in crate::editor) fn cmd_page_up(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focus.id();
-    scroll_page(state, view, pid, mode, false, false)
+    scroll_page(state, view, t.pid(), mode, false, false)
 }
 pub(in crate::editor) fn cmd_half_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focus.id();
-    scroll_page(state, view, pid, mode, true, true)
+    scroll_page(state, view, t.pid(), mode, true, true)
 }
 pub(in crate::editor) fn cmd_half_page_up(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focus.id();
-    scroll_page(state, view, pid, mode, true, false)
+    scroll_page(state, view, t.pid(), mode, true, false)
 }
 
 // ── View-trie scroll (z z / z k / z j) ────────────────────────────────────────
@@ -184,7 +184,7 @@ fn cmd_view_scroll_to_display_line(
 
 /// Center the head in the viewport, like `z z`. Infallible core shared by
 /// [`cmd_view_center`] (the registered `z z` command) and any other caller
-/// that wants the same effect without going through an `EditorCmdFn`'s
+/// that wants the same effect without going through a native `EditorCmd`'s
 /// `Result` — `lifecycle.rs`'s post-file-load placement, LSP goto-definition
 /// (`lsp/edits.rs`), and `step_align_view`'s `Center` arm.
 pub(in crate::editor) fn view_center(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
@@ -205,33 +205,33 @@ pub(in crate::editor::commands) fn view_top(
 pub(in crate::editor) fn cmd_view_center(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focus.id();
-    view_center(state, view, pid);
+    view_center(state, view, t.pid());
     Ok(())
 }
 
 pub(in crate::editor) fn cmd_view_top(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focus.id();
-    view_top(state, view, pid);
+    view_top(state, view, t.pid());
     Ok(())
 }
 
 pub(in crate::editor) fn cmd_view_bottom(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focus.id();
-    let target = (viewport(view, pid).height as usize).saturating_sub(1);
-    cmd_view_scroll_to_display_line(state, view, pid, target);
+    let target = (viewport(view, t.pid()).height as usize).saturating_sub(1);
+    cmd_view_scroll_to_display_line(state, view, t.pid(), target);
     Ok(())
 }

@@ -79,14 +79,17 @@ a command without extend semantics (like undo) is suppressed as a no-op
 rather than run. Bindings that should *always* extend are a separate,
 per-binding declaration (see "Explicit force-extend bindings" below).
 
-All Steel-defined commands are extendable automatically. When Ctrl-key delivers
-extend to your command, the lambda receives `extend = #t` as its second argument
-(if the lambda declares a second parameter). The body can then forward it:
+All Steel-defined commands are extendable automatically. Every command's lambda
+receives the pane it was invoked through as its first argument — a value that
+names both the buffer and, for a synchronous keypress or `:` dispatch, the
+pane itself. When Ctrl-key delivers extend to your command, the lambda receives
+`extend = #t` as its third argument (if the lambda declares a third parameter).
+The body can then forward it:
 
 ```scheme
 (define-command! "step-right" "Move right N times, optionally extending."
-  (lambda (count extend)
-    (call! "move-right" count extend)))
+  (lambda (pane count extend)
+    (call! "move-right" pane count extend)))
 ```
 
 Steel commands can also opt in to dot-repeat (`.`) via `#:repeatable #t`. By
@@ -96,7 +99,7 @@ full command body at a new cursor position is meaningful. Shell-out commands
 
 ```scheme
 (define-command! "delete-selection" "Delete current selection; repeatable."
-  (lambda () (call! "delete"))
+  (lambda (pane) (call! "delete" pane))
   #:repeatable #t)
 ```
 
@@ -224,9 +227,9 @@ tracks count as "no count was typed" versus "an explicit count of *n* was
 typed" — a bare `w` and an explicit `1w` both move by one word, but they are
 distinguishable to the layers above dispatch.
 
-Script-defined commands receive count and extend as their first two
-parameters (if declared), the same injection mechanism as the extend flag
-described above. Since Scheme has no built-in way to say "this argument was
+Script-defined commands receive the buffer they were invoked for, then count
+and extend, as their first three parameters (if declared), the same
+injection mechanism as the extend flag described above. Since Scheme has no built-in way to say "this argument was
 omitted," dispatch passes a count of zero to mean "no count was typed," and a
 command that forwards its count to another command decodes zero back into
 "no count" before passing it on — so a bare keypress stays a bare keypress

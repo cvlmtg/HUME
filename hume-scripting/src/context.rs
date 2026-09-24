@@ -3,8 +3,6 @@ use std::sync::{Arc, atomic::AtomicBool};
 use steel::gc::unsafe_erased_pointers::CustomReference;
 use steel::rerrs::SteelErr;
 
-use hume_engine::pipeline::{BufferId, PaneId};
-
 use super::attribution::{PluginId, PluginStack};
 use super::host::EditorHost;
 use super::log::LogLevel;
@@ -70,13 +68,6 @@ pub(crate) struct SteelCtx<'a> {
     /// see [`EvalMode`] for the effective legality context builtins gate on,
     /// which also depends on the live `plugin_stack`.
     pub(crate) session: EvalSession,
-    // ── Multi-buffer focus snapshot ──────────────────────────────────────────
-    pub(crate) focused_pane_id: PaneId,
-    pub(crate) focused_buffer_id: BufferId,
-    /// Tracks the live focused buffer across mutations within one command call.
-    /// Starts equal to `focused_buffer_id`; updated by `switch-to-buffer!` and
-    /// `close-buffer!` so subsequent builtins see the new current buffer.
-    pub(crate) live_focused_buffer_id: BufferId,
     /// Effect-log length snapshots, one per currently-nested plugin body
     /// (`begin_lazy_activation` pushes, `finish_lazy_activation` pops — LIFO,
     /// matching `plugin_stack`). Lets a failed body's own queued effects be
@@ -158,9 +149,6 @@ impl<'a> SteelCtx<'a> {
             wait_char_request: None,
             pending_char: None,
             session: EvalSession::Init,
-            focused_pane_id: PaneId::default(),
-            focused_buffer_id: BufferId::default(),
-            live_focused_buffer_id: BufferId::default(),
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
             failed_activations: Vec::new(),
@@ -253,8 +241,6 @@ impl<'a> SteelCtx<'a> {
     pub(crate) fn new_command(
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
-        focused_pane_id: PaneId,
-        focused_buffer_id: BufferId,
         pending_char: Option<char>,
     ) -> Self {
         Self {
@@ -270,9 +256,6 @@ impl<'a> SteelCtx<'a> {
             wait_char_request: None,
             pending_char,
             session: EvalSession::Runtime,
-            focused_pane_id,
-            focused_buffer_id,
-            live_focused_buffer_id: focused_buffer_id,
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
             failed_activations: Vec::new(),

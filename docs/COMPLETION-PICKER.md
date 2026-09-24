@@ -122,7 +122,7 @@ surface.
 
 A trigger mints one `Invocation` per source (`widget_token::next()` for its
 id), its span already resolved (above) — a native source answers inline; a
-Steel one is *queued* via `EditorState::queue_steel_call` — `(proc id bid
+Steel one is *queued* via `EditorState::queue_steel_call` — `(proc id pane
 prefix)` for a buffer source, `(proc id input cursor)` for a `:`-line one —
 and answers with `(completion-emit! id items #:incomplete)`, sync or from
 any later callback, exactly once. An empty list is "nothing from this
@@ -228,7 +228,7 @@ the sources with a ranked candidate.
 | `(register-trigger-chars! source language chars)` + `on-trigger-char` | shared, listener-agnostic table (signature help uses it) — *not* how a `'buffer` completion source's own trigger chars are joined |
 | `(completion-set-trigger-chars! source language chars)` | a `'buffer` completion source's own trigger chars for `language`, replacing that pair's previous set; the editor invokes `source` directly when one lands, no hook round trip. Crosses as `Effect::SetCompletionTriggerChars` (a `register-completion-source!` queued earlier in the same eval may still be the one supplying `source`); `source` naming no registered `'buffer` source at apply time is reported as a log message, not raised back to the caller |
 | `(define-typed-command! … #:complete "name")` | a `:` command's argument completer |
-| command `completion-trigger` (Insert, default `Ctrl-Space`) | native; `(call! "completion-trigger")` from Steel |
+| command `completion-trigger` (Insert, default `Ctrl-Space`) | native; `(call! "completion-trigger" pane)` from Steel |
 
 `core:lsp/completion.scm` is the reference source: `register-completion-
 source! "lsp"` with `#:priority 10 #:resolve #t`, whose proc sends

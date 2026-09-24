@@ -237,7 +237,7 @@ fn on_language_set_hook_fires_on_set_buffer_language() {
     // Register hook that moves right when on-language-set fires.
     attach_host(
         &mut ed,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let bid = ed.focused_buffer_id();
     let before = state(&ed);
@@ -253,7 +253,7 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(
         &mut ed,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let bid = ed.focused_buffer_id();
     // Set once to establish baseline.
@@ -267,5 +267,50 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
         state(&ed),
         after_first,
         "hook must not fire on unchanged language"
+    );
+}
+
+/// Hole E regression: `(set-buffer-language! bid "rust") (close-buffer!
+/// bid)` in one eval must not panic. The `Effect::SetBufferLanguage` this
+/// queues only applies after the eval returns (`apply_script_effects`
+/// drains the effect vec after the whole body ran), so by the time it
+/// applies, `bid` — closed by the same body — is already gone; the effect
+/// arm must check liveness itself rather than let `set_buffer_language_
+/// explicit`'s panicking `get_mut` hit an unseeded slot.
+///
+/// Fail oracle: drop the `try_get` guard in `apply_script_effects`'s
+/// `SetBufferLanguage` arm → `BufferStore: unseeded BufferId` panic.
+#[test]
+fn set_buffer_language_then_close_in_one_eval_does_not_panic() {
+    use hume_editing::selection::SelectionSet;
+    use hume_editing::text::BufferText;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    // A second buffer so closing `bid` frees its slot outright rather than
+    // hitting the unrelated last-buffer scratch-replacement branch.
+    ed.open_buffer(Buffer::new(
+        BufferText::from("x\n"),
+        SelectionSet::default(),
+    ));
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "set-then-close" "" (lambda (bid)
+             (set-buffer-language! bid "rust")
+             (close-buffer! bid)))"#,
+    );
+    let bid = ed.focused_buffer_id();
+
+    type_cmd(&mut ed, ":set-then-close");
+
+    assert!(
+        ed.state.buffers.try_get(bid).is_none(),
+        "bid must actually be closed"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("no longer exists"),
+        "the dead bid must be reported, not silently dropped: {log:?}"
     );
 }

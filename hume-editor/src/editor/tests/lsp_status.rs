@@ -76,7 +76,9 @@ fn lsp_stop_deregisters_the_server_and_clears_buffer_attachment() {
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
 
-    let n = ed.lsp_stop(Some("rust"));
+    let n = ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
 
     assert_eq!(n, 1);
     assert!(
@@ -95,11 +97,58 @@ fn lsp_stop_deregisters_the_server_and_clears_buffer_attachment() {
     );
 }
 
+/// `(lsp-stop! bid)` targets `bid`'s own attached server, regardless of
+/// which buffer is currently focused — the whole point of `LspServerTarget`
+/// replacing the old `Option<&str>` (which had no way to name a buffer at
+/// all, only "the focused one" via `None`).
+///
+/// Fail oracle: `lsp_targets` reading `self.focused_buffer_id()` instead of
+/// the given `bid` would stop 0 servers here, since the focused buffer (`a`)
+/// has none attached.
+#[test]
+fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
+    let mut ed = editor_from("-[w]>ord\n");
+    let bid_a = ed.focused_buffer_id();
+    let bid_b = ed.open_buffer(Buffer::new(
+        BufferText::from("other\n"),
+        SelectionSet::default(),
+    ));
+    assert_eq!(ed.focused_buffer_id(), bid_a, "still focused on a");
+
+    let mut backend = InlineLspBackend::new();
+    let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let root = PathBuf::from("/tmp/hume-lsp-stop-other-buffer-test");
+    ed.lsp
+        .insert_client_for_test(LspClient::new(sid, root.clone()));
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), root, sid);
+    ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid);
+
+    let n = ed.lsp_stop(&hume_scripting::LspServerTarget::Buffer(bid_b));
+
+    assert_eq!(n, 1, "must stop bid_b's server although a is focused");
+    assert!(
+        ed.lsp.client_for_test(sid).is_none(),
+        "the client must be deregistered"
+    );
+    assert_eq!(ed.state.buffers.get(bid_b).lsp_server, None);
+}
+
 #[test]
 fn lsp_stop_with_no_matching_server_stops_nothing() {
     let mut ed = editor_from("-[w]>ord\n");
-    assert_eq!(ed.lsp_stop(Some("nonexistent-language")), 0);
-    assert_eq!(ed.lsp_stop(None), 0);
+    assert_eq!(
+        ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+            "nonexistent-language".to_string()
+        )),
+        0
+    );
+    let bid = ed.focused_buffer_id();
+    assert_eq!(
+        ed.lsp_stop(&hume_scripting::LspServerTarget::Buffer(bid)),
+        0
+    );
 }
 
 /// A queued didChange entry left over from before the stop must
@@ -132,7 +181,9 @@ fn lsp_stop_clears_the_buffer_s_pending_change_queue() {
         });
     assert!(!ed.state.buffers.get(bid).lsp_pending.is_empty());
 
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
 
     assert!(
         ed.state.buffers.get(bid).lsp_pending.is_empty(),
@@ -173,7 +224,9 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
         .lsp_server
         .expect("attached on open");
 
-    let n = ed.lsp_restart(Some("rust"));
+    let n = ed.lsp_restart(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
     assert_eq!(n, 1);
 
     let new_sid = ed
@@ -248,7 +301,9 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
         "seed publish from the original server must land"
     );
 
-    ed.lsp_restart(Some("rust"));
+    ed.lsp_restart(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
     let new_sid = ed
         .state
         .buffers

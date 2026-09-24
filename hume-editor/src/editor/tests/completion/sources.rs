@@ -40,7 +40,7 @@ fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
         r#"(register-completion-source! "test"
              (lambda (id bid prefix)
                (log! 'info (string-append "prefix:" prefix "|bid-ok:"
-                             (if (equal? bid (current-buffer)) "yes" "no")))
+                             (if (equal? bid (focused-pane)) "yes" "no")))
                (completion-emit! id (list (hash "label" "kitty_support"))))
              #:target 'buffer)"#,
     );
@@ -899,7 +899,7 @@ fn a_steel_typed_command_can_declare_a_native_completer() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "look" "" (lambda (arg) (log! 'info arg)) #:complete "path")"#,
+        r#"(define-typed-command! "look" "" (lambda (bid arg) (log! 'info arg)) #:complete "path")"#,
     );
     ed.handle_key(key(':'));
     type_chars(&mut ed, &format!("look {}/hel", dir.path().display()));
@@ -923,7 +923,7 @@ fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
              (lambda (id input cursor)
                (completion-emit! id (list (hash "label" "alice") (hash "label" "bob"))))
              #:target 'minibuf #:match 'string)
-           (define-typed-command! "greet" "" (lambda (arg) (log! 'info arg)) #:complete "names")"#,
+           (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")"#,
     );
     ed.handle_key(key(':'));
     type_chars(&mut ed, "greet al");
@@ -952,7 +952,7 @@ fn a_buffer_source_named_as_a_completer_is_ignored_with_a_trace() {
         &format!(
             "{}\n{}",
             completion_source("words", &completion_labels(&["x"]), ""),
-            r#"(define-typed-command! "greet" "" (lambda (arg) (log! 'info arg)) #:complete "words")"#
+            r#"(define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "words")"#
         ),
     );
     ed.handle_key(key(':'));

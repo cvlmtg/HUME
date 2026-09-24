@@ -14,8 +14,8 @@ use hume_ops::text_object::inner_word_impl;
 use super::super::input_stack::{PaneSnapshot, SearchLayer, SiftLayer};
 use super::super::{EditorState, MiniBuffer};
 use super::{
-    current_selections, doc, effective_word_chars, focused_buffer_id, search_pattern,
-    set_current_selections, set_primary_selection,
+    CommandPane, FocusedPane, doc, effective_word_chars, pane_selections, search_pattern,
+    set_pane_selections, set_primary_selection,
 };
 use crate::editor::error::CommandError;
 
@@ -28,18 +28,18 @@ use crate::editor::error::CommandError;
 fn begin_search(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     direction: SearchDirection,
     prompt: &str,
 ) {
     let extend = state.mode() == hume_engine::types::EditorMode::Extend;
-    let pane = state.focus.id();
     state.search.direction = direction;
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
         SearchLayer {
             minibuf: MiniBuffer::new(prompt),
-            snap: PaneSnapshot::new(pane),
+            snap: PaneSnapshot::new(fp.pid()),
             extend,
         },
     );
@@ -49,10 +49,11 @@ fn begin_search(
 pub(in crate::editor) fn cmd_search_forward(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    begin_search(state, view, SearchDirection::Forward, "/");
+    begin_search(state, view, fp, SearchDirection::Forward, "/");
     Ok(())
 }
 
@@ -60,16 +61,17 @@ pub(in crate::editor) fn cmd_search_forward(
 pub(in crate::editor) fn cmd_search_backward(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    begin_search(state, view, SearchDirection::Backward, "?");
+    begin_search(state, view, fp, SearchDirection::Backward, "?");
     Ok(())
 }
 
-/// Ensure the focused buffer has an active search pattern.
-fn ensure_search_regex(state: &mut EditorState, view: &EngineView) -> bool {
-    if search_pattern(state, view).is_some() {
+/// Ensure `t`'s buffer has an active search pattern.
+fn ensure_search_regex(state: &mut EditorState, view: &EngineView, t: CommandPane) -> bool {
+    if search_pattern(state, view, t).is_some() {
         return true;
     }
     let Some(pattern) = state.registers.search_register().filter(|p| !p.is_empty()) else {
@@ -78,7 +80,7 @@ fn ensure_search_regex(state: &mut EditorState, view: &EngineView) -> bool {
     let Some(sp) = SearchPattern::compile(pattern) else {
         return false;
     };
-    let bid = focused_buffer_id(state, view);
+    let bid = t.bid(view);
     state.buffers.get_mut(bid).search_pattern = Some(sp);
     true
 }
@@ -96,15 +98,16 @@ fn ensure_search_regex(state: &mut EditorState, view: &EngineView) -> bool {
 fn search_jump(
     state: &mut EditorState,
     view: &EngineView,
+    t: CommandPane,
     count: usize,
     direction: SearchDirection,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if !ensure_search_regex(state, view) {
+    if !ensure_search_regex(state, view, t) {
         return Ok(());
     }
 
-    let bid = focused_buffer_id(state, view);
+    let bid = t.bid(view);
     let sp = match state.buffers.get(bid).search_pattern.as_ref() {
         Some(sp) => sp,
         None => return Ok(()),
@@ -113,7 +116,7 @@ fn search_jump(
     let multi = sp.multi();
     let matches = &state.buffers.get(bid).search_matches.matches;
     let scan = MatchScan {
-        text: doc(state, view).text(),
+        text: doc(state, view, t).text(),
         regex: &regex,
         cached: (!matches.is_empty()).then_some(matches.as_slice()),
         direction,
@@ -122,22 +125,20 @@ fn search_jump(
     };
 
     if multi {
-        let sels = current_selections(state, view).clone();
+        let sels = pane_selections(state, view, t).clone();
         let Some((new_sels, primary_wrapped)) = scan.advance_all(sels, count) else {
             return Err(CommandError::transient("no match"));
         };
-        let pid = state.focus.id();
-        state.panes.state[pid][bid].search_cursor.wrapped = primary_wrapped;
-        set_current_selections(state, view, new_sels);
+        state.panes.state[t.pid()][bid].search_cursor.wrapped = primary_wrapped;
+        set_pane_selections(state, view, t, new_sels);
         return Ok(());
     }
 
-    let primary = current_selections(state, view).primary();
+    let primary = pane_selections(state, view, t).primary();
     match scan.advance(primary, count) {
         Some((new_sel, wrapped)) => {
-            let pid = state.focus.id();
-            state.panes.state[pid][bid].search_cursor.wrapped = wrapped;
-            set_primary_selection(state, view, new_sel);
+            state.panes.state[t.pid()][bid].search_cursor.wrapped = wrapped;
+            set_primary_selection(state, view, t, new_sel);
             Ok(())
         }
         None => Err(CommandError::transient("no match")),
@@ -147,11 +148,11 @@ fn search_jump(
 /// Clear the active search regex and dismiss all match highlights.
 pub(in crate::editor) fn cmd_clear_search(
     state: &mut EditorState,
-    view: &mut EngineView,
+    _view: &mut EngineView,
+    bid: hume_engine::pipeline::BufferId,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let bid = focused_buffer_id(state, view);
     super::super::search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
     Ok(())
 }
@@ -159,18 +160,20 @@ pub(in crate::editor) fn cmd_clear_search(
 pub(in crate::editor) fn cmd_search_next(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    search_jump(state, view, count, SearchDirection::Forward, mode)
+    search_jump(state, view, t, count, SearchDirection::Forward, mode)
 }
 pub(in crate::editor) fn cmd_search_prev(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    search_jump(state, view, count, SearchDirection::Backward, mode)
+    search_jump(state, view, t, count, SearchDirection::Backward, mode)
 }
 
 // ── Select all matches ────────────────────────────────────────────────────────
@@ -178,19 +181,20 @@ pub(in crate::editor) fn cmd_search_prev(
 pub(in crate::editor) fn cmd_select_all_matches(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if !ensure_search_regex(state, view) {
+    if !ensure_search_regex(state, view, t) {
         return Ok(());
     }
-    let bid = focused_buffer_id(state, view);
+    let bid = t.bid(view);
     let regex = match state.buffers.get(bid).search_pattern.as_ref() {
         Some(sp) => Arc::clone(&sp.regex),
         None => return Ok(()),
     };
 
-    let matches = find_all_matches(doc(state, view).text(), &regex);
+    let matches = find_all_matches(doc(state, view, t).text(), &regex);
     if matches.is_empty() {
         return Err(CommandError::transient("no matches"));
     }
@@ -199,7 +203,7 @@ pub(in crate::editor) fn cmd_select_all_matches(
         .into_iter()
         .map(|span| Selection::new(span.start, span.end))
         .collect();
-    set_current_selections(state, view, SelectionSet::from_vec(sels, 0));
+    set_pane_selections(state, view, t, SelectionSet::from_vec(sels, 0));
     Ok(())
 }
 
@@ -208,16 +212,16 @@ pub(in crate::editor) fn cmd_select_all_matches(
 pub(in crate::editor) fn cmd_sift_within(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if current_selections(state, view)
+    if pane_selections(state, view, fp.target())
         .iter_sorted()
         .all(Selection::is_collapsed)
     {
         return Ok(());
     }
-    let pane = state.focus.id();
     // `SiftLayer::setup` snapshots the current selections once the layer
     // lands — see `SearchLayer::setup`'s doc for why the capture happens
     // there rather than here.
@@ -225,7 +229,7 @@ pub(in crate::editor) fn cmd_sift_within(
         view,
         SiftLayer {
             minibuf: MiniBuffer::new("⫽"),
-            snap: PaneSnapshot::new(pane),
+            snap: PaneSnapshot::new(fp.pid()),
         },
     );
     Ok(())
@@ -236,13 +240,14 @@ pub(in crate::editor) fn cmd_sift_within(
 pub(in crate::editor) fn cmd_search_word_under_cursor(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf_id = focused_buffer_id(state, view);
+    let buf_id = t.bid(view);
     let chars = effective_word_chars(state.buffers.get(buf_id), &state.settings);
-    let text = doc(state, view).text();
-    let primary = current_selections(state, view).primary();
+    let text = doc(state, view, t).text();
+    let primary = pane_selections(state, view, t).primary();
 
     // Always search the word under the head, regardless of any existing selection
     // (matches Vim: `*` targets the word under the cursor, not the visual selection).
@@ -265,9 +270,9 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     let word = text.slice(range.to_exclusive()).to_string();
     let pattern = word_search_pattern(&word, chars);
 
-    set_primary_selection(state, view, Selection::new(start, end_incl));
+    set_primary_selection(state, view, t, Selection::new(start, end_incl));
 
-    set_search_pattern(state, view, SearchFlags::default(), &pattern)
+    set_search_pattern(state, view, t, SearchFlags::default(), &pattern)
 }
 
 // ── Search selection (Ctrl-/) ────────────────────────────────────────────────
@@ -279,11 +284,12 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
 pub(in crate::editor) fn cmd_search_selection(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let text = doc(state, view).text();
-    let primary = current_selections(state, view).primary();
+    let text = doc(state, view, t).text();
+    let primary = pane_selections(state, view, t).primary();
     let selected = primary.slice(text).to_string();
 
     // No-op on a bare structural newline (a collapsed cursor sitting on one) —
@@ -300,11 +306,11 @@ pub(in crate::editor) fn cmd_search_selection(
         multi: false,
         verbatim: true,
     };
-    set_search_pattern(state, view, flags, &selected)
+    set_search_pattern(state, view, t, flags, &selected)
 }
 
 /// Compile `pattern` under `flags`, write the rendered flagged form to the
-/// search register, and set it as the focused buffer's active search pattern
+/// search register, and set it as `t`'s buffer's active search pattern
 /// (forward direction). Shared tail of `*` and Ctrl-/ — both set the same
 /// (register, direction, pattern) triple that live search sets on confirm;
 /// the match-cache/highlights are rebuilt lazily per-frame regardless of
@@ -317,6 +323,7 @@ pub(in crate::editor) fn cmd_search_selection(
 fn set_search_pattern(
     state: &mut EditorState,
     view: &EngineView,
+    t: CommandPane,
     flags: SearchFlags,
     pattern: &str,
 ) -> Result<(), CommandError> {
@@ -326,7 +333,7 @@ fn set_search_pattern(
     };
     state.registers.set_search_register(raw);
     state.search.direction = SearchDirection::Forward;
-    let bid = focused_buffer_id(state, view);
+    let bid = t.bid(view);
     state.buffers.get_mut(bid).search_pattern = Some(sp);
     Ok(())
 }

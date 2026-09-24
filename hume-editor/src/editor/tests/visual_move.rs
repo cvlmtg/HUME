@@ -1285,9 +1285,10 @@ fn run_command_sync_some_count_moves_buffer_line() {
     use hume_scripting::host::CommandHost;
 
     let mut ed = visual_test_editor(0);
+    let pane = focused_pane(&ed);
     {
         let mut host = live_host!(ed);
-        host.run_command_sync("move-down", Some(1), false, None)
+        host.run_command_sync("move-down", pane, Some(1), false, None)
             .expect("run_command_sync must not error for move-down");
     }
     assert_eq!(
@@ -1297,7 +1298,7 @@ fn run_command_sync_some_count_moves_buffer_line() {
     );
 }
 
-/// A Steel command's own internal `(call! "move-down")` always moves by
+/// A Steel command's own internal `(call! "move-down" bid)` always moves by
 /// buffer line regardless of the *outer* key's typed count — the two are
 /// dispatched separately, each through its own `run_native_body` call, so
 /// the inner one can't inherit the outer's explicitness. This also proves
@@ -1326,7 +1327,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
     // key's count-or-lack-thereof, this would move a visual display line instead.
     host.eval_source(
         r#"(define-command! "steel-move-down" ""
-                 (lambda () (call! "move-down")))"#,
+                 (lambda () (call! "move-down" (focused-pane))))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1350,7 +1351,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
 }
 
 /// A Steel wrapper that forwards its own `count`/`extend` params straight into
-/// `(call! "move-down" count extend)` must preserve bare-press visual-display-line
+/// `(call! "move-down" bid count extend)` must preserve bare-press visual-display-line
 /// movement: dispatching it with `None` (as a keymap trie leaf would for a
 /// bare keypress) injects `count = 0` into the lambda, which round-trips back
 /// to `None` through `parse_count_extend` — the count-forwarding contract
@@ -1369,7 +1370,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(
         r#"(define-command! "steel-jk" ""
-                 (lambda (count extend) (call! "move-down" count extend)))"#,
+                 (lambda (bid count extend) (call! "move-down" bid count extend)))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1415,7 +1416,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(
         r#"(define-command! "steel-jk" ""
-                 (lambda (count extend) (call! "move-down" count extend)))"#,
+                 (lambda (bid count extend) (call! "move-down" bid count extend)))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1431,7 +1432,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     );
 }
 
-/// `(call! "move-down" 0)` from inside a Steel command body moves by visual
+/// `(call! "move-down" bid 0)` from inside a Steel command body moves by visual
 /// display line regardless of the *outer* dispatch's count — a script can ask for
 /// visual-display-line movement explicitly, not just by forwarding a bare keypress.
 /// Also confirms `explicit_count` is restored afterward (mirrors
@@ -1446,7 +1447,7 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(
         r#"(define-command! "steel-vis" ""
-                 (lambda () (call! "move-down" 0)))"#,
+                 (lambda () (call! "move-down" (focused-pane) 0)))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");
@@ -1493,7 +1494,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.eval_source(
         r#"(define-command! "steel-vis-direct" ""
-                 (lambda () (move-down 0)))"#,
+                 (lambda () (move-down (focused-pane) 0)))"#,
         &mut init_host,
     )
     .expect("define-command! must succeed");

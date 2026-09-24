@@ -101,10 +101,11 @@ pub(super) fn goto_tab_in_order(state: &mut EditorState, view: &mut EngineView, 
 pub(crate) fn cmd_tab_new(
     state: &mut EditorState,
     view: &mut EngineView,
+    bid: BufferId,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    open_tab(state, view, super::focused_buffer_id(state, view));
+    open_tab(state, view, bid);
     Ok(())
 }
 

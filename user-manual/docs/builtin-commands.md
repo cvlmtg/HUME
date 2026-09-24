@@ -4,16 +4,16 @@ These are editor commands — reached from a key binding or from a plugin with `
 
 ```scheme
 ;; directly, as a bare binding
-(move-left)
+(move-left pane)
 ;; or through the generic dispatcher, like a plugin command
-(call! "move-left")
+(call! "move-left" pane)
 ```
 
-The first form is only valid for builtins (they are pre-registered in the Steel scripting engine); `call!` works for any key-bindable command, builtin or Scheme-defined. Each entry lists the command name and what it does. For key bindings that trigger these commands, see the [key reference](default-keys.md) and the per-topic pages.
+Most builtins act through whatever pane `pane` names — not necessarily the one you're focused on, as long as it's still open and still shows the buffer `pane` names — so a hook or a timer can act on a pane you aren't currently looking at. A few commands still require `pane` to be the one you're actually focused on: entering insert mode, opening a search or command prompt, paste and paste-cycling, repeating the last action, and every pane-focus/split/close command. A handful need no pane at all (clearing search highlights, opening a new tab) or no buffer at all (toggling extend mode, switching tabs) and accept any `pane`. Either way, a `pane` the command can't act on errors rather than silently falling back to whatever is focused. The first form is only valid for builtins (they are pre-registered in the Steel scripting engine); `call!` works for any key-bindable command, builtin or Scheme-defined. Each entry lists the command name and what it does. For key bindings that trigger these commands, see the [key reference](default-keys.md) and the per-topic pages.
 
 ## Motions
 
-Move the cursor/selection. Callable as `(name)` or `(call! "name")`.
+Move the cursor/selection. Callable as `(name pane)` or `(call! "name" pane)`.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|

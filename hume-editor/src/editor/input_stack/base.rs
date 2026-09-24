@@ -164,7 +164,8 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
         ed.state.register_prefix = None; // cancel any pending "<reg> state
         // Esc exits Extend mode; Normal is the reset state.
         ed.state.input.set_extend(false);
-        let _ = cmd_clear_search(&mut ed.state, &mut ed.view, 0, MotionMode::Move);
+        let bid = ed.focused_buffer_id();
+        let _ = cmd_clear_search(&mut ed.state, &mut ed.view, bid, 0, MotionMode::Move);
         return;
     }
 

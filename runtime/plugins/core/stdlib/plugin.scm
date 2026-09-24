@@ -111,7 +111,7 @@
 ;;; in-flight async source, say) still runs.
 (define (stdlib/with-tab handler)
   (lambda (payload)
-    (when payload (call! "tab-new"))
+    (when payload (call! "tab-new" (focused-pane)))
     (handler payload)))
 
 ;;; Shared core for `with-vsplit`/`with-split`: skip `command` on a false
@@ -127,7 +127,7 @@
 (define (stdlib/with-pane-command command handler)
   (lambda (payload)
     (if payload
-        (when (call! command) (handler payload))
+        (when (call! command (focused-pane)) (handler payload))
         (handler payload))))
 
 (define (stdlib/with-vsplit handler)
@@ -144,8 +144,8 @@
 
 ;; ── Command-argument helper ──────────────────────────────────────────────────
 
-(define (stdlib/resolve-lang-arg cmd arg)
-  (let ([name (if (string? arg) arg (buffer-language (current-buffer)))])
+(define (stdlib/resolve-lang-arg pane cmd arg)
+  (let ([name (if (string? arg) arg (buffer-language pane))])
     (if (string? name)
         name
         (begin
@@ -154,16 +154,16 @@
 
 ;; ── Word tokenization ─────────────────────────────────────────────────────────
 
-;;; `(split-words str word-chars)`, but pulling `word-chars` from `bid`'s own
+;;; `(split-words str word-chars)`, but pulling `word-chars` from `pane`'s own
 ;;; setting rather than asking the caller to fetch and thread it through
 ;;; itself — the one derivation this buffer's word-chars value should ever
 ;;; go through, so a plugin working with "this buffer's own concept of a
 ;;; word" can't accidentally pass a stale or mismatched value. A caller with
-;;; a genuine reason to classify differently from `bid`'s own setting (text
+;;; a genuine reason to classify differently from `pane`'s own setting (text
 ;;; that isn't this buffer's content at all, or another buffer's word-chars
 ;;; on purpose) calls `split-words` directly instead.
-(define (stdlib/split-words bid str)
-  (split-words str (get-option bid "word-chars")))
+(define (stdlib/split-words pane str)
+  (split-words str (get-buffer-option pane "word-chars")))
 
 ;; ── Plugin config helpers ────────────────────────────────────────────────────
 
@@ -271,7 +271,7 @@
   stdlib/git-toplevel)
 
 (define-command! "stdlib/resolve-lang-arg"
-  "A typed language-name argument, else the current buffer's language, else #f after a warning."
+  "A typed language-name argument, else pane's language, else #f after a warning."
   stdlib/resolve-lang-arg)
 
 (define-command! "stdlib/config-boolean"
@@ -311,5 +311,5 @@
   stdlib/buffer-actions)
 
 (define-command! "stdlib/split-words"
-  "Every word in the given string, tokenized using the given buffer's own word-chars setting — split-words with word-chars pulled from get-option automatically."
+  "Every word in the given string, tokenized using the given buffer's own word-chars setting — split-words with word-chars pulled from get-buffer-option automatically."
   stdlib/split-words)

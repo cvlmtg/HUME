@@ -16,7 +16,6 @@
 
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_rope::offset::CharOffset;
-use hume_scripting::SteelBufferId;
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
@@ -446,6 +445,7 @@ fn invoke_buffer_sources(
     // which source is being invoked.
     let chars = crate::editor::commands::effective_word_chars(buf, settings);
     let live = hume_ops::edit::word_start_before(text, head, chars)..head;
+    let pane = hume_scripting::PaneHandle::with_pane(bid, session.pane_id());
     ids.iter()
         .map(|&id| {
             let entry = sources.buffer_get(id);
@@ -456,7 +456,7 @@ fn invoke_buffer_sources(
                 entry.proc.clone(),
                 vec![
                     SteelVal::IntV(invocation_id as isize),
-                    SteelBufferId::new(bid).into_steel_val(),
+                    hume_scripting::SteelPane::new(pane).into_steel_val(),
                     SteelVal::StringV(prefix.into()),
                 ],
             )

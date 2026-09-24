@@ -22,8 +22,8 @@ fn stale_token_returns_false_without_spawning() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-typed-command! "go" "" (lambda ()
-          (set! tok (picker! '() (lambda (x) (log! 'info (to-string x)))))))
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (picker! pane '() (lambda (x) (log! 'info (to-string x)))))))
         (define-command! "spawn-stale" "" (lambda ()
           (log! 'info (to-string
             (picker-source-spawn! (+ tok 1) "definitely-not-a-real-binary-xyz" '())))))
@@ -61,8 +61,8 @@ fn spawn_failure_raises_and_leaves_the_picker_open() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-typed-command! "go" "" (lambda ()
-          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (picker! pane '() (lambda (x) (void))))))
         (define-command! "spawn-bad" "" (lambda ()
           (picker-source-spawn! tok "definitely-not-a-real-binary-xyz" '())))
         "#,
@@ -86,8 +86,8 @@ fn empty_cmd_raises_naming_the_arg() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-typed-command! "go" "" (lambda ()
-          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (picker! pane '() (lambda (x) (void))))))
         (define-command! "spawn-empty" "" (lambda ()
           (picker-source-spawn! tok "" '())))
         "#,
@@ -113,8 +113,8 @@ fn ok_exit_codes_rejects_a_value_outside_i32_range() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-typed-command! "go" "" (lambda ()
-          (set! tok (picker! '() (lambda (x) (void))))))
+        (define-typed-command! "go" "" (lambda (pane)
+          (set! tok (picker! pane '() (lambda (x) (void))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "definitely-not-a-real-binary-xyz" '()
             #:ok-exit-codes (list 4294967297))))

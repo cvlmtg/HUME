@@ -308,7 +308,7 @@ fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
              (lambda (id input cursor)
                (completion-emit! id (list (hash "label" "ns/") (hash "label" "other"))))
              #:target 'minibuf #:match 'string)
-           (define-typed-command! "tag" "" (lambda (arg) (log! 'info arg)) #:complete "tags")"#,
+           (define-typed-command! "tag" "" (lambda (bid arg) (log! 'info arg)) #:complete "tags")"#,
     );
     ed.handle_key(key(':'));
     type_chars(&mut ed, "tag ");
@@ -353,7 +353,7 @@ fn a_minibuf_source_gets_only_the_argument_the_cursor_is_in() {
         r#"(register-completion-source! "two-arg"
              (lambda (id input cursor) (completion-emit! id (list (hash "label" "bexyz"))))
              #:target 'minibuf #:match 'string)
-           (define-typed-command! "mycmd" "" (lambda (arg) (log! 'info arg)) #:complete "two-arg")"#,
+           (define-typed-command! "mycmd" "" (lambda (bid arg) (log! 'info arg)) #:complete "two-arg")"#,
     );
     ed.handle_key(key(':'));
     type_chars(&mut ed, "mycmd alpha be");
@@ -501,7 +501,7 @@ fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
         r#"(register-completion-source! "boom"
              (lambda (id input cursor) (error "boom"))
              #:target 'minibuf #:match 'string)
-           (define-typed-command! "mycmd" "" (lambda (arg) (log! 'info arg)) #:complete "boom")"#,
+           (define-typed-command! "mycmd" "" (lambda (bid arg) (log! 'info arg)) #:complete "boom")"#,
     );
     ed.handle_key(key(':'));
     type_chars(&mut ed, "mycmd ");
@@ -540,7 +540,7 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
            (register-completion-source! "names"
              (lambda (id input cursor) (set! captured-id id))
              #:target 'minibuf #:match 'string)
-           (define-typed-command! "greet" "" (lambda (arg) (log! 'info arg)) #:complete "names")
+           (define-typed-command! "greet" "" (lambda (bid arg) (log! 'info arg)) #:complete "names")
            (define-command! "answer-many" "" (lambda ()
              (completion-emit! captured-id
                (list (hash "label" "alice") (hash "label" "bob") (hash "label" "carol")))))

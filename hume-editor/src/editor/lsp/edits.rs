@@ -10,12 +10,11 @@
 //! with `apply-workspace-edit!` and belongs next to it.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_lsp::codec::ResponseError;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::position_encoding::{PositionEncoding, WirePos, wire_to_line_char_col};
 
-use super::LspState;
 use super::introspect;
 use crate::editor::Editor;
 use crate::editor::EditorState;
@@ -66,18 +65,24 @@ fn one_of_to_text_edit(
 /// then walked forward once to build the `ChangeSet`. Read-only, no
 /// mutation: `apply_workspace_edit`'s "validate all, then apply all" needs
 /// to build every file's changeset before committing any of them.
+///
+/// `encoding` is the caller's to resolve, not this function's — a workspace
+/// edit's every file shares the one server that produced the whole edit
+/// (resolved once via `server_encoding`), while `apply-text-edits!` reads
+/// each edit handle's own tagged producing-server encoding
+/// (`JsonHandle::position_encoding`), never `bid`'s *currently* attached
+/// server; see each caller for which.
 fn build_edit_changeset(
     state: &EditorState,
-    lsp: &LspState,
     bid: BufferId,
     edits: &[lsp_types::TextEdit],
     expect_gen: Option<u64>,
+    encoding: PositionEncoding,
 ) -> Result<ChangeSet, String> {
     let buf = checked_buffer(state, bid, expect_gen)?;
     if edits.is_empty() {
         return Err("no edits given".to_string());
     }
-    let encoding = introspect::encoding_for_buffer(state, lsp, bid);
     let rope = buf.text().rope();
     // Stable ascending sort by start — two edits at the same position keep
     // `edits`' own array order (per spec, the array's order defines the
@@ -140,20 +145,20 @@ fn build_changeset_from_char_edits(
 /// needs to map further positions through this exact edit — completion's
 /// resolve path, mapping a *pre*-accept response's positions forward — can
 /// do so without rebuilding it.
-fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> ChangeSet {
-    pane_state::ensure(
-        &mut state.panes.state,
-        &state.buffers,
-        state.focus.id(),
-        bid,
-    );
+fn commit_changeset(
+    state: &mut EditorState,
+    pid: PaneId,
+    bid: BufferId,
+    cs: ChangeSet,
+) -> ChangeSet {
+    pane_state::ensure(&mut state.panes.state, &state.buffers, pid, bid);
     let cs_for_return = cs.clone();
     doc_ops::apply_doc_edit(
         &mut state.buffers,
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
-        state.focus.id(),
+        pid,
         bid,
         move |text, mut sels| {
             let text_pre = text.clone();
@@ -167,15 +172,19 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> Ch
     cs_for_return
 }
 
-/// `(apply-text-edits! bid edits #:expect-generation gen)`.
+/// `(apply-text-edits! pane edits #:expect-generation gen)`. `encoding` is
+/// the host layer's own resolve — every entry in `edits` decoded from its
+/// own tagged `JsonHandle`, checked there to all agree. `pid` is the
+/// already-resolved invocation pane (see `commands::resolve_command_pane`).
 pub(in crate::editor) fn apply_text_edits(
     state: &mut EditorState,
-    lsp: &LspState,
+    pid: PaneId,
     bid: BufferId,
     edits: Vec<lsp_types::TextEdit>,
     expect_gen: Option<u64>,
+    encoding: PositionEncoding,
 ) -> Result<(), String> {
-    apply_text_edits_returning_cs(state, lsp, bid, edits, expect_gen)?;
+    apply_text_edits_returning_cs(state, pid, bid, edits, expect_gen, encoding)?;
     Ok(())
 }
 
@@ -186,13 +195,14 @@ pub(in crate::editor) fn apply_text_edits(
 /// edit landed.
 pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
     state: &mut EditorState,
-    lsp: &LspState,
+    pid: PaneId,
     bid: BufferId,
     edits: Vec<lsp_types::TextEdit>,
     expect_gen: Option<u64>,
+    encoding: PositionEncoding,
 ) -> Result<ChangeSet, String> {
-    let cs = build_edit_changeset(state, lsp, bid, &edits, expect_gen)?;
-    Ok(commit_changeset(state, bid, cs))
+    let cs = build_edit_changeset(state, bid, &edits, expect_gen, encoding)?;
+    Ok(commit_changeset(state, pid, bid, cs))
 }
 
 /// Decodes `edits` (wire positions, computed by the server against the
@@ -263,6 +273,7 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
 /// it.
 pub(in crate::editor) fn commit_char_edits(
     state: &mut EditorState,
+    pid: PaneId,
     bid: BufferId,
     char_edits: Vec<(ExclusiveRange<CharOffset>, &str)>,
 ) -> Result<Option<ChangeSet>, String> {
@@ -272,7 +283,7 @@ pub(in crate::editor) fn commit_char_edits(
     let buf = checked_buffer(state, bid, None)?;
     let len_before = buf.text().end();
     let cs = build_changeset_from_char_edits(len_before, char_edits)?;
-    Ok(Some(commit_changeset(state, bid, cs)))
+    Ok(Some(commit_changeset(state, pid, bid, cs)))
 }
 
 pub(in crate::editor) struct WorkspaceEditSummary {
@@ -351,11 +362,22 @@ fn resolve_or_open(
 /// changeset first (opening unopened files as buffers along the way), and
 /// only commits any of them once every file has passed: a bad edit in file
 /// 3 of 5 must leave files 1 and 2 untouched.
+///
+/// `encoding` is the caller's own resolve (`edit`'s tagged producing-server
+/// encoding) and shared by every file in `we` — one server produced the
+/// whole edit, so every position in it is counted in that server's own
+/// negotiated encoding, regardless of which file (open or not, attached to
+/// a server or not) each position lands in. A per-file lookup would
+/// misdecode a file with no server of its own attached, or one attached to
+/// a different server, and — for a file this call is opening for the first
+/// time — has no attached server to look up at all yet
+/// (`detect_pending_languages` only runs after this returns).
 pub(in crate::editor) fn apply_workspace_edit(
     state: &mut EditorState,
     view: &mut EngineView,
-    lsp: &LspState,
+    pid: PaneId,
     we: lsp_types::WorkspaceEdit,
+    encoding: PositionEncoding,
 ) -> Result<WorkspaceEditSummary, String> {
     let entries = collect_edit_entries(we)?;
     let mut planned: Vec<(BufferId, ChangeSet)> = Vec::with_capacity(entries.len());
@@ -385,28 +407,29 @@ pub(in crate::editor) fn apply_workspace_edit(
             ));
         }
         let expect_gen = version.map(|v| v as u64);
-        let cs = build_edit_changeset(state, lsp, bid, &edits, expect_gen)
+        let cs = build_edit_changeset(state, bid, &edits, expect_gen, encoding)
             .map_err(|e| format!("{}: {e}", display()))?;
         planned.push((bid, cs));
     }
     let buffers_modified = planned.len();
     for (bid, cs) in planned {
-        commit_changeset(state, bid, cs);
+        commit_changeset(state, pid, bid, cs);
     }
     Ok(WorkspaceEditSummary { buffers_modified })
 }
 
 /// `(goto-location! target)` — either shape:
 /// - a raw `Location`/`LocationLink` hashmap (wire positions, converted with
-///   `focused_bid`'s attached server's encoding — the server that produced
-///   this location negotiated that encoding for every response it sends,
-///   regardless of which file the location points into);
+///   `encoding` — the host trait layer's own read of the handle's tagged
+///   producing-server encoding, resolved before this ever needing a `bid`
+///   or live `LspState` lookup);
 /// - `(list target line char-col)`, already char-indexed — `target` is a path
 ///   string, a `file://` URI string, or a `bid`.
 pub(in crate::editor) enum GotoTarget {
     Wire {
         uri: lsp_types::Uri,
         pos: WirePos,
+        encoding: PositionEncoding,
     },
     Path {
         path_or_uri: String,
@@ -465,16 +488,13 @@ fn resolve_path_or_uri(
 fn resolve_goto_target(
     state: &mut EditorState,
     view: &mut EngineView,
-    lsp: &LspState,
-    focused_bid: BufferId,
     target: GotoTarget,
 ) -> Result<(BufferId, CharOffset), String> {
     match target {
-        GotoTarget::Wire { uri, pos } => {
+        GotoTarget::Wire { uri, pos, encoding } => {
             let path = hume_lsp::uri::uri_to_path(&uri)
                 .map_err(|e| format!("cannot open {}: {e}", uri.as_str()))?;
             let bid = resolve_or_open(state, view, &path)?;
-            let encoding = introspect::encoding_for_buffer(state, lsp, focused_bid);
             let buf = state.buffers.get(bid);
             // Decoded in two steps, not `wire_to_char` directly: a server
             // naming a position between a base character and a combining
@@ -510,18 +530,17 @@ fn resolve_goto_target(
     }
 }
 
-/// Moves the focused pane to `(bid, char_pos)`, recording a jump entry only
+/// Moves `t`'s own pane to `(bid, char_pos)`, recording a jump entry only
 /// if resolution succeeded and it actually lands somewhere else — same
 /// "commit point" discipline as `:goto` (`typed_misc.rs`) and buffer
 /// switches (`switch_to_buffer_with_jump`).
 pub(in crate::editor) fn goto_location(
     state: &mut EditorState,
     view: &mut EngineView,
-    lsp: &LspState,
+    t: crate::editor::commands::CommandPane,
     target: GotoTarget,
 ) -> Result<(), String> {
-    let focused_bid = crate::editor::commands::focused_buffer_id(state, view);
-    let (bid, char_pos) = resolve_goto_target(state, view, lsp, focused_bid, target)?;
+    let (bid, char_pos) = resolve_goto_target(state, view, target)?;
     // Every path above can legitimately return `len_chars()` (e.g. a wire
     // line past EOF, or a char-indexed target on the trailing structural
     // line, both clamp to that line's start = len_chars()) — but cursors
@@ -530,9 +549,9 @@ pub(in crate::editor) fn goto_location(
     // grapheme boundary, so no snap is needed).
     let char_pos = char_pos.min(state.buffers.get(bid).text().last_char());
 
-    let entry = crate::editor::commands::current_jump_entry(state, view);
+    let entry = crate::editor::commands::current_jump_entry(state, view, t);
 
-    let pid = state.focus.id();
+    let pid = t.pid();
     crate::editor::buffer::lifecycle::switch_pane_to_buffer(
         view,
         &state.buffers,
@@ -541,7 +560,7 @@ pub(in crate::editor) fn goto_location(
         bid,
     );
     pane_state::write_cursor(&mut state.panes.state, &state.buffers, pid, bid, char_pos);
-    crate::editor::commands::record_jump_if_moved(state, view, entry);
+    crate::editor::commands::record_jump_if_moved(state, view, t, entry);
 
     // Center by display line, the same way `zz` does — not by buffer line,
     // which only agrees with it when nothing wraps.
@@ -554,9 +573,15 @@ impl Editor {
     /// Answers a server-initiated `workspace/applyEdit` request by actually
     /// applying it. Per spec this never fails at the JSON-RPC level: a rejected or
     /// malformed edit still gets a 200 response, just with `applied: false`.
+    ///
+    /// `server_id` is the requesting server, known by construction (this
+    /// answers a message that arrived *from* it) — its own negotiated
+    /// encoding is what every position in `params` is counted in, same as
+    /// any other response it sends.
     pub(in crate::editor) fn apply_edit_request_response(
         &mut self,
         params: &serde_json::Value,
+        server_id: hume_lsp::backend::ServerId,
     ) -> Result<serde_json::Value, ResponseError> {
         let Some(edit_json) = params.get("edit").cloned() else {
             return Ok(serde_json::json!({
@@ -573,7 +598,17 @@ impl Editor {
                 }));
             }
         };
-        let result = apply_workspace_edit(&mut self.state, &mut self.view, &self.lsp, we);
+        let Some(encoding) = introspect::server_encoding(&self.lsp, server_id) else {
+            return Ok(serde_json::json!({
+                "applied": false,
+                "failureReason": "lsp server no longer tracked",
+            }));
+        };
+        // Server-initiated, no Steel invocation pane to resolve — the
+        // focused pane is the only sensible "current" pane to seed selection
+        // state through for a file this edit newly opens.
+        let pid = self.state.focus.id();
+        let result = apply_workspace_edit(&mut self.state, &mut self.view, pid, we, encoding);
         // Drain regardless of outcome: `apply_workspace_edit`'s contract is
         // "validate all, then apply all", but it opens buffers as it *validates*
         // each entry (`edits.rs`'s `resolve_or_open` calls), so a failure on

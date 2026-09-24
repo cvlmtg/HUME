@@ -29,8 +29,8 @@ fn line_background_tints_gutter_content_and_trailing_cells() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (set-line-backgrounds! "git-diff" (current-buffer)
+            r#"(define-typed-command! "go" "" (lambda (bid)
+                 (set-line-backgrounds! "git-diff" bid
                    (list (list 0 "{TINT_SCOPE}")))))"#
         ),
     );
@@ -91,8 +91,8 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (set-line-backgrounds! "git-diff" (current-buffer)
+            r#"(define-typed-command! "go" "" (lambda (bid)
+                 (set-line-backgrounds! "git-diff" bid
                    (list (list 0 "{TINT_SCOPE}")))))"#
         ),
     );
@@ -131,8 +131,8 @@ fn cursorline_wins_over_the_line_background_tint() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (set-line-backgrounds! "git-diff" (current-buffer)
+            r#"(define-typed-command! "go" "" (lambda (bid)
+                 (set-line-backgrounds! "git-diff" bid
                    (list (list 1 "{TINT_SCOPE}")))))"#
         ),
     );
@@ -197,8 +197,8 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (set-line-backgrounds! "git-diff" (current-buffer)
+            r#"(define-typed-command! "go" "" (lambda (bid)
+                 (set-line-backgrounds! "git-diff" bid
                    (list (list 1 "{TINT_SCOPE}")))))"#
         ),
     );
@@ -265,8 +265,8 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
-                 (set-line-backgrounds! "git-diff" (current-buffer)
+            r#"(define-typed-command! "go" "" (lambda (bid)
+                 (set-line-backgrounds! "git-diff" bid
                    (list (list 8 "{TINT_SCOPE}")))))"#
         ),
     );

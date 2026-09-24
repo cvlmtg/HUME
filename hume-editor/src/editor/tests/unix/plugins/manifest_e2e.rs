@@ -357,8 +357,8 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
     );
 
     // core:plum, declared AFTER the failing line, must still have been
-    // reached and resolved its manifest.scm — the actual fix: previously
-    // init.scm aborted at the failing load-plugin line and never got here.
+    // reached and resolved its manifest.scm — a failed plugin load must
+    // not abort the rest of init.scm.
     assert!(
         matches!(
             ed.state

@@ -192,7 +192,7 @@ load trigger, not a recurring filter.
 ; alice/rust-tools/plugin.scm
 (define-command! "rust-check" "Run cargo check" (lambda () ...))
 (register-hook! 'on-language-set
-  (lambda (bid lang)
+  (lambda (pane lang)
     (when (equal? lang "rust")
       (call! "rust-check"))))
 ```
@@ -232,7 +232,7 @@ a registered command by name:
 
 ; bob/on-save-format/plugin.scm — calls it
 (register-hook! 'on-buffer-save
-  (lambda (bid)
+  (lambda (pane)
     (call! "fmt-buffer")))
 ```
 

@@ -3,11 +3,13 @@
 
 use std::path::{Path, PathBuf};
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::BufferId;
 use hume_rope::lines::line_token_content;
 use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
+use crate::editor::commands::{resolve_command_pane, resolve_focused_pane};
+use hume_scripting::PaneHandle;
 use hume_scripting::host::BufferHost;
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
@@ -15,13 +17,31 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     fn buffer_ids(&self) -> Vec<BufferId> {
         self.state.buffers.iter().map(|(id, _)| id).collect()
     }
-    fn pane_ids(&self) -> Vec<PaneId> {
-        // `(panes)`'s own contract — see its doc.
+    fn panes(&self) -> Vec<PaneHandle> {
         self.view
             .panes
             .every_pane_across_all_tabs()
-            .map(|(id, _)| id)
+            .map(|(pid, p)| PaneHandle::with_pane(p.buffer_id, pid))
             .collect()
+    }
+
+    fn focused_pane(&self) -> PaneHandle {
+        let pid = self.state.focus.id();
+        PaneHandle::with_pane(self.view.panes[pid].buffer_id, pid)
+    }
+
+    fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {
+        self.state
+            .buffer_panes(self.view, pane.buffer())
+            .into_iter()
+            .map(|pid| PaneHandle::with_pane(pane.buffer(), pid))
+            .collect()
+    }
+
+    fn require_focused_pane(&self, pane: PaneHandle) -> Result<(), String> {
+        resolve_focused_pane(self.state, self.view, pane)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     // ── Buffer reads ─────────────────────────────────────────────────────────
@@ -70,14 +90,15 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             id,
         ))
     }
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
+    fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String> {
+        let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
         crate::editor::buffer::lifecycle::switch_to_buffer_with_jump(
             self.view,
             &self.state.buffers,
             &mut self.state.panes.state,
             &mut self.state.panes.jumps,
-            self.state.focus.id(),
-            current,
+            t.pid(),
+            t.bid(self.view),
             target,
         );
         Ok(())
@@ -114,7 +135,23 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         Some(self.buffer(id)?.text().line_to_char(line.into()).index())
     }
 
-    fn viewport_range(&self, id: BufferId) -> Option<ExclusiveRange<hume_rope::line::ContentLine>> {
-        crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
+    fn viewport_range(
+        &self,
+        pane: PaneHandle,
+    ) -> Result<ExclusiveRange<hume_rope::line::ContentLine>, String> {
+        let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
+        // Active-tab panes only: `sync_viewport_dims` only keeps an
+        // active-tab pane's geometry in sync per frame, so a background-tab
+        // pane's bounds are whatever they were when its tab was last on
+        // screen — stale, not just "not current". Raising here (rather than
+        // handing back that stale range) matches every other kind-B
+        // builtin's fail-fast contract for a pane it can't honestly answer
+        // for.
+        if !self.view.active_pane_ids().contains(&t.pid()) {
+            return Err("viewport-range: pane is not on the active tab".to_string());
+        }
+        Ok(crate::editor::lsp::introspect::viewport_range(
+            self.state, self.view, t,
+        ))
     }
 }

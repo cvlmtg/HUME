@@ -25,8 +25,10 @@ fn goto_alternate_buffer_switches_to_alternate_and_is_involutive() {
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
     let id_b = ed.focused_buffer_id();
 
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", Some(1), false, None)
+        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
         .expect("goto-alternate-buffer must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -34,8 +36,10 @@ fn goto_alternate_buffer_switches_to_alternate_and_is_involutive() {
         "goto-alternate-buffer must switch to alternate"
     );
 
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", Some(1), false, None)
+        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
         .expect("goto-alternate-buffer must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -53,16 +57,20 @@ fn goto_alternate_buffer_pushes_jump_entry() {
     ed.execute_typed("e", Some(p2.to_str().unwrap())).unwrap();
     let id_before = ed.focused_buffer_id();
 
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", Some(1), false, None)
+        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
         .expect("goto-alternate-buffer must not error");
     assert_ne!(
         ed.focused_buffer_id(),
         id_before,
         "goto-alternate-buffer changes focus"
     );
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("jump-backward", Some(1), false, None)
+        .run_command_sync("jump-backward", pane, Some(1), false, None)
         .expect("jump-backward must not error");
     assert_eq!(
         ed.focused_buffer_id(),
@@ -129,8 +137,10 @@ fn alternate_follows_focus_order_not_open_order() {
         "alternate right after focusing A must be C, the buffer just left"
     );
 
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", Some(1), false, None)
+        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
         .expect("goto-alternate-buffer must not error");
     ed.settle();
     assert_eq!(ed.focused_buffer_id(), id_c);
@@ -141,8 +151,10 @@ fn alternate_follows_focus_order_not_open_order() {
         "alternate must follow focus order (A, just left) not open order (B)"
     );
 
+    let _bid = ed.focused_buffer_id();
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync("goto-alternate-buffer", Some(1), false, None)
+        .run_command_sync("goto-alternate-buffer", pane, Some(1), false, None)
         .expect("goto-alternate-buffer must not error");
     ed.settle();
     assert_eq!(

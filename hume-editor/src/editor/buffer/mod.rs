@@ -155,32 +155,23 @@ pub(crate) struct Buffer {
     /// `mii` (`select-last-insertion`). `None` before any session completes,
     /// or once `text_gen` has moved past the stamp (see [`LastInsert`]).
     pub(in crate::editor) last_insert: Option<LastInsert>,
-    /// True from chokepoint open (`lifecycle::open_buffer_and_notify`) until
-    /// `Editor::detect_pending_languages` fires this buffer's `OnBufferOpen`.
-    /// Read by `lifecycle::close_buffer_and_notify`: a still-pending buffer
-    /// (opened and closed before that drain ran — e.g. within one Steel eval)
-    /// announced no open, so it must announce no close either. Buffers
-    /// created outside the chokepoint (the startup buffer, the last-buffer
-    /// scratch replacement) default to `false` — their close always
-    /// announces.
+    /// True from chokepoint open (`lifecycle::open_buffer_and_notify`, or
+    /// `lifecycle::close_buffer_and_notify`'s own `queue_open_announcement`
+    /// call for the fresh scratch buffer a last-buffer close allocates)
+    /// until `Editor::detect_pending_languages` fires this buffer's
+    /// `OnBufferOpen`. Read by `lifecycle::close_buffer_and_notify`: a still-
+    /// pending buffer (opened and closed before that drain ran — e.g. within
+    /// one Steel eval) announced no open, so it must announce no close
+    /// either. The startup buffer, built inline by `Editor::open` (which
+    /// can't call the chokepoint — it's what bootstraps the very
+    /// `EngineView`/pane-state maps the chokepoint needs), is the one buffer
+    /// that defaults to `false`: its close always announces.
     pub(in crate::editor) open_hook_pending: bool,
     /// The buffer's disk state as of the last check — set by
     /// `Editor::check_buffer_disk_state`, cleared to `InSync` by a reload or
     /// a successful write. Always `InSync` for scratch/synthetic buffers,
     /// which the check skips.
     pub(in crate::editor) disk_state: disk::DiskState,
-    /// Bumped by [`lifecycle::replace_buffer_in_place`] — the only path that
-    /// swaps a `BufferId`'s content without a close/open pair (the
-    /// last-buffer scratch replacement in `close_buffer`). A versioned
-    /// slotmap key alone can't distinguish "the same buffer that was open
-    /// before `:reload-config` started" from "a fresh scratch buffer that
-    /// happens to have reused that same key in place": `replace_buffer_in_place`
-    /// mutates the existing slot rather than freeing and reinserting it, so
-    /// the key's own version never changes. `reset_config_state` pairs each
-    /// pre-reload `BufferId` with this stamp; `resync_config_state` and the
-    /// explicit-language restore treat a bid whose current stamp has moved
-    /// on as a different buffer, not the one the snapshot meant.
-    pub(in crate::editor) replace_stamp: u64,
 }
 
 impl Buffer {
@@ -217,7 +208,6 @@ impl Buffer {
             last_insert: None,
             open_hook_pending: false,
             disk_state: disk::DiskState::InSync,
-            replace_stamp: 0,
         }
     }
 
@@ -229,8 +219,7 @@ impl Buffer {
     /// ...) overwrite it with the typed-derived form afterwards, via
     /// `set_display_path`; this default only surfaces for opens with no typed
     /// path (Steel `open-buffer!`, `:tutor`, LSP goto). `search_pattern` and
-    /// `search_matches` are left at their defaults (no active search) —
-    /// caller contract for `replace_buffer_in_place`.
+    /// `search_matches` are left at their defaults (no active search).
     pub(in crate::editor::buffer) fn from_file(path: &Path) -> io::Result<Self> {
         let (content, meta) = hume_platform::io::read_file(path)?;
         let text = BufferText::from(content.as_str());
@@ -427,11 +416,10 @@ impl Buffer {
     /// revision in the existing history so `u` reverts to the pre-reload state.
     ///
     /// This is the history-preserving reload path used by `:e!`. Unlike
-    /// [`set_view_content`](Self::set_view_content) (which resets history) or
-    /// the full `Buffer` swap in `lifecycle::replace_buffer_in_place` (which
-    /// discards history), this treats the reload as an ordinary edit: `u`
-    /// after `:e!` shows the pre-reload buffer with its full undo tree intact
-    /// beneath, and `Ctrl-r` re-applies the reload.
+    /// [`set_view_content`](Self::set_view_content), which resets history,
+    /// this treats the reload as an ordinary edit: `u` after `:e!` shows the
+    /// pre-reload buffer with its full undo tree intact beneath, and
+    /// `Ctrl-r` re-applies the reload.
     ///
     /// `pre_sels` (stored on the inverse transaction, restored by undo) and
     /// `post_sels` (stored on the forward transaction, restored by redo) are

@@ -53,21 +53,50 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
     // char right after it, not byte/char index 2 or 4. `set-inlay-hints!`
     // no longer decodes wire positions itself — a plugin composes
     // `lsp-position->offset` before calling the setter.
+    //
+    // The position must arrive as a real tagged handle — `lsp-position->
+    // offset` rejects a hand-built (untagged) one outright — so this echoes
+    // it through a scripted `test/echo` request/response round trip rather
+    // than reusing `attach_running_server`, which sets up no such response.
     let mut ed = editor_from("-[x]>🎉bcdef\n");
-    attach_running_server(&mut ed);
+    let mut backend = InlineLspBackend::new();
+    backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
+    backend.respond_to("test/echo", serde_json::json!({"line": 0, "character": 2}));
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
+    client.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client);
     let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    ed.state
+        .buffers
+        .get_mut(bid)
+        .set_path(Some(std::path::PathBuf::from(
+            "/tmp/hume-decorations-test.rs",
+        )));
+    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
+    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
+    for action in actions {
+        ed.dispatch_lsp_action(sid2, action);
+    }
+
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-hints-a" "" (lambda ()
-             (set-inlay-hints! "linter" (current-buffer)
-               (list (list (lsp-position->offset (current-buffer) (hash "line" 0 "character" 2))
-                           "hint" 'after)))))"#,
+        r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
+             (lsp-request bid "test/echo" (hash) (lambda (err res)
+               (set-inlay-hints! "linter" bid
+                 (list (list (lsp-position->offset bid res) "hint" 'after)))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm-hints-a");
+    ed.drain_lsp();
+    ed.settle();
 
     let hints: Vec<_> = ed
         .state
@@ -95,11 +124,11 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-hints-a" "" (lambda ()
-             (set-inlay-hints! "linter" (current-buffer)
+        r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
+             (set-inlay-hints! "linter" bid
                (list (list 0 "first" 'before)))))
-           (define-typed-command! "arm-hints-b" "" (lambda ()
-             (set-inlay-hints! "linter" (current-buffer)
+           (define-typed-command! "arm-hints-b" "" (lambda (bid)
+             (set-inlay-hints! "linter" bid
                (list (list 1 "second" 'before)))))"#,
         tmp.path(),
     );
@@ -135,8 +164,8 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-bad" "" (lambda ()
-             (set-inlay-hints! "linter" (current-buffer)
+        r#"(define-typed-command! "arm-bad" "" (lambda (bid)
+             (set-inlay-hints! "linter" bid
                (list (list "not-a-number" "oops" 'before)))))"#,
         tmp.path(),
     );
@@ -176,8 +205,8 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-bad" "" (lambda ()
-             (set-inlay-hints! "linter" (current-buffer)
+        r#"(define-typed-command! "arm-bad" "" (lambda (bid)
+             (set-inlay-hints! "linter" bid
                (list (list 7 "hint" 'after)))))"#,
         tmp.path(),
     );
@@ -212,8 +241,8 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-bad" "" (lambda ()
-             (set-extra-highlights! "linter" (current-buffer) (list (list 0 100 "unused")))))"#,
+        r#"(define-typed-command! "arm-bad" "" (lambda (bid)
+             (set-extra-highlights! "linter" bid (list (list 0 100 "unused")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -248,15 +277,15 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-signs" "" (lambda ()
-             (register-sign-source! "linter" (current-buffer) 10)
-             (set-signs! "linter" (current-buffer) (list (list 99 "!" "error")))))
-           (define-typed-command! "arm-vlines" "" (lambda ()
-             (set-virtual-lines! "git-diff" (current-buffer) (list (hash 'line 99 'text "note")))))
-           (define-typed-command! "arm-eol" "" (lambda ()
-             (set-eol-text! "diagnostics" (current-buffer) (list (list 99 "msg" "diagnostic.error")))))
-           (define-typed-command! "arm-linebg" "" (lambda ()
-             (set-line-backgrounds! "git-diff" (current-buffer) (list (list 99 "diff.plus")))))"#,
+        r#"(define-typed-command! "arm-signs" "" (lambda (bid)
+             (register-sign-source! "linter" bid 10)
+             (set-signs! "linter" bid (list (list 99 "!" "error")))))
+           (define-typed-command! "arm-vlines" "" (lambda (bid)
+             (set-virtual-lines! "git-diff" bid (list (hash 'line 99 'text "note")))))
+           (define-typed-command! "arm-eol" "" (lambda (bid)
+             (set-eol-text! "diagnostics" bid (list (list 99 "msg" "diagnostic.error")))))
+           (define-typed-command! "arm-linebg" "" (lambda (bid)
+             (set-line-backgrounds! "git-diff" bid (list (list 99 "diff.plus")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -322,8 +351,8 @@ fn inlay_hints_remap_through_an_edit() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-hints-a" "" (lambda ()
-             (set-inlay-hints! "linter" (current-buffer)
+        r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
+             (set-inlay-hints! "linter" bid
                (list (list 3 "hint" 'after)))))"#,
         tmp.path(),
     );
@@ -372,8 +401,8 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (set-extra-highlights! "linter" (current-buffer) (list (list 3 5 "unused")))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-extra-highlights! "linter" bid (list (list 3 5 "unused")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -429,9 +458,9 @@ fn sign_remaps_through_a_line_inserted_above_it() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (register-sign-source! "linter" (current-buffer) 10)
-             (set-signs! "linter" (current-buffer) (list (list 1 "!" "error")))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! "linter" bid 10)
+             (set-signs! "linter" bid (list (list 1 "!" "error")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -472,9 +501,9 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (set-virtual-lines! "git-diff" (current-buffer) (list (hash 'line 1 'text "note")))
-             (set-eol-text! "diagnostics" (current-buffer) (list (list 1 "msg" "diagnostic.error")))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-virtual-lines! "git-diff" bid (list (hash 'line 1 'text "note")))
+             (set-eol-text! "diagnostics" bid (list (list 1 "msg" "diagnostic.error")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -545,9 +574,9 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (register-sign-source! "linter" (current-buffer) 10)
-             (set-signs! "linter" (current-buffer) (list (list 1 "!" "error")))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! "linter" bid 10)
+             (set-signs! "linter" bid (list (list 1 "!" "error")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -594,15 +623,15 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-hints-a" "" (lambda ()
-             (register-sign-source! "linter" (current-buffer) 10)
-             (register-sign-source! "vcs" (current-buffer) 5)
-             (set-signs! "linter" (current-buffer) (list (list 0 "!" "error")))
-             (set-signs! "vcs" (current-buffer) (list (list 0 "+" "added")))
-             (set-virtual-lines! "linter" (current-buffer) (list (hash 'line 0 'text "note: …")))
-             (set-extra-highlights! "linter" (current-buffer) (list (list 0 3 "unused")))))
-           (define-typed-command! "clear-linter-signs" "" (lambda ()
-             (set-signs! "linter" (current-buffer) '())))"#,
+        r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
+             (register-sign-source! "linter" bid 10)
+             (register-sign-source! "vcs" bid 5)
+             (set-signs! "linter" bid (list (list 0 "!" "error")))
+             (set-signs! "vcs" bid (list (list 0 "+" "added")))
+             (set-virtual-lines! "linter" bid (list (hash 'line 0 'text "note: …")))
+             (set-extra-highlights! "linter" bid (list (list 0 3 "unused")))))
+           (define-typed-command! "clear-linter-signs" "" (lambda (bid)
+             (set-signs! "linter" bid '())))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -677,14 +706,14 @@ fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (register-sign-source! "src" (current-buffer) 10)
-             (set-signs! "src" (current-buffer) (list (list 0 "!" "scope-sign")))
-             (set-virtual-lines! "src" (current-buffer)
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (register-sign-source! "src" bid 10)
+             (set-signs! "src" bid (list (list 0 "!" "scope-sign")))
+             (set-virtual-lines! "src" bid
                (list (hash 'line 0 'text "x" 'scope "scope-vline")))
-             (set-eol-text! "src" (current-buffer) (list (list 0 "x" "scope-eol")))
-             (set-line-backgrounds! "src" (current-buffer) (list (list 0 "scope-linebg")))
-             (set-extra-highlights! "src" (current-buffer) (list (list 0 3 "scope-extra")))))"#,
+             (set-eol-text! "src" bid (list (list 0 "x" "scope-eol")))
+             (set-line-backgrounds! "src" bid (list (list 0 "scope-linebg")))
+             (set-extra-highlights! "src" bid (list (list 0 3 "scope-extra")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -717,8 +746,8 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (set-virtual-lines! "git-diff" (current-buffer)
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-virtual-lines! "git-diff" bid
                (list (hash 'line 3 'anchor 'before 'text "- let x = 5" 'scope "diff.minus"
                            'segments (list (list 2 5 "keyword")))))))"#,
         tmp.path(),
@@ -760,11 +789,11 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-a" "" (lambda ()
-             (set-eol-text! "diagnostics" (current-buffer)
+        r#"(define-typed-command! "arm-a" "" (lambda (bid)
+             (set-eol-text! "diagnostics" bid
                (list (list 0 "[2] first problem" "diagnostic.error")))))
-           (define-typed-command! "arm-b" "" (lambda ()
-             (set-eol-text! "diagnostics" (current-buffer)
+           (define-typed-command! "arm-b" "" (lambda (bid)
+             (set-eol-text! "diagnostics" bid
                (list (list 1 "second problem" "diagnostic.warning")))))"#,
         tmp.path(),
     );
@@ -818,10 +847,10 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm-a" "" (lambda ()
-             (set-line-backgrounds! "git-diff" (current-buffer) (list (list 0 "diff.plus")))))
-           (define-typed-command! "arm-b" "" (lambda ()
-             (set-line-backgrounds! "git-diff" (current-buffer) (list (list 1 "diff.minus")))))"#,
+        r#"(define-typed-command! "arm-a" "" (lambda (bid)
+             (set-line-backgrounds! "git-diff" bid (list (list 0 "diff.plus")))))
+           (define-typed-command! "arm-b" "" (lambda (bid)
+             (set-line-backgrounds! "git-diff" bid (list (list 1 "diff.minus")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -873,8 +902,8 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "arm" "" (lambda ()
-             (set-line-backgrounds! "git-diff" (current-buffer) (list (list 1 "diff.plus")))))"#,
+        r#"(define-typed-command! "arm" "" (lambda (bid)
+             (set-line-backgrounds! "git-diff" bid (list (list 1 "diff.plus")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -968,15 +997,15 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "counts" "" (lambda ()
-             (let ((c (diagnostic-counts (current-buffer))))
+        r#"(define-typed-command! "counts" "" (lambda (bid)
+             (let ((c (diagnostic-counts bid)))
                (log! 'info (to-string (car c) "." (cdr c))))))
-           (define-typed-command! "all" "" (lambda ()
-             (log! 'info (to-string (length (diagnostics-for-buffer (current-buffer)))))))
-           (define-typed-command! "floored" "" (lambda ()
-             (log! 'info (to-string (length (diagnostics-for-buffer (current-buffer) #:severity 'warning))))))
-           (define-typed-command! "ranged" "" (lambda ()
-             (log! 'info (to-string (length (diagnostics-for-buffer (current-buffer) #:range (cons 5 10)))))))"#,
+           (define-typed-command! "all" "" (lambda (bid)
+             (log! 'info (to-string (length (diagnostics-for-buffer bid))))))
+           (define-typed-command! "floored" "" (lambda (bid)
+             (log! 'info (to-string (length (diagnostics-for-buffer bid #:severity 'warning))))))
+           (define-typed-command! "ranged" "" (lambda (bid)
+             (log! 'info (to-string (length (diagnostics-for-buffer bid #:range (cons 5 10)))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1022,8 +1051,8 @@ fn diagnostics_for_buffer_errors_loudly_on_an_unknown_severity_name() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "typo" "" (lambda ()
-             (diagnostics-for-buffer (current-buffer) #:severity 'warn)))"#,
+        r#"(define-typed-command! "typo" "" (lambda (bid)
+             (diagnostics-for-buffer bid #:severity 'warn)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

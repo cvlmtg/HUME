@@ -99,10 +99,10 @@ pub(crate) struct RepeatableAction {
 /// `replay_dot` at the end of the enclosing `handle_key` call.
 ///
 /// Splitting enqueue (pure State handler) from drain (`&mut Editor` plumbing)
-/// lets `cmd_repeat` keep the `EditorCmdFn` shape (no `&mut Editor`, see
+/// lets `cmd_repeat` keep the `FocusedCmdFn` shape (no `&mut Editor`, see
 /// `registry/command.rs`) while still reaching `replay_dot` (which uses
-/// `run_native_body`/`run_steel_command` and `handle_insert`) for the actual
-/// replay.
+/// `run_native_body_on_focus`/`run_steel_command` and `handle_insert`) for the
+/// actual replay.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PendingRepeat {
     /// Effective replay count — explicit-count override already applied.
@@ -152,8 +152,9 @@ impl Editor {
 
     /// Replay a dot-repeat action directly, bypassing dispatch bookkeeping.
     ///
-    /// Runs the selection recipe motions and edit body with [`commands::run_native_body`]
-    /// (avoiding pipeline re-entry), then feeds insert keys through `handle_insert`.
+    /// Runs the selection recipe motions and edit body with
+    /// [`commands::run_native_body_on_focus`] (avoiding pipeline re-entry), then
+    /// feeds insert keys through `handle_insert`.
     /// Preserves `last_repeatable_action` so `.` chains.
     pub(in crate::editor) fn replay_dot(&mut self, count: usize) {
         let Some(action) = self.state.last_repeatable_action.take() else {
@@ -213,7 +214,7 @@ impl Editor {
                 .get_mappable(step.command.as_ref())
                 .cloned()
                 .expect("a dot-repeat selection-recipe step always names a native command");
-            commands::run_native_body(
+            commands::run_native_body_on_focus(
                 &mut self.state,
                 &mut self.view,
                 cmd,
@@ -254,7 +255,7 @@ impl Editor {
                 // Steel arm above (which receives `action.char_arg` as an
                 // explicit parameter instead) never leaves it dangling.
                 self.state.pending_char = action.char_arg;
-                commands::run_native_body(
+                commands::run_native_body_on_focus(
                     &mut self.state,
                     &mut self.view,
                     edit_cmd,

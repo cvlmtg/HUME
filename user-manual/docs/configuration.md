@@ -52,27 +52,27 @@ Sets the global default. The value is a string, boolean, or integer. Callable fr
 (set-option! "tab-width" 2)
 ```
 
-`init.scm` is a real Scheme program, not a flat list of settings, so you can react to what's being opened rather than only set fixed defaults. The most common case is configuring an option per file type: register an `on-language-set` handler and call `(set-buffer-option! bid "option" value)` to override just that buffer (see [Hooks](plugins.md#hooks) for the full hook API):
+`init.scm` is a real Scheme program, not a flat list of settings, so you can react to what's being opened rather than only set fixed defaults. The most common case is configuring an option per file type: register an `on-language-set` handler and call `(set-buffer-option! pane "option" value)` to override just that buffer (see [Hooks](plugins.md#hooks) for the full hook API):
 
 ```scheme
 ; 2-space indentation for Markdown buffers
 (register-hook! 'on-language-set
-  (lambda (bid lang)
+  (lambda (pane lang)
     (when (equal? lang "markdown")
-      (set-buffer-option! bid "tab-width" 2))))
+      (set-buffer-option! pane "tab-width" 2))))
 
 ; word-wrap Markdown buffers, leave source code unwrapped
 (register-hook! 'on-language-set
-  (lambda (bid lang)
+  (lambda (pane lang)
     (when (equal? lang "markdown")
-      (set-buffer-option! bid "wrap-mode" "word"))))
+      (set-buffer-option! pane "wrap-mode" "word"))))
 
 ; treat '-' as a word character in CSS-family buffers, so `w`/`b`/`mm`/`*`
 ; see "foo-bar" as one word instead of three
 (register-hook! 'on-language-set
-  (lambda (bid lang)
+  (lambda (pane lang)
     (when (member lang '("css" "scss" "less"))
-      (set-buffer-option! bid "word-chars" "-"))))
+      (set-buffer-option! pane "word-chars" "-"))))
 ```
 
 ## Global options
@@ -143,7 +143,7 @@ Characters the terminal cannot be shown — control characters, and invisible on
 
 Text wrap is controlled by three layers — a global default, a per-buffer override, and a per-pane pin — plus a per-pane toggle command.
 
-- `wrap-mode` is a **buffer option** (see [Buffer options](#buffer-options)): set a global default with `:set global wrap-mode=<value>` or `set-option!`, or override one buffer with `:set buffer wrap-mode=<value>` or `(set-buffer-option! bid "wrap-mode" value)`. To wrap by file type — markdown but not source code, say — set it per language from an `on-language-set` hook (see [Plugins](plugins.md)).
+- `wrap-mode` is a **buffer option** (see [Buffer options](#buffer-options)): set a global default with `:set global wrap-mode=<value>` or `set-option!`, or override one buffer with `:set buffer wrap-mode=<value>` or `(set-buffer-option! pane "wrap-mode" value)`. To wrap by file type — markdown but not source code, say — set it per language from an `on-language-set` hook (see [Plugins](plugins.md)).
 - `:set pane wrap-mode=<value>` pins the style for the pane you're currently in and the buffer it's currently showing, live, above both the buffer and global setting, without affecting other panes on the same buffer. Switching that pane to a different buffer resolves the new buffer's own setting instead; switching back returns the pin. There's no command to clear a pin back to following the buffer/global setting — pin it to a different value, or close the buffer, to move on from it.
 - `:wrap` (alias of `:toggle-soft-wrap`) **toggles** wrapping on or off for the current pane and buffer. Turning it off pins the pane to no wrap; turning it back on restores whatever it was doing before — the buffer/global setting, if the pane wasn't pinned, or the exact style you pinned it to with `:set pane wrap-mode=…`. If that restores a setting that doesn't actually wrap, it pins the configured global style instead (or `indent`, if the global itself is `none`) — `:wrap` always visibly wraps.
 
@@ -401,9 +401,9 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
 ```scheme
 (configure-statusline! '("steel:line-count" "FilePath") '() '("Position" "Mode"))
 
-(define (refresh-line-count! bid)
-  (set-statusline-text! "line-count" bid
-    (string-append (number->string (buffer-line-count bid)) "L")))
+(define (refresh-line-count! pane)
+  (set-statusline-text! "line-count" pane
+    (string-append (number->string (buffer-line-count pane)) "L")))
 
 (register-hook! 'on-text-changed refresh-line-count!)
 (register-hook! 'on-buffer-enter refresh-line-count!)

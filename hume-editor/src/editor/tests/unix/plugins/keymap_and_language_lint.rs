@@ -199,7 +199,7 @@ fn define_command_collision_with_builtin_keeps_builtin() {
     );
 }
 
-/// A lazy plugin whose body contains a top-level `(call! "move-right")` must
+/// A lazy plugin whose body contains a top-level `(call! "move-right" bid)` must
 /// have that command executed when the plugin is activated at runtime (command
 /// activation).  `activate_plugin_inline` runs with `session = EvalSession::Runtime`
 /// so `%call-native!` dispatches synchronously via `run_command_sync`.
@@ -210,11 +210,11 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     // Plugin defines "trigger-me" (the command stub key) + calls move-right at
     // load time.  When "trigger-me" is dispatched, the plugin activates and the
-    // body-level (call! "move-right") should execute.
+    // body-level (call! "move-right" bid) should execute.
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:typed-commands '("trigger-me"))"#,
         r#"(define-typed-command! "trigger-me" "doc" (lambda () (+ 1 0)))
-           (call! "move-right")"#,
+           (call! "move-right" (focused-pane))"#,
     );
     let before = state(&ed);
 
@@ -223,7 +223,7 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     assert_ne!(
         state(&ed),
         before,
-        "body-level (call! \"move-right\") must execute when the plugin activates at runtime"
+        "body-level (call! \"move-right\" bid) must execute when the plugin activates at runtime"
     );
 }
 

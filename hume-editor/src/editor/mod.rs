@@ -826,7 +826,31 @@ impl EditorState {
     ) {
         self.config
             .pending_work
-            .push_back(event::PendingWork::Call(proc, args));
+            .push_back(event::PendingWork::Call {
+                proc,
+                args,
+                anchor: None,
+            });
+    }
+
+    /// [`Self::queue_steel_call`]'s counterpart for an `lsp-request`
+    /// callback: carries the `ResponseAnchor` already checked once at LSP
+    /// drain time, so `Editor::run_pending_batch` can re-check it at
+    /// dequeue — see `PendingWork::Call`'s own doc for why the drain-time
+    /// check alone isn't enough.
+    pub(in crate::editor) fn queue_steel_call_anchored(
+        &mut self,
+        proc: steel::rvals::SteelVal,
+        args: Vec<steel::rvals::SteelVal>,
+        anchor: lsp::ResponseAnchor,
+    ) {
+        self.config
+            .pending_work
+            .push_back(event::PendingWork::Call {
+                proc,
+                args,
+                anchor: Some(anchor),
+            });
     }
 }
 
@@ -936,7 +960,7 @@ impl Editor {
 
     /// The `BufferId` the focused pane is currently viewing.
     pub(crate) fn focused_buffer_id(&self) -> BufferId {
-        self.view.panes[self.state.focus.id()].buffer_id
+        commands::focused_buffer_id(&self.state, &self.view)
     }
 
     /// Shared reference to the focused buffer.
@@ -967,12 +991,14 @@ impl Editor {
 
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
-        commands::current_selections(&self.state, &self.view)
+        let t = commands::FocusedPane::current(&self.state).target();
+        commands::pane_selections(&self.state, &self.view, t)
     }
 
     /// Replace the focused pane's selections for the current buffer.
     pub(in crate::editor) fn set_current_selections(&mut self, sels: SelectionSet) {
-        commands::set_current_selections(&mut self.state, &self.view, sels);
+        let t = commands::FocusedPane::current(&self.state).target();
+        commands::set_pane_selections(&mut self.state, &self.view, t, sels);
     }
 
     // ── Mode transitions ──────────────────────────────────────────────────────

@@ -42,7 +42,7 @@ fn search_esc_restores_position() {
 }
 
 /// Re-entering search (`search-backward` reached, e.g. via a hook or timer's
-/// `(call! "search-backward")`, while a `/` session is still open — there's
+/// `(call! "search-backward" bid)`, while a `/` session is still open — there's
 /// no key path for this, since `?` typed into an open `/` prompt is just a
 /// literal character) must replace the session rather than no-op, and must
 /// stash the *true* pre-search state, not the mid-`/`-session preview
@@ -60,7 +60,7 @@ fn search_esc_restores_position() {
 /// pre-search position.
 #[test]
 fn search_backward_reentry_while_forward_search_open_replaces_and_restashes() {
-    use crate::editor::commands::cmd_search_backward;
+    use crate::editor::commands::{FocusedPane, cmd_search_backward};
     use hume_ops::MotionMode;
 
     let mut ed = editor_from("-[h]>ello world\n");
@@ -74,7 +74,8 @@ fn search_backward_reentry_while_forward_search_open_replaces_and_restashes() {
         "sanity: live `/` search moved the selection"
     );
 
-    cmd_search_backward(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    let fp = FocusedPane::current(&ed.state);
+    cmd_search_backward(&mut ed.state, &mut ed.view, fp, 1, MotionMode::Move).unwrap();
     assert_eq!(
         ed.state.minibuf().unwrap().prompt,
         "?",

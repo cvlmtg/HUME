@@ -3,7 +3,7 @@ use hume_engine::pipeline::BufferId;
 use super::super::Editor;
 use super::super::Severity;
 use super::jump::{BufferStep, goto_buffer_in_order};
-use super::{current_jump_entry, record_jump_if_moved};
+use super::{FocusedPane, current_jump_entry, record_jump_if_moved};
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::error::CommandError;
 
@@ -324,9 +324,10 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 /// the jump the mappable `goto-next-buffer`/`goto-prev-buffer` siblings get
 /// from their `.jump()` meta — the `:` dispatcher reads no `CmdMeta`.
 fn typed_buffer_step(ed: &mut Editor, step: BufferStep) -> Result<(), CommandError> {
-    let pre = current_jump_entry(&ed.state, &ed.view);
-    goto_buffer_in_order(&mut ed.state, &mut ed.view, step);
-    record_jump_if_moved(&mut ed.state, &ed.view, pre);
+    let t = FocusedPane::current(&ed.state).target();
+    let pre = current_jump_entry(&ed.state, &ed.view, t);
+    goto_buffer_in_order(&mut ed.state, &mut ed.view, t, step);
+    record_jump_if_moved(&mut ed.state, &ed.view, t, pre);
     Ok(())
 }
 

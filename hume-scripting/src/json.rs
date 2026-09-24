@@ -37,6 +37,8 @@ use steel::HashMap as SteelHashMap;
 use steel::gc::{Gc, ShareableMut as _};
 use steel::rvals::{Custom, IntoSteelVal as _, SteelVal, as_underlying_type};
 
+use hume_rope::position_encoding::PositionEncoding;
+
 /// Converts a `serde_json::Value` into the equivalent `SteelVal`. Total —
 /// every JSON value has a representation, so this never fails.
 pub fn json_to_steel(v: &serde_json::Value) -> SteelVal {
@@ -185,10 +187,34 @@ pub(crate) enum Seg {
 /// value system's own `Clone` requirements) never re-clones the response
 /// itself; `path` is `Arc`-backed so extending it for a child handle is one
 /// allocation (see [`scalar_or_child`]) rather than growing a `Vec` by hand.
+///
+/// `origin` tags where the *root* value came from — a real LSP response
+/// ([`WireOrigin::Server`], carrying the answering server's negotiated
+/// encoding) or anything else ([`WireOrigin::Local`]: `json-parse`,
+/// `lsp-capabilities`, or a hashmap a plugin built by hand). Every child
+/// handle a navigation method mints inherits its parent's `origin` — see
+/// [`scalar_or_child`] — so a position pulled out of a response three
+/// `json-ref`s deep still knows which server's encoding it's counted in.
+/// Not part of equality or hashing (both compare/hash [`JsonHandle::value`]
+/// only): two handles onto equal JSON are equal regardless of where each
+/// tree came from.
 #[derive(Debug, Clone)]
 pub struct JsonHandle {
     root: Arc<serde_json::Value>,
     path: Arc<[Seg]>,
+    origin: WireOrigin,
+}
+
+/// Where a [`JsonHandle`]'s root value came from — see the field's own doc.
+#[derive(Debug, Clone, Copy)]
+pub enum WireOrigin {
+    /// A response from a server negotiated at this encoding — every wire
+    /// position anywhere in the tree is counted in it.
+    Server(PositionEncoding),
+    /// Not a server response: `json-parse`, `lsp-capabilities`, or a
+    /// hashmap/handle a plugin built by hand. No encoding to decode a wire
+    /// position with — see [`JsonHandle::position_encoding`].
+    Local,
 }
 
 /// Resolves one path step against `v`, or `None` if `v` isn't the matching
@@ -280,22 +306,26 @@ fn seg_repr(seg: &Seg) -> String {
 }
 
 /// The Rust→Steel funnel every external JSON value crosses through: a
-/// container (object/array) becomes a [`JsonHandle`] at `path()`, a scalar
-/// crosses natively via [`json_to_steel`] (so `(string=? s "x")`/`(= n 5)`
-/// just work with no accessor) — same three-way split `json_to_steel` uses
-/// for a scalar, but a container never gets walked into Steel structures
-/// here. `path` is a closure rather than an already-built `Arc<[Seg]>` so a
-/// scalar result (most `json-list` elements, most object fields) costs no
-/// path allocation at all — only a container result ever calls it.
+/// container (object/array) becomes a [`JsonHandle`] at `path()`, tagged with
+/// `origin` (inherited from the parent handle a navigation method calls this
+/// from), a scalar crosses natively via [`json_to_steel`] (so `(string=? s
+/// "x")`/`(= n 5)` just work with no accessor) — same three-way split
+/// `json_to_steel` uses for a scalar, but a container never gets walked into
+/// Steel structures here. `path` is a closure rather than an already-built
+/// `Arc<[Seg]>` so a scalar result (most `json-list` elements, most object
+/// fields) costs no path allocation at all — only a container result ever
+/// calls it.
 fn scalar_or_child(
     v: &serde_json::Value,
     root: &Arc<serde_json::Value>,
+    origin: WireOrigin,
     path: impl FnOnce() -> Arc<[Seg]>,
 ) -> SteelVal {
     match v {
         serde_json::Value::Array(_) | serde_json::Value::Object(_) => JsonHandle {
             root: Arc::clone(root),
             path: path(),
+            origin,
         }
         .into_steel_val(),
         scalar => json_to_steel(scalar),
@@ -304,19 +334,56 @@ fn scalar_or_child(
 
 /// Converts a freshly-received external JSON value to its Steel
 /// representation via [`scalar_or_child`], rooted at `value` itself. The one
-/// call every external crossing makes instead of `json_to_steel`.
-pub fn to_steel_handle(value: Arc<serde_json::Value>) -> SteelVal {
-    scalar_or_child(value.as_ref(), &value, || Arc::from(Vec::new()))
+/// call every external crossing makes instead of `json_to_steel`. `origin`
+/// tags the root — see [`JsonHandle`]'s own doc.
+pub fn to_steel_handle(value: Arc<serde_json::Value>, origin: WireOrigin) -> SteelVal {
+    scalar_or_child(value.as_ref(), &value, origin, || Arc::from(Vec::new()))
 }
 
 impl JsonHandle {
     /// Wraps a value as a handle unconditionally, even when it happens to be
     /// a scalar — for a caller that already knows it wants a handle
-    /// regardless (`json_arg`'s fallback path, `builtins/args.rs`).
+    /// regardless (`json_arg`'s fallback path, `builtins/args.rs`). Always
+    /// [`WireOrigin::Local`]: every caller builds `value` itself (a plugin's
+    /// own hashmap, `json-parse`'s decode) rather than receiving it from a
+    /// server — a real server response only ever reaches Steel through
+    /// [`to_steel_handle`], which takes the origin explicitly.
     pub fn new(value: serde_json::Value) -> Self {
         Self {
             root: Arc::new(value),
             path: Arc::from(Vec::new()),
+            origin: WireOrigin::Local,
+        }
+    }
+
+    /// Test-only: builds a handle already tagged as a server response, for a
+    /// unit test that decodes wire positions directly against a hand-built
+    /// JSON tree rather than going through a real request/response round
+    /// trip (`bridge.rs`'s `outcome_to_steel` is the production tagging
+    /// site).
+    #[cfg(test)]
+    pub(crate) fn server_for_test(value: serde_json::Value, encoding: PositionEncoding) -> Self {
+        Self {
+            root: Arc::new(value),
+            path: Arc::from(Vec::new()),
+            origin: WireOrigin::Server(encoding),
+        }
+    }
+
+    /// This handle's tree's negotiated encoding — `Err` if it didn't come
+    /// from a server ([`WireOrigin::Local`]), naming `ctx_name` (the
+    /// builtin asking) so the error identifies which call needs a real
+    /// response. The funnel every wire-position decode reads its encoding
+    /// through, now that a response carries it instead of a caller
+    /// resolving it from a `bid`'s *currently* attached server (which may
+    /// have since restarted or detached).
+    pub fn position_encoding(&self, ctx_name: &str) -> Result<PositionEncoding, String> {
+        match self.origin {
+            WireOrigin::Server(encoding) => Ok(encoding),
+            WireOrigin::Local => Err(format!(
+                "{ctx_name}: not a value from an LSP server response — no encoding to decode a \
+                 wire position with"
+            )),
         }
     }
 
@@ -336,7 +403,7 @@ impl JsonHandle {
     /// [`walk`] directly rather than paying for a child handle nobody wants).
     pub(crate) fn lookup(&self, path: &[Seg]) -> Option<SteelVal> {
         let current = walk(self.value(), path).ok()?;
-        Some(scalar_or_child(current, &self.root, || {
+        Some(scalar_or_child(current, &self.root, self.origin, || {
             self.path.iter().chain(path).cloned().collect()
         }))
     }
@@ -347,7 +414,7 @@ impl JsonHandle {
     /// already carries everything [`miss_reason`] needs, no second walk.
     pub(crate) fn resolve(&self, path: &[Seg], ctx_name: &str) -> Result<SteelVal, String> {
         match walk(self.value(), path) {
-            Ok(current) => Ok(scalar_or_child(current, &self.root, || {
+            Ok(current) => Ok(scalar_or_child(current, &self.root, self.origin, || {
                 self.path.iter().chain(path).cloned().collect()
             })),
             Err((current, seg, so_far)) => {
@@ -374,7 +441,7 @@ impl JsonHandle {
                 .iter()
                 .enumerate()
                 .map(|(i, item)| {
-                    scalar_or_child(item, &self.root, || {
+                    scalar_or_child(item, &self.root, self.origin, || {
                         self.path
                             .iter()
                             .cloned()
@@ -410,11 +477,12 @@ impl JsonHandle {
         Some(JsonHandle {
             root: Arc::clone(&self.root),
             path: self.path.iter().chain(path.iter()).cloned().collect(),
+            origin: self.origin,
         })
     }
 
     /// Convert to a `SteelVal` without returning `Result` — `IntoSteelVal`
-    /// for custom types is infallible, matching `SteelBufferId::
+    /// for custom types is infallible, matching `SteelPane::
     /// into_steel_val`'s own reasoning.
     pub fn into_steel_val(self) -> SteelVal {
         self.into_steelval().expect("JsonHandle into_steelval")

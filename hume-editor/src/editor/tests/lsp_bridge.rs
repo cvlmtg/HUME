@@ -19,8 +19,8 @@ use hume_lsp::transport::InboundEvent;
 use hume_scripting::ScriptingHost;
 
 /// Wires a scripted backend with a Running client attached to the focused
-/// buffer, registered under language `"rust"` — enough for both `server =
-/// #f` (focused buffer) and `server = "rust"` (named) resolution.
+/// buffer's `lsp_server` and registered under language `"rust"` — enough
+/// for both a `bid`-resolved lookup and a `"rust"`-named one.
 pub(super) fn setup_with(
     ed: &mut Editor,
     configure: impl FnOnce(&mut InlineLspBackend, ServerId),
@@ -86,10 +86,10 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/completion" (hash)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker")))))
-             (lsp-request #f "textDocument/completion" (hash)
+             (lsp-request bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker")))))))"#,
         tmp.path(),
     );
@@ -131,8 +131,8 @@ fn lsp_stop_clears_supersede_entries() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/completion" (hash)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace "fired"))
                #:supersede "k")))"#,
         tmp.path(),
@@ -142,7 +142,9 @@ fn lsp_stop_clears_supersede_entries() {
     type_cmd(&mut ed, ":test-cmd");
     assert_eq!(ed.lsp.supersede_count_for_test(), 1, "sanity: key tracked");
 
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
 
     assert_eq!(
         ed.lsp.supersede_count_for_test(),
@@ -162,10 +164,10 @@ fn response_delivers_a_handle_to_callback() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
                (when (equal? (json-ref result "contents") "hi")
-                 (call! "move-right"))))))"#,
+                 (call! "move-right" bid))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -198,10 +200,10 @@ fn request_delivers_an_opaque_handle_not_a_hashmap() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/completion" (hash) (lambda (err result)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/completion" (hash) (lambda (err result)
                (when (not (hash? result))
-                 (call! "move-right"))))))"#,
+                 (call! "move-right" bid))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -232,10 +234,10 @@ fn request_with_a_null_response_still_gives_void() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/completion" (hash) (lambda (err result)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/completion" (hash) (lambda (err result)
                (when (void? result)
-                 (call! "move-right"))))))"#,
+                 (call! "move-right" bid))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -263,10 +265,10 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
                (when (and (hash? err) (equal? (hash-ref err "code") -32601))
-                 (call! "move-right"))))))"#,
+                 (call! "move-right" bid))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -295,10 +297,10 @@ fn timeout_delivers_err_string_timeout_to_callback() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
                (when (equal? err "timeout")
-                 (call! "move-right"))))))"#,
+                 (call! "move-right" bid))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -337,7 +339,7 @@ fn on_lsp_notification_fires_the_registered_handler() {
         &mut host,
         r#"(on-lsp-notification "custom/event" (lambda (server params)
              (when (equal? (json-ref params "x") 1)
-               (call! "move-right"))))"#,
+               (call! "move-right" (focused-pane)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -396,11 +398,11 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
-               (call! "move-right")
-               (lsp-request #f "textDocument/definition" (hash) (lambda (err2 result2)
-                 (call! "move-right")))))))"#,
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+               (call! "move-right" bid)
+               (lsp-request bid "textDocument/definition" (hash) (lambda (err2 result2)
+                 (call! "move-right" bid)))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -435,8 +437,8 @@ fn callback_error_lands_in_message_log_not_a_crash() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
                (car '())))))"#,
         tmp.path(),
     );
@@ -515,7 +517,7 @@ impl LspBackend for OrderedLogBackend {
 }
 
 #[test]
-fn lsp_request_with_unknown_server_reports_an_error_and_fires_callback_with_err() {
+fn lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_err() {
     // Regression: a resolution failure must never silently drop the
     // callback — the documented `(err result)` contract (exactly one
     // non-`#f`) must hold even when no request/response pair could ever
@@ -523,14 +525,19 @@ fn lsp_request_with_unknown_server_reports_an_error_and_fires_callback_with_err(
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {});
+    // `setup_with` attaches the server to the focused buffer unconditionally
+    // — detach it again so `bid` genuinely resolves to no server,
+    // reproducing the resolution-failure path this test targets.
+    let focused = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(focused).lsp_server = None;
     let mut host = ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request "no-such-language" "textDocument/hover" (hash) (lambda (err result)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
                (when (string? err)
-                 (call! "move-right"))))))"#,
+                 (call! "move-right" bid))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -543,7 +550,7 @@ fn lsp_request_with_unknown_server_reports_an_error_and_fires_callback_with_err(
     assert_ne!(
         state(&ed),
         before,
-        "callback must fire immediately with a string err when the named server doesn't resolve"
+        "callback must fire immediately with a string err when the buffer has no attached server"
     );
     let log = ed.state.message_log.format_for_display();
     assert!(
@@ -571,10 +578,10 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
                (when (string? err)
-                 (call! "move-right"))))))"#,
+                 (call! "move-right" bid))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -605,8 +612,8 @@ fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "test-cmd" "" (lambda ()
-             (lsp-request #f "textDocument/hover" #f (lambda (err result) (begin)))))"#,
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" #f (lambda (err result) (begin)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -617,5 +624,259 @@ fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
     assert!(
         log.to_lowercase().contains("boolean"),
         "passing #f as params must error loudly, not silently reach the wire as params: false: {log:?}"
+    );
+}
+
+// ── #:require-focus ──────────────────────────────────────────────────────────
+
+/// `#:require-focus #t` drops the callback if the focused buffer has moved
+/// on by the time the response arrives — the one Rust-side check every
+/// cursor-anchored async opener (hover, signature help, a code-action menu)
+/// shares, rather than each plugin re-implementing its own
+/// `(equal? bid (focused-pane))` guard.
+#[test]
+fn require_focus_drops_the_callback_after_a_buffer_switch() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |b, _sid| {
+        b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result) (call! "move-right" bid))
+               #:require-focus #t)))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+
+    // Switch focus before draining — no settle() until after, since settle()
+    // unconditionally drains LSP and would deliver the response first.
+    let other = file_dir.path().join("other.txt");
+    std::fs::write(&other, "abc\n").unwrap();
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+    let after_switch = state(&ed);
+
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(
+        state(&ed),
+        after_switch,
+        "the callback must not have fired — the switched-to buffer's own state is untouched"
+    );
+}
+
+/// Regression (pane refactor): `#:require-focus #t` must drop the callback
+/// when focus moves to a *different pane still showing the same buffer* —
+/// not just on a buffer switch. Before the pane refactor, `anchor_admits`
+/// compared only `bid`, so a split that moved focus off the requesting pane
+/// (onto a sibling pane showing the very same buffer) would still admit the
+/// response and deliver it into whichever pane happened to be focused.
+///
+/// Fail oracle: revert `anchor_admits` to compare `self.focused_buffer_id()
+/// != anchor.bid` instead of the pane — this test goes red because the
+/// split never changes the buffer, only the pane.
+#[test]
+fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
+    use hume_scripting::host::CommandHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |b, _sid| {
+        b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result) (log! 'trace "callback-fired"))
+               #:require-focus #t)))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+
+    // Split the focused (requesting) pane — `pane-vsplit` focuses the new
+    // pane, so the requesting pane is no longer focused even though both
+    // panes show the same buffer.
+    let pane = focused_pane(&ed);
+    {
+        let mut host = live_host!(ed);
+        host.run_command_sync("pane-vsplit", pane, Some(1), false, None)
+            .expect("pane-vsplit must succeed");
+    }
+
+    ed.drain_lsp();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("callback-fired"),
+        "the callback must not fire once focus moved to a sibling pane on the same buffer: {log:?}"
+    );
+}
+
+/// Without `#:require-focus` (the default), the callback still fires after
+/// a buffer switch — every background request (formatting, rename,
+/// completion, diagnostics) must keep delivering regardless of focus.
+///
+/// Proved via `log!`, not a native `call!`: a native command now requires
+/// its `bid` to be the *focused* buffer (`run_command_sync`'s own contract),
+/// so a callback that ran `(call! "move-right" bid)` against the requesting
+/// buffer after focus moved elsewhere would correctly error instead of
+/// moving anything — that would prove the wrong thing here. `log!` has no
+/// such buffer-targeting constraint, so it isolates "did the callback fire
+/// at all" from "which buffer can a native command act on".
+#[test]
+fn no_require_focus_still_delivers_after_a_buffer_switch() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |b, _sid| {
+        b.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "textDocument/hover" (hash) (lambda (err result) (log! 'trace "callback-fired")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+
+    let other = file_dir.path().join("other.txt");
+    std::fs::write(&other, "abc\n").unwrap();
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+
+    ed.drain_lsp();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("callback-fired"),
+        "the callback must still fire, even though focus moved: {log:?}"
+    );
+}
+
+/// Hole B regression: two responses land in the same LSP drain, so both are
+/// admitted by `dispatch_completed`'s drain-time `anchor_admits` check —
+/// neither callback has run yet, so focus hasn't moved. Only once they're
+/// dequeued does callback 1 actually execute and switch focus away.
+/// Callback 2 (`#:require-focus #t`) must be re-checked *at that point*, not
+/// just once back at drain time, or it fires over the wrong buffer anyway.
+///
+/// Fail oracle: without `Editor::run_pending_batch`'s per-call re-check
+/// (a plain `PendingWork::Call(proc, args)` with no anchor to re-check),
+/// callback 2 runs unconditionally once dequeued and "b-fired" lands in the
+/// message log despite the switch.
+#[test]
+fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |b, _sid| {
+        b.respond_to("textDocument/hover", serde_json::json!({"contents": "one"}));
+        b.respond_to(
+            "textDocument/completion",
+            serde_json::json!({"contents": "two"}),
+        );
+    });
+
+    let other = file_dir.path().join("other.txt");
+    std::fs::write(&other, "abc\n").unwrap();
+    let other_path = other.to_str().unwrap().to_owned();
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        &format!(
+            r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+                 (lsp-request bid "textDocument/hover" (hash)
+                   (lambda (err result) (switch-to-buffer! bid (open-buffer! "{other_path}"))))
+                 (lsp-request bid "textDocument/completion" (hash)
+                   (lambda (err result) (log! 'trace "b-fired"))
+                   #:require-focus #t)))"#
+        ),
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+    // Both responses land here — both admitted at drain time, since focus
+    // is still on the requesting buffer and neither callback has run.
+    ed.drain_lsp();
+    // Callback 1 runs first (queued first), switches focus; callback 2's
+    // re-check then sees the moved focus and must drop it.
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("b-fired"),
+        "callback 2 must be dropped once callback 1's switch moves focus away: {log:?}"
+    );
+}
+
+/// Hole B's staleness counterpart: callback 1 edits `bid` (bumping its
+/// `text_gen`), callback 2 has no `#:allow-stale`. Both land in the same
+/// drain, both admitted at drain time (neither has run, so `bid`'s
+/// `text_gen` still matches both anchors) — only a re-check at dequeue,
+/// after callback 1's edit has actually landed, catches the staleness.
+///
+/// Fail oracle: same as the focus-switch sibling test above — without the
+/// per-call re-check, callback 2 fires despite the edit callback 1 just
+/// applied.
+#[test]
+fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    setup_with(&mut ed, |b, _sid| {
+        b.respond_to(
+            "test/edit",
+            serde_json::json!([{
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                "newText": "X",
+            }]),
+        );
+        b.respond_to(
+            "textDocument/completion",
+            serde_json::json!({"contents": "hi"}),
+        );
+    });
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(define-typed-command! "test-cmd" "" (lambda (bid)
+             (lsp-request bid "test/edit" (hash)
+               (lambda (err res) (apply-text-edits! bid (json-list res))))
+             (lsp-request bid "textDocument/completion" (hash)
+               (lambda (err result) (log! 'trace "b-fired")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":test-cmd");
+    ed.drain_lsp();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("b-fired"),
+        "callback 2 must be dropped once callback 1's edit bumps text_gen: {log:?}"
     );
 }

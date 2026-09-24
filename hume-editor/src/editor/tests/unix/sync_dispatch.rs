@@ -18,10 +18,10 @@ fn lazy_command_first_dispatch_forwards_extend() {
     std::fs::write(
         plugin_dir.join("plugin.scm"),
         r#"(define-command! "tp-branch" ""
-             (lambda (count extend)
+             (lambda (bid count extend)
                (if extend
-                   (call! "move-right")
-                   (call! "move-down"))))"#,
+                   (call! "move-right" bid)
+                   (call! "move-down" bid))))"#,
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");
@@ -46,7 +46,7 @@ fn lazy_command_first_dispatch_forwards_extend() {
     ed.execute_keymap_command("tp-branch".into(), Some(1), true);
 
     // move-right advances by 1 char on line 1; move-down would land on line 2.
-    // (The inner (call! "move-right") dispatches without extend, so the
+    // (The inner (call! "move-right" bid) dispatches without extend, so the
     // selection moves rather than grows — extend=true only picks the branch.)
     assert_eq!(
         state(&ed),

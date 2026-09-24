@@ -20,8 +20,7 @@ use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::offset::CharOffset;
 
 use super::commands::{
-    apply_focused_motion, effective_wrap_mode, focused_buffer_id, pane_display_lines,
-    word_chars_owned,
+    CommandPane, apply_pane_motion, effective_wrap_mode, pane_display_lines, word_chars_owned,
 };
 use super::{EditorState, doc_ops};
 use crate::editor::error::CommandError;
@@ -366,18 +365,18 @@ fn copy_selection_vertically(
 fn copy_selection_on_line(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     down: bool,
 ) {
-    let focused = state.focus.id();
-    let buf_id = focused_buffer_id(state, view);
-    let key = state.format_key(&view.panes[focused]);
-    let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[focused], key);
+    let buf_id = t.bid(view);
+    let key = state.format_key(&view.panes[t.pid()]);
+    let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[t.pid()], key);
 
     doc_ops::apply_doc_motion(
         &state.buffers,
         &mut state.panes.state,
-        focused,
+        t.pid(),
         buf_id,
         |text, sels| copy_selection_vertically(&mut dlm, text, sels, down, count),
     );
@@ -393,6 +392,7 @@ fn copy_selection_on_line(
 fn visual_move_vertical(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     down: bool,
     mode: MotionMode,
@@ -404,27 +404,28 @@ fn visual_move_vertical(
     } else {
         VerticalMove::ContentDisplayLine
     };
-    let pid = state.focus.id();
-    apply_visual_vertical(state, view, pid, count, down, mode, unit);
+    apply_visual_vertical(state, view, t.pid(), count, down, mode, unit);
 }
 
 pub(super) fn cmd_visual_move_down(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    visual_move_vertical(state, view, count, true, mode);
+    visual_move_vertical(state, view, t, count, true, mode);
     Ok(())
 }
 
 pub(super) fn cmd_visual_move_up(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    visual_move_vertical(state, view, count, false, mode);
+    visual_move_vertical(state, view, t, count, false, mode);
     Ok(())
 }
 
@@ -432,10 +433,11 @@ pub(super) fn cmd_visual_move_up(
 pub(super) fn cmd_copy_selection_on_next_line(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    copy_selection_on_line(state, view, count, true);
+    copy_selection_on_line(state, view, t, count, true);
     Ok(())
 }
 
@@ -443,10 +445,11 @@ pub(super) fn cmd_copy_selection_on_next_line(
 pub(super) fn cmd_copy_selection_on_prev_line(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    copy_selection_on_line(state, view, count, false);
+    copy_selection_on_line(state, view, t, count, false);
     Ok(())
 }
 
@@ -464,14 +467,15 @@ pub(super) fn cmd_copy_selection_on_prev_line(
 pub(super) fn cmd_visual_select_word_nearest_on_line(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf_id = focused_buffer_id(state, view);
+    let buf_id = t.bid(view);
     let doc = state.buffers.get(buf_id);
     let around = doc.overrides.word_selects_whitespace(&state.settings);
     // Owned, not borrowed: the no-wrap branch below calls
-    // `apply_focused_motion(state, ...)`, which takes `&mut EditorState` as
+    // `apply_pane_motion(state, ...)`, which takes `&mut EditorState` as
     // one opaque argument — a live borrow into `state.buffers`/`state.settings`
     // (what a borrowed `chars` would be) can't survive across that call.
     let word_chars = word_chars_owned(doc, &state.settings);
@@ -482,22 +486,21 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         chars,
     };
 
-    if !effective_wrap_mode(doc, &state.settings, &view.panes[state.focus.id()]).is_wrapping() {
-        apply_focused_motion(state, view, |text, sels| {
+    if !effective_wrap_mode(doc, &state.settings, &view.panes[t.pid()]).is_wrapping() {
+        apply_pane_motion(state, view, t, |text, sels| {
             cmd_select_word_nearest_on_line(text, sels, 0, ctx)
         });
         return Ok(());
     }
 
-    let focused = state.focus.id();
-    let key = state.format_key(&view.panes[focused]);
-    let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[focused], key);
+    let key = state.format_key(&view.panes[t.pid()]);
+    let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[t.pid()], key);
 
-    // Not `apply_focused_motion`: the closure also captures the display-line map.
+    // Not `apply_pane_motion`: the closure also captures the display-line map.
     doc_ops::apply_doc_motion(
         &state.buffers,
         &mut state.panes.state,
-        focused,
+        t.pid(),
         buf_id,
         |text, sels| {
             let new_sels = sels.map(|sel| {

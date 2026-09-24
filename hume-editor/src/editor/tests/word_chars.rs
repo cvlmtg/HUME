@@ -96,8 +96,8 @@ fn symbol_under_cursor_returns_whole_hyphenated_word() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "check" "" (lambda ()
-             (log! 'info (symbol-under-cursor (current-buffer)))))"#,
+        r#"(define-typed-command! "check" "" (lambda (bid)
+             (log! 'info (symbol-under-cursor bid))))"#,
     );
     type_cmd(&mut ed, ":check");
     assert_eq!(ed.state.status_msg.clone().unwrap(), "foo-bar");

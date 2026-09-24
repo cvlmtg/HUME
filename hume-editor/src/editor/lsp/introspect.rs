@@ -14,52 +14,30 @@ use super::registry::LanguageName;
 use crate::editor::Editor;
 use crate::editor::EditorState;
 
-/// Resolves `server` — a registered language name, or `None` for "the
-/// focused buffer's attached server" — to a running `ServerId`.
-///
-/// A bare language name is ambiguous when multiple workspace roots for that
-/// language are running at once (the store is keyed by (language, root), not
-/// language alone): this prefers the focused buffer's own server if it
-/// matches, and otherwise errors rather than guessing. Shared by
-/// `lsp-request`/`lsp-notify` (via `Editor::resolve_lsp_server`) and
-/// `lsp-capabilities`.
+/// Resolves `bid`'s own attached server to a running `ServerId`. Shared by
+/// `lsp-request`/`lsp-notify` (`bridge.rs`'s `send_one_lsp_request`/
+/// `send_one_lsp_notify`) and `lsp-capabilities` — never a fallback to
+/// whichever buffer happens to be focused when this runs, so a caller
+/// resolving a follow-up request from inside a response callback gets the
+/// buffer the original request was about, not one a user's intervening
+/// keystrokes moved focus to.
 ///
 /// Errors loudly on a Crashed (or otherwise untracked) server rather than
 /// resolving to it — its sends are silently dropped (`send_or_queue`), so a
 /// caller would otherwise learn of the problem only as a generic timeout at
 /// the request's deadline. `Starting` still resolves: `send_or_queue`'s
 /// Starting-queue correctly defers the send until the handshake completes.
-pub(super) fn resolve_server(
+pub(super) fn resolve_server_for_buffer(
     state: &EditorState,
     lsp: &LspState,
-    focused_bid: BufferId,
-    server: Option<&str>,
+    bid: BufferId,
 ) -> Result<ServerId, String> {
-    let focused_server = || state.buffers.get(focused_bid).lsp_server;
-    let sid = match server {
-        None => focused_server()
-            .ok_or_else(|| "no LSP server attached to the current buffer".to_string())?,
-        Some(name) => {
-            let matches: Vec<ServerId> = lsp
-                .servers
-                .iter()
-                .filter(|(_, e)| e.language.as_deref() == Some(name))
-                .map(|(&sid, _)| sid)
-                .collect();
-            match matches.as_slice() {
-                [] => return Err(format!("no running LSP server for language '{name}'")),
-                [sid] => *sid,
-                _ => focused_server()
-                    .filter(|sid| matches.contains(sid))
-                    .ok_or_else(|| {
-                        format!(
-                            "multiple '{name}' servers running — pass #f to use the \
-                         current buffer's server"
-                        )
-                    })?,
-            }
-        }
-    };
+    let sid = state
+        .buffers
+        .try_get(bid)
+        .ok_or_else(|| format!("invalid buffer id {bid:?}"))?
+        .lsp_server
+        .ok_or_else(|| "no LSP server attached to this buffer".to_string())?;
     match lsp.servers.get(&sid).map(|e| e.client.state()) {
         Some(hume_lsp::client::ServerState::Starting | hume_lsp::client::ServerState::Running) => {
             Ok(sid) // send_or_queue handles Starting's deferred send correctly
@@ -71,8 +49,9 @@ pub(super) fn resolve_server(
     }
 }
 
-/// The registered language for `server_id` — reverse of `resolve_server`'s
-/// named path.
+/// The registered language for `server_id` — reverse of the
+/// `(language, root) -> ServerId` lookup `lsp/registration.scm` uses to
+/// attach a buffer to a server.
 pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<LanguageName> {
     lsp.servers.get(&server_id)?.language.clone()
 }
@@ -100,10 +79,9 @@ pub(in crate::editor) fn completion_resolve_provider(lsp: &LspState, server: Ser
 pub(in crate::editor) fn capabilities(
     state: &EditorState,
     lsp: &LspState,
-    focused_bid: BufferId,
-    server: Option<&str>,
+    bid: BufferId,
 ) -> Option<std::sync::Arc<serde_json::Value>> {
-    let sid = resolve_server(state, lsp, focused_bid, server).ok()?;
+    let sid = resolve_server_for_buffer(state, lsp, bid).ok()?;
     lsp.servers.get(&sid)?.client.capabilities_json().cloned()
 }
 
@@ -197,15 +175,18 @@ fn uri_and_encoding(
 }
 
 /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
-/// params from `id`'s primary cursor head, in the pane currently showing it.
+/// params from the primary cursor head in `t`'s own pane. `None` only when
+/// `t`'s buffer has no path or no attached server — `t` is already resolved
+/// (see `commands::resolve_pane`), so there is no "not shown" case left.
 pub(in crate::editor) fn position_params(
     state: &EditorState,
     view: &EngineView,
     lsp: &LspState,
-    id: BufferId,
+    t: crate::editor::commands::CommandPane,
 ) -> Option<serde_json::Value> {
+    let id = t.bid(view);
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let pbs = state.shown_buffer_state(view, id)?;
+    let pbs = &state.panes.state[t.pid()][id];
     let rope = state.buffers.get(id).text().rope();
     let pos = hume_rope::position_encoding::char_to_wire(
         rope,
@@ -218,40 +199,26 @@ pub(in crate::editor) fn position_params(
     }))
 }
 
-/// The negotiated encoding of `id`'s attached server, or `None` if `id` is
-/// unknown or has no attached (tracked) server — the fallible core shared by
-/// [`encoding_for_buffer`] (clamps to UTF-16) and [`wire_to_char_for_buffer`]
-/// (refuses instead of guessing).
-fn negotiated_encoding(
-    state: &EditorState,
+/// The negotiated encoding of a specific running server — the counterpart
+/// for a caller that already has a `ServerId` in hand instead of resolving
+/// one from a `BufferId` (a server-initiated request, or a response being
+/// tagged at dispatch time). `None` if the server is no longer tracked.
+pub(in crate::editor) fn server_encoding(
     lsp: &LspState,
-    id: BufferId,
+    sid: ServerId,
 ) -> Option<hume_rope::position_encoding::PositionEncoding> {
-    let sid = state.buffers.try_get(id)?.lsp_server?;
-    Some(lsp.servers.get(&sid)?.client.encoding())
+    lsp.servers.get(&sid).map(|e| e.client.encoding())
 }
 
-/// The negotiated encoding of `id`'s attached server, or UTF-16 (the spec
-/// default) if `id` has no attached server — used by `set-inlay-hints!`
-/// to convert its wire positions to char offsets at set time.
-/// `pub(in crate::editor)` — the completion accept path is a second caller
-/// outside this subtree; see `wire_range_to_chars`'s doc (`lsp/mod.rs`) for
-/// why this is the narrowest visibility that reaches it.
-pub(in crate::editor) fn encoding_for_buffer(
-    state: &EditorState,
-    lsp: &LspState,
-    id: BufferId,
-) -> hume_rope::position_encoding::PositionEncoding {
-    negotiated_encoding(state, lsp, id)
-        .unwrap_or(hume_rope::position_encoding::PositionEncoding::Utf16)
-}
-
-/// Wire `(line, character)` → char offset in `id`'s attached server's
-/// negotiated encoding, for `lsp-range->offsets`. `None` if `id` is unknown
-/// or has no attached server — unlike `set-inlay-hints!`'s
-/// `encoding_for_buffer`, this refuses rather than guessing UTF-16: the
-/// caller has no way to supply an encoding, so a wrong silent answer (only
-/// visible on non-ASCII lines) is worse than a visible `#f`.
+/// Wire `(line, character)` → char offset, decoded in `encoding`, for
+/// `lsp-range->offsets`. `None` if `id` is unknown. `encoding` is the
+/// caller's own resolve — the tagged producing-server encoding of the
+/// response the position was read out of (`JsonHandle::position_encoding`),
+/// never `id`'s *currently* attached server: the two can diverge (a restart
+/// renegotiates a different encoding, a detach leaves none), and the tag is
+/// always the encoding the position was actually written in. No `LspState`
+/// lookup needed at all — same reasoning as [`label_slice`]'s own `encoding`
+/// parameter, below.
 ///
 /// Clamps rather than errors on an out-of-range `line`/`character`, same as
 /// `wire_to_char` itself — a range's `end` legitimately lands exactly at
@@ -260,12 +227,11 @@ pub(in crate::editor) fn encoding_for_buffer(
 /// callers want the opposite; see [`wire_point_to_char_for_buffer`].
 pub(in crate::editor) fn wire_to_char_for_buffer(
     state: &EditorState,
-    lsp: &LspState,
     id: BufferId,
     pos: hume_rope::position_encoding::WirePos,
+    encoding: hume_rope::position_encoding::PositionEncoding,
 ) -> Option<hume_rope::offset::CharOffset> {
     let rope = state.buffers.try_get(id)?.text().rope();
-    let encoding = negotiated_encoding(state, lsp, id)?;
     Some(hume_rope::position_encoding::wire_to_char(
         rope, pos, encoding,
     ))
@@ -283,40 +249,31 @@ pub(in crate::editor) fn wire_to_char_for_buffer(
 /// filtered out, one entry, by the caller's own `#f` check.
 pub(in crate::editor) fn wire_point_to_char_for_buffer(
     state: &EditorState,
-    lsp: &LspState,
     id: BufferId,
     pos: hume_rope::position_encoding::WirePos,
+    encoding: hume_rope::position_encoding::PositionEncoding,
 ) -> Option<hume_rope::offset::CharOffset> {
-    let offset = wire_to_char_for_buffer(state, lsp, id, pos)?;
+    let offset = wire_to_char_for_buffer(state, id, pos, encoding)?;
     let text = state.buffers.try_get(id)?.text();
     (offset < text.end()).then_some(offset)
 }
 
 /// `label` sliced by a `ParameterInformation.label` `[start, end)` wire
-/// offset pair, for `lsp-label-offsets->text`.
-///
-/// The one place a wire offset indexes a *server-authored string* rather
-/// than a document: the offsets address `SignatureInformation.label`, which
-/// never reaches a buffer, so none of the `bid`-anchored converters above
-/// fit. `id` is here only to name the server whose negotiated encoding the
-/// offsets are counted in — the same negotiation their `Position` siblings
-/// ride, since a server converts every outgoing offset through one layer.
-///
-/// `None` when `id` has no attached server, refusing rather than guessing
-/// UTF-16 for the same reason [`wire_to_char_for_buffer`] does: the wrong
-/// answer is invisible until the label holds a non-ASCII character.
-pub(in crate::editor) fn label_slice_for_buffer(
-    state: &EditorState,
-    lsp: &LspState,
-    id: BufferId,
+/// offset pair, for `lsp-label-offsets->text`. The one place a wire offset
+/// indexes a *server-authored string* rather than a document: the offsets
+/// address `SignatureInformation.label`, which never reaches a buffer, so
+/// none of the `bid`-anchored converters above fit. `encoding` is the
+/// caller's own resolve (the `offsets` handle's tagged producing-server
+/// encoding) — this function needs no buffer or `LspState` lookup at all.
+pub(in crate::editor) fn label_slice(
     label: &str,
     start: usize,
     end: usize,
-) -> Option<String> {
-    let encoding = negotiated_encoding(state, lsp, id)?;
+    encoding: hume_rope::position_encoding::PositionEncoding,
+) -> String {
     let range =
         hume_rope::position_encoding::wire_offsets_to_byte_range(label, start, end, encoding);
-    Some(label[range].to_string())
+    label[range].to_string()
 }
 
 /// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` —
@@ -405,6 +362,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
                 code: d.code.clone(),
                 source: d.source.clone(),
                 raw: std::sync::Arc::clone(&d.raw),
+                encoding: d.encoding,
             }
         })
         .collect();
@@ -468,10 +426,10 @@ fn wire_pos_to_grapheme_col(
 /// canonicalisation of it: resolving symlinks is right for *finding* the
 /// file, but a drawer row should echo the path the server actually sent.
 ///
-/// Every location shares `focused_bid`'s attached server's negotiated
-/// encoding — that server produced every one of these responses, whichever
-/// file each location points into (same rationale `GotoTarget::Wire` uses
-/// for the actual jump, `edits.rs`'s `resolve_goto_target`).
+/// Each entry's own `JsonHandle` carries its own tagged producing-server
+/// encoding — same rationale `GotoTarget::Wire` uses for the actual jump,
+/// `edits.rs`'s `resolve_goto_target` — so a batch spanning more than one
+/// response decodes each location correctly.
 ///
 /// # The one sanctioned exception to "never render a wire unit"
 /// An **open** buffer's rope is used as-is (its unsaved text, if modified —
@@ -499,17 +457,18 @@ fn wire_pos_to_grapheme_col(
 /// buffer-store scan per file, not one per location.
 pub(in crate::editor) fn location_display_parts(
     state: &EditorState,
-    lsp: &LspState,
-    focused_bid: BufferId,
-    locs: &[&serde_json::Value],
+    locs: &[hume_scripting::json::JsonHandle],
 ) -> Result<Vec<hume_scripting::host::LocationDisplay>, String> {
-    let encoding = encoding_for_buffer(state, lsp, focused_bid);
     let mut open_buffer_cache: rustc_hash::FxHashMap<std::path::PathBuf, Option<BufferId>> =
         rustc_hash::FxHashMap::default();
 
     locs.iter()
-        .map(|loc| {
-            let wl = hume_lsp::location::decode_location(loc, "lsp-locations->display-parts")?;
+        .map(|handle| {
+            let encoding = handle.position_encoding("lsp-locations->display-parts")?;
+            let wl = hume_lsp::location::decode_location(
+                handle.value(),
+                "lsp-locations->display-parts",
+            )?;
             let path = hume_lsp::uri::uri_to_path(&wl.uri).map_err(|e| {
                 format!(
                     "lsp-locations->display-parts: cannot open {}: {e}",
@@ -528,8 +487,8 @@ pub(in crate::editor) fn location_display_parts(
                 .or_insert_with(|| state.buffers.find_by_path(&resolved));
 
             let grapheme_col_or_wire = match open_bid {
-                Some(bid) => {
-                    let text = state.buffers.get(bid).text();
+                Some(target_bid) => {
+                    let text = state.buffers.get(target_bid).text();
                     wire_pos_to_grapheme_col(text, wl.pos, encoding)
                         .map(hume_rope::column::GraphemeCol::index)
                 }
@@ -566,17 +525,18 @@ fn char_range_to_wire(
     hume_lsp::position::to_json_range(wire_range)
 }
 
-/// Ready-made range params from `id`'s primary selection alone — the shape
-/// `:lsp-code-actions` needs, since its diagnostics context
+/// Ready-made range params from the primary selection alone, in `t`'s own
+/// pane — the shape `:lsp-code-actions` needs, since its diagnostics context
 /// (`lsp/primary-selection-range` in `actions.scm`) is primary-scoped too.
 pub(in crate::editor) fn primary_range_params(
     state: &EditorState,
     view: &EngineView,
     lsp: &LspState,
-    id: BufferId,
+    t: crate::editor::commands::CommandPane,
 ) -> Option<serde_json::Value> {
+    let id = t.bid(view);
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let sel = state.shown_buffer_state(view, id)?.selections().primary();
+    let sel = state.panes.state[t.pid()][id].selections().primary();
     let text = state.buffers.get(id).text();
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
@@ -600,18 +560,19 @@ pub(in crate::editor) fn primary_range_params(
 /// `hume_editing::selection::linewise_classification`) is skipped the same
 /// way — including from the touch check, so a stray cursor can't bridge two
 /// real linewise neighbors into one coalesced range that silently reformats
-/// the blank line between them too. `None` only when `id` has no path, no
-/// attached server, or isn't shown in any pane, matching every other params
-/// builder in this file.
+/// the blank line between them too. `None` only when `t`'s buffer has no
+/// path or no attached server, matching every other params builder in this
+/// file.
 pub(in crate::editor) fn linewise_ranges_params(
     state: &EditorState,
     view: &EngineView,
     lsp: &LspState,
-    id: BufferId,
+    t: crate::editor::commands::CommandPane,
 ) -> Option<serde_json::Value> {
+    let id = t.bid(view);
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let text = state.buffers.get(id).text();
-    let selections = state.shown_buffer_state(view, id)?.selections();
+    let selections = state.panes.state[t.pid()][id].selections();
 
     let linewise: Vec<_> = selections
         .iter_sorted()
@@ -665,22 +626,20 @@ pub(in crate::editor) fn pane_visible_range(
     hume_rope::offset::ExclusiveRange::new(first_line, end_line)
 }
 
-/// `(viewport-range bid)` — the visible line range (end-exclusive) currently
-/// visible for `id`, or `None` if `id` isn't shown in a pane on the active
-/// tab (a background-tab or fully hidden buffer — see `pane_showing_buffer`'s
-/// doc for why the active-tab restriction). With the same buffer open in two
-/// panes, the focused pane's range wins — no less arbitrary than any other
-/// tie-break, since a per-buffer decoration store (inlay hints) can only
-/// hold one range per buffer regardless of how many panes show it.
+/// `(viewport-range pane)` — the visible line range (end-exclusive)
+/// currently visible in `t`'s own pane. `t` is already resolved (see
+/// `commands::resolve_pane`) by the time this runs, so unlike every other
+/// `id: BufferId`-taking function in this file, there is no "not shown"
+/// case left to report here — the caller's own resolve raised on that
+/// already.
 pub(in crate::editor) fn viewport_range(
     state: &EditorState,
     view: &EngineView,
-    id: BufferId,
-) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>> {
-    let pane_id = state.pane_showing_buffer(view, id)?;
-    let pane = view.panes.get(pane_id)?;
-    let content_lines = state.buffers.try_get(id)?.text().content_line_count();
-    Some(pane_visible_range(pane, content_lines))
+    t: crate::editor::commands::CommandPane,
+) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
+    let pane = &view.panes[t.pid()];
+    let content_lines = state.buffers.get(t.bid(view)).text().content_line_count();
+    pane_visible_range(pane, content_lines)
 }
 
 impl crate::editor::Editor {

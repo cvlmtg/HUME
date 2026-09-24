@@ -15,14 +15,14 @@
 
 use std::path::{Path, PathBuf};
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::BufferId;
 
 use crate::attribution::PluginId;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
     OutputHost, SettingsHost,
 };
-use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
+use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
 /// Event names `NullHost` reports as known — the names scripting-crate unit
 /// tests actually register (`on-buffer-open`, `on-buffer-save`), plus one
@@ -66,8 +66,22 @@ impl BufferHost for NullHost {
     fn buffer_ids(&self) -> Vec<BufferId> {
         vec![]
     }
-    fn pane_ids(&self) -> Vec<PaneId> {
+    fn panes(&self) -> Vec<PaneHandle> {
         vec![]
+    }
+    fn focused_pane(&self) -> PaneHandle {
+        PaneHandle::buffer_only(BufferId::default())
+    }
+    fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {
+        vec![pane]
+    }
+    // Read-like, not a mutator: there's no real focus state to check a
+    // `pane` against here, so this permissively passes — the `UiHost`
+    // openers this backs have no `NullHost` implementation at all (`ui()`
+    // returns `None`), so a test exercising the gate itself needs
+    // `EditorHostImpl`/`MockHost`, not this stub.
+    fn require_focused_pane(&self, _pane: PaneHandle) -> Result<(), String> {
+        Ok(())
     }
     fn buffer_exists(&self, _id: BufferId) -> bool {
         false
@@ -93,7 +107,7 @@ impl BufferHost for NullHost {
     fn close_buffer(&mut self, _id: BufferId) -> Result<BufferId, String> {
         Err("NullHost: close_buffer not available".into())
     }
-    fn switch_to_buffer(&mut self, _current: BufferId, _target: BufferId) -> Result<(), String> {
+    fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {
         Err("NullHost: switch_to_buffer not available".into())
     }
     fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
@@ -117,9 +131,9 @@ impl BufferHost for NullHost {
     }
     fn viewport_range(
         &self,
-        _id: BufferId,
-    ) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>> {
-        None
+        _pane: PaneHandle,
+    ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
+        Err("NullHost: viewport_range not available".into())
     }
 }
 
@@ -135,8 +149,11 @@ impl SettingsHost for NullHost {
     ) -> Result<(), String> {
         Err("NullHost: set_buffer_option not available".into())
     }
-    fn get_option(&self, _key: &str, _bid: BufferId) -> Result<OptionValue, String> {
-        Err("NullHost: get_option not available".into())
+    fn get_global_option(&self, _key: &str) -> Result<OptionValue, String> {
+        Err("NullHost: get_global_option not available".into())
+    }
+    fn get_buffer_option(&self, _key: &str, _bid: BufferId) -> Result<OptionValue, String> {
+        Err("NullHost: get_buffer_option not available".into())
     }
     fn configure_statusline(
         &mut self,
@@ -172,6 +189,7 @@ impl CommandHost for NullHost {
     fn run_command_sync(
         &mut self,
         _name: &str,
+        _pane: PaneHandle,
         _count: Option<usize>,
         _extend: bool,
         _register: Option<char>,
@@ -205,23 +223,23 @@ impl CommandHost for NullHost {
 }
 
 impl CursorHost for NullHost {
-    fn current_line_number(&self) -> Option<usize> {
+    fn buffer_cursor_line(&self, _pane: PaneHandle) -> Result<usize, String> {
+        Err("NullHost: buffer_cursor_line not available".into())
+    }
+    fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String> {
+        Err("NullHost: buffer_selections not available".into())
+    }
+    fn offset_to_line(&self, _bid: BufferId, _idx: usize) -> Option<usize> {
         None
     }
-    fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
-        None
+    fn symbol_under_cursor(&self, _pane: PaneHandle) -> Result<String, String> {
+        Err("NullHost: symbol_under_cursor not available".into())
     }
-    fn char_index_to_line(&self, _idx: usize) -> Option<usize> {
-        None
+    fn selections_linewise(&self, _pane: PaneHandle) -> Result<bool, String> {
+        Err("NullHost: selections_linewise not available".into())
     }
-    fn symbol_under_cursor(&self, _bid: BufferId) -> String {
-        String::new()
-    }
-    fn selections_linewise(&self, _bid: BufferId) -> bool {
-        false
-    }
-    fn selections_charwise(&self, _bid: BufferId) -> bool {
-        false
+    fn selections_charwise(&self, _pane: PaneHandle) -> Result<bool, String> {
+        Err("NullHost: selections_charwise not available".into())
     }
 }
 
@@ -267,11 +285,13 @@ impl CommandHost for FailingRegisterHost {
     fn run_command_sync(
         &mut self,
         name: &str,
+        pane: PaneHandle,
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<bool, String> {
-        self.inner.run_command_sync(name, count, extend, register)
+        self.inner
+            .run_command_sync(name, pane, count, extend, register)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
         Err(format!(
@@ -458,11 +478,13 @@ impl CommandHost for LazyStubHost {
     fn run_command_sync(
         &mut self,
         name: &str,
+        pane: PaneHandle,
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
     ) -> Result<bool, String> {
-        self.inner.run_command_sync(name, count, extend, register)
+        self.inner
+            .run_command_sync(name, pane, count, extend, register)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
         self.register_defined(def.name)

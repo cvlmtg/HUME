@@ -23,7 +23,7 @@ fn buffer_text_returns_live_dirty_content() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (buffer-text (current-buffer)) "Xabcdef\n")"#,
+        r#"(equal? (buffer-text bid) "Xabcdef\n")"#,
     );
     assert!(
         fired,
@@ -46,7 +46,7 @@ fn buffer_lines_excludes_the_phantom_trailing_line() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (buffer-lines (current-buffer)) (list "a" "b" "c"))"#,
+        r#"(equal? (buffer-lines bid) (list "a" "b" "c"))"#,
     );
     assert!(
         fired,
@@ -69,7 +69,7 @@ fn buffer_line_count_excludes_the_phantom_trailing_line() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(= (buffer-line-count (current-buffer)) 3)"#,
+        r#"(= (buffer-line-count bid) 3)"#,
     );
     assert!(
         fired,
@@ -89,8 +89,8 @@ fn buffer_line_count_agrees_with_buffer_lines_length() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(= (buffer-line-count (current-buffer))
-             (length (buffer-lines (current-buffer))))"#,
+        r#"(= (buffer-line-count bid)
+             (length (buffer-lines bid)))"#,
     );
     assert!(
         fired,
@@ -108,7 +108,7 @@ fn buffer_lines_supports_a_start_end_range() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (buffer-lines (current-buffer) #:start 1 #:end 3) (list "b" "c"))"#,
+        r#"(equal? (buffer-lines bid #:start 1 #:end 3) (list "b" "c"))"#,
     );
     assert!(
         fired,
@@ -127,7 +127,7 @@ fn buffer_lines_start_only_defaults_end_to_the_line_count() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (buffer-lines (current-buffer) #:start 1) (list "b" "c"))"#,
+        r#"(equal? (buffer-lines bid #:start 1) (list "b" "c"))"#,
     );
     assert!(
         fired,
@@ -150,7 +150,7 @@ fn buffer_text_normalizes_crlf_to_lf() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (buffer-text (current-buffer)) "a\nb\n")"#,
+        r#"(equal? (buffer-text bid) "a\nb\n")"#,
     );
     assert!(
         fired,
@@ -172,8 +172,8 @@ fn buffer_lines_out_of_range_end_raises() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "probe" "" (lambda ()
-             (buffer-lines (current-buffer) #:end 10)))"#,
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (buffer-lines bid #:end 10)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -204,8 +204,8 @@ fn buffer_lines_start_past_end_raises() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "probe" "" (lambda ()
-             (buffer-lines (current-buffer) #:start 3 #:end 1)))"#,
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (buffer-lines bid #:start 3 #:end 1)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -239,8 +239,8 @@ fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((vr (viewport-range (current-buffer))))
-             (equal? (buffer-lines (current-buffer)
+        r#"(let ((vr (viewport-range bid)))
+             (equal? (buffer-lines bid
                        #:start (car vr) #:end (cdr vr))
                      (list "a" "b" "c")))"#,
     );
@@ -316,9 +316,9 @@ fn line_to_offset_returns_each_lines_start_char_offset() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(and (= (line->offset (current-buffer) 0) 0)
-                 (= (line->offset (current-buffer) 1) 2)
-                 (= (line->offset (current-buffer) 2) 5))"#,
+        r#"(and (= (line->offset bid 0) 0)
+                 (= (line->offset bid 1) 2)
+                 (= (line->offset bid 2) 5))"#,
     );
     assert!(
         fired,
@@ -340,7 +340,7 @@ fn line_to_offset_counts_chars_not_bytes() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(= (line->offset (current-buffer) 1) 2)"#,
+        r#"(= (line->offset bid 1) 2)"#,
     );
     assert!(
         fired,
@@ -360,8 +360,8 @@ fn line_to_offset_out_of_range_line_raises() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "probe" "" (lambda ()
-             (line->offset (current-buffer) 2)))"#,
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (line->offset bid 2)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -416,18 +416,18 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
 
 // ── selections-linewise? / selections-charwise? ─────────────────────────────
 
-/// `initial` must make `(<builtin> (current-buffer))` equal `expected`;
-/// `why` is the assertion message on failure. `builtin` is `"selections-linewise?"`
-/// or `"selections-charwise?"` — the two predicates share every fixture below
+/// `initial` must make `(<builtin> bid)` equal `expected`; `why` is the
+/// assertion message on failure. `builtin` is `"selections-linewise?"` or
+/// `"selections-charwise?"` — the two predicates share every fixture below
 /// since together they classify the same three-way verdict (all/none/mixed)
 /// `:lsp-fmt`'s range-format gate needs.
 fn assert_selections_predicate(builtin: &str, initial: &str, expected: bool, why: &str) {
     let tmp = safe_tempdir();
     let mut ed = editor_from(initial);
     let probe = if expected {
-        format!("({builtin} (current-buffer))")
+        format!("({builtin} bid)")
     } else {
-        format!("(not ({builtin} (current-buffer)))")
+        format!("(not ({builtin} bid))")
     };
     let fired = run_probe(&mut ed, ScriptingHost::new(), tmp.path(), &probe);
     assert!(fired, "{why}");
@@ -623,12 +623,13 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
-             (selections-linewise? hidden))"#,
+        r#"(let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
+                  (shown (car (buffer-panes hidden))))
+             (selections-linewise? shown))"#,
     );
     assert!(
         fired,
-        "selections-linewise? must resolve bid's selections in whichever pane shows it, not just the focused one"
+        "selections-linewise? must resolve bid's selections in whichever pane shows it, named via buffer-panes"
     );
 }
 
@@ -646,8 +647,8 @@ fn diff_buffer_lines_agrees_with_diff_lines_over_buffer_text() {
         ScriptingHost::new(),
         tmp.path(),
         r#"(let ((ref "a\nB\nc\n"))
-             (equal? (diff-buffer-lines (current-buffer) ref)
-                     (diff-lines ref (buffer-text (current-buffer)))))"#,
+             (equal? (diff-buffer-lines bid ref)
+                     (diff-lines ref (buffer-text bid))))"#,
     );
     assert!(
         fired,

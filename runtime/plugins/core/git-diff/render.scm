@@ -36,9 +36,9 @@
 ;;; `:toggle-git-signs` needs its slot claimed before `set-signs!` accepts
 ;;; even an empty call. See docs/rendering.md for the `apply append`
 ;;; choice.
-(define (git-diff/render-signs! bid hunks)
-  (register-sign-source! git-diff/*source* bid git-diff/*sign-priority*)
-  (set-signs! git-diff/*source* bid (apply append (map git-diff/hunk->signs hunks))))
+(define (git-diff/render-signs! pane hunks)
+  (register-sign-source! git-diff/*source* pane git-diff/*sign-priority*)
+  (set-signs! git-diff/*source* pane (apply append (map git-diff/hunk->signs hunks))))
 
 ;; ── Inline: deleted lines + word highlights ─────────────────────────────────
 ;; See docs/rendering.md.
@@ -75,8 +75,8 @@
 
 ;;; Char offset where each of the first `paired-count` `new-lines` starts —
 ;;; see docs/rendering.md for why this needs only one `line->offset` call.
-(define (git-diff/paired-line-offsets bid new-start new-lines paired-count)
-  (let ([base (line->offset bid new-start)])
+(define (git-diff/paired-line-offsets pane new-start new-lines paired-count)
+  (let ([base (line->offset pane new-start)])
     (let loop ([i 0] [offset base] [lines new-lines] [acc '()])
       (if (= i paired-count)
           (reverse acc)
@@ -111,9 +111,9 @@
 ;;; file (`render-inline!`'s two, `render-line-bgs!`'s one, and the `all`
 ;;; join right below): none of them needs an equivalent guard, since only
 ;;; the direct 2-argument form carries this bug. A VM bug, not fixable here.
-(define (git-diff/hunk-old-lines->virtual+spans bid old-lines new-lines new-start paired-count anchor)
+(define (git-diff/hunk-old-lines->virtual+spans pane old-lines new-lines new-start paired-count anchor)
   (let* ([offsets (if (> paired-count 0)
-                       (git-diff/paired-line-offsets bid new-start new-lines paired-count)
+                       (git-diff/paired-line-offsets pane new-start new-lines paired-count)
                        '())]
          ;; Walks via `cdr`, not `list-ref` by index — Steel lists are
          ;; linked, so indexing would make this quadratic in `paired-count`.
@@ -132,7 +132,7 @@
 
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!`. A pure
 ;;; addition contributes nothing here — see docs/rendering.md.
-(define (git-diff/hunk-inline-data bid hunk)
+(define (git-diff/hunk-inline-data pane hunk)
   (let* ([old-count (list-ref hunk 1)]
          [new-start (list-ref hunk 2)]
          [new-count (list-ref hunk 3)]
@@ -141,16 +141,16 @@
     (if (= old-count 0)
         (cons '() '())
         (git-diff/hunk-old-lines->virtual+spans
-          bid old-lines new-lines new-start (min old-count new-count)
+          pane old-lines new-lines new-start (min old-count new-count)
           (git-diff/hunk-anchor new-start)))))
 
 ;;; Two setter calls, not one — see docs/rendering.md.
-(define (git-diff/render-inline! bid hunks)
-  (let* ([results (map (lambda (h) (git-diff/hunk-inline-data bid h)) hunks)]
+(define (git-diff/render-inline! pane hunks)
+  (let* ([results (map (lambda (h) (git-diff/hunk-inline-data pane h)) hunks)]
          [virtual-lines (apply append (map car results))]
          [spans (apply append (map cdr results))])
-    (set-virtual-lines! git-diff/*source* bid virtual-lines)
-    (set-extra-highlights! git-diff/*source* bid spans)))
+    (set-virtual-lines! git-diff/*source* pane virtual-lines)
+    (set-extra-highlights! git-diff/*source* pane spans)))
 
 ;; ── Line background tint ─────────────────────────────────────────────────────
 
@@ -163,14 +163,14 @@
         (let ([scope (if (= old-count 0) "diff.plus.line" "diff.delta.line")])
           (map (lambda (line) (list line scope)) (range new-start (+ new-start new-count)))))))
 
-(define (git-diff/render-line-bgs! bid hunks)
-  (set-line-backgrounds! git-diff/*source* bid (apply append (map git-diff/hunk->line-bgs hunks))))
+(define (git-diff/render-line-bgs! pane hunks)
+  (set-line-backgrounds! git-diff/*source* pane (apply append (map git-diff/hunk->line-bgs hunks))))
 
 ;; ── Flag → renderer dispatch ────────────────────────────────────────────────────
 ;; See docs/rendering.md.
 
-(define (git-diff/render-for! key bid hunks)
+(define (git-diff/render-for! key pane hunks)
   (if (equal? key "signs?")
-      (git-diff/render-signs! bid hunks)
-      (begin (git-diff/render-inline! bid hunks)
-             (git-diff/render-line-bgs! bid hunks))))
+      (git-diff/render-signs! pane hunks)
+      (begin (git-diff/render-inline! pane hunks)
+             (git-diff/render-line-bgs! pane hunks))))

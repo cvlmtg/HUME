@@ -60,14 +60,14 @@ pub(crate) mod watchdog;
 
 // ── Public API re-exports ─────────────────────────────────────────────────────
 // Types the editor and editor tests use directly.
-pub use builtins::ids::SteelBufferId;
+pub use builtins::ids::SteelPane;
 pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{
-    Effect, EvalError, GrammarReg, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify,
-    PendingLspRequest, PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
-    SteelTypedCmdDef, VirtualLineSpec,
+    Effect, EvalError, GrammarReg, LspServerStatusEntry, LspServerTarget, PaneHandle,
+    PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+    PendingLspServerReg, SteelCmdDef, SteelCmdResult, SteelTypedCmdDef, VirtualLineSpec,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
@@ -319,9 +319,12 @@ impl ScriptingHost {
     /// Pre-register native command names as callable Steel bindings.
     ///
     /// For each name, evaluates `(define name (lambda args (%dispatch-command
-    /// "name" args)))` — makes bare `(move-left)` callable without
-    /// `(call! "move-left")`, and variadic, so `(move-down 3)` / `(move-down 0)`
-    /// work too (count `0` = "no count typed", see `parse_count_extend`).
+    /// "name" args)))` — makes bare `(move-left bid)` callable without
+    /// `(call! "move-left" bid)`, and variadic, so `(move-down bid 3)` /
+    /// `(move-down bid 0)` work too (count `0` = "no count typed", see
+    /// `parse_count_extend`). `bid` is always the first arg, same as
+    /// `%call-native!`'s own contract — this binding is a thin wrapper over
+    /// the same dispatcher, not a separate calling convention.
     ///
     /// Calls `%dispatch-command` directly rather than the public `call!` macro
     /// (which desugars to exactly this) — the variadic lambda's args are
@@ -679,7 +682,7 @@ impl ScriptingHost {
     /// caller (editor dispatch) constructs the args by wrapping already-resolved
     /// Rust values via `IntoSteelVal` and passing them straight in. Introducing
     /// an intermediate arg type would add conversion with no practical benefit:
-    /// the editor crate already depends on `steel-core` for `SteelBufferId`.
+    /// the editor crate already depends on `steel-core` for `SteelPane`.
     /// Encapsulating Steel on this side of the API is not
     /// cost-free; the trade-off is accepted intentionally.
     pub fn call_steel_cmd<'a>(
@@ -687,8 +690,6 @@ impl ScriptingHost {
         name: &str,
         pending_char: Option<char>,
         args: Vec<SteelVal>,
-        focused_pane_id: hume_engine::pipeline::PaneId,
-        focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
     ) -> Result<SteelCmdResult, EvalError> {
         let budget_ms = host.settings().steel_command_budget_ms();
@@ -716,13 +717,7 @@ impl ScriptingHost {
         let effects_start = self.effects.len();
         let (result, wait_char_request) = {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
-            let mut steel_ctx = SteelCtx::new_command(
-                host,
-                bundle,
-                focused_pane_id,
-                focused_buffer_id,
-                pending_char,
-            );
+            let mut steel_ctx = SteelCtx::new_command(host, bundle, pending_char);
 
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 steel.call_function_with_args(proc, args)?;
@@ -742,7 +737,7 @@ impl ScriptingHost {
     ///
     /// Handlers are called in registration order inside a single
     /// `with_mut_reference` session so they have full access to HUME builtins
-    /// (`current-buffer`, `call!`, etc.).
+    /// (`focused-pane`, `call!`, etc.).
     ///
     /// Returns immediately (no Steel engine call, no watchdog) if no handlers are
     /// registered for `name`.
@@ -750,8 +745,6 @@ impl ScriptingHost {
         &'a mut self,
         name: &str,
         args: &[SteelVal],
-        focused_pane_id: hume_engine::pipeline::PaneId,
-        focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
         // Every handler gets the same args — pair them up and hand the batch
@@ -765,25 +758,44 @@ impl ScriptingHost {
             .iter()
             .map(|e| (e.proc.clone(), args.to_vec()))
             .collect();
-        self.run_steel_calls(calls, focused_pane_id, focused_buffer_id, host)
+        self.run_steel_calls(calls, host)
     }
 
-    /// Calls each `(proc, args)` pair directly, in order, inside one
-    /// `with_mut_reference` session.
+    /// Calls each `(proc, args)` pair directly, in order — the shared
+    /// mechanism behind the `lsp-request` callback, timer thunks, and the
+    /// prompt callback, and (via [`fire_hook`](Self::fire_hook)) every
+    /// handler registered for one event.
     ///
-    /// Unlike [`fire_hook`](Self::fire_hook), which looks up every handler
-    /// registered for a hook id, this delivers to a *specific* Steel closure
-    /// captured earlier by Rust — the shared mechanism behind the
-    /// `lsp-request` callback, timer thunks, and the prompt callback.
-    /// Same discipline: never called from inside a completion-detection
-    /// borrow (LSP drain, timer drain, minibuffer key handling) — the caller
-    /// queues `(proc, args)` and this runs at the drain boundary. The first
-    /// error aborts the remaining calls in the batch, same as `fire_hook`.
+    /// Each call runs in its *own* `with_mut_reference` session, isolated
+    /// from its siblings: an ordinary Steel error (a raised exception, a
+    /// stale-buffer `LivePane` raise, an arity mismatch) no longer aborts the
+    /// rest of the batch, so one plugin's bug in one hook handler or queued
+    /// callback can't silently drop every other one behind it in the same
+    /// batch. A cooperative watchdog interrupt (`hume/yield!`, raised when
+    /// the step budget is exceeded) is the one exception: it means the
+    /// whole batch's time is spent, not just this call's, so it still
+    /// aborts the rest. Distinguished by the interrupt's own fixed message
+    /// text (`hume/yield!`'s `"script interrupted"`) rather than
+    /// `ctx.interrupt_flag`, which `run_steel_session` already resets to
+    /// `false` on return regardless of outcome, before this function ever
+    /// sees it again.
+    ///
+    /// The *first* failure (interrupt or not) is still returned as this
+    /// function's own `Err`, unchanged from before this isolation existed —
+    /// callers key cleanup on it (`Editor::run_call_batch`'s completion-
+    /// session teardown on a raising source) and report it themselves
+    /// (`apply_script_result`'s `"steel call error: "`/`"hook error: "`
+    /// prefix). A *second* (or later) failure in the same batch would
+    /// otherwise have no trace at all now that it doesn't abort anything —
+    /// logged here directly, with the same `"steel call error: "` text, so
+    /// it isn't silently dropped.
+    ///
+    /// Same discipline as before: never called from inside a completion-
+    /// detection borrow (LSP drain, timer drain, minibuffer key handling) —
+    /// the caller queues `(proc, args)` and this runs at the drain boundary.
     pub fn run_steel_calls<'a>(
         &'a mut self,
         calls: Vec<(SteelVal, Vec<SteelVal>)>,
-        focused_pane_id: hume_engine::pipeline::PaneId,
-        focused_buffer_id: hume_engine::pipeline::BufferId,
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
         if calls.is_empty() {
@@ -791,22 +803,29 @@ impl ScriptingHost {
         }
 
         let budget_ms = host.settings().steel_command_budget_ms();
-
         let effects_start = self.effects.len();
-        let result = {
+        let mut first_error: Option<String> = None;
+
+        for (proc, args) in calls {
             let (steel, watchdog, bundle) = self.steel_and_bundle();
-            let mut steel_ctx =
-                SteelCtx::new_command(host, bundle, focused_pane_id, focused_buffer_id, None);
-
-            run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
-                for (proc, args) in calls {
-                    steel.call_function_with_args(proc, args)?;
+            let mut steel_ctx = SteelCtx::new_command(host, bundle, None);
+            let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
+                steel.call_function_with_args(proc, args).map(|_| ())
+            });
+            if let Err(message) = result {
+                let is_interrupt = message.contains("script interrupted");
+                if first_error.is_none() {
+                    first_error = Some(message);
+                } else {
+                    steel_ctx.log(LogLevel::Error, format!("steel call error: {message}"));
                 }
-                Ok(())
-            })
-        };
+                if is_interrupt {
+                    break;
+                }
+            }
+        }
 
-        self.take_eval_effects(effects_start, result)
+        self.take_eval_effects(effects_start, first_error.map_or(Ok(()), Err))
     }
 }
 

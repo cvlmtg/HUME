@@ -32,9 +32,11 @@ Full call signatures live in the manual's [Standard Library](https://cvlmtg.gith
 
 ### Selections
 
-All seven accept `#f` and return `#f` — callers only need to check `(current-selections)`
-for `#f` once, at the call site, rather than re-checking inside every helper. See "How it
-works" below for why the triple itself stays opaque.
+All seven accept `#f` and return `#f` — a caller building on a value that may itself be
+`#f` (a picker payload, an optional match) only needs to check once, at the call site,
+rather than re-checking inside every helper. `(buffer-selections pane)` itself is not such
+a source: it raises rather than answering `#f` for a pane that isn't live or isn't shown —
+see "How it works" below for why the selection triple itself stays opaque.
 
 ### Filesystem + list search
 
@@ -123,14 +125,14 @@ built-in — a plugin adding its own entries should pick keys the same way.
 
 ### Word tokenization
 
-`(stdlib/split-words bid str)` is `(split-words str (get-option bid "word-chars"))` —
-tokenizing `str` (typically one of `bid`'s own lines) using that buffer's configured
+`(stdlib/split-words pane str)` is `(split-words str (get-buffer-option pane "word-chars"))` —
+tokenizing `str` (typically one of `pane`'s own lines) using that buffer's configured
 `word-chars`, the same classification `w`/`b` motions and text objects use, without the
 caller fetching and threading `word-chars` through itself. A plugin tokenizing many of
-`bid`'s own lines in a loop should instead read `(get-option bid "word-chars")` once and
+`pane`'s own lines in a loop should instead read `(get-buffer-option pane "word-chars")` once and
 call `split-words` directly per line — `core:buffer-words`' own per-tick scan does this,
 since re-deriving the same setting on every line would be wasted work. A plugin tokenizing
-text that isn't `bid`'s own content, or that has a genuine reason to classify differently,
+text that isn't `pane`'s own content, or that has a genuine reason to classify differently,
 also calls `split-words` directly.
 
 ### Plugin config

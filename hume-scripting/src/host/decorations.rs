@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use hume_engine::pipeline::BufferId;
+use hume_rope::position_encoding::PositionEncoding;
 
 use crate::types::VirtualLineSpec;
 
@@ -11,7 +12,7 @@ use crate::types::VirtualLineSpec;
 /// text, and the diagnostic pull/count reads — accessed through
 /// [`EditorHost::decorations`](super::EditorHost::decorations).
 pub trait DecorationHost {
-    /// `(set-inlay-hints! source bid hints)` — replaces `source`'s inlay
+    /// `(set-inlay-hints! source pane hints)` — replaces `source`'s inlay
     /// hints for `bid` wholesale. Each entry is `(offset, text, before)`,
     /// `offset` already a char offset — the Steel builtin no longer accepts
     /// LSP wire positions directly (see `lsp-position->offset`).
@@ -22,7 +23,7 @@ pub trait DecorationHost {
         hints: Vec<(usize, String, bool)>,
     ) -> Result<(), String>;
 
-    /// `(register-sign-source! name bid priority)` — declares `name` a sign
+    /// `(register-sign-source! name pane priority)` — declares `name` a sign
     /// channel at `priority` *for `bid`*, replacing any prior registration
     /// under that name in that buffer (last wins, matching
     /// `register-lsp-server!`). Its gutter slot is its rank among every
@@ -37,7 +38,7 @@ pub trait DecorationHost {
         priority: i64,
     ) -> Result<(), String>;
 
-    /// `(set-signs! source bid signs)` — replaces `source`'s signs for `bid`
+    /// `(set-signs! source pane signs)` — replaces `source`'s signs for `bid`
     /// wholesale. Each entry is `(line, text, scope)`; `line` converts to
     /// that line's line-start char offset at this boundary — `Err`, naming
     /// the builtin, if `line` is out of range or `source` isn't registered
@@ -49,7 +50,7 @@ pub trait DecorationHost {
         signs: Vec<(usize, String, String)>,
     ) -> Result<(), String>;
 
-    /// `(set-virtual-lines! source bid lines)` — replaces `source`'s virtual
+    /// `(set-virtual-lines! source pane lines)` — replaces `source`'s virtual
     /// lines for `bid` wholesale. Each `VirtualLineSpec`'s `segments` are
     /// **unvalidated** char ranges (the Steel boundary only decodes shape,
     /// see `VirtualLineSpec`'s doc) — this method is the sole enforcement
@@ -64,7 +65,7 @@ pub trait DecorationHost {
         lines: Vec<VirtualLineSpec>,
     ) -> Result<(), String>;
 
-    /// `(set-extra-highlights! source bid spans)` — replaces `source`'s
+    /// `(set-extra-highlights! source pane spans)` — replaces `source`'s
     /// extra highlights for `bid` wholesale. Each entry is `(start, end,
     /// scope)`, char offsets — `Err`, naming the builtin, if the range is
     /// empty or out of bounds.
@@ -75,7 +76,7 @@ pub trait DecorationHost {
         spans: Vec<(usize, usize, String)>,
     ) -> Result<(), String>;
 
-    /// `(set-eol-text! source bid lines)` — replaces `source`'s EOL text for
+    /// `(set-eol-text! source pane lines)` — replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
     /// spliced in at the end of `line`, which converts to that line's
     /// line-start char offset at this boundary — `Err`, naming the builtin,
@@ -88,7 +89,7 @@ pub trait DecorationHost {
         lines: Vec<(usize, String, String)>,
     ) -> Result<(), String>;
 
-    /// `(set-line-backgrounds! source bid entries)` — replaces `source`'s
+    /// `(set-line-backgrounds! source pane entries)` — replaces `source`'s
     /// line backgrounds for `bid` wholesale. Each entry is `(line, scope)`;
     /// `line` converts to that line's line-start char offset at this
     /// boundary — `Err`, naming the builtin, if `line` is out of range.
@@ -99,7 +100,7 @@ pub trait DecorationHost {
         entries: Vec<(usize, String)>,
     ) -> Result<(), String>;
 
-    /// `(set-statusline-text! source bid text)` — replaces `source`'s
+    /// `(set-statusline-text! source pane text)` — replaces `source`'s
     /// statusline text for `bid` wholesale; an empty `text` clears it.
     /// Rendered by the `steel:<source>` statusline element, reading only the
     /// focused buffer's entry — a `bid` that isn't focused simply isn't
@@ -111,7 +112,7 @@ pub trait DecorationHost {
         text: String,
     ) -> Result<(), String>;
 
-    /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
+    /// `(diagnostics-for-buffer pane #:severity floor #:range (start end))` —
     /// one [`DiagnosticEntry`] per diagnostic, filtered then capped at 1000.
     /// `char_col` is an addressing unit (feeds `goto-location!`);
     /// `grapheme_col` is the display unit (the one every HUME surface shows
@@ -125,7 +126,7 @@ pub trait DecorationHost {
         range: Option<(usize, usize)>,
     ) -> Result<Vec<DiagnosticEntry>, String>;
 
-    /// `(diagnostic-counts bid)` → `(errors . warnings)`.
+    /// `(diagnostic-counts pane)` → `(errors . warnings)`.
     fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize);
 }
 
@@ -154,4 +155,8 @@ pub struct DiagnosticEntry {
     pub code: Option<String>,
     pub source: Option<String>,
     pub raw: Arc<serde_json::Value>,
+    /// The publishing server's negotiated encoding at ingest time — tags
+    /// `raw`'s `JsonHandle` so a wire position inside it decodes correctly
+    /// even after the server that sent it has since restarted or detached.
+    pub encoding: PositionEncoding,
 }

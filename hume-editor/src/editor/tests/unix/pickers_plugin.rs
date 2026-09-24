@@ -168,7 +168,7 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
 }
 
 /// A query matching nothing leaves the picker's payload false —
-/// `stdlib/with-tab`'s payload guard must skip `(call! "tab-new")` for that
+/// `stdlib/with-tab`'s payload guard must skip `(call! "tab-new" (focused-pane))` for that
 /// case, not open a stray tab and then no-op the file open.
 #[test]
 fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
@@ -366,8 +366,8 @@ fn files_picker_fd_branch_spawns_given_binary() {
     std::fs::write(sandbox.raw().join("two.txt"), "").unwrap();
 
     let extra = format!(
-        r#"(define-command! "test-fd-branch" "" (lambda ()
-             (call! "pickers/files-picker-with" #f "{}")))"#,
+        r#"(define-command! "test-fd-branch" "" (lambda (pane)
+             (call! "pickers/files-picker-with" pane #f "{}")))"#,
         fake_fd.display()
     );
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", &extra);
@@ -392,8 +392,8 @@ fn files_picker_fd_branch_spawns_given_binary() {
 fn files_picker_error_path_names_fd() {
     let guard = HumeRuntimeGuard::new();
     let tmp = safe_tempdir();
-    let extra = r#"(define-command! "test-error-branch" "" (lambda ()
-                     (call! "pickers/files-picker-with" #f #f)))"#;
+    let extra = r#"(define-command! "test-error-branch" "" (lambda (pane)
+                     (call! "pickers/files-picker-with" pane #f #f)))"#;
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
 
     ed.state.status_msg = None;
@@ -760,8 +760,8 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
 fn git_modified_picker_not_a_repo_names_git() {
     let guard = HumeRuntimeGuard::new();
     let tmp = safe_tempdir();
-    let extra = r#"(define-command! "test-git-not-a-repo" "" (lambda ()
-                     (call! "pickers/git-picker-with" #f)))"#;
+    let extra = r#"(define-command! "test-git-not-a-repo" "" (lambda (pane)
+                     (call! "pickers/git-picker-with" pane #f)))"#;
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
 
     ed.state.status_msg = None;
@@ -786,8 +786,8 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
     // branch `pickers/open-git-picker!` must not fold into "clean".
     let sandbox = CwdSandbox::new();
     let tmp = safe_tempdir();
-    let extra = r#"(define-command! "test-git-status-fails" "" (lambda ()
-                     (call! "pickers/git-picker-with" "/nonexistent-root")))"#;
+    let extra = r#"(define-command! "test-git-status-fails" "" (lambda (pane)
+                     (call! "pickers/git-picker-with" pane "/nonexistent-root")))"#;
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", extra);
     ed.set_cwd(&sandbox.path()).unwrap();
 

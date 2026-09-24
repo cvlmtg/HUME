@@ -40,6 +40,7 @@ fn diag(start: usize, end: usize, severity: DiagSeverity) -> StoredDiag {
         code: None,
         source: None,
         raw: std::sync::Arc::new(serde_json::Value::Null),
+        encoding: hume_rope::position_encoding::PositionEncoding::Utf16,
     }
 }
 

@@ -17,7 +17,7 @@ fn language_trigger_activates_on_set() {
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
         user: "user".to_string(),
@@ -79,7 +79,7 @@ fn language_trigger_idempotent_on_round_trip() {
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
         user: "user".to_string(),
@@ -143,14 +143,14 @@ fn language_trigger_one_to_many_activates_all() {
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
         dir_a.join("plugin.scm"),
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     )
     .unwrap();
     let dir_b = dir.path().join("plugins").join("user").join("tp2");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
         dir_b.join("plugin.scm"),
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");
@@ -217,7 +217,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
         user: "user".to_string(),
@@ -257,7 +257,7 @@ fn language_wildcard_trigger_activates_on_any_language() {
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:languages '("*"))"#,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right")))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
         user: "user".to_string(),

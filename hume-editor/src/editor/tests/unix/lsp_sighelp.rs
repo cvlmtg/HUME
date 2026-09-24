@@ -10,6 +10,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::*;
+use crate::editor::commands::open_pane_in_layout;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 
@@ -82,7 +83,9 @@ fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let (mut ed, _guard, requests) = setup(&file, tmp.path(), |_backend, _sid| {});
     position_after_foo(&mut ed);
 
-    ed.lsp_stop(Some("rust"));
+    ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
+        "rust".to_string(),
+    ));
     ed.settle(); // on-lsp-detach clears *sighelp-chars*
 
     ed.feed_key(key('i'));
@@ -392,5 +395,63 @@ fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
     assert_eq!(
         popup_lines(&mut ed),
         vec!["fn é(a: i32)".to_string(), "⟨a: i32⟩".to_string()]
+    );
+}
+
+/// The user is free to switch panes while a debounced signature-help
+/// request is in flight — same async-round-trip race `lsp-hover`'s own
+/// `#:require-focus` guards against. A response for a buffer that's no
+/// longer focused must not open a popup over whatever pane the user
+/// switched to.
+///
+/// A split (not `:e`) moves focus without hiding the original buffer —
+/// `lsp-position-params` still needs it shown *somewhere* to build the
+/// request in the first place, since the debounce timer only fires (and
+/// the request only gets built) after this switch, not before it.
+///
+/// Fail oracle: `lsp/sighelp-request` (`sighelp.scm`) sending its
+/// `lsp-request` without `#:require-focus` — the popup would show
+/// regardless of which pane is focused when the response arrives.
+#[test]
+fn stale_response_after_a_pane_switch_shows_no_popup() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_foo_fixture(file_dir.path());
+    let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/signatureHelp",
+            signature_help_response("fn foo(a: i32, b: i32)", &["a: i32", "b: i32"], 0),
+        );
+    });
+    position_after_foo(&mut ed);
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key('('));
+    ed.settle(); // on-trigger-char fires, schedules the debounce timer
+
+    let extra = file_dir.path().join("other.rs");
+    std::fs::write(&extra, "fn other() {}\n").unwrap();
+    let other_bid = ed
+        .open_extra_file(&extra)
+        .expect("extra file must open as a buffer");
+    let start_pid = ed.state.focus.id();
+    let other_pid = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        start_pid,
+        other_bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
+    ed.state.focus.set_for_test(other_pid);
+
+    std::thread::sleep(Duration::from_millis(250));
+    ed.drain_async_sources(); // debounce fires, request sent and (dropped) delivered
+    ed.settle();
+
+    assert_eq!(
+        popup_lines(&mut ed),
+        Vec::<String>::new(),
+        "a signature-help response for a pane that's no longer focused must not open a popup"
     );
 }

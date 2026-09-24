@@ -1,11 +1,7 @@
 use super::*;
-use crate::test_support::SteelCtxTestHarness;
+use crate::test_support::{SteelCtxTestHarness, default_pane};
 use hume_engine::pipeline::BufferId;
 use steel::rvals::IntoSteelVal as _;
-
-fn default_bid() -> BidArg {
-    BidArg(BufferId::default())
-}
 
 /// `set-option!` is registered `open` (`builtins/mod.rs`) — no eval-mode
 /// gate at all, since `set_option` (this file) has no gate check of its own
@@ -92,21 +88,18 @@ fn set_option_accepts_string_bool_int_values() {
     }
 }
 
-/// `get-option` (registered as `%get-option`, wrapped by BOOTSTRAP's
-/// `(get-option [bid] key)`) is registered `open` — readable
-/// during init eval too, unlike the old `cmd`-gated version, since a stale
-/// or default buffer id degrades gracefully to the global default rather
-/// than erroring (see `EditorHostImpl::get_option`'s `try_get`-based
-/// fallback). `#f` for `bid` selects that fallback explicitly.
+/// `get-option` is registered `open` — readable during init eval too,
+/// mirroring `set-option!`. `get-buffer-option` is `cmd`-gated instead,
+/// mirroring `set-buffer-option!` — see that test below.
 ///
-/// Fail oracle: change `%get-option`'s table entry back to `cmd` → this
-/// call would fail with a gate error during init instead of reaching (and
+/// Fail oracle: change `get-option`'s table entry to `cmd` → this call
+/// would fail with a gate error during init instead of reaching (and
 /// erroring on) `NullHost`.
 #[test]
 fn get_option_reaches_host_during_init_eval() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    let result = get_option(&mut ctx, "tab-width".into(), SteelVal::BoolV(false));
+    let result = get_option(&mut ctx, "tab-width".into());
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -115,15 +108,23 @@ fn get_option_reaches_host_during_init_eval() {
     );
 }
 
-/// In command mode, `get-option` reaches the host (`NullHost` → Err,
-/// proving the host was called) with an explicit bid decoded from a real
-/// `SteelVal`, not just the `#f` default.
+/// `get-buffer-option` is blocked in init mode, mirroring
+/// `set-buffer-option!` — there is no meaningful buffer to resolve against
+/// yet.
 #[test]
-fn get_option_command_mode_calls_host_with_explicit_bid() {
+fn get_buffer_option_blocked_in_init_mode() {
+    let mut h = SteelCtxTestHarness::new();
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "get-buffer-option").is_err());
+}
+
+/// In command mode, `get-buffer-option` reaches the host (`NullHost` → Err,
+/// proving the host was called) with an explicit bid decoded from a real
+/// `SteelVal`.
+#[test]
+fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let bid = super::super::ids::SteelBufferId::new(default_bid().0).into_steel_val();
-    let result = get_option(&mut ctx, "tab-width".into(), bid);
+    let result = get_buffer_option(&mut ctx, default_pane(), "tab-width".into());
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -164,7 +165,7 @@ fn set_buffer_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let list: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
-    let result = set_buffer_option(&mut ctx, default_bid(), "tab-width".into(), list);
+    let result = set_buffer_option(&mut ctx, default_pane(), "tab-width".into(), list);
     assert!(
         result.is_err(),
         "set-buffer-option! must reject non-string/bool/int value"
@@ -184,7 +185,7 @@ fn set_buffer_option_language_key_errors() {
     let mut ctx = h.ctx();
     let result = set_buffer_option(
         &mut ctx,
-        default_bid(),
+        default_pane(),
         "language".into(),
         SteelVal::StringV("rust".into()),
     );
@@ -196,34 +197,13 @@ fn set_buffer_option_language_key_errors() {
     );
 }
 
-/// `set-buffer-option!` forwards any `bid`, valid or not, to the host
-/// unconditionally — the load-bearing validation is
-/// `EditorHostImpl::set_buffer_option`'s own `try_get` guard, which prevents
-/// a panic on a stale id (see `host_set_buffer_option_invalid_bid_errors` in
-/// `hume-editor/src/editor/tests/settings_effects.rs`). Whatever the host
-/// returns for an unrecognized bid is forwarded verbatim.
-///
-/// Fail oracle: reintroduce a `buffer_exists` check in the builtin body →
-/// this call would fail with the builtin's own "invalid buffer id" instead
-/// of reaching (and erroring on) `NullHost`'s unconditional
-/// "set_buffer_option not available".
-#[test]
-fn set_buffer_option_forwards_any_bid_to_host_unvalidated() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = set_buffer_option(
-        &mut ctx,
-        default_bid(),
-        "tab-width".into(),
-        SteelVal::IntV(2),
-    );
-    assert!(result.is_err());
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("set_buffer_option not available"),
-        "must reach NullHost, not a builtin-level bid check; got: {msg}"
-    );
-}
+// `set-buffer-option!`'s `bid` is now validated live before the builtin
+// body (this function) ever runs — `args::LivePane`'s `BuiltinArg::resolve`,
+// in the `builtins!`-registered closure — covered once, centrally, through
+// a real `ScriptingHost` by `builtins::tests::
+// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`.
+// A direct call to this function (as every other test in this file makes)
+// can't reach that check at all, since it bypasses the registration layer.
 
 /// `set-buffer-option!` accepts all three valid value types without a
 /// type-mismatch error (the host may still reject the call for other
@@ -237,7 +217,7 @@ fn set_buffer_option_accepts_string_bool_int_values() {
         SteelVal::IntV(2),
     ] {
         let mut ctx = h.ctx();
-        let result = set_buffer_option(&mut ctx, default_bid(), "tab-width".into(), val);
+        let result = set_buffer_option(&mut ctx, default_pane(), "tab-width".into(), val);
         if let Err(e) = result {
             assert!(
                 !e.to_string().contains("must be a string, bool, or integer"),
@@ -282,8 +262,17 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_ids(&self) -> Vec<BufferId> {
         Vec::new()
     }
-    fn pane_ids(&self) -> Vec<hume_engine::pipeline::PaneId> {
+    fn panes(&self) -> Vec<crate::types::PaneHandle> {
         Vec::new()
+    }
+    fn focused_pane(&self) -> crate::types::PaneHandle {
+        self.inner.focused_pane()
+    }
+    fn buffer_panes(&self, pane: crate::types::PaneHandle) -> Vec<crate::types::PaneHandle> {
+        self.inner.buffer_panes(pane)
+    }
+    fn require_focused_pane(&self, pane: crate::types::PaneHandle) -> Result<(), String> {
+        self.inner.require_focused_pane(pane)
     }
     fn buffer_exists(&self, _id: BufferId) -> bool {
         true
@@ -309,8 +298,12 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
         self.inner.close_buffer(id)
     }
-    fn switch_to_buffer(&mut self, current: BufferId, target: BufferId) -> Result<(), String> {
-        self.inner.switch_to_buffer(current, target)
+    fn switch_to_buffer(
+        &mut self,
+        pane: crate::types::PaneHandle,
+        target: BufferId,
+    ) -> Result<(), String> {
+        self.inner.switch_to_buffer(pane, target)
     }
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.buffer_generation(id)
@@ -333,9 +326,9 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     }
     fn viewport_range(
         &self,
-        id: BufferId,
-    ) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>> {
-        self.inner.viewport_range(id)
+        pane: crate::types::PaneHandle,
+    ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
+        self.inner.viewport_range(pane)
     }
 }
 
@@ -347,8 +340,11 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
         self.calls.push((key.to_string(), value.to_string(), bid));
         Ok(())
     }
-    fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        crate::host::SettingsHost::get_option(&self.inner, key, bid)
+    fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
+        crate::host::SettingsHost::get_global_option(&self.inner, key)
+    }
+    fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
+        crate::host::SettingsHost::get_buffer_option(&self.inner, key, bid)
     }
     fn configure_statusline(
         &mut self,
@@ -367,7 +363,7 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
 /// reaches the host and forwards exactly the coerced `(key, value, bid)`.
 ///
 /// Fail oracle: any guard rejecting unconditionally, or the builtin
-/// forwarding `(current-buffer)` instead of the explicit `bid`, would leave
+/// forwarding live focus instead of the explicit `bid`, would leave
 /// `calls` empty or wrong.
 #[test]
 fn set_buffer_option_reaches_host() {
@@ -377,7 +373,7 @@ fn set_buffer_option_reaches_host() {
     let mut ctx = h.ctx_with_host(&mut host);
     let result = set_buffer_option(
         &mut ctx,
-        BidArg(target),
+        crate::types::PaneHandle::buffer_only(target),
         "tab-width".into(),
         SteelVal::IntV(8),
     );

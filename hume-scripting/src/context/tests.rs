@@ -68,23 +68,6 @@ fn mode_derives_from_session_and_plugin_stack() {
     assert_eq!(h.ctx_activation().mode(), EvalMode::PluginActivation);
 }
 
-// ── Focus snapshot (new_command) ──────────────────────────────────────────
-
-/// `new_command` stores the focus IDs passed in; `live_focused_buffer_id`
-/// starts equal to `focused_buffer_id`.
-#[test]
-fn new_command_stores_focus_ids() {
-    let mut h = SteelCtxTestHarness::new();
-    // ctx() uses PaneId::default() and BufferId::default() as the focus IDs.
-    let ctx = h.ctx();
-    assert_eq!(ctx.focused_pane_id, PaneId::default());
-    assert_eq!(ctx.focused_buffer_id, BufferId::default());
-    assert_eq!(
-        ctx.live_focused_buffer_id, ctx.focused_buffer_id,
-        "live_focused_buffer_id must start equal to focused_buffer_id"
-    );
-}
-
 /// `new_command` stores `pending_char` correctly.
 ///
 /// The harness passes `None`; test `new_command` directly for the `Some` case.
@@ -94,17 +77,6 @@ fn new_command_stores_pending_char() {
     let mut h = SteelCtxTestHarness::new();
     let ctx = h.ctx();
     assert_eq!(ctx.pending_char, None, "default ctx has no pending_char");
-}
-
-// ── init mode: focus IDs are zeroed ───────────────────────────────────────
-
-/// `new_init` leaves focus IDs at their defaults (not real buffer/pane IDs).
-#[test]
-fn new_init_focus_ids_are_default() {
-    let mut h = SteelCtxTestHarness::new();
-    let ctx = h.ctx_init();
-    assert_eq!(ctx.focused_pane_id, PaneId::default());
-    assert_eq!(ctx.focused_buffer_id, BufferId::default());
 }
 
 // ── log helper ────────────────────────────────────────────────────────────

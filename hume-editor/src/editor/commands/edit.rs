@@ -14,8 +14,8 @@ use hume_ops::surround::wrap_each_selection;
 
 use super::super::{EditorState, Severity, doc_ops};
 use super::{
-    ExitCursor, apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion,
-    begin_insert_session_preserving_register, begin_typed_run, doc, focused_buffer_id, tab_format,
+    CommandPane, ExitCursor, FocusedPane, apply_focused_edit_grouped, apply_pane_edit,
+    apply_pane_motion, begin_insert_session_preserving_register, begin_typed_run, doc, tab_format,
     word_chars_owned,
 };
 use crate::editor::error::CommandError;
@@ -29,17 +29,18 @@ use crate::editor::error::CommandError;
 pub(in crate::editor) fn cmd_delete(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view) {
+    if super::refuse_if_read_only(state, view, t) {
         return Ok(());
     }
     let yanked = yank_selections(
-        super::doc(state, view).text(),
-        super::current_selections(state, view),
+        super::doc(state, view, t).text(),
+        super::pane_selections(state, view, t),
     );
-    apply_focused_edit(state, view, delete_selection);
+    apply_pane_edit(state, view, t, delete_selection);
     state.route_kill(yanked);
     Ok(())
 }
@@ -55,15 +56,16 @@ pub(in crate::editor) fn cmd_delete(
 pub(in crate::editor) fn cmd_change(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view) {
+    if super::refuse_if_read_only(state, view, fp.target()) {
         return Ok(());
     }
     let yanked = {
-        let doc = super::doc(state, view);
-        let sels = super::current_selections(state, view);
+        let doc = super::doc(state, view, fp.target());
+        let sels = super::pane_selections(state, view, fp.target());
         sels.iter_sorted()
             .map(|sel| {
                 let span = change_span(doc.text(), sel);
@@ -75,7 +77,7 @@ pub(in crate::editor) fn cmd_change(
     // consuming operator (see `state.route_kill` below) — clearing the
     // prefix here would consume it a step too early.
     begin_insert_session_preserving_register(state, view);
-    apply_focused_edit_grouped(state, view, delete_selection_content);
+    apply_focused_edit_grouped(state, view, fp, delete_selection_content);
     // Pins the anchor `mii` and (if `select-inserted-text` is on) Esc itself
     // reconstruct the typed replacement from — same helper every insert-entry
     // command uses, so `c`'s auto-select behaves identically to theirs. `c`
@@ -90,9 +92,8 @@ pub(in crate::editor) fn cmd_change(
     // on `PaneBufferState`, not `InsertSession`, for the same reason
     // `step_back_on_exit` does (see its doc).
     if state.route_kill(yanked) {
-        let pid = state.focus.id();
-        let bid = focused_buffer_id(state, view);
-        state.panes.state[pid][bid].kill_opened_session = true;
+        let bid = fp.bid(view);
+        state.panes.state[fp.pid()][bid].kill_opened_session = true;
     }
     Ok(())
 }
@@ -111,10 +112,11 @@ pub(in crate::editor) fn cmd_change(
 pub(in crate::editor) fn cmd_select_last_insertion(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf = doc(state, view);
+    let buf = doc(state, view, t);
     let fresh = buf
         .last_insert
         .as_ref()
@@ -132,7 +134,7 @@ pub(in crate::editor) fn cmd_select_last_insertion(
         .into_iter()
         .map(|r| Selection::new(r.start, r.end))
         .collect();
-    apply_focused_motion(state, view, move |_b, sels| match mode {
+    apply_pane_motion(state, view, t, move |_b, sels| match mode {
         MotionMode::Move => SelectionSet::from_vec(insertion_sels, insertion_primary),
         MotionMode::Extend => {
             // `from_vec` sorts and merges genuinely overlapping selections,
@@ -159,12 +161,13 @@ pub(in crate::editor) fn cmd_select_last_insertion(
 pub(in crate::editor) fn cmd_yank(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let yanked = yank_selections(
-        super::doc(state, view).text(),
-        super::current_selections(state, view),
+        super::doc(state, view, t).text(),
+        super::pane_selections(state, view, t),
     );
     match state.take_register_prefix() {
         None => {
@@ -195,18 +198,18 @@ const REDO_EXHAUSTED_MSG: &str = "Already at newest change";
 fn history_step(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     walk: fn(&mut Buffer, usize) -> HistoryWalkResult,
     exhausted_msg: &str,
 ) -> Result<(), CommandError> {
-    let focused = state.focus.id();
-    let buf = focused_buffer_id(state, view);
+    let buf = t.bid(view);
     let result = doc_ops::apply_doc_history_walk(
         &mut state.buffers,
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
-        focused,
+        t.pid(),
         buf,
         |b| walk(b, count),
     );
@@ -227,26 +230,28 @@ fn history_step(
 pub(in crate::editor) fn cmd_undo(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view) {
+    if super::refuse_if_read_only(state, view, t) {
         return Ok(());
     }
-    history_step(state, view, count, Buffer::undo_n, UNDO_EXHAUSTED_MSG)
+    history_step(state, view, t, count, Buffer::undo_n, UNDO_EXHAUSTED_MSG)
 }
 
 /// See [`cmd_undo`]'s doc — same sharing, redo direction.
 pub(in crate::editor) fn cmd_redo(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view) {
+    if super::refuse_if_read_only(state, view, t) {
         return Ok(());
     }
-    history_step(state, view, count, Buffer::redo_n, REDO_EXHAUSTED_MSG)
+    history_step(state, view, t, count, Buffer::redo_n, REDO_EXHAUSTED_MSG)
 }
 
 // ── Replace / surround ────────────────────────────────────────────────────────
@@ -255,11 +260,12 @@ pub(in crate::editor) fn cmd_redo(
 pub(in crate::editor) fn cmd_replace(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if let Some(ch) = state.pending_char.take() {
-        apply_focused_edit(state, view, |b, s| replace_selections(b, s, ch));
+        apply_pane_edit(state, view, t, |b, s| replace_selections(b, s, ch));
     }
     Ok(())
 }
@@ -268,10 +274,11 @@ pub(in crate::editor) fn cmd_replace(
 pub(in crate::editor) fn cmd_join_lines_select_spaces(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_focused_edit(state, view, join_lines_select_spaces);
+    apply_pane_edit(state, view, t, join_lines_select_spaces);
     Ok(())
 }
 
@@ -279,16 +286,17 @@ pub(in crate::editor) fn cmd_join_lines_select_spaces(
 pub(in crate::editor) fn cmd_align_selections(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf_id = focused_buffer_id(state, view);
+    let buf_id = t.bid(view);
     let tab_width = state
         .buffers
         .get(buf_id)
         .overrides
         .tab_width(&state.settings);
-    apply_focused_edit(state, view, move |text, sels| {
+    apply_pane_edit(state, view, t, move |text, sels| {
         align_selections(text, sels, tab_width)
     });
     Ok(())
@@ -298,12 +306,13 @@ pub(in crate::editor) fn cmd_align_selections(
 pub(in crate::editor) fn cmd_indent(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf_id = focused_buffer_id(state, view);
+    let buf_id = t.bid(view);
     let (style, tab_width) = tab_format(state.buffers.get(buf_id), &state.settings);
-    apply_focused_edit(state, view, move |text, sels| {
+    apply_pane_edit(state, view, t, move |text, sels| {
         indent_lines(text, sels, style, tab_width, count)
     });
     Ok(())
@@ -313,12 +322,13 @@ pub(in crate::editor) fn cmd_indent(
 pub(in crate::editor) fn cmd_unindent(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf_id = focused_buffer_id(state, view);
+    let buf_id = t.bid(view);
     let (style, tab_width) = tab_format(state.buffers.get(buf_id), &state.settings);
-    apply_focused_edit(state, view, move |text, sels| {
+    apply_pane_edit(state, view, t, move |text, sels| {
         unindent_lines(text, sels, style, tab_width, count)
     });
     Ok(())
@@ -335,12 +345,13 @@ pub(in crate::editor) fn cmd_unindent(
 pub(in crate::editor) fn cmd_delete_word_backward(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let buf_id = focused_buffer_id(state, view);
+    let buf_id = t.bid(view);
     let word_chars = word_chars_owned(state.buffers.get(buf_id), &state.settings);
-    apply_focused_edit(state, view, move |text, sels| {
+    apply_pane_edit(state, view, t, move |text, sels| {
         delete_word_backward(text, sels, WordChars::new(&word_chars))
     });
     Ok(())
@@ -350,13 +361,14 @@ pub(in crate::editor) fn cmd_delete_word_backward(
 pub(in crate::editor) fn cmd_surround_add(
     state: &mut EditorState,
     view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let Some(ch) = state.pending_char.take() else {
         return Ok(());
     };
-    let (_ap_enabled, ap_pairs) = super::doc(state, view)
+    let (_ap_enabled, ap_pairs) = super::doc(state, view, t)
         .overrides
         .auto_pairs_ref(&state.settings);
     let (open, close) = ap_pairs
@@ -364,6 +376,8 @@ pub(in crate::editor) fn cmd_surround_add(
         .find(|p| p.open == ch || p.close == ch)
         .map(|p| (p.open, p.close))
         .unwrap_or((ch, ch));
-    apply_focused_edit(state, view, |b, s| wrap_each_selection(b, s, open, close));
+    apply_pane_edit(state, view, t, |b, s| {
+        wrap_each_selection(b, s, open, close)
+    });
     Ok(())
 }

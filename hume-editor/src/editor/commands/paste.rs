@@ -18,7 +18,7 @@ use hume_ops::edit::{paste_after, paste_before};
 use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER};
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
-use super::focused_buffer_id;
+use super::{FocusedPane, focused_buffer_id};
 use crate::editor::error::CommandError;
 
 // ── PasteStamp ──────────────────────────────────────────────────────────────
@@ -354,7 +354,8 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
 /// always replaces a non-collapsed selection. See [`collapse_if_repeat`]'s
 /// doc for why smart paste alone needs the extra step.
 fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
-    if super::refuse_if_read_only(state, view) {
+    let t = FocusedPane::current(state).target();
+    if super::refuse_if_read_only(state, view, t) {
         return;
     }
     let Some(resolved) = resolve_plain(state) else {
@@ -372,7 +373,8 @@ fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool)
 /// selections (bare paste only — see [`collapse_if_repeat`]), then hand off
 /// to [`do_paste`].
 fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
-    if super::refuse_if_read_only(state, view) {
+    let t = FocusedPane::current(state).target();
+    if super::refuse_if_read_only(state, view, t) {
         return;
     }
     let Some(resolved) = resolve_smart(state) else {
@@ -392,6 +394,7 @@ fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, before: bool) 
 pub(in crate::editor) fn cmd_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -403,6 +406,7 @@ pub(in crate::editor) fn cmd_paste_after(
 pub(in crate::editor) fn cmd_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -415,6 +419,7 @@ pub(in crate::editor) fn cmd_paste_before(
 pub(in crate::editor) fn cmd_smart_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -427,6 +432,7 @@ pub(in crate::editor) fn cmd_smart_paste_after(
 pub(in crate::editor) fn cmd_smart_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -484,6 +490,7 @@ fn do_paste_cycle(
 pub(in crate::editor) fn cmd_paste_ring_older(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -494,6 +501,7 @@ pub(in crate::editor) fn cmd_paste_ring_older(
 pub(in crate::editor) fn cmd_paste_ring_newer(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {

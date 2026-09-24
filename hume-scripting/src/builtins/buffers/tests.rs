@@ -1,10 +1,5 @@
 use super::*;
-use crate::test_support::SteelCtxTestHarness;
-use hume_engine::pipeline::BufferId;
-
-fn default_bid() -> BidArg {
-    BidArg(BufferId::default())
-}
+use crate::test_support::{SteelCtxTestHarness, default_pane};
 
 // ── Gate (init mode rejection) ────────────────────────────────────────────
 //
@@ -13,28 +8,15 @@ fn default_bid() -> BidArg {
 // body, so these test the gate primitive directly rather than calling the
 // builtin (its body has no guard to hit).
 
-/// `current-buffer` is blocked in init mode.
+/// `focused-pane` is blocked in init mode — no meaningful focus exists yet.
 ///
-/// Fail oracle: change `current-buffer`'s table entry from `cmd` to
-/// `open` → `focused_buffer_id` (which is Default in init) would be
-/// returned, silently giving wrong data.
+/// Fail oracle: change `focused-pane`'s table entry from `cmd` to `open` →
+/// `PaneId::default()` (there is no live host to read during init) would
+/// be returned, silently giving wrong data.
 #[test]
-fn current_buffer_blocked_in_init_mode() {
+fn focused_pane_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_cmd(&h.ctx_init(), "current-buffer");
-    assert!(result.is_err(), "current-buffer must error in init mode");
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("init"),
-        "error must mention 'init'; got: {msg}"
-    );
-}
-
-/// `current-pane` is blocked in init mode.
-#[test]
-fn current_pane_blocked_in_init_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "current-pane").is_err());
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "focused-pane").is_err());
 }
 
 /// `buffers` is blocked in init mode.
@@ -104,25 +86,25 @@ fn set_buffer_language_blocked_in_init_mode() {
     );
 }
 
-/// `current-line-number` is blocked in init mode.
+/// `buffer-cursor-line` is blocked in init mode.
 #[test]
-fn current_line_number_blocked_in_init_mode() {
+fn buffer_cursor_line_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "current-line-number").is_err());
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-cursor-line").is_err());
 }
 
-/// `current-selections` is blocked in init mode.
+/// `buffer-selections` is blocked in init mode.
 #[test]
-fn current_selections_blocked_in_init_mode() {
+fn buffer_selections_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "current-selections").is_err());
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-selections").is_err());
 }
 
-/// `char-index->line` is blocked in init mode.
+/// `offset->line` is blocked in init mode.
 #[test]
-fn char_index_to_line_blocked_in_init_mode() {
+fn offset_to_line_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
-    assert!(super::super::errors::require_cmd(&h.ctx_init(), "char-index->line").is_err());
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "offset->line").is_err());
 }
 
 /// `buffer-text` is blocked in init mode.
@@ -153,199 +135,44 @@ fn line_to_offset_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "line->offset").is_err());
 }
 
-// ── Type errors (wrong arg type) ──────────────────────────────────────────
+// `offset->line`/`%buffer-lines`/`line->offset`'s wrong-type-argument
+// checks are covered centrally, by `args::tests`' own unit tests on the
+// `Usize`/`OptUsize` `FromSteelVal` newtypes their `builtins!` table
+// entries now declare — that decode happens at Steel's own registration
+// boundary, before any of these functions' bodies (which now take a plain
+// `usize`/`Option<usize>`) ever run, so it can no longer be exercised by
+// calling the function directly with a malformed `SteelVal`.
 //
-// `buffer-path`/`buffer-name`/`buffer-dirty?` don't decode `bid` in-body
-// (it's a typed `BidArg` param) — that decode-failure path is covered
-// once, centrally, by `args::tests::bid_arg_rejects_non_buffer_id`.
-
-/// `char-index->line` rejects a non-integer and a negative integer argument.
-///
-/// Fail oracle: remove the `n >= 0` guard → `IntV(-1)` would be accepted and
-/// cast to a huge `usize`, silently corrupting the lookup instead of erroring.
-#[test]
-fn char_index_to_line_wrong_type_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = char_index_to_line(&mut ctx, SteelVal::StringV("not-an-int".into()));
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("expected a non-negative integer")
-    );
-
-    let mut ctx = h.ctx();
-    let result = char_index_to_line(&mut ctx, SteelVal::IntV(-1));
-    assert!(result.is_err());
-}
-
-/// `%buffer-lines` rejects a non-integer, non-`#f` `start`/`end` argument.
-#[test]
-fn buffer_lines_wrong_type_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = buffer_lines(
-        &mut ctx,
-        default_bid(),
-        SteelVal::StringV("not-an-int".into()),
-        SteelVal::BoolV(false),
-    );
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("expected a non-negative integer")
-    );
-}
-
-/// `line->offset` rejects a non-integer and a negative integer `line`
-/// argument, same guard as `char-index->line`.
-#[test]
-fn line_to_offset_wrong_type_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = line_to_offset(&mut ctx, default_bid(), SteelVal::StringV("nope".into()));
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("expected a non-negative integer")
-    );
-
-    let mut ctx = h.ctx();
-    let result = line_to_offset(&mut ctx, default_bid(), SteelVal::IntV(-1));
-    assert!(result.is_err());
-}
-
-// ── Invalid buffer ID (NullHost always returns buffer_exists=false) ───────
-
-/// `buffer-path` with a valid BufferId but non-existent buffer raises an error.
-///
-/// Fail oracle: remove the `buffer_exists` check → `buffer_path` is called
-/// on a nonexistent buffer, which could panic or return garbage.
-#[test]
-fn buffer_path_invalid_id_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    // NullHost.buffer_exists always returns false.
-    let result = buffer_path(&mut ctx, default_bid());
-    assert!(result.is_err(), "non-existent buffer id must error");
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid buffer id")
-    );
-}
-
-/// `buffer-display-path` with a valid BufferId but non-existent buffer raises
-/// an error, exactly like `buffer-path`.
-#[test]
-fn buffer_display_path_invalid_id_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    // NullHost.buffer_exists always returns false.
-    let result = buffer_display_path(&mut ctx, default_bid());
-    assert!(result.is_err(), "non-existent buffer id must error");
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid buffer id")
-    );
-}
-
-/// `buffer-text` on a non-existent buffer raises, exactly like `buffer-path`.
-#[test]
-fn buffer_text_invalid_id_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = buffer_text(&mut ctx, default_bid());
-    assert!(result.is_err(), "non-existent buffer id must error");
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid buffer id")
-    );
-}
-
-/// `buffer-line-count` on a non-existent buffer raises, exactly like
-/// `buffer-text`.
-#[test]
-fn buffer_line_count_invalid_id_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = buffer_line_count(&mut ctx, default_bid());
-    assert!(result.is_err(), "non-existent buffer id must error");
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid buffer id")
-    );
-}
-
-/// `%buffer-lines` on a non-existent buffer raises — `buffer_line_count` is
-/// looked up before the range is validated, so this is the first check hit.
-#[test]
-fn buffer_lines_invalid_id_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = buffer_lines(
-        &mut ctx,
-        default_bid(),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-    );
-    assert!(result.is_err(), "non-existent buffer id must error");
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid buffer id")
-    );
-}
-
-/// `line->offset` on a non-existent buffer raises — `buffer_line_count` is
-/// looked up before `line` is bounds-checked, so this is the first check
-/// hit, same as `%buffer-lines`.
-#[test]
-fn line_to_offset_invalid_id_errors() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = line_to_offset(&mut ctx, default_bid(), SteelVal::IntV(0));
-    assert!(result.is_err(), "non-existent buffer id must error");
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("invalid buffer id")
-    );
-}
+// Likewise, every explicit-`pane` builtin's "invalid buffer id" error on a
+// closed buffer is now raised by `args::LivePane`'s `BuiltinArg::resolve`,
+// in the `builtins!`-registered closure — before the function body (which
+// now takes a plain `PaneHandle`, already known live) ever runs. A direct
+// call here has no way to reach that check at all; it's covered once,
+// centrally, through a real `ScriptingHost` by
+// `builtins::tests::live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`.
 
 // ── Command-mode success paths (NullHost read methods return None/empty) ──
 
-/// `current-buffer` in command mode returns the focused buffer id as a SteelVal.
+/// `focused-pane` reaches `ctx.host.buffers()` — the live host read —
+/// proven by NullHost's `PaneHandle::buffer_only(BufferId::default())`
+/// return round-tripping through `SteelPane`.
 ///
-/// Fail oracle: return a hardcoded or wrong id → the assert on the type fires.
+/// Fail oracle: reading a stale cached snapshot instead of calling
+/// through the host would still pass this specific assertion (both are
+/// the same default on a fresh harness) — the real guarantee this
+/// locks is architectural (grep `ctx.host.buffers()` in the function body),
+/// not something a single value comparison can distinguish from the
+/// snapshot. See `wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus`
+/// (`hume-editor`) for a case where the two genuinely diverge.
 #[test]
-fn current_buffer_command_mode_returns_steel_buffer_id() {
+fn focused_pane_command_mode_returns_steel_pane_id() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = current_buffer(&mut ctx);
-    assert!(
-        result.is_ok(),
-        "current-buffer must succeed in command mode"
-    );
-    // Must return a Custom value (SteelBufferId is opaque).
+    let result = focused_pane(&mut ctx);
+    assert!(result.is_ok(), "focused-pane must succeed in command mode");
     assert!(
         matches!(result.unwrap(), SteelVal::Custom(_)),
-        "current-buffer must return a SteelVal::Custom (BufferId)"
+        "focused-pane must return a SteelVal::Custom (PaneId)"
     );
 }
 
@@ -362,29 +189,22 @@ fn buffers_command_mode_returns_empty_list() {
     );
 }
 
-/// `current-line-number` returns `#f` when the host has no cursor (NullHost).
+/// `buffer-cursor-line` raises when `pane` carries no pane state (NullHost) —
+/// kind-B fail-fast, unlike the old bid-only "not shown anywhere → `#f`"
+/// degrade this replaces (see `docs/LESSONS.md`'s L19 and `CursorHost`'s doc).
 #[test]
-fn current_line_number_returns_false_when_no_cursor() {
+fn buffer_cursor_line_raises_with_no_pane_state() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = current_line_number(&mut ctx);
-    assert!(matches!(result, Ok(SteelVal::BoolV(false))));
+    let result = buffer_cursor_line(&mut ctx, default_pane());
+    assert!(result.is_err());
 }
 
-/// `current-selections` returns `#f` when the host has no pane state (NullHost).
+/// `buffer-selections` raises when `pane` carries no pane state (NullHost).
 #[test]
-fn current_selections_returns_false_when_no_pane_state() {
+fn buffer_selections_raises_with_no_pane_state() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = current_selections(&mut ctx);
-    assert!(matches!(result, Ok(SteelVal::BoolV(false))));
-}
-
-/// `char-index->line` returns `#f` when the host has no pane state (NullHost).
-#[test]
-fn char_index_to_line_returns_false_when_no_pane_state() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = char_index_to_line(&mut ctx, SteelVal::IntV(0));
-    assert!(matches!(result, Ok(SteelVal::BoolV(false))));
+    let result = buffer_selections(&mut ctx, default_pane());
+    assert!(result.is_err());
 }

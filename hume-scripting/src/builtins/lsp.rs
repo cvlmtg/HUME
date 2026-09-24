@@ -7,12 +7,14 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::json::json_to_steel;
-use crate::types::{Effect, PendingLspNotify, PendingLspRequest, PendingLspServerOp};
+use crate::types::{
+    Effect, LspServerTarget, PaneHandle, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
+};
 use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    BidArg, bool_arg, cons_pair, json_arg, json_params, list_items, list_to_env_pairs,
+    ArgPane, bool_arg, cons_pair, json_arg, json_params, list_items, list_to_env_pairs,
     list_to_strings, optional_json_arg, optional_string_arg, string_arg, wire_position,
 };
 use super::errors::generic_err;
@@ -103,79 +105,110 @@ pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> S
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-stop! language)` — `language` a string, or `#f` for "the focused
-/// buffer's attached server". Queues a stop, applied at the end of the
-/// current eval (see `Editor::apply_lsp_server_op`); the report of how many
-/// servers stopped is emitted by that same drain.
-pub(crate) fn lsp_stop(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
-    let language = optional_string_arg(language, "lsp-stop! language")?;
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop { language }));
+/// `(lsp-stop! target)` — `target` a buffer-id (that buffer's attached
+/// server) or a string/symbol (every server registered for that language).
+/// Queues a stop, applied at the end of the current eval (see
+/// `Editor::apply_lsp_server_op`); the report of how many servers stopped is
+/// emitted by that same drain.
+pub(crate) fn lsp_stop(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelResult {
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop { target }));
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-restart! language)` — same argument shape as `lsp-stop!`. Queues a
+/// `(lsp-restart! target)` — same argument shape as `lsp-stop!`. Queues a
 /// stop-then-respawn, applied at the end of the current eval.
-pub(crate) fn lsp_restart(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
-    let language = optional_string_arg(language, "lsp-restart! language")?;
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Restart {
-        language,
-    }));
+pub(crate) fn lsp_restart(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelResult {
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Restart { target }));
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-show-status!)` — queues opening the `[lsp-status]` read-only view,
-/// applied at the end of the current eval.
-pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
+/// `(lsp-show-status! pane)` — queues opening the `[lsp-status]` read-only
+/// view, applied at the end of the current eval. Kind-A: `pane` must be the
+/// focused pane, since the view opens anchored there.
+pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+    ctx.host
+        .buffers()
+        .require_focused_pane(pane)
+        .map_err(generic_err)?;
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::ShowStatus));
     Ok(SteelVal::Void)
 }
 
-/// `(%lsp-request server method params callback allow-stale supersede)`. The
-/// `lsp-request` Scheme wrapper (BOOTSTRAP) supplies `#:allow-stale`'s and
-/// `#:supersede`'s defaults. Pushes an `Effect::LspRequest`, sent by `Editor::send_one_lsp_request`
+/// `(%lsp-request pane method params callback allow-stale supersede
+/// require-focus)`. The `lsp-request` Scheme wrapper (BOOTSTRAP) supplies
+/// `#:allow-stale`'s, `#:supersede`'s, and `#:require-focus`'s defaults.
+/// Pushes an `Effect::LspRequest`, sent by `Editor::send_one_lsp_request`
 /// right after this eval returns — `SteelCtx` has no route to the transport
 /// (crate fence), and queuing keeps every LSP send on one chokepoint
 /// regardless of which eval kind (command, hook, or a queued callback)
-/// triggered it.
+/// triggered it. `pane`'s buffer is resolved to *its* attached server at that
+/// apply-time point, never read from live focus — the caller must capture
+/// `pane` itself (typically a command body's own leading `pane` parameter,
+/// or a value already carried by a hook/callback argument), so a response
+/// callback that fires a follow-up request resolves against the buffer
+/// the original request was about, not whatever happens to be focused
+/// when the callback runs.
+///
+/// `#:require-focus`: the callback fires only if `pane` is still the focused
+/// pane when the response arrives — for a request whose only purpose is
+/// opening UI anchored to the cursor (hover, signature help, a code-action
+/// menu), where a response for a pane the user has since navigated away
+/// from would show over the wrong file. Off by default: a background
+/// request (formatting, rename, completion, diagnostics) must keep
+/// delivering regardless of focus. Raises immediately, rather than queuing a
+/// request that can never fire its callback, if `#:require-focus` is set and
+/// `pane` carries no pane at all.
+// Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
+// `lsp-request`'s own Steel signature — same rationale as
+// `register_lsp_server`'s own `#[allow]`, just above in this file.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsp_request(
     ctx: &mut SteelCtx,
-    server: SteelVal,
+    pane: PaneHandle,
     method: SteelVal,
     params: SteelVal,
     callback: SteelVal,
     allow_stale: SteelVal,
     supersede: SteelVal,
+    require_focus: SteelVal,
 ) -> SteelResult {
-    let server = optional_string_arg(server, "lsp-request server")?;
     let method = string_arg(method, "lsp-request method")?;
     let params = json_params(params, "lsp-request params")?;
     let allow_stale = bool_arg(allow_stale, "lsp-request #:allow-stale")?;
     let supersede = optional_string_arg(supersede, "lsp-request supersede")?;
+    let require_focus = bool_arg(require_focus, "lsp-request #:require-focus")?;
+    if require_focus && pane.pane().is_none() {
+        return Err(generic_err(
+            "lsp-request: #:require-focus needs a pane, but was given none",
+        ));
+    }
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
-        server,
+        bid: pane.buffer(),
+        pane: pane.pane(),
         method,
         params,
         callback,
         allow_stale,
         supersede,
+        require_focus,
     }));
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-notify server method params)` — fire-and-forget, no callback, no
+/// `(lsp-notify pane method params)` — fire-and-forget, no callback, no
 /// staleness tag (nothing to correlate a response against). Same queue
-/// discipline as `lsp-request`.
+/// discipline as `lsp-request`, including `pane`'s buffer resolution
+/// contract.
 pub(crate) fn lsp_notify(
     ctx: &mut SteelCtx,
-    server: SteelVal,
+    pane: PaneHandle,
     method: SteelVal,
     params: SteelVal,
 ) -> SteelResult {
-    let server = optional_string_arg(server, "lsp-notify server")?;
     let method = string_arg(method, "lsp-notify method")?;
     let params = json_params(params, "lsp-notify params")?;
     ctx.push_effect(Effect::LspNotify(PendingLspNotify {
-        server,
+        bid: pane.buffer(),
         method,
         params,
     }));
@@ -202,16 +235,17 @@ pub(crate) fn on_lsp_notification(
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-capabilities server)` → an opaque `JsonHandle` onto the server's
-/// wire `ServerCapabilities`, or `#f` if `server` doesn't resolve or hasn't
-/// finished its handshake. Read it with `json-ref`/`json-contains?`.
-pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
-    let server = optional_string_arg(server, "lsp-capabilities server")?;
+/// `(lsp-capabilities pane)` → an opaque `JsonHandle` onto `pane`'s buffer's
+/// attached server's wire `ServerCapabilities`, or `#f` if none is attached
+/// or the handshake hasn't finished. Read it with `json-ref`/`json-contains?`.
+pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
     Ok(ctx
         .host
         .lsp()
-        .and_then(|lsp| lsp.lsp_capabilities(server.as_deref()))
-        .map_or(SteelVal::BoolV(false), crate::json::to_steel_handle))
+        .and_then(|lsp| lsp.lsp_capabilities(pane.0.buffer()))
+        .map_or(SteelVal::BoolV(false), |v| {
+            crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
+        }))
 }
 
 /// `(lsp-server-status)` → list of `{"language" "root" "state" "pending"}`.
@@ -246,9 +280,9 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
     Ok(SteelVal::ListV(entries.into()))
 }
 
-/// `(lsp-server-for-buffer bid)` → registered language name, or `#f`.
-pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
+/// `(lsp-server-for-buffer pane)` → registered language name, or `#f`.
+pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
+    let id = pane.0.buffer();
     Ok(
         match ctx.host.lsp().and_then(|lsp| lsp.lsp_server_for_buffer(id)) {
             Some(lang) => SteelVal::StringV(lang.into()),
@@ -298,42 +332,48 @@ pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal
     Ok(SteelVal::BoolV(registered))
 }
 
-/// `(lsp-position-params bid)` → `{"textDocument" {"uri"} "position" {"line"
-/// "character"}}` from `bid`'s primary cursor head, or `#f` if unavailable
-/// (no attached server, no path, or not shown in any pane).
-pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    Ok(json_or_false(
-        ctx.host.lsp().and_then(|lsp| lsp.lsp_position_params(id)),
-    ))
+/// Adapts a kind-B `LspHost` params method's `Result<Option<Value>, String>`
+/// (`Err` on a stale `pane`, `Ok(None)` on no path/no attached server) to a
+/// `SteelResult` — `Ok(None)` becomes `#f`, matching `json_or_false`'s own
+/// convention for the "unavailable" case every one of these three builtins
+/// shares.
+fn params_result(result: Option<Result<Option<serde_json::Value>, String>>) -> SteelResult {
+    match result {
+        None => Ok(SteelVal::BoolV(false)),
+        Some(Err(e)) => Err(generic_err(e)),
+        Some(Ok(json)) => Ok(json_or_false(json)),
+    }
 }
 
-/// `(lsp-primary-range-params bid)` → same shape but a `"range"` from
-/// `bid`'s primary selection alone.
-pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    Ok(json_or_false(
-        ctx.host
-            .lsp()
-            .and_then(|lsp| lsp.lsp_primary_range_params(id)),
-    ))
+/// `(lsp-position-params pane)` → `{"textDocument" {"uri"} "position" {"line"
+/// "character"}}` from the primary cursor head in `pane`'s own pane, or `#f`
+/// if unavailable (no attached server or no path). Raises (kind-B fail-fast)
+/// when `pane` carries no pane, a closed one, or one that no longer shows
+/// its buffer.
+pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+    params_result(ctx.host.lsp().map(|lsp| lsp.lsp_position_params(pane)))
 }
 
-/// `(lsp-linewise-ranges-params bid)` → `{"textDocument" {"uri"} "ranges"
-/// [...]}`, one wire range per linewise selection in `bid`'s buffer
+/// `(lsp-primary-range-params pane)` → same shape but a `"range"` from the
+/// primary selection alone.
+pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+    params_result(ctx.host.lsp().map(|lsp| lsp.lsp_primary_range_params(pane)))
+}
+
+/// `(lsp-linewise-ranges-params pane)` → `{"textDocument" {"uri"} "ranges"
+/// [...]}`, one wire range per linewise selection in `pane`'s own pane
 /// (touching selections coalesced into one range apiece). Carries no
 /// all/none/mixed verdict — `:lsp-fmt` gets that from `selections-linewise?`/
 /// `selections-charwise?` instead, since every `lsp-*-params` builtin's
 /// return value is a wire-ready params hash forwarded to `lsp-request`
 /// unchanged or with a protocol key inserted, and a non-protocol key here
 /// would break that (see `CursorHost::selections_linewise`'s doc comment).
-pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    Ok(json_or_false(
+pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+    params_result(
         ctx.host
             .lsp()
-            .and_then(|lsp| lsp.lsp_linewise_ranges_params(id)),
-    ))
+            .map(|lsp| lsp.lsp_linewise_ranges_params(pane)),
+    )
 }
 
 /// A non-negative JSON integer, for a field read directly off a
@@ -347,28 +387,32 @@ fn json_usize(v: &serde_json::Value, ctx_name: &str) -> Result<usize, SteelErr> 
     })
 }
 
-/// `(lsp-position->offset bid position)` → `bid`'s char offset for the wire
-/// `{"line" "character"}` hashmap `position`, converted using `bid`'s
-/// attached server's negotiated encoding — or `#f` if `bid` has no attached
-/// server (no negotiated encoding to convert with), or if `position` would
-/// land on the buffer's trailing phantom line (a stale response racing an
-/// edit, or a server's past-end convention) — every point-anchored
-/// decoration setter (`set-inlay-hints!`) rejects that offset outright, so
-/// refusing here lets a caller filter one bad entry instead of the whole
-/// setter call failing on it.
+/// `(lsp-position->offset pane position)` → `pane`'s buffer's char offset
+/// for the wire `{"line" "character"}` hashmap `position`, decoded in
+/// `position`'s own tagged producing-server encoding (`Err` if `position`
+/// isn't a value from an LSP server response — see
+/// `JsonHandle::position_encoding`) — or `#f` if `position` would land on
+/// the buffer's trailing phantom line (a stale response racing an edit, or a
+/// server's past-end convention) — every point-anchored decoration setter
+/// (`set-inlay-hints!`) rejects that offset outright, so refusing here lets
+/// a caller filter one bad entry instead of the whole setter call failing
+/// on it.
 pub(crate) fn lsp_position_to_offset(
     ctx: &mut SteelCtx,
-    bid: BidArg,
+    pane: PaneHandle,
     position: SteelVal,
 ) -> SteelResult {
-    let id = bid.0;
+    let bid = pane.buffer();
     let handle = json_arg(position, "lsp-position->offset")?;
+    let encoding = handle
+        .position_encoding("lsp-position->offset")
+        .map_err(generic_err)?;
     let pos = wire_position(handle.value(), "lsp-position->offset")?;
     Ok(
         match ctx
             .host
             .lsp()
-            .and_then(|lsp| lsp.lsp_wire_point_to_char(id, pos))
+            .and_then(|lsp| lsp.lsp_wire_point_to_char(bid, pos, encoding))
         {
             Some(offset) => SteelVal::IntV(offset as isize),
             None => SteelVal::BoolV(false),
@@ -376,17 +420,21 @@ pub(crate) fn lsp_position_to_offset(
     )
 }
 
-/// `(lsp-range->offsets bid range)` → `(start . end)` half-open char offsets
-/// for the wire `{"start" {"line" "character"} "end" {"line" "character"}}`
-/// hashmap `range`, same encoding rule as `lsp-position->offset`. `#f` if
-/// `bid` has no attached server.
+/// `(lsp-range->offsets pane range)` → `(start . end)` half-open char
+/// offsets for the wire `{"start" {"line" "character"} "end" {"line"
+/// "character"}}` hashmap `range`, same encoding rule as
+/// `lsp-position->offset` — decoded in `range`'s own tagged producing-server
+/// encoding.
 pub(crate) fn lsp_range_to_offsets(
     ctx: &mut SteelCtx,
-    bid: BidArg,
+    pane: PaneHandle,
     range: SteelVal,
 ) -> SteelResult {
-    let id = bid.0;
+    let bid = pane.buffer();
     let handle = json_arg(range, "lsp-range->offsets")?;
+    let encoding = handle
+        .position_encoding("lsp-range->offsets")
+        .map_err(generic_err)?;
     let range_json = handle.value();
     let start_json = range_json
         .get("start")
@@ -400,35 +448,39 @@ pub(crate) fn lsp_range_to_offsets(
         return Ok(SteelVal::BoolV(false));
     };
     let (Some(start), Some(end)) = (
-        lsp.lsp_wire_to_char(id, start_pos),
-        lsp.lsp_wire_to_char(id, end_pos),
+        lsp.lsp_wire_to_char(bid, start_pos, encoding),
+        lsp.lsp_wire_to_char(bid, end_pos, encoding),
     ) else {
         return Ok(SteelVal::BoolV(false));
     };
     cons_pair(SteelVal::IntV(start as isize), SteelVal::IntV(end as isize))
 }
 
-/// `(lsp-label-offsets->text bid label offsets)` → the slice of `label` that
-/// a `ParameterInformation.label` `[start, end)` wire offset pair names, or
-/// `#f` if `bid` has no attached server (no negotiated encoding to count the
-/// offsets in).
+/// `(lsp-label-offsets->text label offsets)` → the slice of `label` that a
+/// `ParameterInformation.label` `[start, end)` wire offset pair names, or
+/// `#f` if this host has no LSP capability at all.
 ///
 /// `offsets` is the raw two-element `[start, end)` array straight off the
 /// wire, handed over undecoded the way `goto-location!` takes a raw
 /// `Location` — either a Steel list (the ordinary hashmap-decode shape) or a
 /// JSON array handle, both routed through `json_arg` onto the one
-/// JSON-native decode below. The offsets count code units in the negotiated
-/// encoding, so Scheme can neither convert them nor index by them — that is
-/// the whole reason this builtin exists rather than a Scheme helper.
+/// JSON-native decode below. Its encoding is read from its own tag: it is
+/// itself drawn from the same response `label` came from (`json-ref`), so it
+/// carries the producing server's negotiated encoding — errors on an
+/// untagged (hand-built) value, since there is then no server to have
+/// negotiated one with. The offsets count code units in that encoding, so
+/// Scheme can neither convert them nor index by them — that is the whole
+/// reason this builtin exists rather than a Scheme helper.
 pub(crate) fn lsp_label_offsets_to_text(
     ctx: &mut SteelCtx,
-    bid: BidArg,
     label: SteelVal,
     offsets: SteelVal,
 ) -> SteelResult {
-    let id = bid.0;
     let label = string_arg(label, "lsp-label-offsets->text label")?;
     let handle = json_arg(offsets, "lsp-label-offsets->text offsets")?;
+    let encoding = handle
+        .position_encoding("lsp-label-offsets->text")
+        .map_err(generic_err)?;
     let arr = handle.value().as_array().ok_or_else(|| {
         generic_err("lsp-label-offsets->text: offsets must be a two-element (start end) array")
     })?;
@@ -440,42 +492,39 @@ pub(crate) fn lsp_label_offsets_to_text(
     };
     let start = json_usize(start, "lsp-label-offsets->text offsets")?;
     let end = json_usize(end, "lsp-label-offsets->text offsets")?;
-    Ok(
-        match ctx
-            .host
-            .lsp()
-            .and_then(|lsp| lsp.lsp_label_offsets_to_text(id, &label, start, end))
-        {
-            Some(text) => SteelVal::StringV(text.into()),
-            None => SteelVal::BoolV(false),
-        },
-    )
+    Ok(match ctx.host.lsp() {
+        Some(lsp) => SteelVal::StringV(
+            lsp.lsp_label_offsets_to_text(&label, start, end, encoding)
+                .into(),
+        ),
+        None => SteelVal::BoolV(false),
+    })
 }
 
 /// `(lsp-locations->display-parts locs)` → one `(path line
 /// grapheme-col-or-wire)` list per entry in `locs`, a list of raw
-/// `Location`/`LocationLink` hashmaps — the display-side counterpart to
-/// `goto-location!`'s wire conversion, decoded through the same shared
-/// decoder. The column is an exact grapheme column when the target has an
-/// open buffer, `#f` when it's an open buffer whose line is out of range,
-/// and otherwise the location's own wire `character` verbatim — this
-/// function never reads a target file to refine that last case. `path`/`line`
-/// are always present, since they come from the location itself. See
+/// `Location`/`LocationLink` hashmaps/handles — the display-side
+/// counterpart to `goto-location!`'s wire conversion, decoded through the
+/// same shared decoder. Each entry reads its own tagged producing-server
+/// encoding — see `LspHost::lsp_locations_display_parts`'s doc. The column
+/// is an exact grapheme column when the target has an open buffer, `#f`
+/// when it's an open buffer whose line is out of range, and otherwise the
+/// location's own wire `character` verbatim — this function never reads a
+/// target file to refine that last case. `path`/`line` are always present,
+/// since they come from the location itself. See
 /// `LspHost::lsp_locations_display_parts`'s doc for the full column-unit
-/// rule and why a location that can't be decoded at all aborts the whole
-/// call rather than producing a degraded entry.
+/// rule and why a location that can't be decoded (or isn't tagged) at all
+/// aborts the whole call rather than producing a degraded entry.
 pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal) -> SteelResult {
     let handles = list_items(locs, "lsp-locations->display-parts locs")?
         .into_iter()
         .map(|entry| json_arg(entry, "lsp-locations->display-parts locs"))
         .collect::<Result<Vec<_>, _>>()?;
-    let refs: Vec<&serde_json::Value> =
-        handles.iter().map(crate::json::JsonHandle::value).collect();
     let parts = ctx
         .host
         .lsp()
         .ok_or_else(|| generic_err("lsp-locations->display-parts: no LSP state available"))?
-        .lsp_locations_display_parts(&refs)
+        .lsp_locations_display_parts(&handles)
         .map_err(generic_err)?;
     let entries: Vec<SteelVal> = parts
         .into_iter()

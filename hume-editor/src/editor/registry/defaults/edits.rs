@@ -7,7 +7,7 @@ use hume_ops::edit::{
     make_text_lowercase, make_text_uppercase,
 };
 
-use super::builder::ecmd;
+use super::builder::ecmd_pane;
 
 impl CommandRegistry {
     pub(super) fn register_edits(&mut self) {
@@ -34,7 +34,7 @@ impl CommandRegistry {
         // `word-chars` (see `cmd_delete_word_backward`'s doc). No builder
         // flags set below — `ecmd`'s defaults (not repeatable, no jump, not
         // extendable) already match plain `Edit`'s own defaults.
-        ecmd(
+        ecmd_pane(
             "delete-word-backward",
             "Delete the word before each cursor.",
             cmd_delete_word_backward,

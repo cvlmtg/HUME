@@ -51,7 +51,7 @@ fn set_option_unknown_key_errors() {
 
 /// `eval_source` runs top-level code as an init eval — `get-option` is
 /// registered `open` (no eval-mode gate), so it must be callable from
-/// `init.scm` too, not just from command bodies (unlike `current-buffer`
+/// `init.scm` too, not just from command bodies (unlike `focused-pane`
 /// or other genuinely command-mode-only reads).
 #[test]
 fn get_option_works_during_init_eval() {
@@ -77,15 +77,8 @@ fn get_option_reads_back_tab_width_as_int() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd(
-        "check",
-        None,
-        vec![],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    )
-    .expect("get-option must read back the default tab-width as an int");
+    h.call_steel_cmd("check", None, vec![], &mut mock)
+        .expect("get-option must read back the default tab-width as an int");
 }
 
 #[test]
@@ -100,15 +93,8 @@ fn get_option_reads_back_tab_style_as_string() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd(
-        "check",
-        None,
-        vec![],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    )
-    .expect("get-option must read back the default tab-style as a string");
+    h.call_steel_cmd("check", None, vec![], &mut mock)
+        .expect("get-option must read back the default tab-style as a string");
 }
 
 #[test]
@@ -128,15 +114,9 @@ fn get_option_reads_back_whitespace_newline_as_string_and_round_trips() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd(
-        "check",
-        None,
-        vec![],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    )
-    .expect("get-option must read back whitespace-newline as a string that set-option! accepts");
+    h.call_steel_cmd("check", None, vec![], &mut mock).expect(
+        "get-option must read back whitespace-newline as a string that set-option! accepts",
+    );
 }
 
 #[test]
@@ -151,15 +131,8 @@ fn get_option_reads_back_lsp_inlay_hints_as_bool() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd(
-        "check",
-        None,
-        vec![],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    )
-    .expect("get-option must read back the default lsp.inlay-hints (false) as a bool");
+    h.call_steel_cmd("check", None, vec![], &mut mock)
+        .expect("get-option must read back the default lsp.inlay-hints (false) as a bool");
 }
 
 #[test]
@@ -174,15 +147,8 @@ fn get_option_reads_back_statusline_mode_colors_as_bool() {
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd(
-        "check",
-        None,
-        vec![],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    )
-    .expect("get-option must read back the default statusline.mode-colors (true) as a bool");
+    h.call_steel_cmd("check", None, vec![], &mut mock)
+        .expect("get-option must read back the default statusline.mode-colors (true) as a bool");
 }
 
 #[test]
@@ -196,169 +162,35 @@ fn get_option_unknown_key_errors() {
     )
     .unwrap();
     let err = h
-        .call_steel_cmd(
-            "check",
-            None,
-            vec![],
-            PaneId::default(),
-            BufferId::default(),
-            &mut mock,
-        )
+        .call_steel_cmd("check", None, vec![], &mut mock)
         .unwrap_err();
     assert!(err.message.contains("unknown setting"), "got: {err:?}");
 }
 
-/// `(get-option bid key)` — the 2-arg form — reads back a value the same as
-/// the 1-arg form (MockHost ignores `bid`, so this proves the wrapper's
-/// arity dispatch and argument order, not bid-specific routing — that's
-/// covered at the host layer by
-/// `get_option_explicit_bid_reads_hook_target_not_focused_buffer` in
+/// `(get-buffer-option bid key)` reads back a value the same as `get-option`
+/// (MockHost ignores `bid`, so this proves the call reaches the host at
+/// all, not bid-specific routing — that's covered at the host layer by
+/// `get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer` in
 /// `hume-editor/src/editor/tests/settings_effects.rs`).
 ///
-/// Fail oracle: swap `(cadr args)`/`(car args)` in the wrapper's 2-arity
-/// branch (`bootstrap.scm`) → `key` and `bid` pass to `%get-option` in the
-/// wrong order, and `%get-option`'s `key: String` param rejects the
-/// `SteelBufferId` it receives instead with a conversion error, instead of
-/// returning 4.
+/// `get-buffer-option` is a direct 2-arg Rust builtin registration: Steel's
+/// own arg-count and per-position type checking on that registration covers
+/// a swapped-argument or wrong-arity call, so there is no separate wrapper
+/// logic here needing its own test coverage.
 #[test]
-fn get_option_explicit_bid_two_arg_form() {
+fn get_buffer_option_reads_back_a_value() {
     let mut h = host();
     let mut mock = MockHost::new();
+    mock.live_buffer_ids.insert(BufferId::default());
+    let bid = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
 
     h.eval_source(
-        r#"(define-command! "check" "" (lambda ()
-             (unless (equal? (get-option (current-buffer) "tab-width") 4)
+        r#"(define-command! "check" "" (lambda (bid)
+             (unless (equal? (get-buffer-option bid "tab-width") 4)
                (error "unexpected tab-width"))))"#,
         &mut mock,
     )
     .unwrap();
-    h.call_steel_cmd(
-        "check",
-        None,
-        vec![],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    )
-    .expect("get-option must accept (bid key) and read back tab-width");
-}
-
-/// The 2-arg form works from inside a `(require "path.scm")`-loaded module
-/// — the shape every real plugin command is defined in — not just from a
-/// top-level `eval_source` call. Regression guard for the steel-core 0.8.2
-/// mixed-fixed-plus-rest-list limitation documented in
-/// `hume-scripting/src/builtins/io.rs`'s module doc: the wrapper avoids it
-/// by using a rest-only parameter list, but that must be verified against a
-/// required-module compilation unit, not assumed from the print-shim
-/// precedent (a different global, shadowing the prelude).
-///
-/// Fail oracle: revert the wrapper to a mixed `(key #:buffer [bid #f])`
-/// parameter list → this call, compiled inside the required module, fails
-/// to invoke the shadowed global correctly (see `io.rs`'s doc for the exact
-/// failure shape), while `get_option_explicit_bid_two_arg_form` above (a
-/// top-level call) still passes — so only the required-module variant
-/// catches a regression to the old parameter shape.
-#[test]
-fn get_option_explicit_bid_from_required_module() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
-    let tmp = tempfile::tempdir().unwrap();
-    let plugin_path = tmp.path().join("get_option_probe.scm");
-    std::fs::write(
-        &plugin_path,
-        r#"
-            (define-command! "probe-get-option"
-              "doc"
-              (lambda ()
-                (unless (equal? (get-option (current-buffer) "tab-width") 4)
-                  (error "unexpected tab-width"))))
-        "#,
-    )
-    .unwrap();
-    let escaped_path = plugin_path.to_string_lossy().replace('\\', "\\\\");
-    h.eval_source(&format!(r#"(require "{escaped_path}")"#), &mut mock)
-        .expect("requiring the plugin file must not error");
-
-    h.call_steel_cmd(
-        "probe-get-option",
-        None,
-        vec![],
-        PaneId::default(),
-        BufferId::default(),
-        &mut mock,
-    )
-    .expect("get-option's 2-arg form must work from a required module");
-}
-
-/// Passing the key first and the bid second — the old `#:buffer`-era
-/// argument order reversed — must error, not silently misinterpret the
-/// buffer id as a settings key: `%get-option`'s `key: String` param rejects
-/// the buffer-id `SteelVal` outright (a `ConversionError`, since `key` is
-/// typed before `optional_bid_arg` ever runs on the second argument).
-///
-/// Fail oracle: swap the wrapper's `(car args)`/`(cadr args)` in the
-/// 2-arity branch (making the *correct* call order the one that breaks) →
-/// this call would instead succeed.
-#[test]
-fn get_option_swapped_args_errors() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
-    h.eval_source(
-        r#"(define-command! "check" "" (lambda ()
-             (get-option "tab-width" (current-buffer))))"#,
-        &mut mock,
-    )
-    .unwrap();
-    let err = h
-        .call_steel_cmd(
-            "check",
-            None,
-            vec![],
-            PaneId::default(),
-            BufferId::default(),
-            &mut mock,
-        )
-        .unwrap_err();
-    assert!(
-        err.message.contains("Expected string") && err.message.contains("buffer-id"),
-        "got: {err:?}"
-    );
-}
-
-/// A 3-argument call — `(get-option "key" #:buffer bid)`, which desugars to
-/// 3 positional args since `#:buffer` isn't a keyword param — hits the
-/// wrapper's explicit arity-error arm rather than silently dropping the
-/// extra argument.
-///
-/// Fail oracle: remove the wrapper's `else` arm (or replace it with a
-/// permissive default) → this call would either error with an unrelated
-/// message or succeed by ignoring the third argument.
-#[test]
-fn get_option_wrong_arity_errors() {
-    let mut h = host();
-    let mut mock = MockHost::new();
-
-    h.eval_source(
-        r#"(define-command! "check" "" (lambda ()
-             (get-option (current-buffer) "tab-width" "extra")))"#,
-        &mut mock,
-    )
-    .unwrap();
-    let err = h
-        .call_steel_cmd(
-            "check",
-            None,
-            vec![],
-            PaneId::default(),
-            BufferId::default(),
-            &mut mock,
-        )
-        .unwrap_err();
-    assert!(
-        err.message
-            .contains("expected (get-option key) or (get-option bid key)"),
-        "got: {err:?}"
-    );
+    h.call_steel_cmd("check", None, vec![bid], &mut mock)
+        .expect("get-buffer-option must accept (bid key) and read back tab-width");
 }

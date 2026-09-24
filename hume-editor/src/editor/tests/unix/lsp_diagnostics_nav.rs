@@ -264,9 +264,9 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
 /// selecting a row must jump into the buffer the drawer was opened for, not
 /// whatever buffer happens to be focused when Enter is pressed.
 ///
-/// Fail oracle: before `lsp/diag-jump-to!` took an explicit `bid`, it
-/// resolved against `(current-buffer)` — `focused_buffer_id()` below would
-/// still read `other_bid`, and the selection would land clamped inside
+/// Fail oracle: if `lsp/diag-jump-to!` resolved against `(focused-pane)`
+/// instead of its explicit `bid`, `focused_buffer_id()` below would still
+/// read `other_bid`, and the selection would land clamped inside
 /// `other.rs`'s two short lines instead of at A's start in `main.rs`.
 #[test]
 fn enter_jumps_into_the_drawer_s_buffer_even_after_switching_away() {
@@ -593,8 +593,8 @@ fn foreign_replace_kills_refresh_tracking() {
     eval_with_real_host(
         &mut ed,
         &mut scripting,
-        r#"(define-typed-command! "foreign" "" (lambda ()
-             (show-drawer-list! (list "foreign") (lambda (idx) (void)))))"#,
+        r#"(define-typed-command! "foreign" "" (lambda (pane)
+             (show-drawer-list! pane (list "foreign") (lambda (idx) (void)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(scripting);

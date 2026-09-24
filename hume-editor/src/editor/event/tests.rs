@@ -1,4 +1,5 @@
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, PaneId};
+use hume_scripting::PaneHandle;
 use steel::rvals::SteelVal;
 
 use super::*;
@@ -9,11 +10,12 @@ use super::*;
 /// below can tell fields apart if `steel_args` ever swaps two of them.
 fn all_variants() -> Vec<EditorEvent> {
     let buffer = BufferId::default();
+    let pane = sample_pane_id();
     vec![
         EditorEvent::OnBufferOpen { buffer },
         EditorEvent::OnBufferClose { buffer },
         EditorEvent::OnBufferSave { buffer },
-        EditorEvent::OnBufferEnter { buffer },
+        EditorEvent::OnBufferEnter { buffer, pane },
         EditorEvent::OnFocusGained,
         EditorEvent::OnModeChange {
             from: Mode::Insert,
@@ -34,17 +36,20 @@ fn all_variants() -> Vec<EditorEvent> {
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnViewportChange {
             buffer,
+            pane,
             first_line: hume_rope::line::ContentLine::new(3),
             end_line: hume_rope::line::ContentLine::new(42),
         },
         EditorEvent::OnTriggerChar {
             buffer,
+            pane,
             ch: '.',
             source: "lsp".to_string(),
         },
         EditorEvent::OnCompletionAccept {
             buffer,
-            item: std::sync::Arc::new(serde_json::json!({"label": "foo"})),
+            pane,
+            item: hume_scripting::json::JsonHandle::new(serde_json::json!({"label": "foo"})),
         },
         EditorEvent::OnOptionChange {
             key: "lsp.inlay-hints".to_string(),
@@ -52,6 +57,14 @@ fn all_variants() -> Vec<EditorEvent> {
         },
         EditorEvent::OnTextChanged { buffer },
     ]
+}
+
+/// A distinctive, non-default `PaneId` for the pane-carrying variants — a
+/// fresh slotmap allocation, not `PaneId::default()`, so a test comparing
+/// against `PaneHandle::buffer_only`'s `None` pane can't pass by accident.
+fn sample_pane_id() -> PaneId {
+    let mut sm: slotmap::SlotMap<PaneId, ()> = slotmap::SlotMap::with_key();
+    sm.insert(())
 }
 
 /// Every variant has a name, that name is in `EVENT_NAMES`, and the two
@@ -95,13 +108,13 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
 // oracle for each: swap two fields in the corresponding `steel_args` match
 // arm, or drop one, and the row fails.
 
-/// `SteelBufferId` doesn't expose its inner `BufferId` outside
+/// `SteelPane` doesn't expose its inner `PaneHandle` outside
 /// `hume-scripting` — compare the wrapped `SteelVal` for equality against a
 /// freshly wrapped `expected` instead of unwrapping.
-fn assert_steel_buffer_id(args: &[SteelVal], idx: usize, expected: BufferId) {
+fn assert_steel_pane(args: &[SteelVal], idx: usize, expected: PaneHandle) {
     assert_eq!(
         args[idx],
-        hume_scripting::SteelBufferId::new(expected).into_steel_val()
+        hume_scripting::SteelPane::new(expected).into_steel_val()
     );
 }
 
@@ -113,20 +126,32 @@ fn steel_string(args: &[SteelVal], idx: usize) -> String {
 }
 
 #[test]
-fn buffer_only_events_carry_one_buffer_id_arg() {
+fn buffer_only_events_carry_one_pane_less_handle_arg() {
     let buffer = BufferId::default();
     for event in [
         EditorEvent::OnBufferOpen { buffer },
         EditorEvent::OnBufferClose { buffer },
         EditorEvent::OnBufferSave { buffer },
-        EditorEvent::OnBufferEnter { buffer },
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnTextChanged { buffer },
     ] {
         let args = event.steel_args();
         assert_eq!(args.len(), 1, "{event:?} must carry exactly one arg");
-        assert_steel_buffer_id(&args, 0, buffer);
+        assert_steel_pane(&args, 0, PaneHandle::buffer_only(buffer));
     }
+}
+
+/// `OnBufferEnter` carries a pane too — always `Some`, since a buffer only
+/// "enters" by way of some pane showing it (unlike the buffer-only events
+/// above, which have no pane of their own to name).
+#[test]
+fn on_buffer_enter_carries_its_pane() {
+    let buffer = BufferId::default();
+    let pane = sample_pane_id();
+    let event = EditorEvent::OnBufferEnter { buffer, pane };
+    let args = event.steel_args();
+    assert_eq!(args.len(), 1);
+    assert_steel_pane(&args, 0, PaneHandle::with_pane(buffer, pane));
 }
 
 #[test]
@@ -159,7 +184,7 @@ fn on_language_set_carries_buffer_and_language_name() {
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 2);
-    assert_steel_buffer_id(&args, 0, buffer);
+    assert_steel_pane(&args, 0, PaneHandle::buffer_only(buffer));
     assert_eq!(steel_string(&args, 1), "python");
 }
 
@@ -191,22 +216,24 @@ fn on_lsp_attach_and_detach_carry_buffer_and_server_name() {
     ] {
         let args = event.steel_args();
         assert_eq!(args.len(), 2);
-        assert_steel_buffer_id(&args, 0, buffer);
+        assert_steel_pane(&args, 0, PaneHandle::buffer_only(buffer));
         assert_eq!(steel_string(&args, 1), "rust-analyzer");
     }
 }
 
 #[test]
-fn on_viewport_change_carries_buffer_and_both_line_bounds() {
+fn on_viewport_change_carries_pane_and_both_line_bounds() {
     let buffer = BufferId::default();
+    let pane = sample_pane_id();
     let event = EditorEvent::OnViewportChange {
         buffer,
+        pane,
         first_line: hume_rope::line::ContentLine::new(3),
         end_line: hume_rope::line::ContentLine::new(42),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 3);
-    assert_steel_buffer_id(&args, 0, buffer);
+    assert_steel_pane(&args, 0, PaneHandle::with_pane(buffer, pane));
     assert!(matches!(args[1], SteelVal::IntV(3)));
     assert!(matches!(args[2], SteelVal::IntV(42)));
 }
@@ -216,14 +243,16 @@ fn on_viewport_change_carries_buffer_and_both_line_bounds() {
 #[test]
 fn on_trigger_char_sends_char_as_a_one_char_string() {
     let buffer = BufferId::default();
+    let pane = sample_pane_id();
     let event = EditorEvent::OnTriggerChar {
         buffer,
+        pane,
         ch: '.',
         source: "lsp".to_string(),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 3);
-    assert_steel_buffer_id(&args, 0, buffer);
+    assert_steel_pane(&args, 0, PaneHandle::with_pane(buffer, pane));
     assert_eq!(steel_string(&args, 1), ".");
     assert_eq!(steel_string(&args, 2), "lsp");
 }
@@ -233,14 +262,16 @@ fn on_trigger_char_sends_char_as_a_one_char_string() {
 #[test]
 fn on_completion_accept_item_crosses_as_a_json_handle() {
     let buffer = BufferId::default();
+    let pane = sample_pane_id();
     let item = serde_json::json!({"label": "foo", "kind": 3});
     let event = EditorEvent::OnCompletionAccept {
         buffer,
-        item: std::sync::Arc::new(item.clone()),
+        pane,
+        item: hume_scripting::json::JsonHandle::new(item.clone()),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 2);
-    assert_steel_buffer_id(&args, 0, buffer);
+    assert_steel_pane(&args, 0, PaneHandle::with_pane(buffer, pane));
     let handle = hume_scripting::json::downcast_json_handle(&args[1])
         .expect("item must cross as a JsonHandle");
     assert_eq!(handle.value(), &item);
