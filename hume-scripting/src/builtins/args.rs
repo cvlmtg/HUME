@@ -289,6 +289,27 @@ pub(crate) fn optional_json_arg(
     }
 }
 
+/// A caught `with-handler` exception value that may be `#f` (no exception —
+/// the activation succeeded). `#f` decodes as `None`; anything else decodes
+/// as the `SteelErr` `with-handler` caught (`with-handler`'s lambda receives
+/// the raised error's own `into_steelval()` form, so `SteelErr::from_steelval`
+/// round-trips it with its span intact). Used only by
+/// `%finish-lazy-activation`/`%finish-manifest-declare!`'s `error` argument —
+/// see `bootstrap.scm`'s `%activate-plugin-inline`/`declare-plugin`.
+pub(crate) fn optional_steel_error_arg(
+    val: SteelVal,
+    ctx_name: &str,
+) -> Result<Option<SteelErr>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        other => SteelErr::from_steelval(&other).map(Some).map_err(|_| {
+            generic_err(format!(
+                "{ctx_name}: expected #f or an error value, got {other:?}"
+            ))
+        }),
+    }
+}
+
 // ── Fixed-arity list decoders ────────────────────────────────────────────────
 
 /// Unpacks `val` as a list and errors unless its length falls in `arity` —

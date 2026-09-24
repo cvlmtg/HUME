@@ -323,10 +323,12 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     );
 }
 
-/// An eager plugin whose body raises an error causes `eval_init` to return
-/// `Err` (fail-fast), and leaves the plugin in `Failed` state.
+/// An eager plugin whose body raises an error is contained — `eval_init`
+/// still succeeds (so the rest of `init.scm` keeps running), the failure is
+/// reported as an Error pending message, and the plugin is left in `Failed`
+/// state.
 #[test]
-fn eager_plugin_body_error_aborts_init() {
+fn eager_plugin_body_error_is_contained() {
     let (dir, init_path) = plugin_fixture(
         r#"(load-plugin "user/tp")"#,
         r#"(error "intentional plugin failure")"#,
@@ -336,10 +338,15 @@ fn eager_plugin_body_error_aborts_init() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
-        result.is_err(),
-        "init must fail when eager plugin body errors"
+        h.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error)
+                && msg.contains("intentional plugin failure")
+        }),
+        "must log an Error carrying the plugin's own failure; got: {:?}",
+        h.peek_pending_messages()
     );
 
     let id = attribution::PluginId::User {
@@ -682,7 +689,10 @@ fn load_then_declare_ignored_with_soft_error() {
 }
 
 /// `(load-plugin …)` inside an eager plugin body is rejected unconditionally —
-/// even when the dep is present on disk, the gate fires before path resolution.
+/// even when the dep is present on disk, the gate fires before path
+/// resolution. `pb`'s own activation is contained by the rejection (a body
+/// error like any other), so `eval_init` still succeeds; `pb` itself ends up
+/// `Failed`.
 ///
 /// Flip: weaken `ensure_top_level` to also accept `EvalMode::PluginLoad` and
 /// the eager in-body call succeeds instead of erroring.
@@ -704,17 +714,32 @@ fn load_plugin_in_plugin_body_rejected() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    let Err(msg) = h.eval_init(&init_path, 10_000, &mut mock, Default::default()) else {
-        panic!("load-plugin inside a plugin body must be rejected");
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("a failed plugin load must be contained, not abort eval_init");
+    assert!(
+        h.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error)
+                && (msg.contains("top level") || msg.contains("init.scm"))
+        }),
+        "error must mention top-level restriction; got: {:?}",
+        h.peek_pending_messages()
+    );
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "pb".to_string(),
     };
     assert!(
-        msg.message.contains("top level") || msg.message.contains("init.scm"),
-        "error must mention top-level restriction; got: {msg}"
+        matches!(h.plugin_status(&id), Some(PluginStatus::Failed)),
+        "pb must be Failed after its body's top-level violation; got {:?}",
+        h.plugin_status(&id)
     );
 }
 
 /// `(declare-plugin …)` inside an eager plugin body is rejected — plugins
-/// cannot register other plugins; both registration verbs are top-level only.
+/// cannot register other plugins; both registration verbs are top-level
+/// only. `pb`'s own activation is contained by the rejection (a body error
+/// like any other), so `eval_init` still succeeds; `pb` itself ends up
+/// `Failed`.
 ///
 /// Flip: remove the `ensure_top_level` gate from `declare_plugin` and the call
 /// succeeds, silently registering a plugin from inside a plugin body.
@@ -735,12 +760,24 @@ fn declare_plugin_in_plugin_body_rejected() {
     h.set_data_dir(dir.path().to_path_buf());
     let mut mock = MockHost::new();
 
-    let Err(msg) = h.eval_init(&init_path, 10_000, &mut mock, Default::default()) else {
-        panic!("declare-plugin inside a plugin body must be rejected");
+    h.eval_init(&init_path, 10_000, &mut mock, Default::default())
+        .expect("a failed plugin load must be contained, not abort eval_init");
+    assert!(
+        h.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error)
+                && (msg.contains("top level") || msg.contains("init.scm"))
+        }),
+        "error must mention top-level restriction; got: {:?}",
+        h.peek_pending_messages()
+    );
+    let id = attribution::PluginId::User {
+        user: "user".to_string(),
+        repo: "pb".to_string(),
     };
     assert!(
-        msg.message.contains("top level") || msg.message.contains("init.scm"),
-        "error must mention top-level restriction; got: {msg}"
+        matches!(h.plugin_status(&id), Some(PluginStatus::Failed)),
+        "pb must be Failed after its body's top-level violation; got {:?}",
+        h.plugin_status(&id)
     );
 }
 

@@ -118,24 +118,33 @@ macro_rules! builtins {
 /// `Loading` and returns its `(require "<abs>")` string; `eval-string` runs
 /// that inside the live VM (same module pipeline as the engine API, but
 /// VM-aware — no `&mut Engine` needed); `%finish-lazy-activation` (Rust)
-/// finalizes the state; `with-handler` guarantees the `Failed` transition on
-/// any body exception.
+/// finalizes the state. `with-handler` guarantees the `Failed` transition on
+/// any body exception, and — unlike a plain Steel `with-handler` — never
+/// re-raises: the caught exception value is handed straight to
+/// `%finish-lazy-activation`, which records it (see that function's doc) and
+/// returns normally, so a plugin failing to load never aborts the enclosing
+/// `init.scm`/command/hook eval, and never risks the re-raise-inside-an-
+/// outer-handler VM-stack corruption documented at
+/// `known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack`
+/// (`lib.rs`).
 ///
 /// `%dispatch-command` routes: activated plugin command → `command_table`
-/// lookup, apply inline; lazy-activation miss → activate inline, retry;
+/// lookup, apply inline; lazy-activation miss → activate inline, retry (if
+/// the retry still misses, the owner's activation failed or its body never
+/// defined the command — either way this errors rather than falling through
+/// to `%call-native!`, which would otherwise misreport the name as simply
+/// unknown and hand the caller a `#f` indistinguishable from success);
 /// native/unknown → `%call-native!`.
 //
 // declare-plugin — manifest; entries forwarded to %declare-plugin!. A
 // zero-trigger call (no #:commands/#:typed-commands/#:events/#:languages)
 // evaluates <plugin-dir>/manifest.scm instead for its default entries (see
 // %begin-manifest-declare!); caller's #:config wins over the manifest's.
-// Known limitation, left as-is pending an upstream steel-core fix: a
-// zero-trigger call inside an outer with-handler can hit the "no open
-// continuation" panic documented at
-// known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack
-// (lib.rs) if manifest.scm raises — swallowing the error instead would break
-// declare-plugin's tested propagate-to-caller contract (4 tests in
-// builtins/plugins/tests.rs, via .expect_err).
+// Its with-handler follows the same no-re-raise contract as
+// %activate-plugin-inline above (%finish-manifest-declare! is its
+// %finish-lazy-activation counterpart) — including for the "manifest.scm
+// didn't declare its own plugin" self-check, which raises from inside that
+// same handler's protected body and so is caught and recorded the same way.
 //
 // define-typed-command! — the typed (`:` command line) counterpart of
 // define-command!, sharing its collision-guard logic (commands::check_definable)
@@ -154,6 +163,21 @@ macro_rules! builtins {
 // %activate-plugin-inline — shared by load-plugin and %dispatch-command's
 // lazy-miss path. %begin-lazy-activation returns the require string for
 // Declared plugins, #f otherwise (cycle guard + idempotency).
+//
+// %activate-plugin-inline's (and declare-plugin's zero-trigger manifest
+// branch's) trailing (hume/yield!), right after their with-handler: a
+// plugin/manifest body's own error is contained there (finish_lazy_activation
+// / finish_manifest_declare record it and the handler returns normally
+// either way), but an interrupt (step budget exceeded, or a future Ctrl-c)
+// is not a plugin failure — it's a signal evaluation as a whole must stop.
+// This re-checks the flag once the handler has already returned: a fresh
+// raise, never a raise-error of the value the handler just caught (re-raising
+// *that* value through a second handler is the VM-stack-corruption hazard —
+// see the %apply-command entry below), so it propagates uncaught out of this
+// activation and aborts the enclosing eval exactly like any other top-level
+// init.scm error, instead of letting a still-exhausted budget silently run
+// every later plugin's body, each blamed as "failed to load" for hitting the
+// same stale flag.
 //
 // lsp-request — generic LSP bridge. server: registered language name, or #f
 // for the focused buffer's attached server. callback: (lambda (err result)),
@@ -343,13 +367,13 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Inline activation primitives — called from the %activate-plugin-inline
         // Scheme helper to drive mid-eval plugin loading without &mut Engine.
         open "%begin-lazy-activation" plugins::begin_lazy_activation(id_str: String);
-        open "%finish-lazy-activation" plugins::finish_lazy_activation(id_str: String, success: bool);
+        open "%finish-lazy-activation" plugins::finish_lazy_activation(id_str: String, error: SteelVal);
         open "%lazy-command-owner" plugins::lazy_command_owner(name: String);
 
         // Manifest resolution — zero-trigger declare-plugin routes here to eval
         // <plugin-dir>/manifest.scm so the plugin can declare its own defaults.
         open "%begin-manifest-declare!" plugins::begin_manifest_declare(name: String, config: SteelVal);
-        open "%finish-manifest-declare!" plugins::finish_manifest_declare(name: String, success: bool);
+        open "%finish-manifest-declare!" plugins::finish_manifest_declare(name: String, error: SteelVal);
 
         // Hook registration — init-only
         config "register-hook!" hooks::register_hook(name: SteelVal, proc: SteelVal);

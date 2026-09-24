@@ -1,10 +1,11 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
 use steel::gc::unsafe_erased_pointers::CustomReference;
+use steel::rerrs::SteelErr;
 
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use super::attribution::PluginStack;
+use super::attribution::{PluginId, PluginStack};
 use super::host::EditorHost;
 use super::log::LogLevel;
 use super::types::{Effect, QueuedEffect};
@@ -89,7 +90,12 @@ pub(crate) struct SteelCtx<'a> {
     /// declaring a different plugin than the one it was resolved for, and against
     /// a manifest whose own `declare-plugin` is itself zero-trigger (which would
     /// otherwise recurse into manifest resolution forever).
-    pub(crate) manifest_resolving: Option<crate::attribution::PluginId>,
+    pub(crate) manifest_resolving: Option<PluginId>,
+    /// Plugin activations contained mid-session — `finish_lazy_activation`/
+    /// `finish_manifest_declare` push here instead of letting the body's
+    /// error propagate (see their own docs). Drained and reported by
+    /// `run_steel_session` once the session ends, in emission order.
+    pub(crate) failed_activations: Vec<(PluginId, SteelErr)>,
 }
 
 /// Which entry point started this eval session.
@@ -157,6 +163,7 @@ impl<'a> SteelCtx<'a> {
             live_focused_buffer_id: BufferId::default(),
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
+            failed_activations: Vec::new(),
         }
     }
 
@@ -268,6 +275,7 @@ impl<'a> SteelCtx<'a> {
             live_focused_buffer_id: focused_buffer_id,
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
+            failed_activations: Vec::new(),
         }
     }
 }

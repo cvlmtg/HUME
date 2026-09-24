@@ -525,19 +525,27 @@ fn an_invalid_match_config_fails_the_load() {
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let mut host = ScriptingHost::new();
-    let err = {
+    let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect_err("an unlisted \"match\" value must fail eval_init");
+    .expect("a failed plugin load must be contained, not abort eval_init");
 
+    // eval_init queues log messages on the host (ctx.log) rather than
+    // writing ed.state.message_log directly — only Editor::init_scripting's
+    // tail code flushes that queue, which this test bypasses by calling
+    // eval_init directly, so check the host's queue itself.
     assert!(
-        err.message.contains("core:buffer-words") && err.message.contains("must be one of"),
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error)
+                && msg.contains("core:buffer-words")
+                && msg.contains("must be one of")
+        }),
         "error must carry the plugin's own prefixed message; got {:?}",
-        err.message
+        host.peek_pending_messages()
     );
 
-    ed.apply_script_effects(err.effects);
+    ed.apply_script_effects(effects);
     ed.scripting = Some(host);
 
     let id = PluginId::Core("buffer-words".to_string());

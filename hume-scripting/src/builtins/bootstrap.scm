@@ -9,8 +9,9 @@
       (let ((prog (%begin-manifest-declare! name config)))
         (when prog
           (with-handler
-            (lambda (e) (%finish-manifest-declare! name #f) (raise-error e))
-            (begin (hm.eval-string prog) (%finish-manifest-declare! name #t)))))
+            (lambda (e) (%finish-manifest-declare! name e))
+            (begin (hm.eval-string prog) (%finish-manifest-declare! name #f)))
+          (hume/yield!)))
       (%declare-plugin! name commands typed-commands events languages config)))
 
 (define (load-plugin name #:config [config (hash)])
@@ -21,8 +22,9 @@
   (let ((prog (%begin-lazy-activation id)))
     (when prog
       (with-handler
-        (lambda (e) (%finish-lazy-activation id #f) (raise-error e))
-        (begin (hm.eval-string prog) (%finish-lazy-activation id #t))))))
+        (lambda (e) (%finish-lazy-activation id e))
+        (begin (hm.eval-string prog) (%finish-lazy-activation id #f)))
+      (hume/yield!))))
 
 (define (define-command! name doc proc
                          #:repeatable    [repeatable    #f]
@@ -49,7 +51,14 @@
               (begin
                 (%activate-plugin-inline owner)
                 (let ((proc2 (%lookup-plugin-proc name)))
-                  (if proc2 (%apply-command proc2 name args) (%call-native! name args))))
+                  (cond
+                    (proc2 (%apply-command proc2 name args))
+                    ((member owner (loaded-plugins))
+                     (error (string-append "'" name "': plugin '" owner
+                                           "' loaded but did not define it")))
+                    (else
+                     (error (string-append "'" name "' unavailable: plugin '" owner
+                                           "' failed to load"))))))
               (%call-native! name args))))))
 
 (define (register-lsp-server! language #:command command

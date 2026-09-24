@@ -687,19 +687,20 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
-    let err = result
-        .expect_err("a non-boolean \"untracked\" value must fail the load, not silently default");
+    result.expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
-        err.message.contains("untracked"),
-        "error must name the offending config key, not just fail generically; got: {}",
-        err.message
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("untracked")
+        }),
+        "error must name the offending config key, not just fail generically; got: {:?}",
+        host.peek_pending_messages()
     );
 }
 
 /// Loading `core:pickers` without `core:stdlib` declared or loaded first
-/// must fail `eval_init` at load time, naming `core:stdlib` —
-/// `core:pickers`'s `(declared-plugins)` guard rejects it before its
-/// `pickers/untracked` config read ever reaches `call!`.
+/// must fail to load (contained, not aborting `eval_init`), naming
+/// `core:stdlib` — `core:pickers`'s `(declared-plugins)` guard rejects it
+/// before its `pickers/untracked` config read ever reaches `call!`.
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = HumeRuntimeGuard::new();
@@ -715,11 +716,13 @@ fn missing_stdlib_errors_at_load() {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
-    let err = result.expect_err("core:pickers without core:stdlib must fail eval_init");
+    result.expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
-        err.message.contains("core:stdlib"),
-        "error must name the missing dependency; got: {}",
-        err.message
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
+        }),
+        "error must name the missing dependency; got: {:?}",
+        host.peek_pending_messages()
     );
 }
 

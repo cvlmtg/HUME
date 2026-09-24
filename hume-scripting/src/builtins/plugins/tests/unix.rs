@@ -373,10 +373,18 @@ fn manifest_declaring_different_plugin_name_errors() {
     host.set_data_dir(dir.path().to_path_buf());
 
     let result = host.eval_source(r#"(declare-plugin "user/wrongname")"#, &mut NullHost);
-    let err = result.expect_err("manifest declaring a different plugin id must error");
     assert!(
-        err.contains("user/wrongname") && err.contains("user/somebody-else"),
-        "error must name both the expected and actual ids; got: {err}"
+        result.is_ok(),
+        "a failed manifest resolution must be contained, not propagate; got: {result:?}"
+    );
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(level, msg)| {
+            matches!(level, crate::log::LogLevel::Error)
+                && msg.contains("user/wrongname")
+                && msg.contains("user/somebody-else")
+        }),
+        "must log an Error naming both the expected and actual ids; messages: {messages:?}"
     );
 
     let evil_id = PluginId::parse("user/somebody-else").unwrap();
@@ -413,10 +421,19 @@ fn manifest_bad_events_names_manifest_scm_and_plugin() {
     host.set_data_dir(dir.path().to_path_buf());
 
     let result = host.eval_source(r#"(declare-plugin "user/badevt")"#, &mut NullHost);
-    let err = result.expect_err("a string #:events entry in manifest.scm must be rejected");
     assert!(
-        err.contains("manifest.scm") && err.contains("user/badevt"),
-        "error must name manifest.scm and the plugin it belongs to, not init.scm; got: {err}"
+        result.is_ok(),
+        "a failed manifest resolution must be contained, not propagate; got: {result:?}"
+    );
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(level, msg)| {
+            matches!(level, crate::log::LogLevel::Error)
+                && msg.contains("manifest.scm")
+                && msg.contains("user/badevt")
+        }),
+        "must log an Error naming manifest.scm and the plugin it belongs to, not init.scm; \
+         messages: {messages:?}"
     );
 }
 
@@ -445,12 +462,17 @@ fn manifest_with_zero_trigger_self_declare_errors_without_recursing() {
     host.set_data_dir(dir.path().to_path_buf());
 
     let result = host.eval_source(r#"(declare-plugin "user/selfmf")"#, &mut NullHost);
-    let err = result.expect_err(
-        "a manifest.scm whose own declare-plugin is zero-trigger must error, not recurse",
-    );
     assert!(
-        err.contains("cannot itself be"),
-        "error must explain the recursion guard; got: {err}"
+        result.is_ok(),
+        "a manifest.scm whose own declare-plugin is zero-trigger must error but be contained, \
+         not recurse or propagate; got: {result:?}"
+    );
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(level, msg)| {
+            matches!(level, crate::log::LogLevel::Error) && msg.contains("cannot itself be")
+        }),
+        "must log an Error explaining the recursion guard; messages: {messages:?}"
     );
 }
 
@@ -475,10 +497,18 @@ fn manifest_that_never_declares_errors() {
     host.set_data_dir(dir.path().to_path_buf());
 
     let result = host.eval_source(r#"(declare-plugin "user/nodeclare")"#, &mut NullHost);
-    let err = result.expect_err("manifest.scm that never calls declare-plugin must error");
     assert!(
-        err.contains("did not declare"),
-        "error must explain the manifest never declared the plugin; got: {err}"
+        result.is_ok(),
+        "manifest.scm that never calls declare-plugin must error but be contained, not \
+         propagate; got: {result:?}"
+    );
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(level, msg)| {
+            matches!(level, crate::log::LogLevel::Error) && msg.contains("did not declare")
+        }),
+        "must log an Error explaining the manifest never declared the plugin; \
+         messages: {messages:?}"
     );
 }
 

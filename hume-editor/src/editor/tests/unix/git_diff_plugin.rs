@@ -1179,19 +1179,27 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    let err = {
+    let effects = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect_err("a non-boolean \"signs\" value must fail eval_init");
+    .expect("a failed plugin load must be contained, not abort eval_init");
 
+    // eval_init queues log messages on the host (ctx.log) rather than
+    // writing ed.state.message_log directly — only Editor::init_scripting's
+    // tail code flushes that queue, which this test bypasses by calling
+    // eval_init directly, so check the host's queue itself.
     assert!(
-        err.message.contains("core:git-diff") && err.message.contains("must be #t or #f"),
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error)
+                && msg.contains("core:git-diff")
+                && msg.contains("must be #t or #f")
+        }),
         "error must carry the plugin's own prefixed message; got {:?}",
-        err.message
+        host.peek_pending_messages()
     );
 
-    ed.apply_script_effects(err.effects);
+    ed.apply_script_effects(effects);
     ed.scripting = Some(host);
 
     let id = PluginId::Core("git-diff".to_string());
@@ -1205,9 +1213,9 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
 }
 
 /// Loading `core:git-diff` without `core:stdlib` declared or loaded first
-/// must fail `eval_init` at load time, naming `core:stdlib` —
-/// `core:git-diff`'s `(declared-plugins)` guard rejects it before any of
-/// its config reads ever reach `call!`.
+/// must fail to load (contained, not aborting `eval_init`), naming
+/// `core:stdlib` — `core:git-diff`'s `(declared-plugins)` guard rejects it
+/// before any of its config reads ever reach `call!`.
 #[test]
 fn missing_stdlib_errors_at_load() {
     let tmp = safe_tempdir();
@@ -1218,14 +1226,16 @@ fn missing_stdlib_errors_at_load() {
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
-    let err = {
+    {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect_err("core:git-diff without core:stdlib must fail eval_init");
+    .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
-        err.message.contains("core:stdlib"),
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
+        }),
         "error must name the missing dependency; got: {:?}",
-        err.message
+        host.peek_pending_messages()
     );
 }

@@ -280,6 +280,99 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 }
 
+/// Regression test for the scenario that motivated plugin-activation
+/// containment: a third-party `load-plugin` fails, and `core:plum` — the
+/// user's only in-editor path to update and fix a broken plugin — is
+/// declared afterward, on a later line of the same `init.scm`. Before
+/// containment, the failed load re-raised and aborted `init.scm`, so
+/// `core:plum` (and everything after the failing line) never got declared
+/// at all: no `:plum-update-plugins` to reach for, short of hand-editing
+/// the plugin on disk.
+///
+/// Flip: revert the `with-handler` no-re-raise change in `bootstrap.scm`
+/// and this fails — `plum-update-plugins` is never registered.
+#[test]
+fn failed_third_party_load_does_not_block_plum_declared_afterward() {
+    use crate::editor::Severity;
+
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+
+    let config_tmp = safe_tempdir();
+    let data_tmp = safe_tempdir();
+    let runtime_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("hume-editor/ must have a parent (the repo root)")
+        .join("runtime");
+
+    let broken_plugin_dir = data_tmp
+        .path()
+        .join("hume")
+        .join("plugins")
+        .join("user")
+        .join("broken");
+    std::fs::create_dir_all(&broken_plugin_dir).unwrap();
+    std::fs::write(
+        broken_plugin_dir.join("plugin.scm"),
+        "(call-does-not-exist)",
+    )
+    .unwrap();
+
+    let hume_config = config_tmp.path().join("hume");
+    std::fs::create_dir_all(&hume_config).unwrap();
+    std::fs::write(
+        hume_config.join("init.scm"),
+        "(load-plugin \"core:stdlib\")\n\
+         (load-plugin \"user/broken\")\n\
+         (declare-plugin \"core:plum\")",
+    )
+    .unwrap();
+
+    unsafe {
+        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
+        std::env::set_var("HUME_RUNTIME", &runtime_dir);
+        std::env::set_var("XDG_DATA_HOME", data_tmp.path());
+    }
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.init_scripting(&mut Default::default());
+
+    unsafe {
+        std::env::remove_var("XDG_CONFIG_HOME");
+        std::env::remove_var("HUME_RUNTIME");
+        std::env::remove_var("XDG_DATA_HOME");
+    }
+
+    // The failed load must still be reported, not silently swallowed.
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("user/broken")),
+        "the failed plugin's error must still be reported; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+
+    // core:plum, declared AFTER the failing line, must still have been
+    // reached and resolved its manifest.scm — the actual fix: previously
+    // init.scm aborted at the failing load-plugin line and never got here.
+    assert!(
+        matches!(
+            ed.state
+                .config
+                .registry
+                .get_typed("plum-update-plugins")
+                .map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
+        ),
+        "core:plum's plum-update-plugins must be registered — proving init.scm \
+         continued past the failed third-party plugin instead of aborting"
+    );
+}
+
 /// The real `core:git-diff` plugin's own shipped `manifest.scm` resolves and evaluates via a
 /// zero-trigger `(declare-plugin "core:git-diff")`, through the full production
 /// `init_scripting` path against the repo's actual `runtime/` tree.

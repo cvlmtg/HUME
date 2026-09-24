@@ -344,10 +344,11 @@ fn every_default_lsp_binding_dispatches_without_error() {
 }
 
 /// Loading `core:lsp` without `core:stdlib` declared or loaded first must
-/// fail `eval_init` at load time, naming `core:stdlib` — `core:lsp`'s
-/// `(declared-plugins)` guard rejects a `core:stdlib` that was never
-/// declared or loaded at all, before `lsp/register-installed-servers!` ever
-/// reaches its load-time `stdlib/list-subdirs` call.
+/// fail to load (contained, not aborting `eval_init`), naming `core:stdlib`
+/// — `core:lsp`'s `(declared-plugins)` guard rejects a `core:stdlib` that
+/// was never declared or loaded at all, before
+/// `lsp/register-installed-servers!` ever reaches its load-time
+/// `stdlib/list-subdirs` call.
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeGuard::new();
@@ -361,11 +362,13 @@ fn missing_stdlib_errors_at_load() {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
-    let err = result.expect_err("core:lsp without core:stdlib must fail eval_init");
+    result.expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
-        err.message.contains("core:stdlib"),
-        "error must name the missing dependency; got: {}",
-        err.message
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
+        }),
+        "error must name the missing dependency; got: {:?}",
+        host.peek_pending_messages()
     );
     drop(guard);
 }

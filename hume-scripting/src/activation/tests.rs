@@ -72,13 +72,85 @@ fn syntax_error_transitions_to_failed() {
 
     let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
 
-    assert!(result.is_err(), "must return Err on syntax error");
+    assert!(
+        result.is_ok(),
+        "a failed plugin activation must be contained, not propagate; got: {result:?}"
+    );
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Failed)
         ),
         "plugin must be in Failed state after syntax error"
+    );
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(level, msg)| {
+            matches!(level, crate::log::LogLevel::Error)
+                && msg.contains("core:bad")
+                && msg.contains("failed to load")
+        }),
+        "must log an Error naming the failed plugin; messages: {messages:?}"
+    );
+}
+
+/// A failed plugin body's log message names the plugin and points at the
+/// exact file, line, and column of the failing reference — not just
+/// `init.scm`, the file that happened to `load-plugin` it. This is the
+/// regression case: before `describe_steel_error` resolved the error's span
+/// against the engine's own `Sources`, the message read bare
+/// `init.scm: Error: FreeIdentifier: …` with no way to tell which plugin,
+/// file, or line was at fault.
+#[test]
+fn failed_activation_message_names_plugin_and_location() {
+    let dir = TempDir::new().unwrap();
+    // Line 2, column 2 (1-based): right at "call-does-not-exist", after the
+    // opening paren — hand-computed so the location assertion below is an
+    // independent oracle, not derived from the implementation under test.
+    let path = write_plugin(&dir, "located.scm", "(define x 1)\n(call-does-not-exist)\n");
+    let id = plugin_id("core:located");
+    let mut host = ScriptingHost::new();
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Declared { path });
+
+    let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
+    assert!(
+        result.is_ok(),
+        "must be contained, not propagate; got: {result:?}"
+    );
+
+    let messages = host.peek_pending_messages();
+    assert_eq!(
+        messages.len(),
+        1,
+        "exactly one failure message expected; got: {messages:?}"
+    );
+    let (level, msg) = &messages[0];
+    assert!(
+        matches!(level, crate::log::LogLevel::Error),
+        "must be logged at Error; got: {level:?}"
+    );
+    assert!(
+        msg.contains("core:located"),
+        "must name the plugin; got: {msg}"
+    );
+    assert!(
+        msg.contains("located.scm"),
+        "must name the failing file, not just init.scm; got: {msg}"
+    );
+    assert!(
+        msg.contains(":2:2"),
+        "must point at line 2, column 2 — where the bad identifier starts; got: {msg}"
+    );
+    assert!(
+        msg.contains("call-does-not-exist"),
+        "must name the bad identifier; got: {msg}"
+    );
+    assert!(
+        !msg.contains("bootstrap.scm") && !msg.contains("meta-continuation"),
+        "must not leak bootstrap.scm's own activation-plumbing frames; got: {msg}"
     );
 }
 
@@ -273,7 +345,8 @@ fn begin_lazy_activation_loading_returns_false() {
     );
 }
 
-/// `%finish-lazy-activation` with success=true transitions to `Loaded`.
+/// `%finish-lazy-activation` with `error = #f` (no exception caught)
+/// transitions to `Loaded`.
 #[test]
 fn finish_lazy_activation_success_transitions_to_loaded() {
     let id = plugin_id("core:finishing");
@@ -285,7 +358,7 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
     // Seed the stack as begin_lazy_activation would have done.
     host.push_plugin_for_test(id.clone());
 
-    let program = r#"(%finish-lazy-activation "core:finishing" #t)"#;
+    let program = r#"(%finish-lazy-activation "core:finishing" #f)"#;
     host.eval_source(program, &mut NullHost).unwrap();
 
     assert!(
@@ -302,7 +375,12 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
     );
 }
 
-/// `%finish-lazy-activation` with success=false transitions to `Failed`.
+/// `%finish-lazy-activation` with `error` bound to a caught exception value
+/// transitions to `Failed`. `(with-handler (lambda (e) e) (error …))` is the
+/// idiomatic way to get that exact value in hand outside an actual
+/// `with-handler`-wrapped activation body — Steel hands the raised
+/// `SteelErr`'s `into_steelval()` form to the handler lambda, which here
+/// just returns it.
 #[test]
 fn finish_lazy_activation_failure_transitions_to_failed() {
     let id = plugin_id("core:failing");
@@ -313,7 +391,10 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
         .insert(id.clone(), PluginState::Loading);
     host.push_plugin_for_test(id.clone());
 
-    let program = r#"(%finish-lazy-activation "core:failing" #f)"#;
+    let program = r#"
+(define err-val (with-handler (lambda (e) e) (error "intentional")))
+(%finish-lazy-activation "core:failing" err-val)
+"#;
     host.eval_source(program, &mut NullHost).unwrap();
 
     assert!(
@@ -352,7 +433,10 @@ fn partial_define_before_failure_is_rolled_back() {
 
     let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
 
-    assert!(result.is_err(), "activation must fail on intentional error");
+    assert!(
+        result.is_ok(),
+        "a failed plugin activation must be contained, not propagate; got: {result:?}"
+    );
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id),
@@ -396,7 +480,10 @@ fn queued_effects_before_failure_are_rolled_back() {
 
     let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
 
-    assert!(result.is_err(), "activation must fail on intentional error");
+    assert!(
+        result.is_ok(),
+        "a failed plugin activation must be contained, not propagate; got: {result:?}"
+    );
     assert!(
         host.effects_for_test().is_empty(),
         "failed activation must not leave a queued LSP server op or language registration behind"
@@ -501,7 +588,9 @@ fn committed_activation_effects_survive_failed_outer_command() {
 /// committed `register-lsp-server!` must survive B's own rollback — C is
 /// `Loaded` and its effect is irreversible-by-omission, same reasoning as
 /// the outer-command case above, but exercised through nested
-/// `pop_effect_marks` calls instead of `take_eval_effects` alone.
+/// `pop_effect_marks` calls instead of `take_eval_effects` alone. B's own
+/// failure is contained (`activate_plugin_inline` returns `Ok`), so C's
+/// effect surfaces through the success path, not a salvaged `EvalError`.
 #[test]
 fn nested_activation_commit_survives_enclosing_plugin_failure() {
     use crate::host::EditorHost;
@@ -542,21 +631,19 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
 
     let result = host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins());
 
-    let err = result.expect_err("B's intentional error must propagate");
-    assert!(err.message.contains("b fails"), "got: {}", err.message);
+    let effects = result.expect("B's failure must be contained, not propagate");
     assert_eq!(
-        err.effects.len(),
+        effects.len(),
         1,
-        "only C's committed register-lsp-server! must survive; got: {:?}",
-        err.effects
+        "only C's committed register-lsp-server! must survive; got: {effects:?}"
     );
     assert!(
         matches!(
-            &err.effects[0],
+            &effects[0],
             Effect::LspServerOp(PendingLspServerOp::Register(reg)) if reg.language == "c-lang"
         ),
         "surviving effect must be C's 'c-lang' registration, not B's 'b-lang'; got: {:?}",
-        err.effects[0]
+        effects[0]
     );
     assert!(
         matches!(
@@ -579,6 +666,15 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
     assert!(
         host.effects_for_test().is_empty(),
         "the effect log must be fully drained after take_eval_effects"
+    );
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(level, msg)| {
+            matches!(level, crate::log::LogLevel::Error)
+                && msg.contains("core:b")
+                && msg.contains("b fails")
+        }),
+        "must log an Error naming B and its failure; messages: {messages:?}"
     );
 }
 
@@ -607,7 +703,10 @@ fn hook_registered_before_failure_is_rolled_back() {
 
     let result = host.activate_plugin_inline(&id, 10_000, &mut NullHost, &no_builtins());
 
-    assert!(result.is_err(), "activation must fail on intentional error");
+    assert!(
+        result.is_ok(),
+        "a failed plugin activation must be contained, not propagate; got: {result:?}"
+    );
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id),
@@ -667,7 +766,10 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
 
     let result = host.activate_plugin_inline(&id_b, 10_000, &mut editor_host, &no_builtins());
 
-    assert!(result.is_err(), "B's intentional error must propagate");
+    assert!(
+        result.is_ok(),
+        "a failed plugin activation must be contained, not propagate; got: {result:?}"
+    );
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id_b),
@@ -741,5 +843,222 @@ fn lazy_plugin_can_define_its_own_activation_command() {
     assert!(
         host.registries.command_table.contains_key("self-act-cmd"),
         "self-act-cmd must be in command_table after activation"
+    );
+}
+
+// ── Interrupt during activation aborts the enclosing eval ─────────────────
+
+/// A's body raises via `(hume/yield!)` while the interrupt flag is already
+/// set (a real budget exhaustion sets this flag the same way — see
+/// `EvalWatchdog`): A's own activation is contained exactly as any other
+/// body error (Failed, rolled back), but the interrupt itself must not be —
+/// it must abort the whole eval before B ever loads. Without that,
+/// `%dispatch-command`'s later `(load-plugin "core:b")` would run past an
+/// exhausted budget, and B would falsely be blamed as "failed to load" for
+/// hitting the same still-set flag on its own first `(hume/yield!)`.
+///
+/// Fail oracle: without `%activate-plugin-inline`'s post-`with-handler`
+/// `(hume/yield!)` re-check, this returns `Ok` and B ends up `Loaded`.
+#[test]
+fn interrupt_during_activation_aborts_before_next_plugin_loads() {
+    use crate::null_host::LazyStubHost;
+    use std::sync::atomic::Ordering;
+
+    let dir = TempDir::new().unwrap();
+    let path_a = write_plugin(&dir, "a.scm", "(hume/yield!)");
+    let path_b = write_plugin(
+        &dir,
+        "b.scm",
+        r#"(define-command! "b-cmd" "doc" (lambda () 0))"#,
+    );
+    let id_a = plugin_id("core:a");
+    let id_b = plugin_id("core:b");
+    let mut host = ScriptingHost::new();
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id_a.clone(), PluginState::Declared { path: path_a });
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id_b.clone(), PluginState::Declared { path: path_b });
+
+    host.interrupt_flag_for_test()
+        .store(true, Ordering::Relaxed);
+
+    let src = r#"(load-plugin "core:a") (load-plugin "core:b")"#;
+    let result = host.eval_source(src, &mut LazyStubHost::default());
+
+    assert!(
+        result.is_err(),
+        "an interrupt mid-activation must abort the whole eval; got: {result:?}"
+    );
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id_a),
+            Some(PluginState::Failed)
+        ),
+        "A's own activation is still contained and Failed, not silently swallowed"
+    );
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id_b),
+            Some(PluginState::Declared { .. })
+        ),
+        "B must never have been reached once the abort fired"
+    );
+}
+
+// ── `call!` of a command owned by a Failed plugin ──────────────────────────
+
+/// A lazy plugin's command is `call!`ed (e.g. from another plugin's body);
+/// activation runs inline, fails, and is contained. `%dispatch-command`
+/// must not then fall through to `%call-native!` and silently return `#f`
+/// as if the name were simply unknown — the plugin failed, and the caller
+/// needs to know that, not receive a value indistinguishable from success.
+///
+/// Fail oracle: without the `%lazy-command-owner` check after a failed
+/// inline activation, this returns `Ok` with the native-command-miss log
+/// message instead of erroring.
+#[test]
+fn call_of_command_owned_by_newly_failed_plugin_errors() {
+    use crate::host::EditorHost;
+    use crate::null_host::LazyStubHost;
+
+    let dir = TempDir::new().unwrap();
+    let path = write_plugin(&dir, "broken.scm", r#"(error "broken body")"#);
+    let id = plugin_id("core:broken");
+    let mut host = ScriptingHost::new();
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Declared { path });
+
+    let mut editor_host = LazyStubHost::default();
+    editor_host
+        .commands()
+        .register_lazy_command("broken-cmd", &id)
+        .expect("stub claim must succeed on a fresh host");
+
+    let err = host
+        .eval_source(r#"(call! "broken-cmd")"#, &mut editor_host)
+        .expect_err("call! of a command whose owner just failed to load must error");
+
+    assert!(
+        err.contains("core:broken") && err.contains("broken-cmd"),
+        "error must name both the failed plugin and the command that couldn't be reached; got: {err}"
+    );
+}
+
+// ── Manifest-declare rollback on a later error ─────────────────────────────
+
+/// `manifest.scm` successfully declares itself with `#:commands` (a real,
+/// direct `%declare-plugin!` call, not the zero-trigger path) and then a
+/// later top-level form in the same file raises. The plugin must end up
+/// `Failed` with no live command stub — not left half-`Declared` with a
+/// callable stub for a plugin whose manifest never finished evaluating.
+///
+/// Fail oracle: without rolling the plugin back to `Failed` in
+/// `finish_manifest_declare`'s error branch, `lazy_registry.plugins` stays
+/// `Declared` and the stub remains claimable.
+#[test]
+fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
+    use crate::host::EditorHost;
+    use crate::null_host::LazyStubHost;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("selfdecl");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    // The full (non-zero-trigger) `declare-plugin` inside manifest.scm only
+    // registers `Declared` state once `plugin.scm` resolves on disk — absent,
+    // it soft-logs and no-ops, which would make this test pass for the wrong
+    // reason (never-declared, not rolled-back-after-declared).
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+    std::fs::write(
+        plugin_dir.join("manifest.scm"),
+        br#"(declare-plugin "user/selfdecl" #:commands '("selfdecl-cmd"))
+            (error "manifest body fails after self-declare")"#,
+    )
+    .unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    let mut editor_host = LazyStubHost::default();
+
+    let result = host.eval_source(r#"(declare-plugin "user/selfdecl")"#, &mut editor_host);
+
+    assert!(
+        result.is_ok(),
+        "a failed manifest resolution must be contained, not propagate; got: {result:?}"
+    );
+
+    let id = plugin_id("user/selfdecl");
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id),
+            Some(PluginState::Failed)
+        ),
+        "the plugin's own self-declare must be rolled back to Failed, not left Declared; got: {:?}",
+        host.registries.lazy_registry.plugins.get(&id)
+    );
+    assert!(
+        editor_host
+            .commands()
+            .lazy_command_owner("selfdecl-cmd")
+            .is_none(),
+        "the self-declared command stub must not survive the manifest's own later failure"
+    );
+}
+
+// ── `%finish-lazy-activation` balances stack/marks even on a bad `error` ──
+
+/// `(%finish-lazy-activation id garbage)` where `garbage` decodes as
+/// neither `#f` nor a caught error value: the plugin stack and the
+/// activation-effect marks must still be popped and balanced — a decode
+/// failure must become the failure *reason*, not skip the bookkeeping that
+/// every other failure path performs. `%begin-lazy-activation` and a queued
+/// `register-lsp-server!` run first in the same eval, since
+/// `activation_effect_marks` is per-eval transient state (rebuilt fresh in
+/// every `SteelCtx`) — only observable by whether its own effect survives.
+///
+/// Fail oracle: with the old `optional_steel_error_arg(error, ...)?`
+/// short-circuiting before `plugin_stack.pop()`/`pop_effect_marks`, both
+/// assertions below fail — the stack stays at depth 1 and the queued
+/// `register-lsp-server!` effect is never rolled back.
+#[test]
+fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
+    let dir = TempDir::new().unwrap();
+    let path = write_plugin(&dir, "badvalue.scm", "(define x 1)");
+    let id = plugin_id("core:badvalue");
+    let mut host = ScriptingHost::new();
+    host.registries
+        .lazy_registry
+        .plugins
+        .insert(id.clone(), PluginState::Declared { path });
+
+    let program = r#"
+        (%begin-lazy-activation "core:badvalue")
+        (register-lsp-server! "badvalue-lang" #:command "bv")
+        (%finish-lazy-activation "core:badvalue" 42)
+    "#;
+    host.eval_source(program, &mut NullHost)
+        .expect("a bad error value must be folded into the failure, not raised");
+
+    assert_eq!(
+        host.plugin_stack_depth_for_test(),
+        0,
+        "plugin_stack must be popped even when the error value fails to decode"
+    );
+    assert!(
+        host.effects_for_test().is_empty(),
+        "the queued register-lsp-server! must be rolled back — the activation-effect \
+         mark must be popped even when the error value fails to decode"
+    );
+    assert!(
+        matches!(
+            host.registries.lazy_registry.plugins.get(&id),
+            Some(PluginState::Failed)
+        ),
+        "an undecodable error value must still fail the plugin, not leave it Loading"
     );
 }

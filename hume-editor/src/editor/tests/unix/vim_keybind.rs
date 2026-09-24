@@ -425,9 +425,9 @@ fn shift_d_is_dot_repeatable() {
 // ── core:stdlib dependency check ───────────────────────────────────────────────
 
 /// Loading `core:vim-keybind` with the default `'smart` `change-to-eol` but
-/// without `core:stdlib` loaded first must fail `eval_init` at load time,
-/// naming `core:stdlib` — not silently succeed and leave `C` picking the
-/// wrong branch the first time it's pressed.
+/// without `core:stdlib` loaded first must fail to load (contained, not
+/// aborting `eval_init`), naming `core:stdlib` — not silently succeed and
+/// leave `C` picking the wrong branch the first time it's pressed.
 #[test]
 fn smart_change_to_eol_without_stdlib_errors_at_load() {
     let guard = HumeRuntimeGuard::new();
@@ -440,14 +440,17 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
-    let err = {
+    {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect_err("'smart change-to-eol without core:stdlib must fail eval_init");
+    .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
-        err.message.contains("core:stdlib"),
-        "error must name the missing dependency; got: {err:?}"
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
+        }),
+        "error must name the missing dependency; got: {:?}",
+        host.peek_pending_messages()
     );
 }
 
@@ -472,14 +475,17 @@ fn change_to_eol_off_also_requires_stdlib() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
-    let err = {
+    {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect_err("'off change-to-eol without core:stdlib must fail eval_init");
+    .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
-        err.message.contains("core:stdlib"),
-        "error must name the missing dependency; got: {err:?}"
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error) && msg.contains("core:stdlib")
+        }),
+        "error must name the missing dependency; got: {:?}",
+        host.peek_pending_messages()
     );
 }
 
@@ -503,16 +509,19 @@ fn change_to_eol_bogus_value_fails_load_with_enum_message() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
-    let err = {
+    {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect_err("a bogus change-to-eol value must fail eval_init");
+    .expect("a failed plugin load must be contained, not abort eval_init");
     assert!(
-        err.message.contains("core:vim-keybind")
-            && err.message.contains("change-to-eol")
-            && err.message.contains("bogus"),
+        host.peek_pending_messages().iter().any(|(level, msg)| {
+            matches!(level, hume_scripting::LogLevel::Error)
+                && msg.contains("core:vim-keybind")
+                && msg.contains("change-to-eol")
+                && msg.contains("bogus")
+        }),
         "error must name the plugin, the key, and the offending value; got: {:?}",
-        err.message
+        host.peek_pending_messages()
     );
 }

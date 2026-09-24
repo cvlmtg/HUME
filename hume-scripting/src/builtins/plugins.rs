@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::SteelResult;
-use super::args::{list_items, list_to_strings};
+use super::args::{list_items, list_to_strings, optional_steel_error_arg};
 use super::errors::generic_err;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -575,11 +575,20 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     Ok(SteelVal::StringV(require_program.into()))
 }
 
-/// `(%finish-lazy-activation id-str success?)` — Rust primitive for inline
+/// `(%finish-lazy-activation id-str error)` — Rust primitive for inline
 /// activation. Called from `%activate-plugin-inline` after
-/// `(hm.eval-string …)` completes or fails. Pops `plugin_stack` and
+/// `(hm.eval-string …)` completes or fails — `error` is `#f` on success, or
+/// the caught `with-handler` exception value on failure (a `SteelVal`
+/// decodable back to the `SteelErr` that was raised, span included, via
+/// `SteelErr`'s `Custom`/`FromSteelVal` impl). Pops `plugin_stack` and
 /// transitions the plugin to `Loaded`/`Failed`; `drop_activations_for` runs
 /// on both paths to clean up expired activation entries.
+///
+/// A failure is recorded into `ctx.failed_activations` rather than
+/// propagated — `%activate-plugin-inline`'s `with-handler` does not re-raise
+/// (see `bootstrap.scm`), so a plugin failing to load never aborts the
+/// enclosing `init.scm`/command/hook eval. `run_steel_session` reports each
+/// recorded failure by name once the session ends.
 ///
 /// On failure, rolls back everything the partially-evaluated body
 /// registered, so a `Failed` plugin leaves no live footprint: commands
@@ -615,23 +624,24 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,
-    success: bool,
+    error: SteelVal,
 ) -> SteelResult {
+    // `plugin_stack.pop()` and `pop_effect_marks` below must run
+    // unconditionally, before any fallible decode — `begin_lazy_activation`
+    // pushed both unconditionally, and this is their only pairing site. A
+    // `?` short-circuit on `error`'s decode here would leave them
+    // permanently unbalanced whenever `error` fails to decode as `#f` or a
+    // caught error value — skewing `EvalMode` for the rest of the session
+    // and leaking the queued effects a never-popped mark hides. A decode
+    // failure becomes the failure *reason* instead: `unwrap_or_else` folds
+    // it into `Some`, same shape as a body's own raised error.
+    ctx.plugin_stack.pop();
+    let error = optional_steel_error_arg(error, "%finish-lazy-activation").unwrap_or_else(Some);
+    ctx.pop_effect_marks(error.is_none());
+
     let id = PluginId::parse(&id_str).map_err(generic_err)?;
 
-    ctx.plugin_stack.pop();
-    ctx.pop_effect_marks(success);
-
-    if success {
-        ctx.registries
-            .lazy_registry
-            .plugins
-            .insert(id.clone(), PluginState::Loaded);
-        ctx.registries.lazy_registry.drop_activations_for(&id);
-        // Drop any `Lazy` stub the plugin didn't replace via `define-command!` —
-        // dead weight now that the plugin is Loaded and won't re-run its body.
-        ctx.host.commands().unregister_lazy_stubs_of(&id);
-    } else {
+    if let Some(err) = error {
         fail_plugin_activation(ctx, &id);
         // Roll back any commands the failed body partially registered.
         let owned_by_this_plugin = Owner::Plugin(id.clone());
@@ -654,6 +664,17 @@ pub(crate) fn finish_lazy_activation(
 
         // Roll back hooks the failed body registered.
         ctx.registries.hooks.remove_owned_by(&id);
+
+        ctx.failed_activations.push((id, err));
+    } else {
+        ctx.registries
+            .lazy_registry
+            .plugins
+            .insert(id.clone(), PluginState::Loaded);
+        ctx.registries.lazy_registry.drop_activations_for(&id);
+        // Drop any `Lazy` stub the plugin didn't replace via `define-command!` —
+        // dead weight now that the plugin is Loaded and won't re-run its body.
+        ctx.host.commands().unregister_lazy_stubs_of(&id);
     }
 
     Ok(SteelVal::Void)
@@ -747,31 +768,75 @@ pub(crate) fn begin_manifest_declare(
         .plugin_configs
         .insert(plugin_id.clone(), config);
     ctx.manifest_resolving = Some(plugin_id);
+    // Mirrors `begin_lazy_activation`'s own mark: anything manifest.scm
+    // queues (`register-lsp-server!`, a nested activation, …) rolls back
+    // with the rest of a failed resolution — see `finish_manifest_declare`'s
+    // `pop_effect_marks` call.
+    ctx.mark_effects();
 
     Ok(SteelVal::StringV(require_program.into()))
 }
 
-/// `(%finish-manifest-declare! name success?)` — Rust primitive; the tail half
-/// of the zero-trigger `declare-plugin` path (mirrors `%finish-lazy-activation`).
+/// `(%finish-manifest-declare! name error)` — Rust primitive; the tail half
+/// of the zero-trigger `declare-plugin` path (mirrors `%finish-lazy-activation`,
+/// including its `error` argument convention and its unconditional-before-
+/// any-fallible-decode ordering — see that function's doc for why).
 ///
-/// Clears `manifest_resolving` unconditionally. On success, verifies the
+/// Clears `manifest_resolving` and pops the effect mark `begin_manifest_declare`
+/// pushed unconditionally, before decoding `error`. On success, verifies the
 /// manifest actually declared the plugin — a `manifest.scm` that evaluates
 /// without error but never calls `declare-plugin` would otherwise leave the
-/// plugin silently undeclared.
+/// plugin silently undeclared; that check's own failure is raised, caught by
+/// the same `with-handler` in `bootstrap.scm`, and reaches this function a
+/// second time as a genuine failure. On failure, rolls the plugin back to
+/// `Failed` via `fail_plugin_activation` (same helper a lazy activation
+/// failure uses) and drops its `plugin_configs` entry — undoing a self-declare
+/// manifest.scm committed before a later top-level form in the same file
+/// raised (see the `Some(err)` arm below) — then records the failure exactly
+/// like a body error into `ctx.failed_activations` (see `run_steel_session`).
 pub(crate) fn finish_manifest_declare(
     ctx: &mut SteelCtx,
     name: String,
-    success: bool,
+    error: SteelVal,
 ) -> SteelResult {
-    let id = PluginId::parse(&name).map_err(generic_err)?;
+    // `manifest_resolving` must clear unconditionally, before any fallible
+    // decode, mirroring `finish_lazy_activation`'s stack/marks discipline —
+    // otherwise a decode failure would leave manifest resolution permanently
+    // "in progress", and every later zero-trigger `declare-plugin` would
+    // hard-error on `begin_manifest_declare`'s reentrancy guard.
     ctx.manifest_resolving = None;
+    let error = optional_steel_error_arg(error, "%finish-manifest-declare!").unwrap_or_else(Some);
+    ctx.pop_effect_marks(error.is_none());
 
-    if success && !ctx.registries.lazy_registry.plugins.contains_key(&id) {
-        return Err(generic_err(format!(
-            "declare-plugin: manifest.scm for '{name}' did not declare '{name}' — a \
-             manifest.scm must call (declare-plugin \"{name}\" …) with at least one \
-             activation entry"
-        )));
+    let id = PluginId::parse(&name).map_err(generic_err)?;
+
+    match error {
+        None if !ctx.registries.lazy_registry.plugins.contains_key(&id) => {
+            return Err(generic_err(format!(
+                "declare-plugin: manifest.scm for '{name}' did not declare '{name}' — a \
+                 manifest.scm must call (declare-plugin \"{name}\" …) with at least one \
+                 activation entry"
+            )));
+        }
+        None => {}
+        Some(err) => {
+            // A manifest can self-declare (a direct, non-zero-trigger
+            // `declare-plugin` call inside manifest.scm — see
+            // `begin_manifest_declare`'s own doc for how `manifest_resolving`
+            // licenses it) before a *later* top-level form in the same file
+            // raises. `hm.eval-string` runs manifest.scm as one program, so
+            // that self-declare's `Declared` state is already committed —
+            // rolling the whole manifest resolution back to `Failed` (the
+            // same helper a lazy activation failure uses) undoes it, so a
+            // half-evaluated manifest.scm never leaves a live command stub
+            // behind for a plugin the user was just told failed to load.
+            // `declared_plugins` (the flat PLUM-visible list) is untouched —
+            // `fail_plugin_activation` never touches it — so PLUM still
+            // offers to install/update the plugin.
+            fail_plugin_activation(ctx, &id);
+            ctx.registries.plugin_configs.remove(&id);
+            ctx.failed_activations.push((id, err));
+        }
     }
 
     Ok(SteelVal::Void)

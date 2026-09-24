@@ -49,6 +49,12 @@ Shows all declared plugins, whether they loaded successfully, and which commands
 
 Reloads `init.scm` from scratch. Useful after editing your config without restarting the editor.
 
+## Recovering from a failed plugin
+
+A plugin that fails to load doesn't stop the rest of `init.scm` — every plugin after it still loads, and every plugin declared or loaded before it is unaffected. Check `:messages` for the error; it names the plugin and points at the file and line the problem is in. `:plugin-status` shows it as failed alongside everything else.
+
+If the failing plugin came from a git repository (rather than one you're editing yourself), it may already have a fix upstream: run `:plum-update-plugins` to pull the latest version of every installed plugin, then `:reload-config` to try again. This works even for a plugin that failed on the very first line of your config — loading it never depends on anything declared or loaded after it.
+
 ## How plugins are loaded
 
 There are two ways to bring a plugin into the editor from `init.scm`:

@@ -593,23 +593,31 @@ impl ScriptingHost {
     ///   normal — `effects` is empty) or if eval succeeds, with every effect
     ///   this file's eval queued, in emission order.  Commands defined during
     ///   eval are registered into the `CommandRegistry` inline via
-    ///   `host.register_command`.
-    /// - Returns `Err(EvalError)` if the file exists but fails to parse or
-    ///   evaluate; the failed eval's own queued effects are discarded, except
-    ///   any committed by a nested successful plugin activation, which are
+    ///   `host.register_command`. A plugin (`load-plugin`/`declare-plugin`)
+    ///   body raising is contained here too, not a cause of `Err` — its own
+    ///   activation is atomically rolled back (see
+    ///   `builtins::plugins::finish_lazy_activation`), reported by name and
+    ///   location as an `Error`-severity pending message (drained by
+    ///   `take_pending_messages`; queued from `activation::run_steel_session`),
+    ///   and the rest of the file keeps running — a broken third-party
+    ///   plugin never blocks a `core:plum` declared later in the same file
+    ///   from being reached.
+    /// - Returns `Err(EvalError)` if the file exists but fails to parse, or
+    ///   a top-level form outside any plugin/manifest body raises; the
+    ///   failed eval's own queued effects are discarded, except any
+    ///   committed by a nested successful plugin activation, which are
     ///   salvaged onto the error (see `take_eval_effects`).  The caller is
-    ///   responsible for applying `EvalError::effects` and surfacing the error.
+    ///   responsible for applying `EvalError::effects` and surfacing the
+    ///   error.
     ///
-    /// Atomicity is **not** all-or-nothing across the whole file: only
-    /// deferred effects (keybinds, LSP registration, …) roll back on error.
-    /// `define-command!` and `register-hook!` mutate `command_table` /
-    /// `HookRegistry` inline the instant the builtin runs (see
-    /// `builtins::commands`/`builtins::hooks`), so a `define-command!` or
-    /// `register-hook!` that ran before the failing form stays live in the
-    /// degraded session — only *plugin activation* (`declare-plugin` bodies)
-    /// is a true atomic unit with full command/hook rollback (see
-    /// `builtins::plugins::finish_lazy_activation`). This is deliberate: a
-    /// config error already surfaces to the user, and `:reload-config`
+    /// Atomicity is **not** all-or-nothing across the whole file even for
+    /// this genuine top-level case: only deferred effects (keybinds, LSP
+    /// registration, …) roll back on error. `define-command!` and
+    /// `register-hook!` mutate `command_table` / `HookRegistry` inline the
+    /// instant the builtin runs (see `builtins::commands`/`builtins::hooks`),
+    /// so a `define-command!` or `register-hook!` that ran before the
+    /// failing form stays live in the degraded session. This is deliberate:
+    /// a config error already surfaces to the user, and `:reload-config`
     /// rebuilds a fresh `ScriptingHost`, so the half-applied state never
     /// accumulates across reloads.
     pub fn eval_init(
