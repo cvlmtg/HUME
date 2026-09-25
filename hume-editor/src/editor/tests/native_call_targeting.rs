@@ -121,10 +121,10 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
 
 // ── Two categories only: every native command needs a pane ────────────────
 
-/// The commands that used to be `Buffer`/`Global` category. Every native
-/// mappable command now acts through a pane — even one that reads only its
-/// buffer (`clear-search`'s search cursor lives on the pane), and every one
-/// that moves or reads focus-bound state is `Focused`.
+/// Commands that read only their buffer or touch only focus-bound state.
+/// Each still acts through a pane — `clear-search`'s search cursor lives on
+/// the pane — and every one that moves or reads focus-bound state is
+/// `FocusedPane`-category.
 const FORMERLY_PANELESS: [&str; 6] = [
     "clear-search",
     "tab-new",
