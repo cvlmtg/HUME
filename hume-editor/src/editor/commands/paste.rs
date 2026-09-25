@@ -5,10 +5,12 @@
 //! share the word "paste".
 //!
 //! This module owns opening/closing the `EditSessionKind::Paste` variant of
-//! `EditorState::active_session` directly (`do_paste`, `commit_paste_session`)
-//! rather than going through `doc_ops::begin_edit_group`/`commit_edit_group`,
-//! which only ever construct the `Insert` variant — a paste session's own
-//! `before` direction has nowhere to live in those. `PaneBufferState::kill_opened_session`
+//! `EditorState::active_session` (`do_paste`, `commit_paste_session`) via
+//! `edit_session::open_or_retarget` — the same primitive
+//! `doc_ops::begin_edit_group` uses for the `Insert` variant — rather than
+//! `doc_ops::begin_edit_group`/`commit_edit_group` themselves, which are
+//! typed to `Insert` alone: a paste session's own `before` direction has
+//! nowhere to live in those. `PaneBufferState::kill_opened_session`
 //! (`pane_state.rs`) stays put; pane state is the SSOT for per-(pane, buffer)
 //! facts unrelated to session ownership, and this module reaches into it
 //! rather than owning it.
@@ -23,7 +25,7 @@ use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGI
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
 use super::FocusedPane;
-use crate::editor::edit_session::{EditSession, EditSessionKind};
+use crate::editor::edit_session::{self, EditSessionKind};
 use crate::editor::error::CommandError;
 
 // ── PasteStamp ──────────────────────────────────────────────────────────────
@@ -85,30 +87,19 @@ impl EditorState {
     /// Called before any non-`[`/`]` dispatch so the session is committed
     /// before undo, motions, or the next `p`/`P`.
     ///
-    /// A paste session only ever opens on the focused pane (`do_paste`), so
-    /// there is nothing to scan for and nothing to assert here any more — a
-    /// singleton `active_session` makes "there is at most one, and it's the
-    /// focused pane's" structural rather than a convention to verify. No
-    /// longer needs `&EngineView`: the session names its own pane/buffer
-    /// directly instead of re-deriving them from live focus.
+    /// Reads the session's own recorded pane/buffer (`EditSession::pane`/
+    /// `buffer`), not live focus or `&EngineView` — a paste session only
+    /// ever opens on the focused pane (`do_paste`), but focus can move again
+    /// before this runs, and the session's own record is what stays correct
+    /// regardless. Thin wrapper around [`doc_ops::commit_paste_group`], the
+    /// same commit `doc_ops::apply_doc_edit` uses to close a same-pane Paste
+    /// session before an unrelated direct edit.
     pub(in crate::editor) fn commit_paste_session(&mut self) {
-        let is_paste = matches!(
-            self.active_session,
-            Some(EditSession {
-                kind: EditSessionKind::Paste { .. },
-                ..
-            })
+        doc_ops::commit_paste_group(
+            &mut self.buffers,
+            &self.panes.state,
+            &mut self.active_session,
         );
-        if !is_paste {
-            return;
-        }
-        let session = self.active_session.take().expect("checked above");
-        let post_sels = self.panes.state[session.pane][session.buffer]
-            .selections()
-            .clone();
-        self.buffers
-            .get_mut(session.buffer)
-            .commit_edit_group(session.group, post_sels);
     }
 }
 
@@ -183,6 +174,14 @@ struct ResolvedPaste {
 /// resolve the source and (for smart paste) collapse `sels` before calling in.
 ///
 /// `before`: true for `P` (paste before), false for `p` (paste after).
+///
+/// `Err` when a real (non-empty) session is already open — reachable only
+/// through a `call!` (a hook or timer firing mid-typing) or an Insert-mode
+/// binding, since `step_paste_commit` closes a prior *paste* session before
+/// every ordinary dispatch. A dot-repeat replay's own pre-opened, still-
+/// empty session (the common case for a Steel `#:repeatable` wrapper that
+/// calls native paste) is not a conflict: [`edit_session::open_or_retarget`]
+/// retargets it to `Paste` in place instead.
 fn do_paste(
     state: &mut EditorState,
     focused: PaneId,
@@ -190,23 +189,18 @@ fn do_paste(
     before: bool,
     resolved: ResolvedPaste,
     sels: SelectionSet,
-) {
+) -> Result<(), CommandError> {
     let ResolvedPaste { values, from, bare } = resolved;
 
-    debug_assert!(
-        state.active_session.is_none(),
-        "do_paste called with a session already open (step_paste_commit \
-         closes a prior paste session; refuse_during_insert refuses over an Insert one)"
-    );
     let pre_sels = sels.clone();
     state.panes.state[focused][buf].set_selections(sels);
-    let group = state.buffers.get(buf).begin_edit_group(pre_sels);
-    state.active_session = Some(EditSession {
-        pane: focused,
-        buffer: buf,
-        kind: EditSessionKind::Paste { before },
-        group,
-    });
+    edit_session::open_or_retarget(
+        &mut state.active_session,
+        focused,
+        buf,
+        EditSessionKind::Paste { before },
+        || state.buffers.get(buf).begin_edit_group(pre_sels),
+    )?;
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut state.buffers,
@@ -236,6 +230,7 @@ fn do_paste(
         Some(PasteSource::Clipboard) | None => None,
     };
     state.kill_ring.seed_cycle(ring_seed);
+    Ok(())
 }
 
 /// Resolve values for a fresh paste against an explicit `"<reg>` prefix.
@@ -359,22 +354,31 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
     }
 }
 
-/// Refuse a paste while an Insert session is open. Reachable only through a
-/// `call!` (a hook or timer firing mid-typing) or an Insert-mode binding —
-/// `step_paste_commit` closes a prior *paste* session before every dispatch,
-/// but leaves an Insert one alone, and opening a paste session over it would
-/// replace the Insert group in `EditorState::active_session`'s single slot,
-/// losing every keystroke typed so far from undo. Every open session lives on
-/// the focused pane, which is the only pane a paste acts through, so no pane
-/// comparison is needed.
-fn refuse_during_insert(state: &EditorState) -> Result<(), CommandError> {
-    let insert_open = state
+/// Refuse a paste while a real (non-empty) session is open on `(pane, buf)`,
+/// or any session is open elsewhere — checked *before* the caller takes the
+/// live selection, so a refusal leaves it untouched instead of stranding it
+/// in `SelectionSet::default()` (`do_paste`'s own `open_or_retarget` call
+/// would catch the same conflict, but only after the caller has already
+/// taken the selection to build `sels` from).
+///
+/// Reachable only through a `call!` (a hook or timer firing mid-typing) or
+/// an Insert-mode binding — `step_paste_commit` closes a prior *paste*
+/// session before every ordinary dispatch. An empty session already open on
+/// `(pane, buf)` (a dot-repeat replay's own speculative pre-open) is not a
+/// conflict: `do_paste`'s `open_or_retarget` call retargets it instead —
+/// see [`EditSession::blocks_open`], the exact predicate this mirrors.
+fn refuse_if_session_blocks(
+    state: &EditorState,
+    pane: PaneId,
+    buf: BufferId,
+) -> Result<(), CommandError> {
+    if state
         .active_session
         .as_ref()
-        .is_some_and(|s| matches!(s.kind, EditSessionKind::Insert));
-    if insert_open {
+        .is_some_and(|s| s.blocks_open(pane, buf))
+    {
         return Err(CommandError::transient(
-            "paste refused: an Insert session is open",
+            "paste refused: an edit session is already open",
         ));
     }
     Ok(())
@@ -390,17 +394,16 @@ fn do_normal_paste(
     fp: FocusedPane,
     before: bool,
 ) -> Result<(), CommandError> {
-    refuse_during_insert(state)?;
+    let (pid, buf) = (fp.pid(), fp.bid(view));
+    refuse_if_session_blocks(state, pid, buf)?;
     if super::refuse_if_read_only(state, view, fp.target()) {
         return Ok(());
     }
     let Some(resolved) = resolve_plain(state) else {
         return Ok(());
     };
-    let (pid, buf) = (fp.pid(), fp.bid(view));
     let sels = state.panes.state[pid][buf].take_selections();
-    do_paste(state, pid, buf, before, resolved, sels);
-    Ok(())
+    do_paste(state, pid, buf, before, resolved, sels)
 }
 
 /// Smart paste: resolve from the stamp-driven source (ring while nothing has
@@ -414,21 +417,20 @@ fn do_smart_paste(
     fp: FocusedPane,
     before: bool,
 ) -> Result<(), CommandError> {
-    refuse_during_insert(state)?;
+    let (pid, buf) = (fp.pid(), fp.bid(view));
+    refuse_if_session_blocks(state, pid, buf)?;
     if super::refuse_if_read_only(state, view, fp.target()) {
         return Ok(());
     }
     let Some(resolved) = resolve_smart(state) else {
         return Ok(());
     };
-    let (pid, buf) = (fp.pid(), fp.bid(view));
     let mut sels = state.panes.state[pid][buf].take_selections();
     if resolved.bare {
         let text = state.buffers.get(buf).text();
         sels = collapse_if_repeat(text, sels, &resolved.values, before);
     }
-    do_paste(state, pid, buf, before, resolved, sels);
-    Ok(())
+    do_paste(state, pid, buf, before, resolved, sels)
 }
 
 /// Paste after the selection: plain paste, kill-ring head by default.

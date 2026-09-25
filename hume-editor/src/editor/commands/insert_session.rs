@@ -9,6 +9,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 use crate::editor::EditorState;
 use crate::editor::buffer::LastInsert;
 use crate::editor::doc_ops;
+use crate::editor::error::CommandError;
 use crate::editor::pane_state::{PaneBufferState, TypedRun};
 use crate::editor::replay::InsertSession;
 use hume_ops::edit::clear_blank_line_indent;
@@ -167,9 +168,13 @@ pub(super) fn begin_typed_run(
 /// itself a genuine register-consuming operator that delegates its mode
 /// switch here before its own `state.route_kill` reads the prefix — see
 /// [`begin_insert_session_preserving_register`], which it calls instead.
-pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView, fp: FocusedPane) {
+pub(super) fn begin_insert_session(
+    state: &mut EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+) -> Result<(), CommandError> {
     state.register_prefix = None;
-    begin_insert_session_preserving_register(state, view, fp);
+    begin_insert_session_preserving_register(state, view, fp)
 }
 
 /// [`begin_insert_session`] without clearing `register_prefix` first — for a
@@ -180,9 +185,9 @@ pub(super) fn begin_insert_session_preserving_register(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
-) {
+) -> Result<(), CommandError> {
     if refuse_if_read_only(state, view, fp.target()) {
-        return;
+        return Ok(());
     }
     // Guard is load-bearing for dot-repeat replay: `replay_dot` opens
     // an edit group before re-dispatching the command, so a group already being
@@ -195,7 +200,7 @@ pub(super) fn begin_insert_session_preserving_register(
     // transaction / begin-edit-group builtin, and none should ever be added:
     // fine-grained undo grouping belongs to native commands, not scripts.
     if !is_group_open_at(state, view, fp) {
-        begin_edit_group_current(state, view, fp);
+        begin_edit_group_current(state, view, fp)?;
         state.insert_session = Some(InsertSession {
             keystrokes: Vec::new(),
         });
@@ -204,6 +209,7 @@ pub(super) fn begin_insert_session_preserving_register(
         view,
         crate::editor::input_stack::InsertLayer { sticky_popup: None },
     );
+    Ok(())
 }
 
 /// Exit Insert mode: truncates the `Insert` layer, running

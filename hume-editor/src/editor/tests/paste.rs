@@ -1509,3 +1509,52 @@ fn paste_during_an_open_insert_session_is_refused_and_leaves_the_session_intact(
         "one undo must revert the whole Insert session, keystrokes before and after the refusal alike"
     );
 }
+
+/// A direct edit landing while a ring-cycle Paste session is still open on
+/// the same pane — bracketed-paste's own `apply_normal_mode_paste`, which
+/// bypasses the dispatch pipeline (and so never runs `step_paste_commit`) —
+/// must not leave that edit invisible to a following `[`. `doc_ops::
+/// apply_doc_edit` commits the open Paste session first, so `[` (which
+/// requires a *still-open* Paste session to do anything at all) finds none
+/// and no-ops instead of re-pasting from a now-stale snapshot.
+///
+/// Fail oracle: without that commit, the open session's `text_snapshot` is
+/// still the pre-bracketed-paste text. `[` then re-derives the whole buffer
+/// from that stale snapshot (`apply_edit_regrouped`'s own contract: "every
+/// cycle cleanly discards the previous paste output") and calls `set_text`
+/// with the result, silently discarding the bracketed paste along with it —
+/// 'Z' would be missing from the asserted buffer below.
+#[test]
+fn direct_edit_during_open_paste_session_commits_it_first() {
+    let mut ed = editor_from("-[c]>d\n"); // cursor on 'c' at index 0
+    ed.state.kill_ring.push(vec!["X".to_string()]); // slot 1
+    ed.state.kill_ring.push(vec!["Y".to_string()]); // ring=[Y, X]; head=Y
+
+    // "kp: paste-after ring head ("Y") after 'c' → "cYd\n", with a Paste
+    // session left open (native paste always leaves one open, for a
+    // following `[`/`]`) — nothing has dispatched since, so it's still open.
+    ed.feed_key(key('"'));
+    ed.feed_key(key('k'));
+    ed.feed_key(key('p'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "cYd\n",
+        "setup: p must paste Y after the cursor"
+    );
+
+    // Bracketed paste lands directly, bypassing dispatch entirely.
+    ed.feed_paste("Z");
+    assert!(
+        ed.doc().text().to_string().contains('Z'),
+        "setup: the bracketed paste must land"
+    );
+
+    // `[`: cycle to slot 1 ("X"). Must not silently discard 'Z' by
+    // re-pasting from the pre-bracketed-paste snapshot.
+    ed.feed_key(key('['));
+    assert!(
+        ed.doc().text().to_string().contains('Z'),
+        "the direct edit must survive `[` — got {:?}",
+        ed.doc().text().to_string()
+    );
+}

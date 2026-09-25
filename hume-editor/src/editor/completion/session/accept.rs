@@ -115,14 +115,18 @@ impl BufferSession {
         // via `switch_pane_to_buffer`, whose teardown (`focus::
         // end_focus_sessions`, run before its own `buffer_id` write) already
         // removes this session's `BufferCompletionLayer` first, since it
-        // always sits above the `InsertLayer` that teardown truncates. A
-        // mismatch here would mean that ordering broke — worth a canary,
-        // not a `Result` arm no caller can ever legitimately hit.
-        debug_assert_eq!(
-            view.panes.get(self.pane_id).map(|p| p.buffer_id),
-            Some(bid),
-            "completion-accept!: the session's pane no longer shows its buffer"
-        );
+        // always sits above the `InsertLayer` that teardown truncates. Kept
+        // as a real `Err`, not a debug-only assert: if that ordering ever
+        // breaks (a new close/switch path, a plugin-driven pane retarget
+        // that bypasses `switch_pane_to_buffer`), a release build must
+        // refuse rather than silently edit a buffer this pane no longer
+        // shows — the same discipline every other guard in this function
+        // already follows.
+        if view.panes.get(self.pane_id).map(|p| p.buffer_id) != Some(bid) {
+            return Err(
+                "completion-accept!: the session's pane no longer shows its buffer".to_string(),
+            );
+        }
         let pid = self.pane_id;
         let (head_now, heads_now) = {
             let pbs = state.panes.buffer_state(pid, bid).ok_or_else(|| {
@@ -300,11 +304,20 @@ impl BufferSession {
             );
         }
 
-        // Insert mode already has a group open (composing this accept into
-        // the ongoing session); a Steel-triggered accept outside Insert mode
-        // does not, so open one here — both edits below then land as one
-        // undo step regardless of caller.
-        let opened_group = state.active_session.is_none();
+        // Insert mode already has a group open on this exact (pane, buffer)
+        // (composing this accept into the ongoing session); a Steel-
+        // triggered accept outside Insert mode does not, so open one here —
+        // both edits below then land as one undo step regardless of caller.
+        // Checked by kind and owner, not `state.active_session.is_none()`:
+        // a session open on a *different* (pane, buffer), or a non-Insert
+        // one here (e.g. a Paste session from an unrelated `p` keypress),
+        // is a real conflict, and the fallible `begin_edit_group` call below
+        // now reports it as an `Err` instead of this function silently
+        // treating "some session is open" as "the group I need is open."
+        let opened_group = !state
+            .active_session
+            .as_ref()
+            .is_some_and(|s| s.is_insert_at(pid, bid));
         if opened_group {
             crate::editor::doc_ops::begin_edit_group(
                 &state.buffers,
@@ -312,7 +325,8 @@ impl BufferSession {
                 &mut state.active_session,
                 pid,
                 bid,
-            );
+            )
+            .map_err(|e| e.message().to_owned())?;
         }
 
         // additionalTextEdits have no cursor of their own — document-level,

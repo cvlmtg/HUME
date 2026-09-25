@@ -313,6 +313,67 @@ fn accept_after_the_pane_switched_buffers_errors() {
     );
 }
 
+/// A completion accept firing while a *Paste* session (not Insert) is open
+/// on this exact (pane, buffer) — reachable only through a hook, timer, or
+/// async LSP callback bypassing the normal dispatch order, which always
+/// commits a stray paste session before an ordinary keypress runs (`Editor::
+/// dispatch`'s Steel branch unconditionally runs `step_paste_commit` before
+/// a command's own body — including `finish`'s) — must refuse cleanly
+/// instead of panicking. Calls the `CompletionHost::completion_accept`
+/// builtin directly (`live_host!`), the same way a hook's own `call!` or an
+/// async LSP callback reaches it, bypassing `Editor::dispatch` entirely so
+/// the injected session below survives to see it.
+///
+/// Fail oracle: `opened_group` used to be `state.active_session.is_none()`,
+/// which reads *any* open session, of any kind, as "the group I need is
+/// already open" and skips `doc_ops::begin_edit_group` entirely. The later
+/// `apply_doc_edit_grouped` call then requires an *Insert*-kind session on
+/// this (pane, buffer) and `.expect()`-panics on the kind mismatch instead.
+#[test]
+fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
+    use hume_scripting::host::CompletionHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    raw_insert_with_source(
+        &mut ed,
+        tmp.path(),
+        r#"(list (hash "label" "x" "insertText" "z"))"#,
+        ACCEPT_0,
+    );
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
+
+    // `raw_insert_with_source` opens no group at all (see its own doc) — a
+    // Paste session open here is not reachable through it directly, but is
+    // exactly the shape an out-of-band `completion-accept!` could observe.
+    let pid = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+    let text = ed.doc().text().clone();
+    let pre_sels = ed.state.panes.state[pid][bid].selections().clone();
+    ed.state.active_session = Some(crate::editor::edit_session::EditSession {
+        pane: pid,
+        buffer: bid,
+        kind: crate::editor::edit_session::EditSessionKind::Paste { before: false },
+        group: crate::editor::edit_session::EditGroup {
+            cs: Some(hume_editing::changeset::ChangeSet::identity(
+                text.len_chars(),
+            )),
+            text_snapshot: text,
+            pre_sels,
+        },
+    });
+
+    let result = live_host!(ed).completion_accept(0);
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef\n",
+        "nothing must have been written — the buffer must be untouched"
+    );
+    let msg = result.expect_err("must refuse, not panic, while a foreign session is open");
+    assert!(msg.contains("open insert/paste session"), "got {msg:?}");
+}
+
 /// A real (non-collapsed) selection: typing over one is a different edit
 /// than completing at it, and `replace_around_cursors` would force-collapse
 /// it — accept refuses instead of silently discarding the selection.

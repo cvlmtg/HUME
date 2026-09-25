@@ -12,7 +12,8 @@
 
 use hume_engine::pipeline::{EngineView, PaneId};
 
-use super::EditorState;
+use super::edit_session::EditSessionKind;
+use super::{EditorState, doc_ops};
 
 /// See this module's own doc.
 #[derive(Debug, Default, Clone, Copy)]
@@ -57,9 +58,32 @@ impl Focus {
 /// Both calls are no-ops past their own guard (no `Insert` layer open; no
 /// paste session open) whenever nothing is open, so every caller can route
 /// through this unconditionally instead of repeating either check itself.
+///
+/// A third shape neither call recognizes: an Insert-*kind* `EditSession`
+/// with no `InsertLayer` on the mode stack at all — what `Editor::
+/// replay_dot`'s own pre-open produces before its replayed body decides
+/// what it actually needs (see `edit_session::open_or_retarget`'s doc), and
+/// what a plain edit-only repeatable action (no real Insert entry) leaves
+/// open until `replay_dot`'s own tail closes it directly. `end_insert_session`
+/// only acts via the layer, so it's a no-op for this shape; commit it here
+/// directly instead — the chokepoint every focus/buffer-switch path already
+/// runs before removing the `(pane, buffer)` state a later commit would
+/// need to read, so this is the one place that can safely do it before that
+/// state disappears.
 pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &EngineView) {
     super::commands::end_insert_session(state, view);
     state.commit_paste_session();
+    if state
+        .active_session
+        .as_ref()
+        .is_some_and(|s| matches!(s.kind, EditSessionKind::Insert))
+    {
+        doc_ops::commit_edit_group(
+            &mut state.buffers,
+            &state.panes.state,
+            &mut state.active_session,
+        );
+    }
 }
 
 /// Move focus to `pid`, first calling [`end_focus_sessions`] — the one

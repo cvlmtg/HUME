@@ -1712,6 +1712,65 @@ fn steel_repeatable_insert_dot_repeat_single_undo() {
     );
 }
 
+/// A Steel `#:repeatable` command that calls `(call! "paste-after" bid)`,
+/// replayed via `.`, must actually paste — not panic or silently no-op.
+///
+/// `replay_dot` pre-opens an Insert-kind session before every non-
+/// `manages_own_session` command's body runs (every Steel-backed command,
+/// since that flag has no Steel spelling — see `CmdMeta::manages_own_
+/// session`'s doc). `paste-after` itself is native and declares
+/// `manages_own_session`, but a Steel *wrapper* around it inherits none of
+/// that — its own outer meta is always `manages_own_session: false`, so the
+/// pre-open still runs, and `do_paste` must retarget that still-empty
+/// session to `Paste` instead of colliding with it.
+///
+/// Fail oracle: before `edit_session::open_or_retarget`, `do_paste` hit its
+/// own `debug_assert!(state.active_session.is_none(), …)` here — a panic in
+/// this (debug-assertions-on) test build, and in release a silent overwrite
+/// of the pre-opened session that would still leave the paste applied but
+/// corrupt the undo group underneath it.
+#[test]
+fn steel_repeatable_paste_dot_repeat_replays_command() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let f2 = setup_steel_f2(
+        &mut ed,
+        r#"(define-command! "steel-paste" "paste after the cursor"
+             (lambda () (call! "paste-after" (focused-pane)))
+             #:repeatable #t)"#,
+        "steel-paste",
+    );
+
+    // Yank "a" into the kill ring bare.
+    ed.feed_key(key('y'));
+
+    // F2 → steel-paste → pastes "a" after the (still collapsed-on-'a')
+    // cursor: "abc\n" → "aabc\n". Every completed paste leaves the
+    // selection on the freshly pasted text.
+    ed.feed_key(f2);
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "aabc\n",
+        "setup: F2 must paste 'a' once"
+    );
+    {
+        let action = ed
+            .state
+            .last_repeatable_action
+            .as_ref()
+            .expect("last_repeatable_action must be set after steel-paste");
+        assert_eq!(action.command.as_ref(), "steel-paste");
+    }
+
+    // `.` replays steel-paste at the current (post-paste) selection —
+    // pastes "a" again, immediately after the previous one.
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "aaabc\n",
+        "`.` must replay the Steel wrapper and actually paste, not no-op"
+    );
+}
+
 /// The `change` command opens its undo group through `begin_insert_session` (the
 /// only path that opens a group). A Steel `#:repeatable` command wrapping `change`
 /// must create an InsertSession and record `insert_keys` correctly.

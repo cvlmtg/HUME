@@ -76,7 +76,7 @@ pub(in crate::editor) fn cmd_change(
     // Preserving, not `begin_insert_session`: `c` is itself a register-
     // consuming operator (see `state.route_kill` below) — clearing the
     // prefix here would consume it a step too early.
-    begin_insert_session_preserving_register(state, view, fp);
+    begin_insert_session_preserving_register(state, view, fp)?;
     apply_focused_edit_grouped(state, view, fp, delete_selection_content);
     // Pins the anchor `mii` and (if `select-inserted-text` is on) Esc itself
     // reconstruct the typed replacement from — same helper every insert-entry

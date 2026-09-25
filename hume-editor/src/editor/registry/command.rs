@@ -208,12 +208,23 @@ pub(in crate::editor) struct CmdMeta {
     /// `smart-paste-after`/`-before`, `paste-ring-older`/`-newer` — see
     /// `commands::paste`'s `do_paste`/`do_paste_cycle`). `Editor::replay_dot`
     /// reads this to decide whether it may safely pre-open a session before
-    /// dispatching the replayed command (and commit it after): pre-opening
-    /// one for a command in this set would collide with the session that
-    /// command is about to open or continue itself, and committing after
-    /// would end a paste session a live keypress leaves open for a following
-    /// `[`/`]`. Every other command relies on `replay_dot`'s wrapper to fold
-    /// a multi-step recipe replay plus the main edit into one undo revision.
+    /// dispatching the replayed command: pre-opening one for a command in
+    /// this set would collide with the session that command is about to
+    /// open or continue itself — `paste-ring-older`/`-newer` in particular
+    /// need an *already-open* Paste session to find, not a fresh Insert one.
+    /// Every other command relies on `replay_dot`'s wrapper to fold a
+    /// multi-step recipe replay plus the main edit into one undo revision.
+    ///
+    /// Only governs the pre-open decision now, not whether `replay_dot`
+    /// commits afterward — a Steel-backed command can never set this flag
+    /// (see the `SteelBacked`/`Lazy` constructors below, always `false`),
+    /// yet its body can still dispatch native paste, which retargets a
+    /// pre-opened session to `Paste` in place
+    /// (`edit_session::open_or_retarget`). `Editor::finish_replay_session`
+    /// reads the *resulting* session's own kind to decide whether to leave
+    /// it open for a following `[`/`]`, so that decision stays correct
+    /// whether the command declaring it statically is native or was
+    /// discovered dynamically inside a Steel body.
     pub manages_own_session: bool,
 }
 

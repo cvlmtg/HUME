@@ -10,6 +10,8 @@ use std::borrow::Cow;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
+use super::edit_session::EditSessionKind;
+use super::error::CommandError;
 use super::registry::MappableCommand;
 use super::{Editor, Mode, commands, doc_ops};
 
@@ -127,7 +129,12 @@ impl Editor {
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────
 
     /// Open a new edit group on the focused (pane, buffer) pair.
-    fn begin_edit_group_current(&mut self) {
+    ///
+    /// `Err` when a real, non-empty session is already open elsewhere or
+    /// here — see [`doc_ops::begin_edit_group`]. Not expected to fire in
+    /// practice (every dispatch path commits or refuses a stray session
+    /// before `replay_dot` ever runs), but must not panic if it ever does.
+    fn begin_edit_group_current(&mut self) -> Result<(), CommandError> {
         let pane_id = self.state.focus.id();
         let buf_id = self.focused_buffer_id();
         doc_ops::begin_edit_group(
@@ -136,7 +143,7 @@ impl Editor {
             &mut self.state.active_session,
             pane_id,
             buf_id,
-        );
+        )
     }
 
     /// Commit and close the open edit group on the session's own (pane,
@@ -147,6 +154,51 @@ impl Editor {
             &self.state.panes.state,
             &mut self.state.active_session,
         );
+    }
+
+    /// Close out whatever `replay_dot` left open on the focused (pane,
+    /// buffer), for either its success or its failure path — the two need
+    /// the identical decision, so it lives here once.
+    ///
+    /// A body that entered real Insert mode closes through
+    /// `end_insert_session` (pops the `InsertLayer`, which
+    /// `tear_down_insert` needs present to run its own bookkeeping — typed
+    /// run, autoindent trim). A body that called native paste retargeted
+    /// the pre-opened session to `Paste` (`edit_session::open_or_retarget`,
+    /// via `do_paste`) — that must stay open for a following `[`/`]`, the
+    /// same as a live `p` keypress leaves it, so it's left alone here.
+    /// Anything else (a plain edit-only body, or an empty pre-opened group
+    /// nothing ever claimed) commits directly.
+    ///
+    /// Read dynamically from the session's own kind rather than
+    /// `meta.manages_own_session` — that flag only describes what the
+    /// *outer* replayed command declares, and a Steel-backed outer command's
+    /// meta can never set it (see `CmdMeta::manages_own_session`'s doc), so
+    /// a Steel wrapper whose body dispatches native paste needs the same
+    /// "leave it open" outcome without ever being able to say so statically.
+    ///
+    /// No-op if nothing is open at all: the body's own dispatch may already
+    /// have closed the pane or buffer the pre-opened session lived on —
+    /// `focus::end_focus_sessions`, which every focus/buffer-switch path
+    /// runs first, already commits a still-live session of either kind
+    /// before that happens, so by the time control returns here there is
+    /// genuinely nothing left to close.
+    fn finish_replay_session(&mut self) {
+        if self.state.active_session.is_none() {
+            return;
+        }
+        if self.state.mode() == Mode::Insert {
+            self.end_insert_session();
+            return;
+        }
+        let leave_open = self
+            .state
+            .active_session
+            .as_ref()
+            .is_some_and(|s| matches!(s.kind, EditSessionKind::Paste { .. }));
+        if !leave_open {
+            self.commit_open_edit_group();
+        }
     }
 
     /// Replay a dot-repeat action directly, bypassing dispatch bookkeeping.
@@ -193,9 +245,18 @@ impl Editor {
         // revision. Skipped for a `manages_own_session` command (the paste
         // family): it opens or continues `active_session` itself (`do_paste`/
         // `do_paste_cycle`), which would collide with a group pre-opened
-        // here — see `CmdMeta::manages_own_session`'s own doc.
-        if !meta.manages_own_session {
-            self.begin_edit_group_current();
+        // here — see `CmdMeta::manages_own_session`'s own doc. A Steel body
+        // that itself calls a native paste command still succeeds despite
+        // this pre-open: `do_paste`'s own opener retargets this still-empty
+        // session to `Paste` in place rather than colliding with it (see
+        // `edit_session::open_or_retarget`).
+        //
+        // `Err` here means a real, non-empty session is already open — not
+        // expected given `step_paste_commit` just ran above, but if it ever
+        // happens, defer rather than stealing or corrupting that session.
+        if !meta.manages_own_session && self.begin_edit_group_current().is_err() {
+            self.state.last_repeatable_action = Some(action);
+            return;
         }
 
         // Rebuild the selection extent the edit originally acted on. No
@@ -246,10 +307,12 @@ impl Editor {
                 // now throws), so replay must handle failure even though the original
                 // run didn't.
                 if !self.run_steel_command(edit_cmd, cmd_name.as_ref(), &ctx, action.char_arg) {
-                    // Close the group opened above so it can't leak. commit drops
-                    // an empty group (clean noop) and records a partial one (a
-                    // failure mid-edit stays undoable).
-                    self.commit_open_edit_group();
+                    // Close whatever the group opened above became so it
+                    // can't leak — same decision the success path below
+                    // makes (see `finish_replay_session`'s own doc). commit
+                    // drops an empty group (clean noop) and records a
+                    // partial one (a failure mid-edit stays undoable).
+                    self.finish_replay_session();
                     self.state.last_repeatable_action = Some(action);
                     return;
                 }
@@ -294,15 +357,7 @@ impl Editor {
             }
         }
 
-        if self.state.mode() == Mode::Insert {
-            self.end_insert_session();
-        } else if !meta.manages_own_session {
-            // A `manages_own_session` command's own dispatch (`do_paste`/
-            // `do_paste_cycle`) leaves `active_session` open on purpose, for
-            // a following `[`/`]` to continue — nothing here opened a group
-            // to close, and committing one would end that session early.
-            self.commit_open_edit_group();
-        }
+        self.finish_replay_session();
 
         // Restore the action so `.` can be pressed again.
         self.state.last_repeatable_action = Some(action);

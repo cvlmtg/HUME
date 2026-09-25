@@ -325,7 +325,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
 /// (`Editor::open_read_only_view`) — as opposed to an edit, which has a
 /// `ChangeSet` to remap positions through instead of discarding them.
 ///
-/// Resets `pane_state` (selections, search cursor, edit/paste groups) to
+/// Resets `pane_state` (selections, search cursor, scroll) to
 /// [`pane_state::fresh_from_buf`] for every pane currently viewing `id`,
 /// drops `id`'s entries from every pane's jump list (cross-buffer, so not
 /// limited to viewers), and — via `Pane::forget_buffer` — drops every pane's
@@ -333,6 +333,12 @@ pub(in crate::editor) fn close_buffer_and_notify(
 /// a background pane's *saved* scroll or pin for `id` is just as stale as a
 /// live one's; a regenerated view buffer starts unpinned again, same as a
 /// freshly opened one would).
+///
+/// Does *not* touch `EditorState::active_session` — a session belongs to
+/// the editor, not `PaneBufferState`, so it's outside this function's
+/// reach. Not a gap in practice: every caller resets a read-only view
+/// buffer (`:messages`, `:ls`), which never accepts the Insert/paste
+/// sessions this would need to guard against.
 pub(in crate::editor::buffer) fn reseed_panes_after_content_reset(
     ev: &mut EngineView,
     buffers: &BufferStore,
