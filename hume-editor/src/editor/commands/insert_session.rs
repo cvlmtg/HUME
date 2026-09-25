@@ -14,7 +14,7 @@ use crate::editor::pane_state::{PaneBufferState, TypedRun};
 use crate::editor::replay::InsertSession;
 use hume_ops::edit::clear_blank_line_indent;
 
-use super::{FocusedPane, begin_focused_edit_group, doc, pane_selections, refuse_if_read_only};
+use super::{FocusedPane, doc, pane_selections, refuse_if_read_only};
 
 /// `true` when `fp`'s (pane, buffer) has an open Insert-kind session.
 fn is_group_open_at(state: &EditorState, view: &EngineView, fp: FocusedPane) -> bool {
@@ -187,18 +187,43 @@ pub(super) fn begin_insert_session_preserving_register(
     if refuse_if_read_only(state, view, fp.pane()) {
         return Ok(());
     }
-    // Guard is load-bearing for dot-repeat replay: `replay_dot` opens
-    // an edit group before re-dispatching the command, so a group already being
-    // open here means "we are replaying" → skip session creation and re-type from
-    // `insert_keys` instead of recording fresh. Do NOT weaken this into a separate
-    // flag without also fixing the replay signal.
+    let (pid, bid) = (fp.pid(), fp.bid(view));
+    // Two separate questions, load-bearing for dot-repeat replay:
     //
-    // The implied assumption — that no Steel body can reach `begin_insert_session`
-    // with a group already open outside of replay — holds because Steel has no
-    // transaction / begin-edit-group builtin, and none should ever be added:
-    // fine-grained undo grouping belongs to native commands, not scripts.
-    if !is_group_open_at(state, view, fp) {
-        begin_focused_edit_group(state, view, fp)?;
+    // - Whether to open/retarget the group at all: needed unless a real
+    //   Insert session is *already* open here (`replay_dot` never leaves one
+    //   of those — it pre-opens a `Replay`-kind placeholder instead, which
+    //   this call retargets to `Insert` in place via `doc_ops::
+    //   begin_edit_group`'s own `open_or_retarget` delegation).
+    // - Whether to start fresh keystroke recording: skipped whenever a group
+    //   was *already* open here under either shape (real Insert, or the
+    //   Replay placeholder) — both mean "we are replaying" → re-type from
+    //   `insert_keys` instead of recording fresh. Do NOT weaken this into a
+    //   separate flag without also fixing the replay signal.
+    //
+    // The implied assumption — that no Steel body can reach
+    // `begin_insert_session` with a group already open outside of replay —
+    // holds because Steel has no transaction / begin-edit-group builtin, and
+    // none should ever be added: fine-grained undo grouping belongs to
+    // native commands, not scripts.
+    let already_insert = state
+        .active_session
+        .as_ref()
+        .is_some_and(|s| s.is_insert_at(pid, bid));
+    let replay_placeholder_open = state
+        .active_session
+        .as_ref()
+        .is_some_and(|s| s.is_replay_at(pid, bid));
+    if !already_insert {
+        doc_ops::begin_edit_group(
+            &state.buffers,
+            &mut state.panes.state,
+            &mut state.active_session,
+            pid,
+            bid,
+        )?;
+    }
+    if !already_insert && !replay_placeholder_open {
         state.insert_session = Some(InsertSession {
             keystrokes: Vec::new(),
         });

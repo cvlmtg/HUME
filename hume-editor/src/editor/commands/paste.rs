@@ -175,13 +175,14 @@ struct ResolvedPaste {
 ///
 /// `before`: true for `P` (paste before), false for `p` (paste after).
 ///
-/// `Err` when a real (non-empty) session is already open — reachable only
-/// through a `call!` (a hook or timer firing mid-typing) or an Insert-mode
-/// binding, since `step_paste_commit` closes a prior *paste* session before
-/// every ordinary dispatch. A dot-repeat replay's own pre-opened, still-
-/// empty session (the common case for a Steel `#:repeatable` wrapper that
-/// calls native paste) is not a conflict: [`edit_session::open_or_retarget`]
-/// retargets it to `Paste` in place instead.
+/// `Err` when a real, already-open `Insert`/`Paste` session blocks this
+/// (pane, buffer) — reachable only through a `call!` (a hook or timer
+/// firing mid-typing) or an Insert-mode binding, since `step_paste_commit`
+/// closes a prior *paste* session before every ordinary dispatch. A
+/// dot-repeat replay's own pre-opened `Replay`-kind placeholder (the common
+/// case for a Steel `#:repeatable` wrapper that calls native paste) is not
+/// a conflict: [`edit_session::open_or_retarget`] retargets it to `Paste`
+/// in place instead.
 fn do_paste(
     state: &mut EditorState,
     focused: PaneId,

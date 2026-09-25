@@ -1510,6 +1510,44 @@ fn paste_during_an_open_insert_session_is_refused_and_leaves_the_session_intact(
     );
 }
 
+/// Same conflict as the test above, but for the one-keystroke window right
+/// after `i`/`a`/`o`, before anything has been typed: the Insert session is
+/// real and open, but its `EditGroup` is still empty. Emptiness alone must
+/// not be read as "this is replay's own placeholder, safe to retarget" —
+/// see `EditSessionKind::Replay`'s own doc.
+#[test]
+fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_intact() {
+    use hume_scripting::host::CommandHost;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    let bid = ed.focused_buffer_id();
+    ed.feed_key(key('y'));
+    ed.feed_key(key('i'));
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
+
+    let pane = focused_pane(&ed);
+    let ran = live_host!(ed)
+        .run_command_sync("paste-after", pane, None, false, None)
+        .expect("a refused paste reports through its return value, not Err");
+    assert!(!ran, "paste-after must report that it refused");
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "the Insert session must survive"
+    );
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "abc\n");
+
+    type_chars(&mut ed, "R");
+    ed.feed_key(key_esc());
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "Rabc\n");
+    ed.feed_key(key('u'));
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "abc\n",
+        "one undo must revert the whole (still-real, still-Insert) session"
+    );
+}
+
 /// A direct edit landing while a ring-cycle Paste session is still open on
 /// the same pane — bracketed-paste's own `apply_normal_mode_paste`, which
 /// bypasses the dispatch pipeline (and so never runs `step_paste_commit`) —

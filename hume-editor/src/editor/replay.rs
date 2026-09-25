@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
-use super::edit_session::EditSessionKind;
+use super::edit_session::{self, EditSessionKind};
 use super::registry::MappableCommand;
 use super::{Editor, Mode, commands, doc_ops};
 
@@ -34,8 +34,8 @@ pub(crate) enum InsertInput {
 /// `begin_insert_session` and consumed by [`Editor::end_insert_session`].
 ///
 /// `None` on the editor when there is no active session — including during
-/// replay, where the replay path pre-opens the edit group to signal
-/// `begin_insert_session` that recording should be suppressed.
+/// replay, where the replay path pre-opens a `Replay`-kind placeholder to
+/// signal `begin_insert_session` that recording should be suppressed.
 pub(crate) struct InsertSession {
     pub(super) keystrokes: Vec<InsertInput>,
 }
@@ -135,11 +135,13 @@ impl Editor {
     /// `end_insert_session` (pops the `InsertLayer`, which
     /// `tear_down_insert` needs present to run its own bookkeeping — typed
     /// run, autoindent trim). A body that called native paste retargeted
-    /// the pre-opened session to `Paste` (`edit_session::open_or_retarget`,
-    /// via `do_paste`) — that must stay open for a following `[`/`]`, the
-    /// same as a live `p` keypress leaves it, so it's left alone here.
-    /// Anything else (a plain edit-only body, or an empty pre-opened group
-    /// nothing ever claimed) commits directly.
+    /// the pre-opened placeholder to `Paste` (`edit_session::
+    /// open_or_retarget`, via `do_paste`) — that must stay open for a
+    /// following `[`/`]`, the same as a live `p` keypress leaves it, so
+    /// it's left alone here. Anything else (a plain edit-only body that
+    /// never claimed the placeholder) is still `Replay`-kind, and commits
+    /// directly through `doc_ops::commit_open_session` — kind-agnostic,
+    /// since Insert and Paste are both already handled above.
     ///
     /// Read dynamically from the session's own kind rather than
     /// `meta.manages_own_session` — that flag only describes what the
@@ -149,11 +151,11 @@ impl Editor {
     /// "leave it open" outcome without ever being able to say so statically.
     ///
     /// No-op if nothing is open at all: the body's own dispatch may already
-    /// have closed the pane or buffer the pre-opened session lived on —
+    /// have closed the pane or buffer the pre-opened placeholder lived on —
     /// `focus::end_focus_sessions`, which every focus/buffer-switch path
-    /// runs first, already commits a still-live session of either kind
-    /// before that happens, so by the time control returns here there is
-    /// genuinely nothing left to close.
+    /// runs first, already commits a still-live session of any kind before
+    /// that happens, so by the time control returns here there is genuinely
+    /// nothing left to close.
     fn finish_replay_session(&mut self) {
         if self.state.active_session.is_none() {
             return;
@@ -168,7 +170,7 @@ impl Editor {
             .as_ref()
             .is_some_and(|s| matches!(s.kind, EditSessionKind::Paste { .. }));
         if !leave_open {
-            doc_ops::commit_edit_group(
+            doc_ops::commit_open_session(
                 &mut self.state.buffers,
                 &self.state.panes.state,
                 &mut self.state.active_session,
@@ -217,26 +219,43 @@ impl Editor {
         // the session to `repeat-last-action`'s own dispatch.
         commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
 
-        // Pre-open the edit group — the "replay signal" used by
+        // Pre-open a Replay-kind placeholder — the "replay signal" used by
         // begin_insert_session to suppress keystroke recording, and the
         // wrapper that folds a recipe replay + the main edit into one undo
-        // revision. Skipped for a `manages_own_session` command (the paste
-        // family): it opens or continues `active_session` itself (`do_paste`/
-        // `do_paste_cycle`), which would collide with a group pre-opened
-        // here — see `CmdMeta::manages_own_session`'s own doc. A Steel body
-        // that itself calls a native paste command still succeeds despite
-        // this pre-open: `do_paste`'s own opener retargets this still-empty
-        // session to `Paste` in place rather than colliding with it (see
-        // `edit_session::open_or_retarget`).
+        // revision. Its own kind (rather than reusing Insert directly) keeps
+        // it distinct from a real, already-open Insert session: only a
+        // Replay-kind placeholder is eligible for `open_or_retarget`'s
+        // retarget branch (see `EditSessionKind::Replay`'s own doc) — a real
+        // empty Insert session must still refuse a conflicting open, not
+        // silently hand its group to whatever this pre-open is used for.
+        // Skipped for a `manages_own_session` command (the paste family): it
+        // opens or continues `active_session` itself (`do_paste`/
+        // `do_paste_cycle`), which would collide with a placeholder
+        // pre-opened here — see `CmdMeta::manages_own_session`'s own doc. A
+        // Steel body that itself calls a native paste command still
+        // succeeds despite this pre-open: `do_paste`'s own opener retargets
+        // this still-open placeholder to `Paste` in place rather than
+        // colliding with it (see `edit_session::open_or_retarget`).
         //
-        // `Err` here means a real, non-empty session is already open — not
-        // expected given `step_paste_commit` just ran above, but if it ever
-        // happens, defer rather than stealing or corrupting that session.
-        if !meta.manages_own_session
-            && commands::begin_focused_edit_group(&mut self.state, &self.view, fp).is_err()
-        {
-            self.state.last_repeatable_action = Some(action);
-            return;
+        // `Err` here means a real session (of any kind) is already open —
+        // not expected given `step_paste_commit` just ran above, but if it
+        // ever happens, defer rather than stealing or corrupting that
+        // session.
+        if !meta.manages_own_session {
+            let pid = fp.pid();
+            let bid = fp.bid(&self.view);
+            let sels = self.state.panes.state[pid][bid].selections().clone();
+            let opened = edit_session::open_or_retarget(
+                &mut self.state.active_session,
+                pid,
+                bid,
+                EditSessionKind::Replay,
+                || self.state.buffers.get(bid).begin_edit_group(sels),
+            );
+            if opened.is_err() {
+                self.state.last_repeatable_action = Some(action);
+                return;
+            }
         }
 
         // Rebuild the selection extent the edit originally acted on. No

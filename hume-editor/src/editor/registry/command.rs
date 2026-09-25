@@ -211,7 +211,8 @@ pub(in crate::editor) struct CmdMeta {
     /// dispatching the replayed command: pre-opening one for a command in
     /// this set would collide with the session that command is about to
     /// open or continue itself — `paste-ring-older`/`-newer` in particular
-    /// need an *already-open* Paste session to find, not a fresh Insert one.
+    /// need an *already-open* Paste session to find, not a fresh Replay
+    /// placeholder.
     /// Every other command relies on `replay_dot`'s wrapper to fold a
     /// multi-step recipe replay plus the main edit into one undo revision.
     ///

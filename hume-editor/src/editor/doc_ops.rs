@@ -508,12 +508,12 @@ pub(in crate::editor) fn apply_doc_motion(
 /// in the recorded undo revision — the field must NOT be taken because the
 /// ongoing insert session continues to read it between keystrokes.
 ///
-/// `Err` when a session is already open elsewhere, or open here with edits
-/// already composed into it — see [`edit_session::open_or_retarget`], which
-/// this delegates to. A session already open here but still empty (e.g. a
-/// dot-repeat replay's own speculative pre-open, about to be superseded by
-/// whatever the replayed body actually needs) is retargeted to `Insert` in
-/// place rather than refused.
+/// `Err` when a session is already open elsewhere, or a real `Insert`/`Paste`
+/// session is already open here — see [`edit_session::open_or_retarget`],
+/// which this delegates to. A `Replay`-kind placeholder already open here
+/// (`Editor::replay_dot`'s own pre-open, about to be superseded by whatever
+/// the replayed body actually needs) is retargeted to `Insert` in place
+/// instead of refused.
 pub(in crate::editor) fn begin_edit_group(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -527,7 +527,7 @@ pub(in crate::editor) fn begin_edit_group(
         buf_id,
         EditSessionKind::Insert,
         // Cloned only here, inside the closure `open_or_retarget` calls
-        // solely for a fresh open — a refusal or an empty-session retarget
+        // solely for a fresh open — a refusal or a placeholder retarget
         // never needs it.
         || {
             buffers
@@ -580,8 +580,8 @@ pub(in crate::editor) fn commit_open_session(
 }
 
 /// Close the open Paste-kind session and record it as a single undo step —
-/// the `doc_ops`-level counterpart to [`commit_edit_group`], for the one
-/// other kind [`EditSession`] can hold. No-op if the open session (if any)
+/// the `doc_ops`-level counterpart to [`commit_edit_group`], for the other
+/// kinds [`EditSession`] can hold. No-op if the open session (if any)
 /// isn't Paste-kind, so every caller can route through this unconditionally
 /// instead of checking first — `EditorState::commit_paste_session`
 /// (`commands::paste`) is a thin wrapper around this; [`apply_doc_edit`]
@@ -603,10 +603,10 @@ pub(in crate::editor) fn commit_paste_group(
 
 /// Close the open Insert-kind session and record it as a single undo step.
 ///
-/// Panics if no session is open, or if the open one is a paste session —
-/// committing a paste group as an Insert revision would record the wrong
-/// undo step silently. Mirrors `EditorState::commit_paste_session`'s own
-/// kind check.
+/// Panics if no session is open, or if the open one isn't Insert-kind —
+/// committing a Paste or still-unclaimed Replay session as an Insert
+/// revision would record the wrong undo step silently. Mirrors
+/// `EditorState::commit_paste_session`'s own kind check.
 pub(in crate::editor) fn commit_edit_group(
     buffers: &mut BufferStore,
     pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -616,7 +616,7 @@ pub(in crate::editor) fn commit_edit_group(
         None => panic!("commit_edit_group called without an open session"),
         Some(s) => assert!(
             matches!(s.kind, EditSessionKind::Insert),
-            "commit_edit_group called on a paste session"
+            "commit_edit_group called on a non-Insert session"
         ),
     }
     commit_open_session(buffers, pane_state, active_session);

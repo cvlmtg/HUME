@@ -181,26 +181,6 @@ pub(super) fn pane_selections<'a>(
     t.state(&state.panes.state, view).selections()
 }
 
-/// Open a new edit group on the focused (pane, buffer) pair. See
-/// [`apply_focused_edit_grouped`]'s doc for why this takes [`FocusedPane`].
-///
-/// `Err` when a real, non-empty session is already open elsewhere or here —
-/// see [`doc_ops::begin_edit_group`].
-pub(super) fn begin_focused_edit_group(
-    state: &mut EditorState,
-    view: &EngineView,
-    fp: FocusedPane,
-) -> Result<(), CommandError> {
-    let bid = fp.bid(view);
-    doc_ops::begin_edit_group(
-        &state.buffers,
-        &mut state.panes.state,
-        &mut state.active_session,
-        fp.pid(),
-        bid,
-    )
-}
-
 /// Active search pattern on `t`'s buffer, if any.
 pub(super) fn search_pattern<'a>(
     state: &'a EditorState,

@@ -57,10 +57,10 @@ impl Focus {
 /// `end_insert_session` is a no-op past its own guard (no `Insert` layer
 /// open) whenever nothing is open, so every caller can route through this
 /// unconditionally instead of checking first. Whatever it leaves behind —
-/// a Paste session, or an Insert-*kind* `EditSession` with no `InsertLayer`
-/// on the mode stack at all (what `Editor::replay_dot`'s own pre-open
-/// produces before its replayed body decides what it actually needs, see
-/// `edit_session::open_or_retarget`'s doc) — commits the same way through
+/// a Paste session, or a `Replay`-kind `EditSession` (what `Editor::
+/// replay_dot`'s own pre-open produces before its replayed body decides
+/// what it actually needs, see `edit_session::open_or_retarget`'s doc) —
+/// commits the same way through
 /// [`doc_ops::commit_open_session`]: this is the chokepoint every
 /// focus/buffer-switch path already runs before removing the `(pane,
 /// buffer)` state a later commit would need to read.

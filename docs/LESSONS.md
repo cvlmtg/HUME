@@ -62,6 +62,10 @@ numbers directly.
   A value a function was handed must be the one it uses — re-reading ambient
   state (focus) inside a body or a teardown reintroduces the bug the
   parameter existed to remove.
+- **L21** — A placeholder standing in for "not yet decided" needs its own
+  explicit tag, not an incidental property (emptiness, `None`, a default) of
+  a real variant it's borrowing — the incidental property will eventually
+  also be true of the real thing.
 
 ---
 
@@ -1010,3 +1014,56 @@ or a bare `Target::Focused(fp)`.
 `hume-editor/src/editor/doc_ops.rs` (`commit_edit_group`),
 `hume-editor/src/editor/tests/insert_session_buffer_switch.rs`
 (`insert_teardown_commits_on_the_sessions_own_pane_not_current_focus`).
+
+---
+
+## L21 — One session-kind variant meant two things, gated by an incidental property (2026-09-25)
+
+**Root cause:** `Editor::replay_dot` pre-opens a placeholder `EditSession`
+before dispatching the replayed command, to fold a recipe replay plus the
+main edit into one undo revision and to signal `begin_insert_session` that
+keystroke recording should be suppressed. The placeholder reused
+`EditSessionKind::Insert` — the same variant a real, live Insert session
+uses — and `open_or_retarget`'s retarget rule told the two apart only by
+`is_empty()` (no edits composed yet). A genuinely real Insert session, right
+after `i`/`a`/`o` and before the first keystroke, is *also* empty. A
+`(call! "paste-after" pane)` from a hook or timer landing in that one-
+keystroke window passed the emptiness check and silently retargeted the
+live session to `Paste`, corrupting `active_session` while the
+`InsertLayer` stayed on the mode stack — the next keystroke would then
+panic on `apply_doc_edit_grouped`'s `is_insert_at` filter.
+
+**Concrete instance:** caught by the altitude review of the Insert/paste-
+session-ownership refactor (`aa5049c5..HEAD`, `3791a746`'s `/simplify`
+pass) before release — no shipped regression. `EditSessionKind::Replay`
+now gives the placeholder its own tag; only that kind is eligible for
+`open_or_retarget`'s retarget branch, so a real, even-empty `Insert`/`Paste`
+session correctly refuses instead. `begin_insert_session_preserving_
+register`'s single "is a group already open" check had to split into two —
+whether to open/retarget the group (needed unless a real Insert session is
+already here) and whether to suppress fresh keystroke recording (needed
+whenever *either* a real Insert session or the Replay placeholder is
+already here) — since the two questions only had the same answer by
+coincidence, back when both cases shared one variant.
+
+**Prevention rules:**
+
+1. A placeholder standing in for "not yet decided" needs its own explicit
+   tag, not an incidental property (`is_empty()`, a `None`, a default) of a
+   real variant it's borrowing. The incidental property will eventually
+   also be true of the real thing.
+2. When two states are told apart only by a derived condition, ask what the
+   condition would have to mean for *every* variant it's checked against —
+   not just the one it was written for.
+3. When a design collapses two different questions into one check because
+   they happen to have the same answer under the current representation,
+   changing that representation is the signal to re-split them — don't
+   assume the coincidence was structural.
+
+**Files:** `hume-editor/src/editor/edit_session.rs` (`EditSessionKind::
+Replay`, `is_replay_at`, `blocks_open`), `hume-editor/src/editor/replay.rs`
+(`replay_dot`'s pre-open, `finish_replay_session`),
+`hume-editor/src/editor/commands/insert_session.rs`
+(`begin_insert_session_preserving_register`),
+`hume-editor/src/editor/tests/paste.rs`
+(`paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_intact`).
