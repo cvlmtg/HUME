@@ -281,14 +281,10 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
 
     ed.feed_key(key('p')); // bare paste-after: ring head, opens a paste session
     assert!(
-        matches!(
-            ed.state.active_session,
-            Some(crate::editor::edit_session::EditSession {
-                kind: crate::editor::edit_session::EditSessionKind::Paste { .. },
-                buffer,
-                ..
-            }) if buffer == old_bid
-        ),
+        ed.state.active_session.as_ref().is_some_and(|s| matches!(
+            s.kind(),
+            crate::editor::edit_session::EditSessionKind::Paste { .. }
+        ) && s.buffer() == old_bid),
         "sanity: 'p' must leave an open, uncommitted paste session"
     );
 

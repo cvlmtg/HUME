@@ -167,7 +167,7 @@ pub(in crate::editor) fn check_no_conflicting_session(
 ) -> Result<(), CommandError> {
     if active_session
         .as_ref()
-        .is_some_and(|s| s.pane != exclude && s.buffer == buf_id)
+        .is_some_and(|s| s.pane() != exclude && s.buffer() == buf_id)
     {
         return Err(CommandError::new(
             "buffer has an open insert/paste session on another pane",
@@ -309,13 +309,13 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     let rope_pre = text_pre.rope().clone();
     let sels = pane_state[pane_id][buf_id].take_selections();
     let doc = buffers.get_mut(buf_id);
-    let group = &mut active_session
+    let group = active_session
         .as_mut()
         .filter(|s| s.is_insert_at(pane_id, buf_id))
         .expect(
             "apply_doc_edit_grouped called without an open Insert session on this (pane, buffer)",
         )
-        .group;
+        .group_mut();
     let (new_sels, cs) = doc.apply_edit_grouped(sels, group, cmd);
     let pbs = &mut pane_state[pane_id][buf_id];
     // `ChangeSet::map_ranges` maps (start, end) pairs directly, but with
@@ -373,13 +373,13 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     }
     let text_pre = buffers.get(buf_id).text().clone();
     let rope_pre = text_pre.rope().clone();
-    let group = &mut active_session
+    let group = active_session
         .as_mut()
         .filter(|s| s.is_paste_at(pane_id, buf_id))
         .expect(
             "apply_doc_edit_regrouped called without an open paste session on this (pane, buffer)",
         )
-        .group;
+        .group_mut();
     let (new_sels, propagation_cs) = buffers.get_mut(buf_id).apply_edit_regrouped(group, cmd);
     finish_edit(
         buffers,
@@ -569,14 +569,14 @@ pub(in crate::editor) fn commit_open_session(
     let Some(session) = active_session.take() else {
         return;
     };
+    let (pane, buffer) = (session.pane(), session.buffer());
+    let group = session.into_group();
     let post_sels = pane_state
-        .get(session.pane)
-        .and_then(|m| m.get(session.buffer))
+        .get(pane)
+        .and_then(|m| m.get(buffer))
         .map(|pbs| pbs.selections().clone())
-        .unwrap_or_else(|| session.group.pre_sels.clone());
-    buffers
-        .get_mut(session.buffer)
-        .commit_edit_group(session.group, post_sels);
+        .unwrap_or_else(|| group.pre_sels.clone());
+    buffers.get_mut(buffer).commit_edit_group(group, post_sels);
 }
 
 /// Close the open Paste-kind session and record it as a single undo step —
@@ -594,7 +594,7 @@ pub(in crate::editor) fn commit_paste_group(
 ) {
     let is_paste = active_session
         .as_ref()
-        .is_some_and(|s| matches!(s.kind, EditSessionKind::Paste { .. }));
+        .is_some_and(|s| matches!(s.kind(), EditSessionKind::Paste { .. }));
     if !is_paste {
         return;
     }
@@ -615,7 +615,7 @@ pub(in crate::editor) fn commit_edit_group(
     match active_session.as_ref() {
         None => panic!("commit_edit_group called without an open session"),
         Some(s) => assert!(
-            matches!(s.kind, EditSessionKind::Insert),
+            matches!(s.kind(), EditSessionKind::Insert),
             "commit_edit_group called on a non-Insert session"
         ),
     }

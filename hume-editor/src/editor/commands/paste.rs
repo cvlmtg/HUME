@@ -468,7 +468,7 @@ fn do_paste_cycle(
         .active_session
         .as_ref()
         .filter(|s| s.owned_by(focused, buf))
-        .map(|s| s.kind)
+        .map(|s| s.kind())
     else {
         return Ok(());
     };

@@ -168,7 +168,7 @@ impl Editor {
             .state
             .active_session
             .as_ref()
-            .is_some_and(|s| matches!(s.kind, EditSessionKind::Paste { .. }));
+            .is_some_and(|s| matches!(s.kind(), EditSessionKind::Paste { .. }));
         if !leave_open {
             doc_ops::commit_open_session(
                 &mut self.state.buffers,

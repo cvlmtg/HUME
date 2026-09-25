@@ -271,7 +271,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     let (pid, bid) = state
         .active_session
         .as_ref()
-        .map(|s| (s.pane, s.buffer))
+        .map(|s| (s.pane(), s.buffer()))
         .expect("an Insert layer on the stack always has its session open");
     // An open completion session lives in its own `Completion` layer, pushed
     // above `Insert` — the top-first `truncate_layers` call that reaches

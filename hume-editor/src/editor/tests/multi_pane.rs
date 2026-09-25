@@ -198,10 +198,10 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     assert!(ed.state.active_session.is_none(), "no session before i");
     ed.handle_key(key('i'));
     assert!(
-        matches!(
-            ed.state.active_session,
-            Some(crate::editor::edit_session::EditSession { pane, .. }) if pane == pid_a
-        ),
+        ed.state
+            .active_session
+            .as_ref()
+            .is_some_and(|s| s.pane() == pid_a),
         "session open on A after i"
     );
     ed.handle_key(key('X'));
@@ -221,10 +221,10 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     );
     ed.handle_key(key('i'));
     assert!(
-        matches!(
-            ed.state.active_session,
-            Some(crate::editor::edit_session::EditSession { pane, .. }) if pane == pid_b
-        ),
+        ed.state
+            .active_session
+            .as_ref()
+            .is_some_and(|s| s.pane() == pid_b),
         "session opens on B"
     );
     ed.handle_key(key('Y'));

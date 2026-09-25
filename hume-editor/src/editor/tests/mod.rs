@@ -1297,13 +1297,12 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             .map(|a| (a.command.to_string(), a.count, a.char_arg)),
         // JumpList::len() is cfg(test)-only; safe to call here.
         jump_len: ed.state.panes.jumps[pane_id].len(),
-        paste_session_open: matches!(
-            ed.state.active_session,
-            Some(crate::editor::edit_session::EditSession {
-                kind: crate::editor::edit_session::EditSessionKind::Paste { .. },
-                ..
-            })
-        ),
+        paste_session_open: ed.state.active_session.as_ref().is_some_and(|s| {
+            matches!(
+                s.kind(),
+                crate::editor::edit_session::EditSessionKind::Paste { .. }
+            )
+        }),
         mode: ed.state.mode(),
         typed_run_open: any_pbs(|pbs| pbs.typed_run.is_some()),
     }

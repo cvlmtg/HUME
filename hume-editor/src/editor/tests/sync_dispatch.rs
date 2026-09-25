@@ -1211,13 +1211,10 @@ fn parity_steel_branch_cluster_vs_native() {
     ed2.state.kill_ring.push(vec!["X".to_string()]);
     ed2.feed_key(key('p')); // smart-paste-after → resolves ring head, opens paste session
     assert!(
-        matches!(
-            ed2.state.active_session,
-            Some(crate::editor::edit_session::EditSession {
-                kind: crate::editor::edit_session::EditSessionKind::Paste { .. },
-                ..
-            })
-        ),
+        ed2.state.active_session.as_ref().is_some_and(|s| matches!(
+            s.kind(),
+            crate::editor::edit_session::EditSessionKind::Paste { .. }
+        )),
         "pre-condition: paste-after must have opened a paste session"
     );
 

@@ -725,15 +725,11 @@ fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
     ed.feed_key(key('p')); // paste it back — opens a paste session on A
 
     assert!(
-        matches!(
-            ed.state.active_session,
-            Some(crate::editor::edit_session::EditSession {
-                kind: crate::editor::edit_session::EditSessionKind::Paste { .. },
-                pane,
-                buffer,
-                ..
-            }) if (pane, buffer) == (pid_a, bid_a)
-        ),
+        ed.state.active_session.as_ref().is_some_and(|s| matches!(
+            s.kind(),
+            crate::editor::edit_session::EditSessionKind::Paste { .. }
+        ) && (s.pane(), s.buffer())
+            == (pid_a, bid_a)),
         "setup: paste session open on A"
     );
 

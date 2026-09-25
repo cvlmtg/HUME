@@ -24,17 +24,45 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use crate::editor::error::CommandError;
 
 /// The editor's one live Insert or paste session, if any.
+///
+/// Fields are private: [`open_or_retarget`] is the only way to create one or
+/// change its `kind`, which is what makes the `Replay` retarget rule (see
+/// [`EditSessionKind::Replay`]) a compile-time guarantee rather than a
+/// convention every call site has to honor on its own.
 pub(in crate::editor) struct EditSession {
     /// The pane that opened this session — always the focused pane, since
     /// Insert/paste sessions only ever open there.
-    pub(in crate::editor) pane: PaneId,
+    pane: PaneId,
     /// The buffer this session is editing.
-    pub(in crate::editor) buffer: BufferId,
-    pub(in crate::editor) kind: EditSessionKind,
-    pub(in crate::editor) group: EditGroup,
+    buffer: BufferId,
+    kind: EditSessionKind,
+    group: EditGroup,
 }
 
 impl EditSession {
+    pub(in crate::editor) fn pane(&self) -> PaneId {
+        self.pane
+    }
+
+    pub(in crate::editor) fn buffer(&self) -> BufferId {
+        self.buffer
+    }
+
+    pub(in crate::editor) fn kind(&self) -> EditSessionKind {
+        self.kind
+    }
+
+    pub(in crate::editor) fn group_mut(&mut self) -> &mut EditGroup {
+        &mut self.group
+    }
+
+    /// Consumes the session, handing its [`EditGroup`] to the caller that's
+    /// about to commit it (`doc_ops::commit_open_session`) — the one place
+    /// that needs the group by value rather than by reference.
+    pub(in crate::editor) fn into_group(self) -> EditGroup {
+        self.group
+    }
+
     /// `true` if this is an Insert-kind session on `(pane, buffer)` — the
     /// check every caller composing an edit into an *Insert* session (as
     /// opposed to a Paste one, which has its own `group` but a different

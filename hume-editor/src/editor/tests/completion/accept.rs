@@ -350,18 +350,20 @@ fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
     let bid = ed.focused_buffer_id();
     let text = ed.doc().text().clone();
     let pre_sels = ed.state.panes.state[pid][bid].selections().clone();
-    ed.state.active_session = Some(crate::editor::edit_session::EditSession {
-        pane: pid,
-        buffer: bid,
-        kind: crate::editor::edit_session::EditSessionKind::Paste { before: false },
-        group: crate::editor::edit_session::EditGroup {
+    crate::editor::edit_session::open_or_retarget(
+        &mut ed.state.active_session,
+        pid,
+        bid,
+        crate::editor::edit_session::EditSessionKind::Paste { before: false },
+        || crate::editor::edit_session::EditGroup {
             cs: Some(hume_editing::changeset::ChangeSet::identity(
                 text.len_chars(),
             )),
             text_snapshot: text,
             pre_sels,
         },
-    });
+    )
+    .expect("no session open yet: open_or_retarget must succeed");
 
     let result = live_host!(ed).completion_accept(0);
 
