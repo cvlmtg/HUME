@@ -185,7 +185,7 @@ impl EditorEvent {
     /// `OnModeChange`, `OnOptionChange`). A buffer-only variant wraps its
     /// `buffer` in [`PaneHandle::buffer_only`] rather than exposing it bare,
     /// so every caller checking event staleness (`Editor::run_pending_batch`)
-    /// runs the same `resolve_pane` check regardless of which shape a given
+    /// runs the same liveness check regardless of which shape a given
     /// variant happens to carry. Exhaustive match, no `_` arm: a future
     /// variant must be added here explicitly or this fails to compile — same
     /// discipline `Editor::react_to_event`'s own match uses, for the same

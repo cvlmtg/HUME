@@ -101,7 +101,7 @@ pub(crate) struct RepeatableAction {
 /// Splitting enqueue (pure State handler) from drain (`&mut Editor` plumbing)
 /// lets `cmd_repeat` keep the `FocusedCmdFn` shape (no `&mut Editor`, see
 /// `registry/command.rs`) while still reaching `replay_dot` (which uses
-/// `run_native_body_on_focus`/`run_steel_command` and `handle_insert`) for the
+/// `commands::run_body`/`run_steel_command` and `handle_insert`) for the
 /// actual replay.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PendingRepeat {
@@ -152,7 +152,7 @@ impl Editor {
     /// Replay a dot-repeat action directly, bypassing dispatch bookkeeping.
     ///
     /// Runs the selection recipe motions and edit body with
-    /// [`commands::run_native_body_on_focus`] (avoiding pipeline re-entry), then
+    /// [`commands::run_body`] (avoiding pipeline re-entry), then
     /// feeds insert keys through `handle_insert`.
     /// Preserves `last_repeatable_action` so `.` chains.
     pub(in crate::editor) fn replay_dot(&mut self, count: usize) {
@@ -218,12 +218,19 @@ impl Editor {
                 .get_mappable(step.command.as_ref())
                 .cloned()
                 .expect("a dot-repeat selection-recipe step always names a native command");
-            commands::run_native_body_on_focus(
+            let target = commands::Target::at_focus(
+                commands::FocusedPane::current(&self.state),
+                cmd.target_category(),
+            );
+            commands::run_body(
                 &mut self.state,
                 &mut self.view,
                 cmd,
-                Some(step.count),
-                step.extend,
+                target,
+                CmdCtx {
+                    count: Some(step.count),
+                    extend: step.extend,
+                },
             );
         }
 
@@ -247,7 +254,7 @@ impl Editor {
                     return;
                 }
                 // Inner call! dispatches inside the Steel body run through
-                // run_dispatch_pipeline → step_update_recipe, which may append to
+                // `commands::run` → step_update_recipe, which may append to
                 // selection_recipe. Clear it so stale steps don't contaminate the
                 // next command's recipe accumulation.
                 self.state.selection_recipe.clear();
@@ -259,12 +266,19 @@ impl Editor {
                 // Steel arm above (which receives `action.char_arg` as an
                 // explicit parameter instead) never leaves it dangling.
                 self.state.pending_char = action.char_arg;
-                commands::run_native_body_on_focus(
+                let target = commands::Target::at_focus(
+                    commands::FocusedPane::current(&self.state),
+                    edit_cmd.target_category(),
+                );
+                commands::run_body(
                     &mut self.state,
                     &mut self.view,
                     edit_cmd,
-                    Some(count),
-                    false,
+                    target,
+                    CmdCtx {
+                        count: Some(count),
+                        extend: false,
+                    },
                 );
             }
         }

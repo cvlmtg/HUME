@@ -1191,7 +1191,7 @@ impl Editor {
 /// Captures the entire funnel-owned side-effect cluster in one shot so a test
 /// can assert all bookkeeping in one `assert_eq!` without missing a field.
 ///
-/// Scope: six of the seven effects that `run_dispatch_pipeline` is exclusively
+/// Scope: six of the seven effects that `commands::run` is exclusively
 /// responsible for. Register routing (caller-armed) and handle_key-tail concerns
 /// (replay_dot, hooks, search-cache) are intentionally excluded — the former is
 /// seeding-dependent, the latter has dedicated tests.

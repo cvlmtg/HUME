@@ -669,7 +669,7 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
 }
 
 /// `(viewport-range pane)` needs a pane, not just a buffer — kind-B fail-fast
-/// (see `commands::resolve_pane`'s doc): a pane-less handle (`(buffers)`'s
+/// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
 /// own return shape) raises, replacing the old "not shown anywhere → `#f`"
 /// degrade.
 #[test]
@@ -721,7 +721,7 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
 }
 
 /// A buffer shown only in a *background* tab's pane — not paneless, unlike
-/// the sibling test above — still resolves: `resolve_pane`'s `Pane` category
+/// the sibling test above — still resolves: `CommandPane::resolve`
 /// only checks that the pane is live and shows the buffer, not which tab
 /// it's on. The returned range is trustworthy, not stale — a background
 /// tab's panes are kept resynced to the terminal on every resize, same as
@@ -745,7 +745,7 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
         "test setup: back on the original tab, hidden_bid's tab now in the background"
     );
 
-    let t = crate::editor::commands::resolve_command_pane(
+    let t = crate::editor::commands::CommandPane::resolve(
         &ed.state,
         &ed.view,
         hume_scripting::PaneHandle::with_pane(hidden_bid, hidden_pid),
@@ -805,7 +805,7 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
 }
 
 /// `lsp-position-params` needs a pane, not just a buffer — kind-B fail-fast
-/// (see `commands::resolve_pane`'s doc): a pane-less handle (`(buffers)`'s
+/// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
 /// own return shape) raises, even when the buffer is attached to a running
 /// server and still has a seeded (now stale) pane state.
 #[test]

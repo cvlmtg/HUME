@@ -12,7 +12,7 @@ use hume_scripting::host::CursorHost;
 impl<'a> EditorHostImpl<'a> {
     /// `t`'s buffer and selections, as tracked in `t`'s own pane. Shared by
     /// every `CursorHost` method — `t` is already resolved (see
-    /// `commands::resolve_pane`), so this never fails; a resolved
+    /// `commands::CommandPane::resolve`), so this never fails; a resolved
     /// `CommandPane`'s own buffer is always seeded (every pane creation or
     /// buffer switch seeds its `PaneBufferState`).
     fn buffer_and_selections(

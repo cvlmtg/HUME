@@ -443,7 +443,7 @@ pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, St
 /// `lsp-capabilities`, …). [`LivePane`] is the counterpart for a builtin
 /// that must raise on a closed buffer instead. Neither checks the pane half
 /// live — a builtin that needs the pane itself (kind A/B, see
-/// `hume-editor`'s `resolve_pane`) resolves and checks it through the host,
+/// `hume-editor`'s `CommandPane::resolve`/`FocusedPane::resolve`) resolves and checks it through the host,
 /// not here; a kind-C builtin never looks at `.pane()` at all.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArgPane(pub(crate) PaneHandle);

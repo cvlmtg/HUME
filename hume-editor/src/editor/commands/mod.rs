@@ -423,8 +423,7 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane_in_layout;
 pub(in crate::editor) use pipeline::{
-    CommandPane, FocusedPane, NativeBody, TargetError, resolve_command_pane, resolve_focused_pane,
-    resolve_pane, run_dispatch_pipeline, run_native_body_on_focus, run_resolved, step_paste_commit,
+    CommandPane, FocusedPane, NativeBody, Target, TargetError, run, run_body, step_paste_commit,
     step_stamp_repeatable,
 };
 

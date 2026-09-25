@@ -175,14 +175,14 @@ impl<'a> EditorHostImpl<'a> {
         self.state.buffers.try_get(id)
     }
 
-    /// Resolve `pane` against `TargetCategory::Pane` — the shared tail every
+    /// Resolve `pane` to a [`CommandPane`](crate::editor::commands::CommandPane) — the shared tail every
     /// `CursorHost`/`EditHost`/`BufferHost` method with a `PaneHandle`
     /// argument reduces to, as an error `Display`ed at the Steel boundary.
     pub(super) fn command_pane(
         &self,
         pane: hume_scripting::PaneHandle,
     ) -> Result<crate::editor::commands::CommandPane, String> {
-        crate::editor::commands::resolve_command_pane(self.state, self.view, pane)
+        crate::editor::commands::CommandPane::resolve(self.state, self.view, pane)
             .map_err(|e| e.to_string())
     }
 }

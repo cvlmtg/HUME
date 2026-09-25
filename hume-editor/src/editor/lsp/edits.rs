@@ -178,7 +178,7 @@ fn commit_changeset(
 /// `(apply-text-edits! pane edits #:expect-generation gen)`. `encoding` is
 /// the host layer's own resolve — every entry in `edits` decoded from its
 /// own tagged `JsonHandle`, checked there to all agree. `pid` is the
-/// already-resolved invocation pane (see `commands::resolve_command_pane`).
+/// already-resolved invocation pane (see `commands::CommandPane::resolve`).
 pub(in crate::editor) fn apply_text_edits(
     state: &mut EditorState,
     panes: &PanePool,
@@ -387,7 +387,7 @@ pub(in crate::editor) fn apply_workspace_edit(
     expect_gen: Option<u64>,
 ) -> Result<WorkspaceEditSummary, String> {
     // Checked against the *requesting* pane's own buffer, not any file the
-    // edit touches — `resolve_command_pane` already proved `pid` still shows
+    // edit touches — `CommandPane::resolve` already proved `pid` still shows
     // it, so this is "has the buffer this request was made from changed
     // since," the same staleness `apply-text-edits!`'s `#:expect-generation`
     // guards. Per-file staleness (a `documentChanges` entry's own `version`)

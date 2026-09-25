@@ -177,7 +177,7 @@ fn uri_and_encoding(
 /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
 /// params from the primary cursor head in `t`'s own pane. `None` only when
 /// `t`'s buffer has no path or no attached server — `t` is already resolved
-/// (see `commands::resolve_pane`), so there is no "not shown" case left.
+/// (see `commands::CommandPane::resolve`), so there is no "not shown" case left.
 pub(in crate::editor) fn position_params(
     state: &EditorState,
     view: &EngineView,
@@ -628,7 +628,7 @@ pub(in crate::editor) fn pane_visible_range(
 
 /// `(viewport-range pane)` — the visible line range (end-exclusive)
 /// currently visible in `t`'s own pane. `t` is already resolved (see
-/// `commands::resolve_pane`) by the time this runs, so unlike every other
+/// `commands::CommandPane::resolve`) by the time this runs, so unlike every other
 /// `id: BufferId`-taking function in this file, there is no "not shown"
 /// case left to report here — the caller's own resolve raised on that
 /// already.

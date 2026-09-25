@@ -82,7 +82,7 @@ Cursor/text assertions passed.  Nine bookkeeping regressions shipped.
 
 2. **Single funnel, compiler-enforced** — all execution of native-command
    `fun` fields must go through `run_native_body` in `commands/pipeline.rs`
-   (wrapped by `run_dispatch_pipeline` for bookkeeping). Every native
+   (wrapped by `commands::run` for bookkeeping). Every native
    variant's `fun` is wrapped in `NativeBody<F>` (`commands/pipeline.rs`), a
    newtype whose field is private to that file — destructuring still binds
    `fun` everywhere, but the value is opaque and uncallable outside

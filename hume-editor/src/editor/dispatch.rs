@@ -1,6 +1,6 @@
 //! Unified command dispatch pipeline: the `&mut Editor` half.
 //!
-//! [`commands::run_dispatch_pipeline`] handles the `&mut EditorState + &mut
+//! [`commands::run`] handles the `&mut EditorState + &mut
 //! EngineView` half (native commands, and the BEFORE/AFTER pipeline stages
 //! shared with Steel-backed commands). This module holds the Steel-backed
 //! path, which additionally needs `self.scripting`, `self.lsp`, and the
@@ -34,21 +34,25 @@ impl Editor {
 
     /// Execute a `MappableCommand` through the unified dispatch pipeline.
     ///
-    /// Native commands delegate to [`commands::run_dispatch_pipeline`].  Steel-backed
+    /// Native commands delegate to [`commands::run`].  Steel-backed
     /// commands run the pipeline's BEFORE/AFTER stages inline, with the body
     /// executed via [`Editor::run_steel_command`] (which needs `&mut Editor` for
     /// `self.scripting`).
     ///
     /// Dot-repeat replay bypasses this entirely — it calls
-    /// [`commands::run_native_body_on_focus`] directly.
+    /// [`commands::run_body`] directly.
     pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
         let is_steel = matches!(
             &cmd,
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. }
         );
         if !is_steel {
-            // Native path — delegate to the standalone pipeline.
-            commands::run_dispatch_pipeline(&mut self.state, &mut self.view, cmd, ctx);
+            // Native path — a keypress always acts at the focused pane.
+            let target = commands::Target::at_focus(
+                commands::FocusedPane::current(&self.state),
+                cmd.target_category(),
+            );
+            commands::run(&mut self.state, &mut self.view, cmd, target, ctx);
             return;
         }
 
@@ -113,7 +117,7 @@ impl Editor {
         // Outer Steel commands skip step_record_jump, step_clear_extend, and
         // step_align_view: their meta hardcodes is_jump = clears_extend =
         // aligns_view = false. An inner native (call! …) still fires all three
-        // — it routes through run_dispatch_pipeline with its own meta.
+        // — it routes through `commands::run` with its own meta.
     }
 
     /// Activate `plugin` (a `Lazy` stub's owner), reporting the standard

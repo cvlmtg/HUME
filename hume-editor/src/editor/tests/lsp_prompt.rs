@@ -429,7 +429,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
 }
 
 /// `symbol-under-cursor` needs a pane, not just a buffer — kind-B fail-fast
-/// (see `commands::resolve_pane`'s doc): a pane-less handle (`(buffers)`'s
+/// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
 /// own return shape) raises, replacing the old "no pane shows it → \"\""
 /// degrade.
 #[test]

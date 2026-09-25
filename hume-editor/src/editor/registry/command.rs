@@ -42,10 +42,9 @@ pub(in crate::editor) enum TargetCategory {
     FocusedPane,
 }
 
-/// Function pointer for an [`EditorCmdBody::Pane`] handler: acts on `bid`
-/// through `t`, a pane proven (by [`crate::editor::commands::resolve_focus`]/
-/// [`crate::editor::commands::resolve_pane`]) to show it — not necessarily
-/// the focused pane.
+/// Function pointer for an [`EditorCmdBody::Pane`] handler: acts through `t`,
+/// a pane proven (by [`crate::editor::commands::Target`]'s resolution) to
+/// show its buffer — not necessarily the focused pane.
 pub(in crate::editor) type PaneCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
@@ -300,7 +299,7 @@ pub(in crate::editor) enum StructuralBody {
 /// path: enum variants inherit their enum's visibility and cannot be narrowed
 /// individually, so this alone would not stop any file under `crate::editor`
 /// from destructuring a native variant's `fun` and calling it directly,
-/// skipping `run_dispatch_pipeline`'s bookkeeping (jump list, dot-repeat,
+/// skipping `commands::run`'s bookkeeping (jump list, dot-repeat,
 /// paste session). Every native variant's `fun` is wrapped in
 /// [`NativeBody`](crate::editor::commands::NativeBody) instead — its private
 /// field, readable only from `commands::pipeline::run_native_body`, is what
@@ -620,10 +619,11 @@ impl MappableCommand {
     /// their body signature's only option; `EditorCmd` derives it from its
     /// own `fun`'s [`EditorCmdBody`] variant.
     ///
-    /// Only meaningful for a native command — `resolve_focus`/
-    /// `resolve_pane` (`commands/pipeline.rs`) are the only callers, and
-    /// both are reached only after `is_native()` is already known true
-    /// (`Editor::dispatch`'s branch, `run_command_sync`'s native check).
+    /// Only meaningful for a native command — every caller builds a
+    /// `commands::Target` from it (`Target::at_focus`/`Target::resolve`) and
+    /// is reached only after `is_native()` is already known true
+    /// (`Editor::dispatch`'s branch, `run_command_sync`'s native check,
+    /// dot-repeat's recorded native command, Insert mode's `Edit` leaf).
     pub(in crate::editor) fn target_category(&self) -> TargetCategory {
         match self {
             Self::Motion { .. } | Self::Selection { .. } | Self::Edit { .. } => {

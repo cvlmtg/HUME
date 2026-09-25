@@ -62,7 +62,7 @@ fn run_command_sync_motion_moves_cursor() {
 /// its effect immediately — not queue it.
 ///
 /// Fail oracle: return `Ok(())` from `run_command_sync` without calling
-/// `run_dispatch_pipeline` → `undo` never reverts the deletion → assertion fails.
+/// `commands::run` → `undo` never reverts the deletion → assertion fails.
 #[test]
 fn run_command_sync_editor_cmd_runs_sync() {
     // Buffer "abc\n", selection on 'a'. Delete it via the normal keymap path to
@@ -512,7 +512,7 @@ fn steel_call_native_respects_register_prefix() {
 /// **Finding 3 — dot-repeat**: a repeatable native command invoked via Steel must
 /// set `last_repeatable_action` so `.` can replay it.
 ///
-/// Fail oracle: comment out the `step_stamp_repeatable` call in `run_dispatch_pipeline`
+/// Fail oracle: comment out the `step_stamp_repeatable` call in `commands::run`
 /// → `last_repeatable_action` is None after the call.
 #[test]
 fn steel_call_repeatable_cmd_sets_dot_repeat() {
@@ -552,7 +552,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
 /// **Finding 4 — jump list**: an explicit-jump EditorCmd (`goto-last-line`) invoked
 /// via Steel must push a `JumpEntry` so Ctrl-o can return.
 ///
-/// Fail oracle: comment out the `step_capture_pre_jump` call in `run_dispatch_pipeline`
+/// Fail oracle: comment out the `step_capture_pre_jump` call in `commands::run`
 /// → jump list is empty after the call.
 #[test]
 fn steel_call_jump_cmd_records_jump_entry() {
@@ -583,7 +583,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
 /// `(call! "move-down" bid)` in one body must commit the paste session so that
 /// one undo step reverts the paste cleanly.
 ///
-/// Fail oracle: remove the `step_paste_commit` call from `run_dispatch_pipeline`
+/// Fail oracle: remove the `step_paste_commit` call from `commands::run`
 /// → after undo, the paste text is still present.
 #[test]
 fn steel_call_paste_then_motion_commits_paste_session() {
@@ -1017,7 +1017,7 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
 /// `SteelBacked.clears_extend` is always `false`.
 ///
 /// The mechanism: `(call! "delete" bid)` routes through `run_command_sync` →
-/// `run_dispatch_pipeline`, which runs `delete`'s own `step_clear_extend` with
+/// `commands::run`, which runs `delete`'s own `step_clear_extend` with
 /// `clears_extend=true`.  Mode is still `Extend` when the inner pipeline fires,
 /// so it flips to Normal.  The outer Steel dispatch branch deliberately omits
 /// `step_clear_extend` — the inner command's meta drives the transition.
@@ -1057,7 +1057,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 // dispatching the same native command via the keypress path AND via a Steel
 // `(call! …)` wrapper leaves IDENTICAL `BookkeepingSnapshot` state.
 //
-// Each test documents a fail oracle: which single line in `run_dispatch_pipeline`
+// Each test documents a fail oracle: which single line in `commands::run`
 // (commands/pipeline.rs) to revert to confirm the assertion breaks on that field.
 
 /// **Parity: repeatable edit** — `delete` dispatched via keypress vs via Steel
@@ -1127,10 +1127,10 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 
 /// **Parity: Steel-branch bookkeeping cluster** — a `#:repeatable` SteelBacked
 /// command dispatched through `Editor::dispatch`'s Steel branch must run the
-/// SAME funnel stages as the native `run_dispatch_pipeline`.
+/// SAME funnel stages as the native `commands::run`.
 ///
 /// The existing parity tests above compare *native-via-keypress* vs
-/// *native-via-inner-`(call!)`* — both go through `run_dispatch_pipeline`.
+/// *native-via-inner-`(call!)`* — both go through `commands::run`.
 /// This test exercises the **Steel branch's own AFTER stages** (the hand-composed
 /// sequence in `mod.rs:dispatch`), which the other tests leave untouched.
 ///
@@ -1222,7 +1222,7 @@ fn parity_steel_branch_cluster_vs_native() {
     );
 
     // The Steel command must NOT call any native command internally — any inner
-    // `(call! …)` would route through `run_dispatch_pipeline` which also calls
+    // `(call! …)` would route through `commands::run` which also calls
     // `step_paste_commit`, masking a missing outer commit. A pure Steel no-op
     // (body returns a value without dispatching) isolates the outer BEFORE stage.
     attach_steel(
@@ -1246,7 +1246,7 @@ fn parity_steel_branch_cluster_vs_native() {
 /// `BookkeepingSnapshot.mode` field its teeth.
 ///
 /// Inner mechanism: `(call! "delete" bid)` routes through `run_command_sync` →
-/// `run_dispatch_pipeline`, which runs `step_clear_extend` with `delete`'s
+/// `commands::run`, which runs `step_clear_extend` with `delete`'s
 /// `clears_extend=true`. Mode is `Extend` when the inner pipeline fires, so both
 /// paths exit to Normal.
 ///
@@ -1285,7 +1285,7 @@ fn parity_extend_exit_keypress_vs_steel() {
 /// on to select across text a motion moved away from.
 ///
 /// Fail oracle: revert `step_clear_typed_run` (or its call site in
-///   `run_dispatch_pipeline`) — `typed_run_open` stays `true` after both
+///   `commands::run`) — `typed_run_open` stays `true` after both
 ///   dispatches, or (if only the Steel path regresses) `snap_steel.typed_run_open`
 ///   diverges from `snap_key.typed_run_open`.
 #[test]
@@ -1551,7 +1551,7 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// Fail oracle (Gap A): without the pre-body `.clone()` snapshot in the Steel
 /// `dispatch` path, `step_stamp_repeatable` would read whatever
 /// `insert-before`'s inner dispatch left `selection_recipe` as via
-/// `run_dispatch_pipeline`'s own `step_update_recipe` (an `EditorCmd` that is
+/// `commands::run`'s own `step_update_recipe` (an `EditorCmd` that is
 /// `Untracked`, so it clears). The white-box assertion `selection_recipe.len()
 /// == 1` catches this — it passes with the snapshot, fails without it.
 #[test]

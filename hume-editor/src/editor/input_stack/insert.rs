@@ -140,7 +140,7 @@ impl Editor {
                 // insert key. None of them route through `apply_insert_edit`
                 // (motions bypass it entirely; an edit command reaches the
                 // buffer either via `MappableCommand::Edit` below through
-                // `run_native_body_on_focus`, or — like Ctrl-w's `EditorCmd` — through
+                // `commands::run_body`, or — like Ctrl-w's `EditorCmd` — through
                 // the ordinary `execute_keymap_command` dispatch further
                 // down; neither hands its `ChangeSet` back here), so an open
                 // completion session can't stay correctly anchored past one.
@@ -162,16 +162,23 @@ impl Editor {
                     return;
                 };
                 // Edit commands (e.g. Ctrl-w) must compose into the open insert-session
-                // edit group. `run_native_body_on_focus` routes through
+                // edit group. `commands::run_body` routes through
                 // `apply_doc_edit_grouped` when a group is open, so no special-casing
                 // is needed here.
                 if let MappableCommand::Edit { .. } = reg_cmd {
-                    commands::run_native_body_on_focus(
+                    let target = commands::Target::at_focus(
+                        commands::FocusedPane::current(&self.state),
+                        reg_cmd.target_category(),
+                    );
+                    commands::run_body(
                         &mut self.state,
                         &mut self.view,
                         reg_cmd,
-                        Some(1),
-                        false,
+                        target,
+                        crate::editor::dispatch::CmdCtx {
+                            count: Some(1),
+                            extend: false,
+                        },
                     );
                     return;
                 }

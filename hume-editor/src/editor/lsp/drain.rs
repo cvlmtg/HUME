@@ -14,7 +14,7 @@ use lsp_types::request::Request as _;
 
 use super::LspState;
 use super::introspect;
-use crate::editor::commands::resolve_focused_pane;
+use crate::editor::commands::FocusedPane;
 use crate::editor::{Editor, Severity};
 use hume_scripting::PaneHandle;
 
@@ -394,10 +394,10 @@ impl Editor {
             // (moved focus to another pane, even one still showing
             // `anchor.bid`, or the pane now shows a different buffer), so
             // delivering it would show hover/signature-help/a code-action
-            // menu over the wrong pane. Exactly `resolve_focused_pane`'s own
+            // menu over the wrong pane. Exactly `FocusedPane::resolve`'s own
             // check, against the handle the request was made from.
             let handle = PaneHandle::with_pane(anchor.bid, pid);
-            if resolve_focused_pane(&self.state, &self.view, handle).is_err() {
+            if FocusedPane::resolve(&self.state, &self.view, handle).is_err() {
                 self.report(
                     Severity::Trace,
                     "lsp-request: the focused pane moved before the response could open — ignored"

@@ -363,18 +363,18 @@ pub(crate) struct EditorState {
     /// step it started with.
     pub(super) selection_recipe_writes: u64,
     /// Set by `refuse_if_read_only` (and by a native `EditorCmd` body
-    /// returning `Err`) to tell `run_dispatch_pipeline`'s AFTER stage the
+    /// returning `Err`) to tell `commands::run`'s AFTER stage the
     /// command's body did not do its job — a read-only refusal, or an error
     /// mid-body. A repeatable command in that state must not stamp
     /// `last_repeatable_action`: there is nothing new to repeat, and doing so
     /// would silently discard whatever real action was recorded before (see
     /// `commands/pipeline.rs`'s `step_stamp_repeatable` call site).
-    /// `run_dispatch_pipeline` resets this to `false` at its own BEFORE stage
+    /// `commands::run` resets this to `false` at its own BEFORE stage
     /// and is the only reader, immediately after BODY in that same call — the
     /// Steel dispatch path (`Editor::dispatch`) never reads or resets it
     /// directly, but any native `call!` it makes goes through
-    /// `run_dispatch_pipeline` too, so a stale value from an earlier dispatch
-    /// can never leak in. `run_dispatch_pipeline` also returns this flag's
+    /// `commands::run` too, so a stale value from an earlier dispatch
+    /// can never leak in. `commands::run` also returns this flag's
     /// negation, so `EditorHostImpl::run_command_sync` can forward it as the
     /// `#t`/`#f` a Steel `call!` sees for a native command.
     pub(super) command_refused: bool,

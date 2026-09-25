@@ -8,7 +8,7 @@ use hume_rope::lines::line_token_content;
 use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
-use crate::editor::commands::{FocusedPane, resolve_focused_pane};
+use crate::editor::commands::FocusedPane;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::BufferHost;
 
@@ -38,7 +38,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     fn require_focused_pane(&self, pane: PaneHandle) -> Result<(), String> {
-        resolve_focused_pane(self.state, self.view, pane)
+        FocusedPane::resolve(self.state, self.view, pane)
             .map(|_| ())
             .map_err(|e| e.to_string())
     }

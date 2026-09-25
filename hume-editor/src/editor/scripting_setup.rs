@@ -6,7 +6,7 @@ use hume_scripting::{Effect, PaneHandle};
 use steel::rvals::SteelVal;
 
 use super::buffer::DiskCheckTrigger;
-use super::commands::resolve_command_pane;
+use super::commands::CommandPane;
 use super::event::{EditorEvent, PendingWork};
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
@@ -511,7 +511,7 @@ impl Editor {
                     // describes.
                     let live = |handle: hume_scripting::PaneHandle| {
                         if handle.pane().is_some() {
-                            resolve_command_pane(&self.state, &self.view, handle).is_ok()
+                            CommandPane::resolve(&self.state, &self.view, handle).is_ok()
                         } else {
                             self.state.buffers.try_get(handle.buffer()).is_some()
                         }
