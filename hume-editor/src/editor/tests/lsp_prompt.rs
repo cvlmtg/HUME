@@ -444,7 +444,7 @@ fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
     let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
-    ed.switch_to_buffer_with_jump(other_bid);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), other_bid);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(

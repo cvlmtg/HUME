@@ -102,7 +102,11 @@ impl Editor {
             }
             hume_scripting::PendingLspServerOp::ShowStatus => {
                 let content = self.lsp_status_text();
+                // Applied from the effect log after the eval that queued it —
+                // the pane focused now is where the status view opens.
+                let fp = crate::editor::commands::FocusedPane::current(&self.state);
                 self.open_read_only_view(
+                    fp,
                     "[lsp-status]",
                     &content,
                     Some(hume_rope::line::ContentLine::new(0)),

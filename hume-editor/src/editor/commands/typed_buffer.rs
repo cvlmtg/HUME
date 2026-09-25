@@ -26,6 +26,7 @@ use crate::editor::error::CommandError;
 /// unused.
 pub(in crate::editor) fn typed_edit(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
@@ -37,7 +38,7 @@ pub(in crate::editor) fn typed_edit(
         // If a buffer is already open for this path, switch without re-reading.
         // Matches Vim semantics and covers the deleted-from-disk case.
         if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
-            ed.enter_buffer(bid);
+            ed.enter_buffer(fp, bid);
             return Ok(());
         }
 
@@ -52,10 +53,10 @@ pub(in crate::editor) fn typed_edit(
             } else {
                 format!("Opened {name}")
             };
-            ed.switch_to_buffer_with_jump(bid);
+            ed.switch_to_buffer_with_jump(fp, bid);
             ed.report(Severity::Info, msg);
         } else {
-            ed.enter_buffer(bid);
+            ed.enter_buffer(fp, bid);
         }
         Ok(())
     } else {
@@ -63,33 +64,32 @@ pub(in crate::editor) fn typed_edit(
         // Buffer (only its text + file_meta are swapped), so `path` and
         // `display_path` are retained as-is — no need to re-seed them onto the
         // freshly read doc.
-        let Some(path) = ed.doc().path().map(Path::to_path_buf) else {
+        let doc = super::doc(&ed.state, &ed.view, fp.target());
+        let Some(path) = doc.path().map(Path::to_path_buf) else {
             return Err(CommandError::transient("no file name"));
         };
         // Nothing on disk to reload from yet — a reload here would just be a
         // no-op, so short-circuit before the dirty check rather than making
         // the user add `!` to force a reload that would discard edits for no
         // reason. Checked before the dirty gate deliberately.
-        if ed.doc().is_new_file() {
-            let name = ed.doc().display_name();
+        if doc.is_new_file() {
+            let name = doc.display_name();
             ed.report(
                 Severity::Info,
                 format!("{name}: new file, nothing to reload"),
             );
             return Ok(());
         }
-        if ed.doc().is_dirty() && !force {
+        if doc.is_dirty() && !force {
             return Err(CommandError::transient(
                 "unsaved changes (use :e! to force)",
             ));
         }
-        let display = ed
-            .doc()
+        let display = doc
             .display_path()
             .expect("path is Some ⇒ display_path is Some (Buffer::set_path)")
             .to_string();
-        let id = ed.focused_buffer_id();
-        ed.reload_from_path(id, &path)
+        ed.reload_from_path(fp, &path)
             .map_err(|e| CommandError::new(format!("{display}: {e}")))
     }
 }
@@ -105,6 +105,7 @@ pub(in crate::editor) fn typed_edit(
 /// reload is what the confirm's `[r]eload` choice (or `:e!`) is for.
 pub(in crate::editor) fn typed_checktime(
     ed: &mut Editor,
+    _fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -119,6 +120,7 @@ pub(in crate::editor) fn typed_checktime(
 ///   resolve against the current process cwd (which mirrors `editor.cwd`).
 pub(in crate::editor) fn typed_cd(
     ed: &mut Editor,
+    _fp: FocusedPane,
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -143,6 +145,7 @@ pub(in crate::editor) fn typed_cd(
 /// `:pwd` / `:print-working-directory` — display the current working directory.
 pub(in crate::editor) fn typed_pwd(
     ed: &mut Editor,
+    _fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -159,15 +162,16 @@ pub(in crate::editor) fn typed_pwd(
 /// If it is the only buffer, it is replaced with a scratch buffer.
 pub(in crate::editor) fn typed_buffer_delete(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    if ed.doc().is_dirty() && !force {
+    let id = fp.bid(&ed.view);
+    if ed.state.buffers.get(id).is_dirty() && !force {
         return Err(CommandError::transient(
             "unsaved changes (use :bd! to force)",
         ));
     }
-    let id = ed.focused_buffer_id();
     ed.close_buffer(id);
     Ok(())
 }
@@ -185,12 +189,13 @@ pub(in crate::editor) fn typed_buffer_delete(
 /// nothing to force on a plain buffer switch.
 pub(in crate::editor) fn typed_buffer(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
     let arg = arg.ok_or_else(|| CommandError::transient("usage: :b <name|#|index>"))?;
     let bid = resolve_buffer_arg(ed, arg)?;
-    ed.enter_buffer(bid);
+    ed.enter_buffer(fp, bid);
     Ok(())
 }
 
@@ -325,8 +330,12 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 /// Take one open-order buffer step for `:bnext`/`:bprev`, recording by hand
 /// the jump the mappable `goto-next-buffer`/`goto-prev-buffer` siblings get
 /// from their `.jump()` meta — the `:` dispatcher reads no `CmdMeta`.
-fn typed_buffer_step(ed: &mut Editor, step: BufferStep) -> Result<(), CommandError> {
-    let t = FocusedPane::current(&ed.state).target();
+fn typed_buffer_step(
+    ed: &mut Editor,
+    fp: FocusedPane,
+    step: BufferStep,
+) -> Result<(), CommandError> {
+    let t = fp.target();
     let pre = current_jump_entry(&ed.state, &ed.view, t);
     goto_buffer_in_order(&mut ed.state, &mut ed.view, t, step);
     record_jump_if_moved(&mut ed.state, &ed.view, t, pre);
@@ -336,17 +345,19 @@ fn typed_buffer_step(ed: &mut Editor, step: BufferStep) -> Result<(), CommandErr
 /// `:bnext` / `:bn` — switch to the next buffer in open-order.
 pub(in crate::editor) fn typed_bnext(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    typed_buffer_step(ed, BufferStep::Next)
+    typed_buffer_step(ed, fp, BufferStep::Next)
 }
 
 /// `:bprev` / `:bp` — switch to the previous buffer in open-order.
 pub(in crate::editor) fn typed_bprev(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    typed_buffer_step(ed, BufferStep::Prev)
+    typed_buffer_step(ed, fp, BufferStep::Prev)
 }

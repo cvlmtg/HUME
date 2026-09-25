@@ -721,6 +721,7 @@ impl Editor {
         self.state.inline_output.enter_count()
     }
 
+    #[cfg(test)]
     pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::Viewport {
         &mut self.view.panes[self.state.focus.id()].viewport
     }

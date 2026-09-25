@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::commands::FocusedPane;
 use crate::editor::pane_state::{PaneBufferState, PaneView};
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
@@ -415,7 +416,8 @@ fn type_cmd_event(ed: &mut Editor, cmd: &str) {
 /// success/error result, not the end-to-end minibuffer path `type_cmd`
 /// exercises.
 fn run_set(ed: &mut Editor, cmd: &str) -> Result<(), crate::editor::error::CommandError> {
-    crate::editor::commands::typed_set(ed, Some(cmd), false)
+    let fp = FocusedPane::current(&ed.state);
+    crate::editor::commands::typed_set(ed, fp, Some(cmd), false)
 }
 
 /// Enters Insert mode, types `text` (translating `\n` to Enter, same as a
@@ -803,7 +805,8 @@ impl Editor {
         match self.state.config.registry.get_typed(cmd) {
             Some(tc) => match tc.body {
                 super::registry::TypedBody::Native(fun) => {
-                    let result = fun(self, arg, force);
+                    let fp = FocusedPane::current(&self.state);
+                    let result = fun(self, fp, arg, force);
                     if let Err(ref e) = result {
                         self.report(e.severity(), e.message().to_owned());
                     }

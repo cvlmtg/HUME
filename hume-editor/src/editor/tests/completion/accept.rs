@@ -292,7 +292,7 @@ fn accept_after_the_pane_switched_buffers_errors() {
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
-    ed.switch_to_buffer_without_jump(scratch);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch);
     assert_eq!(
         ed.state.mode(),
         Mode::Normal,

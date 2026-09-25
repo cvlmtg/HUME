@@ -877,7 +877,7 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
         BufferText::from("other\n"),
         SelectionSet::default(),
     ));
-    ed.switch_to_buffer_with_jump(other);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), other);
     ed.settle();
     assert!(
         ed.state.input.buffer_completion().is_none(),

@@ -3,6 +3,7 @@ use hume_platform::io::FileMeta;
 
 use super::super::Editor;
 use super::super::Severity;
+use super::FocusedPane;
 use crate::editor::error::CommandError;
 use crate::editor::settings::WRAP_MODE_KEY;
 use crate::editor::settings::ops as settings_ops;
@@ -35,6 +36,7 @@ fn stale_write_block(meta: &FileMeta) -> Option<&'static str> {
 
 pub(in crate::editor) fn typed_quit(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
@@ -43,7 +45,6 @@ pub(in crate::editor) fn typed_quit(
     // check — that guard belongs to the steps below, which actually close
     // something the user can't get back without saving.
     if !ed.view.layout().is_single_pane() {
-        let fp = super::FocusedPane::current(&ed.state);
         super::close_focused_pane(&mut ed.state, &mut ed.view, fp);
         return Ok(());
     }
@@ -58,13 +59,13 @@ pub(in crate::editor) fn typed_quit(
         return Ok(());
     }
 
-    if !force && ed.doc().is_dirty() {
+    let current = fp.bid(&ed.view);
+    if !force && ed.state.buffers.get(current).is_dirty() {
         return Err(CommandError::transient(
             "Unsaved changes (add ! to override)",
         ));
     }
 
-    let current = ed.focused_buffer_id();
     // Stay only for a buffer worth returning to: a real editable file, or any
     // buffer with unsaved edits (rescues a scratch the user has typed into).
     // Empty scratch buffers and read-only views (e.g. [messages]) are disposable —
@@ -86,6 +87,7 @@ pub(in crate::editor) fn typed_quit(
 
 pub(in crate::editor) fn typed_quit_all(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
@@ -102,10 +104,12 @@ pub(in crate::editor) fn typed_quit_all(
             // Jump to it only when the focused buffer is clean — if the user is
             // already sitting on an unsaved buffer, stay there so a save + :qa
             // cycle walks through dirty buffers one at a time.
-            if !ed.doc().is_dirty() {
-                ed.switch_to_buffer_with_jump(dirty_id);
+            if !ed.state.buffers.get(fp.bid(&ed.view)).is_dirty() {
+                ed.switch_to_buffer_with_jump(fp, dirty_id);
             }
-            let name = ed.state.buffers.get(ed.focused_buffer_id()).display_name();
+            // `fp.bid` reads the pane's buffer live: the dirty buffer if the
+            // switch above ran, the already-dirty focused one otherwise.
+            let name = ed.state.buffers.get(fp.bid(&ed.view)).display_name();
             // Stays Error, not transient: `EditorState::message_logged_this_input`
             // (lifecycle.rs) keys off `message_log.totals()` moving, and
             // `can_open_confirm` (buffer/disk.rs) reads that flag to refuse a
@@ -124,14 +128,16 @@ pub(in crate::editor) fn typed_quit_all(
 
 pub(in crate::editor) fn typed_write(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    write_file(ed, arg, force)
+    write_file(ed, fp.bid(&ed.view), arg, force)
 }
 
 pub(in crate::editor) fn typed_write_quit(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
@@ -139,10 +145,10 @@ pub(in crate::editor) fn typed_write_quit(
     // (proceed with the quit even if the write fails). After a successful
     // write, delegate to typed_quit so :wq mirrors :q's pane/buffer-aware
     // close instead of always tearing down the whole editor.
-    match write_file(ed, arg, force) {
-        Ok(()) => typed_quit(ed, None, force),
+    match write_file(ed, fp.bid(&ed.view), arg, force) {
+        Ok(()) => typed_quit(ed, fp, None, force),
         Err(e) if force => {
-            typed_quit(ed, None, true).expect("force quit cannot fail: dirty check is skipped");
+            typed_quit(ed, fp, None, true).expect("force quit cannot fail: dirty check is skipped");
             Err(e)
         }
         Err(e) => Err(e),
@@ -151,10 +157,11 @@ pub(in crate::editor) fn typed_write_quit(
 
 pub(in crate::editor) fn typed_toggle_soft_wrap(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let now_wrapping = ed.toggle_focused_wrap();
+    let now_wrapping = ed.toggle_wrap(fp);
     let state = if now_wrapping { "on" } else { "off" };
     ed.report(Severity::Info, format!("Soft wrap {state}"));
     Ok(())
@@ -162,6 +169,7 @@ pub(in crate::editor) fn typed_toggle_soft_wrap(
 
 pub(in crate::editor) fn typed_set(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -181,7 +189,7 @@ pub(in crate::editor) fn typed_set(
     let Some((key, value)) = rest.split_once('=') else {
         return Err(CommandError::transient("Expected key=value"));
     };
-    let bid = ed.focused_buffer_id();
+    let bid = fp.bid(&ed.view);
 
     // `language` has no global default and no generic storage (it lives on
     // `Buffer.language`, not `EditorSettings`/`BufferOverrides`), so it has no
@@ -253,7 +261,7 @@ pub(in crate::editor) fn typed_set(
                 use std::str::FromStr;
                 let mode =
                     hume_engine::pane::WrapMode::from_str(value).map_err(CommandError::new)?;
-                ed.set_focused_wrap_override(mode);
+                ed.set_wrap_override(fp, mode);
                 return Ok(());
             }
             unreachable!("'{key}' has scope Pane in setting_scopes() but no pane handler here")
@@ -392,11 +400,15 @@ fn write_buffer_by_id(
 /// chmod-retry: the target is made writable, the rename is retried, and the
 /// status message includes "(forced)".
 ///
-/// On success (save-as case), calls `ed.doc_mut().mark_saved()` and sets a
-/// status message. Returns `Ok(())` on success, `Err(CommandError)` on any
-/// error.
-fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), CommandError> {
-    let (content, line_count) = serialize_buffer(ed, ed.focused_buffer_id());
+/// On success (save-as case), marks `bid` saved and sets a status message.
+/// Returns `Ok(())` on success, `Err(CommandError)` on any error.
+fn write_file(
+    ed: &mut Editor,
+    bid: BufferId,
+    arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
+    let (content, line_count) = serialize_buffer(ed, bid);
 
     if let Some(path_str) = arg {
         let expanded = hume_platform::path::expand(path_str);
@@ -428,13 +440,14 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                 // `read_file_meta`, so comparing its signature against the
                 // buffer's own baseline is already a stat-at-write-time
                 // check — no cached flag, no second syscall needed.
-                let targets_own_file = ed.doc().path() == Some(meta.resolved_path());
+                let own = ed.state.buffers.get(bid);
+                let targets_own_file = own.path() == Some(meta.resolved_path());
                 // A new-file buffer (`file_meta: None`) has no baseline at
                 // all — if this write targets its own path and a file now
                 // exists there, that content was never read by this buffer,
                 // so it counts as "differs" the same as a genuine signature
                 // mismatch would.
-                let own_baseline_differs = match ed.doc().file_meta.as_ref() {
+                let own_baseline_differs = match own.file_meta.as_ref() {
                     Some(own) => own.signature() != meta.signature(),
                     None => true,
                 };
@@ -448,20 +461,19 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
         };
         match result {
             Ok((meta, retried)) => {
-                let bid = ed.focused_buffer_id();
                 // A read-only or synthetic (e.g. [messages]) buffer can't
                 // legitimately become the file at `path` — :w <path> on one
                 // of these is an export, not a save-as: dump the content,
                 // leave the source buffer's identity and dirty state alone.
-                let is_save_as = !ed.doc().is_synthetic() && !ed.doc().is_read_only();
+                let doc = ed.state.buffers.get_mut(bid);
+                let is_save_as = !doc.is_synthetic() && !doc.is_read_only();
                 if is_save_as {
                     // Store the canonicalized path so path and
                     // file_meta.resolved_path always agree, even when the
                     // user supplied a relative or symlink path.
-                    ed.doc_mut()
-                        .set_path(Some(meta.resolved_path().to_path_buf()));
-                    ed.doc_mut().set_display_path(Some(display_path));
-                    ed.doc_mut().file_meta = Some(meta);
+                    doc.set_path(Some(meta.resolved_path().to_path_buf()));
+                    doc.set_display_path(Some(display_path));
+                    doc.file_meta = Some(meta);
                     mark_written_and_synced(ed, bid, line_count, retried);
                 } else {
                     ed.report(write_severity(retried), write_msg(line_count, retried));
@@ -471,12 +483,13 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
             Err(e) => Err(CommandError::new(e.to_string())),
         }
     } else {
-        write_buffer_by_id(ed, ed.focused_buffer_id(), content, line_count, force)
+        write_buffer_by_id(ed, bid, content, line_count, force)
     }
 }
 
 pub(in crate::editor) fn typed_write_all(
     ed: &mut Editor,
+    _fp: FocusedPane,
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {

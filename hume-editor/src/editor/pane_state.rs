@@ -16,6 +16,7 @@ use slotmap::SecondaryMap;
 
 use super::Editor;
 use super::LayoutKey;
+use super::commands::FocusedPane;
 use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
@@ -488,13 +489,19 @@ impl Editor {
 
     /// The focused pane's effective wrap mode: pane override → buffer
     /// override → global default (see `commands::effective_wrap_mode`).
+    #[cfg(test)]
     pub(in crate::editor) fn focused_wrap_mode(&self) -> hume_engine::pane::WrapMode {
-        let pane = &self.view.panes[self.state.focus.id()];
+        self.pane_wrap_mode(self.state.focus.id())
+    }
+
+    /// `pid`'s effective wrap mode for the buffer it currently views.
+    fn pane_wrap_mode(&self, pid: PaneId) -> hume_engine::pane::WrapMode {
+        let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
         super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
     }
 
-    /// Pin the focused pane's wrap mode to `mode`, for the buffer it
+    /// Pin `fp`'s wrap mode to `mode`, for the buffer it
     /// currently views — the write path behind `:set pane wrap-mode=…`.
     ///
     /// Always writes an explicit override, even `WrapMode::None` (an
@@ -513,14 +520,15 @@ impl Editor {
     /// instead of being erased by this pin.
     ///
     /// Zeroes horizontal scroll (meaningless once wrapped) on any actual
-    /// change to the pane's *effective* mode — see `toggle_focused_wrap`'s
-    /// doc for the full rationale, shared by both functions.
-    pub(in crate::editor) fn set_focused_wrap_override(
+    /// change to the pane's *effective* mode — see `toggle_wrap`'s doc for
+    /// the full rationale, shared by both functions.
+    pub(in crate::editor) fn set_wrap_override(
         &mut self,
+        fp: FocusedPane,
         mode: hume_engine::pane::WrapMode,
     ) {
-        let before = self.focused_wrap_mode();
-        let pid = self.state.focus.id();
+        let pid = fp.pid();
+        let before = self.pane_wrap_mode(pid);
         let pane = &mut self.view.panes[pid];
         let mut wrap = pane.wrap();
         wrap.mode = Some(mode);
@@ -529,18 +537,18 @@ impl Editor {
         }
         pane.set_wrap(wrap);
         if mode != before {
-            self.viewport_mut().reset_horizontal();
+            self.view.panes[pid].viewport.reset_horizontal();
         }
     }
 
-    /// Toggle the focused pane's wrapping on/off, for the buffer it
+    /// Toggle `fp`'s wrapping on/off, for the buffer it
     /// currently views — the write path behind `:wrap`/`:toggle-soft-wrap`.
     /// Returns the new wrapping state.
     ///
     /// Turning wrapping *off* stashes the pane's current override into
     /// `WrapOverride::saved` — `None` if it was inheriting from the
     /// buffer/global setting, `Some(m)` if it was explicitly pinned to `m` —
-    /// then pins the pane to `WrapMode::None`. Like `set_focused_wrap_override`,
+    /// then pins the pane to `WrapMode::None`. Like `set_wrap_override`,
     /// this writes to `Pane::wraps` keyed by the current buffer, so it does
     /// not follow the pane to a buffer it switches to next.
     ///
@@ -580,11 +588,11 @@ impl Editor {
     /// range once wrapping grows `content` — landing on a wrap display line
     /// of the line's own text instead of the virtual display line it used
     /// to point at. Silent, not a bug this function fixes.
-    pub(in crate::editor) fn toggle_focused_wrap(&mut self) -> bool {
+    pub(in crate::editor) fn toggle_wrap(&mut self, fp: FocusedPane) -> bool {
         use hume_engine::pane::{DEFAULT_WRAP_STYLE, WrapMode};
 
-        let pid = self.state.focus.id();
-        let now_wrapping = if self.focused_wrap_mode().is_wrapping() {
+        let pid = fp.pid();
+        let now_wrapping = if self.pane_wrap_mode(pid).is_wrapping() {
             let pane = &mut self.view.panes[pid];
             let mut wrap = pane.wrap();
             wrap.saved = wrap.mode;
@@ -596,7 +604,7 @@ impl Editor {
             let mut wrap = pane.wrap();
             wrap.mode = wrap.saved;
             pane.set_wrap(wrap);
-            if !self.focused_wrap_mode().is_wrapping() {
+            if !self.pane_wrap_mode(pid).is_wrapping() {
                 let global = self.state.settings.wrap_mode;
                 let fallback = if global.is_wrapping() {
                     global
@@ -610,7 +618,7 @@ impl Editor {
             }
             true
         };
-        self.viewport_mut().reset_horizontal();
+        self.view.panes[pid].viewport.reset_horizontal();
         now_wrapping
     }
 }

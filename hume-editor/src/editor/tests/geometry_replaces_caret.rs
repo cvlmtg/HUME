@@ -159,7 +159,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
         SelectionSet::single(hume_editing::selection::Selection::collapsed(shared_head));
     let second_bid = ed.open_buffer(Buffer::new(second_text, second_sels));
 
-    ed.switch_to_buffer_without_jump(second_bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), second_bid);
 
     assert!(
         frame(&mut ed, 80, 15).cursor_content_pos.is_some(),
@@ -467,9 +467,9 @@ fn a_revisit_with_nothing_changed_leaves_a_parked_view_parked() {
         BufferText::from("x\n"),
         SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0))),
     ));
-    ed.switch_to_buffer_without_jump(second_bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), second_bid);
     frame(&mut ed, 80, 20);
-    ed.switch_to_buffer_without_jump(bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid);
 
     assert_eq!(
         frame(&mut ed, 80, 20).cursor_content_pos,

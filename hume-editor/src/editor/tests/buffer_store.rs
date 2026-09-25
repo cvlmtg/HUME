@@ -37,7 +37,7 @@ fn p6_close_buffer_redirects_to_mru() {
     let bid_alpha = ed.focused_buffer_id();
     let doc_beta = Buffer::new(BufferText::from("beta\n"), SelectionSet::default());
     let bid_beta = ed.open_buffer(doc_beta);
-    ed.switch_to_buffer_with_jump(bid_beta);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
     // Close beta — should redirect focused pane back to alpha.
     ed.close_buffer(bid_beta);
@@ -252,7 +252,7 @@ fn p6_bd_closes_focused_buffer() {
         BufferText::from("second\n"),
         SelectionSet::default(),
     ));
-    ed.switch_to_buffer_with_jump(bid_second);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_second);
     let _ = ed.execute_typed("bd", None);
     assert_eq!(
         ed.focused_buffer_id(),
@@ -277,7 +277,7 @@ fn p6_bd_force_closes_dirty_buffer() {
         BufferText::from("dirty\n"),
         SelectionSet::default(),
     ));
-    ed.switch_to_buffer_with_jump(bid_dirty);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_dirty);
     // Make it dirty by inserting a character.
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
@@ -378,7 +378,7 @@ fn p6_reload_preserves_cursor_same_content() {
 
     // Reload with identical content.
     let replacement = Buffer::new(BufferText::from(content), SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -413,7 +413,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
 
     // Reload with a 1-line file.
     let replacement = Buffer::new(BufferText::from("short\n"), SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     // last_line=0, target_line=0, col=0 → head=0.
     assert_eq!(
@@ -449,7 +449,7 @@ fn p6_reload_clamps_char_col_to_line_end() {
 
     // Reload with a shorter line "hi\n" (h=0,i=1,\n=2).
     let replacement = Buffer::new(BufferText::from("hi\n"), SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     // last content char='i' (char 1); overshooting col 10 clamps there, not
     // onto the '\n' at char 2.
@@ -471,7 +471,6 @@ fn p6_reload_snaps_char_col_to_grapheme_boundary() {
         BufferText::from(content),
         SelectionSet::default(),
     ));
-    let bid = ed.focused_buffer_id();
 
     // Place cursor mid-cluster at char 4 (the combining acute U+0301).
     // Normal motions won't do this; set directly.
@@ -479,7 +478,7 @@ fn p6_reload_snaps_char_col_to_grapheme_boundary() {
 
     // Reload with identical content — col=4 is mid-cluster.
     let replacement = Buffer::new(BufferText::from(content), SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     // snap_to_grapheme_boundary(text, 0, 4) should land at 3 (start of é).
     assert_eq!(
@@ -500,7 +499,6 @@ fn p6_reload_collapses_multi_selection_to_primary() {
         BufferText::from(content),
         SelectionSet::default(),
     ));
-    let bid = ed.focused_buffer_id();
 
     // Two selections: primary at line 1 (head=6), secondary at line 2 (head=12).
     ed.set_current_selections(SelectionSet::from_vec(
@@ -514,7 +512,7 @@ fn p6_reload_collapses_multi_selection_to_primary() {
     );
 
     let replacement = Buffer::new(BufferText::from(content), SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     let sels = ed.current_selections();
     assert_eq!(

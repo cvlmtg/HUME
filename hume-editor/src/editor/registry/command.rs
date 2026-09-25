@@ -709,7 +709,10 @@ pub(in crate::editor) struct TypedCommand {
 /// `Steel`/`Lazy` here mean the command's *body* is a Steel lambda invoked
 /// only from the `:` line, defined via `(define-typed-command! …)`.
 pub(in crate::editor) enum TypedBody {
-    /// A command implemented in Rust. Receives the editor, an optional
+    /// A command implemented in Rust. Receives the editor, the pane focused
+    /// when the `:` line was confirmed — captured once at invocation, the
+    /// same rule a mappable command's target follows, so a body never reads
+    /// focus again after its own work may have moved it — an optional
     /// argument (e.g. a file path), and whether `!` was appended.
     ///
     /// Kept as `&mut Editor` rather than a native `EditorCmd`'s `(&mut
@@ -722,7 +725,9 @@ pub(in crate::editor) enum TypedBody {
     /// coarse shape); and this is the Editor-orchestration layer, driving
     /// whole-app ops (`:w`, `:e`, `:bd`, `:split`, `:set language`) that
     /// legitimately span state + view + `parse_worker` + Steel together.
-    Native(fn(&mut super::super::Editor, Option<&str>, bool) -> Result<(), CommandError>),
+    Native(
+        fn(&mut super::super::Editor, FocusedPane, Option<&str>, bool) -> Result<(), CommandError>,
+    ),
     /// A command implemented as a Steel lambda, registered by
     /// `(define-typed-command! …)`. The lambda receives `(arg force)`,
     /// `(arg)`, or `()` based on its declared arity — see

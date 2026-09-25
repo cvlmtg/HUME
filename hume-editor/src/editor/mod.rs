@@ -978,6 +978,7 @@ impl Editor {
     /// Uses a split borrow — `buffers` and other fields on `Editor` are
     /// disjoint, so you can hold this reference while reading e.g. `self.state.settings`.
     /// Do NOT keep this reference live across a call that also borrows `self`.
+    #[cfg(test)]
     pub(in crate::editor) fn doc_mut(&mut self) -> &mut Buffer {
         let bid = self.focused_buffer_id();
         self.state.buffers.get_mut(bid)

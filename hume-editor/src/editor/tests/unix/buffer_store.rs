@@ -43,7 +43,7 @@ fn p6_edit_deduplicates_open_file() {
     let count_after_first = ed.state.buffers.len();
     // Switch back to scratch.
     let scratch_bid = ed.state.buffers.prev(bid_first_open);
-    ed.switch_to_buffer_without_jump(scratch_bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch_bid);
     // Open the same file again — should switch to existing buffer, not create new.
     let r2 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r2.is_ok());

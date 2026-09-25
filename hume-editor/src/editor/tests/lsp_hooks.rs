@@ -227,7 +227,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     // Parallel plain editor (no hook) isolates "did the extra move fire"
     // from "was the char inserted", same pattern as the single-language
     // trigger-char tests above.
-    ed.switch_to_buffer_without_jump(bid_a);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_a);
     let mut plain_a = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
     ed.settle();
@@ -255,7 +255,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     // proving "python"'s attach registering under the same "test" source
     // didn't clobber "rust"'s "." entry (checked above), and that "rust"'s
     // registration doesn't leak into "python"'s buffer either.
-    ed.switch_to_buffer_without_jump(bid_b);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_b);
     let mut plain_b = Editor::for_testing(Buffer::new(
         BufferText::from("x\n"),
         SelectionSet::single(Selection::collapsed(co(0))),

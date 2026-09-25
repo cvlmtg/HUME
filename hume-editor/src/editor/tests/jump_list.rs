@@ -775,6 +775,7 @@ fn reload_remaps_jump_entries_through_line_diff() {
 fn view_buffer_refresh_drops_its_jump_entries() {
     let mut ed = editor_from("-[a]>b\n");
     let bid = ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[jump-list-test]",
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -792,6 +793,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
 
     // Re-open the same label — refreshes content in place via `set_view_content`.
     ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[jump-list-test]",
         "brand new content\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -812,6 +814,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     let mut ed = editor_from("-[a]>b\n");
     let pid_a = ed.state.focus.id();
     ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[jump-list-test]",
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -837,6 +840,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     // pane B's stale offset to remain valid.
     ed.switch_focused_pane(pid_a);
     ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[jump-list-test]",
         "x\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -860,6 +864,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     let bid_scratch = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
     let bid = ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[jump-list-test]",
         "one\ntwo\nthree\nfour\nfive\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -882,12 +887,13 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
 
     // Pane A switches away to a different buffer — it is no longer a viewer
     // of the view buffer when it gets refreshed below.
-    ed.switch_to_buffer_without_jump(bid_scratch);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_scratch);
 
     // Refresh from pane B, with content too short for pane A's stale cached
     // selection to remain valid.
     ed.switch_focused_pane(pid_b);
     ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[jump-list-test]",
         "x\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -896,7 +902,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     // Pane A switches back to the view buffer — its cached selection for
     // `bid` must have been reseeded by the refresh, not left stale.
     ed.switch_focused_pane(pid_a);
-    ed.switch_to_buffer_without_jump(bid);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid);
     assert_eq!(
         ed.current_selections(),
         &ed.state.buffers.get(bid).initial_sels(),

@@ -541,7 +541,6 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
         ed.feed_key(key_enter());
     }
     open_completion_session(&mut ed, &["candidate"]);
-    let bid = ed.focused_buffer_id();
     assert!(
         ed.state
             .input
@@ -554,7 +553,7 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
     );
 
     let replacement = Buffer::new(BufferText::from("hi\n"), SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     ed.settle();
     assert!(ed.state.input.buffer_completion().is_none());

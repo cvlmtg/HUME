@@ -1091,8 +1091,8 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
 
     let buf1 = ed.open_buffer(Buffer::scratch());
     let buf2 = ed.open_buffer(Buffer::scratch());
-    ed.switch_to_buffer_with_jump(buf1);
-    ed.switch_to_buffer_with_jump(buf2);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), buf1);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), buf2);
 
     ed.settle();
 
@@ -1162,7 +1162,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
     // Bare `focus` write (no settle() in between)...
     ed.state.focus.set_for_test(pid_b);
     // ...then a `pane.buffer_id` write on the pane that write just focused.
-    ed.switch_to_buffer_with_jump(buf2);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), buf2);
     assert_ne!(pid_a, pid_b, "sanity: a genuinely different pane");
 
     ed.settle();
@@ -1465,7 +1465,6 @@ fn e_bang_reload_fires_on_text_changed() {
     use hume_scripting::ScriptingHost;
 
     let mut ed = editor_from("-[a]>b\n");
-    let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
@@ -1477,7 +1476,7 @@ fn e_bang_reload_fires_on_text_changed() {
     ed.settle();
 
     let replacement = Buffer::new(BufferText::from("reloaded\n"), SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
     ed.settle();
 
     let fires = ed
@@ -1741,6 +1740,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
     };
 
     ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[test-view]",
         "one\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -1753,6 +1753,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
     );
 
     ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[test-view]",
         "two\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -2006,7 +2007,7 @@ fn identity_reload_fires_no_on_text_changed() {
 
     let before_gen = ed.state.buffers.get(bid).text_gen;
     let replacement = Buffer::new(text_before, SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
     ed.settle();
 
     assert_eq!(
@@ -2043,7 +2044,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
         BufferText::from("hello\n"),
         SelectionSet::default(),
     ));
-    ed.switch_to_buffer_with_jump(bid_b);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_b);
 
     let mut host = hume_scripting::ScriptingHost::new();
     eval_with_real_host(

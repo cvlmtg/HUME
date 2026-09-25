@@ -366,7 +366,7 @@ fn wrap_toggle_off_then_on_restores_an_explicit_pane_pin() {
 }
 
 /// A wrap-mode change zeroes horizontal scroll (meaningless once wrapped) but
-/// leaves `top_slot` alone — see `pane_state::toggle_focused_wrap`'s doc.
+/// leaves `top_slot` alone — see `pane_state::toggle_wrap`'s doc.
 #[test]
 fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     let mut ed = editor_from("-[a]>b\n");
@@ -399,7 +399,7 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
 }
 
 /// `:set pane wrap-mode=…`'s half of the same horizontal-offset rule
-/// (`set_focused_wrap_override`, forked from `toggle_focused_wrap`): zeroes
+/// (`set_wrap_override`, forked from `toggle_wrap`): zeroes
 /// horizontal scroll when the pin actually changes the pane's *effective*
 /// mode.
 #[test]
@@ -439,7 +439,7 @@ fn set_pane_wrap_mode_leaves_horizontal_offset_when_effective_mode_is_unchanged(
 /// row inside the top's line's block in either wrap mode. If the new
 /// (no-wrap) block is shorter than the old one, the offset is now stale —
 /// but the next `Viewport::top_at` read repairs that, not
-/// `toggle_focused_wrap` itself, so the raw value must survive the `:set`
+/// `toggle_wrap` itself, so the raw value must survive the `:set`
 /// call untouched.
 #[test]
 fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
@@ -459,7 +459,7 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
     assert_eq!(
         pane.viewport.top().slot,
         3,
-        "toggle_focused_wrap itself must not reset a still-unvalidated offset"
+        "toggle_wrap itself must not reset a still-unvalidated offset"
     );
 
     // No-wrap: line 0's whole block is 1 row (content only, no providers
@@ -597,7 +597,7 @@ fn open_second_buffer(ed: &mut Editor) -> BufferId {
     let text = BufferText::from("other buffer\n");
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
     let bid = ed.open_buffer(Buffer::new(text, sels));
-    ed.switch_to_buffer_with_jump(bid);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid);
     bid
 }
 
@@ -640,7 +640,7 @@ fn wrap_off_pin_is_restored_on_switching_back() {
     assert_eq!(focused_pane(&ed).wrap().mode, Some(WrapMode::None));
 
     open_second_buffer(&mut ed);
-    ed.switch_to_buffer_with_jump(bid_first);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_first);
     assert_eq!(
         focused_pane(&ed).wrap().mode,
         Some(WrapMode::None),

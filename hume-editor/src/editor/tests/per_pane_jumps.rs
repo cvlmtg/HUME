@@ -90,7 +90,7 @@ fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
 
     // Switch to the buffer already focused — a no-op.
     let current = ed.focused_buffer_id();
-    ed.switch_to_buffer_with_jump(current);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), current);
     assert_eq!(
         state(&ed),
         back_at_start,

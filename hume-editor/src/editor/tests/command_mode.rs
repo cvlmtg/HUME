@@ -414,6 +414,7 @@ fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
     let file_buf = ed.focused_buffer_id();
     // Open a read-only view buffer (simulates :messages).
     ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[test-view]",
         "log line\n",
         Some(hume_rope::line::ContentLine::new(0)),
@@ -444,7 +445,7 @@ fn colon_q_real_buffer_with_clean_scratch_quits() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
     ed.open_buffer(crate::editor::buffer::Buffer::scratch());
-    ed.switch_to_buffer_without_jump(file_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), file_buf);
 
     type_cmd(&mut ed, ":q");
 
@@ -465,13 +466,13 @@ fn colon_q_with_dirty_scratch_remaining_stays() {
     let scratch_id = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
 
     // Dirty the scratch by switching to it and typing into it.
-    ed.switch_to_buffer_without_jump(scratch_id);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch_id);
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
     assert!(ed.doc().is_dirty(), "scratch must be dirty");
 
-    ed.switch_to_buffer_without_jump(file_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), file_buf);
 
     type_cmd(&mut ed, ":q");
 
@@ -493,7 +494,7 @@ fn colon_q_one_of_two_file_buffers_switches_not_quits() {
     let first_buf = ed.focused_buffer_id();
 
     let second_buf = open_second_file_buffer(&mut ed);
-    ed.switch_to_buffer_without_jump(second_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), second_buf);
     assert_eq!(ed.focused_buffer_id(), second_buf);
 
     type_cmd(&mut ed, ":q");
@@ -517,12 +518,13 @@ fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
     ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
         "[test-view]",
         "log line\n",
         Some(hume_rope::line::ContentLine::new(0)),
     );
     // Switch focus back to the file buffer.
-    ed.switch_to_buffer_without_jump(file_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), file_buf);
 
     type_cmd(&mut ed, ":q");
 
@@ -549,7 +551,7 @@ fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
 
     // Open a second real file-backed buffer.
     let other_buf = open_second_file_buffer(&mut ed);
-    ed.switch_to_buffer_without_jump(dirty_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), dirty_buf);
 
     type_cmd(&mut ed, ":q!");
 
@@ -580,7 +582,7 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
     // Validity: replace `should_quit = true` with `close_buffer` and this fails.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let _scratch = ed.open_buffer(Buffer::scratch());
-    ed.switch_to_buffer_without_jump(ed.focused_buffer_id()); // stay on file buf
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), ed.focused_buffer_id()); // stay on file buf
 
     type_cmd(&mut ed, ":qa");
 
@@ -601,14 +603,14 @@ fn colon_qa_refused_when_a_background_buffer_is_dirty() {
 
     // Open a second file buffer and dirty it.
     let bg_buf = open_second_file_buffer(&mut ed);
-    ed.switch_to_buffer_without_jump(bg_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bg_buf);
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
     assert!(ed.doc().is_dirty(), "background buffer must be dirty");
 
     // Switch focus back to the clean file buffer.
-    ed.switch_to_buffer_without_jump(file_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), file_buf);
     assert!(!ed.doc().is_dirty(), "focused buffer must be clean");
 
     type_cmd(&mut ed, ":qa");
@@ -684,7 +686,7 @@ fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
     let mk_dirty_buf = |ed: &mut Editor| {
         let (buf, _tmp) = file_buffer("content\n");
         let id = ed.open_buffer(buf);
-        ed.switch_to_buffer_without_jump(id);
+        ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), id);
         ed.handle_key(key('i'));
         ed.handle_key(key('x'));
         ed.handle_key(key_esc());
@@ -695,7 +697,7 @@ fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
     let first_dirty = mk_dirty_buf(&mut ed);
     let _second_dirty = mk_dirty_buf(&mut ed);
 
-    ed.switch_to_buffer_without_jump(clean_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), clean_buf);
     assert!(!ed.doc().is_dirty(), "focused buffer must be clean");
 
     type_cmd(&mut ed, ":qa");
@@ -720,7 +722,7 @@ fn colon_qa_walk_through_dirty_buffers() {
     let mk_dirty_buf = |ed: &mut Editor| {
         let (buf, tmp_path) = file_buffer("content\n");
         let id = ed.open_buffer(buf);
-        ed.switch_to_buffer_without_jump(id);
+        ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), id);
         ed.handle_key(key('i'));
         ed.handle_key(key('x'));
         ed.handle_key(key_esc());
@@ -732,7 +734,7 @@ fn colon_qa_walk_through_dirty_buffers() {
     let (second_dirty, _tmp3) = mk_dirty_buf(&mut ed);
 
     // Start from the clean buffer.
-    ed.switch_to_buffer_without_jump(clean_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), clean_buf);
 
     // First :qa → lands on first_dirty.
     type_cmd(&mut ed, ":qa");
@@ -920,7 +922,7 @@ fn colon_wq_single_pane_other_buffer_closes_buffer_and_stays() {
 
     // Open a second real file-backed buffer.
     let other_buf = open_second_file_buffer(&mut ed);
-    ed.switch_to_buffer_without_jump(dirty_buf);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), dirty_buf);
 
     type_cmd(&mut ed, ":wq");
 

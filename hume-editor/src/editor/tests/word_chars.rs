@@ -144,11 +144,10 @@ fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line(
 
 #[test]
 fn invalid_word_chars_is_rejected() {
-    let result = crate::editor::commands::typed_set(
-        &mut editor_from("-[a]>b\n"),
-        Some("global word-chars=- "),
-        false,
-    );
+    let mut ed = editor_from("-[a]>b\n");
+    let fp = FocusedPane::current(&ed.state);
+    let result =
+        crate::editor::commands::typed_set(&mut ed, fp, Some("global word-chars=- "), false);
     assert!(result.is_err(), "a space in word-chars must be rejected");
 }
 

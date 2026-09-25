@@ -141,8 +141,10 @@ fn severity_floor_hides_less_severe_diagnostics() {
         "sanity: default floor (Hint) keeps everything"
     );
 
+    let fp = FocusedPane::current(&c.ed.state);
     crate::editor::commands::typed_set(
         &mut c.ed,
+        fp,
         Some("global lsp.diagnostics-severity-floor=warning"),
         false,
     )

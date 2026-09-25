@@ -205,7 +205,7 @@ fn messages_reuses_existing_view_buffer() {
         .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
         .map(|(id, _)| id)
         .expect("scratch buffer must exist");
-    ed.switch_to_buffer_without_jump(scratch_id);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch_id);
     ed.report(Severity::Warning, "msg2".to_string());
     ed.execute_typed("messages", None).unwrap();
 
@@ -278,7 +278,7 @@ fn ls_does_not_list_itself_on_second_call() {
         .find(|(_, buf)| buf.label.is_none() && buf.path().is_none())
         .map(|(id, _)| id)
         .expect("scratch buffer must still exist");
-    ed.switch_to_buffer_without_jump(scratch_id);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch_id);
 
     // Second call: [buffers] exists now but must be excluded from the listing.
     let out2 = ls_output(&mut ed);

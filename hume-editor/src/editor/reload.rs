@@ -371,6 +371,7 @@ impl Editor {
 /// rather than a literal LSP close+reopen.
 pub(in crate::editor) fn typed_reload_config(
     ed: &mut Editor,
+    _fp: crate::editor::commands::FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {

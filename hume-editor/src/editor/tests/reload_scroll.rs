@@ -17,7 +17,6 @@ use super::*;
 #[test]
 fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\ng\nh\ni\nj\n"); // 10 lines
-    let bid = ed.focused_buffer_id();
     let pid = ed.state.focus.id();
 
     // Scroll down near the 10-line original's end — line 8 is valid there,
@@ -30,7 +29,7 @@ fn reload_shrinking_the_document_leaves_the_next_frames_top_inside_it() {
         ));
 
     let replacement = Buffer::new(BufferText::from("x\ny\n"), SelectionSet::default());
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
     // Whatever pass resolves the top next — the render/scroll pipeline here —
     // it must land inside the shrunken 2-line document, not past its end.

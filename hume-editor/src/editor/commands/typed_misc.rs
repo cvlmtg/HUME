@@ -25,6 +25,7 @@ use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 /// `:bd` or switch away with `:b#`.
 pub(in crate::editor) fn typed_messages(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -35,7 +36,7 @@ pub(in crate::editor) fn typed_messages(
     }
     ed.state.message_log.mark_all_seen();
     // None parks at the bottom (most recent entry).
-    let bid = ed.open_read_only_view("[messages]", &content, None);
+    let bid = ed.open_read_only_view(fp, "[messages]", &content, None);
     let spans = spans
         .into_iter()
         .map(|(start, end, scope)| (start, end, scope.to_string()))
@@ -60,10 +61,11 @@ pub(in crate::editor) fn typed_messages(
 /// Cursor is placed on the line corresponding to the currently focused buffer.
 pub(in crate::editor) fn typed_list_buffers(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let current = ed.focused_buffer_id();
+    let current = fp.bid(&ed.view);
     let alternate = ed.state.buffers.second_most_recent();
 
     let header = format!("{:>4}      {:<32}  {}\n", "buf", "name", "path");
@@ -111,7 +113,7 @@ pub(in crate::editor) fn typed_list_buffers(
         }
     }
 
-    ed.open_read_only_view("[buffers]", &out, Some(current_content_line));
+    ed.open_read_only_view(fp, "[buffers]", &out, Some(current_content_line));
     Ok(())
 }
 
@@ -119,6 +121,7 @@ pub(in crate::editor) fn typed_list_buffers(
 /// state, and (for still-waiting plugins) which activation entries they are waiting on.
 pub(in crate::editor) fn typed_plugin_status(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -133,6 +136,7 @@ pub(in crate::editor) fn typed_plugin_status(
         return Ok(());
     }
     ed.open_read_only_view(
+        fp,
         "[plugin-status]",
         &out,
         Some(hume_rope::line::ContentLine::new(0)),
@@ -149,19 +153,21 @@ pub(in crate::editor) fn typed_plugin_status(
 /// dedup-on-canonical-path rule — see [`open_path_arg`]).
 pub(in crate::editor) fn typed_split(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    split_focused_pane(ed, arg, Direction::Vertical)
+    split_focused_pane(ed, fp, arg, Direction::Vertical)
 }
 
 /// `:vsplit [path]` — split the focused pane side by side.
 pub(in crate::editor) fn typed_vsplit(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    split_focused_pane(ed, arg, Direction::Horizontal)
+    split_focused_pane(ed, fp, arg, Direction::Horizontal)
 }
 
 /// Split the focused pane and move focus to the new pane.
@@ -178,6 +184,7 @@ pub(in crate::editor) fn typed_vsplit(
 /// redundant here but the only guard on the no-arg keymap path.
 fn split_focused_pane(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     direction: Direction,
 ) -> Result<(), CommandError> {
@@ -186,7 +193,7 @@ fn split_focused_pane(
     }
     let bid = match arg {
         Some(path) => open_path_arg(ed, path)?,
-        None => ed.focused_buffer_id(),
+        None => fp.bid(&ed.view),
     };
     super::split_pane_onto(&mut ed.state, &mut ed.view, bid, direction)
 }
@@ -209,12 +216,13 @@ fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandErr
 /// `:split`/`:vsplit` — see [`open_path_arg`]).
 pub(in crate::editor) fn typed_tabnew(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
     let bid = match arg {
         Some(path) => open_path_arg(ed, path)?,
-        None => ed.focused_buffer_id(),
+        None => fp.bid(&ed.view),
     };
     super::open_tab(&mut ed.state, &mut ed.view, bid);
     Ok(())
@@ -227,6 +235,7 @@ pub(in crate::editor) fn typed_tabnew(
 /// `Err` counterpart to give this refusal a `call!` boolean.
 pub(in crate::editor) fn typed_tabclose(
     ed: &mut Editor,
+    _fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -241,6 +250,7 @@ pub(in crate::editor) fn typed_tabclose(
 /// `:tabnext` / `:tabn` — switch to the next tab in display order.
 pub(in crate::editor) fn typed_tabnext(
     ed: &mut Editor,
+    _fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -251,6 +261,7 @@ pub(in crate::editor) fn typed_tabnext(
 /// `:tabprev` / `:tabp` — switch to the previous tab in display order.
 pub(in crate::editor) fn typed_tabprev(
     ed: &mut Editor,
+    _fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -277,6 +288,7 @@ fn active_theme_name(ed: &Editor) -> &str {
 /// the current theme is left unchanged.
 pub(in crate::editor) fn typed_theme(
     ed: &mut Editor,
+    _fp: FocusedPane,
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -297,6 +309,7 @@ pub(in crate::editor) fn typed_theme(
 /// resolved style plus every name on its dot-notation chain the theme defines.
 pub(in crate::editor) fn typed_theme_debug(
     ed: &mut Editor,
+    _fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -406,6 +419,7 @@ pub(in crate::editor) fn typed_theme_debug(
 
 pub(in crate::editor) fn typed_version(
     ed: &mut Editor,
+    _fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -415,6 +429,7 @@ pub(in crate::editor) fn typed_version(
 
 pub(in crate::editor) fn typed_tutor(
     ed: &mut Editor,
+    fp: FocusedPane,
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -449,7 +464,7 @@ pub(in crate::editor) fn typed_tutor(
     // If a buffer is already open at the tmp path, switch — no re-copy so that
     // unsaved in-memory edits are preserved.
     if let Some(bid) = ed.state.buffers.find_by_path(&canonical_tmp) {
-        ed.switch_to_buffer_with_jump(bid);
+        ed.switch_to_buffer_with_jump(fp, bid);
         return Ok(());
     }
 
@@ -460,7 +475,7 @@ pub(in crate::editor) fn typed_tutor(
     let (bid, _) = ed
         .open_or_dedup(&canonical_tmp)
         .map_err(|e| CommandError::new(format!("could not open tutor copy: {e}")))?;
-    ed.switch_to_buffer_with_jump(bid);
+    ed.switch_to_buffer_with_jump(fp, bid);
     Ok(())
 }
 
@@ -473,6 +488,7 @@ pub(in crate::editor) fn typed_tutor(
 /// digit strings and routes them here before the normal registry lookup).
 pub(in crate::editor) fn typed_goto_line(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
@@ -484,7 +500,7 @@ pub(in crate::editor) fn typed_goto_line(
     let line0 = hume_rope::line::ContentLine::from_number(n)
         .ok_or_else(|| CommandError::transient(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
-    let t = FocusedPane::current(&ed.state).target();
+    let t = fp.target();
     // Snapshot before moving so Ctrl-o can return here — pushed only if
     // `:goto` actually lands somewhere else (record_jump_if_moved).
     let entry = current_jump_entry(&ed.state, &ed.view, t);
@@ -553,6 +569,7 @@ fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
 /// the internal type is `SortEntry`/lines.
 pub(in crate::editor) fn typed_sort(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
@@ -565,7 +582,8 @@ pub(in crate::editor) fn typed_sort(
 
     // doc_ops's read-only guard is a silent no-op — check explicitly here so
     // `:sort` on a read-only buffer (e.g. `:messages`) reports why nothing happened.
-    if ed.focused_buffer_read_only() {
+    let t = fp.target();
+    if super::doc(&ed.state, &ed.view, t).is_read_only() {
         return Err(CommandError::transient("Buffer is read-only"));
     }
 
@@ -573,8 +591,8 @@ pub(in crate::editor) fn typed_sort(
     // (`SortRefusal`) leave the buffer untouched — an identity edit would
     // still record an undo revision and mark the buffer dirty.
     let result = sort_lines(
-        ed.doc().text().clone(),
-        ed.current_selections().clone(),
+        super::doc(&ed.state, &ed.view, t).text().clone(),
+        super::pane_selections(&ed.state, &ed.view, t).clone(),
         opts,
     );
     let triple = match result {
@@ -592,9 +610,8 @@ pub(in crate::editor) fn typed_sort(
         }
     };
 
-    let pre_len = ed.doc().text().len_chars();
-    let pre_sels = ed.current_selections().clone();
-    let t = FocusedPane::current(&ed.state).target();
+    let pre_len = super::doc(&ed.state, &ed.view, t).text().len_chars();
+    let pre_sels = super::pane_selections(&ed.state, &ed.view, t).clone();
     super::apply_pane_edit(&mut ed.state, &ed.view, t, move |text, sels| {
         debug_assert_eq!(
             text.len_chars(),
@@ -693,6 +710,7 @@ impl TravelDir {
 /// the tip) is reported exactly once, by `history_step` itself.
 fn travel(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     force: bool,
     dir: TravelDir,
@@ -702,7 +720,7 @@ fn travel(
         return Err(CommandError::transient(format!("`:{name}` takes no `!`")));
     }
     let spec = parse_travel_spec(arg.unwrap_or("1"))?;
-    let t = FocusedPane::current(&ed.state).target();
+    let t = fp.target();
     // Checked before resolving `spec` into a step count: an age spec walks
     // the buffer's whole history, work `step` below would refuse anyway on
     // a read-only buffer.
@@ -712,7 +730,7 @@ fn travel(
     let steps = match spec {
         TravelSpec::Steps(n) => n,
         TravelSpec::Age(age) => {
-            let buf = ed.focused_buffer_id();
+            let buf = t.bid(&ed.view);
             // Exhaustion is reported by `history_step`'s own
             // `taken < requested` comparison, not a second time here —
             // asking for one step more than exists is what makes that
@@ -727,10 +745,11 @@ fn travel(
 /// state as of `age` ago (`:earlier 5m`). Clamps at the root with an Info report.
 pub(in crate::editor) fn typed_earlier(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    travel(ed, arg, force, TravelDir::Earlier)
+    travel(ed, fp, arg, force, TravelDir::Earlier)
 }
 
 /// `:later [N|age]` — the mirror of `:earlier`, forward along the
@@ -739,8 +758,9 @@ pub(in crate::editor) fn typed_earlier(
 /// still older than it.
 pub(in crate::editor) fn typed_later(
     ed: &mut Editor,
+    fp: FocusedPane,
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    travel(ed, arg, force, TravelDir::Later)
+    travel(ed, fp, arg, force, TravelDir::Later)
 }

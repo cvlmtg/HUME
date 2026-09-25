@@ -152,7 +152,8 @@ fn severity_mapping_produces_error_only_and_warning_only_counts() {
 #[test]
 fn configure_statusline_round_trips_diagnostics_element_name() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    crate::editor::commands::typed_set(&mut ed, Some("global statusline=Diagnostics||"), false)
+    let fp = FocusedPane::current(&ed.state);
+    crate::editor::commands::typed_set(&mut ed, fp, Some("global statusline=Diagnostics||"), false)
         .unwrap();
     assert_eq!(
         ed.state.settings.statusline().left,

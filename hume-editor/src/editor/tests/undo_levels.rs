@@ -27,7 +27,8 @@ fn typed_set_applies_to_open_buffers() {
     // buffer — both edits would remain undoable instead of the first being
     // evicted/promoted away.
     let mut ed = editor_from("-[h]>ello\n");
-    crate::editor::commands::typed_set(&mut ed, Some("global undo-levels=1"), false)
+    let fp = FocusedPane::current(&ed.state);
+    crate::editor::commands::typed_set(&mut ed, fp, Some("global undo-levels=1"), false)
         .expect("set undo-levels");
 
     let after_first_edit = two_edits(&mut ed);
@@ -45,11 +46,12 @@ fn new_buffer_inherits_undo_levels() {
     // Fail oracle: skip threading undo_levels through lifecycle::open_buffer
     // and this second buffer would allow both edits to stay undoable.
     let mut ed = editor_from("-[h]>ello\n");
-    crate::editor::commands::typed_set(&mut ed, Some("global undo-levels=1"), false)
+    let fp = FocusedPane::current(&ed.state);
+    crate::editor::commands::typed_set(&mut ed, fp, Some("global undo-levels=1"), false)
         .expect("set undo-levels");
 
     let bid2 = ed.open_buffer(Buffer::scratch());
-    ed.switch_to_buffer_with_jump(bid2);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid2);
 
     let after_first_edit = two_edits(&mut ed);
     assert!(ed.doc().can_undo());

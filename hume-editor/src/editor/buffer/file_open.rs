@@ -5,6 +5,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::offset::CharOffset;
 
 use crate::editor::buffer::Buffer;
+use crate::editor::commands::FocusedPane;
 
 use super::lifecycle;
 use crate::editor::{Editor, Severity};
@@ -182,7 +183,7 @@ impl Editor {
         self.detect_pending_languages();
     }
 
-    /// Reload buffer `id` with `new_doc`'s content in place, preserving the
+    /// Reload `fp`'s buffer with `new_doc`'s content in place, preserving the
     /// undo tree and the primary cursor line/column across the reload.
     ///
     /// Unlike `set_view_content` (which discards `History` on a full
@@ -195,7 +196,7 @@ impl Editor {
     /// are clamped if the file shrank: past-end lines land on the new last
     /// line, past-end columns on the line's last content character.
     ///
-    /// Only the focused pane's pre/post selections are written into the
+    /// Only `fp`'s pre/post selections are written into the
     /// history revision (undo/redo restore its cursor); other panes on the
     /// same buffer ride the inverse `ChangeSet` via `propagate_cs_to_panes`
     /// like any edit.
@@ -206,21 +207,21 @@ impl Editor {
     /// sessions, the engine-side syntax tree, and saved scrolls.
     ///
     /// Used by the no-arg `:e`/`:e!` reload branch.
-    pub(in crate::editor) fn reload_buffer_in_place(&mut self, id: BufferId, mut new_doc: Buffer) {
+    pub(in crate::editor) fn reload_buffer_in_place(
+        &mut self,
+        fp: FocusedPane,
+        mut new_doc: Buffer,
+    ) {
         use hume_editing::lines::{char_col_in_line, place_char_column};
         use hume_editing::selection::{Selection, SelectionSet};
 
-        // Both callers guarantee `id == focused_buffer_id()` before calling
-        // in (see this fn's own callers), so any open Insert/paste session
-        // can only be the focused pane's — end it the same way every other
+        let id = fp.bid(&self.view);
+        // End any open Insert/paste session the same way every other
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,
         // `reset_config_state`), before the reload invalidates the text it
-        // was snapshotted against. Previously this dropped
-        // `pane_state[pid][id].edit_group`/`.paste_group` directly further
-        // down, without tearing down `state.insert_session` or the `Insert`
-        // mode layer — leaving both alive pointing at a session that had
-        // just vanished, a latent `.expect()` panic in
-        // `Buffer::commit_edit_group` on the next Esc.
+        // was snapshotted against — leaving it open would keep
+        // `state.insert_session` and the `Insert` mode layer pointing at a
+        // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 
         // ── Phase 1: capture (line, char_col) per pane + focused pane's pre_sels ──
@@ -234,7 +235,7 @@ impl Editor {
             .filter(|(_, p)| p.buffer_id == id)
             .map(|(pid, _)| pid)
             .collect();
-        let focused = self.state.focus.id();
+        let focused = fp.pid();
         let pre_sels = self.state.panes.state[focused][id].selections().clone();
 
         let cursor_coords: Vec<(
@@ -271,9 +272,8 @@ impl Editor {
             heads
         }; // new_text borrow ends here
 
-        // The caller always reloads the focused buffer (`:e!` passes
-        // `focused_buffer_id()`), so the focused pane is in `pane_ids` and thus
-        // in `post_heads`. A miss means an internal invariant broke — fail loud
+        // `id` is `fp`'s own buffer, so `fp` is in `pane_ids` and thus in
+        // `post_heads`. A miss means an internal invariant broke — fail loud
         // rather than silently anchoring undo to char 0.
         let focused_post_head = post_heads
             .iter()
@@ -383,29 +383,30 @@ impl Editor {
         }
     }
 
-    /// Redirect the focused pane to `target` without recording a jump.
-    pub(in crate::editor) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
-        let pid = self.state.focus.id();
-        lifecycle::switch_pane_to_buffer(&mut self.state, &mut self.view, pid, target);
+    /// Redirect `fp` to `target` without recording a jump.
+    pub(in crate::editor) fn switch_to_buffer_without_jump(
+        &mut self,
+        fp: FocusedPane,
+        target: BufferId,
+    ) {
+        lifecycle::switch_pane_to_buffer(&mut self.state, &mut self.view, fp.pid(), target);
     }
 
-    /// Redirect the focused pane to `target`, recording the outgoing position
-    /// in `panes.jumps[focused_pane]`.
+    /// Redirect `fp` to `target`, recording the outgoing position in
+    /// `panes.jumps[fp]`.
     ///
     /// Caller contract: all fallible steps (path resolution, file read, etc.)
     /// must succeed before calling this — `push()` truncates forward history.
-    pub(in crate::editor) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
-        let focused_pane_id = self.state.focus.id();
-        lifecycle::switch_to_buffer_with_jump(
-            &mut self.state,
-            &mut self.view,
-            focused_pane_id,
-            target,
-        );
+    pub(in crate::editor) fn switch_to_buffer_with_jump(
+        &mut self,
+        fp: FocusedPane,
+        target: BufferId,
+    ) {
+        lifecycle::switch_to_buffer_with_jump(&mut self.state, &mut self.view, fp.pid(), target);
     }
 
-    /// Switch the focused pane to `target`, or no-op if it's already focused
-    /// — the `:e`/`:b` entry point. Unlike `switch_to_buffer_with_jump`, safe
+    /// Switch `fp` to `target`, or no-op if it already shows it — the
+    /// `:e`/`:b` entry point. Unlike `switch_to_buffer_with_jump`, safe
     /// to call with a target that might already be the focused buffer: that
     /// primitive's `push()` truncates forward jump history unconditionally,
     /// so a same-buffer call would corrupt it for nothing.
@@ -423,9 +424,9 @@ impl Editor {
     /// (switch away and back), or `:checktime` runs — see
     /// `Editor::enter_buffer_disk_check`'s doc for the full list of paths
     /// that *do* stat.
-    pub(in crate::editor) fn enter_buffer(&mut self, target: BufferId) {
-        if target != self.focused_buffer_id() {
-            self.switch_to_buffer_with_jump(target);
+    pub(in crate::editor) fn enter_buffer(&mut self, fp: FocusedPane, target: BufferId) {
+        if target != fp.bid(&self.view) {
+            self.switch_to_buffer_with_jump(fp, target);
         }
     }
 
@@ -433,7 +434,7 @@ impl Editor {
     ///
     /// If a buffer with this label already exists, replaces its content in-place
     /// so repeated calls don't accumulate duplicates in `:ls`. Otherwise opens a
-    /// fresh read-only buffer. Then switches the focused pane to it and positions
+    /// fresh read-only buffer. Then switches `fp` to it and positions
     /// the cursor at `cursor_line` (clamped to last content line), or the last
     /// content line itself when `cursor_line` is `None` — `:messages` wants the
     /// bottom (most recent entry) without needing a sentinel value to name it.
@@ -442,6 +443,7 @@ impl Editor {
     /// buffer rather than whatever ends up focused.
     pub(in crate::editor) fn open_read_only_view(
         &mut self,
+        fp: FocusedPane,
         label: &'static str,
         content: &str,
         cursor_line: Option<hume_rope::line::ContentLine>,
@@ -468,21 +470,19 @@ impl Editor {
             self.open_buffer(doc)
         };
 
-        let already_focused = self.focused_buffer_id() == bid;
-        if !already_focused {
-            self.switch_to_buffer_without_jump(bid);
+        if fp.bid(&self.view) != bid {
+            self.switch_to_buffer_without_jump(fp, bid);
         }
 
         // Position cursor at the requested line (clamped to last content
         // line), or the bottom when the caller didn't ask for a specific one.
         let cursor_line =
             cursor_line.unwrap_or_else(|| self.state.buffers.get(bid).text().last_content_line());
-        let pid = self.state.focus.id();
         crate::editor::pane_state::park_cursor_at(
             &mut self.state.panes.state,
             &self.state.buffers,
             &self.view.panes,
-            pid,
+            fp.pid(),
             bid,
             cursor_line,
             hume_rope::column::GraphemeCol::new(0),

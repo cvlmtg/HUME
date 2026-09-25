@@ -245,7 +245,7 @@ fn reload_buffer_in_place_ends_insert_session_on_focused_pane() {
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
 
     ed.reload_buffer_in_place(
-        bid,
+        FocusedPane::current(&ed.state),
         Buffer::new(BufferText::from("xyz\n"), SelectionSet::default()),
     );
 

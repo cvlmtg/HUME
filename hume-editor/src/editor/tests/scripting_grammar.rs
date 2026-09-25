@@ -528,7 +528,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     let new_byte_len = new_text.len();
     let mut replacement = Buffer::new(BufferText::from(new_text), SelectionSet::default());
     replacement.set_path(Some(std::path::PathBuf::from("data.json")));
-    ed.reload_buffer_in_place(bid, replacement);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
     // Two ticks: first `reparse_stale_buffers` sees the gen mismatch and posts the
     // parse request (InlineParseBackend completes synchronously into the done queue);
     // the second drains and installs the tree. The real run loop does the same across
@@ -567,7 +567,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // unconditionally, as before this fix) → `layers()` is `None` here.
     let mut identical = Buffer::new(BufferText::from(new_text), SelectionSet::default());
     identical.set_path(Some(std::path::PathBuf::from("data.json")));
-    ed.reload_buffer_in_place(bid, identical);
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), identical);
     ed.reparse_stale_buffers();
     ed.reparse_stale_buffers();
 

@@ -150,7 +150,8 @@ fn set_global_mouse_enabled_resyncs_applied_mode_next_frame() {
         "default EditorSettings has mouse_enabled=true, mouse_select=false"
     );
 
-    crate::editor::commands::typed_set(&mut ed, Some("global mouse-enabled=false"), false)
+    let fp = FocusedPane::current(&ed.state);
+    crate::editor::commands::typed_set(&mut ed, fp, Some("global mouse-enabled=false"), false)
         .expect("set mouse-enabled");
     assert_eq!(
         ed.applied_mouse_mode,
@@ -320,8 +321,13 @@ fn typed_set_theme_failure_does_not_persist() {
     // (store-then-load), unlike `:theme bad` (load-then-store) — the two
     // entry points disagreed. Fail oracle: same as above.
     let mut ed = editor_from("-[h]>ello\n");
-    let result =
-        crate::editor::commands::typed_set(&mut ed, Some("global theme=no_such_theme_xyz"), false);
+    let fp = FocusedPane::current(&ed.state);
+    let result = crate::editor::commands::typed_set(
+        &mut ed,
+        fp,
+        Some("global theme=no_such_theme_xyz"),
+        false,
+    );
     assert!(
         result.is_err(),
         "a failed theme load must surface as a command error: {result:?}"
@@ -348,7 +354,9 @@ fn typed_theme_bad_name_leaves_setting() {
     // against) — settings.theme ends up "no_such_theme_xyz" here too, since
     // :theme now shares that code path.
     let mut ed = editor_from("-[h]>ello\n");
-    let result = crate::editor::commands::typed_theme(&mut ed, Some("no_such_theme_xyz"), false);
+    let fp = FocusedPane::current(&ed.state);
+    let result =
+        crate::editor::commands::typed_theme(&mut ed, fp, Some("no_such_theme_xyz"), false);
     assert!(
         result.is_err(),
         "a failed theme load must surface as a command error: {result:?}"
@@ -410,7 +418,8 @@ fn typed_theme_sets_setting_on_success() {
     // Err("unknown setting"), and this test's Ok() assertion would fail.
     let _guard = RealThemeRuntimeGuard::new();
     let mut ed = editor_from("-[h]>ello\n");
-    let result = crate::editor::commands::typed_theme(&mut ed, Some("gruvbox"), false);
+    let fp = FocusedPane::current(&ed.state);
+    let result = crate::editor::commands::typed_theme(&mut ed, fp, Some("gruvbox"), false);
     assert!(result.is_ok(), "command must not error: {result:?}");
     assert_eq!(ed.state.settings.theme, "gruvbox");
 }

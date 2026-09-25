@@ -431,7 +431,7 @@ fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
     // dispatch — the confirm is left open, still targeting A.
     let (tmp_b, _tmp_b_guard) = temp_file("world\n");
     let (bid_b, _) = ed.resolve_open_path(&tmp_b.display().to_string()).unwrap();
-    ed.switch_to_buffer_without_jump(bid_b);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_b);
     assert_ne!(
         ed.focused_buffer_id(),
         bid_a,
@@ -1483,7 +1483,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
 
     // Switch focus to B directly, bypassing input dispatch (and so the live
     // `Confirm` layer), the same way a Steel `switch-to-buffer!` would.
-    ed.switch_to_buffer_without_jump(bid_b);
+    ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_b);
     rewrite_externally(&tmp_b, "world, externally changed!\n");
 
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -2071,7 +2071,7 @@ fn non_interactive_switch_to_buffer_onto_a_stale_buffer_opens_the_reload_confirm
     // The non-interactive primitive: Steel's `switch-to-buffer!` and every
     // LSP goto-definition call go through exactly this, never a typed
     // command.
-    ed.switch_to_buffer_with_jump(bid_b);
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_b);
     ed.settle();
 
     assert_eq!(ed.focused_buffer_id(), bid_b);

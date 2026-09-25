@@ -365,6 +365,7 @@ fn runtime_register_typed_and_lookup() {
 
     fn dummy_typed(
         _ed: &mut Editor,
+        _fp: crate::editor::commands::FocusedPane,
         _arg: Option<&str>,
         _force: bool,
     ) -> Result<(), crate::editor::error::CommandError> {
