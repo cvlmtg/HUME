@@ -279,6 +279,12 @@ pub(crate) fn picker(
 /// errors at accept/dismiss time, but a live session has no other use for
 /// this argument, so a bad value is a definition-time mistake, not a
 /// runtime one.
+// Same shape as `picker`'s own allow, just above: each param is a
+// positional/keyword arg the `builtins!` table maps 1:1 from `live-picker!`'s
+// own Steel signature — bundling them into a struct would break that direct
+// correspondence for no benefit, since every arg is already decoded and
+// validated independently right below.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn live_picker(
     ctx: &mut SteelCtx,
     pane: PaneHandle,

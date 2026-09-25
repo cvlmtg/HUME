@@ -186,14 +186,14 @@ pub(crate) enum Seg {
 /// `root` is `Arc`-backed so cloning a handle (including through the Steel
 /// value system's own `Clone` requirements) never re-clones the response
 /// itself; `path` is `Arc`-backed so extending it for a child handle is one
-/// allocation (see [`scalar_or_child`]) rather than growing a `Vec` by hand.
+/// allocation (see `scalar_or_child`) rather than growing a `Vec` by hand.
 ///
 /// `origin` tags where the *root* value came from — a real LSP response
 /// ([`WireOrigin::Server`], carrying the answering server's negotiated
 /// encoding) or anything else ([`WireOrigin::Local`]: `json-parse`,
 /// `lsp-capabilities`, or a hashmap a plugin built by hand). Every child
 /// handle a navigation method mints inherits its parent's `origin` — see
-/// [`scalar_or_child`] — so a position pulled out of a response three
+/// `scalar_or_child` — so a position pulled out of a response three
 /// `json-ref`s deep still knows which server's encoding it's counted in.
 /// Not part of equality or hashing (both compare/hash [`JsonHandle::value`]
 /// only): two handles onto equal JSON are equal regardless of where each
@@ -333,7 +333,7 @@ fn scalar_or_child(
 }
 
 /// Converts a freshly-received external JSON value to its Steel
-/// representation via [`scalar_or_child`], rooted at `value` itself. The one
+/// representation via `scalar_or_child`, rooted at `value` itself. The one
 /// call every external crossing makes instead of `json_to_steel`. `origin`
 /// tags the root — see [`JsonHandle`]'s own doc.
 pub fn to_steel_handle(value: Arc<serde_json::Value>, origin: WireOrigin) -> SteelVal {
@@ -389,7 +389,7 @@ impl JsonHandle {
 
     /// The value this handle points at, resolved by walking its `path` from
     /// `root`. `expect`s the walk succeeds — sound because a handle's path
-    /// is only ever extended by [`JsonHandle::resolve`] after that exact
+    /// is only ever extended by `JsonHandle::resolve` after that exact
     /// step already proved it resolves.
     pub fn value(&self) -> &serde_json::Value {
         walk(&self.root, &self.path)
@@ -462,9 +462,9 @@ impl JsonHandle {
     /// `hume_lsp::completion_item::completion_response_items`'s result) can
     /// hand Steel a live pointer into the original response — sharing this
     /// handle's root `Arc` — instead of cloning the item out. `None` if
-    /// either step doesn't resolve, same contract as [`JsonHandle::lookup`],
+    /// either step doesn't resolve, same contract as `JsonHandle::lookup`,
     /// just returning the handle unconditionally rather than routing a
-    /// container result through [`scalar_or_child`] — the caller already
+    /// container result through `scalar_or_child` — the caller already
     /// knows it wants a handle regardless of whether the target is a
     /// container or a scalar (see [`JsonHandle::new`]'s own reasoning).
     pub fn indexed_child(&self, key: Option<&str>, index: usize) -> Option<JsonHandle> {

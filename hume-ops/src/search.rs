@@ -61,7 +61,7 @@ fn compile_search_regex(pattern: &str) -> Option<Regex> {
 /// match, instead of only the primary. Inert at the sift prompt — sift already
 /// operates on every selection.
 ///
-/// `verbatim`: the pattern is matched literally (via [`escape_regex`]) instead
+/// `verbatim`: the pattern is matched literally (via `escape_regex`) instead
 /// of as a regex.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SearchFlags {
@@ -142,7 +142,7 @@ pub fn render_search_input(flags: SearchFlags, pattern: &str) -> String {
 }
 
 /// Parse `input` for leading flags, then compile the remaining pattern —
-/// literally (via [`escape_regex`]) when `verbatim` is set, as smart-case
+/// literally (via `escape_regex`) when `verbatim` is set, as smart-case
 /// regex otherwise. `None` when the resulting pattern is not a valid regex.
 pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
     let (flags, pattern) = parse_search_input(input);
