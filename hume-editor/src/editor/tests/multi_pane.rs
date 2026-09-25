@@ -584,11 +584,69 @@ fn ensure_is_idempotent() {
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(3))));
 
     // ensure() on an already-seeded entry must not reset to initial_sels.
-    pane_state::ensure(&mut ed.state.panes.state, &ed.state.buffers, pid, bid);
+    pane_state::ensure(
+        &mut ed.state.panes.state,
+        &ed.state.buffers,
+        &ed.view.panes,
+        pid,
+        bid,
+    );
     assert_eq!(
         ed.current_selections().primary().head(),
         co(3),
         "ensure must not overwrite existing pane_state entry",
+    );
+}
+
+/// ensure()'s trusted-mint contract: a closed pane's `pid` must panic, not
+/// silently seed a ghost `pane_state` entry — see `pane_state::try_ensure`'s
+/// own doc for why liveness is checked against the engine's `PanePool`
+/// rather than inferred from `pane_state` itself.
+#[test]
+#[should_panic(expected = "pid must be a live PaneId")]
+fn ensure_panics_on_a_closed_pane() {
+    use crate::editor::pane_state;
+    use hume_scripting::PaneHandle;
+    use hume_scripting::host::CommandHost;
+
+    let mut ed = editor_from("-[a]>aaa\n");
+    let pid_a = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+
+    // B, a sibling on the same buffer, survives A's close so the buffer
+    // itself stays open throughout.
+    live_host!(ed)
+        .run_command_sync(
+            "pane-vsplit",
+            PaneHandle::with_pane(bid, pid_a),
+            Some(1),
+            false,
+            None,
+        )
+        .expect("pane-vsplit must succeed");
+
+    ed.state.focus.set_for_test(pid_a);
+    live_host!(ed)
+        .run_command_sync(
+            "pane-close",
+            PaneHandle::with_pane(bid, pid_a),
+            Some(1),
+            false,
+            None,
+        )
+        .expect("pane-close must succeed");
+    assert_ne!(
+        ed.state.focus.id(),
+        pid_a,
+        "setup: closing A must move focus off it"
+    );
+
+    pane_state::ensure(
+        &mut ed.state.panes.state,
+        &ed.state.buffers,
+        &ed.view.panes,
+        pid_a,
+        bid,
     );
 }
 
@@ -615,7 +673,13 @@ fn ensure_seeds_new_entry_with_initial_sels() {
 
     // open_buffer already calls ensure internally; a second call is idempotent
     // and returns a state with the initial selections.
-    let state = pane_state::ensure(&mut ed.state.panes.state, &ed.state.buffers, pid, bid2);
+    let state = pane_state::ensure(
+        &mut ed.state.panes.state,
+        &ed.state.buffers,
+        &ed.view.panes,
+        pid,
+        bid2,
+    );
     assert_eq!(
         *state.selections(),
         expected_sels,

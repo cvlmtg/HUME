@@ -11,7 +11,7 @@
 //! The in-progress insert/paste undo group itself is not here — see
 //! [`super::edit_session::EditSession`], `EditorState::active_session`.
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
 use slotmap::SecondaryMap;
 
 use super::Editor;
@@ -228,7 +228,7 @@ pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
 /// Ensure `pane_state[pid][bid]` exists, seeding with [`fresh_from_buf`] if absent.
 /// Idempotent — safe to call even if the entry was already seeded.
 ///
-/// Panics if `pid` or `bid` is not a live slotmap key; that is a caller-contract
+/// Panics if `pid` or `bid` is not a live key; that is a caller-contract
 /// violation (the pane or buffer was never opened), not a recoverable error.
 /// Trusted mint for every synchronous caller that already knows `pid` is
 /// live by construction (it was just resolved, split, or opened in the same
@@ -237,28 +237,49 @@ pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
 pub(in crate::editor) fn ensure<'a>(
     pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
+    panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
 ) -> &'a mut PaneBufferState {
-    try_ensure(pane_state, buffers, pid, bid).expect("pid must be a live PaneId")
+    try_ensure(pane_state, buffers, panes, pid, bid).expect("pid must be a live PaneId")
 }
 
 /// [`ensure`]'s validating counterpart — for a caller whose `pid` was
 /// captured before crossing an async boundary (an LSP response, a queued
-/// Steel callback) and may have since closed, its slot recycled by an
-/// unrelated newer pane. `bid` still panics on a dead key: every current
-/// caller reaches this only once its own generation/anchor check has
-/// already proven the buffer live, so that half of the contract still
-/// holds — only `pid`'s liveness crosses the boundary unchecked.
+/// Steel callback) and may have since closed. `bid` still panics on a dead
+/// key: every current caller reaches this only once its own generation/
+/// anchor check has already proven the buffer live, so that half of the
+/// contract still holds — only `pid`'s liveness crosses the boundary
+/// unchecked.
+///
+/// Checked against `panes` (the engine's own [`PanePool`]), not inferred
+/// from `pane_state.entry(pid)`: `SecondaryMap::remove` (`drop_pane_state`)
+/// drops a closed pane's slot back to vacant at version 0, and
+/// `SecondaryMap::entry` returns the same `Vacant` variant for that as it
+/// does for a `pid` that simply never touched this map — the two are
+/// indistinguishable from `pane_state` alone unless the slot has since been
+/// reused by a *newer* pane (whose version the closed `pid` no longer
+/// matches). `PanePool` is the actual liveness source of truth; asking it
+/// first means a closed pane errors here every time, not only once its slot
+/// happens to be recycled.
 pub(in crate::editor) fn try_ensure<'a>(
     pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
+    panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
 ) -> Result<&'a mut PaneBufferState, String> {
+    if !panes.contains_key(pid) {
+        return Err(super::commands::TargetError::PaneClosed.to_string());
+    }
+    // `pid` is confirmed live in `panes` above, and every `PaneId` in
+    // existence is minted from that same slotmap — so `pane_state` (a
+    // `SecondaryMap` over the same keyspace) can never hold a *newer*
+    // version at this index than the one `pid` already carries. `entry`
+    // therefore cannot return `None` here.
     let inner = pane_state
         .entry(pid)
-        .ok_or_else(|| super::commands::TargetError::PaneClosed.to_string())?
+        .expect("pid confirmed live by panes.contains_key above")
         .or_default();
     Ok(inner
         .entry(bid)
@@ -276,11 +297,12 @@ pub(in crate::editor) fn try_ensure<'a>(
 pub(in crate::editor) fn write_cursor(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
+    panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
     char_pos: CharOffset,
 ) {
-    ensure(pane_state, buffers, pid, bid)
+    ensure(pane_state, buffers, panes, pid, bid)
         .set_selections(SelectionSet::single(Selection::collapsed(char_pos)));
 }
 
@@ -292,6 +314,7 @@ pub(in crate::editor) fn write_cursor(
 pub(in crate::editor) fn park_cursor_at(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
+    panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
     line0: hume_rope::line::ContentLine,
@@ -300,7 +323,7 @@ pub(in crate::editor) fn park_cursor_at(
     let text = buffers.get(bid).text();
     let line = line0.min(text.last_content_line());
     let char_pos = hume_editing::lines::place_grapheme_column(text, line.into(), grapheme_col0);
-    write_cursor(pane_state, buffers, pid, bid, char_pos);
+    write_cursor(pane_state, buffers, panes, pid, bid, char_pos);
 }
 
 // ── PaneView ──────────────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@
 //! with `apply-workspace-edit!` and belongs next to it.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
 use hume_lsp::codec::ResponseError;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::position_encoding::{PositionEncoding, WirePos, wire_to_line_char_col};
@@ -147,11 +147,12 @@ fn build_changeset_from_char_edits(
 /// do so without rebuilding it.
 fn commit_changeset(
     state: &mut EditorState,
+    panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
     cs: ChangeSet,
 ) -> Result<ChangeSet, String> {
-    pane_state::try_ensure(&mut state.panes.state, &state.buffers, pid, bid)?;
+    pane_state::try_ensure(&mut state.panes.state, &state.buffers, panes, pid, bid)?;
     let cs_for_return = cs.clone();
     doc_ops::apply_doc_edit(
         &mut state.buffers,
@@ -180,13 +181,14 @@ fn commit_changeset(
 /// already-resolved invocation pane (see `commands::resolve_command_pane`).
 pub(in crate::editor) fn apply_text_edits(
     state: &mut EditorState,
+    panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
     edits: Vec<lsp_types::TextEdit>,
     expect_gen: Option<u64>,
     encoding: PositionEncoding,
 ) -> Result<(), String> {
-    apply_text_edits_returning_cs(state, pid, bid, edits, expect_gen, encoding)?;
+    apply_text_edits_returning_cs(state, panes, pid, bid, edits, expect_gen, encoding)?;
     Ok(())
 }
 
@@ -197,6 +199,7 @@ pub(in crate::editor) fn apply_text_edits(
 /// edit landed.
 pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
     state: &mut EditorState,
+    panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
     edits: Vec<lsp_types::TextEdit>,
@@ -204,7 +207,7 @@ pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
     encoding: PositionEncoding,
 ) -> Result<ChangeSet, String> {
     let cs = build_edit_changeset(state, bid, &edits, expect_gen, encoding)?;
-    commit_changeset(state, pid, bid, cs)
+    commit_changeset(state, panes, pid, bid, cs)
 }
 
 /// Decodes `edits` (wire positions, computed by the server against the
@@ -275,6 +278,7 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
 /// it.
 pub(in crate::editor) fn commit_char_edits(
     state: &mut EditorState,
+    panes: &PanePool,
     pid: PaneId,
     bid: BufferId,
     char_edits: Vec<(ExclusiveRange<CharOffset>, &str)>,
@@ -285,7 +289,7 @@ pub(in crate::editor) fn commit_char_edits(
     let buf = checked_buffer(state, bid, None)?;
     let len_before = buf.text().end();
     let cs = build_changeset_from_char_edits(len_before, char_edits)?;
-    Ok(Some(commit_changeset(state, pid, bid, cs)?))
+    Ok(Some(commit_changeset(state, panes, pid, bid, cs)?))
 }
 
 pub(in crate::editor) struct WorkspaceEditSummary {
@@ -441,7 +445,7 @@ pub(in crate::editor) fn apply_workspace_edit(
     }
     let buffers_modified = planned.len();
     for (bid, cs) in planned {
-        commit_changeset(state, pid, bid, cs)?;
+        commit_changeset(state, &view.panes, pid, bid, cs)?;
     }
     Ok(WorkspaceEditSummary { buffers_modified })
 }
@@ -581,7 +585,14 @@ pub(in crate::editor) fn goto_location(
 
     let pid = t.pid();
     crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
-    pane_state::write_cursor(&mut state.panes.state, &state.buffers, pid, bid, char_pos);
+    pane_state::write_cursor(
+        &mut state.panes.state,
+        &state.buffers,
+        &view.panes,
+        pid,
+        bid,
+        char_pos,
+    );
     crate::editor::commands::record_jump_if_moved(state, view, t, entry);
 
     // Center by display line, the same way `zz` does — not by buffer line,

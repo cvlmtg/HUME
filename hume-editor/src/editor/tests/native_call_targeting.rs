@@ -518,14 +518,21 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
     let pid_c = ed.state.focus.id();
     assert_ne!(pid_a, pid_c, "setup: C must be a distinct pane from A");
     // Touch C's own pane_state so its slot in the *secondary* map records
-    // the newer version too — otherwise `pid_a`'s stale version would still
-    // read back as the (harmless) "vacant" case `try_ensure` doesn't need
-    // to distinguish from a live one.
-    crate::editor::pane_state::ensure(&mut ed.state.panes.state, &ed.state.buffers, pid_c, bid);
+    // the newer version too — otherwise `pid_a`'s stale version would read
+    // back the same as the vacant-and-never-reused case covered by
+    // `try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused` below.
+    crate::editor::pane_state::ensure(
+        &mut ed.state.panes.state,
+        &ed.state.buffers,
+        &ed.view.panes,
+        pid_c,
+        bid,
+    );
 
     let result = crate::editor::pane_state::try_ensure(
         &mut ed.state.panes.state,
         &ed.state.buffers,
+        &ed.view.panes,
         pid_a,
         bid,
     );
@@ -533,5 +540,65 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
         result.is_err(),
         "a stale pid whose slot was reused must error, not panic and not silently \
          resolve to the new occupant's state"
+    );
+}
+
+/// Regression: unlike the reused-slot case above, a closed pane whose slot
+/// has *not* been reused left `SecondaryMap::entry` unable to tell "closed"
+/// from "never seeded" — `remove` drops the slot back to `Vacant` at version
+/// 0, and `entry` returns `Some(Vacant)` for that, same as a pid that simply
+/// never touched this map. `try_ensure` used to trust that read and silently
+/// resurrect a ghost `pane_state[dead_pid]` entry instead of erroring.
+#[test]
+fn try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused() {
+    let mut ed = editor_from("-[a]>aaa\n");
+    let pid_a = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+
+    // B, a sibling on the same buffer, survives A's close so the buffer
+    // itself stays open throughout.
+    live_host!(ed)
+        .run_command_sync(
+            "pane-vsplit",
+            PaneHandle::with_pane(bid, pid_a),
+            Some(1),
+            false,
+            None,
+        )
+        .expect("pane-vsplit must succeed");
+
+    // Close A while it's focused (`pane-close` is a FocusedPane command).
+    // No new pane is opened afterward — A's freed slot stays vacant.
+    ed.state.focus.set_for_test(pid_a);
+    live_host!(ed)
+        .run_command_sync(
+            "pane-close",
+            PaneHandle::with_pane(bid, pid_a),
+            Some(1),
+            false,
+            None,
+        )
+        .expect("pane-close must succeed");
+    assert_ne!(
+        ed.state.focus.id(),
+        pid_a,
+        "setup: closing A must move focus off it"
+    );
+
+    let result = crate::editor::pane_state::try_ensure(
+        &mut ed.state.panes.state,
+        &ed.state.buffers,
+        &ed.view.panes,
+        pid_a,
+        bid,
+    );
+    assert!(
+        result.is_err(),
+        "a closed pane's pid must error even when its slot has not been reused, \
+         not silently seed a ghost pane_state entry"
+    );
+    assert!(
+        ed.state.panes.buffer_state(pid_a, bid).is_none(),
+        "no ghost pane_state entry should be created for the closed pane"
     );
 }

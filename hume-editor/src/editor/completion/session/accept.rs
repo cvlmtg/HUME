@@ -328,21 +328,22 @@ impl BufferSession {
         // composed in) before propagating the error.
         // `commit_char_edits` is a no-op `Ok(None)` for an empty batch, so no
         // separate `is_empty()` branch is needed here.
-        let cs_additional = match edits::commit_char_edits(state, pid, bid, additional_char_edits) {
-            Ok(cs) => cs,
-            Err(e) => {
-                if opened_group {
-                    crate::editor::doc_ops::commit_edit_group(
-                        &mut state.buffers,
-                        &mut state.panes.state,
-                        &mut state.active_session,
-                        pid,
-                        bid,
-                    );
+        let cs_additional =
+            match edits::commit_char_edits(state, &view.panes, pid, bid, additional_char_edits) {
+                Ok(cs) => cs,
+                Err(e) => {
+                    if opened_group {
+                        crate::editor::doc_ops::commit_edit_group(
+                            &mut state.buffers,
+                            &mut state.panes.state,
+                            &mut state.active_session,
+                            pid,
+                            bid,
+                        );
+                    }
+                    return Err(e);
                 }
-                return Err(e);
-            }
-        };
+            };
 
         // `forward` chars ahead of each cursor's own *live* head, plus
         // `per_cursor_back[i]` chars behind it, travels forward through
@@ -505,7 +506,13 @@ fn maybe_send_resolve(
                 &resolved_edits,
             )
             .and_then(|char_edits| {
-                edits::commit_char_edits(&mut editor.state, pid, bid, char_edits)
+                edits::commit_char_edits(
+                    &mut editor.state,
+                    &editor.view.panes,
+                    pid,
+                    bid,
+                    char_edits,
+                )
             });
             if let Err(e) = result {
                 editor.report(Severity::Error, format!("lsp completion resolve: {e}"));

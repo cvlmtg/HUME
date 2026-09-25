@@ -494,6 +494,7 @@ pub(in crate::editor) fn typed_goto_line(
     crate::editor::pane_state::park_cursor_at(
         &mut ed.state.panes.state,
         &ed.state.buffers,
+        &ed.view.panes,
         pid,
         bid,
         line0,

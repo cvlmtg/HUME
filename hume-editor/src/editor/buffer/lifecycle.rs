@@ -39,7 +39,7 @@ pub(in crate::editor) fn open_buffer(
     doc.set_undo_levels(undo_levels);
     let bid = ev.buffers.insert(());
     buffers.open(bid, doc);
-    pane_state::ensure(pane_state, buffers, focused_pane_id, bid);
+    pane_state::ensure(pane_state, buffers, &ev.panes, focused_pane_id, bid);
     bid
 }
 
@@ -159,7 +159,13 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     // `buffer_tag` names the buffer, so a switch to a different one always
     // differs from `PaneBufferState::last_layout_key` — the very first read
     // for a `(pane, buffer)` pair is `None`, which differs from anything.
-    pane_state::ensure(&mut state.panes.state, &state.buffers, pid, target);
+    pane_state::ensure(
+        &mut state.panes.state,
+        &state.buffers,
+        &ev.panes,
+        pid,
+        target,
+    );
 }
 
 // ── switch_to_buffer_with_jump ────────────────────────────────────────────────

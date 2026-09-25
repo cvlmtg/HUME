@@ -679,7 +679,13 @@ impl Editor {
         let mut pane_buf_state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>> =
             SecondaryMap::new();
         pane_buf_state.insert(pane_id, SecondaryMap::new());
-        super::pane_state::ensure(&mut pane_buf_state, &buffers, pane_id, buffer_id);
+        super::pane_state::ensure(
+            &mut pane_buf_state,
+            &buffers,
+            &engine_view.panes,
+            pane_id,
+            buffer_id,
+        );
 
         Self {
             state: EditorState {
@@ -762,6 +768,7 @@ impl Editor {
         super::pane_state::ensure(
             &mut self.state.panes.state,
             &self.state.buffers,
+            &self.view.panes,
             target,
             bid,
         );

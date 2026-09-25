@@ -237,6 +237,7 @@ impl Editor {
             crate::editor::pane_state::park_cursor_at(
                 &mut self.state.panes.state,
                 &self.state.buffers,
+                &self.view.panes,
                 pid,
                 bid,
                 pos.line,

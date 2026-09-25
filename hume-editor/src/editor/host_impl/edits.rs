@@ -48,6 +48,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         };
         crate::editor::lsp::edits::apply_text_edits(
             self.state,
+            &self.view.panes,
             t.pid(),
             t.bid(self.view),
             typed_edits,

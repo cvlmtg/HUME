@@ -39,7 +39,13 @@ fn open_pane(
     let unattached = view.insert_pane(pane);
     let pid = unattached.pane_id();
     state.panes.state.insert(pid, SecondaryMap::new());
-    crate::editor::pane_state::ensure(&mut state.panes.state, &state.buffers, pid, buffer_id);
+    crate::editor::pane_state::ensure(
+        &mut state.panes.state,
+        &state.buffers,
+        &view.panes,
+        pid,
+        buffer_id,
+    );
     state.panes.jumps.insert(
         pid,
         crate::editor::jump_list::JumpList::new(state.settings.jump_list_capacity),
