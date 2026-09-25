@@ -644,8 +644,8 @@ impl Buffer {
     ///
     /// Returns a fresh [`EditGroup`] rather than writing through a pointer —
     /// the caller (`doc_ops::begin_edit_group`) is the one that knows whether
-    /// a session is already open (it owns `EditorState::active_session`), so
-    /// that check lives there now, not here.
+    /// a session is already open, since it owns `EditorState::active_session`;
+    /// that check belongs there, not here.
     pub(in crate::editor) fn begin_edit_group(&self, pre_sels: SelectionSet) -> EditGroup {
         EditGroup {
             text_snapshot: self.text.clone(),

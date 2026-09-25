@@ -606,40 +606,9 @@ fn ensure_is_idempotent() {
 #[should_panic(expected = "pid must be a live PaneId")]
 fn ensure_panics_on_a_closed_pane() {
     use crate::editor::pane_state;
-    use hume_scripting::PaneHandle;
-    use hume_scripting::host::CommandHost;
 
     let mut ed = editor_from("-[a]>aaa\n");
-    let pid_a = ed.state.focus.id();
-    let bid = ed.focused_buffer_id();
-
-    // B, a sibling on the same buffer, survives A's close so the buffer
-    // itself stays open throughout.
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
-        )
-        .expect("pane-vsplit must succeed");
-
-    ed.state.focus.set_for_test(pid_a);
-    live_host!(ed)
-        .run_command_sync(
-            "pane-close",
-            PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
-        )
-        .expect("pane-close must succeed");
-    assert_ne!(
-        ed.state.focus.id(),
-        pid_a,
-        "setup: closing A must move focus off it"
-    );
+    let (pid_a, bid) = close_pane_leaving_slot_vacant(&mut ed);
 
     pane_state::ensure(
         &mut ed.state.panes.state,
@@ -1809,14 +1778,15 @@ fn fits_split_allows_before_first_frame() {
     use hume_engine::pipeline::Direction;
 
     let ed = editor_from("-[h]>ello\n");
+    let fp = FocusedPane::current(&ed.state);
     assert!(crate::editor::commands::fits_split(
-        &ed.state,
         &ed.view,
+        fp,
         Direction::Vertical
     ));
     assert!(crate::editor::commands::fits_split(
-        &ed.state,
         &ed.view,
+        fp,
         Direction::Horizontal
     ));
 }
@@ -1846,11 +1816,13 @@ fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
     let other_tab_pid = ed.state.focus.id();
     ed.execute_typed("tabprev", None).unwrap();
     ed.state.focus.set_for_test(other_tab_pid);
+    let fp = FocusedPane::current(&ed.state);
     let panes_before = ed.view.panes.len();
 
     let result = crate::editor::commands::split_pane_onto(
         &mut ed.state,
         &mut ed.view,
+        fp,
         bid,
         Direction::Vertical,
     );

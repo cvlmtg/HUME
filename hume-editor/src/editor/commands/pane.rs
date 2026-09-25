@@ -174,15 +174,15 @@ const MIN_PANE_WIDTH: u16 = 10;
 /// first `prepare_frame` there is no real terminal area yet — allow the
 /// split; `prepare_frame` sizes it correctly on the next frame regardless.
 pub(in crate::editor) fn fits_split(
-    state: &EditorState,
     view: &EngineView,
+    fp: FocusedPane,
     direction: Direction,
 ) -> bool {
     if view.last_pane_area.area() == 0 {
         return true;
     }
     let Some(rect) = view.layout().predicted_split_rect(
-        state.focus.id(),
+        fp.pid(),
         view.last_pane_area,
         view.reserve_seam,
         direction,
@@ -209,13 +209,14 @@ pub(in crate::editor) fn fits_split(
 pub(in crate::editor) fn split_pane_onto(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     bid: BufferId,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    if !fits_split(state, view, direction) {
+    if !fits_split(view, fp, direction) {
         return Err(CommandError::transient(SPLIT_TOO_SMALL_MSG));
     }
-    let old_focused = state.focus.id();
+    let old_focused = fp.pid();
     let old_buffer_id = view.panes[old_focused].buffer_id;
     let new_pid = open_pane_in_layout(state, view, old_focused, bid, direction)?;
 

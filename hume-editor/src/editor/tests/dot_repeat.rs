@@ -721,13 +721,13 @@ fn dot_after_find_is_noop() {
 ///
 /// This is a deliberate consequence of `PasteStamp` having no dot-repeat
 /// special case at all — `replay_dot` runs the replayed edit through the
-/// ordinary `commands::run_native_body` → `route_kill` → `capture_to_ring`
+/// ordinary `commands::run_body` → `route_kill` → `capture_to_ring`
 /// path, which writes the stamp at the replay's own
 /// `BufferStore::edit_seq()` exactly as a live `d` would: nothing treats a
 /// replayed delete differently from a typed one.
 ///
 /// Fail oracle: make `route_kill`/`capture_to_ring` skip stamping when
-/// called from `run_native_body` outside the dispatch pipeline (i.e. during
+/// called from `run_body` outside the dispatch pipeline (i.e. during
 /// replay) — the ring head would then be stale by the time `p` reads it and
 /// `p` would fall through to "CLIP" instead.
 #[test]

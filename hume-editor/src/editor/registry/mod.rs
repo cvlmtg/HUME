@@ -47,7 +47,7 @@ pub(in crate::editor) use command::{
 };
 // Narrower than the re-exports above: these carry a native command's `fun`
 // function pointer, wrapped in `commands::NativeBody` so only
-// `commands::pipeline::run_native_body` can call it — see `MappableCommand`'s
+// `commands::pipeline::run_body` can call it — see `MappableCommand`'s
 // own doc.
 pub(in crate::editor) use command::{
     EditorCmdBody, MappableCommand, SelectionBody, StructuralBody,

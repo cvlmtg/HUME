@@ -104,12 +104,12 @@ pub(in crate::editor) fn typed_quit_all(
             // Jump to it only when the focused buffer is clean — if the user is
             // already sitting on an unsaved buffer, stay there so a save + :qa
             // cycle walks through dirty buffers one at a time.
-            if !ed.state.buffers.get(fp.bid(&ed.view)).is_dirty() {
+            if !super::doc(&ed.state, &ed.view, fp.pane()).is_dirty() {
                 ed.switch_to_buffer_with_jump(fp, dirty_id);
             }
-            // `fp.bid` reads the pane's buffer live: the dirty buffer if the
-            // switch above ran, the already-dirty focused one otherwise.
-            let name = ed.state.buffers.get(fp.bid(&ed.view)).display_name();
+            // `super::doc` reads the pane's buffer live: the dirty buffer if
+            // the switch above ran, the already-dirty focused one otherwise.
+            let name = super::doc(&ed.state, &ed.view, fp.pane()).display_name();
             // Stays Error, not transient: `EditorState::message_logged_this_input`
             // (lifecycle.rs) keys off `message_log.totals()` moving, and
             // `can_open_confirm` (buffer/disk.rs) reads that flag to refuse a

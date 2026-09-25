@@ -1300,7 +1300,7 @@ fn run_command_sync_some_count_moves_buffer_line() {
 
 /// A Steel command's own internal `(call! "move-down" bid)` always moves by
 /// buffer line regardless of the *outer* key's typed count — the two are
-/// dispatched separately, each through its own `run_native_body` call, so
+/// dispatched separately, each through its own `run_body` call, so
 /// the inner one can't inherit the outer's explicitness. This also proves
 /// `state.explicit_count` is restored (not left `true`) once the whole
 /// dispatch — outer Steel command plus its nested native call — completes.

@@ -134,14 +134,15 @@ const FORMERLY_PANELESS: [&str; 6] = [
     "goto-prev-tab",
 ];
 
-/// The subset of [`FORMERLY_PANELESS`] that acts on focus.
-const FOCUS_ONLY: [&str; 5] = [
-    "tab-new",
-    "command-mode",
-    "toggle-extend",
-    "goto-next-tab",
-    "goto-prev-tab",
-];
+/// The subset of [`FORMERLY_PANELESS`] that acts on focus — every one of
+/// them except `clear-search` (its search cursor lives on the pane, not on
+/// focus). Derived by filtering rather than a second hand-written list, so
+/// the two can't drift apart.
+fn focus_only() -> impl Iterator<Item = &'static str> {
+    FORMERLY_PANELESS
+        .into_iter()
+        .filter(|&name| name != "clear-search")
+}
 
 #[test]
 fn a_buffer_only_handle_to_a_live_buffer_is_refused_by_every_native_command() {
@@ -168,7 +169,7 @@ fn focus_commands_refuse_a_non_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
     let (pid_a, _, pid_b, bid_b) = split_two_buffers(&mut ed, "bbb\n");
     let tabs_before = ed.state.tabs.len();
-    for name in FOCUS_ONLY {
+    for name in focus_only() {
         let err = live_host!(ed)
             .run_command_sync(name, PaneHandle::with_pane(bid_b, pid_b), None, false, None)
             .expect_err("a non-focused pane must be refused");
@@ -588,38 +589,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
 #[test]
 fn try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused() {
     let mut ed = editor_from("-[a]>aaa\n");
-    let pid_a = ed.state.focus.id();
-    let bid = ed.focused_buffer_id();
-
-    // B, a sibling on the same buffer, survives A's close so the buffer
-    // itself stays open throughout.
-    live_host!(ed)
-        .run_command_sync(
-            "pane-vsplit",
-            PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
-        )
-        .expect("pane-vsplit must succeed");
-
-    // Close A while it's focused (`pane-close` is a FocusedPane command).
-    // No new pane is opened afterward — A's freed slot stays vacant.
-    ed.state.focus.set_for_test(pid_a);
-    live_host!(ed)
-        .run_command_sync(
-            "pane-close",
-            PaneHandle::with_pane(bid, pid_a),
-            Some(1),
-            false,
-            None,
-        )
-        .expect("pane-close must succeed");
-    assert_ne!(
-        ed.state.focus.id(),
-        pid_a,
-        "setup: closing A must move focus off it"
-    );
+    let (pid_a, bid) = close_pane_leaving_slot_vacant(&mut ed);
 
     let result = crate::editor::pane_state::try_ensure(
         &mut ed.state.panes.state,

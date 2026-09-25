@@ -1,9 +1,11 @@
 //! The one Insert or paste session live in the editor, if any.
 //!
 //! [`EditorState::active_session`] relies on the invariant that at most one
-//! pane is ever in Insert or has a paste session open — every focus change
-//! and buffer switch must call `focus::end_focus_sessions` first, in the
-//! right order. Recording the owner (which pane, which buffer) as one value
+//! pane is ever in Insert or has a paste session open. Every session records
+//! its own owner `(pane, buffer)`, so `focus::end_focus_sessions` — run by
+//! every focus change and buffer switch — commits or tears it down by
+//! reading that owner directly rather than current focus; ordering relative
+//! to the focus write doesn't matter. Recording the owner as one value also
 //! makes "is there a conflicting session elsewhere" a single field
 //! comparison rather than a scan over every pane, and makes a stale session
 //! left open by a caller that forgot to tear it down impossible to
@@ -40,7 +42,14 @@ impl EditSession {
     /// panicking on the mismatch — this is the one place that three-way
     /// check is spelled out, so it can't be forgotten at a new call site.
     pub(in crate::editor) fn is_insert_at(&self, pane: PaneId, buffer: BufferId) -> bool {
-        self.pane == pane && self.buffer == buffer && matches!(self.kind, EditSessionKind::Insert)
+        self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Insert)
+    }
+
+    /// `true` if this is a Paste-kind session on `(pane, buffer)` — the
+    /// `is_insert_at` counterpart for the other kind [`EditSessionKind`]
+    /// can hold.
+    pub(in crate::editor) fn is_paste_at(&self, pane: PaneId, buffer: BufferId) -> bool {
+        self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Paste { .. })
     }
 
     /// `true` if this session belongs to `(pane, buffer)`, regardless of
@@ -58,16 +67,34 @@ impl EditSession {
         self.group.cs.is_none()
     }
 
-    /// `true` if this session would block a fresh [`open_or_retarget`] call
-    /// at `(pane, buffer)` — a real conflict, not the empty-retarget case.
-    /// Exposed so a caller that needs to know the outcome *before* mutating
-    /// anything else (`commands::paste`'s `do_normal_paste`/`do_smart_paste`,
-    /// which must not take the live selection only to discover paste would
-    /// have refused) can check first, using the exact same rule
-    /// `open_or_retarget` itself applies.
-    pub(in crate::editor) fn blocks_open(&self, pane: PaneId, buffer: BufferId) -> bool {
+    /// `true` if this session would block a fresh [`open_or_retarget`]/
+    /// [`check_can_open`] call at `(pane, buffer)` — a real conflict, not
+    /// the empty-retarget case.
+    fn blocks_open(&self, pane: PaneId, buffer: BufferId) -> bool {
         !self.owned_by(pane, buffer) || !self.is_empty()
     }
+}
+
+/// `Err` if a session open right now would refuse a fresh
+/// [`open_or_retarget`] call at `(pane, buffer)` — the exact rule that
+/// function applies, exposed so a caller that needs to know the outcome
+/// *before* mutating anything else (`commands::paste`'s
+/// `do_normal_paste`/`do_smart_paste`, which must not take the live
+/// selection only to discover paste would have refused) can check first.
+pub(in crate::editor) fn check_can_open(
+    active_session: &Option<EditSession>,
+    pane: PaneId,
+    buffer: BufferId,
+) -> Result<(), CommandError> {
+    if active_session
+        .as_ref()
+        .is_some_and(|s| s.blocks_open(pane, buffer))
+    {
+        return Err(CommandError::transient(
+            "buffer has an open insert/paste session already",
+        ));
+    }
+    Ok(())
 }
 
 /// Open a session of `kind` on `(pane, buffer)`, or take over an empty one
@@ -87,7 +114,8 @@ impl EditSession {
 ///
 /// `Err` otherwise: a real, non-empty session on this `(pane, buffer)`, or
 /// any session on a *different* one — both are genuine conflicts that must
-/// never be silently overwritten (see this module's own doc).
+/// never be silently overwritten (see this module's own doc); see
+/// [`check_can_open`] for the exact rule.
 pub(in crate::editor) fn open_or_retarget(
     active_session: &mut Option<EditSession>,
     pane: PaneId,
@@ -95,12 +123,8 @@ pub(in crate::editor) fn open_or_retarget(
     kind: EditSessionKind,
     mint_group: impl FnOnce() -> EditGroup,
 ) -> Result<(), CommandError> {
+    check_can_open(active_session, pane, buffer)?;
     match active_session {
-        Some(existing) if existing.blocks_open(pane, buffer) => {
-            return Err(CommandError::transient(
-                "buffer has an open insert/paste session already",
-            ));
-        }
         Some(existing) => existing.kind = kind,
         None => {
             *active_session = Some(EditSession {

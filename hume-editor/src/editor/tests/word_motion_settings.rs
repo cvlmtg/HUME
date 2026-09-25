@@ -155,7 +155,7 @@ fn MM_with_setting_off_matches_miW() {
 }
 
 /// Every equivalence test above runs in Move mode only — `mm`/`MM` read
-/// `WordCtx.around` (resolved fresh by `run_native_body`'s `SelectionBody::Word`
+/// `WordCtx.around` (resolved fresh by `run_body`'s `SelectionBody::Word`
 /// arm) regardless of `MotionMode`, so this checks the pairing also holds
 /// once an existing selection is being *grown* (Extend), not just replaced.
 #[test]
@@ -219,7 +219,7 @@ fn maw_unaffected_by_setting() {
 
 /// `select-word` (`mm`) is a Selection command (`SelectionTracking::Establishes`),
 /// so it pushes an establish step onto the dot-repeat recipe (unlike the word
-/// motions, which are `Extends`) — replay re-runs it via `run_native_body`,
+/// motions, which are `Extends`) — replay re-runs it via `run_body`,
 /// which must re-resolve
 /// `word-selects-whitespace` fresh each time rather than baking in whatever
 /// was true at the original keypress.

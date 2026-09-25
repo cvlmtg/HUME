@@ -14,7 +14,7 @@ use crate::editor::pane_state::{PaneBufferState, TypedRun};
 use crate::editor::replay::InsertSession;
 use hume_ops::edit::clear_blank_line_indent;
 
-use super::{FocusedPane, begin_edit_group_current, doc, pane_selections, refuse_if_read_only};
+use super::{FocusedPane, begin_focused_edit_group, doc, pane_selections, refuse_if_read_only};
 
 /// `true` when `fp`'s (pane, buffer) has an open Insert-kind session.
 fn is_group_open_at(state: &EditorState, view: &EngineView, fp: FocusedPane) -> bool {
@@ -82,8 +82,8 @@ pub(in crate::editor) fn arm_autoindent(
     if !is_group_open_at(state, view, fp) {
         return;
     }
-    let text = doc(state, view, fp.target()).text();
-    let ranges: Vec<ExclusiveRange<CharOffset>> = pane_selections(state, view, fp.target())
+    let text = doc(state, view, fp.pane()).text();
+    let ranges: Vec<ExclusiveRange<CharOffset>> = pane_selections(state, view, fp.pane())
         .iter_sorted()
         .map(|sel| {
             let head = sel.head();
@@ -92,9 +92,7 @@ pub(in crate::editor) fn arm_autoindent(
             ExclusiveRange::new(line_start, head)
         })
         .collect();
-    fp.target()
-        .state_mut(&mut state.panes.state, view)
-        .autoindent = Some(ranges);
+    fp.pane().state_mut(&mut state.panes.state, view).autoindent = Some(ranges);
 }
 
 /// Where an *empty* typed run's cursor lands on exit — see
@@ -140,11 +138,11 @@ pub(super) fn begin_typed_run(
     if !is_group_open_at(state, view, fp) {
         return;
     }
-    let heads: Vec<CharOffset> = pane_selections(state, view, fp.target())
+    let heads: Vec<CharOffset> = pane_selections(state, view, fp.pane())
         .iter_sorted()
         .map(|s| s.head())
         .collect();
-    let pbs = fp.target().state_mut(&mut state.panes.state, view);
+    let pbs = fp.pane().state_mut(&mut state.panes.state, view);
     // `ends` starts equal to `anchors` — an empty run — and is pushed
     // forward only by actual insertions (see `TypedRun::ends`'s own doc).
     pbs.typed_run = Some(TypedRun {
@@ -186,7 +184,7 @@ pub(super) fn begin_insert_session_preserving_register(
     view: &EngineView,
     fp: FocusedPane,
 ) -> Result<(), CommandError> {
-    if refuse_if_read_only(state, view, fp.target()) {
+    if refuse_if_read_only(state, view, fp.pane()) {
         return Ok(());
     }
     // Guard is load-bearing for dot-repeat replay: `replay_dot` opens
@@ -200,7 +198,7 @@ pub(super) fn begin_insert_session_preserving_register(
     // transaction / begin-edit-group builtin, and none should ever be added:
     // fine-grained undo grouping belongs to native commands, not scripts.
     if !is_group_open_at(state, view, fp) {
-        begin_edit_group_current(state, view, fp)?;
+        begin_focused_edit_group(state, view, fp)?;
         state.insert_session = Some(InsertSession {
             keystrokes: Vec::new(),
         });
@@ -244,7 +242,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
 /// `pane_state`/`buffers` directly through `doc_ops` rather than through a
 /// `CommandPane`/`FocusedPane`: this is not a command body, and those types
 /// can only be minted by resolving a target, not from a bare pair.
-pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _view: &EngineView) {
+pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     let (pid, bid) = state
         .active_session
         .as_ref()
@@ -265,12 +263,9 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _view: &Engin
     // `has_blank_line_cursor` also skips the edit in the common case —
     // cursor not on a line this session owns — rather than running an
     // identity one on every Insert-mode exit.
-    let allowed = autoindent_owned(&state.panes.state[pid][bid]);
-    if has_blank_line_cursor(
-        state.buffers.get(bid).text(),
-        state.panes.state[pid][bid].selections(),
-        &allowed,
-    ) {
+    let pbs = &state.panes.state[pid][bid];
+    let allowed = autoindent_owned(pbs);
+    if has_blank_line_cursor(state.buffers.get(bid).text(), pbs.selections(), &allowed) {
         doc_ops::apply_doc_edit_grouped(
             &mut state.buffers,
             &state.config.decorations,
@@ -299,12 +294,13 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _view: &Engin
     // run entirely — `spans` stays `None`, so this session contributes
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
-    let (typed_run, step_back, kill_opened) = {
+    let (typed_run, step_back, kill_opened, sel_count) = {
         let pbs = &mut state.panes.state[pid][bid];
         (
             pbs.typed_run.take(),
             std::mem::take(&mut pbs.step_back_on_exit),
             std::mem::take(&mut pbs.kill_opened_session),
+            pbs.selections().len(),
         )
     };
     // `cmd_change` stamped `PasteStamp` right after the deletion, but every
@@ -314,7 +310,6 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _view: &Engin
     if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
         stamp.seq = state.buffers.edit_seq();
     }
-    let sel_count = state.panes.state[pid][bid].selections().len();
     let valid_run = typed_run.filter(|r| r.anchors.len() == sel_count);
     let spans: Option<Vec<Option<InclusiveRange<CharOffset>>>> = valid_run.map(|run| {
         let text = state.buffers.get(bid).text();

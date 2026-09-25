@@ -18,7 +18,7 @@ use super::{Editor, Severity, commands};
 pub(in crate::editor) struct CmdCtx {
     /// Numeric count prefix. `None` means "no count was typed" — a bare
     /// keyboard press, which visual-move commands read as one visual line
-    /// (`state.explicit_count`, set from this by `run_native_body`). Producible
+    /// (`state.explicit_count`, set from this by `run_body`). Producible
     /// by the keymap trie leaves / WaitChar arm, and also by Steel: a script
     /// passes a count of `0` (`parse_count_extend` decodes it to `None`) to ask
     /// for the same "as if no count was typed" behavior. `Some(n)` is every
@@ -48,10 +48,7 @@ impl Editor {
         );
         if !is_steel {
             // Native path — a keypress always acts at the focused pane.
-            let target = commands::Target::at_focus(
-                commands::FocusedPane::current(&self.state),
-                cmd.target_category(),
-            );
+            let target = commands::Target::Focused(commands::FocusedPane::current(&self.state));
             commands::run(&mut self.state, &mut self.view, cmd, target, ctx);
             return;
         }

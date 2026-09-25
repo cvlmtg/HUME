@@ -188,14 +188,14 @@ fn split_focused_pane(
     arg: Option<&str>,
     direction: Direction,
 ) -> Result<(), CommandError> {
-    if !super::fits_split(&ed.state, &ed.view, direction) {
+    if !super::fits_split(&ed.view, fp, direction) {
         return Err(CommandError::transient(super::SPLIT_TOO_SMALL_MSG));
     }
     let bid = match arg {
         Some(path) => open_path_arg(ed, path)?,
         None => fp.bid(&ed.view),
     };
-    super::split_pane_onto(&mut ed.state, &mut ed.view, bid, direction)
+    super::split_pane_onto(&mut ed.state, &mut ed.view, fp, bid, direction)
 }
 
 /// Resolve a `:split`/`:vsplit` path argument to a `BufferId`, opening the
@@ -500,7 +500,7 @@ pub(in crate::editor) fn typed_goto_line(
     let line0 = hume_rope::line::ContentLine::from_number(n)
         .ok_or_else(|| CommandError::transient(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
-    let t = fp.target();
+    let t = fp.pane();
     // Snapshot before moving so Ctrl-o can return here — pushed only if
     // `:goto` actually lands somewhere else (record_jump_if_moved).
     let entry = current_jump_entry(&ed.state, &ed.view, t);
@@ -582,7 +582,7 @@ pub(in crate::editor) fn typed_sort(
 
     // doc_ops's read-only guard is a silent no-op — check explicitly here so
     // `:sort` on a read-only buffer (e.g. `:messages`) reports why nothing happened.
-    let t = fp.target();
+    let t = fp.pane();
     if super::doc(&ed.state, &ed.view, t).is_read_only() {
         return Err(CommandError::transient("Buffer is read-only"));
     }
@@ -720,7 +720,7 @@ fn travel(
         return Err(CommandError::transient(format!("`:{name}` takes no `!`")));
     }
     let spec = parse_travel_spec(arg.unwrap_or("1"))?;
-    let t = fp.target();
+    let t = fp.pane();
     // Checked before resolving `spec` into a step count: an age spec walks
     // the buffer's whole history, work `step` below would refuse anyway on
     // a read-only buffer.

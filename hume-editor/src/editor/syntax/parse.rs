@@ -236,7 +236,7 @@ impl Editor {
 /// reparsed, and they share the byte cap ([`EditorState::syntax_size_ok`])
 /// and the chain-break report. A **free function on `&mut EditorState`**, not
 /// an `Editor` method, because the command dispatch funnel that calls it
-/// (`commands::pipeline::run_native_body`) never holds an `Editor` — which is
+/// (`commands::pipeline::run_body`) never holds an `Editor` — which is
 /// also why it must parse inline rather than post to `Editor`'s worker.
 ///
 /// A structural command runs after `Editor::settle` has already ticked the

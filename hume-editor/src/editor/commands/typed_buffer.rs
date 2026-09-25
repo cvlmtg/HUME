@@ -64,7 +64,7 @@ pub(in crate::editor) fn typed_edit(
         // Buffer (only its text + file_meta are swapped), so `path` and
         // `display_path` are retained as-is — no need to re-seed them onto the
         // freshly read doc.
-        let doc = super::doc(&ed.state, &ed.view, fp.target());
+        let doc = super::doc(&ed.state, &ed.view, fp.pane());
         let Some(path) = doc.path().map(Path::to_path_buf) else {
             return Err(CommandError::transient("no file name"));
         };
@@ -335,7 +335,7 @@ fn typed_buffer_step(
     fp: FocusedPane,
     step: BufferStep,
 ) -> Result<(), CommandError> {
-    let t = fp.target();
+    let t = fp.pane();
     let pre = current_jump_entry(&ed.state, &ed.view, t);
     goto_buffer_in_order(&mut ed.state, &mut ed.view, t, step);
     record_jump_if_moved(&mut ed.state, &ed.view, t, pre);

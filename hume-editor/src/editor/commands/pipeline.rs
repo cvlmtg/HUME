@@ -1,7 +1,7 @@
-//! The native command dispatch pipeline: `run_native_body` executes a
-//! command's own effect; the `step_*` functions are the bookkeeping
-//! (dot-repeat, jump list, selection recipe, sticky extend) that wraps every
-//! dispatch, composed into one pipeline by `run`.
+//! The native command dispatch pipeline: `run_body` executes a command's own
+//! effect; the `step_*` functions are the bookkeeping (dot-repeat, jump
+//! list, selection recipe, sticky extend) that wraps every dispatch,
+//! composed into one pipeline by `run`.
 
 use std::borrow::Cow;
 
@@ -142,7 +142,7 @@ impl FocusedPane {
         Ok(Self(target))
     }
 
-    pub(in crate::editor) fn target(self) -> CommandPane {
+    pub(in crate::editor) fn pane(self) -> CommandPane {
         self.0
     }
 
@@ -164,11 +164,13 @@ impl FocusedPane {
 }
 
 /// A native command's target: the pane its body acts through, typed by
-/// whether the body may act on any pane or only the focused one. A
-/// `FocusedPane` body always gets [`Self::Focused`]: [`Self::at_focus`]/
-/// [`Self::resolve`] derive the variant from the same [`TargetCategory`] the
-/// registry derived from that body's [`EditorCmdBody`] variant. Every other
-/// body takes [`Self::pane`], whichever variant it is.
+/// whether it is the focused pane. A `FocusedPane` body always gets
+/// [`Self::Focused`], since [`FocusedPane::resolve`]/[`FocusedPane::current`]
+/// both require it. A `Pane`-category body gets [`Self::Focused`] too when
+/// the target happens to be focus — [`Self::resolve`] is the only place that
+/// checks, so `Self::Pane(t)` reaching anywhere else already means `t` is
+/// *not* the focused pane. Every body still takes [`Self::pane`], whichever
+/// variant it is.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum Target {
     Pane(CommandPane),
@@ -176,19 +178,11 @@ pub(in crate::editor) enum Target {
 }
 
 impl Target {
-    /// `category`'s target at the focused pane — the keypress path, where
-    /// "the pane to act on" is always whatever is focused. Infallible: every
-    /// category has an answer when the target is focus itself.
-    pub(in crate::editor) fn at_focus(fp: FocusedPane, category: TargetCategory) -> Self {
-        match category {
-            TargetCategory::Pane => Self::Pane(fp.target()),
-            TargetCategory::FocusedPane => Self::Focused(fp),
-        }
-    }
-
     /// `category`'s target named by an explicit `handle` — the
     /// `(call! "cmd" pane)` path, where the pane need not be focused unless
-    /// `category` says so.
+    /// `category` says so. A `Pane`-category handle that does name the
+    /// focused pane still comes back [`Self::Focused`] (see this type's own
+    /// doc) — checked once, here, rather than re-derived by every reader.
     pub(in crate::editor) fn resolve(
         state: &EditorState,
         view: &EngineView,
@@ -196,7 +190,14 @@ impl Target {
         category: TargetCategory,
     ) -> Result<Self, TargetError> {
         Ok(match category {
-            TargetCategory::Pane => Self::Pane(CommandPane::resolve(state, view, handle)?),
+            TargetCategory::Pane => {
+                let t = CommandPane::resolve(state, view, handle)?;
+                if t.pid() == state.focus.id() {
+                    Self::Focused(FocusedPane(t))
+                } else {
+                    Self::Pane(t)
+                }
+            }
             TargetCategory::FocusedPane => {
                 Self::Focused(FocusedPane::resolve(state, view, handle)?)
             }
@@ -207,7 +208,7 @@ impl Target {
     pub(in crate::editor) fn pane(self) -> CommandPane {
         match self {
             Self::Pane(t) => t,
-            Self::Focused(fp) => fp.target(),
+            Self::Focused(fp) => fp.pane(),
         }
     }
 
@@ -216,15 +217,11 @@ impl Target {
     /// pane other than focus (a `call!` from a hook) never touches the
     /// focused pane's paste session, typed run, dot-repeat recipe, or Extend
     /// flag: those describe what the user is doing in the pane they're
-    /// looking at, not what a hook just did elsewhere. Read once, before the
-    /// body runs — a body may move focus itself.
-    pub(in crate::editor) fn focused(self, state: &EditorState) -> Option<FocusedPane> {
+    /// looking at, not what a hook just did elsewhere.
+    pub(in crate::editor) fn focused(self) -> Option<FocusedPane> {
         match self {
             Self::Focused(fp) => Some(fp),
-            Self::Pane(t) => {
-                let fp = FocusedPane::current(state);
-                (fp.pid() == t.pid()).then_some(fp)
-            }
+            Self::Pane(_) => None,
         }
     }
 }
@@ -303,32 +300,31 @@ impl NativeBody<EditorCmdBody> {
 // ── Native command body execution ───────────────────────────────────────────
 
 /// Run the body of a native command (Motion/Selection/Edit/EditorCmd) with
-/// no dispatch bookkeeping.  Infallible — EditorCmd errors are reported but
-/// never propagated.
+/// no dispatch bookkeeping — the shape dot-repeat replay
+/// ([`crate::editor::Editor::replay_dot`]) and the Insert-mode `Edit`
+/// short-circuit (`input_stack/insert.rs`) both need directly; [`run`] wraps
+/// it with the bookkeeping every other dispatch also needs. Infallible —
+/// EditorCmd errors are reported but never propagated.
 ///
-/// Called by both the full pipeline ([`run`]) and the body-only path
-/// ([`run_body`]).
-///
-/// The single writer of `state.explicit_count`: `count` is `None` for a bare
-/// keyboard press (no count typed) or for a Steel `call!` that explicitly asked
-/// for the same treatment (a script-side count of `0`, decoded by
+/// The single writer of `state.explicit_count`: `ctx.count` is `None` for a
+/// bare keyboard press (no count typed) or for a Steel `call!` that explicitly
+/// asked for the same treatment (a script-side count of `0`, decoded by
 /// `parse_count_extend`). Visual-move commands (`move-down`/`move-up`) read
 /// `explicit_count == false` as "move by visual line" rather than buffer line.
 /// Save/restore (not a plain set) so a Steel command's body dispatching its own
 /// native command via `call!` — which nests inside this same function while the
 /// outer call's stack frame is still live — gets its own value instead of
 /// leaking the outer command's.
-fn run_native_body(
+pub(in crate::editor) fn run_body(
     state: &mut EditorState,
     view: &mut EngineView,
     cmd: MappableCommand,
     target: Target,
-    count: Option<usize>,
-    extend: bool,
+    ctx: &CmdCtx,
 ) {
-    let prev_explicit_count = std::mem::replace(&mut state.explicit_count, count.is_some());
-    let count = count.unwrap_or(1).max(1);
-    let motion_mode = if extend {
+    let prev_explicit_count = std::mem::replace(&mut state.explicit_count, ctx.count.is_some());
+    let count = ctx.count.unwrap_or(1).max(1);
+    let motion_mode = if ctx.extend {
         MotionMode::Extend
     } else {
         MotionMode::Move
@@ -400,9 +396,11 @@ fn run_native_body(
                 // Any target will do: a focused pane is also a pane.
                 EditorCmdBody::Pane(f) => f(state, view, target.pane(), count, motion_mode),
                 EditorCmdBody::FocusedPane(f) => {
-                    // `Target::at_focus`/`Target::resolve` build `Focused` from
-                    // the same `target_category()` the registry derived from
-                    // this very body variant, so the two cannot disagree.
+                    // Every `FocusedPane`-category target is `Focused` by
+                    // construction: `Target::resolve` builds it from
+                    // `FocusedPane::resolve`, and every other mint site
+                    // (keypress, replay, the Insert-mode short-circuit) is a
+                    // bare `Target::Focused(FocusedPane::current(state))`.
                     let Target::Focused(fp) = target else {
                         unreachable!("a FocusedPane body always resolves to a Focused target")
                     };
@@ -421,23 +419,10 @@ fn run_native_body(
             }
         }
         MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-            unreachable!("run_native_body called on non-native command");
+            unreachable!("run_body called on non-native command");
         }
     }
     state.explicit_count = prev_explicit_count;
-}
-
-/// A native command's body alone, with none of [`run`]'s bookkeeping — the
-/// shape dot-repeat replay ([`crate::editor::Editor::replay_dot`]) and the
-/// Insert-mode `Edit` short-circuit (`input_stack/insert.rs`) both need.
-pub(in crate::editor) fn run_body(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    cmd: MappableCommand,
-    target: Target,
-    ctx: CmdCtx,
-) {
-    run_native_body(state, view, cmd, target, ctx.count, ctx.extend);
 }
 
 // ── Dispatch step functions ─────────────────────────────────────────────────
@@ -502,15 +487,14 @@ pub(in crate::editor::commands::pipeline) fn step_clear_typed_run(
     if state.mode() != Mode::Insert || !meta.moves_cursor() {
         return;
     }
-    fp.target()
-        .state_mut(&mut state.panes.state, view)
-        .typed_run = None;
+    fp.pane().state_mut(&mut state.panes.state, view).typed_run = None;
 }
 
 /// The primary selection, its line, and `t`'s buffer — what a jump entry is
 /// built from and what `step_record_jump` compares against, before and after
-/// a command runs. Reads `t`'s pane directly, not the focused pane: a Remote
-/// dispatch's jump list belongs to the pane it actually ran in.
+/// a command runs. Reads `t`'s pane directly, not the focused pane: a
+/// dispatch through a non-focused pane's jump list belongs to the pane it
+/// actually ran in.
 fn jump_position(
     state: &EditorState,
     view: &EngineView,
@@ -700,7 +684,7 @@ pub(in crate::editor::commands::pipeline) fn step_clear_extend(
 // ── Native dispatch pipeline (composed from step functions) ────────────────
 
 /// Execute a native command through the full dispatch pipeline. The
-/// keypress path passes [`Target::at_focus`]; `(call! "cmd" pane)`
+/// keypress path passes [`Target::Focused`] directly; `(call! "cmd" pane)`
 /// (`EditorHostImpl::run_command_sync`) passes [`Target::resolve`], which may
 /// name a pane other than the focused one.
 ///
@@ -733,7 +717,7 @@ pub(in crate::editor) fn run(
     // command by `registry::tests::no_command_is_both_repeatable_and_selection_tracking`
     // rather than re-probed here on every dispatch.
     let pane = target.pane();
-    let focused = target.focused(state);
+    let focused = target.focused();
 
     // BEFORE
     state.command_refused = false;
@@ -754,10 +738,10 @@ pub(in crate::editor) fn run(
         && (ctx.extend || meta.selection_tracking != SelectionTracking::Extends);
     let pre_sels = focused
         .filter(|_| needs_selection_snapshot)
-        .map(|fp| pane_selections(state, view, fp.target()).clone());
+        .map(|fp| pane_selections(state, view, fp.pane()).clone());
 
     // BODY — cmd moved in; meta + name captured above so no further clone needed.
-    run_native_body(state, view, cmd, target, ctx.count, ctx.extend);
+    run_body(state, view, cmd, target, &ctx);
 
     // AFTER
     let moved = step_record_jump(state, view, pre_jump, meta.is_jump, pane);
@@ -776,7 +760,7 @@ pub(in crate::editor) fn run(
         // A command whose own snapshot is `None` never reaches the `!selection_changed`
         // early return in step_update_recipe, so `true` here is inert filler.
         let selection_changed = match &pre_sels {
-            Some(pre) => *pre != *pane_selections(state, view, fp.target()),
+            Some(pre) => *pre != *pane_selections(state, view, fp.pane()),
             None => true,
         };
         step_update_recipe(state, &meta, &name, &ctx, selection_changed);

@@ -311,8 +311,8 @@ impl BufferSession {
         // Checked by kind and owner, not `state.active_session.is_none()`:
         // a session open on a *different* (pane, buffer), or a non-Insert
         // one here (e.g. a Paste session from an unrelated `p` keypress),
-        // is a real conflict, and the fallible `begin_edit_group` call below
-        // now reports it as an `Err` instead of this function silently
+        // is a real conflict — the fallible `begin_edit_group` call below
+        // reports it as an `Err` rather than this function silently
         // treating "some session is open" as "the group I need is open."
         let opened_group = !state
             .active_session

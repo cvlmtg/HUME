@@ -60,12 +60,12 @@ pub(in crate::editor) fn cmd_change(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if super::refuse_if_read_only(state, view, fp.target()) {
+    if super::refuse_if_read_only(state, view, fp.pane()) {
         return Ok(());
     }
     let yanked = {
-        let doc = super::doc(state, view, fp.target());
-        let sels = super::pane_selections(state, view, fp.target());
+        let doc = super::doc(state, view, fp.pane());
+        let sels = super::pane_selections(state, view, fp.pane());
         sels.iter_sorted()
             .map(|sel| {
                 let span = change_span(doc.text(), sel);

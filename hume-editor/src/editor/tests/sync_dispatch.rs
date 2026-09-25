@@ -1135,7 +1135,7 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 /// sequence in `mod.rs:dispatch`), which the other tests leave untouched.
 ///
 /// `NativeBody` only guards the body funnel itself (calling a native `fun`
-/// outside `run_native_body`); it cannot detect a bookkeeping stage added to
+/// outside `run_body`); it cannot detect a bookkeeping stage added to
 /// one pipeline and forgotten in the other. Pinning the full cluster here
 /// means any such omission causes a divergence.
 ///

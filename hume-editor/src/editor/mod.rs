@@ -965,7 +965,7 @@ impl Editor {
 
     /// The `BufferId` the focused pane is currently viewing.
     pub(crate) fn focused_buffer_id(&self) -> BufferId {
-        commands::focused_buffer_id(&self.state, &self.view)
+        self.view.panes[self.state.focus.id()].buffer_id
     }
 
     /// Shared reference to the focused buffer.
@@ -991,13 +991,13 @@ impl Editor {
 
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
-        let t = commands::FocusedPane::current(&self.state).target();
+        let t = commands::FocusedPane::current(&self.state).pane();
         commands::pane_selections(&self.state, &self.view, t)
     }
 
     /// Replace the focused pane's selections for the current buffer.
     pub(in crate::editor) fn set_current_selections(&mut self, sels: SelectionSet) {
-        let t = commands::FocusedPane::current(&self.state).target();
+        let t = commands::FocusedPane::current(&self.state).pane();
         commands::set_pane_selections(&mut self.state, &self.view, t, sels);
     }
 

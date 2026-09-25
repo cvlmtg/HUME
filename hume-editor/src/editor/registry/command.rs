@@ -215,7 +215,7 @@ pub(in crate::editor) struct CmdMeta {
     /// Every other command relies on `replay_dot`'s wrapper to fold a
     /// multi-step recipe replay plus the main edit into one undo revision.
     ///
-    /// Only governs the pre-open decision now, not whether `replay_dot`
+    /// Governs only the pre-open decision, not whether `replay_dot`
     /// commits afterward — a Steel-backed command can never set this flag
     /// (see the `SteelBacked`/`Lazy` constructors below, always `false`),
     /// yet its body can still dispatch native paste, which retargets a
@@ -313,7 +313,7 @@ pub(in crate::editor) enum StructuralBody {
 /// skipping `commands::run`'s bookkeeping (jump list, dot-repeat,
 /// paste session). Every native variant's `fun` is wrapped in
 /// [`NativeBody`](crate::editor::commands::NativeBody) instead — its private
-/// field, readable only from `commands::pipeline::run_native_body`, is what
+/// field, readable only from `commands::pipeline::run_body`, is what
 /// actually closes that off.
 #[derive(Clone)]
 pub(in crate::editor) enum MappableCommand {
@@ -630,11 +630,13 @@ impl MappableCommand {
     /// their body signature's only option; `EditorCmd` derives it from its
     /// own `fun`'s [`EditorCmdBody`] variant.
     ///
-    /// Only meaningful for a native command — every caller builds a
-    /// `commands::Target` from it (`Target::at_focus`/`Target::resolve`) and
-    /// is reached only after `is_native()` is already known true
-    /// (`Editor::dispatch`'s branch, `run_command_sync`'s native check,
-    /// dot-repeat's recorded native command, Insert mode's `Edit` leaf).
+    /// Only meaningful for a native command. Its one caller,
+    /// `EditorHostImpl::run_command_sync` (`(call! "cmd" pane)`), feeds it to
+    /// `Target::resolve` to decide whether the named pane must be focus —
+    /// reached only after `is_native()` is already known true. Every other
+    /// entry point (keypress dispatch, dot-repeat replay, Insert mode's
+    /// `Edit` leaf) always acts at the focused pane, so it builds
+    /// `Target::Focused` directly and never needs this.
     pub(in crate::editor) fn target_category(&self) -> TargetCategory {
         match self {
             Self::Motion { .. } | Self::Selection { .. } | Self::Edit { .. } => {

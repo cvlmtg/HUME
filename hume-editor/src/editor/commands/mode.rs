@@ -30,7 +30,7 @@ pub(in crate::editor) fn cmd_insert_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.target(), |_b, sels| {
+    apply_pane_motion(state, view, fp.pane(), |_b, sels| {
         sels.map(|s| Selection::collapsed(s.start()))
     });
     begin_insert_session(state, view, fp)?;
@@ -45,7 +45,7 @@ pub(in crate::editor) fn cmd_insert_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.target(), |b, s| {
+    apply_pane_motion(state, view, fp.pane(), |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view, fp)?;
@@ -60,7 +60,7 @@ pub(in crate::editor) fn cmd_insert_at_line_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.target(), |b, s| {
+    apply_pane_motion(state, view, fp.pane(), |b, s| {
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
     begin_insert_session(state, view, fp)?;
@@ -75,7 +75,7 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.target(), |b, s| {
+    apply_pane_motion(state, view, fp.pane(), |b, s| {
         // Move to line content-end, then step right onto the \n slot — unless the
         // line is empty, in which case line-end is already the \n and stepping past
         // it would land on the next line.
@@ -106,7 +106,7 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.target(), |_b, sels| {
+    apply_pane_motion(state, view, fp.pane(), |_b, sels| {
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
     begin_insert_session(state, view, fp)?;
@@ -132,7 +132,7 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_motion(state, view, fp.target(), |b, sels| {
+    apply_pane_motion(state, view, fp.pane(), |b, sels| {
         // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
         let max = b.last_char();
         sels.map(|sel| {
@@ -168,7 +168,7 @@ pub(in crate::editor) fn cmd_open_line_below(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view, fp)?;
-    apply_pane_motion(state, view, fp.target(), |b, s| {
+    apply_pane_motion(state, view, fp.pane(), |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, fp, |b, s| insert_newline_indent(b, s, &[]));
@@ -190,7 +190,7 @@ pub(in crate::editor) fn cmd_open_line_above(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view, fp)?;
-    apply_pane_motion(state, view, fp.target(), |b, s| {
+    apply_pane_motion(state, view, fp.pane(), |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, fp, open_line_above);
@@ -291,7 +291,7 @@ pub(in crate::editor) fn cmd_collapse_to_head_and_exit_extend(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_collapse_and_exit_extend(state, view, fp.target(), |b, s| {
+    do_collapse_and_exit_extend(state, view, fp.pane(), |b, s| {
         cmd_collapse_selection_to_head(b, s, 0, MotionMode::Move)
     });
     Ok(())
@@ -310,7 +310,7 @@ pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_collapse_and_exit_extend(state, view, fp.target(), |b, s| {
+    do_collapse_and_exit_extend(state, view, fp.pane(), |b, s| {
         cmd_collapse_selection_to_anchor(b, s, 0, MotionMode::Move)
     });
     Ok(())

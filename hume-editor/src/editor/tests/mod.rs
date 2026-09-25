@@ -612,6 +612,51 @@ macro_rules! live_host {
 #[allow(unused_imports)]
 pub(in crate::editor) use live_host;
 
+/// Split the focused pane so B (a sibling on the same buffer) survives, then
+/// close the original pane A while it's focused — leaving A's slot vacant
+/// with no new pane reusing it. Returns `(pid_a, bid)`, the closed pane's own
+/// id (now stale) and the buffer both panes viewed.
+///
+/// Shared setup for `pane_state`'s trusted-mint (`ensure`) and
+/// liveness-checked (`try_ensure`) tests against a closed pane whose slot was
+/// never reused — as opposed to the reused-slot case, which needs its own,
+/// different setup.
+pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, BufferId) {
+    use hume_scripting::PaneHandle;
+    use hume_scripting::host::CommandHost;
+
+    let pid_a = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+
+    live_host!(ed)
+        .run_command_sync(
+            "pane-vsplit",
+            PaneHandle::with_pane(bid, pid_a),
+            Some(1),
+            false,
+            None,
+        )
+        .expect("pane-vsplit must succeed");
+
+    ed.state.focus.set_for_test(pid_a);
+    live_host!(ed)
+        .run_command_sync(
+            "pane-close",
+            PaneHandle::with_pane(bid, pid_a),
+            Some(1),
+            false,
+            None,
+        )
+        .expect("pane-close must succeed");
+    assert_ne!(
+        ed.state.focus.id(),
+        pid_a,
+        "setup: closing A must move focus off it"
+    );
+
+    (pid_a, bid)
+}
+
 /// [`live_host!`]'s twin for the three init/activation call sites
 /// (`EditorHostImpl::init`, no LSP/timer access) — the test-harness mirror
 /// of `init_scripting`'s own construction, so a test driving `eval_init`
@@ -1233,8 +1278,9 @@ pub(super) struct BookkeepingSnapshot {
 /// a path-parity test or diff them for targeted assertions.
 pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
     let pane_id = ed.state.focus.id();
-    // Shared by every "does any (pane, buffer) pair satisfy this predicate"
-    // field below, so a future one doesn't add a third copy of the walk.
+    // The "does any (pane, buffer) pair satisfy this predicate" walk,
+    // factored out so a second field needing it below reuses this instead
+    // of copying it.
     let any_pbs = |pred: fn(&crate::editor::pane_state::PaneBufferState) -> bool| {
         ed.state
             .panes

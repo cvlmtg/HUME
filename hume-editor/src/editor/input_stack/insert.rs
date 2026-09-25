@@ -44,8 +44,8 @@ impl Layer for InsertLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Insert)
     }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
-        commands::tear_down_insert(state, view);
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+        commands::tear_down_insert(state);
     }
     fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
         Some(&self.sticky_popup)
@@ -166,16 +166,14 @@ impl Editor {
                 // `apply_doc_edit_grouped` when a group is open, so no special-casing
                 // is needed here.
                 if let MappableCommand::Edit { .. } = reg_cmd {
-                    let target = commands::Target::at_focus(
-                        commands::FocusedPane::current(&self.state),
-                        reg_cmd.target_category(),
-                    );
+                    let target =
+                        commands::Target::Focused(commands::FocusedPane::current(&self.state));
                     commands::run_body(
                         &mut self.state,
                         &mut self.view,
                         reg_cmd,
                         target,
-                        crate::editor::dispatch::CmdCtx {
+                        &crate::editor::dispatch::CmdCtx {
                             count: Some(1),
                             extend: false,
                         },
@@ -299,7 +297,7 @@ impl Editor {
             KeyCode::Enter => {
                 let fp = commands::FocusedPane::current(&self.state);
                 let allowed = commands::autoindent_owned(
-                    fp.target().state(&self.state.panes.state, &self.view),
+                    fp.pane().state(&self.state.panes.state, &self.view),
                 );
                 self.apply_insert_edit(move |b, s| insert_newline_indent(b, s, &allowed));
                 commands::arm_autoindent(&mut self.state, &self.view, fp);

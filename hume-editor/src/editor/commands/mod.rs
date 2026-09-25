@@ -22,7 +22,7 @@ use hume_editing::text::BufferText;
 use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::line_store::FormatKey;
 use hume_engine::pane::{Pane, Viewport};
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::{EngineView, PaneId};
 
 use super::buffer::Buffer;
 use super::doc_ops;
@@ -74,17 +74,6 @@ impl EditorState {
 }
 
 // ── Free helpers for EditorCmd handlers ──────────────────────────────────────
-
-/// Buffer id the focused pane is viewing.
-///
-/// A genuine focus read, for callers that legitimately have no target of
-/// their own (LSP goto, `Editor::focused_buffer_id`, the Steel dispatch
-/// path). A Pane/Buffer-category command body has its own target parameter
-/// (`CommandPane::bid`/the `BufferId` itself) and should read that instead —
-/// see `commands/pipeline.rs`'s `CommandPane`/`FocusedPane` doc.
-pub(super) fn focused_buffer_id(state: &EditorState, view: &EngineView) -> BufferId {
-    view.panes[state.focus.id()].buffer_id
-}
 
 /// Reference to `t`'s buffer.
 pub(super) fn doc<'a>(state: &'a EditorState, view: &EngineView, t: CommandPane) -> &'a Buffer {
@@ -197,7 +186,7 @@ pub(super) fn pane_selections<'a>(
 ///
 /// `Err` when a real, non-empty session is already open elsewhere or here —
 /// see [`doc_ops::begin_edit_group`].
-pub(super) fn begin_edit_group_current(
+pub(super) fn begin_focused_edit_group(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,

@@ -354,36 +354,6 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
     }
 }
 
-/// Refuse a paste while a real (non-empty) session is open on `(pane, buf)`,
-/// or any session is open elsewhere — checked *before* the caller takes the
-/// live selection, so a refusal leaves it untouched instead of stranding it
-/// in `SelectionSet::default()` (`do_paste`'s own `open_or_retarget` call
-/// would catch the same conflict, but only after the caller has already
-/// taken the selection to build `sels` from).
-///
-/// Reachable only through a `call!` (a hook or timer firing mid-typing) or
-/// an Insert-mode binding — `step_paste_commit` closes a prior *paste*
-/// session before every ordinary dispatch. An empty session already open on
-/// `(pane, buf)` (a dot-repeat replay's own speculative pre-open) is not a
-/// conflict: `do_paste`'s `open_or_retarget` call retargets it instead —
-/// see [`EditSession::blocks_open`], the exact predicate this mirrors.
-fn refuse_if_session_blocks(
-    state: &EditorState,
-    pane: PaneId,
-    buf: BufferId,
-) -> Result<(), CommandError> {
-    if state
-        .active_session
-        .as_ref()
-        .is_some_and(|s| s.blocks_open(pane, buf))
-    {
-        return Err(CommandError::transient(
-            "paste refused: an edit session is already open",
-        ));
-    }
-    Ok(())
-}
-
 /// Plain paste: resolve from the register (kill-ring head when bare, honoring
 /// `"<reg>` otherwise), then hand off to [`do_paste`] unconditionally —
 /// always replaces a non-collapsed selection. See [`collapse_if_repeat`]'s
@@ -395,8 +365,11 @@ fn do_normal_paste(
     before: bool,
 ) -> Result<(), CommandError> {
     let (pid, buf) = (fp.pid(), fp.bid(view));
-    refuse_if_session_blocks(state, pid, buf)?;
-    if super::refuse_if_read_only(state, view, fp.target()) {
+    // Checked before `take_selections` below, not left to `do_paste`'s own
+    // `open_or_retarget` call, so a refusal here leaves the live selection
+    // untouched instead of stranding it in `SelectionSet::default()`.
+    edit_session::check_can_open(&state.active_session, pid, buf)?;
+    if super::refuse_if_read_only(state, view, fp.pane()) {
         return Ok(());
     }
     let Some(resolved) = resolve_plain(state) else {
@@ -418,8 +391,8 @@ fn do_smart_paste(
     before: bool,
 ) -> Result<(), CommandError> {
     let (pid, buf) = (fp.pid(), fp.bid(view));
-    refuse_if_session_blocks(state, pid, buf)?;
-    if super::refuse_if_read_only(state, view, fp.target()) {
+    edit_session::check_can_open(&state.active_session, pid, buf)?;
+    if super::refuse_if_read_only(state, view, fp.pane()) {
         return Ok(());
     }
     let Some(resolved) = resolve_smart(state) else {
@@ -493,7 +466,7 @@ fn do_paste_cycle(
     let Some(EditSessionKind::Paste { before }) = state
         .active_session
         .as_ref()
-        .filter(|s| s.pane == focused && s.buffer == buf)
+        .filter(|s| s.owned_by(focused, buf))
         .map(|s| s.kind)
     else {
         return Ok(());

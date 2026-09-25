@@ -299,7 +299,7 @@ pub(in crate::editor) fn cmd_split_pane(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = fp.bid(view);
-    super::split_pane_onto(state, view, bid, Direction::Vertical)
+    super::split_pane_onto(state, view, fp, bid, Direction::Vertical)
 }
 
 /// `Ctrl-p v` — split the focused pane side by side, onto the same buffer.
@@ -312,7 +312,7 @@ pub(in crate::editor) fn cmd_vsplit_pane(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let bid = fp.bid(view);
-    super::split_pane_onto(state, view, bid, Direction::Horizontal)
+    super::split_pane_onto(state, view, fp, bid, Direction::Horizontal)
 }
 
 /// `Ctrl-p c` — close the focused pane, collapsing the split onto its sibling.

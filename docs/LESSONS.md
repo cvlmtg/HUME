@@ -86,12 +86,12 @@ Cursor/text assertions passed.  Nine bookkeeping regressions shipped.
    assert only the primary effect.
 
 2. **Single funnel, compiler-enforced** — all execution of native-command
-   `fun` fields must go through `run_native_body` in `commands/pipeline.rs`
+   `fun` fields must go through `run_body` in `commands/pipeline.rs`
    (wrapped by `commands::run` for bookkeeping). Every native
    variant's `fun` is wrapped in `NativeBody<F>` (`commands/pipeline.rs`), a
    newtype whose field is private to that file — destructuring still binds
    `fun` everywhere, but the value is opaque and uncallable outside
-   `run_native_body`. A text-scanning lint tried this first and was too weak
+   `run_body`. A text-scanning lint tried this first and was too weak
    (see L17); the newtype closes the same gap the compiler, not a scan.
 
 3. **Duplicate-match smell** — two identical `match cmd { Motion { fun } | … }`
@@ -976,11 +976,15 @@ the focus write" an ordering rule every caller had to respect.
 **Concrete instance:** a blank-sheet review (2026-09-25) collapsed the
 categories to `Pane`/`FocusedPane`, replaced `Scope` with
 `Target::focused()`, replaced five resolvers with `CommandPane::resolve`/
-`FocusedPane::resolve`/`Target::{at_focus,resolve}`, made teardown read
+`FocusedPane::resolve`/`Target::resolve`, made teardown read
 `EditSession.pane`/`.buffer`, and gave typed `:` commands the focused pane
 at invocation. A test that moves focus raw before the Insert layer pops
 panicked on the old teardown's consistency assert — the ordering rule had
-been the only thing keeping it correct.
+been the only thing keeping it correct. A same-day follow-up cleanup pass
+folded the keypress-only `Target::at_focus` into `Target::resolve` itself
+(a `Pane`-category handle that names the focused pane now comes back
+`Focused` from `resolve` too), so every mint site left is `Target::resolve`
+or a bare `Target::Focused(fp)`.
 
 **Prevention rules:**
 

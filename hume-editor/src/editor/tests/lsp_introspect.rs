@@ -656,7 +656,7 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 fn viewport_range_end_is_one_past_the_last_visible_row() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\n");
     ed.viewport_mut().height = 3;
-    let t = crate::editor::commands::FocusedPane::current(&ed.state).target();
+    let t = crate::editor::commands::FocusedPane::current(&ed.state).pane();
 
     let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, t);
     assert_eq!(

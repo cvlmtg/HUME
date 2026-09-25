@@ -221,7 +221,7 @@ pub(in crate::editor) fn cmd_sift_within(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if pane_selections(state, view, fp.target())
+    if pane_selections(state, view, fp.pane())
         .iter_sorted()
         .all(Selection::is_collapsed)
     {

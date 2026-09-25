@@ -153,7 +153,7 @@ needing more context than a plain function pointer carries. `StructuralBody` has
 `Select { kind, span }` (`m i <k>` / `m a <k>`), `Goto { kind, dir }` (`goto-next-<k>` /
 `goto-prev-<k>`), and `Argument { around: bool }` (`m i a` / `m a a`, the tree-sitter `parameter`
 object with the lexical scan as fallback). One arm in the dispatch funnel
-(`commands/pipeline.rs::run_native_body`) interprets all three: `ensure_syntax_current`, collect
+(`commands/pipeline.rs::run_body`) interprets all three: `ensure_syntax_current`, collect
 `ObjectSpans` for the body's kind, apply the body against them.
 
 `registry/defaults/structural.rs::STRUCTURAL_OBJECTS` is the single table driving both

@@ -976,7 +976,7 @@ define_settings! {
         // Word motions (`w`/`W`/`b`/`B`) and `mm`/`MM` cover the destination
         // word's whitespace bookend (leading, or trailing for the first
         // word of a line) — see `word_select_cmd`'s `ctx.around` read and
-        // `run_native_body`'s `SelectionBody::Word` arm, which resolves it.
+        // `run_body`'s `SelectionBody::Word` arm, which resolves it.
         "word-selects-whitespace" => word_selects_whitespace: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;

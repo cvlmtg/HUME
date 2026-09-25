@@ -11,7 +11,6 @@ use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
 use super::edit_session::EditSessionKind;
-use super::error::CommandError;
 use super::registry::MappableCommand;
 use super::{Editor, Mode, commands, doc_ops};
 
@@ -128,34 +127,6 @@ pub(crate) enum MacroPending {
 impl Editor {
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────
 
-    /// Open a new edit group on the focused (pane, buffer) pair.
-    ///
-    /// `Err` when a real, non-empty session is already open elsewhere or
-    /// here — see [`doc_ops::begin_edit_group`]. Not expected to fire in
-    /// practice (every dispatch path commits or refuses a stray session
-    /// before `replay_dot` ever runs), but must not panic if it ever does.
-    fn begin_edit_group_current(&mut self) -> Result<(), CommandError> {
-        let pane_id = self.state.focus.id();
-        let buf_id = self.focused_buffer_id();
-        doc_ops::begin_edit_group(
-            &self.state.buffers,
-            &mut self.state.panes.state,
-            &mut self.state.active_session,
-            pane_id,
-            buf_id,
-        )
-    }
-
-    /// Commit and close the open edit group on the session's own (pane,
-    /// buffer) pair.
-    fn commit_open_edit_group(&mut self) {
-        doc_ops::commit_edit_group(
-            &mut self.state.buffers,
-            &self.state.panes.state,
-            &mut self.state.active_session,
-        );
-    }
-
     /// Close out whatever `replay_dot` left open on the focused (pane,
     /// buffer), for either its success or its failure path — the two need
     /// the identical decision, so it lives here once.
@@ -197,7 +168,11 @@ impl Editor {
             .as_ref()
             .is_some_and(|s| matches!(s.kind, EditSessionKind::Paste { .. }));
         if !leave_open {
-            self.commit_open_edit_group();
+            doc_ops::commit_edit_group(
+                &mut self.state.buffers,
+                &self.state.panes.state,
+                &mut self.state.active_session,
+            );
         }
     }
 
@@ -211,6 +186,9 @@ impl Editor {
         let Some(action) = self.state.last_repeatable_action.take() else {
             return;
         };
+        // Read once, at entry: recipe steps are selection-tracking motions
+        // and never move focus, so one mint covers the whole replay.
+        let fp = commands::FocusedPane::current(&self.state);
 
         // Resolve the edit body before opening the edit group: a missing command
         // must return while there is still no cleanup obligation, so this path
@@ -254,7 +232,9 @@ impl Editor {
         // `Err` here means a real, non-empty session is already open — not
         // expected given `step_paste_commit` just ran above, but if it ever
         // happens, defer rather than stealing or corrupting that session.
-        if !meta.manages_own_session && self.begin_edit_group_current().is_err() {
+        if !meta.manages_own_session
+            && commands::begin_focused_edit_group(&mut self.state, &self.view, fp).is_err()
+        {
             self.state.last_repeatable_action = Some(action);
             return;
         }
@@ -279,16 +259,12 @@ impl Editor {
                 .get_mappable(step.command.as_ref())
                 .cloned()
                 .expect("a dot-repeat selection-recipe step always names a native command");
-            let target = commands::Target::at_focus(
-                commands::FocusedPane::current(&self.state),
-                cmd.target_category(),
-            );
             commands::run_body(
                 &mut self.state,
                 &mut self.view,
                 cmd,
-                target,
-                CmdCtx {
+                commands::Target::Focused(fp),
+                &CmdCtx {
                     count: Some(step.count),
                     extend: step.extend,
                 },
@@ -329,16 +305,12 @@ impl Editor {
                 // Steel arm above (which receives `action.char_arg` as an
                 // explicit parameter instead) never leaves it dangling.
                 self.state.pending_char = action.char_arg;
-                let target = commands::Target::at_focus(
-                    commands::FocusedPane::current(&self.state),
-                    edit_cmd.target_category(),
-                );
                 commands::run_body(
                     &mut self.state,
                     &mut self.view,
                     edit_cmd,
-                    target,
-                    CmdCtx {
+                    commands::Target::Focused(fp),
+                    &CmdCtx {
                         count: Some(count),
                         extend: false,
                     },
