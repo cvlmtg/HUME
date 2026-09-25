@@ -273,8 +273,7 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// buffer.
 pub(crate) fn close_buffer(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     // The host applies the close (and its focus fallout) synchronously, not
-    // as a deferred effect — the return value is discarded here rather than
-    // cached on `ctx`, since `focused-pane`/`switch-to-buffer!`'s own
+    // as a deferred effect — `focused-pane`/`switch-to-buffer!`'s own
     // `focused_pane()` read already sees it on their very next call.
     ctx.host
         .buffers()

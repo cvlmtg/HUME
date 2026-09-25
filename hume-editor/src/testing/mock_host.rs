@@ -173,7 +173,7 @@ impl BufferHost for MockHost {
     fn open_buffer(&mut self, _path: &std::path::Path) -> Result<BufferId, String> {
         Err("MockHost: open_buffer not available".into())
     }
-    fn close_buffer(&mut self, _id: BufferId) -> Result<BufferId, String> {
+    fn close_buffer(&mut self, _id: BufferId) -> Result<(), String> {
         Err("MockHost: close_buffer not available".into())
     }
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {

@@ -298,7 +298,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn open_buffer(&mut self, path: &std::path::Path) -> Result<BufferId, String> {
         self.inner.open_buffer(path)
     }
-    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
+    fn close_buffer(&mut self, id: BufferId) -> Result<(), String> {
         self.inner.close_buffer(id)
     }
     fn switch_to_buffer(

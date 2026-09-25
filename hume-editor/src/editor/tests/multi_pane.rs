@@ -631,17 +631,10 @@ fn ensure_seeds_new_entry_with_initial_sels() {
     // Open a second buffer; the focused pane has never viewed it.
     let doc2 = Buffer::scratch();
     let expected_sels = doc2.initial_sels();
-    let bid2 = crate::editor::buffer::lifecycle::open_buffer(
-        &mut ed.view,
-        &mut ed.state.buffers,
-        &mut ed.state.panes.state,
-        pid,
-        doc2,
-        0,
-    );
+    let bid2 =
+        crate::editor::buffer::lifecycle::open_buffer(&mut ed.view, &mut ed.state.buffers, doc2, 0);
 
-    // open_buffer already calls ensure internally; a second call is idempotent
-    // and returns a state with the initial selections.
+    // The focused pane has never viewed `bid2`, so this is its first-visit seed.
     let state = pane_state::ensure(
         &mut ed.state.panes.state,
         &ed.state.buffers,
@@ -1740,14 +1733,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
     // A second buffer the source pane visited (and scrolled) before the
     // split, then switched away from — this is what populates
     // `saved_scrolls` in real usage (see `remember_scroll`).
-    let bid2 = open_buffer(
-        &mut ed.view,
-        &mut ed.state.buffers,
-        &mut ed.state.panes.state,
-        pid_a,
-        Buffer::scratch(),
-        0,
-    );
+    let bid2 = open_buffer(&mut ed.view, &mut ed.state.buffers, Buffer::scratch(), 0);
     ed.view.panes[pid_a].saved_scrolls.insert(
         bid2,
         ScrollPosition {

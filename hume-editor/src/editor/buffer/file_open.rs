@@ -154,8 +154,9 @@ impl Editor {
         self.resolve_open_path(&path.to_string_lossy())
     }
 
-    /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
-    /// per-buffer state (`state.panes.state`), and return the allocated `BufferId`.
+    /// Allocate a new buffer slot (engine + BufferStore) and return the
+    /// allocated `BufferId` — see `lifecycle::open_buffer`'s own doc for why
+    /// no pane is seeded yet.
     pub(in crate::editor) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         let bid = lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc);
         // Steel eval capability only `&mut Editor` has — see

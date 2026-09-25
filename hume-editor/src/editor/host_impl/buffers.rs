@@ -82,16 +82,17 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         .map_err(|e| format!("open-buffer!: {}: {e}", resolved.display()))?;
         Ok(bid)
     }
-    fn close_buffer(&mut self, id: BufferId) -> Result<BufferId, String> {
+    fn close_buffer(&mut self, id: BufferId) -> Result<(), String> {
         if self.state.buffers.try_get(id).is_none() {
             return Err(format!("close-buffer!: buffer {id:?} does not exist"));
         }
-        Ok(crate::editor::buffer::lifecycle::close_buffer_and_notify(
+        crate::editor::buffer::lifecycle::close_buffer_and_notify(
             self.view,
             self.state,
             self.lsp.as_deref_mut(),
             id,
-        ))
+        );
+        Ok(())
     }
     fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String> {
         let t = self.command_pane(pane)?;

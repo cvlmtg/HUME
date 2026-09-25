@@ -23,23 +23,22 @@ use crate::editor::pane_state::{self, PaneBufferState};
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
 
-/// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
-/// `pane_state` with initial selections, and return the allocated `BufferId`.
+/// Allocate a new buffer slot (engine + BufferStore) and return the
+/// allocated `BufferId`. No pane shows it yet — whichever pane first
+/// switches to it seeds its own `pane_state` entry lazily, via
+/// `switch_pane_to_buffer`/`write_cursor`'s own `pane_state::ensure` calls.
 ///
 /// `undo_levels` seeds `doc`'s `undo-levels` cap — the current global
 /// setting, since new buffers always start out tracking it.
 pub(in crate::editor) fn open_buffer(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    focused_pane_id: PaneId,
     mut doc: Buffer,
     undo_levels: usize,
 ) -> BufferId {
     doc.set_undo_levels(undo_levels);
     let bid = ev.buffers.insert(());
     buffers.open(bid, doc);
-    pane_state::ensure(pane_state, buffers, &ev.panes, focused_pane_id, bid);
     bid
 }
 
@@ -75,14 +74,7 @@ pub(in crate::editor::buffer) fn open_buffer_and_notify(
     state: &mut EditorState,
     doc: Buffer,
 ) -> BufferId {
-    let bid = open_buffer(
-        ev,
-        &mut state.buffers,
-        &mut state.panes.state,
-        state.focus.id(),
-        doc,
-        state.settings.undo_levels,
-    );
+    let bid = open_buffer(ev, &mut state.buffers, doc, state.settings.undo_levels);
     queue_open_announcement(state, bid);
     bid
 }
@@ -214,24 +206,20 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 /// replace would leave that failure mode open for any `LivePane` builtin
 /// whose bid outlived the close.
 ///
-/// Returns `(new_focused, opened)`: the `BufferId` the focused pane is now
-/// viewing, and — only when the last-buffer branch fired — the freshly
-/// allocated scratch buffer's id, for [`close_buffer_and_notify`] to
-/// announce with [`queue_open_announcement`] exactly like any other open.
+/// Returns, only when the last-buffer branch fired, the freshly allocated
+/// scratch buffer's id — for [`close_buffer_and_notify`] to announce with
+/// [`queue_open_announcement`] exactly like any other open.
 pub(in crate::editor) fn close_buffer(
     state: &mut EditorState,
     ev: &mut EngineView,
-    focused_pane_id: PaneId,
     id: BufferId,
-) -> (BufferId, Option<BufferId>) {
+) -> Option<BufferId> {
     let (next, opened) = match state.buffers.mru_excluding(id) {
         Some(next) => (next, None),
         None => {
             let bid = open_buffer(
                 ev,
                 &mut state.buffers,
-                &mut state.panes.state,
-                focused_pane_id,
                 Buffer::scratch(),
                 state.settings.undo_levels,
             );
@@ -254,7 +242,7 @@ pub(in crate::editor) fn close_buffer(
     state.buffers.close(id);
     ev.buffers.remove(id);
     forget_buffer_in_all_panes(ev, &mut state.panes.state, &mut state.panes.jumps, id);
-    (ev.panes[focused_pane_id].buffer_id, opened)
+    opened
 }
 
 /// [`close_buffer`] plus the pre-close LSP sync and post-close cleanup
@@ -282,7 +270,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     state: &mut EditorState,
     lsp: Option<&mut LspState>,
     id: BufferId,
-) -> BufferId {
+) {
     if let Some(lsp) = lsp {
         // Must run before the slot is freed below — needs the buffer's path
         // and lsp_server to build the didClose notification.
@@ -305,8 +293,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     state.retire_stale_confirm(ev, |c| c.targets_buffer(id));
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;
-    let focused_pane_id = state.focus.id();
-    let (new_focused, opened) = close_buffer(state, ev, focused_pane_id, id);
+    let opened = close_buffer(state, ev, id);
     // The last-buffer branch fired: a fresh scratch buffer was allocated in
     // `id`'s place and must announce its own `OnBufferOpen` like any other
     // open — it is a genuinely new `BufferId`, not `id` reused.
@@ -317,7 +304,6 @@ pub(in crate::editor) fn close_buffer_and_notify(
         // Fire with the ID that was closed, not the new current buffer.
         state.queue_event(EditorEvent::OnBufferClose { buffer: id });
     }
-    new_focused
 }
 
 /// Reseed every per-pane store keyed to `id` after its content was reset

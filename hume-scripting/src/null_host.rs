@@ -107,7 +107,7 @@ impl BufferHost for NullHost {
     fn open_buffer(&mut self, _path: &Path) -> Result<BufferId, String> {
         Err("NullHost: open_buffer not available".into())
     }
-    fn close_buffer(&mut self, _id: BufferId) -> Result<BufferId, String> {
+    fn close_buffer(&mut self, _id: BufferId) -> Result<(), String> {
         Err("NullHost: close_buffer not available".into())
     }
     fn switch_to_buffer(&mut self, _pane: PaneHandle, _target: BufferId) -> Result<(), String> {

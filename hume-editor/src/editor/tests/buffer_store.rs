@@ -9,9 +9,12 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_scripting::host::CommandHost;
 
-/// `open_buffer` allocates a new BufferId, seeds pane_state, and tracks MRU.
+/// `open_buffer` allocates a new BufferId and tracks MRU, but seeds no
+/// pane's `pane_state` yet — no pane shows the buffer until something
+/// switches to it, and that switch is what seeds it (lazily, on first
+/// visit; see `lifecycle::open_buffer`'s doc).
 #[test]
-fn p6_open_buffer_seeds_pane_state() {
+fn p6_open_buffer_defers_pane_state_seeding() {
     let mut ed = Editor::for_testing(Buffer::new(
         BufferText::from("hello\n"),
         SelectionSet::default(),
@@ -20,10 +23,15 @@ fn p6_open_buffer_seeds_pane_state() {
     let doc2 = Buffer::new(BufferText::from("world\n"), SelectionSet::default());
     let bid2 = ed.open_buffer(doc2);
     assert_ne!(bid2, initial_bid);
-    // pane_state should be seeded for bid2 on the focused pane.
+    assert!(
+        ed.selections_for(ed.state.focus.id(), bid2).is_none(),
+        "pane_state not yet seeded for a buffer no pane shows"
+    );
+
+    ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid2);
     assert!(
         ed.selections_for(ed.state.focus.id(), bid2).is_some(),
-        "pane_state seeded for new buffer"
+        "pane_state seeded once the focused pane switches to it"
     );
 }
 
