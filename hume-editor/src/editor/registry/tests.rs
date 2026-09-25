@@ -316,6 +316,7 @@ fn runtime_register_and_lookup() {
     fn dummy_fn(
         _state: &mut crate::editor::EditorState,
         _view: &mut hume_engine::pipeline::EngineView,
+        _t: crate::editor::commands::CommandPane,
         _count: usize,
         _mode: hume_ops::MotionMode,
     ) -> Result<(), crate::editor::error::CommandError> {
@@ -324,7 +325,7 @@ fn runtime_register_and_lookup() {
     let cmd = MappableCommand::EditorCmd {
         name: Cow::Owned("steel-test-cmd".to_string()),
         doc: Cow::Borrowed("A dummy Steel command for testing."),
-        fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Global(dummy_fn)),
+        fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Pane(dummy_fn)),
         defers_paste_commit: false,
         repeatable: false,
         jump: false,
@@ -420,6 +421,7 @@ fn steel_backed_names_filters_by_variant() {
     fn noop(
         _state: &mut crate::editor::EditorState,
         _view: &mut hume_engine::pipeline::EngineView,
+        _t: crate::editor::commands::CommandPane,
         _count: usize,
         _mode: hume_ops::MotionMode,
     ) -> Result<(), crate::editor::error::CommandError> {
@@ -428,7 +430,7 @@ fn steel_backed_names_filters_by_variant() {
     reg.register(MappableCommand::EditorCmd {
         name: Cow::Owned("%hume-cmd-decoy".to_string()),
         doc: Cow::Borrowed("doc"),
-        fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Global(noop)),
+        fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Pane(noop)),
         defers_paste_commit: false,
         repeatable: false,
         jump: false,

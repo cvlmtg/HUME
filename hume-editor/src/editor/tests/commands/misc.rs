@@ -65,7 +65,8 @@ fn toggle_extend_from_insert_is_a_no_op() {
     ed.handle_key(key('i'));
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
 
-    cmd_toggle_extend(&mut ed.state, &mut ed.view, 0, MotionMode::Move).unwrap();
+    let fp = FocusedPane::current(&ed.state);
+    cmd_toggle_extend(&mut ed.state, &mut ed.view, fp, 0, MotionMode::Move).unwrap();
 
     ed.handle_key(key_esc());
     assert_eq!(
@@ -104,7 +105,8 @@ fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
     .unwrap();
     assert!(ed.state.input.popup().is_some(), "sanity: popup open");
 
-    cmd_toggle_extend(&mut ed.state, &mut ed.view, 0, MotionMode::Move).unwrap();
+    let fp = FocusedPane::current(&ed.state);
+    cmd_toggle_extend(&mut ed.state, &mut ed.view, fp, 0, MotionMode::Move).unwrap();
 
     assert_eq!(
         ed.state.mode(),

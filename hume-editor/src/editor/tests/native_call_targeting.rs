@@ -119,16 +119,77 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
     assert_eq!(ed.state.focus.id(), pid_a);
 }
 
-// ── Buffer category: needs only the buffer, no pane at all ─────────────────
+// ── Two categories only: every native command needs a pane ────────────────
+
+/// The commands that used to be `Buffer`/`Global` category. Every native
+/// mappable command now acts through a pane — even one that reads only its
+/// buffer (`clear-search`'s search cursor lives on the pane), and every one
+/// that moves or reads focus-bound state is `Focused`.
+const FORMERLY_PANELESS: [&str; 6] = [
+    "clear-search",
+    "tab-new",
+    "command-mode",
+    "toggle-extend",
+    "goto-next-tab",
+    "goto-prev-tab",
+];
+
+/// The subset of [`FORMERLY_PANELESS`] that acts on focus.
+const FOCUS_ONLY: [&str; 5] = [
+    "tab-new",
+    "command-mode",
+    "toggle-extend",
+    "goto-next-tab",
+    "goto-prev-tab",
+];
 
 #[test]
-fn buffer_category_clear_search_works_on_a_paneless_handle() {
+fn a_buffer_only_handle_to_a_live_buffer_is_refused_by_every_native_command() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid_a = ed.focused_buffer_id();
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("bbb\n"),
-        SelectionSet::default(),
-    ));
+    let bid = ed.focused_buffer_id();
+    for name in FORMERLY_PANELESS {
+        let err = live_host!(ed)
+            .run_command_sync(name, PaneHandle::buffer_only(bid), None, false, None)
+            .expect_err("a pane-less handle must be refused");
+        assert!(
+            err.contains("needs a pane"),
+            "'{name}': unexpected error: {err}"
+        );
+    }
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "no refused command may have run"
+    );
+}
+
+#[test]
+fn focus_commands_refuse_a_non_focused_pane() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let (pid_a, _, pid_b, bid_b) = split_two_buffers(&mut ed, "bbb\n");
+    let tabs_before = ed.state.tabs.len();
+    for name in FOCUS_ONLY {
+        let err = live_host!(ed)
+            .run_command_sync(name, PaneHandle::with_pane(bid_b, pid_b), None, false, None)
+            .expect_err("a non-focused pane must be refused");
+        assert!(
+            err.contains("focused pane"),
+            "'{name}': unexpected error: {err}"
+        );
+    }
+    assert_eq!(
+        ed.state.tabs.len(),
+        tabs_before,
+        "tab-new must not have run"
+    );
+    assert_eq!(ed.state.mode(), Mode::Normal, "no mode change may have run");
+    assert_eq!(ed.state.focus.id(), pid_a);
+}
+
+#[test]
+fn clear_search_acts_on_its_panes_buffer_even_when_remote() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let (_, bid_a, pid_b, bid_b) = split_two_buffers(&mut ed, "bbb\n");
     ed.state.buffers.get_mut(bid_a).search_pattern =
         crate::editor::search::SearchPattern::compile("a");
     ed.state.buffers.get_mut(bid_b).search_pattern =
@@ -137,12 +198,12 @@ fn buffer_category_clear_search_works_on_a_paneless_handle() {
     let ran = live_host!(ed)
         .run_command_sync(
             "clear-search",
-            PaneHandle::buffer_only(bid_b),
+            PaneHandle::with_pane(bid_b, pid_b),
             None,
             false,
             None,
         )
-        .expect("clear-search on a pane-less handle must not error");
+        .expect("clear-search through a live remote pane must not error");
     assert!(ran);
 
     assert!(
@@ -156,64 +217,36 @@ fn buffer_category_clear_search_works_on_a_paneless_handle() {
 }
 
 #[test]
-fn buffer_category_tab_new_opens_a_tab_on_a_paneless_handle() {
+fn tab_new_opens_a_tab_on_the_focused_buffer() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("bbb\n"),
-        SelectionSet::default(),
-    ));
+    let bid = ed.focused_buffer_id();
     let tabs_before = ed.state.tabs.len();
 
+    let pane = focused_pane(&ed);
     let ran = live_host!(ed)
-        .run_command_sync("tab-new", PaneHandle::buffer_only(bid_b), None, false, None)
-        .expect("tab-new on a pane-less handle must not error");
+        .run_command_sync("tab-new", pane, None, false, None)
+        .expect("tab-new on the focused pane must not error");
     assert!(ran);
 
     assert_eq!(ed.state.tabs.len(), tabs_before + 1);
-    assert_eq!(
-        ed.view.panes[ed.state.focus.id()].buffer_id,
-        bid_b,
-        "the new tab's pane must show B, the buffer tab-new was called with"
-    );
+    assert_eq!(ed.view.panes[ed.state.focus.id()].buffer_id, bid);
 }
 
-// ── Global category: no buffer at all, even a closed one ───────────────────
-
 #[test]
-fn global_category_ignores_a_closed_buffer() {
+fn toggle_extend_runs_on_the_focused_pane() {
     let mut ed = editor_from("-[a]>bc\n");
-    let bid_b = ed.open_buffer(Buffer::new(
-        BufferText::from("bbb\n"),
-        SelectionSet::default(),
-    ));
-    ed.close_buffer(bid_b);
-    assert!(
-        ed.state.buffers.try_get(bid_b).is_none(),
-        "setup: bid_b must be closed"
-    );
-    let extend_before = ed.state.mode() == hume_engine::types::EditorMode::Extend;
-
+    let pane = focused_pane(&ed);
     let ran = live_host!(ed)
-        .run_command_sync(
-            "toggle-extend",
-            PaneHandle::buffer_only(bid_b),
-            None,
-            false,
-            None,
-        )
-        .expect("toggle-extend must ignore even a closed buffer — it needs no buffer at all");
+        .run_command_sync("toggle-extend", pane, None, false, None)
+        .expect("toggle-extend on the focused pane must not error");
     assert!(ran);
-    assert_ne!(
-        ed.state.mode() == hume_engine::types::EditorMode::Extend,
-        extend_before,
-        "the global flag must still flip"
-    );
+    assert_eq!(ed.state.mode(), Mode::Extend);
 }
 
-// ── Closed buffer: every other category errors ──────────────────────────────
+// ── Closed buffer: every command errors ─────────────────────────────────────
 
 #[test]
-fn closed_buffer_errors_for_pane_focused_and_buffer_categories() {
+fn closed_buffer_errors_for_every_command() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid_b = ed.open_buffer(Buffer::new(
         BufferText::from("bbb\n"),
@@ -222,7 +255,10 @@ fn closed_buffer_errors_for_pane_focused_and_buffer_categories() {
     ed.close_buffer(bid_b);
     assert!(ed.state.buffers.try_get(bid_b).is_none());
 
-    for name in ["delete", "insert-before", "clear-search"] {
+    for name in ["delete", "insert-before"]
+        .into_iter()
+        .chain(FORMERLY_PANELESS)
+    {
         let result = live_host!(ed).run_command_sync(
             name,
             PaneHandle::buffer_only(bid_b),

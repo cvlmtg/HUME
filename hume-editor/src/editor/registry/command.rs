@@ -5,19 +5,27 @@ use crate::editor::error::CommandError;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::EngineView;
 use hume_ops::{MotionMode, WordCtx};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 
 // ── Native command target category ───────────────────────────────────────────
 
-/// What buffer/pane an [`EditorCmd`](MappableCommand::EditorCmd) body needs
-/// to run — the compiler-enforced answer to "can `(call! \"cmd\" bid)` act on
-/// a `bid` other than the focused buffer, and if so, through which pane".
-/// Motion/Selection/Edit have no field for this: every one of them is
-/// [`Self::Pane`], since a pure `fn(&BufferText, SelectionSet, ...)`/
-/// `fn(BufferText, SelectionSet) -> ...` body has no way to reach anything
-/// *but* the buffer it's handed.
+/// Which pane an [`EditorCmd`](MappableCommand::EditorCmd) body acts through
+/// — the compiler-enforced answer to "can `(call! \"cmd\" pane)` act on a
+/// pane other than the focused one". Motion/Selection/Edit have no field for
+/// this: every one of them is [`Self::Pane`], since a pure
+/// `fn(&BufferText, SelectionSet, ...)`/`fn(BufferText, SelectionSet) -> ...`
+/// body has no way to reach anything *but* the buffer it's handed.
+///
+/// Two categories, not more: every native command acts through a pane — even
+/// one that reads only its buffer, since selections and the search cursor
+/// live per (pane, buffer) — and every command that moves focus, changes the
+/// focused pane's buffer, or touches focus-bound state (a mode layer, the
+/// sticky Extend flag, an Insert/paste session) acts on the focus by
+/// definition. Requiring its handle to *be* the focus makes an async caller
+/// state that assumption instead of silently acting on whatever is focused
+/// when it runs.
 ///
 /// One variant per [`EditorCmdBody`] arm — `EditorCmdBuilder::reg`
 /// (`registry/defaults/builder.rs`) derives this from the very
@@ -28,13 +36,10 @@ pub(in crate::editor) enum TargetCategory {
     /// Needs any pane showing the target buffer — not necessarily focus.
     Pane,
     /// Needs the *focused* pane to show the target buffer (an open Insert or
-    /// paste session, a pane-focus/split command, a prompt layer — state
-    /// that only ever exists on the pane the user is looking at).
+    /// paste session, a pane-focus/split/tab command, a mode layer, the
+    /// sticky Extend flag — state that only ever exists on the pane the user
+    /// is looking at).
     FocusedPane,
-    /// Needs only the target buffer — no pane at all.
-    Buffer,
-    /// Needs no buffer.
-    Global,
 }
 
 /// Function pointer for an [`EditorCmdBody::Pane`] handler: acts on `bid`
@@ -60,39 +65,18 @@ pub(in crate::editor) type FocusedCmdFn = fn(
     MotionMode,
 ) -> Result<(), CommandError>;
 
-/// Function pointer for an [`EditorCmdBody::Buffer`] handler: acts on `bid`
-/// directly, no pane involved.
-pub(in crate::editor) type BufferCmdFn = fn(
-    &mut super::super::EditorState,
-    &mut EngineView,
-    BufferId,
-    usize,
-    MotionMode,
-) -> Result<(), CommandError>;
-
-/// Function pointer for an [`EditorCmdBody::Global`] handler: acts on no
-/// buffer at all.
-pub(in crate::editor) type GlobalCmdFn = fn(
-    &mut super::super::EditorState,
-    &mut EngineView,
-    usize,
-    MotionMode,
-) -> Result<(), CommandError>;
-
 /// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field, one variant
 /// per [`TargetCategory`]. Wrapped in [`NativeBody`] like every other native
 /// variant's body — see [`NativeBody`]'s own doc for why the wrapping
 /// matters; this enum is what decides *which* signature a given command's
 /// function pointer must have, checked at registration time by
-/// `registry/defaults/builder.rs`'s four `ecmd_*` constructors (one per
+/// `registry/defaults/builder.rs`'s two `ecmd_*` constructors (one per
 /// variant — a call site names its category by which constructor it calls,
 /// and the compiler rejects a function pointer of the wrong shape).
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum EditorCmdBody {
     Pane(PaneCmdFn),
     FocusedPane(FocusedCmdFn),
-    Buffer(BufferCmdFn),
-    Global(GlobalCmdFn),
 }
 
 impl EditorCmdBody {
@@ -100,8 +84,6 @@ impl EditorCmdBody {
         match self {
             Self::Pane(_) => TargetCategory::Pane,
             Self::FocusedPane(_) => TargetCategory::FocusedPane,
-            Self::Buffer(_) => TargetCategory::Buffer,
-            Self::Global(_) => TargetCategory::Global,
         }
     }
 }

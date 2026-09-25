@@ -2,8 +2,7 @@ use std::borrow::Cow;
 
 use crate::editor::commands::NativeBody;
 use crate::editor::registry::{
-    BufferCmdFn, CommandRegistry, EditorCmdBody, FocusedCmdFn, GlobalCmdFn, MappableCommand,
-    PaneCmdFn, SelectionTracking,
+    CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCmdFn, SelectionTracking,
 };
 
 // Builder for EditorCmd registration. Each method sets one field (a bool,
@@ -118,7 +117,7 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
     }
 }
 
-// Four constructors, one per `TargetCategory` — a call site names its
+// Two constructors, one per `TargetCategory` — a call site names its
 // command's category by which one it calls, and the compiler rejects a
 // function pointer of the wrong shape (see `EditorCmdBody`'s own doc). No
 // bare `ecmd` that takes a pre-built `EditorCmdBody`: that would let a
@@ -139,24 +138,4 @@ pub(super) fn ecmd_focused(
     fun: FocusedCmdFn,
 ) -> EditorCmdBuilder {
     ecmd_builder(name, doc, EditorCmdBody::FocusedPane(fun))
-}
-
-/// A command needing only the target buffer, no pane. See
-/// [`crate::editor::registry::TargetCategory::Buffer`].
-pub(super) fn ecmd_buffer(
-    name: &'static str,
-    doc: &'static str,
-    fun: BufferCmdFn,
-) -> EditorCmdBuilder {
-    ecmd_builder(name, doc, EditorCmdBody::Buffer(fun))
-}
-
-/// A command needing no buffer at all. See
-/// [`crate::editor::registry::TargetCategory::Global`].
-pub(super) fn ecmd_global(
-    name: &'static str,
-    doc: &'static str,
-    fun: GlobalCmdFn,
-) -> EditorCmdBuilder {
-    ecmd_builder(name, doc, EditorCmdBody::Global(fun))
 }

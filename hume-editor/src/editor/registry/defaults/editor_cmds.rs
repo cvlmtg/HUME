@@ -1,7 +1,7 @@
 use crate::editor::commands::*;
 use crate::editor::registry::CommandRegistry;
 
-use super::builder::{ecmd_buffer, ecmd_focused, ecmd_global, ecmd_pane};
+use super::builder::{ecmd_focused, ecmd_pane};
 
 impl CommandRegistry {
     pub(super) fn register_editor_cmds(&mut self) {
@@ -62,7 +62,7 @@ impl CommandRegistry {
         )
         .repeatable()
         .reg(self);
-        ecmd_global(
+        ecmd_focused(
             "command-mode",
             "Open the command-mode mini-buffer.",
             cmd_command_mode,
@@ -206,7 +206,7 @@ impl CommandRegistry {
         ecmd_pane("redo", "Redo the last undone change.", cmd_redo).reg(self);
 
         // ── Editor commands — selection state ────────────────────────────────
-        ecmd_global(
+        ecmd_focused(
             "toggle-extend",
             "Toggle sticky extend mode.",
             cmd_toggle_extend,
@@ -377,7 +377,7 @@ impl CommandRegistry {
         .extendable()
         .jump()
         .reg(self);
-        ecmd_buffer(
+        ecmd_pane(
             "clear-search",
             "Clear search highlights (`:clear-search`).",
             cmd_clear_search,
@@ -456,19 +456,19 @@ impl CommandRegistry {
         // different pane, possibly in a different tab), same as the
         // pane-focus commands below — see `commands::tab`'s module doc for
         // why that disqualifies the jump-list recording `.jump()` triggers.
-        ecmd_global(
+        ecmd_focused(
             "goto-next-tab",
             "Switch to the next tab in display order.",
             cmd_goto_next_tab,
         )
         .reg(self);
-        ecmd_global(
+        ecmd_focused(
             "goto-prev-tab",
             "Switch to the previous tab in display order.",
             cmd_goto_prev_tab,
         )
         .reg(self);
-        ecmd_buffer(
+        ecmd_focused(
             "tab-new",
             "Open a fresh pane viewing the focused buffer in a new tab.",
             cmd_tab_new,

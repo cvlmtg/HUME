@@ -204,6 +204,7 @@ pub(in crate::editor) fn cmd_open_line_above(
 pub(in crate::editor) fn cmd_command_mode(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -256,6 +257,7 @@ pub(in crate::editor) fn cmd_completion_trigger(
 pub(in crate::editor) fn cmd_toggle_extend(
     state: &mut EditorState,
     _view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {

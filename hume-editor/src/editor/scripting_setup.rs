@@ -6,9 +6,8 @@ use hume_scripting::{Effect, PaneHandle};
 use steel::rvals::SteelVal;
 
 use super::buffer::DiskCheckTrigger;
-use super::commands::resolve_pane;
+use super::commands::resolve_command_pane;
 use super::event::{EditorEvent, PendingWork};
-use super::registry::TargetCategory;
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 use crate::cli::ConfigSource;
@@ -506,26 +505,20 @@ impl Editor {
                     // repoint it at another buffer before this event's own
                     // turn, and the builtin its handler goes on to call
                     // would otherwise raise on a pane it never asked for.
+                    // A buffer-only event just needs its buffer still live;
+                    // a pane-carrying one needs that pane to still show it —
+                    // the same dual check `EditorEvent::handle`'s own doc
+                    // describes.
+                    let live = |handle: hume_scripting::PaneHandle| {
+                        if handle.pane().is_some() {
+                            resolve_command_pane(&self.state, &self.view, handle).is_ok()
+                        } else {
+                            self.state.buffers.try_get(handle.buffer()).is_some()
+                        }
+                    };
                     if !matches!(event, EditorEvent::OnBufferClose { .. })
                         && let Some(handle) = event.handle()
-                        && resolve_pane(
-                            &self.state,
-                            &self.view,
-                            handle,
-                            // A buffer-only event just needs its buffer
-                            // still live (`TargetCategory::Buffer`); a
-                            // pane-carrying one needs that pane to still
-                            // show it (`TargetCategory::Pane`) — the same
-                            // dual check `EditorEvent::handle`'s own doc
-                            // describes, expressed as the category its
-                            // `PaneHandle` was minted with.
-                            if handle.pane().is_some() {
-                                TargetCategory::Pane
-                            } else {
-                                TargetCategory::Buffer
-                            },
-                        )
-                        .is_err()
+                        && !live(handle)
                     {
                         continue;
                     }

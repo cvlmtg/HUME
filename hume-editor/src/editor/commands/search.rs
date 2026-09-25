@@ -152,11 +152,12 @@ fn search_jump(
 /// Clear the active search regex and dismiss all match highlights.
 pub(in crate::editor) fn cmd_clear_search(
     state: &mut EditorState,
-    _view: &mut EngineView,
-    bid: hume_engine::pipeline::BufferId,
+    view: &mut EngineView,
+    t: CommandPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    let bid = t.bid(view);
     super::super::search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
     Ok(())
 }

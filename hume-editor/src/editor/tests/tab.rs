@@ -66,14 +66,9 @@ fn tab_new_mappable_command_opens_a_fresh_tab_viewing_the_focused_buffer() {
     let tab_a = ed.state.tabs.current();
     let bid_a = ed.focused_buffer_id();
 
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync(
-            "tab-new",
-            hume_scripting::PaneHandle::buffer_only(bid_a),
-            None,
-            false,
-            None,
-        )
+        .run_command_sync("tab-new", pane, None, false, None)
         .expect("tab-new must not error");
 
     assert_eq!(ed.state.tabs.len(), 2, "tab-new must add a tab");
@@ -453,14 +448,9 @@ fn goto_next_tab_via_call_while_in_insert_exits_insert_and_commits_the_outgoing_
     );
     assert_eq!(ed.state.mode(), Mode::Insert, "setup: still typing in A");
 
+    let pane = focused_pane(&ed);
     live_host!(ed)
-        .run_command_sync(
-            "goto-next-tab",
-            hume_scripting::PaneHandle::buffer_only(bid_a),
-            None,
-            false,
-            None,
-        )
+        .run_command_sync("goto-next-tab", pane, None, false, None)
         .expect("goto-next-tab must not error");
 
     assert_eq!(

@@ -23,6 +23,7 @@ use crate::editor::EditorState;
 use crate::editor::error::CommandError;
 use crate::editor::tab::{TabId, install_live, switch_to_tab, take_live};
 
+use super::FocusedPane;
 use super::pane::{drop_pane_state, open_pane_as_new_tab};
 
 /// `:tabnew [path]`'s core — open a fresh pane viewing `bid` in a brand new
@@ -101,10 +102,11 @@ pub(super) fn goto_tab_in_order(state: &mut EditorState, view: &mut EngineView, 
 pub(crate) fn cmd_tab_new(
     state: &mut EditorState,
     view: &mut EngineView,
-    bid: BufferId,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    let bid = fp.bid(view);
     open_tab(state, view, bid);
     Ok(())
 }
@@ -113,6 +115,7 @@ pub(crate) fn cmd_tab_new(
 pub(crate) fn cmd_goto_next_tab(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
@@ -124,6 +127,7 @@ pub(crate) fn cmd_goto_next_tab(
 pub(crate) fn cmd_goto_prev_tab(
     state: &mut EditorState,
     view: &mut EngineView,
+    _fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {

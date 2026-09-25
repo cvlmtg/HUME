@@ -130,8 +130,6 @@ impl FocusedPane {
 pub(in crate::editor) enum ResolvedTarget {
     Pane(CommandPane),
     Focused(FocusedPane),
-    Buffer(BufferId),
-    Global,
 }
 
 /// Why [`resolve_pane`] could not produce a [`ResolvedTarget`] for a
@@ -183,15 +181,13 @@ pub(in crate::editor) enum Scope {
 /// focus itself.
 fn resolve_focus(
     state: &EditorState,
-    view: &EngineView,
+    _view: &EngineView,
     cmd: &MappableCommand,
 ) -> (ResolvedTarget, Scope) {
     let fp = FocusedPane::current(state);
     let target = match cmd.target_category() {
         TargetCategory::Pane => ResolvedTarget::Pane(fp.target()),
         TargetCategory::FocusedPane => ResolvedTarget::Focused(fp),
-        TargetCategory::Buffer => ResolvedTarget::Buffer(fp.bid(view)),
-        TargetCategory::Global => ResolvedTarget::Global,
     };
     (target, Scope::Focus(fp))
 }
@@ -236,19 +232,6 @@ pub(in crate::editor) fn resolve_pane(
 ) -> Result<(ResolvedTarget, Scope), TargetError> {
     let focused = FocusedPane::current(state);
     match category {
-        TargetCategory::Global => Ok((ResolvedTarget::Global, Scope::Focus(focused))),
-        TargetCategory::Buffer => {
-            let bid = handle.buffer();
-            if state.buffers.try_get(bid).is_none() {
-                return Err(TargetError::Closed);
-            }
-            let scope = if bid == focused.bid(view) {
-                Scope::Focus(focused)
-            } else {
-                Scope::Remote
-            };
-            Ok((ResolvedTarget::Buffer(bid), scope))
-        }
         TargetCategory::Pane => {
             let target = checked_pane(state, view, handle)?;
             let scope = if target.pid() == focused.pid() {
@@ -444,12 +427,6 @@ fn run_native_body(
                 }
                 (EditorCmdBody::FocusedPane(f), ResolvedTarget::Focused(fp)) => {
                     f(state, view, fp, count, motion_mode)
-                }
-                (EditorCmdBody::Buffer(f), ResolvedTarget::Buffer(bid)) => {
-                    f(state, view, bid, count, motion_mode)
-                }
-                (EditorCmdBody::Global(f), ResolvedTarget::Global) => {
-                    f(state, view, count, motion_mode)
                 }
                 _ => unreachable!(
                     "resolve_focus/resolve_pane derive the target from the same \
@@ -802,7 +779,6 @@ pub(in crate::editor) fn run_resolved(
     let pane = match target {
         ResolvedTarget::Pane(t) => Some(t),
         ResolvedTarget::Focused(fp) => Some(fp.target()),
-        ResolvedTarget::Buffer(_) | ResolvedTarget::Global => None,
     };
 
     // BEFORE
