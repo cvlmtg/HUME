@@ -725,7 +725,15 @@ fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
     ed.feed_key(key('p')); // paste it back — opens a paste session on A
 
     assert!(
-        ed.state.panes.state[pid_a][bid_a].paste_group.is_some(),
+        matches!(
+            ed.state.active_session,
+            Some(crate::editor::edit_session::EditSession {
+                kind: crate::editor::edit_session::EditSessionKind::Paste { .. },
+                pane,
+                buffer,
+                ..
+            }) if (pane, buffer) == (pid_a, bid_a)
+        ),
         "setup: paste session open on A"
     );
 
@@ -734,7 +742,7 @@ fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
 
     assert_eq!(ed.state.tabs.current(), tab_b, "click switched to tab B");
     assert!(
-        ed.state.panes.state[pid_a][bid_a].paste_group.is_none(),
+        ed.state.active_session.is_none(),
         "focus_pane must commit A's open paste session before leaving it"
     );
 

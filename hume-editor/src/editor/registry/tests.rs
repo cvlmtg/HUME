@@ -332,6 +332,7 @@ fn runtime_register_and_lookup() {
         extendable: false,
         clears_extend: false,
         selection_tracking: SelectionTracking::Untracked,
+        manages_own_session: false,
     };
     reg.register(cmd);
 
@@ -434,6 +435,7 @@ fn steel_backed_names_filters_by_variant() {
         extendable: false,
         clears_extend: false,
         selection_tracking: SelectionTracking::Untracked,
+        manages_own_session: false,
     });
 
     let mut names = reg.steel_backed_names();

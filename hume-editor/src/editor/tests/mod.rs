@@ -1205,7 +1205,7 @@ pub(super) struct BookkeepingSnapshot {
     pub last_repeatable: Option<(String, usize, Option<char>)>,
     /// Total jump entries in the focused pane (not filtered by buffer) after dispatch.
     pub jump_len: usize,
-    /// Whether any (pane, buffer) pair has an open paste session (`paste_group.is_some()`).
+    /// Whether `EditorState::active_session` is open with a Paste kind.
     pub paste_session_open: bool,
     /// `ed.state.mode()` — derived from the input stack; `step_clear_extend`
     /// clears `Base`'s Extend flag for selection-consuming edits.
@@ -1241,7 +1241,13 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             .map(|a| (a.command.to_string(), a.count, a.char_arg)),
         // JumpList::len() is cfg(test)-only; safe to call here.
         jump_len: ed.state.panes.jumps[pane_id].len(),
-        paste_session_open: any_pbs(|pbs| pbs.paste_group.is_some()),
+        paste_session_open: matches!(
+            ed.state.active_session,
+            Some(crate::editor::edit_session::EditSession {
+                kind: crate::editor::edit_session::EditSessionKind::Paste { .. },
+                ..
+            })
+        ),
         mode: ed.state.mode(),
         typed_run_open: any_pbs(|pbs| pbs.typed_run.is_some()),
     }

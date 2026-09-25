@@ -382,6 +382,7 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
         &ed.state.config.decorations,
         &mut ed.state.panes.state,
         &mut ed.state.panes.jumps,
+        &ed.state.active_session,
         focused,
         bid,
         |b| b.undo_n(1),

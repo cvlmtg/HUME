@@ -21,6 +21,7 @@ pub(super) struct EditorCmdBuilder {
     extendable: bool,
     clears_extend: bool,
     selection_tracking: SelectionTracking,
+    manages_own_session: bool,
 }
 impl EditorCmdBuilder {
     pub(super) fn repeatable(mut self) -> Self {
@@ -51,6 +52,15 @@ impl EditorCmdBuilder {
     /// known.
     pub(super) fn defers_paste_commit(mut self) -> Self {
         self.defers_paste_commit = true;
+        self
+    }
+    /// Mark this command as one that opens or continues
+    /// `EditorState::active_session` itself — see
+    /// [`crate::editor::registry::CmdMeta::manages_own_session`] for the
+    /// full rationale. Every paste-family registration in this file needs
+    /// it; nothing else does.
+    pub(super) fn manages_own_session(mut self) -> Self {
+        self.manages_own_session = true;
         self
     }
     /// Mark this as a selection-consuming edit that exits sticky Extend mode.
@@ -87,6 +97,7 @@ impl EditorCmdBuilder {
             extendable: self.extendable,
             clears_extend: self.clears_extend,
             selection_tracking: self.selection_tracking,
+            manages_own_session: self.manages_own_session,
         });
     }
 }
@@ -103,6 +114,7 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
         extendable: false,
         clears_extend: false,
         selection_tracking: SelectionTracking::Untracked,
+        manages_own_session: false,
     }
 }
 

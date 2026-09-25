@@ -494,13 +494,9 @@ pub(in crate::editor) fn run_native_body_on_focus(
 // ── Shared steps (used by both native and Steel dispatch paths) ──────────────
 
 /// Commit paste session unless the command defers it (ring-cycle pastes).
-pub(in crate::editor) fn step_paste_commit(
-    state: &mut EditorState,
-    view: &EngineView,
-    defers: bool,
-) {
+pub(in crate::editor) fn step_paste_commit(state: &mut EditorState, defers: bool) {
     if !defers {
-        state.commit_paste_session(view);
+        state.commit_paste_session();
     }
 }
 
@@ -812,7 +808,7 @@ pub(in crate::editor) fn run_resolved(
     // BEFORE
     state.command_refused = false;
     if let Scope::Focus(fp) = scope {
-        step_paste_commit(state, view, meta.defers_paste_commit);
+        step_paste_commit(state, meta.defers_paste_commit);
         step_clear_typed_run(state, view, fp, &meta);
     }
     let pre_jump = pane.and_then(|t| step_capture_pre_jump(state, view, t, &meta));

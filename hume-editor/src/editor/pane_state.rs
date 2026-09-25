@@ -1,17 +1,15 @@
 //! Per-(pane, buffer) and per-pane editor state bundles.
 //!
 //! [`PaneBufferState`] holds all per-(pane, buffer) mutable facts: selections,
-//! search cursor, and the in-progress edit group. Adding a new per-(pane, buffer)
-//! field later requires changing exactly one struct and one Default impl —
-//! not four parallel maps.
+//! search cursor, and the in-progress insert session's typed-run/autoindent
+//! bookkeeping. Adding a new per-(pane, buffer) field later requires changing
+//! exactly one struct and one Default impl — not four parallel maps.
 //!
 //! [`PaneView`] groups the three per-pane maps — `state`, `jumps`, `render` —
 //! so callers deal with one field on [`super::EditorState`] instead of three.
 //!
-//! [`EditGroup`] is the in-progress insert-session accumulator. It is stored on
-//! [`PaneBufferState`] rather than [`crate::editor::buffer::Buffer`] so that
-//! the focus-switch-Normal-only invariant can be maintained without
-//! per-buffer group bookkeeping (at most one pane is ever in Insert).
+//! The in-progress insert/paste undo group itself is not here — see
+//! [`super::edit_session::EditSession`], `EditorState::active_session`.
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
@@ -21,32 +19,8 @@ use super::LayoutKey;
 use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
-use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-
-// ── EditGroup ────────────────────────────────────────────────────────────────
-
-/// Accumulated state for an in-progress insert-mode session.
-///
-/// Stored on [`PaneBufferState`] so it is per-(pane, buffer) rather than
-/// per-buffer. The focus-switch-Normal-only invariant ensures at most one pane
-/// is ever in Insert at a time, so at most one `PaneBufferState` will have
-/// `Some(EditGroup)` at any moment.
-pub(crate) struct EditGroup {
-    /// Buffer text snapshot taken at `begin_edit_group`. Used by
-    /// `commit_edit_group` to invert the composed CS and record a single
-    /// history revision.
-    pub text_snapshot: BufferText,
-    /// Selection state at group open — stored in the history revision so
-    /// undo restores the cursor to its pre-insert position.
-    pub pre_sels: SelectionSet,
-    /// Running composition of all forward ChangeSets applied since the group
-    /// opened. `None` until the first keystroke (empty session = no revision
-    /// recorded on commit).
-    pub cs: Option<ChangeSet>,
-}
 
 /// The span typed since an open insert session's entry command positioned the
 /// cursor — one (anchor, end) pair per selection, index-paired and always the
@@ -83,16 +57,6 @@ pub(crate) struct PaneBufferState {
     selections: SelectionSet,
     /// Per-pane cursor through the buffer's shared match list.
     pub search_cursor: SearchCursor,
-    /// Some only while this pane is in Insert mode for this buffer.
-    pub edit_group: Option<EditGroup>,
-    /// Open paste session: `Some` between the first `p`/`P` and the next
-    /// non-cycle command. Stores the pre-paste snapshot so `[`/`]` can
-    /// re-paste from the pristine state and fold all cycles into one undo step.
-    pub paste_group: Option<EditGroup>,
-    /// Direction the open paste session was opened with (`true` = `P`/paste-before).
-    /// Meaningful only while `paste_group.is_some()`; read by `[`/`]` so cycling
-    /// re-pastes in the same direction as the opening `p`/`P`.
-    pub paste_before: bool,
     /// The open insert session's typed span, kept in post-edit coordinates by
     /// `apply_doc_edit_grouped`. `Some` from the moment the session's entry
     /// command positions the cursor (`begin_typed_run`) until

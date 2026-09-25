@@ -209,6 +209,7 @@ fn history_step(
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
+        &state.active_session,
         t.pid(),
         buf,
         |b| walk(b, count),

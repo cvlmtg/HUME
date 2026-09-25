@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::search::{SearchMatches, SearchPattern};
-use crate::editor::pane_state::EditGroup;
+use crate::editor::edit_session::EditGroup;
 use crate::editor::settings::BufferOverrides;
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::history::{History, RevisionId};
@@ -575,18 +575,15 @@ impl Buffer {
     /// Apply an edit within the current open group, composing its CS into the
     /// group accumulator rather than recording a history revision.
     ///
-    /// `edit_group` must be `Some` — caller must have called `begin_edit_group`
-    /// first. Panics (debug) if `None`.
+    /// Caller must have called `begin_edit_group` and still hold its result —
+    /// there is no `None` case to guard here, since the caller already
+    /// proved a group is open by having an `&mut EditGroup` at all.
     pub(in crate::editor) fn apply_edit_grouped(
         &mut self,
         sels: SelectionSet,
-        edit_group: &mut Option<EditGroup>,
+        group: &mut EditGroup,
         cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) -> (SelectionSet, ChangeSet) {
-        let group = edit_group
-            .as_mut()
-            .expect("apply_edit_grouped called without an open group");
-
         let (new_text, new_sels, cs) = cmd(self.text.clone(), sels);
 
         // An identity `cs` moved no bytes: composing it into the group
@@ -613,17 +610,13 @@ impl Buffer {
     /// Returns the new selections and a propagation CS mapping the current buffer
     /// text → the new text (for `propagate_cs_to_panes`).
     ///
-    /// `edit_group` must be `Some` — caller must have called `begin_edit_group`
-    /// first. Panics if `None`.
+    /// Caller must have called `begin_edit_group` and still hold its result —
+    /// same contract as [`Buffer::apply_edit_grouped`].
     pub(in crate::editor) fn apply_edit_regrouped(
         &mut self,
-        edit_group: &mut Option<EditGroup>,
+        group: &mut EditGroup,
         cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) -> (SelectionSet, ChangeSet) {
-        let group = edit_group
-            .as_mut()
-            .expect("apply_edit_regrouped called without an open group");
-
         let (new_text, new_sels, new_cs) = cmd(group.text_snapshot.clone(), group.pre_sels.clone());
 
         // Build the propagation CS: maps current buffer text → new_text.
@@ -649,38 +642,29 @@ impl Buffer {
     /// Open an edit group. Snapshots the current text and the provided `pre_sels`
     /// so `commit_edit_group` can invert the composed CS and record one revision.
     ///
-    /// Panics (debug) if a group is already open.
-    pub(in crate::editor) fn begin_edit_group(
-        &self,
-        edit_group: &mut Option<EditGroup>,
-        pre_sels: SelectionSet,
-    ) {
-        debug_assert!(
-            edit_group.is_none(),
-            "begin_edit_group called with group already open"
-        );
-        *edit_group = Some(EditGroup {
+    /// Returns a fresh [`EditGroup`] rather than writing through a pointer —
+    /// the caller (`doc_ops::begin_edit_group`) is the one that knows whether
+    /// a session is already open (it owns `EditorState::active_session`), so
+    /// that check lives there now, not here.
+    pub(in crate::editor) fn begin_edit_group(&self, pre_sels: SelectionSet) -> EditGroup {
+        EditGroup {
             text_snapshot: self.text.clone(),
             pre_sels,
             cs: None,
-        });
+        }
     }
 
     /// Close the current edit group and record it as a single undo step.
     ///
     /// If no edits were applied since `begin_edit_group` (empty group), or the
     /// composed `ChangeSet` cancelled out to the identity transform (e.g. type
-    /// a char, then backspace it), no revision is recorded.  Panics if no
-    /// group is open.
+    /// a char, then backspace it), no revision is recorded. Takes `group` by
+    /// value — the caller already `.take()`n it from `EditorState::active_session`.
     pub(in crate::editor) fn commit_edit_group(
         &mut self,
-        edit_group: &mut Option<EditGroup>,
+        group: EditGroup,
         post_sels: SelectionSet,
     ) {
-        let group = edit_group
-            .take()
-            .expect("commit_edit_group called without an open group");
-
         if let Some(cs) = group.cs {
             // An identity `cs` moved no bytes: recording it would put a no-op
             // revision on the undo stack, and undoing that revision would

@@ -100,31 +100,29 @@ impl BufferSession {
             hume_rope::position_encoding::PositionEncoding::Utf32
         };
 
-        // The session's pane/buffer pairing may no longer be live — the
-        // Steel `completion-accept!` builtin firing from a different pane
-        // than the session opened in, or a session whose own Insert layer
-        // was pushed without pairing it to a buffer switch's teardown (a
-        // test-only construction; a real Insert entry pairs the two, so
-        // `switch_pane_to_buffer`'s own teardown already ends the session
-        // before this ever runs). `pane_state::ensure`'s fallback (fabricate
-        // a fresh cursor at char 0 for a pane that never showed this
-        // buffer) is right for "a background buffer with no selection state
-        // yet", not for "this session's own point of reference is gone" —
-        // so this errors instead of silently landing the edit at the top of
-        // the file.
+        // The session's pane may no longer be live — the Steel
+        // `completion-accept!` builtin firing from a different pane than the
+        // session opened in. `pane_state::ensure`'s fallback (fabricate a
+        // fresh cursor at char 0 for a pane that never showed this buffer)
+        // is right for "a background buffer with no selection state yet",
+        // not for "this session's own point of reference is gone" — so this
+        // errors instead of silently landing the edit at the top of the file.
         if state.focus.id() != self.pane_id {
             return Err("completion-accept!: the session's pane is no longer focused".to_string());
         }
-        // Focus alone doesn't prove the pane still *shows* this buffer —
-        // `PaneBufferState`'s per-(pane, buffer) map (read below) is
-        // retained, not removed, when a pane switches away, so it can't
-        // detect this. `view.panes` is the engine's live pane→buffer
-        // mapping — the actual on-screen truth.
-        if view.panes.get(self.pane_id).map(|p| p.buffer_id) != Some(bid) {
-            return Err(
-                "completion-accept!: the session's pane no longer shows its buffer".to_string(),
-            );
-        }
+        // Focus alone doesn't prove the pane still *shows* this buffer in
+        // general — but a session's own pane can only ever leave its buffer
+        // via `switch_pane_to_buffer`, whose teardown (`focus::
+        // end_focus_sessions`, run before its own `buffer_id` write) already
+        // removes this session's `BufferCompletionLayer` first, since it
+        // always sits above the `InsertLayer` that teardown truncates. A
+        // mismatch here would mean that ordering broke — worth a canary,
+        // not a `Result` arm no caller can ever legitimately hit.
+        debug_assert_eq!(
+            view.panes.get(self.pane_id).map(|p| p.buffer_id),
+            Some(bid),
+            "completion-accept!: the session's pane no longer shows its buffer"
+        );
         let pid = self.pane_id;
         let (head_now, heads_now) = {
             let pbs = state.panes.buffer_state(pid, bid).ok_or_else(|| {
@@ -306,11 +304,12 @@ impl BufferSession {
         // the ongoing session); a Steel-triggered accept outside Insert mode
         // does not, so open one here — both edits below then land as one
         // undo step regardless of caller.
-        let opened_group = state.panes.state[pid][bid].edit_group.is_none();
+        let opened_group = state.active_session.is_none();
         if opened_group {
             crate::editor::doc_ops::begin_edit_group(
                 &state.buffers,
                 &mut state.panes.state,
+                &mut state.active_session,
                 pid,
                 bid,
             );
@@ -336,6 +335,7 @@ impl BufferSession {
                     crate::editor::doc_ops::commit_edit_group(
                         &mut state.buffers,
                         &mut state.panes.state,
+                        &mut state.active_session,
                         pid,
                         bid,
                     );
@@ -376,6 +376,7 @@ impl BufferSession {
                 &state.config.decorations,
                 &mut state.panes.state,
                 &mut state.panes.jumps,
+                &mut state.active_session,
                 pid,
                 bid,
                 move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
@@ -385,6 +386,7 @@ impl BufferSession {
                 &state.config.decorations,
                 &mut state.panes.state,
                 &mut state.panes.jumps,
+                &mut state.active_session,
                 pid,
                 bid,
                 move |b, s| {
@@ -403,6 +405,7 @@ impl BufferSession {
             crate::editor::doc_ops::commit_edit_group(
                 &mut state.buffers,
                 &mut state.panes.state,
+                &mut state.active_session,
                 pid,
                 bid,
             );

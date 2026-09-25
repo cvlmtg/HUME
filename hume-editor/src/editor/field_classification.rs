@@ -74,6 +74,7 @@ fn editor_state_fields_are_classified() {
             command_refused: _,                 // preserved
             pending_repeat: _,                  // preserved
             insert_session: _,                  // preserved
+            active_session: _,                  // preserved: end_focus_sessions already emptied it
             explicit_count: _,                  // preserved
             pending_ctrl_extend: _,             // preserved
             macro_recording: _,                 // preserved

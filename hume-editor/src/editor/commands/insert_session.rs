@@ -17,13 +17,13 @@ use super::{
     commit_edit_group_current, doc, pane_selections, refuse_if_read_only,
 };
 
-/// `true` when the focused (pane, buffer) has an open edit group.
+/// `true` when the focused (pane, buffer) has an open Insert-kind session.
 fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
     let fp = FocusedPane::current(state);
-    fp.target()
-        .state(&state.panes.state, view)
-        .edit_group
-        .is_some()
+    state
+        .active_session
+        .as_ref()
+        .is_some_and(|s| s.is_insert_at(fp.pid(), fp.bid(view)))
 }
 
 /// `true` if any current selection is a collapsed cursor sitting on a blank

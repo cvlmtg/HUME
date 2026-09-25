@@ -553,7 +553,7 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
 
     let mut ed = editor_from("-[x]>\n");
     // Open conflict.txt on the focused pane and start (but don't close) an
-    // Insert session on it — an open `edit_group` that must survive.
+    // Insert session on it — an open `active_session` that must survive.
     ed.execute_typed("e", Some(conflict_path.to_str().unwrap()))
         .unwrap();
     let conflict_bid = ed.focused_buffer_id();

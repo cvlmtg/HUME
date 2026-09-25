@@ -58,7 +58,7 @@ impl Editor {
         let name = cmd.name().clone();
 
         // BEFORE
-        commands::step_paste_commit(&mut self.state, &self.view, meta.defers_paste_commit);
+        commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
         let char_arg = self.state.pending_char.take();
         // Snapshot the recipe before the body by cloning, not `mem::take`: an
         // inner `call!` dispatch (e.g. vim-keybind's `C` wrapper calling

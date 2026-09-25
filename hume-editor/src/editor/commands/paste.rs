@@ -4,10 +4,14 @@
 //! `mappings/bracketed_paste.rs`) — an unrelated feature that happens to
 //! share the word "paste".
 //!
-//! `PaneBufferState`'s `paste_group`/`paste_before`/`kill_opened_session`
-//! fields (`pane_state.rs`) deliberately stay put rather than moving here:
-//! pane state is the SSOT for per-(pane, buffer) facts, and this module
-//! reaches into it rather than owning it.
+//! This module owns opening/closing the `EditSessionKind::Paste` variant of
+//! `EditorState::active_session` directly (`do_paste`, `commit_paste_session`)
+//! rather than going through `doc_ops::begin_edit_group`/`commit_edit_group`,
+//! which only ever construct the `Insert` variant — a paste session's own
+//! `before` direction has nowhere to live in those. `PaneBufferState::kill_opened_session`
+//! (`pane_state.rs`) stays put; pane state is the SSOT for per-(pane, buffer)
+//! facts unrelated to session ownership, and this module reaches into it
+//! rather than owning it.
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
@@ -19,6 +23,7 @@ use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGI
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
 use super::{FocusedPane, focused_buffer_id};
+use crate::editor::edit_session::{EditSession, EditSessionKind};
 use crate::editor::error::CommandError;
 
 // ── PasteStamp ──────────────────────────────────────────────────────────────
@@ -74,39 +79,36 @@ impl EditorState {
         });
     }
 
-    /// Commit the open paste session on the focused (pane, buffer) pair, if any.
+    /// Commit the open paste session, if any.
     ///
     /// Records exactly one history revision for the entire paste + all cycles.
     /// Called before any non-`[`/`]` dispatch so the session is committed
     /// before undo, motions, or the next `p`/`P`.
     ///
-    /// Invariant: an open paste session can only exist on the focused (pane,
-    /// buffer) pair — sessions are opened only there (`do_paste`),
-    /// every focus/buffer switch dispatches through this same commit step first,
-    /// mouse handlers never open or switch during a session, and buffer close
-    /// clears `paste_group` explicitly. The debug assert below fails fast if that
-    /// invariant is ever violated instead of silently leaving a stray session open.
-    pub(in crate::editor) fn commit_paste_session(&mut self, view: &EngineView) {
-        let focused = self.focus.id();
-        let buf = focused_buffer_id(self, view);
-
-        debug_assert!(
-            self.panes.state.iter().all(|(pid, inner)| {
-                inner
-                    .iter()
-                    .all(|(bid, pbs)| (pid, bid) == (focused, buf) || pbs.paste_group.is_none())
-            }),
-            "an open paste session exists outside the focused (pane, buffer) pair",
+    /// A paste session only ever opens on the focused pane (`do_paste`), so
+    /// there is nothing to scan for and nothing to assert here any more — a
+    /// singleton `active_session` makes "there is at most one, and it's the
+    /// focused pane's" structural rather than a convention to verify. No
+    /// longer needs `&EngineView`: the session names its own pane/buffer
+    /// directly instead of re-deriving them from live focus.
+    pub(in crate::editor) fn commit_paste_session(&mut self) {
+        let is_paste = matches!(
+            self.active_session,
+            Some(EditSession {
+                kind: EditSessionKind::Paste { .. },
+                ..
+            })
         );
-
-        if self.panes.state[focused][buf].paste_group.is_none() {
+        if !is_paste {
             return;
         }
-        let post_sels = self.panes.state[focused][buf].selections().clone();
-        let pbs = &mut self.panes.state[focused][buf];
+        let session = self.active_session.take().expect("checked above");
+        let post_sels = self.panes.state[session.pane][session.buffer]
+            .selections()
+            .clone();
         self.buffers
-            .get_mut(buf)
-            .commit_edit_group(&mut pbs.paste_group, post_sels);
+            .get_mut(session.buffer)
+            .commit_edit_group(session.group, post_sels);
     }
 }
 
@@ -191,19 +193,27 @@ fn do_paste(
 ) {
     let ResolvedPaste { values, from, bare } = resolved;
 
+    debug_assert!(
+        state.active_session.is_none(),
+        "do_paste called with a session already open \
+         (step_paste_commit should have closed any prior one first)"
+    );
     let pre_sels = sels.clone();
     state.panes.state[focused][buf].set_selections(sels);
-    state.panes.state[focused][buf].paste_before = before;
-    state
-        .buffers
-        .get(buf)
-        .begin_edit_group(&mut state.panes.state[focused][buf].paste_group, pre_sels);
+    let group = state.buffers.get(buf).begin_edit_group(pre_sels);
+    state.active_session = Some(EditSession {
+        pane: focused,
+        buffer: buf,
+        kind: EditSessionKind::Paste { before },
+        group,
+    });
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut state.buffers,
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
+        &mut state.active_session,
         focused,
         buf,
         |b, s| paste_fn(b, s, &values),
@@ -451,9 +461,14 @@ fn do_paste_cycle(
 ) -> Result<(), CommandError> {
     let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
-    if state.panes.state[focused][buf].paste_group.is_none() {
+    let Some(EditSessionKind::Paste { before }) = state
+        .active_session
+        .as_ref()
+        .filter(|s| s.pane == focused && s.buffer == buf)
+        .map(|s| s.kind)
+    else {
         return Ok(());
-    }
+    };
     // Eagerly convert to owned Vec so the borrow of state.kill_ring ends before
     // state.buffers and state.panes.state are borrowed mutably below.
     let values = if older {
@@ -463,13 +478,13 @@ fn do_paste_cycle(
     }
     .map(|v| v.to_vec());
     if let Some(values) = values {
-        let before = state.panes.state[focused][buf].paste_before;
         let paste_fn = if before { paste_before } else { paste_after };
         doc_ops::apply_doc_edit_regrouped(
             &mut state.buffers,
             &state.config.decorations,
             &mut state.panes.state,
             &mut state.panes.jumps,
+            &mut state.active_session,
             focused,
             buf,
             |b, s| paste_fn(b, s, &values),

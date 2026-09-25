@@ -1,17 +1,19 @@
 //! An open Insert or paste session on the focused pane must be torn down
-//! before that pane's buffer changes out from under it — `focus::
-//! end_focus_sessions`, called from `buffer::lifecycle::switch_pane_to_buffer`
-//! (gated to the focused pane and a genuine buffer change) and from
-//! `Editor::reset_config_state`. Left open, the session's `edit_group`/
-//! `paste_group` stays keyed to the buffer the pane no longer shows, and the
-//! next dispatch panics in `Buffer::commit_edit_group`'s or
-//! `EditorState::commit_paste_session`'s own consistency check.
+//! before that pane's buffer changes — or its content is replaced — out from
+//! under it: `focus::end_focus_sessions`, called from
+//! `buffer::lifecycle::switch_pane_to_buffer` (gated to the focused pane and
+//! a genuine buffer change), `Editor::reset_config_state`, and
+//! `buffer::file_open::reload_buffer_in_place`. Left open, the session's
+//! `EditorState::active_session` stays keyed to a `(pane, buffer)` pair no
+//! longer being typed into, and the next dispatch panics in
+//! `doc_ops::commit_edit_group`'s own consistency check.
 //!
-//! Covers every path that can swap the focused pane's buffer mid-session
-//! (`switch-to-buffer!`, `goto-location!`, `close-buffer!`, a Pane-category
-//! `call!`, `:reload-config`), plus the two cases teardown must *not* fire:
-//! a remote pane's own switch, and a `goto-location!` that lands back in the
-//! buffer already focused.
+//! Covers every path that can swap the focused pane's buffer, or replace its
+//! content, mid-session (`switch-to-buffer!`, `goto-location!`,
+//! `close-buffer!`, a Pane-category `call!`, `:reload-config`, `:e`/`:e!`'s
+//! no-arg reload), plus the two cases teardown must *not* fire: a remote
+//! pane's own switch, and a `goto-location!` that lands back in the buffer
+//! already focused.
 
 use super::*;
 use hume_scripting::PaneHandle;
@@ -51,7 +53,7 @@ fn switch_to_buffer_ends_insert_session_on_focused_pane() {
     assert_eq!(ed.focused_buffer_id(), new_bid);
 
     // A follow-up insert session in the new buffer must apply cleanly — no
-    // stale `edit_group` left over to panic `commit_edit_group`'s `.expect()`.
+    // stale `active_session` left over to panic `commit_edit_group`'s `.expect()`.
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Z");
     ed.feed_key(key_esc());
@@ -93,7 +95,7 @@ fn goto_location_to_another_buffer_ends_insert_session_on_focused_pane() {
 
 /// `goto-location!` landing back in the buffer already focused must leave a
 /// still-open Insert session alone — the buffer never actually changes, so
-/// the open `edit_group` is still valid.
+/// the open `active_session` is still valid.
 #[test]
 fn goto_location_within_the_focused_buffer_leaves_insert_session_open() {
     let mut ed = editor_from("-[a]>bcdef\n");
@@ -212,10 +214,9 @@ fn reload_config_ends_insert_session_on_focused_pane() {
         Mode::Normal,
         "reload must end the open Insert session before dropping its mode layers"
     );
-    let pid = ed.state.focus.id();
     assert!(
-        ed.state.panes.state[pid][bid].edit_group.is_none(),
-        "reload must not leave a stale open edit_group behind"
+        ed.state.active_session.is_none(),
+        "reload must not leave a stale open session behind"
     );
 
     // A follow-up insert session must work cleanly — no stale group left to
@@ -224,6 +225,46 @@ fn reload_config_ends_insert_session_on_focused_pane() {
     type_chars(&mut ed, "Z");
     ed.feed_key(key_esc());
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "ZQabc\n");
+}
+
+// ── :e! no-arg reload ────────────────────────────────────────────────────────
+
+/// `reload_buffer_in_place` (the `:e`/`:e!` no-arg reload path) must end an
+/// open Insert session the same way every other buffer-invalidating path
+/// does, not drop its group directly — otherwise `state.insert_session` and
+/// the `Insert` mode layer survive pointing at a session whose group just
+/// vanished, and the next Esc panics in `Buffer::commit_edit_group`'s
+/// `.expect()`.
+#[test]
+fn reload_buffer_in_place_ends_insert_session_on_focused_pane() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let bid = ed.focused_buffer_id();
+
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, "Q");
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
+
+    ed.reload_buffer_in_place(
+        bid,
+        Buffer::new(BufferText::from("xyz\n"), SelectionSet::default()),
+    );
+
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "reload must end the open Insert session before dropping its mode layers"
+    );
+    assert!(
+        ed.state.active_session.is_none(),
+        "reload must not leave a stale open session behind"
+    );
+
+    // A follow-up insert session must work cleanly — no stale group left to
+    // panic `commit_edit_group`'s `.expect()` on the next Esc.
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, "Z");
+    ed.feed_key(key_esc());
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "Zxyz\n");
 }
 
 // ── Open paste-cycle session ─────────────────────────────────────────────────
@@ -238,10 +279,16 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
         SelectionSet::default(),
     ));
 
-    ed.feed_key(key('p')); // bare paste-after: ring head, opens paste_group
-    let pid = ed.state.focus.id();
+    ed.feed_key(key('p')); // bare paste-after: ring head, opens a paste session
     assert!(
-        ed.state.panes.state[pid][old_bid].paste_group.is_some(),
+        matches!(
+            ed.state.active_session,
+            Some(crate::editor::edit_session::EditSession {
+                kind: crate::editor::edit_session::EditSessionKind::Paste { .. },
+                buffer,
+                ..
+            }) if buffer == old_bid
+        ),
         "sanity: 'p' must leave an open, uncommitted paste session"
     );
 
@@ -251,13 +298,12 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
         .expect("switch must succeed");
 
     assert!(
-        ed.state.panes.state[pid][old_bid].paste_group.is_none(),
+        ed.state.active_session.is_none(),
         "the switch must commit the open paste session on the old buffer, not leave it dangling"
     );
 
-    // A follow-up paste must not trip the debug_assert in
-    // `commit_paste_session` (an open session surviving outside the focused
-    // (pane, buffer) pair) — reaching this assertion at all is the point.
+    // A follow-up paste must land cleanly on the new buffer — no stale
+    // session left over from the old one to conflict with it.
     ed.feed_key(key('p'));
     assert_ne!(
         ed.state.buffers.get(new_bid).text().to_string(),

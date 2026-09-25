@@ -53,12 +53,12 @@ impl Focus {
 /// after: done later, they'd land on the new target instead of the state
 /// actually being torn down.
 ///
-/// Both calls are no-ops past their own guard (no `Insert` layer open;
-/// `paste_group` check) whenever nothing is open, so every caller can route
+/// Both calls are no-ops past their own guard (no `Insert` layer open; no
+/// paste session open) whenever nothing is open, so every caller can route
 /// through this unconditionally instead of repeating either check itself.
 pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &EngineView) {
     super::commands::end_insert_session(state, view);
-    state.commit_paste_session(view);
+    state.commit_paste_session();
 }
 
 /// Move focus to `pid`, first calling [`end_focus_sessions`] — the one

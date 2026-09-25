@@ -210,6 +210,19 @@ impl Editor {
         use hume_editing::lines::{char_col_in_line, place_char_column};
         use hume_editing::selection::{Selection, SelectionSet};
 
+        // Both callers guarantee `id == focused_buffer_id()` before calling
+        // in (see this fn's own callers), so any open Insert/paste session
+        // can only be the focused pane's — end it the same way every other
+        // buffer/focus-invalidating path does (`switch_pane_to_buffer`,
+        // `reset_config_state`), before the reload invalidates the text it
+        // was snapshotted against. Previously this dropped
+        // `pane_state[pid][id].edit_group`/`.paste_group` directly further
+        // down, without tearing down `state.insert_session` or the `Insert`
+        // mode layer — leaving both alive pointing at a session that had
+        // just vanished, a latent `.expect()` panic in
+        // `Buffer::commit_edit_group` on the next Esc.
+        crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
+
         // ── Phase 1: capture (line, char_col) per pane + focused pane's pre_sels ──
         // Every pane showing `id`, active tab or not — a background pane's
         // cursor needs remapping through this reload's `ChangeSet` too, or
@@ -342,10 +355,10 @@ impl Editor {
         // `set_buffer_language` itself.
         self.detect_and_set_language(id);
 
-        // ── Phase 3: reseed per-pane selections / edit groups / scroll ───────
+        // ── Phase 3: reseed per-pane selections / scroll ──────────────────────
         // Targeted, not `fresh_from_buf`: selections are restored to the clamped
-        // post-reload cursor; stale edit groups / paste sessions drop (an open
-        // group against pre-reload text cannot compose against the new text).
+        // post-reload cursor. Any open session was already ended above, before
+        // this reload's own edit — no per-pane group nulling needed here.
         for &(pid, head) in &post_heads {
             crate::editor::pane_state::write_cursor(
                 &mut self.state.panes.state,
@@ -354,8 +367,6 @@ impl Editor {
                 id,
                 head,
             );
-            self.state.panes.state[pid][id].edit_group = None;
-            self.state.panes.state[pid][id].paste_group = None;
         }
         // Drop stale saved scrolls for the reloaded buffer on every pane —
         // `recall_scroll` clamps the top's line to the buffer's current last

@@ -71,6 +71,7 @@ fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
         &ed.state.config.decorations,
         &mut ed.state.panes.state,
         &mut ed.state.panes.jumps,
+        &mut ed.state.active_session,
         focused,
         buf,
         |b, s| hume_ops::edit::insert_str(b, s, text),

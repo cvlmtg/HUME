@@ -103,14 +103,14 @@ impl Editor {
         let pre_reload_bids = self.state.buffers.iter().map(|(bid, _)| bid).collect();
 
         // A still-open Insert or paste session on the focused pane holds
-        // undo state (an open edit/paste group), not a Steel value — the
-        // "outgoing engine, nothing left to observe the fire" reasoning
+        // undo state (`EditorState::active_session`), not a Steel value —
+        // the "outgoing engine, nothing left to observe the fire" reasoning
         // below doesn't excuse it from proper teardown the way it does the
         // remaining mode layers/overlays. Left open, `input.truncate_to_base()`
         // further down would drop the `Insert` layer without ever ending
-        // the session, leaving `pane_state[pid][bid].edit_group` open on a
-        // buffer the reload's own resets are about to invalidate — the next
-        // keystroke would panic in `Buffer::apply_edit_grouped`'s `.expect()`.
+        // the session, leaving `active_session` open on a buffer the
+        // reload's own resets are about to invalidate — the next keystroke
+        // would panic in `doc_ops::apply_doc_edit_grouped`'s `.expect()`.
         // Must run before anything below, same "while focus still names the
         // pane being left" ordering [`super::focus::end_focus_sessions`]
         // itself documents.

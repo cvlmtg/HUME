@@ -133,6 +133,7 @@ impl Editor {
         doc_ops::begin_edit_group(
             &self.state.buffers,
             &mut self.state.panes.state,
+            &mut self.state.active_session,
             pane_id,
             buf_id,
         );
@@ -145,6 +146,7 @@ impl Editor {
         doc_ops::commit_edit_group(
             &mut self.state.buffers,
             &mut self.state.panes.state,
+            &mut self.state.active_session,
             pane_id,
             buf_id,
         );
@@ -175,6 +177,8 @@ impl Editor {
             return;
         };
 
+        let meta = edit_cmd.meta();
+
         // Commit (or defer) any paste session left open by the keypress that
         // set up `.` itself, using the REPLAYED command's own meta rather
         // than `repeat-last-action`'s (which always defers — see its
@@ -184,15 +188,18 @@ impl Editor {
         // `.` was pressed any unrelated session was already closed. This
         // reproduces `p [ .` as one more ring-cycle step instead of losing
         // the session to `repeat-last-action`'s own dispatch.
-        commands::step_paste_commit(
-            &mut self.state,
-            &self.view,
-            edit_cmd.meta().defers_paste_commit,
-        );
+        commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
 
         // Pre-open the edit group — the "replay signal" used by
-        // begin_insert_session to suppress keystroke recording.
-        self.begin_edit_group_current();
+        // begin_insert_session to suppress keystroke recording, and the
+        // wrapper that folds a recipe replay + the main edit into one undo
+        // revision. Skipped for a `manages_own_session` command (the paste
+        // family): it opens or continues `active_session` itself (`do_paste`/
+        // `do_paste_cycle`), which would collide with a group pre-opened
+        // here — see `CmdMeta::manages_own_session`'s own doc.
+        if !meta.manages_own_session {
+            self.begin_edit_group_current();
+        }
 
         // Rebuild the selection extent the edit originally acted on. No
         // recipe-step command reads `pending_char` — every `wait_char!`-bound
@@ -278,7 +285,11 @@ impl Editor {
 
         if self.state.mode() == Mode::Insert {
             self.end_insert_session();
-        } else {
+        } else if !meta.manages_own_session {
+            // A `manages_own_session` command's own dispatch (`do_paste`/
+            // `do_paste_cycle`) leaves `active_session` open on purpose, for
+            // a following `[`/`]` to continue — nothing here opened a group
+            // to close, and committing one would end that session early.
             self.commit_edit_group_current();
         }
 

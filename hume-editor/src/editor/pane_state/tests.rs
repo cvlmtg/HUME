@@ -6,8 +6,6 @@ fn pane_buffer_state_default_is_valid() {
     use hume_editing::selection::Selection;
     let state = PaneBufferState::default();
     assert_eq!(state.selections.primary(), Selection::collapsed(co(0)));
-    assert!(state.edit_group.is_none());
-    assert!(state.paste_group.is_none());
     assert!(state.search_cursor.match_count.is_none());
 }
 
@@ -18,8 +16,6 @@ fn fresh_from_buf_seeds_initial_sels() {
     let expected = buf.initial_sels();
     let state = fresh_from_buf(&buf);
     assert_eq!(state.selections, expected);
-    assert!(state.edit_group.is_none());
-    assert!(state.paste_group.is_none());
     assert!(state.search_cursor.match_count.is_none());
 }
 
@@ -32,6 +28,7 @@ fn fresh_from_buf_seeds_stable_initial_sels_across_promotion() {
     // transaction on promotion, `initial_sels()` (and this seed) would
     // return the promoted revision's post-edit selection instead.
     use crate::editor::buffer::Buffer;
+    use hume_editing::text::BufferText;
     use hume_ops::edit::insert_char;
 
     let mut buf = Buffer::new(BufferText::from("hello\n"), SelectionSet::default());

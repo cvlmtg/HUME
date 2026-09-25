@@ -1222,9 +1222,9 @@ fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
 ///
 /// Fail oracle: without `repeat-last-action`'s `.defers_paste_commit()` (and
 /// the matching commit/defer decision in `replay_dot`), the paste session is
-/// closed before the replay runs; `do_paste_cycle` sees `paste_group == None`
-/// and returns before ever calling `cycle_older()`, so `cycle_position()`
-/// stays at `Some(1)` instead of advancing to `Some(2)`.
+/// closed before the replay runs; `do_paste_cycle` sees no open Paste-kind
+/// `active_session` and returns before ever calling `cycle_older()`, so
+/// `cycle_position()` stays at `Some(1)` instead of advancing to `Some(2)`.
 #[test]
 fn dot_repeat_of_paste_ring_cycle_advances_the_ring() {
     let mut ed = editor_from("-[aaa]> bbb ccc\n");

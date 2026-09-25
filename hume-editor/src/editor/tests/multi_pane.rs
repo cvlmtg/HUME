@@ -176,8 +176,9 @@ fn d4b_sticky_display_col_is_per_selection() {
     );
 }
 
-/// `EditGroup` is per-(pane, buffer); insert sessions are independent across
-/// panes on the same buffer.  Two separate i…Esc sessions each produce one revision.
+/// An Insert session is scoped to the pane that opened it — sequential
+/// sessions on different panes each produce their own revision.  Two
+/// separate i…Esc sessions each produce one revision.
 #[test]
 fn d5_insert_session_is_pane_buffer_scoped() {
     let mut ed = editor_from("-[a]>bc\n");
@@ -194,20 +195,20 @@ fn d5_insert_session_is_pane_buffer_scoped() {
 
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
-    assert!(
-        ed.state.panes.state[pid_a][bid].edit_group.is_none(),
-        "no group before i"
-    );
+    assert!(ed.state.active_session.is_none(), "no session before i");
     ed.handle_key(key('i'));
     assert!(
-        ed.state.panes.state[pid_a][bid].edit_group.is_some(),
-        "group open after i"
+        matches!(
+            ed.state.active_session,
+            Some(crate::editor::edit_session::EditSession { pane, .. }) if pane == pid_a
+        ),
+        "session open on A after i"
     );
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
     assert!(
-        ed.state.panes.state[pid_a][bid].edit_group.is_none(),
-        "group committed on Esc"
+        ed.state.active_session.is_none(),
+        "session committed on Esc"
     );
 
     let rev_after_a = ed.doc().revision_id();
@@ -215,19 +216,22 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     // Pane B insert session: type 'Y'.
     ed.switch_focused_pane(pid_b);
     assert!(
-        ed.state.panes.state[pid_b][bid].edit_group.is_none(),
-        "pane B starts with no group"
+        ed.state.active_session.is_none(),
+        "pane B starts with no session"
     );
     ed.handle_key(key('i'));
     assert!(
-        ed.state.panes.state[pid_b][bid].edit_group.is_some(),
-        "pane B group opens"
+        matches!(
+            ed.state.active_session,
+            Some(crate::editor::edit_session::EditSession { pane, .. }) if pane == pid_b
+        ),
+        "session opens on B"
     );
     ed.handle_key(key('Y'));
     ed.handle_key(key_esc());
     assert!(
-        ed.state.panes.state[pid_b][bid].edit_group.is_none(),
-        "pane B group committed"
+        ed.state.active_session.is_none(),
+        "pane B session committed"
     );
 
     let rev_after_b = ed.doc().revision_id();

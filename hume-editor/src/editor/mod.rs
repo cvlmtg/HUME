@@ -24,6 +24,7 @@ mod async_job;
 mod async_source;
 mod decoration_providers;
 mod diff_bridge;
+mod edit_session;
 mod error;
 mod focus;
 mod frame;
@@ -382,6 +383,9 @@ pub(crate) struct EditorState {
     pub(super) pending_repeat: Option<PendingRepeat>,
     /// Active insert session, present between begin/end_insert_session.
     pub(super) insert_session: Option<InsertSession>,
+    /// The editor's one live Insert or paste undo group, if any — see
+    /// [`edit_session::EditSession`]'s own doc.
+    pub(in crate::editor) active_session: Option<edit_session::EditSession>,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
     /// `true` when the current multi-key sequence began with a kitty one-shot
@@ -502,6 +506,7 @@ impl Default for EditorState {
             command_refused: false,
             pending_repeat: None,
             insert_session: None,
+            active_session: None,
             explicit_count: false,
             pending_ctrl_extend: false,
             macro_recording: None,

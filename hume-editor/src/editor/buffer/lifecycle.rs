@@ -114,9 +114,9 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
 /// When `pid` is the focused pane and `target` differs from what it
 /// currently shows, ends any open Insert/paste session on it first (see
 /// [`crate::editor::focus::end_focus_sessions`]) — otherwise
-/// `pane_state[pid][bid].edit_group`/`.paste_group` stays open on a `(pane,
-/// buffer)` pair no longer being typed into, and the next keystroke panics
-/// in `Buffer::apply_edit_grouped`'s `.expect()`. Skipped for a background
+/// `EditorState::active_session` stays open on a `(pane, buffer)` pair no
+/// longer being typed into, and the next keystroke panics in
+/// `doc_ops::apply_doc_edit_grouped`'s `.expect()`. Skipped for a background
 /// pane (a hook redirecting a pane the user isn't looking at — that pane's
 /// own session, if any, belongs to whatever *is* focused, not to `pid`) and
 /// for a same-buffer switch (the open group is still valid, since the pane's

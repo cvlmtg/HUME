@@ -123,6 +123,7 @@ pub(in crate::editor::commands) fn apply_pane_edit(
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
+        &mut state.active_session,
         t.pid(),
         buf,
         cmd,
@@ -152,6 +153,7 @@ pub(in crate::editor::commands) fn apply_focused_edit_grouped(
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
+        &mut state.active_session,
         fp.pid(),
         buf,
         cmd,
@@ -198,7 +200,13 @@ pub(super) fn begin_edit_group_current(
     fp: FocusedPane,
 ) {
     let bid = fp.bid(view);
-    doc_ops::begin_edit_group(&state.buffers, &mut state.panes.state, fp.pid(), bid);
+    doc_ops::begin_edit_group(
+        &state.buffers,
+        &mut state.panes.state,
+        &mut state.active_session,
+        fp.pid(),
+        bid,
+    );
 }
 
 /// Commit and close the open edit group on the focused (pane, buffer) pair.
@@ -209,7 +217,13 @@ pub(super) fn commit_edit_group_current(
     fp: FocusedPane,
 ) {
     let bid = fp.bid(view);
-    doc_ops::commit_edit_group(&mut state.buffers, &mut state.panes.state, fp.pid(), bid);
+    doc_ops::commit_edit_group(
+        &mut state.buffers,
+        &mut state.panes.state,
+        &mut state.active_session,
+        fp.pid(),
+        bid,
+    );
 }
 
 /// Active search pattern on `t`'s buffer, if any.

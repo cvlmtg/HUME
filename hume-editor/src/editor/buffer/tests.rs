@@ -34,18 +34,26 @@ impl DocHelper {
         cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) {
         let sels = std::mem::take(&mut self.sels);
-        let (new_sels, _cs) = self.buf.apply_edit_grouped(sels, &mut self.edit_group, cmd);
+        let group = self
+            .edit_group
+            .as_mut()
+            .expect("apply_edit_grouped called without an open group");
+        let (new_sels, _cs) = self.buf.apply_edit_grouped(sels, group, cmd);
         self.sels = new_sels;
     }
 
     fn begin_edit_group(&mut self) {
         let pre_sels = self.sels.clone();
-        self.buf.begin_edit_group(&mut self.edit_group, pre_sels);
+        self.edit_group = Some(self.buf.begin_edit_group(pre_sels));
     }
 
     fn commit_edit_group(&mut self) {
         let post_sels = self.sels.clone();
-        self.buf.commit_edit_group(&mut self.edit_group, post_sels);
+        let group = self
+            .edit_group
+            .take()
+            .expect("commit_edit_group called without an open group");
+        self.buf.commit_edit_group(group, post_sels);
     }
 
     fn undo(&mut self) {

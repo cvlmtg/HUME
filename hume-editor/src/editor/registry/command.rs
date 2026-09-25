@@ -220,6 +220,20 @@ pub(in crate::editor) struct CmdMeta {
     /// `true` only for `Motion`'s forward object-jump family (`}`,
     /// `goto-next-<kind>`).
     pub aligns_view: bool,
+    /// Whether this command opens or continues `EditorState::active_session`
+    /// itself, instead of relying on an external wrapper to group its edit.
+    ///
+    /// `true` only for the paste family (`paste-after`/`-before`,
+    /// `smart-paste-after`/`-before`, `paste-ring-older`/`-newer` — see
+    /// `commands::paste`'s `do_paste`/`do_paste_cycle`). `Editor::replay_dot`
+    /// reads this to decide whether it may safely pre-open a session before
+    /// dispatching the replayed command (and commit it after): pre-opening
+    /// one for a command in this set would collide with the session that
+    /// command is about to open or continue itself, and committing after
+    /// would end a paste session a live keypress leaves open for a following
+    /// `[`/`]`. Every other command relies on `replay_dot`'s wrapper to fold
+    /// a multi-step recipe replay plus the main edit into one undo revision.
+    pub manages_own_session: bool,
 }
 
 impl CmdMeta {
@@ -415,6 +429,9 @@ pub(in crate::editor) enum MappableCommand {
         /// [`CmdMeta::selection_tracking`] and each opt-in site's own comment
         /// in `registry/defaults/`.
         selection_tracking: SelectionTracking,
+        /// Whether this command manages `EditorState::active_session` itself.
+        /// See [`CmdMeta::manages_own_session`] for the full rationale.
+        manages_own_session: bool,
     },
     /// A command implemented as a Steel (Scheme) lambda.
     ///
@@ -507,6 +524,7 @@ impl MappableCommand {
                 repeatable: false,
                 clears_extend: false,
                 aligns_view: *aligns_view,
+                manages_own_session: false,
             },
             Self::Selection {
                 jump,
@@ -521,6 +539,7 @@ impl MappableCommand {
                 repeatable: false,
                 clears_extend: false,
                 aligns_view: false,
+                manages_own_session: false,
             },
             Self::Edit { repeatable, .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -531,6 +550,7 @@ impl MappableCommand {
                 repeatable: *repeatable,
                 clears_extend: false,
                 aligns_view: false,
+                manages_own_session: false,
             },
             Self::EditorCmd {
                 defers_paste_commit,
@@ -539,6 +559,7 @@ impl MappableCommand {
                 visual_move,
                 clears_extend,
                 selection_tracking,
+                manages_own_session,
                 ..
             } => CmdMeta {
                 selection_tracking: *selection_tracking,
@@ -549,6 +570,7 @@ impl MappableCommand {
                 repeatable: *repeatable,
                 clears_extend: *clears_extend,
                 aligns_view: false,
+                manages_own_session: *manages_own_session,
             },
             Self::SteelBacked { repeatable, .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -559,6 +581,7 @@ impl MappableCommand {
                 repeatable: *repeatable,
                 clears_extend: false,
                 aligns_view: false,
+                manages_own_session: false,
             },
             Self::Lazy { .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -569,6 +592,7 @@ impl MappableCommand {
                 repeatable: false,
                 clears_extend: false,
                 aligns_view: false,
+                manages_own_session: false,
             },
         }
     }

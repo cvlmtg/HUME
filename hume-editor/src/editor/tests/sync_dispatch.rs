@@ -1210,10 +1210,14 @@ fn parity_steel_branch_cluster_vs_native() {
     // resolution falls back to the ring head regardless.
     ed2.state.kill_ring.push(vec!["X".to_string()]);
     ed2.feed_key(key('p')); // smart-paste-after → resolves ring head, opens paste session
-    let pane_id = ed2.state.focus.id();
-    let buf_id = ed2.focused_buffer_id();
     assert!(
-        ed2.state.panes.state[pane_id][buf_id].paste_group.is_some(),
+        matches!(
+            ed2.state.active_session,
+            Some(crate::editor::edit_session::EditSession {
+                kind: crate::editor::edit_session::EditSessionKind::Paste { .. },
+                ..
+            })
+        ),
         "pre-condition: paste-after must have opened a paste session"
     );
 
@@ -1228,10 +1232,10 @@ fn parity_steel_branch_cluster_vs_native() {
     ed2.execute_keymap_command("pure-noop".into(), Some(1), false);
 
     // Fail oracle: delete the `step_paste_commit` call in the Steel BEFORE block
-    //   of `Editor::dispatch` → pure-noop runs without committing → paste_group
-    //   stays Some → assertion fails.
+    //   of `Editor::dispatch` → pure-noop runs without committing →
+    //   active_session stays Some → assertion fails.
     assert!(
-        ed2.state.panes.state[pane_id][buf_id].paste_group.is_none(),
+        ed2.state.active_session.is_none(),
         "step_paste_commit must close the paste session on the Steel path"
     );
 }
