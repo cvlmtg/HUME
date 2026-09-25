@@ -23,13 +23,10 @@
   (let ((trimmed (trim line)))
     (map trim (split-many (trim (substring trimmed 11 (string-length trimmed))) ","))))
 
-;;; `curl` is deliberately NOT wrapped in a `with-handler` — re-raising a
-;;; native-builtin error from an inner handler into an outer one corrupts
-;;; Steel 0.8.2's continuation stack. See README.md.
+;;; `curl` deliberately NOT wrapped in `with-handler` — see README.md's
+;;; "Grammar sources and the Helix pin".
 (define (plum/fetch-raw-query name filename)
-  ;; `name` may come from an untrusted `; inherits:` line, unlike the
-  ;; top-level grammar name — guard the scratch-file path. `eq? #t`, not a
-  ;; bare truthiness check — see core:stdlib's README.
+  ;; `name` may be untrusted (an `; inherits:` line) — see core:stdlib's README.
   (unless (eq? #t (call! "stdlib/safe-path-segment?" name))
     (log! 'warn (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
@@ -41,8 +38,7 @@
       (call! "stdlib/delete-file" tmp)
       content)))
 
-;;; Fully resolves any `; inherits:` chain into one string. `tolerant?`:
-;;; a missing file resolves to `""` instead of raising — see README.md.
+;;; Fully resolves any `; inherits:` chain into one string — see README.md.
 (define (plum/resolve-query name filename tolerant?)
   (let ((content (if tolerant?
                       (with-handler (lambda (err) #f) (plum/fetch-raw-query name filename))
@@ -83,8 +79,7 @@
         (plum/install-grammar dep)))
     (plum/grammar-deps name)))
 
-;;; Tolerates a missing file — see README.md. Returns the path on success,
-;;; `#f` if there's no such query to fetch.
+;;; Tolerates a missing file — see README.md.
 (define (plum/try-fetch-query! name filename path-fn)
   (let ((path (path-fn name)))
     (with-handler
@@ -113,8 +108,7 @@
   (filter (lambda (name) (not (grammar-source-known? name)))
           (installed-grammars)))
 
-;;; A string argument wins; otherwise falls back to the current buffer's
-;;; language. Returns the name, or #f after reporting a status message.
+;;; A string argument wins; otherwise falls back to the current buffer's language.
 (define (plum/resolve-grammar-arg pane cmd arg)
   (let ((name (call! "stdlib/resolve-lang-arg" pane cmd arg)))
     (cond ((not name) #f)
@@ -125,8 +119,7 @@
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-;;; Always from a clean slate — doubles as the repair path. See README.md
-;;; for the numbered steps.
+;;; Always from a clean slate — see README.md's "Grammar install pipeline".
 (define (plum/install-grammar name)
   (let* ((url     (grammar-source-url name))
          (rev     (grammar-source-rev name))
@@ -141,13 +134,10 @@
     (plum/install-grammar-deps! name)
     ;; git clone refuses a non-empty dest — clear any stale source tree first.
     (call! "stdlib/delete-dir" src-dir)
-    ;; Blobless clone (skip file-history blobs) at the pinned rev, then
-    ;; checkout that exact revision.
+    ;; Blobless clone at the pinned rev — see README.md's "Grammar install pipeline".
     (run-inline-output! "git" (list "clone" "--filter=blob:none" "--" url src-dir))
     (run-inline-output! "git" (list "checkout" "--force" "--end-of-options" rev "--") #:cwd src-dir)
     (plum/fetch-query! name "highlights.scm" hl-path)
-    ;; git prints its own progress; the C compiler stays silent until it's
-    ;; done or errors, which on a slow grammar reads as a hang.
     (displayln (string-append "Compiling grammar for " name "..."))
     (compile-grammar! build-dir out-path)
     (register-grammar! name out-path symbol hl-path
@@ -156,9 +146,7 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-;;; `:plum-install-grammar`'s own completion universe: every declared
-;;; grammar source name, installed or not — the same set
-;;; `plum/resolve-grammar-arg`'s "unknown grammar" check reads against.
+;;; `:plum-install-grammar`'s own completion universe — see README.md's "Commands".
 (register-completion-source! "plum:grammars"
   (lambda (id input cursor)
     (completion-emit! id (grammar-source-names)))

@@ -39,16 +39,13 @@
 (define (plum/repo-theme-names slug)
   (stems-with-suffix (path-join (plum/theme-src-dir slug) "themes") ".toml"))
 
-;;; Other installed repos (besides `slug`) that also provide `name` — there's
-;;; no state file recording which repo "owns" a `<data>/themes/<name>.toml`
-;;; copy, so a same-stem collision would otherwise overwrite silently.
+;;; Other installed repos (besides `slug`) that also provide `name` — see README.md's "Theme install".
 (define (plum/theme-owned-elsewhere name slug)
   (filter (lambda (other) (and (not (equal? other slug))
                                (member name (plum/repo-theme-names other))))
           (plum/installed-theme-repos)))
 
-;;; The sync step shared by install and update. Raises if the repo has no
-;;; `themes/*.toml` at all. Returns the new name list.
+;;; The sync step shared by install and update. Raises if the repo has no `themes/*.toml` at all.
 (define (plum/sync-theme-files! slug old-names)
   (let ((names (plum/repo-theme-names slug)))
     (when (null? names)
@@ -70,9 +67,7 @@
       names)
     names))
 
-;;; Marker is `.git`, not `themes` — a repo must stay discoverable (and so
-;;; removable) even after upstream drops its `themes/` directory and
-;;; `:plum-update-themes` starts failing its sync on every run.
+;;; Marker is `.git`, not `themes` — see README.md's "Theme install".
 (define (plum/installed-theme-repos)
   (plum/two-level-repos (plum/theme-sources-dir) ".git"))
 
@@ -86,9 +81,7 @@
         (let* ((src-dir (plum/theme-src-dir slug))
                (old-names (plum/repo-theme-names slug)))
           (log! 'info (string-append "PLUM: installing theme repo " slug))
-          ;; Clear any stale clone first — doubles as the repair path when a
-          ;; later step raises. See README.md for why there's no
-          ;; catch-and-cleanup here instead.
+          ;; Clear any stale clone first — see README.md's "Theme install".
           (call! "stdlib/delete-dir" src-dir)
           (plum/clone-github! slug src-dir)
           (let ((names (plum/sync-theme-files! slug old-names)))
@@ -112,9 +105,7 @@
 (define-typed-command! "plum-list-themes"
   "Log installed theme repos and the theme names each provides, plus any unmanaged .toml files in <data>/themes/."
   (lambda ()
-    ;; Pair each repo with its theme names once — reused for both the
-    ;; per-repo log lines and the `managed` set below, rather than
-    ;; re-walking every repo's `themes/` a second time.
+    ;; Pair each repo with its theme names once, reused below for `managed`.
     (let ((per-repo (map (lambda (slug) (cons slug (plum/repo-theme-names slug)))
                          (plum/installed-theme-repos))))
       (if (null? per-repo)
@@ -128,8 +119,7 @@
         (unless (null? unmanaged)
           (log! 'info (string-append "PLUM unmanaged: " (string-join unmanaged ", "))))))))
 
-;;; `:plum-remove-theme`'s own completion universe: every installed theme
-;;; repo's "user/repo" slug — the same set `plum-list-themes` enumerates.
+;;; `:plum-remove-theme`'s own completion universe — see README.md's "Commands".
 (register-completion-source! "plum:themes"
   (lambda (id input cursor)
     (completion-emit! id (plum/installed-theme-repos)))
@@ -142,10 +132,8 @@
       (when slug
         (let ((src-dir (plum/theme-src-dir slug))
               (names   (plum/repo-theme-names slug)))
-          ;; "Installed" is the clone existing, not it still holding
-          ;; `themes/*.toml` — a repo whose sync already failed (see
-          ;; `plum/installed-theme-repos`'s marker) has an empty `names` but
-          ;; must still be removable, not reported as never installed.
+          ;; "Installed" is the clone existing, not still holding `themes/*.toml` —
+          ;; see `plum/installed-theme-repos`'s marker.
           (if (not (path-exists? src-dir))
               (log! 'info (string-append "PLUM: " slug " is not installed"))
               (begin

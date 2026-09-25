@@ -10,14 +10,14 @@ natively, and the visual-mode `o` flip alias.
 (load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'smart))
 ```
 
-Loads eagerly: most of what it rebinds (`goto-line-start`, `goto-line-end`, …) are built-in
-commands, not plugin commands, so there's no dispatch that could ever trigger it if it were
-declared lazily. Requires `core:stdlib` declared or loaded first — config validation
-(`"change-to-eol"`) calls `stdlib/config-enum` via `call!` at this plugin's own load time,
-and a bare `(declare-plugin "core:stdlib")` is enough since `call!`'s lazy-miss retry
-inline-activates it before the config read runs. See
-[Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-vim-keybind) for what
-each `"change-to-eol"` value does.
+- **Depends on:** `core:stdlib` — config validation (`"change-to-eol"`) calls
+  `stdlib/config-enum` via `call!` at this plugin's own load time.
+- **Activates on:** its own key bindings only — most of what it rebinds
+  (`goto-line-start`, `goto-line-end`, …) are built-in commands with no typed form or
+  hook of their own, so it has no `manifest.scm` and must be loaded eagerly (see the
+  [core plugins index](../README.md#loading-model)).
+- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-vim-keybind)
+  for what each `"change-to-eol"` value does.
 
 ## Commands
 
@@ -29,47 +29,61 @@ each `"change-to-eol"` value does.
 
 ## How it works
 
-`C`'s binding depends on `"change-to-eol"` (`core:stdlib`'s `stdlib/config-enum`, defaulting
-to `'smart`): `'on` binds `vim-change-to-eol` unconditionally; `'smart` binds
-`vim-change-to-eol-or-copy-line`, the context-sensitive dispatch below; `'off` leaves `C`
-unbound, so HUME's native `copy-selection-on-next-line` stays reachable on it. Because config
-resolution itself calls into `core:stdlib`, the plugin checks `(declared-plugins)` for
-`"core:stdlib"` unconditionally at load time, before reading config at all — every mode needs
-`core:stdlib` now, not just `'smart` (which additionally calls `stdlib/all-single-char?` at
-runtime, below). Checking at load time means a missing dependency is a load error naming
-`core:stdlib`, not a wrong-branch bug that only surfaces at the first `C` keypress.
+### `C` — change to end of line
 
-`vim-change-to-eol-or-copy-line` takes the injected `count` (`0` when no count was typed)
-and, only when it's `0`, calls `stdlib/all-single-char?` via `call!` to tell a bare cursor
-from a real selection. On a bare cursor with no count it delegates to `vim-change-to-eol`
-(`goto-line-end` extend, then `change`); any count prefix, or a real selection with no count,
-calls `copy-selection-on-next-line` directly with the count forwarded.
+| `"change-to-eol"` | `C` binds to | Behavior |
+|---|---|---|
+| `'on` | `vim-change-to-eol` | Always changes to end of line, ignoring the selection |
+| `'smart` (default) | `vim-change-to-eol-or-copy-line` | Context-sensitive — see below |
+| `'off` | *(unbound)* | HUME's native `copy-selection-on-next-line` stays reachable on it |
 
-`stdlib/all-single-char?`'s "bare cursor" reads as `anchor == head`, which the editor's own
-`select-inserted-text` setting (on by default) now makes false right after typing something
-in Insert mode: leaving Insert selects the run you just typed instead of leaving a plain
-cursor there. So `i foo <Esc> C` in `'smart` mode copies the selection onto the line below
-rather than changing to end-of-line — `C` still reads a bare cursor correctly, it's just that
-Esc no longer always leaves one. `'on` sidesteps this by binding `vim-change-to-eol`
-unconditionally, ignoring what the selection looks like.
+`vim-change-to-eol-or-copy-line` takes the injected `count` (`0` means no count was
+typed) and, only when it's `0`, calls `stdlib/all-single-char?` to tell a bare cursor
+from a real selection. A bare cursor with no count delegates to `vim-change-to-eol`
+(`goto-line-end` extend, then `change`); any count prefix, or a real selection with no
+count, calls `copy-selection-on-next-line` directly with the count forwarded.
 
-Dot-repeat needs no `#:repeatable` annotation on the wrapper commands: `change` and `delete`
-are natively repeatable and capture the preceding `goto-line-end` (extend) step themselves,
-via the shared selection-recipe accumulator, regardless of whether the wrapper that invoked
-them is flagged repeatable.
+> [!NOTE]
+> `stdlib/all-single-char?`'s "bare cursor" reads as `anchor == head`. The editor's
+> `select-inserted-text` setting (on by default) makes this false right after typing
+> something in Insert mode — leaving Insert selects the run you just typed instead of
+> leaving a plain cursor. So `i foo <Esc> C` in `'smart` mode copies the selection onto
+> the line below rather than changing to end-of-line: `C` still reads a bare cursor
+> correctly, it's just that `Esc` no longer always leaves one. `'on` sidesteps this
+> entirely by ignoring what the selection looks like.
 
-`o` (bound in Extend mode) restores vim's visual-mode "flip the selection" gesture. HUME's
-native `Ctrl-e` already flips in any mode — including Normal — and works on legacy terminals,
-so `o` is purely a muscle-memory alias, not new capability.
+Dot-repeat needs no `#:repeatable` annotation on either wrapper command: `change` and
+`delete` are natively repeatable and capture the preceding `goto-line-end` (extend) step
+themselves, via the shared selection-recipe accumulator, regardless of whether the
+wrapper that invoked them is flagged repeatable.
 
-`Ctrl-6` is the portable form of vim's `Ctrl-^` — both share a keycap on US layouts and emit
-identical bytes. Under the kitty keyboard protocol this arrives as `Char('6')` + `CONTROL`;
-legacy terminals emit `0x1E`, which HUME does not currently surface as this binding (falls
-back to `:e #` on those terminals).
+### `o` — flip selection
 
-`G` is deliberately **not** bound, though vim's `G` (last line) is exactly the kind of key
-this plugin exists to restore. `G` is a prefix in HUME's own keymap (`G L`/`G U`/`G C` case
-transforms, plus `G R` rename from `core:lsp`), and a single-key bind replaces the whole trie
-node it lands on — binding bare `G` here would silently take those three (and `G R`) down with
-it for anyone who loads the plugin. `g e` reaches the last line and is unaffected, so the trade
-is one alias against three-to-four working sequences.
+Restores vim's visual-mode "flip the selection" gesture, bound in Extend mode. HUME's
+native `Ctrl-e` already flips in any mode — including Normal — and works on legacy
+terminals, so `o` is purely a muscle-memory alias, not new capability.
+
+### `Ctrl-6` — alternate buffer
+
+The portable form of vim's `Ctrl-^` — both share a keycap on US layouts and emit
+identical bytes. Under the kitty keyboard protocol this arrives as `Char('6')` +
+`CONTROL`; legacy terminals emit `0x1E`, which HUME does not currently surface as this
+binding (falls back to `:e #` on those terminals).
+
+### Why `G` isn't bound
+
+Vim's `G` (last line) is exactly the kind of key this plugin exists to restore, but it's
+deliberately left alone: `G` is a prefix in HUME's own keymap (`G L`/`G U`/`G C` case
+transforms, plus `G R` rename from `core:lsp`), and binding a single bare key replaces
+the whole trie node it lands on — rebinding `G` here would silently take those three (and
+`G R`) down with it for anyone who loads this plugin. `g e` reaches the last line and is
+unaffected, so the trade is one alias against three-to-four working sequences.
+
+## Design decisions
+
+- **Check `(declared-plugins)` for `core:stdlib` at load time, unconditionally — even
+  though only `'smart` mode calls into it at runtime.** Config resolution itself
+  (`stdlib/config-enum`) calls into `core:stdlib`, so every mode needs the dependency
+  present at load. Checking at load time turns a missing dependency into a load error
+  naming `core:stdlib`, rather than a wrong-branch bug that only surfaces at the first
+  `C` keypress.

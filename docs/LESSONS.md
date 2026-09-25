@@ -1067,3 +1067,37 @@ Replay`, `is_replay_at`, `blocks_open`), `hume-editor/src/editor/replay.rs`
 (`begin_insert_session_preserving_register`),
 `hume-editor/src/editor/tests/paste.rs`
 (`paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_intact`).
+
+---
+
+## L22 — Unreleased changelog entries narrated internals and pre-empted future history (2026-09-25)
+
+**Root cause:** `## Unreleased` entries were drafted the way a PR description
+or a design doc would be written — explaining *how* a change works
+internally (JSON handles crossing the FFI boundary, a completion source
+answering "sync or from a later callback", `#:resolve` "licensing
+`completionItem/resolve` on accept") and, for features with no prior
+release, narrating the limitation of an approximation nobody ever shipped or
+saw (`core:buffer-words` "no longer merges the words around it into one
+unreachable candidate", as if replacing its own past behavior). Both defects
+share one cause: the changelog's audience was never checked against the
+target audience for end-user docs stated elsewhere in this file — a
+changelog line is a release note, not a design rationale or a diff summary,
+and an *unreleased* entry has no "previously"/"no longer" to narrate because
+nothing it describes has ever been in a user's hands.
+
+**Prevention rules:**
+
+1. A changelog entry states the current behavior in one line — what changed,
+   for the person using the editor. Configuration and capability detail
+   belongs in the user manual; internal mechanism (FFI encoding, callback
+   timing, why a flag is licensed) belongs in a source comment, never here.
+2. An entry under `## Unreleased` describes a feature as it stands today,
+   never as an improvement over an earlier draft of itself — there is no
+   released baseline to be "no longer" replacing.
+3. Before rewriting or reviewing a changelog section, diff its claims
+   against the last release tag (`git tag`/`git grep <symbol> <tag>`) to
+   tell "this is a real behavior change since release" from "this is an
+   unreleased feature being second-guessed against its own history."
+
+**Files:** `CHANGELOG.md` (`## Unreleased`).

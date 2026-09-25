@@ -121,12 +121,6 @@
 (define (prompt! pane label on-confirm #:prefill [prefill ""])
   (%prompt! pane label prefill on-confirm))
 
-;; The bound identifier is `match-kind`, not `match` — `match` is Steel's own
-;; pattern-matching macro (steel-core's `match.scm`), and the reader can't
-;; tell `[match 'fuzzy]` apart from a real `(match 'fuzzy)` invocation until
-;; after macro expansion has already tried (and failed) to expand it. The
-;; external keyword stays `#:match`; keyword name and bound identifier are
-;; independent in Steel's `#:kw [name default]` syntax.
 (define (register-completion-source! name proc #:target target
                                                #:match [match-kind 'fuzzy] #:priority [priority 0]
                                                #:resolve [resolve #f])
@@ -148,8 +142,6 @@
                                        #:actions [actions '()])
   (%picker! pane items on-select prompt pending query truncate actions))
 
-;; The `'(0)` default `picker-source-spawn!` and `live-picker!` both need for
-;; `#:ok-exit-codes` — one literal, so the two keyword defaults can't drift.
 (define %picker-source-default-ok-exit-codes '(0))
 
 (define (picker-source-spawn! token cmd args #:cwd [cwd #f] #:nul [nul #f]
@@ -176,18 +168,6 @@
                                (picker-source-spawn! token (car argv) (cdr argv)
                                                      #:cwd cwd #:nul nul #:ok-exit-codes ok-exit-codes))
                              (picker-replace! token '()))))]
-         ;; Cleanup-then-reraise around the debounced respawn only — never
-         ;; around `spawn-for`'s direct call below for a non-empty seed
-         ;; `#:query`, which runs synchronously inside whatever call stack
-         ;; invoked `live-picker!` and may already be inside a caller's own
-         ;; `with-handler` (see `open_live_picker`'s doc for why nesting
-         ;; that pattern corrupts Steel's VM). The debounced call has no
-         ;; such caller: it's dispatched fresh by the timer wheel, so a
-         ;; `#:command` raise here — a bad builder, or `picker-source-spawn!`
-         ;; itself failing to spawn — can't otherwise reach `picker-replace!`,
-         ;; leaving the previous pattern's rows stranded under a permanently
-         ;; "in flight" marker (`PickerSession::requery_armed` in
-         ;; `hume-editor::editor::picker`, only ever cleared by a `replace`).
          [respawn (debounce debounce-ms
                     (lambda (token q)
                       (with-handler

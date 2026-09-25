@@ -16,10 +16,7 @@
   (map (lambda (line) (list line text scope))
        (range new-start (+ new-start new-count))))
 
-;;; One `diff-buffer-lines` hunk -> a list of `(line text scope)` sign
-;;; entries, one per changed line (VSCode/gitsigns density, not one per
-;;; hunk) — see docs/rendering.md for the deletion-anchor math and the
-;;; boundary-mark glyphs.
+;;; One `diff-buffer-lines` hunk -> a list of `(line text scope)` sign entries — see docs/rendering.md.
 (define (git-diff/hunk->signs hunk)
   (let* ([old-count (list-ref hunk 1)]
          [new-start (list-ref hunk 2)]
@@ -32,10 +29,7 @@
       [(= old-count 0) (git-diff/line-signs new-start new-count "+" "diff.plus")]
       [else (git-diff/line-signs new-start new-count "~" "diff.delta")])))
 
-;;; Registers first regardless of `hunks` — a config-off buffer's first
-;;; `:toggle-git-signs` needs its slot claimed before `set-signs!` accepts
-;;; even an empty call. See docs/rendering.md for the `apply append`
-;;; choice.
+;;; Registers first regardless of `hunks` — see docs/rendering.md's "Signs".
 (define (git-diff/render-signs! pane hunks)
   (register-sign-source! git-diff/*source* pane git-diff/*sign-priority*)
   (set-signs! git-diff/*source* pane (apply append (map git-diff/hunk->signs hunks))))
@@ -63,8 +57,7 @@
                         removals)])
     (git-diff/virtual-line-hash old-line anchor segments)))
 
-;;; `(start end scope)` triples in *buffer* char offsets — see
-;;; docs/rendering.md.
+;;; `(start end scope)` triples in *buffer* char offsets — see docs/rendering.md.
 (define (git-diff/word-hunks->new-side-spans line-offset word-hunks)
   (let ([additions (filter (lambda (wh) (< (list-ref wh 2) (list-ref wh 3))) word-hunks)])
     (map (lambda (wh)
@@ -73,8 +66,7 @@
                  "diff.plus.word"))
          additions)))
 
-;;; Char offset where each of the first `paired-count` `new-lines` starts —
-;;; see docs/rendering.md for why this needs only one `line->offset` call.
+;;; Char offset where each of the first `paired-count` `new-lines` starts — see docs/rendering.md.
 (define (git-diff/paired-line-offsets pane new-start new-lines paired-count)
   (let ([base (line->offset pane new-start)])
     (let loop ([i 0] [offset base] [lines new-lines] [acc '()])
@@ -82,8 +74,7 @@
           (reverse acc)
           (loop (+ i 1) (+ offset (string-length (car lines)) 1) (cdr lines) (cons offset acc))))))
 
-;;; One paired (old-line . new-line) -> `(virtual-line . spans)`, one
-;;; `diff-words` call shared by both — see docs/rendering.md.
+;;; One paired (old-line . new-line) -> `(virtual-line . spans)` — see docs/rendering.md.
 (define (git-diff/paired-line->vl+spans old-line new-line line-offset anchor)
   (let* ([result (diff-words old-line new-line)]
          [word-hunks (car result)]
@@ -93,30 +84,13 @@
         (cons (git-diff/virtual-line-with-segments old-line anchor word-hunks)
               (git-diff/word-hunks->new-side-spans line-offset word-hunks)))))
 
-;;; One hunk's removed old-side lines -> `(virtual-lines . spans)` — see
-;;; docs/rendering.md for the paired/unpaired split.
-;;;
-;;; `all` skips the `append` when `paired` is empty (a pure deletion, the
-;;; common case) rather than always going through the 2-argument `(append
-;;; paired unpaired)`: steel-core 0.8.2 silently drops every `unpaired`
-;;; entry past the 4th specifically when the *first* argument to a direct
-;;; 2-argument `append` call is the literal empty list — confirmed by
-;;; reverting this guard and re-running
-;;; `inline_pure_deletion_over_four_lines_renders_every_ghost_line`
-;;; (hume-editor/src/editor/tests/unix/git_diff_plugin.rs), which fails
-;;; without it. The identical `map`/`append` shape over a non-empty `paired`,
-;;; of any size, is unaffected, and so — checked the same way, by forcing an
-;;; analogous empty-first-element shape through it and confirming the
-;;; result stays correct — is every `apply append` join elsewhere in this
-;;; file (`render-inline!`'s two, `render-line-bgs!`'s one, and the `all`
-;;; join right below): none of them needs an equivalent guard, since only
-;;; the direct 2-argument form carries this bug. A VM bug, not fixable here.
+;;; One hunk's removed old-side lines -> `(virtual-lines . spans)` — see docs/rendering.md
+;;; for the paired/unpaired split and why `all` guards the empty-`paired` case.
 (define (git-diff/hunk-old-lines->virtual+spans pane old-lines new-lines new-start paired-count anchor)
   (let* ([offsets (if (> paired-count 0)
                        (git-diff/paired-line-offsets pane new-start new-lines paired-count)
                        '())]
-         ;; Walks via `cdr`, not `list-ref` by index — Steel lists are
-         ;; linked, so indexing would make this quadratic in `paired-count`.
+         ;; `cdr`, not `list-ref` by index — see docs/rendering.md.
          [paired (let loop ([olds old-lines] [news new-lines] [offs offsets] [n paired-count] [acc '()])
                    (if (= n 0)
                        (reverse acc)
@@ -130,8 +104,7 @@
          [all (if (null? paired) unpaired (append paired unpaired))])
     (cons (map car all) (apply append (map cdr all)))))
 
-;;; One hunk -> `(virtual-lines . spans)` for `render-inline!`. A pure
-;;; addition contributes nothing here — see docs/rendering.md.
+;;; One hunk -> `(virtual-lines . spans)` for `render-inline!` — see docs/rendering.md.
 (define (git-diff/hunk-inline-data pane hunk)
   (let* ([old-count (list-ref hunk 1)]
          [new-start (list-ref hunk 2)]

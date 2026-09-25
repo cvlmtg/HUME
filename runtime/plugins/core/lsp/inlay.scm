@@ -24,10 +24,7 @@
                "range" (hash "start" (hash "line" first "character" 0)
                               "end" (hash "line" end "character" 0))))))
 
-;;; `pane` must already be a real, live pane still showing its buffer —
-;;; `on-viewport-change` hands one directly; every other caller below
-;;; resolves one first via `lsp/resolve-pane`, since `on-diagnostics-
-;;; changed`/`on-text-changed`/`(buffers)` carry no pane of their own.
+;;; `pane` must already be a real, live pane — see docs/decorations.md's "Inlay hints".
 (define lsp/refresh-hints
   (debounce-by 200
     (lambda (pane)
@@ -46,10 +43,7 @@
                                   (map (lambda (h) (lsp/hint->store-entry pane h)) (json-list res)))))))))))))
     #:key (lambda (p . _) (buffer-key p))))
 
-;;; `pane` need not itself be live — resolves it via `lsp/resolve-pane`
-;;; first, a no-op if nothing shows its buffer anywhere. The shared tail
-;;; every hook below reduces to, except `on-viewport-change`, which already
-;;; hands a live pane directly (see `lsp/refresh-hints`'s own doc).
+;;; `pane` need not itself be live — see docs/decorations.md's "Inlay hints".
 (define (lsp/refresh-hints-for-buffer pane)
   (let ((resolved (lsp/resolve-pane pane)))
     (when resolved (lsp/refresh-hints resolved))))

@@ -13,8 +13,7 @@
       (when (hash-ref entry "signs?") (git-diff/render-for! "signs?" pane hunks))
       (when (hash-ref entry "inline?") (git-diff/render-for! "inline?" pane hunks)))))
 
-;;; `spawn-async!` callback for the `git show` below — see docs/pipeline.md
-;;; for the exit-code/severity contract and the pane-liveness check below.
+;;; `spawn-async!` callback for the `git show` below — see docs/pipeline.md.
 (define (git-diff/handle-fetch-result! pane stdout stderr exit-code)
   (git-diff/entry-set! pane "job" #f)
   (if (= exit-code 0)
@@ -40,8 +39,7 @@
                              (git-diff/handle-fetch-result! pane stdout stderr exit-code)))])
     (git-diff/entry-set! pane "job" job)))
 
-;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced
-;;; entry point every hook actually calls.
+;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced entry point.
 (define (git-diff/refresh! pane ref)
   (let ([entry (git-diff/buffer-entry pane)])
     (when (and entry (or (hash-ref entry "signs?") (hash-ref entry "inline?")))
@@ -53,8 +51,7 @@
                 (unless ref-text
                   (git-diff/fetch-ref! pane path ref)))))))))
 
-;;; Forces a fetch even through a sticky `'unavailable` cache — see
-;;; docs/pipeline.md for why, and why `hunks` is deliberately untouched.
+;;; Forces a fetch even through a sticky `'unavailable` cache — see docs/pipeline.md.
 (define (git-diff/force-refresh! pane ref)
   (let ([entry (git-diff/buffer-entry pane)])
     (when entry
@@ -66,8 +63,6 @@
 (define (git-diff/cancel-fetch! pane)
   (git-diff/cancel-job! pane "job"))
 
-;;; `debounce-by`, keyed per buffer (not per pane — a command's own pane
-;;; and a hook's pane-less value for the same buffer must still
-;;; coalesce), at 150ms — see docs/pipeline.md.
+;;; `debounce-by`, keyed per buffer, at 150ms — see docs/pipeline.md.
 (define git-diff/schedule-refresh!
   (debounce-by 150 git-diff/refresh! #:key (lambda (p . _) (buffer-key p))))

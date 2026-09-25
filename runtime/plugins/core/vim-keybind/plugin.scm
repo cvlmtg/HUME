@@ -1,13 +1,4 @@
-;;; core:vim-keybind
-;;;
-;;; Depends on core:stdlib (config validation calls stdlib/config-enum via
-;;; call!) — declare or load it first, same as core:plum/core:lsp.
-
-;; See "Depending on another plugin" in the user manual
-;; (https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin)
-;; for why `(declared-plugins)` is enough here, even read at the top of the
-;; plugin body — and why this does not catch an override that leaves no
-;; `stdlib/config-enum` stub for the config read below.
+;;; core:vim-keybind — depends on core:stdlib. See README.md's "How it works".
 (unless (member "core:stdlib" (declared-plugins))
   (error "core:vim-keybind: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:vim-keybind\")"))
 
@@ -18,9 +9,7 @@
 
 (define-command! "vim-change-to-eol-or-copy-line"
   "Bare C on a collapsed cursor: change to end of line (vim C). With a count, or on a real selection: copy the selection onto the line(s) below."
-  ;; count 0 is the dispatcher's spelling of "no count typed" — a count prefix,
-  ;; even 1, is an explicit ask for the multicursor copy, so it wins over the
-  ;; collapsed-cursor vim gesture and is forwarded verbatim.
+  ;; count 0 is "no count typed" — see README.md's "How it works".
   (lambda (pane count)
     (if (and (= count 0)
              (call! "stdlib/all-single-char?" (buffer-selections pane)))
@@ -45,8 +34,7 @@
 (bind-key! 'normal "ctrl-6" "goto-alternate-buffer")
 
 ;; ── C / D ─────────────────────────────────────────────────────────────────────
-;; change-to-eol: 'smart (default) → context-sensitive C; 'on → unconditional
-;; change-to-eol; 'off → leave C at HUME's default (copy-selection-on-next-line).
+;; See README.md's "How it works".
 (define cfg (plugin-config))
 (define change-to-eol
   (call! "stdlib/config-enum" "core:vim-keybind" cfg "change-to-eol" 'smart '(on smart off)))

@@ -3,7 +3,7 @@
 //! cancel-restore, factored out so the capture/restore/take rules live in one
 //! place instead of being re-derived in each layer.
 //!
-//! Not `pane_state.rs`: that module's `EditGroup` already has a `pre_sels`
+//! Not `edit_session.rs`: that module's `EditGroup` already has a `pre_sels`
 //! field meaning something unrelated (an undo group's pre-*edit* selections,
 //! not a session's pre-*entry* ones) — two unrelated `pre_sels` in one file
 //! would be exactly the kind of same-name collision this codebase avoids

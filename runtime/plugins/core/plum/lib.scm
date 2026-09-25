@@ -6,9 +6,7 @@
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
 
 ;;; Walk `root`/<user>/<repo>/ and return "user/repo" strings for every leaf
-;;; containing `marker` — shared by plugin discovery (`marker` "plugin.scm")
-;;; and theme-repo discovery (`marker` ".git", so a repo stays discoverable
-;;; even after upstream drops its `themes/` directory).
+;;; containing `marker` — see README.md's "How it works" and "Theme install".
 (define (plum/two-level-repos root marker)
   (if (not (path-exists? root))
       '()
@@ -22,14 +20,9 @@
                   (call! "stdlib/list-subdirs" root)))))
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
-;; All of PLUM's network commands are `#:inline-output` — see this plugin's
-;; README (Commands). `run-inline-output!` (core builtin) already raises on
-;; nonzero exit, naming `cmd` and the exit code, and denies git a credential
-;; prompt outright — see `hume_platform::process::run_inline_output`'s own
-;; doc — so no wrapper is needed here.
+;; See README.md's "Output model" and `hume_platform::process::run_inline_output`'s own doc.
 
-;;; git clone the GitHub repo named by "user/repo" `slug` into `dest`. `--`
-;;; guards against a slug-derived URL `git` might otherwise read as a flag.
+;;; `--` guards against a slug-derived URL `git` might otherwise read as a flag.
 (define (plum/clone-github! slug dest)
   (run-inline-output! "git" (list "clone" "--" (string-append "https://github.com/" slug ".git") dest)))
 
@@ -50,8 +43,7 @@
 
 ;; ── Batch runner ──────────────────────────────────────────────────────────────
 
-;;; Runs `thunk` on each of `names`, collecting errors rather than
-;;; aborting. Returns the count of successful calls.
+;;; Runs `thunk` on each of `names`, collecting errors rather than aborting.
 (define (plum/batch-run verb names thunk)
   (let loop ((names names) (ok 0) (errs '()))
     (cond
@@ -65,14 +57,7 @@
        ok)
       (else
        (let ((name (car names)))
-         ;; `displayln`, not `log!` — this line must paint while the batch is
-         ;; still running. `log!` only buffers until the whole command
-         ;; returns, then collapses into one `status_msg` slot (see
-         ;; `hume-editor/src/editor/message_log.rs`'s `report`), so every
-         ;; per-item line but the last would be silently lost. `displayln` is
-         ;; gated shut for a non-`#:inline-output` caller
-         ;; (`plum-cleanup-plugins`, `plum-cleanup-grammars`), which is fine —
-         ;; those finish instantly and keep their summary `log!` line below.
+         ;; `displayln`, not `log!` — see README.md's "Output model".
          (displayln (string-append "PLUM: " verb " " name))
          (with-handler
            (lambda (err)

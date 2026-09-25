@@ -34,8 +34,7 @@
 (register-hook! 'on-buffer-enter
   (lambda (pane) (git-diff/schedule-branch-refresh! pane)))
 
-;;; Drives the branch fetch in the moment `"steel:git-branch"` is placed —
-;;; see docs/pipeline.md's "Branch tracking".
+;;; Drives the branch fetch — see docs/pipeline.md's "Branch tracking (`branch.scm`)".
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "statusline")
@@ -59,13 +58,8 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-;;; `:toggle-git-signs`/`:toggle-inline-diff`'s shared completion universe:
-;;; every local branch, tag, and remote-tracking ref the focused buffer's
-;;; repo knows about — spawned async against its directory, same shape as
-;;; `git-diff/fetch-branch!` (branch.scm). Answers `'()` on any failure (no
-;;; path, not a repo, git missing) — a ref name is a nice-to-have
-;;; completion, never worth erroring the command line over.
-;;; See docs/architecture.md's "Ref handling" for the pane handling.
+;;; `:toggle-git-signs`/`:toggle-inline-diff`'s shared completion universe — see
+;;; docs/architecture.md's "Ref handling".
 (register-completion-source! "git-diff:refs"
   (lambda (id input cursor)
     (let ([path (buffer-path (focused-pane))])
@@ -81,8 +75,7 @@
                     '())))))))
   #:target 'minibuf #:match 'string)
 
-;;; Shared body for both toggles below — see docs/architecture.md's "Ref
-;;; handling" for the ref-argument contract.
+;;; Shared body for both toggles below — see docs/architecture.md's "Ref handling".
 (define (git-diff/run-toggle! pane key label arg)
   (let ([enabled?
          (if (string? arg)

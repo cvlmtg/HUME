@@ -18,9 +18,7 @@
 
 ;; ── Files picker ──────────────────────────────────────────────────────────────
 
-;;; Hoisted to a name (rather than an inline lambda) so it can be passed
-;;; twice: once as `on-select`, once into `stdlib/buffer-actions` — both
-;;; need the identical handler.
+;;; Hoisted to a name so it can be passed twice — see README.md's "Design decisions".
 (define (pickers/open-file! path)
   (when path
     (switch-to-buffer! (focused-pane) (open-buffer! path))))
@@ -32,7 +30,7 @@
                         #:actions (call! "stdlib/buffer-actions" pickers/open-file!))])
     (picker-source-spawn! token cmd args #:nul #t)))
 
-;;; Test seam — see README's "How it works".
+;;; Test seam — see README's "Design decisions".
 (define-command! "pickers/files-picker-with"
   "Internal: open the files picker for the given git/fd probe results."
   (lambda (pane git-repo? fd)
@@ -56,16 +54,14 @@
 ;;; NUL, `git status -z`'s entry separator/terminator.
 (define pickers/nul "\x0;")
 
-;;; `-z`'s trailing NUL means the final split fragment (and the sole fragment
-;;; of an empty, clean-tree output) is always "" — filtered out.
+;;; `-z`'s trailing NUL means the final split fragment is always "" — see README.md's "Git-modified files".
 (define (pickers/parse-git-status output)
   (map (lambda (entry) (cons entry (substring entry 3 (string-length entry))))
        (filter (lambda (s) (not (equal? s ""))) (split-many output pickers/nul))))
 
 (define (pickers/open-git-picker! pane root)
   (let* ([job-id #f]
-         ;; Hoisted to a name (see `pickers/open-file!`'s comment) so it can
-         ;; be passed twice — as `on-select` and into `stdlib/buffer-actions`.
+         ;; Hoisted to a name — see README.md's "Design decisions".
          [handler (lambda (path)
                     (if path
                         (switch-to-buffer! (focused-pane) (open-buffer! (path-join root path)))
@@ -88,7 +84,7 @@
                             (picker-close! #:token token)
                             (log! 'error (string-append "picker-git-modified: `git status` failed: " stderr)))))))))
 
-;;; Test seam — see README's "How it works".
+;;; Test seam — see README's "Design decisions".
 (define-command! "pickers/git-picker-with"
   "Internal: open the git-modified-files picker for the given repo root."
   (lambda (pane root)
@@ -109,9 +105,7 @@
   (let ([path (buffer-display-path pane)])
     (cons (or path (buffer-name pane)) pane)))
 
-;;; Hoisted to a name (see `pickers/open-file!`'s comment) so it can be
-;;; passed twice — as `on-select` and into `stdlib/buffer-actions`. See
-;;; README.md's "Buffers" for the pane it switches through.
+;;; Hoisted to a name — see README.md's "Design decisions" and "Buffers".
 (define (pickers/switch-to-buffer! target)
   (when target (switch-to-buffer! (focused-pane) target)))
 

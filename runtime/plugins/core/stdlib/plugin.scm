@@ -1,9 +1,7 @@
 ;;; core:stdlib
 
 ;; ── Selection helpers (internal) ────────────────────────────────────────────
-;;
-;; Selections are opaque (anchor head primary?) triples — go through these
-;; accessors, never car/cadr/caddr. Every helper passes #f straight through.
+;; Selections are opaque (anchor head primary?) triples — see README.md's "Selections".
 
 (define (stdlib/selection-anchor sel)
   (and sel (car sel)))
@@ -49,21 +47,17 @@
     (write-string content port)
     (close-output-port port)))
 
-;;; Idempotent, unlike Steel's own `delete-directory!` — a missing `dir` is
-;;; not an error.
+;;; Idempotent, unlike Steel's own `delete-directory!` — see README.md's "Filesystem and list search".
 (define (stdlib/delete-dir dir)
   (when (path-exists? dir)
     (delete-directory! dir)))
 
-;;; Idempotent, unlike Steel's own `delete-file!` — a missing `path` is not
-;;; an error.
+;;; Idempotent, unlike Steel's own `delete-file!` — see README.md's "Filesystem and list search".
 (define (stdlib/delete-file path)
   (when (path-exists? path)
     (delete-file! path)))
 
-;;; `read-dir` yields every entry, including stray files that sit alongside a
-;;; directory tree (`.install-lock`, `.DS_Store`) — the `is-dir?` filter
-;;; drops them.
+;;; `is-dir?` drops stray files alongside a directory tree — see README.md's "Filesystem and list search".
 (define (stdlib/list-subdirs dir)
   (filter (lambda (name) (is-dir? (path-join dir name)))
           (sort (map file-name (read-dir dir)) string<?)))
@@ -104,26 +98,13 @@
 
 ;; ── Picker buffer-placement actions ──────────────────────────────────────────
 
-;;; A false/no payload (an empty or not-yet-matching picker) means there is
-;;; nothing to place — skip the tab and call `handler` on it directly, the
-;;; same "pass #f straight through" contract every selection helper above
-;;; keeps, so a handler that treats #f as its own signal (cancelling an
-;;; in-flight async source, say) still runs.
+;;; A false/no payload skips the tab but still calls `handler` — see README.md's "Picker buffer-placement".
 (define (stdlib/with-tab handler)
   (lambda (payload)
     (when payload (call! "tab-new" (focused-pane)))
     (handler payload)))
 
-;;; Shared core for `with-vsplit`/`with-split`: skip `command` on a false
-;;; payload (see `with-tab`), and on a truthy one, call `handler` only if
-;;; `command` actually created a new pane. A too-small pane refuses the
-;;; split with a status message and no other effect — matching `:split`'s
-;;; own guard, which checks before opening its path argument rather than
-;;; opening it in the pane that stayed put — so `handler` (and whatever it
-;;; opens) is skipped too rather than silently replacing what the pane
-;;; already showed. `call!` on a native command returns `#t`/`#f` for exactly
-;;; this ("did the body do its job?"), so that's the success check directly —
-;;; no need to infer it from a side effect like `(panes)`'s count.
+;;; Shared core for `with-vsplit`/`with-split` — see README.md's "Picker buffer-placement".
 (define (stdlib/with-pane-command command handler)
   (lambda (payload)
     (if payload
@@ -154,14 +135,8 @@
 
 ;; ── Word tokenization ─────────────────────────────────────────────────────────
 
-;;; `(split-words str word-chars)`, but pulling `word-chars` from `pane`'s own
-;;; setting rather than asking the caller to fetch and thread it through
-;;; itself — the one derivation this buffer's word-chars value should ever
-;;; go through, so a plugin working with "this buffer's own concept of a
-;;; word" can't accidentally pass a stale or mismatched value. A caller with
-;;; a genuine reason to classify differently from `pane`'s own setting (text
-;;; that isn't this buffer's content at all, or another buffer's word-chars
-;;; on purpose) calls `split-words` directly instead.
+;;; `(split-words str word-chars)`, pulling `word-chars` from `pane`'s own setting —
+;;; see README.md's "Word tokenization".
 (define (stdlib/split-words pane str)
   (split-words str (get-buffer-option pane "word-chars")))
 

@@ -4,9 +4,7 @@
          git-diff/buffer-entry git-diff/entry-set! git-diff/ensure-entry!
          git-diff/toggle-flag! git-diff/cancel-job!)
 
-;;; Keyed by `(buffer-key pane)`, not `pane` itself — two panes on the same
-;;; buffer (a command's own pane vs. a hook's pane-less value) must resolve
-;;; to the same entry.
+;;; Keyed by `(buffer-key pane)`, not `pane` itself — see docs/architecture.md's "State (`state.scm`)".
 (define git-diff/*buffers* (box (hash)))
 
 ;;; SSOT for a buffer's starting shape.
@@ -48,8 +46,7 @@
     (git-diff/entry-set! pane key new?)
     new?))
 
-;;; Shared by `diff.scm`'s and `branch.scm`'s cancel functions — see
-;;; docs/architecture.md.
+;;; Shared by `diff.scm`'s and `branch.scm`'s cancel functions — see docs/architecture.md.
 (define (git-diff/cancel-job! pane key)
   (let ([entry (git-diff/buffer-entry pane)])
     (when entry

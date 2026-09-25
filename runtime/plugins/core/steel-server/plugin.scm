@@ -1,10 +1,6 @@
 ;;; core:steel-server
 
-;;; Directory of the generated host-globals file steel-language-server reads
-;;; (see lsp-home/hume-globals.scm) — #f when the runtime dir is unavailable
-;;; or the file wasn't staged. The existence check is load-bearing, not
-;;; defensive: the server panics at startup if STEEL_LSP_HOME names a
-;;; missing directory (it `read_dir`s it unconditionally, no fallback).
+;;; Directory of the generated host-globals file — see README.md's "Host globals".
 (define (steel-server/lsp-home)
   (let ([rt (runtime-dir)])
     (and rt

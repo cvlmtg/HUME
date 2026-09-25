@@ -319,10 +319,10 @@ impl ScriptingHost {
     /// Pre-register native command names as callable Steel bindings.
     ///
     /// For each name, evaluates `(define name (lambda args (%dispatch-command
-    /// "name" args)))` — makes bare `(move-left bid)` callable without
-    /// `(call! "move-left" bid)`, and variadic, so `(move-down bid 3)` /
-    /// `(move-down bid 0)` work too (count `0` = "no count typed", see
-    /// `parse_count_extend`). `bid` is always the first arg, same as
+    /// "name" args)))` — makes bare `(move-left pane)` callable without
+    /// `(call! "move-left" pane)`, and variadic, so `(move-down pane 3)` /
+    /// `(move-down pane 0)` work too (count `0` = "no count typed", see
+    /// `parse_count_extend`). `pane` is always the first arg, same as
     /// `%call-native!`'s own contract — this binding is a thin wrapper over
     /// the same dispatcher, not a separate calling convention.
     ///

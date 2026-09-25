@@ -215,12 +215,24 @@ macro_rules! builtins {
 // without a pane component for the same buffer passes `#:key (lambda (p .
 // _) (buffer-key p))` so both still coalesce.
 //
+// register-completion-source! — the bound identifier for its #:match
+// keyword's value is `match-kind`, not `match`: `match` is Steel's own
+// pattern-matching macro (steel-core's `match.scm`), and the reader can't
+// tell `[match 'fuzzy]` apart from a real `(match 'fuzzy)` invocation until
+// after macro expansion has already tried (and failed) to expand it. The
+// external keyword stays `#:match`; keyword name and bound identifier are
+// independent in Steel's `#:kw [name default]` syntax.
+//
 // picker!/live-picker! — two constructors over one Rust store
 // (hume-editor::editor::input_stack::picker::PickerSession): picker! stays a plain
 // items-plus-fuzzy-filter picker; live-picker! always drives an external
 // #:command builder and disables local fuzzy filtering entirely (see
 // PickerSession::rebuild_filtered's doc) — so "is this session live" is a
 // name a caller chooses, not a keyword's side effect.
+//
+// picker-source-spawn! and live-picker! share one `'(0)` literal for their
+// #:ok-exit-codes default (bound once, not inlined at each keyword default)
+// so the two can't drift apart.
 //
 // live-picker!'s wrapper owns the whole requery lifecycle by construction —
 // stop the running source, debounce, respawn via #:command — rather than
@@ -230,6 +242,18 @@ macro_rules! builtins {
 // still cancels whatever the previous non-empty keystroke armed, rather
 // than stranding a timer that fires later for a pattern the query box no
 // longer shows.
+//
+// The wrapper's with-handler cleanup (clear via picker-replace!, then
+// re-raise) wraps the debounced respawn only — never `spawn-for`'s direct
+// call for a non-empty seed #:query, which runs synchronously inside
+// whatever call stack invoked live-picker! and may already be inside a
+// caller's own with-handler (nesting that pattern corrupts Steel's VM stack,
+// see open_live_picker's doc, hume-scripting::host::ui). The debounced call
+// has no such caller — it's dispatched fresh by the timer wheel — so a
+// #:command raise there (a bad builder, or picker-source-spawn! itself
+// failing to spawn) can't otherwise reach picker-replace!, leaving the
+// previous pattern's rows stranded under a permanently "in flight" marker
+// (PickerSession::requery_armed).
 //
 // The previous pattern's rows stay on screen through the whole stop/
 // debounce/respawn gap — clearing immediately, the first design, produced

@@ -238,7 +238,7 @@ pub(super) fn begin_insert_session_preserving_register(
 /// Exit Insert mode: truncates the `Insert` layer, running
 /// [`tear_down_insert`] via `EditorState::tear_down`. A no-op if no `Insert`
 /// layer is open — `cmd_exit_insert` is a registered mappable command, so
-/// `(call! "exit-insert" bid)` can reach here from any mode (a hook, a timer, an
+/// `(call! "exit-insert" pane)` can reach here from any mode (a hook, a timer, an
 /// async LSP callback), not only from a key path that already proved
 /// `Insert` is current. Truncating `state.input.mode_layer()` unconditionally
 /// used to cancel whatever mode layer happened to be current — a `prompt!`
