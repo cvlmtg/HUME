@@ -292,6 +292,44 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
     );
 }
 
+/// `stdlib/write-file` must replace a file's entire content, not just
+/// overwrite its leading bytes — writing a shorter string over a longer
+/// existing file must not leave the old tail behind.
+///
+/// Independent oracle: the file is read back with `std::fs::read_to_string`
+/// on the Rust side, not through any Steel port primitive `write-file`
+/// itself might share a bug with.
+#[test]
+fn core_stdlib_write_file_truncates_existing_content() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let scan_dir = safe_tempdir();
+    let target = scan_dir.path().join("target.txt");
+    let path = target.to_string_lossy().replace('\\', "\\\\");
+
+    let assertions = format!(
+        r#"
+(call! "stdlib/write-file" "{path}" "long-content")
+(call! "stdlib/write-file" "{path}" "short")
+"#
+    );
+
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(&assertions, &mut ih)
+    };
+    assert!(
+        result.is_ok(),
+        "stdlib/write-file assertions must pass: {result:?}"
+    );
+
+    let written = std::fs::read_to_string(&target).unwrap();
+    assert_eq!(
+        written, "short",
+        "stdlib/write-file must truncate, not leave the previous content's tail behind"
+    );
+}
+
 /// `stdlib/run` must cover all three subprocess outcomes it promises:
 /// success with captured stdout, a nonzero exit with captured stderr, and a
 /// spawn failure (nonexistent binary) reporting exit-code `#f` with the
