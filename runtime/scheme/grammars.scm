@@ -104,8 +104,8 @@
                                    (grammar-output-path name)
                                    (grammar-source-symbol name)
                                    hl
-                                   (if (path-exists? inj) inj #f)
-                                   (if (path-exists? to) to #f)))))))
+                                   #:injections (if (path-exists? inj) inj #f)
+                                   #:textobjects (if (path-exists? to) to #f)))))))
     (installed-grammars)))
 
 (when (data-dir)

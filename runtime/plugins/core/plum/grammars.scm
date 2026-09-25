@@ -141,8 +141,8 @@
     (displayln (string-append "Compiling grammar for " name "..."))
     (compile-grammar! build-dir out-path)
     (register-grammar! name out-path symbol hl-path
-                       (plum/try-fetch-injections! name)
-                       (plum/try-fetch-textobjects! name))))
+                       #:injections (plum/try-fetch-injections! name)
+                       #:textobjects (plum/try-fetch-textobjects! name))))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

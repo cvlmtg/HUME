@@ -116,47 +116,44 @@ For a grammar that isn't in the catalog — a private or experimental tree-sitte
   "/path/to/highlights.scm")
 ```
 
-The fields are, in order:
+The required fields, in order:
 - language name (define it with `define-language!` first)
 - path to the compiled library
 - the C symbol that library exposes (each grammar's repo documents this)
 - a highlight query file
-- optionally, an injections query file
-- optionally, a textobjects query file.
 
-If `my-lang` embeds other languages (like Markdown's fenced code blocks), add its injections query as a fifth argument:
+Two optional keyword arguments follow, in either order, and either or both can be omitted:
 
-```scheme
-(register-grammar! "my-lang"
-  "/path/to/my_grammar.so"
-  "tree_sitter_my_lang"
-  "/path/to/highlights.scm"
-  "/path/to/injections.scm")
-```
-
-If it also defines structural text objects and navigation (functions, classes, arguments, …), add its textobjects query as a sixth:
+If `my-lang` embeds other languages (like Markdown's fenced code blocks), pass its injections query with `#:injections`:
 
 ```scheme
 (register-grammar! "my-lang"
   "/path/to/my_grammar.so"
   "tree_sitter_my_lang"
   "/path/to/highlights.scm"
-  "/path/to/injections.scm"
-  "/path/to/textobjects.scm")
+  #:injections "/path/to/injections.scm")
 ```
 
-A language with textobjects but no injections passes `#f` for the fifth argument to reach the sixth:
+If it also defines structural text objects and navigation (functions, classes, arguments, …), pass its textobjects query with `#:textobjects` — with or without `#:injections`:
 
 ```scheme
 (register-grammar! "my-lang"
   "/path/to/my_grammar.so"
   "tree_sitter_my_lang"
   "/path/to/highlights.scm"
-  #f
-  "/path/to/textobjects.scm")
+  #:textobjects "/path/to/textobjects.scm")
 ```
 
-Omit both trailing arguments for a language with nothing to offer there.
+```scheme
+(register-grammar! "my-lang"
+  "/path/to/my_grammar.so"
+  "tree_sitter_my_lang"
+  "/path/to/highlights.scm"
+  #:injections "/path/to/injections.scm"
+  #:textobjects "/path/to/textobjects.scm")
+```
+
+Omit both keywords for a language with nothing to offer there.
 
 ## Manage installed grammars
 

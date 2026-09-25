@@ -169,14 +169,15 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
         .clone()
 }
 
-/// A `register-grammar!` call passing `#f` for `injections` and a real path
-/// for `textobjects` — the motivating shape: a language with structural
-/// objects but nothing embedded — populates the bundle's `textobjects` and
-/// leaves `injections` `None`.
+/// A `register-grammar!` call omitting `#:injections` and passing a real
+/// path for `#:textobjects` — the motivating shape: a language with
+/// structural objects but nothing embedded — populates the bundle's
+/// `textobjects` and leaves `injections` `None`.
 ///
-/// Flip: if the Steel wrapper dropped or swapped the 5th/6th positional
-/// argument it forwards to `%register-grammar!`, this would see `injections`
-/// populated instead (or `textobjects` still `None`).
+/// Flip: if the Steel wrapper dropped or swapped the `#:injections`/
+/// `#:textobjects` keyword argument it forwards to `%register-grammar!`,
+/// this would see `injections` populated instead (or `textobjects` still
+/// `None`).
 #[test]
 fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
     require_grammars(&["json"]);
@@ -185,7 +186,7 @@ fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
     let to_path = tmp.path().join("textobjects.scm");
     std::fs::write(&to_path, "(pair) @entry.inside\n").unwrap();
     let body = format!(
-        r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" #f "{}")"#,
+        r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" #:textobjects "{}")"#,
         parser.display(),
         hl.display(),
         to_path.display(),
@@ -202,8 +203,8 @@ fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
     );
 }
 
-/// The 5th positional argument (`injections`) still populates `injections`
-/// when `textobjects` isn't supplied at all — the sibling half of
+/// `#:injections` alone still populates `injections` when `textobjects`
+/// isn't supplied at all — the sibling half of
 /// `register_grammar_textobjects_only_populates_textobjects_not_injections`.
 #[test]
 fn register_grammar_injections_only_populates_injections() {
@@ -217,7 +218,7 @@ fn register_grammar_injections_only_populates_injections() {
     )
     .unwrap();
     let body = format!(
-        r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" "{}")"#,
+        r#"(register-grammar! "json" "{}" "tree_sitter_json" "{}" #:injections "{}")"#,
         parser.display(),
         hl.display(),
         inj_path.display(),
@@ -231,6 +232,44 @@ fn register_grammar_injections_only_populates_injections() {
     assert!(
         bundle.textobjects.is_none(),
         "an omitted textobjects argument must leave the bundle's textobjects None"
+    );
+}
+
+/// Two `register-grammar!` calls with *differently-shaped* keyword usage —
+/// one omitting both `#:injections`/`#:textobjects` entirely, the other
+/// passing only `#:injections` — compiled as one program (one `init.scm`).
+/// This is the real-code shape closest to docs/LESSONS.md L12's second
+/// trigger (differently-shaped keyword calls to the same `#:kw`-sugared
+/// function within one compiled unit); `init_scripting` compiles each file
+/// separately, so the risk — if any remains — is scoped to calls within a
+/// single file, exactly what this test constructs.
+///
+/// Flip: if the miscompile were still present, `eval_init` would return
+/// `Err` with a `FreeIdentifier` message instead of registering the
+/// grammar.
+#[test]
+fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() {
+    require_grammars(&["json"]);
+    let (parser, hl) = grammar_fixture("json");
+    let tmp = safe_tempdir();
+    let inj_path = tmp.path().join("injections.scm");
+    std::fs::write(
+        &inj_path,
+        r#"((_) @injection.content (#set! injection.language "markdown"))"#,
+    )
+    .unwrap();
+    let body = format!(
+        r#"(register-grammar! "json" "{parser}" "tree_sitter_json" "{hl}")
+           (register-grammar! "json" "{parser}" "tree_sitter_json" "{hl}" #:injections "{inj}")"#,
+        parser = parser.display(),
+        hl = hl.display(),
+        inj = inj_path.display(),
+    );
+
+    let bundle = attach_json_via_init(&body);
+    assert!(
+        bundle.injections.is_some(),
+        "the second call (last registration wins) must be the one that took effect"
     );
 }
 

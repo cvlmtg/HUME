@@ -39,8 +39,9 @@ numbers directly.
   actually segments text before stating it as fact.
 - **L11** — A lock guarding process-global state binds implicit *readers* too;
   a subprocess spawned by unqualified name reads `PATH`.
-- **L12** — Steel 0.8.2 miscompiles nested keyword-arg calls. Prefer a positional
-  `define-syntax` macro for any form users call inside `define-command!`.
+- **L12** — Steel 0.8.2 miscompiled nested keyword-arg calls; fixed as of 0.8.3,
+  verified with a real build. Don't trust a source-diff inference over an
+  actual test run when re-checking a third-party interpreter bug.
 - **L13** — A subagent's *placement* recommendation is a design decision, not
   research — re-derive it against the project's ownership rules.
 - **L14** — Check a crate's latest release before writing, and especially before
@@ -665,40 +666,59 @@ no warning. This means the prevention rule below (spell out every keyword at
 a nested call site) is not a complete safety net for `#:kw`-style call syntax
 in general — it covers only the first trigger.
 
-**Resolution:** `register-grammar!` was reverted to a pure positional
-`define-syntax` macro (three arms, extending the pre-`cafc071a` two-arm
-form by one more optional trailing argument for the textobjects path) — no
-`#:kw` sugar and no bare `#:keyword val` tokens in its call syntax at all,
-which is immune to both triggers simultaneously rather than working around
-either one. The two test call sites above no longer need to spell out
-anything explicit; both keywords were dropped along with the sugar. See
-`runtime/scheme/prelude.scm` and `user-manual/docs/syntax-highlighting.md`.
+**Original resolution (2026-09-02):** `register-grammar!` was reverted to a
+pure positional `define-syntax` macro (three arms, extending the
+pre-`cafc071a` two-arm form by one more optional trailing argument for the
+textobjects path) — no `#:kw` sugar and no bare `#:keyword val` tokens in
+its call syntax at all, which is immune to both triggers simultaneously
+rather than working around either one.
 
-**Prevention rule:** A `#:kw`-sugared Steel function's call site should
-spell out every keyword explicitly when the call itself is nested inside
-another keyword-arg call's argument position (a lambda passed to
+**Original prevention rule:** a `#:kw`-sugared Steel function's call site
+should spell out every keyword explicitly when the call itself is nested
+inside another keyword-arg call's argument position (a lambda passed to
 `define-command!`, `debounce`, a picker callback, etc.) — omission is safe
-at a top-level or otherwise unnested call site, *for that one trigger only*
-(see the second trigger above, which this does not prevent). This is a
-workaround for a third-party interpreter limitation, not a HUME style rule
-to apply blindly: for a form users can call from inside `define-command!`,
-prefer a pure positional `define-syntax` macro over `#:kw` sugar outright,
-as `register-grammar!` now does, rather than relying on callers to spell
-keywords out correctly. Re-check both findings against a newer `steel-core`
-release before assuming either still applies.
+at a top-level or otherwise unnested call site, *for that one trigger only*.
+This is a workaround for a third-party interpreter limitation, not a HUME
+style rule to apply blindly.
 
-**Re-checked against steel-core 0.8.3 (2026-09-26):** a faithful repro of
-trigger 1 (HUME's own `define-command!`/`register-grammar!` shape, keywords
-omitted at the nested call site, run directly against a bare `Engine`) no
-longer raises `FreeIdentifier` — the underlying miscompilation looks fixed.
-Trigger 2 (two differently-shaped keyword calls to a `. rest`-scanning
-function in one file) was not independently re-verified. The prevention rule
-above stays: `register-grammar!` was already reverted to a positional macro
-and isn't going back just because trigger 1 no longer reproduces, and the
-rule still protects against trigger 2.
+**Revised resolution (2026-09-26), superseding the above:** `register-grammar!`
+is back to a `#:kw`-sugared `define` (`cafc071a`'s shape), verified for real
+rather than by source-diff inference — reverted in the actual repo, then
+built and tested against real steel-core 0.8.3, not a synthetic
+reconstruction. Two things made this safe to re-check:
 
-**Files:** `hume-editor/src/editor/tests/unix/scripting_grammar.rs`
-(all affected call sites), `runtime/scheme/prelude.scm` (`register-grammar!`).
+1. Trigger 2 (a plain `. rest` function, no `#:kw` sugar at all, that scans
+   `rest` at runtime for keyword markers) was found in an *intermediate
+   candidate* that was never shipped (`0a7bd62d`'s own message calls it
+   "candidate B," tried and rejected before landing on the positional macro).
+   Reverting to the `#:kw`-sugared form goes back to *candidate A* — which
+   only ever hit trigger 1 — so trigger 2, as originally described, doesn't
+   even apply to the shape being restored.
+2. `register_grammar_command_mode_attaches_and_sweeps` and
+   `install_real_json_grammar_e2e`
+   (`hume-editor/src/editor/tests/unix/scripting_grammar.rs`) are trigger 1's
+   exact real shape unchanged — nested inside `define-typed-command!`'s
+   (itself `#:kw`-sugared) lambda, keywords omitted — and a new test,
+   `register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles`,
+   covers the closest real-code equivalent of trigger 2 for the restored
+   shape (two `register-grammar!` calls with different keyword-omission
+   shapes in one compiled `init.scm`). All three passed, along with the real
+   production call sites in `runtime/scheme/grammars.scm` and
+   `runtime/plugins/core/plum/grammars.scm` (the latter exercised end-to-end
+   by `plum_install_grammar_recovers_from_stale_source_dir_on_first_try`,
+   `hume-editor/src/editor/tests/unix/injections_editor.rs`).
+
+The prevention rule above is retired for `register-grammar!` specifically —
+it's `#:kw`-sugared again, call sites omit keywords freely, see
+`runtime/scheme/prelude.scm` and `user-manual/docs/syntax-highlighting.md`.
+The general caution (nested keyword omission was a real steel-core 0.8.2 bug
+class) stays here as history; re-verify empirically, the way this revision
+did, before relying on it being fixed in some future steel-core version too.
+
+**Files:** `hume-editor/src/editor/tests/unix/scripting_grammar.rs`,
+`hume-editor/src/editor/tests/unix/injections_editor.rs`,
+`runtime/scheme/prelude.scm`, `runtime/scheme/grammars.scm`,
+`runtime/plugins/core/plum/grammars.scm`.
 
 ---
 
@@ -774,10 +794,10 @@ changelog for a fix first. If one exists, upgrade and delete the workaround
 instead of building on it. This applies with extra force the second time: a
 workaround already in the tree is a standing invitation to keep patching it
 locally rather than to ask whether it's still needed, and every hour spent
-hardening one that's since been fixed upstream is doubly wasted. Cf. L12's
-closing note ("re-check both findings against a newer `steel-core` release
-before assuming either still applies") — same rule, this time missed at the
-point of *extending* a workaround rather than merely writing one.
+hardening one that's since been fixed upstream is doubly wasted. Cf. L12,
+which is this same rule applied correctly on a later pass — the register-grammar!
+workaround got re-checked against 0.8.3 with a real build rather than
+assumed still necessary, and turned out to be removable.
 
 **Files:** `hume-platform/src/unix.rs`, `hume-platform/src/lib.rs`,
 `hume-editor/src/lib.rs`, `hume-platform/Cargo.toml` (and the other three

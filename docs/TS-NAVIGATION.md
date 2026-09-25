@@ -46,7 +46,7 @@ architecture and the *why* behind it, not a build log.
 | Extend after a Move result | Union with the running selection, not a plain anchor-keep | A Move result's anchor sits at the object's *end* (reversed, for the head-at-start rule above); a plain "keep the anchor, move the head" replacement — the convention elsewhere in `hume-ops` — would drop everything between the object's near edge and a newly found span, or shrink the selection when the found span is nested inside what's already selected. Taking the min/max of the current selection and the found span with every step fixes both, self-correcting the same way `apply_word_select_extend`'s own union-based growth does. |
 | Navigation's default keys | `g <key>`/`g <KEY>` (lowercase next, uppercase previous), reusing each kind's `m i`/`m a` key | Slots into the `g` goto prefix — a structural jump is a goto like any other. Two kinds' letters diverge from Helix's own (`test` `T`→`u`, `entry` `e`→`v`) because deriving "previous" by uppercasing requires every key lowercase and no two uppercased forms to collide; `T` had no lowercase form, and `e` collides with `goto-last-line`. See `keymap/defaults::build_goto_trie` and `STRUCTURAL_OBJECTS`'s doc comment. |
 | `m i a` / `m a a` | One command family, structure-aware | `inner-argument`/`around-argument` use the grammar's `parameter` object when the buffer has one, the lexical scan otherwise, and HUME's own separator rule for "around" in both cases. There is no separate `parameter` object family. |
-| `register-grammar!` call syntax | Pure positional, no keyword arguments | A `#:kw`-sugared form was tried and reverted: Steel 0.8.2 miscompiles a keyword-arg call nested inside another (`define-command!`), and a keyword-free rest-arg workaround has its own, independent miscompile trigger. Positional-only sidesteps both — see `docs/LESSONS.md` L12. |
+| `register-grammar!` call syntax | `#:injections`/`#:textobjects` keyword arguments | A `#:kw`-sugared form originally hit a Steel 0.8.2 miscompile (a keyword-arg call nested inside another, e.g. `define-command!`) and was reverted to positional-only; restored once fixed on 0.8.3, verified with a real build — see `docs/LESSONS.md` L12. |
 
 ## Query layer (`hume-treesitter`)
 
@@ -216,8 +216,6 @@ Recorded here so they are not re-proposed:
 - *Preferring a lexical inner span nested inside a tree parameter span.* A second rule so `2` stays
   selectable inside `foo([1, 2, 3])`; `m i v` already covers members, and one rule is easier to
   predict.
-- *Keyword arguments (`#:injections`/`#:textobjects`) for `register-grammar!`.* Tried, reverted —
-  see the Decisions table above and `docs/LESSONS.md` L12.
 
 ## Future work
 
