@@ -85,7 +85,7 @@
               (git-diff/word-hunks->new-side-spans line-offset word-hunks)))))
 
 ;;; One hunk's removed old-side lines -> `(virtual-lines . spans)` — see docs/rendering.md
-;;; for the paired/unpaired split and why `all` guards the empty-`paired` case.
+;;; for the paired/unpaired split.
 (define (git-diff/hunk-old-lines->virtual+spans pane old-lines new-lines new-start paired-count anchor)
   (let* ([offsets (if (> paired-count 0)
                        (git-diff/paired-line-offsets pane new-start new-lines paired-count)
@@ -101,7 +101,7 @@
          [unpaired (map (lambda (old-line)
                           (cons (git-diff/plain-virtual-line old-line anchor) '()))
                         (list-tail old-lines paired-count))]
-         [all (if (null? paired) unpaired (append paired unpaired))])
+         [all (append paired unpaired)])
     (cons (map car all) (apply append (map cdr all)))))
 
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!` — see docs/rendering.md.

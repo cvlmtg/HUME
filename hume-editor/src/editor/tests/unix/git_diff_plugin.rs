@@ -559,12 +559,13 @@ fn inline_pure_addition_has_no_virtual_line_only_tint() {
 
 #[test]
 fn inline_pure_deletion_over_four_lines_renders_every_ghost_line() {
-    // Real-world regression: a pure-deletion hunk of more than 4 lines
-    // showed its gutter mark but no ghost lines. Root cause: steel-core
-    // 0.8.2's `append` silently drops every element past the 4th when its
-    // *first* argument is the literal empty list — `render.scm`'s unpaired
-    // lines hit exactly that shape (`paired` is always `'()` for a pure
-    // deletion). See `git-diff/hunk-old-lines->virtual+spans`'s doc.
+    // Real-world regression: on steel-core 0.8.2, a pure-deletion hunk of
+    // more than 4 lines showed its gutter mark but no ghost lines, because
+    // `append` silently dropped every element past the 4th when its first
+    // argument was the literal empty list — `render.scm`'s unpaired lines
+    // hit exactly that shape (`paired` is always `'()` for a pure
+    // deletion). Fixed upstream as of steel-core 0.8.3; kept as end-to-end
+    // coverage of the render path, not as a workaround's own pin.
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
 

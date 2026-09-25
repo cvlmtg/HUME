@@ -155,11 +155,6 @@ to the *user*, not by how verbose the plugin author wants to be:
   through an outer `with-handler` corrupts Steel 0.8.3's VM continuation stack. If you
   need to guarantee cleanup around a call that can raise, guard only the cleanup step, and
   let the original raise propagate uncaught.
-- **`(apply append (list '() long-list))` silently drops entries past the 4th.** A direct
-  2-argument `append` call whose *first* argument is the literal empty list is affected;
-  every other shape (a non-empty first argument, `append` with more arguments) is fine.
-  Guard by skipping the call when the first list is empty, rather than always taking the
-  general path. This is a steel-core VM bug, not something a plugin can fix locally.
 - **JSON `null` decodes to Steel `void`, not `#f`.** Check `(void? res)` for "no results"
   from an LSP response; a bare `(not res)` check will not catch it.
 - **Lists are linked, not arrays.** Walk with `car`/`cdr`, never `list-ref` in a loop —

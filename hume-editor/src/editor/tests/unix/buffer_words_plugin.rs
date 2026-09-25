@@ -583,21 +583,15 @@ fn closing_a_buffer_drops_its_index() {
     }
 }
 
-/// Regression test for the steel-core 0.8.2 `append` bug
-/// (runtime/plugins/core/git-diff/render.scm:99-113 has the full
-/// explanation): a direct 2-argument `(append fwd-lines bwd-lines)` silently
-/// drops every `bwd-lines` entry past the 4th once `fwd-lines` is the
-/// literal empty list — which happens on every tick once the forward side
-/// exhausts the buffer, the common case once the cursor is near the end.
+/// A word past the point where the forward scan exhausts the buffer must
+/// still be found by the backward scan — the common case once the cursor
+/// is near the end.
 ///
 /// `a_word_many_lines_past_the_cursor_is_offered` doesn't exercise this: it
-/// anchors at line 0, where the forward side never empties out and the
-/// backward side never has anything to scan, so `append`'s first argument
-/// is always non-empty there. This test anchors at the buffer's *last*
-/// line instead — the forward side exhausts on tick 1, so every later tick
-/// hits exactly the buggy shape — and places the target word squarely past
-/// the 4th line of one of the backward ticks' own windows (`"lines" 10`,
-/// so a dropped word is at a fixed, predictable offset).
+/// anchors at line 0, where the forward side never empties out. This test
+/// anchors at the buffer's *last* line instead — the forward side exhausts
+/// on tick 1 — and places the target word inside one of the backward
+/// ticks' own windows (`"lines" 10`), at a fixed, predictable offset.
 #[test]
 fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     let tmp = safe_tempdir();

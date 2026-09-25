@@ -108,16 +108,3 @@ renderer(s), so every caller that needs to paint or clear a rendering (`diff.scm
 `apply-hunks!` on a live refresh, `plugin.scm`'s toggle command on enable/disable) goes
 through it rather than re-stating the mapping.
 
-## Implementation notes
-
-- **`hunk-old-lines->virtual+spans`'s `all` skips `(append paired unpaired)` when
-  `paired` is empty** (a pure deletion, the common case) rather than always taking that
-  path: steel-core 0.8.2 silently drops every `unpaired` entry past the 4th when the
-  *first* argument to a direct 2-argument `append` call is the literal empty list —
-  confirmed by reverting the guard and re-running
-  `inline_pure_deletion_over_four_lines_renders_every_ghost_line`
-  (`hume-editor/src/editor/tests/unix/git_diff_plugin.rs`), which fails without it. Every
-  other `apply append` join in this file is unaffected — checked the same way, by forcing
-  an analogous empty-first-element shape through it — since only the direct 2-argument
-  form carries the bug. A VM bug, not fixable here; see the
-  [core plugins index](../../README.md#steel-pitfalls-worth-knowing-before-you-hit-them).
