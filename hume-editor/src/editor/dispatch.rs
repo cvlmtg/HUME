@@ -42,16 +42,17 @@ impl Editor {
     /// Dot-repeat replay bypasses this entirely — it calls
     /// [`commands::run_body`] directly.
     pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
-        let is_steel = matches!(
-            &cmd,
-            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. }
-        );
-        if !is_steel {
-            // Native path — a keypress always acts at the focused pane.
-            let target = commands::Target::Focused(commands::FocusedPane::current(&self.state));
-            commands::run(&mut self.state, &mut self.view, cmd, target, ctx);
-            return;
-        }
+        // Native path — a keypress always acts at the focused pane. `Err`
+        // hands `cmd` back unbound for a Steel-backed/Lazy command, which
+        // the path below dispatches instead.
+        let fp = commands::FocusedPane::current(&self.state);
+        let cmd = match commands::BoundCommand::focused(cmd, fp) {
+            Ok(bound) => {
+                commands::run(&mut self.state, &mut self.view, bound, ctx);
+                return;
+            }
+            Err(cmd) => cmd,
+        };
 
         // Steel path — composed from shared step functions.
         let meta = cmd.meta();

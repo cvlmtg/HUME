@@ -117,21 +117,21 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
     }
 }
 
-// Two constructors, one per `TargetCategory` — a call site names its
-// command's category by which one it calls, and the compiler rejects a
+// Two constructors, one per `EditorCmdBody` variant — a call site names its
+// command's shape by which one it calls, and the compiler rejects a
 // function pointer of the wrong shape (see `EditorCmdBody`'s own doc). No
 // bare `ecmd` that takes a pre-built `EditorCmdBody`: that would let a
-// registration build the enum value without ever naming its category at the
-// call site, the one thing this four-way split exists to force.
+// registration build the enum value without ever naming its shape at the
+// call site, the one thing this two-way split exists to force.
 
 /// A command needing any pane showing the target buffer — not necessarily
-/// the focused one. See [`crate::editor::registry::TargetCategory::Pane`].
+/// the focused one. See [`crate::editor::registry::EditorCmdBody::Pane`].
 pub(super) fn ecmd_pane(name: &'static str, doc: &'static str, fun: PaneCmdFn) -> EditorCmdBuilder {
     ecmd_builder(name, doc, EditorCmdBody::Pane(fun))
 }
 
 /// A command needing the *focused* pane to show the target buffer. See
-/// [`crate::editor::registry::TargetCategory::FocusedPane`].
+/// [`crate::editor::registry::EditorCmdBody::FocusedPane`].
 pub(super) fn ecmd_focused(
     name: &'static str,
     doc: &'static str,

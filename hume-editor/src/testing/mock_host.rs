@@ -312,8 +312,8 @@ impl CommandHost for MockHost {
         register: Option<char>,
     ) -> Result<bool, String> {
         // Unlike `EditorHostImpl::run_command_sync`, this mock has no pane
-        // model at all, so it can't resolve `pane` against a command's
-        // `TargetCategory` the way the real host does — it accepts and
+        // model at all, so it can't resolve `pane` against a command's own
+        // target requirement the way the real host does — it accepts and
         // records any `pane` unconditionally. Resolution (whether `pane`
         // names a live pane, the focused pane, or is out of reach) is the
         // real host's job; a test that needs to assert on a resolution

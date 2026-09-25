@@ -166,13 +166,14 @@ impl Editor {
                 // `apply_doc_edit_grouped` when a group is open, so no special-casing
                 // is needed here.
                 if let MappableCommand::Edit { .. } = reg_cmd {
-                    let target =
-                        commands::Target::Focused(commands::FocusedPane::current(&self.state));
+                    let fp = commands::FocusedPane::current(&self.state);
+                    let Ok(bound) = commands::BoundCommand::focused(reg_cmd, fp) else {
+                        unreachable!("just matched MappableCommand::Edit above, which is native")
+                    };
                     commands::run_body(
                         &mut self.state,
                         &mut self.view,
-                        reg_cmd,
-                        target,
+                        bound,
                         &crate::editor::dispatch::CmdCtx {
                             count: Some(1),
                             extend: false,

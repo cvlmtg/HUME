@@ -1,6 +1,6 @@
 //! `EditorHostImpl::run_command_sync` resolving `pane` against a native
-//! command's `TargetCategory` — the feature `commands::Target::resolve`/
-//! `commands::run` implement. `events.rs`'s
+//! command's own target requirement — the feature
+//! `commands::BoundCommand::resolve`/`commands::run` implement. `events.rs`'s
 //! `on_buffer_save_native_call_*` tests cover the same feature through a
 //! Steel hook end to end; these drive `run_command_sync` directly via
 //! `live_host!` for tighter per-category coverage.

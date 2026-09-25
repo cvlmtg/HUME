@@ -278,11 +278,13 @@ impl Editor {
                 .get_mappable(step.command.as_ref())
                 .cloned()
                 .expect("a dot-repeat selection-recipe step always names a native command");
+            let Ok(bound) = commands::BoundCommand::focused(cmd, fp) else {
+                unreachable!("a dot-repeat selection-recipe step always names a native command")
+            };
             commands::run_body(
                 &mut self.state,
                 &mut self.view,
-                cmd,
-                commands::Target::Focused(fp),
+                bound,
                 &CmdCtx {
                     count: Some(step.count),
                     extend: step.extend,
@@ -324,11 +326,13 @@ impl Editor {
                 // Steel arm above (which receives `action.char_arg` as an
                 // explicit parameter instead) never leaves it dangling.
                 self.state.pending_char = action.char_arg;
+                let Ok(bound) = commands::BoundCommand::focused(edit_cmd, fp) else {
+                    unreachable!("the SteelBacked/Lazy arm above already matched separately")
+                };
                 commands::run_body(
                     &mut self.state,
                     &mut self.view,
-                    edit_cmd,
-                    commands::Target::Focused(fp),
+                    bound,
                     &CmdCtx {
                         count: Some(count),
                         extend: false,

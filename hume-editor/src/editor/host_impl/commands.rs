@@ -174,21 +174,23 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
-        if !cmd.is_native() {
-            return Err(format!(
-                "{name} is not a native command — use call! instead of call-native!"
-            ));
-        }
-        // Resolve `pane` against `cmd`'s own `TargetCategory` — see
-        // `commands::Target::resolve`. Resolved *before* arming the register
-        // prefix, so a refusal here leaves no prefix armed behind it.
-        let target = crate::editor::commands::Target::resolve(
-            self.state,
-            self.view,
-            pane,
-            cmd.target_category(),
-        )
-        .map_err(|e| format!("'{name}': {e}"))?;
+        // Resolve `cmd` against `pane`, per `cmd`'s own body — see
+        // `commands::BoundCommand::resolve`. Resolved *before* arming the
+        // register prefix, so a refusal here leaves no prefix armed behind
+        // it.
+        let bound = match crate::editor::commands::BoundCommand::resolve(
+            self.state, self.view, cmd, pane,
+        ) {
+            Ok(bound) => bound,
+            Err(crate::editor::commands::BindError::NotNative) => {
+                return Err(format!(
+                    "{name} is not a native command — use call! instead of call-native!"
+                ));
+            }
+            Err(crate::editor::commands::BindError::Target(e)) => {
+                return Err(format!("'{name}': {e}"));
+            }
+        };
         // Arm the register prefix so register-aware commands (yank, delete,
         // paste-after, …) route to the right destination.
         if let Some(r) = register {
@@ -198,12 +200,11 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         // Delegate to the shared pipeline — all bookkeeping (paste session, jump
         // list, dot-repeat) lives there so the sync path is identical to the
         // keypress path, except that a target other than the focused pane
-        // skips the focus-bound steps (see `commands::Target::focused`).
+        // skips the focus-bound steps.
         let ran = crate::editor::commands::run(
             self.state,
             self.view,
-            cmd,
-            target,
+            bound,
             crate::editor::dispatch::CmdCtx {
                 // `count` came from `parse_count_extend`, which decodes a
                 // Steel-side count of 0 to `None` — the script's way of asking

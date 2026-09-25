@@ -9,42 +9,11 @@ use hume_engine::pipeline::EngineView;
 use hume_ops::{MotionMode, WordCtx};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 
-// ── Native command target category ───────────────────────────────────────────
-
-/// Which pane an [`EditorCmd`](MappableCommand::EditorCmd) body acts through
-/// — the compiler-enforced answer to "can `(call! \"cmd\" pane)` act on a
-/// pane other than the focused one". Motion/Selection/Edit have no field for
-/// this: every one of them is [`Self::Pane`], since a pure
-/// `fn(&BufferText, SelectionSet, ...)`/`fn(BufferText, SelectionSet) -> ...`
-/// body has no way to reach anything *but* the buffer it's handed.
-///
-/// Two categories, not more: every native command acts through a pane — even
-/// one that reads only its buffer, since selections and the search cursor
-/// live per (pane, buffer) — and every command that moves focus, changes the
-/// focused pane's buffer, or touches focus-bound state (a mode layer, the
-/// sticky Extend flag, an Insert/paste session) acts on the focus by
-/// definition. Requiring its handle to *be* the focus makes an async caller
-/// state that assumption instead of silently acting on whatever is focused
-/// when it runs.
-///
-/// One variant per [`EditorCmdBody`] arm — `EditorCmdBuilder::reg`
-/// (`registry/defaults/builder.rs`) derives this from the very
-/// `EditorCmdBody` value a registration passes, so the two can never
-/// disagree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum TargetCategory {
-    /// Needs any pane showing the target buffer — not necessarily focus.
-    Pane,
-    /// Needs the *focused* pane to show the target buffer (an open Insert or
-    /// paste session, a pane-focus/split/tab command, a mode layer, the
-    /// sticky Extend flag — state that only ever exists on the pane the user
-    /// is looking at).
-    FocusedPane,
-}
+// ── Native command target shape ──────────────────────────────────────────────
 
 /// Function pointer for an [`EditorCmdBody::Pane`] handler: acts through `t`,
-/// a pane proven (by [`crate::editor::commands::Target`]'s resolution) to
-/// show its buffer — not necessarily the focused pane.
+/// a pane proven live and showing its buffer — not necessarily the focused
+/// pane.
 pub(in crate::editor) type PaneCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
@@ -64,27 +33,35 @@ pub(in crate::editor) type FocusedCmdFn = fn(
     MotionMode,
 ) -> Result<(), CommandError>;
 
-/// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field, one variant
-/// per [`TargetCategory`]. Wrapped in [`NativeBody`] like every other native
-/// variant's body — see [`NativeBody`]'s own doc for why the wrapping
-/// matters; this enum is what decides *which* signature a given command's
-/// function pointer must have, checked at registration time by
-/// `registry/defaults/builder.rs`'s two `ecmd_*` constructors (one per
-/// variant — a call site names its category by which constructor it calls,
-/// and the compiler rejects a function pointer of the wrong shape).
+/// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field — the
+/// compiler-enforced answer to "can `(call! \"cmd\" pane)` act on a pane
+/// other than the focused one". Motion/Selection/Edit have no field for
+/// this: every one of them accepts any pane showing its buffer, since a pure
+/// `fn(&BufferText, SelectionSet, ...)`/`fn(BufferText, SelectionSet) -> ...`
+/// body has no way to reach anything *but* the buffer it's handed.
+///
+/// Two variants, not more: every native command acts through a pane — even
+/// one that reads only its buffer, since selections and the search cursor
+/// live per (pane, buffer) — and every command that moves focus, changes the
+/// focused pane's buffer, or touches focus-bound state (a mode layer, the
+/// sticky Extend flag, an Insert/paste session) acts on the focus by
+/// definition. Requiring its handle to *be* the focus makes an async caller
+/// state that assumption instead of silently acting on whatever is focused
+/// when it runs.
+///
+/// Wrapped in [`NativeBody`] like every other native variant's body — see
+/// [`NativeBody`]'s own doc for why the wrapping matters; this enum is what
+/// decides *which* signature a given command's function pointer must have,
+/// checked at registration time by `registry/defaults/builder.rs`'s two
+/// `ecmd_*` constructors (one per variant — a call site names its shape by
+/// which constructor it calls, and the compiler rejects a function pointer
+/// of the wrong signature). `commands::pipeline`'s dispatch funnel binds
+/// each variant to the one target type its signature needs (any pane for
+/// `Pane`, a proven-focused [`FocusedPane`] for `FocusedPane`).
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum EditorCmdBody {
     Pane(PaneCmdFn),
     FocusedPane(FocusedCmdFn),
-}
-
-impl EditorCmdBody {
-    pub(in crate::editor) fn category(&self) -> TargetCategory {
-        match self {
-            Self::Pane(_) => TargetCategory::Pane,
-            Self::FocusedPane(_) => TargetCategory::FocusedPane,
-        }
-    }
 }
 
 // ── Command metadata for dispatch bookkeeping ────────────────────────────────
@@ -381,7 +358,7 @@ pub(in crate::editor) enum MappableCommand {
         repeatable: bool,
     },
     /// Editor-level command operating on `EditorState` + `EngineView`, plus
-    /// whatever target its [`TargetCategory`] demands — see [`EditorCmdBody`].
+    /// whatever target its own [`EditorCmdBody`] variant demands.
     ///
     /// Covers composite operations: mode changes, register access, undo group
     /// management, and parameterized motions (find/till/replace). Returns
@@ -595,8 +572,11 @@ impl MappableCommand {
     /// dispatch queue (`SteelBacked`/`Lazy`).
     ///
     /// Single source of truth for native-vs-scripted classification: the `%call-native!`
-    /// sync-dispatch gate, `run_command_sync`, and bare-binding registration all
-    /// derive from this. The match is intentionally exhaustive (no `_`) so a new
+    /// sync-dispatch gate and bare-binding registration both derive from
+    /// this; `commands::pipeline::BoundCommand`'s own native/Steel split
+    /// (`BoundCommand::focused`/`::resolve`, each `Err` on the same two
+    /// variants this excludes) classifies the same way without calling this
+    /// method directly. The match is intentionally exhaustive (no `_`) so a new
     /// variant forces a decision here at compile time.
     pub(in crate::editor) fn is_native(&self) -> bool {
         match self {
@@ -623,30 +603,6 @@ impl MappableCommand {
             | Self::Lazy { .. } => true,
             Self::Edit { .. } => false,
             Self::EditorCmd { extendable, .. } => *extendable,
-        }
-    }
-
-    /// What buffer/pane this native command's body needs — see
-    /// [`TargetCategory`]. `Motion`/`Selection`/`Edit` are always `Pane`,
-    /// their body signature's only option; `EditorCmd` derives it from its
-    /// own `fun`'s [`EditorCmdBody`] variant.
-    ///
-    /// Only meaningful for a native command. Its one caller,
-    /// `EditorHostImpl::run_command_sync` (`(call! "cmd" pane)`), feeds it to
-    /// `Target::resolve` to decide whether the named pane must be focus —
-    /// reached only after `is_native()` is already known true. Every other
-    /// entry point (keypress dispatch, dot-repeat replay, Insert mode's
-    /// `Edit` leaf) always acts at the focused pane, so it builds
-    /// `Target::Focused` directly and never needs this.
-    pub(in crate::editor) fn target_category(&self) -> TargetCategory {
-        match self {
-            Self::Motion { .. } | Self::Selection { .. } | Self::Edit { .. } => {
-                TargetCategory::Pane
-            }
-            Self::EditorCmd { fun, .. } => fun.category(),
-            Self::SteelBacked { .. } | Self::Lazy { .. } => {
-                unreachable!("target_category is only meaningful for a native command")
-            }
         }
     }
 }
