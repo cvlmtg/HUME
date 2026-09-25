@@ -104,19 +104,14 @@
 ;; ── Buffers picker ────────────────────────────────────────────────────────────
 
 ;;; Display path when the buffer has one, else its name (`*scratch*`, etc).
-;;; `(buffers)` hands each entry as a pane-less pane value — used here
-;;; directly as the picker payload, same as before.
+;;; See README.md's "Buffers".
 (define (pickers/buffer-item pane)
   (let ([path (buffer-display-path pane)])
     (cons (or path (buffer-name pane)) pane)))
 
 ;;; Hoisted to a name (see `pickers/open-file!`'s comment) so it can be
-;;; passed twice — as `on-select` and into `stdlib/buffer-actions`. The
-;;; switch itself always targets whatever pane is focused when the pick is
-;;; made (`(focused-pane)`), not the pane the picker itself was opened
-;;; from — the two coincide for a synchronous Enter/Ctrl-o selection, but
-;;; using `(focused-pane)` here keeps this correct even if that ever
-;;; changes.
+;;; passed twice — as `on-select` and into `stdlib/buffer-actions`. See
+;;; README.md's "Buffers" for the pane it switches through.
 (define (pickers/switch-to-buffer! target)
   (when target (switch-to-buffer! (focused-pane) target)))
 

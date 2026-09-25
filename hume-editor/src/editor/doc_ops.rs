@@ -14,6 +14,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
+use crate::editor::error::CommandError;
 use crate::editor::jump_list::JumpLists;
 use crate::editor::pane_state::PaneBufferState;
 use hume_decorations::DecorationStores;
@@ -138,6 +139,36 @@ fn finish_edit(
     record_lsp_edits(buffers, decorations, buf_id, text_gen, cs, rope_pre);
 }
 
+/// The pane, if any, other than `exclude`, holding an open `edit_group` or
+/// `paste_group` for `buf_id` — the exclusivity check every buffer-mutating
+/// chokepoint below runs before touching `buf_id`'s text.
+///
+/// Remote dispatch (`(call! "cmd" pane)` targeting a pane other than the
+/// focused one) means a *different* pane's own in-progress insert/paste
+/// session can otherwise be mutated out from under it: its eventual commit
+/// inverts the composed `ChangeSet` against a `text_snapshot` a concurrent
+/// edit from another pane would make stale, and its next grouped edit panics
+/// in `ChangeSet::compose`'s length assert. Scoped to "some *other* pane" —
+/// not any open group at all — because the focused/target pane's own open
+/// `edit_group` is exactly what routes an edit into
+/// [`apply_doc_edit_grouped`] below, a distinct, unrelated case this check
+/// must not shadow.
+fn other_pane_with_open_group(
+    pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    exclude: PaneId,
+    buf_id: BufferId,
+) -> Option<PaneId> {
+    pane_state.iter().find_map(|(pid, buf_map)| {
+        if pid == exclude {
+            return None;
+        }
+        buf_map
+            .get(buf_id)
+            .filter(|pbs| pbs.edit_group.is_some() || pbs.paste_group.is_some())
+            .map(|_| pid)
+    })
+}
+
 /// Apply an edit to the focused buffer and propagate the resulting
 /// `ChangeSet` to all other panes viewing the same buffer.
 ///
@@ -150,10 +181,13 @@ fn finish_edit(
 /// chokepoint every edit-applying caller goes through, so no caller needs
 /// its own open-group check.
 ///
+/// `Err` when [`other_pane_with_open_group`] finds one — refusing loudly
+/// beats the alternative of silently mutating the buffer underneath another
+/// pane's open session (see that function's own doc).
+///
 /// Uses `std::mem::take` on the active `SelectionSet` instead of `clone()`.
 /// The default state (cursor-at-0) is transient: it is overwritten by
-/// `new_sels` before this function returns. `apply_edit` is infallible, so
-/// no panic can leave the set in its default state.
+/// `new_sels` before this function returns.
 pub(in crate::editor) fn apply_doc_edit(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
@@ -162,9 +196,14 @@ pub(in crate::editor) fn apply_doc_edit(
     focused_pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
-) {
+) -> Result<(), CommandError> {
     if buffers.get(buf_id).is_read_only() {
-        return;
+        return Ok(());
+    }
+    if other_pane_with_open_group(pane_state, focused_pane_id, buf_id).is_some() {
+        return Err(CommandError::new(
+            "buffer has an open insert/paste session on another pane",
+        ));
     }
     if pane_state[focused_pane_id][buf_id].edit_group.is_some() {
         apply_doc_edit_grouped(
@@ -176,7 +215,7 @@ pub(in crate::editor) fn apply_doc_edit(
             buf_id,
             cmd,
         );
-        return;
+        return Ok(());
     }
     // O(1) clones — ropey uses structural sharing (reference-counted tree nodes).
     let text_pre = buffers.get(buf_id).text().clone();
@@ -195,6 +234,7 @@ pub(in crate::editor) fn apply_doc_edit(
         &text_pre,
         &rope_pre,
     );
+    Ok(())
 }
 
 /// Apply a grouped edit (inside an insert session) to the focused buffer.
@@ -320,6 +360,11 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 /// report exhaustion — or [`HistoryWalk::RefusedReadOnly`] when the buffer
 /// refused the walk outright; see that type's doc for why the two must stay
 /// distinguishable.
+///
+/// `Err` when [`other_pane_with_open_group`] finds another pane's open
+/// session on this buffer — same exclusivity rule [`apply_doc_edit`]
+/// enforces, upgraded here from a debug-only assert (which checked only the
+/// walking pane's own group) to a real, release-mode, buffer-wide refusal.
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
@@ -328,9 +373,14 @@ pub(in crate::editor) fn apply_doc_history_walk(
     focused_pane_id: PaneId,
     buf_id: BufferId,
     walk: impl FnOnce(&mut Buffer) -> HistoryWalkResult,
-) -> HistoryWalk {
+) -> Result<HistoryWalk, CommandError> {
     if buffers.get(buf_id).is_read_only() {
-        return HistoryWalk::RefusedReadOnly;
+        return Ok(HistoryWalk::RefusedReadOnly);
+    }
+    if other_pane_with_open_group(pane_state, focused_pane_id, buf_id).is_some() {
+        return Err(CommandError::new(
+            "buffer has an open insert/paste session on another pane",
+        ));
     }
     debug_assert!(
         pane_state[focused_pane_id][buf_id].edit_group.is_none(),
@@ -341,7 +391,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     // translated through that CS.
     let text_pre = buffers.get(buf_id).text().clone();
     let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id)) else {
-        return HistoryWalk::Took(0);
+        return Ok(HistoryWalk::Took(0));
     };
     finish_edit(
         buffers,
@@ -365,7 +415,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     if cs.is_identity() {
         buffers.bump_edit_seq();
     }
-    HistoryWalk::Took(steps)
+    Ok(HistoryWalk::Took(steps))
 }
 
 /// Apply a motion function and store the resulting selection in `pane_state`.

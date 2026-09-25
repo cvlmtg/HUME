@@ -74,6 +74,13 @@ selecting one surfaces an error when the picker tries to open it.
 
 `picker-buffers` shows `buffer-display-path`, falling back to the buffer's name
 (`*scratch*`, etc.) for a pathless one — see the user manual's "Picking buffers" for why.
+`(buffers)` hands each entry as a pane-less pane value, used directly as the picker
+payload.
+
+The switch itself always targets whatever pane is focused when the pick is made
+(`(focused-pane)`), not the pane the picker was opened from — the two coincide for a
+synchronous Enter/Ctrl-o selection, but reading `(focused-pane)` at select time keeps
+this correct even if that ever changes.
 
 ### Git-modified files
 

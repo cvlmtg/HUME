@@ -266,6 +266,10 @@ pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
 ///
 /// Panics if `pid` or `bid` is not a live slotmap key; that is a caller-contract
 /// violation (the pane or buffer was never opened), not a recoverable error.
+/// Trusted mint for every synchronous caller that already knows `pid` is
+/// live by construction (it was just resolved, split, or opened in the same
+/// call) — see [`try_ensure`] for a caller crossing an async boundary, where
+/// that's no longer guaranteed.
 pub(in crate::editor) fn ensure<'a>(
     pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
@@ -280,6 +284,29 @@ pub(in crate::editor) fn ensure<'a>(
         .entry(bid)
         .expect("bid must be a live BufferId")
         .or_insert_with(|| fresh_from_buf(buffers.get(bid)))
+}
+
+/// [`ensure`]'s validating counterpart — for a caller whose `pid` was
+/// captured before crossing an async boundary (an LSP response, a queued
+/// Steel callback) and may have since closed, its slot recycled by an
+/// unrelated newer pane. `bid` still panics on a dead key: every current
+/// caller reaches this only once its own generation/anchor check has
+/// already proven the buffer live, so that half of the contract still
+/// holds — only `pid`'s liveness crosses the boundary unchecked.
+pub(in crate::editor) fn try_ensure<'a>(
+    pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    buffers: &BufferStore,
+    pid: PaneId,
+    bid: BufferId,
+) -> Result<&'a mut PaneBufferState, String> {
+    let inner = pane_state
+        .entry(pid)
+        .ok_or_else(|| "pane has been closed".to_string())?
+        .or_default();
+    Ok(inner
+        .entry(bid)
+        .expect("bid must be a live BufferId")
+        .or_insert_with(|| fresh_from_buf(buffers.get(bid))))
 }
 
 /// Collapse `pane_state[pid][bid]`'s selection onto `char_pos`, without
@@ -449,9 +476,10 @@ impl super::EditorState {
     /// `bid`), then the rest of the active tab (`view.active_pane_ids`'s own
     /// leaf order), then every other tab
     /// (`view.panes.every_pane_across_all_tabs`'s order). Explicit
-    /// enumeration in place of the single-pane guess this design removes
-    /// (see `docs/LESSONS.md`'s L19) — `.first()` reproduces that guess for
-    /// a caller that wants it, chosen rather than applied silently.
+    /// enumeration, not a single-pane guess: a caller that used to receive
+    /// one implicitly resolved pane for a buffer now sees every candidate
+    /// and picks — `.first()` reproduces the old guess for one that still
+    /// wants it, chosen at the call site rather than applied silently.
     pub(in crate::editor) fn buffer_panes(&self, view: &EngineView, bid: BufferId) -> Vec<PaneId> {
         let focused = self.focus.id();
         let shows_bid = |pid: PaneId| view.panes[pid].buffer_id == bid;

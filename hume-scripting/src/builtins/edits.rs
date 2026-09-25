@@ -42,9 +42,9 @@ pub(crate) fn apply_text_edits(
         .map_err(generic_err)
 }
 
-/// `(apply-workspace-edit! pane wsedit)` — `wsedit`: a `WorkspaceEdit`
-/// hashmap or JSON handle. Its positions decode using the handle's own
-/// tagged encoding (the server that produced it — see
+/// `(%apply-workspace-edit! pane wsedit expect-gen)` — `wsedit`: a
+/// `WorkspaceEdit` hashmap or JSON handle. Its positions decode using the
+/// handle's own tagged encoding (the server that produced it — see
 /// `JsonHandle::position_encoding`), so unlike `goto-location!`'s
 /// char-indexed shape this errors on a hand-built (untagged) value: there
 /// is no server to have negotiated an encoding with. Returns the number of
@@ -54,13 +54,16 @@ pub(crate) fn apply_workspace_edit(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
     wsedit: SteelVal,
+    expect_gen: SteelVal,
 ) -> SteelResult {
     let handle = json_arg(wsedit, "apply-workspace-edit!")?;
     let encoding = handle
         .position_encoding("apply-workspace-edit!")
         .map_err(generic_err)?;
+    let expect_gen =
+        optional_usize_arg(expect_gen, "apply-workspace-edit! expect-gen")?.map(|n| n as u64);
     let count = require_cap(ctx.host.edits(), "apply-workspace-edit!")?
-        .apply_workspace_edit(pane, handle.value(), encoding)
+        .apply_workspace_edit(pane, handle.value(), encoding, expect_gen)
         .map_err(generic_err)?;
     Ok(SteelVal::IntV(count as isize))
 }

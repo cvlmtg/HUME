@@ -332,7 +332,7 @@ fn lsp_target_arg_rejects_false() {
     let err = LspTargetArg::from_steelval(&SteelVal::BoolV(false)).unwrap_err();
     assert!(
         err.to_string()
-            .contains("expected a buffer-id or a language name"),
+            .contains("expected a pane or a language name"),
         "got: {err}"
     );
 }

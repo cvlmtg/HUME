@@ -41,7 +41,8 @@
                     (set-box! edits (append (unbox edits) (lsp/format-edits res)))
                     (set-box! pending (- (unbox pending) 1))
                     (when (= (unbox pending) 0)
-                      (lsp/format-apply! pane gen (unbox edits)))))))))
+                      (lsp/format-apply! pane gen (unbox edits)))))))
+          #:allow-stale #t))
       ranges)))
 
 (define (lsp/format-linewise! pane gen td ranges)
@@ -53,7 +54,8 @@
           ((and (> n 1) (lsp/cap-flag? pane "documentRangeFormattingProvider" "rangesSupport"))
            (lsp-request pane "textDocument/rangesFormatting"
              (hash "textDocument" td "ranges" ranges "options" (lsp/format-options pane))
-             (lsp/format-callback pane gen)))
+             (lsp/format-callback pane gen)
+             #:allow-stale #t))
           ((> n cap)
            (log! 'info
                  (string-append (number->string n)
@@ -78,7 +80,8 @@
                (lambda ()
                  (lsp-request pane "textDocument/formatting"
                    (hash "textDocument" td "options" (lsp/format-options pane))
-                   (lsp/format-callback pane gen)))))
+                   (lsp/format-callback pane gen)
+                   #:allow-stale #t))))
             (else (log! 'info "mixed whole-line and partial selections — nothing formatted")))))))
 
 (define-command! "lsp-fmt"

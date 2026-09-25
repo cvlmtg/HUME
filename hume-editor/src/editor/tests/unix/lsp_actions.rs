@@ -401,6 +401,61 @@ fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
     );
 }
 
+/// `codeAction/resolve` requests `#:allow-stale #t`, so an edit landing
+/// between picking the action and the response draining must not silently
+/// drop the resolve — but `apply-workspace-edit!`'s own `#:expect-generation`
+/// must then refuse to apply it, rather than silently doing nothing (the old
+/// request-side drop) or applying against text that has since moved.
+#[test]
+fn selecting_an_unresolved_action_reports_a_stale_buffer_after_an_intervening_edit() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid, requests) = setup_with_capabilities(
+        &file,
+        tmp.path(),
+        serde_json::json!({"codeActionProvider": {"resolveProvider": true}}),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/codeAction",
+                serde_json::json!([unresolved_action("Fix the thing")]),
+            );
+            backend.respond_to("codeAction/resolve", edit_action("Fix the thing", &uri));
+        },
+    );
+
+    run_actions(&mut ed);
+    ed.handle_key(key_enter()); // selects the action, sends codeAction/resolve
+    ed.settle();
+    // Edit the buffer before draining the resolve response.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('z'));
+    ed.feed_key(key_esc());
+    let before_apply = ed.doc().text().to_string();
+    ed.drain_lsp();
+    ed.settle();
+
+    last_request_params(&requests, "codeAction/resolve");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before_apply,
+        "a stale-generation apply must be refused, leaving only the intervening edit"
+    );
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("apply-workspace-edit") && e.contains("changed")),
+        "expected a generation-mismatch error from apply-workspace-edit!, got {errors:?}"
+    );
+}
+
 #[test]
 fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
     let tmp = safe_tempdir();

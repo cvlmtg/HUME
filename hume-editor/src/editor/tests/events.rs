@@ -730,8 +730,8 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
 }
 
 /// **Pane refactor regression, paneless case**: `on-buffer-save`'s own
-/// payload is a *buffer*-level handle (see `docs/LESSONS.md`'s L19 and
-/// `EditorEvent::steel_args`'s doc) — it never carries a pane, even for a
+/// payload is a *buffer*-level handle (see `EditorEvent::steel_args`'s
+/// doc) — it never carries a pane, even for a
 /// buffer that happens to be shown somewhere, so a hook that wants to reach
 /// a `Pane`-category native command must resolve one explicitly via
 /// `(buffer-panes bid)` rather than handing the hook's own `bid` straight to
@@ -1525,7 +1525,8 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
         focused,
         bid,
         |text, sels| hume_ops::edit::insert_char(text, sels, 'z'),
-    );
+    )
+    .unwrap();
     ed.settle();
 
     assert_eq!(
@@ -1807,7 +1808,8 @@ fn identity_edit_fires_no_on_text_changed() {
             let len = text.len_chars();
             (text, sels, ChangeSet::identity(len))
         },
-    );
+    )
+    .unwrap();
     ed.settle();
 
     assert_eq!(
@@ -1872,7 +1874,8 @@ fn identity_edit_records_no_undo_revision() {
             let len = text.len_chars();
             (text, sels, ChangeSet::identity(len))
         },
-    );
+    )
+    .unwrap();
     ed.settle();
     assert_eq!(
         ed.doc().text().to_string(),
@@ -2208,6 +2211,74 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     assert!(
         !log.contains("diagnostics-fired"),
         "the handler must not fire for a buffer that closed before the batch drained: {log:?}"
+    );
+    assert!(
+        !log.contains("hook error"),
+        "the event must be silently skipped, not surface as a hook error: {log:?}"
+    );
+}
+
+/// The pane half of the same Hole F class: `OnViewportChange`/
+/// `OnTriggerChar`/`OnCompletionAccept`/`OnBufferEnter` all carry a pane too,
+/// and a handler earlier in the same batch (a timer's own `pane-close`) can
+/// close it before this event's own turn, even though the buffer itself
+/// stays open elsewhere.
+///
+/// Fail oracle: without the pane half of `run_pending_batch`'s filter, the
+/// handler runs against a closed pane and `viewport-range` (which needs a
+/// live pane) raises, surfacing as a hook error instead of being silently
+/// skipped.
+#[test]
+fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
+    use crate::testing::MockHost;
+    use hume_engine::pipeline::Direction;
+    use hume_scripting::PaneHandle;
+    use hume_scripting::ScriptingHost;
+    use hume_scripting::host::CommandHost;
+
+    let mut ed = editor_from("-[a]>bbbbbbbbbb\n");
+    let bid = ed.focused_buffer_id();
+    let pid_a = ed.state.focus.id();
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        Direction::Horizontal,
+    )
+    .expect("split must succeed");
+
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-viewport-change
+             (lambda (pane first last) (viewport-range pane) (log! 'trace "viewport-fired")))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+
+    ed.queue_viewport_change(pid_b);
+    // Reproduces "something else in the same batch closed the pane first" —
+    // a direct close here, rather than an earlier-queued timer's own
+    // pane-close; the observable failure (the batch reaches a dead pane) is
+    // identical either way. The buffer stays open in A throughout.
+    ed.state.focus.set_for_test(pid_b);
+    live_host!(ed)
+        .run_command_sync(
+            "pane-close",
+            PaneHandle::with_pane(bid, pid_b),
+            None,
+            false,
+            None,
+        )
+        .expect("pane-close must succeed");
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        !log.contains("viewport-fired"),
+        "the handler must not fire for a pane that closed before the batch drained: {log:?}"
     );
     assert!(
         !log.contains("hook error"),

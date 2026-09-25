@@ -44,7 +44,12 @@
                            (lsp/first-after diags head)
                            (lsp/last-before diags head))))
           (lsp/diag-jump-to! pane target)
-          (show-popup! pane (hash-ref target "message") #:kind 'scrollable)))))
+          ;; `(focused-pane)`, not `pane` — `lsp/diag-jump-to!` already
+          ;; navigates there (see its own comment above), so it's the pane
+          ;; actually showing `target` by the time the popup opens.
+          ;; `show-popup!` requires focus; the original `pane` argument may
+          ;; no longer be it (or may not even still show this buffer).
+          (show-popup! (focused-pane) (hash-ref target "message") #:kind 'scrollable)))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 

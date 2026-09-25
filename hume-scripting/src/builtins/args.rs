@@ -648,7 +648,7 @@ impl FromSteelVal for LspTargetArg {
             SteelVal::SymbolV(s) => Ok(LspTargetArg::Language(s.to_string())),
             _ => Err(SteelErr::new(
                 ErrorKind::TypeMismatch,
-                "expected a buffer-id or a language name".to_string(),
+                "expected a pane or a language name".to_string(),
             )),
         }
     }

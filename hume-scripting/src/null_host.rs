@@ -83,6 +83,9 @@ impl BufferHost for NullHost {
     fn require_focused_pane(&self, _pane: PaneHandle) -> Result<(), String> {
         Ok(())
     }
+    fn pane_live(&self, _pane: PaneHandle) -> bool {
+        false
+    }
     fn buffer_exists(&self, _id: BufferId) -> bool {
         false
     }

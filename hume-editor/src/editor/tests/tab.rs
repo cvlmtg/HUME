@@ -190,11 +190,13 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
     );
 }
 
-/// A resize while a tab is hidden must not touch its panes' viewports —
-/// they stay exactly as sized when that tab was last active, and only
-/// catch up once it's focused again.
+/// A resize while a tab is hidden must still resync its panes' viewports —
+/// `Editor::sync_viewport_dims` re-partitions every tab's own tree against
+/// the new terminal area on every resize, not just the active one
+/// (`TabStore::inactive_layouts`), so a background pane's geometry never
+/// goes stale waiting for its tab to be focused again.
 #[test]
-fn resizing_while_a_tab_is_hidden_leaves_it_stale_until_refocused() {
+fn resizing_while_a_tab_is_hidden_still_resyncs_its_viewport() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("tabnew", None).unwrap();
     let pid_b = ed.state.focus.id();
@@ -207,54 +209,11 @@ fn resizing_while_a_tab_is_hidden_leaves_it_stale_until_refocused() {
 
     ed.execute_typed("tabprev", None).unwrap();
 
-    // Resize while B is hidden.
+    // Resize while B is hidden — no switch back, no extra frame.
     frame(&mut ed, 40, 10);
-    assert_eq!(
-        ed.view.panes[pid_b].viewport.width, width_before,
-        "B's viewport must be untouched by a resize while its tab is hidden"
-    );
-
-    // Switch back: the terminal area is already 40×10 from the resize above
-    // (`prepare_frame`'s own step 0 re-partitions from `last_terminal_area`
-    // every frame), so B must catch up the moment its tab becomes active.
-    ed.execute_typed("tabnext", None).unwrap();
-    ed.settle();
-    ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
     assert_ne!(
         ed.view.panes[pid_b].viewport.width, width_before,
-        "B must be re-sized to the current terminal once its tab is focused again"
-    );
-}
-
-/// The switch itself must resync the incoming tab's viewport dims — not
-/// just the next frame's `prepare_frame`. A command dispatch that switches
-/// tabs and then reads pane geometry in the same call (a scroll bound to a
-/// tab-switch key, a Steel body chaining a motion onto `goto-next-tab`)
-/// would otherwise see the outgoing tab's stale width/height.
-#[test]
-fn switching_to_a_tab_resyncs_its_viewport_before_the_next_frame() {
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.execute_typed("tabnew", None).unwrap();
-    let pid_b = ed.state.focus.id();
-    frame(&mut ed, 80, 25);
-    let width_before = ed.view.panes[pid_b].viewport.width;
-    assert!(
-        width_before > 40,
-        "setup: B sized to the wide terminal while active"
-    );
-
-    ed.execute_typed("tabprev", None).unwrap();
-    frame(&mut ed, 40, 10);
-    assert_eq!(
-        ed.view.panes[pid_b].viewport.width, width_before,
-        "setup: B stale while hidden, per the test above"
-    );
-
-    // No `frame`/`prepare_frame` call after this — the switch alone must resync.
-    ed.execute_typed("tabnext", None).unwrap();
-    assert_ne!(
-        ed.view.panes[pid_b].viewport.width, width_before,
-        "B's viewport must resync the moment its tab goes live, before any frame runs"
+        "B's viewport must resync to the new terminal size even while its tab is hidden"
     );
 }
 

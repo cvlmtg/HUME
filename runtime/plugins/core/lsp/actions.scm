@@ -24,6 +24,10 @@
 ;;; round trip, never re-read from focus. Both round trips are async (the
 ;;; user picks a menu item, then waits on the network), so this is the same
 ;;; capture-at-source discipline every other chained LSP request here uses.
+;;; `gen` is that same buffer's generation at the same capture point,
+;;; threaded alongside `pane` for the same reason — `apply-workspace-edit!`
+;;; checks it before applying, so an edit computed against text that has
+;;; since changed fails loudly instead of applying against the wrong text.
 ;;; `#:allow-stale #t`: `workspace/executeCommand`'s params carry no
 ;;; `textDocument`, so the bridge's own text-gen anchor has nothing buffer-
 ;;; specific to check against `pane` — without this, the anchor's fallback
@@ -39,27 +43,35 @@
     (lambda (err res) (when err (lsp/report-error "code action" err)))
     #:allow-stale #t))
 
-(define (lsp/run-action pane action #:resolved? [resolved? #f])
+(define (lsp/run-action pane action gen #:resolved? [resolved? #f])
   (let ((edit (json-ref-or action #f "edit"))
         (command (json-ref-or action #f "command")))
     (cond
       ((or edit command)
-       (when edit (apply-workspace-edit! pane edit))
+       (when edit (apply-workspace-edit! pane edit #:expect-generation gen))
        (when command (lsp/exec-command pane (if (string? command) action command))))
       ((and (not resolved?) (lsp/action-resolve-provider? pane))
+       ;; `#:allow-stale #t`: unlike the menu-building request above, this
+       ;; response *is* the edit — dropping it on an intervening keystroke
+       ;; (the previous, gen-checked behavior) would silently do nothing
+       ;; after the user already picked an action from the menu. Safe to
+       ;; deliver stale: `apply-workspace-edit!`'s own `#:expect-generation`
+       ;; check below still fails loudly if the buffer actually changed.
        (lsp-request pane "codeAction/resolve" action
          (lambda (err resolved)
            (cond
              (err (lsp/report-error "code action" err))
              ((void? resolved) (log! 'info "Code action has no edit or command"))
-             (else (lsp/run-action pane resolved #:resolved? #t))))))
+             (else (lsp/run-action pane resolved gen #:resolved? #t))))
+         #:allow-stale #t))
       (else (log! 'info "Code action has no edit or command")))))
 
 (define-command! "lsp-code-actions" "Show available code actions for the cursor or selection."
   (lambda (pane)
     (lsp/guard-capability pane "codeActionProvider"
       (lambda ()
-        (let* ((diags (diagnostics-for-buffer pane #:range (lsp/primary-selection-range pane)))
+        (let* ((gen (buffer-generation pane))
+               (diags (diagnostics-for-buffer pane #:range (lsp/primary-selection-range pane)))
                (context (hash "diagnostics" (map (lambda (d) (hash-ref d "raw")) diags)
                               "triggerKind" 1)))
           (lsp-request pane "textDocument/codeAction"
@@ -73,5 +85,5 @@
                     (if (null? actions)
                         (log! 'info "No code actions")
                         (show-menu! pane (map lsp/action-title actions)
-                          (lambda (idx) (when idx (lsp/run-action pane (list-ref actions idx))))))))))
+                          (lambda (idx) (when idx (lsp/run-action pane (list-ref actions idx) gen)))))))))
             #:require-focus #t))))))

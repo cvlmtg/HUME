@@ -207,6 +207,31 @@ impl EditorEvent {
             | EditorEvent::OnOptionChange { .. } => None,
         }
     }
+
+    /// The pane this event concerns, if any — `None` for every variant with
+    /// no `pane` field (most of them; see each variant's own doc for
+    /// whether it carries one). Exhaustive match for the same reason
+    /// [`Self::buffer`]'s is: a future variant with a `pane` field must be
+    /// added here explicitly.
+    pub(in crate::editor) fn pane(&self) -> Option<PaneId> {
+        match self {
+            EditorEvent::OnBufferEnter { pane, .. }
+            | EditorEvent::OnViewportChange { pane, .. }
+            | EditorEvent::OnTriggerChar { pane, .. }
+            | EditorEvent::OnCompletionAccept { pane, .. } => Some(*pane),
+            EditorEvent::OnBufferOpen { .. }
+            | EditorEvent::OnBufferClose { .. }
+            | EditorEvent::OnBufferSave { .. }
+            | EditorEvent::OnFocusGained
+            | EditorEvent::OnModeChange { .. }
+            | EditorEvent::OnLanguageSet { .. }
+            | EditorEvent::OnLspAttach { .. }
+            | EditorEvent::OnLspDetach { .. }
+            | EditorEvent::OnDiagnosticsChanged { .. }
+            | EditorEvent::OnTextChanged { .. }
+            | EditorEvent::OnOptionChange { .. } => None,
+        }
+    }
 }
 
 /// Pairs each `EditorEvent` variant with its Steel-facing name, once, and

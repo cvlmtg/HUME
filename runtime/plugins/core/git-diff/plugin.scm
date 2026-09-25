@@ -35,10 +35,7 @@
   (lambda (pane) (git-diff/schedule-branch-refresh! pane)))
 
 ;;; Drives the branch fetch in the moment `"steel:git-branch"` is placed —
-;;; see docs/pipeline.md's "Branch tracking". `on-option-change` fires for a
-;;; *global* setting write with no buffer of its own — `(focused-pane)` is
-;;; the right read here, not a captured pane value: this is genuinely
-;;; follow-the-user code, refreshing whatever's on screen right now.
+;;; see docs/pipeline.md's "Branch tracking".
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "statusline")
@@ -68,10 +65,7 @@
 ;;; `git-diff/fetch-branch!` (branch.scm). Answers `'()` on any failure (no
 ;;; path, not a repo, git missing) — a ref name is a nice-to-have
 ;;; completion, never worth erroring the command line over.
-;;; A minibuffer-target source: `id`/`input`/`cursor` only, no pane of its
-;;; own. `(focused-pane)` is the buffer that opened the `:` command line
-;;; this completes for — the same one its typed command will receive as its
-;;; own leading pane when Enter is pressed.
+;;; See docs/architecture.md's "Ref handling" for the pane handling.
 (register-completion-source! "git-diff:refs"
   (lambda (id input cursor)
     (let ([path (buffer-path (focused-pane))])

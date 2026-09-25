@@ -115,7 +115,7 @@ The `lsp.*` options below configure `core:lsp` — see [Language Servers](lsp.md
 
 ## Buffer options
 
-These options have a global default that every buffer without its own override resolves to — including buffers already open when you change it, not just ones opened afterward — and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! buffer-id "option" value)` — see [Plugins](plugins.md) for setting per-language overrides from the `on-language-set` hook.
+These options have a global default that every buffer without its own override resolves to — including buffers already open when you change it, not just ones opened afterward — and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! pane "option" value)` — see [Plugins](plugins.md) for setting per-language overrides from the `on-language-set` hook.
 
 `language` is an exception, it has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
 

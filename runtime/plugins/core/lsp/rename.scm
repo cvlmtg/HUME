@@ -9,11 +9,13 @@
         (prompt! pane "Rename: "
           (lambda (new-name)
             (when new-name
-              (lsp-request pane "textDocument/rename"
-                (hash-insert (lsp-position-params pane) "newName" new-name)
-                (lambda (err res)
-                  (cond
-                    (err (lsp/report-error "rename" err))
-                    ((void? res) (log! 'info "Nothing to rename"))
-                    (else (apply-workspace-edit! pane res)))))))
+              (let ((gen (buffer-generation pane)))
+                (lsp-request pane "textDocument/rename"
+                  (hash-insert (lsp-position-params pane) "newName" new-name)
+                  (lambda (err res)
+                    (cond
+                      (err (lsp/report-error "rename" err))
+                      ((void? res) (log! 'info "Nothing to rename"))
+                      (else (apply-workspace-edit! pane res #:expect-generation gen))))
+                  #:allow-stale #t))))
           #:prefill (symbol-under-cursor pane))))))

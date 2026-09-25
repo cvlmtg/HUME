@@ -273,7 +273,35 @@ impl EngineView {
         if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
             return;
         }
-        for (pid, rect) in self.pane_rects() {
+        let rects = self.pane_rects();
+        self.write_viewport_dims(&rects);
+    }
+
+    /// [`Self::resync_viewport_dims`], generalized to any `LayoutTree` —
+    /// `hume-editor`'s `Editor::sync_viewport_dims` calls this once per
+    /// *inactive* tab too, on every resize, so a background-tab pane's
+    /// viewport stays current continuously instead of only catching up the
+    /// moment its tab becomes active (which `tab::install_live`'s own
+    /// `resync_viewport_dims` call already handles for the tab that's
+    /// switching in). An inactive tab's `LayoutTree` is otherwise immutable
+    /// while inactive — splits/closes only ever touch the active
+    /// `EngineView::layout` — so a resize is the only event that can make
+    /// its panes' geometry stale.
+    pub fn resync_viewport_dims_for(&mut self, layout: &LayoutTree) {
+        if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
+            return;
+        }
+        let mut rects = Vec::new();
+        layout.collect_rects_into(self.last_pane_area, self.reserve_seam, &mut rects);
+        self.write_viewport_dims(&rects);
+    }
+
+    /// Write each `(PaneId, Rect)` pair's dims into `self.panes` — the
+    /// shared tail [`Self::resync_viewport_dims`] and
+    /// [`Self::resync_viewport_dims_for`] reduce to, once each has its own
+    /// partition in hand.
+    fn write_viewport_dims(&mut self, rects: &[(PaneId, Rect)]) {
+        for &(pid, rect) in rects {
             let vp = &mut self.panes[pid].viewport;
             vp.width = rect.width;
             vp.height = rect.height;

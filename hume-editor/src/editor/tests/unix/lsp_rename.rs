@@ -221,6 +221,59 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
     );
 }
 
+/// `textDocument/rename`'s request now carries `#:allow-stale #t`, so an
+/// edit landing between confirming the new name and the response draining
+/// must not silently drop the rename — but `apply-workspace-edit!`'s own
+/// `#:expect-generation` must then refuse to apply it, rather than silently
+/// doing nothing (the old request-side drop) or applying against text that
+/// has since moved.
+#[test]
+fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), move |backend, _sid| {
+        backend.respond_to(
+            "textDocument/rename",
+            serde_json::json!({"changes": {
+                uri: [
+                    {"range": {"start": {"line": 1, "character": 4}, "end": {"line": 1, "character": 10}}, "newText": "renamed"}
+                ]
+            }}),
+        );
+    });
+
+    run_rename(&mut ed);
+    ed.feed_key(key_enter()); // confirms the prefilled name, sends textDocument/rename
+    ed.settle();
+    // Edit the buffer before draining the rename response.
+    ed.feed_key(key('i'));
+    ed.feed_key(key('z'));
+    ed.feed_key(key_esc());
+    let before_apply = ed.doc().text().to_string();
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before_apply,
+        "a stale-generation apply must be refused, leaving only the intervening edit"
+    );
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("apply-workspace-edit") && e.contains("changed")),
+        "expected a generation-mismatch error from apply-workspace-edit!, got {errors:?}"
+    );
+}
+
 /// `apply-workspace-edit!` (the Steel builtin `%apply-workspace-edit!` wraps)
 /// opens unopened files via `lsp::edits::resolve_or_open` →
 /// `buffer::lifecycle::open_or_dedup_and_notify`, which can't detect language

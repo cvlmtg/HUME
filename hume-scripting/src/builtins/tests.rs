@@ -197,8 +197,7 @@ fn lsp_stop_and_restart_reject_false_target_through_real_registration() {
             .err()
             .unwrap_or_else(|| panic!("{expr} must raise on a #f target, got Ok"));
         assert!(
-            err.message
-                .contains("expected a buffer-id or a language name"),
+            err.message.contains("expected a pane or a language name"),
             "{expr}: got {err:?}"
         );
     }

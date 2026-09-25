@@ -44,6 +44,10 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             .map_err(|e| e.to_string())
     }
 
+    fn pane_live(&self, pane: PaneHandle) -> bool {
+        resolve_command_pane(self.state, self.view, pane).is_ok()
+    }
+
     // ── Buffer reads ─────────────────────────────────────────────────────────
     fn buffer_exists(&self, id: BufferId) -> bool {
         self.buffer(id).is_some()
@@ -140,16 +144,12 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         pane: PaneHandle,
     ) -> Result<ExclusiveRange<hume_rope::line::ContentLine>, String> {
         let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
-        // Active-tab panes only: `sync_viewport_dims` only keeps an
-        // active-tab pane's geometry in sync per frame, so a background-tab
-        // pane's bounds are whatever they were when its tab was last on
-        // screen — stale, not just "not current". Raising here (rather than
-        // handing back that stale range) matches every other kind-B
-        // builtin's fail-fast contract for a pane it can't honestly answer
-        // for.
-        if !self.view.active_pane_ids().contains(&t.pid()) {
-            return Err("viewport-range: pane is not on the active tab".to_string());
-        }
+        // No active-tab restriction: `Editor::sync_viewport_dims` keeps
+        // every tab's panes — not just the active one — sized to the
+        // current terminal on every resize (`TabStore::inactive_layouts`),
+        // so a background-tab pane's viewport dims and scroll position are
+        // as trustworthy as an active one's. "The range of lines this pane
+        // would show" is well-defined regardless of which tab is on screen.
         Ok(crate::editor::lsp::introspect::viewport_range(
             self.state, self.view, t,
         ))

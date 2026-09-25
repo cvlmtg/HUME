@@ -245,6 +245,22 @@ impl BufferStore {
         self.mru.iter().rev().find(|&&x| x != id).copied()
     }
 
+    /// The buffer just before the most-recently-viewed one — `Ctrl-6`'s own
+    /// "alternate buffer," one single global history shared by every pane
+    /// rather than a per-pane notion: `mru`'s tail is always "whatever was
+    /// last viewed, however it was viewed" (a keypress on the focused pane,
+    /// or a `goto-alternate-buffer` touch from any other), so the entry
+    /// right before it is always "the previous one," regardless of which
+    /// pane is asking. `None` when fewer than two buffers have ever been
+    /// viewed. Distinct from `mru_excluding`: that skips *by value*, useful
+    /// when the caller already knows which specific buffer to exclude
+    /// (`close`'s own replacement target); this is a pure positional read,
+    /// since here the "current" buffer is whatever the tail *happens to be*
+    /// right now, not a value some caller already has in hand.
+    pub(in crate::editor) fn second_most_recent(&self) -> Option<BufferId> {
+        self.mru.iter().rev().nth(1).copied()
+    }
+
     /// Next buffer in open-order (wraps around). Returns `id` if only one buffer.
     pub(in crate::editor) fn next(&self, current: BufferId) -> BufferId {
         let pos = self.order.iter().position(|&x| x == current).unwrap_or(0);

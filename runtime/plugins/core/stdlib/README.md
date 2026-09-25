@@ -94,8 +94,8 @@ minibuffer injects the default count `1`.
 already passes as `on-select` — in a lambda that places a pane (new tab, side-by-side split,
 stacked split) and focuses it before calling the handler with the picker's selected payload.
 That ordering is what lets the handler stay unchanged: its existing
-`(switch-to-buffer! (open-buffer! path))` (or `(goto-location! ...)`) targets whichever pane
-is focused, so it lands in the newly placed one for free — none of the three interprets
+`(switch-to-buffer! (focused-pane) (open-buffer! path))` (or `(goto-location! ...)`) targets
+whichever pane is focused, so it lands in the newly placed one for free — none of the three interprets
 `payload` itself, so any picker's handler works no matter what shape its payload is (a path,
 a buffer id, a `path:line:col` location).
 
@@ -113,7 +113,7 @@ split from `call!`'s own return value — `#f` for a native command that refused
 that ran — needing no bespoke predicate of its own.
 
 `buffer-actions` composes all three plus a bare `Ctrl-o` (the handler as-is, an `Enter`
-synonym) into one `#:actions` alist: `(picker! items handler #:actions (call!
+synonym) into one `#:actions` alist: `(picker! pane items handler #:actions (call!
 "stdlib/buffer-actions" handler))`. `core:pickers`' three built-in pickers all opt in this
 way. A picker whose payload isn't a placeable buffer target (a theme picker, a command
 palette) simply doesn't pass `#:actions` — there's no flag to turn off, only a kwarg to omit.

@@ -39,7 +39,7 @@ fn apply_workspace_edit_accepts_a_tagged_json_handle() {
     let handle =
         JsonHandle::server_for_test(serde_json::json!({"changes": {}}), PositionEncoding::Utf16)
             .into_steel_val();
-    let msg = apply_workspace_edit(&mut ctx, default_pane(), handle)
+    let msg = apply_workspace_edit(&mut ctx, default_pane(), handle, SteelVal::BoolV(false))
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");
@@ -56,7 +56,7 @@ fn apply_workspace_edit_rejects_a_hand_built_hashmap() {
     let mut hm = steel::HashMap::new();
     hm.insert(SteelVal::StringV("changes".into()), SteelVal::Void);
     let wsedit = SteelVal::HashMapV(steel::gc::Gc::new(hm).into());
-    let msg = apply_workspace_edit(&mut ctx, default_pane(), wsedit)
+    let msg = apply_workspace_edit(&mut ctx, default_pane(), wsedit, SteelVal::BoolV(false))
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");

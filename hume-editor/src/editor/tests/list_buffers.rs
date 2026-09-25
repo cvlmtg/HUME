@@ -385,7 +385,8 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
         focused,
         bid,
         |b| b.undo_n(1),
-    );
+    )
+    .unwrap();
     assert_eq!(
         result,
         doc_ops::HistoryWalk::RefusedReadOnly,

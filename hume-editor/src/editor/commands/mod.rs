@@ -31,6 +31,7 @@ use super::register_ops;
 use super::register_ops::RegisterPrefix;
 use super::search::SearchPattern;
 use super::{EditorState, Severity};
+use crate::editor::error::CommandError;
 use crate::editor::settings::EditorSettings;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
@@ -115,7 +116,7 @@ pub(in crate::editor::commands) fn apply_pane_edit(
         BufferText,
         SelectionSet,
     ) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
-) {
+) -> Result<(), CommandError> {
     let buf = t.bid(view);
     doc_ops::apply_doc_edit(
         &mut state.buffers,
@@ -125,7 +126,7 @@ pub(in crate::editor::commands) fn apply_pane_edit(
         t.pid(),
         buf,
         cmd,
-    );
+    )
 }
 
 /// Apply a grouped edit (inside an open insert/paste session) to the focused
@@ -189,13 +190,14 @@ pub(super) fn pane_selections<'a>(
     state.panes.state[t.pid()][t.bid(view)].selections()
 }
 
-/// The most-recently-focused buffer other than `t`'s.
-pub(super) fn alternate_buffer(
-    state: &EditorState,
-    view: &EngineView,
-    t: CommandPane,
-) -> Option<BufferId> {
-    state.buffers.mru_excluding(t.bid(view))
+/// The most-recently-viewed buffer other than the current one — one global
+/// "what was I looking at before," the same history for every pane, not a
+/// per-window one. Thin wrapper around
+/// [`BufferStore::second_most_recent`](super::buffer::store::BufferStore::second_most_recent);
+/// see `cmd_goto_alternate_buffer`'s own doc for the worked example and the
+/// MRU touch that makes this correct for a non-focused target too.
+pub(super) fn alternate_buffer(state: &EditorState) -> Option<BufferId> {
+    state.buffers.second_most_recent()
 }
 
 /// Open a new edit group on the focused (pane, buffer) pair. See

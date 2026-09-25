@@ -274,6 +274,9 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn require_focused_pane(&self, pane: crate::types::PaneHandle) -> Result<(), String> {
         self.inner.require_focused_pane(pane)
     }
+    fn pane_live(&self, pane: crate::types::PaneHandle) -> bool {
+        self.inner.pane_live(pane)
+    }
     fn buffer_exists(&self, _id: BufferId) -> bool {
         true
     }

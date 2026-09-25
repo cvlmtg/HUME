@@ -277,6 +277,13 @@ impl Editor {
         // scroll step derives the reveal from the pane's new dimensions
         // directly rather than this function raising it.
         self.view.resync_viewport_dims();
+        // Keeps every background tab's own panes sized to the current
+        // terminal too — see `TabStore::inactive_layouts`'s own doc.
+        // Splits/closes never touch an inactive tab's tree, so resize is
+        // the only event this needs to run on.
+        for layout in self.state.tabs.inactive_layouts() {
+            self.view.resync_viewport_dims_for(layout);
+        }
     }
 
     /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:

@@ -7,10 +7,12 @@
 //! arithmetically — they are purely opaque handles. [`SteelBufferKey`] is
 //! `(buffer-key pane)`'s own return type: a per-buffer hash/comparison key,
 //! deliberately undecodable by [`super::args::ArgPane`]/[`super::args::LivePane`]
-//! so a key can't be passed back into a builtin expecting a pane — see
-//! `docs/LESSONS.md`'s L19 and this crate's `types::PaneHandle` doc for why
-//! a pane value and a plain per-buffer key must stay two distinct kinds of
-//! thing, not the same value with its pane field cleared.
+//! so a key can't be passed back into a builtin expecting a pane. A pane
+//! value and a plain per-buffer key must stay two distinct kinds of thing,
+//! not the same value with its pane field cleared — collapsing them would
+//! let a key masquerade as a pane-less handle anywhere a pane is expected,
+//! silently reintroducing the implicit-pane guessing this design exists to
+//! remove (see `types::PaneHandle`'s own doc).
 //!
 //! Display uses the slotmap `as_ffi` u64 so that `(log! "info" pane)` prints
 //! something readable without revealing internal structure.

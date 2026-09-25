@@ -391,8 +391,10 @@ fn run_native_body(
             // `apply_doc_edit` itself routes into the grouped path when an
             // edit group is already open (insert session or dot-repeat
             // replay), so the edit composes into the open group rather than
-            // creating a standalone undo revision.
-            doc_ops::apply_doc_edit(
+            // creating a standalone undo revision. `Err` when another pane
+            // holds one instead — same reporting shape as `EditorCmd`'s
+            // `Result` two arms below.
+            if let Err(e) = doc_ops::apply_doc_edit(
                 &mut state.buffers,
                 &state.config.decorations,
                 &mut state.panes.state,
@@ -400,7 +402,10 @@ fn run_native_body(
                 t.pid(),
                 buf,
                 fun.0,
-            );
+            ) {
+                state.report(e.severity(), e.message().to_owned());
+                state.command_refused = true;
+            }
         }
         MappableCommand::EditorCmd { fun, .. } => {
             // Every arm pairs a body with the target its own `EditorCmdBody`

@@ -41,11 +41,13 @@
 (define lsp/sighelp-request
   (debounce 150
     (lambda (pane)
-      ;; `pane`'s buffer may have closed during the debounce window —
-      ;; `lsp-request` takes a `LivePane` and would raise on it otherwise;
-      ;; a benign "the buffer closed while this was pending" is not worth
-      ;; a logged error.
-      (when (buffer-live? pane)
+      ;; `pane` itself — not just its buffer — may have closed, or been
+      ;; switched to another buffer, during the debounce window:
+      ;; `lsp-position-params` resolves the pane (not just the buffer) and
+      ;; would raise on either. A benign "this pane is no longer what it
+      ;; was when the keystroke armed this timer" is not worth a logged
+      ;; error.
+      (when (pane-live? pane)
         (lsp-request pane "textDocument/signatureHelp" (lsp-position-params pane)
           (lambda (err res)
             (cond

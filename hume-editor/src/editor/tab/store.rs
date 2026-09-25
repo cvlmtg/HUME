@@ -93,6 +93,20 @@ impl TabStore {
         self.stash[id].focused_pane_id
     }
 
+    /// Every *inactive* tab's own `LayoutTree` — `stash[current]` is
+    /// excluded (see this struct's own doc: it's stale while `current` is
+    /// live). `Editor::sync_viewport_dims` (`frame.rs`) re-partitions each
+    /// of these against the terminal on every resize, so a background-tab
+    /// pane's viewport dims stay current the same way the active tab's own
+    /// already do — the active tab's geometry is resynced separately, from
+    /// `EngineView::layout` itself.
+    pub(in crate::editor) fn inactive_layouts(&self) -> impl Iterator<Item = &LayoutTree> {
+        self.stash
+            .iter()
+            .filter(|&(id, _)| id != self.current)
+            .map(|(_, state)| &state.layout)
+    }
+
     /// `current`'s index in `order`. Every method below that needs it reads
     /// this instead of taking a caller-supplied id (unlike, say,
     /// `BufferStore::next`, which takes one and so has a real "unknown id"

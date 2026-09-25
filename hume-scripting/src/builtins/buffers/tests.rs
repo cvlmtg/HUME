@@ -191,7 +191,9 @@ fn buffers_command_mode_returns_empty_list() {
 
 /// `buffer-cursor-line` raises when `pane` carries no pane state (NullHost) —
 /// kind-B fail-fast, unlike the old bid-only "not shown anywhere → `#f`"
-/// degrade this replaces (see `docs/LESSONS.md`'s L19 and `CursorHost`'s doc).
+/// degrade this replaces: a builtin that needs a pane to answer meaningfully
+/// must say so loudly when it doesn't have one, not silently guess a
+/// default (see `CursorHost`'s doc).
 #[test]
 fn buffer_cursor_line_raises_with_no_pane_state() {
     let mut h = SteelCtxTestHarness::new();

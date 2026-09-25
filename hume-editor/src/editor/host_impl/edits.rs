@@ -74,6 +74,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         edit: &serde_json::Value,
         encoding: hume_rope::position_encoding::PositionEncoding,
+        expect_gen: Option<u64>,
     ) -> Result<usize, String> {
         let t = self.resolve_edit_pane(pane)?;
         if self.lsp.is_none() {
@@ -91,6 +92,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             t.pid(),
             we,
             encoding,
+            expect_gen,
         )?;
         Ok(summary.buffers_modified)
     }

@@ -136,6 +136,14 @@ pub(crate) fn buffer_live(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
     ))
 }
 
+/// `(pane-live? pane)` → `#t` if `pane` names a pane that still exists and
+/// still shows its own buffer, `#f` otherwise — never raises, the pane-aware
+/// sibling of `buffer-live?` above. See [`BufferHost::pane_live`]'s doc for
+/// the async-continuation use case this exists for.
+pub(crate) fn pane_live(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
+    Ok(SteelVal::BoolV(ctx.host.buffers().pane_live(pane.0)))
+}
+
 /// `(buffer-dirty? pane)` → `#t` if the buffer has unsaved edits.
 pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     let bid = pane.buffer();

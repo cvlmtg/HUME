@@ -233,6 +233,7 @@
 (#%register-global "pane-focus-next")
 (#%register-global "pane-focus-right")
 (#%register-global "pane-focus-up")
+(#%register-global "pane-live?")
 (#%register-global "pane-split")
 (#%register-global "pane-vsplit")
 (#%register-global "pane?")

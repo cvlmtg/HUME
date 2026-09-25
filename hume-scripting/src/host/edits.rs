@@ -37,22 +37,32 @@ pub trait EditHost {
         expect_gen: Option<u64>,
     ) -> Result<(), String>;
 
-    /// `(apply-workspace-edit! pane edit)` — `edit` is an LSP `WorkspaceEdit`
-    /// wire JSON blob, read-only here (deserialized into a typed
-    /// `WorkspaceEdit` without needing ownership), so the builtin passes a
-    /// borrow of its `JsonHandle`/hashmap argument rather than cloning it.
-    /// `encoding` is the builtin's own read of that handle's tagged
-    /// producing-server encoding (`JsonHandle::position_encoding`) — every
-    /// position in `edit` is counted in it. A `WorkspaceEdit` can touch many
-    /// files at once, each mapped through `pane`'s own pane regardless of
-    /// which buffer it edits — the same "seed a selection entry for a
-    /// buffer this pane doesn't show" fallback `apply_text_edits` uses,
-    /// applied per file. Returns the number of buffers modified.
+    /// `(apply-workspace-edit! pane edit #:expect-generation gen)` — `edit`
+    /// is an LSP `WorkspaceEdit` wire JSON blob, read-only here (deserialized
+    /// into a typed `WorkspaceEdit` without needing ownership), so the
+    /// builtin passes a borrow of its `JsonHandle`/hashmap argument rather
+    /// than cloning it. `encoding` is the builtin's own read of that
+    /// handle's tagged producing-server encoding
+    /// (`JsonHandle::position_encoding`) — every position in `edit` is
+    /// counted in it. A `WorkspaceEdit` can touch many files at once, each
+    /// mapped through `pane`'s own pane regardless of which buffer it
+    /// edits — the same "seed a selection entry for a buffer this pane
+    /// doesn't show" fallback `apply_text_edits` uses, applied per file.
+    /// Returns the number of buffers modified.
+    ///
+    /// `expect_gen`, like `apply_text_edits`'s own, is the *requesting*
+    /// pane's buffer generation at the time the request that produced
+    /// `edit` was sent — checked against that buffer's current generation
+    /// before any file's changeset is built, so an edit computed against
+    /// text that has since changed fails loudly instead of either silently
+    /// vanishing (a request-side staleness drop, before this is ever
+    /// called) or applying against the wrong text.
     fn apply_workspace_edit(
         &mut self,
         pane: PaneHandle,
         edit: &serde_json::Value,
         encoding: PositionEncoding,
+        expect_gen: Option<u64>,
     ) -> Result<usize, String>;
 
     /// `(goto-location! pane target)`, raw `Location`/`LocationLink`

@@ -39,7 +39,10 @@ Vim's `i_CTRL-N` rescans the buffer on every invocation, synchronously, in
 C — affordable only because it's native. This plugin can't have that: the
 scan is interpreted Steel. So it keeps a per-buffer cache instead, rebuilt
 on `on-buffer-open` and (debounced 150ms) `on-text-changed`, the same shape
-`core:git-diff` uses for its own per-buffer state.
+`core:git-diff` uses for its own per-buffer state. The debounce is keyed by
+buffer, not by pane, so a command's own pane and a hook's pane-less value
+for the same buffer still coalesce into the same pending timer instead of
+each starting its own.
 
 The rebuild walks outward from the cursor's line in both directions, one
 bounded batch of lines (`"lines"`) per direction per tick, fetched with
@@ -53,6 +56,13 @@ an edit that interrupts a walk (cancelling it, restarting from the new
 cursor position) has already covered the region most likely to have
 changed. `Ctrl-Space` never scans — it only ever reads whatever the
 background walk has indexed so far.
+
+The cursor line the walk starts from comes from `buffer-cursor-line`, which
+needs an actual pane, not just a buffer — `on-buffer-open`/`on-text-changed`
+hand the hook a pane-less value, and `buffer-cursor-line` raises rather than
+degrading gracefully for one. The anchor is resolved via `(buffer-panes
+pane)` instead: `car` of the result if the buffer is shown anywhere, else
+line 0 (the top of the buffer) if it isn't shown at all.
 
 Worth being precise about what this buys and what it doesn't: starting at
 the cursor *reorders* the work, it doesn't reduce it. `on-text-changed`

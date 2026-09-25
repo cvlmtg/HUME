@@ -605,7 +605,7 @@ pub(in crate::editor) fn typed_sort(
             "sort_lines must run against the same selections just read"
         );
         triple
-    });
+    })?;
     Ok(())
 }
 

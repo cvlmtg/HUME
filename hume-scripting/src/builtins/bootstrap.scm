@@ -87,13 +87,6 @@
                       (apply proc args))))
         (set-box! pending (unbox my-id))))))
 
-;; `#:key` is applied to the debounced proc's own arguments, the same way
-;; `proc` itself is (`(apply key args)`, not `(key args)`) — its default,
-;; `(lambda (first . _) first)`, is the old behavior of keying directly on
-;; the first argument. A caller whose first argument is a pane that may
-;; arrive with or without a pane component for the same buffer (a command's
-;; own vs. a hook's pane-less one) passes `#:key (lambda (p . _) (buffer-key
-;; p))` instead, so both coalesce into the same pending slot.
 (define (debounce-by ms proc #:key [key (lambda (first . _) first)])
   (let ((pending (box (hash))))
     (lambda args
@@ -120,8 +113,8 @@
 (define (apply-text-edits! pane edits #:expect-generation [gen #f])
   (%apply-text-edits! pane edits gen))
 
-(define (apply-workspace-edit! pane wsedit)
-  (let ((n (%apply-workspace-edit! pane wsedit)))
+(define (apply-workspace-edit! pane wsedit #:expect-generation [gen #f])
+  (let ((n (%apply-workspace-edit! pane wsedit gen)))
     (log! 'info (to-string n " buffers modified — :wa writes all"))
     n))
 

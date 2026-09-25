@@ -80,3 +80,9 @@ bare toggle off/on rather than resetting to the config default. `git-diff/buffer
 (`plugin.scm`) resolves it: the per-buffer override when set, else the config `"ref"`
 default. Giving a ref always turns that rendering on, never off, and re-fetches even if
 it's already on at the same ref.
+
+`git-diff:refs`, the completion source both toggles complete their ref argument
+against, is a minibuffer-target source: its callback gets only `id`/`input`/`cursor`, no
+pane of its own. It reads `(focused-pane)` for the buffer whose repo to look in — the
+same pane that opened the `:` command line this completes for, and the one its typed
+command will receive as its own leading pane once Enter is pressed.

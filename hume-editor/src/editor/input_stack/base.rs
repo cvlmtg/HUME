@@ -63,7 +63,10 @@ pub(in crate::editor) fn base_input(ed: &mut Editor, _r: LayerRef, ev: InputEven
 fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
     let focused = ed.state.focus.id();
     let buf = ed.focused_buffer_id();
-    super::super::doc_ops::apply_doc_edit(
+    // Bracketed-paste terminal events bypass the dispatch pipeline entirely
+    // (no `run_resolved`, no `command_refused` listener), so a refusal here
+    // has nowhere to report to but the statusline directly.
+    if let Err(e) = super::super::doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
         &mut ed.state.panes.state,
@@ -71,7 +74,9 @@ fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
         focused,
         buf,
         |b, s| hume_ops::edit::insert_str(b, s, text),
-    );
+    ) {
+        ed.state.report(e.severity(), e.message().to_owned());
+    }
 }
 
 /// Enqueue the keys stored in `reg` into the editor's replay queue.

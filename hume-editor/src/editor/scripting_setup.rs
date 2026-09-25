@@ -499,9 +499,21 @@ impl Editor {
                     // for an id that's already gone by design (see
                     // `lifecycle.rs`'s pairing check) — checking it here
                     // would drop every `OnBufferClose` outright.
+                    //
+                    // A pane-carrying event (`OnBufferEnter`,
+                    // `OnViewportChange`, `OnTriggerChar`,
+                    // `OnCompletionAccept`) goes stale the same way: a
+                    // handler earlier in this same batch (a timer's
+                    // `pane-close`, a buffer switch) can close that pane or
+                    // repoint it at another buffer before this event's own
+                    // turn, and the builtin its handler goes on to call
+                    // would otherwise raise on a pane it never asked for.
                     if !matches!(event, EditorEvent::OnBufferClose { .. })
                         && let Some(buffer) = event.buffer()
-                        && self.state.buffers.try_get(buffer).is_none()
+                        && (self.state.buffers.try_get(buffer).is_none()
+                            || event.pane().is_some_and(|pane| {
+                                self.view.panes.get(pane).map(|p| p.buffer_id) != Some(buffer)
+                            }))
                     {
                         continue;
                     }

@@ -41,6 +41,16 @@ pub trait BufferHost {
     /// or one that simply isn't focused.
     fn require_focused_pane(&self, pane: PaneHandle) -> Result<(), String>;
 
+    /// `#t` if `pane` names a pane that still exists and still shows
+    /// `pane`'s own buffer, `#f` otherwise (including when `pane` carries no
+    /// pane component at all) — never raises, the pane-aware sibling of
+    /// `buffer_exists`/`(buffer-live? pane)`. The idiom for a debounced or
+    /// otherwise async continuation whose captured `pane` may have closed,
+    /// or been repointed at another buffer, by the time it fires: check
+    /// this first, rather than discovering the fact via a raise from
+    /// whatever kind-B builtin the continuation was actually going to call.
+    fn pane_live(&self, pane: PaneHandle) -> bool;
+
     // ── Buffer reads (None ⇒ unknown/stale id) ──────────────────────────────
     fn buffer_exists(&self, id: BufferId) -> bool;
     fn buffer_path(&self, id: BufferId) -> Option<PathBuf>;

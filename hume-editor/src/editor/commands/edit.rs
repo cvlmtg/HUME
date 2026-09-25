@@ -40,7 +40,7 @@ pub(in crate::editor) fn cmd_delete(
         super::doc(state, view, t).text(),
         super::pane_selections(state, view, t),
     );
-    apply_pane_edit(state, view, t, delete_selection);
+    apply_pane_edit(state, view, t, delete_selection)?;
     state.route_kill(yanked);
     Ok(())
 }
@@ -212,7 +212,7 @@ fn history_step(
         t.pid(),
         buf,
         |b| walk(b, count),
-    );
+    )?;
     // `RefusedReadOnly` stays a distinct arm rather than folding into
     // `Took(0)` — see `HistoryWalk`'s own doc for why.
     if let doc_ops::HistoryWalk::Took(taken) = result
@@ -265,7 +265,7 @@ pub(in crate::editor) fn cmd_replace(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if let Some(ch) = state.pending_char.take() {
-        apply_pane_edit(state, view, t, |b, s| replace_selections(b, s, ch));
+        apply_pane_edit(state, view, t, |b, s| replace_selections(b, s, ch))?;
     }
     Ok(())
 }
@@ -278,7 +278,7 @@ pub(in crate::editor) fn cmd_join_lines_select_spaces(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    apply_pane_edit(state, view, t, join_lines_select_spaces);
+    apply_pane_edit(state, view, t, join_lines_select_spaces)?;
     Ok(())
 }
 
@@ -298,7 +298,7 @@ pub(in crate::editor) fn cmd_align_selections(
         .tab_width(&state.settings);
     apply_pane_edit(state, view, t, move |text, sels| {
         align_selections(text, sels, tab_width)
-    });
+    })?;
     Ok(())
 }
 
@@ -314,7 +314,7 @@ pub(in crate::editor) fn cmd_indent(
     let (style, tab_width) = tab_format(state.buffers.get(buf_id), &state.settings);
     apply_pane_edit(state, view, t, move |text, sels| {
         indent_lines(text, sels, style, tab_width, count)
-    });
+    })?;
     Ok(())
 }
 
@@ -330,7 +330,7 @@ pub(in crate::editor) fn cmd_unindent(
     let (style, tab_width) = tab_format(state.buffers.get(buf_id), &state.settings);
     apply_pane_edit(state, view, t, move |text, sels| {
         unindent_lines(text, sels, style, tab_width, count)
-    });
+    })?;
     Ok(())
 }
 
@@ -353,7 +353,7 @@ pub(in crate::editor) fn cmd_delete_word_backward(
     let word_chars = word_chars_owned(state.buffers.get(buf_id), &state.settings);
     apply_pane_edit(state, view, t, move |text, sels| {
         delete_word_backward(text, sels, WordChars::new(&word_chars))
-    });
+    })?;
     Ok(())
 }
 
@@ -378,6 +378,6 @@ pub(in crate::editor) fn cmd_surround_add(
         .unwrap_or((ch, ch));
     apply_pane_edit(state, view, t, |b, s| {
         wrap_each_selection(b, s, open, close)
-    });
+    })?;
     Ok(())
 }

@@ -84,7 +84,11 @@ the element by default, so an unconditional fetch would spawn `git` (and its two
 stdout/stderr capture threads) on every focus change and save for work nobody can see.
 `plugin.scm`'s `on-option-change` hook re-runs `schedule-branch-refresh!` on the focused
 buffer whenever `"statusline"` changes, so placing the element drives the first fetch in
-immediately rather than waiting for the next focus change or save. Both
+immediately rather than waiting for the next focus change or save. It reads `(focused-pane)`
+at that moment rather than a captured pane value — `on-option-change` fires for a *global*
+setting write with no buffer of its own, and this is genuinely follow-the-user code,
+refreshing whatever's on screen right now, not any particular buffer the write happened to
+be about. Both
 `configure-statusline!` and `:set global statusline=…` funnel through this one raise
 site.
 

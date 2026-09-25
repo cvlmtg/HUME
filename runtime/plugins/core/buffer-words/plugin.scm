@@ -86,10 +86,7 @@
          set lines))
 
 ;;; 0-indexed cursor line, or the top of the buffer when no pane shows it.
-;;; `pane` may carry no pane of its own (`on-buffer-open`/`on-text-changed`
-;;; hand a pane-less value) — resolved explicitly via `(buffer-panes pane)`
-;;; rather than passed straight to `buffer-cursor-line`, which raises
-;;; (kind-B fail-fast) instead of answering `#f` for a buffer no pane shows.
+;;; See README.md's "Cursor-outward, line-windowed indexing".
 (define (bw/anchor-line pane)
   (let ([panes (buffer-panes pane)])
     (if (null? panes) 0 (- (buffer-cursor-line (car panes)) 1))))
@@ -173,8 +170,7 @@
     (bw/forget! pane)
     (bw/reindex! pane)))
 
-;;; Keyed per buffer (not per pane) — a command's own pane and a
-;;; hook's pane-less value for the same buffer must still coalesce.
+;;; See README.md's "Cursor-outward, line-windowed indexing" for the keying.
 (define bw/schedule-reindex!
   (debounce-by 150 bw/reindex! #:key (lambda (p . _) (buffer-key p))))
 

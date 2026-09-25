@@ -669,9 +669,9 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
 }
 
 /// `(viewport-range pane)` needs a pane, not just a buffer — kind-B fail-fast
-/// (see `docs/LESSONS.md`'s L19 and `commands::resolve_pane`'s doc): a
-/// pane-less handle (`(buffers)`'s own return shape) raises, replacing the
-/// old "not shown anywhere → `#f`" degrade.
+/// (see `commands::resolve_pane`'s doc): a pane-less handle (`(buffers)`'s
+/// own return shape) raises, replacing the old "not shown anywhere → `#f`"
+/// degrade.
 #[test]
 fn viewport_range_raises_for_a_paneless_buffer_handle() {
     let tmp = safe_tempdir();
@@ -723,11 +723,10 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
 /// A buffer shown only in a *background* tab's pane — not paneless, unlike
 /// the sibling test above — still resolves: `resolve_pane`'s `Pane` category
 /// only checks that the pane is live and shows the buffer, not which tab
-/// it's on. The returned range may be stale (unresized since its tab was
-/// last active — see
-/// `editor::tests::tab::resizing_while_a_tab_is_hidden_leaves_it_stale_until_refocused`),
-/// which is the caller's own tradeoff for naming a background pane
-/// explicitly (`buffer-panes`) rather than the removed active-tab guess.
+/// it's on. The returned range is trustworthy, not stale — a background
+/// tab's panes are kept resynced to the terminal on every resize, same as
+/// the active tab's own (see
+/// `editor::tests::tab::resizing_while_a_tab_is_hidden_still_resyncs_its_viewport`).
 #[test]
 fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
     let tmp = safe_tempdir();
@@ -756,15 +755,59 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
     assert_eq!(
         got.start,
         hume_rope::line::ContentLine::new(0),
-        "a background-tab pane still resolves and reports its own (possibly stale) geometry"
+        "a background-tab pane still resolves and reports its own (kept-current) geometry"
+    );
+}
+
+/// The Steel-facing `(viewport-range pane)` builtin itself — not just the
+/// Rust `introspect::viewport_range` function the sibling test above calls
+/// directly, one layer under `host_impl`'s own (now-removed) active-tab
+/// guard — must resolve a background-tab pane too.
+#[test]
+fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
+    let tmp = safe_tempdir();
+    let path = tmp.path().join("hidden.rs");
+    std::fs::write(&path, "fn hidden() {}\n").unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.execute_typed("tabnew", Some(path.to_str().unwrap()))
+        .unwrap();
+    let hidden_bid = ed.focused_buffer_id();
+    ed.execute_typed("tabprev", None).unwrap();
+    assert_ne!(
+        ed.focused_buffer_id(),
+        hidden_bid,
+        "test setup: back on the original tab, hidden_bid's tab now in the background"
+    );
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        // Same "the one buffer that isn't focused" pick as the paneless
+        // test above, then `(buffer-panes hidden)` resolves it to its own
+        // background-tab pane before calling viewport-range on that.
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
+                    (hidden-pane (car (buffer-panes hidden)))
+                    (range (viewport-range hidden-pane)))
+               (log! 'info (string-append "range: " (number->string (car range)) ".." (number->string (cdr range)))))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":probe");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("range: 0..1"),
+        "viewport-range on a background-tab pane must succeed, not raise"
     );
 }
 
 /// `lsp-position-params` needs a pane, not just a buffer — kind-B fail-fast
-/// (see `docs/LESSONS.md`'s L19 and `commands::resolve_pane`'s doc): a
-/// pane-less handle (`(buffers)`'s own return shape) raises, even when the
-/// buffer is attached to a running server and still has a seeded (now
-/// stale) pane state.
+/// (see `commands::resolve_pane`'s doc): a pane-less handle (`(buffers)`'s
+/// own return shape) raises, even when the buffer is attached to a running
+/// server and still has a seeded (now stale) pane state.
 #[test]
 fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
     let tmp = safe_tempdir();

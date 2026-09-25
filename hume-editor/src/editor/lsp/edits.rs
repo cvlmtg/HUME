@@ -150,8 +150,8 @@ fn commit_changeset(
     pid: PaneId,
     bid: BufferId,
     cs: ChangeSet,
-) -> ChangeSet {
-    pane_state::ensure(&mut state.panes.state, &state.buffers, pid, bid);
+) -> Result<ChangeSet, String> {
+    pane_state::try_ensure(&mut state.panes.state, &state.buffers, pid, bid)?;
     let cs_for_return = cs.clone();
     doc_ops::apply_doc_edit(
         &mut state.buffers,
@@ -168,8 +168,9 @@ fn commit_changeset(
                 .expect("cs built from this buffer's own rope, just above");
             (new_text, sels, cs)
         },
-    );
-    cs_for_return
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(cs_for_return)
 }
 
 /// `(apply-text-edits! pane edits #:expect-generation gen)`. `encoding` is
@@ -202,7 +203,7 @@ pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
     encoding: PositionEncoding,
 ) -> Result<ChangeSet, String> {
     let cs = build_edit_changeset(state, bid, &edits, expect_gen, encoding)?;
-    Ok(commit_changeset(state, pid, bid, cs))
+    commit_changeset(state, pid, bid, cs)
 }
 
 /// Decodes `edits` (wire positions, computed by the server against the
@@ -283,7 +284,7 @@ pub(in crate::editor) fn commit_char_edits(
     let buf = checked_buffer(state, bid, None)?;
     let len_before = buf.text().end();
     let cs = build_changeset_from_char_edits(len_before, char_edits)?;
-    Ok(Some(commit_changeset(state, pid, bid, cs)))
+    Ok(Some(commit_changeset(state, pid, bid, cs)?))
 }
 
 pub(in crate::editor) struct WorkspaceEditSummary {
@@ -378,7 +379,25 @@ pub(in crate::editor) fn apply_workspace_edit(
     pid: PaneId,
     we: lsp_types::WorkspaceEdit,
     encoding: PositionEncoding,
+    expect_gen: Option<u64>,
 ) -> Result<WorkspaceEditSummary, String> {
+    // Checked against the *requesting* pane's own buffer, not any file the
+    // edit touches — `resolve_command_pane` already proved `pid` still shows
+    // it, so this is "has the buffer this request was made from changed
+    // since," the same staleness `apply-text-edits!`'s `#:expect-generation`
+    // guards. Per-file staleness (a `documentChanges` entry's own `version`)
+    // is checked separately, per entry, below.
+    if let Some(expect_gen) = expect_gen {
+        let requesting_bid = view.panes[pid].buffer_id;
+        let current_gen = state.buffers.get(requesting_bid).text_gen;
+        if current_gen != expect_gen {
+            return Err(
+                "apply-workspace-edit!: buffer has changed since the request that produced \
+                 this edit"
+                    .to_string(),
+            );
+        }
+    }
     let entries = collect_edit_entries(we)?;
     let mut planned: Vec<(BufferId, ChangeSet)> = Vec::with_capacity(entries.len());
     for (uri, edits, version) in entries {
@@ -413,7 +432,7 @@ pub(in crate::editor) fn apply_workspace_edit(
     }
     let buffers_modified = planned.len();
     for (bid, cs) in planned {
-        commit_changeset(state, pid, bid, cs);
+        commit_changeset(state, pid, bid, cs)?;
     }
     Ok(WorkspaceEditSummary { buffers_modified })
 }
@@ -608,7 +627,10 @@ impl Editor {
         // focused pane is the only sensible "current" pane to seed selection
         // state through for a file this edit newly opens.
         let pid = self.state.focus.id();
-        let result = apply_workspace_edit(&mut self.state, &mut self.view, pid, we, encoding);
+        // No request-time buffer to check staleness against — this answers a
+        // server-initiated request, not a Steel round-trip with its own
+        // captured generation.
+        let result = apply_workspace_edit(&mut self.state, &mut self.view, pid, we, encoding, None);
         // Drain regardless of outcome: `apply_workspace_edit`'s contract is
         // "validate all, then apply all", but it opens buffers as it *validates*
         // each entry (`edits.rs`'s `resolve_or_open` calls), so a failure on

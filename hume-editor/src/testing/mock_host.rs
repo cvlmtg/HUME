@@ -149,6 +149,9 @@ impl BufferHost for MockHost {
     fn require_focused_pane(&self, _pane: PaneHandle) -> Result<(), String> {
         Err("MockHost: require_focused_pane not available".into())
     }
+    fn pane_live(&self, _pane: PaneHandle) -> bool {
+        false
+    }
     fn buffer_exists(&self, id: BufferId) -> bool {
         self.live_buffer_ids.contains(&id)
     }

@@ -505,6 +505,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "viewport-range" buffers::viewport_range(pane: args::LivePane);
         cmd "buffer-generation" buffers::buffer_generation(pane: args::LivePane);
         cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);
+        cmd "pane-live?" buffers::pane_live(pane: args::ArgPane);
         open "register-trigger-chars!" completion::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
 
         // Decoration stores + diagnostics pull.
@@ -521,7 +522,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Edit + navigation primitives.
         cmd "%apply-text-edits!" edits::apply_text_edits(pane: args::LivePane, edits: SteelVal, expect_gen: SteelVal);
-        cmd "%apply-workspace-edit!" edits::apply_workspace_edit(pane: args::LivePane, wsedit: SteelVal);
+        cmd "%apply-workspace-edit!" edits::apply_workspace_edit(pane: args::LivePane, wsedit: SteelVal, expect_gen: SteelVal);
         cmd "%goto-location!" edits::goto_location(pane: args::LivePane, loc: SteelVal);
         cmd "selections-linewise?" buffers::selections_linewise(pane: args::LivePane);
         cmd "selections-charwise?" buffers::selections_charwise(pane: args::LivePane);
