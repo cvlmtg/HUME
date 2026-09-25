@@ -268,31 +268,46 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
     );
 }
 
+/// A *real* Insert entry (`i`, pairing the session with an open edit group)
+/// ends in full — Insert layer, edit group, and the completion session
+/// riding on top of it — the moment `switch_to_buffer_without_jump` swaps
+/// the focused pane's buffer out from under it
+/// (`buffer::lifecycle::switch_pane_to_buffer`'s teardown). Nothing survives
+/// for a later `completion-accept!` to act on stale state; it errors on the
+/// earlier "no session at all" check rather than the pane/buffer liveness
+/// check below it.
 #[test]
 fn accept_after_the_pane_switched_buffers_errors() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let original = ed.focused_buffer_id();
-    raw_insert_with_source(
+    insert_with_script(
         &mut ed,
         tmp.path(),
-        r#"(list (hash "label" "x" "insertText" "z"))"#,
-        ACCEPT_0,
+        &format!(
+            "{}\n{ACCEPT_0}",
+            completion_source("test", r#"(list (hash "label" "x" "insertText" "z"))"#, "")
+        ),
     );
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
-    // The window between the switch and the next settle (which is when
-    // `dismiss_invalid_completion` runs) is real.
     let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
     ed.switch_to_buffer_without_jump(scratch);
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "the switch must end Insert, and with it the completion session"
+    );
+    assert!(ed.state.input.buffer_completion().is_none());
 
     accept_via_steel(&mut ed);
     assert_eq!(
         ed.state.buffers.get(original).text().to_string(),
-        "abcdef\n"
+        "abcdef\n",
+        "nothing must have been written to the old buffer"
     );
     assert!(
-        status(&ed).contains("no longer shows"),
+        status(&ed).contains("no active completion session"),
         "got {:?}",
         status(&ed)
     );

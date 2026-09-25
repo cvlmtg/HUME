@@ -362,13 +362,7 @@ pub(super) fn switch_to_buffer_without_jump(
     t: CommandPane,
     target: BufferId,
 ) {
-    super::buffer::lifecycle::switch_pane_to_buffer(
-        view,
-        &state.buffers,
-        &mut state.panes.state,
-        t.pid(),
-        target,
-    );
+    super::buffer::lifecycle::switch_pane_to_buffer(state, view, t.pid(), target);
 }
 
 /// Replace `t`'s pane's selections for `t`'s buffer.

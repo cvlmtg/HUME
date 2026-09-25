@@ -571,13 +571,7 @@ pub(in crate::editor) fn goto_location(
     let entry = crate::editor::commands::current_jump_entry(state, view, t);
 
     let pid = t.pid();
-    crate::editor::buffer::lifecycle::switch_pane_to_buffer(
-        view,
-        &state.buffers,
-        &mut state.panes.state,
-        pid,
-        bid,
-    );
+    crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
     pane_state::write_cursor(&mut state.panes.state, &state.buffers, pid, bid, char_pos);
     crate::editor::commands::record_jump_if_moved(state, view, t, entry);
 

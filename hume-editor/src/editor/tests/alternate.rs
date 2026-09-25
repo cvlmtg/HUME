@@ -54,9 +54,8 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     // A actually shows foo (the focused buffer for this whole test); B is a
     // sibling pane showing baz. Neither call touches `mru`.
     crate::editor::buffer::lifecycle::switch_pane_to_buffer(
+        &mut ed.state,
         &mut ed.view,
-        &ed.state.buffers,
-        &mut ed.state.panes.state,
         pid_a,
         foo_bid,
     );

@@ -374,13 +374,7 @@ impl Editor {
     /// Redirect the focused pane to `target` without recording a jump.
     pub(in crate::editor) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
         let pid = self.state.focus.id();
-        lifecycle::switch_pane_to_buffer(
-            &mut self.view,
-            &self.state.buffers,
-            &mut self.state.panes.state,
-            pid,
-            target,
-        );
+        lifecycle::switch_pane_to_buffer(&mut self.state, &mut self.view, pid, target);
     }
 
     /// Redirect the focused pane to `target`, recording the outgoing position
@@ -390,12 +384,11 @@ impl Editor {
     /// must succeed before calling this — `push()` truncates forward history.
     pub(in crate::editor) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
         let current = self.focused_buffer_id();
+        let focused_pane_id = self.state.focus.id();
         lifecycle::switch_to_buffer_with_jump(
+            &mut self.state,
             &mut self.view,
-            &self.state.buffers,
-            &mut self.state.panes.state,
-            &mut self.state.panes.jumps,
-            self.state.focus.id(),
+            focused_pane_id,
             current,
             target,
         );

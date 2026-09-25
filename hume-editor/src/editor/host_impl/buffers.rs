@@ -96,13 +96,12 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
     fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String> {
         let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
+        let current = t.bid(self.view);
         crate::editor::buffer::lifecycle::switch_to_buffer_with_jump(
+            self.state,
             self.view,
-            &self.state.buffers,
-            &mut self.state.panes.state,
-            &mut self.state.panes.jumps,
             t.pid(),
-            t.bid(self.view),
+            current,
             target,
         );
         Ok(())

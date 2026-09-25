@@ -1276,6 +1276,7 @@ mod horizontal_scroll_follow;
 mod incremental_parse;
 mod injections_editor;
 mod inline_output;
+mod insert_session_buffer_switch;
 mod jump_list;
 mod kitty;
 mod language;

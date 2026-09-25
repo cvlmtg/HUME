@@ -102,32 +102,48 @@ impl Editor {
         // reload is never mistaken for one that predates it.
         let pre_reload_bids = self.state.buffers.iter().map(|(bid, _)| bid).collect();
 
+        // A still-open Insert or paste session on the focused pane holds
+        // undo state (an open edit/paste group), not a Steel value — the
+        // "outgoing engine, nothing left to observe the fire" reasoning
+        // below doesn't excuse it from proper teardown the way it does the
+        // remaining mode layers/overlays. Left open, `input.truncate_to_base()`
+        // further down would drop the `Insert` layer without ever ending
+        // the session, leaving `pane_state[pid][bid].edit_group` open on a
+        // buffer the reload's own resets are about to invalidate — the next
+        // keystroke would panic in `Buffer::apply_edit_grouped`'s `.expect()`.
+        // Must run before anything below, same "while focus still names the
+        // pane being left" ordering [`super::focus::end_focus_sessions`]
+        // itself documents.
+        super::focus::end_focus_sessions(&mut self.state, &self.view);
+
         // ── Steel values rooted in the outgoing engine ──
         //
         // `pending_work` drops below when `self.state.config =
-        // ConfigState::new(…)` runs; every mode layer (`Insert`/`Command`/
-        // `Search`/`Sift`/`Prompt`, each carrying its own minibuf and, for
-        // `Command`, an in-progress completion session, for `Prompt` the
-        // callback itself, and for `Base`/`Insert` a `Sticky` popup's slot)
-        // and the five overlay widgets (menu/drawer/picker/confirm/popup)
-        // live on `state.input` instead and are dropped by the explicit
+        // ConfigState::new(…)` runs; every mode layer (`Command`/`Search`/
+        // `Sift`/`Prompt`, each carrying its own minibuf and, for `Command`,
+        // an in-progress completion session, for `Prompt` the callback
+        // itself, and for `Base` a `Sticky` popup's slot) and the five
+        // overlay widgets (menu/drawer/picker/confirm/popup) live on
+        // `state.input` instead and are dropped by the explicit
         // `input.truncate_to_base()` call further down — nothing here reads
         // any of them in between, so there's nothing to clear early.
-        // `truncate_layers`' own teardown (`EditorState::tear_down`) never
-        // fires a Steel callback, so a `Prompt` session's callback is
-        // discarded exactly like the overlay widgets' — and
-        // `truncate_to_base` resets `Base`'s `extend` flag and
-        // `sticky_popup` slot to their defaults in the same call, so neither
-        // Extend nor a signature-help popup survives a reload. `PickerSession::
-        // source` (if a picker was open) kills any streaming child process on
-        // drop, same as any other overlay drop; the overlay *views*
-        // (`popup_view`/`menu_view`/`drawer_view`/`picker_view`) self-heal
-        // from `prepare_frame` every frame regardless, so nothing here needs
-        // to touch them directly either. `confirm` has no view/Steel
-        // callback of its own (its action is a plain Rust enum, not a
-        // rooted `SteelVal`), so it needs even less than the others —
-        // dropping it is the entire teardown. `PopupLayer` likewise carries
-        // no Steel callback.
+        // `Insert` is no longer among them: `end_focus_sessions` above
+        // already ended it, so `truncate_to_base` only ever finds `Base` or
+        // one of the other layers still on the stack. `truncate_layers`'
+        // own teardown (`EditorState::tear_down`) never fires a Steel
+        // callback, so a `Prompt` session's callback is discarded exactly
+        // like the overlay widgets' — and `truncate_to_base` resets `Base`'s
+        // `extend` flag and `sticky_popup` slot to their defaults in the
+        // same call, so neither Extend nor a signature-help popup survives a
+        // reload. `PickerSession::source` (if a picker was open) kills any
+        // streaming child process on drop, same as any other overlay drop;
+        // the overlay *views* (`popup_view`/`menu_view`/`drawer_view`/
+        // `picker_view`) self-heal from `prepare_frame` every frame
+        // regardless, so nothing here needs to touch them directly either.
+        // `confirm` has no view/Steel callback of its own (its action is a
+        // plain Rust enum, not a rooted `SteelVal`), so it needs even less
+        // than the others — dropping it is the entire teardown. `PopupLayer`
+        // likewise carries no Steel callback.
         self.lsp.reset_config();
         // Only the Steel `after` thunks — native `ViewportDebounce` timers
         // keep their wheel entries and their `viewport_debounce` back-index

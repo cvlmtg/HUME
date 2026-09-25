@@ -41,16 +41,31 @@ impl Focus {
     }
 }
 
-/// Move focus to `pid`, ending any open Insert session and any open paste
-/// session first — the one production chokepoint every focus change goes
-/// through (`commands::pane::close_focused_pane`/`split_pane_onto`,
+/// End any open Insert session and any open paste session on the *currently
+/// focused* pane — the shared teardown [`focus_pane`] and every pane-buffer
+/// switch (`buffer::lifecycle::switch_pane_to_buffer`, `Editor::
+/// reset_config_state`'s reload) run before they move focus or swap the
+/// focused pane's buffer out from under it. Both teardowns read state keyed
+/// on the pane `state.focus` names *right now* (`end_insert_session`'s
+/// blank-line indent trim, `commit_paste_session`'s focused-pane paste
+/// group), so every caller must run this — while focus still names the pane
+/// being left or the buffer being swapped out — before the change, not
+/// after: done later, they'd land on the new target instead of the state
+/// actually being torn down.
+///
+/// Both calls are no-ops past their own guard (no `Insert` layer open;
+/// `paste_group` check) whenever nothing is open, so every caller can route
+/// through this unconditionally instead of repeating either check itself.
+pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &EngineView) {
+    super::commands::end_insert_session(state, view);
+    state.commit_paste_session(view);
+}
+
+/// Move focus to `pid`, first calling [`end_focus_sessions`] — the one
+/// production chokepoint every focus change goes through
+/// (`commands::pane::close_focused_pane`/`split_pane_onto`,
 /// `commands::jump::focus_in_direction`/`cmd_pane_focus_next`,
-/// `tab::install_live`, `mouse::mouse_left_down`). Both teardowns read state
-/// keyed on the *outgoing* pane (`end_insert_session`'s blank-line indent
-/// trim, `commit_paste_session`'s focused-pane paste group) and so must run
-/// — while `state.focus` still names that outgoing pane — before the
-/// assignment below, not after: done later, they'd land on `pid`'s buffer
-/// instead of the one actually being left.
+/// `tab::install_live`, `mouse::mouse_left_down`).
 ///
 /// The Insert-session half is usually already done by the time this runs —
 /// `tab::take_live` and `commands::tab::close_tab` both call
@@ -69,13 +84,7 @@ impl Focus {
 /// respect to the layout (it resolves the outgoing pane/buffer by id, never
 /// through the layout tree), so — unlike the Insert-session half — it has
 /// no matching earlier call in `take_live`/`close_tab`.
-///
-/// Both calls are no-ops past their own guard (no `Insert` layer open;
-/// `paste_group` check) whenever nothing is open, so every writer above can
-/// route through this unconditionally instead of repeating either check
-/// itself.
 pub(in crate::editor) fn focus_pane(state: &mut EditorState, view: &EngineView, pid: PaneId) {
-    super::commands::end_insert_session(state, view);
-    state.commit_paste_session(view);
+    end_focus_sessions(state, view);
     state.focus.0 = pid;
 }

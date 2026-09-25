@@ -2,8 +2,9 @@
 //!
 //! Free functions (not `impl Editor` methods) so the same logic can be
 //! called by both the `Editor` methods (which take `&mut self`) and the
-//! Steel builtins (which receive individual `&mut` references via
-//! `SteelCtx`).
+//! Steel builtins — both hold a whole `EditorState`/`EngineView` pair (the
+//! host through `SteelCtx`), just never the same `Editor` these live on, so
+//! they take `state`/`ev` directly instead of `&mut self`.
 //!
 //! The `impl Editor` choke-points (`open_buffer`, `close_buffer`,
 //! `switch_to_buffer_with_jump`) are thin delegators; all logic lives here.
@@ -110,19 +111,34 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
 
 /// Redirect pane `pid` to `target` without recording a jump.
 ///
+/// When `pid` is the focused pane and `target` differs from what it
+/// currently shows, ends any open Insert/paste session on it first (see
+/// [`crate::editor::focus::end_focus_sessions`]) — otherwise
+/// `pane_state[pid][bid].edit_group`/`.paste_group` stays open on a `(pane,
+/// buffer)` pair no longer being typed into, and the next keystroke panics
+/// in `Buffer::apply_edit_grouped`'s `.expect()`. Skipped for a background
+/// pane (a hook redirecting a pane the user isn't looking at — that pane's
+/// own session, if any, belongs to whatever *is* focused, not to `pid`) and
+/// for a same-buffer switch (the open group is still valid, since the pane's
+/// buffer never actually changes). Must run before the `buffer_id` write
+/// below: the teardown reads state keyed on the buffer `pid` shows *right
+/// now*, which the write is about to change out from under it.
+///
 /// Saves the pane's scroll for the old buffer, restores `target`'s saved scroll
 /// (zero on first visit), and seeds `pane_state[pid][target]` if this pane has
 /// never viewed `target` before. Does not touch any denormalised `buffer_id`.
 pub(in crate::editor) fn switch_pane_to_buffer(
+    state: &mut EditorState,
     ev: &mut EngineView,
-    buffers: &BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pid: PaneId,
     target: BufferId,
 ) {
+    if pid == state.focus.id() && ev.panes[pid].buffer_id != target {
+        crate::editor::focus::end_focus_sessions(state, ev);
+    }
     ev.panes[pid].remember_scroll();
     ev.panes[pid].buffer_id = target;
-    ev.panes[pid].recall_scroll(target, buffers.get(target).text().last_content_line());
+    ev.panes[pid].recall_scroll(target, state.buffers.get(target).text().last_content_line());
     // Seeds `pane_state[pid][target]` on this pane's first visit to
     // `target` — required regardless of reveal, since `frame.rs`'s scroll
     // step indexes it directly. A different buffer's cursor/viewport pairing
@@ -131,7 +147,7 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     // `buffer_tag` names the buffer, so a switch to a different one always
     // differs from `PaneBufferState::last_layout_key` — the very first read
     // for a `(pane, buffer)` pair is `None`, which differs from anything.
-    pane_state::ensure(pane_state, buffers, pid, target);
+    pane_state::ensure(&mut state.panes.state, &state.buffers, pid, target);
 }
 
 // ── switch_to_buffer_with_jump ────────────────────────────────────────────────
@@ -148,26 +164,24 @@ pub(in crate::editor) fn switch_pane_to_buffer(
 /// Caller contract: all fallible steps must succeed before calling this —
 /// `push` truncates forward history.
 pub(in crate::editor) fn switch_to_buffer_with_jump(
+    state: &mut EditorState,
     ev: &mut EngineView,
-    buffers: &BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     current_buffer_id: BufferId,
     target: BufferId,
 ) {
     if current_buffer_id != target {
-        let sels = pane_state[focused_pane_id][current_buffer_id]
+        let sels = state.panes.state[focused_pane_id][current_buffer_id]
             .selections()
             .clone();
         let entry = JumpEntry::new(
             sels,
-            buffers.get(current_buffer_id).text(),
+            state.buffers.get(current_buffer_id).text(),
             current_buffer_id,
         );
-        pane_jumps[focused_pane_id].push(entry);
+        state.panes.jumps[focused_pane_id].push(entry);
     }
-    switch_pane_to_buffer(ev, buffers, pane_state, focused_pane_id, target);
+    switch_pane_to_buffer(state, ev, focused_pane_id, target);
 }
 
 // ── close_buffer ──────────────────────────────────────────────────────────────
@@ -187,24 +201,21 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 /// allocated scratch buffer's id, for [`close_buffer_and_notify`] to
 /// announce with [`queue_open_announcement`] exactly like any other open.
 pub(in crate::editor) fn close_buffer(
+    state: &mut EditorState,
     ev: &mut EngineView,
-    buffers: &mut BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     id: BufferId,
-    undo_levels: usize,
 ) -> (BufferId, Option<BufferId>) {
-    let (next, opened) = match buffers.mru_excluding(id) {
+    let (next, opened) = match state.buffers.mru_excluding(id) {
         Some(next) => (next, None),
         None => {
             let bid = open_buffer(
                 ev,
-                buffers,
-                pane_state,
+                &mut state.buffers,
+                &mut state.panes.state,
                 focused_pane_id,
                 Buffer::scratch(),
-                undo_levels,
+                state.settings.undo_levels,
             );
             (bid, Some(bid))
         }
@@ -220,11 +231,11 @@ pub(in crate::editor) fn close_buffer(
         .map(|(pid, _)| pid)
         .collect();
     for pid in panes_to_redirect {
-        switch_pane_to_buffer(ev, buffers, pane_state, pid, next);
+        switch_pane_to_buffer(state, ev, pid, next);
     }
-    buffers.close(id);
+    state.buffers.close(id);
     ev.buffers.remove(id);
-    forget_buffer_in_all_panes(ev, pane_state, pane_jumps, id);
+    forget_buffer_in_all_panes(ev, &mut state.panes.state, &mut state.panes.jumps, id);
     (ev.panes[focused_pane_id].buffer_id, opened)
 }
 
@@ -276,15 +287,8 @@ pub(in crate::editor) fn close_buffer_and_notify(
     state.retire_stale_confirm(ev, |c| c.targets_buffer(id));
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;
-    let (new_focused, opened) = close_buffer(
-        ev,
-        &mut state.buffers,
-        &mut state.panes.state,
-        &mut state.panes.jumps,
-        state.focus.id(),
-        id,
-        state.settings.undo_levels,
-    );
+    let focused_pane_id = state.focus.id();
+    let (new_focused, opened) = close_buffer(state, ev, focused_pane_id, id);
     // The last-buffer branch fired: a fresh scratch buffer was allocated in
     // `id`'s place and must announce its own `OnBufferOpen` like any other
     // open — it is a genuinely new `BufferId`, not `id` reused.

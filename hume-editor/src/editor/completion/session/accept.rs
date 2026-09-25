@@ -100,10 +100,13 @@ impl BufferSession {
             hume_rope::position_encoding::PositionEncoding::Utf32
         };
 
-        // The session's pane/buffer pairing may no longer be live — a pane
-        // switch (nothing dismisses the session on one), or the Steel
-        // `completion-accept!` builtin firing from a different pane than
-        // the session opened in. `pane_state::ensure`'s fallback (fabricate
+        // The session's pane/buffer pairing may no longer be live — the
+        // Steel `completion-accept!` builtin firing from a different pane
+        // than the session opened in, or a session whose own Insert layer
+        // was pushed without pairing it to a buffer switch's teardown (a
+        // test-only construction; a real Insert entry pairs the two, so
+        // `switch_pane_to_buffer`'s own teardown already ends the session
+        // before this ever runs). `pane_state::ensure`'s fallback (fabricate
         // a fresh cursor at char 0 for a pane that never showed this
         // buffer) is right for "a background buffer with no selection state
         // yet", not for "this session's own point of reference is gone" —
