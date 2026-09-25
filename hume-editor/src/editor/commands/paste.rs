@@ -22,7 +22,7 @@ use hume_ops::edit::{paste_after, paste_before};
 use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER};
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
-use super::{FocusedPane, focused_buffer_id};
+use super::FocusedPane;
 use crate::editor::edit_session::{EditSession, EditSessionKind};
 use crate::editor::error::CommandError;
 
@@ -363,18 +363,16 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
 /// `"<reg>` otherwise), then hand off to [`do_paste`] unconditionally —
 /// always replaces a non-collapsed selection. See [`collapse_if_repeat`]'s
 /// doc for why smart paste alone needs the extra step.
-fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
-    let t = FocusedPane::current(state).target();
-    if super::refuse_if_read_only(state, view, t) {
+fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, fp: FocusedPane, before: bool) {
+    if super::refuse_if_read_only(state, view, fp.target()) {
         return;
     }
     let Some(resolved) = resolve_plain(state) else {
         return;
     };
-    let focused = state.focus.id();
-    let buf = focused_buffer_id(state, view);
-    let sels = state.panes.state[focused][buf].take_selections();
-    do_paste(state, focused, buf, before, resolved, sels);
+    let (pid, buf) = (fp.pid(), fp.bid(view));
+    let sels = state.panes.state[pid][buf].take_selections();
+    do_paste(state, pid, buf, before, resolved, sels);
 }
 
 /// Smart paste: resolve from the stamp-driven source (ring while nothing has
@@ -382,33 +380,31 @@ fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool)
 /// [`PasteStamp`]), apply the repeat-vs-swap collapse rule to the
 /// selections (bare paste only — see [`collapse_if_repeat`]), then hand off
 /// to [`do_paste`].
-fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, before: bool) {
-    let t = FocusedPane::current(state).target();
-    if super::refuse_if_read_only(state, view, t) {
+fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, fp: FocusedPane, before: bool) {
+    if super::refuse_if_read_only(state, view, fp.target()) {
         return;
     }
     let Some(resolved) = resolve_smart(state) else {
         return;
     };
-    let focused = state.focus.id();
-    let buf = focused_buffer_id(state, view);
-    let mut sels = state.panes.state[focused][buf].take_selections();
+    let (pid, buf) = (fp.pid(), fp.bid(view));
+    let mut sels = state.panes.state[pid][buf].take_selections();
     if resolved.bare {
         let text = state.buffers.get(buf).text();
         sels = collapse_if_repeat(text, sels, &resolved.values, before);
     }
-    do_paste(state, focused, buf, before, resolved, sels);
+    do_paste(state, pid, buf, before, resolved, sels);
 }
 
 /// Paste after the selection: plain paste, kill-ring head by default.
 pub(in crate::editor) fn cmd_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_normal_paste(state, view, false);
+    do_normal_paste(state, view, fp, false);
     Ok(())
 }
 
@@ -416,11 +412,11 @@ pub(in crate::editor) fn cmd_paste_after(
 pub(in crate::editor) fn cmd_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_normal_paste(state, view, true);
+    do_normal_paste(state, view, fp, true);
     Ok(())
 }
 
@@ -429,11 +425,11 @@ pub(in crate::editor) fn cmd_paste_before(
 pub(in crate::editor) fn cmd_smart_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_smart_paste(state, view, false);
+    do_smart_paste(state, view, fp, false);
     Ok(())
 }
 
@@ -442,11 +438,11 @@ pub(in crate::editor) fn cmd_smart_paste_after(
 pub(in crate::editor) fn cmd_smart_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_smart_paste(state, view, true);
+    do_smart_paste(state, view, fp, true);
     Ok(())
 }
 
@@ -457,10 +453,10 @@ pub(in crate::editor) fn cmd_smart_paste_before(
 fn do_paste_cycle(
     state: &mut EditorState,
     view: &mut EngineView,
+    fp: FocusedPane,
     older: bool,
 ) -> Result<(), CommandError> {
-    let focused = state.focus.id();
-    let buf = focused_buffer_id(state, view);
+    let (focused, buf) = (fp.pid(), fp.bid(view));
     let Some(EditSessionKind::Paste { before }) = state
         .active_session
         .as_ref()
@@ -505,20 +501,20 @@ fn do_paste_cycle(
 pub(in crate::editor) fn cmd_paste_ring_older(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste_cycle(state, view, true)
+    do_paste_cycle(state, view, fp, true)
 }
 
 /// Cycle the kill ring one step newer and re-paste from the session snapshot.
 pub(in crate::editor) fn cmd_paste_ring_newer(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_paste_cycle(state, view, false)
+    do_paste_cycle(state, view, fp, false)
 }

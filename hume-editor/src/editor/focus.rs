@@ -41,17 +41,18 @@ impl Focus {
     }
 }
 
-/// End any open Insert session and any open paste session on the *currently
-/// focused* pane — the shared teardown [`focus_pane`] and every pane-buffer
-/// switch (`buffer::lifecycle::switch_pane_to_buffer`, `Editor::
-/// reset_config_state`'s reload) run before they move focus or swap the
-/// focused pane's buffer out from under it. Both teardowns read state keyed
-/// on the pane `state.focus` names *right now* (`end_insert_session`'s
-/// blank-line indent trim, `commit_paste_session`'s focused-pane paste
-/// group), so every caller must run this — while focus still names the pane
-/// being left or the buffer being swapped out — before the change, not
-/// after: done later, they'd land on the new target instead of the state
-/// actually being torn down.
+/// End the open Insert or paste session, if any — the shared teardown
+/// [`focus_pane`] and every pane-buffer switch (`buffer::lifecycle::
+/// switch_pane_to_buffer`, `Editor::reset_config_state`'s reload) run, so
+/// that any command which moves focus or retargets the focused pane's buffer
+/// leaves Insert mode.
+///
+/// Both teardowns act on the `(pane, buffer)` the session itself recorded
+/// (`EditorState::active_session`), never on current focus — so their
+/// correctness does not depend on running before or after the focus write.
+/// Callers still run this first for their own reasons: a pane close drops
+/// the pane's state right after, and a reload's `truncate_to_base` drops
+/// layers without running their teardown.
 ///
 /// Both calls are no-ops past their own guard (no `Insert` layer open; no
 /// paste session open) whenever nothing is open, so every caller can route

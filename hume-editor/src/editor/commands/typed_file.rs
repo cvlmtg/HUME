@@ -43,7 +43,8 @@ pub(in crate::editor) fn typed_quit(
     // check — that guard belongs to the steps below, which actually close
     // something the user can't get back without saving.
     if !ed.view.layout().is_single_pane() {
-        super::close_focused_pane(&mut ed.state, &mut ed.view);
+        let fp = super::FocusedPane::current(&ed.state);
+        super::close_focused_pane(&mut ed.state, &mut ed.view, fp);
         return Ok(());
     }
 

@@ -7,6 +7,7 @@ use hume_engine::pipeline::{
 use slotmap::SecondaryMap;
 
 use crate::editor::EditorState;
+use crate::editor::commands::FocusedPane;
 use crate::editor::error::CommandError;
 use crate::editor::focus::focus_pane;
 use crate::editor::tab::{TabId, install_live, take_live};
@@ -134,8 +135,8 @@ pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pa
 /// NOT the right count: panes are a global pool shared by every tab, so it
 /// stays true whenever any other tab holds a pane, even when the active tab
 /// has only this one. `remove_leaf` returning `None` here is a bug.
-pub(super) fn close_focused_pane(state: &mut EditorState, view: &mut EngineView) {
-    let old = state.focus.id();
+pub(super) fn close_focused_pane(state: &mut EditorState, view: &mut EngineView, fp: FocusedPane) {
+    let old = fp.pid();
     let Pruned { detached, survivor } = view
         .remove_leaf(old)
         .expect("close_focused_pane requires the active tab's layout to be split");

@@ -139,16 +139,13 @@ impl Editor {
         );
     }
 
-    /// Commit and close the open edit group on the focused (pane, buffer) pair.
-    fn commit_edit_group_current(&mut self) {
-        let pane_id = self.state.focus.id();
-        let buf_id = self.focused_buffer_id();
+    /// Commit and close the open edit group on the session's own (pane,
+    /// buffer) pair.
+    fn commit_open_edit_group(&mut self) {
         doc_ops::commit_edit_group(
             &mut self.state.buffers,
-            &mut self.state.panes.state,
+            &self.state.panes.state,
             &mut self.state.active_session,
-            pane_id,
-            buf_id,
         );
     }
 
@@ -245,7 +242,7 @@ impl Editor {
                     // Close the group opened above so it can't leak. commit drops
                     // an empty group (clean noop) and records a partial one (a
                     // failure mid-edit stays undoable).
-                    self.commit_edit_group_current();
+                    self.commit_open_edit_group();
                     self.state.last_repeatable_action = Some(action);
                     return;
                 }
@@ -290,7 +287,7 @@ impl Editor {
             // `do_paste_cycle`) leaves `active_session` open on purpose, for
             // a following `[`/`]` to continue — nothing here opened a group
             // to close, and committing one would end that session early.
-            self.commit_edit_group_current();
+            self.commit_open_edit_group();
         }
 
         // Restore the action so `.` can be pressed again.

@@ -1,25 +1,22 @@
 //! Insert-mode session lifecycle: entering/exiting Insert as a repeatable
 //! action, with the undo group and dot-repeat bookkeeping that entails.
 
-use hume_editing::selection::Selection;
+use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
 use crate::editor::EditorState;
 use crate::editor::buffer::LastInsert;
-use crate::editor::pane_state::TypedRun;
+use crate::editor::doc_ops;
+use crate::editor::pane_state::{PaneBufferState, TypedRun};
 use crate::editor::replay::InsertSession;
 use hume_ops::edit::clear_blank_line_indent;
 
-use super::{
-    FocusedPane, apply_focused_edit_grouped, apply_pane_motion, begin_edit_group_current,
-    commit_edit_group_current, doc, pane_selections, refuse_if_read_only,
-};
+use super::{FocusedPane, begin_edit_group_current, doc, pane_selections, refuse_if_read_only};
 
-/// `true` when the focused (pane, buffer) has an open Insert-kind session.
-fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
-    let fp = FocusedPane::current(state);
+/// `true` when `fp`'s (pane, buffer) has an open Insert-kind session.
+fn is_group_open_at(state: &EditorState, view: &EngineView, fp: FocusedPane) -> bool {
     state
         .active_session
         .as_ref()
@@ -34,23 +31,18 @@ fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
 /// skips the edit entirely instead of running an identity one (see
 /// [`hume_ops::edit::owned_blank_indent`]'s doc comment). Takes `allowed` from
 /// the caller rather than re-deriving it via `autoindent_owned` itself, so
-/// [`end_insert_session`] computes that `Vec` once and reuses it for both the
+/// [`tear_down_insert`] computes that `Vec` once and reuses it for both the
 /// gate check and the edit closure.
-pub(in crate::editor::commands::insert_session) fn has_blank_line_cursor(
-    state: &EditorState,
-    view: &EngineView,
+fn has_blank_line_cursor(
+    text: &BufferText,
+    sels: &SelectionSet,
     allowed: &[ExclusiveRange<CharOffset>],
 ) -> bool {
-    let t = FocusedPane::current(state).target();
-    let text = doc(state, view, t).text();
-    pane_selections(state, view, t)
-        .iter_sorted()
-        .enumerate()
-        .any(|(i, sel)| {
-            sel.is_collapsed()
-                && hume_ops::edit::owned_blank_indent(text, sel.head(), allowed.get(i).copied())
-                    .is_some()
-        })
+    sels.iter_sorted().enumerate().any(|(i, sel)| {
+        sel.is_collapsed()
+            && hume_ops::edit::owned_blank_indent(text, sel.head(), allowed.get(i).copied())
+                .is_some()
+    })
 }
 
 /// The live session's per-selection autoindent ownership record — see
@@ -60,18 +52,15 @@ pub(in crate::editor::commands::insert_session) fn has_blank_line_cursor(
 /// An out-of-bounds index into the returned vec (via `.get(i)`) then reads as
 /// "no record for this selection", same as an empty vec would.
 ///
-/// Owned rather than borrowed: every caller (`end_insert_session` here,
+/// Owned rather than borrowed: every caller (`tear_down_insert` here,
 /// `input_stack/insert.rs`'s Enter handler) needs it cloned out of
 /// `PaneBufferState` before running the edit whose `ChangeSet` will remap —
 /// or, for Enter, replace — that same record.
 pub(in crate::editor) fn autoindent_owned(
-    state: &EditorState,
-    view: &EngineView,
+    pbs: &PaneBufferState,
 ) -> Vec<ExclusiveRange<CharOffset>> {
-    let fp = FocusedPane::current(state);
-    let sel_count = pane_selections(state, view, fp.target()).len();
-    match &fp.target().state(&state.panes.state, view).autoindent {
-        Some(ranges) if ranges.len() == sel_count => ranges.clone(),
+    match &pbs.autoindent {
+        Some(ranges) if ranges.len() == pbs.selections().len() => ranges.clone(),
         _ => Vec::new(),
     }
 }
@@ -84,11 +73,14 @@ pub(in crate::editor) fn autoindent_owned(
 /// (`o`, `O`, Enter). No-op if no edit group is open (read-only refusal),
 /// same guard as [`begin_typed_run`] — a refused `o`/`O` leaves no record
 /// behind for a later, unrelated session to inherit.
-pub(in crate::editor) fn arm_autoindent(state: &mut EditorState, view: &EngineView) {
-    if !is_group_open_current(state, view) {
+pub(in crate::editor) fn arm_autoindent(
+    state: &mut EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+) {
+    if !is_group_open_at(state, view, fp) {
         return;
     }
-    let fp = FocusedPane::current(state);
     let text = doc(state, view, fp.target()).text();
     let ranges: Vec<ExclusiveRange<CharOffset>> = pane_selections(state, view, fp.target())
         .iter_sorted()
@@ -138,11 +130,15 @@ pub(super) enum ExitCursor {
 /// entry command dispatched from inside an already-open session (a Steel
 /// `call!`, an Insert-mode keybinding) would otherwise inherit whatever the
 /// previous entry armed.
-pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView, exit: ExitCursor) {
-    if !is_group_open_current(state, view) {
+pub(super) fn begin_typed_run(
+    state: &mut EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+    exit: ExitCursor,
+) {
+    if !is_group_open_at(state, view, fp) {
         return;
     }
-    let fp = FocusedPane::current(state);
     let heads: Vec<CharOffset> = pane_selections(state, view, fp.target())
         .iter_sorted()
         .map(|s| s.head())
@@ -171,17 +167,20 @@ pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView, exit: 
 /// itself a genuine register-consuming operator that delegates its mode
 /// switch here before its own `state.route_kill` reads the prefix — see
 /// [`begin_insert_session_preserving_register`], which it calls instead.
-pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView) {
+pub(super) fn begin_insert_session(state: &mut EditorState, view: &EngineView, fp: FocusedPane) {
     state.register_prefix = None;
-    begin_insert_session_preserving_register(state, view);
+    begin_insert_session_preserving_register(state, view, fp);
 }
 
 /// [`begin_insert_session`] without clearing `register_prefix` first — for a
 /// caller that is itself about to consume it. Do not call this for a plain
 /// `i`/`a`/`o` entry; use [`begin_insert_session`], which clears the prefix
 /// as those commands require.
-pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, view: &EngineView) {
-    let fp = FocusedPane::current(state);
+pub(super) fn begin_insert_session_preserving_register(
+    state: &mut EditorState,
+    view: &EngineView,
+    fp: FocusedPane,
+) {
     if refuse_if_read_only(state, view, fp.target()) {
         return;
     }
@@ -195,7 +194,7 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
     // with a group already open outside of replay — holds because Steel has no
     // transaction / begin-edit-group builtin, and none should ever be added:
     // fine-grained undo grouping belongs to native commands, not scripts.
-    if !is_group_open_current(state, view) {
+    if !is_group_open_at(state, view, fp) {
         begin_edit_group_current(state, view, fp);
         state.insert_session = Some(InsertSession {
             keystrokes: Vec::new(),
@@ -230,7 +229,21 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
 /// called from `EditorState::tear_down`'s `Insert` arm, never directly.
 /// Finalises the undo/repeat state; does not itself touch the stack (the
 /// truncate that got here already removed the layer).
-pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &EngineView) {
+///
+/// Acts on the `(pane, buffer)` the open session recorded, never on focus:
+/// an Insert layer on the stack always has its Insert session open (entry
+/// opens both together, and only this teardown closes the session), and
+/// reading the owner from the session makes teardown correct regardless of
+/// whether focus has already moved by the time the layer pops. Works on
+/// `pane_state`/`buffers` directly through `doc_ops` rather than through a
+/// `CommandPane`/`FocusedPane`: this is not a command body, and those types
+/// can only be minted by resolving a target, not from a bare pair.
+pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, _view: &EngineView) {
+    let (pid, bid) = state
+        .active_session
+        .as_ref()
+        .map(|s| (s.pane, s.buffer))
+        .expect("an Insert layer on the stack always has its session open");
     // An open completion session lives in its own `Completion` layer, pushed
     // above `Insert` — the top-first `truncate_layers` call that reaches
     // this function always removes `Completion` (running its own `tear_down`
@@ -246,14 +259,28 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     // `has_blank_line_cursor` also skips the edit in the common case —
     // cursor not on a line this session owns — rather than running an
     // identity one on every Insert-mode exit.
-    let fp = FocusedPane::current(state);
-    let allowed = autoindent_owned(state, view);
-    if has_blank_line_cursor(state, view, &allowed) {
-        apply_focused_edit_grouped(state, view, fp, move |b, s| {
-            clear_blank_line_indent(b, s, &allowed)
-        });
+    let allowed = autoindent_owned(&state.panes.state[pid][bid]);
+    if has_blank_line_cursor(
+        state.buffers.get(bid).text(),
+        state.panes.state[pid][bid].selections(),
+        &allowed,
+    ) {
+        doc_ops::apply_doc_edit_grouped(
+            &mut state.buffers,
+            &state.config.decorations,
+            &mut state.panes.state,
+            &mut state.panes.jumps,
+            &mut state.active_session,
+            pid,
+            bid,
+            move |b, s| clear_blank_line_indent(b, s, &allowed),
+        );
     }
-    commit_edit_group_current(state, view, fp);
+    doc_ops::commit_edit_group(
+        &mut state.buffers,
+        &state.panes.state,
+        &mut state.active_session,
+    );
     if let (Some(session), Some(action)) = (
         state.insert_session.take(),
         state.last_repeatable_action.as_mut(),
@@ -267,7 +294,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
     let (typed_run, step_back, kill_opened) = {
-        let pbs = fp.target().state_mut(&mut state.panes.state, view);
+        let pbs = &mut state.panes.state[pid][bid];
         (
             pbs.typed_run.take(),
             std::mem::take(&mut pbs.step_back_on_exit),
@@ -281,10 +308,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
         stamp.seq = state.buffers.edit_seq();
     }
-    let sel_count = pane_selections(state, view, fp.target()).len();
+    let sel_count = state.panes.state[pid][bid].selections().len();
     let valid_run = typed_run.filter(|r| r.anchors.len() == sel_count);
     let spans: Option<Vec<Option<InclusiveRange<CharOffset>>>> = valid_run.map(|run| {
-        let text = doc(state, view, fp.target()).text();
+        let text = state.buffers.get(bid).text();
         run.anchors
             .iter()
             .zip(run.ends.iter())
@@ -298,7 +325,6 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     if let Some(spans) = &spans {
         let stashed: Vec<InclusiveRange<CharOffset>> = spans.iter().flatten().copied().collect();
         if !stashed.is_empty() {
-            let bid = fp.bid(view);
             let buf = state.buffers.get_mut(bid);
             let text_gen = buf.text_gen;
             buf.last_insert = Some(LastInsert {
@@ -308,18 +334,26 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
         }
     }
 
-    let select_on_exit = doc(state, view, fp.target())
+    let select_on_exit = state
+        .buffers
+        .get(bid)
         .overrides
         .select_inserted_text(&state.settings);
     let spans = spans.filter(|_| select_on_exit);
     if spans.is_some() || step_back {
-        apply_pane_motion(state, view, fp.target(), move |b, sels| {
-            let mut spans = spans.into_iter().flatten();
-            sels.map(|sel| match spans.next().flatten() {
-                Some(r) => Selection::new(r.start, r.end),
-                None => exit_cursor(b, sel.head(), step_back),
-            })
-        });
+        doc_ops::apply_doc_motion(
+            &state.buffers,
+            &mut state.panes.state,
+            pid,
+            bid,
+            move |b, sels| {
+                let mut spans = spans.into_iter().flatten();
+                sels.map(|sel| match spans.next().flatten() {
+                    Some(r) => Selection::new(r.start, r.end),
+                    None => exit_cursor(b, sel.head(), step_back),
+                })
+            },
+        );
     }
 }
 

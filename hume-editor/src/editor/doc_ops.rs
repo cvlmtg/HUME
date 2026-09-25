@@ -94,8 +94,8 @@ fn record_lsp_edits(
 /// this file already receives. Four of them (`buffers`, `decorations`,
 /// `pane_state`, `pane_jumps`) are fields reachable from a single
 /// `&EditorState`/`&mut EditorState` — `decorations` through `state.config`,
-/// the rest directly. `focused_pane_id` and `buf_id` are not: `buf_id` in
-/// particular is derived from `EngineView` (`view.panes[focused_pane_id]
+/// the rest directly. `pane_id` and `buf_id` are not: `buf_id` in
+/// particular is derived from `EngineView` (`view.panes[pane_id]
 /// .buffer_id`), which this function doesn't receive, so collapsing the
 /// other four alone wouldn't shrink this list — every caller would still
 /// need to pass `buf_id` (and thus keep `view` in scope to compute it). The
@@ -109,14 +109,14 @@ fn finish_edit(
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_jumps: &mut JumpLists,
-    focused_pane_id: PaneId,
+    pane_id: PaneId,
     buf_id: BufferId,
     new_sels: SelectionSet,
     cs: &ChangeSet,
     text_pre: &BufferText,
     rope_pre: &ropey::Rope,
 ) {
-    pane_state[focused_pane_id][buf_id].set_selections(new_sels);
+    pane_state[pane_id][buf_id].set_selections(new_sels);
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
     // `set_text` for it directly, and `commit_edit_group` never records it as
     // a revision for `undo`/`redo` to later replay — so `text_gen` did not
@@ -132,7 +132,7 @@ fn finish_edit(
     // otherwise rebuild the same `Vec` from `cs` (once per sibling pane here,
     // once per pane per jump-list entry there).
     let edits = cs.edited_old_ranges();
-    propagate_cs_to_panes(pane_state, focused_pane_id, buf_id, &edits, cs, text_pre);
+    propagate_cs_to_panes(pane_state, pane_id, buf_id, &edits, cs, text_pre);
     let buf = buffers.get(buf_id);
     let text_gen = buf.text_gen;
     pane_jumps.translate(buf_id, &edits, cs, text_pre, buf.text());
@@ -176,7 +176,7 @@ pub(in crate::editor) fn check_no_conflicting_session(
     Ok(())
 }
 
-/// Apply an edit to the focused buffer and propagate the resulting
+/// Apply an edit to `buf_id` through `pane_id` and propagate the resulting
 /// `ChangeSet` to all other panes viewing the same buffer.
 ///
 /// Routes into [`apply_doc_edit_grouped`] when an Insert session is already
@@ -202,17 +202,17 @@ pub(in crate::editor) fn apply_doc_edit(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_jumps: &mut JumpLists,
     active_session: &mut Option<EditSession>,
-    focused_pane_id: PaneId,
+    pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) -> Result<(), CommandError> {
     if buffers.get(buf_id).is_read_only() {
         return Ok(());
     }
-    check_no_conflicting_session(active_session, focused_pane_id, buf_id)?;
+    check_no_conflicting_session(active_session, pane_id, buf_id)?;
     let insert_session_open_here = active_session
         .as_ref()
-        .is_some_and(|s| s.is_insert_at(focused_pane_id, buf_id));
+        .is_some_and(|s| s.is_insert_at(pane_id, buf_id));
     if insert_session_open_here {
         apply_doc_edit_grouped(
             buffers,
@@ -220,7 +220,7 @@ pub(in crate::editor) fn apply_doc_edit(
             pane_state,
             pane_jumps,
             active_session,
-            focused_pane_id,
+            pane_id,
             buf_id,
             cmd,
         );
@@ -229,14 +229,14 @@ pub(in crate::editor) fn apply_doc_edit(
     // O(1) clones — ropey uses structural sharing (reference-counted tree nodes).
     let text_pre = buffers.get(buf_id).text().clone();
     let rope_pre = text_pre.rope().clone();
-    let sels = pane_state[focused_pane_id][buf_id].take_selections();
+    let sels = pane_state[pane_id][buf_id].take_selections();
     let (new_sels, cs) = buffers.get_mut(buf_id).apply_edit(sels, cmd);
     finish_edit(
         buffers,
         decorations,
         pane_state,
         pane_jumps,
-        focused_pane_id,
+        pane_id,
         buf_id,
         new_sels,
         &cs,
@@ -246,7 +246,7 @@ pub(in crate::editor) fn apply_doc_edit(
     Ok(())
 }
 
-/// Apply a grouped edit (inside an insert session) to the focused buffer.
+/// Apply a grouped edit (inside an Insert session) to `buf_id` through `pane_id`.
 ///
 /// Reads and writes selections via `pane_state`, propagates `cs` to other panes.
 ///
@@ -258,7 +258,7 @@ pub(in crate::editor) fn apply_doc_edit(
 /// uses it to remap an open LSP completion session's anchor through every
 /// keystroke, not just the primary cursor's own position.
 ///
-/// `active_session` must hold an Insert-kind session on `(focused_pane_id,
+/// `active_session` must hold an Insert-kind session on `(pane_id,
 /// buf_id)` — caller contract, same as the old `Buffer::apply_edit_grouped`'s
 /// "must have called `begin_edit_group` first". Panics otherwise.
 // Same non-collapsible-params shape as `finish_edit`'s own allow, above.
@@ -269,7 +269,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_jumps: &mut JumpLists,
     active_session: &mut Option<EditSession>,
-    focused_pane_id: PaneId,
+    pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) -> ChangeSet {
@@ -281,17 +281,17 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     }
     let text_pre = buffers.get(buf_id).text().clone();
     let rope_pre = text_pre.rope().clone();
-    let sels = pane_state[focused_pane_id][buf_id].take_selections();
+    let sels = pane_state[pane_id][buf_id].take_selections();
     let doc = buffers.get_mut(buf_id);
     let group = &mut active_session
         .as_mut()
-        .filter(|s| s.is_insert_at(focused_pane_id, buf_id))
+        .filter(|s| s.is_insert_at(pane_id, buf_id))
         .expect(
             "apply_doc_edit_grouped called without an open Insert session on this (pane, buffer)",
         )
         .group;
     let (new_sels, cs) = doc.apply_edit_grouped(sels, group, cmd);
-    let pbs = &mut pane_state[focused_pane_id][buf_id];
+    let pbs = &mut pane_state[pane_id][buf_id];
     // `ChangeSet::map_ranges` maps (start, end) pairs directly, but with
     // `Assoc::After` on starts and `Assoc::Before` on ends — it shrinks a
     // range around inserted text. A typed run needs the opposite: it must
@@ -313,7 +313,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         decorations,
         pane_state,
         pane_jumps,
-        focused_pane_id,
+        pane_id,
         buf_id,
         new_sels,
         &cs,
@@ -323,12 +323,12 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     cs
 }
 
-/// Re-paste from the paste-session snapshot into the focused buffer, replacing
+/// Re-paste from the paste-session snapshot into `buf_id`, replacing
 /// the accumulated CS in the open session's group.
 ///
 /// Propagates the resulting CS (mapping current text → new text) to all other
 /// panes. `active_session` must hold a Paste-kind session on
-/// `(focused_pane_id, buf_id)` — caller must have opened it via
+/// `(pane_id, buf_id)` — caller must have opened it via
 /// `commands::paste`'s `do_paste` first. Panics otherwise.
 // Same non-collapsible-params shape as `finish_edit`'s own allow, above.
 #[allow(clippy::too_many_arguments)]
@@ -338,7 +338,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_jumps: &mut JumpLists,
     active_session: &mut Option<EditSession>,
-    focused_pane_id: PaneId,
+    pane_id: PaneId,
     buf_id: BufferId,
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) {
@@ -350,7 +350,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     let group = &mut active_session
         .as_mut()
         .filter(|s| {
-            s.pane == focused_pane_id
+            s.pane == pane_id
                 && s.buffer == buf_id
                 && matches!(s.kind, EditSessionKind::Paste { .. })
         })
@@ -364,7 +364,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
         decorations,
         pane_state,
         pane_jumps,
-        focused_pane_id,
+        pane_id,
         buf_id,
         new_sels,
         &propagation_cs,
@@ -373,7 +373,7 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     );
 }
 
-/// Run one history-walking step on the focused buffer (`walk`, typically
+/// Run one history-walking step on `buf_id` through `pane_id` (`walk`, typically
 /// `|b| b.undo_n(count)` or `|b| b.redo_n(count)`) and propagate the net
 /// `ChangeSet` to all other panes viewing the same buffer. `walk` closes over
 /// its own step count or target revision, so this function stays the single
@@ -407,18 +407,18 @@ pub(in crate::editor) fn apply_doc_history_walk(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_jumps: &mut JumpLists,
     active_session: &Option<EditSession>,
-    focused_pane_id: PaneId,
+    pane_id: PaneId,
     buf_id: BufferId,
     walk: impl FnOnce(&mut Buffer) -> HistoryWalkResult,
 ) -> Result<HistoryWalk, CommandError> {
     if buffers.get(buf_id).is_read_only() {
         return Ok(HistoryWalk::RefusedReadOnly);
     }
-    check_no_conflicting_session(active_session, focused_pane_id, buf_id)?;
+    check_no_conflicting_session(active_session, pane_id, buf_id)?;
     debug_assert!(
         !active_session
             .as_ref()
-            .is_some_and(|s| s.pane == focused_pane_id && s.buffer == buf_id),
+            .is_some_and(|s| s.pane == pane_id && s.buffer == buf_id),
         "apply_doc_history_walk called while a session is open on this (pane, buffer)"
     );
     // text_pre is the current (pre-walk) text: undo's CS maps post-edit
@@ -433,7 +433,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
         decorations,
         pane_state,
         pane_jumps,
-        focused_pane_id,
+        pane_id,
         buf_id,
         new_sels,
         &cs,
@@ -462,23 +462,21 @@ pub(in crate::editor) fn apply_doc_history_walk(
 pub(in crate::editor) fn apply_doc_motion(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    focused_pane_id: PaneId,
+    pane_id: PaneId,
     buf_id: BufferId,
     f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
-    let old_head = pane_state[focused_pane_id][buf_id]
-        .selections()
-        .primary()
-        .head();
+    let old_head = pane_state[pane_id][buf_id].selections().primary().head();
     let new_sels = {
         let text = buffers.get(buf_id).text();
-        let sels = pane_state[focused_pane_id][buf_id].take_selections();
+        let sels = pane_state[pane_id][buf_id].take_selections();
         f(text, sels)
     };
-    pane_state[focused_pane_id][buf_id].restore_selections(new_sels, old_head);
+    pane_state[pane_id][buf_id].restore_selections(new_sels, old_head);
 }
 
-/// Open an Insert-kind session on the focused (pane, buffer) pair. The
+/// Open an Insert-kind session on `(pane_id, buf_id)` — always the focused
+/// pane, since Insert only ever opens there. The
 /// dedicated paste-session opener (`commands::paste`'s `do_paste`) builds
 /// its own `EditSession` directly instead of calling this — a paste session
 /// stores `before` in its `EditSessionKind::Paste`, which this function has
@@ -494,61 +492,63 @@ pub(in crate::editor) fn begin_edit_group(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     active_session: &mut Option<EditSession>,
-    focused_pane_id: PaneId,
+    pane_id: PaneId,
     buf_id: BufferId,
 ) {
     debug_assert!(
         active_session.is_none(),
         "begin_edit_group called with a session already open"
     );
-    let sels = pane_state[focused_pane_id][buf_id].selections().clone();
+    let sels = pane_state[pane_id][buf_id].selections().clone();
     let group = buffers.get(buf_id).begin_edit_group(sels);
     *active_session = Some(EditSession {
-        pane: focused_pane_id,
+        pane: pane_id,
         buffer: buf_id,
         kind: EditSessionKind::Insert,
         group,
     });
     // A fresh group never inherits a typed run, an autoindent record, or exit
     // flags from a previous session (interactive or replay-preopened).
-    let pbs = &mut pane_state[focused_pane_id][buf_id];
+    let pbs = &mut pane_state[pane_id][buf_id];
     pbs.typed_run = None;
     pbs.autoindent = None;
     pbs.step_back_on_exit = false;
     pbs.kill_opened_session = false;
 }
 
-/// Close the current Insert-kind session and record it as a single undo step.
+/// Close the open Insert-kind session and record it as a single undo step on
+/// the session's own `(pane, buffer)` — read from the session, never from
+/// focus, so the commit lands correctly however focus moved in the meantime.
 ///
 /// Snapshots the current selections as `post_sels` for the undo revision;
 /// same rationale as `begin_edit_group` — must `.clone()`, not `take`.
 ///
-/// Panics if no session is open, or if `active_session` names a different
-/// (pane, buffer) than `focused_pane_id`/`buf_id` — same caller-contract
-/// violation the old `Buffer::commit_edit_group`'s `.expect()` guarded.
+/// Panics if no session is open, or if the open one is a paste session —
+/// committing a paste group as an Insert revision would record the wrong
+/// undo step silently. Mirrors `EditorState::commit_paste_session`'s own
+/// kind check.
 pub(in crate::editor) fn commit_edit_group(
     buffers: &mut BufferStore,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     active_session: &mut Option<EditSession>,
-    focused_pane_id: PaneId,
-    buf_id: BufferId,
 ) {
     let session = active_session
         .take()
         .expect("commit_edit_group called without an open session");
-    debug_assert_eq!(
-        (session.pane, session.buffer),
-        (focused_pane_id, buf_id),
-        "commit_edit_group called for a different (pane, buffer) than the open session"
+    assert!(
+        matches!(session.kind, EditSessionKind::Insert),
+        "commit_edit_group called on a paste session"
     );
-    let sels = pane_state[focused_pane_id][buf_id].selections().clone();
+    let sels = pane_state[session.pane][session.buffer]
+        .selections()
+        .clone();
     buffers
-        .get_mut(buf_id)
+        .get_mut(session.buffer)
         .commit_edit_group(session.group, sels);
 }
 
-/// Propagate `cs` to every pane except `focused_pane_id` that views `buf_id`,
-/// keeping their selections valid after an edit the focused pane performed.
+/// Propagate `cs` to every pane except `pane_id` that views `buf_id`,
+/// keeping their selections valid after an edit `pane_id` performed.
 ///
 /// `text_pre` must be the buffer text **before** the edit — `translate_in_place_with`
 /// uses it to identify which line each head was on pre-edit, which governs
@@ -562,7 +562,7 @@ pub(in crate::editor) fn commit_edit_group(
 /// mid-event code (e.g. `update_pane_cursor`) reads it.
 pub(in crate::editor::doc_ops) fn propagate_cs_to_panes(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    focused_pane_id: PaneId,
+    pane_id: PaneId,
     buf_id: BufferId,
     edits: &[ExclusiveRange<CharOffset>],
     cs: &ChangeSet,
@@ -572,7 +572,7 @@ pub(in crate::editor::doc_ops) fn propagate_cs_to_panes(
     let affected: Vec<PaneId> = pane_state
         .iter()
         .filter_map(|(pid, buf_map)| {
-            (pid != focused_pane_id && buf_map.contains_key(buf_id)).then_some(pid)
+            (pid != pane_id && buf_map.contains_key(buf_id)).then_some(pid)
         })
         .collect();
     for pid in affected {

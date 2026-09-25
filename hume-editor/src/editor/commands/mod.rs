@@ -209,23 +209,6 @@ pub(super) fn begin_edit_group_current(
     );
 }
 
-/// Commit and close the open edit group on the focused (pane, buffer) pair.
-/// See [`apply_focused_edit_grouped`]'s doc for why this takes [`FocusedPane`].
-pub(super) fn commit_edit_group_current(
-    state: &mut EditorState,
-    view: &EngineView,
-    fp: FocusedPane,
-) {
-    let bid = fp.bid(view);
-    doc_ops::commit_edit_group(
-        &mut state.buffers,
-        &mut state.panes.state,
-        &mut state.active_session,
-        fp.pid(),
-        bid,
-    );
-}
-
 /// Active search pattern on `t`'s buffer, if any.
 pub(super) fn search_pattern<'a>(
     state: &'a EditorState,

@@ -290,9 +290,12 @@ impl Editor {
             // it yet. `arm_autoindent` after the edit records the *new*
             // line's own copied indent, so the next Enter/Esc on it trims.
             KeyCode::Enter => {
-                let allowed = commands::autoindent_owned(&self.state, &self.view);
+                let fp = commands::FocusedPane::current(&self.state);
+                let allowed = commands::autoindent_owned(
+                    fp.target().state(&self.state.panes.state, &self.view),
+                );
                 self.apply_insert_edit(move |b, s| insert_newline_indent(b, s, &allowed));
-                commands::arm_autoindent(&mut self.state, &self.view);
+                commands::arm_autoindent(&mut self.state, &self.view, fp);
             }
 
             // ── Delete ────────────────────────────────────────────────────────

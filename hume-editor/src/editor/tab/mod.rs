@@ -28,13 +28,10 @@ use crate::editor::EditorState;
 /// that replaces the whole live tab.
 ///
 /// Ends the outgoing pane's open Insert/paste session first, before
-/// reading: `view.layout()` names the outgoing tab and `state.focus.id()`
-/// names its focused pane together, right up to this point — the last
-/// moment either is true until `install_live` runs. `end_focus_sessions`'s
-/// own edit can shrink the outgoing pane's buffer (the blank-line indent
-/// trim), and any per-(pane, buffer) state it touches should resolve
-/// against a still-consistent (layout, focus) pair, not a half-installed
-/// incoming tab.
+/// reading: the session's teardown can edit the outgoing pane's buffer (the
+/// blank-line indent trim), which propagates to every pane showing it — so
+/// it must run while the outgoing tab's panes are still live in `view`, not
+/// against a half-installed incoming tab.
 pub(in crate::editor) fn take_live(
     state: &mut EditorState,
     view: &EngineView,

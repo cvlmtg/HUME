@@ -374,3 +374,70 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
         "both typed chars must have composed into a single insert session"
     );
 }
+
+// ── Teardown is owned by the session, not by whatever holds focus ───────────
+
+/// Insert-session teardown must act on the `(pane, buffer)` the session
+/// itself recorded, never on the pane focus happens to name when the layer
+/// pops. Two panes on one buffer; focus is moved to B *without* running any
+/// teardown (the raw test-only setter), then the session ends.
+///
+/// Fail oracle: a teardown that re-derives its pane from focus commits A's
+/// revision with B's selections and runs the exit-cursor motion on B.
+#[test]
+fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
+    use crate::editor::commands::open_pane_in_layout;
+    use hume_engine::pipeline::Direction;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    let pid_a = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        Direction::Horizontal,
+    )
+    .expect("split must succeed");
+    ed.state.focus.set_for_test(pid_a);
+
+    ed.feed_key(key('A'));
+    type_chars(&mut ed, "Q");
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open on A");
+    let sels_a_at_commit = ed.selections_for(pid_a, bid).cloned().expect("A seeded");
+    let sels_b = ed.selections_for(pid_b, bid).cloned().expect("B seeded");
+    assert_ne!(
+        sels_a_at_commit, sels_b,
+        "sanity: the two panes must be distinguishable"
+    );
+
+    ed.state.focus.set_for_test(pid_b);
+    ed.end_insert_session();
+
+    assert!(
+        ed.state.active_session.is_none(),
+        "the session must be closed"
+    );
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(
+        ed.selections_for(pid_b, bid),
+        Some(&sels_b),
+        "the exit-cursor tail must not run on the pane focus moved to"
+    );
+    assert_eq!(
+        ed.selections_for(pid_a, bid).map(|s| s.primary()),
+        Some(hume_editing::selection::Selection::new(co(3), co(3))),
+        "A — the session's own pane — must select what was typed on exit"
+    );
+
+    let buf = ed.state.buffers.get_mut(bid);
+    buf.undo_n(1)
+        .expect("the session must have recorded one revision");
+    assert_eq!(buf.text().to_string(), "abc\n");
+    let (redo_sels, _, _) = buf.redo_n(1).expect("redo must replay the revision");
+    assert_eq!(
+        redo_sels, sels_a_at_commit,
+        "the revision's post-selections must be A's, not the focused pane's"
+    );
+}

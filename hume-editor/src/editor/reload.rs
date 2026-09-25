@@ -111,9 +111,8 @@ impl Editor {
         // the session, leaving `active_session` open on a buffer the
         // reload's own resets are about to invalidate — the next keystroke
         // would panic in `doc_ops::apply_doc_edit_grouped`'s `.expect()`.
-        // Must run before anything below, same "while focus still names the
-        // pane being left" ordering [`super::focus::end_focus_sessions`]
-        // itself documents.
+        // Must run before `truncate_to_base`, which drops layers without
+        // running their teardown.
         super::focus::end_focus_sessions(&mut self.state, &self.view);
 
         // ── Steel values rooted in the outgoing engine ──

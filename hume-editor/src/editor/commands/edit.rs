@@ -76,13 +76,13 @@ pub(in crate::editor) fn cmd_change(
     // Preserving, not `begin_insert_session`: `c` is itself a register-
     // consuming operator (see `state.route_kill` below) — clearing the
     // prefix here would consume it a step too early.
-    begin_insert_session_preserving_register(state, view);
+    begin_insert_session_preserving_register(state, view, fp);
     apply_focused_edit_grouped(state, view, fp, delete_selection_content);
     // Pins the anchor `mii` and (if `select-inserted-text` is on) Esc itself
     // reconstruct the typed replacement from — same helper every insert-entry
     // command uses, so `c`'s auto-select behaves identically to theirs. `c`
     // never steps the cursor back on an empty run, same as `i`/`I`.
-    begin_typed_run(state, view, ExitCursor::StayPut);
+    begin_typed_run(state, view, fp, ExitCursor::StayPut);
     // Kill-opened only when the yank actually captured to the ring: the
     // capture stamped `PasteStamp`, but every keystroke about to be typed in
     // the session bumps `edit_seq` and would strand it — the flag makes

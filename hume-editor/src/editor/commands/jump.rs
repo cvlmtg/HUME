@@ -179,9 +179,10 @@ enum Dir {
 fn focus_in_direction(
     state: &mut EditorState,
     view: &EngineView,
+    fp: FocusedPane,
     dir: Dir,
 ) -> Result<(), CommandError> {
-    let focused = state.focus.id();
+    let focused = fp.pid();
     let rects = view.pane_rects();
     let Some(&(_, cur)) = rects.iter().find(|(p, _)| *p == focused) else {
         return Ok(());
@@ -248,41 +249,41 @@ pub(in crate::editor) fn cmd_pane_focus_next(
 pub(in crate::editor) fn cmd_pane_focus_left(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    focus_in_direction(state, view, Dir::Left)
+    focus_in_direction(state, view, fp, Dir::Left)
 }
 
 pub(in crate::editor) fn cmd_pane_focus_right(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    focus_in_direction(state, view, Dir::Right)
+    focus_in_direction(state, view, fp, Dir::Right)
 }
 
 pub(in crate::editor) fn cmd_pane_focus_up(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    focus_in_direction(state, view, Dir::Up)
+    focus_in_direction(state, view, fp, Dir::Up)
 }
 
 pub(in crate::editor) fn cmd_pane_focus_down(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    focus_in_direction(state, view, Dir::Down)
+    focus_in_direction(state, view, fp, Dir::Down)
 }
 
 // ── Pane split (keymap-bound, no path argument) ─────────────────────────────
@@ -320,13 +321,13 @@ pub(in crate::editor) fn cmd_vsplit_pane(
 pub(in crate::editor) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,
-    _fp: FocusedPane,
+    fp: FocusedPane,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if view.layout().is_single_pane() {
         return Err(CommandError::transient("cannot close last pane"));
     }
-    super::close_focused_pane(state, view);
+    super::close_focused_pane(state, view, fp);
     Ok(())
 }

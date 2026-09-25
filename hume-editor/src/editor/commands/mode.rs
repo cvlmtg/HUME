@@ -33,8 +33,8 @@ pub(in crate::editor) fn cmd_insert_before(
     apply_pane_motion(state, view, fp.target(), |_b, sels| {
         sels.map(|s| Selection::collapsed(s.start()))
     });
-    begin_insert_session(state, view);
-    begin_typed_run(state, view, ExitCursor::StayPut);
+    begin_insert_session(state, view, fp);
+    begin_typed_run(state, view, fp, ExitCursor::StayPut);
     Ok(())
 }
 
@@ -48,8 +48,8 @@ pub(in crate::editor) fn cmd_insert_after(
     apply_pane_motion(state, view, fp.target(), |b, s| {
         cmd_move_right(b, s, 1, MotionMode::Move)
     });
-    begin_insert_session(state, view);
-    begin_typed_run(state, view, ExitCursor::StayPut);
+    begin_insert_session(state, view, fp);
+    begin_typed_run(state, view, fp, ExitCursor::StayPut);
     Ok(())
 }
 
@@ -63,8 +63,8 @@ pub(in crate::editor) fn cmd_insert_at_line_start(
     apply_pane_motion(state, view, fp.target(), |b, s| {
         cmd_goto_first_nonblank(b, s, 1, MotionMode::Move)
     });
-    begin_insert_session(state, view);
-    begin_typed_run(state, view, ExitCursor::StayPut);
+    begin_insert_session(state, view, fp);
+    begin_typed_run(state, view, fp, ExitCursor::StayPut);
     Ok(())
 }
 
@@ -92,8 +92,8 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
             Selection::collapsed(pos)
         })
     });
-    begin_insert_session(state, view);
-    begin_typed_run(state, view, ExitCursor::StepBack);
+    begin_insert_session(state, view, fp);
+    begin_typed_run(state, view, fp, ExitCursor::StepBack);
     Ok(())
 }
 
@@ -109,8 +109,8 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
     apply_pane_motion(state, view, fp.target(), |_b, sels| {
         sels.map(|sel| Selection::collapsed(sel.start()))
     });
-    begin_insert_session(state, view);
-    begin_typed_run(state, view, ExitCursor::StayPut);
+    begin_insert_session(state, view, fp);
+    begin_typed_run(state, view, fp, ExitCursor::StayPut);
     Ok(())
 }
 
@@ -144,8 +144,8 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
             Selection::collapsed(pos.min(max))
         })
     });
-    begin_insert_session(state, view);
-    begin_typed_run(state, view, ExitCursor::StepBack);
+    begin_insert_session(state, view, fp);
+    begin_typed_run(state, view, fp, ExitCursor::StepBack);
     Ok(())
 }
 
@@ -167,15 +167,15 @@ pub(in crate::editor) fn cmd_open_line_below(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    begin_insert_session(state, view);
+    begin_insert_session(state, view, fp);
     apply_pane_motion(state, view, fp.target(), |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, fp, |b, s| insert_newline_indent(b, s, &[]));
     // Pin after the structural newline, not before — the anchor must mark
     // the start of typed content, not the blank line's own `\n`.
-    begin_typed_run(state, view, ExitCursor::StepBack);
-    arm_autoindent(state, view);
+    begin_typed_run(state, view, fp, ExitCursor::StepBack);
+    arm_autoindent(state, view, fp);
     Ok(())
 }
 
@@ -189,15 +189,15 @@ pub(in crate::editor) fn cmd_open_line_above(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    begin_insert_session(state, view);
+    begin_insert_session(state, view, fp);
     apply_pane_motion(state, view, fp.target(), |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, fp, open_line_above);
     // Pin after the indent + the structural newline `open_line_above` leaves
     // the cursor on — same reasoning as `cmd_open_line_below`.
-    begin_typed_run(state, view, ExitCursor::StepBack);
-    arm_autoindent(state, view);
+    begin_typed_run(state, view, fp, ExitCursor::StepBack);
+    arm_autoindent(state, view, fp);
     Ok(())
 }
 

@@ -335,10 +335,8 @@ impl BufferSession {
                     if opened_group {
                         crate::editor::doc_ops::commit_edit_group(
                             &mut state.buffers,
-                            &mut state.panes.state,
+                            &state.panes.state,
                             &mut state.active_session,
-                            pid,
-                            bid,
                         );
                     }
                     return Err(e);
@@ -405,10 +403,8 @@ impl BufferSession {
         if opened_group {
             crate::editor::doc_ops::commit_edit_group(
                 &mut state.buffers,
-                &mut state.panes.state,
+                &state.panes.state,
                 &mut state.active_session,
-                pid,
-                bid,
             );
         }
 
