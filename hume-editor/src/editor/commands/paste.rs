@@ -195,8 +195,8 @@ fn do_paste(
 
     debug_assert!(
         state.active_session.is_none(),
-        "do_paste called with a session already open \
-         (step_paste_commit should have closed any prior one first)"
+        "do_paste called with a session already open (step_paste_commit \
+         closes a prior paste session; refuse_during_insert refuses over an Insert one)"
     );
     let pre_sels = sels.clone();
     state.panes.state[focused][buf].set_selections(sels);
@@ -359,20 +359,48 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
     }
 }
 
+/// Refuse a paste while an Insert session is open. Reachable only through a
+/// `call!` (a hook or timer firing mid-typing) or an Insert-mode binding —
+/// `step_paste_commit` closes a prior *paste* session before every dispatch,
+/// but leaves an Insert one alone, and opening a paste session over it would
+/// replace the Insert group in `EditorState::active_session`'s single slot,
+/// losing every keystroke typed so far from undo. Every open session lives on
+/// the focused pane, which is the only pane a paste acts through, so no pane
+/// comparison is needed.
+fn refuse_during_insert(state: &EditorState) -> Result<(), CommandError> {
+    let insert_open = state
+        .active_session
+        .as_ref()
+        .is_some_and(|s| matches!(s.kind, EditSessionKind::Insert));
+    if insert_open {
+        return Err(CommandError::transient(
+            "paste refused: an Insert session is open",
+        ));
+    }
+    Ok(())
+}
+
 /// Plain paste: resolve from the register (kill-ring head when bare, honoring
 /// `"<reg>` otherwise), then hand off to [`do_paste`] unconditionally —
 /// always replaces a non-collapsed selection. See [`collapse_if_repeat`]'s
 /// doc for why smart paste alone needs the extra step.
-fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, fp: FocusedPane, before: bool) {
+fn do_normal_paste(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    before: bool,
+) -> Result<(), CommandError> {
+    refuse_during_insert(state)?;
     if super::refuse_if_read_only(state, view, fp.target()) {
-        return;
+        return Ok(());
     }
     let Some(resolved) = resolve_plain(state) else {
-        return;
+        return Ok(());
     };
     let (pid, buf) = (fp.pid(), fp.bid(view));
     let sels = state.panes.state[pid][buf].take_selections();
     do_paste(state, pid, buf, before, resolved, sels);
+    Ok(())
 }
 
 /// Smart paste: resolve from the stamp-driven source (ring while nothing has
@@ -380,12 +408,18 @@ fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, fp: FocusedPa
 /// [`PasteStamp`]), apply the repeat-vs-swap collapse rule to the
 /// selections (bare paste only — see [`collapse_if_repeat`]), then hand off
 /// to [`do_paste`].
-fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, fp: FocusedPane, before: bool) {
+fn do_smart_paste(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    fp: FocusedPane,
+    before: bool,
+) -> Result<(), CommandError> {
+    refuse_during_insert(state)?;
     if super::refuse_if_read_only(state, view, fp.target()) {
-        return;
+        return Ok(());
     }
     let Some(resolved) = resolve_smart(state) else {
-        return;
+        return Ok(());
     };
     let (pid, buf) = (fp.pid(), fp.bid(view));
     let mut sels = state.panes.state[pid][buf].take_selections();
@@ -394,6 +428,7 @@ fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, fp: FocusedPan
         sels = collapse_if_repeat(text, sels, &resolved.values, before);
     }
     do_paste(state, pid, buf, before, resolved, sels);
+    Ok(())
 }
 
 /// Paste after the selection: plain paste, kill-ring head by default.
@@ -404,8 +439,7 @@ pub(in crate::editor) fn cmd_paste_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_normal_paste(state, view, fp, false);
-    Ok(())
+    do_normal_paste(state, view, fp, false)
 }
 
 /// Paste before the selection: plain paste, kill-ring head by default.
@@ -416,8 +450,7 @@ pub(in crate::editor) fn cmd_paste_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_normal_paste(state, view, fp, true);
-    Ok(())
+    do_normal_paste(state, view, fp, true)
 }
 
 /// Smart-paste after the selection: ring while nothing has been edited since
@@ -429,8 +462,7 @@ pub(in crate::editor) fn cmd_smart_paste_after(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_smart_paste(state, view, fp, false);
-    Ok(())
+    do_smart_paste(state, view, fp, false)
 }
 
 /// Smart-paste before the selection: ring while nothing has been edited since
@@ -442,8 +474,7 @@ pub(in crate::editor) fn cmd_smart_paste_before(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    do_smart_paste(state, view, fp, true);
-    Ok(())
+    do_smart_paste(state, view, fp, true)
 }
 
 /// Shared implementation for `[` and `]`: advance/retreat the kill-ring cycle

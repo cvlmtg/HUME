@@ -1470,3 +1470,42 @@ fn plain_paste_refuses_read_only_buffer() {
     );
     assert_eq!(ed.state.status_msg.as_deref(), Some("Buffer is read-only"));
 }
+
+/// A paste reaching the focused pane while its Insert session is still open
+/// — a hook or timer `call!`ing `paste-after` mid-typing — must refuse, not
+/// open a paste session over the Insert one. Opening it would replace the
+/// Insert group in the editor's single session slot, losing every keystroke
+/// typed so far from undo.
+#[test]
+fn paste_during_an_open_insert_session_is_refused_and_leaves_the_session_intact() {
+    use hume_scripting::host::CommandHost;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    let bid = ed.focused_buffer_id();
+    ed.feed_key(key('y'));
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, "Q");
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
+
+    let pane = focused_pane(&ed);
+    let ran = live_host!(ed)
+        .run_command_sync("paste-after", pane, None, false, None)
+        .expect("a refused paste reports through its return value, not Err");
+    assert!(!ran, "paste-after must report that it refused");
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "the Insert session must survive"
+    );
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "Qabc\n");
+
+    type_chars(&mut ed, "R");
+    ed.feed_key(key_esc());
+    assert_eq!(ed.state.buffers.get(bid).text().to_string(), "QRabc\n");
+    ed.feed_key(key('u'));
+    assert_eq!(
+        ed.state.buffers.get(bid).text().to_string(),
+        "abc\n",
+        "one undo must revert the whole Insert session, keystrokes before and after the refusal alike"
+    );
+}
