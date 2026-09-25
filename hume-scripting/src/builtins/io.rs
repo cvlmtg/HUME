@@ -15,21 +15,25 @@
 //! `builtins/mod.rs::register_all`), so the shims shadow the imports inside
 //! every plugin module too.
 //!
-//! Two steel-core limitations shaped how the shims are built (re-verified
-//! empirically against 0.8.3):
+//! Two steel-core limitations shaped how the shims are built:
 //! - One `compile_and_run_raw_program` call can't both capture a name's
 //!   current value and redefine that same name in the same unit (rejected at
 //!   compile time) — `register_all` runs BOOTSTRAP (captures originals) and
 //!   `PRINT_GATE_SHIMS` (redefines the names) as two separate sequential
 //!   calls, so by the second the names are ordinary bound globals.
+//!   Re-verified empirically against 0.8.3: still rejected identically.
 //! - A required module can't call a locally-shadowed prelude name with 2+
 //!   positional args (e.g. explicit-port `(display obj port)`) when the
 //!   shim's parameter list is *mixed* fixed-plus-rest — reproduced
-//!   independent of naming, even with `case-lambda`. Every shim below uses a
-//!   *rest-only* list instead, which dodges it for the implicit 0/1-arg form
-//!   (the actual plugin use case). Residual gap: a plugin calling one of
-//!   these names with an explicit port from inside its own required-module
-//!   body still hits the limitation — no workaround short of patching
+//!   independent of naming, even with `case-lambda`, on 0.8.2. Every shim
+//!   below uses a *rest-only* list instead, which dodges it for the
+//!   implicit 0/1-arg form (the actual plugin use case) regardless of
+//!   whether the underlying limitation still exists on 0.8.3 — not
+//!   independently re-tested there, since the full test suite's real
+//!   plugin-loading coverage already proves the rest-only shims work.
+//!   Residual gap: a plugin calling one of these names with an explicit
+//!   port from inside its own required-module body still hits the
+//!   limitation if it's still there — no workaround short of patching
 //!   steel-core, and no real HUME code does this today.
 //!
 //! Explicit-port calls are gated too, not just forwarded: `port` can itself
