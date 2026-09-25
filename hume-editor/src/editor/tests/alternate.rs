@@ -52,7 +52,9 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     );
 
     // A actually shows foo (the focused buffer for this whole test); B is a
-    // sibling pane showing baz. Neither call touches `mru`.
+    // sibling pane showing baz. Neither call changes `mru`: A's switch is a
+    // focused-pane touch of `foo`, already the tail (no-op), and B's pane is
+    // built via `open_pane`, which never touches `mru` at all.
     crate::editor::buffer::lifecycle::switch_pane_to_buffer(
         &mut ed.state,
         &mut ed.view,

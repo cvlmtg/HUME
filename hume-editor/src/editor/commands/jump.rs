@@ -69,8 +69,9 @@ pub(in crate::editor) fn cmd_jump_forward(
 /// recently, however it was viewed (a keypress on the focused pane, or a
 /// `goto-alternate-buffer` touch from any other).
 ///
-/// Worked example (`mru` tail = most recent): stack `[bar, foo]`, pane A
-/// focused on `foo` (so `mru`'s tail is `foo`), pane B shows `baz`.
+/// Worked example (`mru` tail = most recent): stack `[baz, bar, foo]` (`baz`
+/// seeded at open, never itself touched since), pane A focused on `foo` (so
+/// `mru`'s tail is `foo`), pane B shows `baz`.
 /// `(call! "goto-alternate-buffer" paneB)`: the target is `bar` (`mru`'s
 /// second-to-last) — restoring the same buffer a keypress on the focused
 /// pane would. `t`'s own outgoing buffer (`baz`) is touched onto `mru`

@@ -24,12 +24,13 @@ pub(crate) struct BufferStore {
     /// Open-order list. Used for `:bnext` / `:bprev` cycling.
     order: Vec<BufferId>,
     /// Most-recently-*focused* list, tail = most recently focused. Seeded at
-    /// open (see `open`'s own doc for why) and otherwise promoted only by
-    /// `Editor::detect_buffer_enter` (`scripting_setup.rs`) — the join of
-    /// `state.focus` and `pane.buffer_id` has no write-site chokepoint of
-    /// its own, so promoting on a buffer-switch primitive alone would miss a
-    /// plain pane-focus move.
-    /// Length is always ≤ `order.len()`; entries are unique.
+    /// open (see `open`'s own doc for why) and otherwise promoted by the two
+    /// focus chokepoints, [`crate::editor::focus::focus_pane`] and
+    /// [`crate::editor::buffer::lifecycle::switch_pane_to_buffer`] (focused
+    /// switch only), plus `cmd_goto_alternate_buffer`'s (`commands/jump.rs`)
+    /// own explicit touches for a remote-pane dispatch — see that
+    /// function's doc for why it can't rely on the two chokepoints alone.
+    /// Always holds the same entries as `order`, just in a different order.
     mru: Vec<BufferId>,
     /// Monotonic counter bumped once per user edit/undo/redo, in any open
     /// buffer — the `doc_ops` five-function chokepoint is the sole writer.
@@ -226,25 +227,20 @@ impl BufferStore {
     }
 
     /// Remove `id` from the store.
-    ///
-    /// Returns the most-recently-used buffer excluding `id` (the recommended
-    /// replacement target), or `None` if `id` was the only buffer.
-    pub(in crate::editor) fn close(&mut self, id: BufferId) -> Option<BufferId> {
-        let replacement = self.mru_excluding(id);
+    pub(in crate::editor) fn close(&mut self, id: BufferId) {
         self.buffers.remove(id);
         self.order.retain(|&x| x != id);
         self.mru.retain(|&x| x != id);
-        replacement
     }
 
     /// Move `id` to the tail of the MRU list — "most recently viewed."
-    /// Called from `Editor::detect_buffer_enter` (the one observation point
-    /// that sees every focus/buffer-enter path, including a plain pane-focus
-    /// move with no buffer switch at all) and from `cmd_goto_alternate_buffer`
-    /// (`commands/jump.rs`), which touches the outgoing buffer and the
-    /// target explicitly around its own switch — see that function's own
-    /// doc for why a remote-pane dispatch can't rely on
-    /// `detect_buffer_enter` alone.
+    /// Called from the two focus chokepoints, [`crate::editor::focus::
+    /// focus_pane`] and [`crate::editor::buffer::lifecycle::
+    /// switch_pane_to_buffer`] (focused switch only), and from
+    /// `cmd_goto_alternate_buffer` (`commands/jump.rs`), which touches the
+    /// outgoing buffer and the target explicitly around its own switch —
+    /// see that function's own doc for why a remote-pane dispatch can't
+    /// rely on the two chokepoints alone.
     pub(in crate::editor) fn touch_mru(&mut self, id: BufferId) {
         self.mru.retain(|&x| x != id);
         self.mru.push(id);
@@ -261,8 +257,10 @@ impl BufferStore {
     /// last viewed, however it was viewed" (a keypress on the focused pane,
     /// or a `goto-alternate-buffer` touch from any other), so the entry
     /// right before it is always "the previous one," regardless of which
-    /// pane is asking. `None` when fewer than two buffers have ever been
-    /// viewed. Distinct from `mru_excluding`: that skips *by value*, useful
+    /// pane is asking. `None` when fewer than two buffers are open (`mru`
+    /// is seeded at open, so this needs no buffer to have actually been
+    /// *viewed* — see `open`'s own doc). Distinct from `mru_excluding`: that
+    /// skips *by value*, useful
     /// when the caller already knows which specific buffer to exclude
     /// (`close`'s own replacement target); this is a pure positional read,
     /// since here the "current" buffer is whatever the tail *happens to be*

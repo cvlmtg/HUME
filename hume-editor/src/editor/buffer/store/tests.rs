@@ -27,24 +27,26 @@ fn open_and_get() {
 }
 
 #[test]
-fn close_returns_mru_replacement() {
+fn close_removes_from_mru() {
     let (mut store, mut ev) = store_with_engine();
     let a = make_id(&mut ev);
     let b = make_id(&mut ev);
     store.open(a, make_buf());
     store.open(b, make_buf());
-    // b is MRU tail (most recent). closing b should suggest a.
-    let replacement = store.close(b);
-    assert_eq!(replacement, Some(a));
+    // mru = [b, a] (each open seeds at the head — see `open`'s own doc).
+    // Closing b must drop it from `mru` too, leaving a as the sole entry.
+    store.close(b);
     assert_eq!(store.len(), 1);
+    assert_eq!(store.mru_excluding(b), Some(a));
+    assert_eq!(store.second_most_recent(), None);
 }
 
 #[test]
-fn close_last_returns_none() {
+fn mru_excluding_none_with_single_buffer() {
     let (mut store, mut ev) = store_with_engine();
     let a = make_id(&mut ev);
     store.open(a, make_buf());
-    assert_eq!(store.close(a), None);
+    assert_eq!(store.mru_excluding(a), None);
 }
 
 #[test]
@@ -80,9 +82,11 @@ fn touch_mru_promotes_to_tail() {
     let b = make_id(&mut ev);
     store.open(a, make_buf());
     store.open(b, make_buf());
-    // b is MRU tail. Touch a to make it most recent.
-    store.touch_mru(a);
-    assert_eq!(store.mru_excluding(a), Some(b));
+    // Each open seeds at the *head* of `mru` (see `open`'s own doc), so
+    // later opens push earlier ones toward the tail: mru = [b, a], with a —
+    // opened first — at the tail. Touch b to make it most recent instead.
+    store.touch_mru(b);
+    assert_eq!(store.second_most_recent(), Some(a));
 }
 
 /// `edit_seq` starts at 0 and only moves via the explicit bump — nothing else
