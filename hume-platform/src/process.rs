@@ -101,7 +101,7 @@ fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
 /// targets the whole foreground process group. Without `process_group(0)`
 /// that would kill HUME itself alongside the child. Steel's own
 /// `spawn-process` has no such capability (no `setpgid`/`pre_exec` anywhere
-/// in steel-core, verified against 0.8.2), so plugin code that needs this
+/// in steel-core, verified against 0.8.3), so plugin code that needs this
 /// safety property calls the `run-inline-output!` builtin (backed by this
 /// function) instead of Steel's stdlib directly.
 ///

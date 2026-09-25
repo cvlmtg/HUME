@@ -106,7 +106,7 @@ vendoring it.
 `plum/fetch-raw-query` (the `curl` call behind every query fetch) deliberately does *not*
 wrap that call in a `with-handler` — only the temp-file cleanup after it succeeds is
 guarded. Re-raising a native-builtin error through a nested `with-handler` corrupts Steel
-0.8.2's VM continuation stack when it runs somewhere an outer handler also sits (see the
+0.8.3's VM continuation stack when it runs somewhere an outer handler also sits (see the
 [core plugins index](../README.md#steel-pitfalls-worth-knowing-before-you-hit-them)) —
 this was hit for real once already, in this same plugin's theme-install command (see
 [Theme install](#theme-install) below), which is why the pattern is avoided here too, even

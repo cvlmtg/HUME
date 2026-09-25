@@ -13,7 +13,7 @@ hume-engine = { path = "../hume-engine" }
 hume-ops = { path = "../hume-ops" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }
-steel-core = { version = "0.8.2", features = ["custom-hash"] }
+steel-core = { version = "0.8.3", features = ["custom-hash"] }
 termina = "0.4.0"
 slotmap = "1"
 serde_json.workspace = true

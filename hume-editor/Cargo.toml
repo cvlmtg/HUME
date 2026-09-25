@@ -24,7 +24,7 @@ serde_json.workspace = true
 globset = "0.4"
 slotmap = "1"
 rustc-hash.workspace = true
-steel-core = { version = "0.8.2", features = ["custom-hash"] }
+steel-core = { version = "0.8.3", features = ["custom-hash"] }
 ropey.workspace = true
 unicode-segmentation.workspace = true
 hume-grid = { path = "../hume-grid" }

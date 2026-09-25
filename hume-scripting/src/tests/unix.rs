@@ -43,7 +43,7 @@ fn child_stderr_must_be_captured_before_wait() {
         .expect("spawn-process shape probe failed");
 }
 
-/// **Known steel-core 0.8.2 limitation, not a HUME bug**: re-raising a
+/// **Known steel-core 0.8.3 limitation, not a HUME bug**: re-raising a
 /// native-builtin error (via `raise-error`) from an inner `with-handler`,
 /// caught by an *outer* `with-handler`, corrupts the VM's continuation
 /// stack and panics "Failed to find an open continuation on the stack".
@@ -133,7 +133,7 @@ fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
     );
 }
 
-/// **Second known steel-core 0.8.2 limitation**: `dynamic-wind`'s
+/// **Second known steel-core 0.8.3 limitation**: `dynamic-wind`'s
 /// `after` thunk is not guaranteed to run when its body raises through an
 /// outer `with-handler` — reproduces the panic-pinning test's failure,
 /// wrapped in `dynamic-wind` instead of catch-and-reraise. This would

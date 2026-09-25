@@ -152,7 +152,7 @@ to the *user*, not by how verbose the plugin author wants to be:
 
 - **Never re-raise a native-builtin error through a nested `with-handler`.** Catching an
   error from a native-backed call (a subprocess, a file operation) and re-raising it
-  through an outer `with-handler` corrupts Steel 0.8.2's VM continuation stack. If you
+  through an outer `with-handler` corrupts Steel 0.8.3's VM continuation stack. If you
   need to guarantee cleanup around a call that can raise, guard only the cleanup step, and
   let the original raise propagate uncaught.
 - **`(apply append (list '() long-list))` silently drops entries past the 4th.** A direct

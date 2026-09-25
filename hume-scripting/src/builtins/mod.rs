@@ -345,12 +345,11 @@ const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 // Accepted side effect: an explicit call to the real stdout port while the
 // gate is closed now silently suppresses instead of raising an arity error.
 //
-// `write-string`/`write-char` are shimmed even though their steel-core
-// originals bypass `(current-output-port)` in the implicit-arg case — they
-// default straight to real stdout regardless, so they're exactly as unsafe
-// as `display` and need the same gate. `simple-display`/`simple-displayln`
-// always resolve `(current-output-port)` themselves, so they're gated the
-// same way.
+// `write-string`/`write-char` are shimmed for the same reason as `display`:
+// their implicit-arg case still defaults straight to real stdout unless
+// redirected, so they're exactly as unsafe and need the same gate.
+// `simple-display`/`simple-displayln` always resolve `(current-output-port)`
+// themselves, so they're gated the same way.
 const PRINT_GATE_SHIMS: &str = include_str!("print_gate_shims.scm");
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -652,7 +651,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // references a name (the `%raw-*` captures above) and redefines that
     // same name later in the same unit — "variable redefined within the top
     // level definition" / "cannot reference an identifier before its
-    // definition" (verified empirically against steel-core 0.8.2; see
+    // definition" (verified empirically against steel-core 0.8.3; see
     // io.rs's module doc). Splitting into two sequential top-level programs
     // sidesteps this: by the time this call compiles, `displayln` etc. are
     // ordinary already-bound globals, and redefining them here is a plain

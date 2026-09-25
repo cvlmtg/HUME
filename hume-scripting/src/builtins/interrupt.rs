@@ -16,7 +16,7 @@
 //!
 //! **Limitation:** interruption is cooperative only.  A script without
 //! `(hume/yield!)` calls will run to completion regardless of the budget.
-//! Steel 0.8.2 does not expose an op-callback hook for involuntary interruption.
+//! Steel 0.8.3 does not expose an op-callback hook for involuntary interruption.
 
 use std::sync::atomic::Ordering;
 

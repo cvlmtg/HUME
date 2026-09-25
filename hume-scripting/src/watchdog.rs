@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 ///
 /// When an armed budget expires the interrupt flag is set to `true`,
 /// signalling `(hume/yield!)` calls inside the script to abort.  Interruption
-/// is cooperative only — Steel 0.8.2 has no op-callback for involuntary stop.
+/// is cooperative only — Steel 0.8.3 has no op-callback for involuntary stop.
 ///
 /// The armed wait loops on `recv_timeout`, re-checking the deadline on every
 /// wake, so an early or spurious wake can never fire the interrupt before the

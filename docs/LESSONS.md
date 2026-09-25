@@ -687,6 +687,16 @@ as `register-grammar!` now does, rather than relying on callers to spell
 keywords out correctly. Re-check both findings against a newer `steel-core`
 release before assuming either still applies.
 
+**Re-checked against steel-core 0.8.3 (2026-09-26):** a faithful repro of
+trigger 1 (HUME's own `define-command!`/`register-grammar!` shape, keywords
+omitted at the nested call site, run directly against a bare `Engine`) no
+longer raises `FreeIdentifier` — the underlying miscompilation looks fixed.
+Trigger 2 (two differently-shaped keyword calls to a `. rest`-scanning
+function in one file) was not independently re-verified. The prevention rule
+above stays: `register-grammar!` was already reverted to a positional macro
+and isn't going back just because trigger 1 no longer reproduces, and the
+rule still protects against trigger 2.
+
 **Files:** `hume-editor/src/editor/tests/unix/scripting_grammar.rs`
 (all affected call sites), `runtime/scheme/prelude.scm` (`register-grammar!`).
 

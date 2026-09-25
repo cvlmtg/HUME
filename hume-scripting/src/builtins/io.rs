@@ -15,8 +15,8 @@
 //! `builtins/mod.rs::register_all`), so the shims shadow the imports inside
 //! every plugin module too.
 //!
-//! Two steel-core 0.8.2 limitations shaped how the shims are built, both
-//! verified empirically:
+//! Two steel-core limitations shaped how the shims are built (re-verified
+//! empirically against 0.8.3):
 //! - One `compile_and_run_raw_program` call can't both capture a name's
 //!   current value and redefine that same name in the same unit (rejected at
 //!   compile time) — `register_all` runs BOOTSTRAP (captures originals) and
@@ -38,9 +38,9 @@
 //! [`stdout_gate`]'s Scheme-side caller, `%port-safe?`, checks the *supplied*
 //! port's identity against the captured real stdout port, so a custom port
 //! (string port, pipe) always passes through ungated. `write-string`/
-//! `write-char` need the gate too even though steel-core's natives ignore
-//! `(current-output-port)` in their 1-arg form — the shim explicitly threads
-//! it through so redirection (`with-output-to-string`) works.
+//! `write-char` need the gate too, same as `display`; the shim passes
+//! `(current-output-port)` explicitly in their 1-arg form so redirection
+//! (`with-output-to-string`) works regardless of steel-core's own default.
 //!
 //! This module provides only the gate check itself — [`stdout_gate`],
 //! registered as `%stdout-gate!` — called by each Scheme shim before it

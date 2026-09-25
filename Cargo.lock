@@ -972,10 +972,11 @@ dependencies = [
 
 [[package]]
 name = "im-lists"
-version = "0.11.4"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82158d5d59eff663dbb9d89295eacac296f58bc0473331cea2f45d9d270c5540"
+checksum = "efa84651d82cf312cc1d1f1acf609debffbd672c13ae6c25f05b6b0e864c3290"
 dependencies = [
+ "allocator-api2",
  "generic_singleton",
  "smallvec",
 ]
@@ -1185,6 +1186,7 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -1776,9 +1778,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "steel-core"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4acadc255e0d56fe71c09c605ebde51e6009b02d86ae610386f26437c4f91f8"
+checksum = "1341b81ac9c27acc592a7f76eebeb4a4420d1099d7419f1b1ee9eb7fcca13a15"
 dependencies = [
  "arc-swap",
  "bigdecimal",
@@ -1829,9 +1831,9 @@ dependencies = [
 
 [[package]]
 name = "steel-derive"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a564df3ca16e0be05e71bdcc3fe52f8b71e47be9c73e7a0bf43840fde591997"
+checksum = "6aafbd673d0b2608265b0cf3efe658b02b7df63b5e24e06ea577c8df74c28318"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1840,9 +1842,9 @@ dependencies = [
 
 [[package]]
 name = "steel-gen"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1a614449ed6cba4138ce2e54943fb403533248da8070dad6ce943f1b14417b8"
+checksum = "f5a50f7edabcb04ee04fe75b8f9aabda6406c6530ca8249f1fb22f212e3f6bb8"
 dependencies = [
  "codegen",
  "serde",
@@ -1850,9 +1852,9 @@ dependencies = [
 
 [[package]]
 name = "steel-parser"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "769cea4a36ee603bfde799ab9c1ec1f93a67df30bcf4cd22d069eb8d4155e2b2"
+checksum = "84f6650f442ea330ed5ed0955ed8b360d5bbc79e01bdf53c9791cae826a0ac28"
 dependencies = [
  "compact_str 0.8.2",
  "dashmap",
@@ -1872,9 +1874,9 @@ dependencies = [
 
 [[package]]
 name = "steel-quickscope"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3b5ab5dbc71b317360a2f5287abc1c91a92ced9a983066e2622a607583bc89e"
+checksum = "ef8c0e39b13a8e6306980b2d2fa343c6b23ded3464906706ca1e046651ca7bf2"
 dependencies = [
  "indexmap 2.14.2",
  "smallvec",
