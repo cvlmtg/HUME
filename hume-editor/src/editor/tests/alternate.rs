@@ -9,7 +9,7 @@ use pretty_assertions::assert_eq;
 #[test]
 fn alternate_buffer_none_with_single_buffer() {
     let ed = editor_from("-[h]>ello\n");
-    assert_eq!(ed.alternate_buffer(), None);
+    assert_eq!(ed.state.buffers.second_most_recent(), None);
 }
 
 // ── goto-alternate-buffer  ────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     ed.state.buffers.touch_mru(bar_bid);
     ed.state.buffers.touch_mru(foo_bid);
     assert_eq!(
-        crate::editor::commands::alternate_buffer(&ed.state),
+        ed.state.buffers.second_most_recent(),
         Some(bar_bid),
         "setup: bar must be the second-most-recent"
     );

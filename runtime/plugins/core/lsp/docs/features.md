@@ -10,7 +10,17 @@ array jumps directly if it has exactly one entry, otherwise lists them in the dr
 result — "where is this used" expects a list, unlike goto's "take me there" — and
 reuses the same cascade rather than reimplementing it, so its bare-`Location` branch
 is simply unreached: `textDocument/references` only ever returns `Location[] | null`
-per spec, never a bare `Location`.
+per spec, never a bare `Location`. Every jump in the cascade lands via
+`(goto-location! (focused-pane) …)`, not a captured invocation pane — the response's
+own `JsonHandle` (and every location `json-list` pulls out of it) already carries the
+producing server's own tagged encoding, so the decode needs no pane capture, and the
+jump itself should go wherever the user actually is once the response lands (see
+`lsp/show-locations!`'s own note above on why the drawer works the same way). None of
+the four plain goto commands pass `#:require-focus` to their request, unlike hover,
+signature help, and code actions: a goto is a navigation the user asked for, not info
+anchored to where the cursor happens to be right now, so completing the jump once it
+resolves is correct even if the user looked elsewhere while waiting — the same way
+pressing Enter on a slow-loading link still navigates.
 
 ## Hover
 
@@ -44,7 +54,17 @@ plugin.
 A parameter label is either a plain string or a `[start, end)` offset pair into the
 signature's own label — the offset form is what a server sends because HUME declares
 `labelOffsetSupport`, and those offsets count code units in the server's negotiated
-encoding, so the host (not this file) does the slicing. There's no styling API in
+encoding, so the host (not this file) does the slicing. The offset pair (when present)
+is itself a child of the signature-help response, so it carries that response's own
+tagged producing-server encoding straight into `lsp-label-offsets->text`, with no pane
+needed for the decode. `lsp/show-sighelp` opens the popup on the request's own
+invocation pane — `#:require-focus #t` on the request guarantees it's still focused
+by the time the response lands, so it's the right pane to anchor the popup at.
+`lsp/sighelp-request`'s debounced body checks `(pane-live? pane)` before sending:
+`pane` itself, not just its buffer, may have closed or switched buffers during the
+debounce window, and `lsp-position-params` resolves the pane (not just the buffer)
+and would raise on either — a benign "this pane is no longer what it was when the
+keystroke armed this timer" isn't worth a logged error. There's no styling API in
 `show-popup!` v1, so the active parameter's text is marked with `⟨…⟩` on a second line
 instead of highlighted in place. `")"` is registered as a trigger character but
 treated as a dismiss, not a request — it still has to be registered or it would never
@@ -104,6 +124,28 @@ array, cross straight back out to `codeAction/resolve`/`workspace/executeCommand
 the `JsonHandle` they arrived as — `steel_to_json`'s handle arm resolves a nested
 handle to its own value once the enclosing hash goes out over the wire, so nothing
 here has to read a field just to re-send it unmodified.
+
+`pane` (the buffer the action came from) and `gen` (that buffer's generation at the
+same capture point) are both captured when `"lsp-code-actions"` sends its request,
+then threaded through the menu selection and, for an unresolved action, the
+`codeAction/resolve` round trip — never re-read from focus, since both round trips
+are async (the user picks a menu item, then waits on the network), the same
+capture-at-source discipline every other chained LSP request here uses. `gen` is
+checked by `apply-workspace-edit!`'s own `#:expect-generation` before applying, so an
+edit computed against text that has since changed fails loudly instead of applying
+against the wrong text. `lsp/exec-command`'s `workspace/executeCommand` request passes
+`#:allow-stale #t`: its params carry no `textDocument`, so the bridge's own text-gen
+anchor has nothing buffer-specific to check `pane` against — without this, the
+anchor's fallback (its own current generation vs. `pane`'s at drain time) would drop
+the response on any intervening edit. Safe to skip, since this callback only reports
+an error; the command's actual edits (if any) arrive separately via a
+server-initiated `workspace/applyEdit`, which carries its own positions and is never
+subject to this staleness check. The `codeAction/resolve` request passes
+`#:allow-stale #t` too, for a different reason: unlike the menu-building request, this
+response *is* the edit — dropping it on an intervening keystroke would silently do
+nothing after the user already picked an action from the menu. Safe to deliver stale
+here as well, since `apply-workspace-edit!`'s own `#:expect-generation` check still
+fails loudly if the buffer actually changed.
 
 ## Formatting
 

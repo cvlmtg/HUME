@@ -555,7 +555,7 @@ fn lsp_request_decodes_require_focus() {
     assert!(result.is_ok());
     let requests = lsp_requests(&ctx);
     assert_eq!(requests.len(), 1);
-    assert!(requests[0].require_focus);
+    assert!(requests[0].require_focus.is_some());
 }
 
 /// A hand-built (untagged) position/range — `wire_pos`/`hashmap`'s own

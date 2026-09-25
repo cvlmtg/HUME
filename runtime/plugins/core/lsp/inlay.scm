@@ -46,18 +46,20 @@
                                   (map (lambda (h) (lsp/hint->store-entry pane h)) (json-list res)))))))))))))
     #:key (lambda (p . _) (buffer-key p))))
 
+;;; `pane` need not itself be live — resolves it via `lsp/resolve-pane`
+;;; first, a no-op if nothing shows its buffer anywhere. The shared tail
+;;; every hook below reduces to, except `on-viewport-change`, which already
+;;; hands a live pane directly (see `lsp/refresh-hints`'s own doc).
+(define (lsp/refresh-hints-for-buffer pane)
+  (let ((resolved (lsp/resolve-pane pane)))
+    (when resolved (lsp/refresh-hints resolved))))
+
 (register-hook! 'on-viewport-change
   (lambda (pane first end) (lsp/refresh-hints pane)))
 
-(register-hook! 'on-diagnostics-changed
-  (lambda (pane)
-    (let ((resolved (lsp/resolve-pane pane)))
-      (when resolved (lsp/refresh-hints resolved)))))
+(register-hook! 'on-diagnostics-changed lsp/refresh-hints-for-buffer)
 
-(register-hook! 'on-text-changed
-  (lambda (pane)
-    (let ((resolved (lsp/resolve-pane pane)))
-      (when resolved (lsp/refresh-hints resolved)))))
+(register-hook! 'on-text-changed lsp/refresh-hints-for-buffer)
 
 (register-hook! 'on-lsp-detach
   (lambda (pane server-name) (set-inlay-hints! "lsp-inlay-hints" pane '())))
@@ -66,9 +68,6 @@
   (lambda (key value)
     (when (equal? key "lsp.inlay-hints")
       (if (get-option "lsp.inlay-hints")
-          (for-each (lambda (pane)
-                      (let ((resolved (lsp/resolve-pane pane)))
-                        (when resolved (lsp/refresh-hints resolved))))
-                    (buffers))
+          (for-each lsp/refresh-hints-for-buffer (buffers))
           (for-each (lambda (pane) (set-inlay-hints! "lsp-inlay-hints" pane '()))
                     (buffers))))))

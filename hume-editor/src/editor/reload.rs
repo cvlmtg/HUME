@@ -301,12 +301,14 @@ impl Editor {
         // time the pane's viewport genuinely moves — which a reload alone
         // never causes — so a clean buffer would show no inlay hints until
         // the user scrolls. Active-tab panes only: a background-tab pane's
-        // geometry isn't kept in sync per frame (`sync_viewport_dims`
-        // resizes active-tab panes only), so firing here for one would hand
-        // a handler stale bounds. A hidden pane's own repopulation happens
-        // when its tab is next focused — `queue_viewport_change`'s
-        // active-tab guard dropped its `last_viewport_key`, so that pane's
-        // first visible frame reads as a change.
+        // *size* stays current (`sync_viewport_dims` resizes every tab, not
+        // just the active one), but its *scroll position* doesn't — the
+        // frame's scroll step only runs over `active_pane_ids()` — so firing
+        // here for one would hand a handler a stale scroll range. A hidden
+        // pane's own repopulation happens when its tab is next focused —
+        // `queue_viewport_change`'s active-tab guard dropped its
+        // `last_viewport_key`, so that pane's first visible frame reads as a
+        // change.
         for pane_id in self.view.active_pane_ids() {
             if snapshot.survives(self.view.panes[pane_id].buffer_id, &self.state.buffers) {
                 self.queue_viewport_change(pane_id);

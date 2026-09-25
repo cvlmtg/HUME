@@ -6,12 +6,6 @@
 ;; ── Response handling ────────────────────────────────────────────────────────
 ;; Shared by all four goto-family methods and `lsp-references` below.
 
-;;; `res`'s `JsonHandle` (and every location `json-list` pulls out of it)
-;;; carries the producing server's own tagged encoding, so `goto-location!`
-;;; and `lsp-locations->display-parts` decode it correctly with no pane
-;;; capture needed here at all — see `lsp/show-locations!`'s own doc for
-;;; why the jump itself also reads `(focused-pane)` rather than a captured
-;;; invocation pane.
 (define (lsp/goto-response err res #:always-drawer? [always-drawer? #f]
                                     #:what [what "goto"]
                                     #:not-found-msg [not-found-msg "No definition found"])
@@ -26,11 +20,6 @@
          (else (lsp/show-locations! locs)))))
     (else (goto-location! (focused-pane) res))))
 
-;;; No `#:require-focus` here, unlike hover/signature-help/code-actions: a
-;;; goto request is a navigation the user asked for, not info anchored to
-;;; where the cursor happens to be right now — completing the jump once it
-;;; resolves is correct even if the user looked elsewhere while waiting,
-;;; the same way pressing Enter on a slow-loading link still navigates.
 (define (lsp/goto-request pane method cap)
   (lsp/guard-capability pane cap
     (lambda ()

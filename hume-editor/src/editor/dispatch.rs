@@ -179,7 +179,7 @@ impl Editor {
     ) -> bool {
         // Injected into the lambda's `count` param verbatim — `0` is the Scheme
         // spelling of `None` ("no count was typed"), so a wrapper that forwards
-        // this value straight into `(call! "move-down" bid count extend)` round-trips
+        // this value straight into `(call! "move-down" pane count extend)` round-trips
         // a bare keypress back to visual-line movement (`parse_count_extend`
         // decodes `0` back to `None` on the way in).
         let count = ctx.count.unwrap_or(0);
@@ -217,7 +217,7 @@ impl Editor {
                 }
             };
 
-        // Inject bid, count, and extend as leading lambda args based on
+        // Inject pane, count, and extend as leading lambda args based on
         // declared arity.
         let effective_args = match marshal_leading_args(
             cmd_arity,
@@ -225,7 +225,7 @@ impl Editor {
             crate::editor::commands::FocusedPane::current(&self.state).handle(&self.view),
             steel::rvals::SteelVal::IntV(count as isize),
             steel::rvals::SteelVal::BoolV(extend),
-            "keymap injection supplies at most 3 (bid, count, extend)",
+            "keymap injection supplies at most 3 (pane, count, extend)",
         ) {
             Ok(args) => args,
             Err(msg) => {
@@ -293,7 +293,7 @@ impl Editor {
             crate::editor::commands::FocusedPane::current(&self.state).handle(&self.view),
             arg_val,
             steel::rvals::SteelVal::BoolV(force),
-            "typed-command injection supplies at most 3 (bid, arg, force)",
+            "typed-command injection supplies at most 3 (pane, arg, force)",
         ) {
             Ok(args) => args,
             Err(msg) => {
@@ -485,12 +485,15 @@ fn marshal_leading_args(
             "lambda declares {cmd_arity} required params; {injection_desc}"
         ));
     }
-    let pane = hume_scripting::SteelPane::new(pane).into_steel_val();
     Ok(match (cmd_arity, cmd_is_variadic) {
         (0, false) => vec![],
-        (1, false) => vec![pane],
-        (2, false) => vec![pane, first],
-        _ => vec![pane, first, second],
+        (1, false) => vec![hume_scripting::SteelPane::new(pane).into_steel_val()],
+        (2, false) => vec![hume_scripting::SteelPane::new(pane).into_steel_val(), first],
+        _ => vec![
+            hume_scripting::SteelPane::new(pane).into_steel_val(),
+            first,
+            second,
+        ],
     })
 }
 
@@ -518,29 +521,29 @@ mod marshal_leading_args_tests {
     }
 
     /// Arity 0 stays a no-op injection — a command with no parameters at all
-    /// (the common case) is unaffected by bid becoming the leading slot.
+    /// (the common case) is unaffected by pane becoming the leading slot.
     #[test]
     fn arity_zero_gets_nothing() {
         assert_eq!(probe(0, false), Vec::<SteelVal>::new());
     }
 
-    /// Arity 1 gets bid alone, not `first` — bid is always the leading slot.
+    /// Arity 1 gets pane alone, not `first` — pane is always the leading slot.
     ///
     /// Fail oracle: injecting `first` here instead would silently bind the
-    /// bid to whatever a `(lambda (arg) …)`-style command names its single
-    /// parameter, rather than giving bid its own visible arity-1 slot.
+    /// pane to whatever a `(lambda (arg) …)`-style command names its single
+    /// parameter, rather than giving pane its own visible arity-1 slot.
     #[test]
-    fn arity_one_gets_bid_only() {
+    fn arity_one_gets_pane_only() {
         assert_eq!(probe(1, false), vec![pane_stand_in()]);
     }
 
-    /// Arity 2 gets `(bid, first)`.
+    /// Arity 2 gets `(pane, first)`.
     #[test]
-    fn arity_two_gets_bid_and_first() {
+    fn arity_two_gets_pane_and_first() {
         assert_eq!(probe(2, false), vec![pane_stand_in(), SteelVal::IntV(2)]);
     }
 
-    /// Arity 3 (or variadic) gets all three: `(bid, first, second)`.
+    /// Arity 3 (or variadic) gets all three: `(pane, first, second)`.
     #[test]
     fn arity_three_gets_all_three() {
         assert_eq!(
@@ -557,7 +560,7 @@ mod marshal_leading_args_tests {
         );
     }
 
-    /// Arity 4 overflows the 3-slot cap (bid, first, second).
+    /// Arity 4 overflows the 3-slot cap (pane, first, second).
     #[test]
     fn arity_four_errors() {
         let result = marshal_leading_args(

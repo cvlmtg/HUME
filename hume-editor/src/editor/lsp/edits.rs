@@ -419,6 +419,14 @@ pub(in crate::editor) fn apply_workspace_edit(
                 .map(str::to_owned)
                 .unwrap_or_else(|| path.display().to_string())
         };
+        // Checked here, ahead of every file's own changeset build, not left
+        // to `commit_changeset`'s own check at the bottom of this function:
+        // a conflict discovered only at commit time would leave every
+        // earlier file in this same batch already applied — see this
+        // function's own doc for why that's the one thing a multi-file edit
+        // must not do.
+        crate::editor::doc_ops::check_no_conflicting_session(&state.panes.state, pid, bid)
+            .map_err(|e| format!("{}: {e}", display()))?;
         if planned.iter().any(|(planned_bid, _)| *planned_bid == bid) {
             return Err(format!(
                 "{}: workspace edit contains more than one entry for this file",

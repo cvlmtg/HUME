@@ -524,6 +524,105 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
     );
 }
 
+/// A file later in the plan with another pane's open insert session must
+/// abort the whole edit *before* any earlier file's changeset is committed —
+/// `doc_ops::check_no_conflicting_session` runs in the planning loop now,
+/// not only inside `commit_changeset`'s own check partway through the
+/// commit loop (which would have already mutated `ok.txt` by the time
+/// `conflict.txt` is reached). Called directly through `EditHost`, not the
+/// `apply_wire_workspace_edit`/`lsp-request` round trip — this needs no LSP
+/// server, only a second pane to issue the edit from.
+#[test]
+fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files_untouched() {
+    use crate::editor::commands::open_pane_in_layout;
+    use hume_editing::text::BufferText;
+    use hume_engine::pipeline::Direction;
+    use hume_scripting::PaneHandle;
+    use hume_scripting::host::EditHost;
+
+    let tmp = safe_tempdir();
+    let ok_path = tmp.path().join("ok.txt");
+    std::fs::write(&ok_path, "abcdef\n").unwrap();
+    let ok_canonical = std::fs::canonicalize(&ok_path).unwrap();
+    let ok_uri = hume_lsp::uri::path_to_uri(&ok_canonical).unwrap();
+
+    let conflict_path = tmp.path().join("conflict.txt");
+    std::fs::write(&conflict_path, "ghijkl\n").unwrap();
+    let conflict_canonical = std::fs::canonicalize(&conflict_path).unwrap();
+    let conflict_uri = hume_lsp::uri::path_to_uri(&conflict_canonical).unwrap();
+
+    let mut ed = editor_from("-[x]>\n");
+    // Open conflict.txt on the focused pane and start (but don't close) an
+    // Insert session on it — an open `edit_group` that must survive.
+    ed.execute_typed("e", Some(conflict_path.to_str().unwrap()))
+        .unwrap();
+    let conflict_bid = ed.focused_buffer_id();
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, "Z");
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "sanity: Insert open on conflict.txt"
+    );
+
+    // A second, unrelated pane issues the workspace edit — "remote" relative
+    // to the focused pane's own open session, the same shape a `call!`
+    // targeting a different pane would produce.
+    let pid_a = ed.state.focus.id();
+    let other_bid = ed.open_buffer(Buffer::new(
+        BufferText::from("misc\n"),
+        SelectionSet::default(),
+    ));
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        other_bid,
+        Direction::Horizontal,
+    )
+    .expect("split must succeed");
+
+    // ok.txt listed first, conflict.txt second — under the old commit-time-
+    // only check, ok.txt would already have been committed by the time
+    // conflict.txt's own conflict aborted the loop.
+    let wsedit = serde_json::json!({"documentChanges": [
+        {"textDocument": {"uri": ok_uri.as_str(), "version": null},
+         "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                     "newText": "Z"}]},
+        {"textDocument": {"uri": conflict_uri.as_str(), "version": null},
+         "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                     "newText": "Z"}]},
+    ]});
+
+    let pane_b = PaneHandle::with_pane(other_bid, pid_b);
+    let result = live_host!(ed).apply_workspace_edit(
+        pane_b,
+        &wsedit,
+        hume_rope::position_encoding::PositionEncoding::Utf16,
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "must refuse: conflict.txt has an open session on another pane"
+    );
+
+    let ok_bid = ed
+        .state
+        .buffers
+        .find_by_path(&ok_canonical)
+        .expect("ok.txt is still opened as a side effect of planning, just never committed");
+    assert_eq!(
+        ed.state.buffers.get(ok_bid).text().to_string(),
+        "abcdef\n",
+        "ok.txt must be untouched — the conflict on conflict.txt must abort before any commit"
+    );
+    assert_eq!(
+        ed.state.buffers.get(conflict_bid).text().to_string(),
+        "Zghijkl\n",
+        "conflict.txt keeps only its own still-open session's own edit, not the workspace edit"
+    );
+}
+
 /// L1 regression: two `documentChanges` entries for the same file (the spec
 /// doesn't forbid it — server-controlled input) must be rejected, not build
 /// a second changeset against text the first entry's already assumes and

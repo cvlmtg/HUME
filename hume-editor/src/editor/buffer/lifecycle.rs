@@ -124,6 +124,14 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
 /// below: the teardown reads state keyed on the buffer `pid` shows *right
 /// now*, which the write is about to change out from under it.
 ///
+/// The same focused-and-changing condition promotes `target` in
+/// `BufferStore.mru` — together with [`crate::editor::focus::focus_pane`]'s
+/// own promotion, this is one of the two chokepoints `focused_buffer_id()`
+/// can change through (see that function's own doc), so between them
+/// `mru`'s tail always names the buffer actually on screen, synchronously —
+/// `Editor::detect_buffer_enter`'s own diffed observation of the same join
+/// needs no separate promotion of its own.
+///
 /// Saves the pane's scroll for the old buffer, restores `target`'s saved scroll
 /// (zero on first visit), and seeds `pane_state[pid][target]` if this pane has
 /// never viewed `target` before. Does not touch any denormalised `buffer_id`.
@@ -133,11 +141,15 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     pid: PaneId,
     target: BufferId,
 ) {
-    if pid == state.focus.id() && ev.panes[pid].buffer_id != target {
+    let is_focused_switch = pid == state.focus.id() && ev.panes[pid].buffer_id != target;
+    if is_focused_switch {
         crate::editor::focus::end_focus_sessions(state, ev);
     }
     ev.panes[pid].remember_scroll();
     ev.panes[pid].buffer_id = target;
+    if is_focused_switch {
+        state.buffers.touch_mru(target);
+    }
     ev.panes[pid].recall_scroll(target, state.buffers.get(target).text().last_content_line());
     // Seeds `pane_state[pid][target]` on this pane's first visit to
     // `target` — required regardless of reveal, since `frame.rs`'s scroll
@@ -166,12 +178,12 @@ pub(in crate::editor) fn switch_pane_to_buffer(
 pub(in crate::editor) fn switch_to_buffer_with_jump(
     state: &mut EditorState,
     ev: &mut EngineView,
-    focused_pane_id: PaneId,
-    current_buffer_id: BufferId,
+    pid: PaneId,
     target: BufferId,
 ) {
+    let current_buffer_id = ev.panes[pid].buffer_id;
     if current_buffer_id != target {
-        let sels = state.panes.state[focused_pane_id][current_buffer_id]
+        let sels = state.panes.state[pid][current_buffer_id]
             .selections()
             .clone();
         let entry = JumpEntry::new(
@@ -179,9 +191,9 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
             state.buffers.get(current_buffer_id).text(),
             current_buffer_id,
         );
-        state.panes.jumps[focused_pane_id].push(entry);
+        state.panes.jumps[pid].push(entry);
     }
-    switch_pane_to_buffer(state, ev, focused_pane_id, target);
+    switch_pane_to_buffer(state, ev, pid, target);
 }
 
 // ── close_buffer ──────────────────────────────────────────────────────────────
@@ -192,9 +204,9 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 /// `undo_levels`, the current global `undo-levels` setting), the same way
 /// any other buffer open would be. `id`'s own slot is always freed: a
 /// versioned key is never reused for different content, so a captured `id`
-/// can never silently start naming the replacement — the failure mode a
-/// same-slot in-place replace (the previous design) left open for any
-/// `LivePane` builtin whose bid outlived the close.
+/// can never silently start naming the replacement — a same-slot in-place
+/// replace would leave that failure mode open for any `LivePane` builtin
+/// whose bid outlived the close.
 ///
 /// Returns `(new_focused, opened)`: the `BufferId` the focused pane is now
 /// viewing, and — only when the last-buffer branch fired — the freshly

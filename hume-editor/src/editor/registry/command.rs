@@ -39,8 +39,8 @@ pub(in crate::editor) enum TargetCategory {
 
 /// Function pointer for an [`EditorCmdBody::Pane`] handler: acts on `bid`
 /// through `t`, a pane proven (by [`crate::editor::commands::resolve_focus`]/
-/// [`crate::editor::commands::resolve_for_buffer`]) to show it — not
-/// necessarily the focused pane.
+/// [`crate::editor::commands::resolve_pane`]) to show it — not necessarily
+/// the focused pane.
 pub(in crate::editor) type PaneCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
@@ -389,13 +389,6 @@ pub(in crate::editor) enum MappableCommand {
         #[allow(dead_code)]
         doc: Cow<'static, str>,
         fun: NativeBody<EditorCmdBody>,
-        /// [`EditorCmdBody::category`] of `fun`'s enum tag — stored
-        /// alongside rather than re-derived at dispatch time, since `fun.0`
-        /// is [`NativeBody`]-fenced and unreadable outside `commands::
-        /// pipeline`. Set once, in `registry/defaults/builder.rs`'s
-        /// `EditorCmdBuilder::reg`, from the very `EditorCmdBody` value a
-        /// registration passed — the two can't disagree.
-        category: TargetCategory,
         /// Whether this command defers the paste-session commit.
         /// `true` only for ring-cycle commands (`[` / `]`).
         /// See [`CmdMeta::defers_paste_commit`] for the full rationale.
@@ -618,19 +611,19 @@ impl MappableCommand {
 
     /// What buffer/pane this native command's body needs — see
     /// [`TargetCategory`]. `Motion`/`Selection`/`Edit` are always `Pane`,
-    /// their body signature's only option; `EditorCmd` carries its own
-    /// field, set from its `EditorCmdBody` at registration time.
+    /// their body signature's only option; `EditorCmd` derives it from its
+    /// own `fun`'s [`EditorCmdBody`] variant.
     ///
     /// Only meaningful for a native command — `resolve_focus`/
-    /// `resolve_for_buffer` (`commands/pipeline.rs`) are the only callers,
-    /// and both are reached only after `is_native()` is already known true
+    /// `resolve_pane` (`commands/pipeline.rs`) are the only callers, and
+    /// both are reached only after `is_native()` is already known true
     /// (`Editor::dispatch`'s branch, `run_command_sync`'s native check).
     pub(in crate::editor) fn target_category(&self) -> TargetCategory {
         match self {
             Self::Motion { .. } | Self::Selection { .. } | Self::Edit { .. } => {
                 TargetCategory::Pane
             }
-            Self::EditorCmd { category, .. } => *category,
+            Self::EditorCmd { fun, .. } => fun.category(),
             Self::SteelBacked { .. } | Self::Lazy { .. } => {
                 unreachable!("target_category is only meaningful for a native command")
             }

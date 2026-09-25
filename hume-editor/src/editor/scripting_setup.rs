@@ -2,11 +2,13 @@ use std::path::PathBuf;
 
 use hume_engine::pipeline::BufferId;
 
-use hume_scripting::Effect;
+use hume_scripting::{Effect, PaneHandle};
 use steel::rvals::SteelVal;
 
 use super::buffer::DiskCheckTrigger;
+use super::commands::resolve_pane;
 use super::event::{EditorEvent, PendingWork};
+use super::registry::TargetCategory;
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
 use crate::cli::ConfigSource;
@@ -247,13 +249,13 @@ impl Editor {
     /// reading the pane's *current* bounds rather than whatever they were
     /// when the timer was armed. A no-op if the pane closed in the meantime,
     /// or if its tab went to the background before the (debounced) timer
-    /// fired: `prepare_frame` stops maintaining a backgrounded pane's
-    /// viewport, so firing with its frozen bounds would hand a handler
-    /// geometry the code itself no longer trusts. `prepare_frame` drops that
-    /// pane's `last_viewport_key` when its
-    /// tab backgrounds, so the pane's first frame back on screen reads as a
-    /// fresh change and re-arms this on its own — this guard only skips the
-    /// fire for the frames spent hidden, not the one on return.
+    /// fired: the frame's scroll step stops maintaining a backgrounded
+    /// pane's scroll position (only its size stays current), so firing with
+    /// its frozen scroll would hand a handler a range the code itself no
+    /// longer trusts. `prepare_frame` drops that pane's `last_viewport_key`
+    /// when its tab backgrounds, so the pane's first frame back on screen
+    /// reads as a fresh change and re-arms this on its own — this guard only
+    /// skips the fire for the frames spent hidden, not the one on return.
     pub(super) fn queue_viewport_change(&mut self, pane_id: hume_engine::pipeline::PaneId) {
         if !self.view.layout().contains_leaf(pane_id) {
             return;
@@ -265,8 +267,7 @@ impl Editor {
         let content_lines = self.state.buffers.get(bid).text().content_line_count();
         let range = super::lsp::introspect::pane_visible_range(pane, content_lines);
         self.state.queue_event(EditorEvent::OnViewportChange {
-            buffer: bid,
-            pane: pane_id,
+            target: PaneHandle::with_pane(bid, pane_id),
             first_line: range.start,
             end_line: range.end,
         });
@@ -390,28 +391,25 @@ impl Editor {
         }
     }
 
-    /// Observation point for `focused_buffer_id()` — a derived join of
-    /// `state.focus` and `pane.buffer_id`, each written by its own
-    /// chokepoint (`focus_pane`, `switch_pane_to_buffer`), so it has no
-    /// single write-site chokepoint to hang a raise on: a raise wired into
-    /// just one of those two would miss a switch caused through the other.
-    /// Diffed against
+    /// Observation point for `OnBufferEnter` and the buffer-enter disk
+    /// check — `focused_buffer_id()` is a derived join of `state.focus` and
+    /// `pane.buffer_id`, each written by its own chokepoint (`focus_pane`,
+    /// `switch_pane_to_buffer`), so it has no single write-site chokepoint
+    /// to hang a raise on: a raise wired into just one of those two would
+    /// miss a switch caused through the other. Diffed against
     /// `EditorState::last_entered_buffer` every pass of `settle`'s loop
     /// rather than once before it, so a pane-focus move and a buffer switch
     /// in the same pass coalesce into one event, and a handler that itself
-    /// switches buffers is caught by the very next pass.
-    ///
-    /// Also the MRU-promotion point behind `alternate_buffer()`/`Ctrl-6` —
-    /// "most-recently-focused" is the same derived join with the same absent
-    /// chokepoint, so it rides this diff instead of a second one.
+    /// switches buffers is caught by the very next pass. `BufferStore.mru`
+    /// needs no promotion here: `focus_pane`/`switch_pane_to_buffer`
+    /// already promote it synchronously, at the same two chokepoints this
+    /// diffs.
     fn detect_buffer_enter(&mut self) {
         let now = self.focused_buffer_id();
         if self.state.last_entered_buffer != Some(now) {
             self.state.last_entered_buffer = Some(now);
-            self.state.buffers.touch_mru(now);
             self.state.queue_event(EditorEvent::OnBufferEnter {
-                buffer: now,
-                pane: self.state.focus.id(),
+                target: PaneHandle::with_pane(now, self.state.focus.id()),
             });
         }
     }
@@ -509,11 +507,25 @@ impl Editor {
                     // turn, and the builtin its handler goes on to call
                     // would otherwise raise on a pane it never asked for.
                     if !matches!(event, EditorEvent::OnBufferClose { .. })
-                        && let Some(buffer) = event.buffer()
-                        && (self.state.buffers.try_get(buffer).is_none()
-                            || event.pane().is_some_and(|pane| {
-                                self.view.panes.get(pane).map(|p| p.buffer_id) != Some(buffer)
-                            }))
+                        && let Some(handle) = event.handle()
+                        && resolve_pane(
+                            &self.state,
+                            &self.view,
+                            handle,
+                            // A buffer-only event just needs its buffer
+                            // still live (`TargetCategory::Buffer`); a
+                            // pane-carrying one needs that pane to still
+                            // show it (`TargetCategory::Pane`) — the same
+                            // dual check `EditorEvent::handle`'s own doc
+                            // describes, expressed as the category its
+                            // `PaneHandle` was minted with.
+                            if handle.pane().is_some() {
+                                TargetCategory::Pane
+                            } else {
+                                TargetCategory::Buffer
+                            },
+                        )
+                        .is_err()
                     {
                         continue;
                     }
@@ -565,7 +577,7 @@ impl Editor {
     /// than silently doing nothing.
     fn react_to_event(&mut self, event: &EditorEvent) {
         match event {
-            EditorEvent::OnBufferEnter { buffer, .. } => self.enter_buffer_disk_check(*buffer),
+            EditorEvent::OnBufferEnter { target } => self.enter_buffer_disk_check(target.buffer()),
             EditorEvent::OnFocusGained => self.check_all_disk_state(DiskCheckTrigger::Ambient),
             EditorEvent::OnBufferOpen { .. }
             | EditorEvent::OnBufferClose { .. }

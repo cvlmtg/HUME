@@ -8,7 +8,7 @@ use hume_rope::lines::line_token_content;
 use hume_rope::offset::ExclusiveRange;
 
 use super::EditorHostImpl;
-use crate::editor::commands::{resolve_command_pane, resolve_focused_pane};
+use crate::editor::commands::{FocusedPane, resolve_focused_pane};
 use hume_scripting::PaneHandle;
 use hume_scripting::host::BufferHost;
 
@@ -26,8 +26,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     fn focused_pane(&self) -> PaneHandle {
-        let pid = self.state.focus.id();
-        PaneHandle::with_pane(self.view.panes[pid].buffer_id, pid)
+        FocusedPane::current(self.state).handle(self.view)
     }
 
     fn buffer_panes(&self, pane: PaneHandle) -> Vec<PaneHandle> {
@@ -45,7 +44,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     fn pane_live(&self, pane: PaneHandle) -> bool {
-        resolve_command_pane(self.state, self.view, pane).is_ok()
+        self.command_pane(pane).is_ok()
     }
 
     // ── Buffer reads ─────────────────────────────────────────────────────────
@@ -95,13 +94,11 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         ))
     }
     fn switch_to_buffer(&mut self, pane: PaneHandle, target: BufferId) -> Result<(), String> {
-        let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
-        let current = t.bid(self.view);
+        let t = self.command_pane(pane)?;
         crate::editor::buffer::lifecycle::switch_to_buffer_with_jump(
             self.state,
             self.view,
             t.pid(),
-            current,
             target,
         );
         Ok(())
@@ -142,13 +139,18 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         &self,
         pane: PaneHandle,
     ) -> Result<ExclusiveRange<hume_rope::line::ContentLine>, String> {
-        let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
+        let t = self.command_pane(pane)?;
         // No active-tab restriction: `Editor::sync_viewport_dims` keeps
         // every tab's panes — not just the active one — sized to the
         // current terminal on every resize (`TabStore::inactive_layouts`),
-        // so a background-tab pane's viewport dims and scroll position are
-        // as trustworthy as an active one's. "The range of lines this pane
-        // would show" is well-defined regardless of which tab is on screen.
+        // so a background-tab pane's *size* is as trustworthy as an active
+        // one's. Its *scroll position* can lag, though: the frame's scroll
+        // step only runs over `active_pane_ids()`, so a background pane's
+        // scroll stays wherever it last was while still active, until its
+        // tab is focused again. "The range of lines this pane would show"
+        // is still well-defined regardless of which tab is on screen — it's
+        // just not guaranteed to reflect a scroll that happened elsewhere
+        // while this pane was hidden.
         Ok(crate::editor::lsp::introspect::viewport_range(
             self.state, self.view, t,
         ))

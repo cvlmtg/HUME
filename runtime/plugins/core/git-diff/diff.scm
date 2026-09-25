@@ -14,13 +14,7 @@
       (when (hash-ref entry "inline?") (git-diff/render-for! "inline?" pane hunks)))))
 
 ;;; `spawn-async!` callback for the `git show` below — see docs/pipeline.md
-;;; for the exit-code/severity contract. `pane` may have closed while the
-;;; job was in flight (`:bd` and job completion landing in the same frame —
-;;; `on-buffer-close`'s `cancel-fetch!` can't help here, since the job was
-;;; already moved off the cancellable slot and into this very callback);
-;;; `entry-set!`/`cancel-job!` already no-op on a missing entry, but
-;;; `diff-buffer-lines` is a `LivePane` builtin and would raise, so the
-;;; success branch checks the entry first rather than calling it blind.
+;;; for the exit-code/severity contract and the pane-liveness check below.
 (define (git-diff/handle-fetch-result! pane stdout stderr exit-code)
   (git-diff/entry-set! pane "job" #f)
   (if (= exit-code 0)

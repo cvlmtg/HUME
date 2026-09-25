@@ -64,7 +64,7 @@ pub(in crate::editor) fn typed_list_buffers(
     _force: bool,
 ) -> Result<(), CommandError> {
     let current = ed.focused_buffer_id();
-    let alternate = ed.alternate_buffer();
+    let alternate = ed.state.buffers.second_most_recent();
 
     let header = format!("{:>4}      {:<32}  {}\n", "buf", "name", "path");
     let mut out = header;

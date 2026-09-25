@@ -968,12 +968,6 @@ impl Editor {
         self.state.buffers.get(self.focused_buffer_id())
     }
 
-    /// The most-recently-focused buffer other than the current one, or `None`
-    /// when only one buffer is open. Derives from `BufferStore.mru` (SSOT).
-    pub(in crate::editor) fn alternate_buffer(&self) -> Option<BufferId> {
-        self.state.buffers.mru_excluding(self.focused_buffer_id())
-    }
-
     /// Mutable reference to the focused buffer.
     ///
     /// Uses a split borrow — `buffers` and other fields on `Editor` are

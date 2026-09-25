@@ -324,7 +324,6 @@ fn runtime_register_and_lookup() {
     let cmd = MappableCommand::EditorCmd {
         name: Cow::Owned("steel-test-cmd".to_string()),
         doc: Cow::Borrowed("A dummy Steel command for testing."),
-        category: TargetCategory::Global,
         fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Global(dummy_fn)),
         defers_paste_commit: false,
         repeatable: false,
@@ -427,7 +426,6 @@ fn steel_backed_names_filters_by_variant() {
     reg.register(MappableCommand::EditorCmd {
         name: Cow::Owned("%hume-cmd-decoy".to_string()),
         doc: Cow::Borrowed("doc"),
-        category: TargetCategory::Global,
         fun: crate::editor::commands::NativeBody::new(EditorCmdBody::Global(noop)),
         defers_paste_commit: false,
         repeatable: false,

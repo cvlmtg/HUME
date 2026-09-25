@@ -9,7 +9,7 @@
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
-use super::args::{ArgPane, cons_pair};
+use super::args::{ArgPane, cons_pair, not_live_err};
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::types::PaneHandle;
@@ -119,7 +119,7 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     ctx.host
         .buffers()
         .buffer_display_name(bid)
-        .ok_or_else(|| generic_err(format!("buffer-name: invalid buffer id {bid:?}")))?
+        .ok_or_else(|| not_live_err("buffer-name", bid))?
         .into_steelval()
         .map_err(generic_err)
 }
@@ -151,7 +151,7 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult 
         .host
         .buffers()
         .buffer_is_dirty(bid)
-        .ok_or_else(|| generic_err(format!("buffer-dirty?: invalid buffer id {bid:?}")))?;
+        .ok_or_else(|| not_live_err("buffer-dirty?", bid))?;
     Ok(SteelVal::BoolV(dirty))
 }
 
@@ -164,7 +164,7 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
         .host
         .buffers()
         .buffer_generation(bid)
-        .ok_or_else(|| generic_err(format!("buffer-generation: invalid buffer id {bid:?}")))?;
+        .ok_or_else(|| not_live_err("buffer-generation", bid))?;
     Ok(SteelVal::IntV(generation as isize))
 }
 
@@ -175,7 +175,7 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     ctx.host
         .buffers()
         .buffer_text(bid)
-        .ok_or_else(|| generic_err(format!("buffer-text: invalid buffer id {bid:?}")))?
+        .ok_or_else(|| not_live_err("buffer-text", bid))?
         .into_steelval()
         .map_err(generic_err)
 }
@@ -190,7 +190,7 @@ pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
         .host
         .buffers()
         .buffer_line_count(bid)
-        .ok_or_else(|| generic_err(format!("buffer-line-count: invalid buffer id {bid:?}")))?;
+        .ok_or_else(|| not_live_err("buffer-line-count", bid))?;
     Ok(SteelVal::IntV(count as isize))
 }
 
@@ -214,7 +214,7 @@ pub(crate) fn buffer_lines(
     // One error message for both lookups below — the second is unreachable
     // in practice (nothing can close `bid` between two synchronous host
     // calls) but the trait returns `Option`, so it's handled, not assumed.
-    let invalid_id = || generic_err(format!("buffer-lines: invalid buffer id {bid:?}"));
+    let invalid_id = || not_live_err("buffer-lines", bid);
     let line_count = ctx
         .host
         .buffers()
@@ -404,7 +404,7 @@ pub(crate) fn offset_to_line(ctx: &mut SteelCtx, pane: PaneHandle, idx: usize) -
 /// `buffer-lines` accessor family.
 pub(crate) fn line_to_offset(ctx: &mut SteelCtx, pane: PaneHandle, line: usize) -> SteelResult {
     let bid = pane.buffer();
-    let invalid_id = || generic_err(format!("line->offset: invalid buffer id {bid:?}"));
+    let invalid_id = || not_live_err("line->offset", bid);
     let line_count = ctx
         .host
         .buffers()
@@ -427,11 +427,12 @@ pub(crate) fn line_to_offset(ctx: &mut SteelCtx, pane: PaneHandle, line: usize) 
 
 /// `(viewport-range pane)` → `(first-line . end-line)` currently visible in
 /// `pane`'s own pane — 0-based, end-exclusive, matching `buffer-lines`'
-/// range convention. Raises when `pane` carries no pane, a closed one, one
-/// that no longer shows `pane`'s buffer, or one on a background tab (a
-/// background tab's pane geometry isn't kept in sync with the terminal).
-/// Reads live view state, which only exists at command dispatch, hook fire,
-/// or a queued-call drain.
+/// range convention. Raises when `pane` carries no pane, a closed one, or
+/// one that no longer shows `pane`'s buffer. Answers for a background-tab
+/// pane too, but its scroll position may lag until that tab is next
+/// focused — see `EditorHostImpl::viewport_range`'s own doc. Reads live
+/// view state, which only exists at command dispatch, hook fire, or a
+/// queued-call drain.
 pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     let range = ctx
         .host

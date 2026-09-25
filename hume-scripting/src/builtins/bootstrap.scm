@@ -118,9 +118,6 @@
     (log! 'info (to-string n " buffers modified — :wa writes all"))
     n))
 
-(define (goto-location! pane target)
-  (%goto-location! pane target))
-
 (define (prompt! pane label on-confirm #:prefill [prefill ""])
   (%prompt! pane label prefill on-confirm))
 

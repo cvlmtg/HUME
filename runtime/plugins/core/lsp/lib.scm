@@ -59,29 +59,12 @@
 
 ;; ── Pane resolution ──────────────────────────────────────────────────────────
 
-;;; `pane` resolved to a real pane still showing its buffer — `(car
-;;; (buffer-panes pane))`, the focused pane if it shows the buffer, else the
-;;; first pane on the active tab, else any other; `#f` if the buffer isn't
-;;; shown anywhere. The explicit choice a hook whose own value carries no
-;;; pane (`on-diagnostics-changed`, `on-text-changed`, a `(buffers)`
-;;; element) makes before calling a pane-needing builtin
-;;; (`viewport-range`, `lsp-position-params`, …), in place of the implicit
-;;; guess those builtins used to make internally. A caller already holding
-;;; a real pane (`on-viewport-change`, `on-trigger-char`, a command's own
-;;; leading `pane`) has no reason to call this — re-resolving would risk
-;;; silently picking a *different* pane on the same buffer.
 (define (lsp/resolve-pane pane)
   (let ((panes (buffer-panes pane)))
     (if (null? panes) #f (car panes))))
 
 ;; ── Viewport ────────────────────────────────────────────────────────────────
 
-;;; `pane` must already be a real, live pane still showing its buffer —
-;;; `viewport-range` raises otherwise (kind-B fail-fast), unlike the old
-;;; pane-only builtin this replaces, which answered `#f` for "not shown
-;;; anywhere". Every current caller passes a command's own leading `pane`
-;;; (always the focused one) or a `lsp/resolve-pane`-resolved value, so
-;;; there is no "not shown" case left to degrade gracefully.
 (define (lsp/visible-lines pane)
   (let ((range (viewport-range pane)))
     (- (cdr range) (car range))))
@@ -100,19 +83,6 @@
           (lsp/format-position line grapheme-col-or-wire)
           (number->string (+ 1 line))))))
 
-;;; Each entry in `locs` carries its own tagged producing-server encoding
-;;; (its `JsonHandle`, from the response `lsp/goto-response` decoded) —
-;;; `lsp-locations->display-parts` and `goto-location!` both read it
-;;; straight off the handle, never from a captured pane.
-;;;
-;;; `(focused-pane)`, not the request's own invocation pane: `lsp/goto-
-;;; response`'s callers deliberately skip `#:require-focus` so a slow
-;;; goto/references response still completes even if the user looked
-;;; elsewhere meanwhile — `show-drawer-list!` needs the *focused* pane, so
-;;; this opens (and later jumps) wherever the user actually is once the
-;;; response lands, the same "wherever focus is now" behavior this had
-;;; before panes existed, rather than raising when the original pane is no
-;;; longer focused or has since closed.
 (define (lsp/show-locations! locs)
   (show-drawer-list! (focused-pane) (map lsp/location-display (lsp-locations->display-parts locs))
     (lambda (idx) (when idx (goto-location! (focused-pane) (list-ref locs idx))))))

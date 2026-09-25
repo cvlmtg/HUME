@@ -20,8 +20,10 @@ use super::{
 /// `true` when the focused (pane, buffer) has an open edit group.
 fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
     let fp = FocusedPane::current(state);
-    let bid = fp.bid(view);
-    state.panes.state[fp.pid()][bid].edit_group.is_some()
+    fp.target()
+        .state(&state.panes.state, view)
+        .edit_group
+        .is_some()
 }
 
 /// `true` if any current selection is a collapsed cursor sitting on a blank
@@ -67,9 +69,8 @@ pub(in crate::editor) fn autoindent_owned(
     view: &EngineView,
 ) -> Vec<ExclusiveRange<CharOffset>> {
     let fp = FocusedPane::current(state);
-    let bid = fp.bid(view);
     let sel_count = pane_selections(state, view, fp.target()).len();
-    match &state.panes.state[fp.pid()][bid].autoindent {
+    match &fp.target().state(&state.panes.state, view).autoindent {
         Some(ranges) if ranges.len() == sel_count => ranges.clone(),
         _ => Vec::new(),
     }
@@ -98,8 +99,9 @@ pub(in crate::editor) fn arm_autoindent(state: &mut EditorState, view: &EngineVi
             ExclusiveRange::new(line_start, head)
         })
         .collect();
-    let bid = fp.bid(view);
-    state.panes.state[fp.pid()][bid].autoindent = Some(ranges);
+    fp.target()
+        .state_mut(&mut state.panes.state, view)
+        .autoindent = Some(ranges);
 }
 
 /// Where an *empty* typed run's cursor lands on exit — see
@@ -145,8 +147,7 @@ pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView, exit: 
         .iter_sorted()
         .map(|s| s.head())
         .collect();
-    let bid = fp.bid(view);
-    let pbs = &mut state.panes.state[fp.pid()][bid];
+    let pbs = fp.target().state_mut(&mut state.panes.state, view);
     // `ends` starts equal to `anchors` — an empty run — and is pushed
     // forward only by actual insertions (see `TypedRun::ends`'s own doc).
     pbs.typed_run = Some(TypedRun {
@@ -266,8 +267,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &Engine
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
     let (typed_run, step_back, kill_opened) = {
-        let bid = fp.bid(view);
-        let pbs = &mut state.panes.state[fp.pid()][bid];
+        let pbs = fp.target().state_mut(&mut state.panes.state, view);
         (
             pbs.typed_run.take(),
             std::mem::take(&mut pbs.step_back_on_exit),

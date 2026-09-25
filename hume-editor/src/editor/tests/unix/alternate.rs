@@ -12,7 +12,7 @@ fn alternate_buffer_is_previous_focused() {
     let id_b = ed.focused_buffer_id();
 
     assert_ne!(id_a, id_b, "A and B must be distinct");
-    assert_eq!(ed.alternate_buffer(), Some(id_a));
+    assert_eq!(ed.state.buffers.second_most_recent(), Some(id_a));
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn alternate_follows_focus_order_not_open_order() {
     );
 
     assert_eq!(
-        ed.alternate_buffer(),
+        ed.state.buffers.second_most_recent(),
         Some(id_c),
         "alternate right after focusing A must be C, the buffer just left"
     );
@@ -146,7 +146,7 @@ fn alternate_follows_focus_order_not_open_order() {
     assert_eq!(ed.focused_buffer_id(), id_c);
 
     assert_eq!(
-        ed.alternate_buffer(),
+        ed.state.buffers.second_most_recent(),
         Some(id_a),
         "alternate must follow focus order (A, just left) not open order (B)"
     );
@@ -210,7 +210,7 @@ fn alternate_follows_pane_focus_moves_alone() {
 
     assert_eq!(ed.focused_buffer_id(), id_a);
     assert_eq!(
-        ed.alternate_buffer(),
+        ed.state.buffers.second_most_recent(),
         Some(id_b),
         "pane-focus moves alone must reorder the alternate"
     );

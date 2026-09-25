@@ -77,6 +77,15 @@ Every feature file shares these:
   the capability's own `"triggerCharacters"` array — read through `lsp/cap-field`
   like any other nested capability field — is unpacked with `json-list` if
   present, empty otherwise.
+- **Pane resolution** — `lsp/resolve-pane` answers `(car (buffer-panes pane))`: the
+  focused pane if it shows `pane`'s buffer, else the first pane on the active tab,
+  else any other; `#f` if the buffer isn't shown anywhere. For a hook whose own value
+  carries no pane (`on-diagnostics-changed`, `on-text-changed`, a `(buffers)`
+  element) to make an explicit choice before calling a pane-needing builtin, in place
+  of the implicit guess those builtins used to make internally. A caller already
+  holding a real pane (`on-viewport-change`, `on-trigger-char`, a command's own
+  leading `pane`) has no reason to call this — re-resolving risks silently picking a
+  *different* pane on the same buffer.
 - **Viewport** — `lsp/visible-lines` wraps the synchronous `viewport-range` builtin,
   which is 0-based end-exclusive, so the visible-line count is just the range's width
   (no `+ 1`). `viewport-range` raises (kind-B fail-fast) rather than answering `#f` for
@@ -98,3 +107,9 @@ Every feature file shares these:
   exception: a goto/references target with no open buffer renders the location's own
   raw wire `character` rather than reading the file to convert it to a grapheme column
   — see CLAUDE.md's "Displayed value" sanctioned exception for the full rationale.
+  `lsp/show-locations!` opens the drawer on `(focused-pane)`, not the request's own
+  invocation pane: `lsp/goto-response`'s callers deliberately skip `#:require-focus` so
+  a slow goto/references response still completes even if the user looked elsewhere
+  meanwhile, and the drawer should open wherever the user actually is once the
+  response lands rather than raise when the original pane is no longer focused or has
+  since closed.

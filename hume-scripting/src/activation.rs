@@ -57,7 +57,7 @@ pub(crate) fn run_steel_session<'a, R>(
     ctx: &mut SteelCtx<'a>,
     budget_ms: u64,
     body: impl FnOnce(&mut Engine) -> Result<R, SteelErr>,
-) -> Result<(), String> {
+) -> Result<(), SessionError> {
     watchdog.arm(
         Arc::clone(&ctx.interrupt_flag),
         std::time::Duration::from_millis(budget_ms),
@@ -79,7 +79,11 @@ pub(crate) fn run_steel_session<'a, R>(
             res
         });
     watchdog.cancel();
-    ctx.interrupt_flag.store(false, Ordering::Relaxed);
+    // Read before the reset below, so a caller distinguishing a cooperative
+    // watchdog interrupt (`hume/yield!`) from an ordinary Steel error (see
+    // `SessionError`'s own doc) sees this session's own flag, not whatever
+    // the next session sets it to.
+    let interrupted = ctx.interrupt_flag.swap(false, Ordering::Relaxed);
     if let Some(output) = ctx.host.output() {
         output.truncate_inline_output(0);
     }
@@ -101,9 +105,23 @@ pub(crate) fn run_steel_session<'a, R>(
         );
     }
 
-    raw_result
-        .map(|_| ())
-        .map_err(|e| describe_steel_error(steel, &e))
+    raw_result.map(|_| ()).map_err(|e| SessionError {
+        message: describe_steel_error(steel, &e),
+        interrupted,
+    })
+}
+
+/// A failed [`run_steel_session`]: the reported message, plus whether the
+/// failure was the watchdog's own cooperative interrupt (`hume/yield!`,
+/// raised when the step budget is exceeded) rather than an ordinary Steel
+/// error (a raised exception, a stale-buffer `LivePane` raise, an arity
+/// mismatch). `interrupted` is read off `ctx.interrupt_flag` before this
+/// session resets it — a caller that only wants the message (most of them)
+/// reads `.message` and ignores it; [`crate::ScriptingHost::run_steel_calls`]
+/// is the one caller that needs to know which.
+pub(crate) struct SessionError {
+    pub(crate) message: String,
+    pub(crate) interrupted: bool,
 }
 
 /// Render a `SteelErr` with its source location when one is available —
@@ -150,6 +168,7 @@ pub(crate) fn run_steel<'a>(
     run_steel_session(steel, watchdog, ctx, budget_ms, |steel| {
         steel.compile_and_run_raw_program(program)
     })
+    .map_err(|e| e.message)
 }
 
 /// [`run_steel_session`] with a direct function-call body.
@@ -168,6 +187,7 @@ pub(crate) fn run_steel_call<'a>(
     run_steel_session(steel, watchdog, ctx, budget_ms, |steel| {
         steel.call_function_by_name_with_args(fn_name, args)
     })
+    .map_err(|e| e.message)
 }
 
 // ── ScriptingHost — activation impl ──────────────────────────────────────────

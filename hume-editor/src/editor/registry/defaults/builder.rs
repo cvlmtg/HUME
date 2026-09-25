@@ -79,7 +79,6 @@ impl EditorCmdBuilder {
         r.register(MappableCommand::EditorCmd {
             name: Cow::Borrowed(self.name),
             doc: Cow::Borrowed(self.doc),
-            category: self.fun.category(),
             fun: NativeBody::new(self.fun),
             defers_paste_commit: self.defers_paste_commit,
             repeatable: self.repeatable,

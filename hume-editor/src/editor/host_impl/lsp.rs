@@ -3,7 +3,6 @@
 use hume_engine::pipeline::BufferId;
 
 use super::EditorHostImpl;
-use crate::editor::commands::resolve_command_pane;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{LocationDisplay, LspHost};
 
@@ -31,7 +30,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
     }
 
     fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<serde_json::Value>, String> {
-        let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
+        let t = self.command_pane(pane)?;
         let Some(lsp) = self.lsp.as_deref() else {
             return Ok(None);
         };
@@ -44,7 +43,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         &self,
         pane: PaneHandle,
     ) -> Result<Option<serde_json::Value>, String> {
-        let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
+        let t = self.command_pane(pane)?;
         let Some(lsp) = self.lsp.as_deref() else {
             return Ok(None);
         };
@@ -57,7 +56,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         &self,
         pane: PaneHandle,
     ) -> Result<Option<serde_json::Value>, String> {
-        let t = resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())?;
+        let t = self.command_pane(pane)?;
         let Some(lsp) = self.lsp.as_deref() else {
             return Ok(None);
         };

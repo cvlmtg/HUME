@@ -41,7 +41,10 @@ single-line message, which is most of them.
 by design (browse-while-editing, below), so a row selected there must jump into the
 buffer it was listed for, not whichever buffer happens to be focused when Enter is
 pressed, and the pane that opened the drawer may no longer show that buffer at all
-by the time a row is picked.
+by the time a row is picked. `lsp/diag-jump`'s own popup opens on `(focused-pane)`
+for the same reason — `lsp/diag-jump-to!` already navigated there by the time the
+popup opens, so it's the pane actually showing the target diagnostic, not
+necessarily the `pane` `goto-next-diagnostic`/`goto-prev-diagnostic` was invoked with.
 
 `diagnostics-for-buffer` sorts and deep-clones up to 1000 diagnostics' whole raw LSP
 JSON, so every hook below fetches it once and threads the result through to both the

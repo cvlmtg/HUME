@@ -177,14 +177,15 @@ pub(crate) fn lsp_request(
     let allow_stale = bool_arg(allow_stale, "lsp-request #:allow-stale")?;
     let supersede = optional_string_arg(supersede, "lsp-request supersede")?;
     let require_focus = bool_arg(require_focus, "lsp-request #:require-focus")?;
-    if require_focus && pane.pane().is_none() {
-        return Err(generic_err(
-            "lsp-request: #:require-focus needs a pane, but was given none",
-        ));
-    }
+    let require_focus = require_focus
+        .then(|| {
+            pane.pane().ok_or_else(|| {
+                generic_err("lsp-request: #:require-focus needs a pane, but was given none")
+            })
+        })
+        .transpose()?;
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
         bid: pane.buffer(),
-        pane: pane.pane(),
         method,
         params,
         callback,

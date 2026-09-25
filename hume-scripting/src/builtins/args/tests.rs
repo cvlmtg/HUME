@@ -307,7 +307,7 @@ fn lsp_target_arg_accepts_a_pane() {
     let val = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
     assert!(matches!(
         LspTargetArg::from_steelval(&val).unwrap(),
-        LspTargetArg::Buffer(bid) if bid == BufferId::default()
+        LspTargetArg::Buffer(pane) if pane.0.buffer() == BufferId::default()
     ));
 }
 

@@ -2,10 +2,8 @@ use hume_engine::pipeline::{Direction, EngineView};
 use hume_ops::MotionMode;
 
 use super::super::EditorState;
-use super::{
-    CommandPane, FocusedPane, alternate_buffer, current_jump_entry, set_pane_selections,
-    switch_to_buffer_without_jump,
-};
+use super::{CommandPane, FocusedPane, current_jump_entry, set_pane_selections};
+use crate::editor::buffer::lifecycle::switch_pane_to_buffer;
 use crate::editor::error::CommandError;
 use crate::editor::focus::focus_pane;
 
@@ -25,7 +23,7 @@ fn apply_jump_nav(
 ) {
     if let Some((target_buf, sels)) = nav {
         if target_buf != t.bid(view) {
-            switch_to_buffer_without_jump(state, view, t, target_buf);
+            switch_pane_to_buffer(state, view, t.pid(), target_buf);
         }
         set_pane_selections(state, view, t, sels);
     }
@@ -65,10 +63,11 @@ pub(in crate::editor) fn cmd_jump_forward(
 /// `Ctrl-6` / `goto-alternate-buffer` — switch to the second-most-recently-
 /// viewed buffer: one global "what was I looking at before," the same
 /// history regardless of which pane asks, not a per-pane one.
-/// [`alternate_buffer`] reads `mru`'s own last two entries directly — no
-/// "current buffer" needs naming at all, since `mru`'s tail already *is*
-/// whatever was viewed most recently, however it was viewed (a keypress on
-/// the focused pane, or a `goto-alternate-buffer` touch from any other).
+/// [`BufferStore::second_most_recent`](crate::editor::buffer::store::BufferStore::second_most_recent)
+/// reads `mru`'s own last two entries directly — no "current buffer" needs
+/// naming at all, since `mru`'s tail already *is* whatever was viewed most
+/// recently, however it was viewed (a keypress on the focused pane, or a
+/// `goto-alternate-buffer` touch from any other).
 ///
 /// Worked example (`mru` tail = most recent): stack `[bar, foo]`, pane A
 /// focused on `foo` (so `mru`'s tail is `foo`), pane B shows `baz`.
@@ -82,10 +81,10 @@ pub(in crate::editor) fn cmd_jump_forward(
 /// touched it would. Both touches are idempotent no-ops for the common case
 /// (`t` is already the focused pane), so keypress behavior is unchanged.
 ///
-/// Uses `switch_to_buffer_without_jump` because `execute_keymap_command` already
-/// records the pre-switch state for all `is_jump=true` commands. Using the
-/// `_with_jump` variant here would push twice, corrupting the jump list on the
-/// second Ctrl-o.
+/// Switches via `switch_pane_to_buffer` directly (not `switch_to_buffer_
+/// with_jump`) because `execute_keymap_command` already records the
+/// pre-switch state for all `is_jump=true` commands — pushing a second jump
+/// entry here would corrupt the jump list on the next Ctrl-o.
 pub(in crate::editor) fn cmd_goto_alternate_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -93,10 +92,10 @@ pub(in crate::editor) fn cmd_goto_alternate_buffer(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    match alternate_buffer(state) {
+    match state.buffers.second_most_recent() {
         Some(target) => {
             state.buffers.touch_mru(t.bid(view));
-            switch_to_buffer_without_jump(state, view, t, target);
+            switch_pane_to_buffer(state, view, t.pid(), target);
             state.buffers.touch_mru(target);
             Ok(())
         }
@@ -116,7 +115,7 @@ pub(super) enum BufferStep {
 /// `goto-next-buffer`/`goto-prev-buffer` and their typed `:bnext`/`:bprev`
 /// spellings (`typed_buffer::typed_buffer_step`).
 ///
-/// Uses `switch_to_buffer_without_jump` for the same reason as
+/// Switches via `switch_pane_to_buffer` directly for the same reason as
 /// `cmd_goto_alternate_buffer` above: the mappable half carries `.jump()`, so
 /// `step_record_jump` already snapshots the outgoing position; the typed half
 /// has no `CmdMeta` to read and pushes its own entry instead. Needs no
@@ -134,7 +133,7 @@ pub(super) fn goto_buffer_in_order(
         BufferStep::Next => state.buffers.next(current),
         BufferStep::Prev => state.buffers.prev(current),
     };
-    switch_to_buffer_without_jump(state, view, t, target);
+    switch_pane_to_buffer(state, view, t.pid(), target);
 }
 
 /// `goto-next-buffer` — switch to the next buffer in open-order.

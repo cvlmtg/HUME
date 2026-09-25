@@ -276,14 +276,7 @@ pub(in crate::editor) fn ensure<'a>(
     pid: PaneId,
     bid: BufferId,
 ) -> &'a mut PaneBufferState {
-    let inner = pane_state
-        .entry(pid)
-        .expect("pid must be a live PaneId")
-        .or_default();
-    inner
-        .entry(bid)
-        .expect("bid must be a live BufferId")
-        .or_insert_with(|| fresh_from_buf(buffers.get(bid)))
+    try_ensure(pane_state, buffers, pid, bid).expect("pid must be a live PaneId")
 }
 
 /// [`ensure`]'s validating counterpart — for a caller whose `pid` was
@@ -301,7 +294,7 @@ pub(in crate::editor) fn try_ensure<'a>(
 ) -> Result<&'a mut PaneBufferState, String> {
     let inner = pane_state
         .entry(pid)
-        .ok_or_else(|| "pane has been closed".to_string())?
+        .ok_or_else(|| super::commands::TargetError::PaneClosed.to_string())?
         .or_default();
     Ok(inner
         .entry(bid)
@@ -476,30 +469,29 @@ impl super::EditorState {
     /// `bid`), then the rest of the active tab (`view.active_pane_ids`'s own
     /// leaf order), then every other tab
     /// (`view.panes.every_pane_across_all_tabs`'s order). Explicit
-    /// enumeration, not a single-pane guess: a caller that used to receive
-    /// one implicitly resolved pane for a buffer now sees every candidate
-    /// and picks — `.first()` reproduces the old guess for one that still
-    /// wants it, chosen at the call site rather than applied silently.
+    /// enumeration, not a single-pane guess — a caller wanting just one
+    /// picks via `.first()` at its own call site. Pane counts are small, so
+    /// the final dedup is a linear `out.contains` rather than a `HashSet`.
     pub(in crate::editor) fn buffer_panes(&self, view: &EngineView, bid: BufferId) -> Vec<PaneId> {
         let focused = self.focus.id();
-        let shows_bid = |pid: PaneId| view.panes[pid].buffer_id == bid;
+        let active = view.active_pane_ids();
         let mut out = Vec::new();
         if view.panes.get(focused).is_some_and(|p| p.buffer_id == bid) {
             out.push(focused);
         }
         out.extend(
-            view.active_pane_ids()
-                .into_iter()
-                .filter(|&pid| pid != focused && shows_bid(pid)),
+            active
+                .iter()
+                .copied()
+                .filter(|&pid| pid != focused && view.panes[pid].buffer_id == bid),
         );
-        let active: std::collections::HashSet<PaneId> =
-            view.active_pane_ids().into_iter().collect();
-        out.extend(
-            view.panes
-                .every_pane_across_all_tabs()
-                .filter(|&(pid, p)| pid != focused && !active.contains(&pid) && p.buffer_id == bid)
-                .map(|(pid, _)| pid),
-        );
+        let rest: Vec<PaneId> = view
+            .panes
+            .every_pane_across_all_tabs()
+            .filter(|&(pid, p)| p.buffer_id == bid && !out.contains(&pid))
+            .map(|(pid, _)| pid)
+            .collect();
+        out.extend(rest);
         out
     }
 }

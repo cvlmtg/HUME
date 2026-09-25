@@ -67,24 +67,21 @@ pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &Engi
 /// `commands::jump::focus_in_direction`/`cmd_pane_focus_next`,
 /// `tab::install_live`, `mouse::mouse_left_down`).
 ///
-/// The Insert-session half is usually already done by the time this runs —
-/// `tab::take_live` and `commands::tab::close_tab` both call
-/// `commands::end_insert_session` themselves before touching the
-/// layout (see `take_live`'s doc), and this call is then a no-op — it has
-/// nothing to end. Kept here too rather than only at those two call sites,
-/// since `focus_in_direction`/`cmd_pane_focus_next`/`mouse_left_down`
-/// switch focus *within* a tab, where no layout displacement happens and no
-/// earlier teardown has run.
-///
-/// `commit_paste_session` is otherwise reached only from the dispatch
-/// pipeline (`step_paste_commit`), which every *keyboard* command passes
-/// through. A tabline click (`mouse::tabline_click`) switches tabs by
-/// calling `tab::switch_to_tab` directly, bypassing dispatch — this is the
-/// only place left that closes that gap for it. It is timing-agnostic with
-/// respect to the layout (it resolves the outgoing pane/buffer by id, never
-/// through the layout tree), so — unlike the Insert-session half — it has
-/// no matching earlier call in `take_live`/`close_tab`.
+/// Usually already done by the time this runs — `tab::take_live` calls
+/// `end_focus_sessions` itself before touching the layout (see its own
+/// doc), and this call is then a no-op. Kept here too rather than only at
+/// that one call site, since `focus_in_direction`/`cmd_pane_focus_next`/
+/// `mouse_left_down` switch focus *within* a tab, where no layout
+/// displacement happens and no earlier teardown has run. A tabline click
+/// (`mouse::tabline_click`) switches tabs by calling `tab::switch_to_tab`
+/// directly, bypassing dispatch (`step_paste_commit`'s own chokepoint) —
+/// this is the only place left that closes that gap for it too.
 pub(in crate::editor) fn focus_pane(state: &mut EditorState, view: &EngineView, pid: PaneId) {
     end_focus_sessions(state, view);
     state.focus.0 = pid;
+    // The other of the two chokepoints `focused_buffer_id()` can change
+    // through — see `switch_pane_to_buffer`'s own doc for why this pair
+    // promotes `BufferStore.mru` synchronously instead of leaving it to
+    // `Editor::detect_buffer_enter`'s later, settle()-gated observation.
+    state.buffers.touch_mru(view.panes[pid].buffer_id);
 }

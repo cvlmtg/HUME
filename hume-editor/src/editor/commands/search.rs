@@ -129,7 +129,9 @@ fn search_jump(
         let Some((new_sels, primary_wrapped)) = scan.advance_all(sels, count) else {
             return Err(CommandError::transient("no match"));
         };
-        state.panes.state[t.pid()][bid].search_cursor.wrapped = primary_wrapped;
+        t.state_mut(&mut state.panes.state, view)
+            .search_cursor
+            .wrapped = primary_wrapped;
         set_pane_selections(state, view, t, new_sels);
         return Ok(());
     }
@@ -137,7 +139,9 @@ fn search_jump(
     let primary = pane_selections(state, view, t).primary();
     match scan.advance(primary, count) {
         Some((new_sel, wrapped)) => {
-            state.panes.state[t.pid()][bid].search_cursor.wrapped = wrapped;
+            t.state_mut(&mut state.panes.state, view)
+                .search_cursor
+                .wrapped = wrapped;
             set_primary_selection(state, view, t, new_sel);
             Ok(())
         }

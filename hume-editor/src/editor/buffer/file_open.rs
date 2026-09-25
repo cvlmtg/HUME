@@ -383,13 +383,11 @@ impl Editor {
     /// Caller contract: all fallible steps (path resolution, file read, etc.)
     /// must succeed before calling this — `push()` truncates forward history.
     pub(in crate::editor) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
-        let current = self.focused_buffer_id();
         let focused_pane_id = self.state.focus.id();
         lifecycle::switch_to_buffer_with_jump(
             &mut self.state,
             &mut self.view,
             focused_pane_id,
-            current,
             target,
         );
     }

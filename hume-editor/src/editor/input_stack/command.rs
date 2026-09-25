@@ -285,7 +285,9 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
             }
             "#" => {
                 let alt_id = ed
-                    .alternate_buffer()
+                    .state
+                    .buffers
+                    .second_most_recent()
                     .ok_or_else(|| CommandError::transient("No alternate buffer"))?;
                 let alt_path =
                     ed.state.buffers.get(alt_id).path().ok_or_else(|| {

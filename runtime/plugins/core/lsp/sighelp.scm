@@ -2,10 +2,6 @@
 
 (require "lib.scm")
 
-;;; `param-label` (when not a plain string) is `(json-ref param "label")` —
-;;; itself a child of the signature-help response, so it carries that
-;;; response's own tagged producing-server encoding straight into
-;;; `lsp-label-offsets->text`, with no pane needed here at all.
 (define (lsp/param-text sig-label param)
   (let ((param-label (json-ref param "label")))
     (if (string? param-label)
@@ -25,9 +21,6 @@
                (text (lsp/param-text label (list-ref params idx))))
           (if text (string-append label "\n⟨" text "⟩") label)))))
 
-;;; `pane` is the request's own invocation pane — `#:require-focus #t`
-;;; below guarantees it's still focused when this runs, so it's the right
-;;; pane to anchor the popup at.
 (define (lsp/show-sighelp pane res)
   (let ((sigs (json-list (json-ref res "signatures"))))
     (if (null? sigs)
@@ -41,12 +34,6 @@
 (define lsp/sighelp-request
   (debounce 150
     (lambda (pane)
-      ;; `pane` itself — not just its buffer — may have closed, or been
-      ;; switched to another buffer, during the debounce window:
-      ;; `lsp-position-params` resolves the pane (not just the buffer) and
-      ;; would raise on either. A benign "this pane is no longer what it
-      ;; was when the keystroke armed this timer" is not worth a logged
-      ;; error.
       (when (pane-live? pane)
         (lsp-request pane "textDocument/signatureHelp" (lsp-position-params pane)
           (lambda (err res)

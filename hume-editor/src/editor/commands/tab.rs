@@ -56,7 +56,7 @@ pub(in crate::editor) fn open_tab(
 ///
 /// Routes the closing tab's own layout/focus through `tab::take_live` rather
 /// than reading `view.layout` directly — `take_live` ends the closing tab's
-/// open Insert session at the one moment `view.layout`/`state.focus`
+/// open Insert/paste session at the one moment `view.layout`/`state.focus`
 /// still jointly name it, before `install_live` swaps them to the survivor.
 /// Left any later, the teardown's per-(pane, buffer) writes would land after
 /// `drop_pane_state` has already removed the closing pane's own state below.

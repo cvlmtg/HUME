@@ -9,8 +9,8 @@ use crate::host::{DiffHunk, WordDiffHunk};
 use crate::types::PaneHandle;
 
 use super::SteelResult;
-use super::args::{cons_pair, list_of, string_arg, string_list};
-use super::errors::{generic_err, require_cap};
+use super::args::{cons_pair, list_of, not_live_err, string_arg, string_list};
+use super::errors::require_cap;
 
 /// `(diff-lines old-text new-text)` → list of hunk tuples, oldest side
 /// first. Each hunk is `(old-start old-count new-start new-count old-lines
@@ -45,7 +45,7 @@ pub(crate) fn diff_buffer_lines(
     // assumed.
     let hunks = require_cap(ctx.host.diff(), "diff-buffer-lines")?
         .diff_buffer_lines(bid, &ref_text)
-        .ok_or_else(|| generic_err(format!("diff-buffer-lines: invalid buffer id {bid:?}")))?;
+        .ok_or_else(|| not_live_err("diff-buffer-lines", bid))?;
     Ok(hunks_to_steel(hunks))
 }
 

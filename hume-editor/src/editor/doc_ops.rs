@@ -169,6 +169,25 @@ fn other_pane_with_open_group(
     })
 }
 
+/// [`other_pane_with_open_group`] as a standalone precondition — `Err` under
+/// the same wording [`apply_doc_edit`] itself raises. [`apply_doc_edit`]
+/// runs this right before committing; [`super::lsp::edits::apply_workspace_edit`]
+/// runs it for every file in its plan, before any file's commit, so a
+/// conflict on file *k* of a multi-file edit is caught before files `0..k`
+/// are touched rather than partway through the commit loop.
+pub(in crate::editor) fn check_no_conflicting_session(
+    pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    exclude: PaneId,
+    buf_id: BufferId,
+) -> Result<(), CommandError> {
+    if other_pane_with_open_group(pane_state, exclude, buf_id).is_some() {
+        return Err(CommandError::new(
+            "buffer has an open insert/paste session on another pane",
+        ));
+    }
+    Ok(())
+}
+
 /// Apply an edit to the focused buffer and propagate the resulting
 /// `ChangeSet` to all other panes viewing the same buffer.
 ///
@@ -200,11 +219,7 @@ pub(in crate::editor) fn apply_doc_edit(
     if buffers.get(buf_id).is_read_only() {
         return Ok(());
     }
-    if other_pane_with_open_group(pane_state, focused_pane_id, buf_id).is_some() {
-        return Err(CommandError::new(
-            "buffer has an open insert/paste session on another pane",
-        ));
-    }
+    check_no_conflicting_session(pane_state, focused_pane_id, buf_id)?;
     if pane_state[focused_pane_id][buf_id].edit_group.is_some() {
         apply_doc_edit_grouped(
             buffers,
@@ -377,11 +392,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     if buffers.get(buf_id).is_read_only() {
         return Ok(HistoryWalk::RefusedReadOnly);
     }
-    if other_pane_with_open_group(pane_state, focused_pane_id, buf_id).is_some() {
-        return Err(CommandError::new(
-            "buffer has an open insert/paste session on another pane",
-        ));
-    }
+    check_no_conflicting_session(pane_state, focused_pane_id, buf_id)?;
     debug_assert!(
         pane_state[focused_pane_id][buf_id].edit_group.is_none(),
         "apply_doc_history_walk called while an edit group is open on this buffer"

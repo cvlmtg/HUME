@@ -242,7 +242,9 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     //    [buffers] view from :ls) remain reachable as the alternate.
     if arg == "#" {
         return ed
-            .alternate_buffer()
+            .state
+            .buffers
+            .second_most_recent()
             .ok_or_else(|| CommandError::transient("no alternate buffer"));
     }
 

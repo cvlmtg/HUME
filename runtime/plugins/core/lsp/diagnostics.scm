@@ -26,12 +26,6 @@
   (let ((before (filter (lambda (d) (< (hash-ref d "start") head)) diags)))
     (if (null? before) (car (reverse diags)) (car (reverse before)))))
 
-;;; `pane` names the diagnostic's own buffer (the drawer target when this is
-;;; the select-callback path — see docs/decorations.md) — used only as
-;;; `goto-location!`'s *target*, never as its invocation pane: the drawer
-;;; stays open across a buffer switch by design, so by the time a row is
-;;; selected the pane that opened it may no longer show that buffer at all.
-;;; `(focused-pane)` is always the pane that actually navigates.
 (define (lsp/diag-jump-to! pane d)
   (goto-location! (focused-pane) (list pane (hash-ref d "line") (hash-ref d "char-col"))))
 
@@ -44,11 +38,6 @@
                            (lsp/first-after diags head)
                            (lsp/last-before diags head))))
           (lsp/diag-jump-to! pane target)
-          ;; `(focused-pane)`, not `pane` — `lsp/diag-jump-to!` already
-          ;; navigates there (see its own comment above), so it's the pane
-          ;; actually showing `target` by the time the popup opens.
-          ;; `show-popup!` requires focus; the original `pane` argument may
-          ;; no longer be it (or may not even still show this buffer).
           (show-popup! (focused-pane) (hash-ref target "message") #:kind 'scrollable)))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
@@ -104,10 +93,6 @@
         (old (and (< old-idx (length old-diags)) (list-ref old-diags old-idx))))
     (if old (or (lsp/diag-best-match old new-diags) fallback) fallback)))
 
-;;; Compares by `(buffer-key pane)`, not `pane` itself — the drawer was
-;;; opened from `:diagnostics`'s own (focused) pane, but this refresh
-;;; runs from `on-diagnostics-changed`, whose `pane` carries no pane of
-;;; its own; the two must still match on the same buffer.
 (define (lsp/refresh-diagnostics-drawer pane diags)
   (when (and lsp/*diag-drawer* (equal? (buffer-key pane) (car lsp/*diag-drawer*)))
     (let ((tok (cadr lsp/*diag-drawer*)))

@@ -187,17 +187,7 @@ pub(super) fn pane_selections<'a>(
     view: &EngineView,
     t: CommandPane,
 ) -> &'a SelectionSet {
-    state.panes.state[t.pid()][t.bid(view)].selections()
-}
-
-/// The most-recently-viewed buffer other than the current one — one global
-/// "what was I looking at before," the same history for every pane, not a
-/// per-window one. Thin wrapper around
-/// [`BufferStore::second_most_recent`](super::buffer::store::BufferStore::second_most_recent);
-/// see `cmd_goto_alternate_buffer`'s own doc for the worked example and the
-/// MRU touch that makes this correct for a non-focused target too.
-pub(super) fn alternate_buffer(state: &EditorState) -> Option<BufferId> {
-    state.buffers.second_most_recent()
+    t.state(&state.panes.state, view).selections()
 }
 
 /// Open a new edit group on the focused (pane, buffer) pair. See
@@ -330,7 +320,7 @@ pub(super) fn current_jump_entry(
     t: CommandPane,
 ) -> JumpEntry {
     let bid = t.bid(view);
-    let sels = state.panes.state[t.pid()][bid].selections().clone();
+    let sels = t.state(&state.panes.state, view).selections().clone();
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
@@ -355,16 +345,6 @@ pub(super) fn record_jump_if_moved(
     }
 }
 
-/// Redirect `t`'s pane to `target` without recording a jump.
-pub(super) fn switch_to_buffer_without_jump(
-    state: &mut EditorState,
-    view: &mut EngineView,
-    t: CommandPane,
-    target: BufferId,
-) {
-    super::buffer::lifecycle::switch_pane_to_buffer(state, view, t.pid(), target);
-}
-
 /// Replace `t`'s pane's selections for `t`'s buffer.
 pub(super) fn set_pane_selections(
     state: &mut EditorState,
@@ -372,8 +352,8 @@ pub(super) fn set_pane_selections(
     t: CommandPane,
     sels: SelectionSet,
 ) {
-    let bid = t.bid(view);
-    state.panes.state[t.pid()][bid].set_selections(sels);
+    t.state_mut(&mut state.panes.state, view)
+        .set_selections(sels);
 }
 
 /// Replace the primary selection in `t`'s pane (merging overlaps).
@@ -383,8 +363,7 @@ pub(super) fn set_primary_selection(
     t: CommandPane,
     new_sel: hume_editing::selection::Selection,
 ) {
-    let bid = t.bid(view);
-    let pbs = &mut state.panes.state[t.pid()][bid];
+    let pbs = t.state_mut(&mut state.panes.state, view);
     let idx = pbs.selections().primary_index();
     let old_head = pbs.selections().primary().head();
     let sels = pbs.take_selections();
@@ -447,8 +426,8 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane_in_layout;
 pub(in crate::editor) use pipeline::{
-    CommandPane, FocusedPane, NativeBody, resolve_command_pane, resolve_focused_pane, resolve_pane,
-    run_dispatch_pipeline, run_native_body_on_focus, run_resolved, step_paste_commit,
+    CommandPane, FocusedPane, NativeBody, TargetError, resolve_command_pane, resolve_focused_pane,
+    resolve_pane, run_dispatch_pipeline, run_native_body_on_focus, run_resolved, step_paste_commit,
     step_stamp_repeatable,
 };
 

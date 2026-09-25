@@ -722,7 +722,8 @@ impl ScriptingHost {
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 steel.call_function_with_args(proc, args)?;
                 Ok(())
-            });
+            })
+            .map_err(|e| e.message);
             (result, steel_ctx.wait_char_request)
         };
 
@@ -774,25 +775,23 @@ impl ScriptingHost {
     /// batch. A cooperative watchdog interrupt (`hume/yield!`, raised when
     /// the step budget is exceeded) is the one exception: it means the
     /// whole batch's time is spent, not just this call's, so it still
-    /// aborts the rest. Distinguished by the interrupt's own fixed message
-    /// text (`hume/yield!`'s `"script interrupted"`) rather than
-    /// `ctx.interrupt_flag`, which `run_steel_session` already resets to
-    /// `false` on return regardless of outcome, before this function ever
-    /// sees it again.
+    /// aborts the rest — distinguished via [`activation::SessionError::
+    /// interrupted`], read off `ctx.interrupt_flag` before that session
+    /// resets it, rather than sniffing the interrupt's own fixed message
+    /// text.
     ///
-    /// The *first* failure (interrupt or not) is still returned as this
-    /// function's own `Err`, unchanged from before this isolation existed —
-    /// callers key cleanup on it (`Editor::run_call_batch`'s completion-
-    /// session teardown on a raising source) and report it themselves
-    /// (`apply_script_result`'s `"steel call error: "`/`"hook error: "`
-    /// prefix). A *second* (or later) failure in the same batch would
-    /// otherwise have no trace at all now that it doesn't abort anything —
-    /// logged here directly, with the same `"steel call error: "` text, so
-    /// it isn't silently dropped.
+    /// The *first* failure (interrupt or not) is returned as this function's
+    /// own `Err` — callers key cleanup on it (`Editor::run_call_batch`'s
+    /// completion-session teardown on a raising source) and report it
+    /// themselves (`apply_script_result`'s `"steel call error: "`/`"hook
+    /// error: "` prefix). A *second* (or later) failure in the same batch
+    /// would otherwise have no trace at all, since it doesn't abort
+    /// anything — logged here directly, with the same `"steel call error: "`
+    /// text, so it isn't silently dropped.
     ///
-    /// Same discipline as before: never called from inside a completion-
-    /// detection borrow (LSP drain, timer drain, minibuffer key handling) —
-    /// the caller queues `(proc, args)` and this runs at the drain boundary.
+    /// Never called from inside a completion-detection borrow (LSP drain,
+    /// timer drain, minibuffer key handling) — the caller queues `(proc,
+    /// args)` and this runs at the drain boundary.
     pub fn run_steel_calls<'a>(
         &'a mut self,
         calls: Vec<(SteelVal, Vec<SteelVal>)>,
@@ -812,14 +811,17 @@ impl ScriptingHost {
             let result = run_steel_session(steel, watchdog, &mut steel_ctx, budget_ms, |steel| {
                 steel.call_function_with_args(proc, args).map(|_| ())
             });
-            if let Err(message) = result {
-                let is_interrupt = message.contains("script interrupted");
+            if let Err(activation::SessionError {
+                message,
+                interrupted,
+            }) = result
+            {
                 if first_error.is_none() {
                     first_error = Some(message);
                 } else {
                     steel_ctx.log(LogLevel::Error, format!("steel call error: {message}"));
                 }
-                if is_interrupt {
+                if interrupted {
                     break;
                 }
             }

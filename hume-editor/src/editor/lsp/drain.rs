@@ -14,7 +14,9 @@ use lsp_types::request::Request as _;
 
 use super::LspState;
 use super::introspect;
+use crate::editor::commands::resolve_focused_pane;
 use crate::editor::{Editor, Severity};
+use hume_scripting::PaneHandle;
 
 impl Editor {
     /// Per-frame drain: routes every backend event through its client's
@@ -385,21 +387,17 @@ impl Editor {
         if current_gen != Some(anchor.text_gen) && !anchor.allow_stale {
             return false; // dropped silently — parse-worker staleness discipline
         }
-        if anchor.require_focus {
+        if let Some(pid) = anchor.require_focus {
             // Dropped the same way `async_opener_stale` drops a menu/drawer
             // open whose stack has moved on — the response is for UI
-            // anchored to `anchor.pane`, and the user has since navigated
-            // elsewhere (moved focus to another pane, even one still
-            // showing `anchor.bid`, or the pane now shows a different
-            // buffer), so delivering it would show hover/signature-help/a
-            // code-action menu over the wrong pane. `anchor.pane` is always
-            // `Some` here — `%lsp-request`'s decode refuses to queue a
-            // `#:require-focus` request with no pane.
-            let admitted = anchor.pane.is_some_and(|pid| {
-                pid == self.state.focus.id()
-                    && self.view.panes.get(pid).map(|p| p.buffer_id) == Some(anchor.bid)
-            });
-            if !admitted {
+            // anchored to `pid`, and the user has since navigated elsewhere
+            // (moved focus to another pane, even one still showing
+            // `anchor.bid`, or the pane now shows a different buffer), so
+            // delivering it would show hover/signature-help/a code-action
+            // menu over the wrong pane. Exactly `resolve_focused_pane`'s own
+            // check, against the handle the request was made from.
+            let handle = PaneHandle::with_pane(anchor.bid, pid);
+            if resolve_focused_pane(&self.state, &self.view, handle).is_err() {
                 self.report(
                     Severity::Trace,
                     "lsp-request: the focused pane moved before the response could open — ignored"

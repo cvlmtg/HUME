@@ -29,7 +29,12 @@ further) is expected and logged `'trace`: visible in `:messages` for diagnosis, 
 silent otherwise. Either way `ref-text` becomes `'unavailable`, not `#f` — `#f` means "not
 fetched yet" and `refresh!` would re-spawn a `git show` that fails identically on every
 debounced keystroke; `'unavailable` is a sticky negative cache, cleared only by
-`on-buffer-save` or `force-refresh!`.
+`on-buffer-save` or `force-refresh!`. `pane` may have closed while the job was in
+flight (`:bd` and job completion landing in the same frame — `on-buffer-close`'s
+`cancel-fetch!` can't help here, since the job was already moved off the cancellable
+slot and into this very callback); `entry-set!`/`cancel-job!` already no-op on a
+missing entry, but `diff-buffer-lines` is a `LivePane` builtin and would raise, so the
+success branch checks the entry first rather than calling it blind.
 
 `fetch-ref!` runs `git show <ref>:./<name>` with cwd set to the buffer's own directory —
 `./`-prefixing the name resolves it relative to cwd, so no `git rev-parse

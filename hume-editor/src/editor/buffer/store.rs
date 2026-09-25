@@ -71,11 +71,17 @@ impl BufferStore {
     /// opened in a background pane and never focused still needs a valid
     /// `close_buffer` replacement target (`mru_excluding`), and an absent
     /// entry there would wrongly fall into the "last buffer" scratch-replace
-    /// branch instead.
+    /// branch instead. Seeded at the *head*, not via `touch_mru` (which
+    /// would put it at the tail): the tail is "most recently viewed," and a
+    /// background open — a workspace edit opening files it never shows, a
+    /// plugin priming a buffer — has never been viewed at all. `second_most_
+    /// recent`/`mru_excluding` (`Ctrl-6`, `:b#`, `close`'s replacement
+    /// target) would otherwise treat it as the most-recent "other" buffer,
+    /// ahead of whatever the user actually last looked at.
     pub(in crate::editor) fn open(&mut self, id: BufferId, doc: Buffer) {
         self.buffers.insert(id, doc);
         self.order.push(id);
-        self.touch_mru(id);
+        self.mru.insert(0, id);
     }
 
     /// Find a buffer by its canonical resolved path.
@@ -231,10 +237,14 @@ impl BufferStore {
         replacement
     }
 
-    /// Move `id` to the tail of the MRU list. Called from `open` (seed) and
-    /// from `Editor::detect_buffer_enter` (promote on focus) — never from a
-    /// buffer-switch primitive directly, since a plain pane-focus move must
-    /// promote too and only that observation point sees every path.
+    /// Move `id` to the tail of the MRU list — "most recently viewed."
+    /// Called from `Editor::detect_buffer_enter` (the one observation point
+    /// that sees every focus/buffer-enter path, including a plain pane-focus
+    /// move with no buffer switch at all) and from `cmd_goto_alternate_buffer`
+    /// (`commands/jump.rs`), which touches the outgoing buffer and the
+    /// target explicitly around its own switch — see that function's own
+    /// doc for why a remote-pane dispatch can't rely on
+    /// `detect_buffer_enter` alone.
     pub(in crate::editor) fn touch_mru(&mut self, id: BufferId) {
         self.mru.retain(|&x| x != id);
         self.mru.push(id);

@@ -27,30 +27,29 @@ use crate::editor::EditorState;
 /// it, via [`EngineView::replace_layout`]. Shared first half of every op
 /// that replaces the whole live tab.
 ///
-/// Ends the outgoing pane's open Insert session first, before reading:
-/// `view.layout()` names the outgoing tab and `state.focus.id()` names
-/// its focused pane together, right up to this point — the last moment
-/// either is true until `install_live` runs. `end_insert_session`'s own edit
-/// can shrink the outgoing pane's buffer (the blank-line indent trim), and
-/// any per-(pane, buffer) state it touches should resolve against a
-/// still-consistent (layout, focus) pair, not a half-installed incoming tab.
+/// Ends the outgoing pane's open Insert/paste session first, before
+/// reading: `view.layout()` names the outgoing tab and `state.focus.id()`
+/// names its focused pane together, right up to this point — the last
+/// moment either is true until `install_live` runs. `end_focus_sessions`'s
+/// own edit can shrink the outgoing pane's buffer (the blank-line indent
+/// trim), and any per-(pane, buffer) state it touches should resolve
+/// against a still-consistent (layout, focus) pair, not a half-installed
+/// incoming tab.
 pub(in crate::editor) fn take_live(
     state: &mut EditorState,
     view: &EngineView,
 ) -> (LayoutTree, PaneId) {
-    super::commands::end_insert_session(state, view);
+    super::focus::end_focus_sessions(state, view);
     (view.layout().clone(), state.focus.id())
 }
 
 /// Install `layout`/`focus` as the live tab. Shared second half of every op
 /// that replaces `view.layout`/`state.focus` together — the pair that
 /// jointly define which tab is on screen. The focus half goes through
-/// `focus::focus_pane` rather than a bare assignment: its Insert-session
-/// teardown is already done by `take_live` above by the time this runs (a
-/// no-op here as a result), but its paste-session commit isn't — that one
-/// resolves the outgoing pane/buffer by id rather than through the layout
-/// tree, so it has no matching earlier call and still needs to run here,
-/// before focus moves to `focus`.
+/// `focus::focus_pane` rather than a bare assignment: its own
+/// `end_focus_sessions` call is already done by `take_live` above by the
+/// time this runs, so it's a no-op here — kept anyway since
+/// `focus_pane` is the one chokepoint every focus change goes through.
 ///
 /// `replace_layout`'s return (the tree being displaced) is discarded: it
 /// names the exact same pool entries `take_live` already read moments

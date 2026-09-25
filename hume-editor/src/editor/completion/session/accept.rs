@@ -429,8 +429,7 @@ impl BufferSession {
             }
         };
         state.queue_event(EditorEvent::OnCompletionAccept {
-            buffer: bid,
-            pane: pid,
+            target: hume_scripting::PaneHandle::with_pane(bid, pid),
             item: hook_item,
         });
 
@@ -524,10 +523,9 @@ fn maybe_send_resolve(
     });
     let anchor = ResponseAnchor {
         bid,
-        pane: Some(pid),
         text_gen: gen_after,
         allow_stale: false,
-        require_focus: false,
+        require_focus: None,
     };
     lsp.register_callback(server_id, id, anchor, callback);
 }

@@ -3,27 +3,14 @@
 
 use super::EditorHostImpl;
 use crate::editor::Severity;
-use crate::editor::commands::resolve_focused_pane;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{
     BaseLayer, DrawerLayer, MenuLayer, PickerSession, PopupLayer, PromptLayer,
 };
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
-    LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
+    BufferHost, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
 };
-
-impl<'a> EditorHostImpl<'a> {
-    /// The kind-A gate every UI opener below runs first — see
-    /// `BufferHost::require_focused_pane`'s doc for the same check exposed
-    /// as its own builtin-facing method; this is the in-crate version the
-    /// UI openers use directly since they already hold `&EditorHostImpl`.
-    fn require_focused(&self, pane: PaneHandle) -> Result<(), String> {
-        resolve_focused_pane(self.state, self.view, pane)
-            .map(|_| ())
-            .map_err(|e| e.to_string())
-    }
-}
 
 impl<'a> EditorHostImpl<'a> {
     /// Synchronously parses `text` through the grammar named `lang`, if one
@@ -56,7 +43,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         prefill: String,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        self.require_focused(pane)?;
+        self.require_focused_pane(pane)?;
         // Not "a Command-mode minibuffer is open" — a `prompt!` called from
         // a `:command`'s body runs while that command line's own `Command`
         // layer is still on the stack (it's truncated only after the
@@ -109,7 +96,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         docked: bool,
         lang: Option<String>,
     ) -> Result<(), String> {
-        self.require_focused(pane)?;
+        self.require_focused_pane(pane)?;
         let layout = if docked {
             hume_ui::popup::PopupLayout::Docked
         } else {
@@ -179,7 +166,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        self.require_focused(pane)?;
+        self.require_focused_pane(pane)?;
         // Async staleness — see `EditorState::async_opener_stale`'s own doc.
         // `top` `Menu` is the self-replace exception below: a second
         // `lsp-code-action` response while the first menu is still open
@@ -220,7 +207,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<Option<u64>, String> {
-        self.require_focused(pane)?;
+        self.require_focused_pane(pane)?;
         // Fail fast on empty: a 0-row drawer leaves `selected` at 0 with no
         // row behind it, so `Enter` would fire `0` to a callback that can't
         // index anything. Callers close (or never open) instead.
@@ -308,7 +295,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
     ) -> Result<u64, String> {
-        self.require_focused(pane)?;
+        self.require_focused_pane(pane)?;
         let mut session = PickerSession::new(on_select, opts);
         let token = session.token();
         session.seed(picker::picker_items(items));
@@ -322,7 +309,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: LivePickerOpts,
     ) -> Result<u64, String> {
-        self.require_focused(pane)?;
+        self.require_focused_pane(pane)?;
         let session = PickerSession::new_live(on_select, opts);
         let token = session.token();
         picker::open_picker(self.state, self.view, session);

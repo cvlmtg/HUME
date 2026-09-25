@@ -85,25 +85,19 @@ pub(in crate::editor) type LspCallback = Box<dyn FnOnce(&mut Editor, ServerId, O
 #[derive(Debug, Clone, Copy)]
 pub(in crate::editor) struct ResponseAnchor {
     pub(in crate::editor) bid: BufferId,
-    /// The pane the request was made from, if any — `#:require-focus`'s own
-    /// comparison target, never re-derived from `bid` alone (which would
-    /// admit any pane still showing it, not the exact one the request was
-    /// made from). `None` when the request's own `pane` carried none;
-    /// `%lsp-request`'s decode already refuses to queue a `#:require-focus`
-    /// request with no pane, so `require_focus` is only ever `true` here
-    /// when this is `Some`.
-    pub(in crate::editor) pane: Option<PaneId>,
     /// If `bid` has moved past this generation by drain time, the outcome is
     /// dropped silently unless `allow_stale` opts out — the parse-worker
     /// staleness discipline.
     pub(in crate::editor) text_gen: u64,
     /// `#:allow-stale` — skips the `text_gen` check above.
     pub(in crate::editor) allow_stale: bool,
-    /// `#:require-focus` — the outcome is dropped (Trace-logged) unless
-    /// `pane` is still the focused pane, and still shows `bid`, when the
-    /// response lands, for a request whose only purpose is opening
-    /// cursor-anchored UI.
-    pub(in crate::editor) require_focus: bool,
+    /// `#:require-focus` — the pane the request was made from, if the
+    /// outcome should be dropped (Trace-logged) unless it's still the
+    /// focused pane, and still shows `bid`, when the response lands. Never
+    /// re-derived from `bid` alone (which would admit any pane still
+    /// showing it, not the exact one the request was made from). `None` for
+    /// a request whose delivery doesn't depend on focus.
+    pub(in crate::editor) require_focus: Option<PaneId>,
 }
 
 struct CallbackEntry {

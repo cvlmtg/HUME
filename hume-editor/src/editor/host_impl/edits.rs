@@ -5,18 +5,8 @@ use hume_engine::pipeline::BufferId;
 use hume_rope::column::CharCol;
 
 use super::EditorHostImpl;
-use crate::editor::commands::resolve_command_pane;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::EditHost;
-
-impl<'a> EditorHostImpl<'a> {
-    fn resolve_edit_pane(
-        &self,
-        pane: PaneHandle,
-    ) -> Result<crate::editor::commands::CommandPane, String> {
-        resolve_command_pane(self.state, self.view, pane).map_err(|e| e.to_string())
-    }
-}
 
 impl<'a> EditHost for EditorHostImpl<'a> {
     // ── Edit + navigation primitives ────────────────────────────────────
@@ -26,10 +16,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         edits: Vec<hume_scripting::host::WireTextEdit>,
         expect_gen: Option<u64>,
     ) -> Result<(), String> {
-        let t = self.resolve_edit_pane(pane)?;
-        if self.lsp.is_none() {
-            return Err("apply-text-edits!: no LSP state available".to_string());
-        }
+        let t = self.command_pane(pane)?;
         // Each entry decoded its own encoding from its own JsonHandle (it
         // may have come from a different response than its batch-mates,
         // e.g. two `additionalTextEdits` merged by a plugin) — a batch that
@@ -76,10 +63,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         encoding: hume_rope::position_encoding::PositionEncoding,
         expect_gen: Option<u64>,
     ) -> Result<usize, String> {
-        let t = self.resolve_edit_pane(pane)?;
-        if self.lsp.is_none() {
-            return Err("apply-workspace-edit!: no LSP state available".to_string());
-        }
+        let t = self.command_pane(pane)?;
         // Deserializes from the `&Value` reference (serde_json implements
         // `Deserializer` for `&Value` as well as `Value`) rather than
         // `serde_json::from_value`, which needs ownership — the caller's
@@ -103,10 +87,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         loc: &serde_json::Value,
         encoding: hume_rope::position_encoding::PositionEncoding,
     ) -> Result<(), String> {
-        let t = self.resolve_edit_pane(pane)?;
-        if self.lsp.is_none() {
-            return Err("goto-location!: no LSP state available".to_string());
-        }
+        let t = self.command_pane(pane)?;
         let wl = hume_lsp::location::decode_location(loc, "goto-location!")?;
         let target = crate::editor::lsp::edits::GotoTarget::Wire {
             uri: wl.uri,
@@ -123,10 +104,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         line: hume_rope::line::RopeyLine,
         char_col: usize,
     ) -> Result<(), String> {
-        let t = self.resolve_edit_pane(pane)?;
-        if self.lsp.is_none() {
-            return Err("goto-location!: no LSP state available".to_string());
-        }
+        let t = self.command_pane(pane)?;
         let target = crate::editor::lsp::edits::GotoTarget::Path {
             path_or_uri,
             line,
@@ -142,10 +120,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         line: hume_rope::line::RopeyLine,
         char_col: usize,
     ) -> Result<(), String> {
-        let t = self.resolve_edit_pane(pane)?;
-        if self.lsp.is_none() {
-            return Err("goto-location!: no LSP state available".to_string());
-        }
+        let t = self.command_pane(pane)?;
         let goto_target = crate::editor::lsp::edits::GotoTarget::Buffer {
             bid: target,
             line,

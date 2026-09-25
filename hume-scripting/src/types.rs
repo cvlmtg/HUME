@@ -2,16 +2,15 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use steel::rvals::SteelVal;
 
 /// A buffer paired with the pane it was invoked/observed through, if any —
-/// the value injected everywhere a bare `bid` used to be (command dispatch,
-/// hooks, completion sources, `(buffers)`/`(panes)`) and the sole argument
-/// shape every bid-taking builtin now decodes.
+/// the value injected everywhere command dispatch, hooks, completion
+/// sources, and `(buffers)`/`(panes)` name a buffer, and the sole argument
+/// shape every buffer-taking builtin decodes.
 ///
 /// `pane` is `None` for a value with no pane of its own (a buffer-level hook
 /// argument, `(buffers)`'s list, `open-buffer!`'s return) — a builtin that
 /// needs pane state (selections, viewport, focus) fails fast on `None`
-/// rather than guessing one, the guess this type replaces (see
-/// `hume-editor`'s old `pane_showing_buffer`). A builtin that needs only the
-/// buffer ([`Self::buffer`]) works the same either way.
+/// rather than guessing one. A builtin that needs only the buffer
+/// ([`Self::buffer`]) works the same either way.
 ///
 /// Private fields: the only mints are [`Self::with_pane`]/[`Self::buffer_only`],
 /// so a value can't be assembled from a bid and an unrelated pid that never
@@ -185,10 +184,9 @@ pub struct PendingLspServerReg {
 
 /// `(lsp-stop! target)` / `(lsp-restart! target)`'s target: either one
 /// buffer's attached server, or every server registered for a language
-/// name. Replaces the old `Option<String>` (`None` meant "the focused
-/// buffer's server") — a caller now names the buffer explicitly, so a
-/// stop/restart queued from a hook or callback isn't at the mercy of
-/// whatever buffer happens to be focused when the effect log drains.
+/// name. A caller names the buffer explicitly, so a stop/restart queued
+/// from a hook or callback isn't at the mercy of whatever buffer happens to
+/// be focused when the effect log drains.
 #[derive(Debug)]
 pub enum LspServerTarget {
     Buffer(BufferId),
@@ -238,14 +236,6 @@ pub struct LspServerStatusEntry {
 /// the queued-Steel-call mechanism once the response (or timeout) arrives.
 pub struct PendingLspRequest {
     pub bid: BufferId,
-    /// The pane `(lsp-request …)` was called with, if any — `#:require-focus`'s
-    /// own comparison target at response time (never re-derived from `bid`
-    /// alone, which would pass on any pane still showing it rather than the
-    /// exact pane the request was made from). `None` when the caller's own
-    /// `pane` carried no pane; `%lsp-request`'s decode already refuses to
-    /// queue a `#:require-focus` request with no pane, so this is only
-    /// `None` when `require_focus` is `false`.
-    pub pane: Option<PaneId>,
     pub method: String,
     pub params: serde_json::Value,
     pub callback: SteelVal,
@@ -256,12 +246,16 @@ pub struct PendingLspRequest {
     /// two features issuing the same method concurrently never cancel each
     /// other by accident.
     pub supersede: Option<String>,
-    /// `#:require-focus` — the callback fires only if `pane` is still the
-    /// focused pane when the response arrives, for a request whose only
-    /// purpose is opening cursor-anchored UI. `false` for a background
-    /// request (formatting, rename, completion, diagnostics), which must
-    /// keep delivering regardless of focus.
-    pub require_focus: bool,
+    /// `#:require-focus` — the pane `(lsp-request …)` was called with, if
+    /// the callback should fire only while it's still the focused pane when
+    /// the response arrives (never re-derived from `bid` alone, which would
+    /// pass on any pane still showing it rather than the exact pane the
+    /// request was made from). `None` for a background request (formatting,
+    /// rename, completion, diagnostics), which must keep delivering
+    /// regardless of focus. `%lsp-request`'s decode refuses to queue
+    /// `#:require-focus` with no pane, so a request whose only purpose is
+    /// opening cursor-anchored UI always carries one here.
+    pub require_focus: Option<PaneId>,
 }
 
 // Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the
@@ -270,7 +264,6 @@ impl std::fmt::Debug for PendingLspRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PendingLspRequest")
             .field("bid", &self.bid)
-            .field("pane", &self.pane)
             .field("method", &self.method)
             .field("params", &self.params)
             .field("callback", &"<closure>")

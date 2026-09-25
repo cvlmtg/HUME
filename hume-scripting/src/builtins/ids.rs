@@ -1,9 +1,9 @@
 //! Opaque Steel types for buffer/pane identity.
 //!
 //! [`SteelPane`] is the crossing-boundary value: every command, hook,
-//! completion source, and builtin argument or return that used to be a bare
-//! buffer-id is now a `PaneHandle` wrapped in `SteelPane`. Plugins receive
-//! and pass these between builtins but cannot construct or inspect them
+//! completion source, and builtin argument or return that names a buffer
+//! carries a `PaneHandle` wrapped in `SteelPane`. Plugins receive and pass
+//! these between builtins but cannot construct or inspect them
 //! arithmetically — they are purely opaque handles. [`SteelBufferKey`] is
 //! `(buffer-key pane)`'s own return type: a per-buffer hash/comparison key,
 //! deliberately undecodable by [`super::args::ArgPane`]/[`super::args::LivePane`]

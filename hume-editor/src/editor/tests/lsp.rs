@@ -34,10 +34,9 @@ fn wire_client(ed: &mut Editor, backend: InlineLspBackend, sid: ServerId) {
 fn no_drop_anchor(ed: &Editor) -> ResponseAnchor {
     ResponseAnchor {
         bid: ed.focused_buffer_id(),
-        pane: Some(ed.state.focus.id()),
         text_gen: 0,
         allow_stale: true,
-        require_focus: false,
+        require_focus: None,
     }
 }
 
@@ -187,10 +186,9 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
         id,
         ResponseAnchor {
             bid,
-            pane: None,
             text_gen: sent_gen,
             allow_stale: false,
-            require_focus: false,
+            require_focus: None,
         },
         Box::new(move |_ed, _server_id, _outcome| {
             *fired_in_closure.borrow_mut() = true;
@@ -234,10 +232,9 @@ fn allow_stale_delivers_despite_buffer_moving_past_text_gen() {
         id,
         ResponseAnchor {
             bid,
-            pane: None,
             text_gen: sent_gen,
             allow_stale: true,
-            require_focus: false,
+            require_focus: None,
         },
         Box::new(move |_ed, _server_id, _outcome| {
             *fired_in_closure.borrow_mut() = true;

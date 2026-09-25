@@ -4,7 +4,7 @@
 //! compiles in this type, only the `&str` names and `SteelVal` args produced
 //! here (see `hume_scripting::host::EventHost`).
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::BufferId;
 use hume_scripting::json::JsonHandle;
 use hume_scripting::{PaneHandle, SteelPane};
 use steel::rvals::SteelVal;
@@ -39,12 +39,11 @@ pub(in crate::editor) enum EditorEvent {
     /// single one of those covers both, so neither alone can host the raise.
     /// Fires once at startup (the initial buffer entering focus) and once
     /// more per subsequent switch, coalescing a pane-focus move and a buffer
-    /// switch in the same `settle()` pass into a single event. `pane` is the
-    /// focused pane at raise time — always `Some`, since a buffer only
-    /// "enters" by way of some pane showing it.
+    /// switch in the same `settle()` pass into a single event. `target`'s
+    /// pane is the focused pane at raise time — a buffer only "enters" by
+    /// way of some pane showing it.
     OnBufferEnter {
-        buffer: BufferId,
-        pane: PaneId,
+        target: PaneHandle,
     },
     /// Fires when the terminal regains focus, or the editor otherwise regains
     /// control of it (return from an inline shell command) — every open
@@ -100,22 +99,21 @@ pub(in crate::editor) enum EditorEvent {
     /// `viewport-range`'s convention) — no registered handler currently reads
     /// either arg (each re-reads live state via `(viewport-range pane)`
     /// instead), so this is a payload shape, not a behavior guarantee.
-    /// `pane` is the pane whose viewport actually scrolled — not necessarily
-    /// the focused one.
+    /// `target`'s pane is the pane whose viewport actually scrolled — not
+    /// necessarily the focused one.
     OnViewportChange {
-        buffer: BufferId,
-        pane: PaneId,
+        target: PaneHandle,
         first_line: hume_rope::line::ContentLine,
         end_line: hume_rope::line::ContentLine,
     },
     /// Fires in Insert mode after a registered trigger char (see
     /// `register-trigger-chars!`) has been inserted into the buffer — once
     /// per source registered for that char under the buffer's language, so
-    /// two sources sharing a char each get their own fire. `pane` is the
-    /// focused pane at raise time (Insert mode only ever types into it).
+    /// two sources sharing a char each get their own fire. `target`'s pane
+    /// is the focused pane at raise time (Insert mode only ever types into
+    /// it).
     OnTriggerChar {
-        buffer: BufferId,
-        pane: PaneId,
+        target: PaneHandle,
         ch: char,
         source: String,
     },
@@ -128,11 +126,11 @@ pub(in crate::editor) enum EditorEvent {
     /// (built at the one queue site, `session/accept.rs`) rather than a bare
     /// `Arc<Value>` — a handle shares the same underlying `Arc` just as
     /// cheaply, and keeps the item's `WireOrigin` tag alive for a handler
-    /// that reads a position back out of it. `pane` is the completion
-    /// session's own pane, not necessarily the focused one at fire time.
+    /// that reads a position back out of it. `target`'s pane is the
+    /// completion session's own pane, not necessarily the focused one at
+    /// fire time.
     OnCompletionAccept {
-        buffer: BufferId,
-        pane: PaneId,
+        target: PaneHandle,
         item: JsonHandle,
     },
     /// Fires when a buffer's text changes — user edits, undo, redo, `:e!`
@@ -182,53 +180,33 @@ pub(in crate::editor) enum EditorEvent {
 }
 
 impl EditorEvent {
-    /// The buffer this event concerns, if any — `None` for a buffer-less
-    /// event (`OnFocusGained`, `OnModeChange`, `OnOptionChange`). Exhaustive
-    /// match, no `_` arm: a future variant with a `buffer` field must be
-    /// added here explicitly or this fails to compile — same discipline
-    /// `Editor::react_to_event`'s own match uses, for the same reason (a
-    /// forgotten variant should be a compile error, not a silent `None`).
-    pub(in crate::editor) fn buffer(&self) -> Option<BufferId> {
+    /// The buffer (and, where the variant carries one, pane) this event
+    /// concerns, if any — `None` for a buffer-less event (`OnFocusGained`,
+    /// `OnModeChange`, `OnOptionChange`). A buffer-only variant wraps its
+    /// `buffer` in [`PaneHandle::buffer_only`] rather than exposing it bare,
+    /// so every caller checking event staleness (`Editor::run_pending_batch`)
+    /// runs the same `resolve_pane` check regardless of which shape a given
+    /// variant happens to carry. Exhaustive match, no `_` arm: a future
+    /// variant must be added here explicitly or this fails to compile — same
+    /// discipline `Editor::react_to_event`'s own match uses, for the same
+    /// reason (a forgotten variant should be a compile error, not a silent
+    /// `None`).
+    pub(in crate::editor) fn handle(&self) -> Option<PaneHandle> {
         match self {
             EditorEvent::OnBufferOpen { buffer }
             | EditorEvent::OnBufferClose { buffer }
             | EditorEvent::OnBufferSave { buffer }
-            | EditorEvent::OnBufferEnter { buffer, .. }
             | EditorEvent::OnLanguageSet { buffer, .. }
             | EditorEvent::OnLspAttach { buffer, .. }
             | EditorEvent::OnLspDetach { buffer, .. }
             | EditorEvent::OnDiagnosticsChanged { buffer }
-            | EditorEvent::OnViewportChange { buffer, .. }
-            | EditorEvent::OnTriggerChar { buffer, .. }
-            | EditorEvent::OnCompletionAccept { buffer, .. }
-            | EditorEvent::OnTextChanged { buffer } => Some(*buffer),
+            | EditorEvent::OnTextChanged { buffer } => Some(PaneHandle::buffer_only(*buffer)),
+            EditorEvent::OnBufferEnter { target }
+            | EditorEvent::OnViewportChange { target, .. }
+            | EditorEvent::OnTriggerChar { target, .. }
+            | EditorEvent::OnCompletionAccept { target, .. } => Some(*target),
             EditorEvent::OnFocusGained
             | EditorEvent::OnModeChange { .. }
-            | EditorEvent::OnOptionChange { .. } => None,
-        }
-    }
-
-    /// The pane this event concerns, if any — `None` for every variant with
-    /// no `pane` field (most of them; see each variant's own doc for
-    /// whether it carries one). Exhaustive match for the same reason
-    /// [`Self::buffer`]'s is: a future variant with a `pane` field must be
-    /// added here explicitly.
-    pub(in crate::editor) fn pane(&self) -> Option<PaneId> {
-        match self {
-            EditorEvent::OnBufferEnter { pane, .. }
-            | EditorEvent::OnViewportChange { pane, .. }
-            | EditorEvent::OnTriggerChar { pane, .. }
-            | EditorEvent::OnCompletionAccept { pane, .. } => Some(*pane),
-            EditorEvent::OnBufferOpen { .. }
-            | EditorEvent::OnBufferClose { .. }
-            | EditorEvent::OnBufferSave { .. }
-            | EditorEvent::OnFocusGained
-            | EditorEvent::OnModeChange { .. }
-            | EditorEvent::OnLanguageSet { .. }
-            | EditorEvent::OnLspAttach { .. }
-            | EditorEvent::OnLspDetach { .. }
-            | EditorEvent::OnDiagnosticsChanged { .. }
-            | EditorEvent::OnTextChanged { .. }
             | EditorEvent::OnOptionChange { .. } => None,
         }
     }
@@ -304,8 +282,8 @@ impl EditorEvent {
             | EditorEvent::OnTextChanged { buffer } => {
                 vec![SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val()]
             }
-            EditorEvent::OnBufferEnter { buffer, pane } => {
-                vec![SteelPane::new(PaneHandle::with_pane(*buffer, *pane)).into_steel_val()]
+            EditorEvent::OnBufferEnter { target } => {
+                vec![SteelPane::new(*target).into_steel_val()]
             }
             EditorEvent::OnFocusGained => vec![],
             EditorEvent::OnModeChange { from, to } => {
@@ -332,32 +310,26 @@ impl EditorEvent {
                 ]
             }
             EditorEvent::OnViewportChange {
-                buffer,
-                pane,
+                target,
                 first_line,
                 end_line,
             } => {
                 vec![
-                    SteelPane::new(PaneHandle::with_pane(*buffer, *pane)).into_steel_val(),
+                    SteelPane::new(*target).into_steel_val(),
                     SteelVal::IntV(first_line.index() as isize),
                     SteelVal::IntV(end_line.index() as isize),
                 ]
             }
-            EditorEvent::OnTriggerChar {
-                buffer,
-                pane,
-                ch,
-                source,
-            } => {
+            EditorEvent::OnTriggerChar { target, ch, source } => {
                 vec![
-                    SteelPane::new(PaneHandle::with_pane(*buffer, *pane)).into_steel_val(),
+                    SteelPane::new(*target).into_steel_val(),
                     SteelVal::StringV(ch.to_string().into()),
                     SteelVal::StringV(source.as_str().into()),
                 ]
             }
-            EditorEvent::OnCompletionAccept { buffer, pane, item } => {
+            EditorEvent::OnCompletionAccept { target, item } => {
                 vec![
-                    SteelPane::new(PaneHandle::with_pane(*buffer, *pane)).into_steel_val(),
+                    SteelPane::new(*target).into_steel_val(),
                     item.clone().into_steel_val(),
                 ]
             }

@@ -27,6 +27,16 @@ use crate::types::PaneHandle;
 
 use super::errors::generic_err;
 
+/// The shared "this bid names no open buffer" error — one wording for every
+/// liveness check that raises on a stale `PaneHandle`'s buffer: [`LivePane`]'s
+/// own decode-time check, [`LspTargetArg::Buffer`]'s, and every
+/// `buffers.rs`/`diff.rs` builtin whose host call already does the liveness
+/// lookup (so a second `buffer_exists` check would be redundant) but still
+/// needs this message.
+pub(crate) fn not_live_err(name: &str, bid: BufferId) -> SteelErr {
+    generic_err(format!("{name}: invalid buffer id {bid:?}"))
+}
+
 // ── Plain decoders ──────────────────────────────────────────────────────────
 //
 // Calling convention: `(val, ctx_name: &str)`, one Rust param per Steel arg
@@ -478,49 +488,28 @@ pub(crate) trait BuiltinArg {
     fn resolve(self, ctx: &mut crate::SteelCtx, name: &'static str) -> Result<Self::Out, SteelErr>;
 }
 
-impl BuiltinArg for SteelVal {
-    type Out = SteelVal;
-    fn resolve(
-        self,
-        _ctx: &mut crate::SteelCtx,
-        _name: &'static str,
-    ) -> Result<Self::Out, SteelErr> {
-        Ok(self)
-    }
+/// `BuiltinArg::resolve` for a type whose decode is already everything it
+/// needs — `Self::Out = Self`, `resolve` a no-op `Ok(self)`. One list
+/// instead of four (`SteelVal`, `String`, `bool`, `ArgPane`) hand-copying
+/// the same nine-line body.
+macro_rules! identity_builtin_arg {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl BuiltinArg for $ty {
+                type Out = $ty;
+                fn resolve(
+                    self,
+                    _ctx: &mut crate::SteelCtx,
+                    _name: &'static str,
+                ) -> Result<Self::Out, SteelErr> {
+                    Ok(self)
+                }
+            }
+        )+
+    };
 }
 
-impl BuiltinArg for String {
-    type Out = String;
-    fn resolve(
-        self,
-        _ctx: &mut crate::SteelCtx,
-        _name: &'static str,
-    ) -> Result<Self::Out, SteelErr> {
-        Ok(self)
-    }
-}
-
-impl BuiltinArg for bool {
-    type Out = bool;
-    fn resolve(
-        self,
-        _ctx: &mut crate::SteelCtx,
-        _name: &'static str,
-    ) -> Result<Self::Out, SteelErr> {
-        Ok(self)
-    }
-}
-
-impl BuiltinArg for ArgPane {
-    type Out = ArgPane;
-    fn resolve(
-        self,
-        _ctx: &mut crate::SteelCtx,
-        _name: &'static str,
-    ) -> Result<Self::Out, SteelErr> {
-        Ok(self)
-    }
-}
+identity_builtin_arg!(SteelVal, String, bool, ArgPane);
 
 impl BuiltinArg for LivePane {
     type Out = PaneHandle;
@@ -532,10 +521,7 @@ impl BuiltinArg for LivePane {
         if ctx.host.buffers().buffer_exists(self.0.buffer()) {
             Ok(self.0)
         } else {
-            Err(generic_err(format!(
-                "{name}: invalid buffer id {:?}",
-                self.0.buffer()
-            )))
+            Err(not_live_err(name, self.0.buffer()))
         }
     }
 }
@@ -634,14 +620,14 @@ impl BuiltinArg for OptString {
 /// to decode `#f` into).
 #[derive(Debug)]
 pub(crate) enum LspTargetArg {
-    Buffer(BufferId),
+    Buffer(LivePane),
     Language(String),
 }
 
 impl FromSteelVal for LspTargetArg {
     fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        if let Some(handle) = super::ids::downcast_pane(val) {
-            return Ok(LspTargetArg::Buffer(handle.buffer()));
+        if let Ok(pane) = LivePane::from_steelval(val) {
+            return Ok(LspTargetArg::Buffer(pane));
         }
         match val {
             SteelVal::StringV(s) => Ok(LspTargetArg::Language(s.to_string())),
@@ -662,12 +648,9 @@ impl BuiltinArg for LspTargetArg {
         name: &'static str,
     ) -> Result<crate::types::LspServerTarget, SteelErr> {
         match self {
-            LspTargetArg::Buffer(bid) if ctx.host.buffers().buffer_exists(bid) => {
-                Ok(crate::types::LspServerTarget::Buffer(bid))
-            }
-            LspTargetArg::Buffer(bid) => {
-                Err(generic_err(format!("{name}: invalid buffer id {bid:?}")))
-            }
+            LspTargetArg::Buffer(pane) => Ok(crate::types::LspServerTarget::Buffer(
+                pane.resolve(ctx, name)?.buffer(),
+            )),
             LspTargetArg::Language(language) => {
                 Ok(crate::types::LspServerTarget::Language(language))
             }

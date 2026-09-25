@@ -247,8 +247,7 @@ impl Editor {
                     let sources = self.state.trigger_sources_for(ch, language);
                     for source in &sources {
                         self.state.queue_event(EditorEvent::OnTriggerChar {
-                            buffer: buf,
-                            pane: focused,
+                            target: hume_scripting::PaneHandle::with_pane(buf, focused),
                             ch,
                             source: source.clone(),
                         });

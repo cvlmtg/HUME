@@ -10,12 +10,12 @@ use super::*;
 /// below can tell fields apart if `steel_args` ever swaps two of them.
 fn all_variants() -> Vec<EditorEvent> {
     let buffer = BufferId::default();
-    let pane = sample_pane_id();
+    let target = PaneHandle::with_pane(buffer, sample_pane_id());
     vec![
         EditorEvent::OnBufferOpen { buffer },
         EditorEvent::OnBufferClose { buffer },
         EditorEvent::OnBufferSave { buffer },
-        EditorEvent::OnBufferEnter { buffer, pane },
+        EditorEvent::OnBufferEnter { target },
         EditorEvent::OnFocusGained,
         EditorEvent::OnModeChange {
             from: Mode::Insert,
@@ -35,20 +35,17 @@ fn all_variants() -> Vec<EditorEvent> {
         },
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnViewportChange {
-            buffer,
-            pane,
+            target,
             first_line: hume_rope::line::ContentLine::new(3),
             end_line: hume_rope::line::ContentLine::new(42),
         },
         EditorEvent::OnTriggerChar {
-            buffer,
-            pane,
+            target,
             ch: '.',
             source: "lsp".to_string(),
         },
         EditorEvent::OnCompletionAccept {
-            buffer,
-            pane,
+            target,
             item: hume_scripting::json::JsonHandle::new(serde_json::json!({"label": "foo"})),
         },
         EditorEvent::OnOptionChange {
@@ -148,10 +145,11 @@ fn buffer_only_events_carry_one_pane_less_handle_arg() {
 fn on_buffer_enter_carries_its_pane() {
     let buffer = BufferId::default();
     let pane = sample_pane_id();
-    let event = EditorEvent::OnBufferEnter { buffer, pane };
+    let target = PaneHandle::with_pane(buffer, pane);
+    let event = EditorEvent::OnBufferEnter { target };
     let args = event.steel_args();
     assert_eq!(args.len(), 1);
-    assert_steel_pane(&args, 0, PaneHandle::with_pane(buffer, pane));
+    assert_steel_pane(&args, 0, target);
 }
 
 #[test]
@@ -225,15 +223,15 @@ fn on_lsp_attach_and_detach_carry_buffer_and_server_name() {
 fn on_viewport_change_carries_pane_and_both_line_bounds() {
     let buffer = BufferId::default();
     let pane = sample_pane_id();
+    let target = PaneHandle::with_pane(buffer, pane);
     let event = EditorEvent::OnViewportChange {
-        buffer,
-        pane,
+        target,
         first_line: hume_rope::line::ContentLine::new(3),
         end_line: hume_rope::line::ContentLine::new(42),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 3);
-    assert_steel_pane(&args, 0, PaneHandle::with_pane(buffer, pane));
+    assert_steel_pane(&args, 0, target);
     assert!(matches!(args[1], SteelVal::IntV(3)));
     assert!(matches!(args[2], SteelVal::IntV(42)));
 }
@@ -244,15 +242,15 @@ fn on_viewport_change_carries_pane_and_both_line_bounds() {
 fn on_trigger_char_sends_char_as_a_one_char_string() {
     let buffer = BufferId::default();
     let pane = sample_pane_id();
+    let target = PaneHandle::with_pane(buffer, pane);
     let event = EditorEvent::OnTriggerChar {
-        buffer,
-        pane,
+        target,
         ch: '.',
         source: "lsp".to_string(),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 3);
-    assert_steel_pane(&args, 0, PaneHandle::with_pane(buffer, pane));
+    assert_steel_pane(&args, 0, target);
     assert_eq!(steel_string(&args, 1), ".");
     assert_eq!(steel_string(&args, 2), "lsp");
 }
@@ -263,15 +261,15 @@ fn on_trigger_char_sends_char_as_a_one_char_string() {
 fn on_completion_accept_item_crosses_as_a_json_handle() {
     let buffer = BufferId::default();
     let pane = sample_pane_id();
+    let target = PaneHandle::with_pane(buffer, pane);
     let item = serde_json::json!({"label": "foo", "kind": 3});
     let event = EditorEvent::OnCompletionAccept {
-        buffer,
-        pane,
+        target,
         item: hume_scripting::json::JsonHandle::new(item.clone()),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 2);
-    assert_steel_pane(&args, 0, PaneHandle::with_pane(buffer, pane));
+    assert_steel_pane(&args, 0, target);
     let handle = hume_scripting::json::downcast_json_handle(&args[1])
         .expect("item must cross as a JsonHandle");
     assert_eq!(handle.value(), &item);

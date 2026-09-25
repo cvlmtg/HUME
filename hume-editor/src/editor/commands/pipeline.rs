@@ -8,9 +8,11 @@ use std::borrow::Cow;
 use hume_editing::selection::Selection;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_scripting::PaneHandle;
+use slotmap::SecondaryMap;
+
+use crate::editor::pane_state::PaneBufferState;
 
 use crate::editor::dispatch::CmdCtx;
-use crate::editor::doc_ops;
 use crate::editor::jump_list::JumpEntry;
 use crate::editor::registry::{
     CmdMeta, EditorCmdBody, MappableCommand, SelectionBody, SelectionTracking, TargetCategory,
@@ -23,7 +25,7 @@ use hume_ops::{MotionMode, WordCtx};
 use crate::editor::syntax::ensure_syntax_current;
 
 use super::structural::object_spans;
-use super::{effective_word_chars, focused_buffer_id, pane_selections};
+use super::{apply_pane_edit, apply_pane_motion, effective_word_chars, pane_selections};
 
 // ── Command targets ─────────────────────────────────────────────────────────
 
@@ -48,6 +50,29 @@ impl CommandPane {
 
     pub(in crate::editor) fn bid(self, view: &EngineView) -> BufferId {
         view.panes[self.0].buffer_id
+    }
+
+    /// `t`'s own seeded state — the shared tail every
+    /// `pane_state[t.pid()][t.bid(view)]` hand-index reduces to. Panics with
+    /// slotmap's own message if unseeded, which never happens for a
+    /// resolved `CommandPane`: every pane creation or buffer switch seeds
+    /// its `PaneBufferState` first.
+    pub(in crate::editor) fn state<'a>(
+        self,
+        pane_state: &'a SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+        view: &EngineView,
+    ) -> &'a PaneBufferState {
+        &pane_state[self.0][self.bid(view)]
+    }
+
+    /// [`Self::state`]'s mutable counterpart.
+    pub(in crate::editor) fn state_mut<'a>(
+        self,
+        pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+        view: &EngineView,
+    ) -> &'a mut PaneBufferState {
+        let bid = self.bid(view);
+        &mut pane_state[self.0][bid]
     }
 }
 
@@ -171,43 +196,19 @@ fn resolve_focus(
     (target, Scope::Focus(fp))
 }
 
-/// Resolve a [`TargetCategory`] against an explicit [`PaneHandle`] — used by
-/// `EditorHostImpl::run_command_sync` (`(call! "cmd" pane)`) and by every
-/// kind-A/B builtin's host method. Follows the per-category rule locked in
-/// by the plan this implements:
-/// - `Global` ignores `handle` entirely, even if closed.
-/// - Every other category first requires `handle`'s buffer to be live.
-/// - `Pane` requires `handle.pane()` to be `Some`, that pane to still exist,
-///   and to still show `handle.buffer()`.
-/// - `FocusedPane` applies `Pane`'s checks, plus the resolved pane must be
-///   the focused one.
-/// - `Buffer` accepts `handle.buffer()` outright, no pane involved.
-pub(in crate::editor) fn resolve_pane(
+/// Resolve `handle`'s pane, requiring it to be live and to still show
+/// `handle`'s buffer — the check `resolve_pane`'s `Pane`/`FocusedPane`
+/// categories share, and the shape every kind-B `CursorHost`/`EditHost`/…
+/// builtin host method needs outright (as [`resolve_command_pane`]).
+fn checked_pane(
     state: &EditorState,
     view: &EngineView,
     handle: PaneHandle,
-    category: TargetCategory,
-) -> Result<(ResolvedTarget, Scope), TargetError> {
-    if category == TargetCategory::Global {
-        return Ok((
-            ResolvedTarget::Global,
-            Scope::Focus(FocusedPane::current(state)),
-        ));
-    }
+) -> Result<CommandPane, TargetError> {
     let bid = handle.buffer();
     if state.buffers.try_get(bid).is_none() {
         return Err(TargetError::Closed);
     }
-    let focused = FocusedPane::current(state);
-    if category == TargetCategory::Buffer {
-        let scope = if bid == focused.bid(view) {
-            Scope::Focus(focused)
-        } else {
-            Scope::Remote
-        };
-        return Ok((ResolvedTarget::Buffer(bid), scope));
-    }
-    // Pane / FocusedPane: the handle must name a pane that still shows `bid`.
     let pid = handle.pane().ok_or(TargetError::NoPane)?;
     let Some(pane) = view.panes.get(pid) else {
         return Err(TargetError::PaneClosed);
@@ -215,10 +216,42 @@ pub(in crate::editor) fn resolve_pane(
     if pane.buffer_id != bid {
         return Err(TargetError::PaneShowsOther);
     }
-    let target = CommandPane(pid);
+    Ok(CommandPane(pid))
+}
+
+/// Resolve a [`TargetCategory`] against an explicit [`PaneHandle`] — used by
+/// `EditorHostImpl::run_command_sync` (`(call! "cmd" pane)`) and by every
+/// kind-A/B builtin's host method. Per-category rule:
+/// - `Global` ignores `handle` entirely, even if closed.
+/// - `Pane`/`FocusedPane` go through [`checked_pane`] — `handle`'s buffer
+///   must be live, `handle.pane()` must be `Some`, that pane must still
+///   exist, and it must still show `handle.buffer()`. `FocusedPane` further
+///   requires the resolved pane to be the focused one.
+/// - `Buffer` requires `handle`'s buffer to be live, no pane involved.
+pub(in crate::editor) fn resolve_pane(
+    state: &EditorState,
+    view: &EngineView,
+    handle: PaneHandle,
+    category: TargetCategory,
+) -> Result<(ResolvedTarget, Scope), TargetError> {
+    let focused = FocusedPane::current(state);
     match category {
+        TargetCategory::Global => Ok((ResolvedTarget::Global, Scope::Focus(focused))),
+        TargetCategory::Buffer => {
+            let bid = handle.buffer();
+            if state.buffers.try_get(bid).is_none() {
+                return Err(TargetError::Closed);
+            }
+            let scope = if bid == focused.bid(view) {
+                Scope::Focus(focused)
+            } else {
+                Scope::Remote
+            };
+            Ok((ResolvedTarget::Buffer(bid), scope))
+        }
         TargetCategory::Pane => {
-            let scope = if pid == focused.pid() {
+            let target = checked_pane(state, view, handle)?;
+            let scope = if target.pid() == focused.pid() {
                 Scope::Focus(focused)
             } else {
                 Scope::Remote
@@ -226,44 +259,39 @@ pub(in crate::editor) fn resolve_pane(
             Ok((ResolvedTarget::Pane(target), scope))
         }
         TargetCategory::FocusedPane => {
-            if pid != focused.pid() {
+            let target = checked_pane(state, view, handle)?;
+            if target.pid() != focused.pid() {
                 return Err(TargetError::NotFocused);
             }
             Ok((ResolvedTarget::Focused(focused), Scope::Focus(focused)))
         }
-        TargetCategory::Buffer | TargetCategory::Global => unreachable!("handled above"),
     }
 }
 
-/// [`resolve_pane`] narrowed to `TargetCategory::Pane`'s own result — the
-/// shape every kind-B `CursorHost`/`EditHost`/… builtin host method needs:
-/// just the resolved pane, not the `Scope` bookkeeping only `run_resolved`
-/// cares about.
+/// [`checked_pane`], the shape every kind-B `CursorHost`/`EditHost`/… builtin
+/// host method needs: just the resolved pane, not `resolve_pane`'s `Scope`
+/// bookkeeping (only `run_resolved` cares about that).
 pub(in crate::editor) fn resolve_command_pane(
     state: &EditorState,
     view: &EngineView,
     handle: PaneHandle,
 ) -> Result<CommandPane, TargetError> {
-    match resolve_pane(state, view, handle, TargetCategory::Pane)?.0 {
-        ResolvedTarget::Pane(t) => Ok(t),
-        _ => unreachable!("TargetCategory::Pane always resolves to ResolvedTarget::Pane"),
-    }
+    checked_pane(state, view, handle)
 }
 
-/// [`resolve_pane`] narrowed to `TargetCategory::FocusedPane`'s own result —
-/// the shape every kind-A builtin host method (a popup/menu/drawer/picker
-/// opener) needs.
+/// [`checked_pane`] plus the focused-pane check — the shape every kind-A
+/// builtin host method (a popup/menu/drawer/picker opener) needs.
 pub(in crate::editor) fn resolve_focused_pane(
     state: &EditorState,
     view: &EngineView,
     handle: PaneHandle,
 ) -> Result<FocusedPane, TargetError> {
-    match resolve_pane(state, view, handle, TargetCategory::FocusedPane)?.0 {
-        ResolvedTarget::Focused(fp) => Ok(fp),
-        _ => {
-            unreachable!("TargetCategory::FocusedPane always resolves to ResolvedTarget::Focused")
-        }
+    let target = checked_pane(state, view, handle)?;
+    let focused = FocusedPane::current(state);
+    if target.pid() != focused.pid() {
+        return Err(TargetError::NotFocused);
     }
+    Ok(focused)
 }
 
 // ── Native dispatch funnel ──────────────────────────────────────────────────
@@ -291,6 +319,16 @@ pub(in crate::editor) struct NativeBody<F>(F);
 impl<F> NativeBody<F> {
     pub(in crate::editor) fn new(body: F) -> Self {
         Self(body)
+    }
+}
+
+impl NativeBody<EditorCmdBody> {
+    /// `self.0`'s own [`EditorCmdBody::category`] — the one place outside
+    /// `registry/defaults/builder.rs` that can read `.0` at all, so
+    /// `MappableCommand::EditorCmd::target_category` derives from this
+    /// instead of caching a separate field that could drift from it.
+    pub(in crate::editor) fn category(&self) -> TargetCategory {
+        self.0.category()
     }
 }
 
@@ -332,17 +370,10 @@ fn run_native_body(
             let ResolvedTarget::Pane(t) = target else {
                 unreachable!("Motion/Selection always resolve to a Pane target")
             };
-            let pid = t.pid();
             let buf = t.bid(view);
             match fun.0 {
                 SelectionBody::Plain(fun) => {
-                    doc_ops::apply_doc_motion(
-                        &state.buffers,
-                        &mut state.panes.state,
-                        pid,
-                        buf,
-                        |b, s| fun(b, s, count, motion_mode),
-                    );
+                    apply_pane_motion(state, view, t, |b, s| fun(b, s, count, motion_mode));
                 }
                 SelectionBody::Word(fun) => {
                     let doc = state.buffers.get(buf);
@@ -351,10 +382,16 @@ fn run_native_body(
                         around: doc.overrides.word_selects_whitespace(&state.settings),
                         chars: effective_word_chars(doc, &state.settings),
                     };
-                    doc_ops::apply_doc_motion(
+                    // Can't route through `apply_pane_motion` (takes `&mut
+                    // EditorState` wholesale): `ctx.chars` borrows out of
+                    // `state.buffers`, which must stay borrowed alongside
+                    // the `&mut state.panes.state` the motion itself needs —
+                    // exactly the disjoint-borrow case `apply_doc_motion`
+                    // exists to take directly.
+                    crate::editor::doc_ops::apply_doc_motion(
                         &state.buffers,
                         &mut state.panes.state,
-                        pid,
+                        t.pid(),
                         buf,
                         |b, s| fun(b, s, count, ctx),
                     );
@@ -368,18 +405,14 @@ fn run_native_body(
                     // would yield wrong spans (or a panic on an out-of-range
                     // byte offset).
                     ensure_syntax_current(state, buf);
-                    // Collected before `apply_doc_motion`'s call below, which
+                    // Collected before `apply_pane_motion`'s call below, which
                     // needs `&state.buffers` and `&mut state.panes.state` at
                     // once — `ObjectSpans` is owned precisely so its tree borrow
                     // ends here, before that call.
                     let spans = object_spans(state.buffers.get(buf), body);
-                    doc_ops::apply_doc_motion(
-                        &state.buffers,
-                        &mut state.panes.state,
-                        pid,
-                        buf,
-                        |t2, s| body.apply(t2, s, count, motion_mode, &spans),
-                    );
+                    apply_pane_motion(state, view, t, |t2, s| {
+                        body.apply(t2, s, count, motion_mode, &spans)
+                    });
                 }
             }
         }
@@ -387,29 +420,20 @@ fn run_native_body(
             let ResolvedTarget::Pane(t) = target else {
                 unreachable!("Edit always resolves to a Pane target")
             };
-            let buf = t.bid(view);
-            // `apply_doc_edit` itself routes into the grouped path when an
+            // `apply_pane_edit` itself routes into the grouped path when an
             // edit group is already open (insert session or dot-repeat
             // replay), so the edit composes into the open group rather than
             // creating a standalone undo revision. `Err` when another pane
             // holds one instead — same reporting shape as `EditorCmd`'s
             // `Result` two arms below.
-            if let Err(e) = doc_ops::apply_doc_edit(
-                &mut state.buffers,
-                &state.config.decorations,
-                &mut state.panes.state,
-                &mut state.panes.jumps,
-                t.pid(),
-                buf,
-                fun.0,
-            ) {
+            if let Err(e) = apply_pane_edit(state, view, t, fun.0) {
                 state.report(e.severity(), e.message().to_owned());
                 state.command_refused = true;
             }
         }
         MappableCommand::EditorCmd { fun, .. } => {
             // Every arm pairs a body with the target its own `EditorCmdBody`
-            // variant demands — `resolve_focus`/`resolve_for_buffer` derive
+            // variant demands — `resolve_focus`/`resolve_pane` derive
             // `target`'s variant from the same `target_category()` the
             // registry used to choose which `EditorCmdBody` arm to build, so
             // the two can't disagree. The catch-all is a debug invariant, not
@@ -428,7 +452,7 @@ fn run_native_body(
                     f(state, view, count, motion_mode)
                 }
                 _ => unreachable!(
-                    "resolve_focus/resolve_for_buffer derive the target from the same \
+                    "resolve_focus/resolve_pane derive the target from the same \
                      category the command was registered with"
                 ),
             };
@@ -525,14 +549,15 @@ pub(in crate::editor::commands::pipeline) fn step_capture_pre_jump(
 pub(in crate::editor::commands::pipeline) fn step_clear_typed_run(
     state: &mut EditorState,
     view: &EngineView,
+    fp: FocusedPane,
     meta: &CmdMeta,
 ) {
     if state.mode() != Mode::Insert || !meta.moves_cursor() {
         return;
     }
-    let pid = state.focus.id();
-    let bid = focused_buffer_id(state, view);
-    state.panes.state[pid][bid].typed_run = None;
+    fp.target()
+        .state_mut(&mut state.panes.state, view)
+        .typed_run = None;
 }
 
 /// The primary selection, its line, and `t`'s buffer — what a jump entry is
@@ -545,7 +570,7 @@ fn jump_position(
     t: CommandPane,
 ) -> (Selection, hume_rope::line::ContentLine, BufferId) {
     let bid = t.bid(view);
-    let primary = state.panes.state[t.pid()][bid].selections().primary();
+    let primary = t.state(&state.panes.state, view).selections().primary();
     let line = state.buffers.get(bid).text().char_to_line(primary.head());
     (primary, line, bid)
 }
@@ -745,7 +770,7 @@ pub(in crate::editor) fn run_dispatch_pipeline(
 }
 
 /// Execute a native command through the full dispatch pipeline against an
-/// already-[`resolve_for_buffer`]-resolved target — `EditorHostImpl::
+/// already-[`resolve_pane`]-resolved target — `EditorHostImpl::
 /// run_command_sync`'s shape, where `(call! "cmd" bid)` may target a pane
 /// other than the focused one.
 ///
@@ -786,9 +811,9 @@ pub(in crate::editor) fn run_resolved(
 
     // BEFORE
     state.command_refused = false;
-    if matches!(scope, Scope::Focus(_)) {
+    if let Scope::Focus(fp) = scope {
         step_paste_commit(state, view, meta.defers_paste_commit);
-        step_clear_typed_run(state, view, &meta);
+        step_clear_typed_run(state, view, fp, &meta);
     }
     let pre_jump = pane.and_then(|t| step_capture_pre_jump(state, view, t, &meta));
     let char_arg = state.pending_char;

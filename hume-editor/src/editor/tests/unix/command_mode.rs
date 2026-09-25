@@ -23,7 +23,9 @@ fn colon_b_hash_switches_to_alternate() {
     submit(&mut ed, "ls");
     assert_eq!(ed.doc().display_name(), "[buffers]");
     assert_eq!(
-        ed.alternate_buffer()
+        ed.state
+            .buffers
+            .second_most_recent()
             .and_then(|id| ed.state.buffers.get(id).path()),
         Some(c1.as_path()),
     );
@@ -33,8 +35,12 @@ fn colon_b_hash_switches_to_alternate() {
     assert_eq!(ed.doc().path(), Some(c1.as_path()));
     // The alternate is now the pathless [buffers] view — the bug case.
     assert_eq!(
-        ed.alternate_buffer()
-            .map(|id| ed.state.buffers.get(id).display_name().to_string()),
+        ed.state.buffers.second_most_recent().map(|id| ed
+            .state
+            .buffers
+            .get(id)
+            .display_name()
+            .to_string()),
         Some("[buffers]".to_string()),
     );
 

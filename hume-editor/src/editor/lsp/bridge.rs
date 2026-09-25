@@ -30,15 +30,11 @@ impl Editor {
                     return;
                 }
             };
-        // `req.bid` is mandatory (unlike the old URI-sniffed staleness
-        // check), so a stale bid is caught here rather than silently
-        // skipping the text-gen half of the anchor below.
-        let Some(text_gen) = self.state.buffers.try_get(req.bid).map(|b| b.text_gen) else {
-            let msg = format!("invalid buffer id {:?}", req.bid);
-            self.report(Severity::Error, format!("lsp-request: {msg}"));
-            self.fail_lsp_request_callback(req.callback, &msg);
-            return;
-        };
+        // `resolve_server_for_buffer` above already proved `req.bid` live
+        // (its own `try_get` is where a stale bid would have been caught) —
+        // nothing between the two calls can close it, so this is a plain
+        // read, not a second liveness check.
+        let text_gen = self.state.buffers.get(req.bid).text_gen;
         let timeout_ms = self.state.settings.lsp_request_timeout_ms as u64;
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
 
@@ -62,7 +58,6 @@ impl Editor {
 
         let anchor = ResponseAnchor {
             bid: req.bid,
-            pane: req.pane,
             text_gen,
             allow_stale: req.allow_stale,
             require_focus: req.require_focus,
