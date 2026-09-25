@@ -57,6 +57,11 @@ numbers directly.
   make explicit at all. Map the funnel that has no name, not just the ones
   that do — and re-derive downstream invariants (a versioned key's identity
   guarantee) rather than patching around a design that quietly violates them.
+- **L20** — Count the categories the real commands need before adding a type
+  per category; parallel enums kept in sync by `unreachable!()` are the tell.
+  A value a function was handed must be the one it uses — re-reading ambient
+  state (focus) inside a body or a teardown reintroduces the bug the
+  parameter existed to remove.
 
 ---
 
@@ -810,8 +815,9 @@ favor of a type-level fence, verify the fence with the lint's own fail oracle
 this case) — the delta between the two is exactly what the newtype has to
 prove it closes.
 `EditorState::focused_pane_id` (`pub(crate)`, raw-written from `mouse.rs`,
-`commands/jump.rs`, `commands/pane.rs`) is this same class of gap, still
-open: no lint ever scanned it and no newtype fences it today.
+`commands/jump.rs`, `commands/pane.rs`) was this same class of gap; it is
+now closed by `focus::Focus`, whose private field makes `focus::focus_pane`
+the only writer.
 
 **Files:** `hume-editor/src/editor/commands/pipeline.rs` (`NativeBody`),
 `hume-editor/src/editor/registry/command.rs` (`MappableCommand`'s `fun`
@@ -947,3 +953,56 @@ branch), `hume-editor/src/editor/lsp/mod.rs` (`ResponseAnchor`),
 `hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`'s
 per-call anchor re-check), `hume-scripting/src/builtins/lsp.rs`
 (`lsp-position->offset`/`lsp-range->offsets`).
+
+---
+
+## L20 — Four target categories for two real kinds; handed a pane, read focus anyway (2026-09-25)
+
+**Root cause:** The explicit-target refactor (17ad8600 and five follow-ups)
+gave native commands four target categories — `Pane`, `FocusedPane`,
+`Buffer`, `Global` — each with its own fn type, builder, resolved-target
+variant, and resolver arm, plus a separate `Scope` enum saying whether the
+target was focus. Four parallel enums (`TargetCategory`, `EditorCmdBody`,
+`ResolvedTarget`, `Scope`) were kept in agreement by `unreachable!()` arms
+and five resolver functions. Nobody counted what the commands actually
+needed: two `Buffer` commands and four `Global` ones, and every one of the
+six turned out to act through a pane (a per-pane search cursor) or on focus
+(a mode layer, the Extend flag, a tab switch). Separately, 31 `FocusedPane`
+bodies received the focused pane as a parameter and most ignored it,
+re-minting `FocusedPane::current` inside; Insert teardown read focus instead
+of the session that recorded its own owner, which made "end sessions before
+the focus write" an ordering rule every caller had to respect.
+
+**Concrete instance:** a blank-sheet review (2026-09-25) collapsed the
+categories to `Pane`/`FocusedPane`, replaced `Scope` with
+`Target::focused()`, replaced five resolvers with `CommandPane::resolve`/
+`FocusedPane::resolve`/`Target::{at_focus,resolve}`, made teardown read
+`EditSession.pane`/`.buffer`, and gave typed `:` commands the focused pane
+at invocation. A test that moves focus raw before the Insert layer pops
+panicked on the old teardown's consistency assert — the ordering rule had
+been the only thing keeping it correct.
+
+**Prevention rules:**
+
+1. Before adding a category type, list the commands in each category. A
+   category with two or four members is a question, not a design: check
+   whether each member really lacks what the other categories have.
+2. Parallel enums whose variants must agree, held together by
+   `unreachable!()`, mean one of them is redundant. Derive the others from
+   one source, or merge them.
+3. A function handed a resolved value (a pane, a session owner) must use it.
+   Re-reading the ambient equivalent (`FocusedPane::current`,
+   `state.focus.id()`) inside the body is the implicit-target bug L19
+   describes, reintroduced one layer down. Mint from ambient state only at
+   the entry point where the input arrives.
+4. State that records its own owner (an `EditSession`) is the owner's
+   source of truth for teardown. Reading it from elsewhere turns a data
+   fact into a call-ordering convention.
+
+**Files:** `hume-editor/src/editor/commands/pipeline.rs` (`Target`,
+`CommandPane::resolve`, `FocusedPane::resolve`, `run`, `run_body`),
+`hume-editor/src/editor/registry/command.rs` (`TargetCategory`),
+`hume-editor/src/editor/commands/insert_session.rs` (`tear_down_insert`),
+`hume-editor/src/editor/doc_ops.rs` (`commit_edit_group`),
+`hume-editor/src/editor/tests/insert_session_buffer_switch.rs`
+(`insert_teardown_commits_on_the_sessions_own_pane_not_current_focus`).
