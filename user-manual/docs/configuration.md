@@ -325,20 +325,9 @@ To set several bindings at once, use the plural forms:
 
 ### Falling back to a key's normal Insert-mode behaviour
 
-Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [Plugin API](plugin-api.md#editing-navigation)) lets a command decide, per keypress, whether to override the key or fall back to what it would otherwise do — for example, Tab that completes after a letter and inserts a tab everywhere else:
+Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [Plugin API](plugin-api.md#editing-navigation), which also has a worked example) lets a command decide, per keypress, whether to override the key or fall back to what it would otherwise do.
 
-```scheme
-(define-command! "tab-or-complete" "Complete after a letter, else insert a tab."
-  (lambda (pane)
-    (if (letter-before-cursor? pane)
-        (call! "completion-trigger" pane)
-        (insert-key! pane "tab"))))
-(bind-key! 'insert "tab" "tab-or-complete")
-```
-
-`letter-before-cursor?` here is a helper you write yourself, not a builtin.
-
-`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect — so a binding like this one decides again at the new cursor, taking whichever branch fits there. The one thing it doesn't decide again is anything that asked you for input while it ran: opening the completion popup, accepting a completion, or opening a picker are never re-run — `.` just writes what they produced. A binding with no such step, like one that saves the file, runs again in full — including that side effect.
+`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect — so a binding decides again at the new cursor, taking whichever branch fits there. The one exception is a branch that asks you for input while it runs: opening the completion popup, accepting a completion, or opening a picker are never re-run — `.` writes what they produced instead, and reports an error for that keypress if the binding would take that branch again on replay. A branch with no such step, like one that saves the file, runs again in full — including that side effect.
 
 ### Binding a key that waits for a character
 

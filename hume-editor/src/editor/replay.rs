@@ -352,7 +352,7 @@ impl Editor {
                 // `surround-add`) read it via `state.pending_char.take()`.
                 self.state.pending_char = char_arg;
                 let Ok(bound) = commands::BoundCommand::focused(cmd, fp) else {
-                    unreachable!("caller resolved `cmd` from a registered command name")
+                    unreachable!("this arm already excluded SteelBacked/Lazy above")
                 };
                 commands::run_body(&mut self.state, &mut self.view, bound, ctx);
                 true
@@ -413,8 +413,9 @@ impl Editor {
         commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
 
         // Pre-open a Replay-kind placeholder — the wrapper that folds a
-        // recipe replay + the main edit into one undo revision. Its own kind (rather than reusing Insert directly) keeps
-        // it distinct from a real, already-open Insert session: only a
+        // recipe replay + the main edit into one undo revision. Its own kind
+        // (rather than reusing Insert directly) keeps it distinct from a
+        // real, already-open Insert session: only a
         // Replay-kind placeholder is eligible for `open_or_retarget`'s
         // retarget branch (see `EditSessionKind::Replay`'s own doc) — a real
         // empty Insert session must still refuse a conflicting open, not

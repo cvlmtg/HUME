@@ -90,11 +90,12 @@ pub(crate) struct PaneBufferState {
     /// Whether the open insert session was entered via a ring-capturing kill
     /// (bare or `"k`-prefixed `c` — an explicit-register change writes no
     /// stamp and must not set this). Set only by `cmd_change`; lives here for
-    /// the same reason `step_back_on_exit` does. Read by `tear_down_insert`: every keystroke typed during the session
-    /// bumps `BufferStore::edit_seq`, so the `PasteStamp` `cmd_change` wrote
-    /// (pointing at the just-replaced text) goes stale by the time the
-    /// session closes — refreshing its `seq` here is what keeps
-    /// `c <text> <Esc> p` reading the kill ring instead of the clipboard.
+    /// the same reason `step_back_on_exit` does. Read by `tear_down_insert`:
+    /// every keystroke typed during the session bumps `BufferStore::
+    /// edit_seq`, so the `PasteStamp` `cmd_change` wrote (pointing at the
+    /// just-replaced text) goes stale by the time the session closes —
+    /// refreshing its `seq` here is what keeps `c <text> <Esc> p` reading
+    /// the kill ring instead of the clipboard.
     pub kill_opened_session: bool,
     /// A fact worth re-settling the viewport for happened since the last
     /// frame handled one — raised at the source, not inferred from state.

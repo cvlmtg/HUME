@@ -2851,3 +2851,64 @@ fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap
         "typing after the dropped capture must still be recorded: {inputs:?}"
     );
 }
+
+/// `PickerLayer::tear_down`'s own capture hand-off — reached when a picker
+/// is removed by something other than `close_picker`/`close_picker_with`
+/// (every other picker test in this file closes through Enter or Esc,
+/// which route through those). `end_insert_session` (what a reload or a
+/// focus/buffer switch runs) truncates the Insert layer top-first, tearing
+/// down the Picker on top of it via `tear_down` — not `close_picker` — and
+/// then Insert itself. `on_select` must still fire, and firing it after the
+/// session it would have recorded into is already gone must drop the
+/// pending capture silently rather than panicking.
+#[test]
+fn picker_torn_down_by_a_reload_fires_on_select_and_drops_its_capture() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "edit-then-pick" ""
+             (lambda (pane)
+               (insert-key! pane "x")
+               (picker! pane (list (cons "alpha" "ALPHA"))
+                 (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
+           (bind-key! 'insert "ctrl-y" "edit-then-pick")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+    assert_eq!(ed.doc().text().to_string(), "abc xdef\nuvw xyz\n");
+
+    // Simulate the teardown a reload or a focus/buffer switch runs —
+    // `end_focus_sessions`'s own chokepoint — while the picker still sits
+    // on top of the Insert session.
+    crate::editor::commands::end_insert_session(&mut ed.state, &ed.view);
+    ed.settle();
+
+    assert!(ed.state.input.picker().is_none(), "the picker must be gone");
+    assert_ne!(
+        ed.state.mode(),
+        Mode::Insert,
+        "the Insert session must be gone too"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc xdef\nuvw xyz\n",
+        "on_select(#f) must have run and done nothing, not panicked or been skipped"
+    );
+
+    let inputs = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action")
+        .insert_inputs;
+    assert!(
+        inputs.is_empty(),
+        "the pending capture resolved against a session that no longer exists — nothing \
+         can be recorded for it: {inputs:?}"
+    );
+}

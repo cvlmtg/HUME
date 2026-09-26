@@ -176,11 +176,11 @@ pub(in crate::editor) fn session_for_token(
 /// [`EditorState::push_layer`] — this function is the named door to it, plus
 /// the one place a dot-capture armed on the focused pane's Insert session
 /// (see `DotCapture`'s own doc for the full hand-off chain) moves onto the
-/// new picker instead: both builtins call this before they'd otherwise mark
-/// their own dispatch interactive, so marking it here — the instant a
-/// capture is found to hand off — covers both without either needing to
-/// call `EditorState::mark_dot_interactive` itself. Takes `state`/`view`
-/// rather than `&mut Editor` because its production caller,
+/// new picker instead: opening a picker is itself what makes the dispatch
+/// that called it interactive, so this is where that capture is marked
+/// (`EditorState::mark_dot_interactive`) before it's handed off — neither
+/// builtin needs to call that itself. Takes `state`/`view` rather than
+/// `&mut Editor` because its production caller,
 /// `EditorHostImpl::open_picker`, holds those as disjoint borrows, not a
 /// whole `Editor` — it can never reach an `&mut Editor`.
 pub(in crate::editor) fn open_picker(
@@ -190,13 +190,22 @@ pub(in crate::editor) fn open_picker(
 ) {
     let pane = state.focus.id();
     let buffer = view.panes[pane].buffer_id;
-    if let Some(mut cap) = state
+    // Marked while still armed on the session, via the same
+    // `EditorState::mark_dot_interactive` every other interactive builtin
+    // uses, rather than setting `DotCapture::interactive` inline here too.
+    if state
+        .active_session
+        .as_ref()
+        .is_some_and(|s| s.is_insert_at(pane, buffer))
+    {
+        state.mark_dot_interactive();
+    }
+    if let Some(cap) = state
         .active_session
         .as_mut()
         .filter(|s| s.is_insert_at(pane, buffer))
         .and_then(|s| s.take_dot_capture())
     {
-        cap.interactive = true;
         session.attach_dot_capture(cap);
     }
     state.push_layer(view, PickerLayer(session));

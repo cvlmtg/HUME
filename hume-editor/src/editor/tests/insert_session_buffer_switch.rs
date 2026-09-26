@@ -231,7 +231,7 @@ fn reload_config_ends_insert_session_on_focused_pane() {
 
 /// `reload_buffer_in_place` (the `:e`/`:e!` no-arg reload path) must end an
 /// open Insert session the same way every other buffer-invalidating path
-/// does, not drop its group directly — otherwise `state.insert_session` and
+/// does, not drop its group directly — otherwise `state.active_session` and
 /// the `Insert` mode layer survive pointing at a session whose group just
 /// vanished, and the next Esc panics in `Buffer::commit_edit_group`'s
 /// `.expect()`.

@@ -77,14 +77,10 @@
 - `:plum-install-plugins`/`:plum-update-plugins` fail instead of hanging when git asks for credentials.
 - Counted undo/redo (`5u`, `3 Ctrl-r`) is much faster over a long history.
 - A server capability set to `null` is now treated as unsupported.
-- `.` now repeats a completion accepted during the Insert session, and no longer reopens the completion popup to do it.
-- `.` now repeats a picker pick made during the Insert session, without reopening the picker.
+- `.` now repeats a completion accepted during the Insert session — the accepted text only, not an import the item added elsewhere in the file.
+- `.` now repeats a picker pick made during the Insert session.
 - `.` now repeats cursor movement made during the Insert session, such as an arrow key.
-- `.` no longer sends a fresh completion request when replaying an Insert-mode key that opened the popup — it repeats only what you picked, if anything.
-- `.` no longer errors on a completion accepted with multiple cursors, or one whose accepted item also edited elsewhere in the file (an auto-inserted import).
-- An Insert-mode key binding that fails after already leaving Insert no longer types the rest of the recorded session's keys outside it.
 - A macro that finishes while still in Insert mode no longer discards the Insert session it started when you finish it and press `.`.
-- `.` no longer folds an unrelated edit (from a language server, a plugin hook) into a completion or picker pick that happened to still be open when it landed.
 
 ## [0.12.0] - 2026-09-08
 
