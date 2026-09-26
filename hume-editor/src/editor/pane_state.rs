@@ -61,7 +61,7 @@ pub(crate) struct PaneBufferState {
     /// The open insert session's typed span, kept in post-edit coordinates by
     /// `apply_doc_edit_grouped`. `Some` from the moment the session's entry
     /// command positions the cursor (`begin_typed_run`) until
-    /// `end_insert_session` consumes it on exit, for every insert entry
+    /// `tear_down_insert` consumes it on exit, for every insert entry
     /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
     pub typed_run: Option<TypedRun>,
     /// Per-selection range of leading whitespace *this* insert session
@@ -83,17 +83,14 @@ pub(crate) struct PaneBufferState {
     /// Set by `begin_typed_run` from its `ExitCursor` parameter for `a`/`A`/
     /// `o`/`O` entry (never for `i`/`I`/`c`). Decides where an *empty* typed
     /// run's cursor lands on exit — step one grapheme back (so `a<Esc>` is a
-    /// round trip) rather than staying put. Lives here rather than on
-    /// `InsertSession` because dot-repeat replay never creates one — see
-    /// `begin_insert_session`'s replay-signal guard — so a flag
-    /// `end_insert_session` reads on exit must survive on state that isn't
-    /// cleared by that guard.
+    /// round trip) rather than staying put. Lives here, beside the typed run
+    /// it decides about, so a session `replay_dot` re-enters sets and reads
+    /// it exactly as a live one does.
     pub step_back_on_exit: bool,
     /// Whether the open insert session was entered via a ring-capturing kill
     /// (bare or `"k`-prefixed `c` — an explicit-register change writes no
-    /// stamp and must not set this). Set only by `cmd_change`, for the same
-    /// reason `step_back_on_exit` lives here rather than on `InsertSession`.
-    /// Read by `end_insert_session`: every keystroke typed during the session
+    /// stamp and must not set this). Set only by `cmd_change`; lives here for
+    /// the same reason `step_back_on_exit` does. Read by `tear_down_insert`: every keystroke typed during the session
     /// bumps `BufferStore::edit_seq`, so the `PasteStamp` `cmd_change` wrote
     /// (pointing at the just-replaced text) goes stale by the time the
     /// session closes — refreshing its `seq` here is what keeps

@@ -89,8 +89,8 @@ pub(in crate::editor) fn cmd_change(
     // `end_insert_session` refresh the stamp's `seq` once typing stops. An
     // explicit-register change (`"5c`) writes no stamp, and refreshing
     // whatever stale stamp might pre-exist would wrongly resurrect it. Lives
-    // on `PaneBufferState`, not `InsertSession`, for the same reason
-    // `step_back_on_exit` does (see its doc).
+    // on `PaneBufferState` for the same reason `step_back_on_exit` does (see
+    // its doc).
     if state.route_kill(yanked) {
         let bid = fp.bid(view);
         state.panes.state[fp.pid()][bid].kill_opened_session = true;
@@ -125,7 +125,7 @@ pub(in crate::editor) fn cmd_select_last_insertion(
     let Some(spans) = fresh else {
         return Err(CommandError::transient("no last insertion"));
     };
-    // Non-empty by construction: `end_insert_session` only ever stashes a
+    // Non-empty by construction: `tear_down_insert` only ever stashes a
     // non-empty `spans` vec (see `begin_typed_run`'s caller). The last
     // span is spatially last (stashed in ascending-start order) — primary
     // there, matching the entry command's own cursor placement.

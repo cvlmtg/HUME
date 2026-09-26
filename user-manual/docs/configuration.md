@@ -338,7 +338,7 @@ Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [
 
 `letter-before-cursor?` here is a helper you write yourself, not a builtin.
 
-`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect — so a binding like this one decides again at the new cursor, taking whichever branch fits there.
+`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect — so a binding like this one decides again at the new cursor, taking whichever branch fits there. The one thing it doesn't decide again is a completion you picked: if the binding accepted one with `completion-accept!`, `.` inserts the same item.
 
 ### Binding a key that waits for a character
 

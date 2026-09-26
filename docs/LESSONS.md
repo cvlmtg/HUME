@@ -67,6 +67,11 @@ numbers directly.
   explicit tag, not an incidental property (emptiness, `None`, a default) of
   a real variant it's borrowing — the incidental property will eventually
   also be true of the real thing.
+- **L23** — A recorder that infers, after a dispatch, what the dispatch did
+  (a counter diff, a length snapshot, a flag) grows one signal per bug.
+  Record the input where it arrives; let the one piece of state that isn't
+  re-derivable — input the user gave mid-command — be recorded by the code
+  that consumes it, not declared by command authors.
 
 ---
 
@@ -1131,3 +1136,88 @@ nothing it describes has ever been in a user's hands.
    unreleased feature being second-guessed against its own history."
 
 **Files:** `CHANGELOG.md` (`## Unreleased`).
+
+---
+
+## L23 — Dot-repeat inferred a dispatch's effect from side signals, and replayed an interactive one by re-running it (2026-09-26)
+
+**Root cause:** Dot-repeat recorded an Insert session by watching each
+keymap-bound dispatch and inferring, afterward, what it had done: a
+`text_gen` diff decided "did the binding edit?", `in_insert_key_dispatch`
+decided "is a binding in flight?", a branch in `handle_insert` decided "did
+the binding close the session?", `tear_down_insert` moved keystrokes into
+the action with `extend` so a re-entering binding kept them, and the
+`Replay` edit-session kind doubled as "suppress recording" — each signal
+patched over a bug the previous one couldn't see. An accepted completion
+was still never recorded this way, and arrow keys were dropped from replay
+because a pure motion doesn't move `text_gen`. Recording every input at the
+seam it arrives (`Key`, `Paste`, `Binding`, unconditionally before its
+dispatch) fixed that half, but replay still re-ran every `Binding`,
+including one that had gone *interactive* — whose outcome depends on input
+the user gave while it ran (accepting a completion, picking a picker item).
+Only the one value a re-run couldn't re-derive (a completion's pick) had
+anywhere to go, handed back through a per-binding answer slot for
+`completion-accept!` alone to consume. Every other question the binding
+could ask about that session (`completion-top`) saw nothing on replay and
+could take a different branch than it did live; a binding that opened a
+picker had no slot to record a pick into at all, so `.` reopened the picker
+instead of applying it; and a failed or unregistered binding stopped the
+whole replay, dropping everything typed after it.
+
+**Concrete instance:** a code review surfaced the completion-top and
+picker-reopening gaps. The user's own framing named the actual fix: a
+picker is an interactive command like autocomplete, so it must not be run
+again — dot-repeat inserts its result.
+
+**Resolution:** Record the input at the seam it arrives, never a conclusion
+drawn from side effects afterward. An interactive input is never re-run:
+`completion-accept!`/`picker!`/`live-picker!` mark the dispatch that called
+them (`EditorState::mark_dot_interactive`); a checkpoint right after it
+returns (`Editor::resolve_or_arm_dot_capture`) either finalizes on the spot
+or, for a picker whose pick resolves later via a queued `on_select`, arms
+`EditorState::dot_capture` for `resolve_dot_capture_if_ready` to finalize
+once it closes. Finalizing diffs the Insert session's own composed
+`ChangeSet` (before vs. after, via `ChangeSet::invert`/`compose`) into an
+`InsertInput::Result` — the whole dispatch's net edit, replayed by applying
+it directly rather than asking any one builtin to describe its own effect.
+A `Binding` that fails or is unregistered on replay is reported and
+skipped, not fatal to the rest — the live session kept going past it too.
+
+`invert(X).compose(X)` does not reduce to `is_identity()` even when
+nothing happened between two snapshots of the same `ChangeSet`:
+`compose`'s own doc says a *self*-Insert consumed by an *other*-Delete
+cancels, but a *self*-Delete followed by an *other*-Insert of the same
+text — exactly what an inverted `before` composed with an equal `after`
+produces — does not; both are emitted verbatim. A structural
+`is_identity()` check isn't enough; the diff is confirmed against the
+actual text instead.
+
+**Prevention rules:**
+
+1. Record the input at the seam where it arrives, never a conclusion drawn
+   from side effects after the fact. A counter diff or a length snapshot
+   answers "did something change?", which is never quite the question, and
+   it breaks the first time two things change or the thing it measures is
+   replaced mid-dispatch.
+2. When a replay mechanism re-executes commands, find the inputs a re-run
+   can't re-derive (a user's pick, a prompt answer). If any part of an
+   input's outcome can't be re-derived, don't re-run any of it: record its
+   whole net effect and replay that instead. Handing back just the one
+   un-derivable value to an otherwise-live re-run still leaves every other
+   side of that command's behavior — a session query, a further edit —
+   exposed to running against a different world than it did live.
+3. The Nth signal added to disambiguate the (N-1)th is L9's smell applied
+   to state instead of call sites. At the third, redesign.
+
+**Files:** `hume-editor/src/editor/replay.rs` (`InsertInput`,
+`CursorReplacement`, `DotCapture`, `record_insert_input`,
+`mark_dot_interactive`, `resolve_or_arm_dot_capture`,
+`resolve_dot_capture_if_ready`, `finalize_dot_capture`,
+`cursor_replacement_from_delta`),
+`hume-editor/src/editor/input_stack/insert.rs` (`handle_insert`),
+`hume-editor/src/editor/input_stack/completion.rs`
+(`accept_completion_selection`),
+`hume-editor/src/editor/completion/session/accept.rs`,
+`hume-editor/src/editor/host_impl/{completion,ui}.rs`,
+`hume-editor/src/editor/commands/pipeline.rs` (`repeat_slot_owned`),
+`hume-editor/src/editor/scripting_setup.rs` (`drain_pending_work`).

@@ -1488,11 +1488,11 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::ev
 }
 
 /// A Steel `#:repeatable` command that calls `(call! "insert-before" bid)` must
-/// record typed text in `insert_keys` and replay it on `.`.
+/// record typed text in `insert_inputs` and replay it on `.`.
 ///
 /// Fail oracle:
-/// - If `end_insert_session` did NOT back-fill `insert_keys` for Steel actions,
-///   `insert_keys` would be empty → `.` inserts nothing → final buffer differs.
+/// - If the typed inputs landed anywhere but the outer Steel action,
+///   `insert_inputs` would be empty → `.` inserts nothing → final buffer differs.
 /// - If the pre-body snapshot fix were reverted, `.` would still insert but only
 ///   at the raw cursor position instead of the recipe-established one.
 #[test]
@@ -1517,7 +1517,7 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
         "setup: 'ab' must be inserted before 'x'"
     );
 
-    // White-box: insert_keys must be back-filled by end_insert_session.
+    // White-box: the typed chars and the exiting Esc went to the outer action.
     {
         let action = ed
             .state
@@ -1526,9 +1526,9 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
             .expect("last_repeatable_action must be set after steel-ins");
         assert_eq!(action.command.as_ref(), "steel-ins");
         assert_eq!(
-            action.insert_keys.len(),
-            2,
-            "insert_keys must contain both typed chars"
+            action.insert_inputs.len(),
+            3,
+            "insert_inputs must hold both typed chars and the Esc binding"
         );
     }
 
@@ -1770,11 +1770,11 @@ fn steel_repeatable_paste_dot_repeat_replays_command() {
 
 /// The `change` command opens its undo group through `begin_insert_session` (the
 /// only path that opens a group). A Steel `#:repeatable` command wrapping `change`
-/// must create an InsertSession and record `insert_keys` correctly.
+/// must record `insert_inputs` onto the outer action correctly.
 ///
 /// This guards that the edit-then-insert undo-group path remains safe.
 #[test]
-fn steel_repeatable_change_via_call_records_insert_keys() {
+fn steel_repeatable_change_via_call_records_insert_inputs() {
     let mut ed = editor_from("-[foo]> bar\n");
     let f2 = setup_steel_f2(
         &mut ed,
@@ -1791,7 +1791,7 @@ fn steel_repeatable_change_via_call_records_insert_keys() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "hi bar\n");
 
-    // White-box: insert_keys must be back-filled.
+    // White-box: the typed chars and the exiting Esc went to the outer action.
     {
         let action = ed
             .state
@@ -1800,9 +1800,9 @@ fn steel_repeatable_change_via_call_records_insert_keys() {
             .expect("last_repeatable_action must be set after steel-chg");
         assert_eq!(action.command.as_ref(), "steel-chg");
         assert_eq!(
-            action.insert_keys.len(),
-            2,
-            "insert_keys must have 'h' and 'i'"
+            action.insert_inputs.len(),
+            3,
+            "insert_inputs must have 'h', 'i', and the Esc binding"
         );
     }
 

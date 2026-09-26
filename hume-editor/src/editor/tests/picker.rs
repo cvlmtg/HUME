@@ -389,14 +389,14 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 /// (a Steel timer entering Insert while the picker owns the keyboard —
 /// there's no key path for this, since the picker is full-modal) must run
 /// `Insert`'s own teardown on the way out (commit the edit group, clear
-/// `insert_session`) via `EditorState::take_layer`, and must still fire the
+/// `active_session`) via `EditorState::take_layer`, and must still fire the
 /// picker's own `on_select` with `#f` exactly once — not twice, and not
 /// silently dropped by `Insert`'s teardown running first.
 ///
 /// Fail oracle: before this fix (`close_picker_with`'s raw `truncate` +
 /// `removed.pop()`), only the *last* removed layer (the picker) was ever
 /// downcast and acted on — `Insert`'s own `tear_down` never ran, so
-/// `insert_session` would stay `Some` and the typed char's edit group would
+/// `active_session` would stay `Some` and the typed char's edit group would
 /// stay open.
 #[test]
 fn close_picker_tears_down_an_insert_session_stacked_above_it() {
@@ -415,7 +415,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
         Mode::Insert,
         "sanity: Insert above the picker"
     );
-    assert!(ed.state.insert_session.is_some(), "sanity: session open");
+    assert!(ed.state.active_session.is_some(), "sanity: session open");
     // Insert is `top()` now, so this reaches its own key handler, same as
     // ordinary typing — not the picker's query.
     ed.handle_key(key('X'));
@@ -429,7 +429,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
 
     assert!(ed.state.input.picker().is_none(), "the picker must be gone");
     assert!(
-        ed.state.insert_session.is_none(),
+        ed.state.active_session.is_none(),
         "Insert's own teardown must have run, clearing the session"
     );
     assert_eq!(

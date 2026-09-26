@@ -295,11 +295,26 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
     ) -> Result<u64, String> {
+        // Under `.`, a picker is never re-opened — a pick's own net edit
+        // was already recorded and replayed directly (see `InsertInput::
+        // Result`'s own doc). Reaching here during replay means the
+        // binding decided differently than it did live — same discipline
+        // `completion-accept!` follows (see `EditorState::dot_replay`'s doc).
+        if self.state.dot_replay {
+            return Err(
+                "picker!: reached during `.` — the recorded input took a different branch \
+                 this time"
+                    .to_string(),
+            );
+        }
         self.require_focused_pane(pane)?;
         let mut session = PickerSession::new(on_select, opts);
         let token = session.token();
         session.seed(picker::picker_items(items));
         picker::open_picker(self.state, self.view, session);
+        // Marks the dispatch opening this picker interactive — see
+        // `EditorState::mark_dot_interactive`'s own doc.
+        self.state.mark_dot_interactive();
         Ok(token)
     }
 
@@ -309,10 +324,19 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: LivePickerOpts,
     ) -> Result<u64, String> {
+        // See `open_picker`'s own guard, just above.
+        if self.state.dot_replay {
+            return Err(
+                "live-picker!: reached during `.` — the recorded input took a different \
+                 branch this time"
+                    .to_string(),
+            );
+        }
         self.require_focused_pane(pane)?;
         let session = PickerSession::new_live(on_select, opts);
         let token = session.token();
         picker::open_picker(self.state, self.view, session);
+        self.state.mark_dot_interactive();
         Ok(token)
     }
 

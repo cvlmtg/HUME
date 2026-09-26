@@ -62,10 +62,7 @@ impl Editor {
     /// macro recording, and dot-repeat replay above and below, for a key
     /// from the terminal; `handle_input`'s mouse arm and
     /// `handle_terminal_paste` call it directly for those two event kinds,
-    /// which carry none of that key-only bookkeeping. `replay_dot` also
-    /// calls it directly for a replayed key instead of going through
-    /// `handle_key`, since a replay must skip all of that (recording it
-    /// again, re-arming the summary countdown).
+    /// which carry none of that key-only bookkeeping.
     pub(in crate::editor) fn dispatch_input(&mut self, ev: InputEvent) {
         let top = self.state.input.top();
         self.dispatch_at(top, ev);

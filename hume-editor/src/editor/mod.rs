@@ -8,7 +8,7 @@ use termina::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use self::registry::CommandRegistry;
-use self::replay::{InsertSession, MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
+use self::replay::{DotCapture, MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
@@ -381,20 +381,35 @@ pub(crate) struct EditorState {
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
-    /// Active insert session, present between begin/end_insert_session.
-    pub(super) insert_session: Option<InsertSession>,
+    /// `true` for `replay_dot`'s whole extent, `false` otherwise — read by
+    /// `completion-accept!`/`picker!`/`live-picker!` to refuse loudly if a
+    /// replayed binding reaches one of them: reaching an interactive
+    /// builtin during `.` means the binding decided differently than it did
+    /// live (it was non-interactive then, or `.` wouldn't be re-running it
+    /// at all — see [`replay::InsertInput::Result`]'s own doc), and there is
+    /// no recorded pick to hand back the way the old `DotReplay::answer`
+    /// slot once did.
+    pub(super) dot_replay: bool,
     /// `true` from the moment `handle_insert` matches a trie leaf until
     /// that dispatch returns — dispatch never yields before then, all the
     /// way through a Steel `call!` (`Editor::dispatch` → `run_steel_command`
     /// → `%call-native!` → `run_command_sync`), so this is never observed
     /// stale. `false` outside that window, including while a hook queued
     /// during the same keypress drains later in `settle`. Set via
-    /// `Editor::with_insert_key_dispatch`. Gates `commands::
-    /// insert_owns_repeat_slot` — see that function's own doc for why.
+    /// `Editor::with_insert_key_dispatch`. Read by `commands::
+    /// repeat_slot_owned` and `insert-key!` — see each one's own doc for why.
     pub(super) in_insert_key_dispatch: bool,
     /// The editor's one live Insert or paste undo group, if any — see
     /// [`edit_session::EditSession`]'s own doc.
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
+    /// Armed around an Insert-key binding dispatch that might turn out
+    /// interactive by opening a picker, `None` otherwise — see
+    /// [`DotCapture`]'s own doc.
+    pub(super) dot_capture: Option<DotCapture>,
+    /// Set by `EditorState::mark_dot_interactive`, read and reset by
+    /// `Editor::resolve_or_arm_dot_capture` — see both methods' own doc, and
+    /// [`DotCapture`]'s.
+    pub(super) dot_capture_claimed: bool,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
     /// `true` when the current multi-key sequence began with a kitty one-shot
@@ -514,9 +529,11 @@ impl Default for EditorState {
             selection_recipe_writes: 0,
             command_refused: false,
             pending_repeat: None,
-            insert_session: None,
+            dot_replay: false,
             in_insert_key_dispatch: false,
             active_session: None,
+            dot_capture: None,
+            dot_capture_claimed: false,
             explicit_count: false,
             pending_ctrl_extend: false,
             macro_recording: None,

@@ -225,7 +225,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
 /// `push_mode_layer` truncates the outgoing mode layer before pushing —
 /// entering `Prompt` from `Insert` (a queued `(after 0 …)` thunk firing
 /// while the user is mid-insert) must end the insert session cleanly
-/// (edit group committed, `insert_session` cleared) rather than leaving it
+/// (edit group committed, `active_session` cleared) rather than leaving it
 /// dangling underneath a `Prompt` layer with no way back to it.
 #[test]
 fn prompt_from_insert_ends_the_insert_session_cleanly() {
@@ -243,7 +243,7 @@ fn prompt_from_insert_ends_the_insert_session_cleanly() {
     ed.feed_key(key('X'));
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Insert);
     assert!(
-        ed.state.insert_session.is_some(),
+        ed.state.active_session.is_some(),
         "sanity: an insert session is open"
     );
     assert_eq!(ed.doc().text().to_string(), "Xabc\n");
@@ -255,7 +255,7 @@ fn prompt_from_insert_ends_the_insert_session_cleanly() {
         "prompt! must have taken over the mode layer"
     );
     assert!(
-        ed.state.insert_session.is_none(),
+        ed.state.active_session.is_none(),
         "the insert session must be finalized, not left dangling under Prompt"
     );
     assert_eq!(

@@ -221,7 +221,7 @@ impl Editor {
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,
         // `reset_config_state`), before the reload invalidates the text it
         // was snapshotted against — leaving it open would keep
-        // `state.insert_session` and the `Insert` mode layer pointing at a
+        // `state.active_session` and the `Insert` mode layer pointing at a
         // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 

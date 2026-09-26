@@ -23,7 +23,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 /// The fixed dispatch context for a key that resolved to an Insert keymap
 /// leaf — always an explicit count of 1, never extending. Shared by
 /// `handle_insert` and `replay.rs`'s replay of a recorded
-/// `InsertInput::Command` entry, so a binding re-run on `.` sees exactly
+/// `InsertInput::Binding` entry, so a binding re-run on `.` sees exactly
 /// the context it ran with the first time.
 pub(in crate::editor) const INSERT_KEY_CTX: CmdCtx = CmdCtx {
     count: Some(1),
@@ -57,9 +57,7 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         InputEvent::Key(key) => handle_insert(ed, key),
         InputEvent::Paste(text) => {
             ed.apply_insert_mode_paste(&text);
-            if let Some(session) = ed.state.insert_session.as_mut() {
-                session.keystrokes.push(InsertInput::Paste(text));
-            }
+            ed.state.record_insert_input(InsertInput::Paste(text));
         }
         // A click or a wheel notch is Base's own action to run — most
         // visibly, a click's `focus_pane` ends this very Insert session
@@ -70,8 +68,8 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its
 /// command, an unbound one runs its default behaviour
-/// (`commands::insert_default_key`). Either way, records what `.` needs to
-/// replay it — see `InsertInput`'s own doc for the two shapes.
+/// (`commands::insert_default_key`). Either way, records the key as the
+/// input it was — see `InsertInput`'s own doc.
 fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // Only Esc, Ctrl-c, arrows, and user bindings live in the insert trie;
     // plain chars, Tab, Enter, Backspace, and Delete fall through to their
@@ -98,37 +96,26 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
                 );
                 return;
             };
-            // Snapshotted before dispatch so the after-check below can tell
-            // "this key's binding actually edited the buffer" from "it was a
-            // motion, a refusal, or a no-op" (see `InsertInput::Command`'s
-            // own doc for why the *binding* is recorded rather than any
-            // native effect underneath it).
-            let buf = commands::FocusedPane::current(&ed.state).bid(&ed.view);
-            let pre_gen = ed.state.buffers.get(buf).text_gen;
-            let name = cmd.name;
+            // Recorded before the dispatch, whatever the binding then does:
+            // replay re-runs it, so it decides again at the new cursor —
+            // unless it turns out interactive, in which case
+            // `resolve_or_arm_dot_capture` below replaces this entry with
+            // its net edit instead (see `DotCapture`'s own doc).
+            ed.state
+                .record_insert_input(InsertInput::Binding { name: cmd.name });
+
+            // The clone inside this is cheap, and this path only runs for
+            // keymap-BOUND Insert keys, never the per-character default one.
+            let (pid, bid, cs_before, head_before) = ed.snapshot_dot_capture_seed();
+
             // Through the full pipeline like any keypress: an edit composes
             // into the open insert-session group (`run_body` routes through
             // `apply_doc_edit_grouped`), a motion clears a pinned typed run
-            // (`step_clear_typed_run`), and `insert_owns_repeat_slot` keeps
+            // (`step_clear_typed_run`), and `repeat_slot_owned` keeps
             // a repeatable command from stamping over the session's owner.
             ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
 
-            if ed.state.buffers.get(buf).text_gen != pre_gen {
-                if let Some(session) = ed.state.insert_session.as_mut() {
-                    session.keystrokes.push(InsertInput::Command { name });
-                } else if let Some(action) = ed.state.last_repeatable_action.as_mut() {
-                    // The binding itself left Insert mid-dispatch
-                    // (`exit-insert`, or a mode switch it triggers):
-                    // `tear_down_insert` already moved the session's
-                    // keystrokes into this action, so the entry is appended
-                    // after them in dispatch order. That teardown's own edit
-                    // (the autoindent trim on an owned blank line) counts as
-                    // this binding's edit — correctly: replaying the exit
-                    // performs the same trim, and `finish_replay_session` is a
-                    // no-op once the session is already closed.
-                    action.insert_keys.push(InsertInput::Command { name });
-                }
-            }
+            ed.resolve_or_arm_dot_capture(pid, bid, cs_before, head_before, true);
             return;
         }
         WalkResult::NoMatch => {}
@@ -141,10 +128,8 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // none (an unbound Ctrl-chord, an F-key) did nothing, so replaying it
     // would be a silent no-op entry.
     let fp = commands::FocusedPane::current(&ed.state);
-    if commands::insert_default_key(&mut ed.state, &ed.view, fp, key)
-        && let Some(session) = ed.state.insert_session.as_mut()
-    {
-        session.keystrokes.push(InsertInput::Key(key));
+    if commands::insert_default_key(&mut ed.state, &ed.view, fp, key) {
+        ed.state.record_insert_input(InsertInput::Key(key));
     }
 }
 
@@ -154,11 +139,11 @@ impl Editor {
     /// Runs `f` with `EditorState::in_insert_key_dispatch` set, restoring
     /// its prior value afterward — shared by `handle_insert`'s trie-leaf
     /// dispatch and `replay.rs`'s replay of a recorded `InsertInput::
-    /// Command` entry, so a binding re-run on `.` sees the same flag it saw
+    /// Binding` entry, so a binding re-run on `.` sees the same flag it saw
     /// live. Set for the whole call regardless of what `f` does internally
     /// (mode switches included — dispatch is synchronous all the way
     /// through a Steel `call!`, so this never outlives the call it wraps).
-    /// See `commands::insert_owns_repeat_slot`'s own doc for what the flag
+    /// See `commands::repeat_slot_owned`'s own doc for what the flag
     /// itself gates.
     pub(in crate::editor) fn with_insert_key_dispatch<R>(
         &mut self,

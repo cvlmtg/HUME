@@ -76,6 +76,9 @@
 - `:plum-install-plugins`/`:plum-update-plugins` fail instead of hanging when git asks for credentials.
 - Counted undo/redo (`5u`, `3 Ctrl-r`) is much faster over a long history.
 - A server capability set to `null` is now treated as unsupported.
+- `.` now repeats a completion accepted during the Insert session, and no longer reopens the completion popup to do it.
+- `.` now repeats a picker pick made during the Insert session, without reopening the picker.
+- `.` now repeats cursor movement made during the Insert session, such as an arrow key.
 
 ## [0.12.0] - 2026-09-08
 

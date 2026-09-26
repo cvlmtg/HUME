@@ -187,8 +187,7 @@ pub(in crate::editor) enum EditSessionKind {
     Paste { before: bool },
     /// `Editor::replay_dot`'s own placeholder, pre-opened before the
     /// replayed body runs, to fold a recipe replay plus the main edit into
-    /// one undo revision and to signal `begin_insert_session` that
-    /// keystroke recording should be suppressed. Holds no data of its own —
+    /// one undo revision. Holds no data of its own —
     /// nothing ever composes into it directly, and no `InsertLayer` or
     /// paste-cycle state is attached while it's this kind. The replayed
     /// body resolves it to `Insert` or `Paste` in place

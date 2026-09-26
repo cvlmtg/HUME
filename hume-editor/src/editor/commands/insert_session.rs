@@ -1,5 +1,6 @@
 //! Insert-mode session lifecycle: entering/exiting Insert as a repeatable
-//! action, with the undo group and dot-repeat bookkeeping that entails.
+//! action, with the undo group, typed run, and autoindent state that
+//! entails. What `.` replays is recorded elsewhere (`replay.rs`).
 
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -11,7 +12,6 @@ use crate::editor::buffer::LastInsert;
 use crate::editor::doc_ops;
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::{PaneBufferState, TypedRun};
-use crate::editor::replay::InsertSession;
 use hume_ops::edit::clear_blank_line_indent;
 
 use super::{FocusedPane, doc, pane_selections, refuse_if_read_only};
@@ -188,32 +188,16 @@ pub(super) fn begin_insert_session_preserving_register(
         return Ok(());
     }
     let (pid, bid) = (fp.pid(), fp.bid(view));
-    // Two separate questions, load-bearing for dot-repeat replay:
-    //
-    // - Whether to open/retarget the group at all: needed unless a real
-    //   Insert session is *already* open here (`replay_dot` never leaves one
-    //   of those — it pre-opens a `Replay`-kind placeholder instead, which
-    //   this call retargets to `Insert` in place via `doc_ops::
-    //   begin_edit_group`'s own `open_or_retarget` delegation).
-    // - Whether to start fresh keystroke recording: skipped whenever a group
-    //   was *already* open here under either shape (real Insert, or the
-    //   Replay placeholder) — both mean "we are replaying" → re-type from
-    //   `insert_keys` instead of recording fresh. Do NOT weaken this into a
-    //   separate flag without also fixing the replay signal.
-    //
-    // The implied assumption — that no Steel body can reach
-    // `begin_insert_session` with a group already open outside of replay —
-    // holds because Steel has no transaction / begin-edit-group builtin, and
-    // none should ever be added: fine-grained undo grouping belongs to
-    // native commands, not scripts.
+    // Already open here means this entry runs inside a live Insert session
+    // (a binding re-entering Insert), whose group it joins. Otherwise open
+    // one — or, under `replay_dot`, retarget its `Replay`-kind placeholder to
+    // `Insert` in place (`doc_ops::begin_edit_group`'s own
+    // `open_or_retarget` delegation), so the replayed session folds into the
+    // same undo revision as the rest of the replay.
     let already_insert = state
         .active_session
         .as_ref()
         .is_some_and(|s| s.is_insert_at(pid, bid));
-    let replay_placeholder_open = state
-        .active_session
-        .as_ref()
-        .is_some_and(|s| s.is_replay_at(pid, bid));
     if !already_insert {
         doc_ops::begin_edit_group(
             &state.buffers,
@@ -222,11 +206,6 @@ pub(super) fn begin_insert_session_preserving_register(
             pid,
             bid,
         )?;
-    }
-    if !already_insert && !replay_placeholder_open {
-        state.insert_session = Some(InsertSession {
-            keystrokes: Vec::new(),
-        });
     }
     state.push_mode_layer(
         view,
@@ -256,7 +235,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
 /// The bookkeeping that runs when the `Insert` layer leaves the stack, for
 /// any reason (Esc, Ctrl-c, a mouse click, a Steel-triggered mode change) —
 /// called from `EditorState::tear_down`'s `Insert` arm, never directly.
-/// Finalises the undo/repeat state; does not itself touch the stack (the
+/// Finalises the undo and typed-run state; does not itself touch the stack (the
 /// truncate that got here already removed the layer).
 ///
 /// Acts on the `(pane, buffer)` the open session recorded, never on focus:
@@ -307,14 +286,6 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         &state.panes.state,
         &mut state.active_session,
     );
-    // `extend`, not assign: an Insert-key binding that exits and re-enters
-    // Insert tears down twice against the same action.
-    if let (Some(session), Some(action)) = (
-        state.insert_session.take(),
-        state.last_repeatable_action.as_mut(),
-    ) {
-        action.insert_keys.extend(session.keystrokes);
-    }
     // Every insert entry pins one typed run via `begin_typed_run` —
     // reconstruct each selection's typed span here via `typed_span`. A count
     // mismatch (selections merged mid-session, e.g. via Backspace) drops the

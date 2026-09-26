@@ -452,9 +452,8 @@ fn report_refusal(state: &mut EditorState, e: CommandError) {
 }
 
 /// Run a bound native command's body with no dispatch bookkeeping — the
-/// shape dot-repeat replay
-/// ([`crate::editor::Editor::replay_dot`]) and the Insert-mode `Edit`
-/// short-circuit (`input_stack/insert.rs`) both need directly; [`run`] wraps
+/// shape dot-repeat replay ([`crate::editor::Editor::replay_dot`]) needs
+/// directly; [`run`] wraps
 /// it with the bookkeeping every other dispatch also needs. Infallible —
 /// EditorCmd errors are reported but never propagated.
 ///
@@ -712,21 +711,27 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
     }
 }
 
-/// Whether `last_repeatable_action` belongs to a command other than the one
-/// about to (maybe) stamp it — a repeatable command dispatched while an
-/// Insert session is open, or while an Insert key's own keymap binding is
-/// running, must not steal the slot from whichever command opened the
-/// session. Shared by [`run`] (the native path, above) and `Editor::
-/// dispatch`'s Steel path, which otherwise each re-derived their own copy
-/// of this same check.
+/// Whether `last_repeatable_action` already belongs to something a command
+/// dispatched now must not replace — shared by [`run`] (the native path,
+/// above) and `Editor::dispatch`'s Steel path. Three owners:
 ///
-/// `in_insert_key_dispatch` covers the case `insert_session.is_some()`
-/// alone would miss: a binding that itself leaves Insert mid-body
-/// (`exit-insert`) and then dispatches a repeatable command — the session
-/// is already closed by the time that inner command runs, but the slot
-/// still belongs to the binding's own outer command, not to it.
-pub(in crate::editor) fn insert_owns_repeat_slot(state: &EditorState) -> bool {
-    state.insert_session.is_some() || state.in_insert_key_dispatch
+/// - The live Insert session's own entry command: its inputs are being
+///   appended to that action (`EditorState::record_insert_input`), so
+///   anything dispatched mid-session — a bound key, a hook, a timer — must
+///   leave it in place.
+/// - An Insert key's binding, for its whole dispatch: one that leaves Insert
+///   mid-body (`exit-insert`) and then dispatches a repeatable command is
+///   still the session's input, not a new action — and one that re-enters
+///   Insert keeps recording into the same action.
+/// - `replay_dot`, which holds the action for its whole extent and restores
+///   it afterwards: a stamp in between would only be overwritten.
+///
+/// Read *before* the body on both paths: `i`/`c`/`o` open the session inside
+/// their own body, and a `#:repeatable` Steel wrapper whose `call!` opens it
+/// must still stamp over that inner entry (outer name wins) — both need the
+/// mode they were dispatched in, not the one they leave behind.
+pub(in crate::editor) fn repeat_slot_owned(state: &EditorState) -> bool {
+    state.mode() == Mode::Insert || state.in_insert_key_dispatch || state.dot_replay
 }
 
 /// Record last_repeatable_action for dot-repeat from the pre-body
@@ -746,7 +751,7 @@ pub(in crate::editor) fn step_stamp_repeatable(
             command: name.clone(),
             count,
             char_arg,
-            insert_keys: Vec::new(),
+            insert_inputs: Vec::new(),
             selection_recipe: recipe,
         });
     }
@@ -864,12 +869,8 @@ pub(in crate::editor) fn run(
     // rather than re-probed here on every dispatch.
     let pane = bound.pane();
     let focused = bound.target_focused();
-    // Snapshotted before the body, so `i`/`c`/`o` — which open the session
-    // *inside* their own body — still stamp: at entry there is nothing open
-    // yet. See `insert_owns_repeat_slot`'s own doc for why a dispatch
-    // in-flight under an Insert key's binding must not overwrite
-    // `last_repeatable_action` below regardless.
-    let in_insert = insert_owns_repeat_slot(state);
+    // Before the body — see `repeat_slot_owned`'s own doc for why.
+    let slot_owned = repeat_slot_owned(state);
 
     // BEFORE
     state.command_refused = false;
@@ -906,7 +907,7 @@ pub(in crate::editor) fn run(
         // `registry::tests::no_command_is_both_repeatable_and_selection_tracking`),
         // so `step_update_recipe` below clears it unconditionally regardless of
         // this branch — restoring it first would be immediately undone.
-        if !state.command_refused && !in_insert {
+        if !state.command_refused && !slot_owned {
             step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), char_arg, pre_recipe);
         }
         // A command whose own snapshot is `None` never reaches the `!selection_changed`

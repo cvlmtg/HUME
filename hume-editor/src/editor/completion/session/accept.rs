@@ -383,6 +383,7 @@ impl BufferSession {
         // `back`) goes through the simpler, dedicated `replace_around_
         // cursors` rather than re-deriving the same uniform count through
         // `replace_span_around_cursors`'s more general per-cursor form.
+        //
         let cs_cursors = match &item.text_edit {
             Some(_) => crate::editor::doc_ops::apply_doc_edit_grouped(
                 &mut state.buffers,
@@ -413,6 +414,12 @@ impl BufferSession {
                 },
             ),
         };
+        // Marks this dispatch (or completion accept — see `accept_completion_
+        // selection`'s own doc) interactive: whatever it and the rest of the
+        // Insert-key binding that called this do from here collapses into
+        // one net edit, replayed directly, never by re-running any of it
+        // (see `InsertInput::Result`'s own doc, and `DotCapture`'s).
+        state.mark_dot_interactive();
 
         if opened_group {
             crate::editor::doc_ops::commit_edit_group(

@@ -2,6 +2,16 @@ use super::*;
 use crate::editor::replay::InsertInput;
 use pretty_assertions::assert_eq;
 
+/// `i` is the recorded unbound key `ch`.
+fn is_key(i: &InsertInput, ch: char) -> bool {
+    matches!(i, InsertInput::Key(k) if k.code == KeyCode::Char(ch))
+}
+
+/// `i` is the recorded (non-interactive) binding of `name`.
+fn is_binding(i: &InsertInput, name: &str) -> bool {
+    matches!(i, InsertInput::Binding { name: n } if n == name)
+}
+
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────
 
 /// `d` deletes the selection. Moving then pressing `.` should delete the next selection.
@@ -181,10 +191,8 @@ fn dot_repeats_insert_before() {
 
 /// A replayed `a` with an empty typed run (nothing typed before Esc) must
 /// step the cursor back exactly like the interactive path, not silently
-/// stay put. `mark_insert_step_back` writes directly to `PaneBufferState`
-/// (not `InsertSession`, which `replay_dot` never creates — it pre-opens
-/// the edit group as its own replay signal instead) precisely so a
-/// replayed empty-run session isn't a no-op.
+/// stay put — the step-back flag lives on `PaneBufferState`, which a
+/// replayed session sets and reads exactly as a live one does.
 #[test]
 fn dot_repeat_replays_a_empty_run_step_back() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -542,7 +550,7 @@ fn dot_repeat_collapsed_cursor_empty_recipe() {
     );
 }
 
-/// `x c <text> Esc` records recipe=[select-line F] + insert_keys=[...]. `.` on
+/// `x c <text> Esc` records recipe=[select-line F] + insert_inputs=[...]. `.` on
 /// another line re-selects the full line, runs change, and retypes the text.
 ///
 /// Independent oracle: three-line buffer; `x c z Esc` on line 0 deletes
@@ -563,7 +571,7 @@ fn dot_repeats_change_reselects_line() {
     ed.feed_key(key_esc()); // back to Normal, cursor on 'z'
     assert_eq!(ed.doc().text().to_string(), "z\nbbb\nccc\n");
 
-    // Recipe must be [select-line]; insert_keys must be ['z'].
+    // Recipe must be [select-line]; insert_inputs must be ['z', Esc].
     {
         let action = ed.state.last_repeatable_action.as_ref().unwrap();
         assert_eq!(
@@ -572,9 +580,9 @@ fn dot_repeats_change_reselects_line() {
             "recipe must have select-line step"
         );
         assert_eq!(
-            action.insert_keys.len(),
-            1,
-            "insert_keys must capture typed chars"
+            action.insert_inputs.len(),
+            2,
+            "insert_inputs must capture the typed char and the Esc binding"
         );
     }
 
@@ -587,7 +595,7 @@ fn dot_repeats_change_reselects_line() {
     assert_eq!(
         ed.doc().text().to_string(),
         "z\nz\nccc\n",
-        "`.` must re-select the full line, change it, and replay insert_keys"
+        "`.` must re-select the full line, change it, and replay insert_inputs"
     );
 }
 
@@ -1548,21 +1556,21 @@ fn dot_repeat_replays_tab_via_insert_key_once() {
         .last_repeatable_action
         .as_ref()
         .expect("`i` must have stamped a repeatable action");
+    let inputs = &action.insert_inputs;
     assert_eq!(
-        action.insert_keys.len(),
-        1,
-        "must record exactly one entry — the tab-or-complete binding, not doubled"
+        inputs.len(),
+        2,
+        "the tab-or-complete binding once, not doubled, then Esc: {inputs:?}"
     );
     assert!(
-        matches!(&action.insert_keys[0], InsertInput::Command { name } if name == "tab-or-complete"),
-        "must record the bound Command, not a raw Key"
+        is_binding(&inputs[0], "tab-or-complete") && is_binding(&inputs[1], "exit-insert"),
+        "must record the binding, not a raw Key: {inputs:?}"
     );
 }
 
-/// A binding that leaves Insert and re-enters it tears the session down
-/// twice against the same repeatable action — the second teardown must add
-/// to what the first recorded, not replace it, or `.` loses everything typed
-/// before the binding ran.
+/// A binding that leaves Insert and re-enters it keeps recording into the
+/// same repeatable action — `.` must not lose everything typed before the
+/// binding ran, nor what was typed after it.
 #[test]
 fn insert_key_binding_reentering_insert_keeps_earlier_keys() {
     let tmp = safe_tempdir();
@@ -1591,22 +1599,18 @@ fn insert_key_binding_reentering_insert_keeps_earlier_keys() {
         .last_repeatable_action
         .as_ref()
         .expect("`i` must have stamped a repeatable action");
-    let is_key =
-        |i: &InsertInput, ch| matches!(i, InsertInput::Key(k) if k.code == KeyCode::Char(ch));
-    let keys = &action.insert_keys;
-    assert_eq!(keys.len(), 5, "got {keys:?}");
+    let keys = &action.insert_inputs;
+    assert_eq!(keys.len(), 6, "got {keys:?}");
     assert!(
         is_key(&keys[0], 'a') && is_key(&keys[1], 'b'),
         "got {keys:?}"
     );
-    assert!(
-        matches!(&keys[2], InsertInput::Command { name } if name == "reenter-tab"),
-        "got {keys:?}"
-    );
+    assert!(is_binding(&keys[2], "reenter-tab"), "got {keys:?}");
     assert!(
         is_key(&keys[3], 'c') && is_key(&keys[4], 'd'),
         "got {keys:?}"
     );
+    assert!(is_binding(&keys[5], "exit-insert"), "got {keys:?}");
 
     ed.feed_key(key('j'));
     ed.feed_key(key('g'));
@@ -1692,8 +1696,8 @@ fn dot_repeat_stops_when_an_insert_key_command_fails_on_replay() {
 }
 
 /// An unbound Insert key with no default behaviour (an unbound Ctrl-chord)
-/// edits nothing, so it must not be recorded for dot-repeat — only the typed
-/// char that follows it is.
+/// does nothing, so it must not be recorded for dot-repeat — only the typed
+/// char that follows it, and the Esc binding, are.
 #[test]
 fn unbound_insert_key_with_no_default_behaviour_is_not_recorded() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -1709,26 +1713,20 @@ fn unbound_insert_key_with_no_default_behaviour_is_not_recorded() {
         .last_repeatable_action
         .as_ref()
         .expect("`i` must have stamped a repeatable action");
-    assert_eq!(
-        action.insert_keys.len(),
-        1,
-        "only the typed char may be recorded, got {:?}",
-        action.insert_keys
-    );
+    let inputs = &action.insert_inputs;
+    assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
-        matches!(&action.insert_keys[0], InsertInput::Key(k) if k.code == KeyCode::Char('z')),
-        "the one entry must be the typed `z`, got {:?}",
-        action.insert_keys
+        is_key(&inputs[0], 'z') && is_binding(&inputs[1], "exit-insert"),
+        "only the typed `z` and Esc may be recorded, got {inputs:?}"
     );
 }
 
-/// A Tab binding that takes its "trigger completion" branch instead records
-/// nothing — `completion-trigger` never edits the buffer, so `run_body`'s
-/// `edited` check excludes it, and the Tab keypress itself never reaches
-/// `commands::insert_default_key` (it matched the keymap). `.` must not
-/// try to reopen a completion popup.
+/// A Tab binding that takes its "trigger completion" branch is recorded like
+/// any binding and re-run by `.`, reopening the popup at the new cursor —
+/// which the replayed Esc then closes, so nothing survives the replay, even
+/// once the source's queued answer lands.
 #[test]
-fn tab_or_complete_completion_branch_is_not_recorded_for_dot_repeat() {
+fn tab_or_complete_completion_branch_leaves_no_popup_after_dot_repeat() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[h]>ello\n");
     let source = format!(
@@ -1742,27 +1740,159 @@ fn tab_or_complete_completion_branch_is_not_recorded_for_dot_repeat() {
     ed.feed_key(key('i'));
     ed.feed_key(key_tab());
     ed.settle();
-    ed.feed_key(key_esc());
+    ed.feed_key(key_esc()); // dismisses the popup, staying in Insert
+    ed.feed_key(key_esc()); // leaves Insert
 
-    let action = ed
+    let inputs = &ed
         .state
         .last_repeatable_action
         .as_ref()
-        .expect("`i` must have stamped a repeatable action");
+        .expect("`i` must have stamped a repeatable action")
+        .insert_inputs;
+    assert_eq!(inputs.len(), 2, "got {inputs:?}");
     assert!(
-        action.insert_keys.is_empty(),
-        "triggering completion must record nothing for dot-repeat, got {:?}",
-        action.insert_keys
+        is_binding(&inputs[0], "tab-or-complete") && is_binding(&inputs[1], "exit-insert"),
+        "got {inputs:?}"
     );
+
+    ed.feed_key(key('.'));
+    ed.settle();
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(ed.state.input.buffer_completion().is_none());
+    assert_eq!(ed.doc().text().to_string(), "hello\n");
+}
+
+/// Drives `c`, types "he", opens completion, then presses `accept` — which
+/// must accept "hello", optionally followed by `then` — and leaves Insert.
+/// Whether `accept` is the popup's own Enter or an Insert-key binding
+/// calling `completion-accept!`, the result is recorded the same way: one
+/// `InsertInput::Result` covering the whole accept, and, for a binding that
+/// edits further after accepting, that follow-up edit too — the two can't
+/// be split, since neither is safe to re-derive once either has gone
+/// interactive (see `DotCapture`'s own doc). Asserts that shape, and that
+/// `.` on "bar" reproduces the same text in one undo step.
+///
+/// Independent oracle: the text a live `c he<accept>` wrote in the first
+/// pair of parens is exactly what `.` must write in the second.
+fn assert_accepted_completion_is_dot_repeated(extra_script: &str, accept: KeyEvent, then: &str) {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("(-[foo]>) (bar)\n");
+    let source = format!(
+        "{}\n{extra_script}",
+        completion_source("test", &completion_labels(&["hello"]), "")
+    );
+    run(&mut ed, tmp.path(), &source);
+
+    ed.feed_key(key('c'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('e'));
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+    ed.feed_key(accept);
+    ed.feed_key(key_esc());
+    assert_eq!(
+        ed.doc().text().to_string(),
+        format!("(hello{then}) (bar)\n")
+    );
+
+    let inputs = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`c` must have stamped a repeatable action")
+        .insert_inputs;
+    assert_eq!(inputs.len(), 5, "got {inputs:?}");
+    let expect_text = format!("hello{then}");
+    assert!(
+        is_key(&inputs[0], 'h')
+            && is_key(&inputs[1], 'e')
+            && is_binding(&inputs[2], "completion-trigger")
+            && matches!(&inputs[3], InsertInput::Result(r)
+                if r.back == 2 && r.forward == 0 && r.text == expect_text)
+            && is_binding(&inputs[4], "exit-insert"),
+        "got {inputs:?}"
+    );
+
+    let (_, sels) = parse_state(&format!("(hello{then}) (-[bar]>)\n"));
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        format!("(hello{then}) (hello{then})\n")
+    );
+
+    ed.feed_key(key('u'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        format!("(hello{then}) (bar)\n")
+    );
+}
+
+#[test]
+fn dot_repeats_a_completion_accepted_with_enter() {
+    assert_accepted_completion_is_dot_repeated("", key_enter(), "");
+}
+
+/// An Insert-key binding calling `completion-accept!` is never re-run by
+/// `.`: its net edit is recorded as an `InsertInput::Result` and replayed
+/// directly, with no completion session to pick from (see that variant's
+/// own doc).
+#[test]
+fn dot_repeats_a_completion_accepted_by_an_insert_key_binding() {
+    assert_accepted_completion_is_dot_repeated(
+        r#"(define-command! "accept-first" "" (lambda (pane) (completion-accept! 0)))
+           (bind-key! 'insert "ctrl-y" "accept-first")"#,
+        key_ctrl('y'),
+        "",
+    );
+}
+
+/// A binding that accepts and then edits records the whole dispatch as one
+/// net edit — the accepted text and the follow-up edit together, not the
+/// accept alone — and `.` replays that one edit, never the binding itself.
+#[test]
+fn dot_repeats_an_insert_key_binding_that_accepts_then_edits() {
+    assert_accepted_completion_is_dot_repeated(
+        r#"(define-command! "accept-space" "" (lambda (pane)
+             (completion-accept! 0)
+             (insert-key! pane "space")))
+           (bind-key! 'insert "ctrl-y" "accept-space")"#,
+        key_ctrl('y'),
+        " ",
+    );
+}
+
+/// A bound motion inside the session (here the Left arrow) is replayed in
+/// order, so text typed after it lands where it did live.
+///
+/// Independent oracle: `i ab <Left> c` writes "acb" — the `c` lands between
+/// `a` and `b` — so `.` at the next line's start must write "acb" too.
+#[test]
+fn dot_repeats_an_arrow_key_inside_insert() {
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_left());
+    ed.feed_key(key('c'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "acbhello\nworld\n");
+
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "acbhello\nacbworld\n");
 }
 
 /// A native command bound directly to an Insert key must not overwrite
 /// `last_repeatable_action` if it's itself repeatable — that slot belongs to
-/// whichever command opened the Insert session; this command's own effect
-/// is recorded into that session's `insert_keys` instead (proven by
+/// whichever command opened the Insert session; the key is recorded into
+/// that action's `insert_inputs` instead (proven by
 /// `dot_repeats_ctrl_w_inside_insert`'s same mechanism).
 ///
-/// Fail oracle: without the `in_insert` gate on `step_stamp_repeatable`,
+/// Fail oracle: without the `repeat_slot_owned` gate on `step_stamp_repeatable`,
 /// `last_repeatable_action.command` would read `"delete"` (stamped by
 /// `Ctrl-x`'s own dispatch through `commands::run`) instead of the command
 /// that opened the session.
@@ -1919,5 +2049,304 @@ fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
         "ab;c\nde;f\n",
         "replay must redo the goto-line-end motion before the ';' fallback, \
          landing the semicolon one before the second line's own last char"
+    );
+}
+
+// ── Interactive Insert-key bindings: picker ─────────────────────────────────
+
+/// An Insert-key binding that opens a picker is interactive, the same as
+/// one that calls `completion-accept!`: `.` never reopens the picker —
+/// the pick's own net edit (whatever its `on_select` did, here a native
+/// `delete-word-backward` chosen once a real item is picked) is recorded
+/// as an `InsertInput::Result` and replayed directly.
+///
+/// Independent oracle: live `i <ctrl-y> <enter>` deletes the word behind
+/// the cursor ("abc ") with nothing typed in between — so `.` at the front
+/// of "xyz" must delete "uvw " the same way, with no picker ever opening
+/// during replay.
+#[test]
+fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick-word" ""
+             (lambda (pane)
+               (picker! pane (list (cons "alpha" "ALPHA"))
+                 (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
+           (bind-key! 'insert "ctrl-y" "pick-word")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+    ed.feed_key(key_enter());
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "the pick's own edit must close the picker"
+    );
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "def\nuvw xyz\n");
+
+    let inputs = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action")
+        .insert_inputs;
+    assert_eq!(inputs.len(), 2, "got {inputs:?}");
+    assert!(
+        matches!(&inputs[0], InsertInput::Result(r)
+            if r.back == 4 && r.forward == 0 && r.text.is_empty())
+            && is_binding(&inputs[1], "exit-insert"),
+        "got {inputs:?}"
+    );
+
+    let (_, sels) = parse_state("def\nuvw -[x]>yz\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "def\nxyz\n",
+        "replay must delete \"uvw \" directly, never reopen the picker"
+    );
+    assert!(ed.state.input.picker().is_none());
+}
+
+/// A picker dismissed with Esc records nothing: `on_select` receives `#f`
+/// and does nothing, so the capture's diff is identity and the `Binding`
+/// entry it armed is dropped outright — `.` replays only the keys typed
+/// around it.
+#[test]
+fn dot_repeat_drops_a_dismissed_pickers_binding_entry() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick-word" ""
+             (lambda (pane)
+               (picker! pane (list (cons "alpha" "ALPHA"))
+                 (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
+           (bind-key! 'insert "ctrl-y" "pick-word")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key('y'));
+    ed.feed_key(key_ctrl('y'));
+    ed.feed_key(key_esc()); // dismisses the picker, staying in Insert
+    ed.settle();
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: still in Insert");
+    ed.feed_key(key_esc()); // leaves Insert
+    assert_eq!(ed.doc().text().to_string(), "xyhello\nworld\n");
+
+    let inputs = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action")
+        .insert_inputs;
+    assert_eq!(
+        inputs.len(),
+        3,
+        "the dismissed picker's entry is dropped: {inputs:?}"
+    );
+    assert!(
+        is_key(&inputs[0], 'x') && is_key(&inputs[1], 'y') && is_binding(&inputs[2], "exit-insert"),
+        "got {inputs:?}"
+    );
+
+    let (_, sels) = parse_state("xyhello\n-[w]>orld\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "xyhello\nxyworld\n");
+}
+
+// ── Interactive Insert-key bindings: completion via a session query ────────
+
+/// A binding that consults `completion-top` to decide its own branch: live,
+/// with no completion open, it falls back to a literal tab — a
+/// non-interactive outcome, so `.` re-runs the binding itself, which
+/// re-checks `completion-top` fresh at the new cursor (also empty there)
+/// and reaches the same fallback.
+#[test]
+fn dot_repeat_smart_accept_binding_fallback_branch() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    let source = format!(
+        "{}\n{}",
+        completion_source("test", &completion_labels(&["hi"]), ""),
+        r#"(define-command! "smart-accept" ""
+             (lambda (pane)
+               (if (null? (completion-top 1))
+                   (insert-key! pane "tab")
+                   (completion-accept! 0))))
+           (bind-key! 'insert "ctrl-y" "smart-accept")"#
+    );
+    run(&mut ed, tmp.path(), &source);
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "\thello\nworld\n");
+
+    let inputs = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action")
+        .insert_inputs;
+    assert_eq!(inputs.len(), 2, "got {inputs:?}");
+    assert!(
+        is_binding(&inputs[0], "smart-accept") && is_binding(&inputs[1], "exit-insert"),
+        "the fallback branch is non-interactive, recorded as a re-runnable Binding: {inputs:?}"
+    );
+
+    let (_, sels) = parse_state("\thello\n-[w]>orld\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\thello\n\tworld\n",
+        "replay re-runs the binding, which reaches the same fallback at the new cursor"
+    );
+}
+
+/// The same `smart-accept` binding's *accept* branch: live, with a
+/// completion open, `completion-top` is non-empty and it accepts instead —
+/// recorded as an `InsertInput::Result`, not a `Binding`, so `.` applies
+/// the accepted text directly rather than re-checking `completion-top`
+/// (which would find no session during replay and wrongly fall back to a
+/// literal tab — the bug this fixes).
+#[test]
+fn dot_repeat_smart_accept_binding_accept_branch() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("(-[foo]>) (bar)\n");
+    let source = format!(
+        "{}\n{}",
+        completion_source("test", &completion_labels(&["hello"]), ""),
+        r#"(define-command! "smart-accept" ""
+             (lambda (pane)
+               (if (null? (completion-top 1))
+                   (insert-key! pane "tab")
+                   (completion-accept! 0))))
+           (bind-key! 'insert "ctrl-y" "smart-accept")"#
+    );
+    run(&mut ed, tmp.path(), &source);
+
+    ed.feed_key(key('c'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('e'));
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+    ed.feed_key(key_ctrl('y'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "(hello) (bar)\n");
+
+    let inputs = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`c` must have stamped a repeatable action")
+        .insert_inputs;
+    assert_eq!(inputs.len(), 5, "got {inputs:?}");
+    assert!(
+        matches!(&inputs[3], InsertInput::Result(r)
+            if r.back == 2 && r.forward == 0 && r.text == "hello"),
+        "got {inputs:?}"
+    );
+
+    let (_, sels) = parse_state("(hello) (-[bar]>)\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "(hello) (hello)\n",
+        "replay must apply the recorded accept, never re-check completion-top"
+    );
+}
+
+// ── Interactive Insert-key bindings: failure and mode-exit corner cases ────
+
+/// A binding that errors (live and again on replay) is reported and
+/// skipped, not fatal to the rest of the session: keys typed after it must
+/// still replay, matching what the live session actually did.
+#[test]
+fn dot_repeat_continues_past_a_binding_that_fails_on_replay() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "sometimes-fails" "" (lambda (pane) (error "boom")))
+           (bind-key! 'insert "ctrl-x" "sometimes-fails")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key_ctrl('x')); // errors live too, reported
+    assert!(status(&ed).contains("boom"), "got: {}", status(&ed));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "abhello\nworld\n");
+
+    let (_, sels) = parse_state("abhello\n-[w]>orld\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abhello\nabworld\n",
+        "replay must still type 'b' after the failing binding, not stop there"
+    );
+}
+
+/// A binding whose branch depends on mutable Steel state takes a
+/// non-interactive path live (recorded as a re-runnable `Binding`) but the
+/// interactive one on replay (the same global flipped by the live run) —
+/// `completion-accept!` refuses loudly instead of silently accepting
+/// against a session that was never opened this time.
+#[test]
+fn dot_repeat_binding_taking_the_interactive_branch_only_on_replay_errors_loudly() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define first-run #t)
+           (define-command! "toggle" ""
+             (lambda (pane)
+               (if first-run
+                   (begin (set! first-run #f) (insert-key! pane "tab"))
+                   (completion-accept! 0))))
+           (bind-key! 'insert "ctrl-x" "toggle")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "\thello\nworld\n");
+
+    let (_, sels) = parse_state("\thello\n-[w]>orld\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+
+    assert!(
+        status(&ed).contains("reached during"),
+        "got: {}",
+        status(&ed)
+    );
+    assert!(
+        ed.state.input.picker().is_none(),
+        "the guard must refuse before touching any session"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\thello\nworld\n",
+        "the failed toggle inserted nothing, but the replayed exit-insert still ran"
     );
 }

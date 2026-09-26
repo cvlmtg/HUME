@@ -173,10 +173,9 @@ fn enter_esc_trims_auto_inserted_blank_line() {
 
 /// Dot-repeat replays an Enter-then-Esc insert session as a unit: the
 /// replayed Enter must also be trimmed on the replayed Esc. `autoindent`
-/// lives on `PaneBufferState` (not `InsertSession`, which is absent during
-/// replay — see its doc comment) specifically so this holds: the replayed
+/// lives on `PaneBufferState` specifically so this holds: the replayed
 /// Enter arms a fresh record the same way an interactive one would, and
-/// `end_insert_session`'s explicit post-replay call reads it back.
+/// the replayed Esc's teardown reads it back.
 #[test]
 fn dot_repeat_replays_enter_esc_trim() {
     // Cursor starts on line 0's own trailing '\n' ("  x\n"); line 1 ("  y\n")

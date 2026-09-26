@@ -1255,8 +1255,8 @@ impl Editor {
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
     /// `ed.state.last_repeatable_action` — (command, count, char_arg) if set.
-    /// `insert_keys` is excluded: it is always empty at dispatch time and only
-    /// filled later by `end_insert_session` (a handle_key-tail concern).
+    /// `insert_inputs` is excluded: it is always empty at dispatch time and
+    /// only filled by the Insert session's own later inputs.
     pub last_repeatable: Option<(String, usize, Option<char>)>,
     /// Total jump entries in the focused pane (not filtered by buffer) after dispatch.
     pub jump_len: usize,

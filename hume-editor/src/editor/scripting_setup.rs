@@ -387,6 +387,9 @@ impl Editor {
                 return false;
             }
             self.run_pending_batch(batch);
+            // After the batch has actually run, never before — see
+            // `resolve_dot_capture_if_ready`'s own doc for why.
+            self.resolve_dot_capture_if_ready();
         }
     }
 

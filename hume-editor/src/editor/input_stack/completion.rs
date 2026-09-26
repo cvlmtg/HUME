@@ -351,6 +351,13 @@ fn move_minibuf_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool
 /// either way (success or failure), matching `EditorHostImpl`'s own
 /// `completion_accept`. `Buffer`-target only — a `Minibuf`-target session
 /// has no separate accept step (see `completion_input_minibuf`'s doc).
+///
+/// Wrapped in the same before/after dot-capture checkpoint `handle_insert`
+/// uses around a bound key's own dispatch (see `DotCapture`'s own doc):
+/// this Enter keypress is outside any Insert-key binding, but `accept`
+/// itself always calls `EditorState::mark_dot_interactive`, so the
+/// checkpoint always finalizes here (never arms — accepting a completion
+/// never opens a picker).
 fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     let selected = ed
         .state
@@ -360,7 +367,11 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     let Some(session) = ed.state.take_buffer_completion(&ed.view) else {
         return;
     };
+
+    let (pid, bid, cs_before, head_before) = ed.snapshot_dot_capture_seed();
     if let Err(msg) = session.accept(&mut ed.state, &ed.view, &mut ed.lsp, selected) {
         ed.report(Severity::Error, msg);
+        return;
     }
+    ed.resolve_or_arm_dot_capture(pid, bid, cs_before, head_before, false);
 }
