@@ -7,13 +7,13 @@
 //! keys through the normal event path.
 
 use hume_editing::changeset::{ChangeSet, Operation};
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 use std::borrow::Cow;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
-use super::edit_session::{self, EditSessionKind};
+use super::edit_session::{self, DotCapture, EditSessionKind};
 use super::registry::MappableCommand;
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
@@ -28,8 +28,7 @@ use super::{Editor, EditorState, Mode, commands, doc_ops};
 /// completion, picking a picker item) — which is recorded as its own net
 /// edit and replayed by applying that edit, never by re-running whatever
 /// produced it: re-running would re-open the popup/picker instead of
-/// reproducing the pick (see [`Result`](InsertInput::Result)'s own doc, and
-/// `docs/LESSONS.md`'s L23).
+/// reproducing the pick (see [`Result`](InsertInput::Result)'s own doc).
 #[derive(Debug, Clone)]
 pub(crate) enum InsertInput {
     /// A key with no Insert keymap binding: one run of its *default*
@@ -66,47 +65,6 @@ pub(crate) struct CursorReplacement {
     pub(in crate::editor) back: usize,
     pub(in crate::editor) forward: usize,
     pub(in crate::editor) text: String,
-}
-
-/// Snapshotted by `handle_insert`/`accept_completion_selection` before an
-/// Insert-key dispatch or a completion accept runs, and handed to
-/// [`Editor::resolve_or_arm_dot_capture`] right after — the checkpoint that
-/// decides what became of the `Binding` entry the dispatch started with,
-/// using [`EditorState::dot_capture_claimed`] (set by whichever of
-/// `completion-accept!`/`picker!`/`live-picker!` fired, if any) to tell a
-/// non-interactive binding (left as `Binding`, re-run on replay) from an
-/// interactive one (diffed into a [`InsertInput::Result`] against this
-/// snapshot — see that variant's own doc, and `docs/LESSONS.md`'s L23
-/// addendum).
-///
-/// Whatever ran between the snapshot and the checkpoint collapses into
-/// *one* net edit — a binding that accepts a completion and then runs its
-/// own follow-up edit (an auto-inserted space, say) records both together,
-/// never the accept alone: once any part of a dispatch goes interactive,
-/// none of it is safe to re-derive at a new cursor, so the whole thing is
-/// captured as data instead.
-///
-/// A completion accept resolves within that one checkpoint call, always.
-/// Opening a picker is the one case that can't: the pick itself (or a
-/// dismissal) resolves later, via `on_select`, queued as a
-/// `PendingWork::Call` well after the dispatch that opened it has already
-/// returned — for that case alone, `resolve_or_arm_dot_capture` stores this
-/// snapshot as [`EditorState::dot_capture`] instead of finalizing on the
-/// spot, and [`Editor::resolve_dot_capture_if_ready`] finalizes it once the
-/// pick lands. A picker chain (`on_select` itself opening another picker)
-/// simply leaves it armed longer: that method only finalizes once no
-/// picker is left open at all, however many links the chain has.
-pub(crate) struct DotCapture {
-    pub(in crate::editor) pid: PaneId,
-    pub(in crate::editor) bid: BufferId,
-    /// The open Insert session's own composed edits, as of just before the
-    /// binding's dispatch began — `None` for an as-yet-untouched session,
-    /// which composes identically to `Some(ChangeSet::identity(..))` in the
-    /// diff `resolve_dot_capture_if_ready` performs, so there is no need to
-    /// mint one just to fill this in.
-    pub(in crate::editor) cs_before: Option<ChangeSet>,
-    /// The primary cursor's head at that same moment.
-    pub(in crate::editor) head_before: CharOffset,
 }
 
 /// One selection-building step in a dot-repeat recipe.
@@ -212,17 +170,19 @@ impl EditorState {
 
     /// Marks the Insert-key dispatch or completion-accept currently in
     /// progress as interactive — called by `completion-accept!`/`picker!`/
-    /// `live-picker!` themselves, whichever fires first, so a binding
-    /// becomes interactive by calling one of them rather than by
-    /// declaring it (see `InsertInput::Result`'s own doc, and
-    /// `docs/LESSONS.md`'s L23 addendum). Read once and reset by
-    /// [`Editor::resolve_or_arm_dot_capture`], right after the dispatch or
-    /// accept that might have called this returns — a stray call from
-    /// anywhere else (outside Insert, from a hook) is harmless: nothing
-    /// reads this flag except that one checkpoint, which always resets it
-    /// first.
+    /// `live-picker!`/`completion-trigger` themselves, whichever fires
+    /// first, so a binding becomes interactive by calling one of them
+    /// rather than by declaring it (see `InsertInput::Result`'s own doc).
+    /// No-op if no capture is armed — a stray call from outside an armed
+    /// dispatch (a hook, a timer) is harmless, since nothing else reads it.
     pub(in crate::editor) fn mark_dot_interactive(&mut self) {
-        self.dot_capture_claimed = true;
+        if let Some(cap) = self
+            .active_session
+            .as_mut()
+            .and_then(|s| s.dot_capture_mut())
+        {
+            cap.interactive = true;
+        }
     }
 
     /// Applies a recorded interactive result `r` at `fp`'s cursors, as one
@@ -270,6 +230,53 @@ impl EditorState {
         );
         self.dismiss_completion(view);
         Ok(())
+    }
+
+    /// `Editor::resolve_dot_capture`'s finalize step, and `tear_down_insert`'s
+    /// own backstop for a capture whose session ends before that checkpoint
+    /// runs (an Insert-key binding that accepts a completion and then calls
+    /// `exit-insert` in the same dispatch). Composes `cap`'s recorded edits
+    /// into one net transform via [`ChangeSet::compose_all`], extracts the
+    /// region under `cap.head_before` via [`cursor_replacement_at`], and
+    /// either replaces the `Binding` placeholder entry with it
+    /// (`cap.has_placeholder`) or pushes it as a new entry
+    /// (`accept_completion_selection`'s own Enter, which pushed no
+    /// placeholder). Drops or skips it instead when there is nothing to
+    /// replay: nothing was edited at all (an Esc-dismissed picker whose
+    /// `on_select` received `#f` and did nothing), or the edit didn't touch
+    /// the cursor.
+    pub(in crate::editor) fn finalize_dot_capture(&mut self, cap: DotCapture) {
+        let Some(action) = self.last_repeatable_action.as_mut() else {
+            return;
+        };
+        if cap.has_placeholder
+            && !matches!(
+                action.insert_inputs.last(),
+                Some(InsertInput::Binding { .. })
+            )
+        {
+            // Nothing else can append while a modal picker owns input (see
+            // `DotCapture`'s own doc) — reaching this means the Insert
+            // session this capture belonged to has since ended some other
+            // way, and there is nothing left to replace.
+            return;
+        }
+        let outcome = ChangeSet::compose_all(cap.edits)
+            .and_then(|delta| cursor_replacement_at(&delta, cap.head_before));
+        match (outcome, cap.has_placeholder) {
+            (Some(r), true) => {
+                let entry = action
+                    .insert_inputs
+                    .last_mut()
+                    .expect("checked present above; nothing else touches it meanwhile");
+                *entry = InsertInput::Result(r);
+            }
+            (Some(r), false) => action.insert_inputs.push(InsertInput::Result(r)),
+            (None, true) => {
+                action.insert_inputs.pop();
+            }
+            (None, false) => {} // no placeholder was pushed; nothing to undo
+        }
     }
 }
 
@@ -511,9 +518,10 @@ impl Editor {
     /// [`InsertInput`]). A failed or unregistered `Binding`, or a `Result`
     /// that no longer applies, is reported and skipped rather than stopping
     /// the loop: the live session kept going past it too, so replay does the
-    /// same — see `docs/LESSONS.md`'s L23 addendum. Only a `Binding` that
-    /// successfully leaves Insert genuinely stops it: nothing recorded after
-    /// it can apply outside the session it was typed into.
+    /// same. Any `Binding` that leaves Insert genuinely stops it, whether or
+    /// not it also succeeded — a body that calls `exit-insert` and then
+    /// errors has still left, and nothing recorded after it can apply
+    /// outside the session it was typed into.
     fn replay_insert_inputs(&mut self, inputs: &[InsertInput], fp: commands::FocusedPane) {
         for input in inputs {
             match input {
@@ -554,7 +562,7 @@ impl Editor {
                     // interactive builtin the body calls this time (it
                     // decided differently than it did live) refuses loudly
                     // instead — see `EditorState::dot_replay`'s own doc.
-                    let ok = self.with_insert_key_dispatch(|ed| {
+                    self.with_insert_key_dispatch(|ed| {
                         ed.replay_command(
                             cmd,
                             fp,
@@ -562,7 +570,13 @@ impl Editor {
                             None,
                         )
                     });
-                    if ok && self.state.mode() != Mode::Insert {
+                    // Checked regardless of success: a body that calls
+                    // `exit-insert` and then fails (an error raised after
+                    // that call already ran) still left Insert — nothing
+                    // recorded after it belongs to a session that's gone,
+                    // whether the binding that closed it also succeeded or
+                    // not.
+                    if self.state.mode() != Mode::Insert {
                         return;
                     }
                 }
@@ -570,209 +584,63 @@ impl Editor {
         }
     }
 
-    /// Snapshot to arm [`Self::resolve_or_arm_dot_capture`] around an
-    /// operation that might go interactive — `handle_insert`'s Leaf branch,
-    /// or `accept_completion_selection`'s own accept. Taken before the
-    /// operation runs, the only chance to see it (see [`DotCapture`]'s own
-    /// doc), and resets [`EditorState::dot_capture_claimed`], the flag
-    /// `resolve_or_arm_dot_capture` reads.
-    pub(in crate::editor) fn snapshot_dot_capture_seed(
-        &mut self,
-    ) -> (PaneId, BufferId, Option<ChangeSet>, CharOffset) {
+    /// Arms [`edit_session::DotCapture`] around an operation that might go
+    /// interactive — `handle_insert`'s Leaf branch, or
+    /// `accept_completion_selection`'s own accept. Called before the
+    /// operation runs, the only chance to see the primary head at that
+    /// point. No-op if no Insert session is open here, which never happens
+    /// in practice: both callers only ever run from inside one.
+    pub(in crate::editor) fn arm_dot_capture(&mut self, has_placeholder: bool) {
         let fp = commands::FocusedPane::current(&self.state);
         let (pid, bid) = (fp.pid(), fp.bid(&self.view));
-        let cs_before = self
-            .state
-            .active_session
-            .as_mut()
-            .filter(|s| s.is_insert_at(pid, bid))
-            .and_then(|s| s.group_mut().cs.clone());
         let head_before = self.state.panes.state[pid][bid]
             .selections()
             .primary()
             .head();
-        self.state.dot_capture_claimed = false;
-        (pid, bid, cs_before, head_before)
-    }
-
-    /// The checkpoint [`DotCapture`]'s own doc describes: called right after
-    /// an Insert-key dispatch or a completion accept returns, with the
-    /// snapshot taken just before it ran. Leaves the recorded input alone
-    /// if nothing interactive happened (`dot_capture_claimed` never got
-    /// set); finalizes on the spot if it did and no picker is left open
-    /// (a direct `completion-accept!`, or a picker opened and already
-    /// resolved within the same dispatch); otherwise arms
-    /// [`EditorState::dot_capture`] for [`Self::resolve_dot_capture_if_ready`]
-    /// to finalize once the still-open picker (or chain) resolves.
-    ///
-    /// `has_placeholder` is `true` from `handle_insert`'s Leaf branch, whose
-    /// `Binding` entry — pushed unconditionally before the dispatch it
-    /// wraps — is what finalizing *replaces*; `false` from
-    /// `accept_completion_selection`, which pushed no entry of its own for
-    /// this Enter keypress (it isn't a keymap-bound Insert key), so
-    /// finalizing there *appends* instead. Only the `true` case can ever
-    /// arm — accepting a completion never opens a picker — so
-    /// `resolve_dot_capture_if_ready` always finalizes with `true`.
-    pub(in crate::editor) fn resolve_or_arm_dot_capture(
-        &mut self,
-        pid: PaneId,
-        bid: BufferId,
-        cs_before: Option<ChangeSet>,
-        head_before: CharOffset,
-        has_placeholder: bool,
-    ) {
-        if !std::mem::take(&mut self.state.dot_capture_claimed) {
-            return;
-        }
-        let cap = DotCapture {
-            pid,
-            bid,
-            cs_before,
-            head_before,
-        };
-        if self.state.input.picker().is_some() {
-            self.state.dot_capture = Some(cap);
-        } else {
-            self.finalize_dot_capture(cap, has_placeholder);
-        }
-    }
-
-    /// `drain_pending_work`'s dot-capture checkpoint, run after every batch
-    /// it drains — the same "diffed every pass, no single write-site
-    /// chokepoint" shape `detect_mode_change`'s own doc describes, for the
-    /// same reason: a chained picker's own `on_select` can reopen another
-    /// picker or resolve outright, and only checking *after* a batch has
-    /// actually run tells them apart. Checking any earlier (e.g. at the top
-    /// of `drain_pending_work`'s loop, alongside the other `detect_*` calls)
-    /// would race the picker's own accept keypress, which closes the picker
-    /// layer synchronously and only *queues* `on_select` — so a check made
-    /// before that queued call has run would see no picker open yet and
-    /// wrongly conclude nothing happened.
-    pub(in crate::editor) fn resolve_dot_capture_if_ready(&mut self) {
-        if self.state.dot_capture.is_none() || self.state.input.picker().is_some() {
-            return;
-        }
-        let cap = self
-            .state
-            .dot_capture
-            .take()
-            .expect("checked is_none() above");
-        // Always `true`: a `DotCapture` only ever gets here from
-        // `resolve_or_arm_dot_capture`'s own `has_placeholder: true` case —
-        // see that method's own doc.
-        self.finalize_dot_capture(cap, true);
-    }
-
-    /// `resolve_dot_capture_if_ready`'s work: diffs `cap`'s `cs_before`
-    /// against the Insert session's own `group.cs` now — everything that
-    /// landed on `(cap.pid, cap.bid)` since the snapshot in `cap` was taken,
-    /// whatever produced it (a picker's `on_select`, a chain of them) —
-    /// converts the result to a `CursorReplacement` relative to
-    /// `cap.head_before`, and either replaces the `Binding` placeholder
-    /// entry with it (`has_placeholder`) or pushes it as a new entry
-    /// (`accept_completion_selection`'s own Enter, which pushed no
-    /// placeholder). Drops or skips it instead when there is nothing to
-    /// replay: the session ended before this could resolve, the edit
-    /// didn't touch the cursor (document-absolute, like
-    /// `additionalTextEdits` — see `CursorReplacement`'s own doc), or
-    /// nothing was edited at all (an Esc-dismissed picker whose `on_select`
-    /// received `#f` and did nothing).
-    fn finalize_dot_capture(&mut self, cap: DotCapture, has_placeholder: bool) {
-        if has_placeholder {
-            let Some(action) = self.state.last_repeatable_action.as_mut() else {
-                return;
-            };
-            if !matches!(
-                action.insert_inputs.last(),
-                Some(InsertInput::Binding { .. })
-            ) {
-                // Nothing else can append while a modal picker owns input
-                // (see `DotCapture`'s own doc) — reaching this means the
-                // Insert session this capture belonged to has since ended
-                // some other way, and there is nothing left to replace.
-                return;
-            }
-        }
-
-        let snapshot = self
+        if let Some(session) = self
             .state
             .active_session
             .as_mut()
-            .filter(|s| s.is_insert_at(cap.pid, cap.bid))
-            .map(|s| s.group_mut())
-            .map(|g| (g.cs.clone(), g.text_snapshot.clone()));
-        let Some((cs_after, text_snapshot)) = snapshot else {
-            if has_placeholder {
-                self.pop_last_insert_input();
-            }
-            return;
-        };
-
-        let delta = match (cap.cs_before, cs_after) {
-            (None, None) => None,
-            (None, Some(after)) => Some(after),
-            // `group.cs` only ever grows (each edit composes onto it) — a
-            // `Some` before with `None` after can't happen in practice, but
-            // there is nothing to replay either way if it somehow did.
-            (Some(_), None) => None,
-            (Some(before), Some(after)) => {
-                // `ChangeSet::compose`'s own doc: a *self*-Insert consumed by
-                // an *other*-Delete cancels (the standard OT case), but a
-                // *self*-Delete followed by an *other*-Insert of the same
-                // text — exactly what `before.invert(..)` (a Delete) composed
-                // with `after` (an Insert, when nothing happened in between
-                // and the two are equal) produces — does not: both are
-                // emitted verbatim rather than structurally cancelled. So
-                // `is_identity()` alone can't be trusted here; confirming
-                // against the actual text is what makes a dismissed picker's
-                // truly-unchanged window record nothing instead of a
-                // delete-then-reinsert that would misapply at a
-                // differently-preceded replay site.
-                let d = before.invert(&text_snapshot).compose(after);
-                match before.apply(&text_snapshot) {
-                    Ok(t1) if d.apply(&t1).is_ok_and(|t2| t2.rope() == t1.rope()) => None,
-                    _ => Some(d),
-                }
-            }
-        };
-        let outcome =
-            delta.and_then(
-                |d| match cursor_replacement_from_delta(&d, cap.head_before) {
-                    Ok(r) => r,
-                    Err(msg) => {
-                        self.report(super::Severity::Error, format!("dot-repeat: {msg}"));
-                        None
-                    }
-                },
-            );
-
-        let Some(action) = self.state.last_repeatable_action.as_mut() else {
-            return;
-        };
-        match (outcome, has_placeholder) {
-            (Some(r), true) => {
-                let entry = action
-                    .insert_inputs
-                    .last_mut()
-                    .expect("checked present above; nothing else touches it meanwhile");
-                *entry = InsertInput::Result(r);
-            }
-            (Some(r), false) => action.insert_inputs.push(InsertInput::Result(r)),
-            (None, true) => {
-                action.insert_inputs.pop();
-            }
-            (None, false) => {} // no placeholder was pushed; nothing to undo
+            .filter(|s| s.is_insert_at(pid, bid))
+        {
+            session.arm_dot_capture(head_before, has_placeholder);
         }
     }
 
-    /// Drops the last recorded input of the live Insert session, if any —
-    /// `finalize_dot_capture`'s "nothing to replay" fallback for the
-    /// `has_placeholder` case, named so that intent reads at the call site
-    /// instead of an inline `.pop()`.
-    fn pop_last_insert_input(&mut self) {
-        if let Some(action) = self.state.last_repeatable_action.as_mut() {
-            action.insert_inputs.pop();
+    /// The checkpoint run right after an Insert-key dispatch or a completion
+    /// accept returns, and again after each batch `drain_pending_work`
+    /// drains — the same "checked every pass, no single write-site
+    /// chokepoint" shape `detect_mode_change`'s own doc describes, for the
+    /// same reason: a chained picker's own `on_select` can reopen another
+    /// picker or resolve outright, and only checking *after* a batch has
+    /// actually run tells them apart.
+    ///
+    /// Drops the armed capture if nothing interactive happened; finalizes
+    /// it on the spot if something did and no picker is left open (a direct
+    /// `completion-accept!`, or a picker opened and already resolved within
+    /// the same dispatch); otherwise leaves it armed for a later call —
+    /// from `drain_pending_work` — to finalize once the still-open picker
+    /// (or chain) resolves. No-op if no session is open, or none is armed:
+    /// `tear_down_insert`'s own backstop already resolved a capture whose
+    /// session ended before this ran.
+    pub(in crate::editor) fn resolve_dot_capture(&mut self) {
+        let Some(session) = self.state.active_session.as_mut() else {
+            return;
+        };
+        let Some(interactive) = session.dot_capture().map(|cap| cap.interactive) else {
+            return;
+        };
+        if !interactive {
+            session.take_dot_capture();
+            return;
         }
+        if self.state.input.picker().is_some() {
+            return;
+        }
+        let cap = session
+            .take_dot_capture()
+            .expect("dot_capture() returned Some above");
+        self.state.finalize_dot_capture(cap);
     }
 
     /// Drain the macro replay queue, executing each key in order and
@@ -820,61 +688,140 @@ impl Editor {
             }
         }
         self.state.is_replaying = false;
-        self.state.last_repeatable_action = saved_action;
+        // If the macro left Insert open, its own entry command's action is
+        // still recording (a `record_insert_input` call for every key typed
+        // since) — restoring `saved_action` over it would both discard that
+        // action, mid-session, and hand the still-live Insert session's
+        // input to whatever the macro replaced instead (see
+        // `record_insert_input`'s own doc: "the session's action" is
+        // whichever one occupies the slot, not tracked separately). The
+        // macro's own action is the correct one to keep repeatable here:
+        // finishing that Insert session by hand and pressing `.` should
+        // repeat the whole thing the macro started, not `saved_action`.
+        if self.state.mode() != Mode::Insert {
+            self.state.last_repeatable_action = saved_action;
+        }
     }
 }
 
-/// Extracts the net edit `delta` made at `head` (a position in `delta`'s
-/// *old* document) as a cursor-relative replacement, or `Ok(None)` if
-/// `delta` is identity or touches nothing at `head` — a picker pick's edit
-/// landing away from the cursor is document-absolute, the same reasoning
-/// that excludes a completion's `additionalTextEdits` from its own recorded
-/// replacement (see `CursorReplacement`'s own doc).
-///
-/// `Err` when `delta` does not have the shape a single interactive edit
-/// produces — `Retain? Delete? Insert? Retain?`, i.e. at most one edited
-/// region — which nothing in this codebase writes today; refusing loudly
-/// beats silently picking one of several edited regions to attribute to the
-/// cursor.
-fn cursor_replacement_from_delta(
-    delta: &ChangeSet,
-    head: CharOffset,
-) -> Result<Option<CursorReplacement>, &'static str> {
-    if delta.is_identity() {
-        return Ok(None);
-    }
-    let mut ops = delta.ops().iter();
-    let mut pos = 0usize;
-
-    let mut next = ops.next();
-    if let Some(Operation::Retain(n)) = next {
-        pos += *n;
-        next = ops.next();
-    }
-    let mut deleted = 0usize;
-    if let Some(Operation::Delete(n)) = next {
-        deleted = *n;
-        next = ops.next();
-    }
-    let mut text = String::new();
-    if let Some(Operation::Insert(s)) = next {
-        text = s.clone();
-        next = ops.next();
-    }
-    if let Some(Operation::Retain(_)) = next {
-        next = ops.next();
-    }
-    if next.is_some() {
-        return Err("interactive input touched more than one region of the buffer");
-    }
-
+/// Extracts the edited region of `delta` that contains `head` (a position
+/// in `delta`'s *old* document), as a cursor-relative replacement — `None`
+/// if `delta` is identity, or every edited region lands away from `head`.
+/// `delta` can hold more than one region — a completion's own
+/// `additionalTextEdits`, or a second cursor's own edit under a
+/// multi-cursor accept — and any region other than the one at `head` is
+/// simply skipped: it's document-absolute, or belongs to a different
+/// cursor, the same reasoning [`CursorReplacement`]'s own doc gives for
+/// excluding `additionalTextEdits` from the replacement it records.
+fn cursor_replacement_at(delta: &ChangeSet, head: CharOffset) -> Option<CursorReplacement> {
     let head = head.index();
-    if head < pos || head > pos + deleted {
-        return Ok(None);
+    let mut pos = 0usize; // old-doc position of the op cursor
+    let mut ops = delta.ops().iter().peekable();
+    while let Some(op) = ops.next() {
+        match op {
+            Operation::Retain(n) => pos += n,
+            Operation::Insert(s) => {
+                if head == pos {
+                    return Some(CursorReplacement {
+                        back: 0,
+                        forward: 0,
+                        text: s.clone(),
+                    });
+                }
+            }
+            Operation::Delete(n) => {
+                let region_start = pos;
+                pos += n;
+                // A Delete this codebase ever writes as part of a
+                // replacement is immediately followed by the Insert of the
+                // replacement text — consumed together as one region.
+                let text = match ops.peek() {
+                    Some(Operation::Insert(s)) => {
+                        let s = s.clone();
+                        ops.next();
+                        s
+                    }
+                    _ => String::new(),
+                };
+                if head >= region_start && head <= pos {
+                    return Some(CursorReplacement {
+                        back: head - region_start,
+                        forward: pos - head,
+                        text,
+                    });
+                }
+            }
+        }
     }
-    Ok(Some(CursorReplacement {
-        back: head - pos,
-        forward: pos + deleted - head,
-        text,
-    }))
+    None
+}
+
+#[cfg(test)]
+mod cursor_replacement_tests {
+    use super::cursor_replacement_at;
+    use hume_editing::changeset::ChangeSetBuilder;
+    use hume_rope::offset::CharOffset;
+
+    fn co(n: usize) -> CharOffset {
+        CharOffset::new(n)
+    }
+
+    #[test]
+    fn identity_has_no_replacement() {
+        let mut b = ChangeSetBuilder::new(co(6));
+        b.retain_rest();
+        assert!(cursor_replacement_at(&b.finish(), co(3)).is_none());
+    }
+
+    #[test]
+    fn insert_only_region_at_head() {
+        // "ab|cd" → "ab|Xcd": inserting with nothing deleted, head right at
+        // the insertion point.
+        let mut b = ChangeSetBuilder::new(co(4));
+        b.retain(2);
+        b.insert("X");
+        b.retain_rest();
+        let r = cursor_replacement_at(&b.finish(), co(2)).expect("insert at head must match");
+        assert_eq!((r.back, r.forward, r.text.as_str()), (0, 0, "X"));
+    }
+
+    #[test]
+    fn delete_and_insert_region_containing_head() {
+        // "abcd" → "aXd": delete "bc" (old positions 1..3), insert "X". A
+        // head inside the deleted span (2) reports the split around it.
+        let mut b = ChangeSetBuilder::new(co(4));
+        b.retain(1);
+        b.delete(2);
+        b.insert("X");
+        b.retain_rest();
+        let r = cursor_replacement_at(&b.finish(), co(2))
+            .expect("head inside the deleted span must match");
+        assert_eq!((r.back, r.forward, r.text.as_str()), (1, 1, "X"));
+    }
+
+    #[test]
+    fn region_away_from_head_is_ignored() {
+        // The edit lands at the start; head sits at the untouched end.
+        let mut b = ChangeSetBuilder::new(co(4));
+        b.delete(1);
+        b.insert("X");
+        b.retain_rest();
+        assert!(cursor_replacement_at(&b.finish(), co(4)).is_none());
+    }
+
+    /// The shape a completion's `additionalTextEdits` produces alongside its
+    /// own cursor edit: two edited regions in one delta. Only the one at
+    /// `head` is extracted; the other — document-absolute, or a different
+    /// cursor's own edit under a multi-cursor accept — is skipped.
+    #[test]
+    fn picks_the_region_at_head_and_skips_the_other() {
+        let mut b = ChangeSetBuilder::new(co(6));
+        b.insert("// "); // an import, landing away from the cursor
+        b.retain(2);
+        b.delete(2);
+        b.insert("XYZ"); // the accept's own edit, at the cursor
+        b.retain_rest();
+        let r = cursor_replacement_at(&b.finish(), co(4)).expect("the region at head must match");
+        assert_eq!((r.back, r.forward, r.text.as_str()), (2, 0, "XYZ"));
+    }
 }

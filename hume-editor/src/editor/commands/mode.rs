@@ -233,6 +233,13 @@ pub(in crate::editor) fn cmd_exit_insert(
 /// registered completion source at the cursor. A native command rather
 /// than a plugin's, since the orchestration is the editor's own; the
 /// sources it invokes are whatever plugins registered.
+///
+/// Marks the dispatch interactive (see `EditorState::mark_dot_interactive`'s
+/// own doc): opening the popup writes nothing itself, so a `.` that reached
+/// this point would just reopen it — dropped instead, same discipline
+/// `completion-accept!`/`picker!` follow for the edit that eventually
+/// resolves it. Refuses loudly under `.`, same as those two, rather than
+/// firing a fresh completion request on every repeat.
 pub(in crate::editor) fn cmd_completion_trigger(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -240,6 +247,13 @@ pub(in crate::editor) fn cmd_completion_trigger(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    if state.dot_replay {
+        return Err(CommandError::new(
+            "completion-trigger: reached during `.` — the recorded input took a different \
+             branch this time",
+        ));
+    }
+    state.mark_dot_interactive();
     state.trigger_buffer_completion(view, super::super::completion::Trigger::Explicit);
     Ok(())
 }

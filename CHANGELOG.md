@@ -80,6 +80,10 @@
 - `.` now repeats a completion accepted during the Insert session, and no longer reopens the completion popup to do it.
 - `.` now repeats a picker pick made during the Insert session, without reopening the picker.
 - `.` now repeats cursor movement made during the Insert session, such as an arrow key.
+- `.` no longer sends a fresh completion request when replaying an Insert-mode key that opened the popup — it repeats only what you picked, if anything.
+- `.` no longer errors on a completion accepted with multiple cursors, or one whose accepted item also edited elsewhere in the file (an auto-inserted import).
+- An Insert-mode key binding that fails after already leaving Insert no longer types the rest of the recorded session's keys outside it.
+- A macro that finishes while still in Insert mode no longer discards the Insert session it started when you finish it and press `.`.
 
 ## [0.12.0] - 2026-09-08
 

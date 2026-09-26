@@ -354,6 +354,13 @@ impl Editor {
             // see `MAX_EVENT_DRAIN`'s doc for why.
             self.detect_text_changed();
             if self.state.config.pending_work.is_empty() {
+                // Any queued `on_select` that would resolve a still-armed
+                // dot-capture (see `Editor::resolve_dot_capture`'s own doc)
+                // has already run by the time the queue is empty —
+                // finalize here so a dismissed picker's binding entry is
+                // dropped even when its own `on_select` was the last thing
+                // the queue held.
+                self.resolve_dot_capture();
                 return true;
             }
             let batch = std::mem::take(&mut self.state.config.pending_work);
@@ -384,12 +391,19 @@ impl Editor {
                 {
                     self.state.last_entered_buffer = None;
                 }
+                // A capture still armed here never got the `on_select` that
+                // would have resolved it — the batch holding it was just
+                // dropped whole. Finalize with whatever landed before the
+                // cascade tripped, rather than leaving it armed until the
+                // user happens to leave Insert: `tear_down_insert`'s own
+                // backstop would eventually catch it too, but not until then.
+                self.resolve_dot_capture();
                 return false;
             }
             self.run_pending_batch(batch);
             // After the batch has actually run, never before — see
-            // `resolve_dot_capture_if_ready`'s own doc for why.
-            self.resolve_dot_capture_if_ready();
+            // `Editor::resolve_dot_capture`'s own doc for why.
+            self.resolve_dot_capture();
         }
     }
 

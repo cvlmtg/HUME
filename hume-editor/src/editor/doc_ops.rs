@@ -197,9 +197,9 @@ pub(in crate::editor) fn check_no_conflicting_session(
 /// intervening edit. `step_paste_commit` already does this before ordinary
 /// key-driven dispatch, but a direct caller that bypasses dispatch entirely
 /// (bracketed-paste's own `apply_normal_mode_paste`, an LSP `commit_
-/// changeset`, any other host edit builtin) has no other chance to — see
-/// `docs/LESSONS.md`'s L4: enforce at the chokepoint, not by caller
-/// convention.
+/// changeset`, any other host edit builtin) has no other chance to — enforced
+/// here, at the chokepoint every such caller already routes through, rather
+/// than by convention at each one.
 ///
 /// `Err` when [`check_no_conflicting_session`] finds one — refusing loudly
 /// beats the alternative of silently mutating the buffer underneath another
@@ -346,6 +346,17 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         &text_pre,
         &rope_pre,
     );
+    // This is the one funnel every grouped edit goes through, so it's the
+    // one place `DotCapture::edits` (`edit_session.rs`) can be fed without
+    // every caller (there are over a dozen) remembering to do it itself —
+    // see that type's own doc.
+    if let Some(cap) = active_session
+        .as_mut()
+        .filter(|s| s.is_insert_at(pane_id, buf_id))
+        .and_then(|s| s.dot_capture_mut())
+    {
+        cap.edits.push(cs.clone());
+    }
     cs
 }
 

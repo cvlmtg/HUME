@@ -383,7 +383,6 @@ impl BufferSession {
         // `back`) goes through the simpler, dedicated `replace_around_
         // cursors` rather than re-deriving the same uniform count through
         // `replace_span_around_cursors`'s more general per-cursor form.
-        //
         let cs_cursors = match &item.text_edit {
             Some(_) => crate::editor::doc_ops::apply_doc_edit_grouped(
                 &mut state.buffers,

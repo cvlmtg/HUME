@@ -368,10 +368,10 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
         return;
     };
 
-    let (pid, bid, cs_before, head_before) = ed.snapshot_dot_capture_seed();
+    ed.arm_dot_capture(false);
     if let Err(msg) = session.accept(&mut ed.state, &ed.view, &mut ed.lsp, selected) {
         ed.report(Severity::Error, msg);
         return;
     }
-    ed.resolve_or_arm_dot_capture(pid, bid, cs_before, head_before, false);
+    ed.resolve_dot_capture();
 }

@@ -79,20 +79,13 @@ fn editor_state_fields_are_classified() {
             // never re-enters `init.scm`)
             in_insert_key_dispatch: _,
             active_session: _, // preserved: end_focus_sessions already emptied it
-            // preserved: armed only mid-dispatch/mid-drain and always
-            // finalized or dropped well before the next real keypress —
-            // see `DotCapture`'s own doc
-            dot_capture: _,
-            // preserved: reset before every dispatch/accept that reads it,
-            // so no stale value survives to matter
-            dot_capture_claimed: _,
-            explicit_count: _,            // preserved
-            pending_ctrl_extend: _,       // preserved
-            macro_recording: _,           // preserved
-            macro_pending: _,             // preserved
-            replay_queue: _,              // preserved
-            skip_macro_record: _,         // preserved
-            is_replaying: _,              // preserved
+            explicit_count: _, // preserved
+            pending_ctrl_extend: _, // preserved
+            macro_recording: _, // preserved
+            macro_pending: _,  // preserved
+            replay_queue: _,   // preserved
+            skip_macro_record: _, // preserved
+            is_replaying: _,   // preserved
             message_logged_this_input: _, // preserved
             // config: resync_config_state clears this so
             // detect_buffer_enter's diff re-raises OnBufferEnter for

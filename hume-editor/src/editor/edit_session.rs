@@ -20,6 +20,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_rope::offset::CharOffset;
 
 use crate::editor::error::CommandError;
 
@@ -37,6 +38,12 @@ pub(in crate::editor) struct EditSession {
     buffer: BufferId,
     kind: EditSessionKind,
     group: EditGroup,
+    /// Armed around an Insert-key binding dispatch, or a completion accept,
+    /// that might turn out interactive — see [`DotCapture`]'s own doc.
+    /// `None` outside such a dispatch, and always on a non-`Insert` session
+    /// (only `handle_insert`/`accept_completion_selection` arm it, and both
+    /// require an open Insert session first).
+    dot_capture: Option<DotCapture>,
 }
 
 impl EditSession {
@@ -54,6 +61,46 @@ impl EditSession {
 
     pub(in crate::editor) fn group_mut(&mut self) -> &mut EditGroup {
         &mut self.group
+    }
+
+    /// The armed dot-capture, if any — see [`DotCapture`]'s own doc.
+    pub(in crate::editor) fn dot_capture(&self) -> Option<&DotCapture> {
+        self.dot_capture.as_ref()
+    }
+
+    pub(in crate::editor) fn dot_capture_mut(&mut self) -> Option<&mut DotCapture> {
+        self.dot_capture.as_mut()
+    }
+
+    /// Arms a fresh [`DotCapture`] — `handle_insert`'s Leaf branch and
+    /// `accept_completion_selection` are the only callers, each just before
+    /// the operation that might go interactive. Neither ever nests inside
+    /// the other's dispatch (an Insert-key binding that itself calls
+    /// `completion-accept!` shares the *outer* capture instead — see
+    /// `mark_dot_interactive`'s own doc), so a capture is always resolved by
+    /// `Editor::resolve_dot_capture` or `tear_down_insert`'s backstop before
+    /// the next arm.
+    pub(in crate::editor) fn arm_dot_capture(
+        &mut self,
+        head_before: CharOffset,
+        has_placeholder: bool,
+    ) {
+        debug_assert!(
+            self.dot_capture.is_none(),
+            "arm_dot_capture: a capture was already armed and never resolved"
+        );
+        self.dot_capture = Some(DotCapture {
+            head_before,
+            edits: Vec::new(),
+            interactive: false,
+            has_placeholder,
+        });
+    }
+
+    /// Takes the armed capture, if any — `Editor::resolve_dot_capture`'s own
+    /// finalize/drop paths, and `tear_down_insert`'s teardown-time backstop.
+    pub(in crate::editor) fn take_dot_capture(&mut self) -> Option<DotCapture> {
+        self.dot_capture.take()
     }
 
     /// Consumes the session, handing its [`EditGroup`] to the caller that's
@@ -166,6 +213,7 @@ pub(in crate::editor) fn open_or_retarget(
                 buffer,
                 kind,
                 group: mint_group(),
+                dot_capture: None,
             });
         }
     }
@@ -204,6 +252,58 @@ pub(in crate::editor) enum EditSessionKind {
     /// between entry and its first typed character, matched that test just
     /// as well.
     Replay,
+}
+
+/// Armed around an Insert-key binding dispatch, or a completion accept,
+/// that might turn out interactive — one whose outcome depends on input the
+/// user gave while it ran, such as accepting a completion or picking a
+/// picker item. Lives on the [`EditSession`] it belongs to, not on
+/// `EditorState`: the capture's own edits only ever land in this session's
+/// group (`doc_ops::apply_doc_edit_grouped` is the one path into it, and the
+/// funnel this capture taps), and tying its lifetime to the session's means
+/// a session that ends before the capture resolves — an accept immediately
+/// followed by `exit-insert` in the same dispatch — takes the capture down
+/// with it (see `tear_down_insert`'s own backstop) rather than leaving it to
+/// dangle past the session it was captured for.
+///
+/// A completion accept resolves within the one dispatch that armed it,
+/// always. Opening a picker is the one case that can't: the pick itself (or
+/// a dismissal) resolves later, via `on_select`, queued as a
+/// `PendingWork::Call` well after the dispatch that opened it has already
+/// returned — for that case alone, `Editor::resolve_dot_capture` leaves this
+/// still armed instead of finalizing, and `drain_pending_work`'s own calls
+/// to it finalize once the pick lands. A picker chain (`on_select` itself
+/// opening another picker) simply leaves it armed longer: `resolve_dot_
+/// capture` only finalizes once no picker is left open at all, however many
+/// links the chain has.
+pub(in crate::editor) struct DotCapture {
+    /// The primary cursor's head when this capture was armed — the point
+    /// `cursor_replacement_at` (`replay.rs`) locates the net edit relative
+    /// to.
+    pub(in crate::editor) head_before: CharOffset,
+    /// Every `ChangeSet` composed into this session's group
+    /// (`doc_ops::apply_doc_edit_grouped`'s own funnel push) while this
+    /// capture was armed, in order — `ChangeSet::compose_all` folds them
+    /// into the capture's net transform. Whatever ran between arming and
+    /// resolving collapses into *one* edit this way: a binding that accepts
+    /// a completion and then runs its own follow-up edit records both
+    /// together, never the accept alone — once any part of a dispatch goes
+    /// interactive, none of it is safe to re-derive at a new cursor, so the
+    /// whole thing is captured as data instead.
+    pub(in crate::editor) edits: Vec<ChangeSet>,
+    /// Set by `EditorState::mark_dot_interactive` — `completion-accept!`/
+    /// `picker!`/`live-picker!`/`completion-trigger` call it, whichever
+    /// fires first. A capture that never sees this stay `false` belongs to
+    /// an ordinary (non-interactive) binding: its `edits` are discarded at
+    /// resolve time, and the `Binding` entry recorded before the dispatch is
+    /// left to replay by re-running, same as always.
+    pub(in crate::editor) interactive: bool,
+    /// `true` from `handle_insert`'s Leaf branch, whose `Binding` entry —
+    /// pushed unconditionally before the dispatch it wraps — is what
+    /// finalizing *replaces*; `false` from `accept_completion_selection`,
+    /// which pushed no entry of its own for its Enter keypress, so
+    /// finalizing there *appends* instead.
+    pub(in crate::editor) has_placeholder: bool,
 }
 
 /// Accumulated state for an in-progress insert or paste session.

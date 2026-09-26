@@ -8,7 +8,7 @@ use termina::event::KeyEvent;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use self::registry::CommandRegistry;
-use self::replay::{DotCapture, MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
+use self::replay::{MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
@@ -400,16 +400,9 @@ pub(crate) struct EditorState {
     /// repeat_slot_owned` and `insert-key!` — see each one's own doc for why.
     pub(super) in_insert_key_dispatch: bool,
     /// The editor's one live Insert or paste undo group, if any — see
-    /// [`edit_session::EditSession`]'s own doc.
+    /// [`edit_session::EditSession`]'s own doc, including its own
+    /// `dot_capture` field.
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
-    /// Armed around an Insert-key binding dispatch that might turn out
-    /// interactive by opening a picker, `None` otherwise — see
-    /// [`DotCapture`]'s own doc.
-    pub(super) dot_capture: Option<DotCapture>,
-    /// Set by `EditorState::mark_dot_interactive`, read and reset by
-    /// `Editor::resolve_or_arm_dot_capture` — see both methods' own doc, and
-    /// [`DotCapture`]'s.
-    pub(super) dot_capture_claimed: bool,
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
     /// `true` when the current multi-key sequence began with a kitty one-shot
@@ -532,8 +525,6 @@ impl Default for EditorState {
             dot_replay: false,
             in_insert_key_dispatch: false,
             active_session: None,
-            dot_capture: None,
-            dot_capture_claimed: false,
             explicit_count: false,
             pending_ctrl_extend: false,
             macro_recording: None,

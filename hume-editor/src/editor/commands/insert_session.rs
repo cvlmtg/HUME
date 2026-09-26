@@ -252,6 +252,23 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         .as_ref()
         .map(|s| (s.pane(), s.buffer()))
         .expect("an Insert layer on the stack always has its session open");
+    // Backstop for a capture whose dispatch never reached its own
+    // checkpoint (`Editor::resolve_dot_capture`) before the session ended —
+    // an Insert-key binding that calls `completion-accept!` and then
+    // `exit-insert` in the same body tears the session down from inside
+    // that same dispatch, before `handle_insert`'s own post-dispatch
+    // checkpoint gets a chance to run. Taken before the autoindent-trim
+    // edit below, which must not itself be swept into a capture's own net
+    // edit: it's session-teardown bookkeeping, not part of whatever the
+    // capture was recorded for.
+    if let Some(cap) = state
+        .active_session
+        .as_mut()
+        .and_then(|s| s.take_dot_capture())
+        && cap.interactive
+    {
+        state.finalize_dot_capture(cap);
+    }
     // An open completion session lives in its own `Completion` layer, pushed
     // above `Insert` — the top-first `truncate_layers` call that reaches
     // this function always removes `Completion` (running its own `tear_down`

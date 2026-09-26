@@ -1209,15 +1209,47 @@ actual text instead.
 3. The Nth signal added to disambiguate the (N-1)th is L9's smell applied
    to state instead of call sites. At the third, redesign.
 
-**Files:** `hume-editor/src/editor/replay.rs` (`InsertInput`,
-`CursorReplacement`, `DotCapture`, `record_insert_input`,
-`mark_dot_interactive`, `resolve_or_arm_dot_capture`,
-`resolve_dot_capture_if_ready`, `finalize_dot_capture`,
-`cursor_replacement_from_delta`),
+**Addendum (2026-09-26):** the resolution above still inferred, one level
+up: it diffed the Insert session's whole composed `ChangeSet` before vs.
+after the capture window (`invert`/`compose` against the session-open
+snapshot) to recover what happened *during* the window, rather than
+recording what happened as it happened. That diff conflated any edit typed
+earlier in the session with the capture's own edit — `compose`'s own doc
+warns a self-Delete/other-Insert pair of the same text doesn't collapse
+back to identity — so a session with more than one typed run before the
+capture, or a multi-cursor accept, produced a delta with more than one
+edited region and had nowhere to put the extra one but an error. A code
+review surfaced this, plus a completion accept immediately followed by
+`exit-insert` in the same dispatch: the checkpoint that would have
+finalized the capture never ran, because the session it belonged to had
+already been torn down by the time control returned to it.
+
+**Rule 4 (addendum):** diffing a *before* and *after* snapshot of an
+accumulator to recover what happened in between is the same inference L23's
+main text warns about, one layer removed — it answers "what changed since
+the snapshot," not "what did the operation I'm capturing actually do."
+Record each contributing edit directly, at the one funnel it must already
+pass through (here, `doc_ops::apply_doc_edit_grouped`), and compose just
+those. This also fixes the "session torn down before the checkpoint" case
+for free: tying the capture's lifetime to the session that owns the funnel
+(rather than to a separate global flag) means the session's own teardown
+can resolve a still-armed capture as its last act, instead of leaving it to
+a checkpoint that may never run.
+
+**Files:** `hume-editor/src/editor/edit_session.rs` (`DotCapture`, now a
+field on `EditSession`, and its `arm_dot_capture`/`dot_capture_mut`/
+`take_dot_capture`), `hume-editor/src/editor/doc_ops.rs`
+(`apply_doc_edit_grouped`'s own funnel push),
+`hume-editor/src/editor/replay.rs` (`InsertInput`, `CursorReplacement`,
+`record_insert_input`, `mark_dot_interactive`, `arm_dot_capture`,
+`resolve_dot_capture`, `finalize_dot_capture`, `cursor_replacement_at`),
 `hume-editor/src/editor/input_stack/insert.rs` (`handle_insert`),
 `hume-editor/src/editor/input_stack/completion.rs`
 (`accept_completion_selection`),
+`hume-editor/src/editor/commands/insert_session.rs` (`tear_down_insert`'s
+own backstop),
 `hume-editor/src/editor/completion/session/accept.rs`,
-`hume-editor/src/editor/host_impl/{completion,ui}.rs`,
+`hume-editor/src/editor/commands/mode.rs` (`cmd_completion_trigger`),
+`hume-editor/src/editor/host_impl/ui.rs`,
 `hume-editor/src/editor/commands/pipeline.rs` (`repeat_slot_owned`),
 `hume-editor/src/editor/scripting_setup.rs` (`drain_pending_work`).
