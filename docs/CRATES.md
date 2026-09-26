@@ -47,7 +47,7 @@ Platform abstraction layer: terminal control, frame presentation, process spawni
 - hume-decorations
 - hume-scripting
 ## Description
-Core text-editing model: the document (`BufferText`, a rope of Unicode scalar values with a recorded line-ending style), the cursor model (`Selection`/`SelectionSet`), edits as data (`ChangeSet`, invertible and composable), and the undo tree (`History`), plus grapheme-cluster boundary utilities. A pure data-and-algorithm layer — no knowledge of the editor, keymaps, rendering, or scripting.
+Core text-editing model: the document (`BufferText`, a rope of Unicode scalar values with a recorded line-ending style), the cursor model (`Selection`/`SelectionSet`), edits as data (`ChangeSet`, invertible and composable), and the undo tree (`History`). A pure data-and-algorithm layer — no knowledge of the editor, keymaps, rendering, or scripting.
 
 # hume-engine
 ### Depends on
@@ -60,7 +60,7 @@ Core text-editing model: the document (`BufferText`, a rope of Unicode scalar va
 - hume-ui
 - hume-decorations
 ## Description
-Rendering pipeline and pane geometry: the split/pane layout tree, the frame-render pipeline, decoration/statusline/tabline provider traits, and theming. Deliberately has no dependency on `hume-editing`: it renders from ropes and provider-supplied data and has no notion of selections, edits, or undo. Also carries `lock::LockExt`, the shared `RwLock`-poisoning policy for the frame-local `Arc<RwLock<_>>` state `hume-ui` and `hume-decorations` each hand the render pipeline — a leaf-crate utility, not a rendering concern of its own, but both of that state's owners already depend on this crate.
+Rendering pipeline and pane geometry: the split/pane layout tree, the frame-render pipeline, decoration/statusline/tabline provider traits, and theming. Deliberately has no dependency on `hume-editing`: it renders from ropes and provider-supplied data and has no notion of selections, edits, or undo.
 
 # hume-ops
 ### Depends on
