@@ -381,7 +381,7 @@ pub(in crate::editor) enum PendingWork {
     Event(EditorEvent),
 }
 
-fn mode_name(m: Mode) -> &'static str {
+pub(in crate::editor) fn mode_name(m: Mode) -> &'static str {
     match m {
         Mode::Normal => "normal",
         Mode::Insert => "insert",

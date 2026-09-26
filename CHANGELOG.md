@@ -61,6 +61,7 @@
 - `on-mode-change` no longer fires during a `.` repeat.
 - New `buffer-panes`, `buffer-key`, `pane?`, `buffer-line-count`, and `split-words` builtins; `debounce-by` takes `#:key`.
 - New `insert-key!` lets a command bound to an Insert-mode key fall back to that key's normal behaviour — e.g. a Tab binding that completes after a letter and inserts a tab everywhere else.
+- `show-menu!`/`show-drawer-list!` called from a mode that can't accept them now log a warning naming the mode, instead of silently doing nothing.
 
 ### Fixes
 - A plugin pasting while you type in Insert mode no longer drops your typing from undo.

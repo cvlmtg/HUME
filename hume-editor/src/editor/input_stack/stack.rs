@@ -22,6 +22,7 @@ use termina::event::{KeyEvent, MouseEvent};
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
+use super::super::event::mode_name;
 use super::super::minibuf::MiniBuffer;
 use super::super::{Editor, EditorState, Severity};
 use super::base::BaseLayer;
@@ -842,20 +843,39 @@ impl EditorState {
     /// such gate: it names the one invocation it answers, and an answer
     /// whose invocation is no longer the latest in an open session is
     /// dropped by construction.) `true` when the request should be
-    /// dropped: the mode layer changed, or a *modal* overlay landed on top
-    /// of it, since the request went out — the user left the required mode,
-    /// or opened something else, while the response was in flight. A prior
-    /// instance of `L` itself — buried or not — is not "the stack moved": a
-    /// second call while the first is still open is the normal refresh
-    /// path (`is_settled_for`'s own doc has the full reasoning), which each
-    /// caller still has to retire/replace itself.
+    /// dropped, for either of two distinct reasons, reported at different
+    /// severities:
     ///
-    /// Reports the drop itself (`Severity::Trace`, since this is timing —
-    /// the user moved on — never a plugin bug) so a caller only needs
-    /// `if self.async_opener_stale::<M, L>(what) { return Ok(()); }`.
+    /// - The mode layer isn't `M`: the call needs a mode it isn't in — the
+    ///   user left it while the response was in flight, or (called
+    ///   synchronously, as a keymap-bound command's own body) the caller
+    ///   simply reached this from the wrong mode directly. Either way, the
+    ///   caller asked for something it can't have right now; the user
+    ///   should see that rather than have to go looking for it. Reported at
+    ///   `Severity::Warning`.
+    /// - A *modal* overlay landed on top of `M` since the request went out
+    ///   — a genuine timing race between two async answers, not a mode
+    ///   mismatch. A prior instance of `L` itself — buried or not — is not
+    ///   "the stack moved": a second call while the first is still open is
+    ///   the normal refresh path (`is_settled_for`'s own doc has the full
+    ///   reasoning), which each caller still has to retire/replace itself.
+    ///   Reported at `Severity::Trace`, since this is ordinary timing, not
+    ///   something to act on.
+    ///
+    /// A caller only needs `if self.async_opener_stale::<M, L>(what) { return
+    /// Ok(()); }`.
     pub(in crate::editor) fn async_opener_stale<M: Layer, L: Layer>(&mut self, what: &str) -> bool {
-        let stale =
-            !self.input.is::<M>(self.input.mode_layer()) || !self.input.is_settled_for::<L>();
+        if !self.input.is::<M>(self.input.mode_layer()) {
+            self.report(
+                Severity::Warning,
+                format!(
+                    "{what}: refused — not usable while in {} mode",
+                    mode_name(self.mode())
+                ),
+            );
+            return true;
+        }
+        let stale = !self.input.is_settled_for::<L>();
         if stale {
             self.report(
                 Severity::Trace,

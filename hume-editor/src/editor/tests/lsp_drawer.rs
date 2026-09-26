@@ -163,14 +163,16 @@ fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
     );
 }
 
-/// `show-drawer-list!` from Insert is a benign timing issue (a references
-/// response landing after the user left Normal), not a plugin bug — it
-/// drops silently (`Ok`, a `Trace` log entry) rather than erroring, so it
-/// never aborts the `run_call_batch` a real async callback is batched into.
-/// Same async-staleness rule as the picker case above, checked the other
+/// `show-drawer-list!` from Insert never errors (it would abort the whole
+/// `run_call_batch` a real async callback is batched into) but is not a
+/// silent no-op either — same as the menu's own rule, checked the other
 /// way: the mode layer itself has moved, rather than the stack above it.
+/// Logs a `Warning` naming the mode that refused it, whether it's a benign
+/// timing issue (a references response landing after the user left
+/// Normal) or a plugin calling it from a mode that was never going to
+/// accept it.
 #[test]
-fn show_drawer_list_from_insert_drops_silently_as_a_mode_layer_race() {
+fn show_drawer_list_from_insert_warns_instead_of_opening() {
     use crate::editor::Severity;
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
@@ -179,11 +181,11 @@ fn show_drawer_list_from_insert_drops_silently_as_a_mode_layer_race() {
     ed.feed_key(key('i')); // enter Insert mode
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Insert);
 
-    let traces_before = ed
+    let warnings_before = ed
         .state
         .message_log
         .entries()
-        .filter(|e| e.severity == Severity::Trace)
+        .filter(|e| e.severity == Severity::Warning)
         .count();
 
     let pane = focused_pane(&ed);
@@ -197,14 +199,21 @@ fn show_drawer_list_from_insert_drops_silently_as_a_mode_layer_race() {
         ed.state.input.drawer().is_none(),
         "must not have opened while the mode layer isn't Base"
     );
+    let warnings: Vec<_> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Warning)
+        .collect();
     assert_eq!(
-        ed.state
-            .message_log
-            .entries()
-            .filter(|e| e.severity == Severity::Trace)
-            .count(),
-        traces_before + 1,
-        "must log a Trace entry noting the drop"
+        warnings.len(),
+        warnings_before + 1,
+        "must log a Warning entry naming the drop"
+    );
+    assert!(
+        warnings.last().unwrap().text.contains("insert"),
+        "the warning must name the mode that refused it, got: {:?}",
+        warnings.last().unwrap().text
     );
 }
 
