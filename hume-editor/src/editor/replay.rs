@@ -186,6 +186,24 @@ impl EditorState {
         }
     }
 
+    /// The one refusal every interactive builtin (`completion-accept!`,
+    /// `picker!`/`live-picker!`, `completion-trigger`) opens with: reached
+    /// during `.`, an interactive input is never re-run — its net edit was
+    /// already recorded as an `InsertInput::Result` and replayed directly
+    /// (see that variant's own doc). Reaching this call during replay means
+    /// the binding decided differently than it did live — erroring loudly
+    /// beats silently re-opening a popup/picker, or accepting against a
+    /// session that was never opened this time.
+    pub(in crate::editor) fn refuse_during_dot(&self, what: &str) -> Result<(), String> {
+        if self.dot_replay {
+            return Err(format!(
+                "{what}: reached during `.` — the recorded input took a different branch \
+                 this time"
+            ));
+        }
+        Ok(())
+    }
+
     /// Applies a recorded interactive result `r` at `fp`'s cursors, as one
     /// edit composed into the open Insert group — the replay-side
     /// counterpart of `BufferSession::accept`'s own cursor edit. Dismisses

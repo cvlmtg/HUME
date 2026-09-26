@@ -154,19 +154,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     }
 
     fn completion_accept(&mut self, idx: usize) -> Result<(), String> {
-        // Under `.`, an accept is never re-run — the pick's own net edit
-        // was already recorded as an `InsertInput::Result` and replayed
-        // directly (see that variant's own doc). Reaching here during
-        // replay means the binding decided differently than it did live —
-        // erroring loudly beats silently accepting against a session that
-        // was never opened this time (see `EditorState::dot_replay`'s doc).
-        if self.state.dot_replay {
-            return Err(
-                "completion-accept!: reached during `.` — the recorded input took a different \
-                 branch this time"
-                    .to_string(),
-            );
-        }
+        self.state.refuse_during_dot("completion-accept!")?;
         let Some(lsp) = self.lsp.as_deref_mut() else {
             return Err("completion-accept!: no LSP state available".to_string());
         };

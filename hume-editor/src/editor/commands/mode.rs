@@ -247,12 +247,9 @@ pub(in crate::editor) fn cmd_completion_trigger(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if state.dot_replay {
-        return Err(CommandError::new(
-            "completion-trigger: reached during `.` — the recorded input took a different \
-             branch this time",
-        ));
-    }
+    state
+        .refuse_during_dot("completion-trigger")
+        .map_err(CommandError::new)?;
     state.mark_dot_interactive();
     state.trigger_buffer_completion(view, super::super::completion::Trigger::Explicit);
     Ok(())
