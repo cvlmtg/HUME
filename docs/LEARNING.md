@@ -42,6 +42,7 @@ boundary are structured.
 | Topic | File |
 |-------|------|
 | The Command/Keymap/Dispatch Architecture | [learning/command-keymap-dispatch.md](learning/command-keymap-dispatch.md) |
+| Dot-Repeat: Re-run the Deterministic, Record the Interactive | [learning/dot-repeat.md](learning/dot-repeat.md) |
 | The Rendering Pipeline: Engine, Providers, and the 4-Stage Pipeline | [learning/rendering-pipeline.md](learning/rendering-pipeline.md) |
 | Display Lines and Soft Wrap | [learning/display-lines-and-soft-wrap.md](learning/display-lines-and-soft-wrap.md) |
 | Splits and Panes: One Buffer, Many Views | [learning/splits-and-panes.md](learning/splits-and-panes.md) |

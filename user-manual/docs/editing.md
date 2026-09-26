@@ -82,7 +82,7 @@ Undo history is a tree rather than a straight line, so redoing after new edits f
 |-----|--------|
 | `.` | Repeat the last editing command |
 
-Dot-repeat replays the most recent insert session or editing command — delete, change, paste and so on, but not `y`.
+Dot-repeat replays the most recent insert session or editing command — delete, change, paste and so on, but not `y`. Inside a replayed insert session, each keystroke re-runs at the new cursor. The one exception is anything where you made a choice while it ran — accepting a completion, picking from a picker — which isn't asked again; `.` just writes the same text it produced last time. See [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-keys-normal-insert-mode-behaviour) for how this plays out with custom Insert-mode bindings.
 
 ## Macros
 
