@@ -139,6 +139,20 @@ impl Editor {
         }
     }
 
+    /// The registry lost `name`'s entry between resolving it and using it —
+    /// activation replaced a `Lazy` stub but left nothing usable behind, or
+    /// `name` wasn't the expected kind at all. Always `false`, so a caller
+    /// returns it directly. Shared by `run_steel_command`'s two lookups
+    /// (classification and post-activation re-query) and
+    /// `run_typed_steel_command`'s own re-query.
+    fn report_command_lost(&mut self, name: &str) -> bool {
+        self.report(
+            Severity::Error,
+            format!("{name}: internal error — command lost after activation"),
+        );
+        false
+    }
+
     /// Activates the `:` line's current target command's owning plugin, if
     /// it is still a `TypedBody::Lazy` stub — run before
     /// `EditorState::trigger_minibuf_completion` at both its call sites, so
@@ -188,29 +202,14 @@ impl Editor {
         let count = ctx.count.unwrap_or(0);
         let extend = ctx.extend;
 
-        // For a Lazy stub, activate the owning plugin now so we can read
-        // `inline_output` from the resolved SteelBacked entry before dispatch.
-        // Looked up by `name` (never a passed-in `MappableCommand`): `name`
+        // Classified by `name` (never a passed-in `MappableCommand`): `name`
         // is the single source of truth for which command this call runs —
         // both callers (`dispatch`, `replay_command`) already derive it from
-        // their own `cmd`, so re-deriving the plugin from that same `name`
+        // their own `cmd`, so re-deriving the entry from that same `name`
         // rules out a caller ever activating one command's plugin while
-        // running another's body.
-        if let Some(plugin) = self
-            .state
-            .config
-            .registry
-            .lazy_mappable_owner(name)
-            .cloned()
-            && !self.activate_lazy_and_report(&plugin, name)
-        {
-            return false;
-        }
-
-        // Re-query: a Lazy stub is now SteelBacked after activation above;
-        // a SteelBacked entry is unchanged. Pure registry metadata — resolved
-        // (and its arity/arg-count errors reported) before the `scripting`
-        // guard below, so a `:cmd` arity mismatch is reported even in the
+        // running another's body. Pure registry metadata — resolved (and its
+        // arity/arg-count errors reported) before the `scripting` guard
+        // below, so a `:cmd` arity mismatch is reported even in the
         // (test-only) case where a SteelBacked entry exists in the registry
         // but no scripting host is installed.
         let (inline_output, cmd_arity, cmd_is_variadic) =
@@ -221,13 +220,27 @@ impl Editor {
                     is_variadic,
                     ..
                 }) => (*inline_output, *arity, *is_variadic),
-                _ => {
-                    self.report(
-                        Severity::Error,
-                        format!("{name}: internal error — command lost after activation"),
-                    );
-                    return false;
+                Some(MappableCommand::Lazy { plugin, .. }) => {
+                    // Activate the owning plugin now so we can read
+                    // `inline_output` from the resolved SteelBacked entry before
+                    // dispatch.
+                    let plugin = plugin.clone();
+                    if !self.activate_lazy_and_report(&plugin, name) {
+                        return false;
+                    }
+                    // Re-query: activation replaced the stub with a SteelBacked
+                    // entry.
+                    match self.state.config.registry.get_mappable(name) {
+                        Some(MappableCommand::SteelBacked {
+                            inline_output,
+                            arity,
+                            is_variadic,
+                            ..
+                        }) => (*inline_output, *arity, *is_variadic),
+                        _ => return self.report_command_lost(name),
+                    }
                 }
+                _ => return self.report_command_lost(name),
             };
 
         // Inject pane, count, and extend as leading lambda args based on
@@ -284,13 +297,7 @@ impl Editor {
                 arity,
                 is_variadic,
             }) => (*inline_output, *arity, *is_variadic),
-            _ => {
-                self.report(
-                    Severity::Error,
-                    format!("{name}: internal error — command lost after activation"),
-                );
-                return false;
-            }
+            _ => return self.report_command_lost(name),
         };
 
         // Scheme-idiomatic absence: an untyped argument is `#f`, not a
