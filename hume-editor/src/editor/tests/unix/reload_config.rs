@@ -523,7 +523,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
     let file_tmp = safe_tempdir();
     let companion = file_tmp.path().join("companion.rs");
     std::fs::write(&companion, "fn companion() {}\n").unwrap();
-    let companion_str = companion.to_string_lossy().replace('\\', "/");
+    let companion_str = steel_path(&companion);
 
     let init_scm = r#"(%define-language! "rust" '("rs") '() '() #f)
         (declare-plugin "user/opener" #:languages '("rust"))"#;
@@ -542,7 +542,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
         format!(
             r#"(register-hook! 'on-buffer-open (lambda (bid)
                  (set-buffer-option! bid "tab-width" (+ 1 (get-buffer-option bid "tab-width")))))
-               (open-buffer! "{companion_str}")"#
+               (open-buffer! {companion_str})"#
         ),
     )
     .unwrap();

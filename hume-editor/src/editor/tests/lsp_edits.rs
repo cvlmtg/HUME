@@ -859,13 +859,13 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
 fn goto_location_directory_target_errors_with_no_jump_entry() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    let dir_target = tmp.path().to_str().unwrap().to_owned();
+    let dir_target = steel_path(tmp.path());
     run(
         &mut ed,
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (list {dir_target:?} 0 0))))"#
+             (goto-location! bid (list {dir_target} 0 0))))"#
         ),
     );
     let before = state(&ed);
@@ -936,13 +936,13 @@ fn goto_missing_path_opens_new_file_buffer() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let target = tmp.path().join("not-yet-created.txt");
-    let target_str = target.to_str().unwrap().to_owned();
+    let target_str = steel_path(&target);
     run(
         &mut ed,
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (list {target_str:?} 0 0))))"#
+             (goto-location! bid (list {target_str} 0 0))))"#
         ),
     );
     let start_bid = ed.focused_buffer_id();

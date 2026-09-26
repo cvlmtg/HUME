@@ -258,7 +258,7 @@ fn assert_stale_bid_raises(builtin_call: &str, builtin_name: &str) {
 
     let scratch = tmp.path().join("scratch.txt");
     std::fs::write(&scratch, "x\n").unwrap();
-    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+    let scratch_str = steel_path(&scratch);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -266,7 +266,7 @@ fn assert_stale_bid_raises(builtin_call: &str, builtin_name: &str) {
         &mut host,
         &format!(
             r#"(define-typed-command! "probe" "" (lambda ()
-                 (define b (open-buffer! "{scratch_str}"))
+                 (define b (open-buffer! {scratch_str}))
                  (close-buffer! b)
                  ({builtin_call} b)))"#
         ),
@@ -388,7 +388,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
 
     let scratch = tmp.path().join("scratch.txt");
     std::fs::write(&scratch, "x\n").unwrap();
-    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+    let scratch_str = steel_path(&scratch);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -396,7 +396,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
         &mut host,
         &format!(
             r#"(define-typed-command! "probe" "" (lambda ()
-                 (define b (open-buffer! "{scratch_str}"))
+                 (define b (open-buffer! {scratch_str}))
                  (close-buffer! b)
                  (line->offset b 0)))"#
         ),

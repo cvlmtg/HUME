@@ -555,7 +555,8 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
 /// the hand-computed expected value via Steel's `equal?`.
 ///
 /// Fail oracle: remove the `replace('\\', "\\\\")` call from
-/// `begin_lazy_activation` → the returned string is
+/// `steel_path_literal` (which `begin_lazy_activation` reaches via
+/// `require_program_for_path`) → the returned string is
 /// `(require "C:\Users\x\plugin.scm")` (raw backslashes) while the expected
 /// literal is `(require "C:\\Users\\x\\plugin.scm")` → `equal?` is `#f` →
 /// `error` fires → `eval_source` returns `Err` → `unwrap` panics.

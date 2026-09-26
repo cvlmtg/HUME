@@ -494,7 +494,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
 
     let small = tmp.path().join("small.md");
     std::fs::write(&small, "hi\n").unwrap();
-    let path = small.to_string_lossy().replace('\\', "/");
+    let path = steel_path(&small);
 
     // Mirrors runtime/plugins/core/pickers/plugin.scm's files-picker on_select:
     // `(switch-to-buffer! (open-buffer! path))` run from a picker callback.
@@ -503,7 +503,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
-                 (picker! pane (list (cons "small" "{path}"))
+                 (picker! pane (list (cons "small" {path}))
                    (lambda (p) (when p (switch-to-buffer! pane (open-buffer! p)))))))"#
         ),
     );
@@ -546,7 +546,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
     let content: String = (0..100).map(|n| format!("line {n}\n")).collect();
     let tall = tmp.path().join("tall.md");
     std::fs::write(&tall, &content).unwrap();
-    let path = tall.to_string_lossy().replace('\\', "/");
+    let path = steel_path(&tall);
 
     // on_select switches buffers, then jumps to the last line — both must
     // land on the NEW buffer within the same prepare_frame the switch runs in.
@@ -555,7 +555,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
-                 (picker! pane (list (cons "tall" "{path}"))
+                 (picker! pane (list (cons "tall" {path}))
                    (lambda (p) (when p (let ((new-bid (open-buffer! p)))
                      (switch-to-buffer! pane new-bid)
                      (call! "goto-last-line" (focused-pane))))))))"#

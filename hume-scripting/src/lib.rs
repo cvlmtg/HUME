@@ -78,6 +78,12 @@ pub use types::{
 pub use watchdog::EvalWatchdog;
 #[cfg(not(any(test, feature = "test-util")))]
 use watchdog::EvalWatchdog;
+// Test-only external visibility: every test crate that builds `.scm` source
+// by interpolating a real filesystem path (`open-buffer!`, `picker!`, …)
+// needs this same Windows-safe escaping — see `steel_path_literal`'s own doc
+// comment for why it isn't hand-rolled per call site.
+#[cfg(any(test, feature = "test-util"))]
+pub use builtins::plugins::steel_path_literal;
 
 // ── Internal re-exports (within-crate use) ────────────────────────────────────
 pub(crate) use activation::run_steel_session;

@@ -84,8 +84,9 @@ fn required_module_displayln_call_reaches_the_gate() {
 
     let mut host = ScriptingHost::new();
     let mut null_host = NullHost;
-    let escaped_path = plugin_path.to_string_lossy().replace('\\', "\\\\");
-    let src = format!(r#"(require "{escaped_path}")"#);
+    let escaped_path =
+        crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
+    let src = format!(r#"(require {escaped_path})"#);
     host.eval_source(&src, &mut null_host)
         .expect("requiring the plugin file must not error");
 
@@ -129,8 +130,9 @@ fn required_module_other_print_fns_reach_the_gate() {
 
     let mut host = ScriptingHost::new();
     let mut null_host = NullHost;
-    let escaped_path = plugin_path.to_string_lossy().replace('\\', "\\\\");
-    let src = format!(r#"(require "{escaped_path}")"#);
+    let escaped_path =
+        crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
+    let src = format!(r#"(require {escaped_path})"#);
     host.eval_source(&src, &mut null_host)
         .expect("requiring the plugin file must not error");
 
@@ -173,8 +175,9 @@ fn required_module_write_family_reaches_the_gate() {
 
     let mut host = ScriptingHost::new();
     let mut null_host = NullHost;
-    let escaped_path = plugin_path.to_string_lossy().replace('\\', "\\\\");
-    let src = format!(r#"(require "{escaped_path}")"#);
+    let escaped_path =
+        crate::steel_path_literal(&plugin_path).expect("plugin path must not contain '\"'");
+    let src = format!(r#"(require {escaped_path})"#);
     host.eval_source(&src, &mut null_host)
         .expect("requiring the plugin file must not error");
 

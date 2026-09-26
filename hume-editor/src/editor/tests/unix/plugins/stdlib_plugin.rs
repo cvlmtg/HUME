@@ -271,11 +271,11 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
     std::fs::create_dir_all(scan_dir.path().join("beta")).unwrap();
     std::fs::create_dir_all(scan_dir.path().join("alpha")).unwrap();
     std::fs::write(scan_dir.path().join("stray.txt"), "not a dir").unwrap();
-    let dir = scan_dir.path().to_string_lossy().replace('\\', "\\\\");
+    let dir = steel_path(scan_dir.path());
 
     let assertions = format!(
         r#"
-(let ([got (call! "stdlib/list-subdirs" "{dir}")])
+(let ([got (call! "stdlib/list-subdirs" {dir})])
   (unless (equal? got (list "alpha" "beta"))
     (error (string-append "list-subdirs must return only sorted subdir names, got "
                            (to-string got)))))
@@ -305,12 +305,12 @@ fn core_stdlib_write_file_truncates_existing_content() {
 
     let scan_dir = safe_tempdir();
     let target = scan_dir.path().join("target.txt");
-    let path = target.to_string_lossy().replace('\\', "\\\\");
+    let path = steel_path(&target);
 
     let assertions = format!(
         r#"
-(call! "stdlib/write-file" "{path}" "long-content")
-(call! "stdlib/write-file" "{path}" "short")
+(call! "stdlib/write-file" {path} "long-content")
+(call! "stdlib/write-file" {path} "short")
 "#
     );
 
@@ -494,12 +494,12 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
     std::fs::create_dir_all(sandbox.raw().join("sub")).unwrap();
     ed.set_cwd(&sandbox.path().join("sub")).unwrap();
 
-    let root = sandbox.path().to_string_lossy().replace('\\', "\\\\");
+    let root = steel_path(&sandbox.path());
     let assertions = format!(
         r#"
 (unless (equal? (call! "stdlib/git-repo?") #t)
   (error "git-repo? must be #t inside a work tree"))
-(unless (equal? (call! "stdlib/git-toplevel") "{root}")
+(unless (equal? (call! "stdlib/git-toplevel") {root})
   (error (string-append "git-toplevel must be the repo root, got "
                          (to-string (call! "stdlib/git-toplevel")))))
 "#

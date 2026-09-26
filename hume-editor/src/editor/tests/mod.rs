@@ -1012,6 +1012,17 @@ fn safe_named_tempfile() -> tempfile::NamedTempFile {
     tempfile::NamedTempFile::new().expect("named tempfile")
 }
 
+/// Quotes `path` as a Steel string literal, for building `.scm` source by
+/// `format!` interpolation (`open-buffer!`, `picker!`, …) — every such test
+/// needs a real filesystem path to survive round-tripping through the Steel
+/// reader, and on Windows `path` contains `\`, which is not embeddable
+/// unescaped (`\U` etc. are invalid Steel string escapes). Panics on a path
+/// containing `"`, since no test in this suite constructs one on purpose.
+pub(crate) fn steel_path(path: &std::path::Path) -> String {
+    hume_scripting::steel_path_literal(path)
+        .unwrap_or_else(|| panic!("path cannot be embedded in a Steel string literal: {path:?}"))
+}
+
 /// Write `source` as `<tmp>/init.scm`, evaluate it against the real
 /// `EditorHostImpl`, and apply the effects it queued — the harness mirror of
 /// `Editor::init_scripting`'s eval/apply pair.

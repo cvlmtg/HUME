@@ -797,7 +797,7 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
 
     let other = file_dir.path().join("other.txt");
     std::fs::write(&other, "abc\n").unwrap();
-    let other_path = other.to_str().unwrap().to_owned();
+    let other_path = steel_path(&other);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -806,7 +806,7 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
         &format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
                  (lsp-request bid "textDocument/hover" (hash)
-                   (lambda (err result) (switch-to-buffer! bid (open-buffer! "{other_path}"))))
+                   (lambda (err result) (switch-to-buffer! bid (open-buffer! {other_path}))))
                  (lsp-request bid "textDocument/completion" (hash)
                    (lambda (err result) (log! 'trace "b-fired"))
                    #:require-focus #t)))"#

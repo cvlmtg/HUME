@@ -73,7 +73,7 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
 
     let scratch = tmp.path().join("scratch.txt");
     std::fs::write(&scratch, "x\n").unwrap();
-    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+    let scratch_str = steel_path(&scratch);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -81,7 +81,7 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
         &mut host,
         &format!(
             r#"(define-typed-command! "probe" "" (lambda ()
-                 (define b (open-buffer! "{scratch_str}"))
+                 (define b (open-buffer! {scratch_str}))
                  (close-buffer! b)
                  (diff-buffer-lines b "a\nb\n")))"#
         ),

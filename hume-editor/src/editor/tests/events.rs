@@ -1198,7 +1198,7 @@ fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_ca
     let tmp = safe_tempdir();
     let other = tmp.path().join("other.txt");
     std::fs::write(&other, "b\n").unwrap();
-    let other_path = other.to_string_lossy().replace('\\', "/");
+    let other_path = steel_path(&other);
 
     let mut ed = editor_from("-[a]>b\n");
     let bid_before = ed.focused_buffer_id();
@@ -1213,7 +1213,7 @@ fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_ca
                    (log! 'trace "entered")
                    (when (not switched)
                      (set! switched #t)
-                     (switch-to-buffer! bid (open-buffer! "{other_path}")))))"#
+                     (switch-to-buffer! bid (open-buffer! {other_path})))))"#
         ),
         tmp.path(),
     );

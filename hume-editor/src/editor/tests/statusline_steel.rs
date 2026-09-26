@@ -29,7 +29,7 @@ fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
     let mut ed = editor_from("-[a]>\n");
     let other = tmp.path().join("other.txt");
     std::fs::write(&other, "x\n").unwrap();
-    let other_str = other.to_string_lossy().replace('\\', "/");
+    let other_str = steel_path(&other);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -38,7 +38,7 @@ fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
         &format!(
             r#"(define-typed-command! "arm" "" (lambda (bid)
                  (set-statusline-text! "greeting" bid "hello")
-                 (switch-to-buffer! bid (open-buffer! "{other_str}"))))"#
+                 (switch-to-buffer! bid (open-buffer! {other_str}))))"#
         ),
         tmp.path(),
     );
@@ -56,7 +56,7 @@ fn closing_the_buffer_clears_its_pushed_text() {
     let mut ed = editor_from("-[a]>\n");
     let scratch = tmp.path().join("scratch.txt");
     std::fs::write(&scratch, "x\n").unwrap();
-    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+    let scratch_str = steel_path(&scratch);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -64,7 +64,7 @@ fn closing_the_buffer_clears_its_pushed_text() {
         &mut host,
         &format!(
             r#"(define-typed-command! "arm" "" (lambda ()
-                 (define b (open-buffer! "{scratch_str}"))
+                 (define b (open-buffer! {scratch_str}))
                  (set-statusline-text! "greeting" b "hello")
                  (close-buffer! b)))"#
         ),
@@ -113,7 +113,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
     let mut ed = editor_from("-[a]>\n");
     let scratch = tmp.path().join("scratch.txt");
     std::fs::write(&scratch, "x\n").unwrap();
-    let scratch_str = scratch.to_string_lossy().replace('\\', "/");
+    let scratch_str = steel_path(&scratch);
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -121,7 +121,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
         &mut host,
         &format!(
             r#"(define-typed-command! "arm" "" (lambda ()
-                 (define b (open-buffer! "{scratch_str}"))
+                 (define b (open-buffer! {scratch_str}))
                  (close-buffer! b)
                  (set-statusline-text! "greeting" b "hello")))"#
         ),

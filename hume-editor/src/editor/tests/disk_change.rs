@@ -1994,7 +1994,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
 
     let target = tmp.path().join("target.md");
     std::fs::write(&target, "hi\n").unwrap();
-    let path = target.to_string_lossy().replace('\\', "/");
+    let path = target.to_string_lossy().into_owned();
 
     // Open the target buffer up front so its stored signature reflects the
     // pre-change content — the picker below switches onto this *already-open*
@@ -2007,13 +2007,14 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     // File changes on disk while the buffer stays open in the background.
     rewrite_externally(&target, "hi, externally changed!\n");
 
+    let steel_target = steel_path(&target);
     let mut host = hume_scripting::ScriptingHost::new();
     eval_with_real_host(
         &mut ed,
         &mut host,
         &format!(
             r#"(define-typed-command! "go" "" (lambda (pane)
-                 (picker! pane (list (cons "target" "{path}"))
+                 (picker! pane (list (cons "target" {steel_target}))
                    (lambda (p) (when p (switch-to-buffer! pane (open-buffer! p)))))))"#
         ),
         tmp.path(),

@@ -76,19 +76,19 @@ fn process_and_fs_globals_are_available_unrequired() {
 #[test]
 fn spawn_process_round_trip_with_fs_ops_and_piped_stdout() {
     let dir = tempfile::tempdir().unwrap();
-    let base = dir.path().to_string_lossy().replace('\\', "\\\\");
+    let base = crate::steel_path_literal(dir.path()).expect("tempdir path must not contain '\"'");
 
     let mut host = ScriptingHost::new();
     let mut null_host = NullHost;
     let src = format!(
         r#"
-        (define target (string-append "{base}" "/probe-dir"))
+        (define target (string-append {base} "/probe-dir"))
         (create-directory! target)
         (if (is-dir? target) (begin) (error "create-directory!/is-dir? failed"))
         (delete-directory! target)
         (if (is-dir? target) (error "delete-directory! did not remove dir") (begin))
 
-        (define builder (with-current-dir (with-stdout-piped (command "echo" (list "hello-from-probe"))) "{base}"))
+        (define builder (with-current-dir (with-stdout-piped (command "echo" (list "hello-from-probe"))) {base}))
         (define spawned (spawn-process builder))
         (if (Ok? spawned)
             (let ([child (Ok->value spawned)])
@@ -108,19 +108,16 @@ fn spawn_process_round_trip_with_fs_ops_and_piped_stdout() {
 #[test]
 fn file_write_read_port_round_trip() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir
-        .path()
-        .join("probe.txt")
-        .to_string_lossy()
-        .replace('\\', "\\\\");
+    let path = crate::steel_path_literal(&dir.path().join("probe.txt"))
+        .expect("tempdir path must not contain '\"'");
     let mut host = ScriptingHost::new();
     let mut null_host = NullHost;
     let src = format!(
         r#"
-        (define out (open-output-file "{path}"))
+        (define out (open-output-file {path}))
         (write-string "hello-file-probe" out)
         (close-output-port out)
-        (define in (open-input-file "{path}"))
+        (define in (open-input-file {path}))
         (define content (read-port-to-string in))
         (close-input-port in)
         (if (equal? content "hello-file-probe")
@@ -130,6 +127,37 @@ fn file_write_read_port_round_trip() {
     );
     host.eval_source(&src, &mut null_host)
         .expect("file write/read port probe failed");
+}
+
+/// Independent oracle: a Steel string literal, once parsed back by the VM,
+/// must have the same character count as the original path — proof the
+/// escaping round-trips rather than just "doesn't panic".
+#[test]
+fn steel_path_literal_escapes_windows_backslashes_for_round_trip_through_steel() {
+    let path = std::path::Path::new(r"C:\Users\x");
+    let literal = crate::steel_path_literal(path).expect("plain path must escape");
+
+    let mut host = ScriptingHost::new();
+    let mut null_host = NullHost;
+    let src = format!(
+        r#"
+        (define s {literal})
+        (if (= (string-length s) 10)
+            (begin)
+            (error (string-append "unexpected length: " (to-string (string-length s)))))
+        "#
+    );
+    host.eval_source(&src, &mut null_host)
+        .expect("steel_path_literal's output must parse back as a 10-char Steel string");
+}
+
+#[test]
+fn steel_path_literal_rejects_a_path_containing_a_quote() {
+    let path = std::path::Path::new("weird\"quote.txt");
+    assert!(
+        crate::steel_path_literal(path).is_none(),
+        "a quote in the path can't be embedded in a Steel string literal"
+    );
 }
 
 #[cfg(unix)]

@@ -136,7 +136,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
     let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("main.rs");
     std::fs::write(&file, "fn main() {}\n").unwrap();
-    let file_str = file.to_string_lossy().replace('\\', "/");
+    let file_str = steel_path(&file);
 
     let mut host = hume_scripting::ScriptingHost::new();
     eval_with_real_host(
@@ -144,7 +144,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
         &mut host,
         &format!(
             r#"(define-typed-command! "go" "" (lambda ()
-                 (define b (open-buffer! "{file_str}"))
+                 (define b (open-buffer! {file_str}))
                  (set-buffer-language! b "notes")))"#
         ),
         tmp.path(),

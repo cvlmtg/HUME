@@ -91,10 +91,26 @@ fn already_declared(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str) -> boo
     }
 }
 
+/// Builds a quoted Steel string literal for `path` (`"…"`, backslashes
+/// doubled so Windows paths like `C:\Users\…` survive embedding — `\U` etc.
+/// are invalid Steel escapes), or `None` if `path` contains `"`, which no
+/// amount of escaping can embed in a Scheme string literal.
+///
+/// Also exposed as [`crate::steel_path_literal`] for test call sites (any
+/// `.scm` source built by string interpolation from a real filesystem path —
+/// `open-buffer!`, `picker!`, `require`, …) that would otherwise hand-roll
+/// this same escaping per site.
+pub fn steel_path_literal(path: &std::path::Path) -> Option<String> {
+    let raw = path.to_string_lossy();
+    if raw.contains('"') {
+        return None;
+    }
+    let escaped = raw.replace('\\', "\\\\");
+    Some(format!("\"{escaped}\""))
+}
+
 /// Builds `(require "<abs path>")`, rejecting a path containing `"` (which
-/// can't be embedded in a Steel string literal) and escaping backslashes so
-/// Windows paths (`C:\Users\…`) survive embedding — `\U` etc. are invalid
-/// Steel escapes.
+/// can't be embedded in a Steel string literal) via [`steel_path_literal`].
 ///
 /// `kind` names what `path` is, for the error message (`"plugin"` /
 /// `"plugin manifest"`). `on_unquotable` runs (for its side effect only)
@@ -106,14 +122,12 @@ fn require_program_for_path(
     kind: &str,
     on_unquotable: impl FnOnce(),
 ) -> Result<String, SteelErr> {
-    let abs_str = path.to_string_lossy();
-    if abs_str.contains('"') {
+    let Some(literal) = steel_path_literal(path) else {
         on_unquotable();
         steel::stop!(Generic =>
             "{} path contains '\"' — cannot embed in require: {}", kind, path.display());
-    }
-    let escaped = abs_str.replace('\\', "\\\\");
-    Ok(format!("(require \"{escaped}\")"))
+    };
+    Ok(format!("(require {literal})"))
 }
 
 /// Gate for plugin-registration verbs (`load-plugin`, `declare-plugin`).
