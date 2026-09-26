@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::error::ApplyError;
@@ -81,6 +83,27 @@ pub struct ChangeSet {
     ops: Vec<Operation>,
     len_before: usize,
     len_after: usize,
+}
+
+/// One region [`ChangeSet::edited_regions`] touched: the old-doc span it
+/// replaced, and the text it replaced that span with (empty for a region
+/// that only deleted).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditedRegion<'a> {
+    pub old: ExclusiveRange<CharOffset>,
+    pub inserted: Cow<'a, str>,
+}
+
+/// Appends `s` to `cow` in place — `edited_regions`' own accumulator for a
+/// region touched by more than one `Insert` op. Stays `Cow::Borrowed` (no
+/// allocation) for the first piece; converts to owned only once a second
+/// piece needs concatenating.
+fn push_str<'a>(cow: &mut Cow<'a, str>, s: &'a str) {
+    if cow.is_empty() {
+        *cow = Cow::Borrowed(s);
+    } else {
+        cow.to_mut().push_str(s);
+    }
 }
 
 // ── push_merge helper ────────────────────────────────────────────────────────
@@ -493,7 +516,7 @@ impl ChangeSet {
         }
     }
 
-    // ── edited_old_ranges ────────────────────────────────────────────────────
+    // ── edited_old_ranges / edited_regions ────────────────────────────────────
 
     /// Old-doc `(start, end)` spans touched by this changeset's edits, sorted
     /// ascending and merged where adjacent/overlapping.
@@ -513,36 +536,53 @@ impl ChangeSet {
     /// [`crate::selection::SelectionSet::translate_in_place_with`] for each,
     /// rather than paying the O(ops) walk again per list.
     pub fn edited_old_ranges(&self) -> Vec<ExclusiveRange<CharOffset>> {
-        let mut ranges: Vec<ExclusiveRange<CharOffset>> = Vec::new();
+        self.edited_regions().into_iter().map(|r| r.old).collect()
+    }
+
+    /// Like [`edited_old_ranges`](Self::edited_old_ranges), but also carries
+    /// the text each region's edit inserted — the old-doc span plus its
+    /// replacement, in one walk. `inserted` is `Cow::Borrowed` in the common
+    /// case (a region touched by at most one `Insert` op); a region merging
+    /// more than one — an `Insert` sitting between two other touching
+    /// ops, which only `compose` of several changesets can produce — copies
+    /// into an owned `String` to concatenate them in order.
+    ///
+    /// Used by `Editor::cursor_replacement_at` (`hume-editor/src/editor/
+    /// replay.rs`) and `hume-treesitter::input_edits_from_changeset`, both of
+    /// which need the replacement text a region's `Delete`/`Insert` pair
+    /// produced, not just its span.
+    pub fn edited_regions(&self) -> Vec<EditedRegion<'_>> {
+        let mut regions: Vec<EditedRegion<'_>> = Vec::new();
         let mut old = 0usize;
         for op in &self.ops {
             match op {
                 Operation::Retain(n) => old += n,
                 Operation::Delete(n) => {
                     let (start, end) = (old, old + n);
-                    match ranges.last_mut() {
-                        Some(last) if start <= last.end.index() => {
-                            last.end = last.end.max(CharOffset::new(end));
+                    match regions.last_mut() {
+                        Some(last) if start <= last.old.end.index() => {
+                            last.old.end = last.old.end.max(CharOffset::new(end));
                         }
-                        _ => ranges.push(ExclusiveRange::new(
-                            CharOffset::new(start),
-                            CharOffset::new(end),
-                        )),
+                        _ => regions.push(EditedRegion {
+                            old: ExclusiveRange::new(CharOffset::new(start), CharOffset::new(end)),
+                            inserted: Cow::Borrowed(""),
+                        }),
                     }
                     old += n;
                 }
-                Operation::Insert(_) => match ranges.last_mut() {
-                    Some(last) if old <= last.end.index() => {
-                        last.end = last.end.max(CharOffset::new(old));
+                Operation::Insert(s) => match regions.last_mut() {
+                    Some(last) if old <= last.old.end.index() => {
+                        last.old.end = last.old.end.max(CharOffset::new(old));
+                        push_str(&mut last.inserted, s);
                     }
-                    _ => ranges.push(ExclusiveRange::new(
-                        CharOffset::new(old),
-                        CharOffset::new(old),
-                    )),
+                    _ => regions.push(EditedRegion {
+                        old: ExclusiveRange::new(CharOffset::new(old), CharOffset::new(old)),
+                        inserted: Cow::Borrowed(s.as_str()),
+                    }),
                 },
             }
         }
-        ranges
+        regions
     }
 
     // ── invert ───────────────────────────────────────────────────────────────

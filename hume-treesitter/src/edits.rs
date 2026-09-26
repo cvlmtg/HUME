@@ -1,75 +1,26 @@
-use hume_editing::changeset::{ChangeSet, Operation};
+use hume_editing::changeset::ChangeSet;
 
 // ── Incremental parse helpers ─────────────────────────────────────────────────
 
 /// Translate a `ChangeSet` into a sequence of `tree_sitter::InputEdit`s.
 ///
-/// `rope` must be the buffer text **before** the edit (the old document).  All
-/// char offsets in the changeset are converted to byte offsets and (row, byte-col)
-/// positions via the rope's index helpers.
-///
-/// `pre_char`/`start_char`/`old_end_char` stay bare `usize`, not `CharOffset`:
-/// this walk is pure count-accumulation over `Operation::Retain(n)`/`Delete(n)`
-/// lengths, never a grapheme-boundary walk, and every value it produces feeds
-/// straight into `rope.char_to_byte`/`InputEdit`'s own byte/point coordinates
-/// — tree-sitter's foreign coordinate system, not a HUME buffer position held
-/// or compared in its own domain.
+/// `rope` must be the buffer text **before** the edit (the old document). One
+/// `InputEdit` per [`ChangeSet::edited_regions`] region — that walk already
+/// pairs a `Delete`/`Insert` replacement in either op order (every
+/// `hume-ops` builder emits delete-then-insert, but `ChangeSet::invert`
+/// emits insert-then-delete for every undone replacement, `compose` can
+/// produce either, and `indent`/`unindent` deliberately emit
+/// insert-then-delete — see `hume-ops/src/edit/indent.rs`) into one region,
+/// so this walk doesn't have to.
 pub(crate) fn input_edits_from_changeset(
     cs: &ChangeSet,
     rope: &ropey::Rope,
 ) -> Vec<tree_sitter::InputEdit> {
-    let mut edits = Vec::new();
-    let mut pre_char: usize = 0;
-    let mut ops = cs.ops().iter();
-
-    while let Some(op) = ops.next() {
-        match op {
-            Operation::Retain(n) => {
-                pre_char += n;
-            }
-            Operation::Delete(del_n) => {
-                let start_char = pre_char;
-                let old_end_char = pre_char + del_n;
-                // A following Insert forms a replace — consume it together.
-                let inserted = match ops.as_slice().first() {
-                    Some(Operation::Insert(s)) => {
-                        let s = s.as_str();
-                        ops.next();
-                        s
-                    }
-                    _ => "",
-                };
-                edits.push(make_input_edit(start_char, old_end_char, inserted, rope));
-                pre_char = old_end_char;
-            }
-            Operation::Insert(ins_s) => {
-                // A replacement reaches here in either op order: every
-                // `hume-ops` builder emits delete-then-insert (handled by the
-                // lookahead above), but `ChangeSet::invert` emits
-                // insert-then-delete for every undone replacement, `compose`
-                // can produce either, and `indent`/`unindent` deliberately
-                // emit insert-then-delete (see `hume-ops/src/edit/indent.rs`)
-                // so their own position remap can use `Assoc`. A following
-                // Delete is consumed together so both orders still coalesce
-                // into one edit.
-                let del_n = match ops.as_slice().first() {
-                    Some(Operation::Delete(n)) => {
-                        let n = *n;
-                        ops.next();
-                        n
-                    }
-                    _ => 0,
-                };
-                edits.push(make_input_edit(
-                    pre_char,
-                    pre_char + del_n,
-                    ins_s.as_str(),
-                    rope,
-                ));
-                pre_char += del_n;
-            }
-        }
-    }
+    let mut edits: Vec<tree_sitter::InputEdit> = cs
+        .edited_regions()
+        .into_iter()
+        .map(|r| make_input_edit(r.old.start.index(), r.old.end.index(), &r.inserted, rope))
+        .collect();
 
     // All edits are computed in pre-edit coordinate space (the old rope).
     // `tree.edit()` mutates coordinates in-place: applying a left edit first shifts

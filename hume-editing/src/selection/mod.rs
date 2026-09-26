@@ -86,6 +86,17 @@ impl SelectionSet {
         self.selections.iter()
     }
 
+    /// `true` if every selection is collapsed (a bare cursor, no extent) —
+    /// the guard a caller that treats each cursor as "typed at" rather than
+    /// "replacing a real selection" must check first (completion accept,
+    /// dot-repeat's own recorded-result replay): typing over a real
+    /// selection is a different edit than completing/replaying at it, and
+    /// the replace-at-cursor commands this guards force-collapse every
+    /// selection they touch, which would otherwise silently discard one.
+    pub fn all_collapsed(&self) -> bool {
+        self.iter_sorted().all(Selection::is_collapsed)
+    }
+
     /// Apply `f` to every selection and return a canonicalized `SelectionSet`.
     ///
     /// After applying `f` the result is sorted by `start()`, overlapping or

@@ -29,6 +29,24 @@ fn single_selection_is_primary() {
 }
 
 #[test]
+fn all_collapsed_true_for_every_bare_cursor() {
+    let set = SelectionSet::from_vec_unchecked(
+        vec![Selection::collapsed(co(0)), Selection::collapsed(co(5))],
+        0,
+    );
+    assert!(set.all_collapsed());
+}
+
+#[test]
+fn all_collapsed_false_if_any_selection_has_extent() {
+    let set = SelectionSet::from_vec_unchecked(
+        vec![Selection::collapsed(co(0)), Selection::new(co(5), co(8))],
+        0,
+    );
+    assert!(!set.all_collapsed());
+}
+
+#[test]
 fn merge_no_overlap() {
     // Two disjoint selections — should stay separate.
     let mut set = SelectionSet::from_vec_unchecked(

@@ -1,6 +1,7 @@
 use super::*;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use pretty_assertions::assert_eq;
+use std::borrow::Cow;
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
@@ -858,6 +859,107 @@ fn edited_old_ranges_keeps_disjoint_edits_separate() {
     b.retain_rest();
     let cs = b.finish();
     assert_eq!(cs.edited_old_ranges(), vec![ex(0, 2), ex(6, 9)]);
+}
+
+// ── edited_regions tests ────────────────────────────────────────────────
+
+#[test]
+fn edited_regions_identity_is_empty() {
+    let mut b = ChangeSetBuilder::new(co(5));
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(cs.edited_regions(), Vec::new());
+}
+
+#[test]
+fn edited_regions_single_delete_has_no_inserted_text() {
+    let mut b = ChangeSetBuilder::new(co(10));
+    b.retain(2);
+    b.delete(3);
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(
+        cs.edited_regions(),
+        vec![EditedRegion {
+            old: ex(2, 5),
+            inserted: Cow::Borrowed(""),
+        }]
+    );
+}
+
+#[test]
+fn edited_regions_single_insert_is_a_point_with_its_text() {
+    let mut b = ChangeSetBuilder::new(co(5));
+    b.retain(3);
+    b.insert("XX");
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(
+        cs.edited_regions(),
+        vec![EditedRegion {
+            old: ex(3, 3),
+            inserted: Cow::Borrowed("XX"),
+        }]
+    );
+}
+
+#[test]
+fn edited_regions_pairs_delete_then_insert() {
+    let mut b = ChangeSetBuilder::new(co(5));
+    b.delete(3);
+    b.insert("XY");
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(
+        cs.edited_regions(),
+        vec![EditedRegion {
+            old: ex(0, 3),
+            inserted: Cow::Borrowed("XY"),
+        }]
+    );
+}
+
+#[test]
+fn edited_regions_pairs_insert_then_delete() {
+    // `ChangeSet::invert`/`compose`/`indent` all emit insert-then-delete for
+    // a replacement — the order `edited_old_ranges`'s own doc calls out as
+    // the other valid one.
+    let mut b = ChangeSetBuilder::new(co(5));
+    b.insert("XY");
+    b.delete(3);
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(
+        cs.edited_regions(),
+        vec![EditedRegion {
+            old: ex(0, 3),
+            inserted: Cow::Borrowed("XY"),
+        }]
+    );
+}
+
+#[test]
+fn edited_regions_keeps_disjoint_edits_separate() {
+    let mut b = ChangeSetBuilder::new(co(12));
+    b.delete(2); // [0,2)
+    b.insert("A");
+    b.retain(4); // gap
+    b.delete(3); // [6,9)
+    b.retain_rest();
+    let cs = b.finish();
+    assert_eq!(
+        cs.edited_regions(),
+        vec![
+            EditedRegion {
+                old: ex(0, 2),
+                inserted: Cow::Borrowed("A"),
+            },
+            EditedRegion {
+                old: ex(6, 9),
+                inserted: Cow::Borrowed(""),
+            },
+        ]
+    );
 }
 
 // ── invert tests ─────────────────────────────────────────────────────────

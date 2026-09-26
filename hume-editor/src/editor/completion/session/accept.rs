@@ -137,7 +137,7 @@ impl BufferSession {
             // completing at it, and `replace_*_cursors` force-collapses
             // every selection it touches, which would silently discard a
             // real selection set.
-            if !pbs.selections().iter_sorted().all(|s| s.is_collapsed()) {
+            if !pbs.selections().all_collapsed() {
                 return Err("completion-accept!: selections must be collapsed".to_string());
             }
             // Every cursor's own head, not just the primary's — the overlap
