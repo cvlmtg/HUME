@@ -6,7 +6,7 @@
 //! replayed at a different cursor. Macro replay drains a queue of recorded
 //! keys through the normal event path.
 
-use hume_editing::changeset::{ChangeSet, Operation};
+use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 use std::borrow::Cow;
@@ -713,47 +713,19 @@ impl Editor {
 /// simply skipped: it's document-absolute, or belongs to a different
 /// cursor, the same reasoning [`CursorReplacement`]'s own doc gives for
 /// excluding `additionalTextEdits` from the replacement it records.
+///
+/// [`ChangeSet::edited_regions`] already pairs a region's `Delete`/`Insert`
+/// ops in either order, so this only has to pick the one at `head`.
 fn cursor_replacement_at(delta: &ChangeSet, head: CharOffset) -> Option<CursorReplacement> {
-    let head = head.index();
-    let mut pos = 0usize; // old-doc position of the op cursor
-    let mut ops = delta.ops().iter().peekable();
-    while let Some(op) = ops.next() {
-        match op {
-            Operation::Retain(n) => pos += n,
-            Operation::Insert(s) => {
-                if head == pos {
-                    return Some(CursorReplacement {
-                        back: 0,
-                        forward: 0,
-                        text: s.clone(),
-                    });
-                }
-            }
-            Operation::Delete(n) => {
-                let region_start = pos;
-                pos += n;
-                // A Delete this codebase ever writes as part of a
-                // replacement is immediately followed by the Insert of the
-                // replacement text — consumed together as one region.
-                let text = match ops.peek() {
-                    Some(Operation::Insert(s)) => {
-                        let s = s.clone();
-                        ops.next();
-                        s
-                    }
-                    _ => String::new(),
-                };
-                if head >= region_start && head <= pos {
-                    return Some(CursorReplacement {
-                        back: head - region_start,
-                        forward: pos - head,
-                        text,
-                    });
-                }
-            }
-        }
-    }
-    None
+    delta
+        .edited_regions()
+        .into_iter()
+        .find(|r| head >= r.old.start && head <= r.old.end)
+        .map(|r| CursorReplacement {
+            back: head.chars_since(r.old.start),
+            forward: r.old.end.chars_since(head),
+            text: r.inserted.into_owned(),
+        })
 }
 
 #[cfg(test)]
@@ -793,6 +765,23 @@ mod cursor_replacement_tests {
         b.retain(1);
         b.delete(2);
         b.insert("X");
+        b.retain_rest();
+        let r = cursor_replacement_at(&b.finish(), co(2))
+            .expect("head inside the deleted span must match");
+        assert_eq!((r.back, r.forward, r.text.as_str()), (1, 1, "X"));
+    }
+
+    #[test]
+    fn insert_then_delete_region_containing_head() {
+        // "abcd" → "aXd": the *other* op order a replacement can take
+        // (`invert`/`compose`/`indent` all emit insert-then-delete) —
+        // insert "X" at old position 1, then delete "bc" (old 1..3). A head
+        // inside the deleted span (2) must still report the replacement
+        // text, not an empty one.
+        let mut b = ChangeSetBuilder::new(co(4));
+        b.retain(1);
+        b.insert("X");
+        b.delete(2);
         b.retain_rest();
         let r = cursor_replacement_at(&b.finish(), co(2))
             .expect("head inside the deleted span must match");
