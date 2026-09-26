@@ -17,14 +17,7 @@ impl Editor {
         count: Option<usize>,
         extend: bool,
     ) {
-        let Some(reg_cmd) = self
-            .state
-            .config
-            .registry
-            .get_mappable(name.as_ref())
-            .cloned()
-        else {
-            self.report_unknown_command(name.as_ref(), format!("unknown command: {name}"));
+        let Some(reg_cmd) = self.resolve_mappable(name.as_ref()) else {
             return;
         };
 

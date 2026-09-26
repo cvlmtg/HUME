@@ -83,17 +83,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             // `completion_input`'s job: it peeks this same trie walk before
             // falling through here, and retires its layer once this call
             // returns (see its own doc).
-            let Some(reg_cmd) = ed
-                .state
-                .config
-                .registry
-                .get_mappable(cmd.name.as_ref())
-                .cloned()
-            else {
-                ed.report_unknown_command(
-                    cmd.name.as_ref(),
-                    format!("unknown command: {}", cmd.name),
-                );
+            let Some(reg_cmd) = ed.resolve_mappable(cmd.name.as_ref()) else {
                 return;
             };
             // Wrapped in a dot-capture: replay re-runs this binding, so it

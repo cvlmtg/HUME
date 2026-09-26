@@ -463,16 +463,16 @@ impl Editor {
     /// under the *other* kind, names it and explains how it's actually
     /// reachable instead of `fallback` — a split that resolves only one
     /// kind would otherwise leave the other kind unexplained at every
-    /// single-kind site: the keymap dispatcher, Insert mode's trie leaf, the
-    /// post-init keymap lint, and the `:` dispatcher.
+    /// single-kind site: [`Self::resolve_mappable`]'s three callers, the
+    /// post-init keymap lint (`scripting_setup.rs`), and the `:` dispatcher
+    /// (`input_stack/command.rs`).
     ///
-    /// Stays `Warning`, not `Info`, despite two of its four callers
-    /// (`:` dispatch, Insert mode) being live-typo cases that would
-    /// otherwise fit the transient rule: the post-init keymap lint
-    /// caller (`scripting_setup.rs`) is a config-time diagnostic the user
-    /// won't see the moment it fires and needs to find later in
-    /// `:messages` — the shared function can't carry two severities, so it
-    /// keeps the one its least-ephemeral caller needs.
+    /// Stays `Warning`, not `Info`, despite most of those being live-typo
+    /// cases that would otherwise fit the transient rule: the post-init
+    /// keymap lint caller is a config-time diagnostic the user won't see
+    /// the moment it fires and needs to find later in `:messages` — the
+    /// shared function can't carry two severities, so it keeps the one its
+    /// least-ephemeral caller needs.
     pub(in crate::editor) fn report_unknown_command(&mut self, name: &str, fallback: String) {
         let msg = self
             .state
@@ -481,6 +481,21 @@ impl Editor {
             .other_kind_hint(name)
             .unwrap_or(fallback);
         self.report(Severity::Warning, msg);
+    }
+
+    /// Looks up `name` in the command registry, reporting (via
+    /// [`Self::report_unknown_command`]) and returning `None` if it isn't
+    /// there — shared by every entry point that resolves a keymap-bound
+    /// command name just before dispatching or replaying it:
+    /// `execute_keymap_command` (`mappings/execute.rs`), `handle_insert`'s
+    /// trie-leaf branch (`input_stack/insert.rs`), and `replay.rs`'s replay
+    /// of a recorded `InsertInput::Binding`.
+    pub(in crate::editor) fn resolve_mappable(&mut self, name: &str) -> Option<MappableCommand> {
+        let cmd = self.state.config.registry.get_mappable(name).cloned();
+        if cmd.is_none() {
+            self.report_unknown_command(name, format!("unknown command: {name}"));
+        }
+        cmd
     }
 }
 
