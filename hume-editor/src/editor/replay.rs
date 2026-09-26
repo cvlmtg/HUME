@@ -344,9 +344,7 @@ impl Editor {
     ) -> bool {
         match &cmd {
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-                // Cloned before the body consumes `cmd`.
-                let name = cmd.name().clone();
-                if !self.run_steel_command(cmd, &name, ctx, char_arg) {
+                if !self.run_steel_command(cmd.name(), ctx, char_arg) {
                     return false;
                 }
                 // Inner call! dispatches inside the Steel body run through

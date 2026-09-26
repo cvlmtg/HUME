@@ -57,8 +57,7 @@ impl Editor {
 
         // Steel path — composed from shared step functions.
         let meta = cmd.meta();
-        // Clone the name once, before the body consumes `cmd`.
-        let name = cmd.name().clone();
+        let name = cmd.name();
 
         // BEFORE
         commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
@@ -76,8 +75,8 @@ impl Editor {
         // Before the body — see `commands::repeat_slot_owned`'s own doc.
         let slot_owned = commands::repeat_slot_owned(&self.state);
 
-        // BODY — consumes `cmd`.
-        if !self.run_steel_command(cmd, name.as_ref(), &ctx, char_arg) {
+        // BODY
+        if !self.run_steel_command(name.as_ref(), &ctx, char_arg) {
             // Failed command: undo whatever a partial inner dispatch wrote,
             // so the failure has no residual effect on the recipe.
             self.state.selection_recipe = pre_recipe;
@@ -97,7 +96,7 @@ impl Editor {
             // any inner native command the body dispatched via `call!`.
             commands::step_stamp_repeatable(
                 &mut self.state,
-                &name,
+                name,
                 ctx.count.unwrap_or(1),
                 char_arg,
                 Some(pre_recipe),
@@ -177,7 +176,6 @@ impl Editor {
     /// error, or `scripting` is `None`). On error, the caller skips AFTER stages.
     pub(super) fn run_steel_command(
         &mut self,
-        cmd: MappableCommand,
         name: &str,
         ctx: &CmdCtx,
         char_arg: Option<char>,
@@ -192,11 +190,21 @@ impl Editor {
 
         // For a Lazy stub, activate the owning plugin now so we can read
         // `inline_output` from the resolved SteelBacked entry before dispatch.
-        if let MappableCommand::Lazy { plugin, .. } = &cmd {
-            let plugin = plugin.clone();
-            if !self.activate_lazy_and_report(&plugin, name) {
-                return false;
-            }
+        // Looked up by `name` (never a passed-in `MappableCommand`): `name`
+        // is the single source of truth for which command this call runs —
+        // both callers (`dispatch`, `replay_command`) already derive it from
+        // their own `cmd`, so re-deriving the plugin from that same `name`
+        // rules out a caller ever activating one command's plugin while
+        // running another's body.
+        if let Some(plugin) = self
+            .state
+            .config
+            .registry
+            .lazy_mappable_owner(name)
+            .cloned()
+            && !self.activate_lazy_and_report(&plugin, name)
+        {
+            return false;
         }
 
         // Re-query: a Lazy stub is now SteelBacked after activation above;
