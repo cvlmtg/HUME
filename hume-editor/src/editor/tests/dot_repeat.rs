@@ -2187,6 +2187,79 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     );
 }
 
+/// A binding that edits the buffer *before* opening a picker, with a foreign
+/// edit landing on the same buffer while that picker sits open: the
+/// capture's own `edits` already holds the binding's own edit (computed
+/// against the pre-foreign-edit document) by the time the pick's own edit
+/// arrives (computed against the post-foreign-edit document) — `head_before`'s
+/// own doc names this as the one combination its refresh-when-empty check
+/// doesn't cover. Composing the two must not panic on the length mismatch;
+/// the pick is reported and dropped instead.
+#[test]
+fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edit_intervened() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "edit-then-pick" ""
+             (lambda (pane)
+               (insert-key! pane "x")
+               (picker! pane (list (cons "alpha" "ALPHA"))
+                 (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
+           (bind-key! 'insert "ctrl-y" "edit-then-pick")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc xdef\nuvw xyz\n",
+        "sanity: the binding's own edit landed before the picker opened"
+    );
+
+    // A foreign edit, landing on the same buffer while the picker sits open
+    // — standing in for a timer/LSP edit unrelated to the pick.
+    let fp = FocusedPane::current(&ed.state);
+    let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
+    crate::editor::doc_ops::apply_doc_edit_grouped(
+        &mut ed.state.buffers,
+        &ed.state.config.decorations,
+        &mut ed.state.panes.state,
+        &mut ed.state.panes.jumps,
+        &mut ed.state.active_session,
+        pid,
+        bid,
+        |b, s| hume_ops::edit::insert_char(b, s, 'Z'),
+    );
+
+    ed.feed_key(key_enter()); // picks "alpha", runs delete-word-backward
+    ed.settle();
+    ed.feed_key(key_esc());
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Warning && e.text.contains("won't repeat")),
+        "must warn that the pick can't be replayed: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+
+    let inputs = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action")
+        .insert_inputs;
+    assert!(
+        !inputs.iter().any(|i| matches!(i, InsertInput::Result(_))),
+        "the unreplayable pick must record no InsertInput::Result: {inputs:?}"
+    );
+}
+
 /// A picker dismissed with Esc records nothing: `on_select` receives `#f`
 /// and does nothing, so the capture's diff is identity and the `Binding`
 /// entry it armed is dropped outright — `.` replays only the keys typed

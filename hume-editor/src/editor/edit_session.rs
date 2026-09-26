@@ -38,11 +38,10 @@ pub(in crate::editor) struct EditSession {
     buffer: BufferId,
     kind: EditSessionKind,
     group: EditGroup,
-    /// Armed around an Insert-key binding dispatch, or a completion accept,
-    /// that might turn out interactive — see [`DotCapture`]'s own doc.
-    /// `None` outside such a dispatch, and always on a non-`Insert` session
-    /// (only `handle_insert`/`accept_completion_selection` arm it, and both
-    /// require an open Insert session first).
+    /// Armed around an Insert-key binding dispatch, a completion accept, or
+    /// a re-armed picker hand-off — see [`DotCapture`]'s own doc. `None`
+    /// outside such a dispatch, and always on a non-`Insert` session (every
+    /// armer requires an open Insert session first).
     dot_capture: Option<DotCapture>,
 }
 
@@ -67,11 +66,12 @@ impl EditSession {
         self.dot_capture.as_mut()
     }
 
-    /// Arms `cap` — `Editor::with_dot_capture`'s only caller, just before
-    /// the operation that might go interactive. Never nests: an Insert-key
-    /// binding that itself calls `completion-accept!` shares the *outer*
-    /// capture instead (see `EditorState::mark_dot_interactive`'s own doc),
-    /// so a capture is always taken back out — by `Editor::run_dot_captured`
+    /// Arms `cap` — called by `Editor::run_dot_captured`, just before the
+    /// operation that might go interactive, and again to re-arm a capture
+    /// handed off from a resolved picker. Never nests: an Insert-key binding
+    /// that itself calls `completion-accept!` shares the *outer* capture
+    /// instead (see `EditorState::mark_dot_interactive`'s own doc), so a
+    /// capture is always taken back out — by `Editor::run_dot_captured`
     /// (finalizing it, or handing it to a picker that opened mid-dispatch),
     /// or by `tear_down_insert`'s backstop — before the next arm.
     pub(in crate::editor) fn arm_dot_capture(&mut self, cap: DotCapture) {
@@ -231,13 +231,12 @@ pub(in crate::editor) enum EditSessionKind {
     Paste { before: bool },
     /// `Editor::replay_dot`'s own placeholder, pre-opened before the
     /// replayed body runs, to fold a recipe replay plus the main edit into
-    /// one undo revision. Holds no data of its own —
-    /// nothing ever composes into it directly, and no `InsertLayer` or
-    /// paste-cycle state is attached while it's this kind. The replayed
-    /// body resolves it to `Insert` or `Paste` in place
-    /// (`open_or_retarget`'s retarget branch) if it claims it; otherwise it
-    /// stays `Replay` for `finish_replay_session` to commit directly, as a
-    /// plain edit.
+    /// one undo revision. Holds no data of its own — nothing ever composes
+    /// into it directly, and no `InsertLayer` or paste-cycle state is
+    /// attached while it's this kind. The replayed body resolves it to
+    /// `Insert` or `Paste` in place (`open_or_retarget`'s retarget branch)
+    /// if it claims it; otherwise it stays `Replay` for
+    /// `finish_replay_session` to commit directly, as a plain edit.
     ///
     /// The *only* kind [`open_or_retarget`] may retarget away from. A real,
     /// already-open `Insert` or `Paste` session — even one that's still
@@ -284,23 +283,14 @@ pub(in crate::editor) struct DotCapture {
     /// The primary cursor's head in the old-document space `edits[0]`'s own
     /// `ChangeSet` was computed against — the point `cursor_replacement_at`
     /// (`replay.rs`) locates the net edit relative to, once `edits` is
-    /// composed into one. Set once, whenever `edits` is (re-)armed empty:
-    /// `Editor::run_dot_captured` refreshes it from the *current* cursor
-    /// every time it re-arms a capture whose `edits` is still empty — which
-    /// is exactly the coordinate space the *next* edit `apply_doc_edit_
-    /// grouped` pushes will use — but leaves it alone once `edits` holds at
-    /// least one entry, since every later entry must chain from that first
-    /// one's own old-document space for `ChangeSet::compose_all` to line up.
-    /// This is what makes a foreign edit landing while this capture sat
-    /// detached (a picker open) harmless when nothing of this capture's own
-    /// had run yet — the common case, and the only one `apply_doc_edit_
-    /// grouped`'s exclusion of a detached capture protects on its own. A
-    /// dispatch that itself edits *before* opening a picker, with a foreign
-    /// edit landing on the same buffer while that picker sits open, is the
-    /// one combination this doesn't cover: `compose_all` would find a gap in
-    /// the chain. Narrow enough (and no worse than silently merging the
-    /// foreign edit in, which is what happened before this capture existed
-    /// at all) that it's accepted rather than solved here.
+    /// composed into one. Refreshed from the *current* cursor whenever
+    /// `Editor::run_dot_captured` re-arms a capture whose `edits` is still
+    /// empty — which is exactly the coordinate space the *next* edit
+    /// `apply_doc_edit_grouped` pushes will use — but left alone once
+    /// `edits` holds at least one entry, since every later entry must chain
+    /// from that first one's own old-document space for
+    /// `ChangeSet::compose_all` to line up. See [`Self::text_gen`] for what
+    /// guards that chain against a foreign edit breaking it.
     pub(in crate::editor) head_before: CharOffset,
     /// Every `ChangeSet` composed into this session's group
     /// (`doc_ops::apply_doc_edit_grouped`'s own funnel push) while this
@@ -312,6 +302,24 @@ pub(in crate::editor) struct DotCapture {
     /// interactive, none of it is safe to re-derive at a new cursor, so the
     /// whole thing is captured as data instead.
     pub(in crate::editor) edits: Vec<ChangeSet>,
+    /// The buffer's `text_gen` right after `edits`' own last push (or at arm
+    /// time, if `edits` is still empty) — set alongside every push in
+    /// `apply_doc_edit_grouped`'s funnel, and at construction in
+    /// `Editor::with_dot_capture`. `run_dot_captured`'s re-arm compares this
+    /// against the buffer's *current* `text_gen`: a match means the buffer
+    /// is exactly as this capture left it, so it's safe to refresh
+    /// `head_before` (if `edits` is still empty) or keep composing (if not —
+    /// `edits`' last entry's `len_after` still matches the buffer). A
+    /// mismatch means a foreign edit (a hook, an LSP response, a timer)
+    /// landed on this buffer while the capture sat detached from it (armed
+    /// on a picker instead of this session) — harmless when `edits` was
+    /// still empty (nothing of this capture's own to break), but breaks the
+    /// composition chain outright once `edits` already holds an entry:
+    /// `compose_all` would panic on a length mismatch between that entry's
+    /// `len_after` and the next one's `len_before`. `run_dot_captured`
+    /// detects that case from the mismatch and drops the capture instead of
+    /// composing it.
+    pub(in crate::editor) text_gen: u64,
     /// Set by `EditorState::mark_dot_interactive` — `completion-accept!`/
     /// `completion-trigger` call it directly, `picker!`/`live-picker!`
     /// indirectly via `picker::open_picker` — whichever fires first. A

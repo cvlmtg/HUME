@@ -309,9 +309,8 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     let rope_pre = text_pre.rope().clone();
     let sels = pane_state[pane_id][buf_id].take_selections();
     let doc = buffers.get_mut(buf_id);
-    // Bound once, reused below for the capture-feed push too — the two
-    // used to look this session up separately (`session.rs`'s own
-    // `is_insert_at` filter, twice).
+    // Bound once, reused below for the capture-feed push too — both need
+    // the same `is_insert_at`-filtered session.
     let session = active_session
         .as_mut()
         .filter(|s| s.is_insert_at(pane_id, buf_id))
@@ -350,10 +349,13 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     );
     // This is the one funnel every grouped edit goes through, so it's the
     // one place `DotCapture::edits` (`edit_session.rs`) can be fed without
-    // every caller (there are over a dozen) remembering to do it itself —
-    // see that type's own doc.
+    // every caller remembering to do it itself — see that type's own doc.
     if let Some(cap) = session.dot_capture_mut() {
         cap.edits.push(cs.clone());
+        // `session.group_mut()`'s own `apply_edit_grouped` call above
+        // already bumped this via `Buffer::set_text` — see `DotCapture::
+        // text_gen`'s own doc for what this guards.
+        cap.text_gen = buffers.get(buf_id).text_gen;
     }
     cs
 }

@@ -592,6 +592,7 @@ impl Editor {
             edits: Vec::new(),
             interactive: false,
             fallback,
+            text_gen: self.state.buffers.get(buffer).text_gen,
         };
         self.run_dot_captured(cap, f);
     }
@@ -619,21 +620,39 @@ impl Editor {
             .as_mut()
             .filter(|s| s.is_insert_at(pane, buffer))
         {
+            let current_text_gen = self.state.buffers.get(buffer).text_gen;
             if cap.edits.is_empty() {
                 // Nothing of this capture's own has run yet, so whatever
                 // happened to this buffer since it was last detached (a
                 // foreign edit landing while a picker it was handed to sat
-                // open) is exactly what `head_before` must now measure
-                // from — the *current* cursor, not the one from whenever
-                // this capture was first armed. See `DotCapture::
-                // head_before`'s own doc for why a non-empty `edits` must
-                // NOT be refreshed the same way.
+                // open) is exactly what `head_before`/`text_gen` must now
+                // measure from — the *current* cursor and generation, not
+                // whichever ones this capture was last armed with. See
+                // `DotCapture::head_before`'s own doc for why a non-empty
+                // `edits` must NOT be refreshed the same way.
                 cap.head_before = self.state.panes.state[pane][buffer]
                     .selections()
                     .primary()
                     .head();
+                cap.text_gen = current_text_gen;
+                session.arm_dot_capture(cap);
+            } else if cap.text_gen == current_text_gen {
+                session.arm_dot_capture(cap);
+            } else {
+                // A foreign edit landed on this buffer while `cap` sat
+                // detached (armed on a picker instead of this session), and
+                // `cap.edits` already holds an entry chained from the
+                // pre-foreign-edit document — composing the next edit onto
+                // it would panic in `ChangeSet::compose`'s length assert
+                // (see `DotCapture::text_gen`'s own doc). Report and drop
+                // the whole capture instead of arming it: nothing here is
+                // safe to record, interactive or not — see L23's rule 2
+                // (`docs/LESSONS.md`).
+                self.report(
+                    super::Severity::Warning,
+                    "`.` won't repeat this pick: the buffer changed while it was open".to_string(),
+                );
             }
-            session.arm_dot_capture(cap);
         }
         f(self);
         if let Some(cap) = self
