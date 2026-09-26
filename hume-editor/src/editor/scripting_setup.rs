@@ -354,13 +354,6 @@ impl Editor {
             // see `MAX_EVENT_DRAIN`'s doc for why.
             self.detect_text_changed();
             if self.state.config.pending_work.is_empty() {
-                // Any queued `on_select` that would resolve a still-armed
-                // dot-capture (see `Editor::resolve_dot_capture`'s own doc)
-                // has already run by the time the queue is empty —
-                // finalize here so a dismissed picker's binding entry is
-                // dropped even when its own `on_select` was the last thing
-                // the queue held.
-                self.resolve_dot_capture();
                 return true;
             }
             let batch = std::mem::take(&mut self.state.config.pending_work);
@@ -391,19 +384,14 @@ impl Editor {
                 {
                     self.state.last_entered_buffer = None;
                 }
-                // A capture still armed here never got the `on_select` that
-                // would have resolved it — the batch holding it was just
-                // dropped whole. Finalize with whatever landed before the
-                // cascade tripped, rather than leaving it armed until the
-                // user happens to leave Insert: `tear_down_insert`'s own
-                // backstop would eventually catch it too, but not until then.
-                self.resolve_dot_capture();
+                // A dot-capture inside the dropped batch (a picker's own
+                // queued `on_select` — see `DotCapture`'s own doc) is simply
+                // dropped along with the rest of it: nothing records a
+                // partial result for `.`, the same outcome as an `on_select`
+                // that never fires at all.
                 return false;
             }
             self.run_pending_batch(batch);
-            // After the batch has actually run, never before — see
-            // `Editor::resolve_dot_capture`'s own doc for why.
-            self.resolve_dot_capture();
         }
     }
 
@@ -542,7 +530,12 @@ impl Editor {
                     self.react_to_event(&event);
                     self.fire_one_event(event);
                 }
-                PendingWork::Call { proc, args, anchor } => {
+                PendingWork::Call {
+                    proc,
+                    args,
+                    anchor,
+                    dot_capture,
+                } => {
                     if let Some(anchor) = anchor {
                         // Never grouped into a multi-item batch with a
                         // sibling call: `anchor_admits` must run immediately
@@ -560,10 +553,26 @@ impl Editor {
                         }
                         continue;
                     }
+                    if let Some(cap) = dot_capture {
+                        // Also never batched with a sibling call: re-arming
+                        // `cap` covers only this one call — see
+                        // `PendingWork::Call::dot_capture`'s own doc.
+                        self.run_dot_captured(cap, |ed| ed.run_call_batch(vec![(proc, args)]));
+                        continue;
+                    }
                     let mut calls = vec![(proc, args)];
-                    while matches!(items.front(), Some(PendingWork::Call { anchor: None, .. })) {
+                    while matches!(
+                        items.front(),
+                        Some(PendingWork::Call {
+                            anchor: None,
+                            dot_capture: None,
+                            ..
+                        })
+                    ) {
                         let Some(PendingWork::Call { proc, args, .. }) = items.pop_front() else {
-                            unreachable!("front() just confirmed an unanchored Call variant")
+                            unreachable!(
+                                "front() just confirmed an unanchored, capture-free Call variant"
+                            )
                         };
                         calls.push((proc, args));
                     }

@@ -96,24 +96,19 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
                 );
                 return;
             };
-            // Recorded before the dispatch, whatever the binding then does:
-            // replay re-runs it, so it decides again at the new cursor —
-            // unless it turns out interactive, in which case
-            // `resolve_dot_capture` below replaces this entry with its net
-            // edit instead (see `edit_session::DotCapture`'s own doc).
-            ed.state
-                .record_insert_input(InsertInput::Binding { name: cmd.name });
-
-            ed.arm_dot_capture(true);
-
+            // Wrapped in a dot-capture: replay re-runs this binding, so it
+            // decides again at the new cursor — unless it turns out
+            // interactive, in which case the capture's own net edit is
+            // recorded instead (see `edit_session::DotCapture`'s own doc).
             // Through the full pipeline like any keypress: an edit composes
             // into the open insert-session group (`run_body` routes through
             // `apply_doc_edit_grouped`), a motion clears a pinned typed run
             // (`step_clear_typed_run`), and `repeat_slot_owned` keeps
             // a repeatable command from stamping over the session's owner.
-            ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
-
-            ed.resolve_dot_capture();
+            let fallback = InsertInput::Binding { name: cmd.name };
+            ed.with_dot_capture(Some(fallback), |ed| {
+                ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
+            });
             return;
         }
         WalkResult::NoMatch => {}

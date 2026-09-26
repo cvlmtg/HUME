@@ -63,42 +63,28 @@ impl EditSession {
         &mut self.group
     }
 
-    /// The armed dot-capture, if any — see [`DotCapture`]'s own doc.
-    pub(in crate::editor) fn dot_capture(&self) -> Option<&DotCapture> {
-        self.dot_capture.as_ref()
-    }
-
     pub(in crate::editor) fn dot_capture_mut(&mut self) -> Option<&mut DotCapture> {
         self.dot_capture.as_mut()
     }
 
-    /// Arms a fresh [`DotCapture`] — `handle_insert`'s Leaf branch and
-    /// `accept_completion_selection` are the only callers, each just before
-    /// the operation that might go interactive. Neither ever nests inside
-    /// the other's dispatch (an Insert-key binding that itself calls
-    /// `completion-accept!` shares the *outer* capture instead — see
-    /// `mark_dot_interactive`'s own doc), so a capture is always resolved by
-    /// `Editor::resolve_dot_capture` or `tear_down_insert`'s backstop before
-    /// the next arm.
-    pub(in crate::editor) fn arm_dot_capture(
-        &mut self,
-        head_before: CharOffset,
-        has_placeholder: bool,
-    ) {
+    /// Arms `cap` — `Editor::with_dot_capture`'s only caller, just before
+    /// the operation that might go interactive. Never nests: an Insert-key
+    /// binding that itself calls `completion-accept!` shares the *outer*
+    /// capture instead (see `EditorState::mark_dot_interactive`'s own doc),
+    /// so a capture is always taken back out — by `Editor::run_dot_captured`
+    /// (finalizing it, or handing it to a picker that opened mid-dispatch),
+    /// or by `tear_down_insert`'s backstop — before the next arm.
+    pub(in crate::editor) fn arm_dot_capture(&mut self, cap: DotCapture) {
         debug_assert!(
             self.dot_capture.is_none(),
             "arm_dot_capture: a capture was already armed and never resolved"
         );
-        self.dot_capture = Some(DotCapture {
-            head_before,
-            edits: Vec::new(),
-            interactive: false,
-            has_placeholder,
-        });
+        self.dot_capture = Some(cap);
     }
 
-    /// Takes the armed capture, if any — `Editor::resolve_dot_capture`'s own
-    /// finalize/drop paths, and `tear_down_insert`'s teardown-time backstop.
+    /// Takes the armed capture, if any — `Editor::run_dot_captured`'s own
+    /// finalize/hand-off paths, and `tear_down_insert`'s teardown-time
+    /// backstop.
     pub(in crate::editor) fn take_dot_capture(&mut self) -> Option<DotCapture> {
         self.dot_capture.take()
     }
@@ -106,7 +92,17 @@ impl EditSession {
     /// Consumes the session, handing its [`EditGroup`] to the caller that's
     /// about to commit it (`doc_ops::commit_open_session`) — the one place
     /// that needs the group by value rather than by reference.
+    ///
+    /// A live `dot_capture` here would be silently dropped along with the
+    /// rest of the session — `tear_down_insert`'s own backstop is what must
+    /// take it out first (see that function's own doc), so reaching this
+    /// with one still armed is a bug in that ordering, not a normal exit.
     pub(in crate::editor) fn into_group(self) -> EditGroup {
+        debug_assert!(
+            self.dot_capture.is_none(),
+            "into_group: a capture was still armed — tear_down_insert's backstop should have \
+             taken it first"
+        );
         self.group
     }
 
@@ -257,29 +253,54 @@ pub(in crate::editor) enum EditSessionKind {
 /// Armed around an Insert-key binding dispatch, or a completion accept,
 /// that might turn out interactive — one whose outcome depends on input the
 /// user gave while it ran, such as accepting a completion or picking a
-/// picker item. Lives on the [`EditSession`] it belongs to, not on
-/// `EditorState`: the capture's own edits only ever land in this session's
-/// group (`doc_ops::apply_doc_edit_grouped` is the one path into it, and the
-/// funnel this capture taps), and tying its lifetime to the session's means
-/// a session that ends before the capture resolves — an accept immediately
-/// followed by `exit-insert` in the same dispatch — takes the capture down
-/// with it (see `tear_down_insert`'s own backstop) rather than leaving it to
-/// dangle past the session it was captured for.
+/// picker item.
 ///
-/// A completion accept resolves within the one dispatch that armed it,
-/// always. Opening a picker is the one case that can't: the pick itself (or
-/// a dismissal) resolves later, via `on_select`, queued as a
-/// `PendingWork::Call` well after the dispatch that opened it has already
-/// returned — for that case alone, `Editor::resolve_dot_capture` leaves this
-/// still armed instead of finalizing, and `drain_pending_work`'s own calls
-/// to it finalize once the pick lands. A picker chain (`on_select` itself
-/// opening another picker) simply leaves it armed longer: `resolve_dot_
-/// capture` only finalizes once no picker is left open at all, however many
-/// links the chain has.
+/// Owned by whatever is currently responsible for resolving it, never
+/// polled: armed on the `EditSession` it belongs to by `Editor::
+/// with_dot_capture`; if the dispatch it wraps opens a picker,
+/// `picker::open_picker` takes it off the session and attaches it to the
+/// `PickerSession` instead (so an edit made elsewhere while the picker is
+/// open — a timer, an LSP response — no longer lands in `edits`, since
+/// nothing is armed on the `EditSession` to feed); when the picker resolves,
+/// `close_picker_with`/`PickerLayer::tear_down` hand it to the queued
+/// `PendingWork::Call` that will run its `on_select`; `Editor::
+/// run_pending_batch` re-arms it on the (now current) session for just that
+/// call. A picker chain (`on_select` itself opening another picker) simply
+/// repeats the hand-off. Whichever holder currently owns it takes it back
+/// out via `Editor::run_dot_captured` once the operation it wraps returns —
+/// or, if the `EditSession` it was armed on ends first (an accept
+/// immediately followed by `exit-insert` in the same dispatch),
+/// `tear_down_insert`'s own backstop takes it before the session is
+/// dropped. `edit_session::EditSession::into_group`'s `debug_assert` is the
+/// enforcement: nothing may reach it with a capture still attached.
+#[derive(Debug)]
 pub(in crate::editor) struct DotCapture {
-    /// The primary cursor's head when this capture was armed — the point
-    /// `cursor_replacement_at` (`replay.rs`) locates the net edit relative
-    /// to.
+    /// The `(pane, buffer)` this capture was armed on — the target `Editor::
+    /// run_dot_captured` re-arms it on when a hand-off (a picker's `on_select`)
+    /// resolves later against whatever session is current by then, which may
+    /// no longer be this one.
+    pub(in crate::editor) pane: PaneId,
+    pub(in crate::editor) buffer: BufferId,
+    /// The primary cursor's head in the old-document space `edits[0]`'s own
+    /// `ChangeSet` was computed against — the point `cursor_replacement_at`
+    /// (`replay.rs`) locates the net edit relative to, once `edits` is
+    /// composed into one. Set once, whenever `edits` is (re-)armed empty:
+    /// `Editor::run_dot_captured` refreshes it from the *current* cursor
+    /// every time it re-arms a capture whose `edits` is still empty — which
+    /// is exactly the coordinate space the *next* edit `apply_doc_edit_
+    /// grouped` pushes will use — but leaves it alone once `edits` holds at
+    /// least one entry, since every later entry must chain from that first
+    /// one's own old-document space for `ChangeSet::compose_all` to line up.
+    /// This is what makes a foreign edit landing while this capture sat
+    /// detached (a picker open) harmless when nothing of this capture's own
+    /// had run yet — the common case, and the only one `apply_doc_edit_
+    /// grouped`'s exclusion of a detached capture protects on its own. A
+    /// dispatch that itself edits *before* opening a picker, with a foreign
+    /// edit landing on the same buffer while that picker sits open, is the
+    /// one combination this doesn't cover: `compose_all` would find a gap in
+    /// the chain. Narrow enough (and no worse than silently merging the
+    /// foreign edit in, which is what happened before this capture existed
+    /// at all) that it's accepted rather than solved here.
     pub(in crate::editor) head_before: CharOffset,
     /// Every `ChangeSet` composed into this session's group
     /// (`doc_ops::apply_doc_edit_grouped`'s own funnel push) while this
@@ -292,18 +313,18 @@ pub(in crate::editor) struct DotCapture {
     /// whole thing is captured as data instead.
     pub(in crate::editor) edits: Vec<ChangeSet>,
     /// Set by `EditorState::mark_dot_interactive` — `completion-accept!`/
-    /// `picker!`/`live-picker!`/`completion-trigger` call it, whichever
-    /// fires first. A capture that never sees this stay `false` belongs to
-    /// an ordinary (non-interactive) binding: its `edits` are discarded at
-    /// resolve time, and the `Binding` entry recorded before the dispatch is
-    /// left to replay by re-running, same as always.
+    /// `completion-trigger` call it directly, `picker!`/`live-picker!`
+    /// indirectly via `picker::open_picker` — whichever fires first. A
+    /// capture that never sees this stay `false` belongs to an ordinary
+    /// (non-interactive) binding: its `edits` are discarded at finalize
+    /// time in favor of `fallback`.
     pub(in crate::editor) interactive: bool,
-    /// `true` from `handle_insert`'s Leaf branch, whose `Binding` entry —
-    /// pushed unconditionally before the dispatch it wraps — is what
-    /// finalizing *replaces*; `false` from `accept_completion_selection`,
-    /// which pushed no entry of its own for its Enter keypress, so
-    /// finalizing there *appends* instead.
-    pub(in crate::editor) has_placeholder: bool,
+    /// What to record if this capture turns out non-interactive — the
+    /// `Binding` entry `handle_insert`'s Leaf branch would otherwise have
+    /// pushed before dispatching, or `None` for a bare Enter-key accept
+    /// (`accept_completion_selection`), which has no binding of its own to
+    /// fall back to.
+    pub(in crate::editor) fallback: Option<super::replay::InsertInput>,
 }
 
 /// Accumulated state for an in-progress insert or paste session.

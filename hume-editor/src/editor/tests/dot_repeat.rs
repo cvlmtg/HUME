@@ -2115,6 +2115,78 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
     assert!(ed.state.input.picker().is_none());
 }
 
+/// While a picker sits open, its own dot-capture has moved off the
+/// `EditSession` onto the `PickerSession` (see `edit_session::DotCapture`'s
+/// own doc) — an edit landing through the shared funnel from anywhere else
+/// (a timer, an LSP response) has nothing armed on the session to feed into
+/// anymore, so it must not end up folded into the eventual pick's own
+/// recorded result. Simulates that "anywhere else" edit directly through
+/// `apply_doc_edit_grouped`, the one funnel a real one would also use.
+#[test]
+fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("abc -[d]>ef\nuvw xyz\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "pick-word" ""
+             (lambda (pane)
+               (picker! pane (list (cons "alpha" "ALPHA"))
+                 (lambda (payload)
+                   (when payload (call! "delete-word-backward" pane))))))
+           (bind-key! 'insert "ctrl-y" "pick-word")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('y'));
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+
+    // A foreign edit, far from the cursor, landing on the same buffer while
+    // the picker sits open — standing in for a timer/LSP edit unrelated to
+    // the pick.
+    let fp = FocusedPane::current(&ed.state);
+    let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
+    crate::editor::doc_ops::apply_doc_edit_grouped(
+        &mut ed.state.buffers,
+        &ed.state.config.decorations,
+        &mut ed.state.panes.state,
+        &mut ed.state.panes.jumps,
+        &mut ed.state.active_session,
+        pid,
+        bid,
+        |b, s| hume_ops::edit::insert_char(b, s, 'Z'),
+    );
+    assert_eq!(ed.doc().text().to_string(), "abc Zdef\nuvw xyz\n");
+
+    ed.feed_key(key_enter());
+    ed.settle();
+    assert!(
+        ed.state.input.picker().is_none(),
+        "the pick's own edit must close the picker"
+    );
+    ed.feed_key(key_esc());
+
+    let inputs = &ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action")
+        .insert_inputs;
+    assert_eq!(inputs.len(), 2, "got {inputs:?}");
+    // The foreign `Z` insert shifted the cursor to sit right after it (index
+    // 5); delete-word-backward from there treats `Z` as its own word
+    // (distinct from "abc"), so a correctly *excluded* foreign edit deletes
+    // just that one char (`back: 1`) — the real word-backward result at the
+    // buffer's actual current state, not some composition with the insert.
+    assert!(
+        matches!(&inputs[0], InsertInput::Result(r)
+            if r.back == 1 && r.forward == 0 && r.text.is_empty())
+            && is_binding(&inputs[1], "exit-insert"),
+        "the recorded result must be the pick's own delete-word-backward alone, \
+         with no foreign 'Z' insert folded into the composition: {inputs:?}"
+    );
+}
+
 /// A picker dismissed with Esc records nothing: `on_select` receives `#f`
 /// and does nothing, so the capture's diff is identity and the `Binding`
 /// entry it armed is dropped outright — `.` replays only the keys typed

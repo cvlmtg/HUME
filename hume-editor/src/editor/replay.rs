@@ -169,12 +169,13 @@ impl EditorState {
     }
 
     /// Marks the Insert-key dispatch or completion-accept currently in
-    /// progress as interactive — called by `completion-accept!`/`picker!`/
-    /// `live-picker!`/`completion-trigger` themselves, whichever fires
-    /// first, so a binding becomes interactive by calling one of them
-    /// rather than by declaring it (see `InsertInput::Result`'s own doc).
-    /// No-op if no capture is armed — a stray call from outside an armed
-    /// dispatch (a hook, a timer) is harmless, since nothing else reads it.
+    /// progress as interactive — called by `completion-accept!`/
+    /// `completion-trigger` directly, `picker!`/`live-picker!` indirectly
+    /// via `picker::open_picker`, whichever fires first, so a binding
+    /// becomes interactive by calling one of them rather than by declaring
+    /// it (see `InsertInput::Result`'s own doc). No-op if no capture is
+    /// armed — a stray call from outside an armed dispatch (a hook, a
+    /// timer) is harmless, since nothing else reads it.
     pub(in crate::editor) fn mark_dot_interactive(&mut self) {
         if let Some(cap) = self
             .active_session
@@ -232,50 +233,28 @@ impl EditorState {
         Ok(())
     }
 
-    /// `Editor::resolve_dot_capture`'s finalize step, and `tear_down_insert`'s
+    /// `Editor::run_dot_captured`'s finalize step, and `tear_down_insert`'s
     /// own backstop for a capture whose session ends before that checkpoint
     /// runs (an Insert-key binding that accepts a completion and then calls
-    /// `exit-insert` in the same dispatch). Composes `cap`'s recorded edits
-    /// into one net transform via [`ChangeSet::compose_all`], extracts the
-    /// region under `cap.head_before` via [`cursor_replacement_at`], and
-    /// either replaces the `Binding` placeholder entry with it
-    /// (`cap.has_placeholder`) or pushes it as a new entry
-    /// (`accept_completion_selection`'s own Enter, which pushed no
-    /// placeholder). Drops or skips it instead when there is nothing to
-    /// replay: nothing was edited at all (an Esc-dismissed picker whose
-    /// `on_select` received `#f` and did nothing), or the edit didn't touch
-    /// the cursor.
+    /// `exit-insert` in the same dispatch). Interactive: composes `cap`'s
+    /// recorded edits into one net transform via [`ChangeSet::compose_all`]
+    /// and extracts the region under `cap.head_before` via
+    /// [`cursor_replacement_at`], recording it as a `Result` — or nothing at
+    /// all if the composed edit didn't touch the cursor (an Esc-dismissed
+    /// picker whose `on_select` received `#f` and did nothing). Not
+    /// interactive: records `cap.fallback` instead — the `Binding` entry an
+    /// ordinary Insert-key dispatch stands for, or nothing for a bare
+    /// completion-popup Enter, which has no binding of its own.
     pub(in crate::editor) fn finalize_dot_capture(&mut self, cap: DotCapture) {
-        let Some(action) = self.last_repeatable_action.as_mut() else {
-            return;
+        let input = if cap.interactive {
+            ChangeSet::compose_all(cap.edits)
+                .and_then(|delta| cursor_replacement_at(&delta, cap.head_before))
+                .map(InsertInput::Result)
+        } else {
+            cap.fallback
         };
-        if cap.has_placeholder
-            && !matches!(
-                action.insert_inputs.last(),
-                Some(InsertInput::Binding { .. })
-            )
-        {
-            // Nothing else can append while a modal picker owns input (see
-            // `DotCapture`'s own doc) — reaching this means the Insert
-            // session this capture belonged to has since ended some other
-            // way, and there is nothing left to replace.
-            return;
-        }
-        let outcome = ChangeSet::compose_all(cap.edits)
-            .and_then(|delta| cursor_replacement_at(&delta, cap.head_before));
-        match (outcome, cap.has_placeholder) {
-            (Some(r), true) => {
-                let entry = action
-                    .insert_inputs
-                    .last_mut()
-                    .expect("checked present above; nothing else touches it meanwhile");
-                *entry = InsertInput::Result(r);
-            }
-            (Some(r), false) => action.insert_inputs.push(InsertInput::Result(r)),
-            (None, true) => {
-                action.insert_inputs.pop();
-            }
-            (None, false) => {} // no placeholder was pushed; nothing to undo
+        if let Some(input) = input {
+            self.record_insert_input(input);
         }
     }
 }
@@ -584,63 +563,84 @@ impl Editor {
         }
     }
 
-    /// Arms [`edit_session::DotCapture`] around an operation that might go
-    /// interactive — `handle_insert`'s Leaf branch, or
-    /// `accept_completion_selection`'s own accept. Called before the
-    /// operation runs, the only chance to see the primary head at that
-    /// point. No-op if no Insert session is open here, which never happens
-    /// in practice: both callers only ever run from inside one.
-    pub(in crate::editor) fn arm_dot_capture(&mut self, has_placeholder: bool) {
+    /// Builds a fresh [`edit_session::DotCapture`] at the focused cursor and
+    /// runs `f` with it armed — `handle_insert`'s Leaf branch and
+    /// `accept_completion_selection` are the only callers, each wrapping the
+    /// one operation that might go interactive. `fallback` is what to record
+    /// if `f` turns out *not* interactive (see [`DotCapture::fallback`]'s
+    /// own doc). Delegates to [`Self::run_dot_captured`] for the arm/
+    /// take/finalize mechanics.
+    pub(in crate::editor) fn with_dot_capture(
+        &mut self,
+        fallback: Option<InsertInput>,
+        f: impl FnOnce(&mut Self),
+    ) {
         let fp = commands::FocusedPane::current(&self.state);
-        let (pid, bid) = (fp.pid(), fp.bid(&self.view));
-        let head_before = self.state.panes.state[pid][bid]
+        let (pane, buffer) = (fp.pid(), fp.bid(&self.view));
+        let head_before = self.state.panes.state[pane][buffer]
             .selections()
             .primary()
             .head();
+        let cap = DotCapture {
+            pane,
+            buffer,
+            head_before,
+            edits: Vec::new(),
+            interactive: false,
+            fallback,
+        };
+        self.run_dot_captured(cap, f);
+    }
+
+    /// Arms `cap` on its own `(pane, buffer)`'s Insert session, runs `f`,
+    /// then takes the capture back and finalizes it — unless `f` itself
+    /// already took it (`picker::open_picker`, called from inside `f` when
+    /// the dispatch it wraps opens a picker), in which case it's now the new
+    /// `PickerSession`'s to resolve later, and there is nothing left here to
+    /// finalize. No-op arming if the target session is already gone by the
+    /// time this runs — the one caller that can reach that is
+    /// `Editor::run_pending_batch`, replaying a picker's `on_select` against
+    /// whatever session is current now, which may have since closed; `f`
+    /// (the callback itself) still runs regardless, just with nothing
+    /// recording it for `.`.
+    pub(in crate::editor) fn run_dot_captured(
+        &mut self,
+        mut cap: DotCapture,
+        f: impl FnOnce(&mut Self),
+    ) {
+        let (pane, buffer) = (cap.pane, cap.buffer);
         if let Some(session) = self
             .state
             .active_session
             .as_mut()
-            .filter(|s| s.is_insert_at(pid, bid))
+            .filter(|s| s.is_insert_at(pane, buffer))
         {
-            session.arm_dot_capture(head_before, has_placeholder);
+            if cap.edits.is_empty() {
+                // Nothing of this capture's own has run yet, so whatever
+                // happened to this buffer since it was last detached (a
+                // foreign edit landing while a picker it was handed to sat
+                // open) is exactly what `head_before` must now measure
+                // from — the *current* cursor, not the one from whenever
+                // this capture was first armed. See `DotCapture::
+                // head_before`'s own doc for why a non-empty `edits` must
+                // NOT be refreshed the same way.
+                cap.head_before = self.state.panes.state[pane][buffer]
+                    .selections()
+                    .primary()
+                    .head();
+            }
+            session.arm_dot_capture(cap);
         }
-    }
-
-    /// The checkpoint run right after an Insert-key dispatch or a completion
-    /// accept returns, and again after each batch `drain_pending_work`
-    /// drains — the same "checked every pass, no single write-site
-    /// chokepoint" shape `detect_mode_change`'s own doc describes, for the
-    /// same reason: a chained picker's own `on_select` can reopen another
-    /// picker or resolve outright, and only checking *after* a batch has
-    /// actually run tells them apart.
-    ///
-    /// Drops the armed capture if nothing interactive happened; finalizes
-    /// it on the spot if something did and no picker is left open (a direct
-    /// `completion-accept!`, or a picker opened and already resolved within
-    /// the same dispatch); otherwise leaves it armed for a later call —
-    /// from `drain_pending_work` — to finalize once the still-open picker
-    /// (or chain) resolves. No-op if no session is open, or none is armed:
-    /// `tear_down_insert`'s own backstop already resolved a capture whose
-    /// session ended before this ran.
-    pub(in crate::editor) fn resolve_dot_capture(&mut self) {
-        let Some(session) = self.state.active_session.as_mut() else {
-            return;
-        };
-        let Some(interactive) = session.dot_capture().map(|cap| cap.interactive) else {
-            return;
-        };
-        if !interactive {
-            session.take_dot_capture();
-            return;
+        f(self);
+        if let Some(cap) = self
+            .state
+            .active_session
+            .as_mut()
+            .filter(|s| s.is_insert_at(pane, buffer))
+            .and_then(|s| s.take_dot_capture())
+        {
+            self.state.finalize_dot_capture(cap);
         }
-        if self.state.input.picker().is_some() {
-            return;
-        }
-        let cap = session
-            .take_dot_capture()
-            .expect("dot_capture() returned Some above");
-        self.state.finalize_dot_capture(cap);
     }
 
     /// Drain the macro replay queue, executing each key in order and

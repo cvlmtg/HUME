@@ -375,6 +375,14 @@ pub(in crate::editor) enum PendingWork {
         proc: SteelVal,
         args: Vec<SteelVal>,
         anchor: Option<super::lsp::ResponseAnchor>,
+        /// A dot-capture handed off from a picker's own `PickerSession` (see
+        /// [`super::edit_session::DotCapture`]'s own doc) — `Some` only for
+        /// a picker's `on_select`/dismiss call, and only when the dispatch
+        /// that opened it was itself under one. `Editor::run_pending_batch`
+        /// re-arms it on whatever session is current when this call actually
+        /// runs, which forces this call to run alone rather than batched
+        /// with any sibling `Call` — a fresh arm per call, never per batch.
+        dot_capture: Option<super::edit_session::DotCapture>,
     },
     /// An editor event to fire by name at drain time. Args are built by
     /// `steel_args()` only if a handler is actually registered.

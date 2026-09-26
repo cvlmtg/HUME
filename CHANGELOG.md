@@ -84,6 +84,7 @@
 - `.` no longer errors on a completion accepted with multiple cursors, or one whose accepted item also edited elsewhere in the file (an auto-inserted import).
 - An Insert-mode key binding that fails after already leaving Insert no longer types the rest of the recorded session's keys outside it.
 - A macro that finishes while still in Insert mode no longer discards the Insert session it started when you finish it and press `.`.
+- `.` no longer folds an unrelated edit (from a language server, a plugin hook) into a completion or picker pick that happened to still be open when it landed.
 
 ## [0.12.0] - 2026-09-08
 

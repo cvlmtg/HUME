@@ -352,12 +352,13 @@ fn move_minibuf_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool
 /// `completion_accept`. `Buffer`-target only — a `Minibuf`-target session
 /// has no separate accept step (see `completion_input_minibuf`'s doc).
 ///
-/// Wrapped in the same before/after dot-capture checkpoint `handle_insert`
-/// uses around a bound key's own dispatch (see `DotCapture`'s own doc):
-/// this Enter keypress is outside any Insert-key binding, but `accept`
-/// itself always calls `EditorState::mark_dot_interactive`, so the
-/// checkpoint always finalizes here (never arms — accepting a completion
-/// never opens a picker).
+/// Wrapped in the same [`Editor::with_dot_capture`] `handle_insert` uses
+/// around a bound key's own dispatch: this Enter keypress is outside any
+/// Insert-key binding, so there's no `Binding` entry to fall back to
+/// (`fallback: None`) — `accept` itself always calls `EditorState::
+/// mark_dot_interactive` once it gets far enough to commit, so a completion
+/// accept is either interactive (recorded as its own net edit) or nothing
+/// (an early `Err`, reported below, records no entry at all).
 fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     let selected = ed
         .state
@@ -368,10 +369,9 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
         return;
     };
 
-    ed.arm_dot_capture(false);
-    if let Err(msg) = session.accept(&mut ed.state, &ed.view, &mut ed.lsp, selected) {
-        ed.report(Severity::Error, msg);
-        return;
-    }
-    ed.resolve_dot_capture();
+    ed.with_dot_capture(None, |ed| {
+        if let Err(msg) = session.accept(&mut ed.state, &ed.view, &mut ed.lsp, selected) {
+            ed.report(Severity::Error, msg);
+        }
+    });
 }

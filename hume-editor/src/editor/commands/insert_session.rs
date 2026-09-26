@@ -253,20 +253,19 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         .map(|s| (s.pane(), s.buffer()))
         .expect("an Insert layer on the stack always has its session open");
     // Backstop for a capture whose dispatch never reached its own
-    // checkpoint (`Editor::resolve_dot_capture`) before the session ended —
-    // an Insert-key binding that calls `completion-accept!` and then
+    // checkpoint (`Editor::run_dot_captured`) before the session ended — an
+    // Insert-key binding that calls `completion-accept!` and then
     // `exit-insert` in the same body tears the session down from inside
-    // that same dispatch, before `handle_insert`'s own post-dispatch
+    // that same dispatch, before `with_dot_capture`'s own post-dispatch
     // checkpoint gets a chance to run. Taken before the autoindent-trim
     // edit below, which must not itself be swept into a capture's own net
     // edit: it's session-teardown bookkeeping, not part of whatever the
-    // capture was recorded for.
-    if let Some(cap) = state
-        .active_session
-        .as_mut()
-        .and_then(|s| s.take_dot_capture())
-        && cap.interactive
-    {
+    // capture was recorded for. Finalized unconditionally, interactive or
+    // not — `finalize_dot_capture` records the right thing either way, and
+    // with no placeholder pre-pushed before dispatch, this is the only
+    // place a non-interactive binding's own entry gets recorded at all when
+    // it tears its own session down mid-body.
+    if let Some(cap) = state.active_session.as_mut().and_then(|s| s.take_dot_capture()) {
         state.finalize_dot_capture(cap);
     }
     // An open completion session lives in its own `Completion` layer, pushed

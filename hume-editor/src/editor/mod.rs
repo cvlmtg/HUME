@@ -847,12 +847,26 @@ impl EditorState {
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
     ) {
+        self.queue_steel_call_with_capture(proc, args, None);
+    }
+
+    /// [`Self::queue_steel_call`]'s counterpart for a call carrying a
+    /// dot-capture handed off from a picker (see
+    /// [`edit_session::DotCapture`]'s own doc) — `picker::close_picker_with`/
+    /// `PickerLayer::tear_down` are the only callers that ever pass `Some`.
+    pub(in crate::editor) fn queue_steel_call_with_capture(
+        &mut self,
+        proc: steel::rvals::SteelVal,
+        args: Vec<steel::rvals::SteelVal>,
+        dot_capture: Option<edit_session::DotCapture>,
+    ) {
         self.config
             .pending_work
             .push_back(event::PendingWork::Call {
                 proc,
                 args,
                 anchor: None,
+                dot_capture,
             });
     }
 
@@ -860,7 +874,8 @@ impl EditorState {
     /// callback: carries the `ResponseAnchor` already checked once at LSP
     /// drain time, so `Editor::run_pending_batch` can re-check it at
     /// dequeue — see `PendingWork::Call`'s own doc for why the drain-time
-    /// check alone isn't enough.
+    /// check alone isn't enough. Never carries a dot-capture: an LSP
+    /// response is never a picker's own resolution.
     pub(in crate::editor) fn queue_steel_call_anchored(
         &mut self,
         proc: steel::rvals::SteelVal,
@@ -873,6 +888,7 @@ impl EditorState {
                 proc,
                 args,
                 anchor: Some(anchor),
+                dot_capture: None,
             });
     }
 }

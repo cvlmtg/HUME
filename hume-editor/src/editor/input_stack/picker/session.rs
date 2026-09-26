@@ -14,6 +14,7 @@ use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
+use super::super::super::edit_session::DotCapture;
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::keymap::CanonicalKey;
 use super::super::super::widget_token;
@@ -165,6 +166,14 @@ pub(in crate::editor) struct PickerSession {
     /// handful of entries at most, so scanning a `Vec` beats hashing into a
     /// map.
     actions: Vec<(CanonicalKey, SteelVal)>,
+    /// A dot-capture handed off from the `EditSession` it was armed on —
+    /// see [`DotCapture`]'s own doc for the full hand-off chain.
+    /// `open_picker` attaches it if the dispatch that opened this picker was
+    /// itself under one; `close_picker_with`/`PickerLayer::tear_down` take
+    /// it back out to hand to the queued `on_select` call. `None` for a
+    /// picker opened outside any capture (no live Insert session, or one not
+    /// currently armed).
+    dot_capture: Option<DotCapture>,
 }
 
 impl PickerSession {
@@ -237,6 +246,7 @@ impl PickerSession {
                 .into_iter()
                 .map(|(k, p)| (CanonicalKey::from(k), p))
                 .collect(),
+            dot_capture: None,
         }
     }
 
@@ -584,6 +594,18 @@ impl PickerSession {
     /// `queue_steel_call`; the store itself never invokes it.
     pub(in crate::editor) fn on_select(&self) -> &SteelVal {
         &self.on_select
+    }
+
+    /// `open_picker`'s own half of the [`DotCapture`] hand-off — see that
+    /// type's own doc.
+    pub(in crate::editor) fn attach_dot_capture(&mut self, cap: DotCapture) {
+        self.dot_capture = Some(cap);
+    }
+
+    /// `close_picker_with`'s/`PickerLayer::tear_down`'s own half of the
+    /// [`DotCapture`] hand-off — see that type's own doc.
+    pub(in crate::editor) fn take_dot_capture(&mut self) -> Option<DotCapture> {
+        self.dot_capture.take()
     }
 
     /// The `#:actions` proc bound to `key`, if any — tried only after every

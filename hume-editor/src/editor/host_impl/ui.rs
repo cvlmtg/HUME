@@ -312,9 +312,6 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let token = session.token();
         session.seed(picker::picker_items(items));
         picker::open_picker(self.state, self.view, session);
-        // Marks the dispatch opening this picker interactive — see
-        // `EditorState::mark_dot_interactive`'s own doc.
-        self.state.mark_dot_interactive();
         Ok(token)
     }
 
@@ -336,7 +333,6 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let session = PickerSession::new_live(on_select, opts);
         let token = session.token();
         picker::open_picker(self.state, self.view, session);
-        self.state.mark_dot_interactive();
         Ok(token)
     }
 

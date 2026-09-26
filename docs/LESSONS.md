@@ -1253,3 +1253,37 @@ own backstop),
 `hume-editor/src/editor/host_impl/ui.rs`,
 `hume-editor/src/editor/commands/pipeline.rs` (`repeat_slot_owned`),
 `hume-editor/src/editor/scripting_setup.rs` (`drain_pending_work`).
+
+**Addendum 2 (2026-09-26):** `resolve_dot_capture` finalized a still-armed
+capture whenever `input.picker().is_some()` came back false — a third
+signal, checked from three separate call sites in `drain_pending_work`,
+standing in for "has the thing this capture was waiting on resolved yet?"
+Rule 3 above already named the fix at N=3: stop inferring readiness from an
+unrelated poll and give the capture to whatever is actually responsible for
+resolving it. `DotCapture` now moves with the cause: `picker::open_picker`
+takes it off the `EditSession` and attaches it to the `PickerSession`;
+closing the picker hands it to the queued `on_select` call
+(`PendingWork::Call::dot_capture`); `Editor::run_pending_batch` re-arms it
+on whatever session is current only for that one call. A capture with
+nothing armed on it (dropped by a cascade cap, or a picker torn down by
+`reset_config_state`) is simply never finalized — the same outcome the poll
+produced, without a poll. This also closed two bugs the poll's own blind
+spot let through: an edit landing on the same buffer through a foreign
+`Call` while a picker sat open used to feed the still-armed-but-parked
+capture (nothing detached it), corrupting the composed result;
+`accept_completion_selection`'s own early `Err` return skipped
+`resolve_dot_capture` entirely, leaking the capture until the next
+drain-empty poll happened to catch it — both closed by wrapping the
+operation in a closure (`Editor::with_dot_capture`) that always finalizes
+once the closure returns, success or error alike.
+
+**Files (addendum 2):** `hume-editor/src/editor/edit_session.rs`
+(`DotCapture::pane`/`buffer`, `fallback` replacing `has_placeholder`),
+`hume-editor/src/editor/replay.rs` (`with_dot_capture`/`run_dot_captured`
+replacing `arm_dot_capture`/`resolve_dot_capture`),
+`hume-editor/src/editor/input_stack/picker/{mod,session}.rs`
+(`PickerSession::dot_capture`, `open_picker`'s hand-off),
+`hume-editor/src/editor/event.rs` (`PendingWork::Call::dot_capture`),
+`hume-editor/src/editor/mod.rs` (`queue_steel_call_with_capture`),
+`hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`, the three
+removed poll sites).
