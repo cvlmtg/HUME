@@ -124,8 +124,22 @@ A closed buffer behaves differently depending on the call: most reads below (`bu
 | `(apply-text-edits! pane edits #:expect-generation)` | Apply a list of edits to `pane`'s buffer, mapped through `pane`'s own selections — each entry a JSON handle onto a wire `TextEdit` (e.g. a `textDocument/formatting` response element, passed straight through) |
 | `(apply-workspace-edit! pane wsedit)` | Apply an LSP `WorkspaceEdit` — a JSON handle onto one (e.g. straight from an `lsp-request` response) — across every buffer it touches, mapping the hunk for `pane`'s own buffer (if any) through `pane`'s selections; returns the count of buffers modified |
 | `(goto-location! pane loc)` | Move `pane`'s own pane to `loc` — an LSP `Location`/`LocationLink` JSON handle, or `(list target line char-col)` with `target` a pane value, path, or `file://` URI and `line`/`char-col` char-indexed |
+| `(insert-key! pane key)` | Run `key`'s normal Insert-mode behaviour (tab-style-aware Tab, auto-pairs, auto-indented Enter, …) on `pane`, as if it had no Insert-mode binding — `key` is one chord in `bind-key!`'s own syntax |
 
 `#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`apply-workspace-edit!`/`goto-location!`'s wire shape each decode their positions using the handle's own producing-server encoding — a plain hashmap you build by hand (not pulled from a response via `json-ref`/`json-list`) has no such encoding to decode with, and is rejected.
+
+`insert-key!` only works while `pane` is the focused pane and Insert mode is active, from inside a command bound to an Insert-mode key. It exists so a binding can decide, at the moment the key is pressed, whether to override that key's normal behaviour or fall back to it — for example, binding Tab to complete after a letter and insert a tab everywhere else:
+
+```scheme
+(define-command! "tab-or-complete" "Complete after a letter, else insert a tab."
+  (lambda (pane)
+    (if (letter-before-cursor? pane)
+        (call! "completion-trigger" pane)
+        (insert-key! pane "tab"))))
+(bind-key! 'insert "tab" "tab-or-complete")
+```
+
+`letter-before-cursor?` here is a helper you write yourself, not a builtin.
 
 ## Registers
 

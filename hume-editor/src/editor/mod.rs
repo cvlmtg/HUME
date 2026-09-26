@@ -383,6 +383,15 @@ pub(crate) struct EditorState {
     pub(super) pending_repeat: Option<PendingRepeat>,
     /// Active insert session, present between begin/end_insert_session.
     pub(super) insert_session: Option<InsertSession>,
+    /// `true` from the moment `handle_insert` matches a trie leaf until
+    /// that dispatch returns — dispatch never yields before then, all the
+    /// way through a Steel `call!` (`Editor::dispatch` → `run_steel_command`
+    /// → `%call-native!` → `run_command_sync`), so this is never observed
+    /// stale. `false` outside that window, including while a hook queued
+    /// during the same keypress drains later in `settle`. Set via
+    /// `Editor::with_insert_key_dispatch`. Gates `commands::
+    /// insert_owns_repeat_slot` — see that function's own doc for why.
+    pub(super) in_insert_key_dispatch: bool,
     /// The editor's one live Insert or paste undo group, if any — see
     /// [`edit_session::EditSession`]'s own doc.
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
@@ -506,6 +515,7 @@ impl Default for EditorState {
             command_refused: false,
             pending_repeat: None,
             insert_session: None,
+            in_insert_key_dispatch: false,
             active_session: None,
             explicit_count: false,
             pending_ctrl_extend: false,

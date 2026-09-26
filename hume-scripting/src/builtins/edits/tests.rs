@@ -4,6 +4,35 @@ use crate::test_support::{SteelCtxTestHarness, default_pane};
 use hume_rope::position_encoding::PositionEncoding;
 use steel::rvals::IntoSteelVal as _;
 
+/// `insert_key` on a host with no `EditHost` capability surfaces
+/// `require_cap`'s canonical message — same contract as every other
+/// `EditHost` builtin in this file. Also proves the key spec decoded fine
+/// (a bad spec would fail before ever reaching `require_cap`, with a
+/// different message — see the next test).
+#[test]
+fn insert_key_without_edit_host_names_the_builtin() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let key: SteelVal = "tab".to_string().into_steelval().unwrap();
+    let err = insert_key(&mut ctx, default_pane(), key).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("not supported by this host"), "got: {msg}");
+    assert!(msg.contains("insert-key!"), "got: {msg}");
+}
+
+/// A key spec naming a sequence rather than one chord is rejected before
+/// ever reaching the host — `insert-key!` has nowhere to send a second key.
+#[test]
+fn insert_key_rejects_a_multi_key_spec() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let key: SteelVal = "g h".to_string().into_steelval().unwrap();
+    let msg = insert_key(&mut ctx, default_pane(), key)
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("exactly one key"), "got: {msg}");
+}
+
 /// `apply_text_edits` on a host with no `EditHost` capability (`NullHost`,
 /// the harness default) surfaces `require_cap`'s canonical message,
 /// naming the builtin — locks the message contract `require_cap`

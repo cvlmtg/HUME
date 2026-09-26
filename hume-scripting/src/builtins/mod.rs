@@ -547,6 +547,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%apply-text-edits!" edits::apply_text_edits(pane: args::LivePane, edits: SteelVal, expect_gen: SteelVal);
         cmd "%apply-workspace-edit!" edits::apply_workspace_edit(pane: args::LivePane, wsedit: SteelVal, expect_gen: SteelVal);
         cmd "goto-location!" edits::goto_location(pane: args::LivePane, loc: SteelVal);
+        cmd "insert-key!" edits::insert_key(pane: args::LivePane, key: SteelVal);
         cmd "selections-linewise?" buffers::selections_linewise(pane: args::LivePane);
         cmd "selections-charwise?" buffers::selections_charwise(pane: args::LivePane);
 

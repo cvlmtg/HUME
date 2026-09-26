@@ -20,9 +20,11 @@ use std::path::PathBuf;
 
 use steel::rerrs::{ErrorKind, SteelErr};
 use steel::rvals::{FromSteelVal, SteelVal};
+use termina::event::KeyEvent;
 
 use hume_engine::pipeline::BufferId;
 
+use crate::keys::parse_key_sequence;
 use crate::types::PaneHandle;
 
 use super::errors::generic_err;
@@ -51,6 +53,21 @@ pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelE
         SteelVal::SymbolV(s) => Ok(s.to_string()),
         _ => steel::stop!(TypeMismatch => "{}: expected a string", ctx_name),
     }
+}
+
+/// A key-spec string (`bind-key!`'s own syntax, decoded via
+/// [`parse_key_sequence`]) that must name exactly one chord, not a
+/// sequence — shared by `insert-key!` (one key, no destination for a
+/// sequence) and `picker!`/`live-picker!`'s `#:actions` (one chord
+/// dispatched at a time).
+pub(crate) fn single_key_arg(val: SteelVal, ctx_name: &str) -> Result<KeyEvent, SteelErr> {
+    let spec = string_arg(val, ctx_name)?;
+    let mut keys = parse_key_sequence(&spec)
+        .map_err(|e| generic_err(format!("{ctx_name}: invalid key spec '{spec}': {e}")))?;
+    if keys.len() != 1 {
+        steel::stop!(Generic => "{}: key spec '{}' must name exactly one key, not a sequence", ctx_name, spec);
+    }
+    Ok(keys.remove(0))
 }
 
 /// A string argument that may be `#f` (absent).

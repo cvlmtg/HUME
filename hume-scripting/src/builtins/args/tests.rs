@@ -406,3 +406,36 @@ fn wire_text_edit_arg_rejects_an_untagged_handle() {
         "got: {err}"
     );
 }
+
+// ── Key specs ─────────────────────────────────────────────────────────────
+
+fn spec(s: &str) -> SteelVal {
+    SteelVal::StringV(s.into())
+}
+
+#[test]
+fn single_key_arg_accepts_one_chord() {
+    use termina::event::{KeyCode, Modifiers};
+    assert_eq!(
+        single_key_arg(spec("ctrl-x"), "f").unwrap(),
+        KeyEvent::new(KeyCode::Char('x'), Modifiers::CONTROL)
+    );
+}
+
+#[test]
+fn single_key_arg_rejects_a_sequence_naming_ctx() {
+    let msg = single_key_arg(spec("g h"), "insert-key!")
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("insert-key!"), "got: {msg}");
+    assert!(msg.contains("exactly one key"), "got: {msg}");
+}
+
+#[test]
+fn single_key_arg_rejects_unparseable_naming_ctx() {
+    let msg = single_key_arg(spec("not-a-real-key"), "insert-key!")
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("insert-key!"), "got: {msg}");
+    assert!(msg.contains("invalid key spec"), "got: {msg}");
+}

@@ -1,7 +1,13 @@
-//! LSP-driven text edits, workspace edits, and go-to-location.
+//! LSP-driven text edits, workspace edits, and go-to-location — plus
+//! `insert-key!`, which edits too (Insert mode's default per-key behaviour)
+//! but isn't LSP-driven; it lives here rather than in its own trait because
+//! one capability accessor (`EditorHost::edits`) already gates every
+//! buffer-mutating builtin that isn't a named editor command, and a second
+//! accessor for exactly one more method would only duplicate that gate.
 
 use hume_engine::pipeline::BufferId;
 use hume_rope::position_encoding::PositionEncoding;
+use termina::event::KeyEvent;
 
 use crate::types::PaneHandle;
 
@@ -20,12 +26,12 @@ pub struct WireTextEdit {
 /// LSP-driven text edits, workspace edits, and go-to-location — accessed
 /// through [`EditorHost::edits`](super::EditorHost::edits).
 ///
-/// Every method here is kind-B: it acts through `pane`'s own pane (mapping
-/// selections through the edit, moving the cursor on goto), not the focused
-/// one — a response landing after the user has since switched panes must
-/// still edit or navigate the pane the request was actually made from. `Err`
-/// (fail-fast) when `pane` carries no pane, a closed one, or one that no
-/// longer shows its buffer.
+/// Every method but [`Self::insert_key`] is kind-B: it acts through `pane`'s
+/// own pane (mapping selections through the edit, moving the cursor on
+/// goto), not the focused one — a response landing after the user has since
+/// switched panes must still edit or navigate the pane the request was
+/// actually made from. `Err` (fail-fast) when `pane` carries no pane, a
+/// closed one, or one that no longer shows its buffer.
 pub trait EditHost {
     /// `(apply-text-edits! pane edits #:expect-generation gen)` — `edits` is
     /// a list of wire-coordinate ranges plus replacement text. Applied as
@@ -103,4 +109,24 @@ pub trait EditHost {
         line: hume_rope::line::RopeyLine,
         char_col: usize,
     ) -> Result<(), String>;
+
+    /// `(insert-key! pane key)` — runs `key`'s Insert-mode default
+    /// behaviour (tab-style-aware Tab, auto-pairs, auto-indented Enter, …)
+    /// against `pane`, without walking the Insert keymap. Kind-A: `pane`
+    /// must be the focused pane, since this acts on live Insert-session
+    /// bookkeeping (the open undo group, autoindent ownership, a live
+    /// completion session), which is inherently focus-bound rather than a
+    /// property of an arbitrary background pane. `Err` when `pane` isn't
+    /// the focused pane, the focused mode isn't Insert, the call isn't from
+    /// inside a command an Insert-mode key's own binding is dispatching
+    /// (a hook or timer calling this instead would edit untracked for dot-
+    /// repeat), or `key` has no default Insert-mode behaviour to run
+    /// (an arrow, Esc, an unhandled Ctrl-chord, …).
+    ///
+    /// Exists so a command bound to an Insert-mode key can fall back to
+    /// that key's normal behaviour after deciding it doesn't want to
+    /// override it (e.g. Tab: complete after a letter, else insert a tab)
+    /// — there is otherwise no way to hand a key back to "as if unbound"
+    /// once a binding has claimed it.
+    fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String>;
 }

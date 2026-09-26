@@ -307,11 +307,13 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         &state.panes.state,
         &mut state.active_session,
     );
+    // `extend`, not assign: an Insert-key binding that exits and re-enters
+    // Insert tears down twice against the same action.
     if let (Some(session), Some(action)) = (
         state.insert_session.take(),
         state.last_repeatable_action.as_mut(),
     ) {
-        action.insert_keys = session.keystrokes;
+        action.insert_keys.extend(session.keystrokes);
     }
     // Every insert entry pins one typed run via `begin_typed_run` —
     // reconstruct each selection's typed span here via `typed_span`. A count

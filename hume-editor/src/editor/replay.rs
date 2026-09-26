@@ -22,10 +22,31 @@ use super::{Editor, Mode, commands, doc_ops};
 /// synthetic per-char `KeyEvent`s: a synthesized `Enter` would run
 /// `insert_newline_indent` with auto-indent, altering text a real paste never
 /// auto-indents.
+///
+/// `Key` means one run of Insert mode's *default* per-key behaviour
+/// (`commands::insert_default_key`) for a key with no keymap binding —
+/// never "replay this key through the Insert keymap". A key that *does*
+/// resolve to a keymap binding is recorded as `Command` instead, naming the
+/// bound command itself rather than any effect it happened to have: replay
+/// re-runs that command (via [`Editor::replay_command`]) so its own
+/// internal `call!`s — including ones carrying a register or `#:extend` a
+/// fixed effect snapshot could never reproduce — run fresh at the new site,
+/// and any motion it performs via `call!` before editing lands the edit in
+/// the right place. The cost is symmetric with a live keypress: a binding
+/// whose own decision logic depends on buffer content (e.g. re-opening a
+/// completion popup) can decide differently on replay, exactly as it could
+/// if the same key were pressed by hand at the new site.
 #[derive(Debug, Clone)]
 pub(crate) enum InsertInput {
     Key(KeyEvent),
     Paste(String),
+    /// The command bound to an Insert key's keymap entry, resolved once at
+    /// `handle_insert`'s trie-leaf match and re-run on replay via
+    /// [`Editor::replay_command`] — never a native command's own recorded
+    /// effect (see this enum's own doc for why).
+    Command {
+        name: Cow<'static, str>,
+    },
 }
 
 /// State for an active insert session (entered via a repeatable command).
@@ -102,8 +123,8 @@ pub(crate) struct RepeatableAction {
 /// Splitting enqueue (pure State handler) from drain (`&mut Editor` plumbing)
 /// lets `cmd_repeat` keep the `FocusedCmdFn` shape (no `&mut Editor`, see
 /// `registry/command.rs`) while still reaching `replay_dot` (which uses
-/// `commands::run_body`/`run_steel_command` and `handle_insert`) for the
-/// actual replay.
+/// `commands::run_body`/`run_steel_command`/`commands::insert_default_key`)
+/// for the actual replay.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PendingRepeat {
     /// Effective replay count — explicit-count override already applied.
@@ -178,12 +199,57 @@ impl Editor {
         }
     }
 
+    /// Run `cmd` (already resolved from the registry) as one replayed step, native
+    /// or Steel/Lazy alike — the main edit body and each `InsertInput::
+    /// Command` entry share this rather than each re-deriving the
+    /// native-vs-Steel branch. Returns `false` on the same failure classes
+    /// as `run_steel_command` (a Steel body can fail on replay even though
+    /// the original run didn't — different buffer state, no match at the
+    /// new cursor); a native command has no failure mode here, so this
+    /// dispatches it and always returns `true`.
+    fn replay_command(
+        &mut self,
+        cmd: MappableCommand,
+        fp: commands::FocusedPane,
+        ctx: &CmdCtx,
+        char_arg: Option<char>,
+    ) -> bool {
+        match &cmd {
+            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
+                // Cloned before the body consumes `cmd`.
+                let name = cmd.name().clone();
+                if !self.run_steel_command(cmd, &name, ctx, char_arg) {
+                    return false;
+                }
+                // Inner call! dispatches inside the Steel body run through
+                // `commands::run` → step_update_recipe, which may append to
+                // selection_recipe. Clear it so stale steps don't
+                // contaminate the next command's recipe accumulation.
+                self.state.selection_recipe.clear();
+                true
+            }
+            _ => {
+                // Native bodies that consume a char argument (`replace`,
+                // `surround-add`) read it via `state.pending_char.take()`.
+                self.state.pending_char = char_arg;
+                let Ok(bound) = commands::BoundCommand::focused(cmd, fp) else {
+                    unreachable!("caller resolved `cmd` from a registered command name")
+                };
+                commands::run_body(&mut self.state, &mut self.view, bound, ctx);
+                true
+            }
+        }
+    }
+
     /// Replay a dot-repeat action directly, bypassing dispatch bookkeeping.
     ///
-    /// Runs the selection recipe motions and edit body with
-    /// [`commands::run_body`] (avoiding pipeline re-entry), then
-    /// feeds insert keys through `handle_insert`.
-    /// Preserves `last_repeatable_action` so `.` chains.
+    /// Runs the selection recipe motions with [`commands::run_body`]
+    /// (avoiding pipeline re-entry), the edit body and each recorded insert
+    /// `Command` entry with [`Self::replay_command`], and a recorded `Key`/
+    /// `Paste` entry via `commands::insert_default_key`/
+    /// `Self::apply_insert_mode_paste` directly (never the Insert keymap;
+    /// see [`InsertInput`]'s own doc). Preserves `last_repeatable_action` so
+    /// `.` chains.
     pub(in crate::editor) fn replay_dot(&mut self, count: usize) {
         let Some(action) = self.state.last_repeatable_action.take() else {
             return;
@@ -292,53 +358,19 @@ impl Editor {
             );
         }
 
-        match &edit_cmd {
-            MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. } => {
-                let ctx = CmdCtx {
-                    count: Some(count),
-                    extend: false,
-                };
-                let cmd_name = action.command.clone();
-                // A Steel command can succeed when first run yet fail on dot-repeat:
-                // the buffer state differs (no match at the new cursor, a guard that
-                // now throws), so replay must handle failure even though the original
-                // run didn't.
-                if !self.run_steel_command(edit_cmd, cmd_name.as_ref(), &ctx, action.char_arg) {
-                    // Close whatever the group opened above became so it
-                    // can't leak — same decision the success path below
-                    // makes (see `finish_replay_session`'s own doc). commit
-                    // drops an empty group (clean noop) and records a
-                    // partial one (a failure mid-edit stays undoable).
-                    self.finish_replay_session();
-                    self.state.last_repeatable_action = Some(action);
-                    return;
-                }
-                // Inner call! dispatches inside the Steel body run through
-                // `commands::run` → step_update_recipe, which may append to
-                // selection_recipe. Clear it so stale steps don't contaminate the
-                // next command's recipe accumulation.
-                self.state.selection_recipe.clear();
-            }
-            _ => {
-                // Native bodies that consume a char argument (`replace`,
-                // `surround-add`) read it via `state.pending_char.take()`
-                // themselves — set it here, not before the match, so the
-                // Steel arm above (which receives `action.char_arg` as an
-                // explicit parameter instead) never leaves it dangling.
-                self.state.pending_char = action.char_arg;
-                let Ok(bound) = commands::BoundCommand::focused(edit_cmd, fp) else {
-                    unreachable!("the SteelBacked/Lazy arm above already matched separately")
-                };
-                commands::run_body(
-                    &mut self.state,
-                    &mut self.view,
-                    bound,
-                    &CmdCtx {
-                        count: Some(count),
-                        extend: false,
-                    },
-                );
-            }
+        let ctx = CmdCtx {
+            count: Some(count),
+            extend: false,
+        };
+        if !self.replay_command(edit_cmd, fp, &ctx, action.char_arg) {
+            // Close whatever the group opened above became so it can't
+            // leak — same decision the success path below makes (see
+            // `finish_replay_session`'s own doc). commit drops an empty
+            // group (clean noop) and records a partial one (a failure
+            // mid-edit stays undoable).
+            self.finish_replay_session();
+            self.state.last_repeatable_action = Some(action);
+            return;
         }
 
         // Feed recorded insert input back through the same paths the original
@@ -347,8 +379,51 @@ impl Editor {
         // embedded newline).
         for input in &action.insert_keys {
             match input {
-                InsertInput::Key(key) => self.handle_insert(*key),
+                // Never the Insert keymap walk: this `Key` variant means
+                // a keymap-*unbound* key's default behaviour only (see
+                // `InsertInput`'s own doc) — a bound key is `Command` below.
+                InsertInput::Key(key) => {
+                    commands::insert_default_key(&mut self.state, &self.view, fp, *key);
+                }
                 InsertInput::Paste(text) => self.apply_insert_mode_paste(text),
+                InsertInput::Command { name } => {
+                    // A command name loses its keymap binding only if the
+                    // binding itself is removed between the original
+                    // keypress and this replay (`unbind-key!`, a plugin
+                    // reload) — unlike the selection-recipe/edit-body
+                    // lookups above, this name was never guaranteed to
+                    // stay registered, so a miss reports rather than
+                    // panicking.
+                    let Some(cmd) = self
+                        .state
+                        .config
+                        .registry
+                        .get_mappable(name.as_ref())
+                        .cloned()
+                    else {
+                        self.report_unknown_command(
+                            name.as_ref(),
+                            format!("unknown command: {name}"),
+                        );
+                        break;
+                    };
+                    // This entry exists only because the original keypress
+                    // dispatched it with `in_insert_key_dispatch` set (see
+                    // that field's own doc) — replay recreates the same
+                    // context, so a body that calls `insert-key!` still
+                    // finds it in flight, same as the live keypress did.
+                    let ok = self.with_insert_key_dispatch(|ed| {
+                        ed.replay_command(
+                            cmd,
+                            fp,
+                            &super::input_stack::insert::INSERT_KEY_CTX,
+                            None,
+                        )
+                    });
+                    if !ok {
+                        break;
+                    }
+                }
             }
         }
 

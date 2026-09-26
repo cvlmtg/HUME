@@ -206,6 +206,7 @@ Switch between normal, insert, extend, and the command prompt.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `command-mode` | `:` | Open the command mode prompt. |
+| `completion-trigger` | `Ctrl-Space` | Show completions at the cursor (insert mode). |
 | `exit-insert` | `Esc` / `Ctrl-c` | Return to normal mode from insert mode. |
 | `insert-after` | — | Enter insert mode after the cursor (move one grapheme right). |
 | `insert-at-line-end` | `A` | Enter insert mode after the last character on the line. |

@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::replay::InsertInput;
 use pretty_assertions::assert_eq;
 
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────
@@ -1428,5 +1429,495 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     assert!(
         !ed.doc().text().to_string().contains("bar"),
         "`.` must repeat the native delete, not the non-repeatable Steel command"
+    );
+}
+
+// ── Insert-key dot-repeat (keymap-bound native commands, `insert-key!`) ──────
+
+/// `Ctrl-w` deletes a word mid-Insert-session, dispatched as an Insert-key
+/// binding — `.` on a different selection must repeat that delete too, not
+/// just the raw keys typed around it.
+///
+/// Both edit sites sit right after a `(` — a non-word char, so
+/// `delete-word-backward`'s word-boundary scan stops there regardless of
+/// what came before, and the two sites are directly comparable. (Landing
+/// mid-word instead, as `c` on a bare selection with existing text right
+/// before the cursor would, makes the two sites' word-boundary context
+/// differ — the replayed delete would then span back into that
+/// pre-existing text too, which is `delete-word-backward` working as
+/// designed, not a replay bug; `set_current_selections` below sidesteps
+/// that entirely by selecting the second target directly, rather than via
+/// a word motion whose landing spot relative to the punctuation would add
+/// another such context difference.)
+///
+/// Independent oracle: "hello" typed then deleted word-backward nets to
+/// nothing, so a correct replay gives the exact same result as typing just
+/// "hi" directly into either pair of parens. If `Ctrl-w` weren't replayed,
+/// the typed "hello" would survive in the second pair: "(hi) (hellohi)\n".
+#[test]
+fn dot_repeats_ctrl_w_inside_insert() {
+    let mut ed = editor_from("(-[foo]>) (bar)\n");
+
+    ed.feed_key(key('c')); // change: delete "foo", enter Insert; cursor is now right after "("
+    ed.feed_key(key('h'));
+    ed.feed_key(key('e'));
+    ed.feed_key(key('l'));
+    ed.feed_key(key('l'));
+    ed.feed_key(key('o')); // "(hello) (bar)\n"
+    ed.feed_key(key_ctrl('w')); // delete "hello" word-backward, back to "("
+    ed.feed_key(key('h'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key_esc()); // back to Normal
+
+    assert_eq!(ed.doc().text().to_string(), "(hi) (bar)\n");
+
+    let (_, sels) = parse_state("(hi) (-[bar]>)\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.')); // repeat: delete "bar", type "hello", Ctrl-w, type "hi"
+
+    assert_eq!(ed.doc().text().to_string(), "(hi) (hi)\n");
+}
+
+/// Same proof for a Steel command that calls a native command mid-Insert
+/// (`dispatch`'s Steel path → `call!` → `run_command_sync`), rather than a
+/// native binding like `Ctrl-w`. Same independent oracle as
+/// `dot_repeats_ctrl_w_inside_insert`.
+#[test]
+fn steel_insert_binding_calling_native_command_is_recorded_for_dot_repeat() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("(-[foo]>) (bar)\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "del-word" "" (lambda (pane) (call! "delete-word-backward" pane)))
+           (bind-key! 'insert "ctrl-x" "del-word")"#,
+    );
+
+    ed.feed_key(key('c'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('e'));
+    ed.feed_key(key('l'));
+    ed.feed_key(key('l'));
+    ed.feed_key(key('o'));
+    ed.feed_key(key_ctrl('x')); // Steel wrapper → (call! "delete-word-backward" pane)
+    ed.feed_key(key('h'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key_esc());
+
+    assert_eq!(ed.doc().text().to_string(), "(hi) (bar)\n");
+
+    let (_, sels) = parse_state("(hi) (-[bar]>)\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+
+    assert_eq!(ed.doc().text().to_string(), "(hi) (hi)\n");
+}
+
+/// `.` after a Tab binding took its "insert a tab" branch (via
+/// `insert-key!`) repeats exactly one tab — proving the binding itself is
+/// recorded as a `Command`, re-run once on replay (not the `insert-key!`
+/// fallback's raw key — see `InsertInput`'s own doc for why the binding is
+/// what's recorded), and recorded only once.
+///
+/// Independent oracle: identical setup and expected result to `tabs.rs`'s
+/// `dot_repeat_replays_tab` (the plain unbound-Tab case) — `tab-or-complete`
+/// must reproduce that exact behaviour, not a doubled or dropped tab.
+#[test]
+fn dot_repeat_replays_tab_via_insert_key_once() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "tab-or-complete" "" (lambda (pane) (insert-key! pane "tab")))
+           (bind-key! 'insert "tab" "tab-or-complete")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_tab());
+    ed.feed_key(key_esc()); // Esc selects the typed run — just the tab
+    assert_eq!(state(&ed), "-[\t]>hello\n");
+
+    ed.feed_key(key('l'));
+    ed.feed_key(key('l'));
+    ed.feed_key(key('.'));
+    assert_eq!(state(&ed), "\th-[\t]>ello\n");
+
+    let action = ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action");
+    assert_eq!(
+        action.insert_keys.len(),
+        1,
+        "must record exactly one entry — the tab-or-complete binding, not doubled"
+    );
+    assert!(
+        matches!(&action.insert_keys[0], InsertInput::Command { name } if name == "tab-or-complete"),
+        "must record the bound Command, not a raw Key"
+    );
+}
+
+/// A binding that leaves Insert and re-enters it tears the session down
+/// twice against the same repeatable action — the second teardown must add
+/// to what the first recorded, not replace it, or `.` loses everything typed
+/// before the binding ran.
+#[test]
+fn insert_key_binding_reentering_insert_keeps_earlier_keys() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "reenter-tab" "" (lambda (pane)
+             (call! "exit-insert" pane)
+             (call! "insert-at-line-end" pane)
+             (insert-key! pane "tab")))
+           (bind-key! 'insert "ctrl-x" "reenter-tab")"#,
+    );
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key('c'));
+    ed.feed_key(key('d'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "abhello\tcd\nworld\n");
+
+    let action = ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action");
+    let is_key =
+        |i: &InsertInput, ch| matches!(i, InsertInput::Key(k) if k.code == KeyCode::Char(ch));
+    let keys = &action.insert_keys;
+    assert_eq!(keys.len(), 5, "got {keys:?}");
+    assert!(
+        is_key(&keys[0], 'a') && is_key(&keys[1], 'b'),
+        "got {keys:?}"
+    );
+    assert!(
+        matches!(&keys[2], InsertInput::Command { name } if name == "reenter-tab"),
+        "got {keys:?}"
+    );
+    assert!(
+        is_key(&keys[3], 'c') && is_key(&keys[4], 'd'),
+        "got {keys:?}"
+    );
+
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "abhello\tcd\nabworld\tcd\n");
+}
+
+/// Records `i`, `a`, a `ctrl-x` binding running `body`, Esc on
+/// `"hello\nworld\n"`, then moves to the start of line 2 — the shared
+/// setup for the replay-failure tests below.
+fn record_insert_key_binding_then_move(body: &str) -> (Editor, tempfile::TempDir) {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"{body}
+               (bind-key! 'insert "ctrl-x" "tab-key")"#
+        ),
+    );
+    ed.feed_key(key('i'));
+    ed.feed_key(key('a'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "a\thello\nworld\n");
+    ed.feed_key(key('j'));
+    ed.feed_key(key('g'));
+    ed.feed_key(key('h'));
+    (ed, tmp)
+}
+
+/// A recorded `Command` whose binding was unregistered before `.` (a plugin
+/// reload) reports and stops the replay after the entries before it — and
+/// leaves Insert and the repeatable action intact.
+#[test]
+fn dot_repeat_reports_an_unregistered_insert_key_command_and_stops() {
+    let (mut ed, _tmp) = record_insert_key_binding_then_move(
+        r#"(define-command! "tab-key" "" (lambda (pane) (insert-key! pane "tab")))"#,
+    );
+    ed.state.config.registry.unregister("tab-key");
+
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "a\thello\naworld\n");
+    assert!(
+        status(&ed).contains("unknown command"),
+        "got: {}",
+        status(&ed)
+    );
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
+        Some("insert-at-selection-start")
+    );
+}
+
+/// A recorded `Command` whose Steel body fails on replay (it succeeded the
+/// first time) stops the replay the same way.
+#[test]
+fn dot_repeat_stops_when_an_insert_key_command_fails_on_replay() {
+    let (mut ed, _tmp) = record_insert_key_binding_then_move(
+        r#"(define tab-key-runs 0)
+           (define-command! "tab-key" "" (lambda (pane)
+             (set! tab-key-runs (+ tab-key-runs 1))
+             (if (> tab-key-runs 1) (error "boom") (insert-key! pane "tab"))))"#,
+    );
+
+    ed.feed_key(key('.'));
+    assert_eq!(ed.doc().text().to_string(), "a\thello\naworld\n");
+    assert!(status(&ed).contains("boom"), "got: {}", status(&ed));
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
+        Some("insert-at-selection-start")
+    );
+}
+
+/// An unbound Insert key with no default behaviour (an unbound Ctrl-chord)
+/// edits nothing, so it must not be recorded for dot-repeat — only the typed
+/// char that follows it is.
+#[test]
+fn unbound_insert_key_with_no_default_behaviour_is_not_recorded() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_ctrl('x'));
+    ed.feed_key(key('z'));
+    ed.feed_key(key_esc());
+    assert_eq!(state(&ed), "-[z]>hello\n");
+
+    let action = ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action");
+    assert_eq!(
+        action.insert_keys.len(),
+        1,
+        "only the typed char may be recorded, got {:?}",
+        action.insert_keys
+    );
+    assert!(
+        matches!(&action.insert_keys[0], InsertInput::Key(k) if k.code == KeyCode::Char('z')),
+        "the one entry must be the typed `z`, got {:?}",
+        action.insert_keys
+    );
+}
+
+/// A Tab binding that takes its "trigger completion" branch instead records
+/// nothing — `completion-trigger` never edits the buffer, so `run_body`'s
+/// `edited` check excludes it, and the Tab keypress itself never reaches
+/// `commands::insert_default_key` (it matched the keymap). `.` must not
+/// try to reopen a completion popup.
+#[test]
+fn tab_or_complete_completion_branch_is_not_recorded_for_dot_repeat() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    let source = format!(
+        "{}\n{}",
+        completion_source("test", &completion_labels(&["foo"]), ""),
+        r#"(define-command! "tab-or-complete" "" (lambda (pane) (call! "completion-trigger" pane)))
+           (bind-key! 'insert "tab" "tab-or-complete")"#
+    );
+    run(&mut ed, tmp.path(), &source);
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_tab());
+    ed.settle();
+    ed.feed_key(key_esc());
+
+    let action = ed
+        .state
+        .last_repeatable_action
+        .as_ref()
+        .expect("`i` must have stamped a repeatable action");
+    assert!(
+        action.insert_keys.is_empty(),
+        "triggering completion must record nothing for dot-repeat, got {:?}",
+        action.insert_keys
+    );
+}
+
+/// A native command bound directly to an Insert key must not overwrite
+/// `last_repeatable_action` if it's itself repeatable — that slot belongs to
+/// whichever command opened the Insert session; this command's own effect
+/// is recorded into that session's `insert_keys` instead (proven by
+/// `dot_repeats_ctrl_w_inside_insert`'s same mechanism).
+///
+/// Fail oracle: without the `in_insert` gate on `step_stamp_repeatable`,
+/// `last_repeatable_action.command` would read `"delete"` (stamped by
+/// `Ctrl-x`'s own dispatch through `commands::run`) instead of the command
+/// that opened the session.
+#[test]
+fn native_command_bound_mid_insert_does_not_hijack_last_repeatable_action() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[foo]> bar\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(bind-key! 'insert "ctrl-x" "delete")"#,
+    );
+
+    ed.feed_key(key('a')); // insert-at-selection-end: repeatable, opens the session
+    ed.feed_key(key_ctrl('x')); // "delete" is also repeatable, dispatched mid-insert
+    ed.feed_key(key_esc());
+
+    assert_eq!(
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
+        Some("insert-at-selection-end"),
+        "the command that opened the Insert session must keep the slot"
+    );
+}
+
+/// `.` must re-run the Insert-key binding itself, not a frozen native
+/// command name it happened to `call!` — a Steel binding armed with
+/// `set-register-prefix!` before its `call!` must arm that same register
+/// again on replay, at the new site, rather than always writing wherever
+/// the very first run wrote.
+///
+/// Independent oracle: deleting "a" then "d" with register 3 armed each
+/// time must leave register 3 holding "d" (the most recent capture) — the
+/// same as pressing the binding twice by hand, once per site.
+#[test]
+fn insert_key_binding_register_prefix_reruns_on_replay() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc def\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "del-to-reg3" ""
+             (lambda (pane) (set-register-prefix! "3") (call! "delete" pane)))
+           (bind-key! 'insert "ctrl-x" "del-to-reg3")"#,
+    );
+
+    ed.feed_key(key('i')); // insert-at-selection-start: cursor lands on "a"
+    ed.feed_key(key_ctrl('x')); // del-to-reg3: deletes "a" into register 3
+    ed.feed_key(key_esc());
+
+    assert_eq!(ed.doc().text().to_string(), "bc def\n");
+    assert_eq!(reg(&ed, '3'), vec!["a".to_string()]);
+
+    let (_, sels) = parse_state("bc -[d]>ef\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+
+    assert_eq!(ed.doc().text().to_string(), "bc ef\n");
+    assert_eq!(
+        reg(&ed, '3'),
+        vec!["d".to_string()],
+        "replay must re-run set-register-prefix!, not drop it and fall back to the kill ring"
+    );
+}
+
+/// A binding that itself leaves Insert mid-body (`exit-insert`) and then
+/// runs a repeatable native command must still leave `last_repeatable_action`
+/// naming the command that *opened* the session — and `.` must reproduce
+/// both the typed text and the binding's own edit at the new site.
+///
+/// Independent oracle: "delete a char, type one char, then immediately
+/// delete that same char" nets to exactly the original deletion — so a
+/// correct replay leaves the second site exactly as if only the plain
+/// delete had run there, with no typed character surviving.
+#[test]
+fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>yz abc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "flush-char" ""
+             (lambda (pane) (call! "exit-insert" pane) (call! "delete" pane)))
+           (bind-key! 'insert "ctrl-k" "flush-char")"#,
+    );
+
+    ed.feed_key(key('c')); // change: delete "x", enter Insert
+    ed.feed_key(key('q')); // "qyz abc\n"
+    ed.feed_key(key_ctrl('k')); // flush-char: exit-insert, then delete "q" back out
+
+    assert_eq!(ed.doc().text().to_string(), "yz abc\n");
+    assert_eq!(
+        ed.state
+            .last_repeatable_action
+            .as_ref()
+            .map(|a| a.command.as_ref()),
+        Some("change"),
+        "the command that opened the Insert session must keep the slot, \
+         not the inner `delete` dispatched after exit-insert"
+    );
+
+    let (_, sels) = parse_state("yz -[a]>bc\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "yz bc\n",
+        "replay must delete \"a\", type \"q\", then delete \"q\" back out — no leftover \"q\""
+    );
+}
+
+/// A binding that runs a pure motion via `call!` before an `insert-key!`
+/// fallback must have that motion replayed too — otherwise the fallback's
+/// effect lands at the pre-motion cursor instead of where the motion left it.
+///
+/// `goto-line-end` lands the cursor ON the line's last grapheme (Normal-mode
+/// `$` semantics — a 1-char selection covering that char, not past it), and
+/// `insert-key!` types before the char under the cursor, so the semicolon
+/// lands one position before each line's final char, not after it. That
+/// placement is `goto-line-end` working as designed, not what this test is
+/// about — what matters is that the *same* placement, relative to the
+/// motion's own destination, reproduces at the second line on replay.
+///
+/// Independent oracle: without the motion being replayed, the fallback
+/// would insert right where `insert-at-selection-start` left the cursor —
+/// before "e" — giving "d;ef" instead.
+#[test]
+fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\ndef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "append-semi" ""
+             (lambda (pane) (call! "goto-line-end" pane) (insert-key! pane ";")))
+           (bind-key! 'insert "ctrl-e" "append-semi")"#,
+    );
+
+    ed.feed_key(key('i')); // insert-at-selection-start: cursor before "a"
+    ed.feed_key(key_ctrl('e')); // append-semi: jump to end of "abc", insert ";"
+    ed.feed_key(key_esc());
+
+    assert_eq!(ed.doc().text().to_string(), "ab;c\ndef\n");
+
+    let (_, sels) = parse_state("ab;c\nd-[e]>f\n");
+    ed.set_current_selections(sels);
+    ed.feed_key(key('.'));
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "ab;c\nde;f\n",
+        "replay must redo the goto-line-end motion before the ';' fallback, \
+         landing the semicolon one before the second line's own last char"
     );
 }

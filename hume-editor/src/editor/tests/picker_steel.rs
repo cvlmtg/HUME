@@ -223,26 +223,6 @@ fn picker_bang_actions_rejects_a_multi_key_spec() {
 }
 
 #[test]
-fn picker_bang_actions_rejects_an_unparseable_key_spec() {
-    let (mut ed, _tmp) = editor_with(
-        r#"(define-typed-command! "go" "" (lambda (pane)
-             (picker! pane (list (cons "one" "p1")) (lambda (x) (void))
-               #:actions (list (cons "not-a-real-key" (lambda (x) (void)))))))"#,
-    );
-    type_cmd(&mut ed, ":go");
-
-    assert!(
-        ed.state.input.picker().is_none(),
-        "an unparseable #:actions key spec must not open a picker"
-    );
-    let msg = ed.state.status_msg.clone().unwrap_or_default();
-    assert!(
-        msg.contains("invalid key spec"),
-        "error should name the bad key spec, got {msg:?}"
-    );
-}
-
-#[test]
 fn picker_bang_with_no_actions_leaves_an_unbound_key_consumed_and_ignored() {
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)

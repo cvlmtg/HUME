@@ -74,15 +74,18 @@ fn editor_state_fields_are_classified() {
             command_refused: _,                 // preserved
             pending_repeat: _,                  // preserved
             insert_session: _,                  // preserved
-            active_session: _,                  // preserved: end_focus_sessions already emptied it
-            explicit_count: _,                  // preserved
-            pending_ctrl_extend: _,             // preserved
-            macro_recording: _,                 // preserved
-            macro_pending: _,                   // preserved
-            replay_queue: _,                    // preserved
-            skip_macro_record: _,               // preserved
-            is_replaying: _,                    // preserved
-            message_logged_this_input: _,       // preserved
+            // preserved: never live across a reload (a keymap dispatch
+            // never re-enters `init.scm`)
+            in_insert_key_dispatch: _,
+            active_session: _, // preserved: end_focus_sessions already emptied it
+            explicit_count: _, // preserved
+            pending_ctrl_extend: _, // preserved
+            macro_recording: _, // preserved
+            macro_pending: _,  // preserved
+            replay_queue: _,   // preserved
+            skip_macro_record: _, // preserved
+            is_replaying: _,   // preserved
+            message_logged_this_input: _, // preserved
             // config: resync_config_state clears this so
             // detect_buffer_enter's diff re-raises OnBufferEnter for
             // the focused buffer

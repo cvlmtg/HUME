@@ -1,6 +1,7 @@
 //! BufferText-edit application and cursor navigation primitives fed by LSP
-//! responses (code actions, rename, go-to-definition), but not LSP
-//! transport themselves.
+//! responses (code actions, rename, go-to-definition); `insert-key!` too,
+//! which isn't LSP-driven but shares `EditHost`'s capability gate (see that
+//! trait's own doc).
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -10,8 +11,8 @@ use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    checked_fields, json_arg, list_items, optional_usize_arg, string_arg, usize_arg,
-    wire_text_edit_arg,
+    checked_fields, json_arg, list_items, optional_usize_arg, single_key_arg, string_arg,
+    usize_arg, wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -123,6 +124,18 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
         _ => steel::stop!(TypeMismatch =>
             "goto-location!: expected a Location hashmap/handle or (list target line char-col)"),
     }
+}
+
+/// `(insert-key! pane key)` — `key` is a `bind-key!`-syntax spec naming
+/// exactly one chord (see [`single_key_arg`]), decoded here rather than
+/// left to the host: the host trait takes an already-parsed `KeyEvent`,
+/// same as every other typed `EditHost` param.
+pub(crate) fn insert_key(ctx: &mut SteelCtx, pane: PaneHandle, key: SteelVal) -> SteelResult {
+    let key = single_key_arg(key, "insert-key!")?;
+    require_cap(ctx.host.edits(), "insert-key!")?
+        .insert_key(pane, key)
+        .map(|()| SteelVal::Void)
+        .map_err(generic_err)
 }
 
 #[cfg(test)]

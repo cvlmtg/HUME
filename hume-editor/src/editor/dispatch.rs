@@ -72,6 +72,12 @@ impl Editor {
         // state as of entry — not whatever an inner dispatch built on top of it.
         let pre_recipe = self.state.selection_recipe.clone();
         let pre_writes = self.state.selection_recipe_writes;
+        // See `commands::insert_owns_repeat_slot`'s own doc for why. Used
+        // only by the stamp below — a Steel command reached directly
+        // through an Insert key's own keymap binding must not steal
+        // `last_repeatable_action` from whichever command opened the
+        // session.
+        let in_insert = commands::insert_owns_repeat_slot(&self.state);
 
         // BODY — consumes `cmd`.
         if !self.run_steel_command(cmd, name.as_ref(), &ctx, char_arg) {
@@ -89,7 +95,7 @@ impl Editor {
             .registry
             .get_mappable(name.as_ref())
             .is_some_and(|c| c.meta().repeatable);
-        if repeatable {
+        if repeatable && !in_insert {
             // Outer-name-wins: stamp the outer command so `.` replays it, not
             // any inner native command the body dispatched via `call!`.
             commands::step_stamp_repeatable(

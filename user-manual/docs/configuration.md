@@ -323,6 +323,23 @@ To set several bindings at once, use the plural forms:
 
 `bind-keys!` batches `bind-key!`, `bind-keys-extend!` batches `bind-key-extend!`, and `unbind-keys!` batches `unbind-key!` — each takes one or more `(key cmd)` pairs (or, for `unbind-keys!`, one or more bare keys) instead of a single one.
 
+### Falling back to a key's normal Insert-mode behaviour
+
+Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [Plugin API](plugin-api.md#editing-navigation)) lets a command decide, per keypress, whether to override the key or fall back to what it would otherwise do — for example, Tab that completes after a letter and inserts a tab everywhere else:
+
+```scheme
+(define-command! "tab-or-complete" "Complete after a letter, else insert a tab."
+  (lambda (pane)
+    (if (letter-before-cursor? pane)
+        (call! "completion-trigger" pane)
+        (insert-key! pane "tab"))))
+(bind-key! 'insert "tab" "tab-or-complete")
+```
+
+`letter-before-cursor?` here is a helper you write yourself, not a builtin.
+
+`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect — so a binding like this one decides again at the new cursor, taking whichever branch fits there.
+
 ### Binding a key that waits for a character
 
 Some commands need a character typed right after the key (find/till motions, surround). `bind-wait-char!` binds a key sequence so the *next* keypress is captured and passed to the target command instead of being looked up in the keymap:

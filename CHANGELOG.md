@@ -26,6 +26,7 @@
 ### Editing
 - `/`, `?`, and `s` accept leading flags: `m/` moves every selection to its own next match, `v/` matches literally.
 - New `:earlier`/`:later` step through undo history by count (`:earlier 3`) or by age (`:earlier 5m`).
+- `.` now repeats an Insert-mode key's own binding — `Ctrl-w`, or any other Insert-mode key bound to a command — by re-running it, so the binding decides again at the new cursor.
 
 ### Panes & interface
 - New tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev`, the `tab-new`/`goto-next-tab`/`goto-prev-tab` commands (`Ctrl-p t`/`Ctrl-p T`), and a tab bar controlled by the new `tabline` setting.
@@ -59,6 +60,7 @@
 - `close-menu!` and `close-drawer!` now close their widget even when something else is open on top of it.
 - `on-mode-change` no longer fires during a `.` repeat.
 - New `buffer-panes`, `buffer-key`, `pane?`, `buffer-line-count`, and `split-words` builtins; `debounce-by` takes `#:key`.
+- New `insert-key!` lets a command bound to an Insert-mode key fall back to that key's normal behaviour — e.g. a Tab binding that completes after a letter and inserts a tab everywhere else.
 
 ### Fixes
 - A plugin pasting while you type in Insert mode no longer drops your typing from undo.

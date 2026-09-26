@@ -1,10 +1,13 @@
-//! `EditorHostImpl`'s LSP-driven text edits, workspace edits, and
-//! go-to-location.
+//! `EditorHostImpl`'s LSP-driven text edits, workspace edits,
+//! go-to-location, and `insert-key!`.
 
 use hume_engine::pipeline::BufferId;
 use hume_rope::column::CharCol;
+use termina::event::KeyEvent;
 
 use super::EditorHostImpl;
+use crate::editor::Mode;
+use crate::editor::commands::{self, FocusedPane};
 use hume_scripting::PaneHandle;
 use hume_scripting::host::EditHost;
 
@@ -128,5 +131,32 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             char_col: CharCol::new(char_col),
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, t, goto_target)
+    }
+
+    fn insert_key(&mut self, pane: PaneHandle, key: KeyEvent) -> Result<(), String> {
+        let fp = FocusedPane::resolve(self.state, self.view, pane).map_err(|e| e.to_string())?;
+        if self.state.mode() != Mode::Insert {
+            return Err("insert-key!: only in Insert mode".to_string());
+        }
+        // `in_insert_key_dispatch` (see its own doc) is exactly "an Insert
+        // key's own keymap binding is dispatching right now" — the one
+        // context `.` can replay this call in (by re-running that same
+        // binding, per `handle_insert`'s own doc), so this must refuse
+        // anywhere else (a hook, a timer): the buffer edit would otherwise
+        // land untracked for dot-repeat.
+        if !self.state.in_insert_key_dispatch {
+            return Err("insert-key!: only from a command bound to an Insert-mode key".to_string());
+        }
+        // Not recorded here: `.` replays the *binding* that called this
+        // (recorded once, at the keymap dispatch that's invoking it —
+        // `handle_insert`'s own doc), which re-runs this same call on
+        // replay. Recording it a second time here would double it.
+        if !commands::insert_default_key(self.state, self.view, fp, key) {
+            return Err(format!(
+                "insert-key!: {:?} has no default Insert-mode behaviour",
+                key.code
+            ));
+        }
+        Ok(())
     }
 }

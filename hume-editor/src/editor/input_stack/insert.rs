@@ -1,37 +1,34 @@
-//! The `Insert` layer, plus [`Editor::handle_insert`] and
-//! [`Editor::apply_insert_mode_paste`] — kept as `impl Editor` methods
-//! rather than free functions like this crate's other layer handlers,
-//! because both have a second caller outside dispatch: `replay.rs`'s
-//! dot-repeat/macro replay calls them directly (`self.handle_insert(*key)`,
-//! `self.apply_insert_mode_paste(text)`) to replay a recorded insert
-//! session's keystrokes. Converting them to free functions would force that
-//! caller into a new qualified path for no benefit `insert_input` doesn't
-//! already provide.
+//! The `Insert` layer and its key handler. [`Editor::apply_insert_mode_paste`]
+//! is kept as an `impl Editor` method rather than a free function like this
+//! crate's other layer handlers because it has a second caller outside
+//! dispatch: `replay.rs`'s dot-repeat replay of a recorded paste.
+//!
+//! `handle_insert` itself only walks the Insert keymap and dispatches a
+//! match; a key with no match runs its *default* behaviour via
+//! `commands::insert_default_key` — see that function's own doc (`commands/
+//! insert_keys.rs`) for why it's a free function rather than inlined here.
 
-use hume_editing::changeset::ChangeSet;
-use hume_editing::lines::leading_whitespace_end;
-use hume_editing::selection::SelectionSet;
-use hume_editing::text::BufferText;
-use termina::event::{KeyCode, KeyEvent, Modifiers};
+use termina::event::KeyEvent;
 
-use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
-use hume_ops::MotionMode;
-use hume_ops::auto_pairs::{delete_pair, insert_pair_close};
-use hume_ops::edit::{
-    dedent_tab_backward, delete_char_backward, delete_char_forward, insert_char,
-    insert_newline_indent, insert_tab,
-};
-use hume_ops::motion::cmd_move_right;
 
-use super::super::completion;
-use super::super::event::EditorEvent;
+use super::super::dispatch::CmdCtx;
 use super::super::keymap::WalkResult;
-use super::super::registry::MappableCommand;
 use super::super::replay::InsertInput;
 use super::super::{Editor, EditorState, commands, doc_ops};
 use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+
+/// The fixed dispatch context for a key that resolved to an Insert keymap
+/// leaf — always an explicit count of 1, never extending. Shared by
+/// `handle_insert` and `replay.rs`'s replay of a recorded
+/// `InsertInput::Command` entry, so a binding re-run on `.` sees exactly
+/// the context it ran with the first time.
+pub(in crate::editor) const INSERT_KEY_CTX: CmdCtx = CmdCtx {
+    count: Some(1),
+    extend: false,
+};
 
 pub(in crate::editor) struct InsertLayer {
     pub(in crate::editor) sticky_popup: Option<PopupLayer>,
@@ -57,7 +54,7 @@ impl Layer for InsertLayer {
 
 pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     match ev {
-        InputEvent::Key(key) => ed.handle_insert(key),
+        InputEvent::Key(key) => handle_insert(ed, key),
         InputEvent::Paste(text) => {
             ed.apply_insert_mode_paste(&text);
             if let Some(session) = ed.state.insert_session.as_mut() {
@@ -71,350 +68,106 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     }
 }
 
+/// Walks the Insert keymap for `key`: a bound key re-dispatches its
+/// command, an unbound one runs its default behaviour
+/// (`commands::insert_default_key`). Either way, records what `.` needs to
+/// replay it — see `InsertInput`'s own doc for the two shapes.
+fn handle_insert(ed: &mut Editor, key: KeyEvent) {
+    // Only Esc, Ctrl-c, arrows, and user bindings live in the insert trie;
+    // plain chars, Tab, Enter, Backspace, and Delete fall through to their
+    // default behaviour below.
+    let trie_result = ed.state.config.keymap.insert.walk(&[key]);
+    match trie_result {
+        WalkResult::Leaf(cmd) => {
+            // A bound command edits through `commands::run_body`, never
+            // `insert_default_key`, so it hands no `ChangeSet` back to an
+            // open completion session — dismissing that session is
+            // `completion_input`'s job: it peeks this same trie walk before
+            // falling through here, and retires its layer once this call
+            // returns (see its own doc).
+            let Some(reg_cmd) = ed
+                .state
+                .config
+                .registry
+                .get_mappable(cmd.name.as_ref())
+                .cloned()
+            else {
+                ed.report_unknown_command(
+                    cmd.name.as_ref(),
+                    format!("unknown command: {}", cmd.name),
+                );
+                return;
+            };
+            // Snapshotted before dispatch so the after-check below can tell
+            // "this key's binding actually edited the buffer" from "it was a
+            // motion, a refusal, or a no-op" (see `InsertInput::Command`'s
+            // own doc for why the *binding* is recorded rather than any
+            // native effect underneath it).
+            let buf = commands::FocusedPane::current(&ed.state).bid(&ed.view);
+            let pre_gen = ed.state.buffers.get(buf).text_gen;
+            let name = cmd.name;
+            // Through the full pipeline like any keypress: an edit composes
+            // into the open insert-session group (`run_body` routes through
+            // `apply_doc_edit_grouped`), a motion clears a pinned typed run
+            // (`step_clear_typed_run`), and `insert_owns_repeat_slot` keeps
+            // a repeatable command from stamping over the session's owner.
+            ed.with_insert_key_dispatch(|ed| ed.dispatch(reg_cmd, INSERT_KEY_CTX));
+
+            if ed.state.buffers.get(buf).text_gen != pre_gen {
+                if let Some(session) = ed.state.insert_session.as_mut() {
+                    session.keystrokes.push(InsertInput::Command { name });
+                } else if let Some(action) = ed.state.last_repeatable_action.as_mut() {
+                    // The binding itself left Insert mid-dispatch
+                    // (`exit-insert`, or a mode switch it triggers):
+                    // `tear_down_insert` already moved the session's
+                    // keystrokes into this action, so the entry is appended
+                    // after them in dispatch order. That teardown's own edit
+                    // (the autoindent trim on an owned blank line) counts as
+                    // this binding's edit — correctly: replaying the exit
+                    // performs the same trim, and `finish_replay_session` is a
+                    // no-op once the session is already closed.
+                    action.insert_keys.push(InsertInput::Command { name });
+                }
+            }
+            return;
+        }
+        WalkResult::NoMatch => {}
+        // Interior / WaitChar can't arise in the insert trie (no multi-key
+        // sequences, no wait-char bindings).
+        WalkResult::Interior | WalkResult::WaitChar(_) => {}
+    }
+
+    // Recorded only when the key has default behaviour: an unbound key with
+    // none (an unbound Ctrl-chord, an F-key) did nothing, so replaying it
+    // would be a silent no-op entry.
+    let fp = commands::FocusedPane::current(&ed.state);
+    if commands::insert_default_key(&mut ed.state, &ed.view, fp, key)
+        && let Some(session) = ed.state.insert_session.as_mut()
+    {
+        session.keystrokes.push(InsertInput::Key(key));
+    }
+}
+
 impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
-    /// Applies a grouped edit on the focused (pane, buffer) and, if a
-    /// completion session is open on that same buffer, tells it
-    /// (`EditorState::completion_observe_edit`: remap every token, re-rank,
-    /// re-invoke incomplete sources, dismiss if typed out of) — the
-    /// chokepoint every keystroke handler below that edits the focused
-    /// buffer directly goes through, so no such call site needs its own
-    /// record-or-not decision. (A cursor-motion or edit-command key that
-    /// instead resolves through the insert trie is a separate case —
-    /// `completion_input_buffer`'s own trie peek dismisses the session
-    /// outright once any of those returns, since none of them route back
-    /// through here.) See `BufferSession::observe_edit` for why every
-    /// keystroke reaching this function needs recording, not just ones at
-    /// the primary cursor.
-    fn apply_insert_edit(
+    /// Runs `f` with `EditorState::in_insert_key_dispatch` set, restoring
+    /// its prior value afterward — shared by `handle_insert`'s trie-leaf
+    /// dispatch and `replay.rs`'s replay of a recorded `InsertInput::
+    /// Command` entry, so a binding re-run on `.` sees the same flag it saw
+    /// live. Set for the whole call regardless of what `f` does internally
+    /// (mode switches included — dispatch is synchronous all the way
+    /// through a Steel `call!`, so this never outlives the call it wraps).
+    /// See `commands::insert_owns_repeat_slot`'s own doc for what the flag
+    /// itself gates.
+    pub(in crate::editor) fn with_insert_key_dispatch<R>(
         &mut self,
-        cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
-    ) {
-        let focused = self.state.focus.id();
-        let buf = self.focused_buffer_id();
-        let cs = doc_ops::apply_doc_edit_grouped(
-            &mut self.state.buffers,
-            &self.state.config.decorations,
-            &mut self.state.panes.state,
-            &mut self.state.panes.jumps,
-            &mut self.state.active_session,
-            focused,
-            buf,
-            cmd,
-        );
-        // Read after `apply_doc_edit_grouped` returns, so `text_gen`
-        // reflects the edit just applied, not the buffer's state before it.
-        let text_gen = self.state.buffers.get(buf).text_gen;
-        self.state
-            .completion_observe_edit(&self.view, buf, &cs, text_gen);
-    }
-
-    /// Moves the cursor right past an existing closer instead of inserting
-    /// a duplicate — both auto-pair skip-close branches below (`"` typed
-    /// while sitting on a `"`, `)` typed while sitting on a `)`). A motion,
-    /// not an edit — bypasses `apply_insert_edit`, so `completion_observe_
-    /// edit` never runs and a live session's token would go untracked.
-    /// Dismiss rather than reintroduce a keystroke-driven refilter for a
-    /// motion path that carries no `ChangeSet` to remap.
-    fn skip_over_close(&mut self, pane: PaneId, buf: BufferId) {
-        doc_ops::apply_doc_motion(
-            &self.state.buffers,
-            &mut self.state.panes.state,
-            pane,
-            buf,
-            |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
-        );
-        self.state.dismiss_completion(&self.view);
-    }
-
-    pub(in crate::editor) fn handle_insert(&mut self, key: KeyEvent) {
-        // Walk the insert trie first: handles Esc, Ctrl-c, and arrow keys.
-        // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
-        // are NOT in the insert trie — they're handled below.
-        let trie_result = self.state.config.keymap.insert.walk(&[key]);
-        match trie_result {
-            WalkResult::Leaf(cmd) => {
-                // Every key that resolves to a trie leaf is a cursor motion
-                // or an edit command — Esc, arrows, Ctrl-w, any user-bound
-                // insert key. None of them route through `apply_insert_edit`
-                // (motions bypass it entirely; an edit command reaches the
-                // buffer either via `MappableCommand::Edit` below through
-                // `commands::run_body`, or — like Ctrl-w's `EditorCmd` — through
-                // the ordinary `execute_keymap_command` dispatch further
-                // down; neither hands its `ChangeSet` back here), so an open
-                // completion session can't stay correctly anchored past one.
-                // Dismissing it is `completion_input`'s job, not this
-                // function's: it peeks this same trie walk before falling
-                // through here, and retires the layer once this call
-                // returns — see its own doc.
-                let Some(reg_cmd) = self
-                    .state
-                    .config
-                    .registry
-                    .get_mappable(cmd.name.as_ref())
-                    .cloned()
-                else {
-                    self.report_unknown_command(
-                        cmd.name.as_ref(),
-                        format!("unknown command: {}", cmd.name),
-                    );
-                    return;
-                };
-                // Edit commands (e.g. Ctrl-w) must compose into the open insert-session
-                // edit group. `commands::run_body` routes through
-                // `apply_doc_edit_grouped` when a group is open, so no special-casing
-                // is needed here.
-                if let MappableCommand::Edit { .. } = reg_cmd {
-                    let fp = commands::FocusedPane::current(&self.state);
-                    let Ok(bound) = commands::BoundCommand::focused(reg_cmd, fp) else {
-                        unreachable!("just matched MappableCommand::Edit above, which is native")
-                    };
-                    commands::run_body(
-                        &mut self.state,
-                        &mut self.view,
-                        bound,
-                        &crate::editor::dispatch::CmdCtx {
-                            count: Some(1),
-                            extend: false,
-                        },
-                    );
-                    return;
-                }
-                // A cursor-motion command reached here invalidates a pinned
-                // typed run — see `step_clear_typed_run` (`commands/pipeline.rs`),
-                // which `execute_keymap_command` below runs through.
-                self.execute_keymap_command(cmd.name, Some(1), false);
-                return;
-            }
-            WalkResult::NoMatch => {}
-            // Interior / WaitChar can't arise in the insert trie (no multi-key
-            // sequences, no wait-char bindings).
-            WalkResult::Interior | WalkResult::WaitChar(_) => {}
-        }
-
-        // ── Dot-repeat recording ──────────────────────────────────────────────
-        // Trie-matched keys (Esc, arrows) returned early above, so everything
-        // reaching here is a text-modifying key — safe to record for replay.
-        if let Some(ref mut session) = self.state.insert_session {
-            session.keystrokes.push(InsertInput::Key(key));
-        }
-
-        // ── Character input ───────────────────────────────────────────────────
-        let focused = self.state.focus.id();
-        let buf = self.focused_buffer_id();
-        match key.code {
-            KeyCode::Char(ch) if !key.modifiers.contains(Modifiers::CONTROL) => {
-                let (ap_enabled, ap_pairs) =
-                    self.doc().overrides.auto_pairs_ref(&self.state.settings);
-                // `OnTriggerChar` only fires when `ch` actually landed in
-                // the buffer — the two skip-close branches below just move
-                // the cursor past an existing closer, inserting nothing.
-                let mut inserted = true;
-                if ap_enabled {
-                    if let Some(pair) = ap_pairs.iter().find(|p| p.open == ch) {
-                        let (open, close, symmetric) = (pair.open, pair.close, pair.is_symmetric());
-                        if symmetric && self.should_skip_close(ch) {
-                            // e.g. typing `"` when cursor already sits on `"`.
-                            // NLL ends the `ap_pairs` borrow at its last use (the `find` above),
-                            // so `skip_over_close`'s own `&mut self` here does not conflict with it.
-                            self.skip_over_close(focused, buf);
-                            inserted = false;
-                        } else if self.should_auto_pair(pair, ap_pairs) {
-                            // Context is clear: insert open+close or wrap selection.
-                            // NLL: `ap_pairs` last used in the condition above; borrow ends here.
-                            self.apply_insert_edit(|b, s| insert_pair_close(b, s, open, close));
-                        } else {
-                            // Next char is a word char (or symmetric prev is word char):
-                            // insert only the typed character.
-                            self.apply_insert_edit(|b, s| insert_char(b, s, ch));
-                        }
-                    } else if ap_pairs.iter().any(|p| p.close == ch && !p.is_symmetric())
-                        && self.should_skip_close(ch)
-                    {
-                        // Asymmetric close (e.g. `)`) when cursor is already on it.
-                        self.skip_over_close(focused, buf);
-                        inserted = false;
-                    } else {
-                        self.apply_insert_edit(|b, s| insert_char(b, s, ch));
-                    }
-                } else {
-                    self.apply_insert_edit(|b, s| insert_char(b, s, ch));
-                }
-                if inserted {
-                    let lang_id = self.state.buffers.get(buf).language;
-                    // Owned, not a borrow of `self.state.config.languages`:
-                    // `sources` below already needs a borrowed `&str`, but
-                    // `Trigger::Char` is handed to a `&mut EditorState`
-                    // method further down, so its own copy can't be tied to
-                    // that same borrow (see `Trigger::Char`'s own doc).
-                    let language_owned =
-                        lang_id.map(|id| self.state.config.languages.name_of(id).to_owned());
-                    let language = language_owned.as_deref();
-                    let sources = self.state.trigger_sources_for(ch, language);
-                    for source in &sources {
-                        self.state.queue_event(EditorEvent::OnTriggerChar {
-                            target: hume_scripting::PaneHandle::with_pane(buf, focused),
-                            ch,
-                            source: source.clone(),
-                        });
-                    }
-                    // The hook above is for any listener (signature help); a
-                    // completion source's own trigger chars are looked up
-                    // directly against the registry
-                    // (`SourceRegistry::buffer_sources_for_trigger`) — no
-                    // hook round trip, and no dependency on
-                    // `register-trigger-chars!`'s separate table (`sources`
-                    // above is that table's own answer, used only to fire
-                    // the generic hook).
-                    self.state.trigger_buffer_completion(
-                        &self.view,
-                        completion::Trigger::Char {
-                            ch,
-                            language: language_owned,
-                        },
-                    );
-                }
-            }
-
-            // ── Tab ────────────────────────────────────────────────────────────
-            // Governed by the `tab-style` setting: Hard inserts a literal `\t`,
-            // Soft inserts spaces to the next tab stop (width from `tab-width`).
-            KeyCode::Tab => {
-                let (style, tw) = commands::tab_format(self.doc(), &self.state.settings);
-                self.apply_insert_edit(move |b, s| insert_tab(b, s, style, tw));
-            }
-
-            // ── Newline ───────────────────────────────────────────────────────
-            // Auto-indent: copy the current line's leading whitespace onto the
-            // new line. No smart indent.
-            //
-            // `allowed` (vim autoindent parity): only vacate a blank line's
-            // whitespace if it's owned by an earlier auto-indent this session
-            // itself made — never on the first Enter that lands on a
-            // pre-existing blank line, since nothing has armed a record for
-            // it yet. `arm_autoindent` after the edit records the *new*
-            // line's own copied indent, so the next Enter/Esc on it trims.
-            KeyCode::Enter => {
-                let fp = commands::FocusedPane::current(&self.state);
-                let allowed = commands::autoindent_owned(
-                    fp.pane().state(&self.state.panes.state, &self.view),
-                );
-                self.apply_insert_edit(move |b, s| insert_newline_indent(b, s, &allowed));
-                commands::arm_autoindent(&mut self.state, &self.view, fp);
-            }
-
-            // ── Delete ────────────────────────────────────────────────────────
-            // Backspace needs no special handling to preserve autoindent
-            // ownership: deleting *inside* the owned range only shrinks the
-            // line's current whitespace, which stays within the recorded
-            // `allowed.end` (see `is_owned_blank_line`'s containment check) —
-            // matching `:help autoindent`'s own carve-out naming `<BS>` as the
-            // one key that doesn't cancel a pending auto-indent trim.
-            KeyCode::Backspace => {
-                let (ap_enabled, ap_pairs) =
-                    self.doc().overrides.auto_pairs_ref(&self.state.settings);
-                if self.should_dedent_backspace() {
-                    let tw = self.doc().overrides.tab_width(&self.state.settings);
-                    // Dedent: snap every cursor in leading whitespace back to
-                    // the previous tab stop. All-or-nothing — if any cursor
-                    // isn't in leading ws, the whole batch falls back.
-                    self.apply_insert_edit(move |b, s| dedent_tab_backward(b, s, tw));
-                } else if ap_enabled && self.is_between_pair(ap_pairs) {
-                    self.apply_insert_edit(delete_pair);
-                } else {
-                    self.apply_insert_edit(delete_char_backward);
-                }
-            }
-            KeyCode::Delete => {
-                self.apply_insert_edit(delete_char_forward);
-            }
-
-            _ => {}
-        }
-    }
-
-    // ── Auto-pair helpers ─────────────────────────────────────────────────────
-
-    /// Returns `true` if every selection is a collapsed cursor sitting in a
-    /// line's leading whitespace (spaces/tabs), with at least one whitespace
-    /// char before it. All-or-nothing: if any selection doesn't qualify, the
-    /// whole batch falls back to plain Backspace so multi-cursor behaviour
-    /// stays consistent.
-    ///
-    /// "In leading whitespace" means every char in `[line_start, head)` is a
-    /// space or tab — so a cursor on the first content char (right after the
-    /// indent) also qualifies, matching the dedent-to-prev-tab-stop behaviour
-    /// of modern editors. The boundary itself comes from the shared
-    /// [`leading_whitespace_end`] primitive.
-    fn should_dedent_backspace(&self) -> bool {
-        let text = self.doc().text();
-        self.current_selections().iter_sorted().all(|sel| {
-            if !sel.is_collapsed() {
-                return false;
-            }
-            let p = sel.head();
-            let line_idx = text.char_to_line(p);
-            let line_start = text.line_to_char(line_idx.into());
-            // `p > line_start` rules out char_col 0 (nothing to dedent). `p <=
-            // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
-            // rule: at exactly the end the cursor sits on the first content
-            // char and still qualifies.
-            p > line_start && p <= leading_whitespace_end(text, line_idx)
-        })
-    }
-
-    /// Returns `true` if every selection is a cursor AND the character at each
-    /// cursor's `head` equals `ch`.
-    ///
-    /// All-or-nothing: if even one cursor doesn't match, the whole operation
-    /// falls back to normal insert, keeping multi-cursor behavior consistent.
-    fn should_skip_close(&self, ch: char) -> bool {
-        self.current_selections()
-            .iter_sorted()
-            .all(|sel| sel.is_collapsed() && self.doc().text().char_at(sel.head()) == Some(ch))
-    }
-
-    /// Returns `true` if every selection is a cursor AND the pair
-    /// `(char_before_cursor, char_at_cursor)` matches a configured pair.
-    ///
-    /// Used by Backspace to decide whether to delete both brackets or just one.
-    fn is_between_pair(&self, pairs: &[hume_ops::auto_pairs::Pair]) -> bool {
-        let text = self.doc().text();
-        self.current_selections().iter_sorted().all(|sel| {
-            if !sel.is_collapsed() || sel.head() == hume_rope::offset::CharOffset::new(0) {
-                return false;
-            }
-            // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
-            // chars are always single codepoints, but using it keeps the logic uniform.
-            let prev = hume_editing::grapheme::prev_grapheme_boundary(text, sel.head());
-            match (text.char_at(prev), text.char_at(sel.head())) {
-                (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
-                _ => false,
-            }
-        })
-    }
-
-    /// Returns `true` if auto-pairing `pair` is appropriate given the current
-    /// selections. All-or-nothing: every collapsed selection must satisfy the
-    /// context rules; non-collapsed selections always pass (they wrap).
-    fn should_auto_pair(
-        &self,
-        pair: &hume_ops::auto_pairs::Pair,
-        ap_pairs: &[hume_ops::auto_pairs::Pair],
-    ) -> bool {
-        let text = self.doc().text();
-        let chars = commands::effective_word_chars(self.doc(), &self.state.settings);
-        self.current_selections().iter_sorted().all(|sel| {
-            !sel.is_collapsed()
-                || hume_ops::auto_pairs::should_auto_pair_at(
-                    text,
-                    sel.head(),
-                    pair,
-                    ap_pairs,
-                    chars,
-                )
-        })
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let prev = std::mem::replace(&mut self.state.in_insert_key_dispatch, true);
+        let r = f(self);
+        self.state.in_insert_key_dispatch = prev;
+        r
     }
 
     /// Bulk-insert `text` into the focused buffer as one grouped edit — the

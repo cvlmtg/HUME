@@ -14,13 +14,13 @@ use hume_engine::types::TruncateEnd;
 
 use crate::SteelCtx;
 use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
-use crate::keys::parse_key_sequence;
 use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
     bool_arg, callable_arg, list_items, list_to_i32s, list_to_strings, optional_path_arg,
-    optional_string_arg, optional_usize_arg, pair_fields, string_arg, symbol_enum_arg, usize_arg,
+    optional_string_arg, optional_usize_arg, pair_fields, single_key_arg, string_arg,
+    symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -199,7 +199,7 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
 /// Decodes `picker!`'s/`live-picker!`'s `#:actions` alist: each entry is a
 /// `(key-spec . proc)` dotted pair — a proper list entry is rejected by
 /// `pair_fields`, same as `picker_items`. `key-spec` must parse (via
-/// `parse_key_sequence`) to exactly one `KeyEvent` — the picker dispatches
+/// [`single_key_arg`]) to exactly one `KeyEvent` — the picker dispatches
 /// one chord at a time, so a multi-key spec like `"z f"` silently binding
 /// only its first key would be a trap rather than a useful feature.
 fn picker_actions(
@@ -210,14 +210,9 @@ fn picker_actions(
         .into_iter()
         .map(|entry| {
             let (spec, proc) = pair_fields(entry, ctx_name, "(key-spec . proc)")?;
-            let spec = string_arg(spec, ctx_name)?;
+            let key = single_key_arg(spec, ctx_name)?;
             let proc = callable_arg(proc, ctx_name)?;
-            let mut keys = parse_key_sequence(&spec)
-                .map_err(|e| generic_err(format!("{ctx_name}: invalid key spec '{spec}': {e}")))?;
-            if keys.len() != 1 {
-                steel::stop!(Generic => "{}: key spec '{}' must name exactly one key, not a sequence", ctx_name, spec);
-            }
-            Ok((keys.remove(0), proc))
+            Ok((key, proc))
         })
         .collect()
 }

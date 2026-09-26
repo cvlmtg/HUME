@@ -341,6 +341,7 @@ pub(super) fn set_primary_selection(
 
 mod edit;
 mod find;
+mod insert_keys;
 mod insert_session;
 mod jump;
 mod mode;
@@ -357,6 +358,7 @@ mod typed_misc;
 
 pub(super) use edit::*;
 pub(super) use find::*;
+pub(super) use insert_keys::*;
 use insert_session::*;
 pub(super) use jump::*;
 pub(super) use mode::*;
@@ -395,8 +397,8 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane_in_layout;
 pub(in crate::editor) use pipeline::{
-    BindError, BoundCommand, CommandPane, FocusedPane, NativeBody, TargetError, run, run_body,
-    step_paste_commit, step_stamp_repeatable,
+    BindError, BoundCommand, CommandPane, FocusedPane, NativeBody, TargetError,
+    insert_owns_repeat_slot, run, run_body, step_paste_commit, step_stamp_repeatable,
 };
 
 // DisplayLineMap-dependent commands live in visual_move.rs; re-export for the registry glob.

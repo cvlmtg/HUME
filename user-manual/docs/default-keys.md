@@ -240,6 +240,8 @@ Press `Ctrl-p` then a second key:
 
 Insert mode handles auto-pair insertion: typing `(`, `[`, `{`, `"`, `'`, or `` ` `` inserts the matching close character. Backspace inside an empty pair deletes both characters.
 
+Rebinding one of these keys replaces its behaviour outright — a plugin command can fall back to it with `insert-key!` (see [Editing & navigation](plugin-api.md#editing-navigation)), letting a binding decide per keypress whether to override the key or leave it as-is.
+
 ## Extend mode
 
 | Key | Action |

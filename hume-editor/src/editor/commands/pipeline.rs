@@ -365,8 +365,8 @@ pub(in crate::editor) struct BoundCommand {
 }
 
 impl BoundCommand {
-    /// Bind `cmd` to the focused pane — the shape every keypress, dot-repeat
-    /// replay, and the Insert-mode `Edit` short-circuit dispatch through.
+    /// Bind `cmd` to the focused pane — the shape every keypress and
+    /// dot-repeat replay dispatch through.
     /// `Err` hands `cmd` back unbound for `SteelBacked`/`Lazy`, which never
     /// reach a target at all; the caller's own Steel dispatch path takes it
     /// from there.
@@ -600,12 +600,10 @@ pub(in crate::editor::commands::pipeline) fn step_capture_pre_jump(
 /// the pins `begin_typed_run` just installed (same hazard `step_clear_extend`
 /// documents for its own AFTER placement).
 ///
-/// Two routes into a native command bypass this pipeline entirely, and both
-/// are already safe without it: Insert mode's `Edit`-command short-circuit
-/// (`input_stack/insert.rs`) has a meta that hardcodes all three motion flags
-/// `false`, so `moves_cursor()` would answer `false` here too; dot-repeat
-/// replay (`replay.rs`) calls `run_body` directly, but
-/// reopens an edit group first, which clears the pins itself
+/// One route into a native command bypasses this pipeline entirely, and is
+/// already safe without it: dot-repeat replay (`replay.rs`) calls
+/// `run_body` directly, but reopens an edit group first, which clears the
+/// pins itself
 /// (`doc_ops::begin_edit_group`). See `CmdMeta::moves_cursor`'s doc for the
 /// `SteelBacked`/`Lazy` blind spot this inherits unchanged: a user-bound
 /// Steel motion still leaves the pins in place.
@@ -712,6 +710,23 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
         ObjectJumpAlign::Top => super::view_top(state, view, t.pid()),
         ObjectJumpAlign::Center => super::view_center(state, view, t.pid()),
     }
+}
+
+/// Whether `last_repeatable_action` belongs to a command other than the one
+/// about to (maybe) stamp it — a repeatable command dispatched while an
+/// Insert session is open, or while an Insert key's own keymap binding is
+/// running, must not steal the slot from whichever command opened the
+/// session. Shared by [`run`] (the native path, above) and `Editor::
+/// dispatch`'s Steel path, which otherwise each re-derived their own copy
+/// of this same check.
+///
+/// `in_insert_key_dispatch` covers the case `insert_session.is_some()`
+/// alone would miss: a binding that itself leaves Insert mid-body
+/// (`exit-insert`) and then dispatches a repeatable command — the session
+/// is already closed by the time that inner command runs, but the slot
+/// still belongs to the binding's own outer command, not to it.
+pub(in crate::editor) fn insert_owns_repeat_slot(state: &EditorState) -> bool {
+    state.insert_session.is_some() || state.in_insert_key_dispatch
 }
 
 /// Record last_repeatable_action for dot-repeat from the pre-body
@@ -849,6 +864,12 @@ pub(in crate::editor) fn run(
     // rather than re-probed here on every dispatch.
     let pane = bound.pane();
     let focused = bound.target_focused();
+    // Snapshotted before the body, so `i`/`c`/`o` — which open the session
+    // *inside* their own body — still stamp: at entry there is nothing open
+    // yet. See `insert_owns_repeat_slot`'s own doc for why a dispatch
+    // in-flight under an Insert key's binding must not overwrite
+    // `last_repeatable_action` below regardless.
+    let in_insert = insert_owns_repeat_slot(state);
 
     // BEFORE
     state.command_refused = false;
@@ -885,7 +906,7 @@ pub(in crate::editor) fn run(
         // `registry::tests::no_command_is_both_repeatable_and_selection_tracking`),
         // so `step_update_recipe` below clears it unconditionally regardless of
         // this branch — restoring it first would be immediately undone.
-        if !state.command_refused {
+        if !state.command_refused && !in_insert {
             step_stamp_repeatable(state, &name, ctx.count.unwrap_or(1), char_arg, pre_recipe);
         }
         // A command whose own snapshot is `None` never reaches the `!selection_changed`

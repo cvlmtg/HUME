@@ -179,6 +179,7 @@
 (#%register-global "insert-at-selection-end")
 (#%register-global "insert-at-selection-start")
 (#%register-global "insert-before")
+(#%register-global "insert-key!")
 (#%register-global "installed-grammars")
 (#%register-global "join-lines-select-spaces")
 (#%register-global "json-array?")

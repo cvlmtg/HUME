@@ -334,7 +334,7 @@ pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
 /// The handler only enqueues a `PendingRepeat` marker; the actual replay
 /// (edit-group bracketing, re-dispatch, insert-key replay) runs in
 /// `replay_dot` at the tail of `handle_key`, where `&mut Editor` is available
-/// for `commands::run_body`/`run_steel_command` and `handle_insert`. This
+/// for `commands::run_body`/`run_steel_command`. This
 /// keeps the invariant that no `EditorCmd` handler takes `&mut Editor` (see
 /// `EditorCmdBody` in `registry/command.rs`).
 pub(in crate::editor) fn cmd_repeat(
