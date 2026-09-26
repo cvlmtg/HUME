@@ -265,7 +265,11 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // with no placeholder pre-pushed before dispatch, this is the only
     // place a non-interactive binding's own entry gets recorded at all when
     // it tears its own session down mid-body.
-    if let Some(cap) = state.active_session.as_mut().and_then(|s| s.take_dot_capture()) {
+    if let Some(cap) = state
+        .active_session
+        .as_mut()
+        .and_then(|s| s.take_dot_capture())
+    {
         state.finalize_dot_capture(cap);
     }
     // An open completion session lives in its own `Completion` layer, pushed

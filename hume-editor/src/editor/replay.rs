@@ -213,10 +213,9 @@ impl EditorState {
     ///
     /// `Err` without an open Insert session on `(pid, bid)`, or with a real
     /// (non-collapsed) selection there — the same guard the live accept
-    /// enforces (`completion-accept!`'s own doc), which replay had skipped
-    /// until now: `replace_around_cursors` force-collapses any selection it
-    /// touches, silently discarding it, exactly what the live guard exists
-    /// to refuse instead.
+    /// enforces (`completion-accept!`'s own doc): `replace_around_cursors`
+    /// force-collapses any selection it touches, silently discarding it,
+    /// exactly what this guard exists to refuse instead.
     pub(in crate::editor) fn apply_cursor_replacement(
         &mut self,
         view: &EngineView,
@@ -231,22 +230,12 @@ impl EditorState {
         {
             return Err("no Insert session to apply the recorded result to".to_string());
         }
-        let Some(pbs) = self.panes.buffer_state(pid, bid) else {
-            return Err("no Insert session to apply the recorded result to".to_string());
-        };
-        if !pbs.selections().iter_sorted().all(|s| s.is_collapsed()) {
+        if !self.panes.state[pid][bid].selections().all_collapsed() {
             return Err("cannot replay a recorded result onto a selection".to_string());
         }
-        doc_ops::apply_doc_edit_grouped(
-            &mut self.buffers,
-            &self.config.decorations,
-            &mut self.panes.state,
-            &mut self.panes.jumps,
-            &mut self.active_session,
-            pid,
-            bid,
-            |b, s| hume_ops::edit::replace_around_cursors(b, s, r.back, r.forward, &r.text),
-        );
+        commands::apply_focused_edit_grouped(self, view, fp, |b, s| {
+            hume_ops::edit::replace_around_cursors(b, s, r.back, r.forward, &r.text)
+        });
         self.dismiss_completion(view);
         Ok(())
     }
@@ -507,20 +496,16 @@ impl Editor {
             return;
         }
 
-        self.replay_insert_inputs(&action.insert_inputs, fp);
-        self.finish_replay_session();
-    }
-
-    /// Re-executes a recorded Insert session's inputs in order (see
-    /// [`InsertInput`]). A failed or unregistered `Binding`, or a `Result`
-    /// that no longer applies, is reported and skipped rather than stopping
-    /// the loop: the live session kept going past it too, so replay does the
-    /// same. Any `Binding` that leaves Insert genuinely stops it, whether or
-    /// not it also succeeded — a body that calls `exit-insert` and then
-    /// errors has still left, and nothing recorded after it can apply
-    /// outside the session it was typed into.
-    fn replay_insert_inputs(&mut self, inputs: &[InsertInput], fp: commands::FocusedPane) {
-        for input in inputs {
+        // Re-executes the recorded Insert session's inputs in order (see
+        // `InsertInput`). A failed or unregistered `Binding`, or a `Result`
+        // that no longer applies, is reported and skipped rather than
+        // stopping the loop: the live session kept going past it too, so
+        // replay does the same. Any `Binding` that leaves Insert genuinely
+        // stops it, whether or not it also succeeded — a body that calls
+        // `exit-insert` and then errors has still left, and nothing recorded
+        // after it can apply outside the session it was typed into; `break`,
+        // not `return`, so `finish_replay_session` below still runs.
+        for input in &action.insert_inputs {
             match input {
                 InsertInput::Key(key) => {
                     commands::insert_default_key(&mut self.state, &self.view, fp, *key);
@@ -574,11 +559,12 @@ impl Editor {
                     // whether the binding that closed it also succeeded or
                     // not.
                     if self.state.mode() != Mode::Insert {
-                        return;
+                        break;
                     }
                 }
             }
         }
+        self.finish_replay_session();
     }
 
     /// Builds a fresh [`edit_session::DotCapture`] at the focused cursor and

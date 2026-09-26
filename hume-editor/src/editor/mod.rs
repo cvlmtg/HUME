@@ -382,13 +382,14 @@ pub(crate) struct EditorState {
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
     /// `true` for `replay_dot`'s whole extent, `false` otherwise — read by
-    /// `completion-accept!`/`picker!`/`live-picker!` to refuse loudly if a
-    /// replayed binding reaches one of them: reaching an interactive
-    /// builtin during `.` means the binding decided differently than it did
-    /// live (it was non-interactive then, or `.` wouldn't be re-running it
-    /// at all — see [`replay::InsertInput::Result`]'s own doc), and there is
-    /// no recorded pick to hand back the way the old `DotReplay::answer`
-    /// slot once did.
+    /// [`EditorState::refuse_during_dot`], which every interactive
+    /// builtin (`completion-accept!`/`picker!`/`live-picker!`/
+    /// `completion-trigger`) opens with, to refuse loudly if a replayed
+    /// binding reaches one of them: reaching an interactive builtin during
+    /// `.` means the binding decided differently than it did live (it was
+    /// non-interactive then, or `.` wouldn't be re-running it at all — see
+    /// [`replay::InsertInput::Result`]'s own doc), and there is no recorded
+    /// pick to hand back.
     pub(super) dot_replay: bool,
     /// `true` from the moment `handle_insert` matches a trie leaf until
     /// that dispatch returns — dispatch never yields before then, all the

@@ -731,7 +731,10 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
 /// must still stamp over that inner entry (outer name wins) — both need the
 /// mode they were dispatched in, not the one they leave behind.
 pub(in crate::editor) fn repeat_slot_owned(state: &EditorState) -> bool {
-    state.mode() == Mode::Insert || state.in_insert_key_dispatch || state.dot_replay
+    // Both flags are plain field reads; `mode()` walks the layer stack, so
+    // it goes last — short-circuited away on the overwhelming majority of
+    // dispatches, which are neither.
+    state.in_insert_key_dispatch || state.dot_replay || state.mode() == Mode::Insert
 }
 
 /// Record last_repeatable_action for dot-repeat from the pre-body
@@ -869,8 +872,12 @@ pub(in crate::editor) fn run(
     // rather than re-probed here on every dispatch.
     let pane = bound.pane();
     let focused = bound.target_focused();
-    // Before the body — see `repeat_slot_owned`'s own doc for why.
-    let slot_owned = repeat_slot_owned(state);
+    // Before the body — see `repeat_slot_owned`'s own doc for why. Its
+    // result is only ever read once `meta.repeatable` is true (a
+    // non-repeatable command's `step_stamp_repeatable` call below is
+    // already a no-op via its own `pre_recipe` gate), so a non-repeatable
+    // dispatch — the overwhelming majority — skips the check entirely.
+    let slot_owned = meta.repeatable && repeat_slot_owned(state);
 
     // BEFORE
     state.command_refused = false;

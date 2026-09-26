@@ -27,12 +27,11 @@ use hume_ops::motion::cmd_move_right;
 
 use crate::editor::EditorState;
 use crate::editor::completion;
-use crate::editor::doc_ops;
 use crate::editor::event::EditorEvent;
 
 use super::{
-    FocusedPane, apply_pane_motion, arm_autoindent, autoindent_owned, doc, effective_word_chars,
-    pane_selections, tab_format,
+    FocusedPane, apply_focused_edit_grouped, apply_pane_motion, arm_autoindent, autoindent_owned,
+    doc, effective_word_chars, pane_selections, tab_format,
 };
 
 /// Runs `key`'s Insert-mode default behaviour against `fp`'s (pane,
@@ -204,17 +203,8 @@ fn apply_insert_edit(
     cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
 ) {
     let buf = fp.bid(view);
-    let cs = doc_ops::apply_doc_edit_grouped(
-        &mut state.buffers,
-        &state.config.decorations,
-        &mut state.panes.state,
-        &mut state.panes.jumps,
-        &mut state.active_session,
-        fp.pid(),
-        buf,
-        cmd,
-    );
-    // Read after `apply_doc_edit_grouped` returns, so `text_gen` reflects
+    let cs = apply_focused_edit_grouped(state, view, fp, cmd);
+    // Read after `apply_focused_edit_grouped` returns, so `text_gen` reflects
     // the edit just applied, not the buffer's state before it.
     let text_gen = state.buffers.get(buf).text_gen;
     state.completion_observe_edit(view, buf, &cs, text_gen);

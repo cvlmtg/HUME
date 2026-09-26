@@ -126,8 +126,12 @@ pub(in crate::editor::commands) fn apply_pane_edit(
 /// target a pane other than focus — has no business opening one.
 ///
 /// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`]; see
-/// [`apply_pane_motion`].
-pub(in crate::editor::commands) fn apply_focused_edit_grouped(
+/// [`apply_pane_motion`]. `pub(in crate::editor)`, not `pub(in crate::editor::
+/// commands)`: `replay::apply_cursor_replacement` is a caller outside this
+/// module, and the alternative — spelling out `doc_ops::apply_doc_edit_
+/// grouped`'s own 8 arguments there instead — is exactly the duplication
+/// this wrapper exists to avoid.
+pub(in crate::editor) fn apply_focused_edit_grouped(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
@@ -135,7 +139,7 @@ pub(in crate::editor::commands) fn apply_focused_edit_grouped(
         BufferText,
         SelectionSet,
     ) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
-) {
+) -> hume_editing::changeset::ChangeSet {
     let buf = fp.bid(view);
     doc_ops::apply_doc_edit_grouped(
         &mut state.buffers,
@@ -146,7 +150,7 @@ pub(in crate::editor::commands) fn apply_focused_edit_grouped(
         fp.pid(),
         buf,
         cmd,
-    );
+    )
 }
 
 /// Refuse an edit-mode command on a read-only buffer: report why and return
