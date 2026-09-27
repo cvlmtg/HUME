@@ -9,7 +9,7 @@ Rebinds HUME's `m`-prefixed surround keys to Helix's own `ms`/`md`/`mr` layout.
 ```
 
 - **Depends on:** nothing.
-- **Activates on:** its own key bindings only — it has no `manifest.scm`, so it must be
+- **Activates on:** its own key bindings only. It has no `manifest.scm`, so it must be
   loaded eagerly (see the [core plugins index](../README.md#loading-model)).
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-helix-surround).
 
@@ -22,8 +22,8 @@ Rebinds HUME's `m`-prefixed surround keys to Helix's own `ms`/`md`/`mr` layout.
 
 ## How it works
 
-HUME's native `select-surround`/`surround-*` commands stay registered under this plugin —
-only their keybindings move — so they're still reachable via the typed-command interface
+HUME's native `select-surround`/`surround-*` commands stay registered under this plugin
+(only their keybindings move), so they're still reachable via the typed-command interface
 (`:surround-paren`, …) while it's loaded. `surround-cmd-for` maps a delimiter char to its
 `surround-*` command name, answering `#f` for anything unrecognized so both wrapper
 commands can skip gracefully instead of erroring on a stray keypress.

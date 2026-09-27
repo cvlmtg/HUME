@@ -1,6 +1,6 @@
 # core:vim-keybind
 
-Vim muscle-memory keybindings — line-motion keys, the `C`/`D` composites HUME doesn't bind
+Vim muscle-memory keybindings: line-motion keys, the `C`/`D` composites HUME doesn't bind
 natively, and the visual-mode `o` flip alias.
 
 ## Usage
@@ -10,9 +10,9 @@ natively, and the visual-mode `o` flip alias.
 (load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'smart))
 ```
 
-- **Depends on:** `core:stdlib` — config validation (`"change-to-eol"`) calls
+- **Depends on:** `core:stdlib`: config validation (`"change-to-eol"`) calls
   `stdlib/config-enum` via `call!` at this plugin's own load time.
-- **Activates on:** its own key bindings only — most of what it rebinds
+- **Activates on:** its own key bindings only. Most of what it rebinds
   (`goto-line-start`, `goto-line-end`, …) are built-in commands with no typed form or
   hook of their own, so it has no `manifest.scm` and must be loaded eagerly (see the
   [core plugins index](../README.md#loading-model)).
@@ -34,7 +34,7 @@ natively, and the visual-mode `o` flip alias.
 | `"change-to-eol"` | `C` binds to | Behavior |
 |---|---|---|
 | `'on` | `vim-change-to-eol` | Always changes to end of line, ignoring the selection |
-| `'smart` (default) | `vim-change-to-eol-or-copy-line` | Context-sensitive — see below |
+| `'smart` (default) | `vim-change-to-eol-or-copy-line` | Context-sensitive (see below) |
 | `'off` | *(unbound)* | HUME's native `copy-selection-on-next-line` stays reachable on it |
 
 `vim-change-to-eol-or-copy-line` takes the injected `count` (`0` means no count was
@@ -46,7 +46,7 @@ count, calls `copy-selection-on-next-line` directly with the count forwarded.
 > [!NOTE]
 > `stdlib/all-single-char?`'s "bare cursor" reads as `anchor == head`. The editor's
 > `select-inserted-text` setting (on by default) makes this false right after typing
-> something in Insert mode — leaving Insert selects the run you just typed instead of
+> something in Insert mode: leaving Insert selects the run you just typed instead of
 > leaving a plain cursor. So `i foo <Esc> C` in `'smart` mode copies the selection onto
 > the line below rather than changing to end-of-line: `C` still reads a bare cursor
 > correctly, it's just that `Esc` no longer always leaves one. `'on` sidesteps this
@@ -60,12 +60,12 @@ wrapper that invoked them is flagged repeatable.
 ### `o` — flip selection
 
 Restores vim's visual-mode "flip the selection" gesture, bound in Extend mode. HUME's
-native `Ctrl-e` already flips in any mode — including Normal — and works on legacy
+native `Ctrl-e` already flips in any mode (including Normal) and works on legacy
 terminals, so `o` is purely a muscle-memory alias, not new capability.
 
 ### `Ctrl-6` — alternate buffer
 
-The portable form of vim's `Ctrl-^` — both share a keycap on US layouts and emit
+The portable form of vim's `Ctrl-^`; both share a keycap on US layouts and emit
 identical bytes. Under the kitty keyboard protocol this arrives as `Char('6')` +
 `CONTROL`; legacy terminals emit `0x1E`, which HUME does not currently surface as this
 binding (falls back to `:e #` on those terminals).
@@ -75,13 +75,13 @@ binding (falls back to `:e #` on those terminals).
 Vim's `G` (last line) is exactly the kind of key this plugin exists to restore, but it's
 deliberately left alone: `G` is a prefix in HUME's own keymap (`G L`/`G U`/`G C` case
 transforms, plus `G R` rename from `core:lsp`), and binding a single bare key replaces
-the whole trie node it lands on — rebinding `G` here would silently take those three (and
+the whole trie node it lands on. Rebinding `G` here would silently take those three (and
 `G R`) down with it for anyone who loads this plugin. `g e` reaches the last line and is
 unaffected, so the trade is one alias against three-to-four working sequences.
 
 ## Design decisions
 
-- **Check `(declared-plugins)` for `core:stdlib` at load time, unconditionally — even
+- **Check `(declared-plugins)` for `core:stdlib` at load time, unconditionally, even
   though only `'smart` mode calls into it at runtime.** Config resolution itself
   (`stdlib/config-enum`) calls into `core:stdlib`, so every mode needs the dependency
   present at load. Checking at load time turns a missing dependency into a load error

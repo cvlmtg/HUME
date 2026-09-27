@@ -1,4 +1,4 @@
-;;; init.scm.example — HUME Steel configuration starter
+;;; init.scm.example: HUME Steel configuration starter
 ;;;
 ;;; Copy to ~/.config/hume/init.scm (or $XDG_CONFIG_HOME/hume/init.scm) on
 ;;; macOS/Linux, or %APPDATA%\hume\init.scm on Windows, and edit to taste.
@@ -8,7 +8,7 @@
 ;; Everything below is a core plugin, loaded so every bundled feature is on by
 ;; default. Read the user manual's Core Plugins page
 ;; (https://cvlmtg.github.io/HUME/core-plugins.html), or each plugin's own
-;; README next to its plugin.scm, before keeping or dropping one — a few
+;; README next to its plugin.scm, before keeping or dropping one. A few
 ;; rebind the same keys, so know what you're enabling.
 
 (load-plugin "core:stdlib")           ; helper toolkit other plugins depend on

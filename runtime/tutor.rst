@@ -2,10 +2,10 @@
  HUME Tutor
 ==============================================================
 
-A hands-on introduction to HUME — Hume's Unfinished Modal Editor.
+A hands-on introduction to HUME (Hume's Unfinished Modal Editor).
 
 Welcome. This buffer is your practice space. Every lesson has
-exercises with text you are meant to edit. Do so freely — you
+exercises with text you are meant to edit. Do so freely: you
 cannot break anything here. To reset this buffer to its original
 state, close it with ``:bd!`` and re-open it with ``:tutor``.
 
@@ -22,7 +22,7 @@ where keys perform commands rather than typing text. Press ``i`` to
 enter Insert mode and type; ``Esc`` to return to Normal mode.
 
 The most important thing about HUME: the cursor IS the selection.
-The selection always covers at least one character — the one "under"
+The selection always covers at least one character, the one "under"
 the cursor.
 
 This shapes HUME's editing model: SELECT FIRST, ACT SECOND. Make a
@@ -72,14 +72,14 @@ The quick brown fox jumps over the lazy dog.
 The difference: in "config.toml log-file", pressing ``w`` repeatedly
 selects "config", then ``.``, then "toml" (plus the space after it),
 then "log" (plus the space before it), then ``-``, then "file" (six
-steps — dots and dashes are boundaries). Pressing ``W`` instead
+steps, since dots and dashes are boundaries). Pressing ``W`` instead
 selects "config.toml" (plus its trailing space), then "log-file" (two
-steps — only whitespace divides WORDs).
+steps, since only whitespace divides WORDs).
 
 By default ``w``/``W``/``b``/``B`` also pick up the whitespace
-*before* the destination word or token — except the first word of a
+*before* the destination word or token (except the first word of a
 line, which picks up its trailing space instead, since a leading run
-there would be indentation — which is why some of the steps above
+there would be indentation), which is why some of the steps above
 include an extra space alongside the word or token. Turn this off with
 ``:set global word-selects-whitespace=false`` for bare-word
 selections instead.
@@ -135,10 +135,10 @@ Both forms record a jump, so ``Ctrl-o`` brings you back.
 +--------+---------------------------------------------+
 
 Opening a file, jumping to search results, or switching buffers all
-record an entry. Use ``Ctrl-o`` to retrace your steps — for instance,
+record an entry. Use ``Ctrl-o`` to retrace your steps, for instance
 to return from a tutor exercise to wherever you were before.
 
-Some Ctrl key combinations — including ``Ctrl-i`` — require the Kitty
+Some Ctrl key combinations, including ``Ctrl-i``, require the Kitty
 keyboard protocol to work correctly. Without it, the terminal cannot
 distinguish ``Ctrl-i`` from Tab, so the forward-jump command will not
 fire. To check whether the protocol is active, look for the cat
@@ -224,8 +224,8 @@ Exercise
 ~~~~~~~~
 
 Place the cursor on "January" in the line below, then press ``3w``
-to jump three words forward — you should land on "April".
-Then press ``2b`` to jump two words backward — you should land on "February":
+to jump three words forward; you should land on "April".
+Then press ``2b`` to jump two words backward; you should land on "February":
 
 January February March April May June
 
@@ -262,7 +262,7 @@ Lesson 2 — Selections
 In HUME, a selection is a contiguous region with an anchor (fixed end)
 and a head (moving end). The cursor sits on the head character. This
 lesson covers the tools for building and shaping a single selection.
-Editing what you have selected — deleting, changing, replacing — comes
+Editing what you have selected (deleting, changing, replacing) comes
 in Lesson 3.
 HUME can also handle multiple selections. They will be covered in Lesson 9.
 
@@ -284,7 +284,7 @@ Exercise
 
 Navigate onto the first line of the exercise, press ``x`` to select
 it, then press ``Ctrl-x`` twice to extend to all three lines.
-Observe the selection spans all three lines. Now press ``X`` twice —
+Observe the selection spans all three lines. Now press ``X`` twice:
 the selection shrinks back up one line at a time instead of growing
 further. The opposite key reverses direction.
 
@@ -301,17 +301,17 @@ import json
 
 In Extend mode, every motion ADDS to the selection rather than
 replacing it. Press ``e`` again to leave Extend mode. Check the
-bottom-right corner of the window — it shows the current mode
+bottom-right corner of the window: it shows the current mode
 ("EXT" when active, "NOR" when not).
 
-Selection-consuming edits — delete, change, paste, replace — exit
+Selection-consuming edits (delete, change, paste, replace) exit
 Extend mode automatically and return you to Normal. Yank (``y``) keeps
 you in Extend mode so you can extend further before acting.
 
 Motions run backward too: moving toward where you started shrinks the
 selection instead of growing it. ``w``/``b`` and ``x``/``X`` shrink one
 whole word or line at a time, and the word or line you started on
-always stays selected — pressing past it flips the selection to grow
+always stays selected. Pressing past it flips the selection to grow
 in the other direction instead of cutting it off partway.
 
 Exercise
@@ -320,7 +320,7 @@ Exercise
 Press ``e`` to enter Extend mode, then press ``w`` several times to
 grow the selection across multiple words. Observe the span, then
 press ``b`` a few times to shrink it back down word by word, watching
-it contract to the word you started on. Press ``;`` to collapse it —
+it contract to the word you started on. Press ``;`` to collapse it and
 you land back in Normal mode automatically:
 
 The build finished in under two seconds on the CI server.
@@ -351,7 +351,7 @@ Extend mode by holding Ctrl. Every motion supports it:
 
 The idiomatic delete-to-char pattern: press ``Ctrl-f.`` to extend the
 selection to the next period, then act on the span (``d`` to delete,
-``c`` to change, etc. — see Lesson 3). The ``f``/``t`` find commands
+``c`` to change, etc.; see Lesson 3). The ``f``/``t`` find commands
 are taught in full in Lesson 6.
 
 Note
@@ -359,7 +359,7 @@ Note
 
 One-shot Ctrl extend requires the kitty keyboard protocol
 (look for the cat glyph ᓚᘏᗢ in the statusline). Without it,
-Ctrl-w / Ctrl-f / etc. do nothing — use Extend mode instead.
+Ctrl-w / Ctrl-f / etc. do nothing. Use Extend mode instead.
 The exercises below are labelled (Kitty) for terminals with
 the protocol and (Legacy) for those without.
 
@@ -397,20 +397,20 @@ Note: ``Ctrl-;`` requires the kitty keyboard protocol.
 Support for this protocol varies between terminals. Some implement only
 part of it, some have rough edges, and some need it enabled in their
 configuration. If ``Ctrl-;`` does nothing in your terminal, check its
-documentation for keyboard-protocol settings — or fall back to the
+documentation for keyboard-protocol settings, or fall back to the
 plain ``;`` command above.
 
 Flipping the Selection
 ~~~~~~~~~~~~~~~~~~~~~~
 
 +--------+---------------------------------------------------------+
-| Ctrl-e | swap anchor and head — works in Normal and Extend mode, |
+| Ctrl-e | swap anchor and head: works in Normal and Extend mode,  |
 |        | and works on all terminals.                             |
 +--------+---------------------------------------------------------+
 
 Flipping moves the cursor to the other end of the selection without
 changing what is selected. This matters because ``;`` collapses to the
-cursor's end, and the next plain motion starts from there — flip first
+cursor's end, and the next plain motion starts from there. Flip first
 when you want to keep the opposite end.
 Shrinking from the cursor's end is just a backward motion, as in
 Lesson 2.2. Flip first when you want to grow or shrink from the other
@@ -419,8 +419,8 @@ end instead.
 Exercise
 ~~~~~~~~
 
-Press ``w`` to select the word below, then press ``Ctrl-e`` to flip
-— the cursor jumps from the end of the word to the start. Press
+Press ``w`` to select the word below, then press ``Ctrl-e`` to flip:
+the cursor jumps from the end of the word to the start. Press
 ``;`` to collapse back to a single character. Notice how the cursor
 is now on the first letter of the word instead of the last:
 
@@ -443,14 +443,14 @@ Summary
 | Ctrl-e           | flip anchor ↔ head (any mode)         |
 +------------------+---------------------------------------+
 
-``Ctrl-w`` / ``Ctrl-f<c>`` / ``Ctrl-t<c>`` — one-shot extend (kitty only)
-``Ctrl-g h`` / ``Ctrl-g l`` / ``Ctrl-g s`` — one-shot extend line motions
+``Ctrl-w`` / ``Ctrl-f<c>`` / ``Ctrl-t<c>``: one-shot extend (kitty only)
+``Ctrl-g h`` / ``Ctrl-g l`` / ``Ctrl-g s``: one-shot extend line motions
 
 Lesson 3 — Editing with Selections
 ==================================
 
 Every action in HUME consumes the current selection. The single
-character under your cursor is always selected — you can act on it
+character under your cursor is always selected, so you can act on it
 immediately without making an additional selection first.
 
 3.1 Delete
@@ -474,7 +474,7 @@ Exercise
 ~~~~~~~~
 
 Now press ``w`` to select the duplicate word "file", then ``d`` to
-delete it — the trailing space goes with it, so there's no double
+delete it. The trailing space goes with it, so there's no double
 space left behind:
 
 The configuration file file needs to be updated.
@@ -497,7 +497,7 @@ server.listen(8080)
 +---+--------------------------------------------+
 
 Type your replacement, then press ``Esc``. Leaving Insert mode
-selects the text you just typed — once you leave Insert mode, your
+selects the text you just typed: once you leave Insert mode, your
 replacement is selected instead of leaving a plain cursor after it,
 so you can act on it again right away (delete it, search for it,
 and so on). If you press ``Esc`` without typing anything, the
@@ -509,7 +509,7 @@ Exercise
 ~~~~~~~~
 
 Navigate to "yesterday" using ``w``, then press ``c`` and type
-"Monday", then press ``Esc`` — "Monday" is now selected:
+"Monday", then press ``Esc``. "Monday" is now selected:
 
 The deadline is (yesterday).
 
@@ -520,7 +520,7 @@ The deadline is (yesterday).
 | r<char> | replace every character in the selection with <char> |
 +---------+------------------------------------------------------+
 
-Unlike ``c``, replace stays in Normal mode — no Insert, no ``Esc``
+Unlike ``c``, replace stays in Normal mode: no Insert, no ``Esc``
 needed. On a 1-char selection it swaps the single character under
 the cursor. On a wider selection it overwrites every character in
 the range (newlines are preserved to keep line structure intact).
@@ -576,7 +576,7 @@ Exercise
 ~~~~~~~~
 
 Delete the word "deprecated" below with ``w d``. Press ``u`` to
-undo — the word reappears. Press ``U`` to redo — it is deleted
+undo; the word reappears. Press ``U`` to redo; it is deleted
 again:
 
 The deprecated function should be replaced.
@@ -619,7 +619,7 @@ start inserting, each placing the cursor at a slightly different spot.
 +---+-------------------------------------------------------+
 
 Remember: ``Esc`` exits Insert mode. Leaving Insert mode selects the
-text you just typed instead of leaving a plain cursor after it — so
+text you just typed instead of leaving a plain cursor after it, so
 ``i`` re-enters *before* that selection, not after it. To keep typing
 past what you just typed, press ``a`` instead of ``i``.
 
@@ -690,14 +690,14 @@ the system) and the KILL RING (internal to the editor).
 ------------------
 
 ``y`` copies the selection but leaves it selected. When what you're
-about to paste is exactly the selected text — as it is right after a
-``y`` — ``p``/``P`` collapse the selection first and paste alongside
+about to paste is exactly the selected text (as it is right after a
+``y``), ``p``/``P`` collapse the selection first and paste alongside
 it instead of replacing it. So pressing ``p`` right after ``y``
 stacks a copy next to the selection, and each further ``p`` adds
 another.
 
 ``d`` and ``c`` remove their text, so the selection is already
-collapsed by the time you paste — the same bare-cursor paste applies
+collapsed by the time you paste, so the same bare-cursor paste applies
 there too.
 
 Exercise
@@ -733,7 +733,7 @@ kills; the oldest drops off when an eleventh arrives.
 | ] | cycle to the newer kill-ring entry and paste it |
 +---+-------------------------------------------------+
 
-``[`` and ``]`` only work right after a paste — while the paste is
+``[`` and ``]`` only work right after a paste, while the paste is
 still "live". Pressed otherwise they do nothing. The whole
 paste-and-cycle sequence collapses into one undo step: a single
 ``u`` reverts all of it.
@@ -742,13 +742,13 @@ Exercise
 ~~~~~~~~
 
 Delete the word "stale" below with ``w d``, then delete "unused"
-with ``w d``. Now press ``P`` — smart-paste gives you the last kill.
+with ``w d``. Now press ``P``: smart-paste gives you the last kill.
 Press ``[`` to cycle to the older kill-ring entry:
 
 Rename the stale and unused methods before the review.
 
 Whitespace kills do not pile up. When the newest kill is nothing but
-whitespace — a stray space, a tab, a blank line — the next delete,
+whitespace (a stray space, a tab, a blank line), the next delete,
 change, or yank overwrites it instead of stacking on top. Tidy-up
 edits like removing a doubled space therefore never bury the kills you
 want to cycle back to. The whitespace is still there to paste right
@@ -763,10 +763,10 @@ Exercise
 ~~~~~~~~
 
 Delete the duplicate word "form" with ``w d``, then press ``d``
-once more to remove the leftover space — that space is now the
+once more to remove the leftover space. That space is now the
 newest kill. Delete "draft" with ``w d``: it overwrites the space
 instead of stacking on top. Press ``P`` to paste "draft", then
-``[`` — you cycle straight back to "form", with no throwaway space
+``[``: you cycle straight back to "form", with no throwaway space
 in between:
 
 Submit the form form draft today.
@@ -786,7 +786,7 @@ to paste the deleted text, without switching registers manually.
 If the clipboard is empty the first time ``p`` would read it since
 your last edit, it falls back to the most recent kill so there is
 always something to paste. Pressing ``p`` again right after that
-still reads the clipboard, not the kill ring — it only refuses to
+still reads the clipboard, not the kill ring. It only refuses to
 paste if the clipboard is still empty.
 
 Summary
@@ -825,11 +825,11 @@ Lesson 6 — Find, Till, and Repeat
 +---------+-------------------------------------------------------+
 
 These are single-key commands followed by one character. The selection
-lands on (or just before/after) the target — a fresh 1-char selection.
+lands on (or just before/after) the target, a fresh 1-char selection.
 To select a range up to a char: use ``Ctrl-f<c>`` / ``Ctrl-t<c>`` for
 a one-shot extend, or enter Extend mode first (see Lesson 2.2).
 
-Find and till search *only the current line* — they stop at the end
+Find and till search *only the current line*: they stop at the end
 of the line and never jump to another line. If the character isn't on
 this line, the selection stays put. To find across lines, use search
 (Lesson 7).
@@ -874,7 +874,7 @@ well-known open-source command-line text-editor
 +---+----------------------------------------------------------------+
 
 Important: ``.`` replays the edit together with any whole-line select
-(``x``/``X``) or extend steps you used to build the selection — but
+(``x``/``X``) or extend steps you used to build the selection, but
 it does **not** replay a word, find, or navigation motion. So after
 an edit that followed a motion like ``w``, move and re-select manually
 before pressing ``.`` (as shown below).
@@ -939,7 +939,7 @@ The selection lands on the match. Press ``n`` to advance.
 +---------+----------------------------------------------------------+
 
 Unlike ``*``, this does not expand to a whole word and adds no
-word-boundary anchors — it searches for exactly the text you selected,
+word-boundary anchors: it searches for exactly the text you selected,
 including as a substring of other words. Requires a terminal with the
 kitty keyboard protocol.
 
@@ -951,7 +951,7 @@ Search for "error" below typing ``/error`` then ``Enter``:
 The linter found an error on line 12 and another error on line 47.
 
 To clear the search highlights, press ``Esc``. The highlights
-disappear, but the pattern is remembered — pressing ``n`` or ``N``
+disappear, but the pattern is remembered, and pressing ``n`` or ``N``
 brings it back.
 
 Exercise
@@ -967,11 +967,11 @@ and a warning in the production log.
 ``n`` and ``N`` can also extend the selection instead of just moving it:
 ``Ctrl-n`` jumps to the next match while keeping the anchor where it is,
 growing the selection to cover everything in between, and ``Ctrl-Shift-n``
-does the same backward. This is a one-shot extend — no need to enter
+does the same backward. This is a one-shot extend, with no need to enter
 Extend mode first. Requires a terminal with the kitty keyboard protocol.
 
 Note: on a terminal without the kitty keyboard protocol, ``e`` to enter
-Extend mode first works the same way — not just for ``n``/``N`` stepping
+Extend mode first works the same way, not just for ``n``/``N`` stepping
 through an existing search, but for a brand-new ``/`` or ``?`` too. The
 anchor stays where you were, and the head jumps to the first match as
 you type and on every ``n``/``N`` afterward.
@@ -989,7 +989,7 @@ Exercise
 ~~~~~~~~
 
 Unlike ``*``, ``Ctrl-/`` searches any substring, not just whole
-words — useful for surveying every function that shares a prefix.
+words, which is useful for surveying every function that shares a prefix.
 Navigate onto the "p" of "parse_header" below, press ``Ctrl-f_`` to
 extend the selection through the underscore ("parse_"), then
 ``Ctrl-/`` and ``n`` to jump through the other two:
@@ -1015,7 +1015,7 @@ FIXME: retry after a transient failure
 
 HUME has no ``:s/old/new/`` substitute command. Replacing text means
 building a selection that covers every occurrence, then changing it
-all at once — the same select-then-act model you have been using all
+all at once: the same select-then-act model you have been using all
 along, just wider.
 
 +----+-----------------------------------------------------------+
@@ -1026,7 +1026,7 @@ along, just wider.
 
 To replace across the whole buffer: search for the text with ``/old``
 and ``Enter``, then press ``m/`` to turn every match into a selection.
-Press ``c``, type the replacement, and ``Esc`` — every match changes
+Press ``c``, type the replacement, and ``Esc``, and every match changes
 together. Press ``,`` to collapse back to one selection when done.
 
 To replace within a smaller region instead, select the region first
@@ -1039,10 +1039,10 @@ Exercise
 ~~~~~~~~
 
 The block below shadows ``count`` with a second, unrelated variable
-of the same name — a common bug. Put the cursor inside the braces
+of the same name, a common bug. Put the cursor inside the braces
 and press ``mi{`` to select the block body, then press ``s``, type
 "count", and ``Enter`` to select only the four ``count``\ s inside
-the block. Press ``c``, type "total", and ``Esc`` to rename them —
+the block. Press ``c``, type "total", and ``Esc`` to rename them;
 the outer declaration on the first line is untouched. Press ``,``
 when done:
 
@@ -1113,7 +1113,7 @@ themselves are unaffected by that setting either way.
 ``mii`` is different from the rest of this table: it selects
 whatever text you most recently typed in Insert mode, however you
 entered it (``i``, ``a``, ``o``, ``O``, ``A``, ``I``, or ``c``).
-There is no ``mai`` — an insertion has no delimiters to select
+There is no ``mai``: an insertion has no delimiters to select
 "around".
 
 Exercise
@@ -1121,7 +1121,7 @@ Exercise
 
 Press ``A`` on the line below, type " — reviewed", press ``Esc``
 (the typed text is already selected), then collapse the selection
-with ``;`` and press ``mii`` — " — reviewed" is selected again:
+with ``;`` and press ``mii``. " — reviewed" is selected again:
 
 Q3 results
 
@@ -1152,7 +1152,7 @@ independent cursors. You can then delete both with ``d``, or change
 them with ``r`` + a new delimiter character.
 
 Note: if you have the ``core:helix-surround`` plugin loaded, the
-``ms`` binding has different semantics — consult that plugin's docs.
+``ms`` binding has different semantics; consult that plugin's docs.
 
 Exercise
 ~~~~~~~~
@@ -1191,10 +1191,10 @@ covers how to create and manage them.
 
 Note: ``Ctrl-,`` requires the kitty keyboard protocol. If it does
 nothing in your terminal, check its documentation for keyboard-protocol
-settings (see also the note in Lesson 2.3) — or fall back to ``,``.
+settings (see also the note in Lesson 2.3), or fall back to ``,``.
 
 The rest of this lesson creates many simultaneous cursors. ``,`` is the
-one key that always returns you to a single selection — learn it first,
+one key that always returns you to a single selection. Learn it first,
 and lean on it throughout.
 
 Exercise
@@ -1234,7 +1234,7 @@ press ``;`` to collapse back to a single-character selection. Press
 
 Each match within the selection becomes its own selection. Works
 on any selection, not just the whole buffer. You already used ``s``
-in Lesson 7.2 to scope a replace to one region — this is the same
+in Lesson 7.2 to scope a replace to one region; this is the same
 key, shown here as the general entry point into multi-cursor work.
 
 Exercise
@@ -1259,14 +1259,14 @@ The canonical multi-cursor entry: ``%`` (select all) → ``s<pattern>``
 
 Each line in the selection becomes its own cursor. Single-line selections
 are unchanged. Where ``s`` selects by content (a pattern), ``S`` splits by
-structure — one piece per line.
+structure: one piece per line.
 
 Exercise
 ~~~~~~~~
 
 Navigate onto the first line below, press ``Ctrl-x`` three times to
 select all three lines, then press ``S`` to get one cursor per line.
-Press ``c``, type replacement text and ``Esc`` — the edit applies
+Press ``c``, type replacement text and ``Esc``. The edit applies
 independently on each line:
 
 lint: skipped
@@ -1321,7 +1321,7 @@ and the last FIXME in the tests.
 | C | duplicate the current selection on the NEXT line at the same column |
 +---+---------------------------------------------------------------------+
 
-This is useful for block editing — duplicate a cursor down through
+This is useful for block editing: duplicate a cursor down through
 several lines, then make the same edit on all of them at once.
 
 Exercise
@@ -1426,7 +1426,7 @@ argument), then ``Enter``. Many have short aliases.
 
 The tutor is opened as a sandboxed copy in a temporary directory
 (something like ``/tmp/hume-1234/tutor.rst``), so ``:w`` saves only to
-that copy — the installed ``runtime/tutor.rst`` is never touched.
+that copy; the installed ``runtime/tutor.rst`` is never touched.
 To get a fresh tutor, close this buffer with ``:bd!`` then reopen
 with ``:tutor``.
 
@@ -1546,8 +1546,8 @@ reads from a specific register. Valid register names:
 | "5p | paste from register  5          |
 +-----+---------------------------------+
 
-(registers 0–9 are symmetric named storage — ``"Ny/"Np`` round-trip)
-Note: digit registers are shared with macros — recording ``Q5`` overwrites
+(registers 0–9 are symmetric named storage: ``"Ny/"Np`` round-trip)
+Note: digit registers are shared with macros: recording ``Q5`` overwrites
 any text stored in register 5, and ``"5y`` overwrites any macro there.
 
 +-----+--------------------------------------------------------+
@@ -1559,7 +1559,7 @@ any text stored in register 5, and ``"5y`` overwrites any macro there.
 (older ring entries: cycle with ``[`` and ``]`` after a paste)
 
 +-----+----------------------------------------------------+
-| "by | discard the yank (black hole — reads nothing back) |
+| "by | discard the yank (black hole: reads nothing back)  |
 +-----+----------------------------------------------------+
 
 Macros
@@ -1589,7 +1589,7 @@ Syntax Highlighting
 
 Run ``:plum-install-grammar`` to install the grammar for the current
 buffer's language. You can type the whole command, or type a prefix
-like ``:plum-i`` and press ``Tab`` to autocomplete it — keep pressing
+like ``:plum-i`` and press ``Tab`` to autocomplete it, and keep pressing
 ``Tab`` to cycle through the matches. Press ``Enter`` to run it, then
 wait for the grammar to finish installing.
 
