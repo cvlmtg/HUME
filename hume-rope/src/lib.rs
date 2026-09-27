@@ -2,35 +2,22 @@
 //!
 //! ## The trailing-newline invariant
 //!
-//! Every HUME buffer (`hume_editing::BufferText`) always ends with a structural
-//! `\n`. Ropey does not know this — it happily reports one extra empty line
-//! past the buffer's real content (the "phantom" line). Two families of
-//! functions in this crate answer "how many lines" / "which line is last":
+//! Every HUME buffer ends with a structural `\n`, so ropey reports one extra
+//! empty "phantom" line past the real content. Line counts come in two
+//! domains:
 //!
-//! - **Ropey domain** (`ropey_line_count`, `last_ropey_line`,
-//!   `ropey_lines`): the raw ropey count, phantom line included. Valid
-//!   on any rope, invariant or not — this is what gutter sizing and LSP
-//!   wire-position clamps want, since they must stay addressable up to
-//!   ropey's own line indexing, not just the buffer's real content. Those
-//!   callers want a bound or a single index; the iterator is for a
-//!   whole-buffer walk, which only whole-document code does (see its own doc).
-//! - **Content domain** (`content_line_count`, `last_content_line`,
-//!   `content_lines`): the phantom line subtracted out. **Assumes the
-//!   trailing-newline invariant** (debug-asserted) — this is what
-//!   user-facing line counts and content-bounds checks want.
-//!
-//! `ropey_lines`/`content_lines` yield `RopeyLine`/`ContentLine` values, not
-//! a `Range<usize>` — the domain types this crate exists to keep separate,
-//! not a raw index a caller could accidentally compare across domains.
+//! - **Ropey domain** (`ropey_line_count`, `last_ropey_line`): phantom line
+//!   included. Valid on any rope; used by gutter sizing and LSP wire-position
+//!   clamps, which must address every ropey line.
+//! - **Content domain** (`content_line_count`, `last_content_line`): phantom
+//!   line excluded. Assumes the invariant (debug-asserted); used for
+//!   user-facing counts and content bounds.
 //!
 //! ## LF is the only line break
 //!
-//! This workspace compiles ropey with neither `cr_lines` nor `unicode_lines`,
-//! so `Rope::lines()` splits on `\n` alone. A `\r` — like VT, FF, NEL, LS and
-//! PS — is ordinary content that never terminates a line, whatever rope it
-//! reaches this crate in. Line-terminator logic here is correspondingly
-//! single-char: there is no two-char terminator to look behind for, and no
-//! break set to test membership in.
+//! Ropey is compiled without `cr_lines` and `unicode_lines`, so lines split on
+//! `\n` alone and `\r` (like VT, FF, NEL, LS, PS) is ordinary content. Line
+//! terminator logic here is therefore single-char.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 

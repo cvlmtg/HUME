@@ -1,34 +1,16 @@
 //! A domain-typed char offset.
 //!
-//! Every position in a HUME buffer is an index into the rope's sequence of
-//! Unicode scalar values — a char offset. Stepping one by a raw `+ 1`/`- 1`
-//! can land mid-grapheme-cluster: a combining sequence (`é` = U+0065 +
-//! U+0301) or a ZWJ emoji is more than one char wide, so the position right
-//! after its first char is not a cluster boundary at all.
+//! A buffer position is an index into the rope's chars. A raw `+ 1`/`- 1` can
+//! land mid-cluster (`é` as U+0065 U+0301, ZWJ emoji), so [`CharOffset`] has a
+//! private field and no `Add`/`Sub`/`AddAssign`. Offsets come from
+//! [`crate::grapheme`]'s boundary walks, [`crate::lines`], the validated
+//! [`CharOffset::checked`], or the trusted [`CharOffset::new`].
 //!
-//! [`CharOffset`] makes that mistake a compile error: the field is private
-//! and the type implements no `Add`/`Sub`/`AddAssign`, so `offset + 1`
-//! doesn't type-check. The only ways to produce
-//! one are the boundary-walking functions in [`crate::grapheme`], the
-//! offset-returning functions in [`crate::lines`], a validated mint against a
-//! rope ([`CharOffset::checked`]), or [`CharOffset::new`] — a trusted mint
-//! for a value a caller has already proven valid by some other means (an
-//! ASCII delimiter scan, a value read back from another `CharOffset`).
-//!
-//! Deliberately not a bare tuple struct with a `pub` field, matching
-//! [`crate::line`]'s `RopeyLine`/`ContentLine`: a `pub` field would make
-//! `CharOffset(offset.index() + 1)` writable again, exactly the derivation
-//! this type exists to forbid.
-//!
-//! What this type does **not** guarantee: grapheme-cluster alignment. It
-//! guarantees only "a valid char index into some rope" — [`crate::cursor::CharCursor`]
-//! is codepoint-level by design and can legitimately yield a `CharOffset`
-//! that sits mid-cluster, and `Selection::end_inclusive` (in `hume-editing`)
-//! deliberately lands on a cluster's *last* codepoint, not its start. A
-//! caller that needs a cluster boundary asks for one explicitly — via
-//! [`crate::grapheme::next_grapheme_boundary`]/[`crate::grapheme::prev_grapheme_boundary`]
-//! or [`crate::grapheme::snap_to_cluster_start`] — rather than assuming the
-//! type provides it.
+//! The type guarantees a valid char index, not cluster alignment:
+//! [`crate::cursor::CharCursor`] can yield a mid-cluster offset, and
+//! `Selection::end_inclusive` lands on a cluster's last codepoint. Callers
+//! needing a boundary ask for one ([`crate::grapheme::next_grapheme_boundary`],
+//! [`crate::grapheme::snap_to_cluster_start`]).
 
 use ropey::Rope;
 

@@ -1,28 +1,17 @@
 //! Domain-typed line indices and counts.
 //!
-//! Every HUME buffer ends with a structural `\n` (the trailing-newline
-//! invariant — see [`crate::lines::ends_with_newline`]), which ropey does not
-//! know about: it reports one line past the buffer's real content, the
-//! "phantom" trailing line. Two domains answer "which line" / "how many
-//! lines" differently, and mixing them up is an off-by-one:
+//! Ropey reports one "phantom" line past a HUME buffer's structural trailing
+//! `\n` ([`crate::lines::ends_with_newline`]), giving two line domains:
 //!
-//! - **Ropey domain** ([`RopeyLine`], [`RopeyLineCount`]): ropey's own line
-//!   indexing, phantom line included. Valid on any rope, invariant or not.
-//! - **Content domain** ([`ContentLine`], [`ContentLineCount`]): the phantom
-//!   line excluded. Assumes the trailing-newline invariant.
+//! - **Ropey domain** ([`RopeyLine`], [`RopeyLineCount`]): phantom line
+//!   included. Valid on any rope.
+//! - **Content domain** ([`ContentLine`], [`ContentLineCount`]): phantom line
+//!   excluded. Assumes the trailing-newline invariant.
 //!
-//! These four types make the two domains distinct at compile time, so a
-//! function taking a [`ContentLine`] cannot be handed a [`RopeyLine`] without
-//! an explicit (and fallible, via [`RopeyLine::to_content`]) conversion, and
-//! neither index type implements `Add`/`Sub`, so the `+ 1`/`- 1`
-//! re-derivations these types exist to forbid are a compile error.
-//!
-//! Deliberately not a bare tuple struct with a `pub` field, unlike this
-//! workspace's other newtypes (`ScopeId`, `ServerId`, `TimerId`): a `pub`
-//! field would make `ContentLine(text.content_line_count().get() - 1)`
-//! writable again, which is exactly the derivation these types exist to
-//! forbid. The field stays private; every legitimate construction and every
-//! legitimate use goes through a named method below.
+//! The types keep the domains apart at compile time: a [`RopeyLine`] reaches
+//! [`ContentLine`] only through the fallible [`RopeyLine::to_content`]. Fields
+//! are private and there is no `Add`/`Sub`, so off-by-one re-derivations like
+//! `ContentLine(count - 1)` don't compile.
 
 use ropey::Rope;
 

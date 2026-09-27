@@ -373,35 +373,21 @@ pub fn char_col_in_line(rope: &Rope, line: ContentLine, char_pos: CharOffset) ->
     CharCol::new(char_pos.chars_since(line_start))
 }
 
-/// Place the cursor at `char_col` **chars** from the start of `line` (not
-/// display columns — every non-tab grapheme counts 1, a tab counts 1),
-/// clamping to the last content character and snapping to a grapheme
-/// boundary.
+/// Place the cursor at `char_col` chars (not display columns; a tab counts 1)
+/// from the start of `line`, clamped to the last content character and
+/// snapped to a grapheme boundary.
 ///
-/// Callers are those with no `DisplayLineMap` to resolve a display column through:
-/// buffer reload, which re-places every cursor against the new text before
-/// any pane/viewport exists to build one; and `goto-location!`'s char-indexed
-/// target shape. Every command that places a cursor through the decoration
-/// layer (inline hints, tab expansion) instead uses a display-column model —
-/// `DisplayLineMap::char_at_buffer_line_col` — including vertical motion (`9j`/`9k`)
-/// and vertical selection copy (`copy-selection-on-next/prev-line`), both of
-/// which need `hume-editor`'s `DisplayLineMap` and so live there rather than as a
-/// pure `hume-ops` fn over this char-only one.
+/// For callers with no `DisplayLineMap`: buffer reload and `goto-location!`'s
+/// char-indexed target. Display-column placement (vertical motion, selection
+/// copy) uses `DisplayLineMap::char_at_buffer_line_col` in `hume-editor`.
 ///
-/// `line` takes the ropey domain — a scripted `goto-location!` target can
-/// address the buffer's own trailing phantom line — but there is no cursor
-/// position *on* that line (see [`line_content_end`]'s doc), so a phantom
-/// `line` places at `rope.len_chars()` regardless of `char_col`, which is
-/// not itself a legal cursor head — callers clamp the result to
-/// `len_chars() - 1` (e.g. `goto_location`'s own doc comment).
+/// `line` is ropey-domain because `goto-location!` can address the phantom
+/// line, which places at `rope.len_chars()`. That is not a legal head, so
+/// callers clamp to `len_chars() - 1`.
 ///
-/// The clamp compares against the line's *content* end, not
-/// [`next_line_start`]: the latter counts the terminating `\n`, which would
-/// make a `char_col` of exactly the line's content length land on the newline
-/// while any larger one clamped back to the last real character — a
-/// non-monotonic result where moving further right moves the cursor left. An
-/// empty line still lands on its `\n`, since there `line_content_end` *is*
-/// that newline.
+/// The clamp uses the line's content end, not [`next_line_start`], so the
+/// result is monotonic in `char_col` (the newline is never reachable except
+/// on an empty line, where it is the content end).
 pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: CharCol) -> CharOffset {
     let line_start = CharOffset::new(rope.line_to_char(line.index()));
     // The phantom line has no content to place within — its "content end"

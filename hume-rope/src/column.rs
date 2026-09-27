@@ -1,62 +1,26 @@
 //! Domain-typed line-relative columns.
 //!
-//! "Column" means five different things in this codebase, and mixing them up
-//! silently produces the wrong char position or the wrong screen cell: a
-//! **display column** (terminal cells, tab-expanded, from either the display
-//! line or the buffer line — hence two types), a **char column** (char
-//! index within a line), a **grapheme column** (grapheme-cluster index within
-//! a line), and a **byte column** (byte offset within a line). The five types
-//! below give each its own type — [`DisplayLineCol`]/[`BufferLineCol`] for
-//! the first (split further, see below), [`CharCol`], [`GraphemeCol`],
-//! [`ByteCol`] for the rest — so a function typed to take one can't be handed
-//! another, matching [`crate::offset::CharOffset`] and
-//! [`crate::line::{RopeyLine, ContentLine}`](crate::line). A bare `*LineCol`
-//! is always display cells; a unit prefix (`Char`/`Grapheme`/`Byte`) names
-//! any other unit — so the type itself says which of the two questions
-//! ("how many cells" vs. "how many chars/graphemes/bytes") a column answers.
+//! One type per column sense, so a function typed for one can't be handed
+//! another: [`DisplayLineCol`]/[`BufferLineCol`] (terminal cells), [`CharCol`],
+//! [`GraphemeCol`], [`ByteCol`]. A bare `*LineCol` is always display cells; a
+//! unit prefix names any other unit.
 //!
 //! # Display columns have an origin
 //!
-//! A display column is also measured *from* somewhere, and that "from" is
-//! itself two different things under soft wrap: a continuation display line
-//! renumbers its columns from its own left edge (its indent, under
-//! `WrapMode::Indent`), so the same character has a different column
-//! depending on whether it's counted from its own display line
-//! ([`DisplayLineCol`]) or from its whole buffer line ([`BufferLineCol`]).
-//! The two coincide exactly when a buffer line occupies one display line —
-//! no wrap, or a line short enough not to wrap regardless — which is why
-//! [`BufferLineCol::as_display_line_unwrapped`] exists as a named, doc'd escape hatch
-//! rather than a silent reinterpretation.
+//! Under soft wrap a continuation display line numbers its columns from its
+//! own left edge, so one character has a [`DisplayLineCol`] and a different
+//! [`BufferLineCol`]. They coincide only when the buffer line fits on one
+//! display line; [`BufferLineCol::as_display_line_unwrapped`] is the named
+//! crossing for that case.
 //!
-//! # Positions, not counts
+//! # Arithmetic
 //!
-//! Unlike [`CharOffset`](crate::offset::CharOffset), which forbids arithmetic
-//! outright, a display column is a genuine accumulator: formatting a line
-//! advances one grapheme's width at a time, and tab-stop math divides and
-//! multiplies by the tab width. The two display-column types keep a private
-//! field like every domain type in this crate, but expose named arithmetic
-//! (`advance_saturating`/`cells_since` shared by both; `abs_diff`/`cells_since_saturating`
-//! on [`DisplayLineCol`] alone, `shift_saturating`/`retreat_saturating` on
-//! [`BufferLineCol`] alone — each of those three lives on the one origin type
-//! its callers actually need)
-//! instead of forbidding it — the compile-time win here is
-//! keeping `DisplayLineCol` and `BufferLineCol` from being silently interchanged,
-//! not banning `+`/`-` on a column itself. [`CharCol`]/[`GraphemeCol`] see
-//! no such arithmetic in the codebase today and stay as strict as
-//! `CharOffset`. [`ByteCol`] has one named exception, `advance_saturating` —
-//! a byte length folded onto a byte column, the same shape as the
-//! display-column `advance_saturating` above — for its two real callers (a
-//! tree-sitter edit's end position, a bracket match's end byte); every other
-//! operation on it stays as strict as `CharOffset`.
-//!
-//! # No `checked`/`clamped` mint for the display types
-//! A display column has no fixed upper bound of its own to validate against
-//! — unlike a char offset (bounded by a rope's length) or a line index
-//! (bounded by a rope's line count), a column past a line's actual content is
-//! simply where the cursor would sit if the line were that long. Every
-//! resolver that turns one back into a [`CharOffset`](crate::offset::CharOffset)
-//! (`DisplayLineMap::char_at`, `DisplayLineMap::char_at_buffer_line_col`) clamps internally.
-//! [`DisplayLineCol::new`]/[`BufferLineCol::new`] are the only mints.
+//! A display column is an accumulator (formatting advances it one grapheme
+//! width at a time), so both display types expose named saturating
+//! arithmetic; the type win is keeping the two origins apart. [`CharCol`] and
+//! [`GraphemeCol`] have none. [`ByteCol`] has only `advance_saturating`.
+//! Display columns have no `checked`/`clamped` mint: they have no upper bound,
+//! and resolvers back to a char offset clamp internally.
 
 /// A display column measured from its display line's left edge — what
 /// `hume_engine::display_lines::DisplayLineMap::locate` returns. See the module doc's
