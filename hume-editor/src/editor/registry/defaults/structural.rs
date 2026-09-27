@@ -75,10 +75,10 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
         kind: ObjectKind::Parameter,
         key: 'a',
         inner: "inner-argument",
-        inner_doc: "Select the argument at the cursor (trimmed). Structure-aware — uses the \
+        inner_doc: "Select the argument at the cursor (trimmed). Structure-aware: uses the \
                      language's `parameter` object when the grammar defines one.",
         around: "around-argument",
-        around_doc: "Select the argument and its separator comma. Structure-aware — uses the \
+        around_doc: "Select the argument and its separator comma. Structure-aware: uses the \
                       language's `parameter` object when the grammar defines one.",
         next: "goto-next-argument",
         prev: "goto-prev-argument",
