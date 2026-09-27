@@ -9,7 +9,7 @@
 //! `hume-editor`'s per-frame sync (`decoration_providers.rs`) writes into
 //! and a provider impl reads during render.
 //!
-//! No type here references `Editor`/`EditorState` — every provider reads
+//! No type here references `Editor`/`EditorState`: every provider reads
 //! from a handle it was given, never from live editor state.
 
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -24,7 +24,7 @@ mod virtual_lines;
 // Flattens the crate's public API to one level: `build_providers`/
 // `PaneDecorationHandles` already live at the root, and `decorations`'s own
 // types are this crate's most-referenced surface (`DecorationStores` alone
-// has ~20 external call sites) — a caller shouldn't have to know the
+// has ~20 external call sites), so a caller shouldn't have to know the
 // `decorations` submodule exists to spell them. `decorations` itself stays
 // `pub` (not folded away) since `PointAnchored`/`SourceStore`'s `K`/`T`
 // bounds and a few internal helpers are easiest to browse in place.
@@ -50,11 +50,11 @@ use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 
 /// A pane's six render-decoration handles, allocated together by
 /// [`build_providers`] and stored as one `SecondaryMap` entry on
-/// `EditorState.panes.render` — they are always seeded and dropped as a
+/// `EditorState.panes.render`. They are always seeded and dropped as a
 /// unit (never independently), and every read site borrows the map
 /// shared, so bundling them costs nothing and removes the "added a new
 /// per-pane provider, forgot to drop it in `drop_pane_state`" bug class.
-/// Fields are private — `hume-editor`'s per-frame sync writes through the
+/// Fields are private: `hume-editor`'s per-frame sync writes through the
 /// `set_*` methods below, one per decoration kind, rather than reaching a
 /// raw [`SharedSlot`] guard directly.
 pub struct PaneDecorationHandles {
@@ -63,7 +63,7 @@ pub struct PaneDecorationHandles {
     inlay_hints: InlineDecorationMap,
     virtual_lines: VirtualLineMap,
     /// EOL text (the diagnostics plugin's per-line summary is its first
-    /// client) — a second `InlineDecorationProvider` instance (same
+    /// client) is a second `InlineDecorationProvider` instance (same
     /// INLINE-kind `DecorationSource` shape, distinct handle/`ProviderId`)
     /// fed by `decorations.eol_text` instead of `inlay_hints`, so the two
     /// coexist on the same line without one clobbering the other.
@@ -114,18 +114,18 @@ impl PaneDecorationHandles {
 /// Read-only data accessors for `hume-editor`'s own test code, which
 /// asserts on what a pane's decoration providers actually hold (the raw
 /// per-line map) rather than what a viewport shows. Return cloned data, not
-/// the underlying [`SharedSlot`] handle — mirrors the `test-util`-gated
+/// the underlying [`SharedSlot`] handle. This mirrors the `test-util`-gated
 /// accessors on `DecorationStores` below, and lets `signs`/`inline_
 /// decorations`/`virtual_lines`/`line_backgrounds` stay `pub(crate)` instead
 /// of `pub`: nothing outside this crate needs the handle type itself, only
 /// the data it holds at the moment of the read.
 #[cfg(any(test, feature = "test-util"))]
 impl PaneDecorationHandles {
-    /// `tier`'s spans — every [`HighlightTier`] variant `PaneHighlights`
+    /// `tier`'s spans, for every [`HighlightTier`] variant `PaneHighlights`
     /// actually stores. `HighlightTier::Syntax` has no corresponding field
     /// here (syntax highlighting is a tree-sitter-backed provider, not one
     /// of this store's four plugin/cursor-driven tiers) and panics if asked
-    /// for — no test needs it, so a silent empty result would hide a wrong
+    /// for: no test needs it, so a silent empty result would hide a wrong
     /// tier passed in rather than naming it.
     pub fn highlights(&self, tier: HighlightTier) -> Vec<(ContentLine, ByteCol, ByteCol, ScopeId)> {
         let data = match tier {
@@ -134,7 +134,7 @@ impl PaneDecorationHandles {
             HighlightTier::Diagnostic => &self.highlights.diagnostics,
             HighlightTier::Extra => &self.highlights.extra,
             HighlightTier::Syntax => panic!(
-                "PaneHighlights has no Syntax tier — it's resolved by a separate tree-sitter-backed provider"
+                "PaneHighlights has no Syntax tier: it's resolved by a separate tree-sitter-backed provider"
             ),
         };
         data.read().clone()
@@ -164,7 +164,7 @@ impl PaneDecorationHandles {
 /// Build every decoration-facing provider for a new pane and register them
 /// into `providers`: the sign-column gutter, bracket/search/diagnostic/extra
 /// highlight sources, inlay-hint and EOL-text decoration, virtual-line
-/// source, and line-background tint — plus the [`PaneDecorationHandles`]
+/// source, and line-background tint, plus the [`PaneDecorationHandles`]
 /// bundle `hume-editor`'s per-frame sync writes into. Registers the sign
 /// column first: the caller must add its own (non-decoration) line-number
 /// gutter column right after, so the two columns render left-to-right in
@@ -173,7 +173,7 @@ impl PaneDecorationHandles {
 /// inlay hint landing at the same byte offset.
 ///
 /// `linenr_scope` must be the same `ScopeId` the caller also hands its
-/// line-number gutter column — this crate has no `ScopeRegistry` access of
+/// line-number gutter column: this crate has no `ScopeRegistry` access of
 /// its own to intern `hume_engine::providers::DEFAULT_GUTTER_SCOPE` itself,
 /// and a blank sign slot rendering under a different `ScopeId` than the
 /// line-number column's row-fill fallback would silently disagree on

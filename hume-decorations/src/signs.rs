@@ -2,7 +2,7 @@
 //!
 //! The one sign source wraps a `SharedSlot<FxHashMap<line_idx, Vec<Sign>>>`
 //! that the editor writes once per frame, from `prepare_frame`'s step 3,
-//! *before* scrolling (`Editor::update_sign_providers`'s doc — the resolved
+//! *before* scrolling (`Editor::update_sign_providers`'s doc: the resolved
 //! width feeds `Pane::content_width`, which the scroll step's `DisplayLineMap`
 //! wraps against). `signs_for_line` is then a cheap map lookup, matching
 //! `SignSource`'s per-row-per-frame contract.
@@ -16,9 +16,9 @@ use hume_rope::line::ContentLine;
 
 /// Shared per-frame sign data: at most one `Sign` per resolved slot per
 /// line (a line's `Vec` holds whichever slots this map's signs actually
-/// claimed — never padded, and never more entries than the buffer's
+/// claimed, never padded, and never more entries than the buffer's
 /// resolved `signcolumn` slot count). Every registered source (diagnostics
-/// included — `core:lsp` places them through `set-signs!` like any other
+/// included, since `core:lsp` places them through `set-signs!` like any other
 /// plugin) is pre-merged into this one map at write time.
 pub(crate) type SignMap = SharedSlot<FxHashMap<ContentLine, Vec<Sign>>>;
 

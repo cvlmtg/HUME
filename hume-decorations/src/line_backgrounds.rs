@@ -1,4 +1,4 @@
-//! Line-background rendering — a per-pane LINE_BG-kind `DecorationSource` fed
+//! Line-background rendering: a per-pane LINE_BG-kind `DecorationSource` fed
 //! from the `line_backgrounds` decoration store, keyed by line so
 //! `decorations_for_line` is a plain map lookup.
 

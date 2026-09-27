@@ -1,8 +1,8 @@
-//! Inline-decoration rendering — a per-pane INLINE-kind `DecorationSource`
+//! Inline-decoration rendering: a per-pane INLINE-kind `DecorationSource`
 //! fed from an `InlineInsert` map, keyed by line so `decorations_for_line`
 //! is a plain map lookup. Two independent instances share this one type:
 //! inlay hints (fed from the `inlay_hints` decoration store) and EOL text
-//! (fed from `eol_text`) — same shape, distinct Arcs/`ProviderId`s, named by
+//! (fed from `eol_text`). Same shape, distinct Arcs/`ProviderId`s, named by
 //! their client on `PaneDecorationHandles` rather than on this type.
 
 use rustc_hash::FxHashMap;

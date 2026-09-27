@@ -7,7 +7,7 @@ fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
 }
 
-/// Two guaranteed-distinct `BufferId`s — see the identical helper in
+/// Two guaranteed-distinct `BufferId`s. See the identical helper in
 /// `lsp/diagnostics.rs` for why a single `EngineView` is required.
 fn make_two_bids() -> (BufferId, BufferId) {
     let mut ev = EngineView::new(Theme::default());
@@ -16,8 +16,8 @@ fn make_two_bids() -> (BufferId, BufferId) {
     (a, b)
 }
 
-/// None of these tests assert on an entry's resolved scope — only on its
-/// text/position/source — so a bare `ScopeId` (no registry needed) stands
+/// None of these tests assert on an entry's resolved scope, only on its
+/// text/position/source, so a bare `ScopeId` (no registry needed) stands
 /// in for whatever `host_impl.rs` would have interned.
 fn sign(pos: usize, text: &str) -> SignEntry {
     SignEntry {
@@ -27,7 +27,7 @@ fn sign(pos: usize, text: &str) -> SignEntry {
     }
 }
 
-/// Same as `sign`, for `EolTextEntry` — used by the two ordering/isolation
+/// Same as `sign`, for `EolTextEntry`, used by the two ordering/isolation
 /// tests below. `DecorationStores` has no `signs_for_buffer` accessor
 /// (`SourceStore::for_buffer`'s ordering guarantee only needs one production
 /// `*_for_buffer` reader to exercise it), so those two tests go through
@@ -78,7 +78,7 @@ fn eol_text_for_buffer_does_not_leak_another_buffers_entries() {
 /// `SourceStore::set` keeps `by_buffer`'s per-buffer source list sorted
 /// ascending by name, so `for_buffer` (here via `eol_text_for_buffer`, one of
 /// the readers that keeps the source name) yields a deterministic
-/// cross-source order — independent of which source called `set-*!` first.
+/// cross-source order, independent of which source called `set-*!` first.
 /// Without the sort in `set` (e.g. reverting to plain find-or-push), setting
 /// `"zzz"` before `"aaa"` would leave `"zzz"` first in iteration order and
 /// this assertion would fail.
@@ -120,7 +120,7 @@ fn sign_sources_register_by_priority_desc_then_name_asc() {
     assert_eq!(
         store.sign_slot(a, "a"),
         Some(1),
-        "equal priority — alphabetically first name ranks first"
+        "equal priority: alphabetically first name ranks first"
     );
     assert_eq!(store.sign_slot(a, "b"), Some(2));
     assert_eq!(store.sign_source_count(a), 3);
@@ -142,7 +142,7 @@ fn re_registering_a_sign_source_replaces_its_priority_and_reorders_it() {
     assert_eq!(
         store.sign_slot(a, "a"),
         Some(0),
-        "re-registering replaces the priority — \"a\" now outranks \"b\""
+        "re-registering replaces the priority: \"a\" now outranks \"b\""
     );
     assert_eq!(
         store.sign_source_count(a),
@@ -159,8 +159,8 @@ fn unregistered_sign_source_has_no_slot() {
     assert_eq!(store.sign_source_count(a), 0);
 }
 
-/// A source registered for one buffer never resolves a slot in another —
-/// the whole point of scoping registration per buffer rather than session-
+/// A source registered for one buffer never resolves a slot in another.
+/// That is the whole point of scoping registration per buffer rather than session-
 /// wide: two buffers registering the same name at different priorities must
 /// not interfere with each other's ranking.
 #[test]
@@ -191,7 +191,7 @@ fn sign_source_registration_does_not_cross_buffers() {
 }
 
 /// `remove_buffer` clears a buffer's sign-source registry along with its
-/// decoration entries — a source re-registering for that `bid` afterward
+/// decoration entries: a source re-registering for that `bid` afterward
 /// starts a fresh ranking, unaffected by whatever the buffer held before
 /// (e.g. a buffer reload keeping the same `BufferId`).
 #[test]
@@ -243,7 +243,7 @@ fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
     assert_eq!(
         got,
         vec![(0, "+"), (1, "!")],
-        "vcs (priority 9) resolves to slot 0, linter (priority 3) to slot 1 — \
+        "vcs (priority 9) resolves to slot 0, linter (priority 3) to slot 1, \
          and vcs's out-of-range entry at pos 20 must not appear"
     );
 }
@@ -283,7 +283,7 @@ fn remove_buffer_bumps_generation() {
     assert_eq!(
         store.generation(b),
         b_generation_before,
-        "remove_buffer(a) must not touch an unrelated buffer's stamp — the \
+        "remove_buffer(a) must not touch an unrelated buffer's stamp: the \
          per-buffer generation exists precisely so unrelated buffers don't \
          resync each other's panes"
     );
@@ -309,7 +309,7 @@ fn remap_through_only_touches_a_buffer_that_has_decorations() {
     let a_generation_after_set = store.generation(a);
     let b_generation_before = store.generation(b);
 
-    // An identity changeset — its content doesn't matter to this test, only
+    // An identity changeset: its content doesn't matter to this test, only
     // that `remap_through` is called with *something* to remap through.
     let cs = {
         let mut csb = ChangeSetBuilder::new(co(5));
@@ -328,7 +328,7 @@ fn remap_through_only_touches_a_buffer_that_has_decorations() {
     assert_eq!(
         store.generation(b),
         b_generation_before,
-        "remap_through must not touch a buffer with nothing to remap — this \
+        "remap_through must not touch a buffer with nothing to remap: this \
          is the fix for the keystroke-storm bug: typing in an LSP-attached \
          but undecorated buffer must not invalidate every pane's \
          virtual-lines resync cache"

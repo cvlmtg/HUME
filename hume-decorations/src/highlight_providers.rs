@@ -1,5 +1,5 @@
 //! Engine-compatible decoration sources for bracket matching, search, and
-//! diagnostic/extra highlights — all four share one `ScopedHighlighter`
+//! diagnostic/extra highlights. All four share one `ScopedHighlighter`
 //! shape.
 //!
 //! Each provider wraps a [`SharedSlot`]`<Vec<(line_idx, byte_start, byte_end,
@@ -26,7 +26,7 @@ pub(crate) type ScopedHighlightRanges = SharedSlot<Vec<(ContentLine, ByteCol, By
 
 /// The four highlight buffers every pane owns.
 ///
-/// Each pane gets its own Arcs (never shared across panes — see
+/// Each pane gets its own Arcs (never shared across panes; see
 /// `build_pane`), so `update_highlight_providers` can compute one pane's
 /// matches from that pane's own buffer and viewport without bleeding into any
 /// other pane's rendering.
@@ -43,7 +43,7 @@ pub(crate) struct PaneHighlights {
 /// (`ui.cursor.match`/`ui.cursor.match.search`, interned once per frame in
 /// `Editor::update_highlight_providers`) written into every span at push
 /// time; diagnostics carry one scope per severity; extra
-/// highlights carry one scope per plugin-supplied span — all four write the
+/// highlights carry one scope per plugin-supplied span. All four write the
 /// scope onto the span rather than fixing it on the provider, so one shape
 /// serves every caller without forcing a one-provider-per-scope split for
 /// diagnostics/extra.

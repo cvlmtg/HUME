@@ -1,18 +1,18 @@
 //! Steel-writable decoration stores: inlay hints, gutter signs, virtual
 //! lines, end-of-line text, extra highlights, and line backgrounds. Not
-//! LSP-specific (any plugin can set them) — LSP is their first client, not
+//! LSP-specific (any plugin can set them): LSP is their first client, not
 //! their owner. Every
-//! kind is keyed the same way — `BufferId` first, then a per-buffer
+//! kind is keyed the same way: `BufferId` first, then a per-buffer
 //! `Vec<(source, entries)>`, so unrelated plugins' entries for the same
-//! buffer coexist without a cross-buffer scan to find them — see
+//! buffer coexist without a cross-buffer scan to find them. See
 //! `SourceStore`, generic over the source-key type so `hume-editor`'s `lsp/diagnostics.rs`'s
 //! `DiagnosticsStore` (keyed by `ServerId` instead of a plugin-chosen
 //! `String`) shares this exact write/remap machinery rather than
 //! reimplementing it. Every `scope` field here is an already-interned
-//! `ScopeId`, not a name — `hume-editor`'s `host_impl.rs`'s `set-*!` handlers intern the
+//! `ScopeId`, not a name: `hume-editor`'s `host_impl.rs`'s `set-*!` handlers intern the
 //! Steel-facing scope string once, at the boundary, so render bridges never
 //! resolve a name themselves. Every render provider reads these fresh every
-//! frame; `virtual_lines` is the exception — the whole-buffer rebuild (not
+//! frame; `virtual_lines` is the exception: the whole-buffer rebuild (not
 //! viewport-filtered, since it also runs in scroll/cursor math) gates on
 //! `generation` instead (see that field's doc).
 
@@ -33,17 +33,17 @@ pub struct InlayHintEntry {
 
 /// One `(set-signs! …)` entry: a gutter marker on the line `pos` starts.
 /// `pos` is that line's line-start char offset, not the Steel-facing line
-/// number — the host boundary (`hume-editor`'s `host_impl.rs`'s `line_start_offset`)
+/// number. The host boundary (`hume-editor`'s `host_impl.rs`'s `line_start_offset`)
 /// converts at set time, so this remaps through edits with everything else;
 /// the render side derives the current line back via `char_to_line` at
-/// rebuild. No `priority` field — a sign's slot is its *source*'s rank
+/// rebuild. No `priority` field: a sign's slot is its *source*'s rank
 /// among `DecorationStores::sign_sources`, not a per-entry value; the
 /// `source` key `SourceStore` already carries is the entry's whole channel
 /// identity. `scope` is interned by `hume-editor`'s `host_impl.rs`'s `set_signs` at the
 /// `set-signs!` boundary, not resolved later by a render bridge. `text` is
 /// `Arc<str>`, not `String`: `hume-editor`'s `Editor::update_sign_providers` clones it
 /// straight into `hume_engine::builtins::sign_column::Sign::text` (also
-/// `Arc<str>`) for every visible line, every frame — a refcount bump
+/// `Arc<str>`) for every visible line, every frame, a refcount bump
 /// instead of a fresh allocation per sign per frame.
 pub struct SignEntry {
     pub pos: CharOffset,
@@ -54,20 +54,20 @@ pub struct SignEntry {
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
 /// the line `pos` starts (rendered after it, or before when `before` is
 /// set). `pos` is that line's line-start char offset, not the Steel-facing
-/// line number — the host boundary (`hume-editor`'s `host_impl.rs`'s `line_start_offset`)
+/// line number. The host boundary (`hume-editor`'s `host_impl.rs`'s `line_start_offset`)
 /// converts at set time, so this remaps through edits like every other kind;
 /// the render side derives the current line back via `char_to_line` at
-/// rebuild. `scope` styles bytes `segments` doesn't cover — `hume-editor`'s `host_impl.rs`'s
+/// rebuild. `scope` styles bytes `segments` doesn't cover. `hume-editor`'s `host_impl.rs`'s
 /// `set_virtual_lines` resolves the `ui.virtual` fallback itself when the
 /// Steel call passes no scope, so this field is never optional; `segments`
 /// are `(byte_start, byte_end, ScopeId)` ranges into `text`, already
-/// sorted/non-overlapping/in-bounds — guaranteed by the host boundary
+/// sorted/non-overlapping/in-bounds, guaranteed by the host boundary
 /// (`virtual_line_segments_to_bytes` in `hume-editor`'s `host_impl.rs`), which also converts
 /// the Steel-facing char offsets to these byte offsets (the per-segment
 /// scope name is interned separately, after that call). Kept as a separate
 /// type rather than reusing `hume_scripting::VirtualLineSpec` directly: that
 /// type's `segments` are unvalidated char offsets naming scopes, this one's
-/// are validated byte offsets naming already-interned `ScopeId`s —
+/// are validated byte offsets naming already-interned `ScopeId`s:
 /// deliberately different shapes, not merely a field rename.
 pub struct VirtualLineEntry {
     pub pos: CharOffset,
@@ -83,7 +83,7 @@ pub struct VirtualLineEntry {
 
 /// One `(set-eol-text! …)` entry: `text` appended at the end of the line
 /// `pos` starts. `pos` is that line's line-start char offset, not the
-/// Steel-facing line number — the host boundary (`hume-editor`'s `host_impl.rs`'s
+/// Steel-facing line number. The host boundary (`hume-editor`'s `host_impl.rs`'s
 /// `line_start_offset`) converts at set time, so this remaps through edits
 /// like every other kind; the render side derives the current line back via
 /// `char_to_line` at rebuild. The diagnostics plugin's
@@ -108,11 +108,11 @@ pub struct ExtraHighlightEntry {
 
 /// One `(set-line-backgrounds! …)` entry: a full-row background tint on the
 /// line `pos` starts. `pos` is that line's line-start char offset, not the
-/// Steel-facing line number — the host boundary (`hume-editor`'s `host_impl.rs`'s
+/// Steel-facing line number. The host boundary (`hume-editor`'s `host_impl.rs`'s
 /// `line_start_offset`) converts at set time, so this remaps through edits
 /// like every other line-anchored kind; the render side derives the current
 /// line back via `char_to_line` at rebuild. No `priority` field, same as
-/// `SignEntry` now — row tints have no per-line slot contention at all, so
+/// `SignEntry` now: row tints have no per-line slot contention at all, so
 /// same-line entries from different sources simply break ties by source
 /// name, never claim a reserved column the way a registered sign source does.
 /// `scope` is interned by `hume-editor`'s `host_impl.rs`'s `set_line_backgrounds` at the
@@ -122,7 +122,7 @@ pub struct LineBgEntry {
     pub scope: ScopeId,
 }
 
-/// Sort key every entry kind provides — [`SourceStore::set`] sorts by this
+/// Sort key every entry kind provides. [`SourceStore::set`] sorts by this
 /// so the remap chokepoint's batch position/range mapping
 /// (`ChangeSet::map_positions`/`map_ranges`) can rely on ascending input,
 /// its documented precondition.
@@ -167,12 +167,12 @@ impl Positioned for LineBgEntry {
 }
 
 /// The five point-anchored kinds (every kind but `ExtraHighlightEntry`,
-/// which remaps as a range instead via `RangeAnchored` — see
-/// [`SourceStore::remap_ranges`]) — drives `SourceStore::remap_points`'s batch
+/// which remaps as a range instead via `RangeAnchored`; see
+/// [`SourceStore::remap_ranges`]). Drives `SourceStore::remap_points`'s batch
 /// `ChangeSet::map_positions` call.
 pub trait PointAnchored: Positioned {
-    /// Sticky side for an edit landing exactly at this kind's position —
-    /// see `ChangeSet::Assoc`'s doc and each impl below for the reasoning.
+    /// Sticky side for an edit landing exactly at this kind's position.
+    /// See `ChangeSet::Assoc`'s doc and each impl below for the reasoning.
     const ASSOC: Assoc;
     fn set_pos(&mut self, pos: CharOffset);
 }
@@ -189,8 +189,8 @@ impl PointAnchored for InlayHintEntry {
 
 /// `Assoc::After` for every line-anchored kind below: an
 /// insertion containing a newline landing exactly at a line-start anchor
-/// (`o` — open line above) must keep the decoration on the *original* line
-/// content — `Assoc::Before` would strand it on the newly inserted blank
+/// (`o`, open line above) must keep the decoration on the *original* line
+/// content; `Assoc::Before` would strand it on the newly inserted blank
 /// line instead.
 impl PointAnchored for SignEntry {
     const ASSOC: Assoc = Assoc::After;
@@ -221,7 +221,7 @@ impl PointAnchored for LineBgEntry {
 }
 
 /// The one kind remapped as a range rather than a point (see
-/// `PointAnchored`'s doc) — drives [`SourceStore::remap_ranges`]' batch
+/// `PointAnchored`'s doc). Drives [`SourceStore::remap_ranges`]' batch
 /// `ChangeSet::map_ranges` call. `Positioned::pos()` supplies the range's
 /// start; this supplies the end.
 pub trait RangeAnchored: Positioned {
@@ -241,11 +241,11 @@ impl RangeAnchored for ExtraHighlightEntry {
 
 /// One decoration kind's per-source entries, for every buffer
 /// (`FxHashMap<BufferId, Vec<(source, Vec<T>)>>`, kept sorted ascending by
-/// `source` — see `set`). Written once, instantiated per kind; the type
+/// `source`; see `set`). Written once, instantiated per kind; the type
 /// system carries the per-kind payload differences. Generic over the source
 /// key `K` (not just `String`) so `hume-editor`'s `lsp/diagnostics.rs`'s `DiagnosticsStore`
-/// — keyed by `ServerId`, otherwise the exact same shape (per-buffer,
-/// per-source, wholesale-replace, remap-through-a-`ChangeSet`) — can wrap
+/// (keyed by `ServerId`, otherwise the exact same shape: per-buffer,
+/// per-source, wholesale-replace, remap-through-a-`ChangeSet`) can wrap
 /// this instead of hand-rolling the same write/remap logic a second time.
 pub struct SourceStore<K, T> {
     by_buffer: FxHashMap<BufferId, Vec<(K, Vec<T>)>>,
@@ -260,7 +260,7 @@ impl<K, T> Default for SourceStore<K, T> {
 }
 
 impl<K, T> SourceStore<K, T> {
-    /// Every source's entries for `bid`, grouped (not flattened) — the
+    /// Every source's entries for `bid`, grouped (not flattened): the
     /// primitive `for_buffer` and a per-source-structure caller (e.g.
     /// `DiagnosticsStore::for_range`'s per-source `partition_point` prune)
     /// both build on.
@@ -274,7 +274,7 @@ impl<K, T> SourceStore<K, T> {
     /// All entries for `bid`, across every source in ascending source-name
     /// order (see `set`), paired with their source. Signs need the source to
     /// look up its registered slot (`DecorationStores::sign_slot`), not for a
-    /// tie-break — two signs from different sources never contend for the
+    /// tie-break; two signs from different sources never contend for the
     /// same slot by construction. Virtual lines and extra highlights (the
     /// two kinds with no per-line collapse) rely on this ascending order
     /// directly, so two sources anchored to the same line render in a
@@ -298,7 +298,7 @@ impl<K, T> SourceStore<K, T> {
             .unwrap_or(&[])
     }
 
-    /// Every source's entries for `bid`, mutably — the remap chokepoint's
+    /// Every source's entries for `bid`, mutably: the remap chokepoint's
     /// entry point: it rewrites positions in place per source, one batch
     /// call per source rather than per entry.
     fn sources_mut(&mut self, bid: BufferId) -> impl Iterator<Item = &mut Vec<T>> {
@@ -309,7 +309,7 @@ impl<K, T> SourceStore<K, T> {
     }
 
     /// Drops every entry for `bid`. Returns whether `bid` had an entry to
-    /// drop — `DiagnosticsStore::remove_buffer` uses this to only bump its
+    /// drop. `DiagnosticsStore::remove_buffer` uses this to only bump its
     /// generation when the removal actually changed anything.
     pub fn remove_buffer(&mut self, bid: BufferId) -> bool {
         self.by_buffer.remove(&bid).is_some()
@@ -322,7 +322,7 @@ impl<K, T> SourceStore<K, T> {
             .is_some_and(|entry| entry.iter().any(|(_, v)| !v.is_empty()))
     }
 
-    /// Every buffer with at least one source registered, of any kind —
+    /// Every buffer with at least one source registered, of any kind:
     /// `DiagnosticsStore::buffers_with_diagnostics`'s sole caller.
     pub fn buffers(&self) -> impl Iterator<Item = BufferId> + '_ {
         self.by_buffer.keys().copied()
@@ -331,7 +331,7 @@ impl<K, T> SourceStore<K, T> {
     /// Drops every source `keep` rejects, across every buffer; a buffer left
     /// with zero sources is dropped from `by_buffer` entirely rather than
     /// kept as an empty `Vec`. Returns the buffers actually touched.
-    /// `DiagnosticsStore::remove_server`'s sole caller — decoration kinds
+    /// `DiagnosticsStore::remove_server`'s sole caller. Decoration kinds
     /// have no per-source removal (a source only ever replaces its own
     /// entries wholesale via `set`, never disappears on its own).
     pub fn retain_sources(&mut self, mut keep: impl FnMut(&K) -> bool) -> Vec<BufferId> {
@@ -350,16 +350,16 @@ impl<K, T> SourceStore<K, T> {
 
 impl<K, T: Positioned> SourceStore<K, T> {
     /// Every source's entries for `bid` whose `pos` falls in `range`,
-    /// grouped (not flattened) — the point-anchored counterpart to
+    /// grouped (not flattened): the point-anchored counterpart to
     /// [`Self::groups_for_buffer`], and [`Self::in_range`]'s primitive.
     /// [`DecorationStores::signs_in_range`] builds directly on this instead
     /// of `in_range`: it needs each source's *name* once per group (to
     /// resolve that source's registered slot), not once per entry.
     ///
     /// Each source's slice is `pos`-sorted (`set`), so both bounds come from
-    /// a binary search — a caller filtering a viewport out of a buffer-wide
+    /// a binary search, so a caller filtering a viewport out of a buffer-wide
     /// store pays for the entries it keeps, not for every entry the servers
-    /// published. Point semantics only — bounds both ends by `pos()`, so a
+    /// published. Point semantics only: bounds both ends by `pos()`, so a
     /// range-anchored kind whose span can start before `range` (extra
     /// highlights; `DiagnosticsStore::for_range_unsorted`, which prunes only
     /// the upper bound for exactly this reason) must not build on this.
@@ -376,7 +376,7 @@ impl<K, T: Positioned> SourceStore<K, T> {
     }
 
     /// Every source's entries for `bid` whose `pos` falls in `range`,
-    /// flattened, source discarded — [`Self::groups_in_range`] is the one to
+    /// flattened, source discarded. [`Self::groups_in_range`] is the one to
     /// build on instead when a caller needs the source name (e.g.
     /// [`DecorationStores::signs_in_range`], to resolve a group's registered
     /// slot once rather than once per entry).
@@ -393,7 +393,7 @@ impl<K, T: Positioned> SourceStore<K, T> {
 impl<K: Ord, T: Positioned> SourceStore<K, T> {
     /// Replaces `source`'s entries for `bid` wholesale, sorted by `pos` (see
     /// `Positioned`'s doc). `slot` itself stays sorted ascending by `source`
-    /// — a binary-search insert rather than find-or-push — so
+    /// (a binary-search insert rather than find-or-push), so
     /// `for_buffer`'s iteration order is deterministic by construction
     /// instead of "whichever source called `set` first this session".
     pub fn set(&mut self, source: K, bid: BufferId, mut entries: Vec<T>) {
@@ -409,11 +409,11 @@ impl<K: Ord, T: Positioned> SourceStore<K, T> {
 impl<K, T: PointAnchored> SourceStore<K, T> {
     /// Remaps every point-anchored entry for `bid` through `cs`, one
     /// `PosMapCursor` pass per source, using `T::ASSOC`. Drops an entry whose
-    /// anchor character a deletion consumed — same policy `remap_ranges`
-    /// already applies to a range a deletion collapses — rather than parking
+    /// anchor character a deletion consumed (same policy `remap_ranges`
+    /// already applies to a range a deletion collapses) rather than parking
     /// the decoration on whatever text moved into the gap (a deleted line's inlay
     /// hint would reappear, re-anchored to the deletion point). Returns whether `bid` had any entry to remap
-    /// — callers use this to skip a dirty-tracking stamp bump when `bid` had
+    /// so callers can skip a dirty-tracking stamp bump when `bid` had
     /// nothing for this kind.
     fn remap_points(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
         let mut touched = false;
@@ -442,7 +442,7 @@ impl<K, T: RangeAnchored> SourceStore<K, T> {
     /// `bid` had any entry to remap, same as `remap_points`. The one other
     /// implementor of this policy before it moved here
     /// (`DiagnosticsStore::remap_through`) was a near-verbatim copy of this
-    /// method against `StoredDiag` instead of `ExtraHighlightEntry` — this
+    /// method against `StoredDiag` instead of `ExtraHighlightEntry`; this
     /// generic version now backs both.
     pub fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
         let mut touched = false;
@@ -465,7 +465,7 @@ impl<K, T: RangeAnchored> SourceStore<K, T> {
                 let range = ranges[idx];
                 idx += 1;
                 if range.end <= range.start {
-                    false // collapsed by a covering deletion — drop
+                    false // collapsed by a covering deletion: drop
                 } else {
                     s.set_range(range);
                     true
@@ -485,24 +485,24 @@ pub struct DecorationStores {
     eol_text: SourceStore<String, EolTextEntry>,
     line_backgrounds: SourceStore<String, LineBgEntry>,
     /// Every buffer's registered sign sources, each buffer's list kept
-    /// sorted `(priority desc, name asc)` — that order *is* the buffer's
+    /// sorted `(priority desc, name asc)`: that order *is* the buffer's
     /// sign-priority ladder (`register_sign_source`/`sign_slot`/
     /// `sign_source_count`). A source claims its slot in one buffer at a
     /// time, the first time it becomes relevant there (a plugin calls
     /// `register-sign-source!` from inside the same function that renders
     /// its signs, e.g. `core:lsp` on first diagnostic placement,
     /// `core:git-diff` on first tracked render), and holds it for that
-    /// buffer's life — there is no withdrawal; a source that stops having
+    /// buffer's life. There is no withdrawal; a source that stops having
     /// anything to show still keeps its (now blank) slot via
     /// `set-signs! source bid '()`, same as any other empty `set-signs!`
     /// call. This is what keeps a buffer neither source ever touches (a
     /// plain buffer with no LSP server and no git repo) from ever reserving
-    /// either slot. Not touch-stamped — it isn't decoration content, so no
+    /// either slot. Not touch-stamped: it isn't decoration content, so no
     /// `generation` bump is the right one when it changes.
     sign_sources: FxHashMap<BufferId, Vec<(String, i64)>>,
     /// Per-buffer dirty-tracking stamp, touched by every `set_*` and
     /// `remove_buffer` for that buffer, and by `remap_through` when a remap
-    /// actually moved one of that buffer's entries — the virtual-lines
+    /// actually moved one of that buffer's entries. The virtual-lines
     /// render write side mirrors `virtual_lines` into a per-pane Arc only
     /// when *its buffer's* stamp changed since its last sync, rather than
     /// every frame (unlike inlay hints/EOL text, that sync runs in
@@ -513,11 +513,11 @@ pub struct DecorationStores {
     /// queued edit for *every* LSP-attached buffer, decorated or not
     /// (`record_lsp_edits`'s gate is `lsp_server.is_some() || has_any(bid)`),
     /// so a single global counter would bump on every keystroke in any
-    /// LSP-attached buffer — the virtual-lines resync skip would never
+    /// LSP-attached buffer, and the virtual-lines resync skip would never
     /// actually fire while typing. Per-buffer stamps mean typing in one
     /// buffer doesn't invalidate every pane on every other buffer.
     generation: FxHashMap<BufferId, u64>,
-    /// Shared source for every buffer's stamp — see `touch`. Not itself a
+    /// Shared source for every buffer's stamp (see `touch`). Not itself a
     /// generation to compare against; `reset` carries it forward so a fresh
     /// store's stamps are guaranteed to never repeat a value any earlier
     /// store in this session ever handed out (see `reset`'s doc).
@@ -525,7 +525,7 @@ pub struct DecorationStores {
 }
 
 impl DecorationStores {
-    /// A fresh, empty store — used by `hume-editor`'s `ConfigState::new` for both session
+    /// A fresh, empty store, used by `hume-editor`'s `ConfigState::new` for both session
     /// start (`prior_clock: 0`, nothing to carry forward) and
     /// `:reload-config`'s reset (the outgoing `ConfigState`'s own
     /// `decorations.clock()`).
@@ -536,7 +536,7 @@ impl DecorationStores {
     /// across two-or-more reloads could otherwise see the *same* stamp
     /// sequence repeat (`0, 1, 2, …` again), which could coincidentally
     /// equal a pane's already-synced stamp in `hume-editor`'s `Editor::virtual_lines_synced`
-    /// left over from before the *first* reload — skipping the sync that
+    /// left over from before the *first* reload, skipping the sync that
     /// should clear the pane's stale `Arc` of the old virtual lines. A
     /// single ever-increasing clock, carried forward across every reset,
     /// guarantees no stamp value is ever reused for the life of the
@@ -549,7 +549,7 @@ impl DecorationStores {
         }
     }
 
-    /// Stamps `bid` with a fresh value off the shared clock — the one
+    /// Stamps `bid` with a fresh value off the shared clock: the one
     /// mutation primitive every `set_*`, `remove_buffer`, and a touched
     /// `remap_through` funnel through, so `generation`/`clock` can never
     /// drift out of sync with each other.
@@ -558,15 +558,15 @@ impl DecorationStores {
         self.generation.insert(bid, self.clock);
     }
 
-    /// The shared clock backing every buffer's stamp — `:reload-config`
+    /// The shared clock backing every buffer's stamp. `:reload-config`
     /// carries this forward into the next store via `reset`. Not a
     /// generation to compare a buffer's stamp against; see `generation`.
     pub fn clock(&self) -> u64 {
         self.clock
     }
 
-    /// `bid`'s current stamp — `0` if `bid` has never been touched by this
-    /// store (a fresh buffer, or one this store was reset since — see
+    /// `bid`'s current stamp: `0` if `bid` has never been touched by this
+    /// store (a fresh buffer, or one this store was reset since; see
     /// `reset`). Bumped by every `set_*` call and `remove_buffer` for `bid`,
     /// and by `remap_through` when a remap actually moved one of `bid`'s
     /// entries.
@@ -580,7 +580,7 @@ impl DecorationStores {
         self.touch(bid);
     }
 
-    /// All inlay hints for `bid`, across every source — assertion helper for
+    /// All inlay hints for `bid`, across every source: an assertion helper for
     /// tests that check what a server published rather than what a viewport
     /// shows. Production reads go through [`Self::inlay_hints_in_range`].
     #[cfg(any(test, feature = "test-util"))]
@@ -588,7 +588,7 @@ impl DecorationStores {
         self.inlay_hints.for_buffer(bid).map(|(_, e)| e)
     }
 
-    /// Inlay hints for `bid` anchored inside `range` — the per-frame render
+    /// Inlay hints for `bid` anchored inside `range`: the per-frame render
     /// bridge's view, which only ever wants the viewport's worth.
     pub fn inlay_hints_in_range(
         &self,
@@ -610,15 +610,15 @@ impl DecorationStores {
     }
 
     /// Signs for `bid` anchored inside `range`, paired with their source's
-    /// resolved gutter slot — the sign bridge's view, which only ever wants
+    /// resolved gutter slot: the sign bridge's view, which only ever wants
     /// the viewport's worth and never needs the source name itself (unlike
     /// EOL text/line backgrounds, signs never contend for one line's cell
-    /// across sources — see [`Self::sign_slot`]'s doc). Resolves
+    /// across sources; see [`Self::sign_slot`]'s doc). Resolves
     /// [`Self::sign_slot`] once per source group via
     /// `SourceStore::groups_in_range`, not once per entry. `set-signs!`
     /// already rejects a source unregistered for `bid` at write time, and a
     /// source never loses its registration for a buffer without that
-    /// buffer's signs being cleared alongside it (`Self::remove_buffer`) —
+    /// buffer's signs being cleared alongside it (`Self::remove_buffer`),
     /// so every group this sees has a real slot; the `expect` documents that
     /// invariant at the one place it's owned, rather than at every caller.
     pub fn signs_in_range(
@@ -641,7 +641,7 @@ impl DecorationStores {
     /// any prior registration under that name in *that buffer* (last wins,
     /// matching `register-lsp-server!`) rather than leaving a stale entry at
     /// the old priority's sort position alongside the new one. A no-op when
-    /// `name` is already registered for `bid` at this exact `priority` —
+    /// `name` is already registered for `bid` at this exact `priority`:
     /// callers re-register on every render (see `sign_sources`' doc), so
     /// this is the common case and skips the remove-then-resort dance
     /// entirely rather than repeating it every frame for nothing. See
@@ -654,7 +654,7 @@ impl DecorationStores {
             }
             sources.remove(idx);
         }
-        // Sorted `(priority desc, name asc)` — a source's slot (`sign_slot`)
+        // Sorted `(priority desc, name asc)`: a source's slot (`sign_slot`)
         // is its index in this order, so registration order itself must
         // never matter, only the declared priority and name.
         let idx = sources.partition_point(|(n, p)| {
@@ -663,8 +663,8 @@ impl DecorationStores {
         sources.insert(idx, (name, priority));
     }
 
-    /// `name`'s gutter slot in `bid` — its index in that buffer's
-    /// `(priority desc, name asc)` registry — or `None` if `name` was never
+    /// `name`'s gutter slot in `bid` (its index in that buffer's
+    /// `(priority desc, name asc)` registry), or `None` if `name` was never
     /// registered for `bid` via `register_sign_source`. Stable for the
     /// buffer's life and frame-to-frame: it depends only on the registry,
     /// never on which lines currently carry a sign, so a channel's column
@@ -676,7 +676,7 @@ impl DecorationStores {
             .position(|(n, _)| n == name)
     }
 
-    /// Number of sign sources registered for `bid` — the bare slot count
+    /// Number of sign sources registered for `bid`: the bare slot count
     /// `SignColumnConfig::slots_for` auto-sizes to (before the `+1` padding
     /// column `SignColumn::width_for_slots` adds).
     pub fn sign_source_count(&self, bid: BufferId) -> usize {
@@ -694,7 +694,7 @@ impl DecorationStores {
         self.touch(bid);
     }
 
-    /// All virtual-line entries for `bid`, across every source — the render
+    /// All virtual-line entries for `bid`, across every source. The render
     /// write side merges them all into one per-line bucket.
     pub fn virtual_lines_for_buffer(
         &self,
@@ -715,7 +715,7 @@ impl DecorationStores {
     }
 
     /// All EOL text entries for `bid`, across every source, paired with
-    /// their source name — the render write side needs the name for a
+    /// their source name. The render write side needs the name for a
     /// deterministic tie-break when a remap collapses two sources' entries
     /// onto the same line (mirrors `line_backgrounds_for_buffer`).
     pub fn eol_text_for_buffer(
@@ -742,7 +742,7 @@ impl DecorationStores {
     }
 
     /// All line-background entries for `bid`, across every source, paired
-    /// with their source name — the render write side needs the name for a
+    /// with their source name. The render write side needs the name for a
     /// deterministic tie-break when two sources tint the same line.
     pub fn line_backgrounds_for_buffer(
         &self,
@@ -769,7 +769,7 @@ impl DecorationStores {
         self.extra_highlights.entries_for(source, bid)
     }
 
-    /// All extra-highlight entries for `bid`, across every source — the
+    /// All extra-highlight entries for `bid`, across every source. The
     /// render write side merges them all into one highlight-tier bucket.
     pub fn extra_highlights_for_buffer(
         &self,
@@ -779,9 +779,9 @@ impl DecorationStores {
     }
 
     /// Whether `bid` has any decoration, of any kind, that needs to stay in
-    /// sync with edits — every kind remaps through `remap_through` now.
+    /// sync with edits: every kind remaps through `remap_through` now.
     /// `record_lsp_edits` (`doc_ops.rs`) uses this to queue a buffer's edits
-    /// for the remap chokepoint even with no attached LSP server —
+    /// for the remap chokepoint even with no attached LSP server:
     /// decorations are not LSP-owned, LSP is just their first client.
     ///
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
@@ -808,17 +808,17 @@ impl DecorationStores {
     }
 
     /// Drops every entry for `bid`, across every source and every kind, and
-    /// `bid`'s registered sign sources — called when the buffer is closed,
+    /// `bid`'s registered sign sources. Called when the buffer is closed,
     /// or reloaded from disk while keeping the same `BufferId`. `BufferId`
     /// is a versioned slotmap key, so a future slot reuse can never alias
-    /// with the closed buffer's stale entries — but a *reload* keeps the
+    /// with the closed buffer's stale entries, but a *reload* keeps the
     /// same key, so clearing `virtual_lines` without touching `bid`'s stamp
     /// would leave a pane's `virtual_lines_synced` entry looking
     /// still-current: it would keep mirroring the pre-reload virtual lines
     /// at now-meaningless line anchors. Touching unconditionally (not just
     /// when a kind had entries) forces every pane on `bid` to resync. A
     /// source that re-registers for `bid` after a reload starts a fresh
-    /// ranking, unaffected by whatever the buffer's registry held before —
+    /// ranking, unaffected by whatever the buffer's registry held before,
     /// same reasoning as clearing the six decoration stores themselves.
     ///
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
@@ -846,14 +846,14 @@ impl DecorationStores {
         self.touch(bid);
     }
 
-    /// Remaps `bid`'s decorations, of every kind, through `cs` — the same
+    /// Remaps `bid`'s decorations, of every kind, through `cs`, the same
     /// chokepoint as the diagnostics remap (`flush_lsp_pending_changes`), so
     /// decoration positions never drift out of sync with the diagnostics
     /// they're often paired with. Touches `bid`'s stamp only if some kind
     /// actually had an entry to remap: `record_lsp_edits` (`doc_ops.rs`)
     /// queues *every* edit in an LSP-attached buffer for this chokepoint,
     /// decorated or not, so touching unconditionally would stamp a
-    /// zero-decoration buffer on every keystroke — defeating the
+    /// zero-decoration buffer on every keystroke, defeating the
     /// virtual-lines pane sync's whole reason to check the stamp in the
     /// first place. A remap that *did* touch something still moved
     /// positions, so cached consumers (the virtual-lines pane sync) must
@@ -874,7 +874,7 @@ impl DecorationStores {
             generation: _,
             clock: _,
         } = self;
-        // Every kind always attempts its remap — only whether to bump the
+        // Every kind always attempts its remap; only whether to bump the
         // stamp is conditional. The array literal's eager evaluation (not
         // the iterator adapters below) is what guarantees none of these six
         // calls get short-circuited away.
