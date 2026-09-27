@@ -1,16 +1,16 @@
 //! `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range`, plus
-//! `WirePos` → the protocol's raw JSON object shape (outbound only — nothing
+//! `WirePos` → the protocol's raw JSON object shape (outbound only: nothing
 //! in this crate decodes JSON back into a `WirePos`). [`position_from_json`]
 //! is the one inbound decoder here, and decodes into `lsp_types::Position`
 //! rather than `WirePos`: it serves a *lenient* caller
 //! (`completion_item::text_edit_from_json_lenient`) that wants `None` on a
 //! malformed field, not the per-field error text `location::decode_location`
-//! needs — that decoder reads the same JSON shape by hand instead of
+//! needs. That decoder reads the same JSON shape by hand instead of
 //! sharing this one.
 //!
 //! `hume-rope` deliberately has no `lsp-types` dependency (see
 //! `position_encoding`'s module doc), so the crossing lives here as free
-//! functions rather than `impl From<WirePos> for lsp_types::Position` — the
+//! functions rather than `impl From<WirePos> for lsp_types::Position`; the
 //! orphan rule would refuse that impl in either direction anyway, since
 //! neither type is local to this crate.
 
@@ -18,7 +18,7 @@ use hume_rope::offset::ExclusiveRange;
 use hume_rope::position_encoding::WirePos;
 
 /// A rope-derived wire range → `lsp_types::Range`, or `None` if `line`/
-/// `character` on either end exceeds `u32` — the protocol's own width.
+/// `character` on either end exceeds `u32`, the protocol's own width.
 /// Every value this crate produces comes from a real document via
 /// `hume_rope::position_encoding`, so overflow here means a corrupt or
 /// astronomically large buffer, not a routine input to handle gracefully;
@@ -65,7 +65,7 @@ pub fn to_json_range(range: ExclusiveRange<WirePos>) -> serde_json::Value {
 }
 
 /// The protocol's `{"line": N, "character": M}` object → `lsp_types::Position`.
-/// `None` on a missing or non-numeric field — a lenient caller's own fallback
+/// `None` on a missing or non-numeric field; a lenient caller's own fallback
 /// applies from there. See this module's doc for why `location::decode_location`
 /// doesn't share this decoder.
 pub fn position_from_json(v: &serde_json::Value) -> Option<lsp_types::Position> {

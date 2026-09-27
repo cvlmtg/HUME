@@ -32,14 +32,14 @@ fn round_trip_symbols_needing_escapes() {
 #[test]
 fn round_trip_path_with_colon() {
     // ':' is a legal Unix filename byte and pchar-legal in a URI path
-    // segment — must round-trip bare, not as "%3A".
+    // segment, so it must round-trip bare, not as "%3A".
     let path = Path::new("/tmp/weird:name.rs");
     assert_eq!(round_trip(path), path);
 }
 
 #[test]
 fn round_trip_path_with_a_literal_backslash_on_unix() {
-    // A literal '\' is an ordinary Unix filename byte, not a separator —
+    // A literal '\' is an ordinary Unix filename byte, not a separator,
     // must round-trip as one path component, not get silently split.
     let path = Path::new(r"/tmp/weird\name.rs");
     assert_eq!(round_trip(path), path);
@@ -73,7 +73,7 @@ fn path_to_uri_leaves_colon_unescaped() {
 
 #[test]
 fn drive_letter_shaped_segment_is_a_literal_directory_name_on_unix() {
-    // "C:" is only a drive letter on Windows — on Unix it's simply a
+    // "C:" is only a drive letter on Windows. On Unix it's simply a
     // directory literally named "C:", decoded as one segment among
     // others, never hoisted into a Windows-style "C:\..." path.
     let uri = lsp_types::Uri::from_str("file:///C:/Users/x.rs").expect("parse");
@@ -85,7 +85,7 @@ fn drive_letter_shaped_segment_is_a_literal_directory_name_on_unix() {
 
 #[test]
 fn decoded_backslash_in_a_segment_is_accepted_on_unix() {
-    // A literal '\' is a normal Unix filename byte — percent-encoded on
+    // A literal '\' is a normal Unix filename byte, percent-encoded on
     // the way out (see round_trip_path_with_a_literal_backslash_on_unix)
     // and must be accepted, not rejected, decoding back in.
     let uri = lsp_types::Uri::from_str("file:///tmp/weird%5Cname.rs").expect("parse");
@@ -96,7 +96,7 @@ fn decoded_backslash_in_a_segment_is_accepted_on_unix() {
 }
 
 // Windows: a non-localhost authority is read as a UNC server name
-// instead of rejected — see
+// instead of rejected; see
 // uri_to_path_reconstructs_a_unc_path_from_a_non_localhost_authority.
 #[test]
 fn uri_to_path_rejects_non_localhost_authority() {
@@ -111,7 +111,7 @@ fn uri_to_path_rejects_non_localhost_authority() {
 
 #[test]
 fn a_windows_shaped_verbatim_prefix_round_trips_unmodified_off_windows() {
-    // `\\?\` is meaningful only to the Windows path API — off Windows it's
+    // `\\?\` is meaningful only to the Windows path API. Off Windows it's
     // just ordinary filename bytes, so verbatim-prefix stripping must never
     // fire here.
     let path = Path::new(r"/tmp/\\?\C:\foo");

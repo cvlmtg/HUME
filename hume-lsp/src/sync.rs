@@ -1,6 +1,6 @@
 //! `ChangeSet` → `textDocument/didChange`'s incremental
 //! `TextDocumentContentChangeEvent` list. The didChange envelope (document
-//! version, URI) is the editor glue's job — this is pure text math.
+//! version, URI) is the editor glue's job; this is pure text math.
 
 use hume_editing::changeset::{ChangeSet, Operation};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -12,11 +12,11 @@ use ropey::Rope;
 /// per the LSP spec, each event's range addresses the document state AFTER
 /// all previous events in the list were applied.
 ///
-/// A `working` rope (cloned from `before` — O(1), ropey's tree nodes are
+/// A `working` rope (cloned from `before`: O(1), ropey's tree nodes are
 /// `Arc`-shared) mutates alongside a char `cursor` as ops are walked, so
 /// every emitted range is computed against the correct intermediate state.
 /// **The #1 bug this guards against**: computing every range against
-/// `before` — ranges after the first event address the *partially updated*
+/// `before`. Ranges after the first event address the *partially updated*
 /// document, not the original one.
 pub fn changeset_to_content_changes(
     before: &Rope,
@@ -59,12 +59,12 @@ pub fn changeset_to_content_changes(
 
 /// `range` in `rope`'s current state, converted to a wire `Range` via
 /// [`hume_rope::position_encoding::char_range_to_wire_range`] and
-/// [`crate::position::to_lsp_range`] — see that module for why the
+/// [`crate::position::to_lsp_range`]. See that module for why the
 /// `lsp_types` crossing is a free function rather than a `From` impl.
 fn wire_range(rope: &Rope, range: ExclusiveRange<CharOffset>, enc: PositionEncoding) -> Range {
     let wire = hume_rope::position_encoding::char_range_to_wire_range(rope, range, enc);
     crate::position::to_lsp_range(wire)
-        .expect("rope-derived wire position fits u32 — a real document's line/character count")
+        .expect("rope-derived wire position fits u32: a real document's line/character count")
 }
 
 /// Reference implementation used by the tests: applies emitted events to a
@@ -90,14 +90,14 @@ pub fn apply_events_to_string_mirror(
 
 /// `Buffer.text_gen` (a monotonic `u64` edit counter) -> the wire's `i32`
 /// document version. `text_gen` would need over two billion edits to a
-/// single buffer to overflow this — effectively unreachable — but a silent
+/// single buffer to overflow this (effectively unreachable), but a silent
 /// wraparound would desync diagnostics/didChange version correlation in a
 /// way that's very hard to diagnose, so this fails loudly instead of `as i32`.
 pub fn wire_version(text_gen: u64) -> i32 {
-    i32::try_from(text_gen).expect("text_gen overflowed i32 — over 2 billion edits to one buffer")
+    i32::try_from(text_gen).expect("text_gen overflowed i32: over 2 billion edits to one buffer")
 }
 
-/// `(line, character)` → byte offset in `text`, via plain string scanning —
+/// `(line, character)` → byte offset in `text`, via plain string scanning,
 /// deliberately re-implemented rather than delegating to
 /// `hume_rope::position_encoding` so the test mirror shares no code with it.
 /// Splits on `\n` alone, matching `hume_rope`'s "LF is the only line break"
@@ -131,7 +131,7 @@ fn wire_pos_to_byte(text: &str, pos: lsp_types::Position, enc: PositionEncoding)
             }
             byte_off
         }
-        // `character` counts chars, not code units — the byte offset of
+        // `character` counts chars, not code units: the byte offset of
         // the `character`-th char directly, unlike the UTF-16 arm's own
         // manual `len_utf16()` accumulation (chars have no fixed unit
         // count to accumulate here; `char_indices` already walks by char).

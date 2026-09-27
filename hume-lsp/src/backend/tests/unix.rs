@@ -1,5 +1,5 @@
 //! `/bin/cat` end-to-end tests, gated once at the `mod unix;` declaration in
-//! the parent — the whole module is unix-only since both tests spawn
+//! the parent. The whole module is unix-only since both tests spawn
 //! `/bin/cat` as a stand-in server.
 
 use super::super::*;

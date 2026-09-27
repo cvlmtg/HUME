@@ -1,5 +1,5 @@
 //! Deterministic scripted double for [`LspBackend`]: no process, no threads.
-//! The workhorse for every editor/Steel test — the LSP analog
+//! The workhorse for every editor/Steel test, the LSP analog
 //! of `hume-treesitter`'s `InlineParseBackend`.
 
 use std::collections::VecDeque;
@@ -71,7 +71,7 @@ impl InlineLspBackend {
         backend
     }
 
-    /// Any undrained event? Test-only introspection — not part of
+    /// Any undrained event? Test-only introspection, not part of
     /// `LspBackend` (production has no cheap way to peek an `mpsc::Receiver`
     /// without consuming it; wake-up in production is arrival-driven via
     /// `WakeCallback`, not this kind of poll).
@@ -101,7 +101,7 @@ impl LspBackend for InlineLspBackend {
     }
 
     fn send(&mut self, server: ServerId, msg: Message) {
-        // Delivered on the *next* drain, never inline here — callers depend
+        // Delivered on the *next* drain, never inline here. Callers depend
         // on the drain boundary, same discipline as InlineParseBackend.
         if let Message::Request { id, method, .. } = &msg
             && let Some(q) = self.responses.get_mut(method)

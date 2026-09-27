@@ -48,7 +48,7 @@ fn strip_snippet_leaves_plain_text_untouched() {
 
 #[test]
 fn strip_snippet_a_dollar_followed_by_a_digit_is_always_a_tabstop_reference() {
-    // "$5" is a bare tabstop ref (dropped) even mid-word — "$5.00" is
+    // "$5" is a bare tabstop ref (dropped) even mid-word: "$5.00" is
     // not special-cased as currency; only the digit run after `$` is
     // consumed.
     assert_eq!(strip_snippet("$5.00"), ".00");
@@ -73,7 +73,7 @@ fn text_edit_from_json_lenient_reads_the_edit_shape() {
 
 #[test]
 fn text_edit_from_json_lenient_prefers_the_narrower_insert_range() {
-    // `InsertReplaceEdit` has both an `insert` and a wider `replace` range —
+    // `InsertReplaceEdit` has both an `insert` and a wider `replace` range;
     // only `insert` is read, matching the strict-parse path's own choice
     // (see `CompletionItem::from_typed` in `hume-editor`).
     let v = serde_json::json!({

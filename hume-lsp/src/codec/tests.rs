@@ -73,7 +73,7 @@ fn roundtrip_response_ok_with_a_null_result() {
     // Many LSP methods legitimately succeed with a null result
     // (workspace/executeCommand, rename-with-nothing-to-change, …).
     // `{"id":5,"result":null}` must classify as a successful Response,
-    // not Ambiguous — serde's default `Option<Value>` deserialization
+    // not Ambiguous: serde's default `Option<Value>` deserialization
     // collapses "field absent" and "field present as null" to the same
     // `None`, which this codec must not do for `result`/`error`.
     let msg = Message::Response {
@@ -168,7 +168,7 @@ fn content_length_above_cap_is_error() {
 #[test]
 fn header_line_with_no_newline_past_cap_is_error() {
     // A stream that never sends a newline must not grow `read_line`'s
-    // buffer without bound — it errors once the cap is exceeded.
+    // buffer without bound. It errors once the cap is exceeded.
     let garbage = vec![b'x'; 128 * 1024];
     let mut cursor = Cursor::new(garbage);
     match read_message(&mut cursor) {
@@ -179,7 +179,7 @@ fn header_line_with_no_newline_past_cap_is_error() {
 
 #[test]
 fn clean_eof_at_frame_boundary_is_distinct_from_mid_frame_truncation() {
-    // Nothing at all read for this frame — a voluntary server exit,
+    // Nothing at all read for this frame: a voluntary server exit,
     // not a truncation.
     let mut cursor = Cursor::new(Vec::<u8>::new());
     match read_message(&mut cursor) {
@@ -188,7 +188,7 @@ fn clean_eof_at_frame_boundary_is_distinct_from_mid_frame_truncation() {
     }
 
     // A header line was already read for this frame before the stream
-    // ended — a genuine mid-frame truncation, not a clean exit.
+    // ended: a genuine mid-frame truncation, not a clean exit.
     let mut cursor = Cursor::new(b"Content-Length: 5\r\n".to_vec());
     match read_message(&mut cursor) {
         Err(CodecError::Io(_)) => {}
@@ -228,7 +228,7 @@ fn two_frames_back_to_back() {
 
 #[test]
 fn multibyte_utf8_body_length_counts_bytes() {
-    // "é" is 2 bytes in UTF-8 but 1 char — Content-Length must count bytes.
+    // "é" is 2 bytes in UTF-8 but 1 char, so Content-Length must count bytes.
     let msg = Message::Notification {
         method: "test".to_string(),
         params: serde_json::json!({"text": "héllo wörld 日本語"}),
@@ -262,7 +262,7 @@ fn write_emits_exact_crlf_crlf() {
 
 #[test]
 fn ambiguous_body_is_error() {
-    // Both method and result present — neither request/notification nor response.
+    // Both method and result present: neither request/notification nor response.
     let body = br#"{"id":1,"method":"foo","result":{}}"#;
     let mut framed = Vec::new();
     write!(framed, "Content-Length: {}\r\n\r\n", body.len()).unwrap();
@@ -277,7 +277,7 @@ fn ambiguous_body_is_error() {
 #[test]
 fn write_emits_jsonrpc_version_member() {
     // JSON-RPC 2.0 requires "jsonrpc":"2.0" on every request, response,
-    // and notification — a strict server-side stack can reject or drop
+    // and notification. A strict server-side stack can reject or drop
     // a frame missing it.
     let msg = Message::Notification {
         method: "textDocument/didOpen".to_string(),

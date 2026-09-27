@@ -21,7 +21,7 @@ fn path_to_uri_rejects_relative_path() {
 fn uri_to_display_string_drops_the_slash_before_a_drive_letter_on_every_platform() {
     // A server on Windows can report a location to an editor running
     // anywhere. `uri_to_path` keeps the leading slash off Windows because
-    // `/C:/…` is the literal path there — but a drawer row is text, and
+    // `/C:/…` is the literal path there, but a drawer row is text, and
     // `C:/Users/x/main.rs` is how that location is named.
     let uri = lsp_types::Uri::from_str("file:///C:/Users/x/main.rs").expect("parse");
     assert_eq!(
@@ -76,7 +76,7 @@ fn uri_to_path_rejects_relative_reference() {
 #[test]
 fn uri_to_path_rejects_percent_encoded_traversal_segment() {
     // "%2F" inside a single segment decodes to '/', which would silently
-    // inject an extra path boundary — must be rejected, not merged.
+    // inject an extra path boundary. It must be rejected, not merged.
     let uri = lsp_types::Uri::from_str("file:///tmp/etc%2Fpasswd").expect("parse");
     assert!(matches!(uri_to_path(&uri), Err(UriError::Decode(_))));
 }
@@ -89,7 +89,7 @@ fn uri_to_path_rejects_dot_dot_segment() {
 
 #[test]
 fn uri_to_path_rejects_percent_encoded_dot_dot_segment() {
-    // "%2E%2E" decodes to "..", same traversal hazard as the literal form —
+    // "%2E%2E" decodes to "..", same traversal hazard as the literal form:
     // must be caught after decoding, not before.
     let uri = lsp_types::Uri::from_str("file:///tmp/%2E%2E/etc/passwd").expect("parse");
     assert!(matches!(uri_to_path(&uri), Err(UriError::Decode(_))));

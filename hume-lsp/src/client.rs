@@ -44,7 +44,7 @@ pub enum ClientAction {
     /// first, then anything queued while `Starting`), then fire
     /// `on-lsp-attach` for buffers already attached to this server.
     BecameRunning { send: Vec<Message> },
-    /// The connection died — report once; restart stays manual.
+    /// The connection died: report once; restart stays manual.
     Crashed { error: Option<String> },
     /// The server sent a request; every one must get exactly one response
     /// (a hung server request can stall its whole pipeline). The dispatch
@@ -81,7 +81,7 @@ pub enum ClientAction {
 /// patches in a default for the one field each shape is known to omit in
 /// the wild (see the `recover_*` helpers below) and retries. Falls back to
 /// `ServerNotification` for an unknown method, or params neither pass
-/// parses — deserializes by reference so a malformed payload leaves
+/// parses. Deserializes by reference so a malformed payload leaves
 /// `params` intact for that fallback (`from_value` would consume it).
 fn classify_notification(method: String, params: serde_json::Value) -> ClientAction {
     use lsp_types::notification::{LogMessage, Progress, PublishDiagnostics, ShowMessage};
@@ -123,7 +123,7 @@ fn classify_notification(method: String, params: serde_json::Value) -> ClientAct
 }
 
 /// Recovers a `$/progress` whose `WorkDoneProgress::Begin` omits the
-/// lsp_types-required `title` — observed from servers that treat it as
+/// lsp_types-required `title`, observed from servers that treat it as
 /// optional in practice. Checks the shape against the borrowed `params`
 /// first: any other off-spec shape (an unkeyable `token`, an unknown `kind`)
 /// returns `None` without cloning, and falls through to
@@ -146,7 +146,7 @@ fn recover_progress(params: &serde_json::Value) -> Option<lsp_types::ProgressPar
 }
 
 /// Recovers a `window/logMessage`/`window/showMessage` whose `type` is
-/// missing or not an integer — `MessageType` is a transparent `i32` newtype,
+/// missing or not an integer: `MessageType` is a transparent `i32` newtype,
 /// so any integer parses; only the type tag itself is ever the problem.
 /// `message` staying missing/non-string is unrecoverable (it's the payload)
 /// and still falls through.
@@ -164,7 +164,7 @@ where
 }
 
 /// Everything but the outcome needed to route (or discard) a completed
-/// request. `hume-lsp` never holds editor closures (crate fence) — the
+/// request. `hume-lsp` never holds editor closures (crate fence); the
 /// editor keys its own callback under the `(ServerId, RequestId)` pair
 /// this crate already hands back from `send_request`/`take_completed`/
 /// `drain_pending`, so no separate token needs to round-trip through here.
@@ -182,15 +182,15 @@ pub enum Outcome {
 }
 
 /// How long `initialize` may go unanswered before the client gives up and
-/// transitions to `Crashed` — deliberately independent of
+/// transitions to `Crashed`, deliberately independent of
 /// `lsp.request-timeout-ms` (a per-request setting): a cold server's
 /// handshake legitimately outlasts the timeout an ordinary request would
 /// get.
 const INITIALIZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// How long `shutdown` may go unanswered before its pending entry is swept
-/// as timed out. Never observed in production — `:lsp-stop` drains pending
-/// requests immediately and quit tears the transport down regardless — but
+/// as timed out. Never observed in production (`:lsp-stop` drains pending
+/// requests immediately and quit tears the transport down regardless), but
 /// every `pending` entry needs a deadline.
 const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -200,12 +200,12 @@ pub struct LspClient {
     id: ServerId,
     state: ServerState,
     /// Typed decode of `caps_json`, read only by `change_sync` (needs the
-    /// `TextDocumentSyncCapability` enum's `Kind`/`Options` distinction) —
+    /// `TextDocumentSyncCapability` enum's `Kind`/`Options` distinction),
     /// lossy, since `ServerCapabilities` only models whatever the pinned
     /// `lsp_types` version knows about, so this is never the answer to "what
     /// did the server advertise". `caps_json` is that answer.
     caps: Option<ServerCapabilities>,
-    /// The server's raw `capabilities` object, verbatim off the wire —
+    /// The server's raw `capabilities` object, verbatim off the wire:
     /// the capabilities source of truth. Every consumer outside this file
     /// reads this, not `caps`: a typed round-trip through `caps` silently
     /// drops any field the pinned `lsp_types` version doesn't model (e.g.
@@ -216,27 +216,27 @@ pub struct LspClient {
     /// instead of cloning the whole capabilities blob per read.
     caps_json: Option<Arc<serde_json::Value>>,
     /// Negotiated position encoding; UTF-16 until `initialize` proves UTF-8.
-    /// A decode-once cache of `caps.position_encoding` — `handle_initialize_
+    /// A decode-once cache of `caps.position_encoding` (`handle_initialize_
     /// response` is the only writer of either field, an invariant field
-    /// privacy enforces — kept separate so callers don't re-derive it from
+    /// privacy enforces), kept separate so callers don't re-derive it from
     /// the raw capability on every position conversion, not an independent
     /// fact that could drift on its own.
     encoding: PositionEncoding,
     root: PathBuf,
-    /// `initializationOptions` for the `initialize` request — set via
+    /// `initializationOptions` for the `initialize` request, set via
     /// `set_init_options` before `start_handshake` to take effect; `None`
     /// omits the field entirely (never sent as `null`).
     init_options: Option<serde_json::Value>,
-    /// Server configuration — set via `set_settings` before `start_handshake`
+    /// Server configuration, set via `set_settings` before `start_handshake`
     /// to take effect. Pushed once as `workspace/didChangeConfiguration`
     /// right after `initialized`, and answered to `workspace/configuration`
     /// pull requests (resolved per-item by `resolve_config_section`). `None`
     /// sends no push at all, and pull requests fall back to `null` per item.
     settings: Option<serde_json::Value>,
-    /// Messages (e.g. `didOpen`) that arrived while `Starting` — sent, in
+    /// Messages (e.g. `didOpen`) that arrived while `Starting`, sent, in
     /// order, right after `initialized` once the handshake completes.
     queued: Vec<Message>,
-    /// Discriminates the `initialize` response in `on_event` — kept
+    /// Discriminates the `initialize` response in `on_event`, kept
     /// separate from a method-string check so a Steel-issued `(lsp-request
     /// "initialize" ...)` through the generic bridge (which mints its own
     /// ordinary `pending` entry) can never be mistaken for the handshake.
@@ -245,7 +245,7 @@ pub struct LspClient {
     /// Requests awaiting a response, keyed by the id we sent.
     pending: FxHashMap<RequestId, RequestMeta>,
     /// Responses matched against `pending` by `on_event`, waiting to be
-    /// pulled by `take_completed` — never delivered inline (same
+    /// pulled by `take_completed`, never delivered inline (same
     /// drain-boundary discipline as the `InlineLspBackend` double).
     completed: Vec<(RequestId, RequestMeta, Outcome)>,
 }
@@ -282,13 +282,13 @@ impl LspClient {
         self.caps_json.as_ref()
     }
 
-    /// Sets `initializationOptions` for the upcoming `initialize` request —
-    /// must be called before `start_handshake` to take effect.
+    /// Sets `initializationOptions` for the upcoming `initialize` request.
+    /// Must be called before `start_handshake` to take effect.
     pub fn set_init_options(&mut self, init_options: Option<serde_json::Value>) {
         self.init_options = init_options;
     }
 
-    /// Sets the server configuration blob — must be called before
+    /// Sets the server configuration blob. Must be called before
     /// `start_handshake` to take effect. Pushed as `workspace/
     /// didChangeConfiguration` right after `initialized`; also consulted to
     /// answer `workspace/configuration` pull requests.
@@ -301,12 +301,12 @@ impl LspClient {
     }
 
     /// The `didChange` form the server asked for, or `None` when it wants no
-    /// change notifications at all (declared `NONE`, or declared nothing —
+    /// change notifications at all (declared `NONE`, or declared nothing,
     /// the spec's default for an absent `textDocumentSync`). Before the
     /// handshake there is no declaration to read, so this answers `FULL`: a
     /// whole-document event is the one form every server accepts, and
     /// dropping edits queued while `Starting` would desync the mirror
-    /// permanently. Derived from `caps` rather than cached — read once per
+    /// permanently. Derived from `caps` rather than cached: read once per
     /// flush, not once per position conversion, so `encoding`'s decode-once
     /// rationale doesn't apply here.
     pub fn change_sync(&self) -> Option<TextDocumentSyncKind> {
@@ -335,7 +335,7 @@ impl LspClient {
     }
 
     /// Sends a request and remembers `meta` for correlation. Requests are
-    /// position-independent from this layer's perspective — staleness by
+    /// position-independent from this layer's perspective; staleness by
     /// buffer generation is tracked editor-side (the crate fence: `hume-lsp`
     /// has no `BufferId`).
     ///
@@ -347,8 +347,8 @@ impl LspClient {
     ///
     /// A Crashed/Dead connection has its `meta.deadline` clamped to now: the
     /// send is silently dropped (see `send_or_queue`) and nothing will ever
-    /// answer it, so the caller's whole requested timeout — routinely tens
-    /// of seconds — must not stand between it and the `TimedOut` outcome
+    /// answer it, so the caller's whole requested timeout (routinely tens
+    /// of seconds) must not stand between it and the `TimedOut` outcome
     /// `take_completed`'s sweep already delivers for a request that expires.
     pub fn send_request(
         &mut self,
@@ -371,16 +371,16 @@ impl LspClient {
         id
     }
 
-    /// Requests currently awaiting a response — the "N in flight" count for
+    /// Requests currently awaiting a response: the "N in flight" count for
     /// `:lsp-status` and `lsp-server-status`. Includes the in-flight
-    /// `initialize`/`shutdown` handshake requests — those are ordinary
+    /// `initialize`/`shutdown` handshake requests; those are ordinary
     /// `pending` entries too.
     pub fn pending_count(&self) -> usize {
         self.pending.len()
     }
 
     /// Earliest deadline among pending requests (`initialize`/`shutdown`
-    /// included — they are ordinary `pending` entries too). Feeds the
+    /// included; they are ordinary `pending` entries too). Feeds the
     /// editor's completion-driven wake predicate: this deadline is what
     /// keeps the timeout sweep in `take_completed` firing promptly even on a
     /// server that never responds.
@@ -389,8 +389,8 @@ impl LspClient {
     }
 
     /// Best-effort cancellation: drops the pending entry (if still present),
-    /// strips a still-queued Starting-phase send, and — only once the
-    /// handshake has completed — sends `$/cancelRequest`. A no-op if the
+    /// strips a still-queued Starting-phase send, and (only once the
+    /// handshake has completed) sends `$/cancelRequest`. A no-op if the
     /// request already completed. Production caller: the editor bridge's
     /// `#:supersede` path (a new request cancels the caller's previous
     /// still-pending one filed under the same key).
@@ -401,7 +401,7 @@ impl LspClient {
         }
     }
 
-    /// Removes and returns every still-pending request — for teardown paths
+    /// Removes and returns every still-pending request, for teardown paths
     /// that drop the client (e.g. `:lsp-stop`) so the caller can dispatch
     /// each as timed out rather than silently orphaning a registered
     /// callback along with the client.
@@ -410,7 +410,7 @@ impl LspClient {
     }
 
     /// Forces every pending deadline into the past, so the next
-    /// `take_completed` sweep expires them without waiting out real time —
+    /// `take_completed` sweep expires them without waiting out real time,
     /// e.g. to drive an `initialize` timeout in an editor-level test without
     /// an injectable clock.
     #[cfg(any(test, feature = "test-util"))]
@@ -424,7 +424,7 @@ impl LspClient {
     /// Drops `id`'s `Message::Request` from the Starting-queue, if it's
     /// still sitting there unsent. A cancelled or timed-out request whose
     /// `pending` entry is gone must not still be flushed to the server by
-    /// `handle_initialize_response` once the handshake completes — nothing
+    /// `handle_initialize_response` once the handshake completes: nothing
     /// would be left to correlate the eventual response (or notice it
     /// arrived at all), and no `$/cancelRequest` would ever follow it.
     fn drop_from_queue(&mut self, id: &RequestId) {
@@ -432,7 +432,7 @@ impl LspClient {
             .retain(|msg| !matches!(msg, Message::Request { id: qid, .. } if qid == id));
     }
 
-    /// Best-effort `$/cancelRequest` — only legal once the handshake has
+    /// Best-effort `$/cancelRequest`, only legal once the handshake has
     /// completed, same reasoning as `send_or_queue`'s Starting-queue.
     fn send_cancel_notification(&self, backend: &mut dyn LspBackend, id: &RequestId) {
         if self.state == ServerState::Running {
@@ -448,15 +448,15 @@ impl LspClient {
 
     /// Pulls every request that finished (correlated response) or expired
     /// (deadline reached) since the last call. Called at drain, alongside
-    /// `on_event` — deadline checks piggyback on the same cadence, no
+    /// `on_event`: deadline checks piggyback on the same cadence, no
     /// separate timer thread. A timed-out entry gets a best-effort
     /// `$/cancelRequest` sent here (colocated with the detection, so it's
-    /// testable without an editor in the loop) — only once `Running`, same
+    /// testable without an editor in the loop), only once `Running`, same
     /// handshake-ordering reasoning as `cancel`.
     ///
     /// `initialize` piggybacks on this same sweep instead of a separate
     /// timeout check: on expiry it is never pushed into the completed Vec
-    /// (no callback is ever registered for it — the handshake response is
+    /// (no callback is ever registered for it; the handshake response is
     /// handled synchronously in `on_event`) and instead surfaces as a
     /// `Crashed` action, guarded so it reports exactly once even if the
     /// deadline keeps getting swept after the state has already moved on
@@ -517,7 +517,7 @@ impl LspClient {
         .expect("InitializeParams always serializes");
         advertise_ranges_support(&mut params);
 
-        // Sent directly, never via `send_or_queue` — `initialize` is the one
+        // Sent directly, never via `send_or_queue`: `initialize` is the one
         // request legal on the wire before `initialized`; routing it through
         // the Starting-queue would deadlock the handshake against itself.
         backend.send(
@@ -532,7 +532,7 @@ impl LspClient {
 
     /// Send `msg` now if the handshake has completed, otherwise queue it for
     /// delivery, in order, once `initialized` goes out. A dead or crashed
-    /// connection silently drops the send — the crash is already reported
+    /// connection silently drops the send; the crash is already reported
     /// via the `Crashed` state, matching the transport's own
     /// send-after-death discipline.
     pub fn send_or_queue(&mut self, backend: &mut dyn LspBackend, msg: Message) {
@@ -548,7 +548,7 @@ impl LspClient {
         match ev {
             InboundEvent::Eof { error } => {
                 // Guard against reporting twice if more events trickle in
-                // after the connection is already known dead — `Dead` covers
+                // after the connection is already known dead. `Dead` covers
                 // a graceful `begin_shutdown` teardown racing a trailing
                 // `Eof` from the exiting process just as validly as
                 // `Crashed` covers an actual crash; either way this must not
@@ -567,7 +567,7 @@ impl LspClient {
                 self.pending.remove(&id);
                 // `begin_shutdown` on a still-Starting client jumps straight
                 // to `Dead` without waiting for (or cancelling) the in-flight
-                // `initialize` — a response landing after that must not
+                // `initialize`, and a response landing after that must not
                 // resurrect the client into `Running` via the handler below,
                 // which unconditionally overwrites `state`.
                 if self.state == ServerState::Starting {
@@ -610,7 +610,7 @@ impl LspClient {
             }
         };
         // Captured before `from_value` below consumes `value`. Arc-wrapped
-        // here, at the one clone this data ever needs — every later read
+        // here, at the one clone this data ever needs: every later read
         // (`capabilities_json`, and the `JsonHandle` it becomes crossing to
         // Steel) shares this allocation instead of cloning again.
         let raw_caps = value.get("capabilities").cloned().map(Arc::new);
@@ -624,7 +624,7 @@ impl LspClient {
             }
         };
 
-        // Absent `positionEncoding` means UTF-16 per spec — never default to
+        // Absent `positionEncoding` means UTF-16 per spec. Never default to
         // UTF-8 just because the server omitted the field.
         self.encoding = if parsed.capabilities.position_encoding == Some(PositionEncodingKind::UTF8)
         {
@@ -642,7 +642,7 @@ impl LspClient {
                 .expect("InitializedParams always serializes"),
         }];
         // Pushed once, right after `initialized` and before any queued
-        // `didOpen` — some servers read configuration only from this push
+        // `didOpen`: some servers read configuration only from this push
         // and never issue a `workspace/configuration` pull. Omitted
         // entirely when unset, never sent as `settings: null`.
         if let Some(settings) = self.settings.clone() {
@@ -656,13 +656,13 @@ impl LspClient {
         vec![ClientAction::BecameRunning { send }]
     }
 
-    /// `shutdown` request, then `exit` notification — only while `Running`;
+    /// `shutdown` request, then `exit` notification, only while `Running`;
     /// nothing but `initialize` is legal on the wire before `initialized`,
     /// so a Starting (or already Crashed/Dead) client sends nothing here.
     /// Every caller still gets a definite `Dead` transition regardless of
     /// prior state, so the transport-level teardown (`ServerHandle::drop`:
     /// kill -> wait -> join, which reaps the process unconditionally) is
-    /// always what actually ends a non-Running client — this is a
+    /// always what actually ends a non-Running client. This is a
     /// best-effort protocol courtesy on top of that, never a substitute
     /// for it, and never a synchronous round-trip. The `shutdown` response
     /// correlates through `pending`/`take_completed` like any other request;
@@ -701,9 +701,9 @@ impl LspClient {
 /// Sets `capabilities.textDocument.rangeFormatting.rangesSupport = true` on
 /// the serialized `initialize` params, advertising LSP 3.18's
 /// `textDocument/rangesFormatting`. `lsp_types` 0.97 predates that
-/// extension — `DocumentRangeFormattingClientCapabilities` is a bare
+/// extension (`DocumentRangeFormattingClientCapabilities` is a bare
 /// `DynamicRegistrationClientCapabilities` alias with no `rangesSupport`
-/// field — so the flag is unrepresentable in the typed `ClientCapabilities`
+/// field), so the flag is unrepresentable in the typed `ClientCapabilities`
 /// built by `build_client_capabilities` and must be patched into the
 /// already-serialized JSON instead. `range_formatting: Some(Default::
 /// default())` there guarantees this pointer resolves to an (empty) object.
@@ -750,27 +750,27 @@ fn build_client_capabilities() -> ClientCapabilities {
         workspace: Some(WorkspaceClientCapabilities {
             apply_edit: Some(true),
             configuration: Some(true),
-            // No dynamic registration path exists — the push happens
+            // No dynamic registration path exists: the push happens
             // unconditionally right after `initialized`, so this only
             // needs to be present, not negotiated.
             did_change_configuration: Some(DidChangeConfigurationClientCapabilities {
                 dynamic_registration: Some(false),
             }),
             workspace_folders: Some(true),
-            // Every rename result is a WorkspaceEdit — some servers
+            // Every rename result is a WorkspaceEdit. Some servers
             // (rust-analyzer) refuse textDocument/rename outright without
             // this declared, since they can't otherwise confirm the client
             // can apply one (found via manual smoke testing).
             //
             // `resource_operations` must be present (non-empty) or
-            // rust-analyzer refuses *every* rename outright — confirmed
-            // live. That covers more than the file-rename-adjacent case
+            // rust-analyzer refuses *every* rename outright (confirmed
+            // live). That covers more than the file-rename-adjacent case
             // below. `edits::
             // collect_edit_entries` has no HUME equivalent for an actual
             // `DocumentChangeOperation::Op` and rejects the whole edit if
             // one ever arrives (a rename whose target shares its name with
             // its containing module/file, which rust-analyzer folds a file
-            // rename into) — a real, occasional, safe-by-design rejection,
+            // rename into) is a real, occasional, safe-by-design rejection,
             // not the common case, and the alternative (never declaring
             // resource_operations) breaks every rename instead.
             workspace_edit: Some(WorkspaceEditClientCapabilities {
@@ -805,13 +805,13 @@ fn build_client_capabilities() -> ClientCapabilities {
             }),
             // Without `label_offset_support` a server must describe each
             // parameter by repeating its text, which only *names* the
-            // parameter — locating it back inside the signature label means
+            // parameter; locating it back inside the signature label means
             // substring-searching for it, and a label like
             // `fn f(a: T, b: T)` has no unique match to find. The offset
             // form says where it is outright, which is what marking the
             // active parameter in place will need. The offsets count code
             // units in the negotiated encoding, so they convert host-side
-            // (`lsp-label-offsets->text`) — Scheme has no way to know what
+            // (`lsp-label-offsets->text`): Scheme has no way to know what
             // was negotiated.
             signature_help: Some(SignatureHelpClientCapabilities {
                 signature_information: Some(SignatureInformationSettings {
@@ -831,9 +831,9 @@ fn build_client_capabilities() -> ClientCapabilities {
             formatting: Some(Default::default()),
             range_formatting: Some(Default::default()),
             // rust-analyzer withholds diagnostic-derived quickfixes
-            // entirely without code_action_literal_support declared — the
+            // entirely without code_action_literal_support declared (the
             // flag saying the client understands CodeAction objects, not
-            // just legacy Command[]. Without it, even a byte-perfect
+            // just legacy Command[]). Without it, even a byte-perfect
             // request (correct diagnostic round-tripped verbatim, correct
             // overlapping range) comes back empty.
             code_action: Some(CodeActionClientCapabilities {
@@ -865,7 +865,7 @@ fn build_client_capabilities() -> ClientCapabilities {
             ..Default::default()
         }),
         // rust-analyzer (and others) gate server-initiated `$/progress`
-        // (indexing/loading status) on this flag — without it, no progress
+        // (indexing/loading status) on this flag. Without it, no progress
         // notifications are sent at all, so the editor has no way to show
         // load status beyond the sub-second `initialize` handshake.
         window: Some(WindowClientCapabilities {
@@ -876,14 +876,14 @@ fn build_client_capabilities() -> ClientCapabilities {
     }
 }
 
-/// Answers a server-initiated request. Exhaustive by design — every request
+/// Answers a server-initiated request. Exhaustive by design: every request
 /// gets exactly one response, even the ones this v1 doesn't otherwise
 /// support. `workspace/applyEdit` is deliberately absent: it's the one
 /// server request that needs `&mut Editor` (the edit engine), so the editor
 /// glue answers it separately (`apply_edit_request_response`) rather than
 /// through this pure lookup table.
 ///
-/// `settings` is the server's configured blob (if any) — the caller resolves
+/// `settings` is the server's configured blob (if any); the caller resolves
 /// it from the registry keyed by server id, since this function has no
 /// editor state of its own.
 pub fn server_request_response(
@@ -897,7 +897,7 @@ pub fn server_request_response(
     match method {
         WorkspaceConfiguration::METHOD => Ok(workspace_configuration_response(params, settings)),
         // Acknowledged, no-op: these need no editor state to answer, unlike
-        // `workspace/applyEdit` (the one request this lookup can't handle —
+        // `workspace/applyEdit` (the one request this lookup can't handle;
         // see `apply_edit_request_response`).
         RegisterCapability::METHOD
         | UnregisterCapability::METHOD
@@ -911,7 +911,7 @@ pub fn server_request_response(
 }
 
 /// Resolves one requested item's `section` (e.g. `"a.b"`) against `settings`,
-/// treating it as the root config object — VS Code semantics. No section (or
+/// treating it as the root config object (VS Code semantics). No section (or
 /// an empty one) returns the whole blob; a dotted path walks object keys;
 /// any miss (missing key, or a non-object encountered mid-path) is `null`.
 pub(crate) fn resolve_config_section(
@@ -933,7 +933,7 @@ pub(crate) fn resolve_config_section(
 
 /// One entry per requested item, same length and order as `params.items`,
 /// per spec (the result array must line up positionally with the request).
-/// With no settings blob, every item answers `null` — same shape a server
+/// With no settings blob, every item answers `null`, the same shape a server
 /// sees from a client with no matching config.
 fn workspace_configuration_response(
     params: &serde_json::Value,

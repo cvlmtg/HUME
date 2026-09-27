@@ -24,7 +24,7 @@ fn uri_to_path_drive_letter_escaped_colon() {
 #[test]
 fn decoded_backslash_in_a_segment_is_rejected_on_windows() {
     // On Windows a decoded '\' inside one segment would be ambiguous
-    // with a real separator once the result reaches PathBuf — reject
+    // with a real separator once the result reaches PathBuf. Reject
     // it, same as a decoded '/'.
     let uri = lsp_types::Uri::from_str("file:///tmp/weird%5Cname.rs").expect("parse");
     assert!(matches!(uri_to_path(&uri), Err(UriError::Decode(_))));

@@ -2,7 +2,7 @@
 //!
 //! Wire format: `Content-Length: N\r\n\r\n` followed by exactly `N` bytes of
 //! a JSON-RPC body. Any other header before the blank line is tolerated and
-//! ignored. Any parse failure is treated as connection-fatal by the caller —
+//! ignored. Any parse failure is treated as connection-fatal by the caller;
 //! this module never tries to resynchronize a corrupted stream.
 
 use std::io::{BufRead, Write};
@@ -45,7 +45,7 @@ pub struct ResponseError {
 #[derive(Debug)]
 pub(crate) enum CodecError {
     Io(std::io::Error),
-    /// Clean end-of-stream exactly at a frame boundary — no header bytes
+    /// Clean end-of-stream exactly at a frame boundary: no header bytes
     /// were read yet, so nothing was interrupted mid-flight. Distinguishes
     /// a server's voluntary exit (nothing to report as a crash) from a real
     /// truncation error partway through a frame, which stays `Io`.
@@ -91,10 +91,10 @@ impl From<serde_json::Error> for CodecError {
 }
 
 /// `serde`'s default `Option<T>` deserialization treats a JSON `null` the
-/// same as the field being absent — collapsing both to `None`. `result`
+/// same as the field being absent, collapsing both to `None`. `result`
 /// and `error` need to tell those apart: a response's `result` is
 /// routinely a legitimate `null` (many LSP methods succeed with no
-/// payload — `workspace/executeCommand`, `textDocument/rename` when
+/// payload: `workspace/executeCommand`, `textDocument/rename` when
 /// nothing changed, …), and that must still classify as a `Response`, not
 /// `Ambiguous`. Wrapping the field in an extra `Option` (via this
 /// deserializer, invoked only when the field is present at all) keeps
@@ -109,7 +109,7 @@ where
 }
 
 /// Untyped wire shape: every field optional, classified after parsing.
-/// Deserialize-only — the write path uses [`RawMessageRef`] instead so
+/// Deserialize-only. The write path uses [`RawMessageRef`] instead so
 /// serializing a message never clones `params`/`result` (a `didOpen`
 /// carries the whole document text).
 #[derive(Deserialize)]
@@ -126,7 +126,7 @@ struct RawMessage {
     error: Option<ResponseError>,
 }
 
-/// Borrowed twin of [`RawMessage`] for the write path — serialization must
+/// Borrowed twin of [`RawMessage`] for the write path: serialization must
 /// not clone `params`/`result` (a `didOpen` carries the whole document
 /// text).
 #[derive(Serialize)]
@@ -144,14 +144,14 @@ struct RawMessageRef<'a> {
     error: Option<&'a ResponseError>,
 }
 
-/// Content-Length above this is never a legitimate LSP body — the largest
+/// Content-Length above this is never a legitimate LSP body. The largest
 /// realistic message (a huge hover or diagnostics burst) is well under
 /// this. Bounds the `vec![0u8; len]` allocation against a garbage or
 /// hostile `Content-Length` value.
 const MAX_CONTENT_LENGTH: usize = 256 * 1024 * 1024; // 256 MiB
 
 /// A single header line above this length cannot be a legitimate
-/// `Content-Length`/`Content-Type` header — bounds `read_line`'s growth
+/// `Content-Length`/`Content-Type` header. Bounds `read_line`'s growth
 /// against a stream that never sends a newline.
 const MAX_HEADER_LINE_LEN: usize = 64 * 1024; // 64 KiB
 
@@ -192,14 +192,14 @@ fn read_bounded_line(r: &mut impl BufRead, max: usize) -> std::io::Result<Option
 /// Reads headers up to the blank `\r\n` line, then exactly `Content-Length`
 /// bytes of body. Blocks until one full frame is available; any error
 /// (I/O, malformed header, truncated body, bad JSON, ambiguous shape) is
-/// fatal for the connection — callers must not attempt to resynchronize.
+/// fatal for the connection. Callers must not attempt to resynchronize.
 pub(crate) fn read_message(r: &mut impl BufRead) -> Result<Message, CodecError> {
     let mut content_length: Option<usize> = None;
     let mut first_line = true;
     loop {
         let Some(bytes) = read_bounded_line(r, MAX_HEADER_LINE_LEN)? else {
             // A frame boundary (nothing read yet for this message) is a
-            // clean, expected end-of-stream — a server that exited
+            // clean, expected end-of-stream: a server that exited
             // voluntarily. Mid-header-block, it's a genuine truncation.
             if first_line {
                 return Err(CodecError::Eof);
@@ -271,7 +271,7 @@ fn classify(raw: RawMessage) -> Result<Message, CodecError> {
 }
 
 /// Serializes `msg` and writes it with the exact `Content-Length: N\r\n\r\n`
-/// framing — some servers reject a bare `\n\n` terminator.
+/// framing, since some servers reject a bare `\n\n` terminator.
 pub(crate) fn write_message(w: &mut impl Write, msg: &Message) -> std::io::Result<()> {
     let raw = match msg {
         Message::Request { id, method, params } => RawMessageRef {

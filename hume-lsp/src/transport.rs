@@ -1,7 +1,7 @@
 //! Server process management: spawns a language server over piped stdio and
 //! bridges its stdout/stdin/stderr to `mpsc` channels via three threads.
 //!
-//! Mirrors `hume-treesitter`'s `ThreadedParseBackend` — thread + channel
+//! Mirrors `hume-treesitter`'s `ThreadedParseBackend`: thread + channel
 //! ownership, the `Option<Sender>` close-to-signal pattern, `Drop` ordering.
 
 use std::io::{BufRead, BufReader, Write};
@@ -20,15 +20,15 @@ use crate::codec::{self, Message};
 /// editor's main loop wakes and drains it instead of rechecking on a poll
 /// cadence. Type-erased to keep `termina` types out of this
 /// crate's API even though it depends on `hume-platform` for
-/// [`TrackedChild`] —
-/// production wraps `termina::PlatformWaker::wake`.
+/// [`TrackedChild`].
+/// Production wraps `termina::PlatformWaker::wake`.
 pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
 
-/// Invokes a [`WakeCallback`] on drop — fires whether a thread exits
+/// Invokes a [`WakeCallback`] on drop. Fires whether a thread exits
 /// normally or unwinds from a panic, so a dead transport thread still wakes
 /// the main loop once (the subsequent drain observes the disconnect via the
 /// existing channel). A normal exit firing one extra, spurious wake is
-/// harmless — callers already tolerate spurious wakes by design.
+/// harmless: callers already tolerate spurious wakes by design.
 struct WakeOnDrop(WakeCallback);
 
 impl Drop for WakeOnDrop {
@@ -43,7 +43,7 @@ pub enum InboundEvent {
     Message(Message),
     /// One line of stderr output, already utf8-lossy decoded.
     Stderr(String),
-    /// The reader hit EOF or a codec error — the connection is dead.
+    /// The reader hit EOF or a codec error; the connection is dead.
     Eof {
         error: Option<String>,
     },
@@ -52,11 +52,11 @@ pub enum InboundEvent {
 /// Bound on the protocol-events channel. A server producing events faster
 /// than the editor drains them blocks the reader thread's `send`, which
 /// stops it reading stdout, which back-pressures the server on its own
-/// stdout pipe — a flooding server slows itself rather than growing memory
+/// stdout pipe: a flooding server slows itself rather than growing memory
 /// unboundedly on the editor side.
 const EVENTS_CHANNEL_BOUND: usize = 1024;
 
-/// Bound on the stderr channel. stderr is Trace-level logging only — when
+/// Bound on the stderr channel. stderr is Trace-level logging only. When
 /// full, `stderr_loop` drops the line (`try_send`) rather than blocking, so
 /// a chatty server can never stall the thread waiting for the editor to
 /// drain logs it may never read.
@@ -65,8 +65,8 @@ const STDERR_CHANNEL_BOUND: usize = 256;
 /// A running server process plus its bridging threads.
 ///
 /// `child` is a [`TrackedChild`], its own process-group leader, so a
-/// force-exit that skips this `Drop` entirely still reaps it — and any
-/// process it spawned in turn (e.g. rust-analyzer's `proc-macro-srv`) — via
+/// force-exit that skips this `Drop` entirely still reaps it (and any
+/// process it spawned in turn, e.g. rust-analyzer's `proc-macro-srv`) via
 /// `hume-platform`'s `process::tracked`.
 pub(crate) struct ServerHandle {
     /// Writer thread input; `None` after `Drop` closes it to signal the
@@ -104,7 +104,7 @@ impl ServerHandle {
             // npm-kind servers register a `.cmd` shim (e.g.
             // `node_modules/.bin/typescript-language-server.cmd`), which
             // `CreateProcess` cannot spawn directly. Args with cmd.exe
-            // metacharacters are unsupported here — registered npm-kind args
+            // metacharacters are unsupported here; registered npm-kind args
             // are trivial (e.g. `--stdio`).
             let mut c = Command::new("cmd");
             c.arg("/C").arg(cmd);
@@ -135,7 +135,7 @@ impl ServerHandle {
         // `child` kills and reaps itself (`ReapOnDrop`) on an early `?`
         // return below, so a bridging thread that fails to spawn leaves the
         // process behind for no one to leak. Threads that already started
-        // are not joined here — they wind down on their own once that
+        // are not joined here. They wind down on their own once that
         // happens: killing the child closes stdout/stderr, ending the
         // reader/stderr loops, and the writer loop ends once `tx_out` (and
         // every other sender into `rx_out`) drops at the same `?` return.
@@ -170,7 +170,7 @@ impl ServerHandle {
     }
 
     /// Send a message to the server. Silently dropped if the connection is
-    /// already dead — the crash is reported via the `Eof` event instead.
+    /// already dead; the crash is reported via the `Eof` event instead.
     pub fn send(&self, msg: Message) {
         if let Some(tx) = &self.tx {
             let _ = tx.send(msg);
@@ -178,7 +178,7 @@ impl ServerHandle {
     }
 
     /// Drains all events that have arrived since the last call: every
-    /// protocol message/EOF first, then every stderr line — not strict
+    /// protocol message/EOF first, then every stderr line. Not strict
     /// arrival order across the two source threads (they're on separate
     /// channels), but stderr is log-only, so its ordering relative to
     /// protocol traffic is cosmetic.
@@ -200,7 +200,7 @@ impl ServerHandle {
 
 /// Bound on how long `Drop` waits for the writer thread to flush any
 /// already-queued message (e.g. `begin_shutdown`'s `shutdown`/`exit` pair)
-/// before killing the process — long enough for a normal write+flush to a
+/// before killing the process: long enough for a normal write+flush to a
 /// live pipe, short enough that a server ignoring stdin doesn't hang exit.
 const WRITER_FLUSH_GRACE: std::time::Duration = std::time::Duration::from_millis(200);
 
@@ -231,7 +231,7 @@ fn wait_for_finish(handle: &thread::JoinHandle<()>, timeout: std::time::Duration
 
 impl Drop for ServerHandle {
     fn drop(&mut self) {
-        // Closing tx signals the writer thread's `for msg in rx` to end —
+        // Closing tx signals the writer thread's `for msg in rx` to end,
         // but only once it drains every message already queued. Killing
         // the process immediately after would race that flush purely on
         // scheduling luck, silently downgrading every "graceful" shutdown
@@ -245,7 +245,7 @@ impl Drop for ServerHandle {
         // and stderr threads' blocking reads.
         self.child.reap();
         // Bounded channels: a reader/stderr thread can be blocked mid-`send`
-        // on a full channel — closing the child's pipes only unblocks a
+        // on a full channel. Closing the child's pipes only unblocks a
         // thread stuck in a blocking *read*, not one already past that and
         // stuck pushing the result into a full channel. Dropping the
         // receivers here makes any such blocked `send` return `Err`,
@@ -266,7 +266,7 @@ impl Drop for ServerHandle {
 /// cannot spawn directly and must instead be run via `cmd /C`.
 ///
 /// Cfg-free and unit-testable on every platform even though it's only
-/// consulted (in `ServerHandle::spawn`) on Windows — dead on other targets.
+/// consulted (in `ServerHandle::spawn`) on Windows, dead on other targets.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn needs_cmd_shim(cmd: &str) -> bool {
     let lower = cmd.to_ascii_lowercase();
@@ -286,7 +286,7 @@ fn reader_loop(mut r: impl BufRead, tx: &mpsc::SyncSender<InboundEvent>, wake: &
                 wake();
             }
             // A clean end-of-stream at a frame boundary is a voluntary
-            // server exit, not a crash — report no error so the editor
+            // server exit, not a crash. Report no error so the editor
             // glue doesn't log a spurious "server crashed".
             Err(codec::CodecError::Eof) => {
                 let _ = tx.send(InboundEvent::Eof { error: None });
@@ -305,7 +305,7 @@ fn reader_loop(mut r: impl BufRead, tx: &mpsc::SyncSender<InboundEvent>, wake: &
 }
 
 /// Writes every message received until the channel closes. Flushes after
-/// every message — servers block on partial frames.
+/// every message: servers block on partial frames.
 fn writer_loop(mut w: impl Write, rx: mpsc::Receiver<Message>) {
     for msg in rx {
         if codec::write_message(&mut w, &msg).is_err() {
@@ -314,15 +314,15 @@ fn writer_loop(mut w: impl Write, rx: mpsc::Receiver<Message>) {
     }
 }
 
-/// Forwards each stderr line. Unstructured text — never parsed, just
+/// Forwards each stderr line. Unstructured text, never parsed, just
 /// relayed (the editor glue logs it). Uses `try_send`: a full channel drops
-/// the line rather than blocking (see `STDERR_CHANNEL_BOUND`) — stderr is
+/// the line rather than blocking (see `STDERR_CHANNEL_BOUND`): stderr is
 /// Trace-level logging, not protocol traffic, so losing a line under a
 /// flood is an acceptable trade against ever stalling this thread. Wakes
-/// the main loop only on a forwarded line — a dropped (`Full`) line adds no
+/// the main loop only on a forwarded line. A dropped (`Full`) line adds no
 /// observable data, and the send that filled the channel already woke it.
 /// Known risk: a server that crashes right after a burst fills the channel
-/// can have its most useful line — the one explaining *why* — dropped
+/// can have its most useful line (the one explaining *why*) dropped
 /// along with the flood, right when the log is most needed.
 fn stderr_loop(r: impl BufRead, tx: &mpsc::SyncSender<String>, wake: &WakeCallback) {
     for line in r.lines() {

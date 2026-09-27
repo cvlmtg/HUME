@@ -26,7 +26,7 @@ fn decodes_a_plain_location() {
     assert_eq!(wl.pos.character, 7);
 }
 
-/// `targetSelectionRange` wins over `targetRange` when both are present —
+/// `targetSelectionRange` wins over `targetRange` when both are present:
 /// the narrower, symbol-only span a client should land on, per the LSP
 /// spec's own guidance for `LocationLink`.
 #[test]
@@ -38,8 +38,8 @@ fn decodes_a_location_link_preferring_target_selection_range() {
     assert_eq!(wl.pos.character, 1);
 }
 
-/// A `LocationLink` with no `targetSelectionRange` at all — only some
-/// servers send it — must fall back to `targetRange` rather than error.
+/// A `LocationLink` with no `targetSelectionRange` at all (only some
+/// servers send it) must fall back to `targetRange` rather than error.
 #[test]
 fn decodes_a_location_link_with_only_target_range() {
     let mut link = location_link("file:///tmp/c.rs", 4, 0);

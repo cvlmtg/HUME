@@ -1,4 +1,4 @@
-//! Decoding a `Location`/`LocationLink` wire object — the shape a
+//! Decoding a `Location`/`LocationLink` wire object: the shape a
 //! `textDocument/definition`-family or `textDocument/references` response
 //! sends.
 
@@ -18,18 +18,18 @@ pub struct WireLocation {
 /// one position it names. `goto-location!` (the jump) and
 /// `lsp-locations->display-parts` (the drawer row) both decode through this
 /// one function, so a location valid enough to display is exactly one valid
-/// enough to jump to — see the `why` below.
+/// enough to jump to. See the `why` below.
 ///
 /// # Why this errors instead of degrading
 /// A drawer row exists only if it can be selected, and its `on-select` *is*
 /// `goto-location!`. A location missing a `uri` or `range.start` names no
 /// destination at all, so a row for it would be a place the user could
-/// click that leads nowhere — that must abort loudly, not render silently
+/// click that leads nowhere. That must abort loudly, not render silently
 /// wrong. This is categorically different from a location whose destination
 /// is real but whose *file* can't currently be read (deleted,
 /// permission-denied, non-UTF-8): the jump still works there, and only the
 /// displayed column is unknowable. Callers of this function make that
-/// degradation themselves, downstream of a successful decode — see
+/// degradation themselves, downstream of a successful decode; see
 /// `location_display_parts` in `hume-editor`.
 ///
 /// `caller` names the builtin in the returned error, since more than one

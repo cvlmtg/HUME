@@ -1,5 +1,5 @@
 //! Test-only doubles exposed to consumer crates via the `test-util` feature
-//! — mirrors the `hume-treesitter`/`hume-scripting` precedent.
+//! (mirrors the `hume-treesitter`/`hume-scripting` precedent).
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -15,14 +15,14 @@ use crate::transport::InboundEvent;
 pub type NotificationLog = Rc<RefCell<Vec<(String, serde_json::Value)>>>;
 
 /// Shared log of `(server, method, params)` for every *request* a
-/// `RecordingLspBackend` sends — separate from `NotificationLog` so
+/// `RecordingLspBackend` sends, separate from `NotificationLog` so
 /// existing exact-count assertions over the notification stream (e.g. the
 /// didOpen/didChange sequence) aren't disturbed by requests (e.g.
 /// `initialize`) also flowing through `send`.
 pub type RequestLog = Rc<RefCell<Vec<(ServerId, String, serde_json::Value)>>>;
 
 /// Shared log of `(server, id, result)` for every *response* a
-/// `RecordingLspBackend` sends — i.e. what the editor's dispatch table
+/// `RecordingLspBackend` sends, i.e. what the editor's dispatch table
 /// answered a server-initiated request with. Kept separate from the other
 /// two logs for the same reason: a test asserting on one stream shouldn't
 /// have to account for the others.
@@ -39,7 +39,7 @@ pub type ResponseLog = Rc<
 /// Wraps `InlineLspBackend`, additionally recording every outgoing
 /// notification's `(method, params)` into a shared log. Once a backend is
 /// boxed into `Box<dyn LspBackend>` (as `LspState` does), the trait object
-/// erases access to `InlineLspBackend::sent` — this lets a test recover the
+/// erases access to `InlineLspBackend::sent`. This lets a test recover the
 /// wire stream anyway, for invariants that replay it against a reference
 /// mirror.
 pub struct RecordingLspBackend {
@@ -51,7 +51,7 @@ pub struct RecordingLspBackend {
 
 impl RecordingLspBackend {
     /// Returns the backend plus shared handles to its notification and
-    /// request logs — keep the handles; the backend itself is typically
+    /// request logs. Keep the handles; the backend itself is typically
     /// moved into a `Box<dyn LspBackend>` immediately. Callers that only
     /// need the notification log bind the request log to `_`.
     pub fn new() -> (Self, NotificationLog, RequestLog) {
@@ -60,7 +60,7 @@ impl RecordingLspBackend {
     }
 
     /// Same as `new`, but pre-scripted with a canned `initialize` success
-    /// response — for tests that need the client to reach `Running` (and
+    /// response, for tests that need the client to reach `Running` (and
     /// therefore flush anything it queued while `Starting`) via a plain
     /// `drain_lsp()` call.
     pub fn with_default_handshake() -> (Self, NotificationLog, RequestLog) {
@@ -69,7 +69,7 @@ impl RecordingLspBackend {
         (backend, log, request_log)
     }
 
-    /// Same as `new`, but returns the response log instead — for tests
+    /// Same as `new`, but returns the response log instead, for tests
     /// asserting what the editor answered a server-initiated request with
     /// (e.g. `workspace/configuration`), rather than what the client itself
     /// sent.
@@ -95,7 +95,7 @@ impl RecordingLspBackend {
         )
     }
 
-    /// Pass-throughs to the wrapped `InlineLspBackend` — call before boxing
+    /// Pass-throughs to the wrapped `InlineLspBackend`. Call before boxing
     /// into `Box<dyn LspBackend>`, same as `InlineLspBackend` itself.
     pub fn respond_to(&mut self, method: &str, result: serde_json::Value) {
         self.inner.respond_to(method, result);

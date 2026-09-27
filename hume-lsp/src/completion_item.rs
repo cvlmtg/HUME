@@ -1,19 +1,19 @@
 //! Protocol-only decode helpers a `textDocument/completion` item's fields
 //! need: stripping snippet syntax HUME's v1 completion UI can't render, and
 //! the lenient `TextEdit` fallback for off-spec servers. `hume-editor`'s
-//! `CompletionItem` itself — the completion store's item type, ranked/
-//! filtered by `CompletionSession` and rendered as a menu row — is not a
+//! `CompletionItem` itself (the completion store's item type, ranked/
+//! filtered by `CompletionSession` and rendered as a menu row) is not a
 //! wire type and stays in `hume-editor/src/editor/completion/item.rs`;
 //! only the decode logic it needs lives here, alongside the sibling
 //! `location.rs` wire decoder.
 
 /// Rewrites `${n:default}` -> `default` (empty string if no `:default`) and
-/// bare `$n` -> "" (dropped) in an `insertTextFormat: Snippet` item's text —
+/// bare `$n` -> "" (dropped) in an `insertTextFormat: Snippet` item's text:
 /// v1 has no snippet-expansion UI (no tabstop cycling), so inserting raw
 /// snippet syntax verbatim would show it literally in the buffer. No
 /// choices (`${n|a,b|}`), no nested placeholders, no `\$` escapes. Operates
 /// on `char`s (Unicode scalars), matching how this logic worked when it was
-/// Steel `string-ref`/`substring` — this is text-content transformation on
+/// Steel `string-ref`/`substring`. This is text-content transformation on
 /// server-provided strings, not motion/selection code over buffer
 /// positions, so grapheme-cluster stepping doesn't apply here.
 pub fn strip_snippet(text: &str) -> String {
@@ -47,10 +47,10 @@ pub fn strip_snippet(text: &str) -> String {
     out
 }
 
-/// Extracts `(range, newText)` from a `CompletionTextEdit` JSON value —
+/// Extracts `(range, newText)` from a `CompletionTextEdit` JSON value,
 /// either shape (`Edit`: `{"range", "newText"}`, or `InsertReplaceEdit`:
 /// `{"insert", "replace", "newText"}`, using the narrower `insert` range).
-/// Tolerates a malformed/partial shape by returning `None` — the caller
+/// Tolerates a malformed/partial shape by returning `None`: the caller
 /// drops just the edit, not the whole item.
 pub fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::TextEdit> {
     let range = v.get("range").or_else(|| v.get("insert"))?;
@@ -64,9 +64,9 @@ pub fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::T
     })
 }
 
-/// Lenient `additionalTextEdits` reader — shared by a completion item's own
+/// Lenient `additionalTextEdits` reader, shared by a completion item's own
 /// off-spec fallback parse and a `completionItem/resolve` response handler
-/// (which never goes through strict deserialize at all — a resolved item
+/// (which never goes through strict deserialize at all: a resolved item
 /// that's otherwise off-spec shouldn't lose a well-formed edit list over an
 /// unrelated malformed field elsewhere in the response).
 pub fn parse_additional_text_edits_lenient(
@@ -80,14 +80,14 @@ pub fn parse_additional_text_edits_lenient(
 }
 
 /// Decodes a `textDocument/completion` response: a bare `CompletionItem[]`
-/// (which has no `isIncomplete` field of its own — the outer `Option`
+/// (which has no `isIncomplete` field of its own; the outer `Option`
 /// distinguishes this from a `CompletionList`'s explicit flag, so a caller
 /// that wants an `#:incomplete` argument of its own to still apply can tell
 /// the two shapes apart) or a `CompletionList` object (`{isIncomplete,
 /// items}`). `None` for any other shape, or an object missing (or
-/// malformed) `items` — the caller treats that the same as an error
+/// malformed) `items`. The caller treats that the same as an error
 /// response, rather than silently completing nothing. A missing or
-/// non-bool `isIncomplete` on a `CompletionList` counts as `false` — this
+/// non-bool `isIncomplete` on a `CompletionList` counts as `false`. This
 /// is the response-level counterpart of the same lenient-everywhere-but-
 /// the-one-required-field discipline the completion store itself uses to
 /// decode each item (`hume-editor`'s own `CompletionItem::from_json`).

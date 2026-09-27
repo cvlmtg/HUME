@@ -61,7 +61,7 @@ fn cat_echo_fires_waker() {
     drop(handle);
 }
 
-/// `env` reaches the spawned process's actual environment — the real-process
+/// `env` reaches the spawned process's actual environment: the real-process
 /// link in the `#:env` chain (Steel decode → `LspServerConfig` → here).
 /// Additive, not replacing: the child also inherits `PATH` well enough to
 /// resolve `/bin/sh` itself, so this only proves the *extra* pair arrives,
@@ -104,7 +104,7 @@ fn env_reaches_the_spawned_process() {
 fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
     // Guards a `Drop` deadlock with the bounded stderr channel: a thread blocked mid-`send` on a full channel is
     // NOT unblocked by `child.kill()` alone (killing only ends a
-    // blocking *read*) — `Drop` must also close the receivers. On
+    // blocking *read*), so `Drop` must also close the receivers. On
     // regression this test hangs (caught by the harness's own test
     // timeout); on a correct `Drop` it returns promptly.
     let root = std::env::current_dir().unwrap();
@@ -118,7 +118,7 @@ fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
     .expect("spawn sh");
 
     // Let stderr fill well past STDERR_CHANNEL_BOUND before draining. Poll
-    // instead of a single fixed sleep — a loaded CI runner can take longer
+    // instead of a single fixed sleep: a loaded CI runner can take longer
     // than one short sleep to spawn the child and produce output.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     let mut events = Vec::new();

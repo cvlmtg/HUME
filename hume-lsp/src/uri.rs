@@ -2,7 +2,7 @@
 //!
 //! Outgoing URIs always come from the canonical `Buffer.path` (the SSOT, on
 //! the `hume-editor` side); incoming URIs are converted to paths here and
-//! canonicalized by the caller before buffer lookup — this module never
+//! canonicalized by the caller before buffer lookup; this module never
 //! guesses a path on error, it only ever returns `Err`.
 
 use std::fmt;
@@ -15,16 +15,16 @@ pub enum UriError {
     NotFileScheme,
     /// [`path_to_uri`]'s input path was not absolute.
     NotAbsolute,
-    /// [`path_to_uri`]'s input path is not valid UTF-8 — never silently
+    /// [`path_to_uri`]'s input path is not valid UTF-8, never silently
     /// mangled via a lossy conversion.
     NotUtf8,
     /// The URI's authority is present and is neither empty nor `localhost`.
-    /// Windows: any other host is instead read as a UNC server name — see
+    /// Windows: any other host is instead read as a UNC server name; see
     /// [`uri_to_path`].
     BadAuthority(String),
     /// The URI's path failed to percent-decode, or a decoded segment is a
-    /// traversal component (`.` or `..`) or contains a `/` (always) or —
-    /// Windows only, where `\` is also a separator — a `\` disguising an
+    /// traversal component (`.` or `..`) or contains a `/` (always) or
+    /// (Windows only, where `\` is also a separator) a `\` disguising an
     /// extra path boundary (rejected defensively, see [`uri_to_path`]).
     Decode(String),
 }
@@ -53,9 +53,9 @@ impl std::error::Error for UriError {}
 /// leading `/` so the result reads `file:///C:/…`.
 ///
 /// # Errors
-/// [`UriError::NotAbsolute`] if `path` is relative — never joined against a
+/// [`UriError::NotAbsolute`] if `path` is relative, never joined against a
 /// cwd; the caller owns canonicalization. [`UriError::NotUtf8`] if `path`
-/// is not valid UTF-8 — never silently mangled via a lossy conversion.
+/// is not valid UTF-8, never silently mangled via a lossy conversion.
 pub fn path_to_uri(path: &Path) -> Result<lsp_types::Uri, UriError> {
     if !path.is_absolute() {
         return Err(UriError::NotAbsolute);
@@ -88,7 +88,7 @@ pub fn path_to_uri(path: &Path) -> Result<lsp_types::Uri, UriError> {
 
 /// Backslash → `/`, so a Windows path reads as a URI path. A no-op on
 /// Unix, where `\` is an ordinary, legal filename byte that must round-trip
-/// untouched (percent-encoded on the way out, accepted verbatim back in —
+/// untouched (percent-encoded on the way out, accepted verbatim back in;
 /// see [`uri_to_path`]).
 #[cfg(windows)]
 fn normalize_separators(s: &str) -> String {
@@ -100,7 +100,7 @@ fn normalize_separators(s: &str) -> String {
     s.to_owned()
 }
 
-/// Prefixes `s` with `/` unless it already starts with one — a URI path
+/// Prefixes `s` with `/` unless it already starts with one: a URI path
 /// component always needs the leading separator, whether it came from a
 /// drive-letter path (`C:/foo` -> `/C:/foo`) or a UNC share's tail.
 fn ensure_leading_slash(s: String) -> String {
@@ -124,7 +124,7 @@ fn unc_host_and_rest(s: &str) -> Option<(&str, &str)> {
 }
 
 /// `file://` URI → absolute path. Accepts empty and `localhost` authority;
-/// rejects other schemes/authorities loudly — never a guessed path. Windows:
+/// rejects other schemes/authorities loudly, never a guessed path. Windows:
 /// any other authority is read as a UNC server name instead of rejected.
 ///
 /// # Errors
@@ -171,7 +171,7 @@ pub fn uri_to_path(uri: &lsp_types::Uri) -> Result<PathBuf, UriError> {
         segments.push(decoded.into_owned());
     }
 
-    // UNC form: "file://server/share/foo" — reconstruct "\\server\share\foo"
+    // UNC form: "file://server/share/foo": reconstruct "\\server\share\foo"
     // rather than falling through to the leading-slash form below.
     #[cfg(windows)]
     if let Some(host) = unc_host {
@@ -181,7 +181,7 @@ pub fn uri_to_path(uri: &lsp_types::Uri) -> Result<PathBuf, UriError> {
     }
 
     // Windows drive-letter form: "file:///C:/foo" (or the colon escaped as
-    // "file:///c%3A/foo") decodes to a first segment "C:" — join without a
+    // "file:///c%3A/foo") decodes to a first segment "C:". Join without a
     // leading separator so the result reads "C:\foo", not "\C:\foo".
     #[cfg(windows)]
     if let Some(first) = segments.first()
@@ -201,8 +201,8 @@ pub fn uri_to_path(uri: &lsp_types::Uri) -> Result<PathBuf, UriError> {
 }
 
 /// `Ok(None)` for no authority, or an empty/`localhost` one. Windows:
-/// `Ok(Some(host))` for any other authority — read as a UNC server name.
-/// Elsewhere, any other authority is rejected outright — UNC has no meaning
+/// `Ok(Some(host))` for any other authority, read as a UNC server name.
+/// Elsewhere, any other authority is rejected outright: UNC has no meaning
 /// off Windows.
 fn resolve_authority(uri: &lsp_types::Uri) -> Result<Option<String>, UriError> {
     let Some(authority) = uri.authority() else {
@@ -222,8 +222,8 @@ fn resolve_authority(uri: &lsp_types::Uri) -> Result<Option<String>, UriError> {
     }
 }
 
-/// `true` if `segment` is a single ASCII letter followed by `:` (e.g. `"C:"`)
-/// — the decoded shape of a Windows drive-letter path segment.
+/// `true` if `segment` is a single ASCII letter followed by `:` (e.g. `"C:"`):
+/// the decoded shape of a Windows drive-letter path segment.
 fn is_drive_letter_segment(segment: &str) -> bool {
     let bytes = segment.as_bytes();
     bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
@@ -237,8 +237,8 @@ fn is_drive_letter_segment(segment: &str) -> bool {
 /// `uri_to_path` produces a path to *open*: off Windows, `file:///C:/foo`
 /// names the literal directory `/C:`, and dropping that leading slash would
 /// turn an absolute path into a relative one resolved against the cwd. A
-/// drawer row naming a location on another machine has no such constraint —
-/// it is text — and showing `/C:/Users/x/main.rs` for a path the server
+/// drawer row naming a location on another machine has no such constraint
+/// (it is text), and showing `/C:/Users/x/main.rs` for a path the server
 /// calls `C:/Users/x/main.rs` just looks wrong.
 ///
 /// Errors exactly as [`uri_to_path`] does.
@@ -258,12 +258,12 @@ fn is_unreserved(b: u8) -> bool {
     b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~')
 }
 
-/// Percent-encode every byte except unreserved chars, `/`, and `:` — the
+/// Percent-encode every byte except unreserved chars, `/`, and `:`, the
 /// only bytes [`path_to_uri`] leaves unencoded. `:` is pchar-legal per
 /// RFC 3986 (not "unreserved", but still fine bare in a path segment), left
 /// bare so a Windows drive letter reads `C:` rather than `C%3A`. Operates
-/// byte-wise (not char-wise) so multi-byte UTF-8 sequences encode correctly
-/// — each of their bytes is non-unreserved and gets its own `%XX`.
+/// byte-wise (not char-wise) so multi-byte UTF-8 sequences encode correctly:
+/// each of their bytes is non-unreserved and gets its own `%XX`.
 fn percent_encode_path(path_str: &str) -> String {
     use std::fmt::Write;
     let mut out = String::with_capacity(path_str.len());

@@ -15,7 +15,7 @@ fn canned_result(encoding: Option<PositionEncodingKind>) -> serde_json::Value {
 }
 
 // Golden-field check on the load-bearing capability list:
-// capabilities are load-bearing config — assert the exact advertised
+// capabilities are load-bearing config. Assert the exact advertised
 // set rather than just "it builds".
 #[test]
 #[allow(deprecated)] // asserting on the deliberately-still-populated compat field
@@ -58,7 +58,7 @@ fn initialize_params_advertise_the_v1_capability_set() {
     assert!(td.inlay_hint.is_some());
     // Without this, a conforming server sends each parameter as a bare
     // substring of the signature label instead of a `[start, end)` offset
-    // pair into it — and `lsp-label-offsets->text` (the only reader of those
+    // pair into it, and `lsp-label-offsets->text` (the only reader of those
     // offsets) would then never see one.
     assert_eq!(
         td.signature_help
@@ -73,7 +73,7 @@ fn initialize_params_advertise_the_v1_capability_set() {
     let ws = caps.workspace.unwrap();
     assert_eq!(ws.apply_edit, Some(true));
     assert_eq!(ws.configuration, Some(true));
-    // Declared unconditionally — the push happens right after
+    // Declared unconditionally: the push happens right after
     // `initialized` with no dynamic-registration negotiation.
     assert_eq!(
         ws.did_change_configuration
@@ -82,7 +82,7 @@ fn initialize_params_advertise_the_v1_capability_set() {
         Some(false)
     );
     // Manual smoke testing found rust-analyzer refuses
-    // textDocument/rename outright without this declared — every
+    // textDocument/rename outright without this declared: every
     // rename result is a WorkspaceEdit, and some servers won't attempt
     // one unless the client has confirmed it can apply it.
     let we = ws
@@ -90,7 +90,7 @@ fn initialize_params_advertise_the_v1_capability_set() {
         .expect("workspace_edit capability must be declared");
     assert_eq!(we.document_changes, Some(true));
     // Must be present or rust-analyzer refuses every rename outright
-    // (confirmed live) — HUME still can't actually apply a resource
+    // (confirmed live). HUME still can't actually apply a resource
     // op if one arrives (edits::collect_edit_entries rejects it by
     // design), but the alternative breaks the common case.
     assert_eq!(
@@ -103,7 +103,7 @@ fn initialize_params_advertise_the_v1_capability_set() {
     );
     assert_eq!(we.failure_handling, Some(FailureHandlingKind::Abort));
     // Manual smoke testing found rust-analyzer withholds
-    // diagnostic-derived quickfixes entirely without this declared —
+    // diagnostic-derived quickfixes entirely without this declared:
     // a byte-perfect codeAction request still came back empty.
     let ca = td
         .code_action
@@ -283,7 +283,7 @@ fn initialize_request_carries_initialization_options_when_set() {
 fn initialize_request_advertises_ranges_formatting_support() {
     // Unrepresentable in the typed `ClientCapabilities` lsp_types 0.97
     // builds (`DocumentRangeFormattingClientCapabilities` predates LSP
-    // 3.18's `rangesSupport` field) — patched into the wire JSON directly
+    // 3.18's `rangesSupport` field); it is patched into the wire JSON directly
     // by `advertise_ranges_support`, so this asserts on the sent bytes
     // rather than on `build_initialize_params`'s typed return.
     let mut backend = InlineLspBackend::new();
@@ -354,7 +354,7 @@ fn handshake_failure_response_crashes() {
 }
 
 /// Pins that the `initialize` response is discriminated by the id stashed
-/// in `initialize_id`, not by matching on the method string — a Steel
+/// in `initialize_id`, not by matching on the method string: a Steel
 /// plugin issuing `(lsp-request bid "initialize" ...)` through the generic
 /// bridge must get an ordinary correlated response, never be mistaken
 /// for the handshake and hijack the client into `BecameRunning`/`Crashed`.
@@ -497,7 +497,7 @@ fn messages_sent_while_starting_are_queued_then_flushed_in_order() {
             params: serde_json::json!({"uri": "file:///a"}),
         },
     );
-    // Not sent yet — must not appear in the backend's sent log as a
+    // Not sent yet, so it must not appear in the backend's sent log as a
     // didOpen (only the initialize request should be there).
     assert!(
         backend
@@ -574,7 +574,7 @@ fn send_request_while_starting_is_queued_then_flushed_and_still_correlates() {
                 other => panic!("expected the queued hover request second, got {other:?}"),
             }
             // The real editor glue's `BecameRunning` dispatch does this
-            // exact send loop (`dispatch_lsp_action`) — replicate it so
+            // exact send loop (`dispatch_lsp_action`); replicate it so
             // the flushed hover request actually reaches the backend.
             for msg in send {
                 backend.send(sid, msg);
@@ -662,7 +662,7 @@ fn handshaken_client(result: serde_json::Value) -> LspClient {
 
 #[test]
 fn change_sync_before_handshake_answers_full() {
-    // No `caps` to read yet — a whole-document event is the one form every
+    // No `caps` to read yet: a whole-document event is the one form every
     // server accepts, so edits queued while `Starting` never desync the
     // mirror waiting on a declaration that hasn't arrived.
     let client = LspClient::new(ServerId(0), PathBuf::from("."));
@@ -709,7 +709,7 @@ fn change_sync_reads_options_shape() {
 
 #[test]
 fn change_sync_absent_capability_means_no_change_notifications() {
-    // Spec default for an unadvertised `textDocumentSync` is `None` — the
+    // Spec default for an unadvertised `textDocumentSync` is `None`: the
     // server never declared it wants change notifications at all.
     let client = handshaken_client(sync_result(None));
     assert_eq!(client.change_sync(), None);
@@ -734,7 +734,7 @@ fn eof_transitions_to_crashed_and_further_sends_do_not_panic() {
         other => panic!("expected one Crashed action, got {other:?}"),
     }
 
-    // A send after Crashed must not panic — silently dropped, matching
+    // A send after Crashed must not panic. It is silently dropped, matching
     // the transport's own send-after-death discipline.
     client.send_or_queue(
         &mut backend,
@@ -746,7 +746,7 @@ fn eof_transitions_to_crashed_and_further_sends_do_not_panic() {
 }
 
 /// A request filed against an already-Crashed client is silently dropped
-/// on the wire (see `send_or_queue`) and nothing will ever answer it —
+/// on the wire (see `send_or_queue`) and nothing will ever answer it:
 /// its `meta.deadline` must be clamped to now so `take_completed`'s sweep
 /// resolves it as `TimedOut` on the very next tick, instead of leaving
 /// the caller waiting out the deadline it asked for (routinely tens of
@@ -795,7 +795,7 @@ fn send_request_after_crashed_times_out_immediately_via_the_sweep() {
 #[test]
 fn shutdown_sends_shutdown_request_then_exit_notification_in_order() {
     let (mut backend, mut client) = make_running_client();
-    // `make_running_client` already sent `initialize` — this test only
+    // `make_running_client` already sent `initialize`; this test only
     // asserts on what `begin_shutdown` adds after it.
     let before = backend.sent.len();
 
@@ -814,7 +814,7 @@ fn shutdown_sends_shutdown_request_then_exit_notification_in_order() {
 }
 
 /// Nothing but `initialize` is legal on the wire before
-/// `initialized` — `begin_shutdown` on a still-Starting client must
+/// `initialized`, so `begin_shutdown` on a still-Starting client must
 /// send neither `shutdown` nor `exit` (it still transitions to `Dead`;
 /// transport-level teardown reaps the process regardless).
 #[test]
@@ -838,7 +838,7 @@ fn begin_shutdown_sends_nothing_while_still_starting() {
 
 /// `begin_shutdown` on a still-`Starting` client jumps
 /// straight to `Dead` without cancelling (or waiting for) the in-flight
-/// `initialize` — its `pending`/`initialize_id` entries are untouched.
+/// `initialize`: its `pending`/`initialize_id` entries are untouched.
 /// A response that lands afterward must not resurrect the client into
 /// `Running` via `handle_initialize_response`'s unconditional state
 /// overwrite.
@@ -955,7 +955,7 @@ fn send_request_delivers_response_via_take_completed() {
     let actions = client.on_event(ev);
     assert!(
         actions.is_empty(),
-        "a correlated response produces no ClientAction — it's pulled via take_completed"
+        "a correlated response produces no ClientAction: it's pulled via take_completed"
     );
 
     let (completed, actions) = client.take_completed(&mut backend, Instant::now());
@@ -969,7 +969,7 @@ fn send_request_delivers_response_via_take_completed() {
         other => panic!("expected Ok, got {other:?}"),
     }
 
-    // Pulled once — a second call finds nothing left.
+    // Pulled once: a second call finds nothing left.
     let (completed2, actions2) = client.take_completed(&mut backend, Instant::now());
     assert!(completed2.is_empty());
     assert!(actions2.is_empty());
@@ -1015,7 +1015,7 @@ fn cancel_removes_pending_and_sends_cancel_notification() {
 }
 
 /// Nothing but `initialize` is legal on the wire
-/// before `initialized` — a request cancelled or timed out while still
+/// before `initialized`, so a request cancelled or timed out while still
 /// `Starting` must not put `$/cancelRequest` on the wire, since its own
 /// send is still sitting in `queued`, unsent, and the server never saw
 /// it in the first place.
@@ -1065,7 +1065,7 @@ fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
 }
 
 /// A request cancelled while still `Starting` must not
-/// resurface once the handshake completes — its `Message::Request` sat
+/// resurface once the handshake completes. Its `Message::Request` sat
 /// unsent in `queued` (removed from `pending` by `cancel`), and without
 /// also stripping it from `queued`, `handle_initialize_response`'s
 /// flush would still deliver it to the server with no pending entry
@@ -1103,7 +1103,7 @@ fn cancelled_request_is_not_flushed_after_handshake_completes() {
             assert_eq!(
                 send.len(),
                 1,
-                "only 'initialized' should flush — the cancelled request must not reappear: {send:?}"
+                "only 'initialized' should flush, the cancelled request must not reappear: {send:?}"
             );
             match &send[0] {
                 Message::Notification { method, .. } => assert_eq!(method, "initialized"),
@@ -1143,7 +1143,7 @@ fn take_completed_reports_timeout_and_sends_cancel_request() {
         other => panic!("expected a $/cancelRequest notification, got {other:?}"),
     }
 
-    // Removed from pending — a second call must not report it again.
+    // Removed from pending: a second call must not report it again.
     let (completed2, actions2) = client.take_completed(&mut backend, Instant::now());
     assert!(completed2.is_empty());
     assert!(actions2.is_empty());
@@ -1307,7 +1307,7 @@ fn malformed_known_method_falls_through_as_server_notification() {
 #[test]
 fn progress_begin_missing_title_recovers_via_lenient_fallback() {
     // A server that treats `title` as optional in practice, even though
-    // `WorkDoneProgressBegin::title` is spec-required — the strict parse
+    // `WorkDoneProgressBegin::title` is spec-required. The strict parse
     // fails, `recover_progress` patches in a placeholder and retries.
     let (mut backend, mut client) = make_running_client();
     backend.push_from_server(
@@ -1395,7 +1395,7 @@ fn eof_reports_crashed_only_once_even_if_fed_again() {
 }
 
 /// A trailing `Eof` racing a graceful `begin_shutdown`
-/// teardown must not report a spurious "server crashed" — `Dead` is as
+/// teardown must not report a spurious "server crashed": `Dead` is as
 /// valid a "connection is already known gone, on purpose" state as
 /// `Crashed`.
 #[test]
@@ -1455,7 +1455,7 @@ fn workspace_configuration_resolves_sections_from_settings() {
     );
 }
 
-// workspace/applyEdit is answered separately (needs `&mut Editor`) — see
+// workspace/applyEdit is answered separately (needs `&mut Editor`); see
 // hume-editor's `editor::tests::lsp_edits` for its coverage.
 
 #[test]

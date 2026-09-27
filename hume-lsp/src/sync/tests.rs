@@ -49,7 +49,7 @@ fn single_insert() {
 }
 
 /// A `\r` must count as one ordinary content char on both sides of the wire
-/// conversion — never as a line break. "a\rb\n" is one ropey line here (`\n`
+/// conversion, never as a line break. "a\rb\n" is one ropey line here (`\n`
 /// is the only break), so an insert at char 2 goes out as (line 0, character
 /// 2); a mirror that treated the `\r` as a break would place it on a
 /// nonexistent line 1 and desync the mirror.

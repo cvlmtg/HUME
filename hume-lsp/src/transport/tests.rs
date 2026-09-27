@@ -5,7 +5,7 @@ fn no_op_wake() -> WakeCallback {
     Arc::new(|| {})
 }
 
-/// A [`WakeCallback`] that counts invocations via an `mpsc` channel —
+/// A [`WakeCallback`] that counts invocations via an `mpsc` channel:
 /// `recv_timeout` gives a deterministic, non-polling way to assert a
 /// wake fired (or didn't, within the timeout) without racing the
 /// background thread that calls it.
@@ -40,7 +40,7 @@ fn reader_loop_forwards_messages_then_eof() {
     }
     match rx.recv().unwrap() {
         // A clean end-of-stream at a frame boundary (a voluntary server
-        // exit) must not be reported as an error — only a genuine
+        // exit) must not be reported as an error. Only a genuine
         // mid-frame truncation should carry one.
         InboundEvent::Eof { error } => assert!(error.is_none()),
         _ => panic!("expected Eof after stream end"),
@@ -50,7 +50,7 @@ fn reader_loop_forwards_messages_then_eof() {
 #[test]
 fn reader_loop_reports_mid_frame_truncation_with_an_error() {
     // A Content-Length header was read, but the stream ends before the
-    // blank line that would terminate the header block — a genuine
+    // blank line that would terminate the header block: a genuine
     // truncation, distinct from the clean-exit case above.
     let cursor = Cursor::new(b"Content-Length: 5\r\n".to_vec());
     let (tx, rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
@@ -63,7 +63,7 @@ fn reader_loop_reports_mid_frame_truncation_with_an_error() {
 
 #[test]
 fn reader_loop_reports_codec_error_as_eof() {
-    // No Content-Length header — read_message errors immediately.
+    // No Content-Length header: read_message errors immediately.
     let cursor = Cursor::new(b"garbage\r\n\r\n{}".to_vec());
     let (tx, rx) = mpsc::sync_channel(EVENTS_CHANNEL_BOUND);
     reader_loop(cursor, &tx, &no_op_wake());
@@ -71,7 +71,7 @@ fn reader_loop_reports_codec_error_as_eof() {
         InboundEvent::Eof { error } => assert!(error.is_some()),
         _ => panic!("expected Eof"),
     }
-    // Exactly one event — the loop must not resynchronize and retry.
+    // Exactly one event: the loop must not resynchronize and retry.
     assert!(rx.try_recv().is_err());
 }
 
@@ -159,7 +159,7 @@ fn stderr_loop_wakes_on_forwarded_lines() {
 
 #[test]
 fn stderr_flood_wakes_only_for_lines_that_were_actually_forwarded() {
-    // Bound of 2, 5 lines — 3 are dropped by `try_send`'s `Full` arm and
+    // Bound of 2, 5 lines: 3 are dropped by `try_send`'s `Full` arm and
     // must not wake (see `stderr_loop`'s doc): only 2 wakes expected.
     let cursor = Cursor::new(b"a\nb\nc\nd\ne\n".to_vec());
     let (tx, _rx) = mpsc::sync_channel(2);
@@ -179,7 +179,7 @@ fn stderr_flood_wakes_only_for_lines_that_were_actually_forwarded() {
 
 #[test]
 fn stderr_flood_drops_lines_but_the_loop_terminates() {
-    // Bound of 2, 5 lines, receiver never drained during the loop —
+    // Bound of 2, 5 lines, receiver never drained during the loop:
     // `try_send` must drop the overflow rather than block, so the loop
     // still returns instead of hanging.
     let cursor = Cursor::new(b"a\nb\nc\nd\ne\n".to_vec());
@@ -209,10 +209,10 @@ fn stderr_loop_exits_when_the_receiver_is_gone() {
 #[test]
 fn reader_loop_delivers_through_a_bounded_channel_in_order() {
     // Capacity of 1 forces `reader_loop`'s `send` to block between the
-    // two messages until the reader below drains — this exercises the
+    // two messages until the reader below drains. This exercises the
     // `SyncSender` blocking-when-full path (not just the non-blocking
     // `try_recv` used elsewhere), without a real flooding process (which
-    // would need timing assertions and be flaky by construction —
+    // would need timing assertions and be flaky by construction:
     // `Stdio::piped()`'s own pipe backpressure is what actually
     // engages in production; this test only pins that `reader_loop`
     // functions correctly against a bounded channel).

@@ -11,12 +11,12 @@
 //! - `uri`: path ↔ `file://` URI conversion.
 //! - `location`: `Location`/`LocationLink` wire-object decoding.
 //! - `position`: `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range`
-//!   conversion — the one place `hume-rope`'s wire-position vocabulary
+//!   conversion, the one place `hume-rope`'s wire-position vocabulary
 //!   crosses into `lsp_types`.
 //! - `completion_item`: snippet stripping + lenient `TextEdit` decoding for
 //!   `textDocument/completion` items.
 //! - `codec`: JSON-RPC framing, message enum, id allocation.
-//! - `transport`: server process management — reader/writer/stderr threads.
+//! - `transport`: server process management: reader/writer/stderr threads.
 //! - `backend`: the `LspBackend` trait + `ThreadedLspBackend`.
 //! - `inline`: `InlineLspBackend`, the scripted test double.
 //! - `client`: lifecycle, request bookkeeping.

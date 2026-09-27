@@ -1,7 +1,7 @@
 //! The seam the editor holds: `Box<dyn LspBackend>`, mirroring
 //! `parse_worker: Box<dyn ParseBackend>` in `hume-treesitter`.
 //!
-//! Transport-flavored only — no capabilities, no `text_gen`, no buffer
+//! Transport-flavored only: no capabilities, no `text_gen`, no buffer
 //! knowledge. That client-level state lives above this trait.
 
 use std::path::Path;
@@ -11,16 +11,16 @@ use crate::codec::Message;
 use crate::transport::{InboundEvent, ServerHandle, WakeCallback};
 
 /// `Ord` derives so `hume-decorations`'s `DecorationStores` and
-/// `hume-editor`'s `DiagnosticsStore` — both built on the generic
-/// `SourceStore<K, T>` — can key their per-buffer source list by `ServerId`
+/// `hume-editor`'s `DiagnosticsStore` (both built on the generic
+/// `SourceStore<K, T>`) can key their per-buffer source list by `ServerId`
 /// (`hume-decorations`'s `decorations.rs`'s `set` needs `K: Ord` for a
-/// binary-search insert) — otherwise unused within this crate.
+/// binary-search insert). Otherwise unused within this crate.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct ServerId(pub u32);
 
 pub trait LspBackend {
     /// Spawn (threaded) or register (inline) a server. Handshake is the
-    /// client layer's job — this is transport-level only. `env` is applied
+    /// client layer's job; this is transport-level only. `env` is applied
     /// additively to the spawned process's inherited environment.
     fn start(
         &mut self,
