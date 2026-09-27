@@ -17,7 +17,7 @@ HUME (HUME's Unfinished Modal Editor) is a modal text editor for the terminal, w
 
 ## Rules
 - **Record the *why* of a decision in a source comment** at the implementing site, not in ROADMAP — comments stay next to the code they explain instead of drifting into a second, unmaintained copy of it. Update `docs/ROADMAP.md` only to remove a resolved open question or when milestones change.
-- **Keep comments the length a maintainer would write.** State the contract, the invariant, and the one reason a reader would otherwise get wrong, once. Most items need 1–5 lines; a paragraph is for a genuine algorithm. Don't argue against alternatives nobody proposed, don't point at another comment for the rationale, and don't repeat a reason given elsewhere in the same block.
+- **Keep comments the length a maintainer would write.** State the contract, the invariant, and the one reason a reader would otherwise get wrong, once. Most items need 1–5 lines; a paragraph is for a genuine algorithm. Don't argue against alternatives nobody proposed, don't point at another comment for the rationale, and don't repeat a reason given elsewhere in the same block. Use em-dashes sparingly: at most one per comment block, and none where a colon, comma or new sentence works.
 - **Comments describe the code as it is now.** No history ("no longer", "used to", "the old enum", "now that", "this replaces", "before the fix"), no validation notes ("Fail oracle:", "Flip:", "red run", "verified by reverting"), no citations of `docs/LESSONS.md` entries or review-finding IDs. That material goes in the commit message. `arch-lints/tests/comment_vocabulary.rs` rejects the unambiguous phrases; history wording that has legitimate present-tense uses is left to review.
 - **Rust idioms**: Write idiomatic Rust. Prefer pattern matching, iterators, and the type system over runtime checks. Use `Result` and `Option` — no `.unwrap()` in non-test code.
 - **Terminal compatibility**: Require true color (24-bit) and synchronized output. Prefer kitty keyboard protocol but fall back gracefully to legacy encoding when unavailable. No shims for truly ancient terminals.
@@ -146,6 +146,7 @@ Every piece of writing in this repo targets one of three audiences. Know which o
 1. **End users** — people running HUME who want to use it. Lives in `CHANGELOG.md`, `README.md`, `user-manual/docs/*.md`, `runtime/tutor.rst`, `runtime/init.scm.example`, and any `:help`-style content surfaced inside the editor.
    - No internal names. Don't reference Rust types, Steel builtins used only by the implementation, or module paths. ❌ "the next key pressed is passed as `(pending-char)`" — `pending-char` is a code internal; describe the *behaviour* instead.
    - No babysitting. Assume the reader can follow a short instruction. ❌ "These are absent on a fresh setup" — say what to do, not what the reader will or won't see.
+   - Use em-dashes sparingly: at most one per paragraph, and none where a colon, comma or new sentence works.
    - Describe what the editor does and how to drive it. Nothing about why it's built that way.
 
 2. **Learners / curious developers** — people who want to understand HUME's *concepts*, not its code yet. Lives in `docs/LEARNING.md` and `docs/learning/*.md`.
