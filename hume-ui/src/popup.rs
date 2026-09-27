@@ -1,40 +1,23 @@
-//! Cursor-anchored popup widget (`show-popup!`) — a floating text panel used
-//! by hover, signature help, and (as a menu) the selection menu / completion
-//! menu / minibuffer `:` completion.
+//! Cursor-anchored popup widget (`show-popup!`): a floating text panel used
+//! by hover, signature help, and (as a menu) the selection menu, completion
+//! menu and minibuffer `:` completion.
 //!
-//! Geometry rules, shared by every caller built on this widget:
-//! - Preferred placement: below-right of the anchor cell.
-//! - Flip above the anchor when the space below is smaller than the content
-//!   and the space above is larger.
-//! - Clamp horizontally so the popup never crosses the pane's right edge.
-//! - Max width: `min(60, pane_width - 4)`. Max height: ⅓ of the pane's
-//!   height (the hover-surface default threshold) — content taller
-//!   than that is the *caller's* problem (hover overflows to the drawer).
-//! - Framed with a 1-cell border on all sides, theme-scoped via `ui.popup`
-//!   (or `ui.menu` for menus) — box-drawing glyphs when the `popup-border`
-//!   setting is on, a plain background margin when it's off. Rendering
-//!   (frame, scroll window, rows) lives in [`super::menu_box`].
+//! Geometry rules:
+//! - Preferred placement: below-right of the anchor cell. Flip above when the
+//!   space below is smaller than the content and the space above is larger.
+//! - Clamp horizontally to the pane's right edge.
+//! - Max width `min(60, pane_width - 4)`, max height a third of the pane.
+//!   Taller content is the caller's problem (hover overflows to the drawer).
+//! - 1-cell frame themed `ui.popup` (`ui.menu` for menus), box-drawn when
+//!   `popup-border` is on. Rendering lives in [`super::menu_box`].
 //!
-//! [`resolve_popup`]/[`resolve_menu`]/[`resolve_band`] are the composition
-//! entry points: each resolves geometry (wrapping + flip + clamp) *and* the
-//! visible scroll window fresh, every frame, from a [`PopupContent`] (or,
-//! for a menu, a [`MenuWindow`] plus exactly that window's rows) plus a
-//! [`PopupPlacement`] (or, for `resolve_band`, the raw band width — a docked
-//! popup has no anchor or pane rect). Windowing lives here, not at paint
-//! time (`draw_menu_box` paints exactly the rows it's handed). For a menu it
-//! is split in two so that width *cannot* be measured over anything but the
-//! visible rows: [`menu_window`] resolves the window from counts alone, the
-//! caller materializes only that range's rows, and [`resolve_menu`] never
-//! sees the rest of the list. `hume-editor`'s `Editor::sync_popup_view`/
-//! `sync_menu_view`/`sync_completion_menu_view`/`sync_minibuf_completion_view`/
-//! `sync_popup_band_view` call these against the focused pane's *current*
-//! rect — never pre-computed at `show-popup!` time — so a resize or scroll
-//! never leaves the result stale.
-//! `PopupOverlay`/`PopupBandWidget::render` only paint the already-resolved
-//! result, with a final defensive clip against whatever `pane_rect` they're
-//! actually given (belt-and-braces: the write side's rect and the render
-//! rect are the same frame's geometry, so this should never trigger — see
-//! the "never draws outside pane_rect" test).
+//! [`resolve_popup`]/[`resolve_menu`]/[`resolve_band`] resolve geometry and
+//! the scroll window every frame, against the focused pane's current rect, so
+//! a resize or scroll never leaves them stale. For a menu, [`menu_window`]
+//! picks the window from counts alone and the caller materializes only those
+//! rows, so width is measured over visible rows only. `PopupOverlay` and
+//! `PopupBandWidget::render` paint the resolved result, clipped defensively to
+//! `pane_rect`.
 
 use hume_engine::types::ResolvedStyle;
 use hume_grid::Rect;

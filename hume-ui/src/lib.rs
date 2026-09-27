@@ -1,28 +1,15 @@
 //! Editor-widget rendering layer: overlays (popup, menu, drawer, picker)
 //! and the shared box-drawing/scroll math they build on.
 //!
-//! No type here references `Editor` or `EditorState` — each is a value
-//! object or a provider that reads from a handle it was given, not from
-//! live editor state. The raw, not-yet-resolved model behind each overlay
-//! (`PopupLayer`, `MenuLayer`, `DrawerLayer`, and the confirm prompt's
-//! `ConfirmLayer`, which has no view-side counterpart here at all — it's
-//! rendered directly by `hume-editor`'s statusline) lives in `hume-editor`
-//! instead, alongside `PickerSession`: those hold editor-owned input state
-//! (a not-yet-fired Steel callback, a `BufferId` to act on), not a value
-//! object or a provider reading from a handle. The one widget that *does*
-//! read editor state directly, the statusline, lives in `hume-editor` too
-//! (see that crate's `statusline` module) rather than forcing a
-//! `StatuslineData` trait on this crate for a single implementor.
+//! Nothing here references `Editor` or `EditorState`: each type is a value
+//! object or a provider reading from a handle it was given. The overlay
+//! models holding editor-owned input state (`PopupLayer`, `MenuLayer`,
+//! `DrawerLayer`, `ConfirmLayer`, `PickerSession`) and the statusline, which
+//! reads editor state directly, live in `hume-editor`.
 //!
-//! Decoration stores (the Steel-writable data a plugin's
-//! `set-signs!`/`set-inlay-hints!`/etc. populates) and their concrete
-//! `hume_engine::providers` implementations live in the sibling crate
-//! `hume-decorations` instead — a different concern (per-buffer plugin
-//! data feeding the render pipeline) from the overlay widgets here (popup/
-//! menu/drawer/picker chrome), with no code shared between the two beyond
-//! `hume_engine::providers` itself. [`register_overlays`] and
-//! `hume_decorations::build_providers` are siblings: `hume-editor`'s pane
-//! construction calls both to populate one pane's `ProviderSet`.
+//! Plugin decoration stores and their providers live in `hume-decorations`.
+//! `hume-editor`'s pane construction calls [`register_overlays`] and
+//! `hume_decorations::build_providers` to populate one pane's `ProviderSet`.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
