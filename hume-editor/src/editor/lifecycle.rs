@@ -375,8 +375,8 @@ impl Editor {
             // `sync_viewport_dims` must run before `settle`: `drain_due_timers`
             // fires `OnViewportChange` off each pane's *current* bounds, and
             // this is what makes them current before that drain runs.
-            // `prepare_frame`'s step 0 re-partitions from this same terminal
-            // size again, after `settle`, so a bottom-band height change made
+            // `prepare_frame` re-partitions from this same terminal size
+            // again, after `settle`, so a bottom-band height change made
             // during the drain lands in this frame's render too.
             //
             // `frame.rs`'s `render_to_buf` mirrors this same

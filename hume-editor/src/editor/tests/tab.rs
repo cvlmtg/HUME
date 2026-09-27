@@ -670,7 +670,7 @@ fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
     );
 }
 
-/// `prepare_frame`'s step 4 only ever visits *active-tab* panes, so a
+/// `prepare_frame`'s scroll pass only ever visits *active-tab* panes, so a
 /// background tab's pane is not observed while it is hidden. Returning to it
 /// at unchanged terminal geometry must still re-arm `on-viewport-change`.
 /// A stale `last_viewport_key` entry matching on return would leave a

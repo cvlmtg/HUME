@@ -223,7 +223,7 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
             .all(|c| c.is_whitespace() || hume_platform::path::is_path_sep(c))
     };
     let mut i = cursor;
-    // Phase 1: skip trailing separators (whitespace or '/').
+    // Skip trailing separators (whitespace or '/').
     while i > 0 {
         let prev = hume_rope::grapheme::prev_str_boundary(s, i);
         if is_sep(&s[prev..i]) {
@@ -232,7 +232,7 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
             break;
         }
     }
-    // Phase 2: consume the run of non-separator graphemes.
+    // Then consume the run of non-separator graphemes.
     while i > 0 {
         let prev = hume_rope::grapheme::prev_str_boundary(s, i);
         if !is_sep(&s[prev..i]) {

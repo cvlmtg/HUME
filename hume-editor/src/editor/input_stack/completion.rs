@@ -94,7 +94,7 @@ impl Editor {
     /// `Minibuf`-target session renders through
     /// [`Editor::sync_minibuf_completion_view`] instead, into its own slot.
     ///
-    /// Called every frame from `prepare_frame`'s step 10, same as
+    /// Called every frame from `prepare_frame`'s overlay sync, same as
     /// [`Self::sync_popup_view`]/[`Self::sync_menu_view`] and for the same
     /// reason: it needs `EngineView::pane_rect`, which reads
     /// `last_pane_area` — only current after step 9 runs.

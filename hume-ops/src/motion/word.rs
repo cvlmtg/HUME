@@ -73,7 +73,7 @@ pub(crate) fn prev_word_start(
     // which classify_char treats as Punctuation, creating a false boundary.
     let mut pos = prev_grapheme_boundary(text, head);
 
-    // Phase 1: skip Space and Eol backward.
+    // Skip whitespace and line ends backward.
     loop {
         let cat = chars.classify(text.char_at(pos).expect("pos < len"));
         if cat != CharClass::Space && cat != CharClass::Eol {
@@ -85,7 +85,7 @@ pub(crate) fn prev_word_start(
         pos = prev_grapheme_boundary(text, pos);
     }
 
-    // Phase 2: skip backward while in the same category.
+    // Then skip backward while in the same category.
     let cat = chars.classify(text.char_at(pos).expect("pos < len"));
     while pos > CharOffset::new(0) {
         // Use prev_grapheme_boundary rather than pos - 1 so we always examine
@@ -141,8 +141,8 @@ pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<InclusiveRange<
 /// Word and Punctuation are merged, so this can advance across a Word→Punct
 /// transition without stopping.
 ///
-/// This is Phase 2 of `next_word_end` run from a known starting position,
-/// without the initial skip-whitespace step.
+/// `next_word_end` without its initial whitespace skip, run from a known
+/// starting position.
 pub(super) fn find_word_end_from(
     text: &BufferText,
     start: CharOffset,

@@ -292,20 +292,17 @@ pub(crate) fn draw_menu_box(
 
     let inner = outer.inset(1, 1);
 
-    // 1. Fill the entire outer rectangle with the popup background. This
-    //    gives a solid, opaque backdrop — no buffer content bleeds through.
-    //    For border=false it also acts as the visible 1-cell margin.
+    // Opaque backdrop so no buffer content shows through. Without a border
+    // it also forms the 1-cell margin.
     canvas.fill_rect_bg(outer, styles.base);
 
-    // 2. Optionally overdraw the 1-cell frame with box-drawing characters.
     if border {
         draw_box_border(canvas, outer, styles.base);
     }
 
-    // 2b. Scrollbar thumb on the right border, overdrawing the track cells
-    //     it spans — including for a menu (`selected.is_some()`): the
-    //     highlight bar signals *which row*, not how much more there is to
-    //     scroll past.
+    // Scrollbar thumb on the right border. Menus get one too: the
+    // highlight bar shows which row is selected, not how far there is to
+    // scroll.
     if border
         && let Some((thumb_start, thumb_len)) =
             scrollbar_thumb(inner.height as usize, total_rows, scroll)
@@ -322,7 +319,6 @@ pub(crate) fn draw_menu_box(
         }
     }
 
-    // 3. Draw content rows inside the frame (offset +1 for top/left border/padding).
     let text_x = inner.x;
     // Rows arrive untruncated — `outer` was sized to the widest of them but
     // then clamped to the pane, so a row wider than the pane would otherwise

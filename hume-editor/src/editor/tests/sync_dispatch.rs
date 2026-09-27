@@ -402,8 +402,8 @@ fn classification_sites_all_agree() {
         }
     };
 
-    // Phase 1: collect (name, is_native(), oracle()) while holding an immutable
-    // registry borrow. Separating phases avoids borrow conflicts with `live_host!`.
+    // Collect (name, is_native(), oracle()) under an immutable registry
+    // borrow first; `live_host!` below needs the registry free.
     let triples: Vec<(String, bool, bool)> = ed
         .state
         .config
@@ -431,7 +431,6 @@ fn classification_sites_all_agree() {
         .map(str::to_owned)
         .collect();
 
-    // Phase 2: is_native() and native_mappable_names() vs `oracle`.
     for (name, is_nat, expected) in &triples {
         assert_eq!(
             *is_nat, *expected,
@@ -444,7 +443,7 @@ fn classification_sites_all_agree() {
         );
     }
 
-    // Phase 3: command_is_native() via the live host. Registry borrow is gone.
+    // command_is_native() through the live host.
     for (name, _, expected) in &triples {
         let host = live_host!(ed);
         assert_eq!(
@@ -1375,26 +1374,25 @@ fn native_call_bang_at_init_top_level_warns_and_skips() {
         &mut init_host,
     );
 
-    // 1. Eval must succeed — no hard abort.
     assert!(
         result.is_ok(),
         "eval must not abort on native call at init top-level; got: {result:?}"
     );
 
-    // 2. The line after the native call must have been applied.
+    // The line after the native call must have been applied.
     assert_eq!(
         ed.state.settings.history_capacity, 77,
         "set-option! after native call must be applied (eval continued past it)"
     );
 
-    // 3. The native command itself must have been skipped.
+    // The native command itself must have been skipped.
     assert_eq!(
         state(&ed),
         "-[a]>bc\n",
         "cursor must not move (native command skipped during init)"
     );
 
-    // 4. A warning must have been produced for the skipped command.
+    // A warning must have been produced for the skipped command.
     let msgs = host.take_pending_messages();
     let has_warn = msgs.iter().any(|(lvl, txt)| {
         matches!(lvl, hume_scripting::LogLevel::Warning) && txt.contains("move-right")

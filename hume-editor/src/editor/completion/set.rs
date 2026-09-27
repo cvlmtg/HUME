@@ -56,12 +56,12 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
     })
 }
 
-/// Phase 1: completing the scope token (`global`/`buffer`/`pane`).
+/// Completes the scope token (`global`/`buffer`/`pane`).
 fn complete_set_scope(prefix: &str) -> Vec<CompletionItem> {
     prefix_completions(Scope::ALL.iter().map(|s| s.as_str()), prefix)
 }
 
-/// Phase 2: completing the key. Surface every declared key whose scopes
+/// Completes the key. Surfaces every declared key whose scopes
 /// include `scope`; `language` is the one key with no macro entry — valid
 /// only for buffer, so it's chained in when the scope matches. An unparseable
 /// `scope` token (mid-typing garbage) yields no candidates, same as any real
@@ -78,7 +78,7 @@ fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
     prefix_completions(scope_keys.chain(language), rest)
 }
 
-/// Phase 3: completing the value. Static enum/bool lists come from
+/// Completes the value. Static enum/bool lists come from
 /// [`static_value_candidates`]; `language` and `theme` are dynamic.
 ///
 /// Every key checks its scope before offering values — the same gate

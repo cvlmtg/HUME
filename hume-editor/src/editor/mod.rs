@@ -935,7 +935,7 @@ pub(crate) struct Editor {
     /// `top_line`, so a view-led scroll landing entirely within one line's
     /// virtual block still counts as a change. Entries for panes outside the
     /// active set are dropped each frame rather than left to go stale (see
-    /// `prepare_frame` step 4): a background tab's pane isn't observed at all
+    /// `prepare_frame`'s scroll pass): a background tab's pane isn't observed at all
     /// while hidden, so its return must itself be treated as a change, never
     /// a match against a snapshot from before it left.
     last_viewport_key: rustc_hash::FxHashMap<

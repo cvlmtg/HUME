@@ -229,7 +229,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
     );
 }
 
-/// `update_line_bg_providers` runs in `prepare_frame` step 5, *after* the
+/// `update_line_bg_providers` runs in `prepare_frame`'s post-scroll highlight sync, *after* the
 /// scroll step, and must read that step's viewport — not the snapshot step 3
 /// takes before scrolling (which the sign/inlay-hint/virtual-line/EOL-text
 /// bridges deliberately do read; see `decoration_providers.rs`'s

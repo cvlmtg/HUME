@@ -1,7 +1,7 @@
 //! Per-frame sync of highlight/sign/inlay-hint/virtual-line/EOL-text/
 //! line-background decoration data from editor-authoritative stores to the
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
-//! by `prepare_frame`'s step 3/5.
+//! by `prepare_frame`'s decoration syncs.
 
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, ui_scopes};
@@ -277,8 +277,8 @@ impl Editor {
     /// `"lsp-diagnostics"` source) to every pane's own decoration handle,
     /// read by that pane's `SharedSignSource`. Stays visible in Insert mode —
     /// same reasoning as [`Self::update_highlight_providers`]'s diagnostics
-    /// section. Called from `prepare_frame`'s step 3, against the pre-scroll
-    /// snapshot (see [`Self::decorated_panes`]) because the sign column's
+    /// section. Called from `prepare_frame` before scrolling, against the
+    /// pre-scroll snapshot (see [`Self::decorated_panes`]), because the sign column's
     /// width feeds `Pane::content_width`, which decides the wrap column the
     /// scroll step's `DisplayLineMap` resolves against.
     pub(super) fn update_sign_providers(&mut self, panes: &[DecoratedPane]) {
@@ -443,7 +443,7 @@ impl Editor {
     /// line, not per EOL line in the whole buffer. Both write into a pane's
     /// inline-decoration providers, which `DisplayLineMap::ensure_formatted`
     /// reads, so this feeds wrap display-line counts and columns exactly
-    /// like inlay hints do — called from `prepare_frame`'s step 3, against
+    /// like inlay hints do — called from `prepare_frame`'s pre-scroll decoration sync, against
     /// the pre-scroll snapshot (see [`Self::decorated_panes`]). EOL text
     /// appearing can push a line onto a further wrapped display line,
     /// moving the cursor's own row without the selection itself moving —
@@ -511,7 +511,7 @@ impl Editor {
     /// stamp is per-buffer (not a single store-wide counter): an edit only
     /// bumps the buffer it edited, so typing in one buffer does not force
     /// every pane on every *other* buffer to resync too. Called from
-    /// `prepare_frame`'s step 3 — unlike the rest of that step, has no
+    /// `prepare_frame`'s pre-scroll decoration sync — unlike the rest of that sync, has no
     /// viewport dependency (so which [`Self::decorated_panes`] snapshot it
     /// reads is immaterial) and takes only `pid`/`bid` from it. Two sources
     /// anchored to the same line stack rather than collapse (unlike the

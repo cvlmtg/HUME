@@ -241,7 +241,7 @@ impl Editor {
     /// off each pane's *current* bounds (`timer_bridge.rs`), so the bounds
     /// have to be current before that drain runs, not after.
     ///
-    /// `prepare_frame`'s step 0 calls this a second time, from the stored
+    /// `prepare_frame`'s bottom-band re-partition calls this a second time, from the stored
     /// `last_terminal_area`, after re-syncing the bottom-band views — so a
     /// band-height change `settle()` made (a hook-driven `close-popup!`, a
     /// settle-drained `close-drawer!`) is re-partitioned into `viewport`
@@ -432,81 +432,46 @@ impl Editor {
             });
     }
 
-    /// Prepare the engine pane for rendering by syncing all editor-authoritative
-    /// state in one place, once per frame.
+    /// Sync all editor-owned state into the engine view, once per frame,
+    /// right before `render()`.
     ///
-    /// `sync_all_pane_mirrors` is the **single sync point** for `pane.selections`
-    /// and `pane.primary_idx` — it covers every active pane (see
-    /// [`EngineView::active_pane_ids`](hume_engine::pipeline::EngineView::active_pane_ids)),
-    /// in one pass. No other code path writes those fields. It, and
-    /// *after* `Editor::settle()` (called by every caller of this function,
-    /// immediately before it — see `settle`'s doc) since a settled drain can
-    /// switch a pane's `buffer_id` (picker accept, LSP goto-definition) or
-    /// move its selections (timer/LSP callbacks) — syncing or scrolling any
-    /// earlier would use a stale selection head against the pane's new
-    /// buffer, which can be out of bounds for that rope, or leave the new
-    /// buffer's cursor unvalidated against the viewport for a frame.
-    /// Highlight and statusline shared buffers are also written here,
-    /// immediately before every `render()` call. Mode and display settings are
-    /// resolved by `render_into`, which runs after this.
+    /// Every caller runs `Editor::settle()` immediately before this. A
+    /// settled drain can switch a pane's buffer (picker accept, LSP
+    /// goto-definition) or move its selections, so everything here must
+    /// read post-settle state. Syncing earlier would pair a stale selection
+    /// head with the pane's new rope.
+    ///
+    /// Order matters twice. Providers that change display-line counts
+    /// (signs, inlay hints, virtual lines, EOL text) sync before the scroll
+    /// pass, so the cursor is positioned against the layout render will
+    /// draw. Cursor-anchored overlays sync after it, because they need the
+    /// cursor's final screen cell.
     pub(super) fn prepare_frame(&mut self, ctx: &mut RenderContext) {
-        // A `RenderContext` is allocated once and reused for every frame, so
-        // last frame's cursor cell would otherwise be indistinguishable from
-        // one step 4 resolved this frame. Cleared here, filled there.
+        // `ctx` is reused across frames; the scroll pass refills this.
         ctx.cursor_content_pos = None;
-        // Load-bearing rather than tidiness, and for a reason step 3 below is
-        // what creates — see `EngineView::begin_frame`.
+        // Required for correctness, see `EngineView::begin_frame`.
         self.view.begin_frame();
 
-        // Reclaim viewport-debounce/scroll-key/virtual-line-sync entries
-        // for panes closed since the last frame. These live on `Editor`
-        // rather than `EditorState.panes` (unlike `jumps`/`render`/
-        // `transient`/`state`, which `drop_pane_state` clears directly), so
-        // this per-frame sweep is where they get reclaimed instead.
+        // These caches live on `Editor`, not `EditorState.panes`, so
+        // `drop_pane_state` can't clear them when a pane closes.
         self.prune_closed_pane_caches();
 
-        // `mouse-enabled`/`mouse-select` are terminal modes, not per-frame
-        // render state — `init` (hume-editor/src/lib.rs) only applies them
-        // once at startup. This is the per-frame chokepoint that makes a
-        // later `:set global mouse-enabled=…` take effect immediately
-        // instead of silently doing nothing until restart: it resyncs at
-        // the one place the value is consumed, not at every write site.
+        // Mouse modes are terminal state applied once at startup; resyncing
+        // here makes `:set global mouse-enabled=…` take effect immediately.
         self.resync_mouse_mode();
 
-        // Re-bake the theme if any scope was interned since the last bake —
-        // catches up on interning from the *previous* frame, from command
-        // dispatch between frames (e.g. `:theme`), or from the `settle()`
-        // call every caller makes immediately before this one. This frame's
-        // own steps (0, 3, 5 below) can themselves intern new scopes — extra
-        // highlights, inline diagnostics, virtual lines, a newly attached
-        // grammar's capture names — so a second `bake_if_stale` runs at the
-        // very end of this function, right before `render_into` gets to
-        // resolve anything. Without it, a scope interned mid-frame and
-        // resolved by that same frame's render is past the end of `baked`.
-        //
-        // Must run before step 0: a docked popup attaches its syntax (and
-        // interns its grammar's capture-name scopes) at `show-popup!`
-        // dispatch time, before this frame's `prepare_frame` — step 0's
-        // `sync_popup_band_view` resolves those scopes to concrete styles
-        // synchronously while building the band's styled rows, so they must
-        // already be baked by the time it runs.
+        // Bake scopes interned since the last frame. It must run before the
+        // bottom-band sync: `show-popup!` interns its grammar's scopes at
+        // dispatch time, and the band resolves them to styles right away.
+        // Scopes interned later in this function are baked by the second
+        // call at the end.
         self.view.theme.bake_if_stale(&self.view.registry);
 
-        // 0. Re-sync the bottom-band views (docked popup, drawer) from their
-        //    now-settled models, then re-partition viewport dims from them.
-        //    Every caller runs `settle()` immediately before this function, and
-        //    a settled drain (`close-popup!` from a hook/callback) or the
-        //    pre-dispatch dismissal on any key or mouse event
-        //    (mappings/mod.rs, mouse.rs) can change a band's height after
-        //    the pre-settle `sync_viewport_dims` ran —
-        //    leaving `viewport.height` partitioned against a band `render`
-        //    will no longer draw, so the pane paints short and the vacated
-        //    rows stay blank until the next event wakes the loop.
-        //    Re-partitioning here, from the same settled views render's own
-        //    `pane_area` reads, keeps them agreeing. `last_terminal_area` is
-        //    fresh: the pre-settle sync wrote it from this frame's
-        //    `term.size()`. Skipped when no terminal geometry was ever
-        //    established (headless callers relying on `Pane::new` defaults).
+        // A settled drain can resize a bottom band (docked popup, drawer)
+        // after the pre-settle `sync_viewport_dims`. Re-partition from the
+        // settled views so the pane doesn't paint short with blank rows
+        // left where the band was. Skipped without terminal geometry
+        // (headless callers).
         self.sync_popup_band_view();
         self.state
             .clamp_drawer_scroll_to_terminal(self.view.last_terminal_area.height);
@@ -517,20 +482,10 @@ impl Editor {
             self.sync_viewport_dims(area.width, area.height);
         }
 
-        // The active tab's pane set, fixed for the rest of this frame —
-        // nothing between here and `render_into` changes which panes
-        // `view.layout` reaches, only settled callbacks before this
-        // function was entered could, and `settle()` already ran (every
-        // caller runs it immediately before this — see this function's own
-        // doc). Steps 1/3/4/5 below all read from this instead of
-        // `view.panes` directly.
+        // Nothing below changes which panes the active tab shows.
         let active = self.view.active_pane_ids();
 
-        // 1. Sync line-number style provider for every active pane (depends
-        //    on that pane's own buffer overrides). Must run after `settle()`:
-        //    a settled drain can switch a pane's `buffer_id` (picker accept,
-        //    LSP goto-definition), so syncing any earlier would apply the
-        //    just-left buffer's style to the pane's new buffer for a frame.
+        // Line-number style depends on each pane's current buffer overrides.
         for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id;
             let ln_style = self
@@ -544,52 +499,24 @@ impl Editor {
                 .sync_line_number_style(ln_style);
         }
 
-        // 2. Sync selection mirrors for every active pane. Must run after
-        //    `settle()`: a settled drain can switch a pane's `buffer_id`
-        //    (picker accept, LSP goto-definition) or move its selections
-        //    (timer/LSP callbacks), and render (right after this function
-        //    returns) reads this mirror against the pane's *current* buffer.
         self.sync_all_pane_mirrors(&active);
 
-        // 3. Sync everything that decides display-line counts/columns for
-        //    step 4's `DisplayLineMap`-driven scroll, in this order because none of them
-        //    depends on this frame's viewport (a gutter/decoration change
-        //    must be visible to the scroll math that positions the cursor
-        //    against it, not just to the renderer one step later):
-        //      3a. gutter sign data (diagnostics + plugin signs) — decides
-        //          gutter width, which decides `Pane::content_width`, which
-        //          decides the wrap column.
-        //      3b/3c/3d. inlay hints / virtual lines / EOL text — each a
-        //          `DisplayLineMap` provider
-        //          (`inline_decorations` or `virtual_lines`) that
-        //          `DisplayLineMap::ensure_formatted`/`block` reads, so they change wrap
-        //          display-line counts and columns the moment they appear.
-        //    All four read this one `decorated_panes()` snapshot (see its
-        //    doc), taken here rather than after step 4 — so a same-frame
-        //    scroll can leave a newly-exposed line's hints/signs unsynced
-        //    until next frame. That's a one-frame cosmetic lag that
-        //    self-corrects; syncing after scroll instead would let step 4's
-        //    `DisplayLineMap` see display-line counts/columns the providers
-        //    haven't caught up to yet — the scroll/render/caret disagreement
-        //    this ordering avoids.
+        // Everything that changes display-line counts or columns, synced
+        // before scrolling. Signs set the gutter width and so the wrap
+        // column; the other three are `DisplayLineMap` providers. The
+        // snapshot predates the scroll, so a line exposed by this frame's
+        // scroll gets its hints one frame late. Syncing after the scroll
+        // would instead let scroll and render disagree on layout.
         let panes = self.decorated_panes(&active);
         self.update_sign_providers(&panes);
         self.update_inlay_hint_providers(&panes);
         self.update_virtual_line_providers(&panes);
         self.update_eol_text_providers(&panes);
 
-        // 4. Scroll every active pane so its primary cursor stays visible.
-        //    Must run after `settle()`: a settled drain can switch a pane's
-        //    `buffer_id` mid-frame (picker accept, LSP goto-definition), and
-        //    this reads buffer_id/rope/cursor together from SSOT, so it
-        //    always scrolls the pane's *current* buffer instead of leaving a
-        //    just-switched-to buffer's cursor unvalidated against the
-        //    viewport for a frame.
-        // A pane that left the active set (its tab went to the background)
-        // is never visited by the loop below, so its stale entry would
-        // otherwise survive untouched — and then match on return, even
-        // though nothing observed it while it was hidden. Drop it now so
-        // the pane's next visible frame always reads as a change.
+        // Scroll each active pane so its primary cursor stays visible.
+        //
+        // A pane whose tab went to the background keeps no key, so its
+        // next visible frame always counts as a viewport change.
         self.last_viewport_key.retain(|pid, _| active.contains(pid));
 
         let scrolloff = self.state.settings.scrolloff;
@@ -597,11 +524,8 @@ impl Editor {
             let buf_id = self.view.panes[pid].buffer_id;
             let layout_key = self.state.layout_key(&self.view.panes[pid]);
             let format_key = layout_key.format_key();
-            // `reveal_pending`/`last_layout_key` live on the current (pane,
-            // buffer)'s own `PaneBufferState` — a pane that switched buffers
-            // this frame reads a different, freshly-seeded state (`None`
-            // for `last_layout_key`, always differing from a fresh key), so
-            // no separate buffer-identity filter is needed here.
+            // Per (pane, buffer) state: a pane that just switched buffers
+            // reads a fresh entry whose `last_layout_key` is `None`.
             let pbs = &mut self.state.panes.state[pid][buf_id];
             let cursor_char = pbs.selections().primary().head();
             let layout_changed = pbs.last_layout_key.replace(layout_key) != Some(layout_key);
@@ -618,24 +542,10 @@ impl Editor {
                 ctx.cursor_content_pos = cursor_screen;
             }
 
-            // A real visible-range change (scroll command, cursor-follow
-            // during typing, or a resize that altered height) debounces
-            // OnViewportChange. This is bookkeeping over scroll_into_view's
-            // *result*, not part of computing what to render — the hook
-            // itself never fires from here, only the coalescer timer gets
-            // (re)armed; the actual fire happens later via the async-source
-            // drain, same as every other timer. Arming here (after
-            // `settle()`'s drain) means a change detected this frame is
-            // picked up by *next* frame's drain — one frame later than when
-            // this ran pre-drain, immaterial for any nonzero debounce interval.
-            // The slot is part of the key, not just the line: a view-led
-            // scroll (mouse wheel, `Ctrl-d`) can move entirely within one
-            // line's virtual block, which the line alone can't see. A
-            // zero-height pane's `top` is never resolved (`scroll_into_view`
-            // returns before any `top_at` read for one), so its key no
-            // longer changes on its own the way it did while a heal ran
-            // unconditionally here — a collapsed pane draws nothing, so that
-            // fire was spurious.
+            // A visible-range change arms the `OnViewportChange` debounce
+            // timer; the hook fires later from the timer drain. The key
+            // includes `slot` because a wheel or `Ctrl-d` scroll can move
+            // within one line's virtual block.
             let viewport = &self.view.panes[pid].viewport;
             let top = viewport.top();
             let key = (buf_id, top.line, top.slot, viewport.height);
@@ -644,38 +554,22 @@ impl Editor {
             }
         }
 
-        // 5. Sync highlight data (search matches, bracket matches, diagnostic
-        //    underlines, extra highlights) and line-background tints to
-        //    shared Arc buffers read by the highlight/line-bg providers
-        //    during rendering. Render-only — no `DisplayLineMap` consumer reads
-        //    either one, only the paint stage. A fresh `decorated_panes()`
-        //    snapshot here (distinct from step 3's) is what gives these two
-        //    the *current* viewport, post-scroll.
+        // Highlights and line tints only affect painting, so they sync after
+        // the scroll from a fresh snapshot of the final viewport.
         let panes = self.decorated_panes(&active);
         self.update_highlight_providers(&panes);
         self.update_line_bg_providers(&panes);
 
-        // 6. Sync the overlay views: minibuffer completion, the cursor-anchored
-        //    popup, menu, LSP-completion-menu, and picker. All five resolve a
-        //    `PopupState`/view model on the write side against this frame's
-        //    settled geometry, so grouping them here keeps that "resolve, then
-        //    only paint" contract in one place. The cursor-anchored four also
-        //    need step 4's scroll result (`ctx.cursor_content_pos`) or the
-        //    current-frame `pane_rect` — both only settled after step 0
-        //    re-partitions and step 4 scrolls — which is why the group stays
-        //    here while the bottom bands (docked popup, drawer) sync in step 0
-        //    instead: those have no cursor-relative geometry, only the settled
-        //    model, so they don't need to wait on scroll.
+        // Overlays resolve their geometry now, so render only paints. The
+        // cursor-anchored ones need the scroll result above.
         self.sync_minibuf_completion_view();
         self.sync_popup_view(ctx);
         self.sync_menu_view(ctx);
         self.sync_completion_menu_view(ctx);
         self.sync_picker_view();
 
-        // Second bake — see the comment on the early call above. Cheap when
-        // nothing changed (one `usize` comparison); catches every scope this
-        // frame's own steps interned, so `render_into` never resolves against
-        // a `ScopeId` past the end of `baked`.
+        // Bake scopes interned during this frame (extra highlights, inline
+        // diagnostics, a new grammar's captures) before render resolves them.
         self.view.theme.bake_if_stale(&self.view.registry);
     }
 
