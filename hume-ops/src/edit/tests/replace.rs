@@ -35,7 +35,7 @@ fn replace_around_cursors_two_cursors_uniform_spacing() {
 #[test]
 fn replace_around_cursors_forward_consumes_chars_ahead_of_head() {
     // head=2 ('l'); back=1 deletes "e"; forward=1 also consumes the head
-    // char itself ('l') — completing in the middle of a token, where the
+    // char itself ('l'): completing in the middle of a token, where the
     // server's range extends past the live cursor.
     assert_state!(
         "he-[l]>lo\n",
@@ -47,7 +47,7 @@ fn replace_around_cursors_forward_consumes_chars_ahead_of_head() {
 #[test]
 fn replace_around_cursors_clamps_underflow_at_buffer_start() {
     // head=2 ('c'); back=5 asks for more chars than exist before the cursor
-    // — clamped to the buffer start (0) rather than underflowing.
+    // and is clamped to the buffer start (0) rather than underflowing.
     assert_state!(
         "ab-[c]>de\n",
         |(text, sels)| replace_around_cursors(text, sels, 5, 0, "Z"),
@@ -60,7 +60,7 @@ fn replace_around_cursors_clamps_when_cursors_are_closer_than_back() {
     // Cursors at 'c' and 'd' (1 char apart) with back=2 each: the ideal
     // start for the second cursor (1 char before 'c') would fall inside
     // territory the first cursor's edit already claimed. Clamped to the
-    // first edit's end instead of erroring — the second cursor still gets
+    // first edit's end instead of erroring: the second cursor still gets
     // "Z", it just eats one char ('c') instead of two ("b","c").
     assert_state!(
         "ab-[c]>-[d]>ef\n",
@@ -71,7 +71,7 @@ fn replace_around_cursors_clamps_when_cursors_are_closer_than_back() {
 
 #[test]
 fn replace_around_cursors_snaps_start_outward_past_a_combining_mark() {
-    // "café" = c,a,f,e,{combining acute} — one grapheme cluster spans chars
+    // "café" = c,a,f,e,{combining acute}. One grapheme cluster spans chars
     // [3,5). head=6 ('x'), back=2 puts the raw start at char 4, splitting
     // the cluster between the base 'e' and its accent. The snap floors it
     // to 3, deleting the whole cluster instead of orphaning the accent.
@@ -85,7 +85,7 @@ fn replace_around_cursors_snaps_start_outward_past_a_combining_mark() {
 #[test]
 fn replace_around_cursors_normalizes_crlf_in_replacement() {
     // LSP completion's insertText/textEdit fallback isn't guaranteed
-    // `\n`-only — this is the sole insertion point for that whole path.
+    // `\n`-only, and this is the sole insertion point for that whole path.
     assert_state!(
         "he-[l]>lo\n",
         |(text, sels)| replace_around_cursors(text, sels, 2, 0, "X\r\nY"),
@@ -119,7 +119,7 @@ fn replace_around_cursors_zero_span_matches_insert_str() {
 fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_newline() {
     // `forward` reaching (or exceeding) the buffer's length always makes
     // `raw_end == len_chars()`, one past the structural trailing `\n`'s own
-    // single-char cluster — `ceiled` then lands past `last` (the `\n`'s
+    // single-char cluster, so `ceiled` then lands past `last` (the `\n`'s
     // position) on every such buffer, not just one with an unusual
     // multi-char terminator cluster. Floor back to that cluster's start
     // instead of ceiling through it and deleting the structural newline.
@@ -140,14 +140,14 @@ fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_ne
 // ── replace_span_around_cursors ─────────────────────────────────────────────
 //
 // The general primitive `replace_around_cursors` wraps with a uniform-count
-// `start_of` — these pin the genuinely per-cursor case: a `start_of` that
+// `start_of`. These pin the genuinely per-cursor case: a `start_of` that
 // computes a *different* start at each cursor (LSP completion accept's own
 // `insertText`-fallback use, via `word_start_before`).
 
 #[test]
 fn replace_span_around_cursors_start_of_receives_each_cursors_own_index_and_head() {
     // Two cursors, each retreating by its *own* index-selected count (3 for
-    // the first, 1 for the second) rather than one shared count — proves
+    // the first, 1 for the second) rather than one shared count. This proves
     // `i` and `head` both reach `start_of` correctly, independent of
     // `replace_around_cursors`'s own (uniform) wrapper.
     let text = BufferText::from("abcdefgh\n");
@@ -174,7 +174,7 @@ fn replace_span_around_cursors_start_of_receives_each_cursors_own_index_and_head
 #[test]
 fn replace_span_around_cursors_word_start_before_stops_each_cursor_at_its_own_boundary() {
     // The actual `accept.rs` shape: each cursor's own `word_start_before`
-    // scan, not a shared count — a shorter word before the second cursor
+    // scan, not a shared count: a shorter word before the second cursor
     // must not retreat into the (unrelated, longer) word before the first.
     let text = BufferText::from("ab c\n");
     let sels = SelectionSet::from_vec(
@@ -234,7 +234,7 @@ fn replace_cursor_on_structural_newline_is_noop() {
 
 #[test]
 fn replace_cursor_on_mid_buffer_newline_is_noop() {
-    // Cursor on the '\n' between two lines — preserved, not replaced.
+    // Cursor on the '\n' between two lines: preserved, not replaced.
     assert_state!(
         "hello-[\n]>world\n",
         |(text, sels)| replace_selections(text, sels, 'x'),
@@ -327,7 +327,7 @@ fn replace_multiline_selection_skips_newline() {
 #[test]
 fn replace_selection_including_structural_trailing_newline_preserves_newline() {
     // When the selection reaches the structural trailing '\n', that newline
-    // must be preserved — replace_selections skips '\n' graphemes entirely.
+    // must be preserved: replace_selections skips '\n' graphemes entirely.
     assert_state!(
         "-[hello\n]>",
         |(text, sels)| replace_selections(text, sels, 'x'),
@@ -389,7 +389,7 @@ fn smart_replace_non_delimiter_is_literal() {
 
 #[test]
 fn smart_replace_range_selection_no_smart_logic() {
-    // Range selection (not a cursor) — all chars become `[`, no smart logic.
+    // Range selection (not a cursor): all chars become `[`, no smart logic.
     assert_state!(
         "-[(he]>llo)\n",
         |(text, sels)| replace_selections(text, sels, '['),
@@ -399,7 +399,7 @@ fn smart_replace_range_selection_no_smart_logic() {
 
 #[test]
 fn smart_replace_non_pair_replacement_is_literal() {
-    // Replacement is not a pair char — always literal, even on delimiters.
+    // Replacement is not a pair char: always literal, even on delimiters.
     assert_state!(
         "-[(]>hello-[)]>\n",
         |(text, sels)| replace_selections(text, sels, 'x'),

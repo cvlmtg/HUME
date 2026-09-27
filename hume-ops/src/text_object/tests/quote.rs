@@ -51,7 +51,7 @@ fn inner_double_quote_empty_is_noop() {
 
 #[test]
 fn inner_double_quote_second_pair() {
-    // Two pairs on the same line — cursor in second pair selects second.
+    // Two pairs on the same line: cursor in second pair selects second.
     assert_state!(
         "\"a\" \"b-[c]>\"\n",
         |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),

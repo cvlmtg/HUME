@@ -13,7 +13,7 @@ use crate::MotionMode;
 fn inner_line(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
     let line = text.char_to_line(pos);
     if is_empty_line(text, line.into()) {
-        return None; // empty line — no selectable content
+        return None; // empty line, no selectable content
     }
     let line_start = text.line_to_char(line.into());
     Some(InclusiveRange::new(line_start, line_last_char(text, line)))
@@ -24,7 +24,7 @@ fn inner_line(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharO
 /// No `None` case: both callers of this closure (`apply_text_object`,
 /// `apply_text_object_extend`) only ever pass a position strictly inside the
 /// buffer (`sel.head()`, or a retry gated by `< text.end()`), so `line`
-/// is always a real content line — exactly `line_break_char`'s precondition.
+/// is always a real content line, exactly `line_break_char`'s precondition.
 fn around_line(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
     let line = text.char_to_line(pos);
     Some(InclusiveRange::new(

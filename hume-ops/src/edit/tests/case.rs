@@ -110,7 +110,7 @@ fn uppercase_grows_selection_when_case_mapping_changes_char_count() {
 // final form 'ς' only at a word's end, and to 'σ' everywhere else. Mapping
 // grapheme-by-grapheme strips the surrounding context that check needs, so
 // it silently falls back to the default 'σ' even when the grapheme is at a
-// word's end — correct mid-word only by accident, wrong at word-final
+// word's end; that is correct mid-word only by accident, wrong at word-final
 // position.
 
 #[test]

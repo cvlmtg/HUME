@@ -53,7 +53,7 @@ pub fn cmd_split_selection_on_newlines(
             new_sels.push(sel);
 
             // Middle lines: full lines. Bare-`usize` range, `ContentLine`
-            // re-minted each iteration — `ContentLine` has no `Step`/`Range`
+            // re-minted each iteration: `ContentLine` has no `Step`/`Range`
             // impl to loop over directly (see CLAUDE.md's "Line counts and
             // ranges"). Sound here: both endpoints are already-valid
             // `ContentLine`s.
@@ -93,7 +93,7 @@ pub fn cmd_split_selection_on_newlines(
 /// `Selection`. The new primary is the first match within the original primary
 /// selection's range.
 ///
-/// Returns `None` when no matches are found in any selection — the caller
+/// Returns `None` when no matches are found in any selection; the caller
 /// should keep the original selections unchanged.
 pub fn sift_matches_within(
     text: &BufferText,
@@ -154,7 +154,7 @@ pub fn cmd_trim_selection_whitespace(
 
         // Walk forward from start, skipping whitespace (grapheme boundary steps).
         // `blank_class` is the authoritative whitespace definition for this
-        // codebase — Space covers ' '/'\t', Eol covers '\n'.
+        // codebase: Space covers ' '/'\t', Eol covers '\n'.
         while start <= end
             && text
                 .char_at(start)

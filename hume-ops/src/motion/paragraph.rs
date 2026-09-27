@@ -14,7 +14,7 @@ use super::{MotionMode, apply_object_motion};
 //
 // A paragraph is a run of content lines, optionally followed by a run of
 // blank lines (its gap). Every finder below is a sequence of such runs off
-// one cursor per direction — `next_if` (not `take_while`) is what makes that
+// one cursor per direction. `next_if` (not `take_while`) is what makes that
 // composable: it leaves the run-ending token unconsumed, so a second run can
 // continue the same cursor exactly where the first stopped, rather than
 // forcing a fresh one to re-seek to that boundary.
@@ -22,8 +22,8 @@ use super::{MotionMode, apply_object_motion};
 // Line indices below are bare `usize`, all content-domain: run lengths are
 // added to and subtracted from them repeatedly (`line + 1 - up`, `target +=
 // blank_run(...)`, `after_paragraph.checked_sub(...)`), which is exactly the
-// arithmetic `hume_rope::line`'s typed indices refuse to do — deliberately,
-// everywhere else in this workspace. Threading `ContentLine` through this
+// arithmetic `hume_rope::line`'s typed indices refuse to do (deliberately,
+// everywhere else in this workspace). Threading `ContentLine` through this
 // module's own scanning would add a conversion at every one of those
 // additions without checking anything a `debug_assert` doesn't already:
 // every value here stays `<= content_line_count()` by construction (each
@@ -49,12 +49,12 @@ fn blank_run<'a>(tokens: &mut Peekable<impl Iterator<Item = RopeSlice<'a>>>) -> 
     run(tokens, true)
 }
 
-/// Tokens from `line` forward, stopping before the phantom trailing line —
+/// Tokens from `line` forward, stopping before the phantom trailing line:
 /// the content-domain bound every forward scan below needs. Its token is
 /// empty, so left unbounded it would read as part of a trailing gap.
 ///
 /// # Panics
-/// Debug-panics if `line > content_line_count()` — every caller derives
+/// Debug-panics if `line > content_line_count()`. Every caller derives
 /// `line` from `char_to_line` on a position within `head < len_chars()`,
 /// which never reaches the phantom line itself.
 fn content_tokens_at(
@@ -86,7 +86,7 @@ fn line_span(text: &BufferText, first_line: usize, last_line: usize) -> Inclusiv
 // one cursor is continued on that same cursor rather than re-opened at a
 // boundary an earlier phase already found.
 
-/// Paragraph enclosing `pos`, as an inclusive char span — its own lines, plus
+/// Paragraph enclosing `pos`, as an inclusive char span: its own lines, plus
 /// the trailing blank gap when `include_gap`. `None` on a blank line: there
 /// is no paragraph there to select.
 pub(crate) fn paragraph_at(
@@ -96,7 +96,7 @@ pub(crate) fn paragraph_at(
 ) -> Option<InclusiveRange<CharOffset>> {
     let line = text.char_to_line(pos).index();
 
-    // Climb backward from `line` itself (a run of 0 means `line` is blank —
+    // Climb backward from `line` itself (a run of 0 means `line` is blank,
     // the "no paragraph here" case) to the paragraph's first line.
     let mut back = text.line_tokens_back_from(RopeyLine::new(line)).peekable();
     let up = content_run(&mut back);
@@ -105,7 +105,7 @@ pub(crate) fn paragraph_at(
     }
     let first = line + 1 - up;
 
-    // Continue forward from `line`'s own successor — `first..=line` is
+    // Continue forward from `line`'s own successor: `first..=line` is
     // already known to be content, so there's nothing left to scan there.
     let mut fwd = content_tokens_at(text, line + 1);
     let mut last = line + content_run(&mut fwd);
@@ -119,7 +119,7 @@ pub(crate) fn paragraph_at(
 /// Select the next paragraph, plus its trailing blank gap (`}`). No-op if
 /// there is no paragraph below.
 ///
-/// Not a `motion_cmd!`: the finder yields a span, not a head — the same
+/// Not a `motion_cmd!`: the finder yields a span, not a head. It goes through the same
 /// `apply_object_motion` the structural `goto-next-<kind>` family uses.
 pub fn cmd_goto_next_paragraph(
     text: &BufferText,
@@ -169,10 +169,10 @@ fn next_paragraph(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<C
 /// The paragraph strictly before `pos`'s own paragraph, plus its trailing
 /// gap, or `None` if none exists.
 ///
-/// One backward cursor for three phases — leave the enclosing paragraph,
+/// One backward cursor for three phases: leave the enclosing paragraph,
 /// then its gap (running out of buffer during either means there's nothing
-/// above), then climb the target paragraph to its own first line — plus one
-/// forward cursor to measure the target's trailing gap, which the backward
+/// above), then climb the target paragraph to its own first line. One more
+/// forward cursor measures the target's trailing gap, which the backward
 /// walk can't answer: starting inside a gap that continues below `pos`, the
 /// backward count only sees the blanks at or above `pos`, never the ones
 /// below it.

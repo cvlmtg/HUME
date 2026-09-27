@@ -10,7 +10,7 @@ use test_fixtures::assert_state;
 /// Test-only stand-in for `arm_autoindent`: treats every current selection's
 /// line as owned. Every `insert_newline_indent`/`clear_blank_line_indent`
 /// test below that predates per-selection ownership tracking assumed exactly
-/// this — a session that has copied indent onto every cursor's current line —
+/// this (a session that has copied indent onto every cursor's current line)
 /// via what was then a single unconditional bool.
 fn owns_every_line(text: &BufferText, sels: &SelectionSet) -> Vec<ExclusiveRange<CharOffset>> {
     sels.iter_sorted()
@@ -111,7 +111,7 @@ fn insert_char_replaces_whole_buffer() {
 
 #[test]
 fn insert_char_replaces_backward_selection() {
-    // anchor=3, head=0 covers chars 0-3 ('h','e','l','l') — "hell" (4 chars).
+    // anchor=3, head=0 covers chars 0-3 ('h','e','l','l'): "hell" (4 chars).
     // Delete [0,4), insert 'x' at 0, cursor at 1.
     // Text "hello" → remove "hell" → "o", insert 'x' → "xo".
     assert_state!(
@@ -199,7 +199,7 @@ fn insert_str_two_cursors() {
 #[test]
 fn insert_str_normalizes_line_endings() {
     // Insert-mode paste and dot-repeat replay both land here, and neither
-    // guarantees LF — the builder normalizes every insertion, so no op in
+    // guarantees LF. The builder normalizes every insertion, so no op in
     // this crate has to.
     assert_state!(
         "-[h]>ello\n",
@@ -379,7 +379,7 @@ fn insert_tab_soft_two_cursors_same_line() {
 #[test]
 fn insert_tab_soft_two_cursors_same_line_not_on_stop() {
     // Both cursors on the same line; cursor 0 is NOT at col 0, so cursor 1's
-    // effective col is not a multiple of tw — verifies the arithmetic mid-stop.
+    // effective col is not a multiple of tw. Verifies the arithmetic mid-stop.
     //
     // "abcde fgh\n": cursor 0 on 'd' (col 3), cursor 1 on 'h' (col 8). tw=4.
     // Cursor 0: col 3 → 1 space to reach col 4. display_col_shift = +1.
@@ -538,7 +538,7 @@ fn newline_indent_replaces_multi_line_selection() {
     // then a '\n' + the source line's indent ("\t") is inserted at the
     // selection's start. With the retained leading '\t' and the trailing
     // structural '\n', the buffer collapses to "\t\n\t\n" and the cursor ends
-    // on that final '\n' — the same "land on the structural '\n'" rule as the
+    // on that final '\n', the same "land on the structural '\n'" rule as the
     // single-line selection case.
     assert_state!(
         "\t-[ab\n\txy]>\n",
@@ -550,7 +550,7 @@ fn newline_indent_replaces_multi_line_selection() {
 #[test]
 fn newline_indent_trims_blank_line_on_second_enter() {
     // Cursor on the structural '\n' of a blank, auto-indented line ("  \n"):
-    // vim autoindent parity — that whitespace is vacated (not carried
+    // vim autoindent parity: that whitespace is vacated (not carried
     // forward) before opening a fresh indented line below it.
     assert_state!(
         "x\n  -[\n]>",
@@ -562,7 +562,7 @@ fn newline_indent_trims_blank_line_on_second_enter() {
 #[test]
 fn newline_indent_trims_blank_line_cursor_mid_whitespace() {
     // Collapsed cursor anywhere within a blank line's whitespace (not just
-    // at its end) still triggers the trim — the whole line is judged blank,
+    // at its end) still triggers the trim. The whole line is judged blank,
     // not just the region before the cursor.
     assert_state!(
         "x\n -[ ]> \n",
@@ -574,8 +574,8 @@ fn newline_indent_trims_blank_line_cursor_mid_whitespace() {
 #[test]
 fn newline_indent_trim_blank_false_preserves_pre_existing_blank_line() {
     // Empty `allowed`: the first Enter on a line that was already blank
-    // before this insert session touched it — nothing has armed a record for
-    // it yet — leaves the pre-existing whitespace alone; only the *new* line
+    // before this insert session touched it (nothing has armed a record for
+    // it yet) leaves the pre-existing whitespace alone; only the *new* line
     // gets a copied indent, same as the non-blank-line case.
     assert_state!(
         "x\n  -[\n]>",
@@ -589,7 +589,7 @@ fn newline_indent_two_cursors_same_blank_line_merge() {
     // Two collapsed cursors on the same whitespace-only line: the first
     // vacates the line; the second lands at the same spot instead of
     // retaining backwards past what the builder already consumed.
-    // `SelectionSet::from_vec` then merges the coincident cursors — no
+    // `SelectionSet::from_vec` then merges the coincident cursors: no
     // panic, no duplicate newline.
     assert_state!(
         "-[ ]> -[ ]>\n",
@@ -601,7 +601,7 @@ fn newline_indent_two_cursors_same_blank_line_merge() {
 #[test]
 fn newline_indent_two_cursors_second_on_blank_line_newline_no_underflow() {
     // The first cursor (head 0) trims the blank line "  \n",
-    // advancing the builder's `old_pos()` to 2 — exactly the position of
+    // advancing the builder's `old_pos()` to 2, exactly the position of
     // the second cursor's head, which sits on the line's structural '\n'.
     // The `pos < b.old_pos()` "already consumed" guard requires strict
     // inequality, so `2 < 2` is false and the second cursor is NOT treated
@@ -610,7 +610,7 @@ fn newline_indent_two_cursors_second_on_blank_line_newline_no_underflow() {
     // `old_pos()`, or it would compute `b.retain(0 - 2)` and underflow. It
     // falls back to the non-blank arm instead: both
     // cursors independently run their own Enter-with-copied-indent, each
-    // landing on its own freshly opened line — no crash.
+    // landing on its own freshly opened line. No crash.
     assert_state!(
         "-[ ]> -[\n]>",
         |(text, sels)| insert_newline_indent_owning(text, sels),
@@ -652,7 +652,7 @@ fn open_line_above_no_indent_on_bare_line() {
 #[test]
 fn open_line_above_second_line_leaves_first_untouched() {
     // Indent comes from the selection's own line, not the buffer's first
-    // line — "foo" (no indent) stays untouched above the new blank line.
+    // line: "foo" (no indent) stays untouched above the new blank line.
     assert_state!(
         "foo\n\t-[b]>ar\n",
         |(text, sels)| open_line_above(text, sels),
@@ -672,14 +672,14 @@ fn open_line_above_two_cursors_different_indents() {
 // ── owned_blank_indent (autoindent ownership containment) ────────────────
 //
 // `insert_newline_indent_owning`/`clear_blank_line_indent_owning` above cover
-// the common case: a session that owns exactly its cursor's current line. These exercise the containment check itself — what
+// the common case: a session that owns exactly its cursor's current line. These exercise the containment check itself: what
 // changes ownership once a session's record and the buffer diverge.
 
 #[test]
 fn owned_blank_indent_rejects_whitespace_typed_past_owned_end() {
     // Buffer "x\n  \n": line 1 is "  " (chars 2..4) + '\n' at 4. `allowed`
-    // records an *empty* range at the line's start — as if nothing was
-    // copied there (an unindented `o`/`O`) — but the line now reads as blank
+    // records an *empty* range at the line's start (as if nothing was
+    // copied there, an unindented `o`/`O`), but the line now reads as blank
     // because whitespace was typed past what the session actually owns.
     let (text, sels) = test_fixtures::testing::parse_state("x\n-[ ]> \n");
     let head = sels.primary().head();
@@ -691,9 +691,9 @@ fn owned_blank_indent_rejects_whitespace_typed_past_owned_end() {
 #[test]
 fn owned_blank_indent_accepts_backspaced_indent_within_owned_range() {
     // Same buffer, but `allowed` records a range wider than the line's
-    // *current* whitespace — as if more was typed and then backspaced away.
+    // *current* whitespace, as if more was typed and then backspaced away.
     // The remaining whitespace is a subset of what the session owns, so
-    // ownership still holds — vim's own `<BS>` carve-out, for free.
+    // ownership still holds: vim's own `<BS>` carve-out, for free.
     let (text, sels) = test_fixtures::testing::parse_state("x\n-[ ]> \n");
     let head = sels.primary().head();
     let line_start = text.line_to_char(text.char_to_line(head).into());
@@ -704,7 +704,7 @@ fn owned_blank_indent_accepts_backspaced_indent_within_owned_range() {
 #[test]
 fn owned_blank_indent_rejects_a_different_blank_line() {
     // Buffer "  \n  \n": two identical blank lines. `allowed` records
-    // ownership of line 0's indent, but the cursor sits on line 1 — blank in
+    // ownership of line 0's indent, but the cursor sits on line 1: blank in
     // its own right, but not the line this session armed. This is the
     // arrow-key-onto-another-blank-line case: a cursor motion never has to
     // clear the record explicitly, because the record's `line_start` simply
@@ -768,7 +768,7 @@ fn clear_blank_line_indent_second_cursor_on_blank_line_newline_no_underflow() {
     // newline_no_underflow`, for the Esc/exit-insert path: the second
     // cursor sits exactly on the blank line's structural '\n', at a
     // position equal to (not less than) `old_pos()` after the first
-    // cursor's trim — the "already consumed" guard's strict `<` doesn't
+    // cursor's trim. The "already consumed" guard's strict `<` doesn't
     // catch it, so `try_trim_blank_line`'s own `line_start >= old_pos()`
     // check is what prevents the underflow. Both cursors land on the same
     // final position and merge, same as the mid-whitespace case above.
@@ -796,7 +796,7 @@ fn clear_blank_line_indent_preserves_non_collapsed_selection() {
 #[test]
 fn insert_char_combining_codepoint() {
     // Inserting a bare combining accent (U+0301) before 'h'. Mechanically
-    // fine — the accent is stored as its own codepoint at position 0, and
+    // fine: the accent is stored as its own codepoint at position 0, and
     // the cursor lands on 'h' (now at position 1).
     assert_state!(
         "-[h]>ello\n",

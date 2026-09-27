@@ -14,7 +14,7 @@ fn inner_paragraph_single_line() {
 
 #[test]
 fn inner_paragraph_multiline_excludes_gap() {
-    // Cursor on the paragraph's second line — selects both lines, not the
+    // Cursor on the paragraph's second line: selects both lines, not the
     // blank gap after them.
     assert_state!(
         "para one\n-[l]>ine two\n\nworld\n",
@@ -64,7 +64,7 @@ fn around_paragraph_multiple_blank_lines() {
 
 #[test]
 fn around_paragraph_last_paragraph_equals_inner() {
-    // No trailing gap — `m a p` on the last paragraph is the same as `m i p`.
+    // No trailing gap: `m a p` on the last paragraph is the same as `m i p`.
     assert_state!(
         "hello\n\n-[w]>orld\n",
         |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Move),
@@ -84,7 +84,7 @@ fn around_paragraph_blank_line_is_noop() {
 #[test]
 fn around_paragraph_gap_reaches_buffer_end() {
     // The paragraph's trailing gap runs all the way to EOF (no further
-    // paragraph below) — the span must stop at the buffer's last valid
+    // paragraph below). The span must stop at the buffer's last valid
     // position (content domain), not walk onto the phantom trailing line
     // one past it. See `paragraph_span`'s doc comment.
     assert_state!(
@@ -98,7 +98,7 @@ fn around_paragraph_gap_reaches_buffer_end() {
 
 #[test]
 fn inner_paragraph_combining_grapheme_at_end() {
-    // "cafe\u{0301}" = c(0) a(1) f(2) e(3) combining_acute(4) \n(5) — the
+    // "cafe\u{0301}" = c(0) a(1) f(2) e(3) combining_acute(4) \n(5). The
     // paragraph's last line ends in a 2-codepoint grapheme cluster. The span
     // end must land on the combining mark (4), not the 'e' alone (3).
     assert_state!(
@@ -112,7 +112,7 @@ fn inner_paragraph_combining_grapheme_at_end() {
 
 #[test]
 fn inner_paragraph_whitespace_only_line_does_not_split() {
-    // A whitespace-only line is not empty (Helix semantics — is_empty_line
+    // A whitespace-only line is not empty (Helix semantics: is_empty_line
     // requires zero content chars), so it doesn't break the paragraph: all
     // three lines are one paragraph.
     assert_state!(
@@ -160,8 +160,8 @@ fn inner_paragraph_multi_cursor_distinct_paragraphs() {
 
 #[test]
 fn inner_paragraph_multiline_backward_climb_crosses_chunk_boundaries() {
-    // One unbroken 300-line paragraph — several times larger than a rope
-    // leaf (`MAX_BYTES`/`MIN_BYTES` are a few hundred bytes each) — with the
+    // One unbroken 300-line paragraph, several times larger than a rope
+    // leaf (`MAX_BYTES`/`MIN_BYTES` are a few hundred bytes each), with the
     // cursor on its last line. `paragraph_at`'s backward climb to the
     // paragraph's first line must cross every chunk boundary between them.
     const LAST: usize = 299;

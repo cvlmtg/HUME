@@ -24,7 +24,7 @@ fn run_surround(
 
 #[test]
 fn surround_paren_from_inside() {
-    // (hello) — cursor on 'h' (pos 1)
+    // (hello), cursor on 'h' (pos 1)
     let sels = run_surround("(hello)\n", 1, cmd_surround_paren);
     assert_eq!(sels, vec![(0, 0), (6, 6)]);
 }
@@ -37,7 +37,7 @@ fn surround_bracket_from_inside() {
 
 #[test]
 fn surround_brace_from_on_open() {
-    // Cursor ON the opening `{` — should still find the pair.
+    // Cursor ON the opening `{`: should still find the pair.
     let sels = run_surround("{hello}\n", 0, cmd_surround_brace);
     assert_eq!(sels, vec![(0, 0), (6, 6)]);
 }
@@ -51,14 +51,14 @@ fn surround_angle_from_on_close() {
 
 #[test]
 fn surround_paren_nested_selects_innermost() {
-    // ((hello)) — cursor on 'e' (pos 4), innermost pair is positions 1..7.
+    // ((hello)), cursor on 'e' (pos 4), innermost pair is positions 1..7.
     let sels = run_surround("((hello))\n", 4, cmd_surround_paren);
     assert_eq!(sels, vec![(1, 1), (7, 7)]);
 }
 
 #[test]
 fn surround_no_match_preserves_selection() {
-    // No parens at all — cursor stays put.
+    // No parens at all: cursor stays put.
     let sels = run_surround("hello\n", 2, cmd_surround_paren);
     assert_eq!(sels, vec![(2, 2)]);
 }
@@ -93,7 +93,7 @@ fn surround_quote_no_match() {
 
 #[test]
 fn surround_multi_cursor_different_pairs() {
-    // (a) [b] — cursor on 'a' (pos 1) and 'b' (pos 5).
+    // (a) [b]: cursor on 'a' (pos 1) and 'b' (pos 5).
     let text = BufferText::from("(a) [b]\n");
     let sels = SelectionSet::from_vec(
         vec![
@@ -114,7 +114,7 @@ fn surround_multi_cursor_different_pairs() {
 
 #[test]
 fn surround_multi_cursor_same_pair_merges() {
-    // (hello) — two cursors both inside the same parens (pos 1 and 3).
+    // (hello): two cursors both inside the same parens (pos 1 and 3).
     let text = BufferText::from("(hello)\n");
     let sels = SelectionSet::from_vec(
         vec![
@@ -124,7 +124,7 @@ fn surround_multi_cursor_same_pair_merges() {
         0,
     );
     let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
-    // Both produce cursors on (0,0) and (6,6) — merge_overlapping deduplicates.
+    // Both produce cursors on (0,0) and (6,6); merge_overlapping deduplicates.
     let pairs: Vec<_> = result
         .iter_sorted()
         .map(|s| (s.anchor().index(), s.head().index()))
@@ -134,7 +134,7 @@ fn surround_multi_cursor_same_pair_merges() {
 
 #[test]
 fn surround_with_range_selection_uses_head() {
-    // (hello) — range selection spanning 'ell' (anchor=2, head=4).
+    // (hello): range selection spanning 'ell' (anchor=2, head=4).
     // find_bracket_pair searches from head (pos 4), finds the enclosing ().
     let text = BufferText::from("(hello)\n");
     let sels = SelectionSet::single(Selection::new(CharOffset::new(2), CharOffset::new(4)));
@@ -148,7 +148,7 @@ fn surround_with_range_selection_uses_head() {
 
 #[test]
 fn surround_with_backward_range_selection() {
-    // (hello) — backward selection (anchor=4, head=2).
+    // (hello): backward selection (anchor=4, head=2).
     // head is at pos 2, still inside the parens.
     let text = BufferText::from("(hello)\n");
     let sels = SelectionSet::single(Selection::new(CharOffset::new(4), CharOffset::new(2)));
@@ -280,7 +280,7 @@ fn wrap_multi_cursor_selections() {
 #[test]
 fn wrap_multi_line_selection() {
     // Selection spans a newline; the structural trailing `\n` must not be
-    // included in the wrap — end_inclusive clamping to len_chars()-2 guards this.
+    // included in the wrap. end_inclusive clamping to len_chars()-2 guards this.
     assert_state!(
         "-[foo\nbar]> baz\n",
         |(text, sels)| wrap_each_selection(text, sels, '"', '"'),

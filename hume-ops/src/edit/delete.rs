@@ -50,7 +50,7 @@ pub fn delete_char_forward(
 ///   just before `head` (the character to the left of the cursor). Cursor
 ///   moves back to the start of the deleted cluster. No-op at start.
 /// - **Multi-character selection**: delete the entire selected region. Cursor
-///   lands on `start()`. (Same as `delete_char_forward` for selections —
+///   lands on `start()`. (Same as `delete_char_forward` for selections:
 ///   Delete and Backspace both clear a selection.)
 pub fn delete_char_backward(
     text: BufferText,
@@ -60,7 +60,7 @@ pub fn delete_char_backward(
         if sel.is_collapsed() {
             let p = sel.head();
             if p == CharOffset::new(0) {
-                // At start of buffer — nothing to delete to the left.
+                // At start of buffer, nothing to delete to the left.
                 let sel = Selection::collapsed(b.new_pos());
                 new_sels.push(sel);
                 return;
@@ -68,7 +68,7 @@ pub fn delete_char_backward(
             // Delete the grapheme cluster ending just before `p`.
             let prev = prev_grapheme_boundary(text, p);
             if prev < b.old_pos() {
-                // A previous selection already consumed `prev` — the character
+                // A previous selection already consumed `prev`, so the character
                 // we'd delete is gone. Treat as a no-op; the cursor stays put.
                 let sel = Selection::collapsed(b.new_pos());
                 new_sels.push(sel);
@@ -86,14 +86,14 @@ pub fn delete_char_backward(
 
 /// Dedent to the previous tab stop at every selection.
 ///
-/// For each collapsed cursor sitting in leading whitespace (caller-checked —
+/// For each collapsed cursor sitting in leading whitespace (caller-checked,
 /// see the editor's `should_dedent_backspace`), this deletes the whitespace
 /// between the cursor and the previous tab-stop column. Mixed tabs and spaces
 /// are handled by walking the line forward with tab expansion to locate the
 /// char offset at the target column ([`char_pos_at_display_col`]).
 ///
 /// Non-collapsed selections and cursors not in leading whitespace are left to
-/// [`delete_char_backward`] — the caller dispatches based on the
+/// [`delete_char_backward`]; the caller dispatches based on the
 /// all-or-nothing predicate.
 pub fn dedent_tab_backward(
     text: BufferText,
@@ -138,8 +138,8 @@ pub fn dedent_tab_backward(
 ///   using `prev_word_start` to find the boundary. No-op at buffer start.
 /// - **Non-collapsed selection**: delegates to `delete_sel_region`.
 ///
-/// Non-yanking by design: Ctrl-w is readline-style word-rubout, not a kill —
-/// the deleted text is not pushed to the kill ring or any register.
+/// Non-yanking by design: Ctrl-w is readline-style word-rubout, not a kill.
+/// The deleted text is not pushed to the kill ring or any register.
 pub fn delete_word_backward(
     text: BufferText,
     sels: SelectionSet,
@@ -150,14 +150,14 @@ pub fn delete_word_backward(
             let p = sel.head();
             // Determine how far back to delete. Three no-op cases:
             // (1) cursor at buffer start, (2) prior same-word cursor already consumed
-            // past word_start — retain to `p` so this cursor lands at its own position.
+            // past word_start. Retain to `p` so this cursor lands at its own position.
             let word_start = if p > CharOffset::new(0) {
                 let ws = prev_word_start(text, p, is_word_boundary, chars);
                 // `ws < b.old_pos()` means a prior cursor in the same word already
                 // consumed past `ws`. Treat as no-op so the cursor lands at `p`.
                 if ws >= b.old_pos() { ws } else { p }
             } else {
-                p // at buffer start — nothing to delete
+                p // at buffer start, nothing to delete
             };
             b.retain(word_start.chars_since(b.old_pos()));
             if word_start < p {
@@ -181,7 +181,7 @@ pub fn delete_word_backward(
 ///   cursor lands at `start()`.
 ///
 /// This is the normal-mode `d` operation. It does NOT capture the deleted text
-/// into a register — the caller is responsible for that:
+/// into a register. The caller is responsible for that:
 ///
 /// ```text
 /// let yanked = yank_selections(&text, &sels);
@@ -193,7 +193,7 @@ pub fn delete_selection(
     sels: SelectionSet,
 ) -> (BufferText, SelectionSet, ChangeSet) {
     // Semantically, pressing `d` on a cursor deletes the char under it, and
-    // pressing `d` on a selection deletes the selected region — exactly what
+    // pressing `d` on a selection deletes the selected region: exactly what
     // delete_char_forward does. There is no functional difference between the
     // two operations; the distinction is only in the key that triggered them.
     delete_char_forward(text, sels)
@@ -202,7 +202,7 @@ pub fn delete_selection(
 /// Exclusive upper bound for the content `c` should delete from `sel`.
 ///
 /// Returns `[start, stop)`, the range to delete. A trailing `\n` at
-/// `sel.end()` is excluded — `c` clears line content but keeps the line. A
+/// `sel.end()` is excluded: `c` clears line content but keeps the line. A
 /// collapsed selection on a lone `\n` (empty line) returns `[pos, pos)`, a
 /// zero-length no-op.
 pub fn change_span(text: &BufferText, sel: &Selection) -> ExclusiveRange<CharOffset> {
@@ -220,9 +220,9 @@ pub fn change_span(text: &BufferText, sel: &Selection) -> ExclusiveRange<CharOff
 /// Differs from [`delete_selection`] in one way: if a selection ends on a `\n`
 /// (because `select-line` / `x` was used, or the line is empty), that newline
 /// is kept and only the preceding content is removed. This preserves the line
-/// structure — `c` rewrites a line's content, not the line itself.
+/// structure: `c` rewrites a line's content, not the line itself.
 ///
-/// - Interior `\n`s (mid-selection) are deleted normally — so a multi-line `c`
+/// - Interior `\n`s (mid-selection) are deleted normally, so a multi-line `c`
 ///   collapses to a single empty line.
 /// - Collapsed selection on a lone `\n` (empty line) → no deletion (≡ `i`).
 ///

@@ -23,7 +23,7 @@ impl Pair {
 }
 
 /// The auto-pair set: parentheses, brackets, braces, and the three quote
-/// characters. Not runtime-configurable — no `:set` key or Steel setter
+/// characters. Not runtime-configurable: no `:set` key or Steel setter
 /// writes it; only `auto-pairs-enabled` (on/off) is a real setting.
 pub const DEFAULT_PAIRS: &[Pair] = &[
     Pair {
@@ -102,7 +102,7 @@ pub fn delete_pair(text: BufferText, sels: SelectionSet) -> (BufferText, Selecti
         let next = next_grapheme_boundary(text, p);
 
         if prev < b.old_pos() {
-            // A previous selection already consumed this region — treat as no-op.
+            // A previous selection already consumed this region; treat as no-op.
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         }

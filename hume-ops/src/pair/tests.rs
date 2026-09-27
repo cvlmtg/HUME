@@ -4,12 +4,12 @@ use hume_rope::offset::CharOffset;
 
 // These assert find_tightest_bracket_pair's own (open, close) contract
 // directly, rather than only through cmd_inner_argument in
-// hume-ops/src/text_object/tests/argument.rs — that file's characterization
+// hume-ops/src/text_object/tests/argument.rs. That file's characterization
 // tests stay (they pin `mia`/`maa`'s observable behavior), these pin the
 // resolver's return value. Notably the dropped-type case below: through
 // find_comma_segments, that case's expected span happens to come out right
 // even under a wrong pair choice, since the segmenter's own depth-skip masks
-// it — asserting the pair directly closes that gap.
+// it; asserting the pair directly closes that gap.
 
 fn resolve(text: &str, pos: usize) -> Option<(usize, usize)> {
     find_tightest_bracket_pair(&BufferText::from(text), CharOffset::new(pos))
@@ -19,7 +19,7 @@ fn resolve(text: &str, pos: usize) -> Option<(usize, usize)> {
 #[test]
 fn crossed_nesting_picks_the_smallest_span_not_the_nearest_open() {
     // `(` at 1 is the nearest unmatched open, but its partner `)` (absent
-    // here — the trailing `)` at 10 is unmatched) gives `()` a span of 9.
+    // here: the trailing `)` at 10 is unmatched) gives `()` a span of 9.
     // `{}` at (0, 5) is tighter and wins, even though its open is farther
     // from the cursor than `(`'s.
     assert_eq!(resolve("{(abc}    )\n", 3), Some((0, 5)));
@@ -35,7 +35,7 @@ fn crossed_nesting_equal_spans_break_the_tie_in_bracket_pairs_order() {
 #[test]
 fn bracket_type_with_no_closing_bracket_is_dropped_not_ranked() {
     // `{` at 1 has no matching `}` anywhere, so `{}` is dropped from the
-    // candidate set entirely — not treated as "nearest open, unmatched close
+    // candidate set entirely, not treated as "nearest open, unmatched close
     // ignored". `()` = (0, 8) wins by being the only resolved candidate.
     assert_eq!(resolve("({aaa, b)\n", 3), Some((0, 8)));
 }
@@ -58,7 +58,7 @@ fn cursor_on_a_close_bracket_only_shortcuts_that_type() {
 
 #[test]
 fn on_open_shortcut_still_scans_right_when_no_other_type_would() {
-    // Only `()` is present — no other type's normal (non-shortcut)
+    // Only `()` is present: no other type's normal (non-shortcut)
     // resolution can incidentally start the rightward scan on its behalf.
     // The on-open shortcut must mark this type as needing its close found
     // just like the normal path does, or the rightward scan never starts

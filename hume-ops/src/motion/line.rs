@@ -12,11 +12,11 @@ pub(super) fn goto_line_start(text: &BufferText, head: CharOffset) -> CharOffset
 
 /// Jump to the last non-newline grapheme cluster on the current line.
 ///
-/// On an empty line (containing only `\n`), the cursor stays on the newline —
+/// On an empty line (containing only `\n`), the cursor stays on the newline:
 /// there is no other character to land on.
 pub(super) fn goto_line_end(text: &BufferText, head: CharOffset) -> CharOffset {
     // The core logic lives in hume_editing::lines::line_content_end, which is
-    // also used by selection_cmd.rs — one implementation, two callers.
+    // also used by selection_cmd.rs: one implementation, two callers.
     line_content_end(text, text.char_to_line(head))
 }
 
@@ -51,5 +51,5 @@ pub(super) fn goto_first_nonblank(text: &BufferText, head: CharOffset) -> CharOf
             Some(_) => return pos,      // found a non-blank char
         }
     }
-    head // no non-blank found — no-op, matching Helix
+    head // no non-blank found: no-op, matching Helix
 }

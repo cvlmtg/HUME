@@ -99,7 +99,7 @@ fn render_no_flags_has_no_prefix() {
 #[test]
 fn render_leaves_leading_slash_pattern_untouched() {
     // "//" is exactly what `*` renders for a punctuation run of two slashes
-    // (e.g. the "//" of a "// comment") — it must round-trip, not be read
+    // (e.g. the "//" of a "// comment"). It must round-trip, not be read
     // back as an (empty, thus literal-pattern) flag run plus "/".
     assert_eq!(render_search_input(SearchFlags::default(), "//"), "//");
     assert_eq!(parse_search_input("//"), (SearchFlags::default(), "//"));
@@ -125,7 +125,7 @@ fn compile_non_verbatim_dot_matches_any_char() {
 
 #[test]
 fn compile_verbatim_reaches_a_pattern_that_looks_like_flags() {
-    // "m/s" typed bare would be read as the multi flag plus pattern "s" —
+    // "m/s" typed bare would be read as the multi flag plus pattern "s";
     // `v/` is how a literal "m/s" is matched instead.
     let (flags, r) = compile_search_input("v/m/s").expect("valid pattern");
     assert!(flags.verbatim);
@@ -168,7 +168,7 @@ fn smart_case_override_force_sensitive() {
 
 #[test]
 fn all_matches_empty_buffer() {
-    // Empty buffer is just "\n" — no "foo" match.
+    // Empty buffer is just "\n", so no "foo" match.
     let b = buf("\n");
     assert_eq!(find_all_matches(&b, &re("foo")), vec![]);
 }
@@ -252,7 +252,7 @@ fn forward_multiple_matches_picks_first_after_from() {
 #[test]
 fn backward_basic() {
     let b = buf("hello world\n");
-    // Search backward from position 11 ('\n') — should find "world" at (6,10).
+    // Search backward from position 11 ('\n'): should find "world" at (6,10).
     let (span, wrapped) =
         find_next_match(&b, &re("world"), co(11), SearchDirection::Backward).unwrap();
     assert_eq!(span, ir(6, 10));
@@ -294,7 +294,7 @@ fn backward_multiple_matches_picks_last_before_from() {
 
 #[test]
 fn match_info_no_match_in_buffer() {
-    // Empty match list — total=0, current=0.
+    // Empty match list: total=0, current=0.
     assert_eq!(search_match_info(&[], co(0)), (0, 0));
 }
 
@@ -312,7 +312,7 @@ fn match_info_cursor_on_last_char_of_match() {
 
 #[test]
 fn match_info_cursor_between_matches() {
-    // "ab" at (1,2), (3,4), (5,6). Cursor on pos 0 — not inside any match.
+    // "ab" at (1,2), (3,4), (5,6). Cursor on pos 0, not inside any match.
     assert_eq!(
         search_match_info(&[ir(1, 2), ir(3, 4), ir(5, 6)], co(0)),
         (0, 3)
@@ -479,7 +479,7 @@ fn match_scan_past_selection_steps_over_current_match() {
         mode: MotionMode::Move,
         seed: MatchSeed::PastSelection,
     };
-    // Selection already sitting on the first "bar" — PastSelection must land
+    // Selection already sitting on the first "bar": PastSelection must land
     // on the second one, not re-find the first.
     let sel = Selection::new(co(3), co(5));
     let (new_sel, _) = scan.advance(sel, 1).expect("second bar exists");
@@ -502,7 +502,7 @@ fn match_scan_at_selection_stays_on_current_match_when_already_there() {
         seed: MatchSeed::AtSelection,
     };
     // AtSelection seeds from the selection's own start, so a selection
-    // already on a match re-finds that same match instead of skipping it —
+    // already on a match re-finds that same match instead of skipping it:
     // the live-preview seed rule (a keystroke shouldn't jump a selection
     // that's already correct).
     let sel = Selection::new(co(3), co(5));
@@ -517,7 +517,7 @@ fn match_scan_at_selection_stays_on_current_match_when_already_there() {
 fn match_scan_cached_empty_is_zero_matches_not_cold() {
     let text = scan_text();
     let regex = re("bar");
-    // A warm cache with zero matches must not fall back to scanning `regex` —
+    // A warm cache with zero matches must not fall back to scanning `regex`;
     // that's exactly the bug an "empty means cold" heuristic would reintroduce
     // once the live-search path warms the cache on every keystroke.
     let scan = MatchScan {
@@ -577,7 +577,7 @@ fn match_scan_count_of_two_advances_twice() {
 fn match_scan_returns_none_when_zero_matches_total() {
     // The only way a hop in the `count` chain can miss: both `find_next_match`
     // and `find_match_from_cache` wrap around the buffer boundary rather than
-    // stopping, so a chain only fails atomically when no match exists at all —
+    // stopping, so a chain only fails atomically when no match exists at all:
     // wrapping otherwise guarantees every later hop in the chain succeeds too.
     let text = scan_text();
     let regex = re("zzz");
@@ -708,7 +708,7 @@ fn range_matches_at_boundaries() {
 
 #[test]
 fn range_matches_excludes_partial() {
-    // Range 0..1 doesn't fully contain "ab" at (1,2) — only the 'a' at 1.
+    // Range 0..1 doesn't fully contain "ab" at (1,2), only the 'a' at 1.
     // The regex engine with set_range won't match across the boundary.
     let b = buf("aababab\n");
     let matches = find_matches_in_range(&b, &re("ab"), ir(0, 0));
@@ -732,7 +732,7 @@ fn range_matches_full_buffer() {
 
 #[test]
 fn range_matches_with_combining_graphemes() {
-    // "café\n" — 'é' is e + U+0301 (2 codepoints, chars 3 and 4).
+    // "café\n": 'é' is e + U+0301 (2 codepoints, chars 3 and 4).
     // Searching for "é" within the full range should find it.
     let b = buf("caf\u{0065}\u{0301}\n");
     let matches = find_matches_in_range(&b, &re("\u{0065}\u{0301}"), ir(0, 5));
@@ -780,7 +780,7 @@ fn word_search_pattern_anchors_a_plain_word() {
 
 /// NFD "café" (c, a, f, e, U+0301) ends on a *combining mark*, not on its
 /// cluster's base char. Judging the trailing edge with `chars().next_back()`
-/// hands `classify` the mark — `Punctuation` to HUME — dropping the `\b` and
+/// hands `classify` the mark (`Punctuation` to HUME), dropping the `\b` and
 /// letting `*` match the "café" prefix of "cafétéria". The edge belongs to
 /// the cluster's base 'e', and `\b` after the mark holds because rust-regex's
 /// own `\w` includes `\p{M}`.
@@ -801,8 +801,8 @@ fn word_search_pattern_anchors_a_combining_sequence_on_its_base_char() {
     assert_eq!(matches[0], ir(0, 4));
 }
 
-/// U+FF3F (FULLWIDTH LOW LINE) is `\p{Pc}` — a word character to
-/// `regex_syntax::try_is_word_character` — but HUME classifies it as
+/// U+FF3F (FULLWIDTH LOW LINE) is `\p{Pc}`, a word character to
+/// `regex_syntax::try_is_word_character`, but HUME classifies it as
 /// `Punctuation` (not `_`, not in `word-chars`). Anchoring on the
 /// regex-syntax answer alone produces `\b＿\b`, which can never match:
 /// rust-regex also sees both neighbours as word characters, so neither
@@ -821,7 +821,7 @@ fn word_search_pattern_skips_boundary_hume_does_not_consider_a_word_char() {
 
 /// The opposite direction from the two tests above: `chars` *wider* than
 /// rust-regex's `\w`. With `-` a word char, "foo-bar" is one run and both
-/// edges anchor — but rust-regex still reads `-` itself as non-word, so
+/// edges anchor, but rust-regex still reads `-` itself as non-word, so
 /// `\bfoo-bar\b` also holds inside "foo-bar-baz". `word_search_pattern`'s doc
 /// accepts this over-match (rust-regex has neither a configurable `\w` class
 /// nor lookbehind to express the wider rule); pinned here so a future

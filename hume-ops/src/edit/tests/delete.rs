@@ -9,9 +9,9 @@ use test_fixtures::assert_state;
 
 #[test]
 fn dedent_spaces_to_prev_tab_stop() {
-    // "    x" cursor at col 4 (after 4 spaces, on 'x'? No — cursor on a space).
+    // "    x" cursor at col 4 (after 4 spaces, on 'x'? No, cursor on a space).
     // Cursor at col 4 means 4 spaces before it. tw=4 → prev_stop 0, delete all 4.
-    // Text: "    \n" with cursor at char 4 (on '\n'). Hmm — let's put content after.
+    // Text: "    \n" with cursor at char 4 (on '\n'). Hmm, let's put content after.
     // "    x\n": cursor on 'x' (char 4, col 4). prev_stop 0. Delete [0,4) = 4 spaces.
     assert_state!(
         "    -[x]>\n",
@@ -52,7 +52,7 @@ fn dedent_single_tab_to_zero() {
 
 #[test]
 fn dedent_mid_indent_snaps_to_prev_stop() {
-    // "    \n" (4 spaces, whole line ws). cursor on '\n' (col 4)? No — cursor on
+    // "    \n" (4 spaces, whole line ws). cursor on '\n' (col 4)? No, cursor on
     // a space mid-indent. "    \n" cursor at char 2 (col 2). prev_stop 0. Delete 2 spaces.
     assert_state!(
         "  -[ ]>  \n",
@@ -143,7 +143,7 @@ fn dedent_two_cursors_same_line_target_overlap() {
 #[test]
 fn dedent_two_cursors_same_line_same_target() {
     // Two cursors whose natural tab-stop targets collide on the SAME
-    // position (col 3 and col 4 on a 4-space indent — SelectionSet prevents
+    // position (col 3 and col 4 on a 4-space indent; SelectionSet prevents
     // duplicate positions, so the two land one apart). Tests the
     // `target.max(b.old_pos()) >= p` guard that prevents a zero-length or
     // inverted delete when the second cursor sits at the first cursor's
@@ -456,7 +456,7 @@ fn delete_word_backward_with_extra_word_char_deletes_whole_run() {
 fn delete_word_backward_two_cursors_in_one_word_chars_run() {
     // `delete_word_backward_two_cursors_same_word`'s overlap-skip rule, with
     // '-' a word char widening the run the two cursors share. Heads at 2 ('o')
-    // and 6 ('r') in "foo-bar\n" — with '-' a word char, "foo-bar" (0..6) is
+    // and 6 ('r') in "foo-bar\n". With '-' a word char, "foo-bar" (0..6) is
     // one run, not three.
     // Cursor 1 (head=2): word_start=0 >= old_pos=0 → delete [0,2) → cursor 1
     //   at new offset 0.
@@ -475,7 +475,7 @@ fn delete_word_backward_two_cursors_in_one_word_chars_run() {
 
 #[test]
 fn delete_selection_cursor_deletes_char() {
-    // Cursor on 'h' — deletes 'h'; cursor lands on 'e' (what was next).
+    // Cursor on 'h': deletes 'h'; cursor lands on 'e' (what was next).
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| delete_selection(text, sels),
@@ -485,7 +485,7 @@ fn delete_selection_cursor_deletes_char() {
 
 #[test]
 fn delete_selection_cursor_at_end_of_word() {
-    // Cursor on 'o' (last word char) — deletes 'o'; cursor lands on '\n'.
+    // Cursor on 'o' (last word char): deletes 'o'; cursor lands on '\n'.
     assert_state!(
         "hell-[o]>\n",
         |(text, sels)| delete_selection(text, sels),
@@ -495,7 +495,7 @@ fn delete_selection_cursor_at_end_of_word() {
 
 #[test]
 fn delete_selection_cursor_on_structural_newline_is_noop() {
-    // Cursor on the trailing '\n' — buffer invariant, no-op.
+    // Cursor on the trailing '\n': buffer invariant, no-op.
     assert_state!(
         "hello-[\n]>",
         |(text, sels)| delete_selection(text, sels),
@@ -505,7 +505,7 @@ fn delete_selection_cursor_on_structural_newline_is_noop() {
 
 #[test]
 fn delete_selection_empty_buffer_is_noop() {
-    // Only the structural '\n' — cursor is on it, no-op.
+    // Only the structural '\n'. Cursor is on it, no-op.
     assert_state!(
         "-[\n]>",
         |(text, sels)| delete_selection(text, sels),
@@ -515,7 +515,7 @@ fn delete_selection_empty_buffer_is_noop() {
 
 #[test]
 fn delete_selection_multi_char_forward() {
-    // Forward selection covering "hell" — cursor lands at start (pos 0).
+    // Forward selection covering "hell": cursor lands at start (pos 0).
     assert_state!(
         "-[hell]>o\n",
         |(text, sels)| delete_selection(text, sels),
@@ -525,7 +525,7 @@ fn delete_selection_multi_char_forward() {
 
 #[test]
 fn delete_selection_multi_char_backward() {
-    // Backward selection — same result as forward; cursor lands at start.
+    // Backward selection: same result as forward; cursor lands at start.
     assert_state!(
         "<[hell]-o\n",
         |(text, sels)| delete_selection(text, sels),
@@ -535,7 +535,7 @@ fn delete_selection_multi_char_backward() {
 
 #[test]
 fn delete_selection_two_cursors() {
-    // Cursors on 'h' (pos 0) and 'l' (pos 2) — both deleted independently.
+    // Cursors on 'h' (pos 0) and 'l' (pos 2), both deleted independently.
     assert_state!(
         "-[h]>el-[l]>o\n",
         |(text, sels)| delete_selection(text, sels),
@@ -545,7 +545,7 @@ fn delete_selection_two_cursors() {
 
 #[test]
 fn delete_selection_adjacent_selections_merge_cursors() {
-    // Cursors on 'h' (0) and 'e' (1) — after deleting both, cursors both
+    // Cursors on 'h' (0) and 'e' (1). After deleting both, cursors both
     // land at 0 and merge into one.
     assert_state!(
         "-[h]>-[e]>llo\n",
@@ -586,7 +586,7 @@ fn delete_selection_multi_char_ends_at_grapheme_base() {
 fn delete_selection_last_line_removes_line_not_content() {
     // "foo\nbar\n": x on last line selects [4,7] (anchor 4, head on structural
     // '\n' at 7). Deleting must remove the preceding '\n' so "bar" vanishes
-    // entirely — result "foo\n", cursor at start of "foo" (pos 0 = 'f').
+    // entirely: result "foo\n", cursor at start of "foo" (pos 0 = 'f').
     assert_state!(
         "foo\n-[bar\n]>",
         |(text, sels)| delete_selection(text, sels),
@@ -607,7 +607,7 @@ fn delete_selection_last_line_with_empty_preceding_line() {
 
 #[test]
 fn delete_selection_last_line_single_line_still_empties() {
-    // Single-line buffer "foo\n": selection [0,3] — no preceding line, so the
+    // Single-line buffer "foo\n": selection [0,3], no preceding line, so the
     // normal cap applies: only content deleted, structural '\n' kept.
     assert_state!(
         "-[foo\n]>",
@@ -630,7 +630,7 @@ fn delete_selection_whole_buffer_caps_at_last_content_char() {
 #[test]
 fn delete_selection_partial_last_line_still_caps() {
     // "foo\nbar\n", select [5,7] (head on structural '\n', but NOT at line
-    // start — anchor is mid-line 'a'). Must use normal capped path: deletes
+    // start; anchor is mid-line 'a'). Must use normal capped path: deletes
     // "ar", leaves "foo\nb\n", cursor at pos 5 = '\n' (deletion point).
     assert_state!(
         "foo\nb-[ar\n]>",

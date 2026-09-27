@@ -31,7 +31,7 @@ fn align_forward_insert_spaces() {
 fn align_forward_multiple_spaces_inserted() {
     // Primary '=' at col 2 (on line "ab=c"). Secondary '=' at col 0 (on line "=de").
     // Two spaces inserted before secondary to reach col 2.
-    // "foo = 1" has no selection — just buffer content.
+    // "foo = 1" has no selection, just buffer content.
     assert_state!(
         "foo = 1\nab-[=]>c\n-[=]>de\n",
         |(text, sels)| align_selections(text, sels, 4),
@@ -42,9 +42,9 @@ fn align_forward_multiple_spaces_inserted() {
 #[test]
 fn align_forward_two_secondaries_insert() {
     // Primary '=' at col 6 (first sel). Both secondaries need spaces.
-    // "foobar = 1"   — primary '=' at col 7
-    // "foo = 2"      — secondary '=' at col 4, needs 3 spaces
-    // "fo = 3"       — secondary '=' at col 3, needs 4 spaces
+    // "foobar = 1": primary '=' at col 7
+    // "foo = 2":    secondary '=' at col 4, needs 3 spaces
+    // "fo = 3":     secondary '=' at col 3, needs 4 spaces
     assert_state!(
         "foobar -[=]> 1\nfoo -[=]> 2\nfo -[=]> 3\n",
         |(text, sels)| align_selections(text, sels, 4),
@@ -94,8 +94,8 @@ fn align_clamped_exactly_one_space_available_removes_nothing() {
 #[test]
 fn align_bidirectional_insert_and_remove() {
     // Primary (first sel) '=' at col 4.
-    // Second sel '=' at col 3 — insert 1 space → col 4.
-    // Third sel '=' at col 6 with 3 spaces before it — need -2, avail=3,
+    // Second sel '=' at col 3: insert 1 space → col 4.
+    // Third sel '=' at col 6 with 3 spaces before it: need -2, avail=3,
     // max_remove = N-1 = 2 → remove 2, col 4.
     assert_state!(
         "foo -[=]>\nfo -[=]>\nfoo   -[=]>\n",
@@ -117,8 +117,8 @@ fn align_direction_preserved_forward() {
 #[test]
 fn align_backward_selection_right_aligns() {
     // Backward selection: anchor = right edge. Primary anchor at col 5.
-    // "foo  = 1" — primary, backward '=' anchor at col 5.
-    // "foo = 2"  — secondary, backward '=' anchor at col 4. Insert 1 space.
+    // "foo  = 1": primary, backward '=' anchor at col 5.
+    // "foo = 2":  secondary, backward '=' anchor at col 4. Insert 1 space.
     assert_state!(
         "foo  <[=]- 1\nfoo <[=]- 2\n",
         |(text, sels)| align_selections(text, sels, 4),
@@ -128,8 +128,8 @@ fn align_backward_selection_right_aligns() {
 
 #[test]
 fn align_multiline_passthrough() {
-    // Primary '=' at col 4. Single-line secondary '=' at col 3 — gets +1 space.
-    // Multiline "bar\nbaz" spans two lines — passed through unchanged, but its
+    // Primary '=' at col 4. Single-line secondary '=' at col 3 gets +1 space.
+    // Multiline "bar\nbaz" spans two lines and is passed through unchanged, but its
     // buffer positions shift by +1 (the space inserted for the single-line sel).
     assert_state!(
         "foo -[=]>\nfo -[=]>\nfoo -[bar\nbaz]>\n",
@@ -150,18 +150,18 @@ fn align_primary_unchanged() {
 
 #[test]
 fn align_remove_tab_before_selection() {
-    // The reverse scan must treat a tab as whitespace, not a chain-breaker —
+    // The reverse scan must treat a tab as whitespace, not a chain-breaker:
     // checking `== Some(' ')` alone would stop the scan at the tab and yield
     // rem=0, silently skipping all removal.
     //
     // Buffer " =\n  \t=\n", tab_width 4:
-    //   Line 0: ' '+'=' — primary '=' at display col 1.
-    //   Line 1: ' ',' ','\t','=' — secondary '=' at display col 4 (the tab
+    //   Line 0: ' '+'=', primary '=' at display col 1.
+    //   Line 1: ' ',' ','\t','=', secondary '=' at display col 4 (the tab
     //     at position 2 advances only to column 4, `tab_advance(2, 4)`).
     //
     // Compression is measured in display cells, not chars: line 1's
     // removable run (' ', '\t') is worth col(4) − col(1) = 3 cells, so
-    // fit_0 = max(line 0: 1, line 1: 4 − 3 = 1) = 1 — matching the primary's
+    // fit_0 = max(line 0: 1, line 1: 4 − 3 = 1) = 1, matching the primary's
     // own baseline exactly. target[0] stays 1, so the primary never moves.
     let text = BufferText::from(" =\n  \t=\n");
     let sels = SelectionSet::from_vec(
@@ -182,15 +182,15 @@ fn align_remove_tab_before_selection() {
 
 #[test]
 fn align_tab_in_removable_run_pads_to_exact_target() {
-    // Primary "aa =" — '=' at display col 3. Secondary "a \t=" — '=' at
+    // Primary "aa =" has '=' at display col 3. Secondary "a \t=" has '=' at
     // display col 4 (tab_width 4: 'a' col 0→1, ' ' col 1→2, '\t' col 2→4),
     // with a 2-char removable run (' ', '\t') worth col(4) − col(2) = 2
-    // cells, rem = 1 (keep 1 char, so only the rightmost — the tab — is
+    // cells, rem = 1 (keep 1 char, so only the rightmost, the tab, is
     // eligible).
     //
     // target[0] = baseline[0] = 3 (primary's own floor; secondary's own
     // fit_0 = 4 − 2 = 2 is lower). Secondary needs to lose 1 cell, but its
-    // only removable unit is the whole tab, which frees 2 (col 2→4) — one
+    // only removable unit is the whole tab, which frees 2 (col 2→4), one
     // more than needed. Deleting the tab and padding 1 space back lands '='
     // exactly on col 3, not one column left of it.
     let text = BufferText::from("aa =\na \t=\n");
@@ -213,11 +213,11 @@ fn align_tab_in_removable_run_pads_to_exact_target() {
 #[test]
 fn align_accounts_for_a_tab_before_the_alignment_point() {
     // Primary "a\tx = 1" at tab_width 4: 'a' (col 0→1), '\t' (col 1→4,
-    // `tab_advance(1, 4)`), 'x' (col 4→5), ' ' (col 5→6) — '=' sits at
+    // `tab_advance(1, 4)`), 'x' (col 4→5), ' ' (col 5→6), so '=' sits at
     // *display* col 6 though it's only the 4th grapheme cluster on the
     // line. Secondary "bb = 2" has no tab, so its grapheme and display
     // columns agree (3). Aligning by grapheme column alone would insert
-    // just enough spaces to match column 4 — landing secondary's '=' two
+    // just enough spaces to match column 4, landing secondary's '=' two
     // display columns left of primary's, visibly ragged despite matching
     // grapheme counts. Aligning by display column inserts enough to match
     // column 6, where both actually line up on screen.
@@ -296,7 +296,7 @@ fn align_two_slots_static_text_between() {
 fn align_extras_on_same_line_pass_through() {
     // When a non-primary line has more selections than the primary line (N=1 here),
     // the extra selections (slot >= N) pass through shifted by the accumulated
-    // edit delta — selection count is preserved.
+    // edit delta; selection count is preserved.
     assert_state!(
         "foo -[x]>\na -[b]> -[c]>\n",
         |(text, sels)| align_selections(text, sels, 4),

@@ -35,11 +35,11 @@ pub use word::{
 /// Apply a text object to every selection in the set.
 ///
 /// Unlike motions, which map a single cursor position to a new position, a
-/// text object maps a cursor position to a *range* — the region to select.
+/// text object maps a cursor position to a *range*: the region to select.
 /// `text_object` returns `Some(range)` as an inclusive char-offset span,
 /// or `None` if no match exists (e.g., cursor not inside any bracket pair).
 ///
-/// On `None`, the existing selection is preserved — `mi(` when not inside parens
+/// On `None`, the existing selection is preserved: `mi(` when not inside parens
 /// is a no-op. On `Some`, the selection is replaced with a
 /// forward selection anchored at `start` and with head at `end`.
 ///
@@ -66,7 +66,7 @@ pub(crate) fn apply_text_object(
 ///
 /// Two-pass strategy for outward growth:
 /// 1. Try `text_object(text, sel.head)`. If the result is *larger* than the current
-///    selection, use it — this handles the initial extend-from-cursor case.
+///    selection, use it. This handles the initial extend-from-cursor case.
 /// 2. If the result is a subset (union doesn't grow), retry from the position just
 ///    past `sel.end()`. For bracket/quote text objects this escapes the current pair
 ///    and causes the search to find the next enclosing pair instead.

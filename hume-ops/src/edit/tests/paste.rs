@@ -25,7 +25,7 @@ fn pb(
 
 #[test]
 fn paste_after_single_cursor() {
-    // Cursor on 'h' — insert "XY" after 'h'; selection covers "XY".
+    // Cursor on 'h': insert "XY" after 'h'; selection covers "XY".
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| pa(text, sels, &["XY".to_string()]),
@@ -35,7 +35,7 @@ fn paste_after_single_cursor() {
 
 #[test]
 fn paste_after_mid_word() {
-    // Cursor on 'e' (pos 1) — insert "XY" after 'e'; selection covers "XY".
+    // Cursor on 'e' (pos 1): insert "XY" after 'e'; selection covers "XY".
     assert_state!(
         "h-[e]>llo\n",
         |(text, sels)| pa(text, sels, &["XY".to_string()]),
@@ -45,7 +45,7 @@ fn paste_after_mid_word() {
 
 #[test]
 fn paste_after_cursor_on_structural_newline() {
-    // Cursor on the trailing '\n' — insertion is clamped to pos 5 (before '\n').
+    // Cursor on the trailing '\n': insertion is clamped to pos 5 (before '\n').
     // "hello\n" → "helloXY\n"; cursor lands on 'Y' (pos 6).
     assert_state!(
         "hello-[\n]>",
@@ -67,7 +67,7 @@ fn paste_after_cursor_on_empty_line_stays_on_that_line() {
 
 #[test]
 fn paste_after_cursor_on_interior_newline_stays_on_that_line() {
-    // Same escape via a non-empty line's own terminator — "after the cursor"
+    // Same escape via a non-empty line's own terminator: "after the cursor"
     // must not cross the line break here either.
     assert_state!(
         "ab-[\n]>cd\n",
@@ -89,7 +89,7 @@ fn paste_before_cursor_on_empty_line_stays_on_that_line() {
 
 #[test]
 fn paste_after_two_cursors_n_to_n() {
-    // Two cursors (pos 0 and 4); two values — each cursor gets its own slot.
+    // Two cursors (pos 0 and 4); two values, each cursor gets its own slot.
     assert_state!(
         "-[h]>ell-[o]>\n",
         |(text, sels)| pa(text, sels, &["AB".to_string(), "CD".to_string()]),
@@ -129,7 +129,7 @@ fn paste_after_replaces_forward_selection() {
 
 #[test]
 fn paste_after_replaces_backward_selection() {
-    // Direction doesn't matter for replace — same result as forward.
+    // Direction doesn't matter for replace: same result as forward.
     assert_state!(
         "<[hel]-lo\n",
         |(text, sels)| pa(text, sels, &["XY".to_string()]),
@@ -139,7 +139,7 @@ fn paste_after_replaces_backward_selection() {
 
 #[test]
 fn paste_after_replace_multi_cursor_n_to_n() {
-    // Two non-cursor selections; two values — each replaced independently.
+    // Two non-cursor selections; two values, each replaced independently.
     // "-[he]>l-[lo]>\n": "he" replaced by "AB", "lo" replaced by "CD".
     assert_state!(
         "-[he]>l-[lo]>\n",
@@ -183,7 +183,7 @@ fn paste_after_empty_string_over_selection_deletes_and_lands_at_start() {
 
 #[test]
 fn paste_before_single_cursor() {
-    // Cursor on 'h' — insert "XY" before 'h'; selection covers "XY".
+    // Cursor on 'h': insert "XY" before 'h'; selection covers "XY".
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| pb(text, sels, &["XY".to_string()]),
@@ -193,7 +193,7 @@ fn paste_before_single_cursor() {
 
 #[test]
 fn paste_before_mid_word() {
-    // Cursor on 'e' (pos 1) — insert "XY" before 'e'; selection covers "XY".
+    // Cursor on 'e' (pos 1): insert "XY" before 'e'; selection covers "XY".
     assert_state!(
         "h-[e]>llo\n",
         |(text, sels)| pb(text, sels, &["XY".to_string()]),
@@ -203,7 +203,7 @@ fn paste_before_mid_word() {
 
 #[test]
 fn paste_before_two_cursors_n_to_n() {
-    // Two cursors; two values — each cursor gets its own slot.
+    // Two cursors; two values, each cursor gets its own slot.
     // Text after: AB + hell + CD + o + \n; each selection covers its value.
     assert_state!(
         "-[h]>ell-[o]>\n",
@@ -224,7 +224,7 @@ fn paste_before_count_mismatch_uses_joined() {
 
 #[test]
 fn paste_before_replaces_selection() {
-    // Multi-char selection — paste_before also replaces (same as paste_after for selections).
+    // Multi-char selection: paste_before also replaces (same as paste_after for selections).
     assert_state!(
         "-[hel]>lo\n",
         |(text, sels)| pb(text, sels, &["XY".to_string()]),
@@ -298,7 +298,7 @@ fn paste_after_normalizes_bare_cr_in_register_content() {
 
 #[test]
 fn paste_over_selection_normalizes_bare_cr_in_register_content() {
-    // Non-collapsed (selection-replace) path — a separate code path from the
+    // Non-collapsed (selection-replace) path, a separate code path from the
     // collapsed-cursor insert above, and its own `b.insert` site.
     assert_state!(
         "-[hel]>lo\n",
@@ -356,7 +356,7 @@ fn paste_after_linewise_multiline_content() {
 
 #[test]
 fn paste_after_linewise_over_full_line_selection() {
-    // Full-line selection (head on '\n') — before and after both empty →
+    // Full-line selection (head on '\n'): before and after both empty →
     // three-way collapses to just the pasted line.
     assert_state!(
         "-[hello\n]>world\n",
@@ -367,7 +367,7 @@ fn paste_after_linewise_over_full_line_selection() {
 
 #[test]
 fn paste_after_linewise_over_content_selection_only() {
-    // Selection covers all content but NOT the '\n' — both before and after empty →
+    // Selection covers all content but NOT the '\n', so before and after are both empty →
     // three-way collapses to just the pasted line.
     assert_state!(
         "-[hello]>\nworld\n",
@@ -380,7 +380,7 @@ fn paste_after_linewise_over_content_selection_only() {
 
 #[test]
 fn paste_after_linewise_three_way_split_both_sides() {
-    // Partial selection "ell" within "hello" — before="h", after="o".
+    // Partial selection "ell" within "hello": before="h", after="o".
     // Three-way split produces h / X / o on separate lines.
     assert_state!(
         "h-[ell]>o\nworld\n",
@@ -391,7 +391,7 @@ fn paste_after_linewise_three_way_split_both_sides() {
 
 #[test]
 fn paste_after_linewise_three_way_split_empty_before() {
-    // Selection starts at column 0 — before is empty, after="o".
+    // Selection starts at column 0: before is empty, after="o".
     // Two-part: X / o
     assert_state!(
         "-[ell]>o\nworld\n",
@@ -402,7 +402,7 @@ fn paste_after_linewise_three_way_split_empty_before() {
 
 #[test]
 fn paste_after_linewise_three_way_split_empty_after() {
-    // Selection ends just before the '\n' — before="h", after empty.
+    // Selection ends just before the '\n': before="h", after empty.
     // Two-part: h / X
     assert_state!(
         "h-[ello]>\nworld\n",
@@ -459,7 +459,7 @@ fn paste_before_linewise_multiline_content() {
 
 #[test]
 fn paste_before_linewise_over_full_line_selection() {
-    // Full-line selection — three-way split with both sides empty; identical
+    // Full-line selection: three-way split with both sides empty; identical
     // to paste_after for non-collapsed selections.
     assert_state!(
         "-[hello\n]>world\n",
@@ -470,7 +470,7 @@ fn paste_before_linewise_over_full_line_selection() {
 
 #[test]
 fn paste_before_linewise_three_way_split_both_sides() {
-    // Partial selection "ell" within "hello" — before="h", after="o".
+    // Partial selection "ell" within "hello": before="h", after="o".
     assert_state!(
         "h-[ell]>o\nworld\n",
         |(text, sels)| pb(text, sels, &["X\n".to_string()]),
@@ -480,7 +480,7 @@ fn paste_before_linewise_three_way_split_both_sides() {
 
 #[test]
 fn paste_before_linewise_two_selections_same_line_each_replaced() {
-    // Two non-collapsed selections on the same line — each replaced independently;
+    // Two non-collapsed selections on the same line, each replaced independently;
     // the before/after distinction only applies to cursor selections, so the result
     // is identical to paste_after for non-collapsed selections.
     assert_state!(
@@ -494,8 +494,8 @@ fn paste_before_linewise_two_selections_same_line_each_replaced() {
 
 #[test]
 fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
-    // Selection 1: "c\nx" — spans lines 0-1 (positions 2-4 in "abc\nxyz\nfoo\n").
-    // Selection 2: "z\nf" — spans lines 1-2 (positions 6-8).
+    // Selection 1: "c\nx", spanning lines 0-1 (positions 2-4 in "abc\nxyz\nfoo\n").
+    // Selection 2: "z\nf", spanning lines 1-2 (positions 6-8).
     // Each selection is replaced independently: sel1 replaces "c\nx", retaining
     // "ab" (emitted on its own line via the prefix '\n'). Gap "y" (between sel1
     // end and sel2 start) is retained on its own line. Sel2 replaces "z\nf",
@@ -504,8 +504,8 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     let (text, _) = test_fixtures::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(CharOffset::new(2), CharOffset::new(4)), // "c\nx" — first_line=0, last_line=1
-            Selection::new(CharOffset::new(6), CharOffset::new(8)), // "z\nf" — first_line=1, last_line=2
+            Selection::new(CharOffset::new(2), CharOffset::new(4)), // "c\nx": first_line=0, last_line=1
+            Selection::new(CharOffset::new(6), CharOffset::new(8)), // "z\nf": first_line=1, last_line=2
         ],
         0,
     );
@@ -515,7 +515,7 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
         result, "ab\nX\ny\nX\noo\n",
         "each selection replaced; gaps on own lines"
     );
-    // "xy" must not appear — "x" was part of sel1, "z" was part of sel2, only "y" survives.
+    // "xy" must not appear: "x" was part of sel1, "z" was part of sel2, only "y" survives.
     assert!(
         !result.contains("xy"),
         "sel1 content must not leak into gap"

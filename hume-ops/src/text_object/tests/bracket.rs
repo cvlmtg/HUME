@@ -25,7 +25,7 @@ fn around_paren_cursor_inside() {
 
 #[test]
 fn inner_paren_cursor_on_open() {
-    // Cursor ON `(` — treated as if inside; same result as cursor inside.
+    // Cursor ON `(`: treated as if inside; same result as cursor inside.
     assert_state!(
         "-[(]>hello)\n",
         |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
@@ -53,7 +53,7 @@ fn inner_paren_empty_is_noop() {
 
 #[test]
 fn inner_paren_nested_cursor_on_inner() {
-    // Cursor inside inner `(b)` — selects `b`, which is a single char.
+    // Cursor inside inner `(b)`: selects `b`, which is a single char.
     // anchor == head, so serialises as a cursor.
     assert_state!(
         "(a(-[b]>)c)\n",
@@ -64,7 +64,7 @@ fn inner_paren_nested_cursor_on_inner() {
 
 #[test]
 fn inner_paren_nested_cursor_on_outer_content() {
-    // Cursor on `a` (outside inner parens) — innermost enclosing pair
+    // Cursor on `a` (outside inner parens): innermost enclosing pair
     // is the outer `(...)`, selects `a(b)c`.
     assert_state!(
         "(-[a]>(b)c)\n",
@@ -122,7 +122,7 @@ fn inner_paren_multiline() {
 
 #[test]
 fn inner_paren_two_cursors_same_pair_merge() {
-    // Both cursors inside the same parens — both map to the same range → merge.
+    // Both cursors inside the same parens map to the same range → merge.
     assert_state!(
         "(-[h]>el-[l]>o)\n",
         |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
@@ -246,7 +246,7 @@ fn extend_inner_paren_from_matched_pair_grows_outward() {
 #[test]
 fn extend_around_paren_no_outer_pair_is_noop() {
     // When the selection already covers the outermost pair, there is no
-    // enclosing pair to grow into — the command is a no-op.
+    // enclosing pair to grow into, so the command is a no-op.
     //
     // "(a b)\n": (=0,a=1,' '=2,b=3,)=4,\n=5. Selection anchor=0, head=4.
     // First try: around_bracket(head=4=')') → (0,4). Union no-op.

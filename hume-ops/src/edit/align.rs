@@ -1,4 +1,4 @@
-//! `align-selections` — align each selection's anchor to the primary
+//! `align-selections`: align each selection's anchor to the primary
 //! selection's anchor display column.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
@@ -42,7 +42,7 @@ pub fn align_selections(
         start_line: ContentLine,
         is_multiline: bool,
         anchor_display_col: BufferLineCol, // display col of sel.anchor() (left for forward, right for backward)
-        start_display_col: BufferLineCol, // display col of sel.start() — same value pass 3 re-derives from the same unedited text, cached here to avoid the second walk
+        start_display_col: BufferLineCol, // display col of sel.start(), the same value pass 3 re-derives from the same unedited text, cached here to avoid the second walk
         rem: usize,          // chars removable before sel.start() while keeping ≥1 space
         rem_cells: u32,      // display-cell width of the `rem`-char run (tab-aware)
         slot: Option<usize>, // None = multiline or extra (slot >= N)
@@ -72,7 +72,7 @@ pub fn align_selections(
             let line_start = text.line_to_char(start_line.into());
             let sel_start = sel.start();
             // `sel.start()` is `anchor.min(head)`, so for a forward selection
-            // (anchor <= head) it's the anchor itself — reuse the column just
+            // (anchor <= head) it's the anchor itself, so reuse the column just
             // walked above rather than walking the same prefix again. Only a
             // backward selection (head == start, anchor == end) needs its own walk.
             let start_display_col = if sel.anchor() <= sel.head() {
@@ -88,7 +88,7 @@ pub fn align_selections(
             // The `rem`-char run's display width, tab-aware. Measured from
             // `sel_start`, not `anchor_display_col`: the run always ends at
             // the selection's left edge, which for a backward multi-char
-            // selection is the head, not the (right-edge) anchor — using
+            // selection is the head, not the (right-edge) anchor. Using
             // the anchor's column here would fold the selection's own
             // content width into the run's width.
             let run_start = sel_start.retreat(rem);
@@ -113,7 +113,7 @@ pub fn align_selections(
     let n_slots = slots_on_line.get(&primary_line).copied().unwrap_or(0);
 
     if n_slots == 0 {
-        // Primary is multiline — no slot structure, everything passes through.
+        // Primary is multiline: no slot structure, everything passes through.
         let mut b = ChangeSetBuilder::new(text.end());
         b.retain_rest();
         let cs = b.finish();
@@ -232,7 +232,7 @@ pub fn align_selections(
                 // Adjust the original anchor display column by the net shift
                 // from earlier edits on this line to get the current anchor
                 // display column.
-                // Measured in pass 1 from the same (still unedited) text —
+                // Measured in pass 1 from the same (still unedited) text:
                 // a `Some(slot)` meta is exactly one that took pass 1's
                 // single-line branch, which is what populates this field.
                 let anchor_display_col_now =
@@ -247,13 +247,13 @@ pub fn align_selections(
                     // Remove whitespace immediately before sel_start, resolving
                     // the needed cell count back to a char count. Measured in
                     // original-buffer columns throughout (`start_display_col`,
-                    // `threshold`, `freed`) — the same origin `need` (derived
+                    // `threshold`, `freed`), the same origin `need` (derived
                     // from `amount`, itself anchor-based) already assumes;
                     // mixing origins across this subtraction would be worse
                     // than the approximation `line_shift` already makes below.
                     let need = (-amount) as u32;
                     // Same unedited-text walk pass 1 already did for this
-                    // selection (see `SelMeta::start_display_col`'s doc) —
+                    // selection (see `SelMeta::start_display_col`'s doc),
                     // reused rather than repeated.
                     let start_display_col = meta[i].start_display_col;
                     let max_remove = meta[i].rem.min(sel_start.chars_since(b.old_pos()));

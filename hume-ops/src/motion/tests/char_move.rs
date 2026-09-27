@@ -311,7 +311,7 @@ fn goto_last_line_multi_line() {
 
 #[test]
 fn goto_last_line_multi_cursor() {
-    // Both cursors converge to the same position — merged into one.
+    // Both cursors converge to the same position: merged into one.
     assert_state!(
         "-[a]>aa\nbbb\n-[c]>cc\n",
         |(text, sels)| cmd_goto_last_line(&text, sels, 1, MotionMode::Move),
@@ -331,7 +331,7 @@ fn move_right_count_3() {
 
 #[test]
 fn move_right_count_clamps_at_eof() {
-    // count=100 far exceeds the buffer length — clamps at the trailing '\n'.
+    // count=100 far exceeds the buffer length: clamps at the trailing '\n'.
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| cmd_move_right(&text, sels, 100, MotionMode::Move),
@@ -398,7 +398,7 @@ fn move_right_count_grapheme_cluster() {
 fn multi_cursor_count_independent_movement() {
     // Two cursors: 'h'(0) and 'l'(2). move_right count=3.
     // Cursor 0: 0→1→2→3 (second 'l'). Cursor 2: 2→3→4→5 ('\n').
-    // No merge — different positions.
+    // No merge: different positions.
     assert_state!(
         "-[h]>el-[l]>o\n",
         |(text, sels)| cmd_move_right(&text, sels, 3, MotionMode::Move),

@@ -2,7 +2,7 @@ use super::super::*;
 use hume_rope::offset::{CharOffset, InclusiveRange};
 use test_fixtures::assert_state;
 
-// Stand-ins for `hume_treesitter::textobjects::ObjectSpans` — this crate
+// Stand-ins for `hume_treesitter::textobjects::ObjectSpans`. This crate
 // cannot depend on that crate, so these tests exercise `apply_object_motion`
 // against a fixed list of spans rather than a real query result. Buffer
 // text throughout is "abcdefghijklmnopqrstuvwxyz\n" (positions 0..=25 are
@@ -76,7 +76,7 @@ fn move_forward_skips_object_nested_in_the_one_just_selected() {
 #[test]
 fn move_backward_from_inside_an_object_lands_on_its_own_start() {
     // Origin is `current.start()`; a collapsed cursor's start is itself, and
-    // OBJ1's own start (2) is `< 3` — so backward search from inside an
+    // OBJ1's own start (2) is `< 3`, so backward search from inside an
     // object finds that object before walking further back.
     assert_state!(
         "abc-[d]>efghijklmnopqrstuvwxyz\n",
@@ -137,7 +137,7 @@ fn extend_forward_after_a_move_keeps_the_selected_object() {
 
 /// A found span nested *inside* the current selection (its start satisfies
 /// `start > origin`, but its end doesn't reach past what's already
-/// selected) must not shrink the selection — the union with the current
+/// selected) must not shrink the selection: the union with the current
 /// extent absorbs it with no visible change, rather than replacing the
 /// selection outright.
 #[test]
@@ -149,8 +149,8 @@ fn extend_forward_into_a_nested_object_does_not_shrink_the_selection() {
     );
 }
 
-/// A span reachable only from the selection's head, not its far edge —
-/// proves Extend's search origin is `head()`, matching [`apply_motion`] and
+/// A span reachable only from the selection's head, not its far edge.
+/// This proves Extend's search origin is `head()`, matching [`apply_motion`] and
 /// `apply_word_select_extend`, not `start()`/`end()` as `Move` uses.
 #[test]
 fn extend_searches_from_the_head_not_the_far_edge() {
@@ -167,7 +167,7 @@ fn extend_searches_from_the_head_not_the_far_edge() {
 
 #[test]
 fn multi_cursor_convergence_merges() {
-    // Both cursors' forward search lands on OBJ1 — `map`'s always-merge
+    // Both cursors' forward search lands on OBJ1, so `map`'s always-merge
     // collapses the two resulting selections into one.
     assert_state!(
         "-[a]>-[b]>cdefghijklmnopqrstuvwxyz\n",

@@ -1,10 +1,10 @@
-//! `:sort` — permute whole lines, keyed by the selected text on each line.
+//! `:sort`: permute whole lines, keyed by the selected text on each line.
 //!
 //! Unlike Helix's `:sort` (which permutes *text between selection slots* and
 //! leaves line boundaries untouched) this permutes the lines themselves, keyed
-//! by whatever text a selection covers on them — closer to `sort -k`. Also
+//! by whatever text a selection covers on them, closer to `sort -k`. Also
 //! rejects Kakoune's `|sort` (pipes each selection through the shell), since
-//! that makes N one-line selections an N-way no-op — there's nothing for a
+//! that makes N one-line selections an N-way no-op: there's nothing for a
 //! per-line shell invocation to reorder against.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
@@ -25,8 +25,8 @@ pub struct SortOpts {
 /// Why [`sort_lines`] declined to produce an edit.
 ///
 /// A distinct type (not an identity `ChangeSet`) is load-bearing: the caller
-/// (`:sort`'s typed-command handler) reports *why* nothing happened —
-/// "nothing to sort" vs. "already sorted" — which an identity `ChangeSet`
+/// (`:sort`'s typed-command handler) reports *why* nothing happened
+/// ("nothing to sort" vs. "already sorted"), which an identity `ChangeSet`
 /// alone can't distinguish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortRefusal {
@@ -43,7 +43,7 @@ struct SortEntry {
 }
 
 /// Sort each maximal run of line-adjacent entries touched by a selection,
-/// keyed by the selected text on that line. Groups sort independently — text
+/// keyed by the selected text on that line. Groups sort independently: text
 /// never moves between groups.
 pub fn sort_lines(
     text: BufferText,
@@ -74,7 +74,7 @@ pub fn sort_lines(
         }
 
         let Some((lo, hi)) = trimmed_window(&order) else {
-            continue; // fully identity — nothing to write for this group
+            continue; // fully identity, nothing to write for this group
         };
         any_edit = true;
 
@@ -101,7 +101,7 @@ pub fn sort_lines(
     let cs = b.finish();
     let new_text = cs
         .apply(&text)
-        .expect("sort produced an invalid changeset — this is a bug");
+        .expect("sort produced an invalid changeset: this is a bug");
 
     let new_sels = remap_selections(&text, &new_text, &sels, &line_map);
     new_sels.debug_assert_valid(&new_text);
@@ -110,7 +110,7 @@ pub fn sort_lines(
 
 /// Walk every selection and build one [`SortEntry`] per distinct line it
 /// touches, keyed by the selected text on that line (excluding the trailing
-/// `\n`). A line touched by two selections gets a compound key — never
+/// `\n`). A line touched by two selections gets a compound key and never
 /// discards one.
 ///
 /// Entries come out sorted ascending and deduplicated by construction:
@@ -121,7 +121,7 @@ fn collect_entries(text: &BufferText, sels: &SelectionSet) -> Vec<SortEntry> {
     for sel in sels.iter_sorted() {
         let start_line = text.char_to_line(sel.start());
         let end_line = text.char_to_line(sel.end_inclusive(text));
-        // Bare-`usize` range, `ContentLine` re-minted each iteration —
+        // Bare-`usize` range, `ContentLine` re-minted each iteration:
         // `ContentLine` has no `Step`/`Range` impl to loop over directly (see
         // CLAUDE.md's "Line counts and ranges"). Sound here: both endpoints
         // are already-valid `ContentLine`s.
@@ -175,10 +175,10 @@ fn group_adjacent(entries: &[SortEntry]) -> Vec<Vec<usize>> {
 }
 
 /// A group's keys, classified once so every comparison in the sort reuses the
-/// same parse — not re-parsed per comparison.
+/// same parse, not re-parsed per comparison.
 enum Keys {
     Int(Vec<i64>),
-    /// `f64`, guaranteed finite — `"nan"`/`"inf"` parse but aren't order-total,
+    /// `f64`, guaranteed finite: `"nan"`/`"inf"` parse but aren't order-total,
     /// so they fall through to `Text` instead.
     Float(Vec<f64>),
     Text(Vec<String>),
@@ -214,7 +214,7 @@ fn classify_keys(entries: &[SortEntry], group: &[usize], insensitive: bool) -> K
 }
 
 /// The permutation for one group: `order[slot]` is the group-local index of
-/// the entry that ends up at `slot`. Stable — equal keys keep document order,
+/// the entry that ends up at `slot`. Stable: equal keys keep document order,
 /// including under `-r` (the comparator is flipped, not the result vector, so
 /// ties are never reversed).
 fn sort_order(entries: &[SortEntry], group: &[usize], opts: SortOpts) -> Vec<usize> {
@@ -246,7 +246,7 @@ fn invert(order: &[usize]) -> Vec<usize> {
 ///
 /// Because `order` is a bijection on `0..n` and everything outside `[lo, hi]`
 /// is a fixed point by construction, `order[lo..=hi]` is necessarily a
-/// permutation of `lo..=hi` itself — the window never needs to reach outside
+/// permutation of `lo..=hi` itself, so the window never needs to reach outside
 /// itself for a value.
 fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
     let moved = |(slot, &local): (usize, &usize)| local != slot;
@@ -257,7 +257,7 @@ fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
 
 /// Selections follow their line: a selection confined to a single moved line
 /// is shifted by the same char column offset onto the line's new home. A
-/// selection spanning multiple lines keeps its char range unchanged — the
+/// selection spanning multiple lines keeps its char range unchanged: the
 /// group's total length is invariant under a line permutation (lines move
 /// verbatim), so the range still points at valid text, just reordered
 /// underneath it.
@@ -266,7 +266,7 @@ fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
 /// `place_char_column`: that helper *clamps* a column past the line's content
 /// onto the last real character, which is right when moving between lines of
 /// different lengths but wrong here. A line lands intact at its new home, so
-/// every column on it is still valid — including a head sitting on the line's
+/// every column on it is still valid, including a head sitting on the line's
 /// own `\n` (what `x` selects), which the clamp would silently pull back onto
 /// the last character.
 fn remap_selections(

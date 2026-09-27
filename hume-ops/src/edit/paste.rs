@@ -1,4 +1,4 @@
-//! `p`/`P` — paste register contents after/before each selection.
+//! `p`/`P`: paste register contents after/before each selection.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::lines::{is_line_start, line_break_char, next_line_start};
@@ -26,7 +26,7 @@ use crate::register;
 ///   the next line. The line's original trailing `\n` is consumed only when the
 ///   selection ends right before it (avoiding a spurious blank line). Multiple
 ///   selections on the same line or with overlapping line ranges are each replaced
-///   independently — the gap between them becomes its own line.
+///   independently; the gap between them becomes its own line.
 ///
 /// The replaced selection is discarded; it is never pushed to the kill ring or
 /// clipboard (rule: "when pasting over a selection the replaced text is not copied").
@@ -163,7 +163,7 @@ pub fn paste_after(
     paste_impl(text, sels, values, false)
 }
 
-/// Paste `values` before/onto each selection (normal-mode `P`) — mirrors
+/// Paste `values` before/onto each selection (normal-mode `P`). Mirrors
 /// [`paste_after`]; the before/after distinction only applies to cursor
 /// selections (see `paste_impl`'s matrix). An empty `values` slice is a
 /// no-op.

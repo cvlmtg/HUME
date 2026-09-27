@@ -37,14 +37,14 @@ pub enum SearchDirection {
 /// so a later flag group in the pattern overrides it.
 ///
 /// Private: [`compile_search_input`] is the crate's one compilation path from
-/// prompt input to a `Regex` — every producer of a `SearchPattern` goes
+/// prompt input to a `Regex`. Every producer of a `SearchPattern` goes
 /// through it rather than calling this directly.
 fn compile_search_regex(pattern: &str) -> Option<Regex> {
     let effective;
     let pat = if pattern.chars().any(|c| c.is_uppercase()) {
         pattern
     } else {
-        // Prepend (?i) — an explicit (?-i) later in the pattern will override.
+        // Prepend (?i); an explicit (?-i) later in the pattern will override.
         effective = format!("(?i){pattern}");
         &effective
     };
@@ -56,7 +56,7 @@ fn compile_search_regex(pattern: &str) -> Option<Regex> {
 /// Leading flags on a search/sift prompt's raw input (`m/bar`, `v/.rs`).
 ///
 /// `multi`: every selection searches independently and moves to its own next
-/// match, instead of only the primary. Inert at the sift prompt — sift already
+/// match, instead of only the primary. Inert at the sift prompt: sift already
 /// operates on every selection.
 ///
 /// `verbatim`: the pattern is matched literally (via `escape_regex`) instead
@@ -71,18 +71,18 @@ pub struct SearchFlags {
 ///
 /// Grammar: if every character before the first `/` is a known flag letter
 /// (`m`, `v`) *and that run is non-empty*, it is the flag set and everything
-/// after the `/` — verbatim, including any further `/` — is the pattern.
+/// after the `/` (verbatim, including any further `/`) is the pattern.
 /// Otherwise there are no flags and `input` is the pattern as-is.
 ///
 /// Only the first `/` after a non-empty flag run is ever a separator, so a
 /// pattern never needs escaping for `/`s of its own (`v/a/b/c` means literal
-/// `a/b/c`) — including a pattern that itself starts with `/`: `input`
+/// `a/b/c`), including a pattern that itself starts with `/`: `input`
 /// `"/usr/bin"` has an empty prefix before its first `/`, which is not a
 /// flag run, so the whole string is the pattern. There is no way to write a
 /// literal pattern that starts with a flag letter followed by `/` (e.g. the
 /// two characters `m/`) other than going through `v/`, which forces the
 /// question moot: `v/m/s` matches the literal text `m/s`. An unknown letter
-/// (`x/foo`) falls back to "no flags" rather than erroring — during live
+/// (`x/foo`) falls back to "no flags" rather than erroring: during live
 /// search every keystroke is parsed, so a typo or a pattern that happens to
 /// start with letters must resolve to *something* sensible, not a rejected
 /// input.
@@ -106,12 +106,12 @@ pub fn parse_search_input(input: &str) -> (SearchFlags, &str) {
 }
 
 /// Render `flags` and `pattern` back into the prompt input that
-/// `parse_search_input` recovers unchanged — the inverse of `parse_search_input`,
+/// `parse_search_input` recovers unchanged: the inverse of `parse_search_input`,
 /// over the range that grammar can represent. A default-flags `pattern` that
 /// itself starts with a flag letter followed by `/` (e.g. `"m/s"`) is outside
 /// that range: `parse_search_input` cannot tell it apart from an actual `m`
 /// flag. The `debug_assert!` below catches a producer that hands this function
-/// such a pattern — `set_search_pattern` re-parses this function's own output
+/// such a pattern. `set_search_pattern` re-parses this function's own output
 /// to get the regex it stores, so an unrepresentable pair would silently
 /// compile the *wrong regex* in release, not just mangle the register text.
 /// Every current caller is safe: `*`'s patterns are `\b`-anchored word runs or
@@ -139,7 +139,7 @@ pub fn render_search_input(flags: SearchFlags, pattern: &str) -> String {
     rendered
 }
 
-/// Parse `input` for leading flags, then compile the remaining pattern —
+/// Parse `input` for leading flags, then compile the remaining pattern:
 /// literally (via `escape_regex`) when `verbatim` is set, as smart-case
 /// regex otherwise. `None` when the resulting pattern is not a valid regex.
 pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
@@ -168,7 +168,7 @@ pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
 ///
 /// `Some((span, wrapped))` on success, where:
 /// - `span` is the inclusive char range of the match (HUME's inclusive
-///   selection model — `anchor == head` is a 1-char selection)
+///   selection model: `anchor == head` is a 1-char selection)
 /// - `wrapped` is `true` when the match was found after wrapping around the
 ///   buffer boundary
 ///
@@ -232,7 +232,7 @@ pub fn find_matches_in_range(
     range: InclusiveRange<CharOffset>,
 ) -> Vec<InclusiveRange<CharOffset>> {
     let start_byte = text.char_to_byte(range.start);
-    // range.end is inclusive — we need the byte after the last char in range.
+    // range.end is inclusive; we need the byte after the last char in range.
     let end_byte = text.char_to_byte(range.end.shift(1));
 
     let cursor = RopeyCursor::new(text.full_slice());
@@ -257,7 +257,7 @@ pub fn find_matches_in_range(
 /// (search-selection) reaches by setting `verbatim` on its pattern.
 ///
 /// `regex_syntax::escape` escapes a few characters (`-`, `#`, `&`, `~`) that
-/// only have meaning inside `[...]` classes — harmless here since none of
+/// only have meaning inside `[...]` classes. Harmless here since none of
 /// this module's patterns are ever spliced into one.
 fn escape_regex(s: &str) -> String {
     regex_syntax::escape(s)
@@ -267,29 +267,29 @@ fn escape_regex(s: &str) -> String {
 /// `\b` anchoring each edge independently rather than the run as a whole.
 ///
 /// `word` is always an already-resolved word/punct run (`inner_word_impl`'s
-/// result) — that run's own first and last grapheme *cluster* decide the two
+/// result); that run's own first and last grapheme *cluster* decide the two
 /// edges.
 /// An edge is anchored only when *both* notions of "word character" agree:
 /// `chars` (this buffer's `word-chars`-aware `hume_editing::word::WordChars`,
 /// the rule that decided the run) and [`regex_syntax::try_is_word_character`]
-/// (the exact Unicode `\w` class rust-regex's own `\b` is defined against —
+/// (the exact Unicode `\w` class rust-regex's own `\b` is defined against:
 /// `\p{Alphabetic} + \p{M} + \d + \p{Pc} + \p{Join_Control}`). Requiring
 /// agreement matters in both directions:
-/// - `chars` can be *wider* — e.g. `-` configured as a word char merges
+/// - `chars` can be *wider*: e.g. `-` configured as a word char merges
 ///   "foo-bar" into one run, but rust-regex still sees `-` itself as
 ///   non-word, so `\bfoo-bar\b` still matches inside "foo-bar-baz" (rust-regex
 ///   has neither a configurable `\w` class nor lookbehind to express the
 ///   wider rule). `*` can over-match at an edge like this.
 /// - rust-regex's class is *wider* on marks, non-`_` connector punctuation,
 ///   and join controls, which `chars` (absent that char in `word-chars`)
-///   classifies as `Punctuation` — e.g. U+FF3F. Anchoring on rust-regex's
+///   classifies as `Punctuation`, e.g. U+FF3F. Anchoring on rust-regex's
 ///   answer alone there would emit `\b＿\b`, which can never match: the
 ///   neighbouring characters are word characters to rust-regex too, so
 ///   neither boundary can hold. Requiring `chars` to agree drops the anchor
 ///   on that edge instead, so `*` never under-matches.
 pub fn word_search_pattern(word: &str, chars: WordChars<'_>) -> String {
     let escaped = escape_regex(word);
-    // Each edge is judged by its own cluster's *base* char — the first
+    // Each edge is judged by its own cluster's *base* char: the first
     // codepoint of that cluster, never a trailing combining mark.
     let anchorable_at = |s: &str| {
         s.chars().next().is_some_and(|c| {
@@ -301,7 +301,7 @@ pub fn word_search_pattern(word: &str, chars: WordChars<'_>) -> String {
     // The trailing edge needs the cluster boundary; the leading one doesn't
     // (`s.chars().next()` is by definition the base char of `s`'s first
     // cluster). `word.chars().next_back()` would hand `classify` the
-    // combining mark of an NFD "café" (U+0301 — `Punctuation` to HUME),
+    // combining mark of an NFD "café" (U+0301, `Punctuation` to HUME),
     // silently dropping the `\b` so `*` also matches inside "cafétéria".
     // Anchoring *after* a mark is right: rust-regex's `\w` includes `\p{M}`,
     // so the boundary holds against whatever letter follows.
@@ -344,8 +344,8 @@ pub fn search_match_info(
 ///
 /// This is O(log M) where M is the number of matches, vs O(buffer_size) for
 /// the regex-scan path ([`find_next_match`]). [`MatchScan`] uses this
-/// whenever its `cached` list is warm — both live search and `n`/`N` warm it
-/// before scanning — falling back to [`find_next_match`] only when it isn't
+/// whenever its `cached` list is warm (both live search and `n`/`N` warm it
+/// before scanning), falling back to [`find_next_match`] only when it isn't
 /// (a buffer whose match cache has never been built).
 ///
 /// A cache-derived match is the leftmost non-overlapping one from offset 0,
@@ -396,7 +396,7 @@ pub fn find_match_from_cache(
 
 // ── MatchScan ──────────────────────────────────────────────────────────────────
 
-/// Where a per-selection scan starts: at the selection itself (live preview —
+/// Where a per-selection scan starts: at the selection itself (live preview:
 /// a selection already sitting on a match should stay put) or past it (`n`/`N`,
 /// which must not re-find the match a selection is already on).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -409,7 +409,7 @@ pub enum MatchSeed {
 /// once so [`advance`](Self::advance)/[`advance_all`](Self::advance_all) take
 /// one argument instead of five. Live search (`m`-flag preview, every
 /// keystroke) and `n`/`N` (`m`-flag repeat) are the same operation over
-/// different seed/cache/count inputs, not two separate ones — this is their
+/// different seed/cache/count inputs, not two separate ones. This is their
 /// single implementation.
 pub struct MatchScan<'a> {
     pub text: &'a BufferText,
@@ -417,7 +417,7 @@ pub struct MatchScan<'a> {
     /// `Some(matches)` binary-searches that pre-computed, sorted list
     /// ([`find_match_from_cache`], O(log M)); an empty slice means "cache
     /// warm, zero matches", not "cache cold". `None` scans `regex` directly
-    /// ([`find_next_match`], O(buffer)) — the cold-cache fallback.
+    /// ([`find_next_match`], O(buffer)): the cold-cache fallback.
     pub cached: Option<&'a [InclusiveRange<CharOffset>]>,
     pub direction: SearchDirection,
     pub mode: MotionMode,
@@ -495,9 +495,9 @@ impl MatchScan<'_> {
 
 /// Build the primary selection after a search match.
 ///
-/// `anchor = Some(a)` — extend mode: keep the caller's anchor, move head to
+/// `anchor = Some(a)`, extend mode: keep the caller's anchor, move head to
 /// the match edge that faces the search direction.
-/// `anchor = None` — move mode: cover the matched text exactly.
+/// `anchor = None`, move mode: cover the matched text exactly.
 fn search_sel(
     span: InclusiveRange<CharOffset>,
     anchor: Option<CharOffset>,
@@ -521,7 +521,7 @@ fn search_sel(
 /// range or `None`.
 ///
 /// `take_last`: `false` takes the first match found (forward search);
-/// `true` scans every match in the range and takes the last one —
+/// `true` scans every match in the range and takes the last one,
 /// implemented by collecting all matches, which is correct and simple,
 /// acceptable for typical buffer sizes. A reverse-DFA approach could be
 /// added later for very large files.

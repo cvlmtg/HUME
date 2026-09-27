@@ -19,7 +19,7 @@ use super::apply_edit;
 ///   one past the inserted character.
 ///
 /// This covers single-cursor typing, multicursor typing, and "replace
-/// selection with typed character" — all via the same loop.
+/// selection with typed character", all via the same loop.
 pub fn insert_char(
     text: BufferText,
     sels: SelectionSet,
@@ -32,20 +32,20 @@ pub fn insert_char(
             b.delete(sel.content_end_exclusive(text).chars_since(start));
         }
         b.insert_char(ch);
-        // new_pos() is one past the inserted char — the cursor sits on the
+        // new_pos() is one past the inserted char, so the cursor sits on the
         // character that was originally at `start` (now shifted right by 1).
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
     })
 }
 
-/// Insert `text` at every selection — the bulk-string counterpart of
+/// Insert `text` at every selection: the bulk-string counterpart of
 /// [`insert_char`], used for pasted text so a paste is one edit rather than
 /// one `insert_char` call per character.
 ///
 /// Same shape as `insert_char`: single-character selections get `inserted`
 /// inserted before the cursor; non-collapsed selections are replaced. The
-/// cursor lands at `new_pos()` (one past the inserted text) in both cases —
+/// cursor lands at `new_pos()` (one past the inserted text) in both cases,
 /// no manual position arithmetic, so a multi-char `inserted` can't land mid
 /// grapheme-cluster.
 pub fn insert_str(
@@ -66,7 +66,7 @@ pub fn insert_str(
 }
 
 /// Returns `true` if `line` has leading whitespace and nothing else before its
-/// structural newline — a blank, auto-indented line with no real content.
+/// structural newline: a blank, auto-indented line with no real content.
 ///
 /// `ws_end` (from [`leading_whitespace_end`]) lands exactly on the line's `\n`
 /// when the line is whitespace-only: the scan only stops early on a
@@ -77,12 +77,12 @@ fn is_blank_indented_line(text: &BufferText, line_start: CharOffset, ws_end: Cha
     ws_end > line_start && text.char_at(ws_end) == Some('\n')
 }
 
-/// `[line_start, ws_end)` — the leading-whitespace range of the line
+/// `[line_start, ws_end)`: the leading-whitespace range of the line
 /// containing `pos`. Single source of truth for that computation: every
-/// caller that needs a line's indent bounds — the blank-line ownership
+/// caller that needs a line's indent bounds (the blank-line ownership
 /// check and "already consumed by a prior selection" guard below, `O`'s own
 /// indent copy, and the sibling test module's `owns_every_line` stand-in for
-/// `arm_autoindent` — goes through this instead of re-deriving it.
+/// `arm_autoindent`) goes through this instead of re-deriving it.
 pub(in crate::edit) fn line_indent_range(
     text: &BufferText,
     pos: CharOffset,
@@ -95,21 +95,21 @@ pub(in crate::edit) fn line_indent_range(
 
 /// `true` if `[line_start, ws_end)` is a blank, auto-indented line (see
 /// [`is_blank_indented_line`]) AND that whitespace lies entirely within
-/// `allowed` — the range some insert session recorded as its own
+/// `allowed`, the range some insert session recorded as its own
 /// auto-inserted indent, in `pos`'s coordinate space.
 ///
 /// Containment, not equality of the whole range: `line_start == allowed.start`
-/// pins this to the *same* line the record was armed for — a cursor motion
+/// pins this to the *same* line the record was armed for: a cursor motion
 /// off that line leaves `allowed` pointing at a now-unrelated offset, so the
-/// check fails without anything having to invalidate the record — while
+/// check fails without anything having to invalidate the record. Meanwhile
 /// `ws_end <= allowed.end` lets the whitespace *shrink* (a Backspace back
 /// toward `line_start`) without losing ownership, but never lets it exceed
 /// what the session itself inserted (typed content stays outside `allowed`
 /// once `ChangeSet::map_ranges`' `Assoc::Before` end-mapping pins the record
-/// short of it — see `apply_doc_edit_grouped`'s own comment).
+/// short of it; see `apply_doc_edit_grouped`'s own comment).
 ///
 /// Single source of truth for "is this whitespace the session's own to
-/// vacate" — [`owned_blank_indent`] (the editor's exit pre-flight check) and
+/// vacate": [`owned_blank_indent`] (the editor's exit pre-flight check) and
 /// [`try_trim_blank_line`] (the trim itself) both read this, so gate and trim
 /// can never drift on what counts as owned.
 fn is_owned_blank_line(
@@ -126,9 +126,9 @@ fn is_owned_blank_line(
         && ws_end <= allowed.end
 }
 
-/// `Some(range)` — `[line_start, ws_end)` — if `pos` sits on a blank line
+/// `Some(range)` (`[line_start, ws_end)`) if `pos` sits on a blank line
 /// whose whitespace is owned by `allowed` (see `is_owned_blank_line`, this
-/// module) — `None` otherwise.
+/// module), `None` otherwise.
 pub fn owned_blank_indent(
     text: &BufferText,
     pos: CharOffset,
@@ -141,7 +141,7 @@ pub fn owned_blank_indent(
 /// Shared per-selection prelude for [`insert_newline_indent`] and
 /// [`clear_blank_line_indent`]: `pos`'s line info as `[line_start, ws_end)`,
 /// or `None` if a prior selection's blank-line clear already consumed past
-/// `pos` (two cursors on the same whitespace-only line) — in that case the
+/// `pos` (two cursors on the same whitespace-only line). In that case the
 /// caller should land the cursor at `b.new_pos()` and emit nothing further,
 /// rather than retaining backwards past what the builder already emitted.
 fn line_context_if_unconsumed(
@@ -200,11 +200,11 @@ fn try_trim_blank_line(
 /// left at the original position.
 ///
 /// `allowed`: per-selection (by sorted index) range of whitespace some
-/// earlier auto-indent recorded as its own — see `is_owned_blank_line` (this
+/// earlier auto-indent recorded as its own; see `is_owned_blank_line` (this
 /// module). If a collapsed cursor's blank line is owned by its entry, that
 /// whitespace is vacated instead of retained, matching vim's `:help
 /// autoindent` behavior on Enter. Empty (or an index with no entry) for the
-/// first Enter on an already-blank line — nothing to vacate yet, since no
+/// first Enter on an already-blank line: nothing to vacate yet, since no
 /// earlier session inserted it.
 pub fn insert_newline_indent(
     text: BufferText,
@@ -236,20 +236,20 @@ pub fn insert_newline_indent(
 /// The `O` counterpart of [`insert_newline_indent`]: both split a line and
 /// copy its leading whitespace, but `O` keeps the copy on the line *above*
 /// the break, so the indent is inserted before the `\n`, not after it. The
-/// cursor lands on that inserted `\n` — the new blank line.
+/// cursor lands on that inserted `\n`, the new blank line.
 ///
 /// Unlike `insert_newline_indent`, this never deletes: `apply_edit` visits
 /// selections in ascending-`start()` order, and each iteration only retains
 /// forward to its own line's start, so an earlier selection's edit can never
 /// advance `old_pos()` past a later selection's line start the way a delete
-/// could — no "already consumed" guard is needed.
+/// could, so no "already consumed" guard is needed.
 ///
 /// Two preconditions its only caller (`cmd_open_line_above`) satisfies but
 /// this function does not enforce: every selection must already be
-/// collapsed — unlike every sibling insertion op in this module, a
+/// collapsed. Unlike every sibling insertion op in this module, a
 /// non-collapsed selection here is neither deleted nor preserved, it is
-/// simply orphaned by the pushed `Selection::collapsed` — and at most one
-/// selection per line — two cursors on the same line each open their own
+/// simply orphaned by the pushed `Selection::collapsed`. Also at most one
+/// selection per line: two cursors on the same line each open their own
 /// blank line above it, rather than sharing one the way vim/Helix do. The
 /// caller supplies both: `cmd_goto_line_start` collapses every selection to
 /// its line start first, and `SelectionSet::map`'s overlap merge folds
@@ -269,7 +269,7 @@ pub fn open_line_above(
 }
 
 /// Clear a blank, auto-indented line's leading whitespace at every collapsed
-/// selection sitting on one — leaves the cursor on the line's structural `\n`.
+/// selection sitting on one. Leaves the cursor on the line's structural `\n`.
 ///
 /// The Esc/Ctrl-c half of vim autoindent parity: [`insert_newline_indent`]
 /// handles trimming on Enter, this handles trimming when Insert mode exits
@@ -277,7 +277,7 @@ pub fn open_line_above(
 /// "type `<Esc>` ... the indent is deleted again"). Selections not on a blank
 /// line are left untouched (identity edit).
 ///
-/// `allowed`: see [`insert_newline_indent`]'s own doc — same per-selection
+/// `allowed`: see [`insert_newline_indent`]'s own doc. Same per-selection
 /// ownership record, read here instead of armed.
 pub fn clear_blank_line_indent(
     text: BufferText,
@@ -319,7 +319,7 @@ pub fn clear_blank_line_indent(
 
 /// Insert a tab at every selection, governed by `style` and `tab_width`.
 ///
-/// - **`TabStyle::Hard`**: delegates to `insert_char(.., '\t')` — same as
+/// - **`TabStyle::Hard`**: delegates to `insert_char(.., '\t')`, same as
 ///   typing any other character.
 /// - **`TabStyle::Soft`**: inserts enough spaces to reach the next tab stop.
 ///   The display column of the cursor is computed with tab expansion (see
@@ -327,7 +327,7 @@ pub fn clear_blank_line_indent(
 ///   (display_col % tab_width)`, so a cursor already on a stop gets a full
 ///   tab-width of spaces.
 ///
-/// Non-collapsed selections are deleted first, same as `insert_char` — Tab
+/// Non-collapsed selections are deleted first, same as `insert_char`: Tab
 /// over a selection replaces it, just like typing any other key.
 pub fn insert_tab(
     text: BufferText,

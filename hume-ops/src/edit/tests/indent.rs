@@ -46,7 +46,7 @@ fn indent_hard_flush_line() {
 fn indent_normalizes_existing_tab_to_soft() {
     // Existing indent is a hard tab (width 4 at tab_width=4). Indenting once
     // more under soft style re-renders the WHOLE new width (8) as spaces,
-    // not "tab + 4 spaces" — normalization, not append.
+    // not "tab + 4 spaces": normalization, not append.
     assert_state!(
         "\t-[f]>oo\n",
         |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
@@ -74,10 +74,10 @@ fn indent_two_levels_at_once() {
     );
 }
 
-/// `hume-ops`'s functions are a public API — a caller (not just the
+/// `hume-ops`'s functions are a public API: a caller (not just the
 /// editor's own count-prefix dispatch, which caps at `MAX_COUNT`) can pass
 /// an arbitrary `levels`. `indent_stop(levels as u32, tab_width)`'s `u32`
-/// multiply must not overflow for it — this must simply not panic (and not
+/// multiply must not overflow for it. This must simply not panic (and not
 /// hang: the new width still saturates like any other huge indent).
 #[test]
 fn indent_huge_levels_does_not_overflow() {
@@ -98,7 +98,7 @@ fn indent_tab_width_eight() {
 fn indent_multiline_selection_indents_every_line() {
     // Anchor sits at column 0 but this selection is NOT linewise (it doesn't
     // reach the last line's trailing '\n'), so it clamps forward past the new
-    // indent like any other in-indent position — only a genuinely linewise
+    // indent like any other in-indent position. Only a genuinely linewise
     // selection stays pinned at absolute column 0 (see
     // `indent_linewise_selection_stays_linewise`).
     assert_state!(
@@ -112,7 +112,7 @@ fn indent_multiline_selection_indents_every_line() {
 
 #[test]
 fn indent_skips_blank_line_inside_selection() {
-    // Middle line is empty — left untouched, no trailing whitespace added.
+    // Middle line is empty: left untouched, no trailing whitespace added.
     assert_state!(
         "-[one\n\nthree]>\n",
         |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
@@ -131,7 +131,7 @@ fn indent_skips_whitespace_only_line_inside_selection() {
 
 #[test]
 fn indent_all_blank_selection_is_noop() {
-    // Every line touched is blank — no lines rewritten anywhere, so this must
+    // Every line touched is blank, so no lines are rewritten anywhere and this must
     // take the identity fast path: buffer AND selection both unchanged.
     assert_state!(
         "-[\n\n]>\n",
@@ -154,7 +154,7 @@ fn indent_all_blank_selection_returns_identity_changeset() {
 
 #[test]
 fn indent_linewise_selection_stays_linewise() {
-    // Anchor at line start, head on the trailing '\n' — a whole-line
+    // Anchor at line start, head on the trailing '\n': a whole-line
     // selection. After indenting, the anchor snaps to the new line start so
     // the selection still covers the whole (now-indented) line.
     assert_state!(
@@ -218,7 +218,7 @@ fn unindent_one_level_off_whole_indent() {
 fn unindent_partial_width_preserving_not_level_snapping() {
     // 6 display columns of indent (tab_width=4) is not a whole number of
     // levels. Unindenting one level removes exactly tab_width (4) columns,
-    // landing at width 2 — not snapped down to the nearest lower level
+    // landing at width 2, not snapped down to the nearest lower level
     // boundary (which would be 0).
     assert_state!(
         "      -[f]>oo\n",
@@ -272,7 +272,7 @@ fn indent_then_unindent_round_trips() {
 #[test]
 fn indent_then_unindent_round_trips_under_hard_style() {
     // Same round-trip as `indent_then_unindent_round_trips`, but under
-    // TabStyle::Hard — the width doubles as a re-render, from spaces to a
+    // TabStyle::Hard. The width doubles as a re-render, from spaces to a
     // tab-plus-spaces mix and back, not just a resize of the same characters.
     assert_state!(
         "  -[f]>oo\n",
@@ -287,8 +287,8 @@ fn indent_then_unindent_round_trips_under_hard_style() {
 #[test]
 fn unindent_then_indent_does_not_round_trip_below_one_level() {
     // `<` saturates at width 0 rather than going negative (see
-    // `shift_indent`'s doc comment), so — unlike `indent_then_unindent_round_trips`
-    // — going the other direction first is lossy: unindenting a 2-column
+    // `shift_indent`'s doc comment), so, unlike `indent_then_unindent_round_trips`,
+    // going the other direction first is lossy: unindenting a 2-column
     // indent (narrower than one 4-column level) flattens it to 0, and `>`
     // afterward lands on a full level (4), not back at 2.
     assert_state!(

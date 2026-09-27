@@ -45,7 +45,7 @@ fn find_forward_inclusive_first_char_on_line() {
 
 #[test]
 fn find_forward_inclusive_not_found() {
-    // No 'z' on this line — no-op.
+    // No 'z' on this line: no-op.
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| fwd(text, sels, 'z', FindKind::Inclusive),
@@ -55,7 +55,7 @@ fn find_forward_inclusive_not_found() {
 
 #[test]
 fn find_forward_does_not_cross_newline() {
-    // 'a' appears only on the second line — the motion must not cross '\n'.
+    // 'a' appears only on the second line. The motion must not cross '\n'.
     assert_state!(
         "-[h]>ello\nabc\n",
         |(text, sels)| fwd(text, sels, 'a', FindKind::Inclusive),
@@ -75,7 +75,7 @@ fn find_forward_skips_char_under_cursor() {
 
 #[test]
 fn find_forward_exclusive_basic() {
-    // `ta` stops one grapheme before 'a' — the space is one grapheme before 'a'.
+    // `ta` stops one grapheme before 'a': the space is one grapheme before 'a'.
     assert_state!(
         "-[h]>ello a world\n",
         |(text, sels)| fwd(text, sels, 'a', FindKind::Exclusive),
@@ -145,7 +145,7 @@ fn find_backward_exclusive_basic() {
 #[test]
 fn find_backward_exclusive_adjacent_is_noop() {
     // Cursor is immediately right of 'a'; exclusive adjustment steps forward
-    // from the found position back to head — so the motion is a no-op,
+    // from the found position back to head, so the motion is a no-op,
     // symmetric to the forward exclusive adjacent case.
     assert_state!(
         "hello a-[x]>\n",
@@ -178,7 +178,7 @@ fn find_forward_multi_cursor() {
 
 #[test]
 fn find_backward_at_line_start_noop() {
-    // Cursor at line start — nothing to the left, no-op.
+    // Cursor at line start: nothing to the left, no-op.
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| bwd(text, sels, 'x', FindKind::Inclusive),

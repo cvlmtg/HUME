@@ -13,11 +13,11 @@ use hume_rope::offset::CharOffset;
 use super::apply_edit;
 
 /// Scans backward from `pos` over identifier (`Word`-class) chars, stopping
-/// at the first non-`Word` boundary — the start of the token immediately
+/// at the first non-`Word` boundary: the start of the token immediately
 /// preceding `pos`. Grapheme-safe (steps via `prev_grapheme_boundary`, never
 /// a raw `-= 1`). `chars` folds this buffer's extra word characters into the
 /// scan, so a configured run (e.g. `foo-bar` with `-` as a word char) is
-/// treated as one token — matching every other word operation, including
+/// treated as one token, matching every other word operation, including
 /// what the LSP completion fallback this backs is replacing on the buffer's
 /// behalf.
 pub fn word_start_before(text: &BufferText, pos: CharOffset, chars: WordChars<'_>) -> CharOffset {
@@ -65,7 +65,7 @@ pub fn replace_span_around_cursors(
         // `start_of(i, head)`/`head + forward` bound a char span that can
         // land mid-cluster when this cursor's surrounding text differs from
         // the one the span was derived from (e.g. a combining mark). Snap
-        // outward — floor `start` down, ceil `end` up — to the enclosing
+        // outward (floor `start` down, ceil `end` up) to the enclosing
         // cluster boundary rather than splitting it.
         let raw_start = start_of(text, i, head);
         let start = snap_to_cluster_start(text, raw_start).max(b.old_pos());
@@ -81,7 +81,7 @@ pub fn replace_span_around_cursors(
             // next cluster.
             next_grapheme_boundary(text, prev_grapheme_boundary(text, raw_end))
         };
-        // `last_char()` is the buffer's structural trailing `\n` — never
+        // `last_char()` is the buffer's structural trailing `\n`; never
         // consume it. The cap above must not run *after* the ceil: `raw_end`
         // reaching `text.end()` always ceils one cluster past `last` (the
         // `\n`'s own single-char cluster), which would otherwise consume the
@@ -101,7 +101,7 @@ pub fn replace_span_around_cursors(
 }
 
 /// Replaces `back` chars behind each selection's head and `forward` chars
-/// ahead of it with `replacement` — the multi-cursor form of "the user typed
+/// ahead of it with `replacement`: the multi-cursor form of "the user typed
 /// this text here." Used by LSP completion accept for a server-provided
 /// `textEdit` range: a conforming server's completion range always contains
 /// the request position (LSP spec), so a `(back, forward)` pair derived from
@@ -119,7 +119,7 @@ pub fn replace_around_cursors(
         text,
         sels,
         // Saturating, not `retreat`: a cramped cursor's `head` can sit fewer
-        // than `back` chars into the buffer — `replace_span_around_cursors`'s
+        // than `back` chars into the buffer. `replace_span_around_cursors`'s
         // own `.max(b.old_pos())` clamp does the real repair, so this must
         // not panic first.
         |_text, _i, head| head.retreat_saturating(back),
@@ -134,10 +134,10 @@ pub fn replace_around_cursors(
 ///   The cursor remains on the replacement character.
 /// - **Multi-character selection**: every grapheme in the selected region is
 ///   replaced with `ch`, preserving the selection direction. Multi-codepoint
-///   grapheme clusters (e.g. `é` = U+0065 + U+0301) are replaced atomically —
+///   grapheme clusters (e.g. `é` = U+0065 + U+0301) are replaced atomically:
 ///   the replacement shrinks the cluster down to one char without orphaning
 ///   combining marks.
-/// - **Newline skipping**: `\n` graphemes are never replaced — they are
+/// - **Newline skipping**: `\n` graphemes are never replaced; they are
 ///   retained as-is. This preserves line structure when the selection spans
 ///   multiple lines. The structural trailing `\n` is protected by the same
 ///   rule.
@@ -179,7 +179,7 @@ pub fn replace_selections(
             } else {
                 // After the initial `retain` above, b.old_pos() == sel_start == pos.
                 // Each subsequent delete advances b.old_pos() by the cluster size,
-                // landing exactly at the next grapheme start — so the builder stays
+                // landing exactly at the next grapheme start, so the builder stays
                 // in sync without additional retain calls between graphemes.
                 b.delete(next.chars_since(pos));
                 b.insert_char(effective_ch);
@@ -189,7 +189,7 @@ pub fn replace_selections(
             }
             pos = next;
         }
-        // new_pos() is one past the last written char — the final grapheme of the
+        // new_pos() is one past the last written char, the final grapheme of the
         // replaced range. -1 gives the cursor position (inclusive last char).
         let new_sel_end = b.new_pos().shift(-1);
 

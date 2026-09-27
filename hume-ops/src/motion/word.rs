@@ -19,7 +19,7 @@ use hume_rope::offset::{CharOffset, InclusiveRange};
 ///
 /// The `is_boundary` parameter is `is_word_boundary` for `w` and
 /// `is_uppercase_word_boundary` for `W`. `chars` folds this buffer's extra
-/// word characters into every classification — see [`WordChars::classify`].
+/// word characters into every classification (see [`WordChars::classify`]).
 pub(super) fn next_word_start(
     text: &BufferText,
     head: CharOffset,
@@ -36,7 +36,7 @@ pub(super) fn next_word_start(
     // Advance by a full grapheme cluster so we never land mid-cluster.
     // This matters for combining sequences like e + U+0301 (combining acute):
     // stepping by 1 would land on the combining codepoint, which classify_char
-    // sees as Punctuation — creating a false word boundary inside the grapheme.
+    // sees as Punctuation, creating a false word boundary inside the grapheme.
     pos = next_grapheme_boundary(text, pos);
 
     while pos < end {
@@ -69,7 +69,7 @@ pub(crate) fn prev_word_start(
 
     // Step back by a full grapheme cluster so we never start mid-cluster.
     // For a combining sequence like "café" (e + U+0301), stepping by 1 from
-    // the position after the cluster would land on the combining codepoint —
+    // the position after the cluster would land on the combining codepoint,
     // which classify_char treats as Punctuation, creating a false boundary.
     let mut pos = prev_grapheme_boundary(text, head);
 
@@ -80,7 +80,7 @@ pub(crate) fn prev_word_start(
             break;
         }
         if pos == CharOffset::new(0) {
-            return CharOffset::new(0); // nothing but whitespace before — land at buffer start
+            return CharOffset::new(0); // nothing but whitespace before: land at buffer start
         }
         pos = prev_grapheme_boundary(text, pos);
     }
@@ -102,11 +102,11 @@ pub(crate) fn prev_word_start(
     pos
 }
 
-/// Every maximal run of `Word`-class characters in `text`, in order — the
+/// Every maximal run of `Word`-class characters in `text`, in order: the
 /// full-string counterpart to `next_word_start`/`find_word_end_from`'s
 /// single-boundary queries. Reuses the same grapheme-cluster and
 /// combining-mark handling those already rely on, so a run found here is,
-/// by construction, exactly what `w`/`b` would select — the property
+/// by construction, exactly what `w`/`b` would select, the property
 /// `core:buffer-words`' Steel-side `split-words` builtin
 /// (`hume-scripting/src/builtins/words.rs`) depends on. Always
 /// `is_word_boundary`: unlike `find_word_end_from`'s single-boundary query
@@ -152,7 +152,7 @@ pub(super) fn find_word_end_from(
     let end = text.end();
     if start >= end {
         // One back from a position at or past the buffer end (`end` is at
-        // least 1 — every buffer holds the structural `\n`), so `retreat`
+        // least 1: every buffer holds the structural `\n`), so `retreat`
         // can't underflow here.
         return start.retreat(1);
     }
@@ -219,7 +219,7 @@ pub(super) fn anchor_unit(
     chars: WordChars<'_>,
 ) -> InclusiveRange<CharOffset> {
     // `anchor` may be *any* valid selection endpoint, including the last
-    // codepoint of a multi-codepoint grapheme cluster — that's exactly what
+    // codepoint of a multi-codepoint grapheme cluster. That's exactly what
     // the backward-grow branch above leaves behind as the new anchor when the
     // anchor word's own last codepoint is part of one (e.g. "café" = c,a,f,e,
     // combining-acute). `classify_char` must see the cluster's leading
@@ -227,7 +227,7 @@ pub(super) fn anchor_unit(
     // `Punctuation` (Rust's `is_alphanumeric` excludes combining marks),
     // which misreads the anchor's own class and truncates the word down to
     // just that trailing mark. Snap to the start of the cluster containing
-    // `anchor` first — a no-op when `anchor` already is a cluster start.
+    // `anchor` first. This is a no-op when `anchor` already is a cluster start.
     let anchor = snap_to_cluster_start(text, anchor);
     let cat = chars.classify(text.char_at(anchor).expect("anchor < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
@@ -242,7 +242,7 @@ pub(super) fn anchor_unit(
 
 /// Find the next word (or WORD) from `pos` and return its span.
 ///
-/// Returns `None` when there is no next word — at the last word in the buffer
+/// Returns `None` when there is no next word: at the last word in the buffer
 /// (no-op) or on an empty buffer.
 ///
 /// Unlike `next_word_start`, this function crosses line boundaries: if the
@@ -269,7 +269,7 @@ pub(super) fn select_next_word(
     }
 
     // If we've hit the trailing '\n' (last char in the buffer), there is no
-    // next word — treat this as a no-op.
+    // next word, so treat this as a no-op.
     if word_start >= last {
         return None;
     }
@@ -286,7 +286,7 @@ pub(super) fn select_next_word(
 
 /// Find the previous word (or WORD) from `pos` and return its span.
 ///
-/// Returns `None` when there is no previous word — already at or before the
+/// Returns `None` when there is no previous word: already at or before the
 /// first word in the buffer (no-op).
 ///
 /// If `pos` is inside a word, we jump to the word BEFORE the current one (not
@@ -318,7 +318,7 @@ pub(super) fn select_prev_word(
     // CURRENT word, not the previous one. We need one more step backward.
     if pos >= word_start && pos <= word_end {
         if word_start == CharOffset::new(0) {
-            return None; // already at the first word — no-op
+            return None; // already at the first word, no-op
         }
         let prev_start = prev_word_start(text, word_start, is_boundary, chars);
         let prev_cat = chars.classify(text.char_at(prev_start).expect("prev_start < len"));
@@ -366,7 +366,7 @@ pub(super) fn apply_word_select(
                     current = Selection::new(range.start, range.end);
                     moved = true;
                 }
-                None => break, // no more words — stop early, keep last selection
+                None => break, // no more words: stop early, keep last selection
             }
         }
         if around && moved {
@@ -409,7 +409,7 @@ pub(super) fn apply_word_select_extend(
                 Some(target) => {
                     // `word_unit_at` returns `None` when the anchor sits on
                     // whitespace with no adjacent word (e.g. indentation at
-                    // the very start of the buffer) — fall back to the bare
+                    // the very start of the buffer). Fall back to the bare
                     // whitespace position, same as `anchor_unit` yields there.
                     let unit = if around
                         && let Some(unit) = word_unit_at(
@@ -424,7 +424,7 @@ pub(super) fn apply_word_select_extend(
                         anchor_unit(text, current.anchor(), is_boundary, chars)
                     };
                     current = if target.start > unit.end {
-                        Selection::new(unit.start, target.end) // target beyond anchor — grow forward
+                        Selection::new(unit.start, target.end) // target beyond anchor: grow forward
                     } else if target.end < unit.start {
                         let head = if around {
                             expand_word_unit(text, target.start, target.end, CharOffset::new(0))
@@ -432,7 +432,7 @@ pub(super) fn apply_word_select_extend(
                         } else {
                             target.start
                         };
-                        Selection::new(unit.end, head) // target behind anchor — grow backward
+                        Selection::new(unit.end, head) // target behind anchor: grow backward
                     } else {
                         Selection::new(unit.start, unit.end) // target is the anchor's own unit
                     };
@@ -451,7 +451,7 @@ type SelectWord =
     fn(&BufferText, CharOffset, IsBoundary, WordChars<'_>) -> Option<InclusiveRange<CharOffset>>;
 
 /// Shared dispatch for the four word-select commands below: branches on
-/// `ctx.mode` (fresh re-anchor for `Move`, grow/shrink for `Extend` — see
+/// `ctx.mode` (fresh re-anchor for `Move`, grow/shrink for `Extend`, see
 /// [`apply_word_select`]/[`apply_word_select_extend`]), parameterized by
 /// direction (`select_word`: [`select_next_word`] or [`select_prev_word`])
 /// and word class (`is_boundary`: [`is_word_boundary`] or
@@ -459,7 +459,7 @@ type SelectWord =
 ///
 /// `backward` only affects the `Move` arm's search origin (see
 /// [`apply_word_select`]'s doc); `Extend`'s chaining always uses `head()` and
-/// has no analogous asymmetry. `ctx.around` affects both arms identically —
+/// has no analogous asymmetry. `ctx.around` affects both arms identically:
 /// a plain field read deciding whether whitespace is included in the unit.
 fn word_select_cmd(
     text: &BufferText,
@@ -489,8 +489,8 @@ fn word_select_cmd(
 /// Generates one `cmd_select_*` fn delegating to [`word_select_cmd`].
 ///
 /// The command registry stores `fun` as a bare `fn` pointer (see
-/// `SelectionBody`'s doc), so each variant still needs its own named item —
-/// only the body is shared here, not the item itself.
+/// `SelectionBody`'s doc), so each variant still needs its own named item.
+/// Only the body is shared here, not the item itself.
 macro_rules! word_select_variant {
     ($name:ident, $doc:expr, $backward:expr, $is_boundary:expr, $select_word:expr) => {
         #[doc = $doc]

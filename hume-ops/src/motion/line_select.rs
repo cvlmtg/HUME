@@ -5,7 +5,7 @@ use hume_editing::text::BufferText;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
-/// Apply `step` up to `count` times, stopping early at a fixed point — every
+/// Apply `step` up to `count` times, stopping early at a fixed point: every
 /// step function here is idempotent once clamped at a buffer edge, so a huge
 /// count prefix (e.g. `999999999x`) does O(lines moved) work, not O(count).
 fn repeat_motion(
@@ -29,7 +29,7 @@ fn repeat_motion(
 /// whether `sel` already covers whole lines.
 ///
 /// If `sel` is not yet linewise, the first press only aligns it to the full
-/// lines it touches — the direction is fixed by `forward` (`true` → `x` →
+/// lines it touches. The direction is fixed by `forward` (`true` → `x` →
 /// forward, `false` → `X` → backward), matching the `Move`-mode identity of
 /// each command, regardless of `sel`'s own anchor/head direction.
 ///
@@ -40,7 +40,7 @@ fn repeat_motion(
 /// anchor's line is always kept in the span, but the far edge tracks the
 /// head. Clamps at the buffer's first or last line are head-relative
 /// (checked against the line the head is about to leave), not
-/// selection-end-relative — a backward selection whose far edge sits on the
+/// selection-end-relative: a backward selection whose far edge sits on the
 /// last line must still be able to shrink via `x`.
 fn extend_line_span(text: &BufferText, sel: Selection, forward: bool) -> Selection {
     if !is_selection_linewise(text, &sel) {
@@ -54,12 +54,12 @@ fn extend_line_span(text: &BufferText, sel: Selection, forward: bool) -> Selecti
     let head_line = text.char_to_line(sel.head());
     let new_head_line = if forward {
         if next_line_start(text, head_line.into()) >= text.end() {
-            return sel; // head already on the last line — clamp
+            return sel; // head already on the last line: clamp
         }
         head_line.advance(1)
     } else {
         if head_line.index() == 0 {
-            return sel; // head already on the first line — clamp
+            return sel; // head already on the first line: clamp
         }
         head_line.retreat_saturating(1)
     };
@@ -75,7 +75,7 @@ fn extend_line_span(text: &BufferText, sel: Selection, forward: bool) -> Selecti
 }
 
 /// One `x` press (`Move` mode): re-anchors to select the full current line,
-/// or — if `sel` already ends on the trailing `\n` — jumps to the next line.
+/// or, if `sel` already ends on the trailing `\n`, jumps to the next line.
 /// Always produces a forward selection. `count` replays this exactly as if
 /// `x` were pressed `count` times in a row: it moves, landing on a single
 /// line, rather than growing a span (that's `Ctrl-x` / [`extend_line_span`]).
@@ -95,11 +95,11 @@ fn move_select_line(text: &BufferText, sel: Selection) -> Selection {
 
 /// Select or extend to the full line (`x` / `x` in extend mode): branches on `mode`.
 ///
-/// `Move` — replays `move_select_line` `count` times, so `3x` moves to the
+/// `Move`: replays `move_select_line` `count` times, so `3x` moves to the
 /// 3rd line the same way pressing `x` three times would, ending on a single
 /// line (not growing to span all of them).
 ///
-/// `Extend` — grows or shrinks toward covering one more line downward, `count`
+/// `Extend`: grows or shrinks toward covering one more line downward, `count`
 /// times; see `extend_line_span`.
 pub fn cmd_select_line(
     text: &BufferText,
@@ -116,8 +116,8 @@ pub fn cmd_select_line(
 }
 
 /// One `X` press (`Move` mode): re-anchors to select the full current line
-/// backward (anchor on the trailing `\n`, head on line start), or — if `sel`
-/// already starts at a line boundary — jumps to the previous line. `count`
+/// backward (anchor on the trailing `\n`, head on line start), or, if `sel`
+/// already starts at a line boundary, jumps to the previous line. `count`
 /// replays this exactly as if `X` were pressed `count` times in a row: it
 /// moves, landing on a single line, rather than growing a span (that's
 /// `Ctrl-X` / [`extend_line_span`]).
@@ -136,11 +136,11 @@ fn move_select_line_backward(text: &BufferText, sel: Selection) -> Selection {
 
 /// Select or extend to the full line backward (`X` / `X` in extend mode): branches on `mode`.
 ///
-/// `Move` — replays `move_select_line_backward` `count` times, so `3X`
+/// `Move`: replays `move_select_line_backward` `count` times, so `3X`
 /// moves to the 3rd line up the same way pressing `X` three times would,
 /// ending on a single line (not growing to span all of them).
 ///
-/// `Extend` — grows or shrinks toward covering one more line upward, `count`
+/// `Extend`: grows or shrinks toward covering one more line upward, `count`
 /// times; see `extend_line_span`.
 pub fn cmd_select_line_backward(
     text: &BufferText,

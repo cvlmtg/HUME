@@ -33,7 +33,7 @@ fn inner_line_end_of_content() {
 
 #[test]
 fn inner_line_empty_line_is_noop() {
-    // An empty line is just "\n" — no content, so inner_line returns None
+    // An empty line is just "\n": no content, so inner_line returns None
     // and the selection is preserved.
     assert_state!(
         "hello\n-[\n]>world\n",

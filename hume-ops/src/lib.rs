@@ -15,8 +15,8 @@ pub mod text_object;
 ///
 /// | Mode | Anchor | Head | Usage |
 /// |------|--------|------|-------|
-/// | `Move`   | `new_head` | `new_head` | Plain cursor move — anchor re-set to head |
-/// | `Extend` | `old_anchor` | `new_head` | Grow selection — keep existing anchor |
+/// | `Move`   | `new_head` | `new_head` | Plain cursor move: anchor re-set to head |
+/// | `Extend` | `old_anchor` | `new_head` | Grow selection: keep existing anchor |
 ///
 /// `Move` always produces a collapsed single-character selection (anchor == head).
 /// `Extend` keeps the existing anchor, only moving the head.
@@ -37,12 +37,12 @@ pub enum MotionMode {
 /// `mm`/`MM`, `miw`/`maw`), resolved once by the caller from buffer settings.
 ///
 /// This family needs more than the shared `(text, sels, count, MotionMode)`
-/// shape — `hume-ops` cannot depend on `hume-editor`'s settings, so the
+/// shape: `hume-ops` cannot depend on `hume-editor`'s settings, so the
 /// caller resolves `around`/`chars` and passes them in, the same way
 /// `tab_width`/`TabStyle` are resolved and passed to `align_selections`/
 /// `insert_tab`. Keeping this as its own struct (rather than widening every
 /// `hume-ops` selection command's signature) means the large majority of
-/// registrations — the word-unrelated ones — never carry data they ignore.
+/// registrations (the word-unrelated ones) never carry data they ignore.
 #[derive(Debug, Clone, Copy)]
 pub struct WordCtx<'a> {
     pub mode: MotionMode,
@@ -73,7 +73,7 @@ impl<'a> WordCtx<'a> {
         }
     }
 
-    /// Swap in a non-default `word-chars` value, keeping `mode`/`around` —
+    /// Swap in a non-default `word-chars` value, keeping `mode`/`around`,
     /// for tests that need a configured char without hand-writing the whole
     /// struct literal.
     #[cfg(any(test, feature = "test-util"))]

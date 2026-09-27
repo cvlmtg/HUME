@@ -10,7 +10,7 @@ use hume_rope::offset::CharOffset;
 /// Scan forward on `head`'s line for `ch`, starting one grapheme after `head`.
 ///
 /// Returns the char offset of the first match, or `None` if not found before
-/// the line's terminating `\n`. The newline itself is never matched — it is a
+/// the line's terminating `\n`. The newline itself is never matched: it is a
 /// structural boundary, not content.
 pub(super) fn find_char_on_line_forward(
     text: &BufferText,
@@ -63,7 +63,7 @@ pub(super) fn find_char_on_line_backward(
 /// - `Inclusive` (`f`): cursor lands ON `ch`.
 /// - `Exclusive` (`t`): cursor lands one grapheme *before* `ch`.
 ///   If `ch` is exactly one grapheme ahead, the adjusted position equals `head`
-///   and the motion is a no-op — this matches Helix/Vim `t` behaviour.
+///   and the motion is a no-op. This matches Helix/Vim `t` behaviour.
 ///
 /// `count` is supported via `apply_motion`'s fold: `3fa` skips to the 3rd `a`.
 /// No-op per selection if `ch` is not found.
@@ -84,7 +84,7 @@ pub fn find_char_forward(
                 // back at head (char was adjacent), the motion is a no-op.
                 FindKind::Exclusive => prev_grapheme_boundary(b, pos),
             },
-            None => head, // not found — stay put
+            None => head, // not found, stay put
         }
     })
 }
@@ -114,7 +114,7 @@ pub fn find_char_backward(
                 // just after `ch` (between `ch` and the original cursor).
                 FindKind::Exclusive => next_grapheme_boundary(b, pos),
             },
-            None => head, // not found — stay put
+            None => head, // not found, stay put
         }
     })
 }

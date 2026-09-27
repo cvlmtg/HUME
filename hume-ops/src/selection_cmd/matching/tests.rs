@@ -43,7 +43,7 @@ fn split_two_line_selection() {
 
 #[test]
 fn split_three_line_selection() {
-    // "a\nb\nc\n" — forward selection from 'a' to 'c'.
+    // "a\nb\nc\n": forward selection from 'a' to 'c'.
     let (text, sels) = parse_state("-[a\nb\nc]>\n");
     let sels_out = cmd_split_selection_on_newlines(&text, sels, 0, MotionMode::Move);
     assert_eq!(sels_out.len(), 3);
@@ -71,7 +71,7 @@ fn split_cursor_at_newline_is_noop() {
 
 #[test]
 fn split_empty_line_in_middle() {
-    // "foo\n\nbar\n" — selection from 'f'(0) to 'r'(7) spans 3 lines.
+    // "foo\n\nbar\n": selection from 'f'(0) to 'r'(7) spans 3 lines.
     // Line 0: "foo\n", line 1: "\n" (empty), line 2: "bar\n".
     // Middle piece should be a cursor on the lone '\n' at offset 4.
     let (text, sels) = parse_state("-[foo\n\nbar]>\n");
@@ -91,7 +91,7 @@ fn split_empty_line_in_middle() {
 
 #[test]
 fn split_backward_multi_line_with_empty_line_preserves_direction() {
-    // "foo\n\nbar\n" — backward selection spanning 3 lines including an
+    // "foo\n\nbar\n": backward selection spanning 3 lines including an
     // empty one. All 3 pieces must be backward, and the empty-line piece
     // must be a cursor on the '\n'.
     let (text, sels) = parse_state("<[foo\n\nbar]-\n");
@@ -111,7 +111,7 @@ fn split_backward_multi_line_with_empty_line_preserves_direction() {
 
 #[test]
 fn split_backward_multi_line_preserves_direction() {
-    // "foo\nbar\n" — backward selection: anchor=6('r'), head=0('f').
+    // "foo\nbar\n": backward selection, anchor=6('r'), head=0('f').
     // Each piece should be backward (anchor > head).
     let (text, sels) = parse_state("<[foo\nbar]-\n");
     let sels_out = cmd_split_selection_on_newlines(&text, sels, 0, MotionMode::Move);
@@ -165,7 +165,7 @@ fn trim_trailing_spaces() {
 
 #[test]
 fn trim_all_whitespace_collapses_to_cursor_at_head() {
-    // Selection covering only spaces — should collapse to cursor at head.
+    // Selection covering only spaces should collapse to cursor at head.
     let (text, sels) = parse_state("-[    ]>\n");
     let sels_out = cmd_trim_selection_whitespace(&text, sels, 0, MotionMode::Move);
     assert!(sels_out.primary().is_collapsed());
@@ -184,7 +184,7 @@ fn trim_no_whitespace_is_noop() {
 
 #[test]
 fn trim_tab_characters() {
-    // "\thello\t\n" — selection from tab(0) to tab(6) inclusive.
+    // "\thello\t\n": selection from tab(0) to tab(6) inclusive.
     // After trim: start=1 ('h'), end=5 ('o').
     // "\thello\t\n": \t(0),h(1),e(2),l(3),l(4),o(5),\t(6),\n(7).
     let (text, sels) = parse_state("-[\thello]>\t\n");
@@ -206,7 +206,7 @@ fn trim_backward_selection_preserves_direction() {
 
 #[test]
 fn trim_empty_buffer_collapses() {
-    // Only char is '\n' (whitespace) — all-whitespace selection collapses.
+    // Only char is '\n' (whitespace), so the all-whitespace selection collapses.
     assert_state!(
         "-[\n]>",
         |(text, sels)| cmd_trim_selection_whitespace(&text, sels, 0, MotionMode::Move),
@@ -241,7 +241,7 @@ fn select_matches_no_hits_returns_none() {
 fn select_matches_bounded_to_selection() {
     // Only matches within the selection range should be found.
     // "ab" appears at (0,1) and (4,5) in "abcdab\n", but selection
-    // covers only chars 2..3 ("cd") — no matches.
+    // covers only chars 2..3 ("cd"), so no matches.
     let text = BufferText::from("abcdab\n");
     let sels = SelectionSet::single(Selection::new(co(2), co(3)));
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();

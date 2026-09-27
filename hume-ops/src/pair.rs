@@ -15,7 +15,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 // ---------------------------------------------------------------------------
 
 /// The bracket pairs `%`-style matching and the argument text object both
-/// scan for. `<>` is deliberately absent — in real code it's a comparison
+/// scan for. `<>` is deliberately absent: in real code it's a comparison
 /// operator (`a < b`) far more often than a delimiter, which is why vim's own
 /// `matchpairs` default excludes it too; `<div>`/`</div>` tag matching is a
 /// separate scan ([`crate::tag`]).
@@ -77,19 +77,19 @@ pub(crate) fn find_bracket_pair(
 ) -> Option<InclusiveRange<CharOffset>> {
     match text.char_at(pos)? {
         ch if ch == open => {
-            // Cursor is on an open bracket — scan right for the matching close.
+            // Cursor is on an open bracket: scan right for the matching close.
             // `pos.shift(1)` cannot panic: `char_at` above already proved
             // `pos < text.len_chars()`.
             let close_pos = scan_right_for_close(text, pos.shift(1), open, close)?;
             Some(InclusiveRange::new(pos, close_pos))
         }
         ch if ch == close => {
-            // Cursor is on a close bracket — scan left for the matching open.
+            // Cursor is on a close bracket: scan left for the matching open.
             let open_pos = scan_left_for_open(text, pos, open, close)?;
             Some(InclusiveRange::new(open_pos, pos))
         }
         _ => {
-            // Cursor is inside — scan both directions.
+            // Cursor is inside: scan both directions.
             let open_pos = scan_left_for_open(text, pos, open, close)?;
             let close_pos = scan_right_for_close(text, pos, open, close)?;
             Some(InclusiveRange::new(open_pos, close_pos))
@@ -120,8 +120,8 @@ const BRACKET_ROLE_TABLE: [Option<(u8, bool)>; 128] = {
 /// side (`true`) or the close side (`false`). `None` for any other char.
 ///
 /// `pub(crate)`, not just the tables it's built from, so a caller that needs
-/// "is this char a bracket, and which side" — [`super::text_object::argument`]'s
-/// comma-depth counter is the current one — can ask the crate's one answer
+/// "is this char a bracket, and which side" (currently [`super::text_object::argument`]'s
+/// comma-depth counter) can ask the crate's one answer
 /// instead of hardcoding its own copy of `BRACKET_PAIRS`'s contents.
 pub(crate) fn bracket_role(ch: char) -> Option<(usize, bool)> {
     let byte = u32::from(ch);
@@ -133,8 +133,8 @@ pub(crate) fn bracket_role(ch: char) -> Option<(usize, bool)> {
 }
 
 /// Feeds one scanned char into a bracket type's depth counter, resolving
-/// `slots[k]` — `opens` when `seek_open` (scanning left for an unmatched
-/// open), `closes` when scanning right for an unmatched close — the first
+/// `slots[k]` (`opens` when `seek_open`, scanning left for an unmatched
+/// open; `closes` when scanning right for an unmatched close) the first
 /// time depth returns to zero on the side being sought. Returns the type
 /// index just resolved, if any.
 ///
@@ -197,9 +197,9 @@ pub(crate) fn find_tightest_bracket_pair(
     let mut depths_right = [0usize; BRACKET_PAIRS.len()];
 
     // `ch` can be at most one type's open char, so at most one slot is
-    // seeded here — `opens_missing` always starts at 2 or 3, never 0.
+    // seeded here, so `opens_missing` always starts at 2 or 3, never 0.
     let mut opens_missing = BRACKET_PAIRS.len();
-    // Types with a known open and unknown close — what the rightward scan
+    // Types with a known open and unknown close: what the rightward scan
     // is still live for. Excludes a type whose close is already known (the
     // on-close shortcut just below, or the "resolved out of order" case
     // documented above) the moment its open is found, since neither needs
@@ -284,14 +284,14 @@ pub(crate) fn find_tightest_bracket_pair(
 /// Find the bracket nearest `sel`'s head, scanning the selection span.
 ///
 /// `sel`'s head is always one extremity of the span (`start()` or `end()`;
-/// for a collapsed selection the two coincide) — never interior — so
+/// for a collapsed selection the two coincide), never interior, so
 /// "nearest to head, within the selection" is just "scan the span from the
 /// head's end inward"; the first hit is, by construction, the nearest one.
 /// Uses `chars_at` rather than indexed `char_at` calls so the scan pays
 /// ropey's O(log n) tree descent once, not once per char (same reason
 /// `scan_left_for_open`/`scan_right_for_close` above use it).
 ///
-/// The span scanned is the selection itself only when it sits on one line —
+/// The span scanned is the selection itself only when it sits on one line:
 /// this resolver also runs once per frame for the bracket-match highlight,
 /// so scanning a selection of unbounded length (e.g. `%` select-all) would
 /// put an unbounded-cost scan on every keystroke. A selection crossing a
@@ -333,15 +333,15 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
 /// Find the partner of the bracket nearest `sel`'s head, within `sel`.
 ///
 /// Resolves against the whole selection, not just the head's own grapheme
-/// cluster — a `w`-motion selection like `") "` leaves the head on the
+/// cluster: a `w`-motion selection like `") "` leaves the head on the
 /// trailing space rather than the bracket itself (`word-selects-whitespace`
 /// is by design), and `%`-style matching should still find the `)`. The
 /// head's own cluster is always checked first: a bracket char is always
 /// ASCII and never itself combines forward, but a `GC_Prepend` codepoint
 /// immediately before one (e.g. U+0600 ARABIC NUMBER SIGN) joins *into* it,
-/// so a head landing on that leading codepoint — exactly where
+/// so a head landing on that leading codepoint (exactly where
 /// [`hume_editing::grapheme::snap_to_cluster_start`] leaves a motion after
-/// matching such a bracket — must still resolve, or a second `%`-style press
+/// matching such a bracket) must still resolve, or a second `%`-style press
 /// (an involution) finds nothing and the cursor-match highlight goes dark on
 /// a bracket the cursor is visibly beside.
 ///
@@ -349,7 +349,7 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
 /// delimiter part of, and where's the other end") that `find_bracket_pair`
 /// doesn't provide on its own, since that function is only ever called with
 /// one already-known pair. Also the single resolver for the bracket-match
-/// cursor highlight (`hume-editor`'s `decoration_providers`) — both need the
+/// cursor highlight (`hume-editor`'s `decoration_providers`). Both need the
 /// same answer to "what does this character pair with", so there is exactly
 /// one place `BRACKET_PAIRS` gets consulted for it.
 pub fn matching_bracket(text: &BufferText, sel: Selection) -> Option<CharOffset> {
@@ -369,7 +369,7 @@ pub fn matching_bracket(text: &BufferText, sel: Selection) -> Option<CharOffset>
 /// Find the quote pair on the current line that encloses or is nearest to `pos`.
 ///
 /// Quotes don't span lines (current limitation). Strategy: scan the current line
-/// tracking parity — odd occurrences are opening quotes, even occurrences are
+/// tracking parity: odd occurrences are opening quotes, even occurrences are
 /// closing quotes. Returns the pair that contains `pos`.
 ///
 /// If `pos` is ON a quote char, parity resolves whether it is open or close.

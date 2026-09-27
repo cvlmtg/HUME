@@ -137,7 +137,7 @@ fn goto_first_nonblank_no_leading_whitespace() {
 
 #[test]
 fn goto_first_nonblank_all_blank_line() {
-    // Line is all spaces — no non-blank found, cursor is unchanged.
+    // Line is all spaces: no non-blank found, cursor is unchanged.
     assert_state!(
         "-[ ]>  \n",
         |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
@@ -203,7 +203,7 @@ fn extend_line_start_from_mid_line() {
 
 #[test]
 fn extend_line_start_already_at_start() {
-    // Already at line start — no-op.
+    // Already at line start: no-op.
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| cmd_goto_line_start(&text, sels, 1, MotionMode::Extend),
@@ -223,7 +223,7 @@ fn extend_line_end_from_start() {
 
 #[test]
 fn extend_line_end_already_at_end() {
-    // Already at line end — no-op.
+    // Already at line end: no-op.
     assert_state!(
         "hell-[o]>\n",
         |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Extend),

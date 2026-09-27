@@ -26,8 +26,8 @@ fn overwrite_replaces_previous() {
 
 #[test]
 fn write_text_normalizes_line_endings() {
-    // Register text is `\r`-free by construction, same as buffer content —
-    // a plugin or the OS clipboard can write either convention.
+    // Register text is `\r`-free by construction, same as buffer content.
+    // A plugin or the OS clipboard can write either convention.
     let mut regs = RegisterSet::new();
     regs.write_text('"', vec!["a\r\nb".to_string(), "c\rd".to_string()]);
     assert_eq!(
@@ -147,7 +147,7 @@ fn constants_have_expected_values() {
 
 #[test]
 fn yank_single_cursor() {
-    // Cursor on 'h' — yank captures just 'h'.
+    // Cursor on 'h': yank captures just 'h'.
     let (text, sels) = parse_state("-[h]>ello\n");
     assert_eq!(yank_selections(&text, &sels), vec!["h"]);
 }
@@ -161,14 +161,14 @@ fn yank_multi_char_selection() {
 
 #[test]
 fn yank_backward_selection_same_text() {
-    // Direction doesn't change the yanked text — it's always start()..=end().
+    // Direction doesn't change the yanked text: it's always start()..=end().
     let (text, sels) = parse_state("<[hell]-o\n");
     assert_eq!(yank_selections(&text, &sels), vec!["hell"]);
 }
 
 #[test]
 fn yank_multi_cursor_document_order() {
-    // Two cursors — one on 'h', one on 'o'. Returned in document order.
+    // Two cursors: one on 'h', one on 'o'. Returned in document order.
     let (text, sels) = parse_state("-[h]>ell-[o]>\n");
     let yanked = yank_selections(&text, &sels);
     assert_eq!(yanked, vec!["h", "o"]);
@@ -176,7 +176,7 @@ fn yank_multi_cursor_document_order() {
 
 #[test]
 fn yank_full_line_including_newline() {
-    // Selection covers "hello\n" — result ends with '\n' (linewise heuristic).
+    // Selection covers "hello\n": result ends with '\n' (linewise heuristic).
     let (text, sels) = parse_state("-[hello\n]>");
     assert_eq!(yank_selections(&text, &sels), vec!["hello\n"]);
 }
@@ -184,7 +184,7 @@ fn yank_full_line_including_newline() {
 #[test]
 fn yank_grapheme_cluster() {
     // "e\u{0301}" is two chars (e + combining acute) but one grapheme cluster.
-    // A cursor on 'e' (pos 0) covers that grapheme — yank must include the
+    // A cursor on 'e' (pos 0) covers that grapheme, so yank must include the
     // combining mark so the yanked text is the complete grapheme "é".
     let (text, sels) = parse_state("-[e]>\u{0301}x\n");
     assert_eq!(yank_selections(&text, &sels), vec!["e\u{0301}"]);
@@ -192,14 +192,14 @@ fn yank_grapheme_cluster() {
 
 #[test]
 fn yank_on_structural_newline() {
-    // Cursor on the trailing '\n' — captures the newline itself.
+    // Cursor on the trailing '\n': captures the newline itself.
     let (text, sels) = parse_state("hello-[\n]>");
     assert_eq!(yank_selections(&text, &sels), vec!["\n"]);
 }
 
 #[test]
 fn yank_empty_buffer() {
-    // Empty buffer is just "\n"; cursor on it — yank captures the newline.
+    // Empty buffer is just "\n". With the cursor on it, yank captures the newline.
     let (text, sels) = parse_state("-[\n]>");
     assert_eq!(yank_selections(&text, &sels), vec!["\n"]);
 }
@@ -327,7 +327,7 @@ fn push_mixed_entry_not_overwritten() {
 #[test]
 fn push_consecutive_whitespace_kills_collapse() {
     // d<space>, d<tab>, d<x>: each whitespace head is overwritten in turn,
-    // so all three share a single slot — no whitespace junk lingers.
+    // so all three share a single slot and no whitespace junk lingers.
     let mut ring = KillRing::new();
     ring.push(vs(" "));
     ring.push(vs("\t"));
@@ -378,7 +378,7 @@ fn push_duplicate_at_capacity_does_not_evict() {
 #[test]
 fn push_duplicate_reclaims_whitespace_head() {
     // Dedupe must run before the whitespace collapse: removing "a" from slot 2
-    // first, then overwriting the whitespace head with it, leaves one "a" — not
+    // first, then overwriting the whitespace head with it, leaves one "a", not
     // an "a" head plus a surviving older "a" deeper in the ring.
     let mut ring = KillRing::new();
     ring.push(vs("a"));

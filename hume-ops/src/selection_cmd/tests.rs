@@ -8,7 +8,7 @@ use test_fixtures::testing::parse_state;
 
 #[test]
 fn collapse_cursor_is_noop() {
-    // A cursor (anchor == head) collapsing to itself — no change.
+    // A cursor (anchor == head) collapsing to itself: no change.
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| cmd_collapse_selection_to_head(&text, sels, 0, MotionMode::Move),
@@ -38,11 +38,11 @@ fn collapse_backward_selection() {
 
 #[test]
 fn collapse_merges_coincident_heads() {
-    // Two cursors at different positions stay separate after collapse —
+    // Two cursors at different positions stay separate after collapse:
     // they only merge if their heads land on the exact same position.
     let (text, sels) = parse_state("-[h]>el-[l]>o\n");
     let result = cmd_collapse_selection_to_head(&text, sels, 0, MotionMode::Move);
-    assert_eq!(result.len(), 2); // still 2 — they don't converge
+    assert_eq!(result.len(), 2); // still 2: they don't converge
 }
 
 // ── cmd_flip_selections ────────────────────────────────────────────────
@@ -173,7 +173,7 @@ fn cycle_forward_advances_primary() {
     assert_eq!(sels.primary().head(), CharOffset::new(0));
     let sels = cmd_cycle_primary_forward(&text, sels, 0, MotionMode::Move);
     assert_eq!(sels.primary().head(), CharOffset::new(3));
-    // Cycle again — wraps back to first.
+    // Cycle again: wraps back to first.
     let sels = cmd_cycle_primary_forward(&text, sels, 0, MotionMode::Move);
     assert_eq!(sels.primary().head(), CharOffset::new(0));
 }
@@ -232,7 +232,7 @@ fn collapse_to_anchor_merges_coincident_anchors() {
         0,
     );
     let result = cmd_collapse_selection_to_anchor(&text, sels, 0, MotionMode::Move);
-    assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 0
+    assert_eq!(result.len(), 1); // merged: both collapsed to cursor at 0
     assert_eq!(result.primary().head(), CharOffset::new(0));
 }
 
@@ -250,7 +250,7 @@ fn collapse_empty_buffer() {
 #[test]
 fn collapse_two_selections_same_head_merges() {
     // Two selections with different anchors but the same head collapse to
-    // one cursor — map (which always merges) must reduce the count.
+    // one cursor, so map (which always merges) must reduce the count.
     let text = hume_editing::text::BufferText::from("hello\n");
     let sels = hume_editing::selection::SelectionSet::from_vec(
         vec![
@@ -260,7 +260,7 @@ fn collapse_two_selections_same_head_merges() {
         0,
     );
     let result = cmd_collapse_selection_to_head(&text, sels, 0, MotionMode::Move);
-    assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 3
+    assert_eq!(result.len(), 1); // merged: both collapsed to cursor at 3
     assert_eq!(result.primary().head(), CharOffset::new(3));
 }
 
@@ -280,7 +280,7 @@ fn flip_multiple_selections() {
 
 #[test]
 fn keep_primary_when_primary_is_not_first() {
-    // Cycle primary to the second cursor, then keep — should keep that one.
+    // Cycle primary to the second cursor, then keep: should keep that one.
     let (text, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at index 0 (head=0)
     let sels = cmd_cycle_primary_forward(&text, sels, 0, MotionMode::Move); // primary now at index 1 (head=3)
     let sels_out = cmd_keep_primary_selection(&text, sels, 0, MotionMode::Move);
@@ -292,7 +292,7 @@ fn keep_primary_when_primary_is_not_first() {
 
 #[test]
 fn remove_primary_at_end_wraps_to_first() {
-    // Three cursors at 0, 3, 6. Cycle to last, then remove — should wrap
+    // Three cursors at 0, 3, 6. Cycle to last, then remove: should wrap
     // to the first remaining cursor (index 0 of the new set).
     let (text, sels) = parse_state("-[h]>el-[l]>o-[\n]>"); // 3 cursors, primary at 0
     let sels = cmd_cycle_primary_backward(&text, sels, 0, MotionMode::Move); // primary at last (head=6)

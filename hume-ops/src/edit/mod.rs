@@ -63,7 +63,7 @@ pub use sort::{SortOpts, SortRefusal, sort_lines};
 /// If `count == 0`, returns the original state with an identity ChangeSet.
 ///
 /// Test-only, but used from `hume-editor`'s test suite too (a downstream
-/// crate) — see the `test-util` feature.
+/// crate); see the `test-util` feature.
 #[cfg(any(test, feature = "test-util"))]
 pub fn repeat_edit(
     count: usize,
@@ -99,11 +99,11 @@ pub fn repeat_edit(
 /// Core loop for all editing operations.
 ///
 /// The closure `f` receives:
-///   - `b`        — the changeset builder (original-buffer coordinate space)
-///   - `text`      — shared borrow of the original buffer for read-only queries
-///   - `i`        — 0-based iteration index in sorted order (N-to-N paste uses this)
-///   - `sel`      — the current selection
-///   - `new_sels` — accumulator for result selections; `f` must push exactly one entry
+///   - `b`: the changeset builder (original-buffer coordinate space)
+///   - `text`: shared borrow of the original buffer for read-only queries
+///   - `i`: 0-based iteration index in sorted order (N-to-N paste uses this)
+///   - `sel`: the current selection
+///   - `new_sels`: accumulator for result selections; `f` must push exactly one entry
 ///
 /// Returns the new buffer, merged selection set, and changeset.
 ///
@@ -133,12 +133,12 @@ where
 
     b.retain_rest();
     // finish() before apply() so the ChangeSet is available for undo/redo
-    // bookkeeping. invert() must be called against the pre-edit buffer — the
+    // bookkeeping. invert() must be called against the pre-edit buffer; the
     // caller (Buffer) holds that buffer and handles the timing constraint.
     let cs = b.finish();
     let new_text = cs
         .apply(&text)
-        .expect("edit operation produced an invalid changeset — this is a bug");
+        .expect("edit operation produced an invalid changeset: this is a bug");
     let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx);
     new_sel_set.debug_assert_valid(&new_text);
     (new_text, new_sel_set, cs)
@@ -147,10 +147,10 @@ where
 /// Delete the grapheme cluster at `p` and push a cursor result onto `new_sels`.
 ///
 /// No-op when `p` is the last position in the buffer (the structural trailing
-/// `\n`) — deleting it would violate the buffer invariant. Used by
+/// `\n`): deleting it would violate the buffer invariant. Used by
 /// `delete_char_forward` (cursor branch).
 ///
-/// All offsets fed to `b` are in original-buffer coordinate space — the builder
+/// All offsets fed to `b` are in original-buffer coordinate space. The builder
 /// translates them to result-buffer positions internally.
 fn delete_one_grapheme(
     b: &mut ChangeSetBuilder,
@@ -159,7 +159,7 @@ fn delete_one_grapheme(
     p: CharOffset,
 ) {
     if p >= text.last_char() {
-        // Cursor is on the structural trailing '\n' — cannot delete it.
+        // Cursor is on the structural trailing '\n', so it cannot be deleted.
         b.retain(p.chars_since(b.old_pos()));
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
@@ -177,7 +177,7 @@ fn delete_one_grapheme(
 /// Uses `sel.end_inclusive()` so that multi-codepoint grapheme clusters
 /// (e.g. `e + \u{0301}`) are deleted atomically. The deletion is capped at
 /// the last content character (`text.last_content_char()`) so that the
-/// structural trailing `\n` is never removed — matching the protection in
+/// structural trailing `\n` is never removed, matching the protection in
 /// `delete_one_grapheme`.
 ///
 /// **Last-line whole-line special case**: when the selection spans the entire
@@ -210,7 +210,7 @@ fn delete_sel_region(
         if del_start >= b.old_pos() {
             // Cursor: land at the start of the merged line (what was the line
             // above the deleted one). Compute as (del_start's new_pos) minus
-            // del_start's char column within its original line — this stays
+            // del_start's char column within its original line. This stays
             // correct in the multi-cursor case where b.new_pos() != b.old_pos().
             let prev_line = text.char_to_line(del_start);
             let char_col = hume_editing::lines::char_col_in_line(text, prev_line, del_start);
@@ -220,8 +220,8 @@ fn delete_sel_region(
             let cursor_new = b.new_pos().retreat_saturating(char_col.index());
             // Delete from the preceding '\n' through the last content char,
             // keeping the structural trailing '\n'. `last_char()` is exactly
-            // `last_content_char() + 1` — the buffer's own exclusive content
-            // bound — so no `+ 1` is needed here.
+            // `last_content_char() + 1` (the buffer's own exclusive content
+            // bound), so no `+ 1` is needed here.
             b.delete(text.last_char().chars_since(del_start));
             new_sels.push(Selection::collapsed(cursor_new));
             return;

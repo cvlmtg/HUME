@@ -19,7 +19,7 @@ use crate::{MotionMode, WordCtx};
 ///
 /// Scans left and right from `pos` while adjacent chars share the same
 /// "class" (no boundary crossing). Whatever class the char at `pos` belongs
-/// to defines the selected run — including whitespace runs and EOL.
+/// to defines the selected run, including whitespace runs and EOL.
 pub fn inner_word_impl(
     text: &BufferText,
     pos: CharOffset,
@@ -72,7 +72,7 @@ pub fn inner_word_impl(
 ///
 /// A leading run that reaches back to the start of its line (or the start of
 /// the buffer) is indentation, not inter-word spacing, and must never be
-/// absorbed — the first word of a line always takes its trailing whitespace
+/// absorbed: the first word of a line always takes its trailing whitespace
 /// instead. This keeps `w`/`b`/`mm`/`maw` from ever eating indentation.
 ///
 /// `min_start` is a hard lower bound on the leading scan, never crossed.
@@ -82,7 +82,7 @@ pub fn inner_word_impl(
 /// the previous display line.
 ///
 /// Reaching `min_start` only counts as indentation (blocking absorption) when
-/// `min_start` is itself a genuine line start — the buffer start, or right
+/// `min_start` is itself a genuine line start: the buffer start, or right
 /// after a real newline. A wrap sub-line boundary is neither: it falls
 /// mid-line, so a leading run that reaches it is ordinary inter-word spacing
 /// that happens to sit at the display-line split, not indentation, and stays
@@ -100,7 +100,7 @@ pub fn expand_word_unit(
         ) == Some(CharClass::Eol);
 
     // Leading scan: walk back over Space graphemes from `start`. Stopping on
-    // Eol means the run touches the start of the line — indentation.
+    // Eol means the run touches the start of the line, so it is indentation.
     let mut run_start = start;
     let mut hit_eol = false;
     while run_start > min_start {
@@ -143,18 +143,18 @@ pub fn expand_word_unit(
 /// The word (or WORD) unit at `pos`: the inner word plus its whitespace
 /// bookend per [`expand_word_unit`].
 ///
-/// When `pos` sits on whitespace there is no word under the cursor — snap to
+/// When `pos` sits on whitespace there is no word under the cursor: snap to
 /// the adjacent word (the one right after the run if any, else the one right
 /// before it) and expand that instead. The whitespace under the cursor is
 /// never selected for its own sake; it only appears in the span when the
 /// expansion re-absorbs it (an inter-word space run is the following word's
 /// leading run), so newlines and indentation never leak into the selection.
 /// Returns `None` when no word is adjacent to the run (e.g. a
-/// whitespace-only buffer, or indentation at the start of the buffer) — the
+/// whitespace-only buffer, or indentation at the start of the buffer), and the
 /// callers treat that as a no-op.
 ///
 /// This is the shared body of `mm`/`MM` and `maw`/`maW` (position-based,
-/// unlike the motion-based `w`/`b`) — all four names select the same span.
+/// unlike the motion-based `w`/`b`): all four names select the same span.
 /// Also used to resolve an extend selection's anchor unit when
 /// `word-selects-whitespace` is on.
 pub fn word_unit_at(
@@ -165,8 +165,8 @@ pub fn word_unit_at(
     chars: WordChars<'_>,
 ) -> Option<InclusiveRange<CharOffset>> {
     // `pos` may be any valid selection endpoint, including the trailing
-    // codepoint of a multi-codepoint grapheme cluster — see `anchor_unit`'s
-    // doc for why this snap to the cluster start matters before classifying.
+    // codepoint of a multi-codepoint grapheme cluster (see `anchor_unit`'s
+    // doc for why this snap to the cluster start matters before classifying).
     let pos = snap_to_cluster_start(text, pos);
     let range = inner_word_impl(text, pos, is_boundary, chars)?;
     let class = chars.classify(text.char_at(pos)?);
@@ -174,7 +174,7 @@ pub fn word_unit_at(
         return Some(expand_word_unit(text, range.start, range.end, min_start));
     }
 
-    // On whitespace: `range` is the whitespace run — find the word adjacent
+    // On whitespace: `range` is the whitespace run. Find the word adjacent
     // to it (following preferred, preceding fallback) and expand that one by
     // the normal rule instead.
     let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
@@ -208,8 +208,8 @@ pub fn word_unit_at(
 ///
 /// Callers supply bounds explicitly so this helper can be scoped to either a
 /// buffer line (no-wrap path) or a visual sub-line (wrap path). `around`
-/// mirrors the effective `word-selects-whitespace` setting — see
-/// `cmd_select_word_nearest_on_line` and `cmd_visual_select_word_nearest_on_line`.
+/// mirrors the effective `word-selects-whitespace` setting (see
+/// `cmd_select_word_nearest_on_line` and `cmd_visual_select_word_nearest_on_line`).
 pub fn nearest_word_on_line(
     text: &BufferText,
     head: CharOffset,
@@ -228,7 +228,7 @@ pub fn nearest_word_on_line(
 
     let class = chars.classify(text.char_at(head)?);
 
-    // Fast path: head is already on a word/punct — delegate to inner/around unit.
+    // Fast path: head is already on a word/punct, so delegate to inner/around unit.
     if class != CharClass::Space && class != CharClass::Eol {
         return unit(head);
     }
@@ -323,7 +323,7 @@ pub fn apply_nearest_word_result(
 /// when unset, only the inner word is selected.
 ///
 /// In wrap mode, `cmd_visual_select_word_nearest_on_line` (in `editor/visual_move.rs`)
-/// should be used instead — it scopes the search to the current visual sub-line,
+/// should be used instead. It scopes the search to the current visual sub-line,
 /// preventing the snap from reaching across a wrap boundary.
 ///
 /// In `Extend` mode the matched word range is unioned with the existing
@@ -356,7 +356,7 @@ type IsBoundary = fn(CharClass, CharClass) -> bool;
 type WordUnitFn =
     fn(&BufferText, CharOffset, IsBoundary, WordChars<'_>) -> Option<InclusiveRange<CharOffset>>;
 
-/// [`word_unit_at`] with `min_start` pinned to `0` — the shape every
+/// [`word_unit_at`] with `min_start` pinned to `0`: the shape every
 /// text-object command below needs, as opposed to the sticky-column motion
 /// path (`motion/word.rs`), which passes a nonzero visual-line floor.
 fn around_unit(
@@ -388,7 +388,7 @@ fn word_object_cmd(
 ///
 /// The command registry stores `fun` as a bare `fn` pointer (see
 /// `hume-editor`'s `SelectionBody` doc), so each variant still needs its own
-/// named item — only the body is shared here, not the item itself.
+/// named item. Only the body is shared here, not the item itself.
 macro_rules! word_object_variant {
     ($(#[$meta:meta])* $name:ident, $doc:expr, $is_boundary:expr, $word_unit:expr) => {
         $(#[$meta])*
@@ -414,7 +414,7 @@ word_object_variant!(
     cmd_around_word,
     "Around word (`ma w`): same span as `mm` when `word-selects-whitespace` is \
      on (see [`cmd_select_word`]), under a separate name because it stays \
-     available — ignoring `ctx.around` — regardless of that setting.",
+     available (ignoring `ctx.around`) regardless of that setting.",
     is_word_boundary,
     around_unit
 );
@@ -434,7 +434,7 @@ word_object_variant!(
 );
 
 /// Select the word under the cursor (`mm`): the inner word, or (when
-/// `ctx.around` — the effective `word-selects-whitespace` — is set) the same
+/// `ctx.around`, the effective `word-selects-whitespace`, is set) the same
 /// unit `maw`/[`cmd_around_word`] selects, covering its surrounding
 /// whitespace per [`expand_word_unit`]. Both modes use the same unit;
 /// `Extend` unions it with the current selection via

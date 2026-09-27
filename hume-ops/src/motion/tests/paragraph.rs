@@ -5,8 +5,8 @@ use test_fixtures::assert_state;
 
 #[test]
 fn goto_next_paragraph_basic() {
-    // Selects the next paragraph. No trailing gap here — "foo" is the last
-    // paragraph — so the span stops at its own text.
+    // Selects the next paragraph. No trailing gap here ("foo" is the last
+    // paragraph), so the span stops at its own text.
     assert_state!(
         "-[h]>ello\nworld\n\nfoo\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
@@ -37,7 +37,7 @@ fn goto_next_paragraph_includes_trailing_gap() {
 #[test]
 fn goto_next_paragraph_gap_reaches_buffer_end() {
     // The target paragraph's trailing gap runs all the way to EOF (two
-    // blank lines, no paragraph below) — the span must stop at the
+    // blank lines, no paragraph below), so the span must stop at the
     // buffer's last valid position (content domain), not walk onto the
     // phantom trailing line one past it. See `paragraph_span`'s doc
     // comment.
@@ -50,7 +50,7 @@ fn goto_next_paragraph_gap_reaches_buffer_end() {
 
 #[test]
 fn goto_next_paragraph_multiple_empty_lines() {
-    // A two-line gap between the current and target paragraphs — both are
+    // A two-line gap between the current and target paragraphs: both are
     // swallowed reaching "foo", not just the nearer one.
     assert_state!(
         "-[a]>\n\n\nfoo\n",
@@ -121,7 +121,7 @@ fn goto_next_paragraph_count_two_matches_two_presses() {
 
 #[test]
 fn goto_next_paragraph_count_overshoot_stops_at_last() {
-    // Only 2 paragraphs lie below "a" — a count of 5 stops at "c" (the last
+    // Only 2 paragraphs lie below "a", so a count of 5 stops at "c" (the last
     // one) rather than erroring or wrapping past it.
     assert_state!(
         "-[a]>\n\nb\n\nc\n",
@@ -170,7 +170,7 @@ fn goto_prev_paragraph_no_paragraph_above_is_noop() {
 
 #[test]
 fn goto_prev_paragraph_from_gap_selects_nearest_paragraph() {
-    // Cursor sits in the gap above one preceding paragraph — that paragraph
+    // Cursor sits in the gap above one preceding paragraph: that paragraph
     // (plus the gap it's already in) is the target.
     assert_state!(
         "hello\n-[\n]>world\n",
@@ -181,7 +181,7 @@ fn goto_prev_paragraph_from_gap_selects_nearest_paragraph() {
 
 #[test]
 fn goto_prev_paragraph_from_gap_selects_nearest_not_the_one_before_it() {
-    // Two paragraphs precede the gap — the nearest one ("hello") is the
+    // Two paragraphs precede the gap: the nearest one ("hello") is the
     // target, not the one before it ("foo"). A backward scan that skipped
     // an extra paragraph here would land on "foo" instead.
     assert_state!(
@@ -205,7 +205,7 @@ fn goto_prev_paragraph_from_gap_includes_blank_lines_below_the_cursor() {
 
 #[test]
 fn goto_prev_paragraph_from_leading_gap_is_noop() {
-    // Nothing precedes the gap itself — no previous paragraph exists.
+    // Nothing precedes the gap itself: no previous paragraph exists.
     assert_state!(
         "-[\n]>hello\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
@@ -215,7 +215,7 @@ fn goto_prev_paragraph_from_leading_gap_is_noop() {
 
 #[test]
 fn goto_prev_paragraph_count_overshoot_stops_at_first() {
-    // Only 2 paragraphs lie above "c" — a count of 5 stops at "a" (the
+    // Only 2 paragraphs lie above "c", so a count of 5 stops at "a" (the
     // first one) rather than erroring or wrapping past it.
     assert_state!(
         "a\n\nb\n\n-[c]>\n",
@@ -309,8 +309,8 @@ fn goto_prev_paragraph_multi_cursor() {
 
 // ── Rope chunk boundaries ────────────────────────────────────────────────────
 //
-// One unbroken 300-line paragraph — several times larger than a rope leaf
-// (`MAX_BYTES`/`MIN_BYTES` are a few hundred bytes each) — so a scan that
+// One unbroken 300-line paragraph, several times larger than a rope leaf
+// (`MAX_BYTES`/`MIN_BYTES` are a few hundred bytes each), so a scan that
 // walks the whole paragraph must step from one chunk to the next, not just
 // seek within a single leaf. The cursor sits at one end of that paragraph so
 // the *scan itself* (not just the O(log n) seek to reach it) crosses chunks.

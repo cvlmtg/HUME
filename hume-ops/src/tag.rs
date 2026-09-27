@@ -5,15 +5,15 @@
 //! so a grammar-based version would have to live as an `EditorCmd` in
 //! `hume-editor`, working only in a buffer with a parsed tree for a markup
 //! grammar. This scan works in any buffer, including a scratch buffer with
-//! no language at all — the same trade [`crate::pair`]'s lexical bracket and
+//! no language at all. It's the same trade [`crate::pair`]'s lexical bracket and
 //! quote scans already make.
 //!
 //! Scans ASCII markup characters only, one char at a time via `chars_at`
-//! (never grapheme boundaries) — the same sanctioned exception `pair.rs`
+//! (never grapheme boundaries): the same sanctioned exception `pair.rs`
 //! uses, since no grapheme cluster can be mistaken for `<`, `>`, `/`, or a
 //! quote.
 //!
-//! Tag names are compared case-sensitively (XML/JSX semantics) — HUME has no
+//! Tag names are compared case-sensitively (XML/JSX semantics). HUME has no
 //! per-buffer markup-language config to decide HTML's case-insensitive
 //! convention from.
 
@@ -36,7 +36,7 @@ fn same_name(
     b: InclusiveRange<CharOffset>,
 ) -> bool {
     // Names are ASCII-only (`parse_tag` only accepts ascii_alphanumeric plus
-    // `_`/`:`/`.`/`-`), so char length equals byte length — an exact,
+    // `_`/`:`/`.`/`-`), so char length equals byte length: an exact,
     // zero-cost rejection that skips two `RopeSlice` tree walks (`slice`'s
     // `PartialEq` only short-circuits on `len_bytes` *after* building both)
     // for the common case of hunting one tag name through many others.
@@ -54,19 +54,19 @@ fn is_comment_start(text: &BufferText, lt_pos: CharOffset) -> bool {
 
 /// Consume `cursor` through the terminator of an HTML comment whose `<!--`
 /// prefix `cursor` has already consumed, or to the end of the buffer if it's
-/// never closed — an unterminated comment swallows everything after it, so
+/// never closed. An unterminated comment swallows everything after it, so
 /// no tag inside it is reachable.
 ///
 /// Also recognizes HTML5's abruptly-closed forms `<!-->` and `<!--->` (a
 /// comment with zero or one dash before the first `>`), and `--!>` in place
-/// of `-->` — all three are HTML5 parse errors but real markup hits them.
+/// of `-->`. All three are HTML5 parse errors but real markup hits them.
 fn skip_comment_body(cursor: &mut CharCursor<'_>) {
     let mut dashes = 0u32;
     // offset: chars consumed since the confirmed "<!--"
     for (offset, (_, ch)) in cursor.by_ref().enumerate() {
         match ch {
             '-' => dashes += 1,
-            // `--!>` closes like `-->` — keep `dashes` alive across the `!`.
+            // `--!>` closes like `-->`, so keep `dashes` alive across the `!`.
             '!' if dashes >= 2 => {}
             '>' if dashes >= 2 || offset == 0 || (offset == 1 && dashes == 1) => return,
             _ => dashes = 0,
@@ -76,15 +76,15 @@ fn skip_comment_body(cursor: &mut CharCursor<'_>) {
 
 /// Parse the tag construct starting at `lt_pos` (must be `<`, and not the
 /// start of a comment) via `cursor`, which must already sit at `lt_pos + 1`
-/// with `first` the pair that position yielded — [`next_tag`]'s shared
+/// with `first` the pair that position yielded. [`next_tag`]'s shared
 /// forward scan has already consumed it to rule out a comment, and a
 /// `CharCursor` can't be rewound to hand it back. `None` for anything that
-/// isn't a well-formed `<name…>`, `<name…/>`, or `</name>` — `<!DOCTYPE`,
+/// isn't a well-formed `<name…>`, `<name…/>`, or `</name>`: `<!DOCTYPE`,
 /// `<?xml`, a bare `<` in running text or code, or an unterminated `<`.
 /// Quote-aware: a `>` inside a `"…"`/`'…'` attribute value doesn't end the
 /// tag, and braced expression attributes (`onClick={() => f()}`) don't end
-/// early at the arrow's `>`. An unquoted, unbraced `<` — a stray comparison
-/// operator or the start of the *next* tag — ends the parse with `None`
+/// early at the arrow's `>`. An unquoted, unbraced `<` (a stray comparison
+/// operator or the start of the *next* tag) ends the parse with `None`
 /// rather than being consumed as part of this one.
 fn parse_tag(
     cursor: &mut CharCursor<'_>,
@@ -151,11 +151,11 @@ fn parse_tag(
 
 /// Find the next tag construct `cursor` reaches, skipping HTML comments and
 /// any `<` that doesn't parse as a well-formed tag. Advances `cursor` in
-/// place rather than taking a `from: usize` — [`close_after`]/[`open_before`]
+/// place rather than taking a `from: usize`: [`close_after`]/[`open_before`]
 /// share one cursor across every tag in their scan, so ropey's O(log n) tree
 /// descent to seek a starting position is paid once per scan, not once per
 /// tag. A failed attempt (a stray `<`, or a `<!` that isn't a comment after
-/// all) still needs to resume scanning right after that `<` — reseeking
+/// all) still needs to resume scanning right after that `<`. Reseeking
 /// there with a fresh [`BufferText::chars_at`] is the one exception, kept to
 /// that uncommon case instead of paid on every well-formed tag.
 fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag> {
@@ -165,10 +165,10 @@ fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag
             continue;
         }
         let Some(first) = cursor.next() else {
-            return None; // buffer ends right after '<' — nothing more to find.
+            return None; // buffer ends right after '<', nothing more to find.
         };
         if first.1 == '!' {
-            // Comments are the one construct `parse_tag` doesn't parse — it
+            // Comments are the one construct `parse_tag` doesn't parse: it
             // would reject '!' as a name-start character regardless of what
             // follows, so a well-formed comment is resolved here instead of
             // costing a doomed `parse_tag` call.
@@ -176,36 +176,36 @@ fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag
                 skip_comment_body(cursor);
                 continue;
             }
-            // Not a comment either (`<!DOCTYPE`, stray `<!` junk) — `parse_tag`
+            // Not a comment either (`<!DOCTYPE`, stray `<!` junk). `parse_tag`
             // would reject '!' anyway, so fall through to the reseek below
             // instead of calling it.
         } else if let Some(tag) = parse_tag(cursor, lt_pos, first) {
             return Some(tag);
         }
-        // Failed to parse a tag at `lt_pos` — resume right after it,
+        // Failed to parse a tag at `lt_pos`: resume right after it,
         // discarding whatever the comment check or `parse_tag` looked ahead
         // at, which could itself be the next tag's own `<` (as in `a<b\n<div>`).
         *cursor = text.chars_at(lt_pos.shift(1));
     }
 }
 
-/// Find the tag construct whose own markup — its `<`, its `>`, the name, or
-/// an attribute — contains `pos`. Walks left from `pos` for the nearest `<`
+/// Find the tag construct whose own markup (its `<`, its `>`, the name, or
+/// an attribute) contains `pos`. Walks left from `pos` for the nearest `<`
 /// and parses forward from there. Matching matchit/vim's `%`, which fires
 /// from anywhere in a tag's own markup, not just its two delimiter chars.
 ///
 /// The nearest preceding `<` does *not* always settle the answer on its own:
-/// a `<` can sit inside an *enclosing* tag's own markup — a quoted attribute
-/// value (`<a t="<">`) or a braced JSX expression (`<div onClick={a < b}>`)
-/// — where it parses as nothing at all. When that happens, `pos` may still
+/// a `<` can sit inside an *enclosing* tag's own markup, such as a quoted attribute
+/// value (`<a t="<">`) or a braced JSX expression (`<div onClick={a < b}>`),
+/// where it parses as nothing at all. When that happens, `pos` may still
 /// be inside that enclosing tag, so scanning must continue left past it.
 /// Two other outcomes end the walk immediately: a `<` starting a comment (no
 /// tag can be found through it), and a `<` that parses into a well-formed
 /// tag not reaching `pos` (a real tag boundary lies between it and `pos`,
 /// which therefore isn't inside any tag's markup).
 ///
-/// This keeps the common case — `#` pressed somewhere that isn't inside any
-/// tag — to a short local walk instead of a whole-buffer parse.
+/// This keeps the common case (`#` pressed somewhere that isn't inside any
+/// tag) to a short local walk instead of a whole-buffer parse.
 fn tag_at(text: &BufferText, pos: CharOffset) -> Option<Tag> {
     let mut cursor = text.chars_at(pos.shift(1));
     while let Some((i, ch)) = cursor.prev() {
@@ -229,7 +229,7 @@ fn tag_at(text: &BufferText, pos: CharOffset) -> Option<Tag> {
 
 /// [`parse_tag`] for a one-off call, building its own cursor from `lt_pos`.
 /// [`tag_at`]'s single backward-search call per `#` press is the only
-/// caller — sharing a cursor across calls buys nothing there, unlike
+/// caller. Sharing a cursor across calls buys nothing there, unlike
 /// [`next_tag`]'s forward multi-tag scans.
 fn parse_tag_at(text: &BufferText, lt_pos: CharOffset) -> Option<Tag> {
     let mut cursor = text.chars_at(lt_pos.shift(1));
@@ -238,7 +238,7 @@ fn parse_tag_at(text: &BufferText, lt_pos: CharOffset) -> Option<Tag> {
 }
 
 /// Forward scan for the tag that closes `open` (`<name>` → matching
-/// `</name>`), tracking nesting depth for same-name tags only — the same
+/// `</name>`), tracking nesting depth for same-name tags only: the same
 /// technique [`crate::pair::scan_right_for_close`] uses for brackets.
 /// `open` must be a non-closing, non-self-closing tag.
 fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
@@ -262,7 +262,7 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
 
 /// Backward counterpart to [`next_tag`]: the nearest tag construct strictly
 /// before `before`, skipping comments and any `<` that doesn't parse as a
-/// well-formed tag — the same two exemptions [`tag_at`] uses. Reuses the
+/// well-formed tag, the same two exemptions [`tag_at`] uses. Reuses the
 /// forward [`parse_tag_at`] rather than a mirrored reverse lexer: finding
 /// `<` backward is unambiguous, but a lexer that also had to un-consume a
 /// quoted attribute or braced JSX expression in reverse would duplicate
@@ -270,7 +270,7 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
 /// parsing forward from each candidate.
 ///
 /// That reuse has a real gap: a `<` inside an *enclosing* tag's own quoted
-/// attribute or JSX brace — `title="</div>"`, `<!-- <div> -->` — is
+/// attribute or JSX brace (`title="</div>"`, `<!-- <div> -->`) is
 /// invisible to the forward lexer (consumed whole as part of the enclosing
 /// tag's own parse) but can itself parse as a well-formed tag when found
 /// this way, corrupting [`open_before`]'s depth count. An unbalanced
@@ -295,7 +295,7 @@ fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
 /// Depth-tracked backward walk from `close` for the innermost still-open
 /// same-name tag: the same technique [`crate::pair::scan_left_for_open`]
 /// uses for brackets, applied via [`prev_tag`] instead of a raw char scan.
-/// Scans outward from the cursor rather than from the start of the buffer —
+/// Scans outward from the cursor rather than from the start of the buffer:
 /// depth-tracked matching is direction-symmetric, so this returns the same
 /// answer [`close_after`]'s forward, from-open-tag scan would give in
 /// reverse, while typically touching only the handful of tags between
@@ -327,7 +327,7 @@ fn open_before(text: &BufferText, close: &Tag) -> Option<CharOffset> {
 /// never closed or opened.
 ///
 /// A same-name open discarded by an unmatched close never affects an
-/// enclosing tag of a *different* name — [`close_after`] and
+/// enclosing tag of a *different* name. [`close_after`] and
 /// [`open_before`] each track only the one name they were asked about, so a
 /// stray `</span>` can't drain an unrelated `<div>` off some shared stack.
 pub(crate) fn matching_tag(text: &BufferText, pos: CharOffset) -> Option<CharOffset> {

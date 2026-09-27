@@ -18,7 +18,7 @@ pub enum FindKind {
 /// Apply an inner motion to every selection in the set, repeated `count` times.
 ///
 /// `motion` computes one new head position, given the whole current
-/// selection — most motions only read `sel.head()`, but a motion that needs
+/// selection. Most motions only read `sel.head()`, but a motion that needs
 /// to resolve against the whole span (e.g. [`goto_matching_pair`]) can too.
 /// `apply_motion` handles the anchor semantics (via `mode`) and multi-cursor
 /// bookkeeping.
@@ -27,7 +27,7 @@ pub enum FindKind {
 /// step rebuilds a `Selection` pinned to the *original* anchor with the
 /// latest head, so a multi-step motion sees a selection shaped like its
 /// caller would see it after one step, not a bare head. The motion is applied
-/// `count` times *inside* the `map` call — each selection independently
+/// `count` times *inside* the `map` call: each selection independently
 /// accumulates N steps before anchor/merge logic runs. This is semantically
 /// "move 3 words" (not "apply 1w to the whole selection set three times"),
 /// which prevents premature merging of multi-cursor selections between
@@ -44,8 +44,8 @@ pub(crate) fn apply_motion(
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         // Stop at a fixed point. Every motion here is a pure function of
-        // (text, selection), so once a step stops moving the head — clamped
-        // at a buffer edge, or no further match for f/t — every later step
+        // (text, selection), so once a step stops moving the head (clamped
+        // at a buffer edge, or no further match for f/t), every later step
         // returns the same head. Without this a large count does O(count)
         // work instead of O(distance moved).
         let mut s = sel;
@@ -93,17 +93,17 @@ mod tests;
 
 // ── Named commands (public API) ───────────────────────────────────────────────
 //
-// Named commands follow the edit convention — `(BufferText, SelectionSet) ->
-// (BufferText, SelectionSet)` — so they can be used directly with `assert_state!`
+// Named commands follow the edit convention (`(BufferText, SelectionSet) ->
+// (BufferText, SelectionSet)`), so they can be used directly with `assert_state!`
 // and, eventually, the command dispatch table.
 //
 // Pure motions do not modify the buffer, so `text` passes through unchanged.
 //
 // The `motion_cmd!` macro below generates each command, so the table is just
-// data — name, mode, motion — with no repeated scaffolding.
+// data (name, mode, motion) with no repeated scaffolding.
 
 /// Generate a named motion command whose motion function takes only
-/// `(&BufferText, head)` — wrapped to fit `apply_motion`'s `&Selection` param:
+/// `(&BufferText, head)`, wrapped to fit `apply_motion`'s `&Selection` param:
 /// ```text
 /// motion_cmd!(/// doc, cmd_move_right, move_right);
 /// ```
@@ -147,8 +147,8 @@ motion_cmd!(/// Move or extend cursors to the first non-blank character on their
 /// Not a `motion_cmd!`: the motion is an involution (applying it twice
 /// returns to the start), so folding it `count` times the way every other
 /// motion does would make an even count a no-op and an odd count identical
-/// to a bare `#`. Vim's `count%` means "go to N% of the file" — a different
-/// operation this motion doesn't implement — so `count` is ignored rather
+/// to a bare `#`. Vim's `count%` means "go to N% of the file" (a different
+/// operation this motion doesn't implement), so `count` is ignored rather
 /// than given a meaning nobody asked for.
 pub fn cmd_goto_matching_pair(
     text: &BufferText,

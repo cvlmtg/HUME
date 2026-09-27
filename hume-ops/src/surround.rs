@@ -7,7 +7,7 @@
 //! - `ms(` → `c`  enters insert with two cursors on the delimiters
 //!
 //! Deliberately not Helix's `md`/`mr`, which bake the selection and the
-//! action together as a single keystroke — that violates select-then-act.
+//! action together as a single keystroke. That violates select-then-act.
 
 use crate::MotionMode;
 use crate::edit::apply_edit;
@@ -52,7 +52,7 @@ fn is_symmetric(ch: char) -> bool {
 
 // ── Wrap selections ──────────────────────────────────────────────────────────
 
-/// Wrap every selection — including single-char cursors — with `open` + selected_text + `close`.
+/// Wrap every selection (including single-char cursors) with `open` + selected_text + `close`.
 ///
 /// Cursor placement: lands on the `close` character after the wrapped content.
 /// Multi-cursor: each selection is wrapped independently via `apply_edit`.
@@ -72,7 +72,7 @@ pub fn wrap_each_selection(
         }
         b.retain(start.chars_since(b.old_pos()));
         b.insert_char(open);
-        b.retain(sel.content_end_exclusive(text).chars_since(start)); // copy selected text through — no String alloc
+        b.retain(sel.content_end_exclusive(text).chars_since(start)); // copy selected text through, no String alloc
         b.insert_char(close);
         // Cursor on the close char. new_pos.retreat(1) is safe: close is always
         // preceded by at least open + one retained char (HUME selections are ≥ 1 char).

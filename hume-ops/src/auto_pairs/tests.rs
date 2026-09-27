@@ -27,7 +27,7 @@ fn auto_close_at_middle() {
 
 #[test]
 fn auto_close_before_newline() {
-    // Cursor on the structural '\n' — valid insert position.
+    // Cursor on the structural '\n', a valid insert position.
     assert_state!(
         "hello-[\n]>",
         |(text, sels)| insert_pair_close(text, sels, '(', ')'),
@@ -149,7 +149,7 @@ fn quote() -> Pair {
 
 #[test]
 fn auto_pair_next_alphanumeric_rejects_asymmetric() {
-    // Cursor at 0, next char 'b' — should NOT auto-pair `(`.
+    // Cursor at 0, next char 'b': should NOT auto-pair `(`.
     let text = BufferText::from("bar");
     let pairs = default_pairs();
     assert!(!should_auto_pair_at(
@@ -163,7 +163,7 @@ fn auto_pair_next_alphanumeric_rejects_asymmetric() {
 
 #[test]
 fn auto_pair_next_alphanumeric_rejects_symmetric() {
-    // Cursor at 0, next char 'b' — should NOT auto-pair `"`.
+    // Cursor at 0, next char 'b': should NOT auto-pair `"`.
     let text = BufferText::from("bar");
     let pairs = default_pairs();
     assert!(!should_auto_pair_at(
@@ -177,7 +177,7 @@ fn auto_pair_next_alphanumeric_rejects_symmetric() {
 
 #[test]
 fn auto_pair_next_space_accepts() {
-    // Cursor at 4 (space between words) — next char is space.
+    // Cursor at 4 (space between words): next char is space.
     let text = BufferText::from("foo bar");
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
@@ -191,7 +191,7 @@ fn auto_pair_next_space_accepts() {
 
 #[test]
 fn auto_pair_next_newline_accepts() {
-    // Cursor on the structural `\n` — next char is newline.
+    // Cursor on the structural `\n`: next char is newline.
     let text = BufferText::from("hello");
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
@@ -219,7 +219,7 @@ fn auto_pair_next_closing_bracket_accepts() {
 
 #[test]
 fn auto_pair_symmetric_prev_alphanumeric_rejects() {
-    // `don't` — cursor at 3 (the `'`), prev char is `n`.
+    // `don't`: cursor at 3 (the `'`), prev char is `n`.
     // Should NOT auto-pair the quote.
     let text = BufferText::from("don't");
     let pairs = default_pairs();
@@ -234,7 +234,7 @@ fn auto_pair_symmetric_prev_alphanumeric_rejects() {
 
 #[test]
 fn auto_pair_symmetric_prev_space_accepts() {
-    // `say ` — cursor at 4 (the `\n`), prev char is space.
+    // `say `: cursor at 4 (the `\n`), prev char is space.
     let text = BufferText::from("say ");
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
@@ -263,7 +263,7 @@ fn auto_pair_symmetric_at_position_zero_accepts() {
 
 #[test]
 fn auto_pair_symmetric_prev_open_bracket_accepts() {
-    // `( ` — cursor at 1 (space), prev char is `(` (not alphanumeric), next is space.
+    // `( `: cursor at 1 (space), prev char is `(` (not alphanumeric), next is space.
     let text = BufferText::from("( foo");
     let pairs = default_pairs();
     assert!(should_auto_pair_at(
@@ -277,7 +277,7 @@ fn auto_pair_symmetric_prev_open_bracket_accepts() {
 
 #[test]
 fn auto_pair_asymmetric_ignores_prev_word_char() {
-    // `x ` — cursor at 1 (space), prev is `x`. Parens are asymmetric so
+    // `x `: cursor at 1 (space), prev is `x`. Parens are asymmetric so
     // only the next-char rule applies; next is space → accept.
     let text = BufferText::from("x foo");
     let pairs = default_pairs();
@@ -294,7 +294,7 @@ fn auto_pair_asymmetric_ignores_prev_word_char() {
 fn auto_pair_symmetric_prev_extra_word_char_rejects() {
     // `foo-` with '-' configured as a word char: the '-' now counts as a
     // word character, so pairing right after it must be suppressed the same
-    // way it already is right after 'o' — matching every other word
+    // way it already is right after 'o', matching every other word
     // operation's word-chars-aware notion of "word".
     let text = BufferText::from("foo-");
     let pairs = default_pairs();

@@ -1,10 +1,10 @@
-//! Structural object navigation — the Move/Extend/count policy behind
+//! Structural object navigation: the Move/Extend/count policy behind
 //! `goto-next-<kind>` / `goto-prev-<kind>`, parameterized over a `finder`
 //! rather than a tree: this crate cannot depend on `hume-treesitter`, so
 //! `hume-editor` supplies `finder` as a closure over
 //! `hume_treesitter::textobjects::ObjectSpans::adjacent` for the tree-sitter
 //! kinds. The paragraph motions (`super::paragraph`) are a second, in-crate
-//! caller whose `finder` is a lexical blank-line scan instead — `apply_object_motion`
+//! caller whose `finder` is a lexical blank-line scan instead. `apply_object_motion`
 //! only cares that `finder` returns `Option<InclusiveRange<CharOffset>>` and
 //! honors the strict-progress contract described below, not how the span was
 //! found.

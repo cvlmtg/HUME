@@ -15,7 +15,7 @@ use test_fixtures::assert_state;
 
 #[test]
 fn repeat_delete_forward_count_3() {
-    // 3x: delete 'h', then 'e', then 'l' — cursor lands on the second 'l'.
+    // 3x: delete 'h', then 'e', then 'l'; cursor lands on the second 'l'.
     assert_state!(
         "-[h]>ello\n",
         |(text, sels)| repeat_edit(3, text, sels, delete_char_forward),

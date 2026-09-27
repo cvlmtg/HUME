@@ -4,7 +4,7 @@ use test_fixtures::assert_state;
 
 // `inner_argument`/`around_argument` register from `register_structural`
 // (hume-editor's `commands/structural.rs`) as closures, not through a
-// `cmd_*` wrapper — these two exist only so the tests below can drive the
+// `cmd_*` wrapper. These two exist only so the tests below can drive the
 // bare functions through the same `apply_text_object_by_mode` dispatch the
 // shipped closures use.
 fn cmd_inner_argument(
@@ -77,7 +77,7 @@ fn inner_argument_trims_whitespace() {
 
 #[test]
 fn inner_argument_nested_parens_skips_inner_comma() {
-    // The comma inside bar(x, y) is at depth 1 — not a segment boundary.
+    // The comma inside bar(x, y) is at depth 1, not a segment boundary.
     assert_state!(
         "foo(-[b]>ar(x, y), z)\n",
         |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
@@ -96,7 +96,7 @@ fn inner_argument_nested_brackets_skips_inner_comma() {
 
 #[test]
 fn inner_argument_nested_braces_skips_inner_comma() {
-    // The comma inside {a: 1, b: 2} is at depth 1 — not a segment boundary.
+    // The comma inside {a: 1, b: 2} is at depth 1, not a segment boundary.
     // Cursor in the second argument selects "ccc", not something split by the inner comma.
     assert_state!(
         "foo({a: 1, b: 2}, cc-[c]>)\n",
@@ -118,7 +118,7 @@ fn inner_argument_picks_tightest_bracket_pair() {
 
 #[test]
 fn inner_argument_cursor_on_comma_associates_with_next() {
-    // Cursor on the comma — treated as belonging to the following segment.
+    // Cursor on the comma: treated as belonging to the following segment.
     assert_state!(
         "foo(aaa-[,]> bbb)\n",
         |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
@@ -192,7 +192,7 @@ fn inner_argument_multi_cursor() {
 #[test]
 fn inner_argument_trims_nbsp_matching_blank_class() {
     // NBSP (U+00A0) is `Space`-classified by `hume_editing::word::blank_class`
-    // — the same rule `m a w` uses — so it must trim like an ordinary space,
+    // (the same rule `m a w` uses), so it must trim like an ordinary space,
     // not survive as part of the selected argument.
     assert_state!(
         "foo(aaa,\u{a0}-[b]>bb)\n",
@@ -204,7 +204,7 @@ fn inner_argument_trims_nbsp_matching_blank_class() {
 // ── crossed / malformed nesting (characterization) ──────────────────────────
 //
 // `find_tightest_bracket_pair` resolves each bracket type ((), [], {}) as an
-// independent candidate and picks the smallest span — never "nearest
+// independent candidate and picks the smallest span, never "nearest
 // unmatched open, of any type". These pin that behavior on inputs where the
 // two rules disagree.
 
@@ -234,7 +234,7 @@ fn inner_argument_crossed_nesting_equal_spans_break_the_tie_in_bracket_pairs_ord
 #[test]
 fn inner_argument_bracket_type_with_no_closing_bracket_is_dropped_not_ranked() {
     // `{` at 1 has no matching `}` anywhere, so `{}` is dropped from the
-    // candidate set entirely — not treated as "nearest open, unmatched close
+    // candidate set entirely, not treated as "nearest open, unmatched close
     // ignored". `()` = (0, 8) wins by being the only resolved candidate.
     assert_state!(
         "({-[a]>aa, b)\n",
@@ -284,7 +284,7 @@ fn inner_argument_smallest_span_can_resolve_after_a_larger_candidate_already_did
 
 #[test]
 fn around_argument_first() {
-    // Deletes "aaa, " — no orphan space before bbb.
+    // Deletes "aaa, ": no orphan space before bbb.
     assert_state!(
         "foo(-[a]>aa, bbb, ccc)\n",
         |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
@@ -294,7 +294,7 @@ fn around_argument_first() {
 
 #[test]
 fn around_argument_middle() {
-    // Deletes ", bbb" — eats the preceding comma.
+    // Deletes ", bbb", eating the preceding comma.
     assert_state!(
         "foo(aaa, -[b]>bb, ccc)\n",
         |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
@@ -304,7 +304,7 @@ fn around_argument_middle() {
 
 #[test]
 fn around_argument_last() {
-    // Deletes ", ccc" — eats the preceding comma.
+    // Deletes ", ccc", eating the preceding comma.
     assert_state!(
         "foo(aaa, bbb, -[c]>cc)\n",
         |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
@@ -314,7 +314,7 @@ fn around_argument_last() {
 
 #[test]
 fn around_argument_single_equals_inner() {
-    // No comma to eat — same as inner.
+    // No comma to eat: same as inner.
     assert_state!(
         "foo(-[a]>aa)\n",
         |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
@@ -324,7 +324,7 @@ fn around_argument_single_equals_inner() {
 
 #[test]
 fn around_argument_nested() {
-    // First arg is a nested call — around eats trailing ", ".
+    // First arg is a nested call; around eats trailing ", ".
     assert_state!(
         "foo(-[b]>ar(x, y), z)\n",
         |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
@@ -361,7 +361,7 @@ fn around_argument_empty_slot_is_noop() {
 // ── around_from_inner ────────────────────────────────────────────────────
 //
 // Exercises the separator rule directly, on an inner span that need not have
-// come from the lexical scan above — the same rule hume-editor's structural
+// come from the lexical scan above: the same rule hume-editor's structural
 // dispatch applies to a tree-sitter `parameter.inside` capture.
 
 fn cmd_around_from_inner(
@@ -405,7 +405,7 @@ fn around_from_inner_last() {
 
 #[test]
 fn around_from_inner_only_is_unchanged() {
-    // No comma on either side — nothing to extend into.
+    // No comma on either side: nothing to extend into.
     assert_state!(
         "foo(-[aaa]>)\n",
         |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),
@@ -429,7 +429,7 @@ fn around_from_inner_multiline() {
 fn around_from_inner_multiline_last_argument_eats_the_trailing_newline() {
     // Unlike the first-argument case above (inline blank only, no newline),
     // the preceding-comma branch extends `end` through a newline-inclusive
-    // blank run — the last argument in a multi-line list eats the newline
+    // blank run: the last argument in a multi-line list eats the newline
     // before the closing delimiter.
     assert_state!(
         "foo(\n    a,\n    -[b]>\n)\n",

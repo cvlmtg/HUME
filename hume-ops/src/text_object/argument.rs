@@ -1,4 +1,4 @@
-//! Inner/around argument (comma-separated item) text objects — function
+//! Inner/around argument (comma-separated item) text objects: function
 //! arguments, array items, object fields, or any comma list inside brackets.
 
 use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
@@ -16,7 +16,7 @@ type Segment = InclusiveRange<CharOffset>;
 ///
 /// Returns a vec of inclusive char-index ranges, one per segment, including
 /// leading/trailing whitespace. Commas inside a nested bracket pair (any
-/// `BRACKET_PAIRS` type, via [`bracket_role`] — the same table
+/// `BRACKET_PAIRS` type, via [`bracket_role`], the same table
 /// [`find_tightest_bracket_pair`] resolves `open_pos`/`close_pos` against) are
 /// skipped. Returns an empty vec for adjacent brackets (`()`).
 fn find_comma_segments(
@@ -62,7 +62,7 @@ fn find_comma_segments(
 /// Find which segment in `segments` contains `pos`.
 ///
 /// If `pos` falls in a gap (e.g., on a comma between two segments), associate
-/// it with the following segment — matching Helix/Kakoune behaviour.
+/// it with the following segment, matching Helix/Kakoune behaviour.
 fn which_segment(segments: &[Segment], pos: CharOffset) -> Option<usize> {
     // Direct containment.
     for (idx, seg) in segments.iter().enumerate() {
@@ -87,7 +87,7 @@ fn which_segment(segments: &[Segment], pos: CharOffset) -> Option<usize> {
 /// Shared prelude for [`inner_argument`] and [`around_argument`]: locate the
 /// tightest bracket pair, nudge `pos` off the bracket itself when it sits on
 /// one, split the content into comma segments, and resolve which segment
-/// `pos` falls in. Returns the nudged `pos` too — `around_argument`'s
+/// `pos` falls in. Returns the nudged `pos` too: `around_argument`'s
 /// only-argument case re-enters [`inner_argument`] with it, which lets that
 /// case descend into a nested bracket pair instead of trimming the segment
 /// already resolved against the outer one.
@@ -117,7 +117,7 @@ fn locate_argument(
 }
 
 /// Whitespace HUME's argument separator rule treats as blank: anything
-/// [`blank_class`] classifies as `Space` or `Eol` — space, tab, NBSP,
+/// [`blank_class`] classifies as `Space` or `Eol`: space, tab, NBSP,
 /// ideographic space, or newline. Shared by [`trim_segment`]
 /// (leading/trailing trim) and [`around_from_inner`] (searching either side
 /// of an inner span for its separator comma). Routed through `blank_class`
@@ -129,7 +129,7 @@ fn is_blank(text: &BufferText, pos: CharOffset) -> bool {
 }
 
 /// Narrower than [`is_blank`]: `Space`-classified only, no `Eol`. Used only
-/// for the run trailing a separator comma in [`around_from_inner`] — a line
+/// for the run trailing a separator comma in [`around_from_inner`]. A line
 /// break there belongs to the *next* argument's indentation, not to this
 /// one's trailing whitespace, so `foo(\n    a,\n    b\n)` around `a` eats
 /// `a,` and leaves the newline.
@@ -184,7 +184,7 @@ fn trim_segment(text: &BufferText, raw: Segment) -> Option<InclusiveRange<CharOf
     while end > start && is_blank(text, end) {
         end = prev_grapheme_boundary(text, end);
     }
-    // Segment is entirely whitespace — nothing to select.
+    // Segment is entirely whitespace: nothing to select.
     if start > raw.end {
         return None;
     }
@@ -203,23 +203,23 @@ pub fn inner_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRan
 }
 
 /// Derives an argument's "around" span from its "inner" span by locating its
-/// separator comma — HUME's own rule, independent of how the inner span was
+/// separator comma: HUME's own rule, independent of how the inner span was
 /// found (the lexical scan below, or a tree-sitter `parameter.inside`
 /// capture), so `m i a`/`m a a` stay one structure-aware family rather than
 /// two separate objects.
 ///
 /// **Preceding separator first**: if the blank run immediately before
-/// `start` is bounded by a comma, this argument is not first — the comma
+/// `start` is bounded by a comma, this argument is not first: the comma
 /// and everything back to it becomes the new start, and `end` extends
-/// forward over its own trailing blank run (newline-inclusive, `is_blank`
-/// — a no-op for every argument but the last, which has none to eat *except*
+/// forward over its own trailing blank run (newline-inclusive, `is_blank`,
+/// a no-op for every argument but the last, which has none to eat *except*
 /// the newline before a multi-line list's closing delimiter, which this
 /// branch does consume). Otherwise, if the blank run immediately after `end`
 /// is bounded by a comma, this argument is first: `start` extends backward
-/// over blanks — reaching the opening delimiter, never a comma, since the
-/// first rule would have fired otherwise — and `end` extends through the
+/// over blanks (reaching the opening delimiter, never a comma, since the
+/// first rule would have fired otherwise) and `end` extends through the
 /// comma plus its inline blank run only (space/tab, no newline, see
-/// `is_inline_blank`) — a line break there belongs to the *next*
+/// `is_inline_blank`). A line break there belongs to the *next*
 /// argument's indentation. An only argument matches neither rule and is
 /// returned unchanged.
 pub fn around_from_inner(
@@ -253,10 +253,10 @@ pub fn around_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRa
     let (segments, idx, nudged_pos) = locate_argument(text, pos)?;
 
     if segments.len() == 1 {
-        // Only argument — no separator to eat; same as inner. A bracket-nudge
+        // Only argument: no separator to eat; same as inner. A bracket-nudge
         // (`nudged_pos != pos`) re-enters inner_argument so a cursor on the
         // outer bracket of `foo((a))` still resolves to the nested pair's
-        // argument, not the whole `(a)` outer segment — inner_argument's own
+        // argument, not the whole `(a)` outer segment; inner_argument's own
         // locate_argument call is what does that descent. Without a nudge,
         // inner_argument would just re-resolve the same pair and segments
         // this call already has, so trim directly instead.

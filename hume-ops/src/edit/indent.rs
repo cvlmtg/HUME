@@ -1,4 +1,4 @@
-//! `>` / `<` — shift every line touched by a selection by whole indent levels.
+//! `>` / `<`: shift every line touched by a selection by whole indent levels.
 
 use hume_editing::changeset::{Assoc, ChangeSet, ChangeSetBuilder, PosMapCursor};
 use hume_editing::lines::leading_indent;
@@ -35,7 +35,7 @@ pub fn unindent_lines(
 /// compute without overflowing its `u32` multiply. The editor's own
 /// dispatch caps `levels` (the count prefix) at `hume_engine::types::MAX_COUNT`
 /// (10,000) long before this matters, but `hume-ops`'s functions are a
-/// public API with no such guarantee — a direct caller passing
+/// public API with no such guarantee. A direct caller passing
 /// `usize::MAX` must clamp here rather than overflow (debug-panic, or wrap
 /// to a wrong and possibly negative delta in release) inside `indent_stop`.
 fn clamp_levels(levels: usize, tab_width: u8) -> u32 {
@@ -61,13 +61,13 @@ fn render_indent(width: usize, style: TabStyle, tab_width: u8) -> String {
 
 /// Shared implementation for [`indent_lines`]/[`unindent_lines`]: one signed
 /// display-column delta (positive indents, negative unindents), since the two
-/// are otherwise identical. Callers pass columns — via
-/// [`indent_stop`] — rather than levels, so this function never re-derives
+/// are otherwise identical. Callers pass columns (via
+/// [`indent_stop`]) rather than levels, so this function never re-derives
 /// "how many columns is a level" itself.
 ///
 /// **Width-preserving, not level-snapping**: each touched line's indent
 /// display-width shifts by `delta_display_col`, then that exact width is
-/// re-rendered in `style` — an indent that isn't already a whole number of
+/// re-rendered in `style`. An indent that isn't already a whole number of
 /// levels (e.g. a continuation line hand-aligned to an open paren) shifts by
 /// the requested amount without being rounded onto a tab stop first. This
 /// also makes a `<` immediately after a `>` restore the exact prior width
@@ -79,7 +79,7 @@ fn render_indent(width: usize, style: TabStyle, tab_width: u8) -> String {
 /// byte-for-byte.
 ///
 /// Iterates lines directly rather than going through [`super::apply_edit`]
-/// (built for one edit per *selection*, not per *line*) — same reason
+/// (built for one edit per *selection*, not per *line*), the same reason
 /// `sort_lines` drives a [`ChangeSetBuilder`] by hand instead.
 fn shift_indent(
     text: BufferText,
@@ -88,7 +88,7 @@ fn shift_indent(
     tab_width: u8,
     delta_display_col: isize,
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    // Every distinct line touched by any selection, ascending — `iter_sorted()`
+    // Every distinct line touched by any selection, ascending. `iter_sorted()`
     // is ascending/non-overlapping and each selection's own line range is
     // ascending, so a plain consecutive-dedup is enough (mirrors
     // `sort::collect_entries`).
@@ -104,7 +104,7 @@ fn shift_indent(
     let mut b = ChangeSetBuilder::new(text.end());
     let mut touched_any = false;
 
-    // `lines` stays bare `usize` rather than `Vec<ContentLine>` — CLAUDE.md's
+    // `lines` stays bare `usize` rather than `Vec<ContentLine>`. CLAUDE.md's
     // "Line counts and ranges" sanctions this exact shape (a bare-usize loop
     // bounded by typed endpoints, re-minted immediately below): every value
     // here came from `.index()` on an already-valid `ContentLine` one line
@@ -116,14 +116,14 @@ fn shift_indent(
         // Blank line (empty, or whitespace-only): every line char up to the
         // structural/line '\n' is whitespace, so `leading_indent`'s scan runs
         // off the end without finding a non-whitespace char. Skipped
-        // untouched — matches Vim's `>>`, so a blank separator line never
+        // untouched, matching Vim's `>>`, so a blank separator line never
         // collects trailing whitespace.
         if text.char_at(ws_end) == Some('\n') {
             continue;
         }
         let new_width = old_width.shift_saturating(delta_display_col);
         if new_width == old_width {
-            // Reachable at `delta_display_col == 0` (a `levels == 0` call — never
+            // Reachable at `delta_display_col == 0` (a `levels == 0` call, never
             // issued by the editor's own count dispatch, but this crate's ops
             // are a public API), or via the saturating clamp when unindenting
             // an already-flush line past width 0. Nothing to rewrite or remap.
@@ -138,7 +138,7 @@ fn shift_indent(
         // exactly the old-doc position of the touched line's start, so
         // `PosMapCursor` resolves an endpoint sitting there by `Assoc`
         // instead of unconditionally collapsing it into the following
-        // `Delete` — that's what lets the remap below reuse the ChangeSet
+        // `Delete`. That's what lets the remap below reuse the ChangeSet
         // itself rather than a hand-kept table of before/after line offsets.
         b.insert(&new_indent);
         b.delete(old_len);
@@ -149,10 +149,10 @@ fn shift_indent(
     let cs = b.finish();
     if !touched_any {
         // No touched line changed width (all blank, or a `<` saturating at
-        // an already-flush indent) — every position is already correct as
+        // an already-flush indent), so every position is already correct as
         // is. `cs` is `ChangeSet::identity` here (only `retain_rest` ran).
         // Not needed for undo bookkeeping (an identity `ChangeSet` already
-        // short-circuits before a revision is recorded — see
+        // short-circuits before a revision is recorded, see
         // `Buffer::apply_edit`/`doc_ops::finish_edit`); this just skips the
         // no-op rope clone/apply and the selection remap below.
         debug_assert!(cs.is_identity());
@@ -160,15 +160,15 @@ fn shift_indent(
     }
     let new_text = cs
         .apply(&text)
-        .expect("indent/unindent produced an invalid changeset — this is a bug");
+        .expect("indent/unindent produced an invalid changeset: this is a bug");
 
     // One monotone `PosMapCursor` pass over every selection endpoint, same
     // shape as `SelectionSet::translate_in_place_with`. A linewise
     // selection's start is exactly a rewritten line's start by definition
-    // (`is_selection_linewise`) and must stay there — `Assoc::Before` sticks
+    // (`is_selection_linewise`) and must stay there: `Assoc::Before` sticks
     // to what was left of the insertion point, landing on the new line
-    // start. Every other endpoint — an ordinary cursor that merely happens
-    // to sit at column 0, or one buried in the old indent — clamps past the
+    // start. Every other endpoint (an ordinary cursor that merely happens
+    // to sit at column 0, or one buried in the old indent) clamps past the
     // new indent instead: `Assoc::After` moves past the `Insert`, and any
     // deeper old-indent position falls into the following `Delete` and
     // collapses to that same point regardless of `Assoc` (a position inside

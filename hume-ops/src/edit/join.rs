@@ -1,4 +1,4 @@
-//! `join-lines-select-spaces` — join lines inside each selection and select
+//! `join-lines-select-spaces`: join lines inside each selection and select
 //! the inserted spaces.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
@@ -18,7 +18,7 @@ use super::apply_edit;
 ///
 /// Each consecutive pair is joined by replacing the newline (and leading
 /// whitespace of the next line) with a single space. Whitespace-only or empty
-/// next lines produce no separator — the newline is simply removed.
+/// next lines produce no separator; the newline is simply removed.
 ///
 /// After the join, every inserted space becomes a 1-char selection.
 pub fn join_lines_select_spaces(
@@ -45,12 +45,12 @@ pub fn join_lines_select_spaces(
         let mut end_line = text.char_to_line(sel.end_inclusive(text));
         if start_line == end_line {
             // Clamp to the last content line: a cursor there must not join
-            // with the trailing structural-newline line — it would delete
+            // with the trailing structural-newline line: it would delete
             // the structural '\n' and panic in the changeset validator.
             end_line = end_line.advance(1).min(text.last_content_line());
         }
 
-        // Bare-`usize` range, `ContentLine` re-minted each iteration —
+        // Bare-`usize` range, `ContentLine` re-minted each iteration:
         // `ContentLine` has no `Step`/`Range` impl to loop over directly (see
         // CLAUDE.md's "Line counts and ranges"). Sound here: both endpoints
         // are already-valid `ContentLine`s.
@@ -88,7 +88,7 @@ pub fn join_lines_select_spaces(
         new_sels.push(Selection::collapsed(b.new_pos().retreat_saturating(1)));
     });
 
-    // Result is the inserted spaces — the command's contract is "select the
+    // Result is the inserted spaces. The command's contract is "select the
     // separators so they can be adjusted." Selections on lines that didn't join
     // produce no space and are intentionally dropped; keeping them would scatter
     // cursors on untouched chars outside the edit. The empty case keeps the
