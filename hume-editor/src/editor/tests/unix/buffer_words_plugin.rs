@@ -656,19 +656,18 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
     wait_for_word(&mut ed, "resurrected_word");
 }
 
-/// Not a reproduction of the exact timer-batch race the review flagged
-/// (an orphaned tick, already dequeued off the timer wheel, firing after a
-/// fresh `bw/reindex!` has installed a new entry generation): that needs
-/// `drain_due_timers` to pop the walk's own pending tick and a fresh
-/// debounce timer in the *same* batch, in that order, which isn't something
-/// a black-box, wall-clock-driven test can force deterministically: the
-/// walk's own tick is always due far sooner (16ms) than a fresh debounce
-/// (150ms), so in ordinary settle-driven tests the walk tick always drains
-/// first. What this test does check, deterministically: restarting the walk
-/// twice in quick succession (once while the first walk is still mid-
-/// flight) doesn't lose coverage at either end. That's the property the
-/// `"gen"` guard and the building-set-survives-a-restart change
-/// (README.md's "Cursor-outward, line-windowed indexing") exist to protect.
+/// Restarting the walk while an earlier walk is still mid-flight doesn't
+/// lose coverage at either end: the restarted walk starts from an empty word
+/// set and still covers the whole buffer, with the `"gen"` guard keeping the
+/// cancelled walk's ticks from interfering (README.md's "Staleness and
+/// cancellation").
+///
+/// This does not reproduce the orphaned-tick race that guard covers: a tick
+/// already dequeued off the timer wheel, firing after a fresh `bw/reindex!`
+/// has installed a new generation. That needs `drain_due_timers` to pop the
+/// walk's pending tick and a fresh debounce timer in the same batch, in that
+/// order, which a wall-clock-driven test can't force: the walk's tick is due
+/// far sooner (16ms) than a fresh debounce (150ms), so it always drains first.
 #[test]
 fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     let tmp = safe_tempdir();
@@ -676,24 +675,26 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
-    let mut lines: Vec<String> = (1..=400)
+    let mut lines: Vec<String> = (1..=160)
         .map(|n| match n {
             10 => "far_back".to_string(),
-            390 => "far_fwd".to_string(),
+            150 => "far_fwd".to_string(),
             _ => "filler".to_string(),
         })
         .collect();
     lines.push(String::new());
     std::fs::write(&path, lines.join("\n")).unwrap();
     open(&mut ed, &path);
-    goto_line_and_edit(&mut ed, 200, 'z');
-    // Long enough for the debounce to fire and the walk to make real
-    // progress outward from line 200, but not long enough to finish (400
-    // lines at "lines" 5 is ~80 ticks).
+    goto_line_and_edit(&mut ed, 80, 'z');
+    // Lets the debounce fire, starting the walk outward from line 80. Each
+    // tick covers 5 lines in both directions, so the walk is about 16 ticks,
+    // and the words reach the candidate list only once all of them have run.
+    // Ticks run only when the editor settles, so none run during the sleep.
     std::thread::sleep(Duration::from_millis(200));
     ed.settle();
-    // A second edit restarts the walk again while the first is still
-    // mid-flight.
+    // A second edit restarts the walk while the first is still mid-flight:
+    // its remaining ticks need at least 15 * 16ms = 240ms, and the
+    // restart's debounce fires after 150ms.
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "y");
     ed.feed_key(key_esc());
