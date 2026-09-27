@@ -27,19 +27,19 @@ pub struct InjectionsQuery {
 
 /// Per-pattern `#set!` properties from an `injections.scm` query.
 pub(crate) struct PatternConfig {
-    /// Static `#set! injection.language "x"` — used when the pattern has no
+    /// Static `#set! injection.language "x"`, used when the pattern has no
     /// `@injection.language` capture (e.g. doc-comment content).
     pub(crate) language: Option<String>,
-    /// `#set! injection.combined` — all matches of this pattern in one buffer
+    /// `#set! injection.combined`: all matches of this pattern in one buffer
     /// parse as a single layer with multiple included ranges (required by
     /// `markdown.inline`, whose grammar expects the whole document's inline
     /// spans as one tree).
     pub(crate) combined: bool,
-    /// `#set! injection.include-unnamed-children` — by default, a content
+    /// `#set! injection.include-unnamed-children`: by default, a content
     /// node's *unnamed* (anonymous/punctuation) children are cut out of the
     /// injected range; this property includes them instead, so the full
-    /// node span is injected untouched. Named children are never cut out —
-    /// they're meaningful grammar constructs, not delimiters — only unnamed
+    /// node span is injected untouched. Named children are never cut out
+    /// (they're meaningful grammar constructs, not delimiters); only unnamed
     /// ones (parens, commas, markers) are excluded by default.
     pub(crate) include_unnamed_children: bool,
 }
@@ -47,7 +47,7 @@ pub(crate) struct PatternConfig {
 impl InjectionsQuery {
     /// Build from a compiled `injections.scm` query. Unknown captures and
     /// properties (Helix queries carry extras like `injection.filename`) are
-    /// silently ignored — only the standard tree-sitter injection convention
+    /// silently ignored; only the standard tree-sitter injection convention
     /// is interpreted.
     pub(crate) fn new(query: Arc<tree_sitter::Query>) -> Self {
         let content_capture = query.capture_index_for_name("injection.content");
@@ -86,9 +86,9 @@ impl InjectionsQuery {
 // ── Injection resolution (worker thread) ──────────────────────────────────────
 
 /// Byte ranges for `node`'s injectable content. When `include_unnamed_children`
-/// is false (the default), the node's *unnamed* (anonymous — punctuation,
+/// is false (the default), the node's *unnamed* (anonymous: punctuation,
 /// delimiters, markers) children are cut out of the range, leaving the gaps;
-/// named children (meaningful grammar constructs) are never cut out — they
+/// named children (meaningful grammar constructs) are never cut out; they
 /// stay part of the surrounding content segment. When true, or the node has
 /// no children, returns the node's own full range as a single entry.
 fn content_ranges(
@@ -151,8 +151,8 @@ fn normalize_ranges(mut ranges: Vec<tree_sitter::Range>) -> Vec<tree_sitter::Ran
 }
 
 /// Read a small node's text directly from the rope. Only used for
-/// `@injection.language` capture nodes (a few bytes — a fenced code block's
-/// info string), so a one-off allocation here is not a hot-path concern —
+/// `@injection.language` capture nodes (a few bytes: a fenced code block's
+/// info string), so a one-off allocation here is not a hot-path concern:
 /// this whole function runs once per parse, not per render frame.
 fn node_text(node: tree_sitter::Node, rope: &ropey::Rope) -> String {
     rope.byte_slice(node.start_byte()..node.end_byte()).into()
@@ -172,7 +172,7 @@ struct InjectionGroup {
 /// `MAX_INJECTION_DEPTH`.
 ///
 /// `depth` is the depth being resolved *into* (1 for the root's direct
-/// injections). Runs on the parse worker thread — `parser` is reused across
+/// injections). Runs on the parse worker thread; `parser` is reused across
 /// layers (language + included-ranges are reconfigured for each); `cancel`
 /// is checked by the same progress callback as the root parse.
 pub(crate) fn resolve_and_parse_injections(
@@ -210,11 +210,11 @@ pub(crate) fn resolve_and_parse_injections(
         });
         let Some(language) = language else { continue };
 
-        // Unknown injection language — skip silently. No lazy install: the
+        // Unknown injection language: skip silently. No lazy install: the
         // user opts into grammars explicitly via PLUM. Every entry in `langs`
         // is grammared by construction (it's built from the grammar table).
         // Resolved here, before `combined` insertion, so its FxHashMap only
-        // ever keys on the trusted installed-grammar names — a dynamic
+        // ever keys on the trusted installed-grammar names. A dynamic
         // `@injection.language` capture is raw buffer text, and unfiltered
         // attacker-chosen keys in an unkeyed hash invite collision DoS.
         let Some(child_bundle) = langs.get(&language) else {
@@ -251,7 +251,7 @@ pub(crate) fn resolve_and_parse_injections(
         }
     }
 
-    // FxHashMap iteration order is arbitrary — sort combined groups by their
+    // FxHashMap iteration order is arbitrary, so sort combined groups by their
     // (pattern_index, language) key so layer order (and thus same-depth `seq`
     // priority in `flatten_overlaps`) is stable across parses.
     let mut combined: Vec<_> = combined.into_iter().collect();

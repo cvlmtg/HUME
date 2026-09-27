@@ -8,15 +8,15 @@ use crate::textobjects::{ObjectSpans, SpanSelector};
 /// `markdown.inline` layer, etc.).
 pub struct SyntaxLayer {
     pub tree: tree_sitter::Tree,
-    /// The layer's language bundle — `Arc`'d from the `LanguageRegistry`,
+    /// The layer's language bundle, `Arc`'d from the `LanguageRegistry`,
     /// not owned per-buffer. Carries the whole bundle, not just its
     /// highlighter: any per-language query a layer may later need
     /// (`locals.scm`) comes for free, and it's what makes an injected
-    /// layer's `textobjects` query reachable at all — a highlighter-only
+    /// layer's `textobjects` query reachable at all; a highlighter-only
     /// field left it unreachable.
     pub bundle: Arc<GrammarBundle>,
     /// Absolute byte ranges this layer's tree was parsed over, sorted by
-    /// `start_byte`. Empty means "the whole buffer" — true only for the root
+    /// `start_byte`. Empty means "the whole buffer", true only for the root
     /// layer (index 0).
     pub ranges: Vec<tree_sitter::Range>,
     /// Nesting depth: 0 for the root layer, 1+ for each level of injection.
@@ -41,7 +41,7 @@ pub struct SyntaxLayers {
     /// to a generation and a later `install` for that *same* generation
     /// replaces the layers under an unchanged value.
     ///
-    /// `Mutex` for the reason `Syntax::span_scratch` is one — the collection
+    /// `Mutex` for the reason `Syntax::span_scratch` is one: the collection
     /// entry point takes `&SyntaxLayers`, so the editor's dispatch path needs
     /// no `&mut` and no signature change to reach it.
     ///
@@ -52,7 +52,7 @@ pub struct SyntaxLayers {
 }
 
 impl SyntaxLayers {
-    /// Wrap freshly parsed layers, memo empty. The only constructor —
+    /// Wrap freshly parsed layers, memo empty. The only constructor:
     /// `textobject_memo` is private so that nothing outside this module can
     /// hand out a set of layers carrying someone else's cached spans.
     pub fn new(layers: Vec<SyntaxLayer>) -> Self {
@@ -68,7 +68,7 @@ impl SyntaxLayers {
     }
 
     /// Drop the text-object memo. Called from `Syntax::bake`, the only path
-    /// that edits these layers without replacing them — see the field's doc.
+    /// that edits these layers without replacing them (see the field's doc).
     pub(crate) fn clear_textobject_memo(&mut self) {
         *self
             .textobject_memo
@@ -84,7 +84,7 @@ pub(crate) fn layer_covers_line(layer: &SyntaxLayer, line_start: usize, line_end
         return true;
     }
     // `ranges` is sorted by start and non-overlapping, so end bytes ascend
-    // too — the only candidate for intersection is the last range starting
+    // too, so the only candidate for intersection is the last range starting
     // before `line_end`. Binary search keeps this O(log n) per line even for
     // combined layers with one range per paragraph (markdown.inline).
     let idx = layer.ranges.partition_point(|r| r.start_byte < line_end);

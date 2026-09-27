@@ -45,7 +45,7 @@ impl<'a> tree_sitter::TextProvider<&'a [u8]> for RopeProvider<'a> {
 /// highlight query against a parse tree.
 ///
 /// One instance is shared (via `Arc`) across every buffer of a given
-/// language and every syntax layer using that language — capture names are
+/// language and every syntax layer using that language: capture names are
 /// interned once, at construction. `collect_line_spans` is the sole entry
 /// point; `layer_highlights_for_line` (below) drives it per buffer line,
 /// merging captures across all of a buffer's syntax layers before flattening
@@ -59,7 +59,7 @@ pub struct TreeSitterHighlighter {
     query: Arc<Query>,
     /// Maps tree-sitter capture index → interned scope id (None = ignored).
     capture_scopes: Vec<Option<ScopeId>>,
-    /// Reused query cursor — tree-sitter recommends reuse to amortise its
+    /// Reused query cursor: tree-sitter recommends reuse to amortise its
     /// internal allocation. `Mutex` because renders run through a shared
     /// `&TreeSitterHighlighter`; never contended in practice (rendering is
     /// single-threaded and layers are queried sequentially).
@@ -75,7 +75,7 @@ impl TreeSitterHighlighter {
     pub fn from_shared_query(query: Arc<Query>, registry: &mut ScopeRegistry) -> Self {
         // Leading-underscore captures (e.g. `@_f`, `@_lib`) are Helix's
         // convention for pattern-internal predicate helpers, never meant to
-        // be styled — map them to `None` so they never emit a span.
+        // be styled, so map them to `None` so they never emit a span.
         let capture_scopes: Vec<Option<ScopeId>> = query
             .capture_names()
             .iter()
@@ -96,17 +96,17 @@ impl TreeSitterHighlighter {
 
     /// Append this layer's raw (line-relative) capture intervals for
     /// `line_idx` into `raw`, tagged with `depth` for `flatten_overlaps`'s
-    /// depth-first priority. Does not flatten overlaps — the caller merges
+    /// depth-first priority. Does not flatten overlaps; the caller merges
     /// captures from every layer covering the line before flattening once.
     ///
     /// Uses `cursor.captures()` (not `matches()`): Helix-style queries rely
-    /// on later patterns overriding earlier ones for the *same* node — e.g.
+    /// on later patterns overriding earlier ones for the *same* node, e.g.
     /// a catch-all `(symbol) @variable` followed by a more specific
     /// `(list . (symbol) @keyword)`. `matches()` yields matches ordered by
     /// each match's root node, so a list-rooted `@keyword` match (root at
     /// the opening paren) is emitted before the symbol-rooted `@variable`
     /// match nested inside it, and `flatten_overlaps`'s last-pushed-wins
-    /// same-range tiebreak then picks `@variable` — silently losing every
+    /// same-range tiebreak then picks `@variable`, silently losing every
     /// keyword/function capture. `captures()` yields captures ordered by
     /// node position with pattern order as the same-position tiebreak,
     /// matching Helix's own precedence semantics.
@@ -127,10 +127,10 @@ impl TreeSitterHighlighter {
         // paragraphs); `set_byte_range` only filters which nodes match, it
         // does not clip a matched node's end to the queried line. Clamp to
         // this line's content (newline excluded) so consumers that slice
-        // their own copy of the line by these offsets — the hover popup,
-        // via `MarkupSyntax::styled_row` — never index past its end.
+        // their own copy of the line by these offsets (the hover popup,
+        // via `MarkupSyntax::styled_row`) never index past its end.
         // Depends only on `line_start`/`line_end`/`rope`, not on the
-        // capture — hoisted above the loop instead of recomputed per capture.
+        // capture, so it is hoisted above the loop instead of recomputed per capture.
         let content_len = (line_end - line_start).saturating_sub(usize::from(
             line_end > line_start && rope.byte(line_end - 1) == b'\n',
         ));
@@ -164,7 +164,7 @@ impl TreeSitterHighlighter {
 /// Collects each covering layer's raw captures (tagged with the layer's
 /// depth) then flattens once via [`hume_engine::interval_sweep::flatten_overlapping_spans`]
 /// (`TieBreak::LastPushed`: deepest layer wins, then last-opened within the
-/// same depth — `stack` stays sorted ascending by `(depth, seq)`, so
+/// same depth: `stack` stays sorted ascending by `(depth, seq)`, so
 /// `stack.last()` is always the highest-priority active span regardless of
 /// collection order; a nested injection's captures can be collected before
 /// or after its parent's, only `depth` determines priority). `raw`/`stack`/
@@ -174,10 +174,10 @@ impl TreeSitterHighlighter {
 /// Deliberate non-optimization: every line re-runs the query from the tree
 /// root (clipped by `set_byte_range`, so cost is O(tree depth + line
 /// content)) rather than batching one query per viewport. Per-line keeps
-/// this a pure function of `(tree, rope, line)` — batching, even hidden
+/// this a pure function of `(tree, rope, line)`; batching, even hidden
 /// behind this same signature, would add a fill-before-read protocol that
 /// every caller inherits. Starting the query below the root is not an
-/// option either — patterns rooted at ancestor nodes silently stop
+/// option either: patterns rooted at ancestor nodes silently stop
 /// matching. If this ever needs revisiting, fix order: a pre-bucketed
 /// viewport query first, a span cache second.
 pub fn layer_highlights_for_line(

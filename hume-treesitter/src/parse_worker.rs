@@ -14,15 +14,15 @@ use hume_editing::text::BufferText;
 
 /// Called by the worker thread after posting results, so the editor's main
 /// loop wakes and drains them instead of rechecking on a poll cadence.
-/// Type-erased so this crate stays free of a `hume-platform` dependency —
+/// Type-erased so this crate stays free of a `hume-platform` dependency;
 /// production wraps `termina::PlatformWaker::wake`.
 pub type WakeCallback = Arc<dyn Fn() + Send + Sync>;
 
-/// Invokes a [`WakeCallback`] on drop — fires whether the worker thread
+/// Invokes a [`WakeCallback`] on drop. Fires whether the worker thread
 /// exits normally or unwinds from a panic, so a dead worker still wakes the
 /// main loop once (the subsequent drain observes the disconnect via the
 /// existing channel and reports it through `is_disconnected`). A normal
-/// exit firing one extra, spurious wake is harmless — callers already
+/// exit firing one extra, spurious wake is harmless: callers already
 /// tolerate spurious wakes by design.
 struct WakeOnDrop(WakeCallback);
 
@@ -32,7 +32,7 @@ impl Drop for WakeOnDrop {
     }
 }
 
-// Compile-time Send assertions — tree_sitter::Tree is Send+Sync;
+// Compile-time Send assertions: tree_sitter::Tree is Send+Sync;
 // tree_sitter::Parser is Send+!Sync (lives on the worker thread only).
 const _: fn() = || {
     fn _assert_send<T: Send>() {}
@@ -42,7 +42,7 @@ const _: fn() = || {
 };
 
 /// Nesting cap for recursive injections (root = depth 0). Covers the deepest
-/// realistic case — markdown → rust → rustdoc comment → markdown — without
+/// realistic case (markdown → rust → rustdoc comment → markdown) without
 /// letting a pathological grammar recurse unboundedly.
 pub(crate) const MAX_INJECTION_DEPTH: u8 = 3;
 
@@ -54,7 +54,7 @@ pub struct ParseRequest {
     /// The grammar bundle to parse with. Read on the worker thread for
     /// `set_language` and injection resolution.
     pub bundle: Arc<GrammarBundle>,
-    /// O(1) rope clone (structural sharing) — serialised to bytes on the worker
+    /// O(1) rope clone (structural sharing), serialised to bytes on the worker
     /// thread only when the parse succeeds, avoiding the main-thread allocation.
     pub text: BufferText,
     /// Previous parse tree with all pending `InputEdit`s applied, enabling
@@ -85,7 +85,7 @@ pub struct ParsedLayers {
 
 /// One resolved and parsed injection layer.
 pub struct ParsedInjection {
-    /// The injected layer's grammar bundle — becomes the installed
+    /// The injected layer's grammar bundle; becomes the installed
     /// `SyntaxLayer`'s own `bundle` field.
     pub bundle: Arc<GrammarBundle>,
     pub tree: tree_sitter::Tree,
@@ -116,7 +116,7 @@ fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest
         }
         Entry::Occupied(mut o) => {
             // Keep the latest generation; when generations are equal, a different
-            // config_gen means a grammar swap on a quiescent buffer — take the
+            // config_gen means a grammar swap on a quiescent buffer, so take the
             // new entry so the fresh grammar wins even without a text edit.
             if req.text_gen > o.get().text_gen
                 || (req.text_gen == o.get().text_gen
@@ -124,7 +124,7 @@ fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest
             {
                 o.insert(req);
             }
-            // else: drop req — older or same-grammar equal-gen duplicate.
+            // else: drop req: older or same-grammar equal-gen duplicate.
         }
     }
 }
@@ -132,11 +132,11 @@ fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest
 // ── Shared parse logic ────────────────────────────────────────────────────────
 
 /// Parse `rope` with `parser` (already configured: language + included
-/// ranges), honoring `cancel`. Feeds the rope via a chunked callback — avoids
+/// ranges), honoring `cancel`. Feeds the rope via a chunked callback, which avoids
 /// a full `Vec<u8>` allocation. `chunk_at_byte` returns a &str slice directly
 /// into the rope's immutable B-tree nodes.
 ///
-/// Shared by the root parse and every injected-layer parse — injected layers
+/// Shared by the root parse and every injected-layer parse; injected layers
 /// always pass `old_tree: None` (only the root is incremental; injected
 /// regions are typically small enough that a full parse is cheap and avoids
 /// tracking per-layer identity across edits).
@@ -176,7 +176,7 @@ pub(crate) fn run_parse(
 /// last caller, which lives in this crate's `syntax` module.
 ///
 /// Always calls `set_language` and resets `included_ranges` to whole-buffer
-/// before the root parse — layer parsing switches languages and ranges
+/// before the root parse: layer parsing switches languages and ranges
 /// constantly, so a "current language" cache (as a single-tree parser had)
 /// would just thrash on every request.
 pub(crate) fn do_parse(
@@ -187,12 +187,12 @@ pub(crate) fn do_parse(
     parser.set_language(req.bundle.grammar.language()).expect(
         "ABI verified at grammar registration time in attach_grammar; the only \
              other failure mode, a language recovered from a tree in a different \
-             WebAssembly instance, cannot arise here — grammars are dlopen'd \
+             WebAssembly instance, cannot arise here: grammars are dlopen'd \
              natively, never wasm-recovered",
     );
     parser
         .set_included_ranges(&[])
-        .expect("empty ranges are always valid — whole-buffer parse");
+        .expect("empty ranges are always valid: whole-buffer parse");
 
     let rope = req.text.rope();
     let outcome = match run_parse(parser, rope, req.old_tree.as_ref(), cancel) {
@@ -375,11 +375,11 @@ impl Drop for ThreadedParseBackend {
 
 /// Synchronous parse backend for tests.  `post` runs the parse immediately and
 /// queues the result; `drain_done` flushes the queue.  No threads, no channels,
-/// no waiting — tests call `reparse_stale_buffers` instead of blocking helpers.
+/// no waiting; tests call `reparse_stale_buffers` instead of blocking helpers.
 ///
 /// Gated behind `test-util` (not just `#[cfg(test)]`): `hume-editor`'s own test
 /// suite constructs this across the crate boundary, so crate-local `cfg(test)`
-/// alone isn't enough — same reasoning as `LanguageRegistry::register_identity`
+/// alone isn't enough, same reasoning as `LanguageRegistry::register_identity`
 /// in `registry.rs`. Never constructed in production: `Editor::open` always
 /// builds `ThreadedParseBackend` directly.
 #[cfg(any(test, feature = "test-util"))]

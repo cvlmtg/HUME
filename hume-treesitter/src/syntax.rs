@@ -48,17 +48,17 @@ pub struct FrameTickOutcome {
 /// layers, generation bookkeeping, pending `InputEdit`s awaiting a bake, and
 /// the in-flight request generation.
 ///
-/// One type for the attachment, generations, trees, and in-flight tracking —
+/// One type for the attachment, generations, trees, and in-flight tracking:
 /// desync is unrepresentable because there is only one place to look.
 pub struct Syntax {
     /// The attached root grammar bundle. Immutable for this attachment's
-    /// lifetime — a grammar swap replaces the whole `Syntax` via a fresh
+    /// lifetime: a grammar swap replaces the whole `Syntax` via a fresh
     /// `attach` call, it never mutates this field in place.
     bundle: Arc<GrammarBundle>,
     /// Committed parse layers. `None` until the first `ParseDone` installs.
     layers: Option<SyntaxLayers>,
     /// `text_gen` of the most recently installed (or failed) parse result.
-    /// `None` until `install` has run at least once — distinct from
+    /// `None` until `install` has run at least once. Distinct from
     /// `Some(0)`, which is a genuine installed generation zero (a freshly
     /// opened file's `Buffer::text_gen` starts at 0 and never bumps on
     /// open). Collapsing the two into a bare `u64` would make the very
@@ -82,13 +82,13 @@ pub struct Syntax {
     in_flight: Option<u64>,
     /// Scratch for the overlap flattener, reused across `spans_for_line`
     /// calls. Lives here (not per-frame in the engine) because it survives
-    /// `install`/`clear_layers` — `SyntaxLayers` is rebuilt wholesale on
+    /// `install`/`clear_layers`: `SyntaxLayers` is rebuilt wholesale on
     /// every install, `Syntax` is not.
     span_scratch: Mutex<FlattenScratch>,
 }
 
 impl Syntax {
-    /// A fresh, unparsed attachment — no committed layers, no in-flight
+    /// A fresh, unparsed attachment: no committed layers, no in-flight
     /// request, generations at zero. Shared by `attach` and `attach_sync`,
     /// which differ only in how (or whether) the first parse is requested.
     fn detached(bundle: Arc<GrammarBundle>) -> Self {
@@ -105,7 +105,7 @@ impl Syntax {
 
     /// Create a fresh attachment. Empty text short-circuits: `parsed_gen` is
     /// set to `text_gen` immediately, no request is built, `in_flight` stays
-    /// `None`. Otherwise returns the initial full-parse request — the caller
+    /// `None`. Otherwise returns the initial full-parse request; the caller
     /// MUST post it to the parse backend.
     pub fn attach(
         bundle: Arc<GrammarBundle>,
@@ -133,12 +133,12 @@ impl Syntax {
         (syn, Some(req))
     }
 
-    /// Parse `text` once, synchronously, into a ready-to-query attachment —
-    /// no async worker round-trip, no `frame_tick`/`install` dance. For
+    /// Parse `text` once, synchronously, into a ready-to-query attachment,
+    /// with no async worker round-trip, no `frame_tick`/`install` dance. For
     /// small, static, one-shot content that isn't a real editor buffer (a
     /// hover popup's markdown): the content never changes after this call,
     /// so there is nothing to incrementally reparse, and the popup already
-    /// persists across frames — a one-frame async delay would buy nothing.
+    /// persists across frames, so a one-frame async delay would buy nothing.
     ///
     /// `bid` in the underlying parse request is never read back (this
     /// bypasses the normal `bid`-keyed `ParseDone` routing entirely, calling
@@ -205,7 +205,7 @@ impl Syntax {
     }
 
     /// Build the next incremental (or, absent a baked tree at `text_gen`,
-    /// full) parse request — the shared tail of `frame_tick` and
+    /// full) parse request: the shared tail of `frame_tick` and
     /// `ensure_current`, which differ only in how the result reaches
     /// `install` (posted to the async worker vs. run inline).
     fn build_request(
@@ -237,7 +237,7 @@ impl Syntax {
     /// Bring the committed tree up to date with `text_gen` *synchronously*,
     /// bypassing the async worker entirely. A structural command (text
     /// object, navigation) reads the tree after `frame_tick` has already run
-    /// for the frame, but `frame_tick` only *posts* a reparse request — the
+    /// for the frame, but `frame_tick` only *posts* a reparse request. The
     /// worker may still be parsing it on another thread when the query runs,
     /// most reliably during macro replay, which settles between keys but
     /// dispatches the next one faster than tree-sitter finishes. Either way
@@ -247,15 +247,15 @@ impl Syntax {
     /// site instead of relying on the next frame's `frame_tick`.
     ///
     /// Bakes pending edits first, same as `frame_tick`; when the chain is
-    /// intact the *root* tree's reparse is incremental and sub-frame — a full
+    /// intact the *root* tree's reparse is incremental and sub-frame. A full
     /// parse only happens before the worker has delivered the buffer's first
-    /// tree, or after a broken edit chain — both already bounded by
+    /// tree, or after a broken edit chain, both already bounded by
     /// `syntax-highlight-max-bytes` refusing to attach syntax at all above
     /// that size. Inside a macro or dot-repeat batch, every step after the
     /// first sees an intact chain and reparses the root incrementally. Every
     /// *injected* layer (a fenced code block, `markdown.inline`) is always a
-    /// full parse regardless — incremental parsing is root-only by design
-    /// (`parse_worker::run_parse`'s doc) — so on a buffer with many injected
+    /// full parse regardless, since incremental parsing is root-only by design
+    /// (`parse_worker::run_parse`'s doc), so on a buffer with many injected
     /// layers this call's cost scales with their combined size, not just the
     /// edit.
     ///
@@ -285,7 +285,7 @@ impl Syntax {
     }
 
     /// Bake `pending_edits` into the committed `layers`. No-op (and no
-    /// `ChainBreak`) when there is no committed tree yet or nothing pending —
+    /// `ChainBreak`) when there is no committed tree yet or nothing pending,
     /// checked *before* the chain-contiguity test so a reloaded buffer (layers
     /// cleared, stale pending) never trace-logs or clears pending here.
     ///
@@ -350,13 +350,13 @@ impl Syntax {
     /// Install a `ParseDone` result.
     ///
     /// Clears `in_flight` when `done` matches the posted request (`text_gen`
-    /// equal, and `config_gen` equal — a done from a *previous* attachment
+    /// equal, and `config_gen` equal; a done from a *previous* attachment
     /// fails the config match and must not clear a newer attachment's
     /// in-flight record). Discards the parse outcome itself (without
     /// touching `parsed_gen`) on a config-gen mismatch (grammar swapped
     /// in flight), a stale `text_gen` (text moved on since submission), or a
     /// `text_gen` whose layers are already installed (a synchronous
-    /// `ensure_current` beat an asynchronous request to the same generation —
+    /// `ensure_current` beat an asynchronous request to the same generation:
     /// the late arrival is redundant, not stale, so it must not re-run the
     /// `ParseOutcome::Ok` arm a second time). The already-installed check
     /// runs after the `in_flight` clear above: an async result superseded
@@ -365,22 +365,22 @@ impl Syntax {
     /// never resolve.
     ///
     /// Requires all three of `parsed_gen == Some(text_gen)`, `tree_gen ==
-    /// text_gen`, *and* `layers.is_some()` — no single field distinguishes
+    /// text_gen`, *and* `layers.is_some()`. No single field distinguishes
     /// "already installed" from every other state alone:
     /// - `tree_gen` alone is not enough: `bake` also advances it, on the
-    ///   *mainline* path, before this very call — an intact edit chain bakes
+    ///   *mainline* path, before this very call: an intact edit chain bakes
     ///   `tree_gen` up to `text_gen` and only then calls `install` with the
     ///   freshly reparsed replacement, which is not redundant and must run.
     /// - `parsed_gen` alone is not enough: `ParseFailed` advances it too, so
-    ///   a later result for that same generation — a retried `ensure_current`
-    ///   call, or a slow async request that finally lands — would hit this
+    ///   a later result for that same generation (a retried `ensure_current`
+    ///   call, or a slow async request that finally lands) would hit this
     ///   guard and be discarded even though it succeeded, leaving
     ///   `layers`/`tree_gen` stuck on stale data until an unrelated edit
     ///   bumps `text_gen` past this generation entirely.
     /// - `layers.is_some()` resolves the generation-`0` ambiguity `tree_gen`
     ///   would otherwise have on its own: it starts at plain `0`, coinciding
     ///   with a buffer's genuine first parse (also generation `0`, per
-    ///   `Buffer`'s own starting `text_gen`) — the same ambiguity
+    ///   `Buffer`'s own starting `text_gen`), the same ambiguity
     ///   `parsed_gen` is `Option` to avoid.
     ///
     /// Together: `parsed_gen == Some(text_gen)` means an `install` call has
@@ -398,7 +398,7 @@ impl Syntax {
         } = done;
 
         if bundle.config_gen != self.bundle.config_gen {
-            return; // superseded attachment — must not clear the new one's in_flight
+            return; // superseded attachment: must not clear the new one's in_flight
         }
         if self.in_flight == Some(text_gen) {
             self.in_flight = None;
@@ -453,7 +453,7 @@ impl Syntax {
         self.layers = None;
     }
 
-    /// The attached root grammar bundle — read by `sweep_buffers_for_grammars`
+    /// The attached root grammar bundle, read by `sweep_buffers_for_grammars`
     /// to check whether it has an injections query.
     pub fn bundle(&self) -> &Arc<GrammarBundle> {
         &self.bundle
@@ -463,7 +463,7 @@ impl Syntax {
         self.parsed_gen
     }
 
-    /// Whether the committed layers describe `text_gen` exactly — the
+    /// Whether the committed layers describe `text_gen` exactly: the
     /// freshness question every caller actually means, and the gate
     /// [`Self::ensure_current`] skips its reparse on.
     ///
@@ -471,14 +471,14 @@ impl Syntax {
     /// wrong answer: `install`'s `ParseFailed` arm advances `parsed_gen` to
     /// the failed generation while leaving `layers`/`tree_gen` exactly where
     /// they were. A caller gating on `parsed_gen` alone therefore reports
-    /// "current" over a tree that predates the edit, and the next reader — a
-    /// structural text-object query — hands `byte_to_char` an offset past the
+    /// "current" over a tree that predates the edit, and the next reader (a
+    /// structural text-object query) hands `byte_to_char` an offset past the
     /// buffer's own length. Requiring `tree_gen == text_gen` too closes that:
     /// a `ParseFailed` generation never satisfies it, so the caller reparses
     /// instead of trusting stale layers.
     ///
     /// Not the same question as `install`'s "already installed" guard, which
-    /// additionally requires `layers.is_some()` — that one asks whether this
+    /// additionally requires `layers.is_some()`: that one asks whether this
     /// generation's `Ok` result was already committed, not whether the layers
     /// are current.
     pub fn is_current(&self, text_gen: u64) -> bool {

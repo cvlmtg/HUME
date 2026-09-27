@@ -98,7 +98,7 @@ fn replace_within_one_line_insert_before_delete() {
     // Same replacement as `replace_within_one_line`, but with the op order
     // `invert`/`compose` can produce for a replace (insert before delete,
     // rather than the delete-before-insert order every `hume-ops` builder
-    // emits) — must coalesce into the same single edit either way.
+    // emits) must coalesce into the same single edit either way.
     let rope = ropey::Rope::from_str("hello world\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.retain(6);
@@ -128,7 +128,7 @@ fn multiline_insert_new_end_position() {
     let edits = input_edits_from_changeset(&cs, &rope);
     assert_eq!(edits.len(), 1);
     let e = &edits[0];
-    // "foo\nbar\n" — 2 newlines; last '\n' at byte 7; col = 8 - 7 - 1 = 0
+    // "foo\nbar\n": 2 newlines; last '\n' at byte 7; col = 8 - 7 - 1 = 0
     assert_eq!(e.new_end_position.row, 2);
     assert_eq!(e.new_end_position.column, 0);
 }
@@ -147,7 +147,7 @@ fn two_separate_edit_sites_emit_two_edits() {
     assert_eq!(edits.len(), 2);
     // Edits are returned in DESCENDING start-byte order so callers that apply
     // them via `tree.edit()` (which mutates coordinates in-place) apply the
-    // rightmost edit first — keeping all original-coordinate offsets valid.
+    // rightmost edit first, keeping all original-coordinate offsets valid.
     assert!(
         edits[0].start_byte > edits[1].start_byte,
         "edits must be in descending start-byte order for correct tree.edit() baking"
@@ -172,7 +172,7 @@ fn multibyte_utf8_byte_offsets() {
     assert_eq!(edits.len(), 1);
     let e = &edits[0];
     assert_eq!(e.start_byte, 0);
-    // "é" (U+00E9) = 2 bytes — different from char count of 1.
+    // "é" (U+00E9) = 2 bytes, different from char count of 1.
     assert_eq!(e.old_end_byte, 2, "byte offset must count bytes not chars");
     assert_eq!(e.new_end_byte, 0);
 }
@@ -182,7 +182,7 @@ fn multibyte_utf8_byte_offsets() {
 ///
 /// `input_edits_from_changeset` returns edits in DESCENDING start-byte order.
 /// `tree.edit()` mutates coordinates in-place, so the rightmost edit must be
-/// applied first — its original-coordinate bytes stay valid because nothing to
+/// applied first: its original-coordinate bytes stay valid because nothing to
 /// its left has been touched yet. In ascending order, a left edit's byte-delta
 /// would corrupt the right edit's coordinates, misaligning nodes and making
 /// highlight queries return wrong results after multi-cursor edits.

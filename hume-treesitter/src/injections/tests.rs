@@ -6,7 +6,7 @@ use crate::registry::GrammarBundle;
 use test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
 
 /// Load a real grammar fixture with an optional custom injections source
-/// (overriding whatever `injections.scm` the fixture ships, if any) —
+/// (overriding whatever `injections.scm` the fixture ships, if any),
 /// keeps each test's injection query minimal and self-contained rather
 /// than depending on upstream Helix query wording.
 fn make_bundle(name: &str, symbol: &str, injections_src: Option<&str>) -> Arc<GrammarBundle> {
@@ -153,7 +153,7 @@ fn combined_merges_multiple_matches_into_one_layer() {
     let mut langs = FxHashMap::default();
     langs.insert("rust".to_owned(), rust);
 
-    // Three string literals — without `injection.combined` these would be
+    // Three string literals. Without `injection.combined` these would be
     // three separate layers; with it, exactly one layer with 3 ranges.
     let source = "[\"a\", \"b\", \"c\"]\n";
     let (mut parser, tree) = parse(&json, source);
@@ -178,7 +178,7 @@ fn combined_merges_multiple_matches_into_one_layer() {
 fn depth_cap_stops_recursion_at_max_depth() {
     require_grammars(&["json"]);
     // Self-injecting: every `array` node re-parses its own (identical)
-    // text as json again, matching `array` once more in the fresh tree —
+    // text as json again, matching `array` once more in the fresh tree,
     // unbounded without a depth cap, since the content never changes.
     let json = make_bundle(
         "json",

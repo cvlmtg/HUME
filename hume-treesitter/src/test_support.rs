@@ -32,7 +32,7 @@ pub(crate) fn open_grammar(name: &str, symbol: &str) -> LoadedGrammar {
 }
 
 /// Build a `GrammarBundle` for `name`. `highlights_src` is compiled as the
-/// highlight query — pass `""` when a test only needs a parse tree, not real
+/// highlight query; pass `""` when a test only needs a parse tree, not real
 /// highlighting. `injections_src` / `textobjects_src`, if given, compile as
 /// the grammar's `injections.scm` / `textobjects.scm` query respectively.
 pub(crate) fn make_bundle(
@@ -81,7 +81,7 @@ pub(crate) fn empty_langs() -> Arc<FxHashMap<String, Arc<GrammarBundle>>> {
 }
 
 /// Build a `tree_sitter::Range` from byte offsets, synthesizing single-line
-/// row/column points (`column == byte offset`) — good enough for tests that
+/// row/column points (`column == byte offset`), good enough for tests that
 /// only assert on byte ranges.
 pub(crate) fn range(start: usize, end: usize) -> tree_sitter::Range {
     tree_sitter::Range {

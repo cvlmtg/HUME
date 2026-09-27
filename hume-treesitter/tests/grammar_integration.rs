@@ -7,7 +7,7 @@ use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
 use hume_treesitter::registry::GrammarBundle;
 use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 
-/// Load `name`'s compiled grammar fixture and parse `source` with it —
+/// Load `name`'s compiled grammar fixture and parse `source` with it,
 /// shared by every test below that needs a working tree.
 fn open_and_parse(name: &str, symbol: &str, source: &str) -> (tree_sitter::Tree, ropey::Rope) {
     let gpath = grammar_parser_path(name);
@@ -23,8 +23,8 @@ fn open_and_parse(name: &str, symbol: &str, source: &str) -> (tree_sitter::Tree,
 
 /// Open `name`'s grammar fresh (leaked/mmap'd once per process, so a second
 /// open of a fixture already opened by `open_and_parse` is free) and compile
-/// `query_src` against it as a minimal `GrammarBundle` — no injections, no
-/// textobjects — interning captures into a fresh [`ScopeRegistry`]. A layer
+/// `query_src` against it as a minimal `GrammarBundle` (no injections, no
+/// textobjects), interning captures into a fresh [`ScopeRegistry`]. A layer
 /// now carries its whole bundle, not just a highlighter, so integration
 /// tests exercising `layer_highlights_for_line` need one too.
 fn bundle_for(name: &str, symbol: &str, query_src: &str) -> (Arc<GrammarBundle>, ScopeRegistry) {
@@ -271,13 +271,13 @@ fn highlight_overlap_fully_contained_is_dropped() {
 }
 
 // Helix-style queries rely on a later, more specific pattern
-// overriding an earlier catch-all for the SAME node — e.g. `(identifier)
+// overriding an earlier catch-all for the SAME node, e.g. `(identifier)
 // @variable` followed by `(call_expression function: (identifier)
 // @function)`. `foo`'s identifier node is nested inside the call_expression
 // match's root, so a `matches()`-based collector emits the call-rooted
 // `@function` capture ahead of the identifier-rooted `@variable` capture,
-// and flatten_overlaps's same-range last-pushed-wins then picks `@variable`
-// — silently losing every keyword/function capture in real-world queries.
+// and flatten_overlaps's same-range last-pushed-wins then picks `@variable`,
+// silently losing every keyword/function capture in real-world queries.
 // `captures()` orders by node position with pattern order as the tiebreak,
 // so the later pattern (`@function`) must win here.
 #[test]
@@ -342,7 +342,7 @@ fn highlight_pattern_order_controls_winner_not_specificity() {
 }
 
 // Leading-underscore captures are Helix's convention for pattern-internal
-// predicate helpers (e.g. `@_f`, `@_lib`) and must never be styled — they
+// predicate helpers (e.g. `@_f`, `@_lib`) and must never be styled; they
 // should be dropped entirely rather than interned as a real scope that could
 // clobber a legitimate capture on the same node.
 #[test]

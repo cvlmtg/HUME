@@ -61,7 +61,7 @@ fn underscore_prefixed_and_unknown_suffix_captures_resolve_to_nothing() {
          (function_item) @function.inside",
     );
     // `@_helper` never parses as `<kind>.<span>` at all (no dot to split on).
-    // `@function.x` splits fine but `x` isn't a known ObjectSpan — neither
+    // `@function.x` splits fine but `x` isn't a known ObjectSpan. Neither
     // should register a capture beyond the one legitimate `function.inside`.
     assert!(q.defines(ObjectKind::Function, ObjectSpan::Inside));
     assert!(!q.defines(ObjectKind::Function, ObjectSpan::Around));
@@ -103,10 +103,10 @@ fn real_helix_rust_textobjects_defines_expected_pairs() {
 //
 // `spans` is private to this module and its descendants (this one included),
 // so these build an `ObjectSpans` directly from a literal list rather than
-// through a real query — pure lookup-logic tests with no grammar involved.
+// through a real query: pure lookup-logic tests with no grammar involved.
 
 /// Build an `ObjectSpans` from an arbitrary-order list through the same
-/// `ObjectSpans::finish` a real collection result goes through — `enclosing`
+/// `ObjectSpans::finish` a real collection result goes through: `enclosing`
 /// and `adjacent` both assume its sort-and-dedup, so a test double must not
 /// re-implement that comparator independently.
 fn spans_from(list: &[(usize, usize)]) -> ObjectSpans {
@@ -153,7 +153,7 @@ fn adjacent_backward_picks_largest_start_before_pos() {
 }
 
 // Vim `[m`: a backward press from *inside* an object must land on that
-// object's own start first, not skip past it to an earlier one — the
+// object's own start first, not skip past it to an earlier one. That is the
 // reason `adjacent` is keyed on `start` in both directions rather than
 // `end` for the backward case (Helix's own convention).
 #[test]
@@ -181,7 +181,7 @@ fn adjacent_returns_none_at_buffer_edges() {
 
 // ── ObjectSpans::collect / collect_for_navigation — real rust fixture ──────
 
-/// The real `rust` bundle carrying the fetched Helix `textobjects.scm` — no
+/// The real `rust` bundle carrying the fetched Helix `textobjects.scm`, no
 /// injections; these tests probe single-layer trees.
 fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
     require_grammars(&["rust"]);
@@ -191,7 +191,7 @@ fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
     make_bundle("rust", "tree_sitter_rust", "", None, Some(&source))
 }
 
-/// The real `markdown` bundle carrying the fetched Helix `injections.scm` —
+/// The real `markdown` bundle carrying the fetched Helix `injections.scm`:
 /// the version PLUM actually installs (see `test_fixtures`'s doc on
 /// why that's distinct from the grammar's own bundled query).
 fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
@@ -202,7 +202,7 @@ fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
     make_bundle("markdown", "tree_sitter_markdown", "", Some(&source), None)
 }
 
-/// The buffer text at `span`, inclusive end — for asserting on the actual
+/// The buffer text at `span`, inclusive end, for asserting on the actual
 /// text a hull collected rather than hand-counted char offsets.
 fn span_text(text: &BufferText, span: InclusiveRange<CharOffset>) -> String {
     text.slice(span.to_exclusive()).to_string()
@@ -210,7 +210,7 @@ fn span_text(text: &BufferText, span: InclusiveRange<CharOffset>) -> String {
 
 /// Parse `source` as rust with the real Helix `textobjects.scm` attached.
 /// Returns the `Syntax` rather than its layers: `layers()` borrows from it,
-/// so the caller has to hold it — every test below takes the borrow on its
+/// so the caller has to hold it; every test below takes the borrow on its
 /// own next line.
 fn rust_syntax(source: &str) -> (Syntax, BufferText) {
     let text = BufferText::from(source);
@@ -281,7 +281,7 @@ fn collect_for_navigation_parameter_yields_inside_spans_no_trailing_comma() {
 }
 
 /// A query defining only `@parameter.around` (no `@parameter.inside`) must
-/// still fall back to it for navigation, not yield nothing — Parameter's
+/// still fall back to it for navigation, not yield nothing. Parameter's
 /// priority is `Inside` first, but `Movement`/`Around` stay as fallbacks
 /// rather than being dropped entirely when `Inside` is undefined.
 #[test]
@@ -310,7 +310,7 @@ fn collect_for_navigation_parameter_falls_back_to_around_without_inside() {
 // quantified pattern's sub-match whose captures are a subset of a longer
 // match already in progress. `(line_comment)+ @comment.around` therefore
 // matches once, capturing every consecutive line comment under
-// `@comment.around` — not once per line. If this ever contradicts, HARD
+// `@comment.around`, not once per line. If this ever contradicts, HARD
 // STOP: do not patch it with a same-end dedup, which would break legitimate
 // same-end nesting in delimiter-less languages.
 #[test]
@@ -340,7 +340,7 @@ fn comment_around_on_the_last_line_of_a_block_is_the_whole_block() {
 }
 
 // The `#[test]` pattern's `(#eq? @_test_attribute "test")` predicate only
-// evaluates when the query cursor has a text provider — this is the proof
+// evaluates when the query cursor has a text provider; this is the proof
 // `collect_hulls` wires one in, not just an assertion on the resulting span.
 #[test]
 fn test_around_spans_attribute_and_body() {
@@ -367,7 +367,7 @@ fn test_around_spans_attribute_and_body() {
 // `collect_hulls` reduces one tree-sitter match's captured nodes into a
 // single hull per match, but the query engine reports an extra match whose
 // captured nodes span *both* tests, alongside the two correct per-test
-// matches — three spans for two tests. `adjacent` then sometimes picks that
+// matches: three spans for two tests. `adjacent` then sometimes picks that
 // spurious merged span instead of a single test's.
 #[test]
 fn test_around_two_sequential_tests_has_no_spurious_merged_span() {
@@ -395,7 +395,7 @@ fn test_around_two_sequential_tests_has_no_spurious_merged_span() {
 // `tests/fixtures/grammars/rust/src/grammar.json`'s `extras` list) as
 // transparent. `function.around`'s `((attribute_item)* @function.around .
 // (function_item ...) @function.around)` can't bridge the gap a comment
-// creates, so the quantifier backtracks to its zero-attribute alternative —
+// creates, so the quantifier backtracks to its zero-attribute alternative:
 // the attribute is captured by *no* match here, not merged into one that
 // skips over the comment. `collect_hulls` never sees a multi-node hull to
 // reason about in this case, so the contiguity check never applies.
@@ -414,7 +414,7 @@ fn function_around_drops_the_attribute_across_a_comment_today() {
 /// Characterization test for the contiguity check: `test.around`'s
 /// quantified group lists `(line_comment) @test.around` as one of its own
 /// alternatives, so a comment between `#[test]` and `fn` is captured
-/// directly as an ordinary adjacent sibling — a real multi-node hull with
+/// directly as an ordinary adjacent sibling, a real multi-node hull with
 /// zero gap between any two of its nodes, which the check accepts.
 #[test]
 fn test_around_hulls_a_comment_explicitly_captured_between_attribute_and_function() {
@@ -451,7 +451,7 @@ fn test_around_with_two_attributes_on_one_test_still_hulls_both() {
 
 /// Guards the drop-don't-trim decision: a bogus match spanning `#[test] fn
 /// one` through `#[should_panic] fn two` must not survive trimmed down to
-/// `[#[should_panic], fn two]` — that would fabricate a test object out of a
+/// `[#[should_panic], fn two]`: that would fabricate a test object out of a
 /// function with no `#[test]` attribute of its own.
 #[test]
 fn test_around_does_not_fabricate_a_test_from_a_non_test_function() {
@@ -471,8 +471,8 @@ fn test_around_does_not_fabricate_a_test_from_a_non_test_function() {
     );
 }
 
-// No pattern captures `function_item`'s body as `class.*` — only
-// struct/enum/union/trait/impl do — so a cursor inside a method's body must
+// No pattern captures `function_item`'s body as `class.*` (only
+// struct/enum/union/trait/impl do), so a cursor inside a method's body must
 // resolve `class.inside` to the enclosing `impl`'s body, not the method's
 // own block.
 #[test]
@@ -588,7 +588,7 @@ fn for_selector_returns_the_same_spans_for_a_repeated_selector() {
 }
 
 /// A different selector must not be answered from the previous selector's
-/// entry — the cache is keyed, not just "the last result".
+/// entry: the cache is keyed, not just "the last result".
 #[test]
 fn for_selector_does_not_answer_a_different_selector_from_the_cache() {
     let (syn, text) = rust_syntax("fn foo(a: i32) {\n    1\n}\n");
@@ -614,8 +614,8 @@ fn for_selector_does_not_answer_a_different_selector_from_the_cache() {
     }
 }
 
-/// `bake` edits every layer's tree *in place* — the one mutation that does
-/// not replace `SyntaxLayers` outright — so it must drop the cache too, or a
+/// `bake` edits every layer's tree *in place* (the one mutation that does
+/// not replace `SyntaxLayers` outright), so it must drop the cache too, or a
 /// structural command reads spans collected from the pre-edit tree.
 #[test]
 fn for_selector_cache_does_not_survive_a_bake() {
@@ -628,7 +628,7 @@ fn for_selector_cache_does_not_survive_a_bake() {
         ObjectSpans::for_selector(layers, &text, sel)
     };
 
-    // Insert a line above the function, then bake it in — `frame_tick` bakes
+    // Insert a line above the function, then bake it in: `frame_tick` bakes
     // and hands back a reparse request we deliberately drop, leaving the
     // layers edited-in-place and *not* replaced by an install.
     let edited = format!("// lead\n{source}");

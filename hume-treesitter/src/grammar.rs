@@ -11,7 +11,7 @@ use tree_sitter_language::LanguageFn;
 ///
 /// `language` is a thin pointer into the `.so`'s read-only data. The
 /// dynamic library backing it is intentionally leaked at load time (see
-/// `open`) so it stays mapped for the process lifetime — grammars are never
+/// `open`) so it stays mapped for the process lifetime. Grammars are never
 /// unloaded, so `Language` values derived from this struct are valid
 /// unconditionally, with no lifetime tied to `LoadedGrammar` or any wrapper.
 pub struct LoadedGrammar {
@@ -45,7 +45,7 @@ impl LoadedGrammar {
     /// Returns [`GrammarLoadError::Dlopen`] if the library cannot be opened,
     /// or [`GrammarLoadError::MissingSymbol`] if the named symbol is absent.
     ///
-    /// This is genuine FFI — the same character as terminal probing in
+    /// This is genuine FFI, the same character as terminal probing in
     /// `hume-platform/src/terminal.rs`. We dlopen a tree-sitter grammar built to the
     /// well-known extern "C" ABI (`tree_sitter_<lang>() -> *const TSLanguage`).
     /// The library is leaked (`mem::forget`) rather than owned, so it stays
@@ -63,7 +63,7 @@ impl LoadedGrammar {
             // `lib`) is dropped.
             let fn_ptr: unsafe extern "C" fn() -> *const () = *sym;
             let lang = Language::from(LanguageFn::from_raw(fn_ptr));
-            // Grammars are never unloaded (Helix model) — leak the library so
+            // Grammars are never unloaded (Helix model), so leak the library so
             // the .so stays mapped for the process lifetime instead of tying
             // its lifetime to this struct or its wrappers.
             std::mem::forget(lib);

@@ -5,12 +5,12 @@ use hume_editing::changeset::ChangeSet;
 /// Translate a `ChangeSet` into a sequence of `tree_sitter::InputEdit`s.
 ///
 /// `rope` must be the buffer text **before** the edit (the old document). One
-/// `InputEdit` per [`ChangeSet::edited_regions`] region — that walk already
+/// `InputEdit` per [`ChangeSet::edited_regions`] region: that walk already
 /// pairs a `Delete`/`Insert` replacement in either op order (every
 /// `hume-ops` builder emits delete-then-insert, but `ChangeSet::invert`
 /// emits insert-then-delete for every undone replacement, `compose` can
 /// produce either, and `indent`/`unindent` deliberately emit
-/// insert-then-delete — see `hume-ops/src/edit/indent.rs`) into one region,
+/// insert-then-delete; see `hume-ops/src/edit/indent.rs`) into one region,
 /// so this walk doesn't have to.
 pub(crate) fn input_edits_from_changeset(
     cs: &ChangeSet,
@@ -26,7 +26,7 @@ pub(crate) fn input_edits_from_changeset(
     // `tree.edit()` mutates coordinates in-place: applying a left edit first shifts
     // every subsequent byte position, so a right edit specified in original coords
     // would land at the wrong place.  Reversing to descending start order means the
-    // rightmost edit is applied first — its coordinates are never invalidated by
+    // rightmost edit is applied first: its coordinates are never invalidated by
     // anything to its left, and vice versa, so all edits remain valid in the
     // pre-edit coordinate space at apply time.
     edits.reverse();

@@ -12,20 +12,20 @@ use crate::injections::InjectionsQuery;
 use crate::textobjects::TextObjectsQuery;
 
 /// Interned language identity. Dense, append-only, minted by `LanguageRegistry`.
-/// An id is only ever handed out by `LanguageRegistry::intern` — indexing a
+/// An id is only ever handed out by `LanguageRegistry::intern`; indexing a
 /// different registry instance with it is a caller bug, not a runtime error.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct LanguageId(u32);
 
 /// Detection identity for one language: extensions, glob patterns, shebangs.
 ///
-/// Immutable once registered — re-registration (`register_identity_no_rebuild`)
+/// Immutable once registered: re-registration (`register_identity_no_rebuild`)
 /// replaces the whole record rather than mutating it in place. The name is
 /// not stored here: it lives once, in the registry's interner (SSOT).
 #[derive(Debug, Default)]
 pub struct LanguageIdentity {
     pub extensions: Vec<String>,
-    /// Parsed glob patterns (e.g. `"Makefile"`, `"*.{ts,tsx}"`) — validated at
+    /// Parsed glob patterns (e.g. `"Makefile"`, `"*.{ts,tsx}"`), validated at
     /// registration, so an uncompilable pattern can never reach here. Source
     /// text is recoverable via `Glob::glob()`. The combined matcher across all
     /// languages lives on `LanguageRegistry` (`compiled_globs`).
@@ -34,7 +34,7 @@ pub struct LanguageIdentity {
     pub shebangs: Vec<String>,
     /// Override for the wire `languageId` sent to language servers, when it
     /// differs from the name (e.g. `"tsx"` needs `"typescriptreact"`).
-    /// `None` means callers should fall back to the name — see `lsp_language_id_of`.
+    /// `None` means callers should fall back to the name (see `lsp_language_id_of`).
     pub lsp_language_id: Option<String>,
 }
 
@@ -42,7 +42,7 @@ pub struct LanguageIdentity {
 /// of a given language.
 pub struct GrammarBundle {
     pub grammar: LoadedGrammar,
-    /// Shared highlighter wrapping the compiled highlight query — one per
+    /// Shared highlighter wrapping the compiled highlight query: one per
     /// language, not one per buffer (capture names are interned once at
     /// attach time).
     pub highlighter: Arc<TreeSitterHighlighter>,
@@ -53,14 +53,14 @@ pub struct GrammarBundle {
     /// language ships no structural text objects or navigation.
     pub textobjects: Option<TextObjectsQuery>,
     /// Unique per attach, issued by `LanguageRegistry::next_gen`. Grammar-swap
-    /// / staleness checks compare this instead of `Arc::ptr_eq` — a plain
+    /// / staleness checks compare this instead of `Arc::ptr_eq`, a plain
     /// integer identity that survives across the worker-thread boundary.
     pub config_gen: u32,
 }
 
 /// The query files `attach_grammar` may compile for a grammar. `highlights`
 /// is required; `injections` and `textobjects` are each independently
-/// optional — a named struct instead of two more positional
+/// optional: a named struct instead of two more positional
 /// `Option<&Path>` parameters, since the parameter list was already at its
 /// limit before a third optional query joined it.
 #[derive(Clone, Copy)]
@@ -71,7 +71,7 @@ pub struct QueryPaths<'a> {
 }
 
 impl<'a> QueryPaths<'a> {
-    /// `highlights` alone, no injections or textobjects query — the common
+    /// `highlights` alone, no injections or textobjects query. The common
     /// shape: most grammars (and most test fixtures) have nothing else to
     /// offer.
     pub fn highlights_only(highlights: &'a Path) -> Self {
@@ -87,7 +87,7 @@ impl<'a> QueryPaths<'a> {
 ///
 /// `ids`/`names`/`identities`/`grammars` are the interner: dense, append-only,
 /// all index-aligned by `LanguageId.0`. `identities.len() == grammars.len() ==
-/// names.len()` always — `intern` pushes one entry to each.
+/// names.len()` always: `intern` pushes one entry to each.
 pub struct LanguageRegistry {
     ids: FxHashMap<Arc<str>, LanguageId>,
     names: Vec<Arc<str>>,
@@ -95,7 +95,7 @@ pub struct LanguageRegistry {
     identities: Vec<Option<LanguageIdentity>>,
     /// The `LanguageId -> GrammarBundle` map.
     grammars: Vec<Option<Arc<GrammarBundle>>>,
-    /// Detection indices — never rebuilt on `attach_grammar`, only on
+    /// Detection indices, never rebuilt on `attach_grammar`, only on
     /// identity (re-)registration or removal.
     by_ext: FxHashMap<String, LanguageId>,
     /// Compiled glob matcher, rebuilt whenever languages are added or removed.
@@ -111,7 +111,7 @@ pub struct LanguageRegistry {
     /// (a dynamically-discovered info-string) to its grammar without
     /// touching main-thread state.
     grammar_snapshot: Arc<FxHashMap<String, Arc<GrammarBundle>>>,
-    /// Source of `GrammarBundle::config_gen` — incremented on every grammar
+    /// Source of `GrammarBundle::config_gen`, incremented on every grammar
     /// attach so each attached bundle gets a unique identity.
     next_config_gen: u32,
 }
@@ -207,7 +207,7 @@ impl LanguageRegistry {
             return id;
         }
         let id = LanguageId(self.names.len() as u32);
-        // One allocation, shared via Arc — `names` and `ids` both need their
+        // One allocation, shared via Arc: `names` and `ids` both need their
         // own owned key, but they can point at the same heap string instead
         // of each holding an independent copy.
         let owned: Arc<str> = Arc::from(name);
@@ -224,12 +224,12 @@ impl LanguageRegistry {
     }
 
     /// The name `id` was interned with. `id` must have been minted by this
-    /// registry — an out-of-range id is a caller bug.
+    /// registry; an out-of-range id is a caller bug.
     pub fn name_of(&self, id: LanguageId) -> &str {
         &self.names[id.0 as usize]
     }
 
-    /// The `languageId` LSP servers expect for `id` — the language name
+    /// The `languageId` LSP servers expect for `id`: the language name
     /// unless an override was registered. HUME's names mirror Helix's, which
     /// diverge from the LSP spec's well-known identifiers for a handful of
     /// languages (`tsx` → `typescriptreact`).
@@ -270,7 +270,7 @@ impl LanguageRegistry {
     /// `rebuild_glob_set` once, avoiding O(N²) NFA constructions at startup.
     ///
     /// Replaces extensions/globs/shebangs/lsp_language_id for `name`; an
-    /// already-attached grammar is kept — identity and grammar are independent
+    /// already-attached grammar is kept. Identity and grammar are independent
     /// facts about a language, and re-registering one must not silently undo
     /// the other. (Symmetric with `attach_grammar`, which likewise preserves an
     /// existing identity.) A grammar only ever changes via `attach_grammar`.
@@ -305,13 +305,13 @@ impl LanguageRegistry {
     }
 
     /// Remove `identity`'s entries from the `by_ext`/`shebang_to_id` secondary
-    /// indices, but only where `id` is still the current owner — a shared
+    /// indices, but only where `id` is still the current owner: a shared
     /// extension (e.g. `.h` claimed by both `c` and `cpp`) may have been
     /// reassigned to a different language since `identity` was registered, and
     /// deindexing unconditionally would evict that newer owner's mapping.
     /// Shared by `register_identity_no_rebuild`'s replace-existing branch and
     /// `remove`. Note: this does not resurrect an older claimant if `id` was
-    /// indeed still the owner — the extension simply becomes unclaimed, which
+    /// indeed still the owner; the extension simply becomes unclaimed, which
     /// matches the last-registered-wins model elsewhere in this registry.
     fn deindex(&mut self, id: LanguageId, identity: &LanguageIdentity) {
         for ext in &identity.extensions {
@@ -375,7 +375,7 @@ impl LanguageRegistry {
     }
 
     /// Remove a registered language's identity by name, returning it if
-    /// present. Also clears any attached grammar for the same id — a removed
+    /// present. Also clears any attached grammar for the same id, since a removed
     /// language has no detection and no grammar, matching `remove` deleting
     /// the language wholesale.
     #[cfg(any(test, feature = "test-util"))]
@@ -388,9 +388,9 @@ impl LanguageRegistry {
         // Only reachable if the set already failed to compile before this remove:
         // `rebuild_glob_set` is fail-soft in production (see `apply_pending_language_regs`),
         // so registry state can sit above the NFA limit, and dropping one language need not
-        // bring it back under. Test-only helper — panicking is the right signal.
+        // bring it back under. Test-only helper: panicking is the right signal.
         self.rebuild_glob_set()
-            .expect("glob rebuild after remove — glob set was already over the NFA limit");
+            .expect("glob rebuild after remove: glob set was already over the NFA limit");
         self.rebuild_grammar_snapshot();
         Some(identity)
     }
@@ -402,11 +402,11 @@ impl LanguageRegistry {
     /// Reads the highlights query file, compiles it, builds the shared
     /// highlighter (interning its capture names into `scope_reg`), optionally
     /// reads and compiles `queries.injections` / `queries.textobjects` if
-    /// given, then installs the resulting `GrammarBundle` for `name`'s id —
-    /// detection indices (`by_ext`/globs/shebangs) are never touched.
+    /// given, then installs the resulting `GrammarBundle` for `name`'s id.
+    /// Detection indices (`by_ext`/globs/shebangs) are never touched.
     ///
     /// A broken `injections.scm` or `textobjects.scm` fails the whole attach,
-    /// same as a broken `highlights.scm` — all three come from the same
+    /// same as a broken `highlights.scm`: all three come from the same
     /// trusted pinned source, so there is no separate soft-degrade path. All
     /// fallible work happens before any registry mutation, so a failed
     /// attach leaves no partial state.

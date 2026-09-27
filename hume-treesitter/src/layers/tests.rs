@@ -3,7 +3,7 @@ use test_fixtures::require_grammars;
 use super::{SyntaxLayer, layer_covers_line};
 use crate::test_support::{make_bundle, open_grammar, range};
 
-// `layer_covers_line` only ever reads `ranges` — the tree's actual
+// `layer_covers_line` only ever reads `ranges`. The tree's actual
 // content is irrelevant, so every test case shares one parsed layer and
 // just varies `ranges`/`line_start`/`line_end`.
 fn injected_layer(ranges: Vec<tree_sitter::Range>) -> SyntaxLayer {
@@ -18,7 +18,7 @@ fn injected_layer(ranges: Vec<tree_sitter::Range>) -> SyntaxLayer {
         tree,
         bundle,
         ranges,
-        depth: 1, // an injected layer — depth 0 (root) always short-circuits on empty ranges
+        depth: 1, // an injected layer; depth 0 (root) always short-circuits on empty ranges
     }
 }
 
@@ -26,7 +26,7 @@ fn injected_layer(ranges: Vec<tree_sitter::Range>) -> SyntaxLayer {
 fn root_layer_with_empty_ranges_covers_every_line() {
     require_grammars(&["json"]);
     // depth 0 in practice, but the empty-ranges short-circuit doesn't
-    // actually key off `depth` — assert on the field it does check.
+    // actually key off `depth`, so assert on the field it does check.
     let layer = injected_layer(vec![]);
     assert!(layer_covers_line(&layer, 0, 1));
     assert!(layer_covers_line(&layer, 10_000, 10_001));
@@ -57,7 +57,7 @@ fn injected_layer_does_not_cover_a_line_entirely_after_its_range() {
 /// (one range per paragraph). A root layer (empty `ranges`) short-circuits
 /// before the binary search runs, and a single-range layer only resolves
 /// `partition_point` to index 0 or 1. This exercises a line landing on the *second* range, and a line
-/// falling in the gap between the two — real multi-candidate lookups.
+/// falling in the gap between the two: real multi-candidate lookups.
 #[test]
 fn injected_layer_binary_search_finds_a_non_first_range() {
     require_grammars(&["json"]);
@@ -77,10 +77,10 @@ fn injected_layer_boundary_is_half_open() {
     require_grammars(&["json"]);
     let layer = injected_layer(vec![range(10, 20)]);
     // A line starting exactly at the range's end is adjacent, not
-    // overlapping — `line_start < end_byte` must be strict.
+    // overlapping: `line_start < end_byte` must be strict.
     assert!(!layer_covers_line(&layer, 20, 25));
     // A line ending exactly at the range's start likewise doesn't
-    // overlap — `partition_point`'s `start_byte < line_end` excludes it.
+    // overlap: `partition_point`'s `start_byte < line_end` excludes it.
     assert!(!layer_covers_line(&layer, 5, 10));
     // But a line covering the range's first byte does overlap.
     assert!(layer_covers_line(&layer, 5, 11));

@@ -7,8 +7,8 @@ fn s(n: u16) -> ScopeId {
 }
 
 /// Run the shared sweep (`hume_engine::interval_sweep`) the same way
-/// `layer_highlights_for_line` does — `TieBreak::LastPushed`, `(start, end,
-/// depth, scope)` field order — with every interval at depth 0
+/// `layer_highlights_for_line` does (`TieBreak::LastPushed`, `(start, end,
+/// depth, scope)` field order), with every interval at depth 0
 /// (single-layer, as with no injections). `d()` below builds
 /// multi-depth input for the depth-priority tests. Pins tree-sitter's
 /// depth-priority *semantics* against the shared implementation. This crate
@@ -45,7 +45,7 @@ fn inner_wins_non_shared_start() {
 
 #[test]
 fn inner_wins_shared_start() {
-    // Shared start: outer [0,10), inner [0,4) — inner wins its region.
+    // Shared start: outer [0,10), inner [0,4): inner wins its region.
     let got = run(vec![(0, 10, s(0)), (0, 4, s(1))]);
     assert_eq!(got, vec![(0, 4, s(1)), (4, 10, s(0))]);
 }
@@ -59,7 +59,7 @@ fn disjoint_gap_preserved() {
 
 #[test]
 fn three_level_nesting() {
-    // [0,20) A, [5,15) B, [8,10) C — each level wins its region.
+    // [0,20) A, [5,15) B, [8,10) C: each level wins its region.
     let got = run(vec![(0, 20, s(0)), (5, 15, s(1)), (8, 10, s(2))]);
     assert_eq!(
         got,
@@ -94,7 +94,7 @@ fn same_start_three_way_tie_resolves_by_seq() {
     // scopes. The highest-seq (last-captured) interval must win at byte
     // 0; as it and the middle one end, each remaining interval takes over
     // in seq order. `sort_unstable_by` does not guarantee tie order by
-    // API contract — the explicit `seq` field makes this deterministic
+    // API contract; the explicit `seq` field makes this deterministic
     // rather than an accident of the current sort implementation.
     let got = run(vec![(0, 5, s(0)), (0, 8, s(1)), (0, 6, s(2))]);
     assert_eq!(got, vec![(0, 6, s(2)), (6, 8, s(1))]);
@@ -145,7 +145,7 @@ fn three_segment_chain_merges_into_one() {
 #[test]
 fn deeper_layer_wins_regardless_of_collection_order() {
     // A depth-0 (root) span [0,10) fully contains a depth-2 (nested
-    // injection) span [3,7) — collected in REVERSE depth order (the
+    // injection) span [3,7), collected in REVERSE depth order (the
     // depth-2 entry pushed into `raw` before the depth-0 one), simulating
     // a nested injection gathered ahead of its shallower parent. The
     // deeper span must still win its region regardless of collection order.
@@ -156,7 +156,7 @@ fn deeper_layer_wins_regardless_of_collection_order() {
 #[test]
 fn shallower_layer_started_later_still_loses_to_deeper() {
     // Depth-1 span [0,10) started AFTER (higher seq) a depth-3 span
-    // [2,5) in collection order — plain seq-order priority (pre-depth-
+    // [2,5) in collection order. Plain seq-order priority (pre-depth-
     // aware flattening) would have picked the depth-1 span at [2,5)
     // since it has the higher seq; depth must win instead.
     let got = run_d(vec![(2, 5, s(3), 3), (0, 10, s(1), 1)]);

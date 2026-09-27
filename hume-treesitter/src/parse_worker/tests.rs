@@ -112,7 +112,7 @@ fn coalesce_one_same_gen_different_lang_replaces() {
             langs: empty_langs(),
         },
     );
-    // bundle_b at the same gen — grammar swap on a quiescent buffer.
+    // bundle_b at the same gen: grammar swap on a quiescent buffer.
     coalesce_one(
         &mut batch,
         ParseRequest {

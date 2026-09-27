@@ -18,7 +18,7 @@ fn write_temp_scm(filename: &str, src: &str) -> (tempfile::TempDir, std::path::P
     (dir, path)
 }
 
-/// Parse each pattern into a `Glob`, panicking on a malformed test fixture —
+/// Parse each pattern into a `Glob`, panicking on a malformed test fixture:
 /// `register_identity` takes pre-parsed globs, so invalid syntax is now a
 /// caller bug, not a runtime error to test for.
 fn globs(pats: &[&str]) -> Vec<Glob> {
@@ -93,8 +93,8 @@ fn attach_grammar_without_injections_path_leaves_injections_none() {
     );
 }
 
-/// A broken injections.scm hard-fails the whole attach — same as a broken
-/// highlights.scm — rather than degrading to a warning. Both files come
+/// A broken injections.scm hard-fails the whole attach (same as a broken
+/// highlights.scm) rather than degrading to a warning. Both files come
 /// from the same trusted pinned source, so there is no separate soft-fail
 /// path.
 #[test]
@@ -195,7 +195,7 @@ fn attach_grammar_without_textobjects_path_leaves_textobjects_none() {
     );
 }
 
-/// A broken textobjects.scm hard-fails the whole attach — same policy as a
+/// A broken textobjects.scm hard-fails the whole attach, same policy as a
 /// broken injections.scm (see `attach_grammar_with_broken_injections_fails_whole_attach`).
 #[test]
 fn attach_grammar_with_broken_textobjects_fails_whole_attach() {
@@ -305,7 +305,7 @@ fn remove_clears_glob_and_shebang_entries() {
 
 /// `deindex` must only remove an index entry it still owns.
 /// `c` and `cpp` both claim `.h` (last-registered wins, so `cpp` takes
-/// it); re-registering `c` without `.h` must not evict `cpp`'s mapping —
+/// it); re-registering `c` without `.h` must not evict `cpp`'s mapping:
 /// `c` never owned it at the time of re-registration.
 #[test]
 fn deindex_does_not_clobber_another_languages_shared_extension() {
@@ -333,7 +333,7 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
 
 /// A `define-language!` override in `init.scm` (e.g. adding an extension to
 /// an already-grammared language) must not undo the grammar `grammars.scm`
-/// attached at startup — identity and grammar are independent facts.
+/// attached at startup. Identity and grammar are independent facts.
 ///
 /// If `register_identity_no_rebuild` cleared `grammars[id]`, both
 /// `has_grammar` and `grammar_snapshot` would come back empty here.
@@ -390,7 +390,7 @@ fn lsp_language_id_of_falls_back_to_name_when_unset() {
     assert_eq!(reg.lsp_language_id_of(id), "rust");
 }
 
-/// An `lsp_language_id` override is returned verbatim instead of the name —
+/// An `lsp_language_id` override is returned verbatim instead of the name:
 /// the case this whole feature exists for (`tsx` -> `typescriptreact`).
 #[test]
 fn lsp_language_id_of_returns_override_when_set() {
@@ -402,7 +402,7 @@ fn lsp_language_id_of_returns_override_when_set() {
 }
 
 /// Re-registering a language's identity without `lsp_language_id` resets the
-/// override to `None` — `define-language!` replaces the whole identity
+/// override to `None`: `define-language!` replaces the whole identity
 /// record, matching how it already replaces extensions/globs/shebangs
 /// wholesale (see `attached_grammar_survives_identity_re_registration`, which
 /// covers the sibling "grammar survives, identity doesn't" half of the same
@@ -535,7 +535,7 @@ fn detect_language_no_match() {
 }
 
 /// Extensions are matched case-sensitively, so `"c"` and `"C"` map to
-/// distinct languages — `foo.c` detects as `c`, `foo.C` detects as `cpp`.
+/// distinct languages: `foo.c` detects as `c`, `foo.C` detects as `cpp`.
 ///
 /// Folding extensions to lowercase would send both files to cpp, the
 /// later-registered language.

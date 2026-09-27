@@ -17,7 +17,7 @@ fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     crate::test_support::make_bundle(name, symbol, "", None, None)
 }
 
-/// Like `make_bundle`, but with a compiled injections query attached —
+/// Like `make_bundle`, but with a compiled injections query attached,
 /// needed to exercise the injected-layer (`depth > 0`) path in `bake`.
 fn make_bundle_with_injections(
     name: &str,
@@ -28,7 +28,7 @@ fn make_bundle_with_injections(
 }
 
 /// Like `make_bundle`, but compiles the grammar's *real* `highlights.scm`
-/// instead of an empty query — needed to assert `spans_for_line` actually
+/// instead of an empty query, needed to assert `spans_for_line` actually
 /// produces scopes, not just that a tree exists.
 fn make_bundle_with_real_highlights(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     let highlights_src =
@@ -107,7 +107,7 @@ fn attach_sync_parses_immediately_and_produces_real_highlight_spans() {
 
     assert!(
         !syn.is_in_flight(),
-        "attach_sync must return a fully-installed attachment — no async request left pending"
+        "attach_sync must return a fully-installed attachment, no async request left pending"
     );
 
     let mut spans = Vec::new();
@@ -136,7 +136,7 @@ fn frame_tick_up_to_date_returns_no_request() {
         &BufferText::from(""),
         &empty_langs(),
     );
-    // parsed_gen == text_gen (0) already — up to date.
+    // parsed_gen == text_gen (0) already: up to date.
     let outcome = syn.frame_tick(bid, 0, &BufferText::from(""), &empty_langs());
     assert!(
         outcome.request.is_none(),
@@ -157,7 +157,7 @@ fn frame_tick_dedups_while_in_flight_at_same_gen() {
         &empty_langs(),
     );
     assert!(req.is_some());
-    // parsed_gen is still 0 (attach doesn't install), text_gen is 1 —
+    // parsed_gen is still 0 (attach doesn't install), text_gen is 1, so
     // frame_tick must see the existing in-flight request and dedup.
     let outcome = syn.frame_tick(bid, 1, &BufferText::from("{}\n"), &empty_langs());
     assert!(
@@ -203,7 +203,7 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
     syn.install(done, 0);
     assert!(syn.layers().is_some(), "install must populate layers");
 
-    // Record a contiguous edit and tick — chain bakes, tree_gen catches
+    // Record a contiguous edit and tick: chain bakes, tree_gen catches
     // up to text_gen, so old_tree must be Some.
     let rope_pre = ropey::Rope::from_str("{}\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
@@ -218,7 +218,7 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
         "a baked contiguous chain must produce an old_tree for incremental parse"
     );
 
-    // clear_layers drops the committed tree — next tick must full-reparse.
+    // clear_layers drops the committed tree, so the next tick must full-reparse.
     syn.clear_layers();
     syn.install(parse_done_for(&bundle, bid, 1, "{\"a\":1}\n"), 1);
     assert!(syn.layers().is_some());
@@ -284,7 +284,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
     );
 
     // The baked root tree's end_byte must equal the
-    // new text's byte length — computed from the string, not the tree.
+    // new text's byte length, computed from the string, not the tree.
     let expected_end_byte = "{\"a\":1}\n".len();
     let root = syn.layers().unwrap().root_tree().unwrap();
     assert_eq!(root.root_node().end_byte(), expected_end_byte);
@@ -335,8 +335,8 @@ fn bake_mid_chain_gap_rejected() {
 /// `layer.depth > 0` ranges-refresh branch never ran. This installs a
 /// real markdown root + rust fenced-code injection layer, edits text
 /// *before* the fenced block (shifting the injection forward), bakes,
-/// and checks the injected layer's cached `ranges` — the copy
-/// `layer_covers_line` consults — actually moved with it instead of
+/// and checks the injected layer's cached `ranges` (the copy
+/// `layer_covers_line` consults) actually moved with it instead of
 /// staying pinned at the pre-edit byte offset.
 #[test]
 fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
@@ -391,7 +391,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
         0,
     );
 
-    // Insert text before the fenced code block — the rust layer's byte
+    // Insert text before the fenced code block. The rust layer's byte
     // range must shift forward by the inserted length once baked.
     let prefix = "more text\n";
     let rope_pre = rope;
@@ -416,7 +416,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
         .find(|l| l.depth > 0)
         .expect("rust injected layer must survive the bake");
     // The shift is exactly `prefix.len()` bytes,
-    // computed from the inserted string — not re-derived from the tree.
+    // computed from the inserted string, not re-derived from the tree.
     assert_eq!(
         rust_layer.ranges[0].start_byte,
         original_start + prefix.len(),
@@ -488,10 +488,10 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
 
 /// Edits recorded while the very first parse is still in flight can't be
 /// baked (`bake`'s early-out never clears pending when `layers` is still
-/// `None`), so they survive until the first successful install — which
+/// `None`), so they survive until the first successful install, which
 /// must drain them. A done can only install when `done.text_gen` equals
 /// the *current* text_gen, and pending-edit gens are always ≤ the current
-/// text_gen at record time — so `retain(g > text_gen)` always empties the
+/// text_gen at record time, so `retain(g > text_gen)` always empties the
 /// list on a real successful install; there is no reachable case where it
 /// retains an entry.
 #[test]
@@ -583,7 +583,7 @@ fn install_parse_failed_advances_parsed_gen_only() {
 }
 
 /// A generation that failed to parse must still be installable if a later
-/// result for that *same* generation succeeds — whether a retried
+/// result for that *same* generation succeeds, whether a retried
 /// `ensure_current` call or a slow async result that finally lands. Keying
 /// the "already installed" guard on `parsed_gen` (which `ParseFailed` also
 /// advances) would discard this success permanently, leaving `layers` stuck
@@ -633,7 +633,7 @@ fn install_recovers_from_a_parse_failed_for_the_same_generation() {
 
 /// The freshness predicate every caller gates on. After a `ParseFailed` for
 /// a generation, `parsed_gen` has advanced to it but `layers`/`tree_gen`
-/// still describe the *previous* generation — so `parsed_gen` alone reports
+/// still describe the *previous* generation, so `parsed_gen` alone reports
 /// "current" over a tree that predates the edit, which is exactly the state
 /// that lets a structural query hand `byte_to_char` an offset past the
 /// buffer's end.
@@ -676,7 +676,7 @@ fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers
     assert_eq!(syn.tree_gen(), 0);
     assert!(
         !syn.is_current(1),
-        "layers predate gen 1 — is_current must not report it as current"
+        "layers predate gen 1: is_current must not report it as current"
     );
 }
 
@@ -703,7 +703,7 @@ fn ensure_current_parses_a_never_parsed_attachment() {
     assert!(
         syn.layers().is_some(),
         "ensure_current must install a tree even though nothing was ever \
-         installed before — parsed_gen and text_gen are both 0 here, which \
+         installed before: parsed_gen and text_gen are both 0 here, which \
          must not be mistaken for 'already up to date'"
     );
     assert_eq!(
@@ -733,7 +733,7 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
     );
     syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
-    // Record an edit but deliberately skip frame_tick — ensure_current must
+    // Record an edit but deliberately skip frame_tick: ensure_current must
     // bake and reparse on its own, with no async round trip.
     let rope_pre = ropey::Rope::from_str("{}\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
@@ -778,7 +778,7 @@ fn ensure_current_up_to_date_does_not_reparse() {
     syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
     // Pass a text that would parse to a different tree if ensure_current
-    // actually reparsed — proves the gen-gate short-circuits before that.
+    // actually reparsed. Proves the gen-gate short-circuits before that.
     let outcome = syn.ensure_current(bid, 0, &BufferText::from("{\"a\":1}\n"), &empty_langs());
     assert!(outcome.is_none());
     assert_eq!(syn.tree_gen(), 0, "up-to-date attachment must not reparse");
@@ -808,7 +808,7 @@ fn ensure_current_reports_a_broken_chain_and_full_reparses() {
     );
     syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
-    // Record at gen 3, skipping 1 and 2 — a gapped chain.
+    // Record at gen 3, skipping 1 and 2: a gapped chain.
     let rope_pre = ropey::Rope::from_str("{}\n");
     let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);

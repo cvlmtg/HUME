@@ -6,7 +6,7 @@
 //! Freshness (the tree matches the text before a command runs) is
 //! `Syntax::ensure_current`; selection policy (Move/Extend, count,
 //! multi-cursor) is `hume-ops`'s `apply_text_object_by_mode` and
-//! `apply_object_motion` — this module only collects spans and answers two
+//! `apply_object_motion`; this module only collects spans and answers two
 //! lookups over them.
 
 // ── ObjectKind / ObjectSpan ──────────────────────────────────────────────
@@ -15,7 +15,7 @@
 /// `capture_name`/`from_capture_name` pair from one variant↦capture-name
 /// list. `TextObjectsQuery`'s capture table is sized
 /// `[[Option<u32>; ObjectSpan::ALL.len()]; ObjectKind::ALL.len()]` and
-/// indexed by `kind as usize`/`span as usize` — a variant added to the enum
+/// indexed by `kind as usize`/`span as usize`, so a variant added to the enum
 /// but not to a hand-synced `ALL` list compiles fine and panics out of
 /// bounds on the first query attach. One list generating all three closes
 /// that: there is nothing left to forget to update in step.
@@ -33,7 +33,7 @@ macro_rules! object_enum {
         impl $enum_name {
             /// Every variant, in declaration order. `pub` because
             /// `hume-editor` checks its own structural-command table
-            /// against this list — a kind here with no commands there
+            /// against this list: a kind here with no commands there
             /// would otherwise ship silently.
             pub const ALL: &'static [$enum_name] = &[$($enum_name::$variant),+];
 
@@ -70,7 +70,7 @@ object_enum! {
 
 object_enum! {
     /// Which part of an object a capture spans. `Movement` is Helix's
-    /// optional navigation-only capture (a function's name node, say) —
+    /// optional navigation-only capture (a function's name node, say),
     /// narrower than `Around`, consumed only by navigation, never by
     /// selection.
     ObjectSpan {
@@ -80,7 +80,7 @@ object_enum! {
     }
 }
 
-/// Which set of spans a caller wants collected — the whole input to
+/// Which set of spans a caller wants collected: the whole input to
 /// [`ObjectSpans::for_selector`], and therefore its memo key.
 ///
 /// Selection (`m i f`, `m a c`) names an exact `<kind>.<span>` capture;
@@ -139,7 +139,7 @@ impl TextObjectsQuery {
         self.captures[kind as usize][span as usize]
     }
 
-    /// Whether this query defines a `<kind>.<span>` capture. Test-only —
+    /// Whether this query defines a `<kind>.<span>` capture. Test-only:
     /// the collection paths want the index itself, not just its presence,
     /// so they call [`Self::capture_index`]; this exists because
     /// `.capture_index(..).is_some()` reads poorly in an assertion.
@@ -164,7 +164,7 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 /// A structural object's captured region, hull-collected from a
 /// `textobjects.scm` match and merged with every other match across a
 /// buffer's syntax layers: a sorted, deduplicated list of inclusive char
-/// spans. Owned rather than an iterator over the tree — `hume-editor` needs
+/// spans. Owned rather than an iterator over the tree: `hume-editor` needs
 /// `&state.buffers` and `&mut state.panes.state` at once when it applies the
 /// resulting selection, so the tree borrow this collects from must end
 /// before that, and N cursors × `count` navigation steps then probe a
@@ -178,7 +178,7 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 #[derive(Default)]
 pub struct ObjectSpans {
     /// Inclusive char spans, sorted by `(start, Reverse(end))` and
-    /// deduplicated — `adjacent`'s `partition_point` walk depends on this
+    /// deduplicated; `adjacent`'s `partition_point` walk depends on this
     /// exact ordering. `enclosing` is a full linear scan and doesn't need
     /// it, but keeps the same sorted-and-deduplicated data rather than a
     /// second representation.
@@ -193,7 +193,7 @@ impl ObjectSpans {
     /// cursor" test: an injected layer's captured nodes always lie inside
     /// the parent node that hosts the injection, so `enclosing`'s
     /// smallest-span and `adjacent`'s nearest-start already prefer the
-    /// innermost object once every layer's spans are merged into one list —
+    /// innermost object once every layer's spans are merged into one list,
     /// and a layer without a `textobjects` query (Rust's `comment`
     /// injection, markdown prose) simply contributes nothing. The outward
     /// fallback to an enclosing language's own objects is a consequence of
@@ -208,18 +208,18 @@ impl ObjectSpans {
     }
 
     /// Navigation spans for `kind`: per layer, the first span in priority
-    /// order that layer's query defines — Helix's rule that `.movement`
+    /// order that layer's query defines. This is Helix's rule that `.movement`
     /// exists precisely for the languages where `.around` is a poor
     /// navigation target (a whole function body vs. just its name).
     ///
     /// `Parameter` reorders rather than following the default priority:
     /// `Inside` first, since Helix's `parameter.around` hull is the argument
-    /// *plus its trailing comma* — a wart `m i a` / `m a a` reject for
-    /// selection (`around_from_inner` recomputes the separator itself) —
+    /// *plus its trailing comma*, a wart `m i a` / `m a a` reject for
+    /// selection (`around_from_inner` recomputes the separator itself),
     /// while `parameter.inside` is exactly the span `m i a` selects, so
     /// `goto-next-argument` lands on that same trimmed span. `Movement` and
     /// `Around` stay as fallbacks (reordered, not dropped) for a query that
-    /// defines only one of them — a grammar with `@parameter.around` but no
+    /// defines only one of them: a grammar with `@parameter.around` but no
     /// `@parameter.inside` still gets a navigable span rather than a silent
     /// no-op.
     pub fn collect_for_navigation(
@@ -247,8 +247,8 @@ impl ObjectSpans {
     /// asks, memoized on `layers`.
     ///
     /// The entry point every structural command goes through. Collection
-    /// walks each layer's whole tree — `collect_hulls` cannot clip with
-    /// `set_byte_range` without truncating grouped hulls — so repeating a
+    /// walks each layer's whole tree (`collect_hulls` cannot clip with
+    /// `set_byte_range` without truncating grouped hulls), so repeating a
     /// command (key repeat on `goto-next-*`, a macro or `.`-repeat step)
     /// would otherwise re-walk an unchanged tree every keypress.
     ///
@@ -287,7 +287,7 @@ impl ObjectSpans {
     /// Shared walk behind [`Self::collect`] and
     /// [`Self::collect_for_navigation`]: every layer whose bundle defines a
     /// textobjects query, hulled at the capture index `pick` picks for that
-    /// query — a layer whose `pick` returns `None` contributes nothing.
+    /// query; a layer whose `pick` returns `None` contributes nothing.
     fn collect_with(
         layers: &SyntaxLayers,
         text: &BufferText,
@@ -321,7 +321,7 @@ impl ObjectSpans {
 
     /// The next/previous object relative to `pos`.
     ///
-    /// **Start-keyed in both directions** — not `end` for the backward
+    /// **Start-keyed in both directions**, not `end` for the backward
     /// case, as Helix does: a backward press from inside an object must
     /// land on that object's own start first (Vim `[m`), then walk further
     /// back on a repeat. Keying backward on `end < pos` can never select
@@ -395,9 +395,9 @@ fn capture_hull(m: &tree_sitter::QueryMatch, capture_idx: u32) -> Option<(usize,
 ///
 /// `set_byte_range` is deliberately never used here, unlike the highlighter:
 /// the cursor prunes children outside its range, which truncates a grouped
-/// hull — the trailing comma a `parameter.around` pattern captures after
+/// hull (the trailing comma a `parameter.around` pattern captures after
 /// the argument, the leading attributes a `function.around` pattern
-/// captures before the function — rather than merely skipping matches that
+/// captures before the function) rather than merely skipping matches that
 /// don't touch a queried region. So this always walks the whole tree.
 fn collect_hulls(
     query: &TextObjectsQuery,
@@ -414,15 +414,15 @@ fn collect_hulls(
             continue;
         };
         if start_byte >= end_byte {
-            continue; // zero-width hull (MISSING nodes) — not a real object
+            continue; // zero-width hull (MISSING nodes), not a real object
         }
         // A stale tree (an edit recorded but not yet baked/reparsed) would
-        // let a node's byte range run past the live buffer's own length —
+        // let a node's byte range run past the live buffer's own length.
         // `Syntax::ensure_current` makes that impossible by construction, so
         // a violation here is a bug, not a case to paper over silently.
         debug_assert!(
             end_byte <= text.len_bytes(),
-            "text-object span end {end_byte} exceeds buffer length {} — tree is stale",
+            "text-object span end {end_byte} exceeds buffer length {}: tree is stale",
             text.len_bytes()
         );
         let start = text.byte_to_char(start_byte);
@@ -432,7 +432,7 @@ fn collect_hulls(
         // step: a hull whose byte range covers only a combining mark or ZWJ
         // continuation (its own token in some grammars) converts to a
         // one-char span, and stepping back to that cluster's start can land
-        // `end` before `start` — `enclosing`'s `span.end.chars_since(span.start)`
+        // `end` before `start`, and `enclosing`'s `span.end.chars_since(span.start)`
         // debug-asserts `start <= end` and would fire on a span this
         // malformed. Same "not a real object" treatment as the byte-space
         // degenerate case above.
