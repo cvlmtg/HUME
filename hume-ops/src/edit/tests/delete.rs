@@ -1,6 +1,6 @@
 use super::super::*;
-use hume_editing::word::WordChars;
 use hume_editing::selection::Selection;
+use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
