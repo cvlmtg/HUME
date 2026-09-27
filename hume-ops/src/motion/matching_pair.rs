@@ -6,25 +6,13 @@ use hume_rope::offset::CharOffset;
 use crate::pair::matching_bracket;
 use crate::tag::matching_tag;
 
-/// `%`-style jump: a bracket anywhere in `sel` goes to its partner (see
-/// [`matching_bracket`]); cursor anywhere inside a tag's own markup
-/// (`<name…>` or `</name>`) goes to its partner tag's `<`; anything else is
-/// a no-op. Brackets are tried first since a bracket match is cheaper to
-/// rule out than a tag scan.
+/// `%`-style jump: a bracket anywhere in `sel` goes to its partner; a cursor
+/// inside a tag's markup goes to the partner tag's `<`; anything else is a
+/// no-op. Tags resolve from the head only, because the tag scan is unbounded
+/// per position.
 ///
-/// Tags resolve from the head alone, unlike brackets: `matching_tag`'s
-/// backward tag-boundary scan is unbounded per position, so probing every
-/// position in the selection would be a per-keystroke cost proportional to
-/// selection length rather than a single fixed-cost scan.
-///
-/// Neither scan is grapheme-aware — both return a raw char offset that can
-/// sit right after a `GC_Prepend` codepoint joining forward into the
-/// following cluster (e.g. `(\u{0600})`: matching the `(` lands one char
-/// into the cluster the `)` belongs to). Snap once here, where both
-/// converge, and only on an actual hit — the no-op path already sits on a
-/// grapheme boundary by the buffer invariant, so snapping it is a
-/// guaranteed-identity round trip through two `GraphemeCursor` runs, wasted
-/// on the most common outcome of a mis-pressed `#`.
+/// Neither scan is grapheme-aware, so a hit can land inside a cluster (e.g.
+/// after a `GC_Prepend` codepoint) and is snapped to its start.
 pub(super) fn goto_matching_pair(text: &BufferText, sel: &Selection) -> CharOffset {
     matching_bracket(text, *sel)
         .or_else(|| matching_tag(text, sel.head()))

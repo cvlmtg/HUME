@@ -170,7 +170,6 @@ pub(crate) fn optional_usize_arg(val: SteelVal, ctx_name: &str) -> Result<Option
     }
 }
 
-/// A signed integer.
 pub(crate) fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
     match val {
         SteelVal::IntV(n) => Ok(n as i64),
@@ -178,7 +177,6 @@ pub(crate) fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
     }
 }
 
-/// A bool.
 pub(crate) fn bool_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> {
     match val {
         SteelVal::BoolV(b) => Ok(b),

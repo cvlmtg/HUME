@@ -1,4 +1,7 @@
 use super::super::*;
+use crate::register::yank_selections;
+use hume_editing::selection::Selection;
+use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
 
@@ -497,8 +500,6 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     // "ab" (emitted on its own line via the prefix '\n'). Gap "y" (between sel1
     // end and sel2 start) is retained on its own line. Sel2 replaces "z\nf",
     // retaining "oo". Both pasted "X\n" ranges are selected.
-    use hume_editing::selection::{Selection, SelectionSet};
-    use hume_rope::offset::CharOffset;
     // parse_state requires at least one selection marker; we ignore the returned sels.
     let (text, _) = test_fixtures::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
     let sels = SelectionSet::from_vec(
@@ -525,7 +526,6 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
 
 #[test]
 fn yank_then_paste_after_round_trip() {
-    use crate::register::yank_selections;
     let (text, sels) = test_fixtures::testing::parse_state("-[h]>ello\n");
     let yanked = yank_selections(&text, &sels);
     assert_eq!(yanked, vec!["h"], "yank captures the cursor char");
@@ -542,7 +542,6 @@ fn yank_then_paste_after_round_trip() {
 
 #[test]
 fn yank_multi_cursor_then_paste_after_n_to_n() {
-    use crate::register::yank_selections;
     let (text, sels) = test_fixtures::testing::parse_state("-[h]>ell-[o]>\n");
     let yanked = yank_selections(&text, &sels);
     assert_eq!(yanked, vec!["h", "o"]);

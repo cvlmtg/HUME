@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::selection::Selection;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
@@ -162,13 +163,11 @@ fn align_remove_tab_before_selection() {
     // removable run (' ', '\t') is worth col(4) − col(1) = 3 cells, so
     // fit_0 = max(line 0: 1, line 1: 4 − 3 = 1) = 1 — matching the primary's
     // own baseline exactly. target[0] stays 1, so the primary never moves.
-    use crate::edit::align_selections;
-    use hume_editing::selection::SelectionSet;
-    let text = hume_editing::text::BufferText::from(" =\n  \t=\n");
+    let text = BufferText::from(" =\n  \t=\n");
     let sels = SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::collapsed(CharOffset::new(1)), // primary: '=' col 1
-            hume_editing::selection::Selection::collapsed(CharOffset::new(6)), // secondary: '=' col 3
+            Selection::collapsed(CharOffset::new(1)), // primary: '=' col 1
+            Selection::collapsed(CharOffset::new(6)), // secondary: '=' col 3
         ],
         0,
     );
@@ -194,13 +193,11 @@ fn align_tab_in_removable_run_pads_to_exact_target() {
     // only removable unit is the whole tab, which frees 2 (col 2→4) — one
     // more than needed. Deleting the tab and padding 1 space back lands '='
     // exactly on col 3, not one column left of it.
-    use crate::edit::align_selections;
-    use hume_editing::selection::SelectionSet;
-    let text = hume_editing::text::BufferText::from("aa =\na \t=\n");
+    let text = BufferText::from("aa =\na \t=\n");
     let sels = SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::collapsed(CharOffset::new(3)), // primary: '=' col 3
-            hume_editing::selection::Selection::collapsed(CharOffset::new(8)), // secondary: '=' col 4
+            Selection::collapsed(CharOffset::new(3)), // primary: '=' col 3
+            Selection::collapsed(CharOffset::new(8)), // secondary: '=' col 4
         ],
         0,
     );
@@ -224,13 +221,11 @@ fn align_accounts_for_a_tab_before_the_alignment_point() {
     // display columns left of primary's, visibly ragged despite matching
     // grapheme counts. Aligning by display column inserts enough to match
     // column 6, where both actually line up on screen.
-    use crate::edit::align_selections;
-    use hume_editing::selection::SelectionSet;
-    let text = hume_editing::text::BufferText::from("a\tx = 1\nbb = 2\n");
+    let text = BufferText::from("a\tx = 1\nbb = 2\n");
     let sels = SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::collapsed(CharOffset::new(4)), // primary: '=' in "a\tx = 1"
-            hume_editing::selection::Selection::collapsed(CharOffset::new(11)), // secondary: '=' in "bb = 2"
+            Selection::collapsed(CharOffset::new(4)), // primary: '=' in "a\tx = 1"
+            Selection::collapsed(CharOffset::new(11)), // secondary: '=' in "bb = 2"
         ],
         0,
     );
@@ -275,11 +270,6 @@ fn align_two_slots_static_text_between() {
     //   "const foo -[=]> 444; -[//]> foo\n"
     //   "const foobar -[=]> 6757383; -[//]> bar\n"
     //   "const a -[=]> 34; -[//]> a\n"
-    use crate::edit::align_selections;
-    use hume_editing::{
-        selection::{Selection, SelectionSet},
-        text::BufferText,
-    };
     let text = BufferText::from(
         "const foo = 444; // foo\nconst foobar = 6757383; // bar\nconst a = 34; // a\n",
     );

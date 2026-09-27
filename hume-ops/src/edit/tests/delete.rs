@@ -1,5 +1,6 @@
 use super::super::*;
 use hume_editing::word::WordChars;
+use hume_editing::selection::Selection;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
@@ -695,17 +696,12 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
     // advancing b.old_pos. The second cursor covers the whole last line
     // "c\n" [anchor=3, head=4]. The cursor produced for that deletion must
     // land at char 0 (start of the merged "a" line), not at char 1.
-    //
-    // char_col = del_start - line_to_char(prev_line) = 2 - 0 = 2
-    // retain(0); cursor_new = b.new_pos().saturating_sub(2) = 1 - 2 = 0 ✓
-    use crate::edit::delete_selection;
-    use hume_editing::selection::SelectionSet;
-    let text = hume_editing::text::BufferText::from("ab\nc\n");
+    let text = BufferText::from("ab\nc\n");
     // primary=1 so the last-line selection is the primary; we assert its cursor.
     let sels = SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::collapsed(CharOffset::new(1)), // on 'b'
-            hume_editing::selection::Selection::new(CharOffset::new(3), CharOffset::new(4)), // last line "c\n"
+            Selection::collapsed(CharOffset::new(1)), // on 'b'
+            Selection::new(CharOffset::new(3), CharOffset::new(4)), // last line "c\n"
         ],
         1, // primary is the last-line cursor
     );
