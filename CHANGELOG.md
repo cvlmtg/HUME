@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.13.0] - 2026-09-28
+
 ### Breaking changes
 - `--keys` (headless mode) now loads `init.scm` and plugins like interactive mode; pass `--no-config` to skip them.
 - `show-drawer-list!` returns a token that `close-drawer!` now takes as its first argument, errors on an empty list, and calls the replaced drawer's callback with `#f`.
