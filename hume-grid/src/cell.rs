@@ -4,14 +4,14 @@ use compact_str::CompactString;
 /// One cell of the frame: the text drawn in it, its style, and how many
 /// columns it advances the cursor.
 ///
-/// `advance` is stored, never recomputed — see the crate doc. It is the
+/// `advance` is stored, never recomputed (see the crate doc). It is the
 /// writer's own measurement, carried forward so the diff and the emitter
 /// consume the same number the text was laid out with.
 ///
 /// A double-width glyph is stored as a *head* (the text, `advance == 2`)
 /// followed by a *continuation*: no text, `advance == 0`, and **the head's
 /// style**. Carrying the style rather than leaving it default is what makes
-/// cell equality sufficient for the diff — a continuation then differs from
+/// cell equality sufficient for the diff: a continuation then differs from
 /// the previous frame exactly when its head does, so a changed glyph can
 /// never be detected at its second column alone, where a repaint would start
 /// mid-glyph. [`Grid`](crate::Grid) is what guarantees the pairing.
@@ -36,7 +36,7 @@ impl Cell {
     /// against a caller bug, not a policy about zero-width text.
     ///
     /// `pub(crate)`: only [`Grid`](crate::Grid)'s write primitives construct
-    /// a head cell directly — everything outside this crate goes through
+    /// a head cell directly; everything outside this crate goes through
     /// [`Grid::set_glyph`](crate::Grid::set_glyph) instead.
     pub(crate) fn glyph(text: &str, advance: u8, style: ResolvedStyle) -> Cell {
         Cell {
@@ -55,10 +55,10 @@ impl Cell {
         }
     }
 
-    /// The second column of a double-width glyph. Carries `style` — the
-    /// head's — for the reason in this type's doc.
+    /// The second column of a double-width glyph. Carries `style` (the
+    /// head's) for the reason in this type's doc.
     ///
-    /// `pub(crate)`: see [`Cell::glyph`] — [`Grid`](crate::Grid) is the only
+    /// `pub(crate)`: see [`Cell::glyph`]. [`Grid`](crate::Grid) is the only
     /// constructor of a continuation cell.
     pub(crate) fn continuation(style: ResolvedStyle) -> Cell {
         Cell {
@@ -79,7 +79,7 @@ impl Cell {
         self.style
     }
 
-    /// Columns the cursor moves past this cell — 0 for a continuation.
+    /// Columns the cursor moves past this cell: 0 for a continuation.
     pub fn advance(&self) -> u16 {
         self.advance as u16
     }
@@ -90,7 +90,7 @@ impl Cell {
 }
 
 impl Default for Cell {
-    /// A blank cell in the terminal's own colours — what a grid holds before
+    /// A blank cell in the terminal's own colours: what a grid holds before
     /// anything is drawn into it, and what it is reset to between frames.
     fn default() -> Cell {
         Cell::blank(ResolvedStyle::default())

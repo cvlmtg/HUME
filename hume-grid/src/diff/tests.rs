@@ -20,7 +20,7 @@ fn blue() -> ResolvedStyle {
 }
 
 /// `(y, x, rendered text of each cell)` for every run, with `_` for a
-/// continuation — a compact, readable form to assert against.
+/// continuation: a compact, readable form to assert against.
 fn runs_of(next: &Grid, prev: &Grid, max_gap: u16) -> Vec<(u16, u16, String)> {
     next.diff_runs(prev, max_gap)
         .map(|r| {
@@ -101,7 +101,7 @@ fn wide_replaced_by_narrow_emits_both_columns() {
 #[test]
 fn swapping_a_wide_glyph_for_another_emits_only_its_head() {
     // The continuation is identical in both frames (same style, no text), so
-    // it is not a change. Printing the head covers both columns anyway — the
+    // it is not a change. Printing the head covers both columns anyway: the
     // emitter advances by the head's own width, not by the run's length.
     let mut prev = Grid::new(5, 1);
     prev.set_glyph(1, 0, WIDE, 2, red());
@@ -140,7 +140,7 @@ fn a_gap_within_the_budget_is_merged() {
 
 #[test]
 fn a_gap_past_the_budget_splits_the_run() {
-    // Changes at 0 and 6 leave five unchanged cells — one too many.
+    // Changes at 0 and 6 leave five unchanged cells, one too many.
     let prev = Grid::new(8, 1);
     let mut next = prev.clone();
     next.set_glyph(0, 0, "a", 1, red());
@@ -178,8 +178,8 @@ fn a_gap_merge_can_span_a_whole_glyph() {
 // ── Property-based test (proptest) ───────────────────────────────────────
 //
 // Replay the diff's runs onto a copy of the previous frame the way a
-// terminal would — draw each non-continuation cell's text at the cursor, then
-// advance by that glyph's own width — and require the result to equal the
+// terminal would (draw each non-continuation cell's text at the cursor, then
+// advance by that glyph's own width) and require the result to equal the
 // next frame exactly. This checks completeness (nothing changed was left
 // out) and glyph-boundary safety (no run starts or lands mid-glyph) without
 // restating the algorithm the diff uses to find them.
@@ -189,7 +189,7 @@ use proptest::prelude::*;
 const W: u16 = 8;
 const H: u16 = 3;
 
-/// Narrow and wide, single- and multi-byte — enough for cells to collide on
+/// Narrow and wide, single- and multi-byte: enough for cells to collide on
 /// equality often, which is what makes gaps and unchanged runs appear.
 const TEXTS: [(&str, u8); 4] = [("a", 1), ("é", 1), (WIDE, 2), (WIDE2, 2)];
 
@@ -264,7 +264,7 @@ proptest! {
         for (y, x, cells) in &runs {
             let mut cx = *x;
             for cell in cells {
-                // A continuation is already covered by the glyph before it —
+                // A continuation is already covered by the glyph before it:
                 // the terminal drew both columns at once.
                 if cell.is_continuation() {
                     continue;

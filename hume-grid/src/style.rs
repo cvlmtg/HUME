@@ -6,17 +6,17 @@ use bitflags::bitflags;
 /// One type end to end: what the theme cascade composes, what a
 /// [`Cell`](crate::Cell) stores, and what the emitter turns into SGR
 /// parameters. There is no separate "backend style" to convert into, which
-/// is what keeps the underline *shape* below reaching the terminal at all —
+/// is what keeps the underline *shape* below reaching the terminal at all:
 /// it survives only because nothing downstream narrows this type.
 ///
 /// `None` means two things, which agree. In a cascade
 /// (see [`ResolvedStyle::layer`]) it means "inherit whatever is underneath";
 /// in a cell it means "the terminal's own default". Those compose because
-/// the terminal default *is* the bottom layer of every cascade — so a
+/// the terminal default *is* the bottom layer of every cascade, so a
 /// cascade that resolves to `None` and a cell that was never given a colour
 /// are the same state, and one type can carry both without ambiguity.
 ///
-/// A cell holds one of these outright — storing it replaces whatever the
+/// A cell holds one of these outright: storing it replaces whatever the
 /// cell held before, with nothing implicitly inherited. Composition, where a
 /// partial style is resolved against what is already painted, belongs to the
 /// drawing layer above (`hume_engine::render::Canvas`), which is the only
@@ -53,7 +53,7 @@ impl ResolvedStyle {
     ///
     /// The style-cascade counterpart of [`layer`](Self::layer) for
     /// resolving a partial per-write style against whatever a cell already
-    /// holds, rather than against another cascade layer — the caller has an
+    /// holds, rather than against another cascade layer. The caller has an
     /// opinion (`self`) that may leave some fields unset, and `under` is
     /// what's already painted there. See
     /// `hume_engine::render::Canvas::over_painted`.

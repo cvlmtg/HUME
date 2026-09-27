@@ -2,7 +2,7 @@ use crate::cell::Cell;
 use crate::diff::DiffRuns;
 use crate::style::ResolvedStyle;
 
-/// A rectangular grid of [`Cell`]s — one frame's worth of terminal content.
+/// A rectangular grid of [`Cell`]s: one frame's worth of terminal content.
 ///
 /// Origin-free: a grid is `width` × `height` addressed from `(0, 0)`. Screen
 /// regions are described by [`Rect`](crate::Rect), which carries an origin,
@@ -11,7 +11,7 @@ use crate::style::ResolvedStyle;
 ///
 /// ## The write invariant
 ///
-/// `set_glyph` and `fill_span` (`pub(crate)` — reached from outside this
+/// `set_glyph` and `fill_span` (`pub(crate)`, reached from outside this
 /// crate only through [`Canvas`](crate::Canvas)) are the only ways to change a
 /// cell, and both maintain: **every continuation has its head immediately
 /// reachable to its left, and every head is followed by exactly as many
@@ -21,7 +21,7 @@ use crate::style::ResolvedStyle;
 ///
 /// That invariant is what buys the diff its simplicity. Because a
 /// continuation carries its head's style, a continuation differs between two
-/// frames only when its head does too — so a run of changed cells can never
+/// frames only when its head does too, so a run of changed cells can never
 /// begin at a continuation, and repainting a run can never start in the
 /// middle of a glyph. Enforced here so a new write site cannot forget.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -60,7 +60,7 @@ impl Grid {
             .resize(width as usize * height as usize, Cell::default());
     }
 
-    /// Blank every cell, keeping the allocation. Run between frames — HUME
+    /// Blank every cell, keeping the allocation. Run between frames: HUME
     /// composes each frame from scratch.
     pub fn reset(&mut self) {
         self.cells.fill(Cell::default());
@@ -79,7 +79,7 @@ impl Grid {
         &self.cells[start..start + self.width as usize]
     }
 
-    /// Runs of cells that differ from `prev` — see `crate::diff`.
+    /// Runs of cells that differ from `prev`. See `crate::diff`.
     pub fn diff_runs<'a>(&'a self, prev: &'a Grid, max_gap: u16) -> DiffRuns<'a> {
         DiffRuns::new(self, prev, max_gap)
     }
@@ -92,7 +92,7 @@ impl Grid {
     ///
     /// Writes the head plus its continuations, and repairs both edges so the
     /// row keeps this type's write invariant. A glyph that would run past the
-    /// right edge is written as blanks instead — never split, matching the
+    /// right edge is written as blanks instead, never split, matching the
     /// rule text measurement follows everywhere else in HUME. Out-of-bounds
     /// coordinates are ignored.
     pub(crate) fn set_glyph(
@@ -110,7 +110,7 @@ impl Grid {
         let span = advance as u16;
 
         // Clipped: the glyph is dropped whole and its columns blanked, never
-        // split across the edge — the rule `hume_rope::width` truncation
+        // split across the edge, the rule `hume_rope::width` truncation
         // follows, so a field measured to fit and a field drawn to fit agree.
         // Exactly `fill_span`'s own clip-and-blank shape, reused rather than
         // re-derived.
@@ -187,7 +187,7 @@ impl Grid {
     }
 }
 
-/// Test/debug convenience — panics out of bounds, unlike [`Grid::cell`]'s
+/// Test/debug convenience: panics out of bounds, unlike [`Grid::cell`]'s
 /// `Option`. Production code reads cells through [`Grid::cell`]/[`Grid::row`]
 /// instead, where an out-of-bounds coordinate is an expected, handled case
 /// rather than a bug to panic on.

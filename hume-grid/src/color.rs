@@ -4,7 +4,7 @@
 /// requires true-colour terminals (see the project's terminal-compatibility
 /// rule), and its theme loader resolves a Helix-style ANSI colour name
 /// (`"red"`, `"light-gray"`) to a fixed `Rgb` at load time rather than
-/// carrying the name through — so a second variant here would exist purely
+/// carrying the name through, so a second variant here would exist purely
 /// to be unreachable, and it would cost something real: with one variant
 /// `lerp` is total, where a blend over a colour enum has to pass non-RGB
 /// values through unchanged and so silently skips the effect it was asked
@@ -12,12 +12,12 @@
 ///
 /// "No colour" is spelled `Option<Rgb>` rather than a variant of this type,
 /// so the same `None` reads as "inherit" in a style cascade and "the
-/// terminal's own default" in a cell — see [`ResolvedStyle`](crate::ResolvedStyle).
+/// terminal's own default" in a cell. See [`ResolvedStyle`](crate::ResolvedStyle).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
 impl Rgb {
-    /// Blend toward `target` by `factor` — `0.0` leaves `self` unchanged,
+    /// Blend toward `target` by `factor`: `0.0` leaves `self` unchanged,
     /// `1.0` returns `target`.
     ///
     /// Used for the dim applied to every cell of a non-focused pane.

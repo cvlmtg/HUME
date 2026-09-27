@@ -6,7 +6,7 @@
 //! different (but visually similar) character than the rest.
 //!
 //! Written as `\u{...}` escapes rather than literal characters for the same
-//! grep-ability reason — a literal box-drawing glyph pasted into a diff is
+//! grep-ability reason: a literal box-drawing glyph pasted into a diff is
 //! indistinguishable by eye from a lookalike Unicode character.
 
 pub const HORIZONTAL: &str = "\u{2500}";

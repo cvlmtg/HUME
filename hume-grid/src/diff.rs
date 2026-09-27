@@ -3,8 +3,8 @@ use crate::grid::Grid;
 
 /// A horizontal run of cells to repaint: `cells` belong at `x..` on row `y`.
 ///
-/// A run may extend past the last *changed* cell of a wide glyph — it carries
-/// the head, and the head's own width covers the rest — so an emitter must
+/// A run may extend past the last *changed* cell of a wide glyph (it carries
+/// the head, and the head's own width covers the rest), so an emitter must
 /// advance the cursor by each cell's [`Cell::advance`], not by the length of
 /// this slice.
 pub struct RowRun<'a> {
@@ -13,7 +13,7 @@ pub struct RowRun<'a> {
     pub cells: &'a [Cell],
 }
 
-/// Runs of cells that differ between two grids — see [`Grid::diff_runs`].
+/// Runs of cells that differ between two grids. See [`Grid::diff_runs`].
 ///
 /// Plain double-buffer diffing: compare cell by cell, emit what changed.
 /// There is no damage tracking above this (every frame is composed from
@@ -48,7 +48,7 @@ impl<'a> DiffRuns<'a> {
         debug_assert_eq!(
             next.size(),
             prev.size(),
-            "diffing grids of different sizes — the caller must resize both together"
+            "diffing grids of different sizes: the caller must resize both together"
         );
         DiffRuns {
             next,
@@ -77,7 +77,7 @@ impl<'a> Iterator for DiffRuns<'a> {
             };
 
             // Absorb the next change while no more than `max_gap` unchanged
-            // cells separate it from the one before — see this type's doc.
+            // cells separate it from the one before (see this type's doc).
             let mut end = start + 1;
             while let Some(k) = {
                 let limit = end
@@ -92,7 +92,7 @@ impl<'a> Iterator for DiffRuns<'a> {
             self.x = end;
             debug_assert!(
                 !next_row[start as usize].is_continuation(),
-                "run at ({start}, {}) starts on a continuation — a changed \
+                "run at ({start}, {}) starts on a continuation: a changed \
                  continuation must always be preceded by its changed head",
                 self.y
             );

@@ -41,7 +41,7 @@ impl Rect {
         self.x
     }
 
-    /// One column past the rightmost — the exclusive end, and so also the
+    /// One column past the rightmost: the exclusive end, and so also the
     /// `right_edge` bound a text write clips against.
     pub const fn right(self) -> u16 {
         self.x.saturating_add(self.width)
@@ -52,7 +52,7 @@ impl Rect {
         self.y
     }
 
-    /// One row past the bottom — the exclusive end.
+    /// One row past the bottom: the exclusive end.
     pub const fn bottom(self) -> u16 {
         self.y.saturating_add(self.height)
     }

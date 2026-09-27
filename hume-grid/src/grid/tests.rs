@@ -18,7 +18,7 @@ fn blue() -> ResolvedStyle {
 }
 
 /// Every cell of a row rendered as its text, with `_` standing in for a
-/// continuation — an independent read of the row's shape that doesn't go
+/// continuation: an independent read of the row's shape that doesn't go
 /// through the accessors under test one at a time.
 fn shape(grid: &Grid, y: u16) -> String {
     grid.row(y)
