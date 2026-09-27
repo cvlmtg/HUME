@@ -151,10 +151,10 @@ In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message te
 
 ## Persistence and safety
 
-A few things worth knowing before trusting HUME with real work:
+A few details worth knowing about how HUME currently handles persistence:
 
 - **Undo history is in-memory only.** It's **lost when HUME exits**; there is no undo across restarts (not yet).
 - **No swap or backup files.** HUME does not write Vim-style `.swp` files. Saves write to a temporary file and rename it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **UTF-8 only.** Files must be valid UTF-8: invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it will appear as a character at the top of the buffer.
-- **CRLF detected and preserved.** Files containing `\r\n` are normalized to `\n` in the buffer and re-expanded to `\r\n` on save; the status bar shows `CRLF` or `LF`. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in `\n` no matter the source. A file using bare `\r` (pre-OS X Mac) is read correctly but is not a preserved convention: it loads as `LF` and saves with `\n`.
+- **CRLF detected and preserved.** Files using CRLF line endings are normalized to LF in the buffer and re-expanded to CRLF on save; the status bar shows `CRLF` or `LF`. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in LF no matter the source. A file using bare CR line endings (pre-OS X Mac) is read correctly but is not a preserved convention: it loads and saves as LF.
 - **No on-disk log file.** `:messages` is the entire logging surface: an in-memory ring capped at 1000 entries, discarded on exit. If you need to keep warnings/errors, copy them out of `:messages` before quitting.
