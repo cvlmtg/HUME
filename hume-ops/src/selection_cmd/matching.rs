@@ -184,7 +184,5 @@ pub fn cmd_trim_selection_whitespace(
     new_sels
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

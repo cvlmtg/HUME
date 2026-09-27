@@ -6,8 +6,6 @@ use self::history::{HistoryDir, HistoryKind};
 use super::Editor;
 use super::input_stack::{InputEvent, LayerRef};
 
-// ── MiniBuffer ────────────────────────────────────────────────────────────────
-
 /// The command-line mini-buffer, active while the user is typing a command
 /// or search pattern.
 ///

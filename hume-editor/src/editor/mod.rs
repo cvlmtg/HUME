@@ -92,8 +92,6 @@ pub(in crate::editor) use hume_engine::types::EditorMode as Mode;
 use self::inline_output::InlineOutput;
 use self::tui::Tui;
 
-// ── ConfigState ───────────────────────────────────────────────────────────────
-
 /// Every field a `config`/`open`/`cmd`-kind Steel builtin, `set-option!`, or
 /// `init.scm` itself can write and that must go back to its compiled-in
 /// default on `:reload-config` — the keymap, the registry of dynamic/lazy
@@ -891,8 +889,6 @@ impl EditorState {
             });
     }
 }
-
-// ── Editor ────────────────────────────────────────────────────────────────────
 
 pub(crate) struct Editor {
     /// All command-mutable editor data. Disjoint from `scripting` so Steel evals

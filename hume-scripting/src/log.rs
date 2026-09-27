@@ -39,7 +39,5 @@ pub(crate) fn log_msg(
     Ok(steel::rvals::SteelVal::Void)
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

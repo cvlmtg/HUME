@@ -208,7 +208,5 @@ fn normalise_shift_tab(code: KeyCode, mods: Modifiers) -> (KeyCode, Modifiers) {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

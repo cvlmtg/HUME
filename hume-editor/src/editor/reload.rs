@@ -13,8 +13,6 @@ use super::event::EditorEvent;
 use super::{ConfigPath, Editor, Severity};
 use crate::editor::error::CommandError;
 
-// ── ReloadSnapshot ───────────────────────────────────────────────────────────
-
 /// State `:reload-config` must carry across the gap between
 /// `Editor::reset_config_state` (which captures it, right before the reset
 /// it captures it *from*) and `Editor::init_scripting`/

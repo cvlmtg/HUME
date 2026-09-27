@@ -607,8 +607,6 @@ impl MappableCommand {
     }
 }
 
-// ── TypedCommand ──────────────────────────────────────────────────────────────
-
 /// A command invocable from the `:` command line.
 ///
 /// Typed commands have a canonical name and optional short aliases. They are

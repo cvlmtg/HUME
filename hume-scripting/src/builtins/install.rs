@@ -244,7 +244,5 @@ pub(crate) fn release_install_lock(ctx: &mut SteelCtx) -> SteelResult {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

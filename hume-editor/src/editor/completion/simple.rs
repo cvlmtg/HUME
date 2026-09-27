@@ -92,7 +92,5 @@ pub(super) fn complete_theme(_ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
         .collect()
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

@@ -216,8 +216,6 @@ impl RegisterSet {
     }
 }
 
-// ── KillRing ──────────────────────────────────────────────────────────────────
-
 /// Bounded ring buffer of deleted / yanked text entries.
 ///
 /// Newest entry is always at index 0 (the "head"). Entries are accessed via
@@ -389,8 +387,6 @@ pub fn yank_selections(text: &BufferText, sels: &SelectionSet) -> Vec<String> {
 pub fn is_register_linewise(text: &str) -> bool {
     text.ends_with('\n')
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

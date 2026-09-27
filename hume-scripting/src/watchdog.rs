@@ -165,7 +165,5 @@ fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<()>) {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

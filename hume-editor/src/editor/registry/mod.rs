@@ -70,8 +70,6 @@ fn ci_get<'a, V>(map: &'a FxHashMap<Cow<'static, str>, V>, name: &str) -> Option
     })
 }
 
-// ── CommandRegistry ───────────────────────────────────────────────────────────
-
 /// Registry of all commands — the single namespace for mappable and typed commands.
 ///
 /// Built once via [`CommandRegistry::with_defaults`] and stored on the editor.
@@ -371,8 +369,6 @@ impl CommandRegistry {
             .collect()
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

@@ -10,8 +10,6 @@ use hume_engine::theme::diagnostic_scopes;
 
 use super::EditorState;
 
-// ── Severity ─────────────────────────────────────────────────────────────────
-
 /// Severity level for a message, controlling both logging and display.
 ///
 /// | Severity | Logged? | Shown as `status_msg`? |
@@ -73,8 +71,6 @@ impl Severity {
         }
     }
 }
-
-// ── LogEntry ─────────────────────────────────────────────────────────────────
 
 /// A single entry in the persistent message log.
 #[derive(Debug, Clone)]
@@ -294,8 +290,6 @@ impl EditorState {
         }
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

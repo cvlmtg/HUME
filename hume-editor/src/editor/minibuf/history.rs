@@ -29,8 +29,6 @@ pub(in crate::editor) enum HistoryDir {
     Next,
 }
 
-// ── History ───────────────────────────────────────────────────────────────────
-
 /// A single bounded history ring with per-session navigation state.
 ///
 /// Entries are stored oldest-first; `back()` is always the most recent.
@@ -161,8 +159,6 @@ impl History {
     }
 }
 
-// ── HistoryStore ──────────────────────────────────────────────────────────────
-
 /// Container for all minibuffer history rings. A single instance lives on
 /// `Editor`; rings are accessed by [`HistoryKind`].
 #[derive(Debug)]
@@ -226,8 +222,6 @@ impl HistoryStore {
         self.search_b.set_capacity(new_cap);
     }
 }
-
-// ── Unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

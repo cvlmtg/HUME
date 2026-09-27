@@ -331,7 +331,5 @@ fn char_range(offsets: &[usize], token_range: &Range<usize>) -> Range<usize> {
     offsets[token_range.start]..offsets[token_range.end]
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

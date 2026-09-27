@@ -112,7 +112,5 @@ pub(crate) fn downcast_pane(val: &SteelVal) -> Option<PaneHandle> {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

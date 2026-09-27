@@ -44,8 +44,6 @@ use std::borrow::Cow;
 
 use termina::event::KeyEvent;
 
-// ── WaitCharPending ───────────────────────────────────────────────────────────
-
 /// State stored on the editor after a wait-char key (f/t/F/T/r).
 ///
 /// On the next keypress the dispatcher stores the character in
@@ -59,8 +57,6 @@ pub(crate) struct WaitCharPending {
     /// char-consumption time.
     pub ctrl_extend: bool,
 }
-
-// ── KeymapCommand ─────────────────────────────────────────────────────────────
 
 /// What a key binding resolves to after trie lookup.
 ///
@@ -80,8 +76,6 @@ pub(in crate::editor) struct KeymapCommand {
     pub force_extend: bool,
 }
 
-// ── WalkResult ────────────────────────────────────────────────────────────────
-
 /// The outcome of walking a key sequence through a [`KeyTrie`].
 pub(super) enum WalkResult {
     /// The sequence matches a leaf command — execute it.
@@ -95,8 +89,6 @@ pub(super) enum WalkResult {
     /// The sequence has no match in this trie.
     NoMatch,
 }
-
-// ── KeyTrie ───────────────────────────────────────────────────────────────────
 
 /// A single level of the keymap trie.
 ///
@@ -265,8 +257,6 @@ impl KeyTrie {
     }
 }
 
-// ── BindMode ─────────────────────────────────────────────────────────────────
-
 /// Which keymap to apply a user-supplied binding to.
 ///
 /// Used by [`Keymap::bind_user_with_extend`] and [`Keymap::unbind_user`].
@@ -278,8 +268,6 @@ pub(in crate::editor) enum BindMode {
     Extend,
     Insert,
 }
-
-// ── Keymap ────────────────────────────────────────────────────────────────────
 
 /// Per-mode keymap container. One instance lives on the [`Editor`].
 ///
@@ -414,8 +402,6 @@ impl Keymap {
         out
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

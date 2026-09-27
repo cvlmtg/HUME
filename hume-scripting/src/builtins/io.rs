@@ -99,7 +99,5 @@ pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> SteelResult {
     Ok(SteelVal::BoolV(true))
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

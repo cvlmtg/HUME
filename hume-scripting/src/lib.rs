@@ -107,8 +107,6 @@ use hooks::HookRegistry;
 use host::EditorHost;
 use lazy::{LazyRegistry, PluginState};
 
-// ── ScriptingRegistries ───────────────────────────────────────────────────────
-
 /// The persistent registry fields bundled as a unit so they can be
 /// borrowed as a single `&mut ScriptingRegistries` — disjoint from the
 /// Steel VM (`steel`) and the rest of `ScriptingHost`.
@@ -157,8 +155,6 @@ pub(crate) struct ScriptingRegistries {
     pub(crate) lsp_notification_handlers: rustc_hash::FxHashMap<String, Vec<SteelVal>>,
 }
 
-// ── HostBundle ────────────────────────────────────────────────────────────────
-
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
 ///
 /// Built by [`ScriptingHost::steel_and_bundle`] and passed to
@@ -173,8 +169,6 @@ pub(crate) struct HostBundle<'a> {
     /// `SteelCtx::interrupt_flag`, avoiding a second clone at eval time.
     interrupt_flag: Arc<AtomicBool>,
 }
-
-// ── ScriptingHost ─────────────────────────────────────────────────────────────
 
 /// The embedded Steel scripting host.
 ///

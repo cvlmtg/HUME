@@ -328,8 +328,6 @@ impl JumpList {
     }
 }
 
-// ── JumpLists ────────────────────────────────────────────────────────────────
-
 /// Every pane's [`JumpList`], keyed by `PaneId`.
 ///
 /// A newtype rather than a bare `SecondaryMap` so "do X to every pane's jump
@@ -417,8 +415,6 @@ impl std::ops::IndexMut<PaneId> for JumpLists {
         &mut self.0[pid]
     }
 }
-
-// ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

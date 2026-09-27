@@ -80,8 +80,6 @@ object_enum! {
     }
 }
 
-// ── SpanSelector ───────────────────────────────────────────────────────────
-
 /// Which set of spans a caller wants collected — the whole input to
 /// [`ObjectSpans::for_selector`], and therefore its memo key.
 ///
@@ -97,8 +95,6 @@ pub enum SpanSelector {
     Navigation(ObjectKind),
 }
 
-// ── Direction ──────────────────────────────────────────────────────────────
-
 /// The only direction enum for structural navigation. `hume-ops` takes a
 /// `backward: bool` at its API boundary (the `apply_word_select`
 /// convention) rather than importing this type.
@@ -107,8 +103,6 @@ pub enum Direction {
     Forward,
     Backward,
 }
-
-// ── TextObjectsQuery ───────────────────────────────────────────────────────
 
 /// A compiled `textobjects.scm` query plus a dense `(kind, span) → capture
 /// index` table, resolved once at attach time by splitting each capture

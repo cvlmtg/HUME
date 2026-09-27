@@ -9,8 +9,6 @@ use crate::highlight::RopeProvider;
 use crate::parse_worker::{MAX_INJECTION_DEPTH, ParsedInjection, run_parse};
 use crate::registry::GrammarBundle;
 
-// ── InjectionsQuery ────────────────────────────────────────────────────────────
-
 /// A compiled `injections.scm` query plus the per-pattern settings needed to
 /// resolve embedded-language regions at parse time (fenced code blocks,
 /// combined `markdown.inline` layers, doc-comment content, etc.).
@@ -305,8 +303,6 @@ pub(crate) fn resolve_and_parse_injections(
 
     out
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

@@ -246,7 +246,5 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

@@ -464,7 +464,5 @@ pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResu
     Ok(SteelVal::Void)
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

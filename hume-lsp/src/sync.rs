@@ -143,7 +143,5 @@ fn wire_pos_to_byte(text: &str, pos: lsp_types::Position, enc: PositionEncoding)
     line_start + within_line
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

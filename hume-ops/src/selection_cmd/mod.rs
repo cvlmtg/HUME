@@ -141,7 +141,5 @@ pub fn cmd_cycle_primary_backward(
     new_sels
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

@@ -99,8 +99,6 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
     Ok((open_buffer_and_notify(ev, state, doc), true))
 }
 
-// ── switch_pane_to_buffer ──────────────────────────────────────────────────────
-
 /// Redirect pane `pid` to `target` without recording a jump.
 ///
 /// When `pid` is the focused pane and `target` differs from what it
@@ -160,8 +158,6 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     );
 }
 
-// ── switch_to_buffer_with_jump ────────────────────────────────────────────────
-
 /// Redirect the focused pane to `target`, pushing the outgoing position onto
 /// `pane_jumps[focused_pane_id]` — unless `target` is the buffer already
 /// focused, which would be a no-op switch (e.g. `:tutor` run a second time
@@ -193,8 +189,6 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
     }
     switch_pane_to_buffer(state, ev, pid, target);
 }
-
-// ── close_buffer ──────────────────────────────────────────────────────────────
 
 /// Remove buffer `id`. Every pane showing it (active tab or not) redirects
 /// to the MRU replacement buffer — or, when `id` was the only buffer, to a
@@ -361,8 +355,6 @@ pub(in crate::editor::buffer) fn reseed_panes_after_content_reset(
         pane.forget_buffer(id);
     }
 }
-
-// ── forget_buffer_in_all_panes ────────────────────────────────────────────────
 
 fn forget_buffer_in_all_panes(
     ev: &mut EngineView,

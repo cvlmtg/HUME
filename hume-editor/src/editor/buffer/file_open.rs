@@ -225,7 +225,7 @@ impl Editor {
         // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 
-        // ── Phase 1: capture (line, char_col) per pane + focused pane's pre_sels ──
+        // Capture (line, char_col) per pane + focused pane's pre_sels.
         // Every pane showing `id`, active tab or not — a background pane's
         // cursor needs remapping through this reload's `ChangeSet` too, or
         // it desyncs the moment its tab is refocused.
@@ -259,7 +259,7 @@ impl Editor {
                 .collect()
         }; // borrows on text and panes.state end here
 
-        // ── Phase 2: clamp (line, char_col) against the new text ──────────────
+        // Clamp (line, char_col) against the new text.
         // Borrow `new_doc.text()` immutably, then move `new_text` out below.
         let post_heads: Vec<(PaneId, CharOffset)> = {
             let new_text = new_doc.text();
@@ -283,7 +283,7 @@ impl Editor {
             .expect("focused pane must view the reloaded buffer");
         let post_sels = SelectionSet::single(Selection::collapsed(focused_post_head));
 
-        // ── Phase 2b: history-preserving reload ──────────────────────────────
+        // History-preserving reload.
         // Refresh `file_meta` so save-time permission/ownership checks see
         // the current on-disk metadata — `reload_from_text` only replaces
         // the buffer's text, not its `file_meta`, so this must be set
@@ -356,7 +356,7 @@ impl Editor {
         // `set_buffer_language` itself.
         self.detect_and_set_language(id);
 
-        // ── Phase 3: reseed per-pane selections / scroll ──────────────────────
+        // Reseed per-pane selections / scroll.
         // Targeted, not `fresh_from_buf`: selections are restored to the clamped
         // post-reload cursor. Any open session was already ended above, before
         // this reload's own edit — no per-pane group nulling needed here.
@@ -375,7 +375,7 @@ impl Editor {
         // line, but a saved top slot/`horizontal_offset` for a
         // scroll position that no longer exists is still worth discarding
         // outright rather than recalling a clamped-but-arbitrary spot. The
-        // jump list was already remapped through `reload_cs` above (Phase 2b)
+        // jump list was already remapped through `reload_cs` above
         // — same-buffer-id survival alone isn't enough, since the reload can
         // shift or delete the text an entry pointed at.
         // Every pane, active tab or not — see the comment above.

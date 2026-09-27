@@ -187,7 +187,5 @@ pub fn wire_offsets_to_byte_range(
     start_byte..end_byte.max(start_byte)
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

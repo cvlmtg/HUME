@@ -7,8 +7,6 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-// ── PluginId ──────────────────────────────────────────────────────────────────
-
 /// A validated plugin identity: case-preserving for display and disk paths,
 /// case-insensitive for equality and hashing.
 ///
@@ -136,8 +134,6 @@ impl Hash for PluginId {
     }
 }
 
-// ── Owner ─────────────────────────────────────────────────────────────────────
-
 /// The entity credited with a command registration.
 ///
 /// - Stack empty → [`Owner::User`] (top-level `init.scm`)
@@ -150,8 +146,6 @@ pub(crate) enum Owner {
     User,
     Plugin(PluginId),
 }
-
-// ── PluginStack ───────────────────────────────────────────────────────────────
 
 /// The `CURRENT_PLUGIN` attribution stack.
 ///
@@ -205,8 +199,6 @@ impl PluginStack {
         self.stack.last()
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

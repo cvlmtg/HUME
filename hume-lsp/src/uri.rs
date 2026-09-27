@@ -277,7 +277,5 @@ fn percent_encode_path(path_str: &str) -> String {
     out
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

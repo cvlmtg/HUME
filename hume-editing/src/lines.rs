@@ -91,7 +91,5 @@ pub fn line_segments(
     hume_rope::lines::line_segments(text.rope(), range)
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

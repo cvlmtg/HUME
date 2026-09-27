@@ -37,8 +37,6 @@ use termina::{Event, EventReader, PlatformHandle, PlatformTerminal, WindowSize};
 /// to name the value they're passing to [`set_cursor_shape`].
 pub use termina::style::CursorStyle;
 
-// ── SharedTerm ────────────────────────────────────────────────────────────────
-
 /// A cheap-to-clone handle to the process's terminal.
 ///
 /// Wraps the platform terminal behind a mutex so it can be shared between the

@@ -520,7 +520,5 @@ impl hume_engine::providers::SyntaxSpans for Syntax {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

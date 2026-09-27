@@ -297,7 +297,5 @@ pub fn linewise_classification(text: &BufferText, sel: &Selection) -> Option<boo
     }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

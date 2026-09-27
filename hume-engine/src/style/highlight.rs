@@ -86,8 +86,6 @@ impl<'a> HighlightStack<'a> {
     }
 }
 
-// ── TierBufs ──────────────────────────────────────────────────────────────────
-
 /// Scratch buffer holding sorted highlight intervals split by tier.
 /// Owned by `FrameScratch` so capacity is retained across frames.
 ///
@@ -114,8 +112,6 @@ impl TierBufs {
         }
     }
 }
-
-// ── rebuild_line_decorations ─────────────────────────────────────────────────
 
 /// Gather highlight intervals from the syntax source and every `PAINT`-kind
 /// `DecorationSource` for one buffer line, returning the line's background
@@ -172,8 +168,6 @@ pub(crate) fn rebuild_line_decorations(
     scratch.tier_bufs.sort_all();
     tint
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

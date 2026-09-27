@@ -466,7 +466,5 @@ impl PartialEq for BufferText {
 
 impl Eq for BufferText {}
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

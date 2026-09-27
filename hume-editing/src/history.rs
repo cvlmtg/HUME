@@ -19,8 +19,6 @@ use crate::transaction::Transaction;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RevisionId(pub(crate) usize);
 
-// ── Revision ──────────────────────────────────────────────────────────────────
-
 /// A single node in the undo tree.
 ///
 /// Each revision stores both a forward Transaction (parent → this state, for
@@ -54,8 +52,6 @@ struct Revision {
     /// across sleep.
     timestamp: SystemTime,
 }
-
-// ── History ───────────────────────────────────────────────────────────────────
 
 /// Tree-structured undo/redo history.
 ///
@@ -576,8 +572,6 @@ impl History {
         Some(txns)
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

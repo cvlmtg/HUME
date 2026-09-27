@@ -2,8 +2,6 @@ use hume_rope::offset::CharOffset;
 
 use super::{ChangeSet, Operation, push_merge};
 
-// ── ChangeSetBuilder ─────────────────────────────────────────────────────────
-
 /// Incremental builder for constructing a `ChangeSet`.
 ///
 /// The builder tracks two cursors: `old_pos` (how far we've consumed in the

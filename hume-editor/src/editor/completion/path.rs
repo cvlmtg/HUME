@@ -117,7 +117,5 @@ where
     (arg_start..arg_end, candidates)
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

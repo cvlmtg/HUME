@@ -33,8 +33,6 @@ pub(in crate::editor) mod store;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::Syntax;
 
-// ── LastInsert ────────────────────────────────────────────────────────────────
-
 /// The span(s) typed during the most recently completed insert session,
 /// stamped with the buffer's `text_gen` at capture time.
 ///
@@ -781,8 +779,6 @@ impl Buffer {
         }
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

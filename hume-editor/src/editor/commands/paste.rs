@@ -28,8 +28,6 @@ use super::FocusedPane;
 use crate::editor::edit_session::{self, EditSessionKind};
 use crate::editor::error::CommandError;
 
-// ── PasteStamp ──────────────────────────────────────────────────────────────
-
 /// Which source a bare paste (no `"<reg>` prefix) reads, valid only while
 /// [`crate::editor::buffer::store::BufferStore::edit_seq`] is still `seq` — the moment any
 /// buffer is edited (or undone/redone), the stamped `seq` falls behind and a

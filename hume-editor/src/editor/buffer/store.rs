@@ -14,8 +14,6 @@ use hume_platform::path::strip_unc_prefix_cow;
 
 use crate::editor::buffer::Buffer;
 
-// ── BufferStore ───────────────────────────────────────────────────────────────
-
 /// Mirrors the engine's `SlotMap<BufferId, ()>` with the full
 /// `Buffer` structs. Owns all per-buffer content, history, and file metadata.
 pub(crate) struct BufferStore {
@@ -292,8 +290,6 @@ impl BufferStore {
         self.buffers.len()
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

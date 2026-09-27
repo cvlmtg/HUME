@@ -11,8 +11,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-// ── FileSignature ─────────────────────────────────────────────────────────────
-
 /// A cheap fingerprint of a file's on-disk state, used to detect external
 /// changes without reading or hashing content.
 ///
@@ -48,8 +46,6 @@ impl FileSignature {
 pub fn read_signature(path: &Path) -> io::Result<FileSignature> {
     Ok(FileSignature::from_metadata(&fs::metadata(path)?))
 }
-
-// ── FileMeta ──────────────────────────────────────────────────────────────────
 
 /// Metadata captured from a file on open, restored when saving atomically.
 ///
@@ -101,8 +97,6 @@ impl FileMeta {
     }
 }
 
-// ── read_file_meta ────────────────────────────────────────────────────────────
-
 /// Capture metadata for an existing file without reading its content.
 ///
 /// Used when saving over an existing file: we need the permissions and
@@ -134,8 +128,6 @@ pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
     Ok(meta)
 }
 
-// ── read_file ─────────────────────────────────────────────────────────────────
-
 /// Read a file from disk, resolving symlinks and capturing metadata.
 ///
 /// Returns `(content, meta)` where:
@@ -153,8 +145,6 @@ pub fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
     let content = fs::read_to_string(&meta.resolved_path)?;
     Ok((content, meta))
 }
-
-// ── write_file_atomic ─────────────────────────────────────────────────────────
 
 /// Write `content` atomically to the path recorded in `meta`. Returns `true`
 /// when the chmod-retry path below was taken, `false` on a plain successful

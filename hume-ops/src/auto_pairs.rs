@@ -162,7 +162,5 @@ pub fn should_auto_pair_at(
     true
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

@@ -648,7 +648,5 @@ impl NewProcessGroup for Command {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

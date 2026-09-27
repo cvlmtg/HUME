@@ -41,8 +41,6 @@ pub(crate) struct TypedRun {
     pub ends: Vec<CharOffset>,
 }
 
-// ── PaneBufferState ──────────────────────────────────────────────────────────
-
 /// All per-(pane, buffer) editor state bundled into one struct.
 ///
 /// Stored in `EditorState.panes.state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>`.
@@ -324,8 +322,6 @@ pub(in crate::editor) fn park_cursor_at(
     let char_pos = hume_editing::lines::place_grapheme_column(text, line.into(), grapheme_col0);
     write_cursor(pane_state, buffers, panes, pid, bid, char_pos);
 }
-
-// ── PaneView ──────────────────────────────────────────────────────────────────
 
 /// Groups the three per-pane maps that live on [`super::EditorState`].
 ///
@@ -620,8 +616,6 @@ impl Editor {
         now_wrapping
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

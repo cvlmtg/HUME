@@ -181,7 +181,5 @@ surround_cmd!(cmd_surround_double_quote, quote, '"');
 surround_cmd!(cmd_surround_single_quote, quote, '\'');
 surround_cmd!(cmd_surround_backtick, quote, '`');
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

@@ -241,8 +241,6 @@ impl FromStr for SignColumnConfig {
     }
 }
 
-// ── ObjectJumpAlign ──────────────────────────────────────────────────────────
-
 /// Where a forward object jump (`}`, `goto-next-<kind>`) leaves the viewport.
 ///
 /// Exists because those motions land the selection head at the *start* of
@@ -275,8 +273,6 @@ settings_enum!(ObjectJumpAlign, "object-jump-align", [
     Off => "off",
 ]);
 
-// ── CursorShape ──────────────────────────────────────────────────────────────
-
 /// The real terminal cursor's shape in Insert mode — Helix's
 /// `editor.cursor-shape.insert`, minus the `hidden` variant Helix offers
 /// mainly for IME positioning. Applies to every selection head, not just the
@@ -305,8 +301,6 @@ settings_enum!(CursorShape, "cursor-shape-insert", [
     Underline => "underline",
 ]);
 
-// ── TablineVisibility ─────────────────────────────────────────────────────────
-
 /// When to show the tab bar (top row of the terminal area).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TablineVisibility {
@@ -324,8 +318,6 @@ settings_enum!(TablineVisibility, "tabline", [
     Never => "never",
     Dynamic => "dynamic",
 ]);
-
-// ── Scope ─────────────────────────────────────────────────────────────────────
 
 /// A `:set` scope token: `global`, `buffer`, or `pane`.
 ///
@@ -596,8 +588,6 @@ macro_rules! define_settings {
         }
     ) => {
 
-        // ── EditorSettings ────────────────────────────────────────────────────
-
         /// Global editor settings — the authoritative defaults for all
         /// configurable editor behaviour.
         ///
@@ -637,8 +627,6 @@ macro_rules! define_settings {
                 &self.statusline
             }
         }
-
-        // ── BufferOverrides ───────────────────────────────────────────────────
 
         /// Per-buffer setting overrides. All fields are `Option<T>`; `None`
         /// means "inherit from the global [`EditorSettings`]".
@@ -721,8 +709,6 @@ macro_rules! define_settings {
             Ok(())
         }
 
-        // ── resync_key ──────────────────────────────────────────────────────────
-
         /// Decode `key` into its [`ResyncKey`] variant, or `None` if it
         /// doesn't declare `resync: true` above. The sole source both
         /// `editor::settings::ops::resync_derived_state` (which key to
@@ -776,8 +762,6 @@ macro_rules! define_settings {
             }
         }
 
-        // ── setting_scopes ──────────────────────────────────────────────────────
-
         /// The `Scope`s a setting accepts, as declared by its `scope: [...]`
         /// list in the `define_settings!` invocation below. Empty for any
         /// key not declared there — notably `"language"`, which has no
@@ -793,8 +777,6 @@ macro_rules! define_settings {
             }
         }
 
-        // ── all_setting_keys ───────────────────────────────────────────────────
-
         /// Every setting key with a `:set` wire format — the union of the
         /// `global`/`buffer`/`subfield` macro entries and the `manual_keys`
         /// entries (`statusline`). Notably **excludes** `"language"`, which
@@ -805,8 +787,6 @@ macro_rules! define_settings {
         pub(in crate::editor) fn all_setting_keys() -> &'static [&'static str] {
             &[$($gkey,)* $($bkey,)* $($skey,)* $($mkey,)*]
         }
-
-        // ── is_bool_setting ───────────────────────────────────────────────────
 
         /// `true` if `key`'s value is parsed with `parser: bool` — i.e. its
         /// only valid values are `"true"`/`"false"`. Derived from the same
@@ -1204,8 +1184,6 @@ fn parse_word_chars(value: &str) -> Result<String, String> {
 /// name `ops::write_global_for_test`; every other item in `ops` keeps its
 /// own narrower per-item visibility regardless of the path being nameable.
 pub(crate) mod ops;
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

@@ -29,8 +29,6 @@ pub enum SearchDirection {
     Backward,
 }
 
-// ── compile_search_regex ──────────────────────────────────────────────────────
-
 /// Compile a search pattern with **smart case**: all-lowercase patterns become
 /// case-insensitive; patterns containing any uppercase character stay
 /// case-sensitive.
@@ -157,8 +155,6 @@ pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
     Some((flags, regex))
 }
 
-// ── find_next_match ───────────────────────────────────────────────────────────
-
 /// Find the next regex match in `text`, starting from char offset `from_char`.
 ///
 /// # Direction
@@ -213,8 +209,6 @@ pub fn find_next_match(
     None
 }
 
-// ── find_all_matches ──────────────────────────────────────────────────────────
-
 /// Return all non-overlapping regex matches in `text` as inclusive char
 /// ranges, in document order. Zero-width matches are skipped.
 ///
@@ -227,8 +221,6 @@ pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<InclusiveRange<
         InclusiveRange::new(CharOffset::new(0), text.last_char()),
     )
 }
-
-// ── find_matches_in_range ─────────────────────────────────────────────────────
 
 /// Return all non-overlapping regex matches within a char range of `text`.
 ///
@@ -257,8 +249,6 @@ pub fn find_matches_in_range(
         })
         .collect()
 }
-
-// ── escape_regex ─────────────────────────────────────────────────────────────
 
 /// Escape regex metacharacters so the string matches literally.
 ///
@@ -323,8 +313,6 @@ pub fn word_search_pattern(word: &str, chars: WordChars<'_>) -> String {
     )
 }
 
-// ── search_match_info ─────────────────────────────────────────────────────────
-
 /// Return `(current_1based, total)` for a pre-computed match list.
 ///
 /// `total` is the number of matches in `matches`.
@@ -350,8 +338,6 @@ pub fn search_match_info(
         .unwrap_or(0);
     (current, total)
 }
-
-// ── find_match_from_cache ─────────────────────────────────────────────────────
 
 /// Find the next match relative to `from_char` by binary-searching a
 /// pre-computed, sorted match list rather than re-scanning the buffer.
@@ -563,8 +549,6 @@ fn search_match_in(
     let end_incl = text.byte_to_char(m.end()).retreat(1);
     Some(InclusiveRange::new(start, end_incl))
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

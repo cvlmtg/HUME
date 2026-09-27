@@ -422,7 +422,5 @@ impl ParseBackend for InlineParseBackend {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

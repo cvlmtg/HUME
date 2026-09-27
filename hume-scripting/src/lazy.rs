@@ -13,8 +13,6 @@ use std::path::PathBuf;
 
 use super::attribution::PluginId;
 
-// ── PluginState ───────────────────────────────────────────────────────────────
-
 /// Lifecycle state of a declared plugin.
 #[derive(Debug)]
 pub(crate) enum PluginState {
@@ -28,8 +26,6 @@ pub(crate) enum PluginState {
     /// Body failed to evaluate; no retry until `:reload-config`.
     Failed,
 }
-
-// ── LazyRegistry ──────────────────────────────────────────────────────────────
 
 /// Persistent plugin state and activation maps.
 ///
@@ -258,8 +254,6 @@ fn pad_to_display_width(s: &str, width: usize) -> String {
     let w = hume_rope::width::str_width(s, 0, hume_rope::width::CHROME_TAB_WIDTH);
     format!("{s}{}", " ".repeat(width.saturating_sub(w)))
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

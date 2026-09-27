@@ -112,7 +112,5 @@ pub(crate) fn path_to_display(args: &[SteelVal]) -> SteelResult {
         .map_err(generic_err)
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests;

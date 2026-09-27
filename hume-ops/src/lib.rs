@@ -11,8 +11,6 @@ pub mod surround;
 mod tag;
 pub mod text_object;
 
-// ── MotionMode ────────────────────────────────────────────────────────────────
-
 /// Controls how a motion updates the selection's anchor and head.
 ///
 /// | Mode | Anchor | Head | Usage |
@@ -34,8 +32,6 @@ pub enum MotionMode {
     Move,
     Extend,
 }
-
-// ── WordCtx ──────────────────────────────────────────────────────────────────
 
 /// Context for the word-family motions and text objects (`w`/`W`/`b`/`B`,
 /// `mm`/`MM`, `miw`/`maw`), resolved once by the caller from buffer settings.

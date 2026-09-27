@@ -337,8 +337,6 @@ impl ChangeSet {
         self.len_after
     }
 
-    // ── apply ────────────────────────────────────────────────────────────────
-
     /// Apply this changeset to `text`, producing a new buffer.
     ///
     /// Clones the buffer's rope and mutates the clone via `Rope::remove`/
@@ -414,8 +412,6 @@ impl ChangeSet {
         }
         Ok(BufferText::from_rope(rope, text.line_ending()))
     }
-
-    // ── map_pos ──────────────────────────────────────────────────────────────
 
     /// Map a single char position from the old document to the new document.
     ///
@@ -585,8 +581,6 @@ impl ChangeSet {
         regions
     }
 
-    // ── invert ───────────────────────────────────────────────────────────────
-
     /// Produce a changeset that undoes `self`.
     ///
     /// Applying `self` to `text` gives a new buffer; applying the inverted
@@ -642,8 +636,6 @@ impl ChangeSet {
             len_after: self.len_before,
         }
     }
-
-    // ── compose ──────────────────────────────────────────────────────────────
 
     /// Compose two sequential changesets into one.
     ///

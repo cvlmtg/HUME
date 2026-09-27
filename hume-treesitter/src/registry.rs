@@ -11,15 +11,11 @@ use hume_engine::theme::ScopeRegistry;
 use crate::injections::InjectionsQuery;
 use crate::textobjects::TextObjectsQuery;
 
-// ── LanguageId ────────────────────────────────────────────────────────────────
-
 /// Interned language identity. Dense, append-only, minted by `LanguageRegistry`.
 /// An id is only ever handed out by `LanguageRegistry::intern` — indexing a
 /// different registry instance with it is a caller bug, not a runtime error.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct LanguageId(u32);
-
-// ── LanguageIdentity ────────────────────────────────────────────────────────────
 
 /// Detection identity for one language: extensions, glob patterns, shebangs.
 ///
@@ -42,8 +38,6 @@ pub struct LanguageIdentity {
     pub lsp_language_id: Option<String>,
 }
 
-// ── GrammarBundle ─────────────────────────────────────────────────────────────
-
 /// Tree-sitter grammar + precompiled highlight query, shared across all buffers
 /// of a given language.
 pub struct GrammarBundle {
@@ -63,8 +57,6 @@ pub struct GrammarBundle {
     /// integer identity that survives across the worker-thread boundary.
     pub config_gen: u32,
 }
-
-// ── QueryPaths ─────────────────────────────────────────────────────────────
 
 /// The query files `attach_grammar` may compile for a grammar. `highlights`
 /// is required; `injections` and `textobjects` are each independently
@@ -90,8 +82,6 @@ impl<'a> QueryPaths<'a> {
         }
     }
 }
-
-// ── LanguageRegistry ──────────────────────────────────────────────────────────
 
 /// Global registry of configured language identities. Lives on `Editor`.
 ///
@@ -594,8 +584,6 @@ fn detect_shebang(line: &str, registry: &LanguageRegistry) -> Option<LanguageId>
 
     registry.by_shebang(interpreter)
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;
