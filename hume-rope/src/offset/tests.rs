@@ -16,7 +16,7 @@ fn chars_since_measures_backward_distance() {
 }
 
 #[test]
-#[should_panic(expected = "chars_since measures backward only")]
+#[should_panic(expected = "chars_since measures forward only")]
 fn chars_since_panics_on_inversion() {
     let _ = CharOffset::new(2).chars_since(CharOffset::new(5));
 }
