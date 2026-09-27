@@ -14,7 +14,7 @@ I have written this editor for my own use, and release it without expectation. I
 
 Zero friction, maximum output. HUME is built on a simple premise: the common case should be the short case, and the classic papercuts of text editing should be designed out from the start.
 
-This project is driven by curiosity and the pure joy of hacking, not by deadlines. It is shared as-is for anyone who wants to explore a different pragmatic approach. Feel free to try it out, and expect a few rough edges.
+HUME is my daily editor, driven by curiosity and the pure joy of hacking. Feel free to try it out, and expect a few rough edges.
 
 ## Why try it
 
@@ -28,4 +28,27 @@ This project is driven by curiosity and the pure joy of hacking, not by deadline
 
 ## Quick start
 
-Check the [user manual](https://cvlmtg.github.io/HUME/) to see how to install **HUME** and how to use it effectively, or start hume and then type `:tutor` for an interactive introduction.
+Grab the archive for your platform from the [latest release](https://github.com/cvlmtg/HUME/releases/latest):
+
+| Platform | Archive |
+|---|---|
+| macOS (Apple Silicon) | `hume-*-aarch64-apple-darwin.tar.gz` |
+| Linux (x86\_64, glibc 2.39+) | `hume-*-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows (x86\_64) | `hume-*-x86_64-pc-windows-msvc.zip` |
+
+Extract and run:
+
+```sh
+tar xzf hume-*.tar.gz
+./hume-*/bin/hume
+```
+
+> [!NOTE]
+> The binaries aren't signed, so macOS Gatekeeper may refuse to open them with a "cannot be opened" dialog — this happens if you extract the archive by double-clicking it in Finder rather than with `tar` above. Clear the quarantine flag once and it won't come back:
+> ```sh
+> xattr -d com.apple.quarantine hume-*/bin/hume
+> ```
+
+Then type `:tutor` inside HUME for an interactive introduction, or check the [user manual](https://cvlmtg.github.io/HUME/) for a system-wide install, configuration, and everything else.
+
+Coming from another modal editor? See [Helix](https://cvlmtg.github.io/HUME/from-helix.html), [Kakoune](https://cvlmtg.github.io/HUME/from-kakoune.html), or [Vim](https://cvlmtg.github.io/HUME/from-vim.html).

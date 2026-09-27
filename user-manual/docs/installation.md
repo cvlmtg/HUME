@@ -21,6 +21,14 @@ tar xzf hume-*.tar.gz
 ./hume-*/bin/hume
 ```
 
+::: warning macOS: "cannot be opened" dialog
+The binaries aren't signed, so Gatekeeper may refuse to run them with a "cannot be opened" dialog. This happens if you extract the archive by double-clicking it in Finder rather than with `tar` above. Clear the quarantine flag once and it won't come back:
+
+```sh
+xattr -d com.apple.quarantine hume-*/bin/hume
+```
+:::
+
 Or copy it into `~/.local` for a single-user install (no sudo needed):
 
 ```sh
