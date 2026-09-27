@@ -75,7 +75,7 @@ A theme editor is also available online: a single-file HTML tool you download an
 
 ### Plugin system
 
-Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#core-plum), a plugin manager where plugins are Scheme scripts installed from GitHub. Declare the plugin in your [`init.scm`](configuration.md#example-init-scm), then run `:plum-install-plugins` to fetch it. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
+Helix's Steel plugin system is still an unmerged branch; HUME's ships in every release. HUME's plugins are Steel too, the same Scheme dialect, but plugins written for Helix's Steel branch won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. Declare the plugin in your [`init.scm`](configuration.md#example-init-scm), then run `:plum-install-plugins` to fetch it. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
 
 ```scheme
 (declare-plugin "core:stdlib")
@@ -189,7 +189,7 @@ Helix's match mode binds `m m` to jump to the matching bracket. HUME binds the s
 
 Helix's bracket mode also binds `]f`/`[f`, `]t`/`[t`, `]a`/`[a`, `]c`/`[c`, and `]T`/`[T` by default, jumping straight to the next/previous function, class, argument, comment, or unit test. HUME puts the same six kinds (plus `value`, for array/tuple/struct entries, which Helix's bracket mode doesn't have) on the `g` prefix instead of a separate bracket mode: lowercase jumps forward, uppercase jumps backward, on the same letter as the `m i`/`m a` text object: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value).
 
-### What we took from Helix
+## What we took from Helix
 
 Several features were intentionally adopted from Helix rather than reinvented:
 
