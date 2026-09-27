@@ -72,6 +72,8 @@ numbers directly.
   Record the input where it arrives; let the one piece of state that isn't
   re-derivable — input the user gave mid-command — be recorded by the code
   that consumes it, not declared by command authors.
+- **L24** — End-user docs state a missing feature plainly, never as permanent.
+  "Not yet" only for a gap the user has confirmed is planned.
 
 ---
 
@@ -1287,3 +1289,19 @@ replacing `arm_dot_capture`/`resolve_dot_capture`),
 `hume-editor/src/editor/mod.rs` (`queue_steel_call_with_capture`),
 `hume-editor/src/editor/scripting_setup.rs` (`run_pending_batch`, the three
 removed poll sites).
+
+---
+
+## L24 — One "(not yet)" request became a blanket rule (2026-09-27)
+
+**Root cause:** Asked to add "(not yet)" to undo persistence, plus a
+general note not to describe missing features as never coming, the
+migration guides got "yet"/"for now" added to about twenty gaps. The
+general note asked for neutral wording, not a promise: not every missing
+feature will be implemented.
+
+**Prevention rule:** State a missing feature plainly ("HUME has no marks",
+"*(none)*"), and rewrite only phrases that imply permanence ("the closest
+HUME gets", "fixed rather than user-declarable"). Use "not yet" only for a
+gap the user has confirmed is planned. When one instruction is specific and
+the next is general, don't apply the specific fix everywhere; ask if unsure.
