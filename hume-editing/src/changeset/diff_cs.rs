@@ -4,15 +4,15 @@
 //! new inputs into `Equal` / `Delete` / `Insert` / `Replace` hunks whose line
 //! ranges cover the inputs contiguously. [`changesets_from_line_diff`] walks
 //! those hunks and emits a fine-grained `ChangeSet` whose operations cover
-//! only the lines that actually changed — unchanged `Equal` runs become cheap
+//! only the lines that actually changed; unchanged `Equal` runs become cheap
 //! `Retain(n)` ops carrying no payload.
 //!
 //! Memory cost of the *stored* inverse ≈ size of the changed lines only, not
-//! the full buffer — this is what lets `:e!` reload record a normal undo step
+//! the full buffer. This is what lets `:e!` reload record a normal undo step
 //! without a coarse delete-all + insert-all that doubles buffer memory.
 //! [`BufferText::line_tokens`] yields borrowed `RopeSlice`s, and the diff
 //! only ever compares and counts them, so changed lines get materialized
-//! once, when [`build_changesets`] re-slices them from `old`/`new` —
+//! once, when [`build_changesets`] re-slices them from `old`/`new`;
 //! `LineHunkKind` carries no payload of its own, only the line-index ranges.
 //! None of this affects what survives in the history tree afterwards, which
 //! is just the changed lines.
@@ -39,7 +39,7 @@ use super::{ChangeSet, ChangeSetBuilder};
 /// `old`. Memory cost ≈ size of the changed lines only (unchanged `Equal` hunks
 /// become `Retain(n)` ops with no payload).
 ///
-/// The caller still owns the `BufferText` mutation — this helper only produces the
+/// The caller still owns the `BufferText` mutation; this helper only produces the
 /// `ChangeSet`s, it does not touch either buffer.
 pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeSet, ChangeSet) {
     changesets_from_line_diff_with_deadline(old, new, crate::diff::DIFF_LINE_DEADLINE)
@@ -84,7 +84,7 @@ fn changesets_from_line_diff_with_deadline(
 ///
 /// `old_offsets` / `new_offsets` are the cumulative char-offset tables over
 /// each side's line tokens (length `tokens.len() + 1`, last entry == buffer
-/// `len_chars`). Using token-derived offsets — not `BufferText::line_to_char` — keeps
+/// `len_chars`). Using token-derived offsets (not `BufferText::line_to_char`) keeps
 /// the hunk end at `ropey_line_count()` (the trailing empty token) panic-free
 /// and keeps the forward/inverse cursors byte-for-byte aligned with the rope.
 fn build_changesets(
@@ -143,7 +143,7 @@ fn build_changesets(
 /// [`BufferText::line_tokens`] plus the cumulative char offset of each token (with
 /// a trailing sentinel): `offsets[i]` is the char offset where token `i`
 /// starts and `offsets[tokens.len()]` is the total char count, matching
-/// `text.len_chars()`. `build_changesets` needs both — the tokens to diff,
+/// `text.len_chars()`. `build_changesets` needs both: the tokens to diff,
 /// the offsets to translate a hunk's line-index range back to a char range
 /// into the rope.
 fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<CharOffset>) {
@@ -151,7 +151,7 @@ fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<CharOffset
     let mut offsets = Vec::with_capacity(text.ropey_line_count().get() + 1);
     offsets.push(CharOffset::new(0));
     // Raw `usize` accumulator, minted to `CharOffset` only once each running
-    // total is complete — the same "trusted mint" shape as an ASCII delimiter
+    // total is complete, the same "trusted mint" shape as an ASCII delimiter
     // scan's own loop variable: `char_acc` never appears anywhere as a
     // position in its own right until it's pushed.
     let mut char_acc = 0usize;
@@ -168,7 +168,7 @@ fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<CharOffset
 // The core check: apply `forward` to a copy of `old` and assert it
 // equals `new`; apply `inverse` to a copy of `new` and assert it equals `old`.
 // This catches any off-by-one in line → char offset translation, hunk-walk
-// gaps, or `retain_rest` misuse — independent of the line-diff implementation.
+// gaps, or `retain_rest` misuse, independent of the line-diff implementation.
 
 #[cfg(test)]
 mod tests;

@@ -17,12 +17,12 @@ pub enum CharClass {
 ///
 /// Space covers ASCII blanks plus the two invisible Unicode spaces commonly
 /// found in real text: NBSP (U+00A0) and ideographic space (U+3000). Other
-/// Unicode whitespace (form feed, bare `\r`, …) stays `Punctuation` — rare
+/// Unicode whitespace (form feed, bare `\r`, …) stays `Punctuation`: rare
 /// enough that stopping on it is more useful than skipping it.
 ///
 /// Crate-private: a caller that distinguishes `Word` from `Punctuation`
 /// (word motions, text objects, `*`) must go through [`WordChars::classify`]
-/// instead, so a buffer's configured extra word characters are honored — and
+/// instead, so a buffer's configured extra word characters are honored, and
 /// a caller that only asks whether a char is blank must go through
 /// [`blank_class`] instead. Keeping this function itself unreachable from
 /// outside `hume-editing` makes bypassing either funnel a compile error
@@ -39,13 +39,13 @@ pub(crate) fn classify_char(ch: char) -> CharClass {
     }
 }
 
-/// `ch`'s blank class — `Some(Space)`, `Some(Eol)`, or `None` for every
+/// `ch`'s blank class: `Some(Space)`, `Some(Eol)`, or `None` for every
 /// non-blank character (`Word` or `Punctuation`). The one question about a
 /// character a buffer's `word-chars` can never change: [`WordChars::validate`]
 /// rejects any value that would promote a blank to `Word`, so this answer is
 /// invariant under it, unlike [`WordChars::classify`]'s `Word`/`Punctuation`
-/// split. Every caller that only distinguishes blank from non-blank — never
-/// `Word` from `Punctuation` — goes through this rather than `classify_char`.
+/// split. Every caller that only distinguishes blank from non-blank (never
+/// `Word` from `Punctuation`) goes through this rather than `classify_char`.
 pub fn blank_class(ch: char) -> Option<CharClass> {
     match classify_char(ch) {
         c @ (CharClass::Space | CharClass::Eol) => Some(c),
@@ -58,7 +58,7 @@ pub fn is_word_boundary(a: CharClass, b: CharClass) -> bool {
     a != b
 }
 
-/// Word and Punctuation are treated as the same "long word" class — only
+/// Word and Punctuation are treated as the same "long word" class; only
 /// transitions involving Space or Eol count (`W` semantics).
 ///
 /// The name follows Vim's uppercase-W convention for WORD (long-word) motions:
@@ -76,7 +76,7 @@ pub fn is_uppercase_word_boundary(a: CharClass, b: CharClass) -> bool {
 }
 
 /// A buffer's extra word characters (Vim's `iskeyword`, minus the range
-/// syntax) — characters that classify as [`CharClass::Word`] on top of the
+/// syntax): characters that classify as [`CharClass::Word`] on top of the
 /// built-in alphanumeric-plus-`_` rule. Borrowed and `Copy`: the owning
 /// `String` lives in the settings layer, and this rides inside a bare `fn`
 /// pointer's argument list without a clone per call.
@@ -93,7 +93,7 @@ impl<'a> WordChars<'a> {
     /// word's end by hitting a blank (`Space` or `Eol` in `classify_char`'s
     /// terms), so promoting one to `Word` would leave a word run with no
     /// terminator. Checked with `char::is_whitespace()` rather than
-    /// `classify_char` itself — `classify_char` only calls out five specific
+    /// `classify_char` itself: `classify_char` only calls out five specific
     /// blanks (` `, `\t`, NBSP, ideographic space, `\n`) and leaves every
     /// other Unicode whitespace character `Punctuation` on purpose (see its
     /// doc), which is too narrow a check here: a word run has to end
@@ -101,7 +101,7 @@ impl<'a> WordChars<'a> {
     /// a run ends up with no terminator at all on a line built from one.
     ///
     /// A char that is already `Word` (`a`, `_`) is accepted as a redundant
-    /// no-op rather than an error — "already a word char" depends on
+    /// no-op rather than an error, since "already a word char" depends on
     /// `char::is_alphanumeric`'s Unicode tables, which shift between Rust
     /// releases, so rejecting it would make a config file break on a
     /// toolchain upgrade.

@@ -37,9 +37,9 @@ fn classify_ascii_alnum_and_underscore_are_word() {
 
 #[test]
 fn classify_unicode_letters_are_word() {
-    // Accented letter (Latin Extended) — alphanumeric in Unicode
+    // Accented letter (Latin Extended): alphanumeric in Unicode
     assert_eq!(classify_char('é'), CharClass::Word);
-    // CJK ideograph — alphanumeric in Unicode
+    // CJK ideograph: alphanumeric in Unicode
     assert_eq!(classify_char('文'), CharClass::Word);
 }
 
@@ -78,7 +78,7 @@ fn word_boundary_any_class_change() {
 #[test]
 fn uppercase_word_boundary_merges_word_and_punctuation() {
     use CharClass::*;
-    // Word ↔ Punctuation are merged — no long-word boundary between them
+    // Word ↔ Punctuation are merged, so no long-word boundary between them
     assert!(!is_uppercase_word_boundary(Word, Punctuation));
     assert!(!is_uppercase_word_boundary(Punctuation, Word));
     // Same class → no boundary
@@ -117,7 +117,7 @@ fn word_chars_empty_matches_classify_char() {
 #[test]
 fn word_chars_cannot_promote_space_or_eol() {
     // Defense in depth: even if a caller bypasses `validate`, `classify` must
-    // never turn whitespace/newline into `Word` — every scan here finds a
+    // never turn whitespace/newline into `Word`: every scan here finds a
     // word's end by hitting one of those two classes.
     assert_eq!(WordChars::new(" ").classify(' '), CharClass::Space);
     assert_eq!(WordChars::new("\n").classify('\n'), CharClass::Eol);
@@ -134,7 +134,7 @@ fn validate_rejects_space_and_eol_chars() {
 }
 
 /// `validate` must reject every Unicode whitespace character, not just the
-/// five `classify_char` calls `Space`/`Eol` — a word run promoted over one of
+/// five `classify_char` calls `Space`/`Eol`. A word run promoted over one of
 /// the others would have no terminator on a line built from it.
 #[test]
 fn validate_rejects_every_unicode_whitespace_char() {

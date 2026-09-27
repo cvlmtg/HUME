@@ -98,7 +98,7 @@ fn builder_empty_document() {
 
 #[test]
 fn builder_delete_then_insert_not_merged() {
-    // Delete followed by Insert is a "replace" — they must stay separate
+    // Delete followed by Insert is a "replace"; they must stay separate
     // so that invert and compose work correctly.
     let mut b = ChangeSetBuilder::new(co(5));
     b.delete(3);
@@ -159,7 +159,7 @@ fn builder_insert_normalizes_line_endings() {
 #[test]
 fn builder_insert_counts_positions_in_normalized_chars() {
     // A `\r\n` collapses to one char, so `new_pos` (and `len_after`) must
-    // count 3, not 4 — a cursor landed at `new_pos()` after this insert
+    // count 3, not 4. A cursor landed at `new_pos()` after this insert
     // would otherwise sit one char past the text that actually exists.
     let mut b = ChangeSetBuilder::new(co(0));
     b.insert("a\r\nb");
@@ -181,7 +181,7 @@ fn builder_insert_char_normalizes_a_lone_cr() {
 fn builder_finish_panics_on_unconsumed() {
     let mut b = ChangeSetBuilder::new(co(10));
     b.retain(3);
-    b.finish(); // should panic — 7 chars unconsumed
+    b.finish(); // should panic: 7 chars unconsumed
 }
 
 #[test]
@@ -463,7 +463,7 @@ fn pos_map_cursor_matches_map_pos_for_ascending_queries() {
 #[test]
 fn pos_map_cursor_handles_repeated_pos_with_both_assocs() {
     // Retain(3), Insert("XX"), Retain(2). Query pos=3 twice through one
-    // cursor — once per Assoc — to confirm the first (Before) call doesn't
+    // cursor, once per Assoc, to confirm the first (Before) call doesn't
     // advance state past the insert before the second (After) query at the
     // same position.
     let mut b = ChangeSetBuilder::new(co(5));
@@ -491,7 +491,7 @@ fn pos_map_cursor_handles_repeated_pos_with_both_assocs() {
 
 #[test]
 fn map_anchor_reports_deleted_for_a_position_inside_a_deletion() {
-    // Retain(2), Delete(3), Retain(5) on a 10-char doc — same shape as
+    // Retain(2), Delete(3), Retain(5) on a 10-char doc, same shape as
     // map_pos_inside_deletion. Positions 2..5 (old-doc) name characters the
     // Delete op consumes.
     let mut b = ChangeSetBuilder::new(co(10));
@@ -538,7 +538,7 @@ fn map_anchor_reports_deleted_for_a_position_inside_a_deletion() {
 
 #[test]
 fn map_anchor_is_not_deleted_at_a_retain_or_insert_boundary() {
-    // Retain(3), Insert("XX"), Retain(2) — no Delete op at all, so every
+    // Retain(3), Insert("XX"), Retain(2): no Delete op at all, so every
     // position's anchor survives regardless of Assoc.
     let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
@@ -559,7 +559,7 @@ fn map_anchor_is_not_deleted_at_a_retain_or_insert_boundary() {
 #[test]
 fn map_positions_matches_map_pos_oracle() {
     // Same fixture as the cursor tests above: replace "llo" with "LLO!",
-    // delete "wor", retain "ld\n" — covers Retain/Delete/Insert, each with
+    // delete "wor", retain "ld\n". Covers Retain/Delete/Insert, each with
     // positions before/at/inside/after the op.
     let mut b = ChangeSetBuilder::new(co(11));
     b.retain(2);
@@ -655,7 +655,7 @@ fn map_ranges_edit_inside_range_grows_it() {
 
 #[test]
 fn map_ranges_edit_spans_range_collapses_to_deletion_point() {
-    // Delete(11) — the whole document. Any old range collapses to (0, 0).
+    // Delete(11): the whole document. Any old range collapses to (0, 0).
     let mut b = ChangeSetBuilder::new(co(11));
     b.delete(11);
     let cs = b.finish();
@@ -668,7 +668,7 @@ fn map_ranges_edit_spans_range_collapses_to_deletion_point() {
 #[test]
 fn map_ranges_edit_at_range_start_excludes_insertion() {
     // Retain(3), Insert("XX"), retain rest. Insertion lands exactly at the
-    // range's start (3) — Assoc::After pushes the start past it, excluding
+    // range's start (3); Assoc::After pushes the start past it, excluding
     // the inserted text from the front of the shrunk range.
     let mut b = ChangeSetBuilder::new(co(11));
     b.retain(3);
@@ -684,7 +684,7 @@ fn map_ranges_edit_at_range_start_excludes_insertion() {
 #[test]
 fn map_ranges_edit_at_range_end_excludes_insertion() {
     // Retain(7), Insert("XX"), retain rest. Insertion lands exactly at the
-    // range's end (7) — Assoc::Before holds the end back, excluding the
+    // range's end (7); Assoc::Before holds the end back, excluding the
     // inserted text from the back of the shrunk range.
     let mut b = ChangeSetBuilder::new(co(11));
     b.retain(7);
@@ -700,7 +700,7 @@ fn map_ranges_edit_at_range_end_excludes_insertion() {
 #[test]
 fn map_ranges_zero_width_at_insertion_boundary_never_inverts() {
     // Degenerate point range exactly at an insertion offset: the start maps
-    // past the insertion (After) while the end stays put (Before) — without
+    // past the insertion (After) while the end stays put (Before). Without
     // the fixup clamp this would invert to (5, 3).
     let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
@@ -742,7 +742,7 @@ fn map_ranges_multiple_disjoint_ranges_matches_map_pos_oracle() {
 
 #[test]
 fn map_ranges_nested_ranges_do_not_panic_and_match_map_pos_oracle() {
-    // (0,20) fully contains (4,15) — sorted by start (0<=4) but
+    // (0,20) fully contains (4,15): sorted by start (0<=4) but
     // *not* by end (20>15), the exact shape two LSP diagnostics on the same
     // buffer can take (an outer "note" wrapping an inner "warning", e.g.
     // rustc's unused-import note spanning the whole `use` line around the
@@ -838,7 +838,7 @@ fn edited_old_ranges_insert_is_a_point() {
 
 #[test]
 fn edited_old_ranges_merges_delete_then_insert_at_same_point() {
-    // Delete(3), Insert("XY"), Retain(2) — a "replace" pattern. The insert
+    // Delete(3), Insert("XY"), Retain(2), a "replace" pattern. The insert
     // sits exactly at the delete's end (old=3 for both) and must merge into
     // one range rather than producing a separate zero-length entry.
     let mut b = ChangeSetBuilder::new(co(5));
@@ -922,7 +922,7 @@ fn edited_regions_pairs_delete_then_insert() {
 #[test]
 fn edited_regions_pairs_insert_then_delete() {
     // `ChangeSet::invert`/`compose`/`indent` all emit insert-then-delete for
-    // a replacement — the order `edited_old_ranges`'s own doc calls out as
+    // a replacement, the order `edited_old_ranges`'s own doc calls out as
     // the other valid one.
     let mut b = ChangeSetBuilder::new(co(5));
     b.insert("XY");
@@ -1085,7 +1085,7 @@ fn compose_identity_left() {
     cs_b.retain_rest();
     let cs = cs_b.finish();
 
-    // cs is PartialEq — clone it so we can compare after compose consumes it.
+    // cs is PartialEq; clone it so we can compare after compose consumes it.
     let composed = id.compose(cs.clone());
     assert_eq!(composed, cs);
     assert_eq!(composed.len_before, 5);
@@ -1275,7 +1275,7 @@ fn arb_text(max_len: usize) -> impl Strategy<Value = String> {
 /// Strategy: partition the document's *content* (`doc_len - 1` chars) into
 /// segments, each assigned a random operation (retain or delete). Insert
 /// random text between segments with some probability. The structural
-/// trailing `\n` (last char) is always retained — user-facing changesets
+/// trailing `\n` (last char) is always retained: user-facing changesets
 /// must never delete it.
 fn arb_changeset(doc_len: usize) -> impl Strategy<Value = ChangeSet> {
     // Only operate on the content chars; the trailing \n is handled
@@ -1325,7 +1325,7 @@ fn arb_changeset(doc_len: usize) -> impl Strategy<Value = ChangeSet> {
         }
 
         // Retain any unconsumed content chars, then always retain the
-        // structural trailing \n — user edits must never delete it.
+        // structural trailing \n; user edits must never delete it.
         builder.retain(remaining); // no-op if remaining == 0
         builder.retain(1); // structural \n
         builder.finish()
@@ -1347,7 +1347,7 @@ proptest! {
         b.retain_rest();
         let cs = b.finish();
 
-        // Invert before apply — text remains valid on error since apply takes &BufferText.
+        // Invert before apply: text remains valid on error since apply takes &BufferText.
         let inv = cs.invert(&text);
         let result = cs.apply(&text).unwrap();
         let restored = inv.apply(&result).unwrap();
@@ -1403,7 +1403,7 @@ proptest! {
         let text = BufferText::from(text.as_str());
         let original_content = text.to_string();
 
-        // Invert before apply — text remains valid on error since apply takes &BufferText.
+        // Invert before apply: text remains valid on error since apply takes &BufferText.
         let inv = cs.invert(&text);
         let result = cs.apply(&text).unwrap();
         let restored = inv.apply(&result).unwrap();
@@ -1412,7 +1412,7 @@ proptest! {
 
     /// Compose is associative: (a∘b)∘c produces the same result as a∘(b∘c).
     ///
-    /// This is a fundamental OT invariant — if it breaks, grouping
+    /// This is a fundamental OT invariant: if it breaks, grouping
     /// keystrokes into undo steps via repeated compose would be order-
     /// dependent.
     #[test]
@@ -1464,7 +1464,7 @@ proptest! {
     }
 
     /// `compose_all`'s balanced fold must agree with a plain left fold
-    /// (`reduce(compose)`) — same chain, same net transform, different
+    /// (`reduce(compose)`): same chain, same net transform, different
     /// grouping. Reuses `prop_compose_associativity`'s three-changeset chain.
     #[test]
     fn prop_compose_all_matches_left_fold(
@@ -1530,7 +1530,7 @@ fn apply_returns_err_if_trailing_newline_deleted() {
     };
     let err = cs.apply(&text).unwrap_err();
     assert_eq!(err, ApplyError::TrailingNewlineMissing);
-    // Original buffer is untouched — we can still use it.
+    // Original buffer is untouched; we can still use it.
     assert_eq!(text.to_string(), "hi\n");
 }
 

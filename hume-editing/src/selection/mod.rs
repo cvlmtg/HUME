@@ -13,7 +13,7 @@ use crate::text::BufferText;
 /// The complete selection state for one buffer.
 ///
 /// # Invariants
-/// 1. Never empty — always at least one `Selection`.
+/// 1. Never empty: always at least one `Selection`.
 /// 2. Selections are sorted in ascending order of `start()`.
 /// 3. No two selections overlap. Adjacent selections (where one ends exactly
 ///    where the next begins) are merged.
@@ -29,7 +29,7 @@ pub struct SelectionSet {
     /// cardinality due to cache locality.
     selections: Vec<Selection>,
 
-    /// Index of the "primary" selection — the one displayed in the statusline
+    /// Index of the "primary" selection: the one displayed in the statusline
     /// and used for operations that act on a single selection (e.g.,
     /// `cmd_keep_primary_selection`).
     primary: usize,
@@ -40,7 +40,7 @@ impl Default for SelectionSet {
     ///
     /// Required so `std::mem::take` produces a structurally valid `SelectionSet`
     /// (an empty vec + `primary: 0` would violate the "primary indexes into
-    /// selections" invariant). Matches the stdlib pattern — `Default` is always
+    /// selections" invariant). Matches the stdlib pattern: `Default` is always
     /// a valid state.
     fn default() -> Self {
         Self {
@@ -86,7 +86,7 @@ impl SelectionSet {
         self.selections.iter()
     }
 
-    /// `true` if every selection is collapsed (a bare cursor, no extent) —
+    /// `true` if every selection is collapsed (a bare cursor, no extent):
     /// the guard a caller that treats each cursor as "typed at" rather than
     /// "replacing a real selection" must check first (completion accept,
     /// dot-repeat's own recorded-result replay): typing over a real
@@ -195,12 +195,12 @@ impl SelectionSet {
     ///
     /// If `idx` is the primary, the new primary becomes the next selection
     /// in document order, wrapping around to the first if the removed
-    /// selection was the last. If `len() == 1`, returns `self` unchanged — you cannot
+    /// selection was the last. If `len() == 1`, returns `self` unchanged, since you cannot
     /// remove the only selection. Panics if `idx >= len()`.
     pub fn remove(mut self, idx: usize) -> Self {
         assert!(idx < self.selections.len(), "remove index out of bounds");
         if self.selections.len() <= 1 {
-            return self; // can't remove the only selection — no-op
+            return self; // can't remove the only selection, so no-op
         }
         self.selections.remove(idx);
         let new_len = self.selections.len();
@@ -229,7 +229,7 @@ impl SelectionSet {
     /// Assert (in debug builds) that every selection's `head` and `anchor`
     /// are within bounds for a buffer of `buf_len` chars.
     ///
-    /// The invariant is `head < buf_len` and `anchor < buf_len` — selections
+    /// The invariant is `head < buf_len` and `anchor < buf_len`: selections
     /// are zero-indexed and must not point past the last character (the
     /// structural trailing `\n`).
     ///
@@ -250,12 +250,12 @@ impl SelectionSet {
         for (i, sel) in self.selections.iter().enumerate() {
             debug_assert!(
                 sel.head.index() < buf_len,
-                "Selection {i}: head {:?} >= buf_len {buf_len} — cursor is past the end of the buffer",
+                "Selection {i}: head {:?} >= buf_len {buf_len}: cursor is past the end of the buffer",
                 sel.head,
             );
             debug_assert!(
                 sel.anchor.index() < buf_len,
-                "Selection {i}: anchor {:?} >= buf_len {buf_len} — anchor is past the end of the buffer",
+                "Selection {i}: anchor {:?} >= buf_len {buf_len}: anchor is past the end of the buffer",
                 sel.anchor,
             );
         }
@@ -266,7 +266,7 @@ impl SelectionSet {
     /// any position is out of range.
     ///
     /// Unlike [`debug_assert_valid`][Self::debug_assert_valid], this check
-    /// runs in all builds — including release. Call it at the trust boundary
+    /// runs in all builds, including release. Call it at the trust boundary
     /// where plugin-constructed [`Transaction`][crate::transaction::Transaction]s
     /// enter the system.
     pub fn validate(&self, buf_len: usize) -> Result<(), ValidationError> {
@@ -299,7 +299,7 @@ impl SelectionSet {
     /// Merge overlapping or adjacent selections in place, updating `primary`.
     ///
     /// Merged selections get `sticky_display_col: None` regardless of their pre-merge values
-    /// because the merged `head` is semantically a new position — the column it
+    /// because the merged `head` is semantically a new position; the column it
     /// corresponds to was never latched by a vertical motion.
     pub fn merge_overlapping_in_place(&mut self) {
         if self.selections.len() <= 1 {
@@ -328,7 +328,7 @@ impl SelectionSet {
                         last.anchor = last.start();
                         last.head = sel.end();
                     }
-                    // Merged — reset sticky_display_col since neither side's column is valid.
+                    // Merged: reset sticky_display_col since neither side's column is valid.
                     last.sticky_display_col = None;
                 }
                 if primary_before.start() >= last.start() && primary_before.end() <= last.end() {
@@ -364,7 +364,7 @@ impl SelectionSet {
     ///   the no-overlap invariant is restored (a deletion spanning multiple
     ///   selections can collapse them).
     ///
-    /// `text_pre` must be the buffer text **before** the edit — the pre-edit line
+    /// `text_pre` must be the buffer text **before** the edit: the pre-edit line
     /// map is needed to identify which line each head resided on before mapping.
     ///
     /// Runs in O(selections + ops) rather than O(selections × ops): selections
@@ -374,18 +374,18 @@ impl SelectionSet {
     /// re-scanning the whole changeset per selection.
     ///
     /// Thin wrapper over [`Self::translate_in_place_with`] for a caller
-    /// translating a single `SelectionSet` — see that method for a caller
+    /// translating a single `SelectionSet`; see that method for a caller
     /// translating many.
     pub fn translate_in_place(&mut self, cs: &ChangeSet, text_pre: &BufferText) {
         self.translate_in_place_with(&cs.edited_old_ranges(), cs, text_pre);
     }
 
     /// Same as [`Self::translate_in_place`], but takes `cs`'s edited ranges
-    /// precomputed by the caller — for translating many independent
+    /// precomputed by the caller, for translating many independent
     /// `SelectionSet`s through the same `ChangeSet` (e.g. one jump-list entry
     /// per pane), so [`ChangeSet::edited_old_ranges`]'s `Vec` build is paid
     /// once rather than once per `SelectionSet`. `edits` must be
-    /// `cs.edited_old_ranges()` — passing ranges from a different changeset
+    /// `cs.edited_old_ranges()`. Passing ranges from a different changeset
     /// silently mis-maps every selection.
     pub fn translate_in_place_with(
         &mut self,
@@ -400,13 +400,13 @@ impl SelectionSet {
             // Ropey domain, not `char_to_line`: `sel.head` is a saved
             // selection being replayed through an edit that may have shrunk
             // the buffer since it was captured, so it can legitimately equal
-            // `text_pre.len_chars()` (the phantom line) — `line_to_char` and
+            // `text_pre.len_chars()` (the phantom line); `line_to_char` and
             // `next_line_start` both already accept that domain directly.
             let pre_line = text_pre.ropey_char_to_line(sel.head);
             let line_start = text_pre.line_to_char(pre_line);
             let line_end = crate::lines::next_line_start(text_pre, pre_line);
 
-            // Drop edits that end entirely before this line — heads (and thus
+            // Drop edits that end entirely before this line. Heads (and thus
             // pre-edit lines) strictly increase across selections in a sorted,
             // non-overlapping SelectionSet, so a dropped edit can never touch
             // this or any later selection's line. A point range (Insert) at
@@ -426,7 +426,7 @@ impl SelectionSet {
                 }
             }
             // The first remaining edit (if any) touches this line iff it
-            // starts before `line_end` — anything surviving the skip above
+            // starts before `line_end`: anything surviving the skip above
             // already ends at or after `line_start`, so `start < line_end`
             // alone implies overlap (proof: for a range, that's exactly the
             // half-open overlap test; for a point, `start == end` already

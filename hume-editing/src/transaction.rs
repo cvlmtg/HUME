@@ -28,7 +28,7 @@ impl Transaction {
     /// new selection state.
     ///
     /// Takes `text` by reference so the original buffer remains available to
-    /// the caller on the error path — no undo needed. On success the caller
+    /// the caller on the error path, with no undo needed. On success the caller
     /// should drop the old buffer (or push an inverse transaction to the undo
     /// stack before doing so).
     ///

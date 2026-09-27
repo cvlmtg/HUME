@@ -1,7 +1,7 @@
 use super::*;
 
 /// Split `s` on `\n` into line slices for test inputs. No trailing
-/// separators — matches how a rope would slice lines.
+/// separators, matching how a rope would slice lines.
 fn lines(s: &str) -> Vec<&str> {
     s.split('\n').collect::<Vec<_>>()
 }
@@ -190,7 +190,7 @@ fn diff_lines_completely_different() {
 
 #[test]
 fn diff_lines_trailing_newline() {
-    // `"a\n".split('\n')` yields `["a", ""]` — the trailing empty line is
+    // `"a\n".split('\n')` yields `["a", ""]`: the trailing empty line is
     // a real line index and must be covered by the Equal hunk, not dropped.
     let old = lines("a\n");
     let new = lines("a\n");
@@ -207,7 +207,7 @@ fn diff_lines_myers_fallback_coherent() {
     // With a zero deadline the histogram pass can never finish in time, so
     // the fallback to Myers is deterministic regardless of machine speed.
     // Myers too hits the zero budget immediately and returns the coarsest
-    // result — a single Replace spanning the whole input — which is still
+    // result (a single Replace spanning the whole input), which is still
     // a coherent, well-formed diff (ranges cover the inputs, kind matches).
     let old: Vec<String> = (0..20).map(|i| format!("line-{i}-pad-{}", i % 3)).collect();
     let new: Vec<String> = (0..20)
@@ -245,7 +245,7 @@ fn diff_words_zwj_emoji() {
     let old = format!("x {} y", family);
     let new = format!("x {} z", family);
     let d = diff_words(&old, &new);
-    // Equal prefix "x 👨‍👩‍👧 " covers chars 0..8 on both sides — the ZWJ
+    // Equal prefix "x 👨‍👩‍👧 " covers chars 0..8 on both sides; the ZWJ
     // sequence is inside it and never split.
     let prefix = d
         .hunks
@@ -269,7 +269,7 @@ fn diff_words_zwj_emoji() {
 
 #[test]
 fn diff_words_cjk() {
-    // CJK scripts have no whitespace word boundaries under UAX #29 — each
+    // CJK scripts have no whitespace word boundaries under UAX #29: each
     // ideograph is its own word. "日本語 abc" tokenizes as
     // ["日","本","語"," ","abc"], so editing "語" and "abc" exercises the
     // per-ideograph granularity.
@@ -330,7 +330,7 @@ fn diff_words_deadline_hit() {
 
 #[test]
 fn diff_words_no_deadline_on_small_input() {
-    // A small input finishes well within the 50ms budget — the guard must
+    // A small input finishes well within the 50ms budget; the guard must
     // not fire spuriously on fast machines.
     let d = diff_words("foo bar", "foo baz");
     assert!(!d.deadline_hit());
@@ -384,8 +384,8 @@ proptest! {
     fn diff_words_round_trip(old in arb_small_text(12), new in arb_small_text(12)) {
         let old_n = old.chars().count();
         let new_n = new.chars().count();
-        // Hunk ranges are char offsets, but `&str[range]` slices by bytes —
-        // build char→byte tables to reconstruct by byte range.
+        // Hunk ranges are char offsets, but `&str[range]` slices by bytes, so
+        // we build char→byte tables to reconstruct by byte range.
         let old_bytes: Vec<usize> = old.char_indices().map(|(b, _)| b).chain(std::iter::once(old.len())).collect();
         let new_bytes: Vec<usize> = new.char_indices().map(|(b, _)| b).chain(std::iter::once(new.len())).collect();
         let d = diff_words(&old, &new);

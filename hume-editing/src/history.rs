@@ -23,7 +23,7 @@ pub struct RevisionId(pub(crate) usize);
 ///
 /// Each revision stores both a forward Transaction (parent → this state, for
 /// redo) and an inverse Transaction (this state → parent, for undo). No buffer
-/// snapshot is stored — undo reconstructs the previous state by applying the
+/// snapshot is stored: undo reconstructs the previous state by applying the
 /// inverse Transaction.
 ///
 /// The `children` vec records all revisions that branch from this one. The
@@ -32,7 +32,7 @@ pub struct RevisionId(pub(crate) usize);
 /// to the most recent edit.
 struct Revision {
     /// Apply this to move from the current state back to the parent state (undo).
-    /// Its `selection` is the pre-edit selection — where cursors were before
+    /// Its `selection` is the pre-edit selection, where cursors were before
     /// this revision was created.
     inverse: Transaction,
     /// Apply this to move from the parent state forward to this state (redo).
@@ -40,11 +40,11 @@ struct Revision {
     forward: Transaction,
     /// The parent revision. `None` only for the root.
     parent: Option<RevisionId>,
-    /// Child revisions — branches created from this state.
+    /// Child revisions: branches created from this state.
     /// The last entry is the most recently created child (default redo target).
     children: Vec<RevisionId>,
     /// When this revision was created. Read by the `:earlier`/`:later`
-    /// step-resolution queries below via [`History::age`] — a wall-clock
+    /// step-resolution queries below via [`History::age`]: a wall-clock
     /// [`SystemTime`], not a monotonic [`std::time::Instant`], because
     /// `:earlier 30m` means thirty minutes of wall-clock time, including
     /// any span the machine spent suspended; `Instant` is `CLOCK_MONOTONIC`
@@ -69,7 +69,7 @@ pub struct History {
     revisions: FxHashMap<RevisionId, Revision>,
     /// The currently active revision.
     current: RevisionId,
-    /// Next ID to assign in `record`. Monotonic — never reused, even for
+    /// Next ID to assign in `record`. Monotonic, never reused, even for
     /// evicted revisions.
     next_id: usize,
     /// Maximum non-root revisions to retain. `0` means unlimited (no
@@ -81,7 +81,7 @@ impl History {
     /// Create a new history rooted at the initial document state.
     ///
     /// The root revision has identity changesets (all Retain) and carries
-    /// `initial_sels` as its selection — this is the state before any edit.
+    /// `initial_sels` as its selection; this is the state before any edit.
     /// `buf_len` is the character length of the initial buffer (needed to
     /// build the identity ChangeSet).
     pub fn new(initial_sels: SelectionSet, buf_len: usize) -> Self {
@@ -111,7 +111,7 @@ impl History {
     /// Set the maximum number of non-root revisions to retain. `0` means
     /// unlimited.
     ///
-    /// Takes effect on the *next* `record` call, not immediately — matching
+    /// Takes effect on the *next* `record` call, not immediately, matching
     /// Vim's `undolevels` semantics, where lowering the cap does not
     /// retroactively trim existing history.
     pub fn set_undo_levels(&mut self, levels: usize) {
@@ -127,13 +127,13 @@ impl History {
     ///
     /// Creates a new revision as a child of the current revision and makes
     /// it the new `current`. The caller provides both the forward and inverse
-    /// changesets — the inverse must have been computed against the pre-edit
+    /// changesets. The inverse must have been computed against the pre-edit
     /// buffer before that buffer was replaced.
     ///
     /// # Arguments
     ///
     /// - `forward_cs`: the ChangeSet that was applied to produce the new state.
-    /// - `inverse_cs`: `forward_cs.invert(&pre_edit_text)` — reverses the edit.
+    /// - `inverse_cs`: `forward_cs.invert(&pre_edit_text)`, which reverses the edit.
     /// - `pre_edit_sels`: cursor positions before the edit (stored in `inverse`
     ///   so undo restores them).
     /// - `post_edit_sels`: cursor positions after the edit (stored in `forward`
@@ -141,7 +141,7 @@ impl History {
     ///
     /// If `undo-levels` trimming promotes a child of the root to become the
     /// new root (see `Self::enforce_undo_levels`), returns the id of that
-    /// promoted revision — callers holding an external `RevisionId` (e.g. a
+    /// promoted revision. Callers holding an external `RevisionId` (e.g. a
     /// "clean" save point) must remap it to [`Self::ROOT`] if it matches, so
     /// that state stays reachable. Promotion also overwrites whatever state
     /// `ROOT` previously represented, so a caller-held id equal to `ROOT`
@@ -183,7 +183,7 @@ impl History {
     /// Trim the tree down to at most `undo_levels` non-root revisions,
     /// Vim-`undolevels`-style: evict from the root end, oldest first.
     ///
-    /// The revision on the path to `current` is always protected — `current`
+    /// The revision on the path to `current` is always protected: `current`
     /// is a freshly recorded leaf, and `undo_levels` (when enforced) is at
     /// least 1, so it is never a candidate for eviction.
     ///
@@ -193,15 +193,15 @@ impl History {
     ///   oldest branch *not* on the path to `current` is discarded whole
     ///   (mirrors Vim freeing an entire unreachable redo branch).
     /// - Exactly one child `C` (so `C` is necessarily on the path to
-    ///   `current`, and `C != current` — see above): there is nothing to
+    ///   `current`, and `C != current`, see above): there is nothing to
     ///   discard without cutting into the live path, so `C` is *promoted*:
     ///   its children become the root's children, and `C` itself is
-    ///   removed. The root's `forward` transaction is left untouched — it
+    ///   removed. The root's `forward` transaction is left untouched: it
     ///   is never applied (redo/goto always read a *child's* forward, never
     ///   the root's), it exists solely to carry the buffer's open-time
     ///   selection for `initial_sels`, and that selection must stay stable
     ///   across promotions. This may still overshoot below the cap when a
-    ///   whole branch is discarded in one step — matches Vim.
+    ///   whole branch is discarded in one step, as Vim does.
     ///
     /// Returns the id of the last revision promoted into the root, if any.
     fn enforce_undo_levels(&mut self) -> Option<RevisionId> {
@@ -303,13 +303,13 @@ impl History {
     }
 
     /// Walk up to `count` revisions toward the root, returning the inverse
-    /// Transactions to apply, in order — loops [`Self::undo`], the single
+    /// Transactions to apply, in order. Loops [`Self::undo`], the single
     /// definition of one step. Short of `count` when the walk reaches the
     /// root; empty when `count == 0` or already at the root.
     ///
     /// The caller feeds the result into `Buffer::apply_transactions`, which
     /// folds it with `ChangeSet::compose_all` into one net transform and
-    /// applies that once — one `set_text`/`finish_edit` cycle for the whole
+    /// applies that once: one `set_text`/`finish_edit` cycle for the whole
     /// walk, however many revisions it crosses, instead of one per step.
     pub fn undo_n(&mut self, count: usize) -> Vec<Transaction> {
         let mut txns = Vec::new();
@@ -322,7 +322,7 @@ impl History {
         txns
     }
 
-    /// Redo up to `count` steps forward along the most-recent-child chain —
+    /// Redo up to `count` steps forward along the most-recent-child chain;
     /// loops [`Self::redo`]. See [`Self::undo_n`] for the caller-side
     /// composition contract.
     pub fn redo_n(&mut self, count: usize) -> Vec<Transaction> {
@@ -346,7 +346,7 @@ impl History {
         !self.revisions[&self.current].children.is_empty()
     }
 
-    /// Wall-clock age of revision `id` as of `now` — every step-resolution
+    /// Wall-clock age of revision `id` as of `now`. Every step-resolution
     /// query below measures through this rather than reading `timestamp`
     /// directly, so they can't drift on how the clock read is taken. `now` is
     /// a parameter rather than a fresh `SystemTime::now()` per call: a walk
@@ -356,8 +356,8 @@ impl History {
     /// `SystemTime` that moved backwards since the revision was stamped (a
     /// manual clock set, an NTP step): reading that revision as "just now" is
     /// the safe direction to round a clock glitch, since it makes the
-    /// revision look *younger*, never older — `undo_steps_older_than`/
-    /// `redo_steps_newer_than` can then only under-, never over-, travel as a
+    /// revision look *younger*, never older, so `undo_steps_older_than`/
+    /// `redo_steps_newer_than` can only under-, never over-, travel as a
     /// result.
     fn age(&self, id: RevisionId, now: SystemTime) -> Duration {
         now.duration_since(self.revisions[&id].timestamp)
@@ -365,17 +365,17 @@ impl History {
     }
 
     /// Undo steps needed to reach the state as of `age` ago, for `:earlier`.
-    /// `Ok(n)` feeds straight into [`Self::undo_n`], so the count — not a
-    /// revision id — is what crosses the crate boundary and the tree stays
+    /// `Ok(n)` feeds straight into [`Self::undo_n`], so the count (not a
+    /// revision id) is what crosses the crate boundary and the tree stays
     /// unenumerable. `Err(n)` means the request is unsatisfiable (the walk
     /// reached the root while it was still younger than `age`); `n` is the
     /// number of real ancestors above the root, i.e. as far as `undo_n` can
-    /// actually travel — the caller decides how to report that exhaustion,
+    /// actually travel. The caller decides how to report that exhaustion;
     /// this function only distinguishes the two cases.
     ///
     /// Walks up toward the root while the revision underfoot is still
     /// younger than `age`. Strict `<` keeps an exact hit un-counted as
-    /// unsatisfiable — landing on a revision exactly `age` old is a hit, not
+    /// unsatisfiable: landing on a revision exactly `age` old is a hit, not
     /// an over-travel.
     pub fn undo_steps_older_than(&self, age: Duration) -> Result<usize, usize> {
         let now = SystemTime::now();
@@ -426,7 +426,7 @@ impl History {
     /// Total number of revisions in the tree (including the root).
     ///
     /// A `History` always contains at least the root revision, so it is never
-    /// empty — `is_empty()` would be a constant `false` and is intentionally
+    /// empty. `is_empty()` would be a constant `false` and is intentionally
     /// absent.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
@@ -473,7 +473,7 @@ impl History {
         chain
     }
 
-    /// Jump to an arbitrary revision in the undo tree — the general case
+    /// Jump to an arbitrary revision in the undo tree, the general case
     /// [`Self::undo_n`]/[`Self::redo_n`] don't need, since each of those
     /// already walks a straight line of `parent`/`children` links with no
     /// LCA to find. This is for a target that isn't known to be a plain
@@ -482,12 +482,12 @@ impl History {
     ///
     /// Returns the sequence of [`Transaction`]s that transform the current
     /// buffer into the target state, **in order**: txn₁ maps state A→B, txn₂
-    /// maps B→C, and so on — exactly [`ChangeSet::compose`]'s contract
+    /// maps B→C, and so on, exactly [`ChangeSet::compose`]'s contract
     /// (`self.len_after == other.len_before`). A caller applying them one at
     /// a time (as this module's tests do, to keep assertions per-hop) is
     /// free to; a caller walking many revisions in one logical step instead
     /// folds the list with `ChangeSet::compose_all` into one net transform
-    /// and applies that once — same end state, one text mutation instead
+    /// and applies that once: same end state, one text mutation instead
     /// of N.
     ///
     /// Returns `None` if `target` equals the current revision (no-op) or is
@@ -515,7 +515,7 @@ impl History {
 
         // Put the "from" ancestor set in a HashSet for O(1) lookup.
         // We need to find the first node in ancestors_to that also appears
-        // in ancestors_from — that is the LCA.
+        // in ancestors_from; that is the LCA.
         let from_set: rustc_hash::FxHashSet<RevisionId> = ancestors_from.iter().copied().collect();
 
         // Find the LCA: walk ancestors_to until we hit a node in from_set.

@@ -8,7 +8,7 @@ fn co(n: usize) -> CharOffset {
 
 #[test]
 fn from_rope_is_raw() {
-    // from_rope is the changeset algebra path — it has a debug_assert for
+    // from_rope is the changeset algebra path: it has a debug_assert for
     // the trailing \n but does not add one if missing. The caller
     // (ChangeSet::apply) is responsible for ensuring the invariant holds.
     // The invariant is upheld by From<&str> / empty (user entry points) and
@@ -46,7 +46,7 @@ fn from_str_lf_line_ending() {
 #[test]
 fn from_str_crlf_normalized() {
     let text = BufferText::from("hello\r\nworld\r\n");
-    // \r stripped — content is pure LF
+    // \r stripped, content is pure LF
     assert_eq!(text.to_string(), "hello\nworld\n");
     assert_eq!(text.len_chars(), 12); // "hello\nworld\n"
     assert_eq!(text.line_ending(), LineEnding::CrLf);
@@ -70,10 +70,10 @@ fn from_str_bare_cr_normalized() {
 
 #[test]
 fn from_str_cr_then_crlf_fully_normalizes() {
-    // "\r\r\n": the first '\r' (not itself followed by '\n' — its lookahead
+    // "\r\r\n": the first '\r' (not itself followed by '\n'; its lookahead
     // is the second '\r') normalizes to '\n' on its own; the second '\r'
     // pairs with the following '\n' and normalizes to a single '\n' too.
-    // Two real line breaks in, two '\n's out — no literal '\r' survives.
+    // Two real line breaks in, two '\n's out, and no literal '\r' survives.
     let text = BufferText::from("\r\r\n");
     assert_eq!(text.to_string(), "\n\n");
     // Detection only looks at the original input for a \r\n pair, which is
@@ -117,7 +117,7 @@ fn line_tokens_count_matches_ropey_line_count_and_keeps_terminators() {
 fn line_tokens_treats_every_non_lf_break_char_as_content() {
     // `\n` is the only line break under this workspace's ropey config, so a
     // form feed doesn't split a token. Nor would a `\r`, which additionally
-    // can't reach a live buffer at all — `BufferText::from` normalizes it to
+    // can't reach a live buffer at all: `BufferText::from` normalizes it to
     // `\n`, so it becomes a real break by being rewritten, not by ropey
     // recognizing it.
     let text = BufferText::from("a\u{0C}b\n");
@@ -189,7 +189,7 @@ fn last_content_line_is_content_line_count_minus_one() {
 fn from_str_unicode() {
     // "é" can be represented as a single char (U+00E9) or as two chars
     // (U+0065 + U+0301 combining accent). `BufferText::from` accepts whatever
-    // Rust gives us. Here we use the precomposed form — one char.
+    // Rust gives us. Here we use the precomposed form, one char.
     let text = BufferText::from("café");
     assert_eq!(text.len_chars(), 5); // c a f é \n
 }
@@ -237,7 +237,7 @@ fn insert_at_start() {
     let text = BufferText::from("world");
     let new = text.insert(0, "hello ");
     assert_eq!(new.to_string(), "hello world\n");
-    // Original is unchanged — structural sharing.
+    // Original is unchanged: structural sharing.
     assert_eq!(text.to_string(), "world\n");
 }
 

@@ -4,8 +4,8 @@ use std::fmt;
 use std::str::FromStr;
 
 /// `Hard` inserts a literal `\t` character; `Soft` inserts enough spaces to
-/// reach the next tab stop (governed by `tab-width`). This is the single knob
-/// — there is no separate "shiftwidth" or "softtabstop": `tab-width` is the
+/// reach the next tab stop (governed by `tab-width`). This is the single knob;
+/// there is no separate "shiftwidth" or "softtabstop": `tab-width` is the
 /// only width, used for both rendering and Tab-key spacing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TabStyle {
@@ -17,7 +17,7 @@ pub enum TabStyle {
 }
 
 impl TabStyle {
-    /// The wire-format strings `FromStr` accepts — the single source
+    /// The wire-format strings `FromStr` accepts: the single source
     /// `:set buffer tab-style=<Tab>` completion mirrors, so the two can never
     /// drift out of sync.
     pub const VALUES: &'static [&'static str] = &["hard", "soft"];

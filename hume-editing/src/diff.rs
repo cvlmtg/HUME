@@ -26,7 +26,7 @@ pub(crate) const DIFF_LINE_DEADLINE: Duration = Duration::from_millis(250);
 /// Wall-clock budget for the word-level Myers pass. Word diffs are meant as a
 /// refinement pass on single replaced lines, so the budget is tighter than the
 /// line-level one; on timeout Myers returns a coarse (Replace-all) result and
-/// [`WordDiff::deadline_hit`] reports it. The guard is a safety net — callers
+/// [`WordDiff::deadline_hit`] reports it. The guard is a safety net; callers
 /// are still expected to pass short strings.
 const DIFF_WORD_DEADLINE: Duration = Duration::from_millis(50);
 
@@ -37,12 +37,12 @@ const DIFF_WORD_DEADLINE: Duration = Duration::from_millis(50);
 pub enum AlgoUsed {
     /// Histogram diff completed within the deadline.
     Histogram,
-    /// Myers diff — used as a fallback because the histogram pass hit the
+    /// Myers diff, used as a fallback because the histogram pass hit the
     /// deadline.
     Myers,
 }
 
-/// The kind of a [`LineHunk`]. No variant carries a payload — every consumer
+/// The kind of a [`LineHunk`]. No variant carries a payload: every consumer
 /// re-slices the changed lines from its own input via the hunk's `old`/`new`
 /// ranges instead (a payload would join those lines with no separator,
 /// making a multi-line hunk unrecoverable from it anyway).
@@ -75,7 +75,7 @@ pub struct LineHunk {
 
 /// Result of a line-level diff.
 ///
-/// `deadline_hit()` is derived from `algo_used` — Myers only ever runs as a
+/// `deadline_hit()` is derived from `algo_used`. Myers only ever runs as a
 /// histogram fallback, so the two are never out of step (single source of
 /// truth on which algorithm won).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,7 +99,7 @@ impl LineDiff {
 /// budget than the public default (e.g. scripting, tests). The public
 /// [`diff_lines`] uses `DIFF_LINE_DEADLINE`.
 ///
-/// Generic over the token type — `LineHunkKind` carries no payload, so
+/// Generic over the token type: `LineHunkKind` carries no payload, so
 /// nothing here requires `&str`; a caller that already has, say,
 /// `Cow<'_, str>` line tokens can pass them straight through with no
 /// intermediate `&str` view.
@@ -121,7 +121,7 @@ pub fn diff_lines_with_deadline<T: Eq + Hash>(
         };
     }
 
-    // Histogram bailed — Myers gets a fresh budget. Myers' divide-and-conquer
+    // Histogram bailed, so Myers gets a fresh budget. Myers' divide-and-conquer
     // recursion still produces a usable (if coarser) result when it too hits
     // the deadline, so we keep whatever it returns.
     let myers_start = Instant::now();
@@ -135,7 +135,7 @@ pub fn diff_lines_with_deadline<T: Eq + Hash>(
 
 /// Line-level diff with the default deadline.
 ///
-/// `old` and `new` are line slices — the caller decides how to tokenize
+/// `old` and `new` are line slices; the caller decides how to tokenize
 /// (rope lines, file lines, etc.). This keeps `diff.rs` independent of
 /// `ropey` and lets the rope-vs-plain-text choice live with the caller.
 pub fn diff_lines<T: Eq + Hash>(old: &[T], new: &[T]) -> LineDiff {
@@ -179,7 +179,7 @@ pub enum WordHunkKind {
 
 /// A single word-level change. `old` and `new` are **char-offset** ranges into
 /// the inputs passed to [`diff_words`]. Note: `&str` indexing is byte-based, so
-/// slicing `&old[hunk.old]` panics on non-ASCII inputs — convert char offsets
+/// slicing `&old[hunk.old]` panics on non-ASCII inputs. Convert char offsets
 /// to byte offsets (e.g. via `char_indices`) before slicing. This matches
 /// [`crate::text::BufferText`]'s char-offset invariant.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -198,7 +198,7 @@ pub struct WordHunk {
 /// `deadline_hit()` reports whether Myers could not finish within
 /// `DIFF_WORD_DEADLINE` and returned a coarse (Replace-all) result. Unlike
 /// [`LineDiff`], word-level has a single algorithm, so the deadline hit is
-/// independent state with nothing to derive from — hence the private field
+/// independent state with nothing to derive from, hence the private field
 /// behind the accessor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
@@ -243,7 +243,7 @@ pub fn diff_words(old: &str, new: &str) -> WordDiff {
 /// [`diff_words`] uses `DIFF_WORD_DEADLINE`.
 ///
 /// Myers' divide-and-conquer recursion still produces a coherent (if coarser)
-/// result when it hits the deadline — the ranges always partition the input —
+/// result when it hits the deadline (the ranges always partition the input),
 /// so we keep whatever it returns and report the timeout via
 /// [`WordDiff::deadline_hit`].
 pub fn diff_words_with_deadline(old: &str, new: &str, deadline: Duration) -> WordDiff {

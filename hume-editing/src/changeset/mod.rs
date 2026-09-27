@@ -78,7 +78,7 @@ pub struct EditedRegion<'a> {
     pub inserted: Cow<'a, str>,
 }
 
-/// Appends `s` to `cow` in place — `edited_regions`' own accumulator for a
+/// Appends `s` to `cow` in place: `edited_regions`' own accumulator for a
 /// region touched by more than one `Insert` op. Stays `Cow::Borrowed` (no
 /// allocation) for the first piece; converts to owned only once a second
 /// piece needs concatenating.
@@ -96,7 +96,7 @@ fn push_str<'a>(cow: &mut Cow<'a, str>, s: &'a str) {
 /// the same variant. Zero-length ops are silently dropped.
 ///
 /// This is the single normalization point used by the builder, `invert`,
-/// and `compose` — every path that constructs a `Vec<Operation>` goes
+/// and `compose`. Every path that constructs a `Vec<Operation>` goes
 /// through here to guarantee the merged/no-zeros invariant.
 pub(super) fn push_merge(ops: &mut Vec<Operation>, op: Operation) {
     match op {
@@ -155,7 +155,7 @@ fn advance_op(
         Operation::Delete(k) if k > n => Some(Operation::Delete(k - n)),
         Operation::Insert(mut s) => {
             // `nth` stops at the boundary instead of counting the whole
-            // string, and `s` is owned, so the tail is taken in place — no
+            // string, and `s` is owned, so the tail is taken in place, with no
             // second scan and no fresh allocation for the remainder.
             match s.char_indices().nth(n) {
                 Some((byte_idx, _)) => {
@@ -175,7 +175,7 @@ fn advance_op(
 /// A resumable, monotone version of `ChangeSet::map_pos` for batch queries.
 ///
 /// Each `map()` call must receive `pos` values in non-decreasing order across
-/// the cursor's lifetime — it never revisits an earlier op, so a caller
+/// the cursor's lifetime. It never revisits an earlier op, so a caller
 /// walking `n` sorted positions through one cursor pays O(ops + n) total
 /// instead of O(ops × n) for `n` fresh `map_pos` calls. Same amortized-cursor
 /// shape as `IntervalCursor` in `hume_engine::style::highlight`.
@@ -197,32 +197,32 @@ impl<'a> PosMapCursor<'a> {
     }
 
     /// Map `pos` from old-doc to new-doc space. `pos` must be `>=` every
-    /// position passed to a prior call on this cursor — see struct docs.
+    /// position passed to a prior call on this cursor (see struct docs).
     ///
     /// Thin shorthand over [`Self::map_anchor`] for callers that don't care
     /// whether the position's anchor character survived the edit (selections,
-    /// cursors — a collapsed-to-the-deletion-point result is exactly what
+    /// cursors: a collapsed-to-the-deletion-point result is exactly what
     /// they want).
     pub fn map(&mut self, pos: CharOffset, assoc: Assoc) -> CharOffset {
         self.map_anchor(pos, assoc).pos
     }
 
     /// Map `pos` from old-doc to new-doc space, additionally reporting
-    /// whether `pos` named a character a `Delete` op consumed — the mapped
+    /// whether `pos` named a character a `Delete` op consumed. The mapped
     /// value is then the deletion point, a *neighbour* of the vanished
     /// anchor rather than the anchor itself. Callers that treat `pos` as
     /// naming a specific character (a decoration anchor, not a cursor) use
     /// this to tell "moved" from "its character is gone" apart.
     ///
-    /// Walks forward from `(idx, old, new)` — wherever the previous call left
-    /// off — rather than restarting at op 0, since ops fully behind a past
+    /// Walks forward from `(idx, old, new)`, wherever the previous call left
+    /// off, rather than restarting at op 0, since ops fully behind a past
     /// query can never matter again for a non-decreasing sequence of queries.
     /// `ChangeSet::map_pos` is a one-shot convenience built on top of this:
     /// it opens a fresh cursor and delegates a single query to it.
     pub fn map_anchor(&mut self, pos: CharOffset, assoc: Assoc) -> MappedPos {
         // Bare usize from here down: `old`/`new` are running cursors advanced
         // by op *lengths* (`self.old += n`, `self.new + len`), arithmetic
-        // `CharOffset` deliberately has no `Add`/`Sub` for — this is that
+        // `CharOffset` deliberately has no `Add`/`Sub` for. This is that
         // type's own no-arithmetic design forcing an escape, not a
         // performance carve-out (`CharOffset` is a zero-cost `Copy` newtype).
         let pos = pos.index();
@@ -274,7 +274,7 @@ impl<'a> PosMapCursor<'a> {
 }
 
 /// A mapped position, plus whether the character it was anchored to was
-/// deleted (the position then names the deletion point — a *neighbour* of
+/// deleted (the position then names the deletion point, a *neighbour* of
 /// the anchor, not the anchor).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MappedPos {
@@ -285,7 +285,7 @@ pub struct MappedPos {
 // ── ChangeSet impl ───────────────────────────────────────────────────────────
 
 impl ChangeSet {
-    /// Builds the identity changeset for a document of `len` chars — retains
+    /// Builds the identity changeset for a document of `len` chars: retains
     /// everything, changes nothing. Starting point for callers that accumulate
     /// edits via repeated [`compose`](Self::compose) calls (e.g. a session
     /// tracking every edit since some earlier snapshot) and need a neutral
@@ -300,7 +300,7 @@ impl ChangeSet {
         }
     }
 
-    /// Returns `true` if this changeset is the identity transform — all
+    /// Returns `true` if this changeset is the identity transform: all
     /// operations are `Retain` and the document is unchanged.
     pub fn is_identity(&self) -> bool {
         self.ops.iter().all(|op| matches!(op, Operation::Retain(_)))
@@ -333,7 +333,7 @@ impl ChangeSet {
     /// throughout HUME's multi-selection editing.
     ///
     /// Assembling a `Transaction` from outside the editor's named commands?
-    /// Use [`crate::transaction::Transaction::apply`] instead — it also
+    /// Use [`crate::transaction::Transaction::apply`] instead; it also
     /// validates the bundled selection against the post-edit buffer.
     ///
     /// # Errors
@@ -342,7 +342,7 @@ impl ChangeSet {
     /// - [`ApplyError::TrailingNewlineMissing`] if the result rope doesn't end
     ///   with `\n` (the changeset deleted the structural trailing newline).
     ///
-    /// On error the original `text` is untouched — the caller still owns it.
+    /// On error the original `text` is untouched, and the caller still owns it.
     pub fn apply(&self, text: &BufferText) -> Result<BufferText, ApplyError> {
         if text.len_chars() != self.len_before {
             return Err(ApplyError::LengthMismatch {
@@ -351,7 +351,7 @@ impl ChangeSet {
             });
         }
 
-        // Clone the rope (O(1) — ropey uses Arc-based tree nodes). We mutate
+        // Clone the rope (O(1), since ropey uses Arc-based tree nodes). We mutate
         // the clone so that `text` remains valid on the error path.
         let mut rope = text.rope().clone();
 
@@ -364,7 +364,7 @@ impl ChangeSet {
         for op in &self.ops {
             match op {
                 Operation::Retain(n) => {
-                    // Nothing to do — these chars are already in the rope.
+                    // Nothing to do: these chars are already in the rope.
                     old_pos += n;
                 }
                 Operation::Delete(n) => {
@@ -404,7 +404,7 @@ impl ChangeSet {
     /// moves it past. Positions inside a deleted region collapse to the
     /// start of the deletion (the character is gone).
     ///
-    /// One-shot convenience over [`PosMapCursor`] — batch callers mapping
+    /// One-shot convenience over [`PosMapCursor`]. Batch callers mapping
     /// several sorted positions (e.g. `SelectionSet::translate_in_place`)
     /// should use `PosMapCursor` directly instead, so the walk isn't
     /// restarted per position. Test-only: the tests use it as a reference
@@ -425,7 +425,7 @@ impl ChangeSet {
     // ── map_positions / map_ranges ──────────────────────────────────────────
 
     /// Map a sorted slice of positions in place, through one [`PosMapCursor`]
-    /// pass — O(ops + n) total instead of O(ops × n) for `n` fresh
+    /// pass: O(ops + n) total instead of O(ops × n) for `n` fresh
     /// `ChangeSet::map_pos` calls. Used by callers remapping stored
     /// positions (diagnostics, bookmarks) through every edit.
     ///
@@ -455,7 +455,7 @@ impl ChangeSet {
     /// range at the deletion point (caller may then drop it).
     ///
     /// Two `PosMapCursor` passes (starts, then ends) rather than one
-    /// interleaved pass — starts and ends are each individually sorted but
+    /// interleaved pass. Starts and ends are each individually sorted but
     /// interleaved with each other, so two O(ops + n) passes are simpler
     /// than merging a tagged list, at the same cost. Nested ranges
     /// (sorted-by-start doesn't imply sorted-by-end, e.g. two LSP
@@ -502,17 +502,17 @@ impl ChangeSet {
     /// ascending and merged where adjacent/overlapping.
     ///
     /// `Delete(n)` contributes `[old, old+n)`; `Insert` contributes the point
-    /// range `[old, old)` — it touches only the exact offset it lands at,
+    /// range `[old, old)`: it touches only the exact offset it lands at,
     /// since it doesn't consume any old-doc chars. A point can merge into a
     /// preceding range when it sits exactly at that range's end (e.g. an
     /// Insert immediately following a Delete at the same position).
     ///
-    /// Used by `SelectionSet::translate_in_place` — one O(ops) walk here lets
+    /// Used by `SelectionSet::translate_in_place`: one O(ops) walk here lets
     /// the caller check every selection's line against these ranges with a
     /// single forward-only cursor, instead of re-walking `self.ops` per
     /// selection. `pub` (not `pub(crate)`) so a caller translating many
-    /// independent `SelectionSet`s through the same `ChangeSet` — HUME's
-    /// per-pane jump lists — can compute this once and feed it to
+    /// independent `SelectionSet`s through the same `ChangeSet` (HUME's
+    /// per-pane jump lists) can compute this once and feed it to
     /// [`crate::selection::SelectionSet::translate_in_place_with`] for each,
     /// rather than paying the O(ops) walk again per list.
     pub fn edited_old_ranges(&self) -> Vec<ExclusiveRange<CharOffset>> {
@@ -520,11 +520,11 @@ impl ChangeSet {
     }
 
     /// Like [`edited_old_ranges`](Self::edited_old_ranges), but also carries
-    /// the text each region's edit inserted — the old-doc span plus its
+    /// the text each region's edit inserted: the old-doc span plus its
     /// replacement, in one walk. `inserted` is `Cow::Borrowed` in the common
     /// case (a region touched by at most one `Insert` op); a region merging
-    /// more than one — an `Insert` sitting between two other touching
-    /// ops, which only `compose` of several changesets can produce — copies
+    /// more than one (an `Insert` sitting between two other touching
+    /// ops, which only `compose` of several changesets can produce) copies
     /// into an owned `String` to concatenate them in order.
     ///
     /// Used by `Editor::cursor_replacement_at` (`hume-editor/src/editor/
@@ -609,7 +609,7 @@ impl ChangeSet {
                     // To undo an insertion, delete the same number of chars.
                     let len = s.chars().count();
                     push_merge(&mut inv_ops, Operation::Delete(len));
-                    // Insert doesn't consume old chars — old_pos stays.
+                    // Insert doesn't consume old chars, so old_pos stays.
                 }
             }
         }
@@ -657,7 +657,7 @@ impl ChangeSet {
 
         // We use partial-consumption iterators. Each "current" slot holds
         // the remainder of the operation being consumed. `into_iter()` moves
-        // ops out of the vecs without cloning — `Operation` values are owned
+        // ops out of the vecs without cloning; `Operation` values are owned
         // directly in the cursor slots.
         let mut a_ops = self.ops.into_iter();
         let mut b_ops = other.ops.into_iter();
@@ -678,12 +678,12 @@ impl ChangeSet {
                 // A removed chars from the original doc. B never saw those
                 // chars, so the delete goes straight to output regardless of
                 // what B is currently doing. The catch-all `b` rebinds b_cur
-                // unconsumed — this correctly handles `(Delete, None)` too
+                // unconsumed, which correctly handles `(Delete, None)` too
                 // (trailing A-deletes after B is exhausted are valid).
                 (Some(Operation::Delete(n)), b) => {
                     push_merge(&mut result, Operation::Delete(n));
                     a_cur = a_ops.next();
-                    b_cur = b; // put back — B wasn't involved
+                    b_cur = b; // put back: B wasn't involved
                 }
 
                 // ── B's Insert: emit and advance B only ──────────────────────
@@ -696,7 +696,7 @@ impl ChangeSet {
                 (a, Some(Operation::Insert(s))) => {
                     push_merge(&mut result, Operation::Insert(s));
                     b_cur = b_ops.next();
-                    a_cur = a; // put back — A wasn't involved
+                    a_cur = a; // put back: A wasn't involved
                 }
 
                 // ── Lockstep: both sides consume the intermediate doc ────────
@@ -733,10 +733,10 @@ impl ChangeSet {
                             push_merge(&mut result, Operation::Insert(s[..end].to_string()));
                         }
                         // Insert + Delete → cancel
-                        // (A inserted text that B immediately deletes —
+                        // (A inserted text that B immediately deletes:
                         // the text never existed from the A→C perspective.)
                         (Operation::Insert(_), Operation::Delete(_)) => {
-                            // No output — they cancel out.
+                            // No output: they cancel out.
                         }
                         // The outer arms above guarantee A ∈ {Retain, Insert}
                         // and B ∈ {Retain, Delete}. All four combinations are
@@ -775,7 +775,7 @@ impl ChangeSet {
     }
 
     /// Fold a sequence of sequential changesets into one net transform, via
-    /// balanced pairwise [`Self::compose`] — O(N log N) op-steps rather than
+    /// balanced pairwise [`Self::compose`]: O(N log N) op-steps rather than
     /// a left fold's O(N²) (each step of a left fold composes the whole
     /// growing accumulator against the next entry, so the accumulator's own
     /// op count grows toward N over the fold, and `compose` allocates a
@@ -783,8 +783,8 @@ impl ChangeSet {
     /// list each round, so no accumulator ever grows past twice the size of
     /// what it's being composed with. `None` for an empty input.
     ///
-    /// Every adjacent boundary in `css` is checked exactly once — by
-    /// whichever round's `compose` call first pairs those two neighbors —
+    /// Every adjacent boundary in `css` is checked exactly once, by
+    /// whichever round's `compose` call first pairs those two neighbors,
     /// via `compose`'s own `assert_eq!(self.len_after, other.len_before)`.
     #[must_use]
     pub fn compose_all(css: impl IntoIterator<Item = ChangeSet>) -> Option<ChangeSet> {

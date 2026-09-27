@@ -10,7 +10,7 @@ fn co(n: usize) -> CharOffset {
 
 /// Test-only shorthand: these tests exercise merge/translate invalidation,
 /// not the `StickyDisplayCol` variants themselves, so every latch below is
-/// `BufferLine` arbitrarily — variant-aware behaviour is pinned separately in
+/// `BufferLine` arbitrarily; variant-aware behaviour is pinned separately in
 /// `hume-ops`/`hume-editor`.
 fn sticky(display_col: u32) -> StickyDisplayCol {
     StickyDisplayCol::BufferLine {
@@ -48,7 +48,7 @@ fn all_collapsed_false_if_any_selection_has_extent() {
 
 #[test]
 fn merge_no_overlap() {
-    // Two disjoint selections — should stay separate.
+    // Two disjoint selections should stay separate.
     let mut set = SelectionSet::from_vec_unchecked(
         vec![Selection::new(co(0), co(3)), Selection::new(co(5), co(8))],
         0,
@@ -59,7 +59,7 @@ fn merge_no_overlap() {
 
 #[test]
 fn merge_overlapping_selections() {
-    // (anchor=0,head=5) and (anchor=3,head=8) overlap — should merge.
+    // (anchor=0,head=5) and (anchor=3,head=8) overlap, so should merge.
     let mut set = SelectionSet::from_vec_unchecked(
         vec![Selection::new(co(0), co(5)), Selection::new(co(3), co(8))],
         0,
@@ -72,7 +72,7 @@ fn merge_overlapping_selections() {
 
 #[test]
 fn merge_adjacent_selections() {
-    // (anchor=0,head=3) and (anchor=3,head=6) touch at offset 3 — should merge.
+    // (anchor=0,head=3) and (anchor=3,head=6) touch at offset 3, so should merge.
     let mut set = SelectionSet::from_vec_unchecked(
         vec![Selection::new(co(0), co(3)), Selection::new(co(3), co(6))],
         0,
@@ -95,7 +95,7 @@ fn merge_duplicate_selections() {
 
 #[test]
 fn merge_contained_selection() {
-    // (anchor=0,head=8) fully contains (anchor=2,head=5) — should merge.
+    // (anchor=0,head=8) fully contains (anchor=2,head=5), so should merge.
     let mut set = SelectionSet::from_vec_unchecked(
         vec![Selection::new(co(0), co(8)), Selection::new(co(2), co(5))],
         0,
@@ -108,7 +108,7 @@ fn merge_contained_selection() {
 #[test]
 fn merge_clears_sticky_display_col_on_extended_selection() {
     // Merging two overlapping selections clears sticky_display_col on the
-    // result — neither side's latched column is valid once the head moves
+    // result: neither side's latched column is valid once the head moves
     // to the union boundary.
     let a = Selection::with_sticky_display_col(co(0), co(5), sticky(42)); // sticky_display_col latched
     let b = Selection::with_sticky_display_col(co(3), co(8), sticky(99)); // sticky_display_col latched
@@ -116,7 +116,7 @@ fn merge_clears_sticky_display_col_on_extended_selection() {
     // The two selections overlap → they merge into one.
     set.merge_overlapping_in_place();
     assert_eq!(set.len(), 1);
-    // The merged selection must have sticky_display_col cleared — neither
+    // The merged selection must have sticky_display_col cleared; neither
     // side's column is valid.
     assert_eq!(
         set.primary().sticky_display_col,
@@ -187,7 +187,7 @@ fn merge_overlapping_backward_selections() {
 
 #[test]
 fn merge_sorts_unsorted_input() {
-    // Pass selections out of order — merge should sort them first.
+    // Pass selections out of order; merge should sort them first.
     let mut set = SelectionSet::from_vec_unchecked(
         vec![Selection::new(co(5), co(8)), Selection::new(co(0), co(3))],
         0,
@@ -223,7 +223,7 @@ fn replace_updates_selection() {
 #[test]
 fn replace_canonicalizes_overlap() {
     // Replacing a selection with one that overlaps its neighbour must
-    // merge them — replace may never leave the set violating invariants.
+    // merge them: replace may never leave the set violating invariants.
     let set = SelectionSet::from_vec(
         vec![Selection::new(co(0), co(2)), Selection::new(co(8), co(9))],
         0,
@@ -244,7 +244,7 @@ fn replace_canonicalizes_ordering() {
     let updated = set.replace(0, Selection::collapsed(co(9)));
     assert_eq!(updated.selections[0].head, co(5));
     assert_eq!(updated.selections[1].head, co(9));
-    // Primary was the selection at 5 — still is after the re-sort.
+    // Primary was the selection at 5 and still is after the re-sort.
     assert_eq!(updated.primary().head, co(5));
 }
 
@@ -253,7 +253,7 @@ fn replace_canonicalizes_ordering() {
 #[test]
 fn map_collapses_to_same_position() {
     // Two cursors at different positions that a motion maps to the same
-    // spot — e.g. "go to end of line" when both are on the same line.
+    // spot, e.g. "go to end of line" when both are on the same line.
     let set = SelectionSet::from_vec(
         vec![Selection::collapsed(co(2)), Selection::collapsed(co(7))],
         0,
@@ -381,7 +381,7 @@ fn remove_after_primary_leaves_primary_unchanged() {
 fn remove_single_is_noop() {
     let set = SelectionSet::single(Selection::collapsed(co(0)));
     let result = set.clone().remove(0);
-    assert_eq!(result, set); // unchanged — can't remove the only selection
+    assert_eq!(result, set); // unchanged: can't remove the only selection
 }
 
 // ── cycle_primary ─────────────────────────────────────────────────────────
@@ -458,7 +458,7 @@ fn map_overlapping_ranges() {
         vec![Selection::new(co(0), co(3)), Selection::new(co(5), co(8))],
         0,
     );
-    // map both to the same range — merge fires automatically.
+    // map both to the same range; merge fires automatically.
     let merged = set.map(|_| Selection::new(co(2), co(5)));
     assert_eq!(merged.len(), 1);
     assert_eq!(merged.primary().start(), co(2));
@@ -564,7 +564,7 @@ fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_tou
     let sel2 = Selection::with_sticky_display_col(co(9), co(9), sticky(7));
     let mut set = SelectionSet::from_vec(vec![sel0, sel1, sel2], 0);
 
-    // Replace "bbb" (positions 4..7) with "XY" — net -1 char, entirely
+    // Replace "bbb" (positions 4..7) with "XY": net -1 char, entirely
     // within line1.
     let mut b = ChangeSetBuilder::new(co(12));
     b.retain(4);
@@ -599,7 +599,7 @@ fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_tou
 #[test]
 fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
     // "aa\nbb\n" (6 chars): line0 = "aa\n" [0,3), line1 = "bb\n" [3,6).
-    // Insert("X") at old position 3 — exactly line1's start — is a point
+    // Insert("X") at old position 3 (exactly line1's start) is a point
     // range [3,3). It must count as touching line1 (matching the
     // pre-batch `touches_line` behavior: `old >= line_start`), not line0.
     let text_pre = BufferText::from("aa\nbb");
@@ -619,13 +619,13 @@ fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
     assert_eq!(
         s0.sticky_display_col(),
         Some(sticky(5)),
-        "line0 wasn't touched — insert lands after it"
+        "line0 wasn't touched: insert lands after it"
     );
     let s1 = set.iter_sorted().nth(1).unwrap();
     assert_eq!(
         s1.sticky_display_col(),
         None,
-        "line1 touched — insert lands exactly at its start"
+        "line1 touched: insert lands exactly at its start"
     );
 }
 
@@ -638,7 +638,7 @@ fn translate_in_place_backward_selection_keeps_direction() {
     let sel = Selection::new(co(4), co(1)); // backward: head < anchor
     let mut set = SelectionSet::single(sel);
 
-    // Insert "XX" at position 0 — shifts everything after it by 2.
+    // Insert "XX" at position 0: shifts everything after it by 2.
     let mut b = ChangeSetBuilder::new(co(6));
     b.insert("XX");
     b.retain_rest();

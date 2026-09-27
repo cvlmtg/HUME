@@ -137,7 +137,7 @@ fn branching_preserves_old_path() {
 
     // From C, undo gets us back to root, then we can redo to C again.
     h.undo();
-    // Root still has children — can redo.
+    // Root still has children, so can redo.
     assert!(h.can_redo());
 }
 
@@ -448,7 +448,7 @@ fn linear_chain_promotes_oldest() {
     assert_eq!(a, None); // a's own record didn't trigger a promotion
     assert!(h.parent(RevisionId(1)).is_none()); // a is gone, not just re-parented
 
-    // initial_sels must stay the buffer's true open-time selection —
+    // initial_sels must stay the buffer's true open-time selection;
     // promotion must never overwrite it with a later revision's cursor.
     assert_eq!(*h.initial_sels(), sel_at(0));
 
@@ -526,7 +526,7 @@ fn subtree_eviction_may_overshoot() {
     // Tree: root -> A -> B -> C (chain of 3), undo to root, record D
     // (branch, current). Cap 3 with 4 non-root nodes triggers eviction;
     // discarding the whole {A, B, C} branch in one step drops to 1 non-root
-    // node, well under the cap of 3 — matches Vim's overshoot behavior.
+    // node, well under the cap of 3, matching Vim's overshoot behavior.
     let mut h = History::new(sel_at(0), 6);
     h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1 = A
     h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // rev2 = B
@@ -598,13 +598,13 @@ fn undo_steps_older_than_walks_to_state_as_of_age() {
     assert_eq!(
         h.undo_steps_older_than(mins(30)),
         Err(3),
-        ":earlier older than the root is unsatisfiable — Err carries the real depth (3), \
+        ":earlier older than the root is unsatisfiable: Err carries the real depth (3), \
          for the shared undo loop's own exhaustion check to report"
     );
     assert_eq!(
         h.undo_steps_older_than(Duration::ZERO),
         Ok(0),
-        ":earlier 0s is already satisfied — no steps"
+        ":earlier 0s is already satisfied: no steps"
     );
 }
 
@@ -622,16 +622,16 @@ fn redo_steps_newer_than_walks_last_child_chain() {
         h.redo_steps_newer_than(Duration::ZERO),
         Err(2),
         ":later 0s walks the whole last-child chain to the tip (2 real hops), still \
-         older than now — unsatisfiable, Err carries the real hop count"
+         older than now: unsatisfiable, Err carries the real hop count"
     );
     assert_eq!(
         h.redo_steps_newer_than(mins(30)),
         Ok(0),
-        ":later older than every descendant is already satisfied — no steps"
+        ":later older than every descendant is already satisfied: no steps"
     );
 }
 
-/// A leaf has nothing newer to redo onto regardless of the request — the
+/// A leaf has nothing newer to redo onto regardless of the request: the
 /// tip's own age must never be compared against `age` the way a genuine
 /// over-travel (walking onto a leaf that is still too old) is.
 /// `undo_steps_older_than` has no such case: its clamp only ever fires from
@@ -646,7 +646,7 @@ fn redo_steps_newer_than_at_the_tip_is_satisfied_regardless_of_the_tip_s_own_age
     assert_eq!(
         h.redo_steps_newer_than(Duration::from_secs(5)),
         Ok(0),
-        ":later 5s at the tip is already satisfied — there is nothing newer to redo \
+        ":later 5s at the tip is already satisfied; there is nothing newer to redo \
          onto, no matter how old the tip itself is relative to the requested age"
     );
 }
@@ -658,8 +658,8 @@ fn redo_steps_newer_than_follows_most_recent_child() {
     h.undo(); // back to rev1
     h.record(insert_cs(7, "d"), delete_cs(8, 1), sel_at(1), sel_at(9)); // rev4, last child of rev1
     backdate(&mut h, RevisionId(4), mins(2));
-    h.undo(); // back to rev1 — the fork point the queries run from
-    // Sibling rev2 is 8m old but no longer the redo target — the count must
+    h.undo(); // back to rev1, the fork point the queries run from
+    // Sibling rev2 is 8m old but no longer the redo target; the count must
     // follow rev4 (2m), so `:later 5m` takes no steps.
     assert_eq!(
         h.redo_steps_newer_than(mins(5)),
@@ -670,7 +670,7 @@ fn redo_steps_newer_than_follows_most_recent_child() {
         h.redo_steps_newer_than(Duration::ZERO),
         Err(1),
         ":later 0s steps once along the rev4 branch (1 real hop), whose tip is still \
-         older than now — unsatisfiable, Err carries the real hop count"
+         older than now: unsatisfiable, Err carries the real hop count"
     );
     h.redo();
     assert_eq!(

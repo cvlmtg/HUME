@@ -7,7 +7,7 @@ pub enum ApplyError {
     /// The buffer's length doesn't match the changeset's `len_before`.
     ///
     /// Every changeset is built for a specific document length. Applying it
-    /// to a buffer of a different length is a programming error — likely a
+    /// to a buffer of a different length is a programming error, likely a
     /// mismatched buffer/changeset pair.
     LengthMismatch {
         /// Actual length of the buffer.
@@ -31,7 +31,7 @@ impl fmt::Display for ApplyError {
             ),
             ApplyError::TrailingNewlineMissing => write!(
                 f,
-                "changeset deleted the structural trailing '\\n' — every buffer must end with '\\n'"
+                "changeset deleted the structural trailing '\\n': every buffer must end with '\\n'"
             ),
         }
     }
@@ -125,7 +125,7 @@ impl fmt::Display for ValidationError {
             ValidationError::EmptyBuffer => {
                 write!(
                     f,
-                    "buffer length is 0 — buffer must always have at least one char (the structural \\n)"
+                    "buffer length is 0: buffer must always have at least one char (the structural \\n)"
                 )
             }
         }

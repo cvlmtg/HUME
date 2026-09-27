@@ -7,13 +7,13 @@ use crate::text::BufferText;
 
 /// A display column together with the frame it was measured in.
 ///
-/// Both variants are `hume_engine::display_lines::DisplayLineMap` quantities — one authority,
+/// Both variants are `hume_engine::display_lines::DisplayLineMap` quantities from one authority,
 /// so both count tab expansion, wide glyphs and inline decorations (inlay
 /// hints, ghost text) identically. They differ only in what they're measured
 /// *from*: under soft wrap, a continuation display line renumbers its
 /// columns from its own left edge (its indent, under `WrapMode::Indent`), so
 /// the same character has a different [`DisplayLineCol`] than
-/// [`BufferLineCol`] — reading one as the other sends the cursor sideways,
+/// [`BufferLineCol`]. Reading one as the other sends the cursor sideways,
 /// which [`DisplayLineCol`]/[`BufferLineCol`] being distinct types makes a
 /// compile error rather than a bug to find at runtime. With wrapping off a
 /// display line *is* the whole buffer line, so the two coincide and either
@@ -22,7 +22,7 @@ use crate::text::BufferText;
 /// latch tagged with the other variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StickyDisplayCol {
-    /// Column within the current display line (`DisplayLineMap::locate`) — what
+    /// Column within the current display line (`DisplayLineMap::locate`): what
     /// `j`/`k`, page/half-page scroll, and the mouse wheel latch.
     DisplayLine {
         display_col: DisplayLineCol,
@@ -36,7 +36,7 @@ pub enum StickyDisplayCol {
         /// a wrap geometry that no longer exists.
         wrap_width: Option<u16>,
     },
-    /// Column within the buffer line (`DisplayLineMap::buffer_line_col`) — what an
+    /// Column within the buffer line (`DisplayLineMap::buffer_line_col`): what an
     /// explicit numeric prefix (`9j`/`9k`) latches. Carries no wrap width:
     /// a buffer-line column counts a line's own characters and never
     /// depends on wrap geometry, unlike the `DisplayLine` variant above.
@@ -45,18 +45,18 @@ pub enum StickyDisplayCol {
 
 /// A single selection range within a buffer.
 ///
-/// Both `anchor` and `head` are **char offsets** — indices into the buffer's
+/// Both `anchor` and `head` are **char offsets**: indices into the buffer's
 /// sequence of Unicode scalar values. The cursor (the moving end that the user
 /// sees blinking) is always at `head`.
 ///
-/// When `anchor == head`, the selection covers a single character — the one at
+/// When `anchor == head`, the selection covers a single character, the one at
 /// index `head`. This is the smallest possible selection, not a zero-width
 /// point. The cursor block sits on that character, matching Helix/Kakoune's
 /// inclusive model.
 ///
 /// `head` must always be a valid char index (`< text.len_chars()`). Since every
 /// buffer always ends with a trailing `\n`, there is always at least one
-/// character to sit on — even in an "empty" buffer.
+/// character to sit on, even in an "empty" buffer.
 ///
 /// # Directional selections
 ///
@@ -71,8 +71,8 @@ pub struct Selection {
     pub(crate) anchor: CharOffset,
     /// The moving end / cursor position.
     pub(crate) head: CharOffset,
-    /// Sticky display column for vertical motion. `None` means "not latched
-    /// — recompute on next vertical move." Any horizontal motion or edit that
+    /// Sticky display column for vertical motion. `None` means "not latched;
+    /// recompute on next vertical move." Any horizontal motion or edit that
     /// touches this selection's line resets this to `None` by construction
     /// (constructors set it to `None`; `with_sticky_display_col` sets it, and
     /// `SelectionSet::translate_in_place` carries it through an edit on a
@@ -103,7 +103,7 @@ impl Selection {
     /// A directional selection with a preserved sticky display column.
     ///
     /// Used by `editor::visual_move`'s vertical motion (display-line-domain
-    /// `j`/`k`/scroll/wheel, and buffer-line `9j`/`9k` — all three units
+    /// `j`/`k`/scroll/wheel, and buffer-line `9j`/`9k`; all three units
     /// share one path there) to carry the column across consecutive vertical moves,
     /// and by word-snap (`text_object::apply_nearest_word_result`) to pass
     /// an existing latch through unchanged. All other code uses
@@ -136,13 +136,13 @@ impl Selection {
         if forward {
             Self::new(start, end)
         } else {
-            // Backward: anchor at end, head at start — cursor sits at `start`.
+            // Backward: anchor at end, head at start, so cursor sits at `start`.
             Self::new(end, start)
         }
     }
 
-    /// This selection's extent unioned with `span` — `min` of both starts,
-    /// `max` of both ends — built with [`Self::directed`] so the caller
+    /// This selection's extent unioned with `span` (`min` of both starts,
+    /// `max` of both ends), built with [`Self::directed`] so the caller
     /// controls which end becomes the anchor.
     ///
     /// Shared by every "extend to cover a newly found match" path:
@@ -150,7 +150,7 @@ impl Selection {
     /// `text_object::word::apply_nearest_word_result`, and
     /// `motion::apply_object_motion`'s Extend arm. A found range only
     /// guarantees it starts past (or ends before) the search origin, not
-    /// that it extends past the selection's own far edge — a plain
+    /// that it extends past the selection's own far edge. A plain
     /// replacement would shrink the selection when the found range nests
     /// inside what's already selected; the union absorbs it with no visible
     /// change instead.
@@ -180,17 +180,17 @@ impl Selection {
         self.anchor == self.head
     }
 
-    /// The smaller of the two offsets — the start of the selected range.
+    /// The smaller of the two offsets: the start of the selected range.
     pub fn start(&self) -> CharOffset {
         self.anchor.min(self.head)
     }
 
-    /// The larger of the two offsets — the far end of the selected range.
+    /// The larger of the two offsets: the far end of the selected range.
     ///
     /// Returns the **start** of the grapheme cluster at that position. For
     /// single-codepoint graphemes (the common case) this equals the last char
     /// in the selection. For multi-codepoint clusters (e.g. `e + \u{0301}`)
-    /// the combining codepoints that follow are NOT included — use
+    /// the combining codepoints that follow are NOT included. Use
     /// [`Self::end_inclusive`] when computing deletion or slice bounds.
     ///
     /// In the inclusive cursor model this char IS part of the selection (the
@@ -207,12 +207,12 @@ impl Selection {
     /// so that delete and slice operations never orphan a combining mark.
     ///
     /// Use this (not `end()`) when computing char ranges for deletion or
-    /// buffer slices — all edit operations should use `end_inclusive`.
+    /// buffer slices; all edit operations should use `end_inclusive`.
     pub fn end_inclusive(&self, text: &BufferText) -> CharOffset {
         cluster_last_char(text, self.end())
     }
 
-    /// The char offset one past this selection's last char — the exclusive
+    /// The char offset one past this selection's last char: the exclusive
     /// counterpart to [`Self::end_inclusive`], for `text.slice(ExclusiveRange::new(start, end_exclusive))`
     /// and delete-range math. Always `next_grapheme_boundary(text, self.end())`:
     /// `end_inclusive` is defined as that boundary minus one
@@ -222,7 +222,7 @@ impl Selection {
         next_grapheme_boundary(text, self.end())
     }
 
-    /// This selection's text as a rope slice — `text.slice(start..end_exclusive)`
+    /// This selection's text as a rope slice, `text.slice(start..end_exclusive)`
     /// via [`ExclusiveRange`]. The one place that expression is spelled out;
     /// every other caller wanting a selection's exact contents goes through here.
     pub fn slice<'a>(&self, text: &'a BufferText) -> ropey::RopeSlice<'a> {
@@ -246,7 +246,7 @@ impl Selection {
         self.end_inclusive(text).min(text.last_content_char())
     }
 
-    /// The exclusive counterpart to [`Self::content_end`] — `end_exclusive(text)`
+    /// The exclusive counterpart to [`Self::content_end`]: `end_exclusive(text)`
     /// clamped to `text.last_char()`, so a caller building a
     /// `text.slice(ExclusiveRange::new(start, content_end_exclusive))` for a
     /// delete never reaches past the structural trailing `\n`.
@@ -267,13 +267,13 @@ impl Selection {
     }
 }
 
-/// Returns `true` if `sel` covers whole line(s) — starts at a line boundary
+/// Returns `true` if `sel` covers whole line(s): starts at a line boundary
 /// and ends on the line's trailing `\n`.
 ///
 /// A partial line that merely happens to include a trailing `\n` returns
 /// `false` because its start is not at a line boundary. Use this (not just
 /// `ends_on_newline`) as the single source of truth for "this selection is
-/// linewise" in the selection-geometry domain — it answers `true` for a
+/// linewise" in the selection-geometry domain. It answers `true` for a
 /// selection collapsed on an empty line, since that line's one char is both
 /// its own start and its own `\n`, even when the cursor is merely incidental
 /// there. For *user intent* ("was this deliberately extended across whole
@@ -285,8 +285,8 @@ pub fn is_selection_linewise(text: &BufferText, sel: &Selection) -> bool {
     sel.ends_on_newline(text) && is_line_start(text, sel)
 }
 
-/// A selection collapsed onto a single empty line is ambiguous — see
-/// [`is_selection_linewise`]'s doc for why — so this returns `None` for
+/// A selection collapsed onto a single empty line is ambiguous (see
+/// [`is_selection_linewise`]'s doc for why), so this returns `None` for
 /// exactly that one case; every other selection is
 /// `Some(is_selection_linewise(text, sel))`, unambiguously either linewise
 /// or charwise.

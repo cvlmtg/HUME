@@ -13,7 +13,7 @@ use crate::text::BufferText;
 /// buffer start).
 ///
 /// Equivalent to "the char before `sel.start()` is a `\n`, or `sel.start()` is
-/// 0", but expressed via line arithmetic — no grapheme-stepping needed.
+/// 0", but expressed via line arithmetic, with no grapheme-stepping needed.
 pub fn is_line_start(text: &BufferText, sel: &Selection) -> bool {
     let pos = sel.start();
     let line = text.char_to_line(pos);

@@ -35,7 +35,7 @@ fn transaction_apply_rejects_out_of_bounds_selection() {
     b.retain_rest();
     let cs = b.finish();
 
-    // Cursor at 99 is way past buf_len (3) — this is what a buggy plugin
+    // Cursor at 99 is way past buf_len (3); this is what a buggy plugin
     // might produce.
     let sels = SelectionSet::single(Selection::collapsed(co(99)));
     let txn = Transaction::new(cs, sels);

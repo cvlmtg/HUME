@@ -6,12 +6,12 @@ use std::borrow::Cow;
 /// Whether the original file used LF or CRLF line endings.
 ///
 /// Stored in the buffer so we can write the file back with the same endings.
-/// A buffer's content never carries a `\r` at all — see
-/// [`crate::changeset::ChangeSetBuilder::insert`] for why. This flag
+/// A buffer's content never carries a `\r` at all (see
+/// [`crate::changeset::ChangeSetBuilder::insert`] for why). This flag
 /// therefore governs only *how `\n` is written back out*, never what the
 /// rope holds.
 ///
-/// A CRLF file round-trips; a CR-only (old Mac) file does not — it has no
+/// A CRLF file round-trips; a CR-only (old Mac) file does not: it has no
 /// `\r\n` pair to detect, so it loads as `Lf` and saves back as LF.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineEnding {
@@ -21,7 +21,7 @@ pub enum LineEnding {
     CrLf,
 }
 
-/// Collapse every line-ending convention (`\r\n`, bare `\r`) to `\n` — see
+/// Collapse every line-ending convention (`\r\n`, bare `\r`) to `\n`. See
 /// [`crate::changeset::ChangeSetBuilder::insert`] for why every text-insertion
 /// path funnels through this.
 ///
@@ -31,7 +31,7 @@ pub fn normalize_line_endings(text: &str) -> Cow<'_, str> {
 }
 
 /// [`normalize_line_endings`], also reporting whether the *original* input
-/// contained a `\r\n` pair — the one thing detectable about a file's
+/// contained a `\r\n` pair: the one thing detectable about a file's
 /// convention that survives normalization, and what `BufferText::from`
 /// records so a save can re-expand. A bare `\r` (old-Mac-style) forms no such
 /// pair and reads as plain `Lf`. If any `\r\n` is present, `CrLf` is returned
@@ -42,7 +42,7 @@ pub fn normalize_line_endings(text: &str) -> Cow<'_, str> {
 /// decide how many chars to skip, so the pair is free to notice there.
 ///
 /// One `find`-per-run scan for `\r`, copying each clean run with `push_str`
-/// rather than pushing one `char` at a time — on a large CRLF file that's a
+/// rather than pushing one `char` at a time. On a large CRLF file that's a
 /// `push_str` per line instead of a `push` per byte.
 fn normalize_line_endings_detecting(text: &str) -> (Cow<'_, str>, LineEnding) {
     let Some(first) = text.find('\r') else {
@@ -74,7 +74,7 @@ fn normalize_line_endings_detecting(text: &str) -> (Cow<'_, str>, LineEnding) {
 ///
 /// `BufferText` wraps a [`ropey::Rope`], which is a balanced B-tree of Unicode
 /// scalar values ("chars"). All positions exposed by this API are **char
-/// offsets** — indices into the sequence of Unicode scalar values, not byte
+/// offsets**: indices into the sequence of Unicode scalar values, not byte
 /// offsets or grapheme-cluster indices.
 ///
 /// Why char offsets and not bytes? Ropey's native and most stable API is
@@ -98,7 +98,7 @@ pub struct BufferText {
 
 /// True if `rope` satisfies the invariant every `BufferText` upholds by
 /// construction: non-empty, and ending with `'\n'`. Stricter than
-/// [`hume_rope::lines::ends_with_newline`] — that one (correctly, for its own
+/// [`hume_rope::lines::ends_with_newline`]. That one (correctly, for its own
 /// generic-rope callers) treats a truly empty rope as vacuously fine; a HUME
 /// buffer never is, so this crate's own gates ([`BufferText::from_rope`],
 /// `ChangeSet::apply`) require it non-empty too.
@@ -107,7 +107,7 @@ pub(crate) fn is_valid_buffer_rope(rope: &Rope) -> bool {
 }
 
 /// True if `rope` holds no `\r` anywhere. Unlike [`is_valid_buffer_rope`]
-/// this can't be checked in O(log n) — `\r` can be anywhere in the buffer,
+/// this can't be checked in O(log n): `\r` can be anywhere in the buffer,
 /// so every chunk has to be looked at. Walking `str::contains` over ropey's
 /// own chunks (rather than decoding char-by-char through its cursor API)
 /// keeps that scan's constant small: benchmarked at ~70µs for a 1 MB buffer,
@@ -131,7 +131,7 @@ impl BufferText {
     /// `line_ending` must be propagated from the source buffer so that CRLF
     /// metadata is preserved across edits and correctly written back on save.
     pub(crate) fn from_rope(rope: Rope, line_ending: LineEnding) -> Self {
-        // Raw constructor for ChangeSet::apply — no line-ending normalization
+        // Raw constructor for ChangeSet::apply. No line-ending normalization
         // needed: the rope it hands over is the source buffer's own (already
         // `\r`-free) content plus insertions the changeset builder normalized
         // as it recorded them.
@@ -186,32 +186,32 @@ impl BufferText {
         self.rope.len_chars()
     }
 
-    /// Index of the last content character — the character just before the
+    /// Index of the last content character: the character just before the
     /// structural trailing `\n`.
     ///
     /// Edit operations that must not consume the trailing `\n` cap their
     /// `end_inclusive` at this value.
     ///
     /// Degenerate case: on an empty buffer (`"\n"`, one char) this returns 0,
-    /// which is the structural `\n` itself — there is no content character to
+    /// which is the structural `\n` itself; there is no content character to
     /// point at. Callers deleting up to this index must handle the empty
     /// buffer first, or the delete would consume the structural newline.
     pub fn last_content_char(&self) -> CharOffset {
         CharOffset::new(self.len_chars().saturating_sub(2))
     }
 
-    /// The last addressable char position — `len_chars() - 1`. Every buffer
+    /// The last addressable char position, `len_chars() - 1`. Every buffer
     /// has at least the structural trailing `\n`, so this never underflows.
     pub fn last_char(&self) -> CharOffset {
         CharOffset::new(self.len_chars().saturating_sub(1))
     }
 
-    /// One past the last char — the buffer's exclusive end bound.
+    /// One past the last char: the buffer's exclusive end bound.
     pub fn end(&self) -> CharOffset {
         CharOffset::new(self.len_chars())
     }
 
-    /// Returns `true` if the buffer contains no visible content — i.e., it
+    /// Returns `true` if the buffer contains no visible content, i.e., it
     /// holds only the structural trailing newline.
     #[cfg(test)]
     fn is_empty(&self) -> bool {
@@ -230,13 +230,13 @@ impl BufferText {
         hume_rope::lines::ropey_line_count(&self.rope)
     }
 
-    /// Index of the last ropey line — the phantom trailing line.
+    /// Index of the last ropey line: the phantom trailing line.
     pub fn last_ropey_line(&self) -> hume_rope::line::RopeyLine {
         hume_rope::lines::last_ropey_line(&self.rope)
     }
 
     /// Number of content lines: every HUME buffer ends with a structural
-    /// `\n`, which ropey counts as one extra empty line past the content —
+    /// `\n`, which ropey counts as one extra empty line past the content;
     /// this subtracts it. The single source of truth for "how many lines
     /// does this buffer have" from a caller's point of view (line counts
     /// shown to the user, range-checked line indices).
@@ -257,7 +257,7 @@ impl BufferText {
     }
 
     /// Line tokens from `line_idx` forward, each keeping its trailing line
-    /// break — see [`hume_rope::lines::line_tokens_at`] for why.
+    /// break (see [`hume_rope::lines::line_tokens_at`] for why).
     ///
     /// # Panics
     /// Panics if `line_idx > self.ropey_line_count()` (matches `line_to_char`).
@@ -269,7 +269,7 @@ impl BufferText {
     }
 
     /// Same tokens as [`BufferText::line_tokens_at`], walking backward from
-    /// `line_idx` itself — see [`hume_rope::lines::line_tokens_back_from`]
+    /// `line_idx` itself. See [`hume_rope::lines::line_tokens_back_from`]
     /// for the mirror-shape rationale.
     ///
     /// # Panics
@@ -295,7 +295,7 @@ impl BufferText {
     ///
     /// Clamps `char_idx` to `len_chars()`: a stale position past the buffer
     /// end (a saved offset reused after the buffer shrank) resolves to the
-    /// last content line instead of panicking — fail-fast is fine, losing
+    /// last content line instead of panicking: fail-fast is fine, losing
     /// unsaved work to it is not. A clamped `len_chars()` lands on the
     /// phantom trailing line (ropey counts a `\n` as ending its own line, so
     /// only the one-past-every-char position is phantom), which maps back to
@@ -308,7 +308,7 @@ impl BufferText {
     }
 
     /// Returns the 0-based ropey line that contains char offset `char_idx`,
-    /// phantom trailing line included — for a caller that must resolve a
+    /// phantom trailing line included, for a caller that must resolve a
     /// position possibly one past the last real char (an `'after` decoration
     /// anchor probing `pos + 1`, LSP wire-position encoding, a jump-list or
     /// FFI position restored without first proving it's in content domain).
@@ -322,7 +322,7 @@ impl BufferText {
 
     /// Returns a slice of the buffer over the given char range.
     ///
-    /// [`ropey::RopeSlice`] is a lightweight view — no allocation. It is the
+    /// [`ropey::RopeSlice`] is a lightweight view with no allocation. It is the
     /// input type for grapheme-cluster iteration in `grapheme.rs`.
     ///
     /// Takes [`ExclusiveRange`] so an inclusive result (`Selection`, a
@@ -423,7 +423,7 @@ impl BufferText {
 }
 
 // `From<&str>`, not `FromStr`, since construction here always succeeds
-// (worst case we append a '\n') — `FromStr` is reserved for fallible parsing.
+// (worst case we append a '\n'); `FromStr` is reserved for fallible parsing.
 // Note `BufferText::from(&my_string)` won't compile (`&String != &str`); call sites
 // with a `String` must be explicit: `BufferText::from(my_string.as_str())`.
 impl From<&str> for BufferText {
@@ -443,11 +443,11 @@ impl From<&str> for BufferText {
 }
 
 // Implementing `Display` gives us `.to_string()` for free via the blanket
-// `impl<T: Display> ToString for T`. This is the idiomatic Rust way — an
+// `impl<T: Display> ToString for T`. This is the idiomatic Rust way: an
 // inherent `to_string` method would shadow that blanket impl and trigger
 // the `clippy::inherent_to_string` lint.
 //
-// Use `.to_string()` for tests, file I/O, and display — not in hot edit paths
+// Use `.to_string()` for tests, file I/O, and display, not in hot edit paths
 // (it allocates a full String from the rope).
 impl std::fmt::Display for BufferText {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -456,7 +456,7 @@ impl std::fmt::Display for BufferText {
 }
 
 // `PartialEq` for tests: compare text content only.
-// `line_ending` is file-origin metadata — two buffers with identical content
+// `line_ending` is file-origin metadata: two buffers with identical content
 // but different original line endings are considered equal.
 impl PartialEq for BufferText {
     fn eq(&self, other: &Self) -> bool {

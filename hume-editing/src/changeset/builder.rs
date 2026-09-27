@@ -7,7 +7,7 @@ use super::{ChangeSet, Operation, push_merge};
 /// The builder tracks two cursors: `old_pos` (how far we've consumed in the
 /// old document) and `new_pos` (how far we've produced in the new document).
 /// This dual tracking is the key benefit: callers can read `new_pos()` at
-/// any point to know where a cursor should land in the new document — no
+/// any point to know where a cursor should land in the new document, with no
 /// separate delta accumulator needed.
 ///
 /// Adjacent operations of the same kind are auto-merged (via `push_merge`),
@@ -31,7 +31,7 @@ pub struct ChangeSetBuilder {
 }
 
 impl ChangeSetBuilder {
-    /// Create a builder for a document of `doc_len` chars — typically
+    /// Create a builder for a document of `doc_len` chars, typically
     /// `text.end()`.
     pub fn new(doc_len: CharOffset) -> Self {
         Self {
@@ -72,7 +72,7 @@ impl ChangeSetBuilder {
         );
         push_merge(&mut self.ops, Operation::Delete(n));
         self.old_pos = self.old_pos.shift(n as isize);
-        // new_pos doesn't advance — deleted chars vanish.
+        // new_pos doesn't advance: deleted chars vanish.
         self
     }
 
@@ -80,8 +80,8 @@ impl ChangeSetBuilder {
     ///
     /// `text` is normalized to LF here (see
     /// [`crate::text::normalize_line_endings`]). This is the one place text
-    /// from outside the editing model — a pasted clipboard, a register, a
-    /// language server's edit — becomes buffer content through an edit, and
+    /// from outside the editing model (a pasted clipboard, a register, a
+    /// language server's edit) becomes buffer content through an edit, and
     /// `ChangeSet`'s fields are private, so normalizing here is what makes
     /// "a live rope never carries a `\r`" a property of the type rather than
     /// a rule every call site has to remember. The other half of the
@@ -95,7 +95,7 @@ impl ChangeSetBuilder {
         let len = text.chars().count();
         push_merge(&mut self.ops, Operation::Insert(text.into_owned()));
         self.new_pos = self.new_pos.shift(len as isize);
-        // old_pos doesn't advance — insertion doesn't consume old chars.
+        // old_pos doesn't advance: insertion doesn't consume old chars.
         self
     }
 
