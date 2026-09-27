@@ -310,8 +310,8 @@ fn enter_fires_on_select_with_payload_and_closes() {
     assert_eq!(args.len(), 1);
     assert_eq!(payload_str(&args[0]), "one", "top-ranked item's payload");
 
-    // L4: keep interacting past the terminal action — Enter must not leave
-    // the editor in a half-consistent state for the next keystroke.
+    // Keep typing after Enter: the close must not leave the editor in a
+    // half-consistent state for the next keystroke.
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());
@@ -335,7 +335,7 @@ fn esc_fires_false_and_closes() {
     assert_eq!(callback_name(proc), "cb");
     assert_eq!(args, &vec![SteelVal::BoolV(false)]);
 
-    // L4 continuation: typing after the close edits the buffer normally.
+    // Typing after the close edits the buffer normally.
     ed.feed_key(key('i'));
     ed.feed_key(key('Y'));
     ed.feed_key(key_esc());

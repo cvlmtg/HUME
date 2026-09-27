@@ -637,8 +637,7 @@ impl Editor {
                 // it would panic in `ChangeSet::compose`'s length assert
                 // (see `DotCapture::text_gen`'s own doc). Report and drop
                 // the whole capture instead of arming it: nothing here is
-                // safe to record, interactive or not — see L23's rule 2
-                // (`docs/LESSONS.md`).
+                // safe to record, interactive or not.
                 self.report(
                     super::Severity::Warning,
                     "`.` won't repeat this pick: the buffer changed while it was open".to_string(),

@@ -240,7 +240,7 @@ fn picker_bang_with_no_actions_leaves_an_unbound_key_consumed_and_ignored() {
     assert!(ed.state.status_msg.is_none());
 }
 
-// ── End-to-end: open, type a query, accept, keep interacting (LESSONS L4) ──
+// ── End-to-end: open, type a query, accept, keep interacting ─────────────
 
 #[test]
 fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
@@ -355,7 +355,7 @@ fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
     assert!(ed.state.input.picker().is_none());
 }
 
-// ── picker-close!: fires #f exactly once, idempotent, keeps L4 discipline ──
+// ── picker-close!: fires #f exactly once, idempotent, keeps working after ──
 
 #[test]
 fn picker_close_bang_fires_false_once_and_is_idempotent() {

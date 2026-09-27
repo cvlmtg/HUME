@@ -286,7 +286,7 @@ fn probe_empty_replies_returns_false() {
 // an `Err` from `read` or `wait_until` is a permanent channel failure
 // and must propagate; `Ok(0)` (clean EOF) breaks the loop and reports
 // `false`. Without these, the production `wait_until`/`read` Err arms
-// would be untested dead code (CLAUDE.md test-validity rule).
+// would be untested dead code.
 
 #[test]
 fn probe_propagates_read_error() {

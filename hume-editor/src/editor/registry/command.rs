@@ -641,15 +641,11 @@ pub(in crate::editor) struct TypedCommand {
     /// for a built-in's `&'static str` constant, `Owned` for the runtime
     /// string `define-typed-command!` hands over.
     ///
-    /// ⚠️ Constraint Relaxation, per `CLAUDE.md`: the enum this replaced
-    /// made "this command's declared completer exists" a compile-time
-    /// fact. Now, a typo or a stale name after a rename resolves to
-    /// nothing at completion time — silent (a `Severity::Trace` line), not
-    /// a compile error. Built-in commands keep a compile-time check by a
-    /// different route: they reference the `&'static str` constants
-    /// declared beside each source's own registration
-    /// (`completion::COMMAND_SOURCE` and siblings), so a rename there still
-    /// breaks the build at the constant, just not at this field.
+    /// The name is not checked at compile time: a typo resolves to nothing
+    /// at completion time and only logs a `Severity::Trace` line. Built-in
+    /// commands still get a compile-time check by referencing the
+    /// `&'static str` constants declared beside each source's registration
+    /// (`completion::COMMAND_SOURCE` and siblings).
     pub completer: Option<Cow<'static, str>>,
 }
 

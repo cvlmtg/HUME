@@ -364,9 +364,9 @@ fn virtual_line_spec_keeps_a_control_character_verbatim() {
     // (`hume_rope::width::needs_placeholder`/`placeholder`) is what stands
     // between it and the terminal, the same chokepoint every other text
     // source (buffer content, inline inserts) goes through. Blanking it here
-    // instead would be a second, weaker copy of that policy — CLAUDE.md's
-    // display-columns invariant says unrenderable text is shown as its
-    // codepoint, never as a blank a bidi override could hide behind.
+    // instead would be a second, weaker copy of that policy. Unrenderable
+    // text is shown as its codepoint, never as a blank a bidi override
+    // could hide behind.
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(0)),
         ("text", SteelVal::StringV("a\u{7}b".into())), // BEL

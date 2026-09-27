@@ -238,9 +238,9 @@ fn register_grammar_injections_only_populates_injections() {
 /// Two `register-grammar!` calls with *differently-shaped* keyword usage —
 /// one omitting both `#:injections`/`#:textobjects` entirely, the other
 /// passing only `#:injections` — compiled as one program (one `init.scm`).
-/// This is the real-code shape closest to docs/LESSONS.md L12's second
-/// trigger (differently-shaped keyword calls to the same `#:kw`-sugared
-/// function within one compiled unit); `init_scripting` compiles each file
+/// Steel 0.8.2 miscompiled differently-shaped keyword calls to the same
+/// `#:kw`-sugared function within one compiled unit, and this is the
+/// real-code shape closest to that trigger; `init_scripting` compiles each file
 /// separately, so the risk — if any remains — is scoped to calls within a
 /// single file, exactly what this test constructs.
 ///

@@ -166,7 +166,7 @@ fn apply_text_edits_multiple_edits_same_line_apply_descending() {
     assert_eq!(ed.doc().text().to_string(), "ZbcdWf\n");
 }
 
-/// L2 regression: two inserts at the same position must land in the order
+/// Two inserts at the same position must land in the order
 /// the `edits` array gives them (LSP spec: array order defines apply order
 /// for same-position edits) — a descending sort followed by a whole-`Vec`
 /// `.reverse()` kept the tie in original order through the sort but then
@@ -623,7 +623,7 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
     );
 }
 
-/// L1 regression: two `documentChanges` entries for the same file (the spec
+/// Two `documentChanges` entries for the same file (the spec
 /// doesn't forbid it — server-controlled input) must be rejected, not build
 /// a second changeset against text the first entry's already assumes and
 /// panic in `commit_changeset`'s `cs.apply(&text).expect(...)`.

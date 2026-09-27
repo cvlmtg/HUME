@@ -502,7 +502,7 @@ fn skip_close_dismisses_the_session_instead_of_leaving_a_stale_token() {
     assert_eq!(ed.doc().text().to_string(), ")\n");
 }
 
-// ── Regression: typing after accept must not desync the edit group (L4) ─────
+// ── Regression: typing after accept must not desync the edit group ──────────
 
 #[test]
 fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {

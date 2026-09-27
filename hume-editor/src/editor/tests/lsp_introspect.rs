@@ -544,7 +544,7 @@ fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
     );
 }
 
-/// L3 regression: the wire range's `end` must land after a full grapheme
+/// The wire range's `end` must land after a full grapheme
 /// cluster, never mid-cluster. `char_to_wire(rope, end_c + 1, ..)` (a raw
 /// `+ 1`) would split `é` (`e` + U+0301, two chars, one cluster) if the
 /// selection's inclusive `head` sits on the cluster's first char.

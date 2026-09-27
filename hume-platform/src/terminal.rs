@@ -112,10 +112,9 @@ impl termina::Terminal for SharedTerm {
 /// every caller that needs to read or write it.
 ///
 /// On Windows, `PlatformTerminal::new` enables VT input/output mode
-/// unconditionally (HUME runs no legacy-console fallback — see
-/// `CLAUDE.md`'s terminal-compatibility rule); a console that can't provide
-/// it (older than Windows 10 1809, or a raw pipe such as mintty without
-/// winpty) fails here.
+/// unconditionally (HUME has no legacy-console fallback); a console that
+/// can't provide it (older than Windows 10 1809, or a raw pipe such as
+/// mintty without winpty) fails here.
 pub fn create() -> io::Result<SharedTerm> {
     #[cfg(windows)]
     let inner = PlatformTerminal::new().map_err(|e| {
