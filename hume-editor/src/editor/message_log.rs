@@ -1,7 +1,7 @@
 //! Persistent message log.
 //!
 //! The [`MessageLog`] accumulates [`LogEntry`] values produced during an editing
-//! session — config warnings, scripting errors, plugin conflicts. Entries survive
+//! session: config warnings, scripting errors, plugin conflicts. Entries survive
 //! keypresses and can be reviewed at any time via `:messages`.
 
 use std::collections::VecDeque;
@@ -40,7 +40,7 @@ impl Severity {
         }
     }
 
-    /// Theme scope for this severity's `[label]` badge in `:messages` —
+    /// Theme scope for this severity's `[label]` badge in `:messages`:
     /// carries a background fill, no underline. `Trace` reuses `hint`, the
     /// lowest-noise diagnostic severity, since it has no diagnostic counterpart.
     ///
@@ -59,7 +59,7 @@ impl Severity {
         }
     }
 
-    /// Theme scope for this severity's message text in `:messages` — a
+    /// Theme scope for this severity's message text in `:messages`: a
     /// foreground tint, distinct from `badge_scope` so the body doesn't
     /// inherit the badge's background via dot-notation fallback.
     fn text_scope(self) -> &'static str {
@@ -95,18 +95,18 @@ const MAX_ENTRIES: usize = 1000;
 /// unseen count again, prompting the user to check.
 pub(crate) struct MessageLog {
     // VecDeque so pop_front() (eviction) and push_back() (append) are both
-    // O(1) amortized — a Vec would shift all elements on every eviction.
+    // O(1) amortized; a Vec would shift all elements on every eviction.
     entries: VecDeque<LogEntry>,
     /// Index of the first unseen entry. Everything at `index >= seen_up_to` is
     /// "unread". Updated by `mark_all_seen()`.
     seen_up_to: usize,
-    /// Lifetime count of `Error`/`Warning` entries ever pushed — monotonic,
+    /// Lifetime count of `Error`/`Warning` entries ever pushed: monotonic,
     /// never decremented by eviction (unlike `unseen_counts`, which reads the
     /// live `entries` deque and so *can* drop below a value it reported
     /// earlier once `MAX_ENTRIES` starts evicting). `:reload-config` diffs
     /// this against a before/after snapshot to detect "did this reload push
     /// a new warning or error", a question `unseen_counts` alone can't
-    /// answer reliably across a long session — see `MessageLog::totals`'s
+    /// answer reliably across a long session. See `MessageLog::totals`'s
     /// call site.
     total_errors: u64,
     total_warnings: u64,
@@ -139,7 +139,7 @@ impl MessageLog {
         self.entries.push_back(LogEntry { severity, text });
     }
 
-    /// Lifetime `(errors, warnings)` pushed so far — see the field docs for
+    /// Lifetime `(errors, warnings)` pushed so far. See the field docs for
     /// why this, not `unseen_counts`, is the eviction-proof way to detect
     /// "were any new warnings/errors logged between two points in time".
     pub(in crate::editor) fn totals(&self) -> (u64, u64) {
@@ -184,7 +184,7 @@ impl MessageLog {
     /// `Warning` or `Error` entries.
     ///
     /// Returns `None` when everything has been seen, *or* when the only unseen
-    /// entries are `Trace` — trace messages are logged for `:messages` review
+    /// entries are `Trace`: trace messages are logged for `:messages` review
     /// but never raise a statusline indicator (see [`Severity`] table).
     pub(crate) fn summary_text(&self) -> Option<String> {
         if !self.has_unseen() {
@@ -195,16 +195,16 @@ impl MessageLog {
             (0, 0) => return None,
             (e, 0) => {
                 let noun = if e == 1 { "error" } else { "errors" };
-                format!("{e} {noun} — :messages for details")
+                format!("{e} {noun} (see :messages)")
             }
             (0, w) => {
                 let noun = if w == 1 { "warning" } else { "warnings" };
-                format!("{w} {noun} — :messages for details")
+                format!("{w} {noun} (see :messages)")
             }
             (e, w) => {
                 let e_noun = if e == 1 { "error" } else { "errors" };
                 let w_noun = if w == 1 { "warning" } else { "warnings" };
-                format!("{e} {e_noun}, {w} {w_noun} — :messages for details")
+                format!("{e} {e_noun}, {w} {w_noun} (see :messages)")
             }
         };
         Some(msg)
@@ -215,9 +215,9 @@ impl MessageLog {
     ///
     /// Each line is `[severity] text\n`. Returns an empty string and no
     /// spans if there are no entries. Spans are `(start, end, scope name)`
-    /// char offsets (not bytes) — message text may be non-ASCII. Scope names,
+    /// char offsets (not bytes), since message text may be non-ASCII. Scope names,
     /// not `ScopeId`s: this type has no registry access (it's not an
-    /// `Editor` method), so interning is the caller's job — see
+    /// `Editor` method), so interning is the caller's job. See
     /// `commands/typed_misc.rs`'s `typed_messages`, the sole production
     /// caller, which turns each name into an `ExtraHighlightEntry`.
     ///

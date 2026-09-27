@@ -71,7 +71,7 @@ fn summary_text_errors_only() {
     let log = make_log(&[(Severity::Error, "e1"), (Severity::Error, "e2")]);
     assert_eq!(
         log.summary_text().unwrap(),
-        "2 errors — :messages for details"
+        "2 errors (see :messages)"
     );
 }
 
@@ -80,7 +80,7 @@ fn summary_text_single_error() {
     let log = make_log(&[(Severity::Error, "e")]);
     assert_eq!(
         log.summary_text().unwrap(),
-        "1 error — :messages for details"
+        "1 error (see :messages)"
     );
 }
 
@@ -89,7 +89,7 @@ fn summary_text_warnings_only() {
     let log = make_log(&[(Severity::Warning, "w")]);
     assert_eq!(
         log.summary_text().unwrap(),
-        "1 warning — :messages for details"
+        "1 warning (see :messages)"
     );
 }
 
@@ -102,7 +102,7 @@ fn summary_text_mixed() {
     ]);
     assert_eq!(
         log.summary_text().unwrap(),
-        "1 error, 2 warnings — :messages for details"
+        "1 error, 2 warnings (see :messages)"
     );
 }
 
@@ -189,7 +189,7 @@ fn format_with_spans_skips_empty_text() {
     let log = make_log(&[(Severity::Warning, "")]);
     let (text, spans) = log.format_with_spans();
     assert_eq!(text, "[warning] \n");
-    // Only the badge span — no zero-width span for the empty message text.
+    // Only the badge span, no zero-width span for the empty message text.
     assert_eq!(spans.len(), 1);
     assert_eq!((spans[0].0, spans[0].1), (0, 9));
 }
@@ -236,7 +236,7 @@ fn push_cap_adjusts_seen_up_to() {
     assert_eq!((e, w), (1, 0));
 }
 
-/// `totals()` must keep counting past `MAX_ENTRIES` — the whole reason it
+/// `totals()` must keep counting past `MAX_ENTRIES`: the whole reason it
 /// exists over `unseen_counts()`, which reads the live (evicting) deque and
 /// so cannot answer "how many errors/warnings ever landed" once eviction
 /// starts. Counters derived from `entries.len()` would fail here once
@@ -260,7 +260,7 @@ fn totals_survive_eviction_past_max_entries() {
     );
 }
 
-/// `Info`/`Trace` entries must not move either total — only `Error`/
+/// `Info`/`Trace` entries must not move either total; only `Error`/
 /// `Warning` are the "did this reload go badly" signal `typed_reload_config`
 /// diffs against.
 #[test]

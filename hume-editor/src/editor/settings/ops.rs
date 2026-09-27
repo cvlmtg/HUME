@@ -1,4 +1,4 @@
-//! Applying a setting change — the single production path.
+//! Applying a setting change: the single production path.
 //!
 //! Free functions (not `impl Editor` methods) so the same logic can be
 //! called by both the `Editor` methods (`:set`, `:theme`) and the Steel
@@ -11,9 +11,9 @@
 //! derived state depends on it (the undo-tree cap on every open buffer, the
 //! minibuffer prompt-history capacity, every open pane's jump-list capacity,
 //! the loaded theme). Calling `write_global`/`write_buffer` alone would
-//! silently skip those — write and resync must not be split apart.
+//! silently skip those, so write and resync must not be split apart.
 //!
-//! A child module of `settings`, not a sibling — see `settings`'s own doc
+//! A child module of `settings`, not a sibling. See `settings`'s own doc
 //! for why: it lets `write_global`/`write_buffer` narrow to
 //! `pub(in crate::editor::settings)`, reachable from exactly this module and
 //! `settings::tests`, rather than from every file under `crate::editor`.
@@ -42,15 +42,15 @@ pub(in crate::editor) fn apply_global(
     if !resynced && let Some(prev) = prev_theme {
         let failed_theme = std::mem::replace(&mut state.settings.theme, prev);
         return Err(format!(
-            "theme '{failed_theme}' failed to load — see :messages for details"
+            "theme '{failed_theme}' failed to load (see :messages)"
         ));
     }
 
-    // Raised after the write (and any resync) succeeds — a plugin reacting
+    // Raised after the write (and any resync) succeeds: a plugin reacting
     // to this sees the setting already in its new, live state. The single
     // raise site for every `:set global`/`set-option!`/`:theme` write, since
     // this is the single write path all three funnel through (see the
-    // module doc) — a plugin owning one setting's policy (e.g. the LSP
+    // module doc). A plugin owning one setting's policy (e.g. the LSP
     // inlay-hints plugin) needs exactly one hook, not one per write path.
     state.queue_event(crate::editor::event::EditorEvent::OnOptionChange {
         key: key.to_string(),
@@ -60,18 +60,18 @@ pub(in crate::editor) fn apply_global(
     Ok(())
 }
 
-/// Write a global setting's raw value with no resync — [`super::write_global`]
+/// Write a global setting's raw value with no resync: [`super::write_global`]
 /// itself, exposed at crate visibility for `testing::MockHost` only.
 ///
 /// `write_global` is `pub(in crate::editor::settings)`: every production
 /// write goes through [`apply_global`] above, which has the
 /// `EditorState`/`EngineView` this function's resync needs. `MockHost`
-/// models neither — it has no history rings, buffers, or view to resync
-/// derived state against — so it needs the raw writer directly, the same way
+/// models neither (it has no history rings, buffers, or view to resync
+/// derived state against), so it needs the raw writer directly, the same way
 /// `apply_global` does before its own resync step, but from outside
 /// `crate::editor::settings` where `MockHost` lives. This is that one
-/// `#[cfg]`-gated forwarding call — it does not exist in a production
-/// build — not a widening of `write_global`'s own visibility.
+/// `#[cfg]`-gated forwarding call (it does not exist in a production
+/// build), not a widening of `write_global`'s own visibility.
 #[cfg(any(test, feature = "test-util"))]
 pub(crate) fn write_global_for_test(
     key: &str,
@@ -82,7 +82,7 @@ pub(crate) fn write_global_for_test(
 }
 
 /// Reset every global setting to its compiled-in default and rerun every
-/// `resync: true` effect against the reset values — called by
+/// `resync: true` effect against the reset values. Called by
 /// `:reload-config`'s reset so a runtime `:set global`/`:theme` change (or
 /// one applied by the previous `init.scm`) never survives a reload.
 ///
@@ -120,9 +120,9 @@ pub(in crate::editor) fn apply_buffer(
 
 /// Resync derived state after a successful [`super::write_global`]
 /// for the key `rk` decodes. Returns `false` if an effect failed (theme load
-/// only) — the caller rolls the setting back so a bad value never persists.
+/// only): the caller rolls the setting back so a bad value never persists.
 ///
-/// Exhaustive over [`ResyncKey`] — see that type's own doc for why a new
+/// Exhaustive over [`ResyncKey`]. See that type's own doc for why a new
 /// `resync: true` declaration with no arm here fails to compile.
 fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: ResyncKey) -> bool {
     match rk {

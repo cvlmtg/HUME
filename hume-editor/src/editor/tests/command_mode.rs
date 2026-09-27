@@ -2,7 +2,7 @@ use super::*;
 use pretty_assertions::assert_eq;
 
 /// Open a second real (file-backed) buffer with content `"world\n"` and
-/// return its id — used by the `:q`/`:qa`/`:wq` multi-buffer tests below,
+/// return its id. Used by the `:q`/`:qa`/`:wq` multi-buffer tests below,
 /// which need a second file buffer distinct from `editor_with_file`'s.
 fn open_second_file_buffer(ed: &mut Editor) -> BufferId {
     let (buf, _tmp_path) = file_buffer("world\n");
@@ -148,7 +148,7 @@ fn colon_quit_enter_quits() {
 #[test]
 fn colon_w_no_path_sets_error() {
     let mut ed = editor_from("-[h]>ello\n");
-    // No file_path set — write should fail with an error message.
+    // No file_path set: write should fail with an error message.
     ed.handle_key(key(':'));
     ed.handle_key(key('w'));
     ed.handle_key(key_enter());
@@ -203,7 +203,7 @@ fn colon_unknown_sets_error() {
     assert!(!ed.state.should_quit);
 }
 
-/// `:` resolves only typed commands — a real editor command's name (not a
+/// `:` resolves only typed commands: a real editor command's name (not a
 /// nonsense string) must be rejected the same way, and must not dispatch.
 /// The message names the command's actual kind rather than saying "unknown"
 /// for a name the registry does recognize. See `registry/mod.rs`'s module doc.
@@ -218,7 +218,7 @@ fn colon_editor_command_name_is_unknown_and_does_not_dispatch() {
     assert_eq!(
         ed.state.status_msg.as_deref(),
         Some(
-            "'select-next-word' is an editor command — bind it to a key, or run it with call!, not `:`"
+            "'select-next-word' is an editor command; bind it to a key, or run it with call!, not `:`"
         )
     );
     assert_eq!(state(&ed), before, "selection must be untouched");
@@ -351,7 +351,7 @@ fn colon_w_marks_buffer_clean() {
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
     assert!(ed.doc().is_dirty());
-    // Write — should clear dirty flag.
+    // Write: should clear dirty flag.
     for ch in ":w".chars() {
         ed.handle_key(key(ch));
     }
@@ -396,7 +396,7 @@ fn colon_q_bang_on_dirty_buffer_quits() {
 #[test]
 fn colon_q_on_clean_buffer_quits() {
     let mut ed = editor_from("-[h]>ello\n");
-    // Text is fresh (not dirty) — :q should quit.
+    // Text is fresh (not dirty), so :q should quit.
     for ch in ":q".chars() {
         ed.handle_key(key(ch));
     }
@@ -409,7 +409,7 @@ fn colon_q_on_clean_buffer_quits() {
 #[test]
 fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
     // :q on a view buffer when a real (file) buffer is also open should
-    // close the view buffer and switch to the file buffer — not exit hume.
+    // close the view buffer and switch to the file buffer, not exit hume.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
     // Open a read-only view buffer (simulates :messages).
@@ -438,7 +438,7 @@ fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
 
 #[test]
 fn colon_q_real_buffer_with_clean_scratch_quits() {
-    // An empty scratch buffer is disposable — :q on the last file buffer should
+    // An empty scratch buffer is disposable: :q on the last file buffer should
     // exit rather than parking on the scratch.
     // Validity: revert the predicate to `|| !is_read_only()` and this test fails
     // (should_quit stays false).
@@ -457,7 +457,7 @@ fn colon_q_real_buffer_with_clean_scratch_quits() {
 
 #[test]
 fn colon_q_with_dirty_scratch_remaining_stays() {
-    // A scratch buffer with unsaved edits is worth preserving — :q on the file
+    // A scratch buffer with unsaved edits is worth preserving: :q on the file
     // buffer must switch to the dirty scratch rather than discard it.
     // Validity: drop the `|| buf.is_dirty()` clause and this test fails
     // (should_quit becomes true, silently discarding the scratch content).
@@ -513,7 +513,7 @@ fn colon_q_one_of_two_file_buffers_switches_not_quits() {
 
 #[test]
 fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
-    // View buffers (labeled, no path) count as scratch — :q on the last
+    // View buffers (labeled, no path) count as scratch: :q on the last
     // file buffer should exit hume even when a view buffer is still open.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
@@ -536,8 +536,8 @@ fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
 
 #[test]
 fn colon_q_bang_on_dirty_buffer_with_other_real_buffer_closes_not_quits() {
-    // :q! on a dirty file buffer must discard changes and close the buffer —
-    // not quit — when another real (file-backed) buffer is open.
+    // :q! on a dirty file buffer must discard changes and close the buffer,
+    // not quit, when another real (file-backed) buffer is open.
     // Validity: remove the `any_other_real` branch from typed_quit and this
     // test fails (should_quit becomes true).
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -594,10 +594,10 @@ fn colon_qa_quits_with_multiple_clean_buffers() {
 
 #[test]
 fn colon_qa_refused_when_a_background_buffer_is_dirty() {
-    // :qa must check ALL buffers, not just the focused one — and it must switch
+    // :qa must check ALL buffers, not just the focused one, and it must switch
     // focus to the first unsaved buffer so the user knows where to look.
     // Validity: swap `ed.state.buffers.iter().any(...)` for `ed.doc().is_dirty()` and
-    // this test fails — the dirty background buffer would be silently ignored.
+    // this test fails: the dirty background buffer would be silently ignored.
     let (mut ed, _tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
 
@@ -648,8 +648,8 @@ fn colon_qa_bang_quits_despite_dirty_buffers() {
 
 #[test]
 fn colon_qa_stays_on_focused_dirty_buffer() {
-    // When the focused buffer is already dirty, :qa must stay on it — not jump
-    // to another buffer — and still refuse to quit.
+    // When the focused buffer is already dirty, :qa must stay on it (not jump
+    // to another buffer) and still refuse to quit.
     // Validity: remove the `!ed.doc().is_dirty()` guard and the editor would
     // jump away from the already-unsaved focused buffer.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -712,7 +712,7 @@ fn colon_qa_lands_on_first_dirty_buffer_in_open_order() {
 
 #[test]
 fn colon_qa_walk_through_dirty_buffers() {
-    // Save the first unsaved buffer and run :qa again — it should move to the
+    // Save the first unsaved buffer and run :qa again. It should move to the
     // next dirty buffer, verifying the "first in open-order" iteration works
     // across multiple :qa invocations.
     let (mut ed, tmp1) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -800,7 +800,7 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     let new_path = tmp_dir.path().join("subsequent.txt");
 
     let mut ed = editor_from("-[h]>ello\n");
-    // First :w with path — sets file_path and file_meta.
+    // First :w with path: sets file_path and file_meta.
     let cmd = format!(":w {}", new_path.display());
     for ch in cmd.chars() {
         ed.handle_key(key(ch));
@@ -808,7 +808,7 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
     ed.handle_key(key_enter());
     assert!(ed.doc_mut().file_meta.is_some());
 
-    // Make dirty again and write without a path — should use the new path.
+    // Make dirty again and write without a path; should use the new path.
     ed.handle_key(key('i'));
     ed.handle_key(key('y'));
     ed.handle_key(key_esc());
@@ -829,7 +829,7 @@ fn colon_w_path_updates_file_path_for_subsequent_writes() {
 #[test]
 fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     // :w <path> on a read-only buffer is an export: the content lands on
-    // disk at the new path, but the source buffer must not be touched —
+    // disk at the new path, but the source buffer must not be touched:
     // no mark_saved, no path/file_meta repoint, dirty state unchanged.
     // Without the `is_save_as` guard in write_file's save-as branch, every
     // :w <path> would go through mark_written_and_synced. is_dirty() below
@@ -895,7 +895,7 @@ fn colon_w_bang_writes_writable_file() {
 
 #[test]
 fn colon_wq_bang_quits_even_if_write_fails() {
-    // Scratch buffer (no file_path) — write will fail, but :wq! should still quit.
+    // Scratch buffer (no file_path): write will fail, but :wq! should still quit.
     let mut ed = editor_from("-[h]>ello\n");
     for ch in ":wq!".chars() {
         ed.handle_key(key(ch));
@@ -908,7 +908,7 @@ fn colon_wq_bang_quits_even_if_write_fails() {
 fn colon_wq_single_pane_other_buffer_closes_buffer_and_stays() {
     // :wq delegates to :q after a successful write, so with another real
     // (file-backed) buffer open it must write, close the current buffer, and
-    // switch focus — not quit the editor.
+    // switch focus, not quit the editor.
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let dirty_buf = ed.focused_buffer_id();
 
@@ -1020,7 +1020,7 @@ fn down_without_prior_up_is_noop() {
     for ch in "foo".chars() {
         ed.handle_key(key(ch));
     }
-    ed.handle_key(key_down()); // not navigating — no-op
+    ed.handle_key(key_down()); // not navigating: no-op
     assert_eq!(ed.state.minibuf().unwrap().input, "foo");
     ed.handle_key(key_esc());
 }
@@ -1029,7 +1029,7 @@ fn down_without_prior_up_is_noop() {
 fn empty_history_up_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    ed.handle_key(key_up()); // empty history — input unchanged
+    ed.handle_key(key_up()); // empty history: input unchanged
     assert_eq!(ed.state.minibuf().unwrap().input, "");
     ed.handle_key(key_esc());
 }
@@ -1040,7 +1040,7 @@ fn at_oldest_up_is_noop() {
     submit(&mut ed, "messages");
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // lands on "messages"
-    ed.handle_key(key_up()); // already at oldest — no change
+    ed.handle_key(key_up()); // already at oldest: no change
     assert_eq!(ed.state.minibuf().unwrap().input, "messages");
     ed.handle_key(key_esc());
 }
@@ -1049,11 +1049,11 @@ fn at_oldest_up_is_noop() {
 fn consecutive_duplicate_not_recorded() {
     let mut ed = editor_from("-[h]>ello\n");
     submit(&mut ed, "messages");
-    submit(&mut ed, "messages"); // duplicate — should be skipped
+    submit(&mut ed, "messages"); // duplicate: should be skipped
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // should land on "messages"
     assert_eq!(ed.state.minibuf().unwrap().input, "messages");
-    ed.handle_key(key_up()); // at oldest — no older entry
+    ed.handle_key(key_up()); // at oldest: no older entry
     assert_eq!(ed.state.minibuf().unwrap().input, "messages");
     ed.handle_key(key_esc());
 }
@@ -1062,18 +1062,18 @@ fn consecutive_duplicate_not_recorded() {
 fn failing_command_is_still_recorded() {
     // Unknown commands are recorded so the user can Up, fix the typo, and re-submit.
     let mut ed = editor_from("-[h]>ello\n");
-    submit(&mut ed, "qit"); // typo — reports "Unknown command: qit"
+    submit(&mut ed, "qit"); // typo: reports "Unknown command: qit"
     assert_eq!(open_and_up(&mut ed), "qit");
 }
 
 #[test]
 fn empty_confirm_not_recorded() {
     let mut ed = editor_from("-[h]>ello\n");
-    // Press Enter with empty input — ConfirmEmpty, should not add an entry.
+    // Press Enter with empty input: ConfirmEmpty, should not add an entry.
     ed.handle_key(key(':'));
     ed.handle_key(key_enter()); // ConfirmEmpty
     ed.handle_key(key(':'));
-    ed.handle_key(key_up()); // no entry to recall — input stays empty
+    ed.handle_key(key_up()); // no entry to recall: input stays empty
     assert_eq!(ed.state.minibuf().unwrap().input, "");
     ed.handle_key(key_esc());
 }
@@ -1087,9 +1087,9 @@ fn edit_after_up_demotes_scratch() {
     submit(&mut ed, "othercmd");
     submit(&mut ed, "messages");
     ed.handle_key(key(':'));
-    ed.handle_key(key_up()); // empty prefix — recall newest: "messages"
+    ed.handle_key(key_up()); // empty prefix: recall newest: "messages"
     assert_eq!(ed.state.minibuf().unwrap().input, "messages");
-    // Type a char — demotes history navigation back to scratch.
+    // Type a char: demotes history navigation back to scratch.
     ed.handle_key(key('x'));
     assert_eq!(ed.state.minibuf().unwrap().input, "messagesx");
     // Up should now re-stash "messagesx" and jump to the only entry that
@@ -1106,7 +1106,7 @@ fn edit_after_up_demotes_scratch() {
 fn history_survives_minibuf_close_and_reopen() {
     let mut ed = editor_from("-[h]>ello\n");
     submit(&mut ed, "messages");
-    // Open, press Esc — history entry should survive the close.
+    // Open, press Esc; history entry should survive the close.
     ed.handle_key(key(':'));
     ed.handle_key(key_esc());
     // Re-open and recall.
@@ -1142,7 +1142,7 @@ fn cursor_is_at_end_after_recall() {
 // ── Bug fixes: parser and empty Enter ────────────────────────────────────────
 
 /// `:ls` and `:list-buffers` (hyphen in name) still dispatch correctly after
-/// the parser rewrite — regression guard.
+/// the parser rewrite (regression guard).
 #[test]
 fn colon_list_buffers_aliases_work() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -1159,7 +1159,7 @@ fn colon_list_buffers_aliases_work() {
     );
 }
 
-/// Pressing `:` then Enter must dismiss the minibuf silently — no warning.
+/// Pressing `:` then Enter must dismiss the minibuf silently, with no warning.
 #[test]
 fn colon_enter_empty_silently_dismisses() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -1242,7 +1242,7 @@ fn colon_capital_qa_quits_single_clean_buffer() {
 // ── :goto / bare :N line-jump ─────────────────────────────────────────────────
 
 /// `:goto N` places the cursor at the start of line N (1-based).
-/// Validity: assert line index 2 — if the handler is a no-op the head stays on
+/// Validity: assert line index 2. If the handler is a no-op the head stays on
 /// line 0, which fails the assertion.
 #[test]
 fn colon_goto_moves_to_line() {
@@ -1258,7 +1258,7 @@ fn colon_goto_moves_to_line() {
 }
 
 /// Bare `:3` is accepted as shorthand for `:goto 3`.
-/// Validity: same as above — no-op leaves head on line 0, failing index-2 check.
+/// Validity: same as above: no-op leaves head on line 0, failing index-2 check.
 #[test]
 fn colon_bare_number_moves_to_line() {
     let mut ed = jump_editor(0);
@@ -1303,9 +1303,9 @@ fn colon_bare_number_clamps_past_eof() {
     );
 }
 
-/// `:goto 0` is an error — line numbers start at 1.
+/// `:goto 0` is an error: line numbers start at 1.
 /// Validity: remove `checked_sub(1)` and 0 maps to index -1 (wraps to usize::MAX),
-/// which would clamp to last line — a bogus move rather than an error.
+/// which would clamp to last line, a bogus move rather than an error.
 #[test]
 fn colon_goto_zero_is_error() {
     let mut ed = jump_editor(5);
@@ -1386,7 +1386,7 @@ fn colon_goto_records_jump() {
 fn colon_goto_noop_does_not_clobber_forward_history() {
     let mut ed = jump_editor(10);
 
-    // `gg` — records a jump, puts us at line 0.
+    // `gg` records a jump, puts us at line 0.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
     let at_top = state(&ed);
@@ -1396,7 +1396,7 @@ fn colon_goto_noop_does_not_clobber_forward_history() {
     let back_at_start = state(&ed);
     assert_ne!(back_at_start, at_top);
 
-    // `:goto 11` — already on line 11 (index 10) — a no-op.
+    // `:goto 11`: already on line 11 (index 10), so a no-op.
     type_cmd(&mut ed, ":goto 11");
     assert_eq!(
         state(&ed),
@@ -1447,7 +1447,7 @@ fn sort_bundled_flags_through_the_minibuffer() {
 #[test]
 fn sort_long_flags_through_the_minibuffer() {
     // `-r`/`-i` and their `--reverse`/`--insensitive` long forms are parsed
-    // by the same match arm — exercise the long forms directly rather than
+    // by the same match arm, so exercise the long forms directly rather than
     // trusting that pairing to hold.
     let mut ed = editor_from("-[Banana]>\n-[apple]>\n");
     submit(&mut ed, "sort --reverse --insensitive");
@@ -1467,7 +1467,7 @@ fn sort_no_adjacent_lines_reports_info_without_logging() {
     assert_eq!(
         ed.state.message_log.totals(),
         (0, 0),
-        "NoAdjacentLines is Severity::Info — a boundary condition, not a failure worth \
+        "NoAdjacentLines is Severity::Info: a boundary condition, not a failure worth \
          keeping in message_log"
     );
     assert_eq!(state(&ed), before, "a refusal must not touch the buffer");
@@ -1482,7 +1482,7 @@ fn sort_already_sorted_reports_info_without_logging() {
     assert_eq!(
         ed.state.message_log.totals(),
         (0, 0),
-        "AlreadySorted is Severity::Info — it must never reach message_log"
+        "AlreadySorted is Severity::Info; it must never reach message_log"
     );
 }
 
@@ -1504,7 +1504,7 @@ fn sort_unknown_flag_reports_an_error() {
 #[test]
 fn sort_unknown_long_flag_reports_a_flag_error_not_an_argument_error() {
     // Validity: an unrecognized `--`-prefixed token is still a flag mistake,
-    // not a positional argument — it must not fall through to the generic
+    // not a positional argument, so it must not fall through to the generic
     // "unknown argument" phrasing that genuine positionals get.
     let mut ed = editor_from("-[b]>\n-[a]>\n");
     let before = state(&ed);
@@ -1529,7 +1529,7 @@ fn sort_bang_is_rejected() {
     let err = ed
         .execute_typed("sort!", None)
         .expect_err(":sort! must be rejected");
-    assert_eq!(err.message(), "`:sort` takes no `!` — use `-r` to reverse");
+    assert_eq!(err.message(), "`:sort` takes no `!`; use `-r` to reverse");
     assert_eq!(state(&ed), before);
 }
 
@@ -1572,7 +1572,7 @@ fn sort_undo_restores_text_and_selections_in_one_step() {
 #[test]
 fn sort_on_already_sorted_input_leaves_buffer_clean() {
     // Validity: this is the test that pins `sort_lines` returning a
-    // `SortRefusal` instead of a successful identity edit — replace step 4's
+    // `SortRefusal` instead of a successful identity edit. Replace step 4's
     // refusal with an always-successful edit and `is_dirty()` starts
     // reporting `true` here.
     let mut ed = editor_from("-[a]>\n-[b]>\n");
@@ -1660,7 +1660,7 @@ fn earlier_zero_duration_is_noop_and_hour_walks_to_root() {
     assert_eq!(
         ed.state.status_msg.as_deref(),
         None,
-        ":earlier 0s is satisfied — no report"
+        ":earlier 0s is satisfied: no report"
     );
     submit(&mut ed, "earlier 1h");
     assert_eq!(
@@ -1698,7 +1698,7 @@ fn earlier_bang_is_rejected() {
 }
 
 /// `:earlier`/`:later` must refuse a read-only buffer exactly like `u`/
-/// `Ctrl-r` do — same message, same side effects — since both now dispatch
+/// `Ctrl-r` do (same message, same side effects), since both now dispatch
 /// through the same `cmd_undo`/`cmd_redo` (`list_buffers.rs`'s
 /// `read_only_buffer_blocks_undo_and_redo` is this test's key-driven
 /// counterpart).
@@ -1768,7 +1768,7 @@ fn later_old_age_is_noop_and_silent() {
     assert_eq!(
         state(&ed),
         mid,
-        ":later 1h from a mid-chain revision is already satisfied — no steps"
+        ":later 1h from a mid-chain revision is already satisfied: no steps"
     );
     assert_eq!(
         ed.state.status_msg.as_deref(),
@@ -1777,7 +1777,7 @@ fn later_old_age_is_noop_and_silent() {
     );
 }
 
-/// `:later <age>` at the tip (no prior `:earlier`) must stay silent — there
+/// `:later <age>` at the tip (no prior `:earlier`) must stay silent: there
 /// is nothing newer to redo onto regardless of how the tip's own age
 /// compares to the requested one. The age comparison itself needs a tip old
 /// enough to exceed the requested age, which this test can't force without a
@@ -1794,7 +1794,7 @@ fn later_at_the_tip_with_no_prior_earlier_is_silent() {
     assert_eq!(
         state(&ed),
         before,
-        ":later at the tip must not move — nothing exists to redo onto"
+        ":later at the tip must not move: nothing exists to redo onto"
     );
     assert_eq!(
         ed.state.status_msg.as_deref(),

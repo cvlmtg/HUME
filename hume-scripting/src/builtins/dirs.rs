@@ -90,7 +90,7 @@ impl ScriptDirs {
         match self.data_servers.as_deref() {
             Some(p) => Ok(p),
             None => steel::stop!(Generic =>
-                "no data directory — HOME/APPDATA unset; server install operations unavailable"),
+                "no data directory: HOME/APPDATA unset; server install operations unavailable"),
         }
     }
 }

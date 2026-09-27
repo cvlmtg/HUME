@@ -16,27 +16,27 @@ use crate::cli::ConfigSource;
 ///
 /// Bounding *passes* instead of total work would still let an amplifying
 /// cascade (a handler that enqueues more hooks than it received) blow up the
-/// batch size geometrically pass over pass — few passes, but exponential
+/// batch size geometrically pass over pass: few passes, but exponential
 /// total evals. Counting total hooks processed bounds both that shape and the
 /// constant-width ping-pong loop; unreachable in any legitimate configuration.
 ///
 /// A backstop against a plugin gone off the rails, not a state boundary: it
 /// should never fire against correct scripts, so the abort path (below) does
-/// not try to preserve fidelity across it — e.g. an observation baseline like
+/// not try to preserve fidelity across it, e.g. an observation baseline like
 /// `Buffer::announced_text_gen` that already advanced past a dropped event is
 /// left advanced, not rolled back. By the time this cap trips, the editor is
 /// already reporting a bug; losing one further notification on top of that is
 /// not worth the bookkeeping to prevent.
 const MAX_EVENT_DRAIN: usize = 1000;
 
-/// The `init.scm` a session should evaluate, or why there is none —
+/// The `init.scm` a session should evaluate, or why there is none:
 /// `Editor::config_path`'s result. Carries the reason rather than collapsing
 /// it to `Option<PathBuf>` so callers (`init_scripting`, `typed_reload_config`)
 /// don't each have to re-derive it from `config_source` separately.
 pub(in crate::editor) enum ConfigPath {
     /// The file to evaluate. `required` marks a `--config` override: the user
     /// asserted the file exists, so a missing one is an error (checked at
-    /// `:reload-config` time in `init_scripting`) — where a missing default
+    /// `:reload-config` time in `init_scripting`), where a missing default
     /// `<config_dir>/init.scm` is normal and silently skipped.
     Resolved { path: PathBuf, required: bool },
     /// `--no-config` (`ConfigSource::Skip`): the user asked for no `init.scm`.
@@ -48,7 +48,7 @@ pub(in crate::editor) enum ConfigPath {
 
 impl Editor {
     /// Apply every effect a Steel eval queued, in the exact order the
-    /// script emitted them (`hume_scripting::Effect`) — one ordered log, not
+    /// script emitted them (`hume_scripting::Effect`): one ordered log, not
     /// separate channels with a hardcoded apply order. Consecutive
     /// `Effect::LanguageReg` entries are grouped into one
     /// `apply_pending_language_regs` call so a large run (e.g.
@@ -57,7 +57,7 @@ impl Editor {
     /// at a time. Shared tail for `call_steel_cmd`'s call site, `settle`,
     /// and `init_scripting`.
     ///
-    /// Finishes by draining `state.config.pending_language_detection` — covers every
+    /// Finishes by draining `state.config.pending_language_detection`, which covers every
     /// buffer a disjoint-borrow Steel path opened via `buffer::lifecycle::
     /// open_buffer_and_notify` this eval (`(open-buffer! …)`, workspace edits,
     /// goto-definition). *After* the effect loop, not before: a script that
@@ -82,7 +82,7 @@ impl Editor {
                     // `buffer` may have closed between the Steel call that
                     // queued this effect and this drain (e.g. `(set-buffer-
                     // language! bid "rust") (close-buffer! bid)` in one
-                    // eval) — same shape as `LspRequest`/`LspNotify`'s own
+                    // eval), the same shape as `LspRequest`/`LspNotify`'s own
                     // `try_get` guard in `bridge.rs`. `set_buffer_language_
                     // explicit` uses the panicking `get_mut`, so this must
                     // check first rather than let it panic.
@@ -172,7 +172,7 @@ impl Editor {
     ) {
         // Every Steel entry point but `call_steel_command_body` (which
         // hand-rolls its own close for its `bool` return + `wait_char`
-        // handling) returns through here — the one funnel that closes the
+        // handling) returns through here, the one funnel that closes the
         // `#:inline-output` bracket by construction rather than by each
         // caller remembering to, for a hook, a queued-call batch, `init.scm`,
         // and a runtime plugin activation alike.
@@ -224,7 +224,7 @@ impl Editor {
             .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     }
 
-    /// Fire `OnLspAttach (bid server-name)` — called both when a buffer
+    /// Fire `OnLspAttach (bid server-name)`, called both when a buffer
     /// attaches to an already-Running server (`lsp_attach_buffer`) and, for
     /// every buffer already attached, when a Starting client reaches
     /// Running (`dispatch_lsp_action`'s `BecameRunning` arm).
@@ -235,7 +235,7 @@ impl Editor {
         });
     }
 
-    /// Fire `OnDiagnosticsChanged (bid)` — payload-free signal, once per
+    /// Fire `OnDiagnosticsChanged (bid)`: a payload-free signal, once per
     /// buffer a `publishDiagnostics` drain batch actually touched
     /// (`drain_lsp`). Handlers pull via `(diagnostics-for-buffer bid …)`.
     pub(super) fn queue_diagnostics_changed(&mut self, bid: BufferId) {
@@ -243,7 +243,7 @@ impl Editor {
             .queue_event(EditorEvent::OnDiagnosticsChanged { buffer: bid });
     }
 
-    /// Fire `OnViewportChange (pane first-line end-line)` for `pane_id` —
+    /// Fire `OnViewportChange (pane first-line end-line)` for `pane_id`,
     /// called only when its debounce timer actually fires (`timer_bridge`),
     /// reading the pane's *current* bounds rather than whatever they were
     /// when the timer was armed. A no-op if the pane closed in the meantime,
@@ -253,7 +253,7 @@ impl Editor {
     /// its frozen scroll would hand a handler a range the code itself no
     /// longer trusts. `prepare_frame` drops that pane's `last_viewport_key`
     /// when its tab backgrounds, so the pane's first frame back on screen
-    /// reads as a fresh change and re-arms this on its own — this guard only
+    /// reads as a fresh change and re-arms this on its own. This guard only
     /// skips the fire for the frames spent hidden, not the one on return.
     pub(super) fn queue_viewport_change(&mut self, pane_id: hume_engine::pipeline::PaneId) {
         if !self.view.layout().contains_leaf(pane_id) {
@@ -273,43 +273,43 @@ impl Editor {
     }
 
     /// Advance editor state to quiescence: drain completed async work (parse
-    /// results, LSP responses, timer fires — `drain_async_sources`), then
+    /// results, LSP responses, timer fires: `drain_async_sources`), then
     /// drain `state.config.pending_work` to a fixpoint.
     ///
     /// This is the single consumer of the merged work queue: a
     /// `Call` (an `lsp-request` callback, a timer thunk, a prompt/menu/
     /// drawer/picker callback) and an `Event` (fired to every handler
-    /// registered for its name) drain in the exact order they were queued —
+    /// registered for its name) drain in the exact order they were queued,
     /// grouped only where that's free, i.e. a contiguous run of `Call`s
     /// shares one Steel session, matching `run_steel_calls`' existing
     /// batching. A handler that queues more work is picked up within the
     /// same `settle()` call, not the next frame.
     ///
-    /// Takes no arguments, so it's callable without a terminal — the
+    /// Takes no arguments, so it's callable without a terminal: the
     /// headless path (`hume_editor::run_keys`) and `render_to_buf` both call
     /// it directly, alongside `Editor::run`'s loop.
     ///
     /// `drain_async_sources` runs once, *outside* [`Self::drain_pending_work`]'s
     /// fixpoint, deliberately: a timer thunk that re-arms itself
     /// (`(after 0 (lambda () (after 0 …)))`) would otherwise never leave the
-    /// loop — each firing converts straight back into a due timer the same
+    /// loop: each firing converts straight back into a due timer the same
     /// pass would immediately redrain. Outside the fixpoint, a re-arm is
     /// picked up on the *next* `settle()` instead, one frame later, which
     /// bounds it. `:reload-config`'s `resync_config_state` call site drains
-    /// only `drain_pending_work` for exactly this reason — see its doc.
+    /// only `drain_pending_work` for exactly this reason; see its doc.
     pub(crate) fn settle(&mut self) {
         self.drain_async_sources();
         if self.drain_pending_work() {
             // The span `Editor::handle_input` opened ("this input's own
             // dispatch just logged a message") closes here, once this
             // settle() has run the buffer-enter disk check that span exists
-            // to protect against — see `EditorState::message_logged_this_input`'s
+            // to protect against; see `EditorState::message_logged_this_input`'s
             // doc.
             self.state.message_logged_this_input = false;
         }
     }
 
-    /// Fixpoint over `state.config.pending_work` only — no async sources.
+    /// Fixpoint over `state.config.pending_work` only, with no async sources.
     /// The loop body of `settle`, split out so `:reload-config`'s accounting
     /// window (`typed_reload_config`) can drain exactly the config's own
     /// queued hooks without an unrelated LSP/parse/timer message landing
@@ -320,7 +320,7 @@ impl Editor {
     /// before the loop, so a handler-driven `switch-to-buffer!` is caught by
     /// the very next pass instead of waiting a frame, and the loop's exit
     /// condition is "queue empty **and** focus stable" rather than just
-    /// "queue empty" — a pass that only detects a focus change still has
+    /// "queue empty": a pass that only detects a focus change still has
     /// work to do (queuing and then draining `OnBufferEnter`) even though
     /// `pending_work` was empty when the pass began.
     ///
@@ -345,7 +345,7 @@ impl Editor {
             // (auto-format, trim-on-change) is a feedback loop, and only
             // inside the loop does `MAX_EVENT_DRAIN` (see its doc) catch it
             // in the same `settle()` call. This does not cover a debounced
-            // handler — its re-triggering edit lands via a timer thunk, which
+            // handler: its re-triggering edit lands via a timer thunk, which
             // `drain_async_sources` converts to queued work only once per
             // `settle()` and outside this loop, so `total_processed` never
             // accumulates across the resulting one-cycle-per-interval churn
@@ -360,19 +360,19 @@ impl Editor {
             total_processed += batch.len();
             if total_processed > MAX_EVENT_DRAIN {
                 // `batch` was just drained from `pending_work` above, so
-                // nothing has been re-enqueued yet — it's the entire drop.
+                // nothing has been re-enqueued yet, so it's the entire drop.
                 let dropped = batch.len();
                 self.report(
                     Severity::Error,
                     format!(
                         "event/callback cascade exceeded {MAX_EVENT_DRAIN} total drained work \
-                         item(s) — dropping {dropped} pending item(s); handler feedback loop?"
+                         item(s); dropping {dropped} pending item(s); handler feedback loop?"
                     ),
                 );
                 self.state.message_logged_this_input = false;
                 // `detect_buffer_enter` already advanced `last_entered_buffer`
                 // to the buffer this dropped batch's `OnBufferEnter` (if any)
-                // was raised for — undo that so the next `settle()` observes
+                // was raised for. Undo that so the next `settle()` observes
                 // the diff again and re-raises it, instead of the buffer-enter
                 // disk check being lost for good because the baseline already
                 // matches. Only when the batch actually held one: resetting
@@ -385,7 +385,7 @@ impl Editor {
                     self.state.last_entered_buffer = None;
                 }
                 // A dot-capture inside the dropped batch (a picker's own
-                // queued `on_select` — see `DotCapture`'s own doc) is simply
+                // queued `on_select`; see `DotCapture`'s own doc) is simply
                 // dropped along with the rest of it: nothing records a
                 // partial result for `.`, the same outcome as an `on_select`
                 // that never fires at all.
@@ -396,7 +396,7 @@ impl Editor {
     }
 
     /// Observation point for `OnBufferEnter` and the buffer-enter disk
-    /// check — `focused_buffer_id()` is a derived join of `state.focus` and
+    /// check. `focused_buffer_id()` is a derived join of `state.focus` and
     /// `pane.buffer_id`, each written by its own chokepoint (`focus_pane`,
     /// `switch_pane_to_buffer`), so it has no single write-site chokepoint
     /// to hang a raise on: a raise wired into just one of those two would
@@ -418,7 +418,7 @@ impl Editor {
         }
     }
 
-    /// Observation point for `on-mode-change` — `mode()` is a derived
+    /// Observation point for `on-mode-change`. `mode()` is a derived
     /// read of `EditorState.input` (`InputStack::mode`), with no write-site
     /// chokepoint of its own (a mode-layer push/truncate or an `Extend`
     /// flag flip can each change it), so this diffs it the same shape
@@ -427,7 +427,7 @@ impl Editor {
     /// handler-driven mode change (a picker `on_select` that enters Insert)
     /// is caught by the very next pass, and a transition that nets out
     /// within one pass (a `:cmd` body that enters and leaves Insert) is
-    /// invisible — same as a dot-repeat replay, which never calls
+    /// invisible, same as a dot-repeat replay, which never calls
     /// `settle()` between keys.
     fn detect_mode_change(&mut self) {
         let now = self.state.mode();
@@ -440,18 +440,18 @@ impl Editor {
     }
 
     /// Dismisses an open `Buffer`-target completion session once it no
-    /// longer matches live state — a pane switching to a different buffer,
+    /// longer matches live state: a pane switching to a different buffer,
     /// losing focus, closing the buffer, or the buffer changing through a
     /// path `observe_edit` never witnessed (an LSP `workspace/applyEdit`,
-    /// `:e!`, or any other out-of-band edit, same-length ones included —
+    /// `:e!`, or any other out-of-band edit, same-length ones included;
     /// see `BufferSession::observe_edit`'s own doc for why a length-changing
     /// one is already caught sooner, by the next keystroke's length check)
     /// all leave the session silently stale, and none of them has a single
-    /// write-site chokepoint to hang a synchronous dismiss on — same shape
+    /// write-site chokepoint to hang a synchronous dismiss on, the same shape
     /// `detect_buffer_enter`'s own doc describes for `focused_buffer_id()`.
     /// Run every pass of `drain_pending_work`'s loop, not just once before
     /// it, so a handler-driven change is caught by the very next pass. A
-    /// `Minibuf`-target session has nothing to invalidate here — it isn't
+    /// `Minibuf`-target session has nothing to invalidate here: it isn't
     /// watching a buffer.
     fn dismiss_invalid_completion(&mut self) {
         let Some(session) = self.state.input.buffer_completion() else {
@@ -463,8 +463,8 @@ impl Editor {
     }
 
     /// Observation point for `on-text-changed` (`EditorEvent::OnTextChanged`'s
-    /// doc). `Buffer::set_text` — the one place every text mutation funnels
-    /// through — has no path to `EditorState::queue_event`, so this diffs
+    /// doc). `Buffer::set_text` (the one place every text mutation funnels
+    /// through) has no path to `EditorState::queue_event`, so this diffs
     /// `Buffer::text_gen` instead, the same shape `detect_buffer_enter` uses
     /// for a value with no write-site chokepoint of its own. Run every pass
     /// of `drain_pending_work`'s loop, not just once before it, so a
@@ -483,7 +483,7 @@ impl Editor {
     /// fire one event at a time, and a contiguous run of unanchored `Call`s
     /// batches into one Steel session before the next `Event` (or end of
     /// batch). An anchored `Call` (an `lsp-request` callback) always runs
-    /// alone in its own session, its anchor re-checked immediately first —
+    /// alone in its own session, its anchor re-checked immediately first;
     /// see the `Call` match arm's own comment for why it can't be batched.
     fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
         while let Some(item) = items.pop_front() {
@@ -494,12 +494,12 @@ impl Editor {
                     // a completion accept), but fires behind whatever `Call`
                     // items (timer thunks, async callbacks) or earlier
                     // `Event`s were already queued ahead of it in the same
-                    // batch — one of those can close the buffer first.
+                    // batch, and one of those can close the buffer first.
                     // Checked here, ahead of both `react_to_event` and
                     // `fire_one_event`, so neither ever sees a dead id.
                     // `OnBufferClose` is deliberately exempt: it is raised
                     // for an id that's already gone by design (see
-                    // `lifecycle.rs`'s pairing check) — checking it here
+                    // `lifecycle.rs`'s pairing check); checking it here
                     // would drop every `OnBufferClose` outright.
                     //
                     // A pane-carrying event (`OnBufferEnter`,
@@ -511,7 +511,7 @@ impl Editor {
                     // turn, and the builtin its handler goes on to call
                     // would otherwise raise on a pane it never asked for.
                     // A buffer-only event just needs its buffer still live;
-                    // a pane-carrying one needs that pane to still show it —
+                    // a pane-carrying one needs that pane to still show it:
                     // the same dual check `EditorEvent::handle`'s own doc
                     // describes.
                     let live = |handle: hume_scripting::PaneHandle| {
@@ -542,11 +542,11 @@ impl Editor {
                         // before *this* call, not before some earlier
                         // sibling in the same batch has had a chance to run
                         // and change the state the check depends on (a
-                        // `switch-to-buffer!`, an edit) — batching first and
+                        // `switch-to-buffer!`, an edit), so batching first and
                         // checking every anchor up front would defeat the
                         // re-check, since all the checks would still land
                         // before any of the calls actually ran. One call,
-                        // one session, one check, one run — see
+                        // one session, one check, one run; see
                         // `PendingWork::Call`'s own doc.
                         if self.anchor_admits(&anchor) {
                             self.run_call_batch(vec![(proc, args)]);
@@ -555,7 +555,7 @@ impl Editor {
                     }
                     if let Some(cap) = dot_capture {
                         // Also never batched with a sibling call: re-arming
-                        // `cap` covers only this one call — see
+                        // `cap` covers only this one call; see
                         // `PendingWork::Call::dot_capture`'s own doc.
                         self.run_dot_captured(cap, |ed| ed.run_call_batch(vec![(proc, args)]));
                         continue;
@@ -582,7 +582,7 @@ impl Editor {
         }
     }
 
-    /// Editor-internal reactions to an event — the Rust counterpart to Steel
+    /// Editor-internal reactions to an event: the Rust counterpart to Steel
     /// handlers, and the only `match` over `EditorEvent` that drives editor
     /// behaviour. Runs unconditionally, before `fire_one_event`
     /// and its `has_hook_handlers` early-exit: unlike a Steel handler, a
@@ -614,7 +614,7 @@ impl Editor {
         }
     }
 
-    /// Fire every handler registered for one `EditorEvent`, if any are —
+    /// Fire every handler registered for one `EditorEvent`, if any are:
     /// the per-item body of `settle`'s `Event` arm.
     fn fire_one_event(&mut self, event: EditorEvent) {
         let name = event.name();
@@ -628,7 +628,7 @@ impl Editor {
         {
             return;
         }
-        // Built only once a handler is confirmed registered — an event
+        // Built only once a handler is confirmed registered, so an event
         // nobody subscribes to never allocates a `SteelVal`.
         let args = event.steel_args();
         let result = {
@@ -646,13 +646,13 @@ impl Editor {
         };
         self.flush_script_messages();
         // A hook body's own `call!` to an `#:inline-output` command is
-        // closed here too — see `apply_script_result`'s own doc for the
+        // closed here too; see `apply_script_result`'s own doc for the
         // full list of callers this funnel covers.
         self.apply_script_result(result, "hook error: ");
     }
 
     /// Run one contiguous run of queued `Call` items in a single Steel
-    /// session — the per-batch body of `settle`'s `Call` arm. Preserves
+    /// session: the per-batch body of `settle`'s `Call` arm. Preserves
     /// `run_steel_calls`' existing "one session, first error aborts the
     /// rest" semantics for calls that were queued back-to-back.
     fn run_call_batch(&mut self, calls: Vec<(SteelVal, Vec<SteelVal>)>) {
@@ -674,7 +674,7 @@ impl Editor {
         self.flush_script_messages();
         if result.is_err() {
             // A queued completion invocation this batch was supposed to
-            // answer for (via `completion-emit!`) never will now — see
+            // answer for (via `completion-emit!`) never will now; see
             // `EditorState::settle_completion_after_call_failure`'s own
             // doc. Runs before `apply_script_result` reports the error, but
             // the ordering doesn't matter to either side.
@@ -689,7 +689,7 @@ impl Editor {
     /// this session has no `init.scm` to run.
     ///
     /// Called once at startup, after `Editor::open` returns and before
-    /// `Editor::run` starts (with `snapshot` at its `Default` — nothing to
+    /// `Editor::run` starts (with `snapshot` at its `Default`: nothing to
     /// restore, no pre-reload buffers), and by `typed_reload_config` on
     /// every `:reload-config` (with the `ReloadSnapshot` `reset_config_state`
     /// just produced). Any error from `init.scm` is reported as
@@ -699,7 +699,7 @@ impl Editor {
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
         // directly without a FreeIdentifier compile error.  Only native commands
-        // (Motion/Selection/Edit/EditorCmd) are registered — plugin commands
+        // (Motion/Selection/Edit/EditorCmd) are registered; plugin commands
         // (`SteelBacked`/`Lazy`) don't exist yet and use `(call! …)` instead.
         {
             let names: Vec<&str> = self.state.config.registry.native_mappable_names().collect();
@@ -709,7 +709,7 @@ impl Editor {
         // A missing runtime dir is a warning because `core:*` plugins need it.
         match host.runtime_dir() {
             Some(rt) => self.report(Severity::Trace, format!("scripting: runtime dir = {}", rt.display())),
-            None => self.report(Severity::Warning, "scripting: no runtime directory found — core:* plugins unavailable; set HUME_RUNTIME to fix".into()),
+            None => self.report(Severity::Warning, "scripting: no runtime directory found (core:* plugins unavailable); set HUME_RUNTIME to fix".into()),
         }
         match host.data_dir() {
             Some(d) => self.report(
@@ -718,7 +718,7 @@ impl Editor {
             ),
             None => self.report(
                 Severity::Warning,
-                "scripting: no data directory — HOME/APPDATA unset; user plugins unavailable"
+                "scripting: no data directory: HOME/APPDATA unset; user plugins unavailable"
                     .into(),
             ),
         }
@@ -736,8 +736,8 @@ impl Editor {
         // Load runtime/scheme/prelude.scm before init.scm so its macros
         // (bind-keys! etc.) are available to init.scm and plugin modules.
         // Then languages.scm ((define-language! …) identities) and
-        // grammars.scm (registers already-compiled grammars — see its own
-        // header) — languages.scm runs first so identity registration owns
+        // grammars.scm (registers already-compiled grammars; see its own
+        // header). languages.scm runs first so identity registration owns
         // the one glob-set rebuild (attach_grammar would otherwise create a
         // bare default identity per grammar, ahead of languages.scm's own).
         // Each is a silent no-op when the runtime dir or the file itself is
@@ -752,7 +752,7 @@ impl Editor {
         self.eval_runtime_scheme(&mut host, "scheme/grammars.scm", builtin_names.clone());
         // `Skipped` (`--no-config`) and `NoConfigDir` both mean there's no
         // `init.scm` to evaluate, so every plugin it would otherwise
-        // `load-plugin` is skipped for free — the runtime scheme above
+        // `load-plugin` is skipped for free. The runtime scheme above
         // always loads regardless, it's HUME's own, not the user's. `Skipped`
         // is what the user asked for (no warning); `NoConfigDir` means
         // there's no meaningful place to look (warned).
@@ -761,7 +761,7 @@ impl Editor {
             ConfigPath::NoConfigDir => {
                 self.report(
                     Severity::Warning,
-                    "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
+                    "scripting: no config directory: HOME/APPDATA unset; init.scm skipped".into(),
                 );
             }
             ConfigPath::Resolved { path, required } => {
@@ -770,13 +770,13 @@ impl Editor {
                     format!("scripting: config file = {}", path.display()),
                 );
                 let init_budget = self.state.settings.steel_init_budget_ms as u64;
-                // A missing default `init.scm` is normal — `eval_init` treats
-                // `NotFound` as a silent no-op — but a `--config` override
+                // A missing default `init.scm` is normal (`eval_init` treats
+                // `NotFound` as a silent no-op), but a `--config` override
                 // (`required`) is an assertion (see `resolve` in `main.rs`),
                 // and that assertion is only checked once, at process start.
                 // A path valid at startup can go missing by the time
-                // `:reload-config` re-evaluates it (moved, deleted, or —
-                // before the startup-time absolutize in `main.rs` — a
+                // `:reload-config` re-evaluates it (moved, deleted, or,
+                // before the startup-time absolutize in `main.rs`, a
                 // relative path outrun by an intervening `:cd`), so re-check
                 // it here rather than let it fall through `eval_init`'s
                 // silent-skip path and read as a successful, empty reload.
@@ -791,9 +791,9 @@ impl Editor {
                     );
                     host.eval_init(&path, init_budget, &mut ih, builtin_names)
                 };
-                // Named by the path actually evaluated — "init.scm: " for the
+                // Named by the path actually evaluated ("init.scm: " for the
                 // default location, the override's own file name under
-                // `--config` — so an eval error names the file the user
+                // `--config`), so an eval error names the file the user
                 // actually pointed HUME at, not always the default. Falls
                 // back to the full path for the pathological case of a path
                 // with no file name component (e.g. one ending in `..`).
@@ -804,7 +804,7 @@ impl Editor {
                 self.apply_script_result(result, &err_prefix);
             }
         }
-        // Snapshot language activation entries for the post-init lint below —
+        // Snapshot language activation entries for the post-init lint below:
         // every eval's effects (identities, grammars, LSP server ops) are
         // already applied above, each right after its own eval, so
         // `self.state.config.languages` is fully populated by this point.
@@ -821,7 +821,7 @@ impl Editor {
         // Built-in keymaps only reference registered built-ins, so any
         // warnings here come from user bind-key! calls to typos, undeclared
         // commands, or a typed-only command's name (`:`-only, never
-        // key-bindable — see `registry/mod.rs`'s module doc).
+        // key-bindable; see `registry/mod.rs`'s module doc).
         {
             let mut names = self.state.config.keymap.all_command_names();
             names.sort_unstable();
@@ -831,7 +831,7 @@ impl Editor {
                     self.report_unknown_command(
                         name,
                         format!(
-                            "key bound to unknown command '{name}' — typo, or missing from #:commands?"
+                            "key bound to unknown command '{name}': typo, or missing from #:commands?"
                         ),
                     );
                 }
@@ -846,14 +846,14 @@ impl Editor {
         // open/dynamic (a future define-language! + reload may make the name valid).
         for (lang, plugins) in &lang_activations {
             // "*" is the any-language wildcard (manifest.scm can't enumerate every
-            // language it might ever support) — not a language identity to look up.
+            // language it might ever support), not a language identity to look up.
             if lang != "*" && self.state.config.languages.by_name(lang).is_none() {
                 for plugin in plugins {
                     self.report(
                         Severity::Warning,
                         format!(
                             "plugin '{plugin}' declares #:languages activation for unknown \
-                             language '{lang}' — typo, or missing (define-language!)?"
+                             language '{lang}': typo, or missing (define-language!)?"
                         ),
                     );
                 }
@@ -862,17 +862,17 @@ impl Editor {
         // Re-detect language for every open buffer (the startup buffer is
         // opened in lib.rs before init_scripting is called; a
         // `:reload-config` cleared every buffer's language in
-        // `reset_config_state`). A buffer with an explicit assertion —
+        // `reset_config_state`). A buffer with an explicit assertion,
         // restored from `snapshot` (this is a `:reload-config`) or made by
         // `init.scm` itself against a buffer that predates this call (e.g.
-        // the startup buffer) — skips detection entirely: `set_buffer_
+        // the startup buffer), skips detection entirely: `set_buffer_
         // language_impl` stamps `language_explicit` unconditionally, so a
         // later detection pass would otherwise silently overwrite that
         // assertion with whatever plain detection finds. Restoring the
         // snapshot *inside* this loop, rather than as a second
         // detect-then-correct pass afterward, also avoids attaching an LSP
         // server for the buffer's *detected* language before its real,
-        // explicit one goes back — `lsp_attach_buffer` is a no-op once
+        // explicit one goes back: `lsp_attach_buffer` is a no-op once
         // attached, so that wrong attach would otherwise stick.
         let explicit_restore: rustc_hash::FxHashMap<BufferId, Option<String>> =
             snapshot.take_explicit_languages().into_iter().collect();
@@ -881,7 +881,7 @@ impl Editor {
             // A lazy language plugin activated earlier in this same loop
             // (`detect_and_set_language` → `set_buffer_language_impl` →
             // `activate_lazy_language_plugins`) runs at `EvalMode::
-            // PluginActivation`, where `close-buffer!` is callable — it can
+            // PluginActivation`, where `close-buffer!` is callable, so it can
             // close a *later* bid in this same `open_bids` list before this
             // loop ever reaches it. Same hazard `detect_pending_languages`
             // guards against with `try_get`; skip rather than hit
@@ -892,7 +892,7 @@ impl Editor {
             if let Some(name) = explicit_restore.get(&bid) {
                 // Redundant with the `try_get` skip above in production (no
                 // Steel eval runs between the two), but `survives` also
-                // checks `bid` predates this reload — see its own doc.
+                // checks `bid` predates this reload; see its own doc.
                 if snapshot.survives(bid, &self.state.buffers) {
                     match name {
                         Some(name) => match self.state.config.languages.id_of(name) {
@@ -902,7 +902,7 @@ impl Editor {
                                     Severity::Warning,
                                     format!(
                                         "language '{name}' was explicitly set on a buffer \
-                                         before reload, but is no longer registered — \
+                                         before reload, but is no longer registered; \
                                          falling back to detection"
                                     ),
                                 );
@@ -915,7 +915,7 @@ impl Editor {
                 }
             } else if self.state.buffers.get(bid).language_explicit {
                 // Asserted during *this very* init.scm eval (e.g. on a
-                // buffer that predates this call) — detection must not
+                // buffer that predates this call), so detection must not
                 // clobber it either; see `set_buffer_language_impl`'s doc.
                 continue;
             }
@@ -923,7 +923,7 @@ impl Editor {
         }
     }
 
-    /// The `init.scm` this session evaluates — at startup and on every
+    /// The `init.scm` this session evaluates, at startup and on every
     /// `:reload-config`, which must re-run the file the session booted from
     /// rather than falling back to the default one.
     pub(in crate::editor) fn config_path(&self) -> ConfigPath {
@@ -944,7 +944,7 @@ impl Editor {
     }
 
     /// Evaluate a bundled runtime Scheme file (`rel_path`, relative to the
-    /// runtime dir) as an init-mode eval — shared by `init_scripting`'s
+    /// runtime dir) as an init-mode eval, shared by `init_scripting`'s
     /// prelude/languages/grammars loads. A missing runtime dir or a missing
     /// file at that path is a silent no-op (all three are optional layers);
     /// a file that exists but fails to parse/eval is reported as an error.
@@ -1003,8 +1003,8 @@ pub(in crate::editor::scripting_setup) fn log_level_to_severity(
 /// Ordered list of directories to search for theme TOML files.
 ///
 /// Config themes (hand-authored, edited in place like `init.scm`) come first,
-/// then data-dir themes (installed by a tool — same provenance as PLUM's
-/// `data/plugins/`), then runtime themes (bundled) last — each tier shadows
+/// then data-dir themes (installed by a tool, same provenance as PLUM's
+/// `data/plugins/`), then runtime themes (bundled) last. Each tier shadows
 /// the next by name. Both `theme::load_theme_by_name` and
 /// `completion::complete_theme` use this list as the single source of
 /// truth.

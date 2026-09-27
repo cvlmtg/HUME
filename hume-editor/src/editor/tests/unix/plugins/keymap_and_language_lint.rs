@@ -34,7 +34,7 @@ fn keymap_lint_warns_on_unknown_command() {
 
 /// A `bind-key!` targeting a real typed-only command's name (`:`-only, never
 /// key-bindable) must warn with a hint naming the actual kind, not the bare
-/// "unknown command" the lint gives a truly unregistered name — the same
+/// "unknown command" the lint gives a truly unregistered name: the same
 /// kind confusion keypress dispatch guards against, here caught at init time
 /// instead of silently waiting for the first press.
 ///
@@ -51,7 +51,7 @@ fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
         ed.state.message_log.entries().any(|e| {
             e.severity == Severity::Warning
                 && e.text
-                    == "'write' is a typed command — run it as `:write`; it can't be bound to a key"
+                    == "'write' is a typed command: run it as `:write`; it can't be bound to a key"
         }),
         "expected a kind-aware hint for 'write'; messages: {:?}",
         ed.state
@@ -63,7 +63,7 @@ fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
 }
 
 /// Native default keymaps must never bind a key to a command that isn't a Rust
-/// built-in — Ctrl-Space's `completion-trigger` (`keymap/defaults.rs`) is
+/// built-in. Ctrl-Space's `completion-trigger` (`keymap/defaults.rs`) is
 /// one (`registry/defaults/editor_cmds.rs`), so an editor that never loads
 /// or declares any plugin must start up with no keymap-lint warning naming
 /// it.
@@ -88,7 +88,7 @@ fn no_keymap_lint_warning_for_completion_trigger_without_plugins() {
 }
 
 /// `(load-plugin …)` called from a plugin body during *runtime* activation
-/// (command activation) is rejected — registration verbs are top-level-only.
+/// (command activation) is rejected: registration verbs are top-level-only.
 /// The parent plugin is marked `Failed` and an `Error` is logged.
 #[test]
 fn load_plugin_in_runtime_plugin_body_fails_fast() {
@@ -102,7 +102,7 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     std::fs::create_dir_all(&dep_dir).unwrap();
     std::fs::write(
         tp_dir.join("plugin.scm"),
-        // Plugin body calls (load-plugin) at runtime — hard error expected.
+        // Plugin body calls (load-plugin) at runtime: hard error expected.
         r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))
            (load-plugin "user/dep")"#,
     )
@@ -162,7 +162,7 @@ fn define_command_collision_with_builtin_keeps_builtin() {
         None,
     );
 
-    // The built-in "move-right" must survive — not replaced by SteelBacked.
+    // The built-in "move-right" must survive, not replaced by SteelBacked.
     assert!(
         !matches!(
             ed.state.config.registry.get_mappable("move-right"),
@@ -284,7 +284,7 @@ fn language_trigger_lint_silent_for_known_language() {
 fn language_trigger_lint_silent_for_forward_defined_language() {
     use crate::editor::Severity;
 
-    // declare-plugin BEFORE define-language! — the forward-reference case.
+    // declare-plugin BEFORE define-language!: the forward-reference case.
     let (ed, _dirs) = setup_lang_lint_editor(
         r#"(declare-plugin "user/tp" #:languages '("foo"))
            (%define-language! "foo" '() '() '() #f)"#,
@@ -304,7 +304,7 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
     );
 }
 
-/// Language-activation lint never warns about `"*"` — it's the any-language
+/// Language-activation lint never warns about `"*"`: it's the any-language
 /// wildcard, not a language identity to look up in the registry.
 ///
 /// Without the `lang != "*"` guard, the lint would look "*" up in
@@ -332,7 +332,7 @@ fn language_activation_lint_silent_for_wildcard() {
 
 /// A real core plugin with no `manifest.scm` of its own (`core:vim-keybind`) still
 /// hard-errors on a zero-trigger `(declare-plugin "core:vim-keybind")` against the
-/// repo's actual `runtime/` tree — the manifest opt-in doesn't silently make
+/// repo's actual `runtime/` tree. The manifest opt-in doesn't silently make
 /// every plugin support the zero-trigger form.
 ///
 /// Were manifest resolution to fall back to a default on a missing file, no
