@@ -1,28 +1,17 @@
 //! Process-wide tracking of long-lived children, so a force-exit can still
 //! reap them.
 //!
-//! `std::process::exit` (`crate::force_exit`'s last step) runs no
-//! destructors — the `Drop` impls that normally kill `hume-lsp`'s LSP
-//! servers and the picker's line-source children (`spawn_line_source`)
-//! never fire on a signal force-exit. Every long-lived child registers itself
-//! here via [`TrackedChild::new`](crate::process::tracked::TrackedChild::new)
-//! at spawn time; `kill_tracked_children` is called from `force_exit` as a
-//! fail-safe alongside each type's own `Drop` (which still runs, and still
-//! owns cleanup, on every normal exit) — see `force_exit`'s own doc for where
-//! in its sequence the reap runs and why.
+//! `std::process::exit` (the last step of `crate::force_exit`) runs no
+//! destructors, so the `Drop` impls that kill LSP servers and line-source
+//! children never fire. Each long-lived child registers via
+//! [`TrackedChild::new`](crate::process::tracked::TrackedChild::new), and
+//! `force_exit` calls `kill_tracked_children` as a fail-safe; `Drop` still
+//! owns cleanup on a normal exit. The table is global because the terminator
+//! thread has no other path to children spawned elsewhere.
 //!
-//! A process-global table is the only way to reach this from `force_exit`:
-//! the terminator thread's closure captures only a `SharedTerm` and a
-//! `request_quit` callback, with no structural path to any `Child` spawned
-//! elsewhere in the process.
-//!
-//! Scope: long-lived children only. A synchronous `.status()` child
-//! (`tree_sitter_build`, `unpack_zip`/`unpack_gz`, `run_inline_output`) runs
-//! on the main thread and is never registered here, so a force-exit mid-call
-//! can orphan it. Accepted rather than fixed — those children are
-//! short-lived, self-terminating, and their output is already streaming to
-//! the user's terminal, and tracking them would need a blocking `wait` held
-//! under the same slot mutex `kill_slot`'s retry bound exists to keep short.
+//! Synchronous `.status()` children (`tree_sitter_build`, `unpack_*`,
+//! `run_inline_output`) are not tracked and can be orphaned by a force-exit.
+//! They are short-lived and self-terminating.
 
 use std::process::Child;
 use std::sync::{Arc, Mutex, TryLockError, Weak};

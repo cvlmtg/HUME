@@ -55,34 +55,17 @@ impl super::ProbeChannel for TtyChannel {
 
 // ── Terminator: process-termination signals ───────────────────────────────
 //
-// SIGINT/SIGTERM/SIGHUP/SIGQUIT, delivered via a `signal_hook` self-pipe —
-// the same technique `termina` uses internally for SIGWINCH
-// (`event/source/unix.rs`): the signal handler just writes one byte to a
-// pipe, and this thread's `select` treats that pipe like any other fd.
-// `request_quit` asks the main loop to quit gracefully (its event reader is
-// alive and will see the wake); this thread then waits up to `QUIT_GRACE`
-// for it to exit on its own before force-exiting with that code anyway, or
-// with a second signal's code if one arrives inside the window.
+// SIGINT/SIGTERM/SIGHUP/SIGQUIT arrive through a `signal_hook` self-pipe that
+// this thread `select`s on. `request_quit` asks the main loop to quit, then
+// the thread waits up to `QUIT_GRACE` before force-exiting (with a second
+// signal's code if one arrives in the window). A pty teardown may not send
+// SIGHUP; termina's reader then returns `UnexpectedEof` and the main loop
+// exits on its own (see `hume_platform::hangup_exit_code`).
 //
-// A pty teardown (e.g. `vhs` closing the master after a recording) isn't
-// guaranteed to deliver SIGHUP, since hume is rarely the session leader of
-// its tty. This module needs no `/dev/tty` watch for that case: termina's
-// `UnixEventSource::try_read` returns `Err(io::ErrorKind::UnexpectedEof)` on
-// the resulting zero-byte read, so the main loop's own reader surfaces a
-// hangup as an ordinary error and returns on its own. See
-// `hume_platform::hangup_exit_code` for how the exit code is derived from
-// that error.
-//
-// Setup order enforces one invariant: a replaced signal disposition must
-// exist only while something can act on it. `signal_hook` has no way to
-// restore a disposition once replaced (`unregister` drops the callback
-// without touching `SIG_DFL`, so a later signal is silently swallowed —
-// documented in `signal-hook-registry`'s source), ruling out
-// register-then-unregister-on-failure as a recovery path. Two mechanisms
-// cover it instead: the draining thread spawns *before* any disposition is
-// replaced, so a spawn failure leaves kernel defaults untouched; and a
-// `register_conditional_shutdown` fallback, armed the instant the thread
-// stops draining (return or panic), covers the thread-dies-later case.
+// A replaced signal disposition must exist only while something drains it:
+// `signal_hook` cannot restore `SIG_DFL` once replaced. So the draining
+// thread spawns before any disposition is replaced, and a
+// `register_conditional_shutdown` fallback is armed when the thread stops.
 
 /// Signals that ask the process to terminate. SIGQUIT is included so `kill
 /// -QUIT` restores the terminal (raw mode, alt screen) before exiting,

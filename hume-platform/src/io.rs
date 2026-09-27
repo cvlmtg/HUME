@@ -147,37 +147,18 @@ pub fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
 }
 
 /// Write `content` atomically to the path recorded in `meta`. Returns `true`
-/// when the chmod-retry path below was taken, `false` on a plain successful
-/// write.
+/// when the `force` chmod-retry path was taken.
 ///
-/// The temp file is created in the target's own directory, so `rename(2)`
-/// stays on one filesystem; permissions are restored *before* the rename so
-/// the file is never transiently visible with the wrong mode bits. Ownership
-/// (`fchown`, Unix) is best-effort — it only succeeds as root or as the owner.
+/// The temp file lives in the target's directory so the rename stays on one
+/// filesystem, and gets the target's permissions before the rename. `fchown`
+/// (Unix) is best-effort. `force` retries once after a `PermissionDenied`
+/// rename by clearing the target's readonly attribute. Atomic on POSIX; on
+/// Windows `MoveFileEx` replacement is not crash-atomic.
 ///
-/// `force` retries once after a `PermissionDenied` rename by clearing the
-/// target's readonly attribute. The rename unlinks the old, transiently
-/// writable inode, so nothing needs restoring on the new one — it already
-/// carries `meta.permissions`.
-///
-/// **Atomicity:** guaranteed on POSIX, where `rename(2)` is one syscall. On
-/// Windows `tempfile::persist` uses `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`,
-/// which is not crash-atomic for file replacement — the best available
-/// option without the deprecated transactional NTFS.
-///
-/// On success, re-stats the target to refresh `meta.signature`: the rename
-/// swaps in a fresh inode with a new mtime, so without this refresh the
-/// editor's own save looks like an external change on the very next
-/// disk-state check. `meta` is `&mut` so the refresh can't be forgotten at a
-/// call site.
-///
-/// A failed re-stat does *not* fail the write — the content is already
-/// durable, and surfacing an error here would report a successful save as
-/// failed (buffer never marked saved, `:q` keeps refusing, no `didSave`
-/// fires) while the new content sits on disk regardless. A stale signature
-/// only biases the next disk-state check toward a spurious "changed", never
-/// toward missing a real one — the same bias `read_file`'s doc accepts for
-/// the read-side race.
+/// On success, re-stats the target to refresh `meta.signature`, otherwise the
+/// editor's own save looks like an external change on the next disk-state
+/// check. A failed re-stat does not fail the write: the content is already on
+/// disk, and a stale signature only biases toward a spurious "changed".
 pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io::Result<bool> {
     let target = &meta.resolved_path;
     let dir = target.parent().unwrap_or(Path::new("."));

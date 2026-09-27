@@ -320,31 +320,16 @@ pub fn probe_kitty(term: &SharedTerm) -> io::Result<bool> {
 /// Switch the terminal into raw mode + alternate screen and return a
 /// [`Screen`](crate::screen::Screen) ready to render.
 ///
-/// `kitty_enabled` is the result of a prior [`probe_kitty`] call. When `true`,
-/// the caller should filter `KeyEventKind::Release` events from the event
-/// loop and may enable Ctrl-modified key bindings that require the enhanced
-/// protocol.
+/// `kitty_enabled` is a prior [`probe_kitty`] result; when `true` the caller
+/// should filter `KeyEventKind::Release` events. Focus tracking (DECSET 1004)
+/// is always enabled, since unsupporting terminals just never send focus
+/// events (tmux needs `set -g focus-events on`). `mouse_enabled` turns on
+/// click and scroll tracking with SGR coordinates, leaving drag-select to the
+/// terminal; `mouse_select` also reports drags so the editor can select.
 ///
-/// Also enables terminal focus tracking (DECSET 1004) unconditionally: a
-/// terminal without support simply never sends `FocusIn`/`FocusOut`, so
-/// there's no probe and no fallback path needed. Terminal multiplexers
-/// (tmux, screen) need their own opt-in (tmux: `set -g focus-events on`) to
-/// forward these through to the application.
-///
-/// Mouse tracking is enabled selectively:
-/// - `mouse_enabled` enables normal tracking (button press/release + scroll)
-///   plus SGR extended coordinates. With only these modes, drag events are
-///   NOT sent to the application, so the terminal handles drag-select
-///   natively.
-/// - `mouse_select` additionally enables button-event tracking, which sends
-///   drag events so the editor can create editor selections on drag.
-///
-/// Call [`restore`] before the process exits so the user's shell is left in
-/// a usable state; a panic during the session also restores it via the panic
-/// hook installed here. The hook is armed before any mode is entered, and a
-/// failure partway through this function's own enable sequence is unwound
-/// before the error is returned — `init` never returns `Err` while leaving
-/// the alternate screen, mouse tracking, or bracketed paste set.
+/// Call [`restore`] before exiting. A panic hook, armed before any mode is
+/// entered, also restores, and a failure partway through is unwound before
+/// `Err` is returned.
 pub fn init(
     term: &SharedTerm,
     mouse_enabled: bool,

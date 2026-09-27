@@ -1,38 +1,19 @@
 //! Process-spawning helpers.
 //!
-//! Every `std::process::Command` use that needs process-group isolation or
-//! force-exit reaping goes through this module — directly
-//! (`run_inline_output`, `tree_sitter_build`, ...) for short-lived children,
-//! or via [`spawn_in_own_group`] + [`tracked::TrackedChild`] for long-lived
-//! ones owned elsewhere (`hume-lsp`'s LSP transport, this crate's own
-//! `line_source`). General-purpose process spawning for plugin code goes
-//! through Steel's own `steel/process` stdlib instead (full-trust plugin
-//! model — see `user-manual/docs/plugins.md`'s "Filesystem and processes"),
-//! with one carve-out: [`run_capture`] backs the `stdlib/run` Steel builtin
-//! (`run-capture!`) because Steel's own `spawn-process`/`wait`/`child-stdout`/
-//! `child-stderr` read stdout to EOF, then wait, then read stderr — a child
-//! that fills its stderr pipe before exiting blocks forever, the same
-//! deadlock `job.rs`'s doc explains by name. `std::process::Command::output`
-//! drains both pipes concurrently, closing it. What remains here beyond the
-//! above is a handful of utility functions wrapping genuinely
-//! platform-conditional logic (Windows compiler selection, sha256 tool
-//! selection, archive unpacking with chmod) that a Scheme rewrite would only
-//! make worse.
+//! Every `std::process::Command` that needs process-group isolation or
+//! force-exit reaping goes through this module, either directly for
+//! short-lived children or via [`spawn_in_own_group`] +
+//! [`tracked::TrackedChild`] for long-lived ones. Plugins spawn processes
+//! through Steel's `steel/process` stdlib, except [`run_capture`] (backing
+//! `run-capture!`): Steel reads stdout to EOF before stderr, so a child that
+//! fills its stderr pipe deadlocks, while `Command::output` drains both.
 //!
-//! ## Captured vs inherited stdio
+//! Stdio is captured (`sha256_file`, [`run_capture`]), inherited so the user
+//! sees live progress (`run_inline_output`, `tree_sitter_build`,
+//! `unpack_zip`), or piped to a file (`unpack_gz`).
 //!
-//! - **Captured** (`sha256_file`, [`run_capture`]): returns parsed/raw stdout
-//!   (and, for `run_capture`, stderr too).
-//! - **Inherited** (`run_inline_output`, `tree_sitter_build`, `unpack_zip`):
-//!   subprocess output flows directly to the terminal so the user sees live
-//!   progress; returns `ExitStatus` only.
-//! - **Piped-to-file** (`unpack_gz`): stdout is redirected to the destination
-//!   file rather than the terminal or a captured buffer.
-//!
-//! On Windows, canonicalized paths carry the `\\?\` extended-length prefix.
-//! External tools like `tree-sitter`, `gzip`, and `unzip`/`tar` reject that
-//! prefix, so every path handed to a `Command` here is normalized via
-//! `strip_unc_prefix` first (a no-op on non-Windows).
+//! External tools reject Windows' `\\?\` prefix, so every path handed to a
+//! `Command` here goes through `strip_unc_prefix` first.
 
 use std::fs::File;
 use std::io;
