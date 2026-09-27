@@ -1,12 +1,20 @@
 # Coming From Vim / Neovim
 
-If you know Vim or Neovim, HUME will feel different in many ways. This page covers the key differences to help you reorient quickly. For a hands-on introduction, run `:tutor` inside the editor.
+If you know Vim or Neovim, HUME will feel different in many ways. This page covers the key differences to help you reorient quickly.
 
-## The biggest difference: select-then-act
+## The first ten minutes with HUME
 
-In Vim, most operators work on a motion you specify *after* the operator: `dw` deletes a word, `ci"` changes inside quotes.
+### Opening a file
 
-In HUME, the order is reversed: you **select first, then act**. `w` selects the next word, then `d` deletes the selection. This means:
+`hume file.txt` opens a file, and several names open several buffers. To start on a given line, append it to the name: `hume file.txt:42` (or `file.txt:42:5` for a column) instead of `vim +42 file.txt`. With no file at all you get an empty `*scratch*` buffer.
+
+Inside the editor, `:e path` works as in Vim, including on a path that doesn't exist yet: the file is created on the first `:w`. Bare `:e` reloads the file from disk, and `:e!` throws away your changes while doing it.
+
+There is no file explorer, and the fuzzy finder is a plugin. Load `core:pickers` (the [starter config](configuration.md#example-init-scm) already does) and `z f` finds a file, `z b` an open buffer. See [Fuzzy Finder](pickers.md).
+
+### Editing
+
+`h` `j` `k` `l` move and `i`, `a`, `I`, `A`, `o`, `O` enter Insert mode as usual. The rest of editing turns Vim's grammar around. In Vim, most operators work on a motion you specify *after* the operator: `dw` deletes a word, `ci"` changes inside quotes. In HUME you **select first, then act**. `w` selects the next word, then `d` deletes the selection. This means:
 
 - Motions always change the selection before anything else
 - Operators (`d`, `c`, `y`, …) act on whatever is currently selected
@@ -20,6 +28,34 @@ Lorem<span class="head">&nbsp;</span>dolor sit
 </div>
 
 You see the selection `w` built (word plus its leading whitespace) before `d` ever runs, instead of composing `dw` blind and finding out what it did after the fact.
+
+#### Try it on your config
+
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 20 with `hume ~/.config/hume/init.scm:20`. Then make the same three edits you would in Vim:
+
+| Edit | Vim | HUME |
+|------|-----|------|
+| Uncomment line 20 (`core:buffer-words`) | `dt(` | `Ctrl-t` `(` `d` |
+| Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `:17` `2dd` | `:17` `2` `Ctrl-x` `d` |
+| Turn `declare-plugin` into `load-plugin` on line 16 | `:16` `l` `ciw` `load` `Esc` | `:16` `w` `c` `load` `Esc` |
+
+What each step shows:
+
+- **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode, where every motion extends until you act or press `Esc`. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
+- **`x` selects a line.** It replaces Vim's `dd`/`yy`/`cc` doubling: `x d` deletes a line, `x c` rewrites its content and keeps the line. `Ctrl-x` adds the line below to the selection.
+- **`Esc` keeps what you typed selected.** After the last edit `load` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `select-inserted-text` option (see [Configuration](configuration.md)).
+
+A few more keys you'll want early: `d` on its own deletes the character under the cursor (Vim's `x`), since the cursor is already a one-character selection. `g h` and `g l` go to the start and end of the line, `g g` and `g e` to the first and last line. `/`, `n` and `N` search as in Vim.
+
+### Saving and quitting
+
+`:w`, `:w path`, `:wq`, `:q!`, `:qa` and `:qa!` do what you expect. There is no `:x` and no `ZZ`. On `*scratch*`, `:w` needs a path: `:w notes.txt`.
+
+`:q` closes the current buffer, not the editor. If other files are still open, you land on one of them, and HUME quits only when nothing is left. `:qa` leaves in one step. With split panes or tabs, `:q` closes the focused pane or tab first; see [Quitting](files-and-buffers.md#quitting).
+
+HUME writes no swap files, and undo history doesn't survive a restart (not yet). See [Persistence and safety](files-and-buffers.md#persistence-and-safety).
+
+For a hands-on tour of everything else, type `:tutor` and press `Enter`: it opens an interactive tutorial you can edit freely.
 
 ## Mode map
 
@@ -44,7 +80,6 @@ These keys exist in both editors and do different things. They are the ones most
 
 | Key | In Vim | In HUME | Vim's behaviour instead |
 |-----|--------|---------|-------------------------|
-| `x` | Delete character | Select the current line | `d`: the cursor is already a one-character selection |
 | `s` | Substitute character | Filter each selection by a regex | `c` |
 | `e` | Move to end of word | Toggle Extend mode | `m m` selects the word under the cursor |
 | `%` | Jump to matching bracket | Select the whole buffer | `#` jumps to the matching bracket or tag; `m s` + delimiter selects the surrounding pair |
@@ -56,9 +91,7 @@ These keys exist in both editors and do different things. They are the ones most
 | `S` | Change whole line | Split selections on newlines | `x` then `c` |
 | `C` | Change to end of line | Copy the selection to the line below | `ctrl-g l c`, or `C` with `core:vim-keybind` |
 | `D` | Delete to end of line | *(unbound)* | `ctrl-g l d`, or `D` with `core:vim-keybind` |
-| `U` | Undo the whole line | Redo | *(none)*: `Ctrl-r` also redoes |
-| `G` | Go to last line | Case/rename prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`) | `g e`, unaffected, and `core:vim-keybind` does not restore `G` |
-| `K` | Look up keyword (external `keywordprg`, e.g. `man`) | Show hover docs for the symbol under the cursor (with `core:lsp`) | *(none)*: this is the closest HUME gets; no external program |
+| `K` | Look up keyword (external `keywordprg`, e.g. `man`) | Show hover docs for the symbol under the cursor (with `core:lsp`) | *(none)*: this is the closest equivalent; no external program |
 | `gt`&nbsp;/&nbsp;`gT` | Next / previous tab | Next / previous class or type | `Ctrl-p t` / `Ctrl-p T` |
 
 `f`, `F`, `t`, `T` behave as they do in Vim, and `{` / `}` are still paragraph motions. Only the *repeat* keys moved: use `=` and `-`, because `;` and `,` are taken.
@@ -156,12 +189,11 @@ Vim uses `[count]` before commands (e.g. `3dw`). HUME also supports count prefix
 
 ### Line motion
 
-HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g s` (first non-blank), `g e` (last line). The vim keys `0` / `$` / `^` are not bound by default. Load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in your [`init.scm`](configuration.md) to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl-6` (see below). `G` is bound, but not to Vim's meaning (see the muscle-memory traps table above), and `core:vim-keybind` does not restore it; `g e` reaches the last line either way.
+Beyond the `g` keys above, `g s` goes to the first non-blank character (Vim's `^`). The vim keys `0` / `$` / `^` are not bound by default. Load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in your [`init.scm`](configuration.md) to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl-6` (see below). `G` is the case and rename prefix (`G L` / `G U` / `G C`, plus `G R` with `core:lsp`), and `core:vim-keybind` does not restore Vim's meaning; `g e` reaches the last line either way.
 
 | Vim | HUME (native) | HUME (`core:vim-keybind`) |
 |-----|----------------|---------------------------|
 | `0` / `$` / `^` | `g h` / `g l` / `g s` | `0` / `$` / `^` |
-| `gg` | `g g` | `g g` |
 | `C` / `D` | `ctrl-g l c` / `ctrl-g l d` (kitty terminals only) | `C` (change to end of line on a bare cursor with no count; with a selection, or any count prefix, falls back to the default `copy-selection-on-next-line`) / `D` |
 | `o` (visual mode) | `Ctrl-e` (flips anchor and head, any mode) | `o` (in Extend mode) |
 
@@ -179,10 +211,6 @@ Most `:` commands work as expected:
 
 | Vim | HUME |
 |-----|------|
-| `:w` | `:w` |
-| `:q` / `:q!` | `:q` / `:q!` |
-| `:wq` | `:wq` |
-| `:e file` | `:e file` |
 | `:ls` / `:buffers` | `:ls` (`:buffers` is not an alias) |
 | `:bn` / `:bp` | `:bn` / `:bp` (or `:bnext` / `:bprev`) |
 | `:bd` | `:bd` |

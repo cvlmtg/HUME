@@ -2,6 +2,42 @@
 
 HUME shares Helix's core editing model (select-then-act, selections as first-class citizens), so the mental shift is small. The differences are mostly in depth, configurability, and tooling.
 
+## The first ten minutes with HUME
+
+### Opening a file
+
+`hume file.txt:42:5` and `:e path` work as in Helix, including `:e` on a path that doesn't exist yet: the file is created on the first `:w`.
+
+Note: `:o` / `:open` are not aliases; use `:e`.
+
+The fuzzy finder is a plugin, not built in. Helix's `Space f` and `Space b` become `z f` and `z b` once `core:pickers` is loaded. The [starter config](configuration.md#example-init-scm) loads it, along with language server support and other plugins, so copy that first. See [Fuzzy Finder](pickers.md).
+
+### Editing
+
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 20 with `hume ~/.config/hume/init.scm:20`. Then make the same edits you would in Helix:
+
+| Edit | Helix | HUME |
+|------|-------|------|
+| Uncomment line 20 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
+| Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `:17` `x` `x` `d` | `:17` `Ctrl-x` `Ctrl-x` `d` |
+| Turn `declare-plugin` into `load-plugin` on line 16 | `:16` `l` `m i w` `c` `load` `Esc` | `:16` `l` `m m` `c` `load` `Esc` |
+| Copy line 16 to another application | `x` `Space y` | `x` `y` |
+
+What each step shows:
+
+- **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it. For longer selections, `e` toggles Extend mode (Helix's `v`). The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
+- **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection-x-vs-extend-mode-e).
+- **`Esc` keeps what you typed selected.** After the change, `load` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+- **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the system clipboard once you have. See [Copy & Paste](copy-and-paste.md).
+
+### Saving and quitting
+
+`:w`, `:wq`, `:q!`, `:qa` and `:qa!` work as in Helix. There is no `:x`; `:write-quit` is the long form of `:wq`.
+
+`:q` on the last pane closes the current buffer, not the editor. If other files are still open, you land on one of them, and HUME quits only when nothing is left. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
+
+For a hands-on tour of everything else, type `:tutor` and press `Enter`: it opens an interactive tutorial you can edit freely.
+
 ## What's the same
 
 - Select-then-act: motions change the selection; operators act on it
@@ -12,17 +48,7 @@ HUME shares Helix's core editing model (select-then-act, selections as first-cla
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount, so a mixed-tabs-and-spaces indent gets normalized as a side effect
 - `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`: the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, or unit test for any language with a tree-sitter grammar that ships a textobjects query
 
-::: tip
-Unlike Helix, leaving Insert mode in HUME (however you entered it: `i`, `a`, `o`, `c`, …) keeps the text you just typed selected instead of leaving a plain cursor, ready to act on again: delete it, surround it, search for it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)). One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it.
-:::
-
 ## Key differences
-
-### Word motions
-
-Helix's `w` selects the word and the whitespace after it. HUME's selects the word and the whitespace *before* it, so deleting a word never leaves a double space (see [Moving around](moving-around.md#basic-movement)). Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) to select the bare word.
-
-To select the word under the cursor, use `m m`, or `m i w` for the bare word.
 
 ### Growing selections
 

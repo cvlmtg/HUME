@@ -1,6 +1,43 @@
 # Coming From Kakoune
 
-Kakoune invented the editing model HUME is built on, so more transfers here than from any other editor. Selections come first, operators act on them, and multiple selections are the normal way to work rather than a special mode. What differs is how you *extend* a selection, what the search keys do, and everything downstream of Kakoune's shell-first philosophy. For a hands-on introduction, run `:tutor` inside the editor.
+Kakoune invented the editing model HUME is built on, so more transfers here than from any other editor. Selections come first, operators act on them, and multiple selections are the normal way to work rather than a special mode. What differs is how you *extend* a selection, what the search keys do, and everything downstream of Kakoune's shell-first philosophy.
+
+## The first ten minutes with HUME
+
+### Opening a file
+
+`hume file.txt` opens a file, and several names open several buffers. To start on a given line, append it to the name: `hume file.txt:42` (or `file.txt:42:5` for a column) instead of `kak +42 file.txt`. Each `hume` is a standalone editor: there is no session to attach to with `-c`. See [Splits, windows, and tabs](#splits-windows-and-tabs).
+
+`:e path` works as in Kakoune, including on a path that doesn't exist yet: the file is created on the first `:w`. Bare `:e` reloads the file from disk, and `:e!` throws away your changes while doing it.
+
+A fuzzy finder ships as a plugin. Load `core:pickers` (the [starter config](configuration.md#example-init-scm) already does) and `z f` finds a file, `z b` an open buffer. See [Fuzzy Finder](pickers.md).
+
+### Editing
+
+Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it](configuration.md#example-init-scm)) and open it on line 20 with `hume ~/.config/hume/init.scm:20`. Then make the same edits you would in Kakoune:
+
+| Edit | Kakoune | HUME |
+|------|---------|------|
+| Uncomment line 20 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
+| Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `17g` `x` `x` `d` | `:17` `Ctrl-x` `Ctrl-x` `d` |
+| Turn `declare-plugin` into `load-plugin` on line 16 | `16g` `l` `<a-i>w` `c` `load` `Esc` | `:16` `l` `m m` `c` `load` `Esc` |
+| Copy line 16 to another application | `x` `<a-\|>` + your clipboard tool | `x` `y` |
+
+What each step shows:
+
+- **`t` only moves; `Ctrl` makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Kakoune selects up to the target. Holding `Ctrl` turns a motion into a one-shot extend, so `Ctrl-t (` selects `;; ` and `d` deletes it: `Ctrl` does the job Shift does in Kakoune. For longer selections, `e` toggles Extend mode. The `Ctrl` forms need the [kitty keyboard protocol](installation.md#terminal-compatibility).
+- **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection).
+- **Text objects live behind `m`.** `m i w` is `<a-i>w`. To jump to a line, type its number at the `:` prompt: `:16` instead of `16g`.
+- **`Esc` keeps what you typed selected.** After the change, `load` is still selected instead of reduced to a cursor, ready to act on again. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+- **The system clipboard needs no wiring.** `y` copies to it as well as to HUME's own kill ring. `p` pastes your last yank or delete while you haven't edited since, and the clipboard once you have.
+
+Shift does not extend a selection: `W`, `H`, `J`, `K`, `L` do something else here, so read [Extending selections](#extending-selections) before reaching for them.
+
+### Saving and quitting
+
+`:w`, `:wq`, `:q!` and `:w!` work as in Kakoune. Kakoune's `:q` leaves the client; HUME's closes the current buffer. If other files are still open, you land on one of them, and HUME quits only when nothing is left. `:qa` leaves in one step. Kakoune's `:db` is `:bd`. See [Quitting](files-and-buffers.md#quitting).
+
+For a hands-on tour of everything else, type `:tutor` and press `Enter`: it opens an interactive tutorial you can edit freely.
 
 ## What's the same
 
@@ -38,25 +75,7 @@ The `Ctrl` one-shots and `Ctrl-,` need the kitty keyboard protocol; Extend mode 
 
 Bare `K` (no modifier) is not an extend at all in HUME: it shows LSP hover docs for the symbol under the cursor (with `core:lsp` loaded).
 
-### Word motions
-
-Kakoune's `w` selects the word and the whitespace after it. HUME's selects the word and the whitespace *before* it, so deleting a word never leaves a double space (see [Moving around](moving-around.md#basic-movement)). Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) to select the bare word.
-
-<div class="key-demo">
-<strong>Cursor on the first character</strong><br>
-Kakoune&nbsp;&nbsp;<span class="head">L</span>orem ipsum dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="head">L</span>orem ipsum dolor sit<br>
-<br>
-<strong>Press <code>w</code></strong><br>
-Kakoune&nbsp;&nbsp;<span class="sel">Lorem<span class="head">&nbsp;</span></span>ipsum dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Lorem<span class="sel">&nbsp;ipsu<span class="head">m</span></span> dolor sit<br>
-<br>
-<strong>Press <code>w</code> again</strong><br>
-Kakoune&nbsp;&nbsp;Lorem <span class="sel">ipsum<span class="head">&nbsp;</span></span>dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Lorem ipsum<span class="sel">&nbsp;dolo<span class="head">r</span></span> sit
-</div>
-
-Kakoune's `e` toggles Extend mode here. To select the word under the cursor, use `m m`, or `m i w` for the bare word (Kakoune's `<a-i>w`).
+### Word characters
 
 Kakoune's `extra_word_chars` is HUME's `word-chars` buffer option (see [Configuration](configuration.md)).
 
@@ -136,7 +155,7 @@ Kakoune registers are lists of text, one entry per selection, and you name any o
 
 There is no arbitrary `"x`, and no register holding the buffer name or selection indices. Kakoune's `%`, `.` and `#` registers exist to feed `%sh{}`, which HUME has no use for.
 
-Kakoune ships without clipboard integration; you wire up `xclip`/`pbcopy` yourself. HUME has the system clipboard built in as `"c`, plus a kill ring that `p` prefers until you've edited since your last delete/change/yank. `[`/`]` cycle through older/newer kill-ring entries after a paste.
+The clipboard is also reachable directly as `"c`. `[`/`]` cycle through older/newer kill-ring entries after a paste.
 
 See [Register prefix](copy-and-paste.md#register-prefix) for the full syntax.
 
@@ -173,7 +192,7 @@ Kakoune's `kakrc` is kakscript: `map` for keys, `set-option` for options, `hook`
 
 Being a real programming language, the config has conditionals, loops and abstraction from day one, closer to what you would reach `%sh{}` for in kakrc, without leaving the editor.
 
-One thing that does not carry over: Kakoune's user mode (the `Space` leader) and `declare-user-mode` have no direct equivalent. HUME's prefixes (`g`, `m`, `z`, `Ctrl-p`) are fixed rather than user-declarable.
+One thing that does not carry over: Kakoune's user mode (the `Space` leader) and `declare-user-mode` have no direct equivalent. HUME's prefixes (`g`, `m`, `z`, `Ctrl-p`) can't be declared from your config.
 
 ### Plugins and language servers
 

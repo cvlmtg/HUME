@@ -129,7 +129,7 @@ A `[+]` indicator in the status bar means the buffer has unsaved changes. Files 
 
 ## The scratch buffer
 
-If you launch HUME with no arguments, it opens a scratch buffer named `*scratch*`. This buffer has no associated file, so `:w` will ask for a filename.
+If you launch HUME with no arguments, it opens a scratch buffer named `*scratch*`. This buffer has no associated file, so a bare `:w` fails with "no file name". Give it one with `:w <path>`.
 
 ## Read-only buffers
 
@@ -153,7 +153,7 @@ In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message te
 
 A few things worth knowing before trusting HUME with real work:
 
-- **Undo history is in-memory only.** It's **lost when HUME exits**; there is no undo across restarts.
+- **Undo history is in-memory only.** It's **lost when HUME exits**; there is no undo across restarts (not yet).
 - **No swap or backup files.** HUME does not write Vim-style `.swp` files. Saves write to a temporary file and rename it into place, so the file on disk holds either the old content or the new, never a half-written mix.
 - **UTF-8 only.** Files must be valid UTF-8: invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it will appear as a character at the top of the buffer.
 - **CRLF detected and preserved.** Files containing `\r\n` are normalized to `\n` in the buffer and re-expanded to `\r\n` on save; the status bar shows `CRLF` or `LF`. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in `\n` no matter the source. A file using bare `\r` (pre-OS X Mac) is read correctly but is not a preserved convention: it loads as `LF` and saves with `\n`.
