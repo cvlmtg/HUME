@@ -718,8 +718,7 @@ impl Editor {
             ),
             None => self.report(
                 Severity::Warning,
-                "scripting: no data directory: HOME/APPDATA unset; user plugins unavailable"
-                    .into(),
+                "scripting: no data directory: HOME/APPDATA unset; user plugins unavailable".into(),
             ),
         }
         // Capture built-in names before any plugin code runs; stable for the

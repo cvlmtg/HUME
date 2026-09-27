@@ -433,11 +433,7 @@ fn goto_next_paragraph_noop_does_not_clobber_forward_history() {
 
     // `}`: the whole buffer is one paragraph, nothing below, so a no-op.
     ed.handle_key(key('}'));
-    assert_eq!(
-        state(&ed),
-        back_at_start,
-        "}} must not move: nothing below"
-    );
+    assert_eq!(state(&ed), back_at_start, "}} must not move: nothing below");
 
     // Forward history (the jump to line 0) must still be there.
     ed.handle_key(key_ctrl('i'));
@@ -468,11 +464,7 @@ fn goto_prev_paragraph_noop_does_not_clobber_forward_history() {
 
     // `{`: the whole buffer is one paragraph, nothing above, so a no-op.
     ed.handle_key(key('{'));
-    assert_eq!(
-        state(&ed),
-        back_at_start,
-        "{{ must not move: nothing above"
-    );
+    assert_eq!(state(&ed), back_at_start, "{{ must not move: nothing above");
 
     // Forward history (the jump to line 0) must still be there.
     ed.handle_key(key_ctrl('i'));

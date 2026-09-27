@@ -69,28 +69,19 @@ fn summary_text_none_when_all_seen() {
 #[test]
 fn summary_text_errors_only() {
     let log = make_log(&[(Severity::Error, "e1"), (Severity::Error, "e2")]);
-    assert_eq!(
-        log.summary_text().unwrap(),
-        "2 errors (see :messages)"
-    );
+    assert_eq!(log.summary_text().unwrap(), "2 errors (see :messages)");
 }
 
 #[test]
 fn summary_text_single_error() {
     let log = make_log(&[(Severity::Error, "e")]);
-    assert_eq!(
-        log.summary_text().unwrap(),
-        "1 error (see :messages)"
-    );
+    assert_eq!(log.summary_text().unwrap(), "1 error (see :messages)");
 }
 
 #[test]
 fn summary_text_warnings_only() {
     let log = make_log(&[(Severity::Warning, "w")]);
-    assert_eq!(
-        log.summary_text().unwrap(),
-        "1 warning (see :messages)"
-    );
+    assert_eq!(log.summary_text().unwrap(), "1 warning (see :messages)");
 }
 
 #[test]

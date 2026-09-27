@@ -568,9 +568,9 @@ impl EngineView {
             // different set of panes than it is now asking to draw. Drawing
             // the pane with stale settings, or skipping it and leaving its
             // rect blank, would both hide that.
-            let settings = pane_settings.get(pane_id).expect(
-                "no render settings for a live pane, see RenderContext::set_pane_settings",
-            );
+            let settings = pane_settings
+                .get(pane_id)
+                .expect("no render settings for a live pane, see RenderContext::set_pane_settings");
 
             scratch.clear();
 
