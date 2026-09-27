@@ -4,7 +4,7 @@
 //! Python triple-quoted `*_HEADER` template that becomes the leading comment
 //! block of a generated `runtime/scheme/*.scm` file. Hand-editing the
 //! generated file's header (as opposed to its data rows) drifts it from the
-//! template with nothing to catch it — the next routine sync run silently
+//! template with nothing to catch it. The next routine sync run silently
 //! overwrites the hand-edit with the stale template text.
 //! `generated_scm_headers_match_their_generator_templates` compares each
 //! template against its generated file's leading lines verbatim, treating a
@@ -34,7 +34,7 @@ fn extract_header_template(script_src: &str, const_name: &str) -> String {
 /// file has the placeholder already substituted.
 ///
 /// Also checks that `generated` has no *extra* `;;;` header lines beyond
-/// what `template` accounts for — a hand-appended header paragraph the
+/// what `template` accounts for. A hand-appended header paragraph the
 /// template was never updated for is exactly the drift this lint exists
 /// to catch, and comparing template lines only (with no check on
 /// anything left over in `generated`) would miss it entirely.
@@ -82,7 +82,7 @@ fn header_drift_catches_a_hand_appended_header_paragraph() {
 }
 
 /// A generated file's first non-header line (data, not `;;;` comment)
-/// must not be misread as header drift — `header_drift` stops comparing
+/// must not be misread as header drift: `header_drift` stops comparing
 /// once the template runs out, so anything after the header proper is
 /// out of scope for this check.
 #[test]
@@ -146,7 +146,7 @@ fn generated_scm_headers_match_their_generator_templates() {
     assert!(
         violations.is_empty(),
         "\nA generated runtime/scheme/*.scm header drifted from its sync script's \
-         template — the next sync run will silently overwrite the hand-edit with \
+         template, so the next sync run will silently overwrite the hand-edit with \
          the stale template text. Update the *_HEADER constant to match.\n\
          Violations:\n{}\n",
         violations.join("\n")

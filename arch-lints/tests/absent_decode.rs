@@ -1,27 +1,27 @@
 //! # Absent-as-`#f` decode locality
 //!
-//! Steel represents an optional/absent value as `#f` — `SteelVal::BoolV(false)`.
+//! Steel represents an optional/absent value as `#f` (`SteelVal::BoolV(false)`).
 //! Decoding that convention (`#f` -> `None`, anything else -> `Some(...)`) is
 //! `hume-scripting/src/builtins/args.rs`'s `optional_*` family
 //! (`optional_string_arg`, `optional_path_arg`, `optional_usize_arg`,
 //! `optional_json_arg`, `optional_symbol_arg`,
-//! `optional_pair_fields`) — one vocabulary, so every builtin's
+//! `optional_pair_fields`): one vocabulary, so every builtin's
 //! `#f`-means-absent behavior and error wording agree.
 //!
 //! `absent_marker_is_decoded_only_in_args_rs` recursively scans every
-//! workspace crate's `src/` — derived from the root `Cargo.toml`'s `members`
-//! list, so a renamed or newly added crate can't silently fall out of scope —
+//! workspace crate's `src/` (derived from the root `Cargo.toml`'s `members`
+//! list, so a renamed or newly added crate can't silently fall out of scope),
 //! excluding `args.rs` itself, for a line that *reads* `SteelVal::BoolV(false)`
-//! — a match arm (`=>` follows it on the line) or a `matches!`/`if let` test —
+//! (a match arm with `=>` following it on the line, or a `matches!`/`if let` test)
 //! rather than *constructs* one as a return value (`Ok(SteelVal::BoolV(false))`,
 //! `None => SteelVal::BoolV(false)`, both clean: the marker appears before any
 //! `=>` on the line, not after).
 //!
 //! **What is not scanned**: test code (`collect_source_rs` skips any `tests/`
 //! directory and any `tests.rs`) and this `lints/` directory. `args.rs` is
-//! excluded too — it's the one file allowed to read the marker.
+//! excluded too: it's the one file allowed to read the marker.
 //!
-//! **Opt-out**: `// absent-decode-safe: <reason>` — the one known-legitimate
+//! **Opt-out**: `// absent-decode-safe: <reason>`. The one known-legitimate
 //! case is `builtins/ui.rs`'s picker-item payload check, which reads `#f` as
 //! a *reserved dismiss sentinel to reject*, not an absent optional to unwrap.
 

@@ -3,8 +3,8 @@
 //! `editor/tests/mod.rs`'s `TestGlobals` (a reentrant lock) and its two
 //! constructors, `safe_tempdir()`/`safe_named_tempfile()`, exist because a
 //! bare `tempfile::tempdir()`/`NamedTempFile::new()` called while a
-//! `HumeRuntimeGuard` has `TMPDIR` redirected can land inside — and later be
-//! deleted along with — that guard's tree (see `safe_tempdir`'s own doc).
+//! `HumeRuntimeGuard` has `TMPDIR` redirected can land inside (and later be
+//! deleted along with) that guard's tree (see `safe_tempdir`'s own doc).
 //! [`no_bare_tempdir_outside_the_safe_constructors`] enforces routing
 //! through those constructors instead of a new one-off bypass, scanning for
 //! `tempfile::tempdir()`/`tempfile::NamedTempFile::new(` anywhere in
@@ -13,8 +13,8 @@
 //! This can't be a `clippy::disallowed_methods` entry the way the sibling
 //! `std::env::set_var`/`remove_var` rule (`clippy.toml`) is: `tempfile::
 //! tempdir`/`NamedTempFile::new` are legitimately called raw all over this
-//! workspace — every other crate's own tests, and `main.rs`'s production
-//! code — so a blanket disallow would need `#[allow]`s scattered across code
+//! workspace (every other crate's own tests, and `main.rs`'s production
+//! code), so a blanket disallow would need `#[allow]`s scattered across code
 //! with no connection to this one test harness's `TMPDIR`-redirect hazard,
 //! misrepresenting a narrow, one-suite rule as a project-wide ban. The
 //! `TMPDIR`-mutating half of the same hazard (`std::env::set_var`/
@@ -23,7 +23,7 @@
 //!
 //! **Opt-out**: annotate the violation line (or the line above it, so
 //! `cargo fmt` doesn't hoist a trailing comment) with
-//! `// test-global-safe: <reason>` — for a genuinely new site that legitimately
+//! `// test-global-safe: <reason>`, for a genuinely new site that legitimately
 //! needs a raw call (e.g. a fresh guard struct).
 
 use arch_lints::{editor_test_tree_paths, scan_forbidden, workspace_root};
@@ -59,7 +59,7 @@ fn no_bare_tempdir_outside_the_safe_constructors() {
         violations.is_empty(),
         "\nBare tempdir/named-tempfile constructor found outside `tests/mod.rs`.\n\
          A `HumeRuntimeGuard`-redirected `TMPDIR` can engulf (and later delete) a\n\
-         tempdir created while it's live — use `safe_tempdir()`/`safe_named_tempfile()`\n\
+         tempdir created while it's live. Use `safe_tempdir()`/`safe_named_tempfile()`\n\
          instead, which serialize creation against that redirect.\n\
          Violations:\n{}\n",
         violations.join("\n")

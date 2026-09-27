@@ -4,7 +4,7 @@
 //! this lint enforces: a test that spawns a subprocess by unqualified name
 //! (`Command::new("git")`, `Command::new("sh")`, …) reads process `PATH` at
 //! the spawn instant exactly as much as an explicit `std::env::var` call
-//! would, so it must hold a `Global::Env` claim for the spawn's duration —
+//! would, so it must hold a `Global::Env` claim for the spawn's duration,
 //! not just a test that mutates an env var directly.
 //!
 //! [`unguarded_unqualified_spawn`] scans every `#[test] fn` body in
@@ -15,38 +15,38 @@
 //! **Neither side is always literal text in the test's own body.**
 //! `git_diff_plugin.rs`'s tests call `git_init()`/`commit_file()`, which call
 //! a shared `git()` helper (`unix/mod.rs`) that does the unqualified
-//! `Command::new("git")` itself — two hops from the test, with no
+//! `Command::new("git")` itself, two hops from the test, with no
 //! `Command::new` text anywhere in the test's own body. Symmetrically, those
 //! same tests call `setup()`, which claims `Global::Env` via
 //! `RealRuntimeGuard::new()` and returns the guard for the caller to bind and
-//! hold — again with no `RealRuntimeGuard`/`TEST_GLOBALS` text in the test
+//! hold, again with no `RealRuntimeGuard`/`TEST_GLOBALS` text in the test
 //! body itself. A scan that only recognized literal `Command::new`/claim text
-//! would either flag every one of these tests as unguarded (wrong — they are
+//! would either flag every one of these tests as unguarded (wrong: they are
 //! guarded, just through a helper) or, worse, silently pass a genuinely
 //! unguarded one that happened to call some other helper by coincidence.
 //!
 //! [`collect_helper_fns`] gathers every plain (non-`#[test]`) *free*
-//! function's body anywhere in the tree — deliberately skipping `impl`
+//! function's body anywhere in the tree, deliberately skipping `impl`
 //! blocks entirely, not just their `#[test]` methods. Every actual
 //! spawn/claim helper this lint cares about (`git`, `git_init`,
 //! `commit_file`, `setup`, …) is a bare free function; an `impl` method
 //! keeps only its bare name once extracted, and `fn new(...)` is defined
-//! identically-named inside dozens of unrelated structs across this tree —
-//! recording `RealRuntimeGuard::new`'s claiming body under the bare name
+//! identically-named inside dozens of unrelated structs across this tree.
+//! Recording `RealRuntimeGuard::new`'s claiming body under the bare name
 //! "new" would make [`calls_fn`] treat a call to *any* type's `::new()` as
 //! calling the one that happens to claim, which is exactly the false-positive
 //! flood this lint's first working draft produced.
 //!
-//! [`spawning_helper_names`] and [`claiming_helper_names`] each seed a set —
-//! bodies directly containing an unqualified `Command::new("literal")`, and
-//! bodies directly containing an [`AUTO_CLAIM_MARKERS`] entry, respectively —
+//! [`spawning_helper_names`] and [`claiming_helper_names`] each seed a set
+//! (bodies directly containing an unqualified `Command::new("literal")`, and
+//! bodies directly containing an [`AUTO_CLAIM_MARKERS`] entry, respectively),
 //! then [`propagate_transitively`] grows each to a fixed point: a helper that
 //! *calls* one already in the set joins it too, however many hops away
 //! (`commit_file` → `git` → `Command::new` is two). [`scan`] then treats a
 //! call to any name in the spawning set the same as a direct `Command::new`,
 //! and a call to any name in the claiming set the same as a direct claim.
 //! Brace-depth tracking throughout (function boundaries, `#[test] fn`
-//! extent) goes through [`brace_delta`], not a raw `{`/`}` character count —
+//! extent) goes through [`brace_delta`], not a raw `{`/`}` character count:
 //! this tree's fixture strings routinely embed an unbalanced-looking brace
 //! (`format!("...#:config {cfg})")`), and counting those as real nesting
 //! drifted every function boundary after the first such string, corrupting
@@ -55,21 +55,21 @@
 //! **What this still can't see**: a spawn buried inside *production* code
 //! reached via `spawn-async!`/`EditorHostImpl::spawn_async` (`async_job.rs`'s
 //! `"sh"`, for instance) has no `Command::new` text anywhere in the test
-//! tree at all — covered by the `AUTO_CLAIM_MARKERS` convention today,
+//! tree at all. It is covered by the `AUTO_CLAIM_MARKERS` convention today,
 //! verified by hand rather than by this lint. And the propagation trusts
 //! that a claiming helper's caller actually binds and holds the guard it
-//! returns (every current one does, `let (_, guard) = helper()` — a helper
+//! returns (every current one does, `let (_, guard) = helper()`; a helper
 //! that claimed and immediately dropped the guard before returning would
 //! read as "claiming" here without truly protecting its caller).
 //!
 //! **Opt-out**: `// test-global-safe: <reason>` on the violation line (or the
-//! line above, so `cargo fmt` doesn't hoist a trailing comment past it) —
+//! line above, so `cargo fmt` doesn't hoist a trailing comment past it),
 //! same convention and marker as `test_globals.rs`'s two lints.
 
 use arch_lints::{Violation, editor_test_tree_paths, strip_line_comment, workspace_root};
 
 /// A construct that, once seen in a `#[test] fn` body, is trusted to already
-/// hold (or have just claimed) `Global::Env` for the rest of that body — see
+/// hold (or have just claimed) `Global::Env` for the rest of that body. See
 /// this module's doc for why the list is a fixed set of textual patterns
 /// rather than a call-graph walk. Order doesn't matter; every entry is
 /// checked independently.
@@ -83,12 +83,12 @@ const AUTO_CLAIM_MARKERS: &[&str] = &[
 
 const OPT_OUT_MARKER: &str = "// test-global-safe:";
 
-/// Net change in brace depth `line` contributes — `{`/`}` characters inside
+/// Net change in brace depth `line` contributes: `{`/`}` characters inside
 /// a string or char literal don't count. Without this, a line like
 /// `format!("...#:config {cfg})")` (a single, balanced `{`/`}` pair, but
 /// *inside* the string) still nets to zero on this particular line, but a
-/// string holding a lone `{` or `}` with no same-line match — common in this
-/// tree's Scheme-source and JSON-shaped fixture strings — would silently
+/// string holding a lone `{` or `}` with no same-line match (common in this
+/// tree's Scheme-source and JSON-shaped fixture strings) would silently
 /// shift every function-boundary guess after it for the rest of the file,
 /// which is what happened here before this existed: a helper's captured body
 /// swallowed dozens of unrelated later functions, and the claim/spawn
@@ -112,7 +112,7 @@ fn brace_delta(line: &str) -> i64 {
         match c {
             '"' => in_string = true,
             '\'' if chars.peek() == Some(&'\\') => {
-                // An escaped char literal ('\n', '\x41', '\u{301}', '\'') —
+                // An escaped char literal ('\n', '\x41', '\u{301}', '\''),
                 // consumed so its content (which may itself hold a brace,
                 // `\u{...}`'s) can't be mistaken for real nesting below. The
                 // escape has no fixed length, so its shape decides how much
@@ -141,7 +141,7 @@ fn brace_delta(line: &str) -> i64 {
                 // Could be a char literal ('x') or a lifetime ('a); either
                 // way there's no brace to miscount between here and the
                 // next quote a char literal would close with, and a
-                // lifetime has no closing quote at all — skip only the one
+                // lifetime has no closing quote at all. Skip only the one
                 // character so a lifetime's identifier is still scanned.
             }
             '{' => delta += 1,
@@ -154,7 +154,7 @@ fn brace_delta(line: &str) -> i64 {
 
 #[test]
 fn brace_delta_handles_a_unicode_escape_char_literal() {
-    // `'\u{301}'` (a combining acute — appears verbatim in
+    // `'\u{301}'` (a combining acute, which appears verbatim in
     // `hume-editor/src/editor/tests/commands.rs`) has a brace *inside* its
     // escape, not a fixed-length escape like `'\n'` or `'\x41'`. Treating
     // the escaped-char-literal arm as always 4 characters wide (`'`, `\`,
@@ -172,8 +172,8 @@ fn brace_delta_handles_a_unicode_escape_char_literal() {
     assert_eq!(brace_delta("fn f() {"), 1);
 }
 
-/// If `line` spawns a subprocess by an unqualified program name — a
-/// `Command::new("literal")` whose `literal` contains no `/` or `\` — return
+/// If `line` spawns a subprocess by an unqualified program name (a
+/// `Command::new("literal")` whose `literal` contains no `/` or `\`), return
 /// that literal. A qualified path (`Command::new("/usr/bin/git")`) is not a
 /// `PATH` read, so it's outside this lint's concern.
 fn unqualified_command_spawn(line: &str) -> Option<&str> {
@@ -184,7 +184,7 @@ fn unqualified_command_spawn(line: &str) -> Option<&str> {
     (!literal.contains('/') && !literal.contains('\\')).then_some(literal)
 }
 
-/// The identifier right after a `fn ` at the start of `trimmed`, if any —
+/// The identifier right after a `fn ` at the start of `trimmed`, if any:
 /// `"fn git_init(dir: &Path) {"` -> `Some("git_init")`. No visibility
 /// modifier handling: every helper this lint cares about (and every
 /// `#[test] fn`) in this tree is a bare, module-private `fn`.
@@ -194,7 +194,7 @@ fn fn_name(trimmed: &str) -> Option<&str> {
     Some(after[..end].trim())
 }
 
-/// True when `code` calls `name` as a function — `name` immediately followed
+/// True when `code` calls `name` as a function: `name` immediately followed
 /// by `(`, with no identifier character before it (so a call to `git_init(`
 /// is never mistaken for one to `git(`, and a local variable merely named
 /// after the helper, e.g. `let git = ...`, isn't itself a call).
@@ -209,10 +209,10 @@ fn calls_fn(code: &str, name: &str) -> bool {
 }
 
 /// Every top-level, non-`#[test]`, non-`impl`-method free function anywhere
-/// in `paths`, as `(name, body)` — `body` is every line from the `fn` line
+/// in `paths`, as `(name, body)`. `body` is every line from the `fn` line
 /// to its closing brace, joined back with `\n`, so a caller can ask "does
 /// this helper's body mention X" the same way the per-line scans elsewhere
-/// in this file do. `impl` blocks are skipped entirely — see this module's
+/// in this file do. `impl` blocks are skipped entirely. See this module's
 /// doc for why a bare method name (`new`) is unsafe to key on here.
 fn collect_helper_fns(paths: &[std::path::PathBuf]) -> Vec<(String, String)> {
     let mut fns = Vec::new();
@@ -270,7 +270,7 @@ fn collect_helper_fns(paths: &[std::path::PathBuf]) -> Vec<(String, String)> {
 
 /// Grow `seeded` (a name → its own body already known to have some property)
 /// to a fixed point: any other helper whose body *calls* a name already in
-/// the set gains the property too, however many hops away — `commit_file`
+/// the set gains the property too, however many hops away: `commit_file`
 /// calling `git`, which calls `Command::new`, is two. Shared by
 /// [`spawning_helper_names`] and [`claiming_helper_names`], which differ
 /// only in which predicate seeds the initial set.
@@ -298,7 +298,7 @@ fn propagate_transitively(
 }
 
 /// Every helper name (from [`collect_helper_fns`]) that spawns an unqualified
-/// subprocess — directly (its own body contains `Command::new("literal")`)
+/// subprocess, directly (its own body contains `Command::new("literal")`)
 /// or transitively (its body calls another name already known to spawn one).
 fn spawning_helper_names(helper_fns: &[(String, String)]) -> Vec<String> {
     let seed = helper_fns
@@ -313,7 +313,7 @@ fn spawning_helper_names(helper_fns: &[(String, String)]) -> Vec<String> {
 }
 
 /// Every helper name (from [`collect_helper_fns`]) that claims (or returns an
-/// already-claimed guard for) `Global::Env` — directly (its own body
+/// already-claimed guard for) `Global::Env`, directly (its own body
 /// contains an [`AUTO_CLAIM_MARKERS`] entry, the shape `setup()`-style test
 /// fixtures across this tree follow: claim, do setup, return `(Editor,
 /// SomeGuard)` for the caller to bind and keep alive) or transitively (calls
@@ -414,7 +414,7 @@ fn scan(
                 violations.push(Violation {
                     file: file.clone(),
                     lineno: lineno + 1,
-                    detail: format!("{helper}(...) — spawns unqualified internally"),
+                    detail: format!("{helper}(...): spawns unqualified internally"),
                 });
             }
         }
@@ -447,9 +447,9 @@ fn unguarded_unqualified_spawn() {
     assert!(
         violations.is_empty(),
         "\nUnqualified subprocess spawn found with no `Global::Env` claim held yet in its\n\
-         `#[test] fn` — either directly, or through a helper that itself spawns one\n\
+         `#[test] fn`, either directly, or through a helper that itself spawns one\n\
          unqualified. The OS resolves an unqualified program name against process `PATH`\n\
-         at the spawn instant — the same read a `std::env::var(\"PATH\")` call would need\n\
+         at the spawn instant: the same read a `std::env::var(\"PATH\")` call would need\n\
          to hold a claim for. Claim it directly (`TEST_GLOBALS.claim(Global::Env)`) or via\n\
          a guard whose constructor already does (`RealRuntimeGuard::new()`, …) before the\n\
          spawn, or add the guard to this lint's `AUTO_CLAIM_MARKERS` if it's a new one.\n\

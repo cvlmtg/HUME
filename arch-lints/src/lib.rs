@@ -1,11 +1,11 @@
 //! Architectural lints, enforced as `cargo test` integration tests under
-//! `tests/` — each scans a curated list of source files on disk for patterns
+//! `tests/`. Each scans a curated list of source files on disk for patterns
 //! that violate a rule, rather than exercising any workspace crate's own
 //! code. One file per lint; this module holds the shared string/source-
 //! scanning helpers every lint builds on.
 //!
 //! A lint here never constructs an `Editor` or links against `hume-editor`
-//! at all — it reads `.rs`/`.scm`/`.md` files as text and pattern-matches
+//! at all: it reads `.rs`/`.scm`/`.md` files as text and pattern-matches
 //! them, so it doesn't belong to any one crate's test suite. It scans every
 //! workspace member equally, `hume-editor` included.
 
@@ -15,11 +15,11 @@
 ///
 /// `arch-lints` sits one directory below the workspace root, the same depth
 /// as every other member crate, so `CARGO_MANIFEST_DIR`'s parent is always
-/// correct — one helper instead of each lint repeating the
+/// correct. One helper instead of each lint repeating the
 /// `env::var("CARGO_MANIFEST_DIR")` + `.parent()` dance.
 pub fn workspace_root() -> std::path::PathBuf {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        .expect("CARGO_MANIFEST_DIR not set: run via `cargo test`");
     std::path::Path::new(&manifest)
         .parent()
         .expect("workspace root")
@@ -29,7 +29,7 @@ pub fn workspace_root() -> std::path::PathBuf {
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
 /// Every workspace member crate name, derived from the root `Cargo.toml`'s
-/// `[workspace] members = [...]` line — the single source of truth for
+/// `[workspace] members = [...]` line, the single source of truth for
 /// "what crates exist." A hand-maintained crate list can silently drop out
 /// of sync with the workspace (a renamed directory, a newly added crate);
 /// reading it back out of `Cargo.toml` can't. Shared by every lint that
@@ -65,7 +65,7 @@ pub(crate) fn collect_source_rs(dir: &std::path::Path, out: &mut Vec<std::path::
     }
 }
 
-/// Collect all `.rs` files under `dir`, recursively, with no exclusions —
+/// Collect all `.rs` files under `dir`, recursively, with no exclusions:
 /// `collect_source_rs`'s sibling for a lint whose whole job is scanning
 /// what that one deliberately skips (a `tests/` tree). Results are sorted
 /// for deterministic test output, same as `collect_source_rs`.
@@ -87,7 +87,7 @@ pub fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) 
     }
 }
 
-/// Every `.rs` file under `hume-editor/src/editor/tests/` — the scan root
+/// Every `.rs` file under `hume-editor/src/editor/tests/`, the scan root
 /// shared by every lint in this crate that inspects the editor's own test
 /// suite (`test_globals.rs`'s tempdir-hygiene lint, `test_globals_spawn.rs`'s
 /// unqualified-spawn lint). Asserts the scan found at least one file: a
@@ -100,7 +100,7 @@ pub fn editor_test_tree_paths(workspace_root: &std::path::Path) -> Vec<std::path
     collect_all_rs(&scan_root, &mut paths);
     assert!(
         !paths.is_empty(),
-        "no .rs files found under {} — this lint would silently check nothing",
+        "no .rs files found under {}: this lint would silently check nothing",
         scan_root.display()
     );
     paths
@@ -112,9 +112,9 @@ pub fn editor_test_tree_paths(workspace_root: &std::path::Path) -> Vec<std::path
 /// via `collect_source_rs`, then retain out this `lints/` directory's own
 /// pattern literals and any path in `extra_excludes` (a lint excluding one
 /// specific implementation file while still scanning the rest of that
-/// file's crate — `absent_decode`'s sole caller excludes its own
+/// file's crate, e.g. `absent_decode`'s sole caller excludes its own
 /// `hume-scripting/src/builtins/args.rs`, the file that defines the pattern
-/// it scans for) — the shared setup every whole-workspace lint needs.
+/// it scans for). This is the shared setup every whole-workspace lint needs.
 pub fn workspace_source_paths(
     workspace_root: &std::path::Path,
     extra_excludes: &[std::path::PathBuf],
@@ -122,7 +122,7 @@ pub fn workspace_source_paths(
     let crates: Vec<String> = workspace_member_crates(workspace_root);
     assert!(
         !crates.is_empty(),
-        "workspace_member_crates found no members — Cargo.toml parsing broke"
+        "workspace_member_crates found no members: Cargo.toml parsing broke"
     );
     let mut paths: Vec<std::path::PathBuf> = Vec::new();
     for c in &crates {
@@ -132,12 +132,12 @@ pub fn workspace_source_paths(
         // would otherwise pass every lint by having nothing to check.
         assert!(
             src_dir.is_dir(),
-            "workspace member {c} has no src/ at {} — this lint would silently scan nothing",
+            "workspace member {c} has no src/ at {}: this lint would silently scan nothing",
             src_dir.display()
         );
         collect_source_rs(&src_dir, &mut paths);
     }
-    // This crate holds the pattern literals scanned for above — excluded so
+    // This crate holds the pattern literals scanned for above, excluded so
     // a lint never flags itself. `workspace_member_crates` already put
     // `arch-lints/src` in `paths`; `arch-lints/tests` (the lints themselves)
     // never enters `paths` in the first place, since `workspace_source_paths`
@@ -165,7 +165,7 @@ pub fn workspace_all_rs_paths(workspace_root: &std::path::Path) -> Vec<std::path
 }
 
 /// The portion of `line` before any line comment (`//`), skipping `//`
-/// that appears inside a string literal — a naive `line.find("//")` would
+/// that appears inside a string literal. A naive `line.find("//")` would
 /// truncate a call like `log_path("cache//tempfile::tempdir()")` at the
 /// string's embedded `//`, hiding the rest of the line (and any forbidden
 /// pattern in it, `tempfile::tempdir()` among them) from every lint that
@@ -173,7 +173,7 @@ pub fn workspace_all_rs_paths(workspace_root: &std::path::Path) -> Vec<std::path
 /// open; char literals (`'x'`, `'\x'`) are skipped so their quote marks
 /// don't falsely open/close string tracking; a bare `'` that isn't a char
 /// literal (a lifetime) is left alone. Raw strings (`r"..."`) are not
-/// handled — none of the scanned patterns appear inside one today.
+/// handled: none of the scanned patterns appear inside one today.
 pub fn strip_line_comment(line: &str) -> &str {
     let bytes = line.as_bytes();
     let mut in_string = false;
@@ -212,22 +212,22 @@ pub fn strip_line_comment(line: &str) -> &str {
 
 /// One violation found by [`scan_lines`]/[`scan_forbidden`], or by a lint
 /// that builds its own `Violation` list directly (`test_globals_spawn.rs`'s
-/// `scan`, whose `detail` is a free-form description — "spawns unqualified
-/// internally" — rather than the offending line verbatim).
+/// `scan`, whose `detail` is a free-form description ("spawns unqualified
+/// internally") rather than the offending line verbatim.
 pub struct Violation {
     /// `path` relative to the caller's `display_root` (or the absolute path,
     /// if `path` doesn't start with `display_root`).
     pub file: String,
     /// 1-based line number.
     pub lineno: usize,
-    /// What's wrong at `file:lineno` — usually the offending line trimmed of
+    /// What's wrong at `file:lineno`: usually the offending line trimmed of
     /// leading/trailing whitespace, sometimes a free-form description.
     pub detail: String,
 }
 
 impl std::fmt::Display for Violation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "  {}:{} — {}", self.file, self.lineno, self.detail)
+        write!(f, "  {}:{}: {}", self.file, self.lineno, self.detail)
     }
 }
 
@@ -235,12 +235,12 @@ impl std::fmt::Display for Violation {
 /// `paths` tracking `#[cfg(test)] mod tests { … }` extent (skipped
 /// entirely) and a two-tier opt-out, then calls `find` on each surviving,
 /// comment-stripped line, pushing one `Violation` per match it reports
-/// finding. `scan_forbidden` (below) is the common case — a fixed
+/// finding. `scan_forbidden` (below) is the common case: a fixed
 /// forbidden-substring list.
 ///
 /// **Opt-out**: a comment containing `marker` (e.g. `"// test-global-safe:"`)
 /// suppresses a hit on the violation line itself; on the line *above*, only
-/// when the marker starts that line (after trimming) — `cargo fmt` hoists a
+/// when the marker starts that line (after trimming). `cargo fmt` hoists a
 /// trailing comment onto its own line, so the marker often ends up above
 /// the forbidden pattern rather than beside it, but a marker merely
 /// *appearing* somewhere on an unrelated previous line must not silently
@@ -303,7 +303,7 @@ pub fn scan_lines(
             if line.contains(marker) {
                 continue;
             }
-            // Preceding-line opt-out — a *trailing* marker up there exempts
+            // Preceding-line opt-out: a *trailing* marker up there exempts
             // only its own line, not this one; only a marker occupying that
             // whole line reaches down to the line below it.
             if prev_for_exempt.trim_start().starts_with(marker) {
@@ -325,7 +325,7 @@ pub fn scan_lines(
 }
 
 /// Scan `paths` for any of `forbidden` patterns in active (non-test,
-/// non-comment) code — [`scan_lines`] specialized to a fixed
+/// non-comment) code: [`scan_lines`] specialized to a fixed
 /// forbidden-substring list, the shape every lint in this module needs.
 pub fn scan_forbidden(
     paths: &[std::path::PathBuf],
@@ -342,7 +342,7 @@ pub fn scan_forbidden(
 }
 
 /// Extracts every double-quoted string literal's contents from `s`,
-/// verbatim (no escape processing — plugin command names never contain a
+/// verbatim (no escape processing: plugin command names never contain a
 /// `"`, so a naive quote-delimited split is exact here).
 pub fn quoted_strings(s: &str) -> Vec<String> {
     s.split('"')

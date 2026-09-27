@@ -1,14 +1,14 @@
 //! # Plugin manifest command-list drift
 //!
 //! A plugin's `manifest.scm` (`#:commands '(...)` / `#:typed-commands '(...)`)
-//! is the zero-argument `(declare-plugin "core:foo")` activation list —
+//! is the zero-argument `(declare-plugin "core:foo")` activation list,
 //! hand-maintained, and duplicated nowhere else the compiler checks. The two
 //! clauses feed mutually exclusive lookups (`get_mappable` vs `get_typed`), so
 //! a command added to a feature file without a matching manifest entry
 //! silently never triggers lazy activation (the plugin loads, but the command
 //! looks unbound until something else activates it); a stale manifest entry
 //! for a deleted command is dead weight; and a name listed under the *wrong*
-//! clause registers a stub the matching lookup never returns — the plugin
+//! clause registers a stub the matching lookup never returns: the plugin
 //! never activates for it at all, with nothing at build or run time to say
 //! why.
 //!
@@ -45,13 +45,13 @@ const KINDS: [CommandKind; 2] = [
     },
 ];
 
-/// The string literals inside `manifest.scm`'s `clause '(...)` list — scoped
+/// The string literals inside `manifest.scm`'s `clause '(...)` list, scoped
 /// to that one clause so `#:languages`/the plugin name's own quoted strings
 /// elsewhere in the file are never mistaken for commands. `"#:typed-commands"`
 /// does not contain `"#:commands"` as a substring, so searching for either
 /// literal independently can't cross-match the other's clause. Empty (not a
 /// violation by itself) if the manifest declares no such clause at all.
-/// Comment lines are stripped first — every `manifest.scm` opens with a
+/// Comment lines are stripped first: every `manifest.scm` opens with a
 /// `;`-comment header that mentions both clauses in prose, which would
 /// otherwise be the *first* (wrong) match.
 fn manifest_clause_names(src: &str, clause: &str) -> Vec<String> {
@@ -92,8 +92,8 @@ fn manifest_clause_names(src: &str, clause: &str) -> Vec<String> {
 /// Every name in a `(definer "name" ...)` call, across every `*.scm` file
 /// directly inside `dir` (plugins don't nest subdirectories). The match is
 /// anchored on the opening paren (`(define-typed-command!`, not the bare
-/// word) so a call like `(#%register-global "define-typed-command!")` —
-/// which mentions the definer only as a quoted string argument — is never
+/// word) so a call like `(#%register-global "define-typed-command!")`,
+/// which mentions the definer only as a quoted string argument, is never
 /// mistaken for a defining call.
 fn defined_commands(dir: &std::path::Path, definer: &str) -> Vec<String> {
     let mut names = Vec::new();
@@ -109,7 +109,7 @@ fn defined_commands(dir: &std::path::Path, definer: &str) -> Vec<String> {
         let src = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
         // Comment lines stripped first, same reason as
-        // `manifest_clause_names` — a doc comment mentioning a `define-*!`
+        // `manifest_clause_names`: a doc comment mentioning a `define-*!`
         // call in prose must never be mistaken for one.
         let code_only: String = src
             .lines()
@@ -149,7 +149,7 @@ fn plugin_manifest_commands_match_defined_commands() {
     for dir in plugin_dirs {
         let manifest_path = dir.join("manifest.scm");
         if !manifest_path.exists() {
-            continue; // no zero-arg declare-plugin activation — nothing to check
+            continue; // no zero-arg declare-plugin activation, nothing to check
         }
         let plugin_name = dir
             .file_name()
@@ -181,7 +181,7 @@ fn plugin_manifest_commands_match_defined_commands() {
                 if defined[other].contains(missing) {
                     violations.push(format!(
                         "  {plugin_name}: \"{missing}\" is listed in manifest.scm's \
-                         {} but is defined by {} — it belongs in {}",
+                         {} but is defined by {}: it belongs in {}",
                         kind.clause, KINDS[other].definer, KINDS[other].clause
                     ));
                 } else {
@@ -194,7 +194,7 @@ fn plugin_manifest_commands_match_defined_commands() {
             }
             for extra in defined[i].difference(&declared[i]) {
                 // Already reported (from the other kind's pass) as a
-                // wrong-clause violation — skip so one mistake yields one line.
+                // wrong-clause violation. Skip so one mistake yields one line.
                 if declared[other].contains(extra) {
                     continue;
                 }
