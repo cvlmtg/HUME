@@ -36,19 +36,6 @@ Grab the archive for your platform from the [latest release](https://github.com/
 | Linux (x86\_64, glibc 2.39+) | `hume-*-x86_64-unknown-linux-gnu.tar.gz` |
 | Windows (x86\_64) | `hume-*-x86_64-pc-windows-msvc.zip` |
 
-Extract and run:
-
-```sh
-tar xzf hume-*.tar.gz
-./hume-*/bin/hume
-```
-
-> [!NOTE]
-> The binaries aren't signed, so macOS Gatekeeper may refuse to open them with a "cannot be opened" dialog — this happens if you extract the archive by double-clicking it in Finder rather than with `tar` above. Clear the quarantine flag once and it won't come back:
-> ```sh
-> xattr -d com.apple.quarantine hume-*/bin/hume
-> ```
-
-Then type `:tutor` inside HUME for an interactive introduction, or check the [user manual](https://cvlmtg.github.io/HUME/) for a system-wide install, configuration, and everything else.
+See the [installation guide](https://cvlmtg.github.io/HUME/installation.html) to extract and run it, then type `:tutor` inside HUME for an interactive introduction.
 
 Coming from another modal editor? See [Helix](https://cvlmtg.github.io/HUME/from-helix.html), [Kakoune](https://cvlmtg.github.io/HUME/from-kakoune.html), or [Vim](https://cvlmtg.github.io/HUME/from-vim.html).
