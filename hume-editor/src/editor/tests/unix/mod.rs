@@ -153,32 +153,18 @@ fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
     std::fs::write(plugin_dir.join("plugin.scm"), source).unwrap();
 }
 
-/// Points `HUME_RUNTIME` at the *real*, on-disk `runtime/` directory (a
-/// sibling of the crate root, resolved once via `CARGO_MANIFEST_DIR`) for
-/// the guard's lifetime — used by multi-file core plugins (`core:lsp`,
-/// mirroring `core:plum`'s layout) so tests exercise the actual shipped
-/// files without hand-copying every one into a temp dir and keeping that
-/// list in sync as feature files are added.
+/// Points `HUME_RUNTIME` at the real on-disk `runtime/` directory for the
+/// guard's lifetime, so multi-file core plugins (`core:lsp`) are tested
+/// against the shipped files instead of hand-copied ones.
 ///
-/// Also points `XDG_DATA_HOME` at a fresh, guard-owned temp dir: loading the
-/// real `core:lsp` plugin now scans `<data-dir>/servers/` at load time (see
-/// `lsp/registration.scm`), so without this every `RealRuntimeGuard` test
-/// would scan whatever the developer running the suite actually has
-/// installed on their machine — non-hermetic, and a source of spurious
-/// scan warnings in test output.
+/// Also points `XDG_DATA_HOME` at a guard-owned temp dir, because loading
+/// `core:lsp` scans `<data-dir>/servers/` and would otherwise read the
+/// developer's installed servers.
 ///
-/// Deliberately does **not** touch `TMPDIR`, unlike [`HumeRuntimeGuard`]:
-/// pointing at a persistent, never-deleted directory means there is nothing
-/// for a concurrent test's cleanup to race against. `HumeRuntimeGuard`'s
-/// `TMPDIR` override only protects itself from *other* `HumeRuntimeGuard`s
-/// (both take the same mutex) — it does not and cannot protect unrelated
-/// tests that call bare `tempfile::tempdir()`, since `TMPDIR` is a
-/// process-global env var every thread's allocator reads. A slow guarded
-/// test can redirect an unrelated concurrent test's `tempfile::tempdir()`
-/// into its own tree and then delete that tree out from under it on drop.
-/// Avoiding `TMPDIR` entirely sidesteps the hazard rather than narrowing it.
-/// `XDG_DATA_HOME` doesn't need the same care — nothing outside HUME's own
-/// `data-dir` resolution reads it, so there is no allocator-style hazard.
+/// Unlike [`HumeRuntimeGuard`], it does not touch `TMPDIR`. `TMPDIR` is
+/// process-global, so overriding it can redirect an unrelated concurrent
+/// test's `tempfile::tempdir()` into a tree this guard later deletes. A
+/// persistent runtime directory has nothing to clean up, so there is no need.
 struct RealRuntimeGuard {
     _data_tmp: tempfile::TempDir,
     prev_xdg_data_home: Option<String>,

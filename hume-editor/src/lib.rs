@@ -94,37 +94,23 @@ pub fn run_keys(
 
 /// Start the editor.
 ///
-/// `config` is `resolve`'s (`main.rs`) validated `ConfigSource` — the
-/// default `<config_dir>/init.scm`, an already-absolutized `--config`
-/// override, or `--no-config`. Set on the editor via `set_config_source`
-/// before `init_scripting` runs, below.
+/// `config` is the validated `ConfigSource` from `main.rs`'s `resolve`; it is
+/// set on the editor before `init_scripting` runs.
 ///
-/// Scripting initialisation (Steel VM boot + `init.scm`, ~150-200 ms) runs
-/// *before* the terminal enters raw mode / the alternate screen, so the
-/// user's shell stays visible during that window — the first alt-screen
-/// frame shown is fully themed and (at most one poll later)
-/// syntax-highlighted. The kitty protocol is probed first (on the normal
-/// screen) and applied via `set_kitty_support` before `init_scripting`, so
-/// kitty-only default keybinds install before any user `bind-key!` in
-/// `init.scm` can override them.
+/// Scripting init (Steel VM boot and `init.scm`, ~150-200 ms) runs before raw
+/// mode and the alternate screen, so the shell stays visible meanwhile and the
+/// first frame is already themed. Keys typed in that window echo to the shell.
+/// The kitty protocol is probed first so kitty-only default keybinds install
+/// before `init.scm` can override them.
 ///
-/// Accepted side effect: keys typed during the pre-alt-screen window echo
-/// to the shell and aren't seen by the editor; any left in the input buffer
-/// are read once raw mode / the alt-screen are entered.
+/// [`hume_platform::terminal::init`]'s panic hook restores the terminal on
+/// unwind; the explicit [`hume_platform::terminal::restore`] covers normal
+/// and error returns. Both are safe if `init` was never reached.
 ///
-/// [`hume_platform::terminal::init`] installs a panic hook that restores the
-/// terminal on unwind; the explicit [`hume_platform::terminal::restore`] call
-/// at the end covers the clean-return and `?`-propagated-error paths. Both
-/// are safe to run even if `init` was never reached — every escape sequence
-/// `restore` emits is a documented no-op for a mode that was never entered.
-///
-/// Below, `restore_err` and `editor.run`'s own `result` are both checked
-/// against [`hume_platform::hangup_exit_code`] before being propagated as
-/// real errors — sound only because every fallible step inside `editor.run`'s
-/// loop (`hume-editor/src/editor/lifecycle.rs`) is terminal I/O: `screen`
-/// geometry/present and the event reader's `poll`/`read`. A future `?` on a
-/// non-terminal error inside that loop (file I/O, say) would need its own
-/// exclusion here — `hangup_exit_code` has no source tag to distinguish it.
+/// Errors are checked against [`hume_platform::hangup_exit_code`] before
+/// propagating. That is sound only while every fallible step in
+/// `editor.run`'s loop is terminal I/O: `hangup_exit_code` cannot tell a
+/// non-terminal error apart.
 pub fn run(
     files: Vec<cli::FileArg>,
     config: cli::ConfigSource,

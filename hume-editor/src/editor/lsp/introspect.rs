@@ -409,52 +409,27 @@ fn wire_pos_to_grapheme_col(
 }
 
 /// Filesystem path, wire line, and column for a batch of raw
-/// `Location`/`LocationLink` LSP locations — the display companion to
-/// `wire_to_char_for_buffer`'s address conversion, backing
-/// `lsp-locations->display-parts`. `lsp/location-display` calls this once
-/// per drawer build so a goto/references row has something to show in the
-/// column slot.
+/// `Location`/`LocationLink` LSP locations, backing
+/// `lsp-locations->display-parts` (goto/references drawer rows).
 ///
-/// Each location is decoded once, through [`hume_lsp::location::decode_location`]
-/// — the same decoder `goto-location!` uses for the jump — so the path, the
-/// displayed line, and the column all come from that one decode. A drawer
-/// row that read `range.start.line` a second time in Scheme, or decoded the
-/// URI a second time to render the path, could end up naming a position it
-/// didn't measure; see that function's doc for why a malformed location
-/// aborts the whole batch.
-/// The path is the URI's own, not [`Editor::resolve_buffer_path`]'s
-/// canonicalisation of it: resolving symlinks is right for *finding* the
-/// file, but a drawer row should echo the path the server actually sent.
+/// Each location is decoded once through [`hume_lsp::location::decode_location`],
+/// the same decoder `goto-location!` jumps with, so path, line, and column all
+/// describe one position. A malformed location aborts the whole batch. The
+/// path shown is the URI's own, not [`Editor::resolve_buffer_path`]'s
+/// canonical form: the row echoes what the server sent. Each `JsonHandle`
+/// carries its producing server's encoding, so a batch mixing responses
+/// decodes correctly.
 ///
-/// Each entry's own `JsonHandle` carries its own tagged producing-server
-/// encoding — same rationale `GotoTarget::Wire` uses for the actual jump,
-/// `edits.rs`'s `resolve_goto_target` — so a batch spanning more than one
-/// response decodes each location correctly.
+/// # Column: the one sanctioned wire-unit display
+/// For an open buffer the column is an exact grapheme column measured on its
+/// current (possibly unsaved) text, matching where `goto-location!` lands. For
+/// a target with no open buffer the file is not read (too costly for a row the
+/// user may never select), so the wire `character` is shown verbatim. It
+/// equals the grapheme column unless non-ASCII text precedes it on the line.
+/// This is the only place HUME renders a wire unit.
 ///
-/// # The one sanctioned exception to "never render a wire unit"
-/// An **open** buffer's rope is used as-is (its unsaved text, if modified —
-/// the column reported is the one the user will land on after
-/// `goto-location!` jumps there, and that jump already carries the same
-/// staleness against a server response that may predate the edit), giving
-/// an exact grapheme column. For a target with **no open buffer** this
-/// function does not read the file — reading a whole file from disk just to
-/// refine one column for a row the user may never select is out of
-/// proportion to the value — so it reports the location's own wire
-/// `character` verbatim instead. That number is an offset in the server's
-/// negotiated encoding (a byte offset under `utf-8`, UTF-16 code units
-/// otherwise), not a grapheme count: on an ASCII-up-to-the-target line —
-/// nearly all code — the two coincide; they diverge only when non-ASCII
-/// text sits earlier on the same line. This is the *only* place in HUME a wire
-/// unit is rendered directly — everywhere else the "never render `char_col`
-/// or a wire position" rule holds without exception. A future refinement is
-/// to render an unmeasured column visually distinctly (e.g. italic) once the
-/// drawer can style parts of a row, rather than showing it identically to a
-/// measured one.
-///
-/// Resolving a URI's path against the buffer store is the only work left
-/// once a target isn't read — cached per distinct path (not per location)
-/// so a batch with many locations in few files pays one `canonicalize` +
-/// buffer-store scan per file, not one per location.
+/// Buffer lookups are cached per distinct path, so many locations in few files
+/// cost one resolve and buffer-store scan per file.
 pub(in crate::editor) fn location_display_parts(
     state: &EditorState,
     locs: &[hume_scripting::json::JsonHandle],

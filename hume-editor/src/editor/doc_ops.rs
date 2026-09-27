@@ -179,35 +179,18 @@ pub(in crate::editor) fn check_no_conflicting_session(
 /// Apply an edit to `buf_id` through `pane_id` and propagate the resulting
 /// `ChangeSet` to all other panes viewing the same buffer.
 ///
-/// Routes into [`apply_doc_edit_grouped`] when an Insert session is already
-/// open on this (pane, buffer) — dot-repeat replay, or any edit applied
-/// mid-session (e.g. an LSP completion accept) must compose into that group
-/// rather than record a standalone undo revision; the two would otherwise go
-/// out of sync and the next grouped edit's `ChangeSet::compose` panics on a
-/// length mismatch. This is the single chokepoint every edit-applying caller
-/// goes through, so no caller needs its own open-session check.
+/// Every edit-applying caller goes through here, so session handling lives
+/// here rather than at each caller:
+/// - An Insert session open on this (pane, buffer) routes the edit into
+///   [`apply_doc_edit_grouped`]. A standalone revision would desync the group
+///   and make the next `ChangeSet::compose` panic on a length mismatch.
+/// - A Paste session open on this (pane, buffer) is committed first via
+///   [`commit_paste_group`]. Otherwise its `text_snapshot` goes stale and the
+///   next `[`/`]` re-paste discards this edit. Callers that bypass key
+///   dispatch (and so `step_paste_commit`) rely on this.
 ///
-/// Commits a same-pane Paste session first, via [`commit_paste_group`], when
-/// there's no such grouped path to route into instead: a Paste session only
-/// understands "re-paste from its own snapshot" (`apply_doc_edit_regrouped`),
-/// never "compose an unrelated edit," so an edit landing here while one is
-/// open on `(pane_id, buf_id)` would otherwise record its own standalone
-/// revision while the session's `text_snapshot` goes stale — the next
-/// `[`/`]` re-pastes from that stale snapshot and silently discards the
-/// intervening edit. `step_paste_commit` already does this before ordinary
-/// key-driven dispatch, but a direct caller that bypasses dispatch entirely
-/// (bracketed-paste's own `apply_normal_mode_paste`, an LSP `commit_
-/// changeset`, any other host edit builtin) has no other chance to — enforced
-/// here, at the chokepoint every such caller already routes through, rather
-/// than by convention at each one.
-///
-/// `Err` when [`check_no_conflicting_session`] finds one — refusing loudly
-/// beats the alternative of silently mutating the buffer underneath another
-/// pane's open session (see that function's own doc).
-///
-/// Uses `std::mem::take` on the active `SelectionSet` instead of `clone()`.
-/// The default state (cursor-at-0) is transient: it is overwritten by
-/// `new_sels` before this function returns.
+/// `Err` when [`check_no_conflicting_session`] finds another pane's session on
+/// this buffer.
 // Same non-collapsible-params shape as `finish_edit`'s own allow, above.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_edit(
@@ -406,32 +389,19 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     );
 }
 
-/// Run one history-walking step on `buf_id` through `pane_id` (`walk`, typically
+/// Run one history walk on `buf_id` through `pane_id` (`walk`, typically
 /// `|b| b.undo_n(count)` or `|b| b.redo_n(count)`) and propagate the net
-/// `ChangeSet` to all other panes viewing the same buffer. `walk` closes over
-/// its own step count or target revision, so this function stays the single
-/// entry point for every shape a history walk takes — a count-based
-/// `undo_n`/`redo_n` today, a `RevisionId`-based `goto_revision` walk
-/// tomorrow — with no second copy of the guard, the pre-walk snapshot, or
-/// the `finish_edit` call.
+/// `ChangeSet` to all other panes viewing the same buffer.
 ///
-/// A single `finish_edit` call for the whole walk, however many revisions it
-/// crosses — `walk` itself already composed those into one net transform
-/// (see `Buffer::apply_transactions`), so panes, jump lists, tree-sitter, and
-/// LSP each see one edit instead of `count` of them. This is what makes an
-/// age-resolved `:earlier`/`:later` (an unbounded step count) as cheap as a
-/// single `u`.
+/// `walk` already composes every revision it crosses into one transform (see
+/// `Buffer::apply_transactions`), so there is a single `finish_edit` call and
+/// panes, jump lists, tree-sitter, and LSP see one edit. An unbounded
+/// `:earlier`/`:later` costs the same as one `u`.
 ///
-/// Returns [`HistoryWalk::Took`] with the number of steps actually taken —
-/// short of `count` when the walk hit the root/leaf, so the caller can
-/// report exhaustion — or [`HistoryWalk::RefusedReadOnly`] when the buffer
-/// refused the walk outright; see that type's doc for why the two must stay
-/// distinguishable.
-///
-/// `Err` when [`check_no_conflicting_session`] finds another pane's open
-/// session on this buffer — same exclusivity rule [`apply_doc_edit`]
-/// enforces, upgraded here from a debug-only assert (which checked only the
-/// walking pane's own group) to a real, release-mode, buffer-wide refusal.
+/// Returns [`HistoryWalk::Took`] with the steps actually taken (fewer than
+/// requested at the root/leaf) or [`HistoryWalk::RefusedReadOnly`]. `Err`
+/// when [`check_no_conflicting_session`] finds another pane's session on this
+/// buffer.
 // Same non-collapsible-params shape as `finish_edit`'s own allow, above.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_history_walk(

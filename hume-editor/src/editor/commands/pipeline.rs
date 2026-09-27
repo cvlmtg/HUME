@@ -768,19 +768,12 @@ pub(in crate::editor) fn step_stamp_repeatable(
 ///   Composes (+ change)                 → append step
 ///   Untracked                           → clear
 ///
-/// `Extends` is every `Motion`, including the word motions (`select-next-word`
-/// et al.): their Move-mode result *looks* replayable (it lands on a selected
-/// word) but isn't — replaying it would advance past the intended word rather
-/// than rebuild it (see `SelectionTracking::Extends`). Extend-mode steps are
-/// still recorded: extending grows an existing selection by a relative amount
-/// and is safe to replay.
+/// `Extends` covers every `Motion`, word motions included: a Move-mode word
+/// motion looks replayable but would advance past the word on replay. Extend
+/// steps grow a selection by a relative amount and replay safely.
 ///
-/// `selection_changed` (the pre- vs. post-body selection set, computed by the
-/// caller) gates `Establishes`/`Composes`: a command that found no match
-/// (`select-all-matches`) or no surrounding pair (`ms(`) established nothing
-/// of its own, so it must leave whatever recipe a prior command staged
-/// untouched — neither resetting it nor appending a step that would replay
-/// as another no-op.
+/// `selection_changed` gates `Establishes`/`Composes`, so a command that found
+/// nothing (`select-all-matches`, `ms(`) leaves the staged recipe untouched.
 // `&Cow` not `&str`: `.clone()` must preserve Borrowed (built-ins) or Owned
 // (Steel) without an unconditional heap alloc.
 #[allow(clippy::ptr_arg)]

@@ -101,30 +101,19 @@ pub(in crate::editor) fn open_or_dedup_and_notify(
 
 /// Redirect pane `pid` to `target` without recording a jump.
 ///
-/// When `pid` is the focused pane and `target` differs from what it
-/// currently shows, ends any open Insert/paste session on it first (see
-/// [`crate::editor::focus::end_focus_sessions`]) — otherwise
-/// `EditorState::active_session` stays open on a `(pane, buffer)` pair no
-/// longer being typed into, and the next keystroke panics in
-/// `doc_ops::apply_doc_edit_grouped`'s `.expect()`. Skipped for a background
-/// pane (a hook redirecting a pane the user isn't looking at — that pane's
-/// own session, if any, belongs to whatever *is* focused, not to `pid`) and
-/// for a same-buffer switch (the open group is still valid, since the pane's
-/// buffer never actually changes). Must run before the `buffer_id` write
-/// below: the teardown reads state keyed on the buffer `pid` shows *right
-/// now*, which the write is about to change out from under it.
-///
-/// The same focused-and-changing condition promotes `target` in
-/// `BufferStore.mru` — together with [`crate::editor::focus::focus_pane`]'s
-/// own promotion, this is one of the two chokepoints `focused_buffer_id()`
-/// can change through (see that function's own doc), so between them
-/// `mru`'s tail always names the buffer actually on screen, synchronously —
-/// `Editor::detect_buffer_enter`'s own diffed observation of the same join
-/// needs no separate promotion of its own.
+/// When `pid` is focused and `target` differs from its current buffer:
+/// - ends any open Insert/paste session first
+///   ([`crate::editor::focus::end_focus_sessions`]), before the `buffer_id`
+///   write it reads through. A stale session would make the next keystroke
+///   panic in `doc_ops::apply_doc_edit_grouped`.
+/// - promotes `target` in `BufferStore.mru`. With
+///   [`crate::editor::focus::focus_pane`], this keeps `mru`'s tail equal to
+///   the buffer on screen.
 ///
 /// Saves the pane's scroll for the old buffer, restores `target`'s saved scroll
 /// (zero on first visit), and seeds `pane_state[pid][target]` if this pane has
-/// never viewed `target` before. Does not touch any denormalised `buffer_id`.
+/// never viewed `target` before. Only the pane's own `buffer_id` is
+/// written; no denormalised copy of it is updated.
 pub(in crate::editor) fn switch_pane_to_buffer(
     state: &mut EditorState,
     ev: &mut EngineView,

@@ -1,38 +1,20 @@
-//! [`MockHost`] — shared [`hume_scripting::host::EditorHost`] for lib unit tests and
+//! [`MockHost`]: shared [`hume_scripting::host::EditorHost`] for lib unit tests and
 //! integration tests.
 //!
 //! Holds real `EditorSettings` and `Keymap` so tests can assert on
-//! `set-option!` / `bind-key!` side effects directly, without a full editor
-//! session.
+//! `set-option!`/`bind-key!` side effects without a full editor session.
+//! Lib unit tests get it under `#[cfg(test)]`; integration tests link it as
+//! `hume::testing::MockHost` via the `test-util` feature. `extern crate self
+//! as hume` in `lib.rs` makes its `hume::` paths resolve in both.
 //!
-//! Reached two ways, both through the one real module (no `#[path]`
-//! duplication): lib unit tests get it under plain `#[cfg(test)]`;
-//! `editor/tests/scripting.rs` and `editor/tests/unix/main.rs` link against
-//! it as `hume::testing::MockHost` via the `test-util` feature their
-//! `Cargo.toml` dev-dependency enables on this crate.
+//! # Design rule: never approximate
 //!
-//! Uses `hume::` paths throughout; `extern crate self as hume` in `lib.rs`
-//! makes those resolve correctly in the lib-crate context too.
-//!
-//! # Design rule: delegate, record, or faithfully mirror — never approximate
-//!
-//! Every method here is (a) a thin wrapper over a *real* production
-//! structure/function it holds (`self.settings`, `hume::editor::settings::
-//! setting_value`, `hume_ops::register::is_valid_register_name`),
-//! (b) pure recording of whatever the test already told it (`dispatched_
-//! native`, `native_names`), or (c) a reduced but faithful mirror of a real
-//! decision, restated in the exact terms this mock actually tracks
-//! (`register_command`/`register_lazy_command` reject a name already present
-//! in `registered_cmds`/`lazy_cmds`, matching `CommandRegistry`'s real
-//! collision rule one-for-one; `attach_grammar` checks the same bad-path
-//! failure the real host hits, without doing real tree-sitter compilation).
-//! What must never happen is an *invented* approximation that only
-//! coincidentally agrees with the real decision today — every check here
-//! traces back to a specific real rule it mirrors, cited at the call site.
-//! A test whose scenario needs behavior finer-grained than what's mirrored
-//! (e.g. native/typed-command collisions, real grammar parsing) uses a real
-//! `Editor` + `EditorHostImpl` instead (see
-//! `hume-editor/src/editor/tests/plugins.rs`).
+//! Every method either delegates to a real production structure or function,
+//! records what the test told it, or mirrors a specific real rule (cited at
+//! the call site), such as `CommandRegistry`'s name-collision check. A test
+//! needing finer behavior (native/typed collisions, real grammar parsing)
+//! uses a real `Editor` + `EditorHostImpl` instead (see
+//! `editor/tests/plugins.rs`).
 
 use hume_engine::pipeline::BufferId;
 use hume_scripting::PaneHandle;

@@ -543,38 +543,18 @@ impl Default for EditorState {
     }
 }
 
-/// Every input a pane's *layout* depends on — everything
-/// [`EditorState::format_key`] carries (buffer identity, decoration
-/// generation, effective wrap mode, tab width, whitespace) plus the three
-/// geometry facts that decide where the cursor's own display line falls:
-/// content width, viewport height, and scrolloff (the band `Viewport::reveal`
-/// settles the cursor against). `FormatKey` excludes content width on
-/// purpose — under a resolved (non-zero) `wrap_mode`, formatting doesn't
-/// read it at all, and under the `width: 0` sentinel it's already folded
-/// into the resolved `wrap_mode` `format_key` stores, so a bare `content_width`
-/// field there would only rewind a store whose entries stayed valid (see
-/// `hume_engine::display_lines::line_store::FormatKey`'s own doc). This key
-/// carries it anyway — a growing gutter narrows the wrap column exactly as
-/// a resize does, and that's a fact reveal cares about even when formatting
-/// doesn't need a second copy of it. `scrolloff` FormatKey has no use for at
-/// all: it names no line's shape, only where `Viewport::reveal` settles the
-/// cursor already-formatted lines expose.
+/// Every input a pane's layout depends on: [`EditorState::format_key`]'s
+/// fields plus content width, viewport height and scrolloff, which decide
+/// where the cursor's display line falls.
 ///
-/// Deliberately excludes the buffer's own content generation (`text_gen`,
-/// part of `format_key`'s `buffer_tag` but not this key): an edit reaches
-/// `PaneBufferState::reveal_pending` through the selection funnel
-/// (`restore_selections`/`translate_selections_in_place`) when it actually
-/// moves this pane's own head, and folding `text_gen` in here as well would
-/// re-settle a pane parked away from an edit that never touched its head —
-/// an edit below a parked cursor, another pane's own edit to the same
-/// buffer, an LSP-applied edit off-screen.
+/// `FormatKey` leaves out content width because formatting already sees it
+/// through the resolved `wrap_mode`. This key keeps it because a growing
+/// gutter narrows the wrap column just like a resize, and reveal cares.
 ///
-/// `frame.rs`'s scroll step is the one comparison site: it snapshots this on
-/// `PaneBufferState::last_layout_key` every frame and reveals whenever it
-/// differs from what it read last, replacing six scattered raise sites (a
-/// resize, a wrap-mode pin/toggle, a buffer switch, and the inlay-hint/
-/// EOL-text/virtual-line decoration-generation checks) that each
-/// rediscovered a subset of this same fact independently.
+/// `frame.rs`'s scroll step is the one comparison site: it stores this in
+/// `PaneBufferState::last_layout_key` each frame and reveals whenever it
+/// changes (resize, wrap-mode change, buffer switch, decoration generation,
+/// and any content edit, since `buffer_tag` includes `text_gen`).
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct LayoutKey {
     buffer_tag: hume_engine::display_lines::line_store::BufferTag,
@@ -735,47 +715,22 @@ impl EditorState {
             .collect()
     }
 
-    /// Pushes a mode layer — the single write path for all mode transitions
-    /// (`OnModeChange` itself does not fire from here; it's raised by
-    /// `Editor::detect_mode_change`'s observation-point diff at the next
-    /// `settle()`).
+    /// Pushes a mode layer: the single write path for mode transitions.
+    /// `OnModeChange` fires later, from `Editor::detect_mode_change` at the
+    /// next `settle()`.
     ///
-    /// No-op if the current mode layer is already `Insert` *and* `layer` is
-    /// too — the one re-entry this call must not replace: `Insert`'s
-    /// payload is empty, and the no-op is load-bearing for
-    /// `begin_insert_session`'s own open-group guard. Every other mode
-    /// layer replaces itself on same-kind re-entry, since its payload (a
-    /// prompt string, a search direction) may have changed — see each
-    /// opener's own doc for why it captures its pre-entry state in
-    /// `Layer::setup` rather than before this call, so teardown-is-cancel
-    /// restores the old session's stash, not the new one's.
+    /// No-op when both the current mode layer and `layer` are `Insert`;
+    /// `begin_insert_session`'s open-group guard relies on that. Any other
+    /// same-kind re-entry replaces the layer, since its payload may differ.
     ///
-    /// Otherwise tears down the
-    /// current mode layer first, unless it's `Base` (teardown *is* cancel —
-    /// a `prompt!` from Insert ends the insert session before the prompt
-    /// lands), clears Extend, then pushes `layer` on top of whatever is
-    /// left via [`Self::push_layer`] — any overlay that sits *below* the
-    /// outgoing mode layer (a drawer opened while still in Normal) is
-    /// untouched, since `truncate_layers` only removes the mode layer's own
-    /// ref and whatever was pushed above it.
+    /// Otherwise tears down the current mode layer unless it is `Base`
+    /// (teardown is cancel), clears Extend, and calls [`Self::push_layer`].
+    /// Overlays below the outgoing mode layer stay. `push_layer` evicts any
+    /// popup in `Base`'s slot, so a popup is never buried.
     ///
-    /// `push_layer` itself is what keeps a `Popup` layer from ever being
-    /// buried (`PopupLayer`'s `Layer` doc, `input_stack/stack.rs`): every
-    /// mode layer's `Layer::popup_eviction` defaults to `PopupEviction::Both`,
-    /// so landing one directly on top of `Base` (the one case
-    /// `truncate_layers` skips, and so the one case nothing else here would
-    /// otherwise clear) still evicts whatever `Popup` layer or `Sticky`
-    /// popup was sitting in `Base`'s own slot before the incoming layer
-    /// lands, sandwiching neither between the two. Extend is this call's
-    /// own rule, since nothing else resets it; `setup` is left for what's specific to one layer
-    /// (`SearchLayer`/`SiftLayer` capture their pre-entry selections there).
-    ///
-    /// Never gated: a mode key only ever reaches `Base` after every overlay
-    /// above it has fallen through, so ordering is already settled by the
-    /// key path; a Steel-initiated push (a timer's `prompt!` while a picker
-    /// is open) simply lands on top of it — the *incoming* layer's own key
-    /// policy governs what happens next, and the picker is suspended
-    /// (still painted, no longer reachable) until that layer retires.
+    /// Never gated: a key only reaches `Base` after every overlay above it
+    /// fell through, and a Steel-initiated push (a timer's `prompt!`) lands on
+    /// top of an open picker, which stays suspended until the layer retires.
     pub(in crate::editor) fn push_mode_layer<L: input_stack::Layer>(
         &mut self,
         view: &EngineView,

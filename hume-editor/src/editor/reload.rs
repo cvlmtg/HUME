@@ -339,34 +339,19 @@ impl Editor {
     }
 }
 
-/// `:reload-config` — reset every piece of config-owned state to its
-/// compiled-in default, drop the scripting engine, and re-evaluate
-/// `init.scm` from scratch.
+/// `:reload-config`: reset all config-owned state to compiled-in defaults,
+/// drop the Steel engine, and re-evaluate `init.scm` from scratch.
 ///
-/// `reset_config_state` is the full contract for what "from scratch" resets
-/// (keymap, settings, LSP registrations, decorations, dynamic commands, …)
-/// and why it must run — including clearing dynamic commands from the
-/// registry — before `ed.scripting` is dropped and `init_scripting()` runs:
-/// otherwise the new `builtin_names` set (built from `registry.names()`)
-/// would contain every Steel command from the prior load, and every
-/// `(define-command!)` in the re-evaluated `init.scm` would fail the
-/// builtin-conflict check in `hume-scripting/src/builtins/commands.rs`
-/// with "conflicts with a built-in command and cannot be redefined".
+/// `reset_config_state` defines what is reset. It must run before
+/// `init_scripting()`: otherwise the prior load's Steel commands would still
+/// be in the registry, and every `(define-command!)` in `init.scm` would fail
+/// the builtin-conflict check. Buffers, panes, undo history, registers and
+/// running LSP servers are untouched.
 ///
-/// Buffers, panes, undo history, registers, and running LSP server
-/// processes are untouched — only *config* resets, not editing state.
-///
-/// `resync_config_state` runs last, after `init_scripting` has rebuilt the
-/// engine and re-detected every buffer's language: it replays the
-/// buffer-open lifecycle (`OnLspAttach` for already-attached servers,
-/// `OnBufferOpen`, `OnDiagnosticsChanged` from the surviving diagnostics
-/// cache, `OnBufferEnter` for the focused buffer) so state a hook would
-/// normally repopulate — trigger characters, inline diagnostics/inlay hints,
-/// buffer-open-driven decorations, a `steel:<name>` statusline element
-/// pushed from `on-buffer-enter` — doesn't stay empty simply because reload
-/// never causes the transition that hook is gated on. See
-/// `Editor::resync_config_state`'s doc for why this is scoped to a replay
-/// rather than a literal LSP close+reopen.
+/// `resync_config_state` runs last and replays the buffer-open lifecycle
+/// hooks (`OnLspAttach`, `OnBufferOpen`, `OnDiagnosticsChanged`,
+/// `OnBufferEnter`), so hook-populated state does not stay empty just
+/// because reload never causes the transitions those hooks wait for.
 pub(in crate::editor) fn typed_reload_config(
     ed: &mut Editor,
     _fp: crate::editor::commands::FocusedPane,

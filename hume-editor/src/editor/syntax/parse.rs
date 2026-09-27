@@ -231,49 +231,24 @@ impl Editor {
 /// Bring `bid`'s committed tree up to date with its current text,
 /// synchronously, before a structural command reads it.
 ///
-/// The on-demand twin of [`Editor::reparse_stale_buffers`] above, and it
-/// lives beside it for that reason: both decide when a buffer's tree may be
-/// reparsed, and they share the byte cap ([`EditorState::syntax_size_ok`])
-/// and the chain-break report. A **free function on `&mut EditorState`**, not
-/// an `Editor` method, because the command dispatch funnel that calls it
-/// (`commands::pipeline::run_body`) never holds an `Editor` — which is
-/// also why it must parse inline rather than post to `Editor`'s worker.
+/// The on-demand twin of [`Editor::reparse_stale_buffers`]: it shares that
+/// function's byte cap ([`EditorState::syntax_size_ok`]) and chain-break
+/// report. It takes `&mut EditorState` and parses inline because its caller,
+/// the command dispatch funnel, never holds an `Editor` or its worker.
 ///
-/// A structural command runs after `Editor::settle` has already ticked the
-/// frame's async reparse for the *previous* edit, but that tick only posts a
-/// request — the worker may still be parsing it when this query runs, most
-/// reliably during macro replay, which settles between keys but dispatches
-/// the next one faster than tree-sitter finishes. Either way the committed
-/// tree can be a generation behind by the time this query needs it.
-/// `Syntax::ensure_current` closes that window; this wrapper resolves
-/// the borrows it needs (an `Arc` grammar snapshot, an O(1) rope clone) and
-/// routes any `ChainBreak` through [`report_chain_break`].
+/// The async reparse posted for the previous edit may still be running (most
+/// often during macro replay), so the committed tree can be a generation
+/// behind. `Syntax::ensure_current` closes that window.
 ///
-/// No-op when the buffer has no syntax attached at all (no grammar, or over
-/// `syntax-highlight-max-bytes`) — the caller's `object_spans` then collects
-/// nothing, which is the same "no grammar" no-op every structural command
-/// already has. Also a no-op — rather than a blocking parse — in three cases
-/// a fresh reparse here cannot help:
-///
-/// - **No committed tree yet.** Before the worker's first parse lands,
-///   `build_request` has no `old_tree` to diff against, so this would run a
-///   full parse of the whole buffer (up to `syntax-highlight-max-bytes`) on
-///   the UI thread while the worker parses the identical bytes in the
-///   background. `object_spans` already returns `ObjectSpans::default()`
-///   when `layers` is `None`, so the command reads as the same "no grammar"
-///   no-op until the next frame installs the worker's result.
-/// - **Over the byte cap.** `reparse_stale_buffers` detaches syntax from an
-///   over-cap buffer, but only once a frame — a paste that grows a buffer
-///   past the cap is not yet detached if a structural keypress lands in the
-///   same input batch. Checked here too rather than parsing the whole buffer
-///   once before the next frame catches up.
-/// - **No layer defines a textobjects query.** A grammar with no
-///   `textobjects.scm` (most of them — PLUM's fetch is best-effort) can
-///   never make `object_spans` return anything either way, so reparsing to
-///   answer it is wasted work, worst on a `.`-repeat or macro batch that
-///   pays it once per step. Misses one case: an edit that introduces a
-///   *new* injected layer carrying a textobjects query is missed for this
-///   one keypress — the next command call sees it.
+/// No-op when the buffer has no syntax, and also when a blocking parse here
+/// cannot help:
+/// - no committed tree yet: it would be a full parse on the UI thread racing
+///   the worker's identical one;
+/// - over the byte cap: a paste can outgrow it before the next frame detaches
+///   syntax;
+/// - no layer has a textobjects query: `object_spans` would return nothing
+///   anyway. An edit that adds a new injected layer with one is missed for
+///   that one keypress.
 pub(in crate::editor) fn ensure_syntax_current(state: &mut EditorState, bid: BufferId) {
     let size_ok = state.syntax_size_ok(bid);
     let buf = state.buffers.get(bid);

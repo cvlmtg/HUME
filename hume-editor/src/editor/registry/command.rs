@@ -33,31 +33,20 @@ pub(in crate::editor) type FocusedCmdFn = fn(
     MotionMode,
 ) -> Result<(), CommandError>;
 
-/// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field — the
-/// compiler-enforced answer to "can `(call! \"cmd\" pane)` act on a pane
-/// other than the focused one". Motion/Selection/Edit have no field for
-/// this: every one of them accepts any pane showing its buffer, since a pure
-/// `fn(&BufferText, SelectionSet, ...)`/`fn(BufferText, SelectionSet) -> ...`
-/// body has no way to reach anything *but* the buffer it's handed.
+/// Body shape for [`MappableCommand::EditorCmd`]'s `fun` field: decides at
+/// compile time whether `(call! "cmd" pane)` may act on a non-focused pane.
+/// Motion/Selection/Edit need no such field, since a pure body can only reach
+/// the buffer it is handed.
 ///
-/// Two variants, not more: every native command acts through a pane — even
-/// one that reads only its buffer, since selections and the search cursor
-/// live per (pane, buffer) — and every command that moves focus, changes the
-/// focused pane's buffer, or touches focus-bound state (a mode layer, the
-/// sticky Extend flag, an Insert/paste session) acts on the focus by
-/// definition. Requiring its handle to *be* the focus makes an async caller
-/// state that assumption instead of silently acting on whatever is focused
-/// when it runs.
+/// A command that moves focus, changes the focused pane's buffer, or touches
+/// focus-bound state (a mode layer, sticky Extend, an Insert/paste session)
+/// is `FocusedPane`, so an async caller must prove its handle is the focus
+/// instead of acting on whatever is focused when it runs. Everything else is
+/// `Pane`.
 ///
-/// Wrapped in [`NativeBody`] like every other native variant's body — see
-/// [`NativeBody`]'s own doc for why the wrapping matters; this enum is what
-/// decides *which* signature a given command's function pointer must have,
-/// checked at registration time by `registry/defaults/builder.rs`'s two
-/// `ecmd_*` constructors (one per variant — a call site names its shape by
-/// which constructor it calls, and the compiler rejects a function pointer
-/// of the wrong signature). `commands::pipeline`'s dispatch funnel binds
-/// each variant to the one target type its signature needs (any pane for
-/// `Pane`, a proven-focused [`FocusedPane`] for `FocusedPane`).
+/// Wrapped in [`NativeBody`]. `registry/defaults/builder.rs` has one `ecmd_*`
+/// constructor per variant, so a function pointer of the wrong signature
+/// fails to compile.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum EditorCmdBody {
     Pane(PaneCmdFn),

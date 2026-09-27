@@ -353,32 +353,16 @@ impl PaneView {
     }
 }
 
-/// Build a new pane viewing `buffer_id`: sign column, line-number gutter,
-/// bracket-match/search-match/diagnostic/extra-highlight sources, inlay-hint
-/// decoration, virtual-line source, line-background tint (all from
-/// [`hume_decorations::build_providers`]), and completion/hover/selection-
-/// menu/LSP overlays (from [`hume_ui::register_overlays`]). Wrap mode is not
-/// seeded here — the new pane starts with no override for any buffer
-/// (`Pane::new`'s empty `wraps` map) and resolves it lazily on every read
-/// (`commands::effective_wrap_mode`).
+/// Build a new pane viewing `buffer_id`, with its decoration providers
+/// ([`hume_decorations::build_providers`]) and overlays
+/// ([`hume_ui::register_overlays`]). Every pane creation site goes through
+/// here; `Pane::new` alone has an empty `ProviderSet`.
 ///
-/// Returns the pane with its freshly-allocated `PaneDecorationHandles` —
-/// every pane gets its own buffers (never shared), so each pane's
-/// decorations come from that pane's own buffer and viewport. The caller
-/// stores them in `EditorState.panes.render` keyed by the new pane's id.
-///
-/// The gutter column is added with its default style; `prepare_frame` syncs
-/// the buffer-resolved `line-number-style` into every pane's gutter before
-/// each render (see `sync_line_number_style`), so the seeded style never
-/// reaches a frame.
-///
-/// Single source of truth for pane construction — every creation site
-/// (`Editor::open`'s bootstrap pane, `commands::open_pane`) goes through
-/// this, so panes render identically. `Pane::new` alone has an empty
-/// `ProviderSet` (no gutter column). Sole caller of
-/// `hume_decorations::build_providers`/`hume_ui::register_overlays` — the
-/// two sibling calls that together populate one pane's `ProviderSet`, one
-/// per crate, since decoration providers and overlay widgets live apart.
+/// Returns the pane with its own `PaneDecorationHandles` (never shared
+/// between panes), which the caller stores in `EditorState.panes.render`.
+/// Wrap mode is not seeded: it resolves lazily via
+/// `commands::effective_wrap_mode`. The gutter's seeded style never reaches a
+/// frame, since `prepare_frame` syncs `line-number-style` before each render.
 pub(in crate::editor) fn build_pane(
     registry: &mut hume_engine::theme::ScopeRegistry,
     views: &hume_ui::OverlayViews,
@@ -535,53 +519,22 @@ impl Editor {
         }
     }
 
-    /// Toggle `fp`'s wrapping on/off, for the buffer it
-    /// currently views — the write path behind `:wrap`/`:toggle-soft-wrap`.
-    /// Returns the new wrapping state.
+    /// Toggle `fp`'s wrapping for the buffer it currently views (`:wrap`,
+    /// `:toggle-soft-wrap`). Returns the new wrapping state. Like
+    /// `set_wrap_override`, this writes `Pane::wraps` for the current buffer
+    /// only.
     ///
-    /// Turning wrapping *off* stashes the pane's current override into
-    /// `WrapOverride::saved` — `None` if it was inheriting from the
-    /// buffer/global setting, `Some(m)` if it was explicitly pinned to `m` —
-    /// then pins the pane to `WrapMode::None`. Like `set_wrap_override`,
-    /// this writes to `Pane::wraps` keyed by the current buffer, so it does
-    /// not follow the pane to a buffer it switches to next.
+    /// Turning off saves the current override in `WrapOverride::saved` (`None`
+    /// if inheriting) and pins `WrapMode::None`. Turning on restores that
+    /// override, so an inheriting pane keeps following later `:set` changes.
+    /// If the result would not wrap, it pins the global `wrap_mode` when that
+    /// wraps, else `DEFAULT_WRAP_STYLE`, so `:wrap` never no-ops.
     ///
-    /// Turning wrapping back *on* restores that provenance rather than a
-    /// frozen resolved value: a pane that was inheriting goes back to
-    /// inheriting, so it keeps following later `:set buffer`/`:set global`
-    /// changes instead of getting stuck on whatever style happened to be
-    /// active at toggle-off time; a pane that was explicitly pinned goes
-    /// back to that exact pin. If restoring "inheriting" wouldn't actually
-    /// wrap (the buffer/global setting is `none`, or this pane has never
-    /// wrapped before), falls back to pinning the *configured* global style
-    /// (`EditorSettings::wrap_mode`) if that wraps, else `DEFAULT_WRAP_STYLE`
-    /// — `:wrap` must always visibly wrap, never silently no-op, but must
-    /// not override a deliberate global `none` with a style the user never
-    /// asked for.
-    ///
-    /// Toggling always flips whether the pane is actually wrapping (off→on
-    /// is guaranteed to end up wrapping, by the fallback above; on→off
-    /// always ends at `WrapMode::None`), so horizontal scroll — meaningless
-    /// once wrapped — is unconditionally zeroed. This is a real write, not
-    /// just belt-and-suspenders: `Viewport::reveal_horizontal`
-    /// also zeroes it for any wrapping pane on the next frame, but only a
-    /// frame later, and code reading the viewport between this call and the
-    /// next render (including several existing tests) expects it already
-    /// zero.
-    ///
-    /// The top's slot, by contrast, is left alone here on purpose: it
-    /// addresses a display line inside the top's line's whole visual block
-    /// (`before` + content display lines + `after`) in *either* wrap mode —
-    /// a mode change can leave it past the new block's display-line count
-    /// (off→on starts a narrower block; on→on width/style changes can
-    /// shrink it), and that out-of-range case is exactly what the next
-    /// `Viewport::top_at` read repairs, so there's no need
-    /// to throw the address away here. What clamping *cannot* catch: only a
-    /// `content`-side change (not this function) grows the block, so a slot
-    /// that addressed an `after` display line in no-wrap can still be in
-    /// range once wrapping grows `content` — landing on a wrap display line
-    /// of the line's own text instead of the virtual display line it used
-    /// to point at. Silent, not a bug this function fixes.
+    /// Horizontal scroll is zeroed now rather than by the next frame's
+    /// `Viewport::reveal_horizontal`, because callers read the viewport
+    /// before then. The top's slot is left alone: the next `Viewport::top_at`
+    /// clamps an out-of-range slot. A slot that pointed at an `after` virtual
+    /// line can stay in range and land on a wrap display line instead.
     pub(in crate::editor) fn toggle_wrap(&mut self, fp: FocusedPane) -> bool {
         use hume_engine::pane::{DEFAULT_WRAP_STYLE, WrapMode};
 

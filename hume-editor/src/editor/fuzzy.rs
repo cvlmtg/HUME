@@ -9,32 +9,17 @@
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
-/// Which caller is scoring, and therefore which of two nucleo behaviors it
-/// wants. The two axes below must agree, so they're bound to one enum instead
-/// of two independent constructor args that could drift out of sync:
+/// Which caller is scoring. Query parsing and prefix bonus must agree, so one
+/// enum picks both.
 ///
-/// - **Query parsing.** The picker is an fzf-style finder over a query the
-///   user typed as *search syntax* — `^ $ ! '` at word boundaries select
-///   prefix/postfix/negated/substring matching, and whitespace separates
-///   independent search terms (`Pattern::parse`). Completion's query is a
-///   raw slice of buffer text between the session anchor and the cursor:
-///   those characters are legitimate identifier content (`$var`,
-///   `println!`), not syntax, and a space in the query is not a separator
-///   between terms — it's the completed token's own boundary, typed past.
-///   So completion scores the query as one [`Atom`] (`AtomKind::Fuzzy`)
-///   covering the whole string including any whitespace, rather than a
-///   whitespace-segmented [`Pattern`]: a query holding a space can then
-///   only match a haystack that itself contains that space (LSP labels
-///   never do), which is what makes typing a space during completion score
-///   every candidate `None` and close the menu — the same outcome the
-///   deleted hand-rolled subsequence matcher gave "for free" by scanning
-///   raw `char`s with no notion of word boundaries at all.
-/// - **Prefix bonus.** nucleo's `Config::prefer_prefix` doc says it's "only
-///   recommended for autocompletion usecases where the expectation is that the
-///   user is typing the entire match... For a full fzf-like fuzzy
-///   matcher/picker word segmentation and explicit prefix literals should be
-///   used instead" — exactly the split above, so Autocomplete turns it on and
-///   Picker leaves nucleo's default (`false`).
+/// - Query parsing: the picker parses fzf-style search syntax (`^ $ ! '`,
+///   whitespace-separated terms) into a [`Pattern`]. Completion's query is raw
+///   buffer text where those characters are identifier content (`$var`,
+///   `println!`), so it is one [`Atom`] (`AtomKind::Fuzzy`) spanning the whole
+///   query, whitespace included. A typed space then matches no LSP label, which
+///   closes the menu.
+/// - Prefix bonus: nucleo recommends `Config::prefer_prefix` only for
+///   autocompletion, so Autocomplete enables it and Picker keeps the default.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum FuzzyProfile {
     Picker,

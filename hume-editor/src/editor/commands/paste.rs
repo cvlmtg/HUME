@@ -103,33 +103,15 @@ impl EditorState {
 
 // ── Paste ────────────────────────────────────────────────────────────────────
 
-/// Bare smart-paste only — only `do_smart_paste` calls this, and only for a
-/// bare paste: if every selection's current text matches `values` one-to-one,
-/// collapse the selections so the paste below lands next to the existing text
-/// instead of replacing it — repeat-paste ("stack another copy") and
-/// swap-paste ("replace what's different") are the same rule, decided by
-/// content, not by what command ran last.
+/// For a bare smart paste (`do_smart_paste` only): if every selection's text
+/// matches `values` one-to-one, collapse the selections so the paste lands
+/// next to the existing text instead of replacing it. Repeat-paste and
+/// swap-paste are thus decided by content, not by the previous command.
 ///
-/// Plain paste never calls this — it always replaces a non-collapsed
-/// selection, unconditionally, so a script driving it never has to check
-/// what's already selected before pasting; to append, the script collapses
-/// the selection itself first. An explicit-register smart paste (`"Xp`)
-/// skips it too: that's a direct "paste register X here" order, sharing the
-/// plain-paste replace contract. Bare smart-paste's own goal is different:
-/// staying predictable to a human who just wants "paste, however that's
-/// smart to do" means noticing when a repeat would clobber what it just
-/// pasted.
-///
-/// All-or-nothing across the whole set: a length mismatch, or any single
-/// selection whose text differs from its value, means replace. The
-/// underlying op (`paste_after`/`paste_before`) applies one uniform
-/// charwise/linewise mode to every selection, so there is no way to replace
-/// selection 1 while appending next to selection 2 — partial agreement can't
-/// be represented, so it falls back to the always-safe replace. A selection
-/// that is already collapsed (a bare cursor) is untouched either way:
-/// `paste_after`/`paste_before` already insert next to a collapsed cursor
-/// rather than replacing, so this rule only has visible effect on a real
-/// (non-collapsed) selection.
+/// Plain paste and register-explicit smart paste (`"Xp`) always replace, so
+/// scripts get a predictable contract. The check is all-or-nothing: the paste
+/// op applies one mode to every selection, so partial agreement falls back to
+/// replace. Already-collapsed selections are unaffected either way.
 fn collapse_if_repeat(
     text: &BufferText,
     sels: SelectionSet,

@@ -15,32 +15,19 @@ fn lsp_home_dir() -> std::path::PathBuf {
         .join("runtime/plugins/core/steel-server/lsp-home")
 }
 
-/// Builds a `ScriptingHost` + `Editor` in exactly the state
-/// `Editor::init_scripting` reaches right before it would evaluate a user's
-/// `init.scm`: native command names pre-registered
-/// (`register_command_names`), then `prelude.scm` → `languages.scm` →
-/// `grammars.scm` evaluated in production order (mirrors
-/// `scripting_setup.rs`'s own `eval_runtime_scheme` sequence, which is
-/// private to that module — this re-runs the same two calls per file rather
-/// than exposing it). No user `init.scm` runs, so `host.host_global_names()`
-/// afterward is exactly HUME's shipped surface, independent of any
-/// developer's own config. Also returns the real command-registry names, so
-/// a caller that evaluates more `.scm` on top (e.g. `plugin.scm`) can do so
-/// with the same `builtin_names` production passes.
+/// Builds a `ScriptingHost` + `Editor` in the state `Editor::init_scripting`
+/// reaches just before evaluating the user's `init.scm`: native command names
+/// registered, then `prelude.scm`, `languages.scm` and `grammars.scm`
+/// evaluated in production order. With no user config, `host_global_names()`
+/// is HUME's shipped surface. Also returns the command-registry names, for
+/// callers that evaluate more `.scm` with production's `builtin_names`.
 ///
-/// `grammars.scm` calls `(runtime-dir)` to build grammar paths, so
-/// `HUME_RUNTIME` must point at the real `runtime/` dir while `ScriptingHost`
-/// is constructed — `cargo test`'s cwd is the crate dir, not the workspace
-/// root, so `hume_platform::dirs::runtime_dir()`'s cwd-relative fallback
-/// misses. `ScriptingHost::new()` caches the result into `self.dirs`
-/// (`hume-scripting/src/lib.rs`) rather than re-reading the env var on every
-/// later `(runtime-dir)` call, so the var only needs to be set for that one
-/// constructor call, not for the rest of this function.
-// `std::env::set_var`/`remove_var` here mutate the process-global
-// `HUME_RUNTIME` var — sound only under the `TEST_GLOBALS.claim(Global::Env)`
-// taken just below for the span both calls bracket, which is what makes this
-// the sanctioned caller `clippy.toml`'s `disallowed-methods` entry lists as
-// exempt.
+/// `grammars.scm` calls `(runtime-dir)`, and the crate-dir cwd under
+/// `cargo test` defeats the cwd-relative fallback, so `HUME_RUNTIME` is set
+/// around `ScriptingHost::new()`, which caches it.
+// Mutating the process-global env var is sound only under the
+// `TEST_GLOBALS.claim(Global::Env)` below, which makes this a sanctioned
+// `disallowed-methods` caller.
 #[allow(clippy::disallowed_methods)]
 fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash::FxHashSet<String>)
 {

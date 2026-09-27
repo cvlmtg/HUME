@@ -1,32 +1,18 @@
-//! The two completion session types — [`buffer::BufferSession`] (Insert
-//! mode) and [`minibuf::MinibufSession`] (the `:` line) — each a Rust store
-//! holding what every participating source has answered, ranked per
-//! keystroke against each source's *own* token. `orchestrate.rs` opens
-//! whichever one a trigger names, invokes sources into it, feeds their
-//! answers back, and tells a `Buffer` session about edits — this module
-//! knows nothing about *how* a source runs, only what it said and where.
+//! The two completion session types: [`buffer::BufferSession`] (Insert mode)
+//! and [`minibuf::MinibufSession`] (the `:` line). Each stores what every
+//! participating source answered and ranks it per keystroke against that
+//! source's own token. `orchestrate.rs` opens sessions, invokes sources, and
+//! reports edits; this module knows only what a source said and where.
 //!
-//! Ranking and the menu are identical machinery for both targets — that
-//! shared bookkeeping (a source's slot, the current ranked list, the fuzzy
-//! matcher, the menu's selected row) lives in [`slots::SlotSet`], generic
-//! over each target's own id and span types
-//! ([`registry::BufferSourceId`](super::registry::BufferSourceId)/
-//! [`buffer::BufferSpan`] vs.
-//! [`registry::MinibufSourceId`](super::registry::MinibufSourceId)/
-//! [`minibuf::MinibufSpan`]). What genuinely differs — the accept
-//! mechanism (a buffer edit vs. a splice into the `:` line's input),
-//! further-typing behavior, whether cross-source dedup applies at all —
-//! is each session type's own, so there is no arm for the other target
-//! that can never run, and no outside caller has to ask "which target is
-//! this?" before it can read anything: a `&BufferSession` or
-//! `&MinibufSession` reference already answers that by its type.
+//! Ranking and menu bookkeeping are shared in [`slots::SlotSet`], generic over
+//! each target's id and span types. What differs (accepting as a buffer edit
+//! vs. a splice into the `:` line, further-typing behavior, cross-source
+//! dedup) belongs to each session type, so the type itself says which target
+//! a caller holds.
 //!
-//! Every fact about a source's answer is per-[`slots::Invocation`], never
-//! session-wide: the document snapshot its `textEdit` ranges were computed
-//! against, the token span it answered for, its items, its `isIncomplete`
-//! flag. A second source, or the same source re-invoked against a later
-//! document (the LSP `isIncomplete` flow), gets its own — so nothing here
-//! has to assume every contributor saw the same buffer.
+//! Every fact about a source's answer (document snapshot, token span, items,
+//! `isIncomplete`) is per-[`slots::Invocation`], not session-wide, so
+//! contributors need not have seen the same buffer.
 
 mod accept;
 mod buffer;
@@ -39,35 +25,19 @@ pub(in crate::editor) use buffer::{BufferSession, LiveDoc};
 pub(in crate::editor) use minibuf::MinibufSession;
 pub(in crate::editor) use slots::Invocation;
 
-/// How a source's items are matched against its token's typed text — a
-/// per-source declaration (`registry.rs`), since one session mixes sources
-/// with different universes.
+/// How a source's items are matched against its token's typed text. Declared
+/// per source (`registry.rs`), since one session mixes sources.
 ///
-/// - `Fuzzy` — nucleo scoring (`FuzzyMatcher`). The source's candidate
-///   universe is stable (or replaced wholesale by a re-invocation, the LSP
-///   `isIncomplete` flow); [`slots::SlotSet::rank_with`] re-scores it
-///   locally on every keystroke without re-invoking the source.
-/// - `String { case_sensitive }` — a boundary-safe prefix gate (`starts_with`,
-///   or `eq_ignore_ascii_case` on the matching-length head when
-///   `case_sensitive` is `false`), tied score on a match. The source's
-///   universe is *also* stable (e.g. "every registered command name") — only
-///   the matching rule differs from `Fuzzy`. A `String` match's tied score
-///   is always `0`, never above a `Fuzzy` match's own score once anything is
-///   typed (nucleo scores every non-empty match above `0`) — deliberate, not
-///   a gap: in a buffer with an attached LSP server, its `Fuzzy` items should
-///   win once the user narrows by typing, and a `String`-kind source (e.g.
-///   `core:buffer-words`) earns its keep where `Fuzzy` sources answer
-///   nothing at all (a comment, a string literal, a plain-text buffer with
-///   no server) — `#:priority` only ever breaks a tie on the *empty*
-///   pattern, where every source scores `0` alike. See `score_slot`'s own
-///   `MatchKind::String` arm.
-/// - `Delegated` — the source computed its own finished, already-ordered
-///   result fresh from the live input (a directory read, a multi-phase
-///   parse); this session does no scoring of its own for these items: a
-///   tied score, and `rank_with`'s own sort key skips the sortText tiebreak
-///   for a `Delegated` slot entirely, so the final index-ascending tiebreak
-///   preserves the source's own order regardless of what `sort_text` an
-///   item happens to carry.
+/// - `Fuzzy`: nucleo scoring. The candidate universe is stable (or replaced
+///   by an LSP `isIncomplete` re-invocation), so [`slots::SlotSet::rank_with`]
+///   re-scores locally each keystroke.
+/// - `String { case_sensitive }`: a prefix gate (`starts_with`, or
+///   `eq_ignore_ascii_case` on the head when not case-sensitive) with a tied
+///   score of `0`. Nucleo scores any non-empty match above `0`, so once the
+///   user types, `Fuzzy` items (e.g. from an LSP server) outrank `String` ones;
+///   `#:priority` only breaks ties on the empty pattern.
+/// - `Delegated`: the source returned a finished, ordered result. Scores are
+///   tied and the sortText tiebreak is skipped, so the source's order is kept.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) enum MatchKind {
     Fuzzy,

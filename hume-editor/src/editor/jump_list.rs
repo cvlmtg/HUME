@@ -173,54 +173,25 @@ impl JumpList {
     /// Remap every entry for `buf_id` through an edit, keeping stored
     /// positions pointing at the same text rather than the same offset, and
     /// merge any two adjacent entries an edit has newly collapsed onto one
-    /// line.
+    /// line. Other buffers' entries are untouched, and never merge because
+    /// their lines don't change.
     ///
-    /// Entries for any other buffer are left untouched — the jump list is
-    /// cross-buffer (that's what makes cross-buffer Ctrl-o work), so a remap
-    /// triggered by an edit in one buffer must not touch another buffer's
-    /// entries. This holds for the merge too: two untouched entries always
-    /// have equal pre- and post-edit lines, which the merge condition below
-    /// requires to *differ* — so it can never fire between them.
+    /// Each entry runs its own `PosMapCursor`: entries aren't sorted relative
+    /// to each other, so one shared forward cursor can't walk them. That costs
+    /// `O(entries × ops)` for large changesets (`:%s`, multi-cursor, format).
+    /// Selections within an entry are sorted and do share one cursor.
     ///
-    /// Runs `PosMapCursor` once per entry rather than batching every entry's
-    /// position through one shared cursor (the "batch `PosMapCursor`, never
-    /// per-position" rule `docs/LSP.md` sets for diagnostics/decorations):
-    /// unlike a `SelectionSet`, entries are not sorted relative to one
-    /// another (`backward`/`push` interleave buffers and lines freely), so a
-    /// forward-only cursor can't walk them in one pass without first sorting
-    /// and later scattering results back. Sound for a single keystroke's
-    /// changeset (a handful of ops against `jump-list-capacity`'s default of
-    /// 100 entries); a changeset with many ops (a multi-cursor edit, `:%s`,
-    /// an LSP whole-document format, or a composed multi-revision
-    /// `:earlier`/`:later` walk) pays `O(entries × ops)` here, the case
-    /// the batched form would instead win. `Selection`s *within* one entry
-    /// are already sorted, so that inner mapping
-    /// (`SelectionSet::translate_in_place_with`) does share one cursor across
-    /// them.
+    /// `edits` must be `cs.edited_old_ranges()`, computed once by the caller.
+    /// `text_pre`/`text_post` are the text before and after the edit:
+    /// `text_pre` for sticky-column invalidation, `text_post` to recompute the
+    /// cached `primary_line`.
     ///
-    /// `edits` must be `cs.edited_old_ranges()` — the caller computes it once
-    /// and passes it to every pane's list, rather than each list rebuilding
-    /// the same `Vec` from `cs`.
-    ///
-    /// `text_pre`/`text_post` must be the buffer text immediately before and
-    /// after the edit — `text_pre` for `translate_in_place_with`'s own
-    /// sticky-column invalidation, `text_post` to recompute `primary_line`,
-    /// which is a cached line index rather than an offset and so can't be
-    /// mapped through `cs` directly.
-    ///
-    /// Merging runs in the same pass as the remap, via the write-index
-    /// compaction `SelectionSet::merge_overlapping_in_place` uses: entries
-    /// are moved (`VecDeque::swap`), never cloned, and the common case — no
-    /// merge — costs one self-swap per entry, no allocation. The merge
-    /// condition is deliberately narrower than "same slot": `backward()`
-    /// deliberately appends a same-line entry without dedup (so `forward()`
-    /// can still return to it, e.g. two search matches on one line), so a
-    /// pre-existing same-slot pair must survive here. Only a pair whose lines
-    /// *differed* before this edit and *match* after it is a collision this
-    /// edit actually created — that's the one case worth merging, keeping the
-    /// newer entry, matching `push`'s own `*last = entry`. The cursor is
-    /// adjusted exactly as `prune_buffer` adjusts it for a removal: by how
-    /// many merged-away entries had an original index before it.
+    /// Merging is write-index compaction in the same pass (swaps, no
+    /// allocation). Only a pair whose lines differed before the edit and match
+    /// after it merges, keeping the newer entry as `push` does. Pre-existing
+    /// same-line pairs survive, since `backward()` appends them on purpose so
+    /// `forward()` can return. The cursor shifts by the number of merged-away
+    /// entries before it, as in `prune_buffer`.
     pub(in crate::editor) fn translate_in_place(
         &mut self,
         buf_id: BufferId,

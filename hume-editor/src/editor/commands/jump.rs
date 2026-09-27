@@ -60,32 +60,16 @@ pub(in crate::editor) fn cmd_jump_forward(
 
 // ── Alternate buffer ─────────────────────────────────────────────────────────
 
-/// `Ctrl-6` / `goto-alternate-buffer` — switch to the second-most-recently-
-/// viewed buffer: one global "what was I looking at before," the same
-/// history regardless of which pane asks, not a per-pane one.
+/// `Ctrl-6` / `goto-alternate-buffer`: switch to the second-most-recently
+/// viewed buffer. The history is global (`mru`), not per pane, so
 /// [`BufferStore::second_most_recent`](crate::editor::buffer::store::BufferStore::second_most_recent)
-/// reads `mru`'s own last two entries directly — no "current buffer" needs
-/// naming at all, since `mru`'s tail already *is* whatever was viewed most
-/// recently, however it was viewed (a keypress on the focused pane, or a
-/// `goto-alternate-buffer` touch from any other).
+/// needs no notion of a current buffer. The target pane's outgoing buffer is
+/// touched first, then the target, so a second call from any pane toggles
+/// back. Both touches are no-ops when `t` is the focused pane.
 ///
-/// Worked example (`mru` tail = most recent): stack `[baz, bar, foo]` (`baz`
-/// seeded at open, never itself touched since), pane A focused on `foo` (so
-/// `mru`'s tail is `foo`), pane B shows `baz`.
-/// `(call! "goto-alternate-buffer" paneB)`: the target is `bar` (`mru`'s
-/// second-to-last) — restoring the same buffer a keypress on the focused
-/// pane would. `t`'s own outgoing buffer (`baz`) is touched onto `mru`
-/// first, then the target (`bar`), leaving `[foo, baz, bar]`. A *second*
-/// `goto-alternate-buffer` on B now reads `mru`'s new last two entries
-/// (`baz`, `bar`) and toggles back to `baz` — the global history moved on
-/// from B's own touches, exactly as a real Ctrl-6 on the pane that had just
-/// touched it would. Both touches are idempotent no-ops for the common case
-/// (`t` is already the focused pane), so keypress behavior is unchanged.
-///
-/// Switches via `switch_pane_to_buffer` directly (not `switch_to_buffer_
-/// with_jump`) because `execute_keymap_command` already records the
-/// pre-switch state for all `is_jump=true` commands — pushing a second jump
-/// entry here would corrupt the jump list on the next Ctrl-o.
+/// Uses `switch_pane_to_buffer`, not `switch_to_buffer_with_jump`:
+/// `execute_keymap_command` already records a jump for `is_jump=true`
+/// commands, and a second entry would corrupt the next Ctrl-o.
 pub(in crate::editor) fn cmd_goto_alternate_buffer(
     state: &mut EditorState,
     view: &mut EngineView,

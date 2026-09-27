@@ -242,35 +242,18 @@ pub(super) fn apply_visual_vertical(
 // ---------------------------------------------------------------------------
 
 /// Duplicate each selection onto each of the `count` lines below it (`down:
-/// true`) or above it (`false`) and add them to the selection set, landing
-/// each copy's anchor and head on the *display* column of the original —
-/// needs a `DisplayLineMap`, so, like the
-/// visual-line motions above, this lives here rather than in `hume-ops`'s
-/// pure `(&BufferText, SelectionSet) -> SelectionSet` signature (see this
-/// module's doc comment).
+/// true`) or above it, landing each copy on the original's display column.
+/// Needs a `DisplayLineMap`, so it lives here rather than in `hume-ops`.
 ///
-/// `DisplayColTarget::NearestContent` reproduces the clamp rule a plain
-/// column placement already needs: stick to the last real character on a
-/// short target line, land on `\n` only when that line is empty.
+/// `DisplayColTarget::NearestContent` clamps to the last real character of a
+/// short line and lands on `\n` only when the line is empty.
 ///
-/// Each successive copy is offset by the *selection's own line span* (1 for
-/// a single-line selection, more for one spanning several buffer lines), not
-/// by one line — stepping by one would leave a multi-line copy overlapping
-/// the selection it came from, which `SelectionSet::from_vec`'s merge would
-/// then fold back into a single, grown selection instead of a duplicate.
-/// Clamped to how many whole spans fit before the buffer's last real content
-/// line (or its start, going up) — a `count` larger than that just lands the
-/// last copy that fits, it doesn't wrap, error, or land partially past the
-/// end.
-///
-/// The primary advances to the furthest copy of the original primary. Every
-/// copy's column is re-derived from the *original* selection, not the
-/// previous copy — so this is not equivalent to `count` separate presses of
-/// the count-1 command, which would re-clamp against each intermediate line
-/// in turn. Re-deriving from the original means a single short line in the
-/// middle of the run only clamps that one copy, instead of collapsing every
-/// copy after it to that line's column. If no copy was added (last-line edge
-/// case) the primary stays on the original.
+/// Copies step by the selection's own line span, since a one-line step would
+/// make a multi-line copy overlap its source and merge with it. `count` is
+/// clamped to the whole spans that fit inside the buffer. Each copy's column
+/// is derived from the original, not the previous copy, so one short line
+/// clamps only its own copy. The primary moves to the furthest copy of the
+/// original primary, or stays put if no copy was added.
 fn copy_selection_vertically(
     dlm: &mut DisplayLineMap<'_>,
     text: &BufferText,

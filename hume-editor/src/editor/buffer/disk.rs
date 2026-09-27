@@ -226,77 +226,27 @@ impl Editor {
         }
     }
 
-    /// `true` if opening a confirm right now would be safe, i.e. it can't
-    /// steal a keystroke from something else already mid-interaction.
+    /// `true` if opening a confirm right now can't steal a keystroke from
+    /// something already mid-interaction. Every condition must hold:
     ///
-    /// Mode gate: `mode_layer()` must be `Base` — `Insert`/`Command`/
-    /// `Search`/`Sift`/`Prompt` are each their own layer type now, so this
-    /// alone rules out an ambient check landing while the user is still
-    /// typing an unsubmitted `:`/`/` line (unsafe: the mode layer is still
-    /// `Command`/`Search`, would steal the next keystroke and hide the
-    /// in-progress line), while still allowing `:e`/`:b`/`:bn`/`:bp`/
-    /// `:checktime` to open one as their own direct result (safe:
-    /// `execute_command` truncates the `Command` layer *before* running the
-    /// command body, so the mode layer is already `Base` again by the time a
-    /// native command like `:e` could open a confirm).
-    ///
-    /// Other-overlay gate: `confirm`/`picker`/`menu`/`drawer` must all be
-    /// absent (anywhere on the stack, not just `top()` — a buried instance
-    /// still owns an unanswered question). The picker is mode-agnostic
-    /// (opens from Normal, same as a confirm) and the menu/drawer only open
-    /// from Normal/Extend too — so without this check an ambient trigger
-    /// could silently steal every key from a picker still on screen — one
-    /// modal owner at a time. A confirm already open is one of those owners
-    /// itself: opening a second would replace the first's model outright,
-    /// retiring an unanswered question and re-pointing the next keystroke at
-    /// a different action than the one on screen when the user started
-    /// reaching for it. `Editor::enter_buffer_disk_check` retires a confirm
-    /// that no longer targets the buffer focus just landed on before it ever
-    /// reaches this check — for *every* switch, interactive or not (a
-    /// Steel/LSP `switch-to-buffer!` included, since both run through the
-    /// same `OnBufferEnter` reaction) — so this guard only needs to cover a
-    /// *different* buffer's check racing a still-open, still-valid confirm.
-    ///
-    /// Deliberately **not** gated on a `Scrollable` popup: it owns no keys
-    /// beyond Ctrl-u/d and dies on the very next one anyway, so it must not
-    /// block the one prompt that actually needs the keyboard —
-    /// `ConfirmLayer`'s default `Layer::popup_eviction` clears any open
-    /// popup before landing, same as every other opener that can land above
-    /// one.
-    ///
-    /// Pending keys: a non-empty `pending_keys` (mid multi-key sequence, e.g.
-    /// `d` waiting for its motion) or a pending `wait_char` (e.g. `f` waiting
-    /// for its target char) means the very next keystroke is already spoken
-    /// for — same hazard class as Insert/Command, just inside Normal mode.
-    ///
-    /// Macro replay: `Editor::drain_replay_queue` calls `settle()` after
-    /// every replayed key, all of it while `is_replaying` is still `true` —
-    /// so any buffer-enter diff a replayed key produces is observed and
-    /// warns instead of prompting, and nothing ever opens a confirm the user
-    /// can no longer answer with a queued replay key. The deferred prompt
-    /// still arrives on the next real buffer-enter, same as any other
-    /// blocked case.
-    ///
-    /// Fresh message this input, `BufferEnter` only: `Editor::handle_input`
-    /// sets `message_logged_this_input` right after dispatch whenever that
-    /// input logged a new warning or error; `Editor::settle` clears it once
-    /// its own drain (including the buffer-enter disk check) has run — a
-    /// command that fails after moving focus (`:qa` naming the first dirty
-    /// buffer) needs its own message to stay on screen, not have it replaced
-    /// by an unrelated disk-change confirm. Only the confirm is blocked;
-    /// `check_buffer_disk_state`'s warn fallback still runs, so this never
-    /// goes fully silent.
-    ///
-    /// `Ambient` is deliberately exempt: `run_steel_command` queues
-    /// `OnFocusGained` for an inline-output command that regained the
-    /// terminal, and that command may itself have just logged its own
-    /// warning (a non-zero exit, a lint note) — the same dispatch that set
-    /// the flag is what caused the disk change this Ambient sweep is
-    /// checking for, not an unrelated one, so it must not shadow this
-    /// confirm the way a genuinely unrelated buffer-enter would. `Explicit`
-    /// (`:checktime`) runs synchronously during dispatch, before
-    /// `handle_input` even assigns the flag, so the trigger never observes
-    /// it either way.
+    /// - Mode layer is `Base`, so an unsubmitted `:`/`/` line is never hidden.
+    ///   `:e`/`:b`/`:checktime` can still open one, since `execute_command`
+    ///   truncates the `Command` layer before running the command body.
+    /// - No `confirm`/`picker`/`menu`/`drawer` anywhere on the stack: one modal
+    ///   owner at a time, and a second confirm would replace an unanswered one.
+    ///   `Editor::enter_buffer_disk_check` already retires a confirm for a
+    ///   buffer focus left, so this only guards against a different buffer's
+    ///   check. A `Scrollable` popup does not block: it is evicted on landing.
+    /// - No pending keys or `wait_char`: the next keystroke is already spoken
+    ///   for.
+    /// - Not replaying a macro: replayed keys can't answer a prompt, so those
+    ///   checks warn and the prompt waits for the next real buffer-enter.
+    /// - For `BufferEnter` only, no warning or error logged by this input
+    ///   (`message_logged_this_input`), so a failing command's message (`:qa`
+    ///   naming a dirty buffer) stays on screen. The warn fallback still runs.
+    ///   `Ambient` is exempt because the inline-output command that set the
+    ///   flag is what caused the change it checks. `Explicit` runs before the
+    ///   flag is set.
     fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
         self.state
             .input

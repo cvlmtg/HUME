@@ -1,32 +1,20 @@
 //! Mouse event handling.
 //!
-//! Mouse events are delivered when normal tracking (mode 1000) is enabled.
-//! Button-event tracking (mode 1002) is only enabled when `editor.mouse_select`
-//! is true, so `MouseEventKind::Drag` events are received only in that case.
+//! Events arrive when normal tracking (mode 1000) is enabled. Button-event
+//! tracking (mode 1002, which delivers `MouseEventKind::Drag`) is enabled only
+//! when `editor.mouse_select` is true.
 //!
-//! A click's `(column, row)` is terminal-absolute, but every pane's own
-//! coordinate space starts at its rect's origin — a split puts more than one
-//! pane on screen at once, so a click is first hit-tested against
-//! `EngineView::pane_rects()` ([`Editor::pane_at_screen_pos`]) to find which
-//! pane it landed in and to translate the coordinate into that pane's frame
-//! before `screen_to_char_offset` (`hume-editor/src/editor/cursor.rs`) resolves it
-//! to a buffer char offset.
+//! Click coordinates are terminal-absolute, so [`Editor::pane_at_screen_pos`]
+//! first finds the pane under the pointer and translates into its frame
+//! before `screen_to_char_offset` resolves a buffer offset.
 //!
-//! Scroll wheel events are `commands::scroll_view` with `count =
-//! mouse-scroll-lines` — the same viewport-plus-cursor scroll `Ctrl-d`/`Ctrl-u`
-//! and `PageDown`/`PageUp` use, just with a smaller count. Unlike those
-//! keyboard commands (always the focused pane), the wheel hit-tests its own
-//! event coordinates through `pane_at_screen_pos` to scroll whichever pane
-//! the pointer is over, falling back to the focused pane on a miss — but,
-//! unlike a click, never moves focus there.
+//! The wheel runs `commands::scroll_view` with `count = mouse-scroll-lines`,
+//! like `Ctrl-d`/`Ctrl-u`. It scrolls the pane under the pointer (the focused
+//! pane on a miss) without moving focus.
 //!
-//! A mouse event walks the input-layer stack exactly like a key or a paste
-//! (`InputEvent::Mouse` — `input_stack.rs`), via `Editor::dispatch_input`
-//! (`handle_input`'s caller, `lifecycle.rs`) — a `Popup` layer's own policy
-//! dismisses it unconditionally on any mouse event, same as any other input
-//! it doesn't recognize (`input_stack/popup.rs`'s `popup_input`).
-//! [`Editor::base_mouse`] is `Base`'s own policy, the `match mouse.kind`
-//! reached only after the stack has gated the event.
+//! Mouse events walk the input-layer stack like keys (`InputEvent::Mouse`); a
+//! `Popup` dismisses on any of them. [`Editor::base_mouse`] is the `Base`
+//! layer's policy, reached only after the stack has let the event through.
 
 use hume_engine::pipeline::PaneId;
 use hume_grid::{Position, Rect};

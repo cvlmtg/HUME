@@ -28,29 +28,21 @@ pub(in crate::editor) fn set_theme(
 
 /// Load a theme by name and apply it to the engine view.
 ///
-/// Searches `<config_dir>/themes/<name>.toml` first, then
-/// `<data_dir>/themes/<name>.toml`, then `<runtime_dir>/themes/<name>.toml`.
+/// Searches `themes/<name>.toml` under the config, data, then runtime dir.
 ///
-/// A theme with a malformed entry — a bad color, an unsupported scope shape
-/// — still loads and still replaces the engine view's theme; only a problem
-/// with the document as a whole (unreadable TOML, a missing `inherits`
-/// parent) fails outright and leaves the current theme unchanged. See
-/// [`hume_engine::theme::loader::LoadedTheme`]'s doc for the exact split.
-/// `prepare_frame`'s `bake_if_stale` re-bakes a newly applied theme against
-/// the live scope registry before the next render (a freshly loaded theme's
-/// `baked` table starts empty, which is always stale).
+/// Malformed entries (a bad color, an unsupported scope shape) only produce
+/// warnings: the theme still loads and replaces the current one. A
+/// document-level failure (unreadable TOML, a missing `inherits` parent)
+/// leaves the current theme unchanged; see
+/// [`hume_engine::theme::loader::LoadedTheme`]. `prepare_frame` bakes the new
+/// theme before the next render.
 ///
-/// Every warning is pushed to `message_log` individually; a non-empty
-/// `warnings` also gets a one-line count written to `status_msg`, so the
-/// theme applies but the user can see something didn't come through. A
-/// document-level failure writes its own message to `status_msg` instead and
-/// leaves `popup` untouched.
+/// Each warning goes to `message_log`, with a one-line count in `status_msg`.
+/// A document-level failure writes its own message to `status_msg` and
+/// leaves `popup` untouched. Returns `true` unless the load failed outright.
 ///
-/// Returns `true` unless the load failed outright.
-///
-/// `engine_view`, `message_log`, `status_msg`, and `popup` are disjoint
-/// `Editor` fields; passing them separately lets the caller hold
-/// `&editor.settings.theme` for the `name` argument without cloning.
+/// The `Editor` fields are passed separately so the caller can borrow
+/// `&editor.settings.theme` for `name` without cloning.
 pub(in crate::editor) fn load_theme_by_name(
     engine_view: &mut EngineView,
     message_log: &mut MessageLog,

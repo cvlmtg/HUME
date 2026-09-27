@@ -1,40 +1,28 @@
-//! Command registry — the single namespace for all user-facing commands.
+//! Command registry: the single namespace for all user-facing commands.
 //!
-//! Two kinds of commands share this registry:
+//! - [`MappableCommand`]: bindable to keys. The keymap trie stores names,
+//!   resolved here at dispatch time by `execute_keymap_command`.
+//! - [`TypedCommand`]: invoked from the `:` command line via
+//!   [`CommandRegistry::get_typed`], which accepts aliases.
 //!
-//! - [`MappableCommand`] — bindable to keys. The keymap trie stores command
-//!   *names*; the registry resolves them to `MappableCommand` values at
-//!   dispatch time inside `execute_keymap_command` (`mappings/execute.rs`).
-//! - [`TypedCommand`] — invocable from the `:` command line. The dispatcher
-//!   in `execute_command` (`input_stack/command.rs`) calls
-//!   [`CommandRegistry::get_typed`] to resolve name or alias to a
-//!   `TypedCommand`. `:` resolves *only* typed commands — a mappable
-//!   command's name is unreachable from the command line, and a typed
-//!   command's name is unreachable from a key binding. Each is looked up by
-//!   its own accessor; there is no cross-kind fallback.
-//!
-//! The shared namespace prevents name collisions between the two kinds and
-//! provides a single source for `:help` and command-palette display.
+//! Each kind is looked up by its own accessor with no cross-kind fallback, so
+//! a mappable name is unreachable from `:` and vice versa. Sharing one
+//! namespace prevents collisions and gives `:help` a single source.
 //!
 //! # Extend mode
 //!
-//! Extend mode is handled at dispatch time via a `MotionMode` parameter, not
-//! via separate extend-variant commands. All Motion and Selection commands
-//! accept `MotionMode` and branch on `Move` vs `Extend`. EditorCmds that
-//! support extend carry `extendable: true`; the dispatcher passes the correct
-//! `MotionMode` based on the current mode or Ctrl-letter state.
+//! Motion and Selection commands take a `MotionMode` (`Move` or `Extend`)
+//! instead of having extend variants. EditorCmds that support it carry
+//! `extendable: true`; the dispatcher picks the mode from the current mode or
+//! Ctrl-letter state.
 //!
 //! # Mappable command variants
 //!
-//! [`MappableCommand`] has four native shapes — see its own variant docs for
-//! exact signatures:
-//! 1. **Motion** — pure, repeats `count` times over a `SelectionSet`.
-//! 2. **Selection** — pure, same shape without the repeat semantics.
-//! 3. **Edit** — pure, takes/returns `BufferText` — never extendable.
-//! 4. **EditorCmd** — side-effectful, for composite operations (mode
-//!    changes, registers, undo groups, parameterized motions). Implemented
-//!    in `editor/commands/`; stored and dispatched as a function pointer
-//!    exactly like the other variants.
+//! 1. **Motion**: pure, repeats `count` times over a `SelectionSet`.
+//! 2. **Selection**: pure, same shape without the repeat.
+//! 3. **Edit**: pure, takes/returns `BufferText`; never extendable.
+//! 4. **EditorCmd**: side-effectful composite operations (mode changes,
+//!    registers, undo groups, parameterized motions), in `editor/commands/`.
 
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;

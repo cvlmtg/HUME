@@ -1,29 +1,17 @@
 //! State of the `#:inline-output` terminal bracket for the command(s)
-//! currently on the Steel call stack.
+//! currently on the Steel call stack. Three separate facts:
 //!
-//! Two independent facts, tracked as separate fields rather than folded into
-//! one enum:
-//!
-//! - *A declared `#:inline-output` command is on the Steel call stack.*
-//!   Nests one frame per `call!` into a declared command, pushed by
-//!   [`InlineOutput::push`] and truncated back by [`InlineOutput::truncate`]
-//!   (the Rust side of `%restore-inline-output!`, called with the depth
-//!   `push` returned) — or with `0`, the backstop for a frame a caught Steel
-//!   error left unpaired, and also how the top-level dispatch's own frame
-//!   closes, since nothing calls a matching restore for it.
-//! - *The alt-screen has actually been left.* Happens at most once per
-//!   dispatch no matter how deep the `call!` nesting goes — entering twice
-//!   would pop the kitty keyboard-protocol stack twice for one push — and
-//!   can only be undone at the Rust boundary that owns the terminal
-//!   (`Editor::close_inline_output_bracket`), long after whichever Steel
-//!   frame caused it has already returned. Tracked by `entered`, which frame
-//!   pops never touch.
-//!
-//! `ran` records whether any frame this session actually owned the terminal
-//! (had a `Some` [`super::tui::ActiveTui`] when it was pushed) — survives
-//! frame pops for the same reason `entered` does, so the disk-change sweep a
-//! subprocess may warrant still fires even for a command that armed but
-//! never printed.
+//! - Frames: one per `call!` into a declared command, pushed by
+//!   [`InlineOutput::push`] and cut back by [`InlineOutput::truncate`] (the
+//!   Rust side of `%restore-inline-output!`). Truncating to `0` closes the
+//!   top-level frame and any frame a caught Steel error left unpaired.
+//! - `entered`: the alt-screen has been left. Happens at most once per
+//!   dispatch (entering twice would pop the kitty keyboard stack twice) and is
+//!   undone only by `Editor::close_inline_output_bracket`, so frame pops never
+//!   touch it.
+//! - `ran`: some frame owned the terminal (had a [`super::tui::ActiveTui`]).
+//!   Survives frame pops like `entered`, so the post-subprocess disk-change
+//!   sweep fires even for a command that never printed.
 
 use super::tui::ActiveTui;
 

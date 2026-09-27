@@ -1,36 +1,16 @@
 //! Trie-based keymap for Normal and Insert modes.
 //!
-//! # Architecture
+//! Each mode has a [`KeyTrie`] mapping [`KeyEvent`] sequences to
+//! [`KeymapCommand`]s: single keys, multi-key sequences (`m i <char>`,
+//! `g <key>`), and wait-for-char bindings (f/t/F/T/r) whose [`WaitCharPending`]
+//! takes the next character as an argument via `Editor.pending_char`. The
+//! dispatcher in `mappings/execute.rs` walks the trie, accumulates a count
+//! prefix, and runs commands through [`crate::editor::registry::CommandRegistry`].
 //!
-//! Each mode has a [`KeyTrie`] that maps [`KeyEvent`] sequences to
-//! [`KeymapCommand`] values. The trie supports:
-//!
-//! - **Single-key bindings**: most keys (h/j/k/l, d, y, etc.)
-//! - **Multi-key sequences**: `m` → `i`/`a` → object char (text objects);
-//!   `g` → second key (goto commands).
-//! - **Wait-for-char bindings**: f/t/F/T/r consume the *next* character as
-//!   an argument rather than a fixed trie branch.
-//!
-//! The dispatcher in `mappings/execute.rs` walks the trie on each keypress,
-//! accumulates a numeric count prefix, and executes [`KeymapCommand`] values
-//! via the [`crate::editor::registry::CommandRegistry`].
-//!
-//! # Extend-mode duality
-//!
-//! The keymap stores only base command names. Extend mode is resolved at
-//! dispatch time via a `MotionMode` parameter — no separate extend-variant
-//! command names are needed. The sparse `extend` trie in [`Keymap`] holds
-//! per-key overrides that take priority in extend mode before falling
-//! through to the normal trie with `extend = true`. It ships empty by
-//! default — plugins (e.g. `core:vim-keybind`'s `o → flip-selections`) are
-//! the usual source of entries.
-//!
-//! # Wait-char bindings
-//!
-//! Keys like f/t/F/T/r produce a [`WaitCharPending`] that stores the command
-//! name to dispatch. When the next character arrives, the dispatcher stores it
-//! in `Editor.pending_char` and dispatches the named command. Extend-mode
-//! resolution happens at char-consumption time via the `ctrl_extend` flag.
+//! Only base command names are stored; Extend mode is a `MotionMode` parameter
+//! chosen at dispatch time (for wait-char bindings, via `ctrl_extend` when the
+//! char arrives). The sparse `extend` trie in [`Keymap`] holds overrides checked
+//! before the normal trie in Extend mode. It ships empty; plugins fill it.
 
 mod canonical;
 #[macro_use]

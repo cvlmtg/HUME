@@ -159,35 +159,21 @@ impl EditorState {
     }
 }
 
-/// Handles one key while a native confirm overlay ([`ConfirmLayer`]) is
-/// open. Always truncates itself first (there is exactly one way for this
-/// layer to leave the stack — every key retires it, matched or not — so
-/// "answer, then act" and "dismiss, then fall through" both start from
-/// the same truncate), then answers the matched choice or falls through
-/// for any other key.
+/// Handles one input event while a native confirm overlay ([`ConfirmLayer`])
+/// is open. Every key retires the layer, matched or not.
 ///
-/// `choices[0]`'s key runs `action`; `choices[1]`'s key (currently always
-/// "keep", set by `open_disk_change_confirm`) records an explicit decline
-/// (`Editor::decline_disk_change`) so `check_buffer_disk_state` doesn't
-/// reopen the same question for the same on-disk signature. Both require
-/// no modifiers — a modified key (`Ctrl-k`, the kitty one-shot extend for
-/// `move-up`) was aimed at its own binding, not at this prompt, so it must
-/// not be mistaken for a bare `k`. Every other key — `Esc`, or a stray
-/// keystroke that happens to land here — is a plain dismissal: it answers
-/// neither choice, leaving the question open for the next `BufferEnter`,
-/// exactly as if the confirm had never opened. `Esc` is fully consumed;
-/// any other unmatched key falls through instead, so a prompt the user
-/// didn't notice never eats a keystroke meant for the editor (e.g. `/`
-/// opening search).
+/// An unmodified `choices[0]` key runs `action`; an unmodified `choices[1]` key
+/// ("keep") records a decline via `Editor::decline_disk_change` so
+/// `check_buffer_disk_state` doesn't ask again for the same on-disk signature.
+/// Modified keys never match: `Ctrl-k` targets its own binding, not `k`. Any
+/// other key dismisses without answering, leaving the question open for the
+/// next `BufferEnter`. `Esc` is consumed; other keys fall through so an
+/// unnoticed prompt never eats a keystroke.
 ///
-/// A mouse event gets the same "stray input dismisses, then falls
-/// through" treatment — but only a fresh press or wheel notch counts as
-/// stray; a release, drag, or move is the tail of a gesture already in
-/// flight (see [`is_fresh_gesture`]'s doc) and falls through untouched,
-/// leaving the confirm open. Without that split the confirm would be
-/// unreachable by its own most common trigger: clicking into another
-/// pane opens it at the next `settle()`, and the click's matching `Up`
-/// arrives one loop iteration later.
+/// A fresh mouse press or wheel notch also dismisses and falls through. A
+/// release, drag, or move (see [`is_fresh_gesture`]) falls through and leaves
+/// the confirm open, since a click into another pane opens it and the click's
+/// `Up` arrives one iteration later.
 pub(in crate::editor) fn confirm_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
