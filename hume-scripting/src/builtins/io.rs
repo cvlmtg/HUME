@@ -1,55 +1,24 @@
-//! `%stdout-gate!` — the Rust half of HUME's gated print builtins.
+//! `%stdout-gate!`: the Rust half of HUME's gated print builtins.
 //!
-//! steel-core's `displayln`/`display`/`print`/`println`/`newline`/`write`/
-//! `write-string`/`write-char`/`simple-display`/`simple-displayln` all write
-//! to the real process stdout by default. Calling any of them while HUME's
-//! alt-screen TUI owns the terminal would corrupt the rendered frame.
+//! steel-core's ten print names (`display`, `displayln`, `write-string`, ...)
+//! write to the real stdout, which would corrupt the alt-screen TUI. They are
+//! prelude exports, and steel-core prepends its prelude to every compiled unit
+//! including each required plugin file, so a top-level shadow doesn't reach
+//! plugins. HUME instead appends gated redefinitions (`PRINT_GATE_SHIMS` in
+//! `builtins/mod.rs`) to the prelude string via `Engine::set_prelude_string`.
 //!
-//! A plain top-level shadow (`(define displayln …)` or `register_value`)
-//! only shadows the name in its own compilation unit — these ten names are
-//! prelude exports, and steel-core prepends its prelude source to every
-//! compiled unit including each `(require "path.scm")` plugin file, so every
-//! plugin unit still imports the original straight from the prelude. So
-//! HUME appends gated redefinitions of all ten names to steel-core's own
-//! prelude string via `Engine::set_prelude_string` (see
-//! `builtins/mod.rs::register_all`), so the shims shadow the imports inside
-//! every plugin module too.
+//! Two steel-core limitations shape the shims:
+//! - One unit can't both capture a name's value and redefine it, so
+//!   `register_all` runs BOOTSTRAP (captures originals) and `PRINT_GATE_SHIMS`
+//!   as two separate calls (still rejected on 0.8.3).
+//! - A required module can't call a shadowed prelude name with 2+ positional
+//!   args when the shim mixes fixed and rest parameters (seen on 0.8.2), so
+//!   every shim is rest-only. An explicit-port call from inside a required
+//!   module may still hit this; no HUME code does that.
 //!
-//! Two steel-core limitations shaped how the shims are built:
-//! - One `compile_and_run_raw_program` call can't both capture a name's
-//!   current value and redefine that same name in the same unit (rejected at
-//!   compile time) — `register_all` runs BOOTSTRAP (captures originals) and
-//!   `PRINT_GATE_SHIMS` (redefines the names) as two separate sequential
-//!   calls, so by the second the names are ordinary bound globals.
-//!   Re-verified empirically against 0.8.3: still rejected identically.
-//! - A required module can't call a locally-shadowed prelude name with 2+
-//!   positional args (e.g. explicit-port `(display obj port)`) when the
-//!   shim's parameter list is *mixed* fixed-plus-rest — reproduced
-//!   independent of naming, even with `case-lambda`, on 0.8.2. Every shim
-//!   below uses a *rest-only* list instead, which dodges it for the
-//!   implicit 0/1-arg form (the actual plugin use case) regardless of
-//!   whether the underlying limitation still exists on 0.8.3 — not
-//!   independently re-tested there, since the full test suite's real
-//!   plugin-loading coverage already proves the rest-only shims work.
-//!   Residual gap: a plugin calling one of these names with an explicit
-//!   port from inside its own required-module body still hits the
-//!   limitation if it's still there — no workaround short of patching
-//!   steel-core, and no real HUME code does this today.
-//!
-//! Explicit-port calls are gated too, not just forwarded: `port` can itself
-//! be `(current-output-port)` (or the real stdout port via steel-core's own
-//! error printer), exactly as unsafe as the implicit-port case.
-//! [`stdout_gate`]'s Scheme-side caller, `%port-safe?`, checks the *supplied*
-//! port's identity against the captured real stdout port, so a custom port
-//! (string port, pipe) always passes through ungated. `write-string`/
-//! `write-char` need the gate too, same as `display`; the shim passes
-//! `(current-output-port)` explicitly in their 1-arg form so redirection
-//! (`with-output-to-string`) works regardless of steel-core's own default.
-//!
-//! This module provides only the gate check itself — [`stdout_gate`],
-//! registered as `%stdout-gate!` — called by each Scheme shim before it
-//! forwards to the captured original. See `PRINT_GATE_SHIMS` in
-//! `builtins/mod.rs` for the shim definitions.
+//! Explicit-port calls are gated too, since the port can be the real stdout.
+//! `%port-safe?` compares the supplied port against the captured stdout, so
+//! string ports and pipes pass through ungated.
 
 use steel::rvals::SteelVal;
 

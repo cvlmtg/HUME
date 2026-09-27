@@ -118,217 +118,74 @@ macro_rules! builtins {
 
 // ── Bootstrap Scheme ──────────────────────────────────────────────────────────
 
-/// Scheme bootstrap evaluated once during Steel engine init.
+/// Scheme bootstrap evaluated once during Steel engine init: keyword wrappers
+/// over the Rust builtins, plugin activation, and in-VM command dispatch.
 ///
-/// Defines `load-plugin`, `declare-plugin` (plugin manifest), and the inline
-/// activation machinery (`%activate-plugin-inline`, `%dispatch-command`) atop
-/// the Rust builtins below and Steel's `eval-string` (from `steel/meta`).
-///
-/// Inline activation: `%begin-lazy-activation` (Rust) moves the plugin to
-/// `Loading` and returns its `(require "<abs>")` string; `eval-string` runs
-/// that inside the live VM (same module pipeline as the engine API, but
-/// VM-aware — no `&mut Engine` needed); `%finish-lazy-activation` (Rust)
-/// finalizes the state. `with-handler` guarantees the `Failed` transition on
-/// any body exception, and — unlike a plain Steel `with-handler` — never
-/// re-raises: the caught exception value is handed straight to
-/// `%finish-lazy-activation`, which records it (see that function's doc) and
-/// returns normally, so a plugin failing to load never aborts the enclosing
-/// `init.scm`/command/hook eval, and never risks the re-raise-inside-an-
-/// outer-handler VM-stack corruption documented at
-/// `known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack`
-/// (`lib.rs`).
-///
-/// `%dispatch-command` routes: activated plugin command → `command_table`
-/// lookup, apply inline; lazy-activation miss → activate inline, retry (if
-/// the retry still misses, the owner's activation failed or its body never
-/// defined the command — either way this errors rather than falling through
-/// to `%call-native!`, which would otherwise misreport the name as simply
-/// unknown and hand the caller a `#f` indistinguishable from success);
-/// native/unknown → `%call-native!`.
+/// Hazard for every `with-handler` here: re-raising a caught native error from
+/// a handler nested inside an outer `with-handler` corrupts Steel's VM stack
+/// (`known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack`
+/// in `tests/unix.rs`).
 //
-// declare-plugin — manifest; entries forwarded to %declare-plugin!. A
-// zero-trigger call (no #:commands/#:typed-commands/#:events/#:languages)
-// evaluates <plugin-dir>/manifest.scm instead for its default entries (see
-// %begin-manifest-declare!); caller's #:config wins over the manifest's.
-// Its with-handler follows the same no-re-raise contract as
-// %activate-plugin-inline above (%finish-manifest-declare! is its
-// %finish-lazy-activation counterpart) — including for the "manifest.scm
-// didn't declare its own plugin" self-check, which raises from inside that
-// same handler's protected body and so is caught and recorded the same way.
+// %activate-plugin-inline: %begin-lazy-activation moves a Declared plugin to
+// Loading and returns its `(require "<abs>")` string (#f otherwise: cycle
+// guard and idempotency), eval-string runs it in the live VM, and
+// %finish-lazy-activation records the outcome. The handler hands the error to
+// %finish-lazy-activation and returns normally, so a failing plugin never
+// aborts the enclosing eval and nothing is re-raised. The trailing
+// (hume/yield!) then re-checks the interrupt flag with a fresh raise: an
+// exhausted step budget must abort the whole eval, not be recorded as every
+// later plugin failing to load.
 //
-// define-typed-command! — the typed (`:` command line) counterpart of
-// define-command!, sharing its collision-guard logic (commands::check_definable)
-// and its command_table/cmd_owners bookkeeping, but registering a
-// TypedBody::Steel entry instead of a MappableCommand::SteelBacked one — the
-// editor's CommandRegistry keeps the two kinds strictly separate, so a name
-// defined one way is never reachable the other. No #:repeatable: dot-repeat
-// has no meaning for a `:` command. declare-plugin's #:typed-commands is its
-// lazy-activation counterpart to #:commands, registering a typed Lazy stub
-// (register_lazy_typed_command) instead of a mappable one.
+// declare-plugin: with no triggers, evaluates <plugin-dir>/manifest.scm for
+// default entries (caller's #:config wins) under the same handler/yield
+// contract, %finish-manifest-declare! recording any error.
 //
-// load-plugin — eager init-context activation; declares/resolves then
-// delegates to %activate-plugin-inline. Valid only during init.scm /
-// :reload-config (enforced by %load-plugin!). #:config as above.
+// define-typed-command!: the `:` counterpart of define-command!, sharing its
+// collision guard (commands::check_definable) and bookkeeping but registering
+// a TypedBody::Steel entry. A name defined one way is never reachable the
+// other way. No #:repeatable: dot-repeat means nothing for a `:` command.
 //
-// %activate-plugin-inline — shared by load-plugin and %dispatch-command's
-// lazy-miss path. %begin-lazy-activation returns the require string for
-// Declared plugins, #f otherwise (cycle guard + idempotency).
+// call! / %dispatch-command: the dispatcher for calls from inside Steel (call!
+// and the bare command-name lambdas); keypress and `:` dispatch use
+// ScriptingHost::call_steel_cmd instead. The miss, activate, retry path lives
+// in Scheme because a builtin can't re-enter the Rust dispatcher while the
+// Engine is borrowed. A retry miss raises rather than falling through to
+// %call-native!, which would misreport the name as unknown. call! is defined
+// here, not only in prelude.scm, so harnesses without the prelude have it.
 //
-// %activate-plugin-inline's (and declare-plugin's zero-trigger manifest
-// branch's) trailing (hume/yield!), right after their with-handler: a
-// plugin/manifest body's own error is contained there (finish_lazy_activation
-// / finish_manifest_declare record it and the handler returns normally
-// either way), but an interrupt (step budget exceeded, or a future Ctrl-c)
-// is not a plugin failure — it's a signal evaluation as a whole must stop.
-// This re-checks the flag once the handler has already returned: a fresh
-// raise, never a raise-error of the value the handler just caught (re-raising
-// *that* value through a second handler is the VM-stack-corruption hazard —
-// see the %apply-command entry below), so it propagates uncaught out of this
-// activation and aborts the enclosing eval exactly like any other top-level
-// init.scm error, instead of letting a still-exhausted budget silently run
-// every later plugin's body, each blamed as "failed to load" for hitting the
-// same stale flag.
+// %apply-command: arms the #:inline-output alt-screen bracket for call!, as
+// Editor::call_steel_command_body does for keypress and `:`. The restore
+// truncates to the armed depth instead of popping, so an unpaired descendant
+// frame is never taken for this call's own. No with-handler (hazard above): a
+// raising body skips the restore; run_steel_session truncates to zero at end.
 //
-// lsp-request — generic LSP bridge. pane: the buffer (and, for
-// #:require-focus, the exact pane) whose attached server receives the
-// request. callback: (lambda (err result)), exactly one non-#f.
-// #:allow-stale skips the staleness check. #:supersede <key> cancels the
-// caller's own previous still-pending request filed under the same (server,
-// key) — opt-in, not automatic by method/buffer. #:require-focus drops the
-// callback unless pane is still the focused pane when the response arrives
-// — see lsp_request's own doc (builtins/lsp.rs) for which requests want this.
+// lsp-request: callback is (lambda (err result)), exactly one non-#f.
+// #:supersede <key> cancels the caller's own pending request under the same
+// (server, key). #:require-focus drops the callback unless pane is still
+// focused when the response arrives.
 //
-// debounce — trailing-edge: each call reschedules proc `ms` out, cancelling
-// any still-pending call from a prior invocation. Pure Scheme, no Rust
-// debouncer. An armed timer clears `pending` only if it's still the entry
-// stored there, checked via the `my-id` box its own closure captures: a timer
-// already popped-and-queued is past cancelling, so without the check it would
-// clear the *next* call's id on the way out — orphaning that timer, no longer
-// cancellable but still ticking, to fire a stray duplicate later. Routine
-// under settle()'s always-draining loop, not a corner case.
+// debounce / debounce-by: trailing-edge; debounce-by keeps one timer per
+// #:key (default: first argument). A firing timer clears its pending entry
+// only if it still holds its own id (my-id): an already-queued timer can't be
+// cancelled, and clearing unconditionally would orphan the next call's timer.
 //
-// debounce-by — as debounce, but keyed per `#:key`'s own read of the
-// debounced proc's arguments (default: the first argument, unapplied)
-// instead of one shared pending timer, with the
-// same current-entry check per key: a call keyed k1 never cancels a call
-// keyed k2. A caller whose first argument is a pane that may arrive with or
-// without a pane component for the same buffer passes `#:key (lambda (p .
-// _) (buffer-key p))` so both still coalesce.
+// register-completion-source!: #:match binds to `match-kind` because `match`
+// is Steel's pattern-matching macro and `[match 'fuzzy]` would be expanded.
 //
-// register-completion-source! — the bound identifier for its #:match
-// keyword's value is `match-kind`, not `match`: `match` is Steel's own
-// pattern-matching macro (steel-core's `match.scm`), and the reader can't
-// tell `[match 'fuzzy]` apart from a real `(match 'fuzzy)` invocation until
-// after macro expansion has already tried (and failed) to expand it. The
-// external keyword stays `#:match`; keyword name and bound identifier are
-// independent in Steel's `#:kw [name default]` syntax.
+// picker! / live-picker!: two constructors over one PickerSession; live-picker!
+// respawns #:command per query and disables local filtering. Each keystroke
+// stops the running source and re-arms the debounced respawn. Old rows stay
+// until the new source's first batch replaces them (no blank frame per
+// keystroke); #:command returning #f clears them. Only the timer-dispatched
+// respawn gets the clear-and-re-raise handler, since it has no outer handler;
+// the seed spawn for a non-empty #:query runs on the caller's stack and must
+// stay unwrapped.
 //
-// picker!/live-picker! — two constructors over one Rust store
-// (hume-editor::editor::input_stack::picker::PickerSession): picker! stays a plain
-// items-plus-fuzzy-filter picker; live-picker! always drives an external
-// #:command builder and disables local fuzzy filtering entirely (see
-// PickerSession::rebuild_filtered's doc) — so "is this session live" is a
-// name a caller chooses, not a keyword's side effect.
+// run-inline-output!: raises on a nonzero exit. %run-inline-output! spawns in
+// an isolated process group (see hume-platform::process::run_inline_output).
 //
-// picker-source-spawn! and live-picker! share one `'(0)` literal for their
-// #:ok-exit-codes default (bound once, not inlined at each keyword default)
-// so the two can't drift apart.
-//
-// live-picker!'s wrapper owns the whole requery lifecycle by construction —
-// stop the running source, debounce, respawn via #:command — rather than
-// making every author hand-wire it. The wrapper's own internal lambda — not
-// the caller's #:command — is what's stop-then-debounce; it's called on
-// *every* keystroke, unconditionally, so a query that debounces to empty
-// still cancels whatever the previous non-empty keystroke armed, rather
-// than stranding a timer that fires later for a pattern the query box no
-// longer shows.
-//
-// The wrapper's with-handler cleanup (clear via picker-replace!, then
-// re-raise) wraps the debounced respawn only — never `spawn-for`'s direct
-// call for a non-empty seed #:query, which runs synchronously inside
-// whatever call stack invoked live-picker! and may already be inside a
-// caller's own with-handler (nesting that pattern corrupts Steel's VM stack,
-// see open_live_picker's doc, hume-scripting::host::ui). The debounced call
-// has no such caller — it's dispatched fresh by the timer wheel — so a
-// #:command raise there (a bad builder, or picker-source-spawn! itself
-// failing to spawn) can't otherwise reach picker-replace!, leaving the
-// previous pattern's rows stranded under a permanently "in flight" marker
-// (PickerSession::requery_armed).
-//
-// The previous pattern's rows stay on screen through the whole stop/
-// debounce/respawn gap. Clearing immediately would flash a blank frame on
-// every keystroke. `picker-source-stop!` still runs immediately (a
-// still-running source for the old pattern must not keep appending rows
-// while the query changes again). The *clear* lives in `spawn-for`'s #f
-// branch, so it fires solely when a query settles on nothing to search
-// rather than on every intermediate keystroke.
-// The swap itself lives in `PickerSession::attach_source`/`push`
-// (hume-editor::editor::input_stack::picker): a live session's attached source is
-// marked to replace `items` wholesale on its own first batch, instead of
-// this wrapper clearing ahead of time — see `AttachedSource::supersedes_rows`'s
-// doc for why that has to be scoped to the source, not the session, to stay
-// race-free against a stale batch from the source just killed. Meanwhile
-// `PickerSession::is_pending` (hence the panel's "…" marker) stays true
-// across the same gap via `requery_armed`, so the on-screen rows read as
-// "refreshing" rather than settled while they're stale. #:command
-// returning `#f` means "nothing to spawn for this query" — the empty-query
-// guard lives inside the builder a caller writes, not as a separate flag
-// threaded through the wrapper, so there is nothing to forget.
-//
-// %live-picker! hands its own session token into the internal callback as
-// an argument, rather than the callback closing over live-picker!'s return
-// value, which isn't bound yet while live-picker! is still running — that
-// argument is what lets the per-keystroke lambda reference its own session
-// safely. A non-empty #:query, separately, spawns synchronously through
-// live-picker!'s own let*-bound token, right after %live-picker! returns —
-// no deferred tick needed, since that token is already bound by the time
-// the seed spawn runs. %callable? (args::is_callable) backs live-picker!'s
-// own #:command check — a stricter predicate than Steel's `procedure?`, see
-// its doc for why.
-//
-// run-inline-output! — the Scheme wrapper (see bootstrap.scm) blocks and
-// raises on nonzero exit or a signal-killed child, so call sites (e.g.
-// core:plum's plum/clone-github!) need no manual exit-code checks. `%run-inline-output!`
-// below is the process-group-isolated spawn behind it (see
-// hume-platform::process::run_inline_output for why this can't be Steel's
-// own spawn-process).
-//
-// Variadic call! macro — desugars to %dispatch-command, the in-VM dispatcher
-// for calls originating inside Steel (call! from a plugin body, or the bare
-// command-name lambdas register_command_names defines). Keypress/`:`-line
-// dispatch skips this path: Editor::call_steel_cmd resolves and activates
-// the target directly, applying its command_table closure via
-// call_function_with_args. %dispatch-command's own miss→activate→retry
-// exists only because a builtin can't re-enter the editor's Rust dispatcher
-// while the Engine is already borrowed. Defined here (not only prelude.scm)
-// so test harnesses without the full prelude still have it.
-//
-// %apply-command — %dispatch-command's shared funnel for both of its direct
-// (apply proc args) sites, so a #:inline-output command reached via call!
-// (a hook body, a timer thunk, another command's own body) gets the same
-// alt-screen bracket as one dispatched by keypress or `:`, which otherwise
-// only Editor::call_steel_command_body arms. %arm-inline-output! reads the
-// registry for `name`'s declared flag and, if set, pushes a frame and
-// returns the depth to truncate back to; %restore-inline-output! truncates
-// to it rather than blindly popping the top, so a descendant frame a caught
-// error below it left unpaired can't be mistaken for this call's own frame.
-// Deliberately NOT paired via with-handler: raising a native error out of a
-// handler nested inside an outer with-handler is the pinned
-// VM-stack-corruption hazard (known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack,
-// lib.rs), so a body that raises between the arm and the restore simply
-// skips the restore — the backstop is run_steel_session's own unconditional
-// truncate-to-zero at the end of every session, not a Steel-side unwind.
-// The arm is skipped for a name %arm-inline-output! doesn't declare
-// inline-output (native, unknown, un-activated Lazy), which is also why it's
-// unconditionally safe to call before every apply site rather than only the
-// ones already known to resolve to a SteelBacked command.
-//
-// %port-safe? — writing to `port` is TUI-safe unless it IS the real stdout
-// port, in which case defer to the gate (see builtins/io.rs's module doc for
-// why steel-core's original print fns are captured before PRINT_GATE_SHIMS
-// redefines the names). Shared by every shim's
-// explicit-port branch.
-//
+// %port-safe?: a port is safe unless it is the real stdout, where the gate
+// decides. Every print shim's explicit-port branch uses it (io.rs module doc).
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,

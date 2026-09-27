@@ -1,32 +1,14 @@
 //! Statusline configuration builtin: `configure-statusline!`.
 //!
-//! The statusline is configured declaratively — the user or a plugin passes
-//! three lists of element names (left, center, right) and the builtin forwards
-//! them to the editor via [`crate::host::SettingsHost::configure_statusline`].
-//! The editor parses the element names and writes them into the settings;
-//! the renderer picks them up the next frame.
-//!
-//! ## Steel API
-//!
-//! ```scheme
-//! (configure-statusline!
-//!   '("Position" "FileName" "FilePath" "DirtyIndicator")  ; left section
-//!   '()                                                    ; center section (empty)
-//!   '("MacroRecording" "SearchMatches" "Separator" "Mode"))  ; right section
-//! ```
+//! Takes three lists of element names (left, center, right) and forwards them
+//! to [`crate::host::SettingsHost::configure_statusline`]; the editor parses
+//! the names and the renderer picks them up the next frame.
 //!
 //! Valid element names: `Cwd`, `Diagnostics`, `DirtyIndicator`, `FilePath`,
 //! `FileName`, `KittyProtocol`, `Language`, `LineEnding`, `MacroRecording`,
-//! `MiniBuf`, `Mode`, `Position`, `ReadOnly`, `SearchMatches`, `Separator`.
-//! A `steel:<name>` element is also valid for any `<name>` previously or
-//! later pushed via `(set-statusline-text! <name> bid text)` — placing it
-//! and pushing to it are independent steps, in either order.
-//!
-//! `FilePath` shows the full path to the focused file with the home prefix
-//! collapsed to `~`.  When the terminal row is too narrow the path is
-//! progressively shortened: leading directory components are abbreviated to
-//! their first character, and the filename is truncated with `…` as a last
-//! resort.  It renders as empty for scratch and synthetic buffers.
+//! `MiniBuf`, `Mode`, `Position`, `ReadOnly`, `SearchMatches`, `Separator`,
+//! plus `steel:<name>` for text pushed via `(set-statusline-text! <name> bid
+//! text)`, placed and pushed in either order.
 
 use steel::rvals::SteelVal;
 

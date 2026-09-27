@@ -1,45 +1,19 @@
 //! `(define-command! name doc proc)`, `(call! name args…)`, and
 //! `(request-wait-char! cmd)` builtins.
 //!
-//! ## Dispatch model
+//! `call!` expands to `%dispatch-command` (BOOTSTRAP), which routes:
+//! - **Activated plugin commands**: `(apply proc args)` inside the VM; `call!`
+//!   returns the body's value and later reads see its effects.
+//! - **Lazy commands**: activates the owner inline, then retries.
+//! - **Native commands**: `%call-native!` runs `run_command_sync`. A native
+//!   command has no Steel parameter list to receive a pane, so the caller
+//!   passes one as the first argument: `(call! "move-right" pane 5)`. Returns
+//!   `#f` if the command refused, `#t` otherwise; in init mode it warns and
+//!   returns `#f`.
+//! - **Unknown**: error logged, `#f` returned.
 //!
-//! `(call! name args…)` expands (via the BOOTSTRAP macro) to
-//! `(%dispatch-command name (list args…))`, a Steel function that routes:
-//!
-//! - **Activated plugin commands** (in `command_table`): applied directly as an
-//!   ordinary Steel funcall via `(apply proc args)` — never leaving the VM.
-//!   State reads after the call see its effects immediately, and `call!`
-//!   returns whatever the Steel body itself returns.
-//! - **Lazy activation commands** (unactivated plugin): `%dispatch-command`
-//!   activates the owner inline via `%activate-plugin-inline`, then retries.
-//! - **Native commands**: forwarded to `%call-native!` → `run_command_sync` inline.
-//!   A native command has no lambda parameter list to inject a leading `pane`
-//!   into (unlike a Steel command, which always receives one as its first
-//!   parameter), so `call!` requires it as the first *argument* instead:
-//!   `(call! "delete" pane)`, `(call! "move-right" pane 5)`. `pane` need not
-//!   be the focused pane — `run_command_sync` resolves it against the
-//!   command's own target requirement (a pane showing the buffer, or the
-//!   focused pane specifically) and errors only when that resolution fails
-//!   — see `run_command_sync`'s own doc for the full rule. `call!` returns
-//!   `#f` if the body refused outright (a
-//!   too-small split, the last pane, …) and `#t` otherwise — see
-//!   `run_command_sync`'s own doc for why `#t` is not proof anything changed.
-//!   Init mode: warns, skips, and returns `#f` (buffer access not available
-//!   during init).
-//! - **Unknown**: forwarded to `%call-native!` → error logged, `#f` returned.
-//!
-//! `request-wait-char!` allows a Steel command to request that after the
-//! current eval finishes, the editor enters WaitChar mode for the named command.
-//!
-//! ## Invocation contract
-//!
-//! All commands — Rust built-ins and `define-command!`-registered Steel
-//! lambdas alike — are invoked uniformly by string name with optional args:
-//!
-//! ```scheme
-//! (call! "collapse-selection" pane)   ; built-in, needs its own pane
-//! (call! "my-plugin-cmd" "arg1")      ; Steel command with one arg
-//! ```
+//! `request-wait-char!` makes the editor enter WaitChar mode for the named
+//! command once the current eval finishes.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -239,38 +213,18 @@ pub(crate) fn define_typed_command(
     Ok(SteelVal::Void)
 }
 
-/// `%call-native!` — Rust leaf for native/unknown commands.
+/// `%call-native!`: `%dispatch-command`'s fallback for a name that is neither
+/// in `command_table` nor owned by a lazy plugin.
 ///
-/// Called by `%dispatch-command` when `name` is NOT found in `command_table`
-/// and has no lazy activation command owner (i.e. it is a native or unknown command).
+/// - **Native**: decodes the leading `pane` argument, validates count/extend,
+///   and returns `run_command_sync`'s `#t`/`#f`. In init mode it warns and
+///   returns `#f`, since buffers aren't available yet.
+/// - **Steel command missing from the table** or **unknown**: logs an `Error`
+///   and returns `#f`.
 ///
-/// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): in command mode,
-///   decodes `pane` (a native command's leading arg — it has no lambda
-///   parameter list of its own to carry one, so `call!` supplies it
-///   positionally, same as a Steel command's injected leading parameter),
-///   validates the remaining count/extend args, and runs synchronously via
-///   `run_command_sync`, returning its `#t`/`#f` outcome to the Steel caller
-///   unchanged. `run_command_sync` resolves `pane` against the command's own
-///   target requirement — see its own doc — and errors only when that
-///   resolution fails, not merely because `pane` isn't focused. In init
-///   mode, logs a warning, skips, and returns `#f` — native commands touch
-///   buffers, which are not available during init.scm evaluation.
-/// - **Steel-but-not-in-table** (`Ok(false)`): logs an `Error` naming the
-///   command and returns `#f`. Reaching this arm at all means the
-///   dispatcher's own lookup already missed the command in `command_table`,
-///   so this is a fallback message, not the common case.
-/// - **Unknown** (`Err(msg)`): the host's registry has no such command at
-///   all (typo, missing plugin). Logs the host's own error message — it
-///   already names the command — and returns `#f`.
-///
-/// Both misses log `Error`, not `Warning`: an unreachable `call!` target is
-/// a plugin bug (typo or missing dependency), same severity as an unknown
-/// `:` command (`command_mode.rs`). Still a no-op, not a raised Steel error —
-/// raising from a native builtin risks the with-handler re-raise/VM-panic
-/// hazard, and partial edits already committed earlier in the body are
-/// undoable either way (each inner edit records its own undo revision).
-/// Keybind misses (unknown name bound to a key) are a different path and
-/// stay `Warning` — see `hume-editor/src/editor/dispatch.rs`.
+/// A miss logs at `Error` (a plugin bug, like an unknown `:` command) but does
+/// not raise: raising from a native builtin risks the `with-handler` re-raise
+/// VM hazard.
 pub(crate) fn call_command_primitive(
     ctx: &mut SteelCtx,
     name: String,

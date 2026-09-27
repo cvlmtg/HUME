@@ -60,52 +60,26 @@ pub(crate) fn unsupported(builtin: &str) -> String {
     format!("{builtin}: not supported by this host")
 }
 
-/// The editor interface exposed to scripting builtins during a Steel eval, as
-/// a capability directory: every domain method lives on one of the capability
-/// traits in this module (`BufferHost`, `SettingsHost`, `LanguageHost`,
-/// `CommandHost`, `CursorHost`, `EventHost`, `UiHost`, `LspHost`, `EditHost`,
-/// `DecorationHost`, `CompletionHost`, `TimerHost`, `AsyncProcessHost`,
-/// `OutputHost`, `DiffHost`), reached through an accessor on this trait —
-/// `EditorHost` itself declares no domain methods.
+/// The editor interface exposed to scripting builtins during a Steel eval.
 ///
-/// Implemented by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in
-/// tests). Builtins call `ctx.host.<accessor>().<method>(...)` rather than
-/// borrowing editor-domain fields directly.
+/// A capability directory: domain methods live on the capability traits in
+/// this module (`BufferHost`, `UiHost`, `LspHost`, ...), reached through this
+/// trait's accessors. Implemented by `EditorHostImpl<'a>` in the editor crate
+/// and by mocks in tests. The trait exists because `hume-editor` depends on
+/// `hume-scripting`, so builtins can't reach `EditorState` directly.
 ///
-/// All methods (on `EditorHost` and every capability trait) take/return only
-/// `'static` types (owned `String`/`PathBuf`/`Vec`, `Copy` ids, scripting-owned
-/// enums), since `SteelCtx<'static>` is the type projection Steel's
-/// `with_mut_reference` requires.
+/// All methods take and return only `'static` types, since `SteelCtx<'static>`
+/// is the projection Steel's `with_mut_reference` requires. Focused
+/// buffer/pane ids are passed to `call_steel_cmd`/`fire_hook` instead, so a
+/// builtin sees the pre-command snapshot even after `switch-to-buffer!`.
 ///
-/// `BufferHost` methods (`open_buffer`, `close_buffer`, `switch_to_buffer`,
-/// reads/enumeration) are command-mode only, gated per-builtin by the `cmd`
-/// kind in `builtins!`'s registration table (`errors::require_cmd`);
-/// init-only methods (`SettingsHost::set_global_option`,
-/// `SettingsHost::configure_statusline`) use the `config` kind
-/// (`errors::require_config`), the reverse guard.
-///
-/// Focused buffer/pane ids are passed as explicit constructor args to
-/// `call_steel_cmd`/`fire_hook` rather than queried through this trait, so a
-/// builtin always sees the pre-command snapshot, not a value that can change
-/// mid-eval (e.g. after `switch-to-buffer!`).
-///
-/// Six accessors are required — `buffers`, `settings`, `language`,
-/// `commands`, `cursor`, `events` — since every host has *some* notion of
-/// them, even if minimal (an empty buffer list, a rejecting command
-/// registry). The rest are optional (`Option<&mut dyn CapabilityTrait>`):
-/// `None` means the host has no such capability. A mutating builtin maps
-/// `None` to the `"not supported by this host"` error via `errors::require_cap` —
-/// silently discarding the write would report success for a mutation that
-/// never happened. A silent no-op is reserved for calls whose own contract
-/// is already idempotent regardless of host support (e.g.
-/// `cancel-timer!`/`cancel-async!` on an id that was never scheduled).
-///
-/// The trait exists — rather than builtins reaching into `EditorState`
-/// directly — for two reasons: the crate cycle `hume-editor → hume-scripting
-/// → {hume-engine, hume-platform}` is a hard wall, so dissolving it would mean
-/// moving `EditorState` into a crate below `hume-scripting`, re-layering most
-/// of the editor; and it keeps scripting tests mockable (`NullHost`,
-/// `MockHost`) behind a curated API boundary instead of the full state surface.
+/// Six accessors are required (`buffers`, `settings`, `language`, `commands`,
+/// `cursor`, `events`); the rest return `None` when the host lacks the
+/// capability. A mutating builtin maps `None` to the "not supported by this
+/// host" error (`errors::require_cap`) rather than reporting a write that never
+/// happened; only already-idempotent calls such as `cancel-timer!` no-op.
+/// Command-mode-only and init-only builtins are gated per registration by
+/// `errors::require_cmd` and `errors::require_config`.
 pub trait EditorHost {
     // ── Optional capability accessors ────────────────────────────────────────
     /// Cursor-anchored popup / selection menu / bottom drawer / minibuffer

@@ -1,34 +1,24 @@
 //! Total, bidirectional conversion between `serde_json::Value` and `SteelVal`,
-//! plus [`JsonHandle`] — the opaque, rooted handle every *external* JSON
-//! crossing (an LSP response, capabilities, a notification's params, a
-//! completion item, a `json-parse` result) uses instead of a deep decode.
-//!
-//! Mapping table:
+//! plus [`JsonHandle`], the opaque handle for external JSON.
 //!
 //! ```text
-//! json -> steel:  null    -> Void        (NOT #f — false must round-trip distinctly)
+//! json -> steel:  null    -> Void        (not #f, so false round-trips distinctly)
 //!                 bool    -> BoolV
-//!                 number  -> IntV when i64-representable; BigNum when
-//!                             u64-representable but not i64 (exact, no
-//!                             precision loss); NumV (f64) otherwise
+//!                 number  -> IntV if i64-representable; BigNum if only
+//!                             u64-representable (exact); NumV (f64) otherwise
 //!                 string  -> StringV
 //!                 array   -> ListV
-//!                 object  -> HashMapV with STRING keys (not symbols — JSON keys are
-//!                             arbitrary data like "rust-analyzer.cargo", not identifiers)
+//!                 object  -> HashMapV with STRING keys (JSON keys are data
+//!                             like "rust-analyzer.cargo", not identifiers)
 //!
-//! steel -> json:  inverse of the above; SymbolV is also accepted as a string
-//!                 (Steel code may build hashmaps with symbol keys); a
-//!                 JsonHandle unwraps to its own resolved value; anything
-//!                 else unrepresentable (closures, ports, …) is a hard error
-//!                 naming the offending value's kind.
+//! steel -> json:  inverse of the above; SymbolV also becomes a string; a
+//!                 JsonHandle unwraps to its resolved value; anything else
+//!                 (closures, ports, ...) is an error naming its kind.
 //! ```
 //!
-//! `json_to_steel`/`steel_to_json` are for HUME-authored JSON that Scheme is
-//! meant to edit directly (the `lsp-*-params` builders, `completion-top`,
-//! the native `{"code" "message"}` error map) — this is deliberately generic
-//! JSON, knowing nothing about LSP shapes. [`to_steel_handle`] is the
-//! opposite direction's funnel: external JSON nobody in Scheme is meant to
-//! rebuild field-by-field.
+//! `json_to_steel`/`steel_to_json` serve HUME-authored JSON that Scheme edits
+//! directly (the `lsp-*-params` builders, error maps) and know nothing about
+//! LSP. [`to_steel_handle`] serves external JSON that Scheme only reads.
 
 use std::sync::Arc;
 
@@ -173,31 +163,16 @@ pub(crate) enum Seg {
     Index(usize),
 }
 
-/// Opaque handle onto a JSON value shared from a common root — the funnel
-/// every external JSON crossing (an LSP response, `lsp-capabilities`, a
-/// notification's params, `on-completion-accept`'s item, `json-parse`)
-/// hands Scheme instead of `json_to_steel`'s deep decode into hashmaps and
-/// lists nobody reads most of. `json-ref`/`json-list` (`builtins/json.rs`)
-/// navigate a handle without ever materializing the subtree they don't
-/// touch; a container result from either shares the same root `Arc` rather
-/// than cloning the subtree, so drilling into one field of a 5,000-line
-/// capabilities blob costs one more `Seg`, not a second deep copy.
+/// Opaque handle onto a JSON value shared from a common root: what every
+/// external JSON crossing (LSP responses, `lsp-capabilities`, `json-parse`,
+/// ...) hands Scheme instead of a deep decode. `json-ref`/`json-list` navigate
+/// it by extending `path`, sharing the `Arc` root, so drilling into one field
+/// of a large capabilities blob copies nothing.
 ///
-/// `root` is `Arc`-backed so cloning a handle (including through the Steel
-/// value system's own `Clone` requirements) never re-clones the response
-/// itself; `path` is `Arc`-backed so extending it for a child handle is one
-/// allocation (see `scalar_or_child`) rather than growing a `Vec` by hand.
-///
-/// `origin` tags where the *root* value came from — a real LSP response
-/// ([`WireOrigin::Server`], carrying the answering server's negotiated
-/// encoding) or anything else ([`WireOrigin::Local`]: `json-parse`,
-/// `lsp-capabilities`, or a hashmap a plugin built by hand). Every child
-/// handle a navigation method mints inherits its parent's `origin` — see
-/// `scalar_or_child` — so a position pulled out of a response three
-/// `json-ref`s deep still knows which server's encoding it's counted in.
-/// Not part of equality or hashing (both compare/hash [`JsonHandle::value`]
-/// only): two handles onto equal JSON are equal regardless of where each
-/// tree came from.
+/// `origin` records where the root came from, and every child handle inherits
+/// it, so a position found several `json-ref`s deep still knows which
+/// server's encoding it uses. Equality and hashing ignore `origin` and
+/// compare [`JsonHandle::value`] only.
 #[derive(Debug, Clone)]
 pub struct JsonHandle {
     root: Arc<serde_json::Value>,

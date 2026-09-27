@@ -135,29 +135,17 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
 }
 
 /// `(%lsp-request pane method params callback allow-stale supersede
-/// require-focus)`. The `lsp-request` Scheme wrapper (BOOTSTRAP) supplies
-/// `#:allow-stale`'s, `#:supersede`'s, and `#:require-focus`'s defaults.
-/// Pushes an `Effect::LspRequest`, sent by `Editor::send_one_lsp_request`
-/// right after this eval returns — `SteelCtx` has no route to the transport
-/// (crate fence), and queuing keeps every LSP send on one chokepoint
-/// regardless of which eval kind (command, hook, or a queued callback)
-/// triggered it. `pane`'s buffer is resolved to *its* attached server at that
-/// apply-time point, never read from live focus — the caller must capture
-/// `pane` itself (typically a command body's own leading `pane` parameter,
-/// or a value already carried by a hook/callback argument), so a response
-/// callback that fires a follow-up request resolves against the buffer
-/// the original request was about, not whatever happens to be focused
-/// when the callback runs.
+/// require-focus)`, behind the `lsp-request` wrapper (BOOTSTRAP), which
+/// supplies the keyword defaults. Pushes an `Effect::LspRequest` that
+/// `Editor::send_one_lsp_request` sends after this eval, since `SteelCtx` has
+/// no route to the transport. The server is resolved from `pane`'s buffer at
+/// that point, never from live focus, so a follow-up request from a callback
+/// targets the original buffer.
 ///
-/// `#:require-focus`: the callback fires only if `pane` is still the focused
-/// pane when the response arrives — for a request whose only purpose is
-/// opening UI anchored to the cursor (hover, signature help, a code-action
-/// menu), where a response for a pane the user has since navigated away
-/// from would show over the wrong file. Off by default: a background
-/// request (formatting, rename, completion, diagnostics) must keep
-/// delivering regardless of focus. Raises immediately, rather than queuing a
-/// request that can never fire its callback, if `#:require-focus` is set and
-/// `pane` carries no pane at all.
+/// `#:require-focus` fires the callback only if `pane` is still focused when
+/// the response arrives: for cursor-anchored UI (hover, signature help, code
+/// actions), not background requests. It raises at once if `pane` carries no
+/// pane.
 // Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
 // `lsp-request`'s own Steel signature — same rationale as
 // `register_lsp_server`'s own `#[allow]`, just above in this file.

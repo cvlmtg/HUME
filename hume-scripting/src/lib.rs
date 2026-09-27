@@ -1,41 +1,19 @@
 //! Steel scripting integration for HUME.
 //!
-//! [`ScriptingHost`] owns the Steel [`Engine`] and runs entirely on the main
-//! event-loop thread — Steel's Engine is `!Send` (internal `Rc`/`RefCell`,
-//! non-atomic `im-rs` lists), and edit commands are synchronous hot-key-path
-//! operations where an IPC round-trip per keystroke would be strictly worse.
+//! [`ScriptingHost`] owns the Steel [`Engine`] and runs on the main event-loop
+//! thread: the Engine is `!Send`, and edit commands are synchronous hot-path
+//! operations where an IPC round-trip per keystroke would cost more.
 //!
-//! ## Plugin loading pipeline
-//! - `(load-plugin name)` — **inline**, init.scm/`:reload-config` only.
-//!   Resolves, records, and activates the plugin immediately via
-//!   `%activate-plugin-inline` (body run through `hm.eval-string` inside the
-//!   live VM, no `&mut Engine` needed). Self-declares.
-//! - `(declare-plugin name #:commands #:typed-commands #:events #:languages #:config)` —
-//!   **lazy manifest**: records a `Declared` state + activation maps in
-//!   `LazyRegistry` without running the body. Requires at least one
-//!   activation trigger.
-//! - `#:config` (either form) is opaque data stored per-`PluginId`; the
-//!   plugin reads it back via `(plugin-config)`, resolved from the top of
-//!   `plugin_stack` for the duration of the eval.
-//! - Activation entries are one-shot: the first exercised entry runs the body
-//!   via `(require)`, flips state to `Loaded`, and drops that plugin's
-//!   entries from all activation maps. The body then typically registers
-//!   `register-hook!` callbacks for ongoing events — distinct from
-//!   activation entries.
-//! - States: `Declared → Loading → Loaded | Failed`. `Loading` guards
+//! ## Plugin loading
+//! - `load-plugin`: eager, init.scm/`:reload-config` only; runs the body at
+//!   once via `%activate-plugin-inline`.
+//! - `declare-plugin`: lazy manifest; records `Declared` plus activation
+//!   entries in `LazyRegistry`. The first entry exercised runs the body,
+//!   marks it `Loaded`, and drops all of that plugin's entries.
+//! - States: `Declared -> Loading -> Loaded | Failed`. `Loading` guards
 //!   re-entrant cycles; `Failed` doesn't retry until `:reload-config`.
-//! - PLUM (`core:plum`) reads `(declared-plugins)` to install third-party
-//!   deps; both forms record their name in `declared_plugins` up front, even
-//!   before the body runs.
-//!
-//! ## Modules
-//! - `attribution.rs`: plugin attribution types (`PluginId`, `Owner`, `PluginStack`).
-//! - `hooks.rs`: `HookRegistry`, name-keyed — this crate has no compiled-in
-//!   knowledge of which event names exist, only what `EditorHost` reports.
-//! - `host.rs`: `EditorHost` trait + `BindMode` — the editor-domain interface.
-//! - `log.rs`: `LogLevel` — severity enum that doesn't depend on the editor crate.
-//! - `builtins/`: `set-option!`, `bind-key!`, `define-command!`, multi-buffer ops,
-//!   `(configure-statusline! …)`, `(hume/yield!)` step-budget interruption.
+//! - `#:config` is opaque per-plugin data read back via `(plugin-config)`.
+//!   Both forms record the name in `declared_plugins` up front for PLUM.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
@@ -277,34 +255,15 @@ impl ScriptingHost {
     }
 }
 
-/// `true` for a name HUME's own conventions mark as never called directly by
-/// plugin/config code — used by [`ScriptingHost::host_global_names`] to keep
-/// the generated `steel-language-server` host-globals file to the surface a
-/// plugin author would actually type. Checked against a full generated list
-/// of every name these patterns *don't* match to confirm none of them is a
-/// legitimate public name.
-///
-/// - `%`-prefixed (`%register-lsp-server!`, `%dispatch-command`, …): HUME's
-///   private-primitive convention — each has a public Scheme wrapper of the
-///   same name minus the `%` (`register-lsp-server!`, `call!`, …) that
-///   plugin code calls instead. Only HUME's own shipped
-///   `runtime/scheme/prelude.scm` and `builtins/bootstrap.scm` call these
-///   directly, and neither is a file a user edits.
-/// - `*earmuffed*` (`*grammar-sources-cache*`, the Rust-injected
-///   `*hume.ctx*` eval-time sentinel, …): Scheme's own convention for
-///   internal/dynamic state, never part of a public API by that same
-///   convention.
-/// - `hm.`-prefixed (`hm.eval-string`, …): steel-core's `steel/meta` module,
-///   aliased under `hm.` by `bootstrap.scm`'s `require-builtin … as hm.`
-///   purely so HUME's own Rust-facing glue can reach it — never meant to be
-///   called by plugin code, which has no reason to alias `steel/meta` itself.
-/// - `#`-prefixed: steel-core's own internal markers, including the
-///   non-deterministic anonymous `###ctx-funcN` wrapper names
-///   `steel_vm/builtin.rs`'s `GENSYM` mints for each context-aware builtin
-///   registration (a `thread_local!` counter shared by every `Engine` on the
-///   same test-runner thread, so its exact numbering isn't stable across
-///   runs). HUME itself never registers a
-///   `#`-prefixed name.
+/// `true` for a name plugin code never calls directly, so
+/// [`ScriptingHost::host_global_names`] leaves it out of the generated
+/// `steel-language-server` host-globals file:
+/// - `%`-prefixed: HUME's private primitives, each wrapped by a public name
+///   (`%register-lsp-server!` by `register-lsp-server!`).
+/// - `*earmuffed*`: Scheme's convention for internal state (`*hume.ctx*`).
+/// - `hm.`-prefixed: `steel/meta`, aliased by `bootstrap.scm` for HUME's glue.
+/// - `#`-prefixed: steel-core's internal markers, including the
+///   nondeterministically numbered `###ctx-funcN` builtin wrappers.
 #[cfg(any(test, feature = "test-util"))]
 fn is_internal_name(name: &str) -> bool {
     name.starts_with('%')

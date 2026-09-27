@@ -163,41 +163,9 @@ fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// `(%declare-plugin! name commands typed-commands events languages config)`
-/// — Rust primitive backing the Scheme-side `declare-plugin` wrapper.
-///
-/// Top-level only: valid only at the top level of `init.scm`.  A plugin can
-/// never declare another plugin — see `ensure_top_level`.
-///
-/// `declare-plugin` is the plugin **manifest**: it records what the plugin
-/// offers the editor (commands it provides, languages/events it reacts to).
-/// Unlike `load-plugin` (eager: body evaluated immediately), `declare-plugin`
-/// defers body evaluation until the first activation entry is exercised.  Both
-/// are registration verbs that record the plugin for PLUM; the verb choice
-/// encodes eager vs. lazy body evaluation.  At least one activation entry is
-/// required — a manifest with no entries hard-errors because the plugin could
-/// never be activated.
-///
-/// - Validates `name`; aborts init on malformed names.
-/// - Parses and validates activation entry lists *before* recording any
-///   state, so a malformed entry leaves `declared_plugins`/`plugin_configs`
-///   untouched. `#:events` entries are symbols, decoded and validated
-///   against the host's `known_event_names()` via `hooks::event_name_arg`
-///   (this crate has no compiled-in list of its own) — the same decoder
-///   `register-hook!` uses, so the two verbs can't drift on accepted form.
-///   `#:commands`/`#:typed-commands`/`#:languages` stay open strings.
-/// - Stores `config` (the `#:config` value, first-wins) so the body can read
-///   it back via `(plugin-config)` whenever activation eventually runs it.
-/// - Records into `declared_plugins` for PLUM compat.
-/// - Filters colliding command entries (logs `Severity::Error`, continues).
-/// - Registers the plugin in `LazyRegistry`.
-///
-/// Filters `cmd_list`'s names against the built-in set and claims each
-/// surviving one as a `Lazy` stub via `register`, logging (not failing) a
-/// collision instead of dropping the whole declaration. Shared by
-/// `#:commands`/`#:typed-commands` processing in [`declare_plugin`] — the two
-/// differ only in which `CommandHost` method claims the name
-/// (`register_lazy_command` vs `register_lazy_typed_command`).
+/// Drops names that collide with a built-in and claims each remaining one as a
+/// `Lazy` stub via `register` (`register_lazy_command` or
+/// `register_lazy_typed_command`), logging a failed name instead of aborting.
 fn filter_and_register_lazy(
     ctx: &mut SteelCtx,
     cmd_list: Vec<String>,
@@ -226,6 +194,17 @@ fn filter_and_register_lazy(
     valid
 }
 
+/// `(%declare-plugin! name commands typed-commands events languages config)`:
+/// backs the Scheme `declare-plugin` wrapper. Top-level only
+/// (`ensure_top_level`), so a plugin can never declare another plugin.
+///
+/// `declare-plugin` is the lazy counterpart of `load-plugin`: it records the
+/// plugin's activation entries and defers its body until one fires. At least
+/// one entry is required, otherwise the plugin could never activate. Every
+/// entry list is validated before any state is recorded; `#:events` goes
+/// through `hooks::event_name_arg`, the decoder `register-hook!` uses.
+/// `config` is stored first-wins for `(plugin-config)`. Colliding command
+/// names are logged and skipped rather than failing the declaration.
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
@@ -589,52 +568,24 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     Ok(SteelVal::StringV(require_program.into()))
 }
 
-/// `(%finish-lazy-activation id-str error)` — Rust primitive for inline
-/// activation. Called from `%activate-plugin-inline` after
-/// `(hm.eval-string …)` completes or fails — `error` is `#f` on success, or
-/// the caught `with-handler` exception value on failure (a `SteelVal`
-/// decodable back to the `SteelErr` that was raised, span included, via
-/// `SteelErr`'s `Custom`/`FromSteelVal` impl). Pops `plugin_stack` and
-/// transitions the plugin to `Loaded`/`Failed`; `drop_activations_for` runs
-/// on both paths to clean up expired activation entries.
+/// `(%finish-lazy-activation id-str error)`: called by
+/// `%activate-plugin-inline` after the plugin body's `eval-string`. `error` is
+/// `#f` on success or the caught exception value. Pops `plugin_stack` and
+/// moves the plugin to `Loaded` or `Failed`.
 ///
-/// A failure is recorded into `ctx.failed_activations` rather than
-/// propagated — `%activate-plugin-inline`'s `with-handler` does not re-raise
-/// (see `bootstrap.scm`), so a plugin failing to load never aborts the
-/// enclosing `init.scm`/command/hook eval. `run_steel_session` reports each
-/// recorded failure by name once the session ends.
+/// A failure is recorded in `ctx.failed_activations` rather than returned, so
+/// a failing plugin never aborts the enclosing eval; `run_steel_session`
+/// reports it when the session ends.
 ///
-/// On failure, rolls back everything the partially-evaluated body
-/// registered, so a `Failed` plugin leaves no live footprint: commands
-/// (`define-command!`/`define-typed-command!`) are removed from
-/// `command_table`/`typed_command_table`, `cmd_owners`, and the editor's
-/// `CommandRegistry` (Steel globals defined before the error stay in the
-/// VM's symbol table but are unreachable through HUME's dispatch); hooks
-/// (`register-hook!`) tagged with this plugin's id are dropped via
-/// `HookRegistry::remove_owned_by`; key bindings (`bind-key!` /
-/// `bind-key-extend!` / `bind-wait-char!` / `unbind-key!`) queue an
-/// `Effect::BindKey`/`BindWaitChar`/`UnbindKey` rather than mutating the
-/// keymap inline, so `ctx.pop_effect_marks(success)` below drops a failed
-/// body's binds along with everything else it queued — a plugin that would
-/// have shadowed an existing binding and then fails leaves that binding
-/// untouched, since the shadowing bind was never applied.
-///
-/// `ctx.pop_effect_marks(success)` does the same for every other queued side
-/// effect (`register-lsp-server!`, `define-language!`, LSP requests, grammar
-/// sweeps) — with one exception: an effect already committed by an
-/// activation nested *inside* this body survives this failure too, since
-/// that nested plugin's `Loaded` state is never rolled back either. See
-/// `pop_effect_marks`.
-///
-/// Hooks can't use that committed-flag machinery: `HookRegistry` lives
-/// inside `ScriptingHost`, but `Editor::init_scripting` holds the host in a
-/// local until well after it applies every startup eval's effects — an
-/// editor-applied `Effect::RegisterHook` would find `scripting == None` and
-/// silently drop every hook `init.scm` registered. So `register-hook!`
-/// mutates the persistent registry the instant the builtin runs, tagged
-/// with a static owner set once at registration, and rollback removes
-/// entries *by identity* (`owner == this id`) — a nested plugin's own
-/// entries (a different owner) are never matched.
+/// On failure the body's footprint is rolled back: its commands leave
+/// `command_table`/`typed_command_table`, `cmd_owners` and the
+/// `CommandRegistry`; its hooks are removed by owner; and
+/// `ctx.pop_effect_marks` drops its queued effects (key binds, LSP servers,
+/// languages), except those already committed by a nested activation.
+/// Hooks are removed by owner identity instead of queued as effects because
+/// `register-hook!` must mutate the registry immediately: during startup
+/// `Editor::init_scripting` still holds the host in a local, so a queued hook
+/// effect would be dropped.
 pub(crate) fn finish_lazy_activation(
     ctx: &mut SteelCtx,
     id_str: String,

@@ -1,32 +1,18 @@
-//! Parse human-readable key-sequence strings into `Vec<KeyEvent>`.
+//! Parse human-readable key-sequence strings into `Vec<KeyEvent>`, for
+//! `bind-key!`/`bind-wait-char!` and the `:bind` typed command.
 //!
-//! Used by the `bind-key!` / `bind-wait-char!` builtins at eval time and by
-//! the `:bind` typed command.  Keeping it as a standalone
-//! module avoids the layer violation of having `scripting/mod.rs` reach into
-//! `scripting/builtins/`.
-//!
-//! ## Format
-//!
-//! A key string is a whitespace-separated list of key tokens; each token has
-//! the form `[modifier-]* key_name`.
-//!
-//! - Modifiers: `ctrl-`/`c-`, `shift-`/`s-`, `alt-`/`a-` (case-insensitive;
-//!   order doesn't matter; short and long forms may be mixed)
+//! A key string is whitespace-separated tokens of the form
+//! `[modifier-]* key_name`:
+//! - Modifiers: `ctrl-`/`c-`, `shift-`/`s-`, `alt-`/`a-` (case-insensitive,
+//!   any order).
 //! - Named keys: `esc`, `tab`, `enter`, `space`, `backspace`, `delete`, `insert`,
-//!   `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12`
-//! - Single character: any single Unicode character (e.g. `f`, `G`, `<`, `>`)
-//! - Multi-key sequences: space-separated tokens, e.g. `"g h"`, `"m d"`
-//!
-//! ## Examples
+//!   `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12`.
+//! - Otherwise any single Unicode character (`f`, `G`, `<`).
 //!
 //! ```text
-//! "f"         → [Char('f')]
-//! "G"         → [Char('G')]
-//! "ctrl-x"    → [Char('x') | CONTROL]
-//! "shift-tab" → [BackTab | SHIFT]
-//! "esc"       → [Escape]
-//! "g h"       → [Char('g'), Char('h')]
-//! "m d"       → [Char('m'), Char('d')]
+//! "ctrl-x"    -> [Char('x') | CONTROL]
+//! "shift-tab" -> [BackTab | SHIFT]
+//! "g h"       -> [Char('g'), Char('h')]
 //! ```
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
