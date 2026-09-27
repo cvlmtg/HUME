@@ -334,36 +334,16 @@ pub(super) fn select_prev_word(
 
 /// Apply a word-select motion to every selection in the set, repeated `count` times.
 ///
-/// Unlike `apply_motion`, `motion` returns the selected word's span — both
-/// endpoints of the selected word — rather than a single new head position.
-/// The result is always a fresh forward selection `[word_start, word_end]`
-/// that replaces the old selection (no anchor accumulation).
+/// `motion` returns the selected word's span, and each hop replaces the
+/// selection with a fresh forward `[word_start, word_end]`. `None` stops early
+/// and keeps the last selection. With `around`, the final span grows by its
+/// whitespace bookend ([`expand_word_unit`]), unless the loop never moved.
 ///
-/// If `motion` returns `None` (no next/previous word), the iteration stops
-/// early for that selection and the last selection is kept unchanged.
-///
-/// When `around` is set, the final word span is grown to include its
-/// whitespace bookend (leading, or trailing when the word is the first
-/// on its line — see [`expand_word_unit`]) once the loop is done. A
-/// selection the loop never actually moved (motion returned `None` on the
-/// first iteration, e.g. `w` at EOF) is left untouched — there is no word to
-/// grow around.
-///
-/// `backward` selects which edge of the current selection each hop searches
-/// from. Forward motions (`w`/`W`) always search from `head()`: a leading
-/// expansion only ever moves `start`, so `head()` always sits on the found
-/// word's own last char (or, for a first-word-on-line landing, on its
-/// trailing whitespace) — either way `next_word_start` searches correctly
-/// from there. Backward motions (`b`/`B`) need `start()` instead:
-/// `select_prev_word` detects "did I land back on the word I'm already
-/// sitting in" by checking whether the search origin falls inside that
-/// word's bounds, and after a first-word-on-line landing `head()` sits in
-/// the word's *trailing* whitespace — just outside those bounds — which
-/// defeats the check and re-returns the same word every subsequent press.
-/// `start()` never drifts into trailing whitespace (a leading expansion only
-/// pulls it further from the found word, which keeps the check working), so
-/// it's the origin that stays correct across repeated backward presses on
-/// both bare and around selections.
+/// Forward motions search from `head()`. Backward motions search from
+/// `start()`: `select_prev_word` detects re-landing on the current word by
+/// checking whether the origin is inside it, and after a first-word-on-line
+/// `around` landing `head()` sits in trailing whitespace outside the word,
+/// which would re-select the same word on every press.
 pub(super) fn apply_word_select(
     text: &BufferText,
     sels: SelectionSet,
@@ -400,33 +380,19 @@ pub(super) fn apply_word_select(
 }
 
 /// Apply a word-select motion in extend mode: grow toward the target word if
-/// it lies beyond the anchor's unit, shrink toward it if the target has
-/// crossed back onto or past the anchor's unit, replacing the old selection
-/// rather than unioning with it.
+/// it lies beyond the anchor's unit, shrink toward it if it has crossed back
+/// onto or past that unit. Replaces the old selection rather than unioning.
 ///
-/// The motion origin is `sel.head()` — each press searches from wherever the
-/// last press left the cursor, so repeated presses walk word by word in
-/// either direction.
+/// The origin is `sel.head()`, so repeated presses walk word by word. With
+/// `around`, the anchor's unit is [`word_unit_at`] (leading whitespace
+/// included) instead of [`anchor_unit`], and a backward-growing target's head
+/// is expanded the same way. Comparisons use the target's raw bounds against
+/// the expanded anchor unit, so the one-space overlap between adjacent units
+/// is never double-counted.
 ///
-/// When `around` is set, the anchor's unit is resolved via [`word_unit_at`]
-/// (leading whitespace included, same rule as [`expand_word_unit`]) instead
-/// of the bare [`anchor_unit`], and a backward-growing target's `head` is
-/// expanded the same way — so a backward extend can end on the target
-/// word's leading whitespace. Comparisons still use the target's *raw* word
-/// bounds against the *expanded* anchor unit: adjacent units can overlap by
-/// one space (e.g. "one two" → "one " and " two"), but since only the
-/// anchor's own unit is ever expanded for the comparison, that overlap never
-/// causes a position to be double-counted. A forward-growing target never
-/// needs expanding — its `head` already lands on its own last char: leading
-/// units end at the word, not in trailing whitespace.
-///
-/// Because a target unit can only lie entirely beyond, entirely behind, or
-/// exactly on the anchor's unit (units never partially overlap once the
-/// anchor's own unit is fixed), the anchor's unit is always kept whole:
-/// crossing it flips the selection's direction but never truncates it.
-///
-/// If `motion` returns `None`, iteration stops early and the last selection is
-/// kept.
+/// A target lies wholly beyond, behind, or on the anchor's unit, so that unit
+/// is always kept whole: crossing it flips direction without truncating.
+/// `None` from `motion` stops early and keeps the last selection.
 pub(super) fn apply_word_select_extend(
     text: &BufferText,
     sels: SelectionSet,

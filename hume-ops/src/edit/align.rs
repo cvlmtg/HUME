@@ -13,43 +13,23 @@ use super::apply_edit;
 
 /// Align selections into slots, using the primary's line as a baseline.
 ///
-/// **Slot model** — the primary's line determines the slot count `N`: one
-/// slot per single-line selection on that line (in left-to-right order). Every
-/// other line participates slot-by-slot: its k-th single-line selection aligns to
-/// slot `k`. Selections in slots ≥ N ("extras") and multiline selections pass
-/// through unchanged (shifted by the accumulated edit delta so they don't drift).
+/// The primary's line has `N` single-line selections, one slot each, left to
+/// right. On every other line the k-th single-line selection aligns to slot
+/// `k`. Extras (slot >= N) and multiline selections are only shifted by the
+/// accumulated edit delta.
 ///
-/// **Target per slot** — `target[k] = max(baseline[k], fit_need[k])`:
-/// - `baseline[k]` = anchor display column (`tab_width`-expanded, wide
-///   graphemes counted at their true screen width) of the primary line's
-///   k-th selection (the primary line's positions are a floor).
-/// - `fit_need[k]` = the minimum anchor display column such that every
-///   line's slot-`k` selection can reach it. A selection can only compress
-///   the contiguous space/tab run immediately before its left edge (down to
-///   1 display column); all other text on the line is fixed-width and sets
-///   a hard floor.
-/// - Slots are computed left-to-right: `fit_need[k]` depends on `target[k-1]`.
+/// Slots are solved left to right: `target[k] = max(baseline[k], fit_need[k])`.
+/// `baseline[k]` is the anchor display column of the primary line's k-th
+/// selection. `fit_need[k]` is the smallest column every line's slot-`k`
+/// selection can reach, given `target[k-1]`: a selection can only shrink the
+/// space/tab run just before it (down to one column), so the primary line
+/// may move too. The anchor is the left edge going forward and the right
+/// edge going backward, which gives left- and right-alignment.
 ///
-/// **Direction** — the anchor is direction-aware: forward → anchor is the left
-/// edge (left-align); backward → anchor is the right edge (right-align). The
-/// uniform anchor + removable-whitespace model works for both without
-/// special-casing.
-///
-/// **Primary may move** — when another line forces a slot to widen past the
-/// baseline, spaces are inserted before the primary line's selections too.
-///
-/// **Compression is measured in display cells** — the removable run before a
-/// selection is tracked as two numbers: `rem` (chars — how many the run has
-/// to spare, keeping ≥1) caps how much can be *deleted*, and `rem_cells`
-/// (that run's tab-aware display width) is what every target/fit computation
-/// actually operates on. Removing the whole `rem`-char run frees exactly
-/// `rem_cells` display columns, so `fit_need` is exact, not a lower bound. A
-/// tab's whole-unit granularity can still force removing more than the exact
-/// cell need in one step (deleting a tab that straddles the target frees more
-/// than requested) — the surplus is padded back with spaces so every
-/// selection still lands precisely on `target`. Insertion has no granularity
-/// gap of its own: an inserted run is always spaces, each exactly one display
-/// column, so `amount > 0` lands exactly on `target` without padding.
+/// The removable run is tracked as `rem` chars (what may be deleted) and
+/// `rem_cells` display cells (what the target math uses), so `fit_need` is
+/// exact. Deleting a tab can free more cells than needed; the surplus is
+/// padded back with spaces so every selection lands on `target`.
 pub fn align_selections(
     text: BufferText,
     sels: SelectionSet,

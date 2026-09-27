@@ -35,39 +35,24 @@ pub fn word_start_before(text: &BufferText, pos: CharOffset, chars: WordChars<'_
     cursor
 }
 
-/// General multi-cursor "replace around each head" primitive: for every
-/// selection, `start_of(text, i, head)` determines where the deletion begins
-/// and `forward` chars ahead of the head are replaced along with it,
-/// uniformly, by `replacement`. [`replace_around_cursors`] is the common case
-/// (`start_of` is a uniform backward char count) — a server-provided
-/// `textEdit` range, where a conforming server's completion range always
-/// contains the request position (LSP spec), so the primary cursor's own
-/// edit, re-expressed as a char count, is the same span typing would have
-/// consumed at any cursor. LSP completion's `insertText` fallback (no
-/// server-provided range) calls this directly instead: it has no such
-/// uniform-count guarantee, since only the *primary* cursor's token start is
-/// precisely tracked (`CompletionSession`'s own `BufferSpan`) — every other
-/// cursor's own start is instead each cursor's *own* word-boundary scan
-/// (`word_start_before`), matching what typing would actually have produced
-/// there rather than assuming every cursor's preceding text has the same
-/// shape as the primary's.
+/// Multi-cursor "replace around each head": for every selection, delete from
+/// `start_of(text, i, head)` through `forward` chars past the head and insert
+/// `replacement`.
 ///
-/// `text` is *this* call's own live document — already shifted across any
-/// edit applied earlier in the same grouped edit (e.g. `additionalTextEdits`,
-/// landed document-wide before the per-cursor replacement runs) — so a
-/// `start_of` that re-scans it fresh per cursor, rather than working from a
-/// count fixed before that earlier edit landed, risks the scan wandering
-/// into text the earlier edit just inserted. `i` (this cursor's 0-based,
-/// sorted-order index, matching [`apply_edit`]'s own) is threaded through
-/// for exactly that reason: `accept.rs`'s own `start_of` indexes a
-/// per-cursor char *count* it computed once against the pre-edit document,
-/// immune to the shift, rather than reading `text`/`head` at all.
+/// [`replace_around_cursors`] is the uniform case (a fixed backward char
+/// count, valid for an LSP `textEdit` range since it contains the request
+/// position). LSP completion's `insertText` fallback calls this directly,
+/// because only the primary cursor's token start is tracked; other cursors
+/// scan their own word start.
 ///
-/// Two cursors closer together than the resulting span, or a cursor nearer
-/// the buffer start than it, would otherwise produce a delete range starting
-/// before `b.old_pos()` (the previous selection's edit already claimed that
-/// text) — clamped to `b.old_pos()` instead of erroring, so a cramped cursor
-/// simply replaces less and every cursor still receives `replacement`.
+/// `text` may already include an earlier edit from the same group (e.g.
+/// `additionalTextEdits`), so a fresh scan could wander into inserted text.
+/// `i` (the cursor's sorted index, as in [`apply_edit`]) lets `start_of` read
+/// a per-cursor count computed before that edit instead.
+///
+/// A delete range starting before `b.old_pos()` (cursors closer than the
+/// span, or near the buffer start) is clamped there, so a cramped cursor
+/// replaces less but still receives `replacement`.
 pub fn replace_span_around_cursors(
     text: BufferText,
     sels: SelectionSet,

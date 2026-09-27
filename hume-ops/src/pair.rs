@@ -163,51 +163,27 @@ fn step_bracket(
     Some(k)
 }
 
-/// Find the tightest (innermost, smallest-span) of the three `BRACKET_PAIRS`
-/// pairs that encloses `pos`.
+/// Find the tightest (smallest-span) of the three `BRACKET_PAIRS` pairs that
+/// encloses `pos`.
 ///
-/// The three bracket types are resolved as **independent** candidates, never
-/// as "nearest unmatched open, of any type": on `{(abc}    )` with the
-/// cursor on `b`, `(` at index 1 is the nearest unmatched open, but its
-/// partner `)` at 10 gives `()` a span of 9, while `{}` resolves to `(0, 5)`
-/// — span 5 — and wins. A single depth counter shared across bracket types
-/// would return the `()` span instead; three counters per direction, tracked
-/// in lockstep, are load-bearing.
+/// Each bracket type is an independent candidate with its own depth counter
+/// per direction. On `{(abc}    )` with the cursor on `b`, the nearest
+/// unmatched open is `(`, but `{}` (span 5) beats `()` (span 9); a shared
+/// counter would return `()`. If `pos` is on a type's open or close, that side
+/// costs no scan for that type.
 ///
-/// Each type still gets `find_bracket_pair`'s own on-open/on-close shortcut:
-/// if `pos` sits on that type's open or close char, that side costs no scan.
+/// The leftward and rightward scans run interleaved, one char at a time, at
+/// distances `dl` and `dr` from `pos`. Once some type resolves with span `s`,
+/// a type still missing its open lies more than `dl` back and closes at
+/// `pos + 1` or later, so it can't beat `s` once `dl >= s`; the rightward
+/// scan is bounded by `dr` the same way. The common case (one type never
+/// resolving) thus costs O(winning span) instead of O(buffer).
 ///
-/// **Bounded by the best complete span found so far.** The leftward and
-/// rightward scans run interleaved, one char at a time, tracking how far
-/// each has walked from `pos` (`dl`, `dr`). Once some type fully resolves
-/// (both its open and close known), no type still missing its open can beat
-/// that span once `dl` reaches it: a still-missing open lies more than `dl`
-/// chars back, or it would already be found, and its close (never `pos`
-/// itself — only the one type `role` names as a close can have that, and it
-/// resolves on the spot the moment its open does, see below) lies at
-/// `pos + 1` or later, so the span it could still achieve is `> dl`. The
-/// mirror argument bounds the rightward scan by `dr`. This makes the common
-/// case — one type (`[]`, almost always) never resolving — cost O(winning
-/// span) instead of O(buffer).
-///
-/// Two things the bound alone doesn't give for free: a side stops as soon as
-/// it has nothing left to find, regardless of the bound
-/// (`opens_missing`/`right_pending` hitting zero) — otherwise a side whose
-/// types all resolved early would keep walking just because the bound
-/// hasn't caught up yet. And the rightward scan for a given type only
-/// starts once that type's open is known — a type dropped for lack of an
-/// open (buffer-edge exhaustion on the left) never gets its close scanned,
-/// matching `find_bracket_pair`'s per-type shortcut of never scanning the
-/// side its missing half rules out. A type's close *can* still resolve
-/// before its own open, though: the rightward scan tracks every type's
-/// depth as soon as it's running at all (started by whichever type first
-/// needs it), so a slower-to-resolve type's close may already be sitting in
-/// `closes` by the time its open turns up on the left — handled inline
-/// where each side discovers the other already has an answer.
-///
-/// Ties (crossed nesting can produce genuine equal spans, e.g. `({a)}`)
-/// break in `BRACKET_PAIRS` order — `min_by_key` keeps the first of equal
-/// minima.
+/// A side also stops when it has nothing left to find (`opens_missing` or
+/// `right_pending` at zero). The rightward scan only runs while some type has
+/// a known open, but it tracks every type, so a close can resolve out of order
+/// before its own open; each side checks for the other's answer. Ties break
+/// in `BRACKET_PAIRS` order.
 pub(crate) fn find_tightest_bracket_pair(
     text: &BufferText,
     pos: CharOffset,
