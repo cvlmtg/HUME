@@ -66,7 +66,7 @@ fn combining_char_next() {
 fn combining_char_next_mid_cluster() {
     // Offset 1 is *inside* the é cluster (between 'e' and U+0301).
     // next() should still find the next boundary at 2, not at 1+1=2
-    // by coincidence — it must consult the grapheme algorithm.
+    // by coincidence: it must consult the grapheme algorithm.
     let buf = rope("e\u{0301}x");
     assert_eq!(next_grapheme_boundary(buf.slice(..), co(1)), co(2));
 }
@@ -74,8 +74,8 @@ fn combining_char_next_mid_cluster() {
 #[test]
 fn combining_char_prev_mid_cluster() {
     // prev(1) from inside the é cluster should return 0 (start of cluster),
-    // not 1-1=0 by coincidence — test with a prefix to break the coincidence.
-    // "ae\u{0301}x\n" — offset 2 is inside the é cluster (between 'e' and U+0301).
+    // not 1-1=0 by coincidence. Test with a prefix to break the coincidence.
+    // "ae\u{0301}x\n": offset 2 is inside the é cluster (between 'e' and U+0301).
     let buf = rope("ae\u{0301}x");
     assert_eq!(buf.len_chars(), 5);
     assert_eq!(prev_grapheme_boundary(buf.slice(..), co(2)), co(1)); // back to start of é, not to 'a'
@@ -93,8 +93,8 @@ fn combining_char_prev() {
 
 #[test]
 fn zwj_emoji_next() {
-    // U+1F468 ZWJ U+1F469 ZWJ U+1F467 — 5 chars, 1 grapheme cluster; + "\n".
-    // next(0) must return 5 — the whole family is one cluster.
+    // U+1F468 ZWJ U+1F469 ZWJ U+1F467: 5 chars, 1 grapheme cluster; + "\n".
+    // next(0) must return 5, since the whole family is one cluster.
     let buf = rope("👨‍👩‍👧");
     assert_eq!(buf.len_chars(), 6); // 5 emoji chars + \n
     assert_eq!(next_grapheme_boundary(buf.slice(..), co(0)), co(5));
@@ -110,8 +110,8 @@ fn zwj_emoji_prev() {
 
 #[test]
 fn mixed_string_boundaries() {
-    // "Hello 👨‍👩‍👧!\n" — chars: H(0) e(1) l(2) l(3) o(4) (space)(5)
-    //                           👨(6) ZWJ(7) 👩(8) ZWJ(9) 👧(10) !(11) \n(12)
+    // "Hello 👨‍👩‍👧!\n", chars: H(0) e(1) l(2) l(3) o(4) (space)(5)
+    //                          👨(6) ZWJ(7) 👩(8) ZWJ(9) 👧(10) !(11) \n(12)
     // Graphemes: H, e, l, l, o, ' ', [👨‍👩‍👧], !, \n
     // Boundaries: 0, 1, 2, 3, 4, 5, 6, 11, 12, 13
     let buf = rope("Hello 👨‍👩‍👧!");
@@ -136,7 +136,7 @@ fn next_at_end_returns_len() {
     // "hi\n" is 3 chars. next(2) steps past '\n' to len_chars=3.
     let buf = rope("hi");
     assert_eq!(next_grapheme_boundary(buf.slice(..), co(2)), co(3)); // '\n' → one past it = len_chars
-    assert_eq!(next_grapheme_boundary(buf.slice(..), co(99)), co(3)); // past end — clamped to len_chars
+    assert_eq!(next_grapheme_boundary(buf.slice(..), co(99)), co(3)); // past end, clamped to len_chars
 }
 
 #[test]
@@ -202,7 +202,7 @@ fn cluster_last_char_combining_char_returns_the_combining_mark() {
 #[test]
 fn cluster_last_char_saturates_at_eof() {
     // Single-char buffer: the structural '\n' is its own cluster, and
-    // next_grapheme_boundary(0) returns len_chars() (1) — the saturating_sub
+    // next_grapheme_boundary(0) returns len_chars() (1). The saturating_sub
     // must not underflow past it.
     let buf = rope("");
     assert_eq!(cluster_last_char(buf.slice(..), co(0)), co(0));
@@ -237,7 +237,7 @@ fn grapheme_count_combining_char() {
 fn grapheme_count_zwj_emoji() {
     // 👨‍👩‍👧 = 5 codepoints, 1 grapheme cluster.
     // rope("👨‍👩‍👧\n"): the string already ends with \n so no extra is
-    // added — total 6 chars (5 emoji codepoints + \n).
+    // added: total 6 chars (5 emoji codepoints + \n).
     let buf = rope("👨‍👩‍👧\n");
     assert_eq!(buf.len_chars(), 6); // 5 emoji chars + \n
     // from 0 to 5 (past the whole emoji): 1 grapheme
@@ -246,7 +246,7 @@ fn grapheme_count_zwj_emoji() {
 
 #[test]
 fn grapheme_count_multiline_offset() {
-    // "ab\ncd\n" — "cd" starts at char 3
+    // "ab\ncd\n": "cd" starts at char 3
     let buf = rope("ab\ncd\n");
     // from line 1 start (char 3) to char 5 (past "cd"): 2 graphemes
     assert_eq!(grapheme_count(buf.slice(..), co(3), co(5)), 2);
@@ -274,7 +274,7 @@ fn grapheme_count_to_buffer_end() {
 fn grapheme_col_and_display_col_diverge_after_a_tab() {
     // The confusion the whole column taxonomy exists to prevent, pinned at
     // the two functions that define it. On "\tx", 'x' is preceded by exactly
-    // one grapheme cluster, so its *grapheme* column is 1 — the unit the
+    // one grapheme cluster, so its *grapheme* column is 1: the unit the
     // editing model counts in, and the one HUME shows a user (1-based: 2).
     // Its *display* column is 4, because the tab expands to the next stop.
     // Rendering the display column as "the column" would report 5 for a
@@ -441,7 +441,7 @@ fn char_pos_at_display_col_inside_a_wide_cluster_stays_on_its_start() {
     // "漢bc\n": 漢 occupies display cols 0 AND 1, so col 1 falls *inside*
     // the cluster rather than on any cluster start. The walk must stop
     // before the grapheme that would overshoot and answer 0 (漢's own
-    // position) — never 1, which is 'b', a full column to the right of
+    // position), never 1, which is 'b', a full column to the right of
     // where the caller pointed. Every other test here targets a cluster
     // start, where the overshoot branch never fires.
     let buf = rope("\u{6F22}bc\n");
@@ -514,7 +514,7 @@ fn char_pos_overshoot_stops_short() {
 #[test]
 fn char_pos_at_display_col_after_wide_cjk_and_tab() {
     // "\u{6F22}\tx\n" with tw=4: 漢 spans display col 0→2, tab spans display
-    // col 2→4 — the char at display col 4 is 'x' (char index 2).
+    // col 2→4, so the char at display col 4 is 'x' (char index 2).
     let buf = rope("\u{6F22}\tx\n");
     assert_eq!(
         char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
@@ -524,7 +524,7 @@ fn char_pos_at_display_col_after_wide_cjk_and_tab() {
 
 #[test]
 fn char_pos_target_beyond_line_width_stops_at_newline() {
-    // "ab\ncd\n" — line 0 is 2 display columns wide. A target past that must
+    // "ab\ncd\n": line 0 is 2 display columns wide. A target past that must
     // stop on line 0's '\n' (char 2), never walk onto line 1.
     let buf = rope("ab\ncd\n");
     assert_eq!(

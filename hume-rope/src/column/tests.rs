@@ -1,7 +1,7 @@
 use super::*;
 
 // `DisplayLineCol`/`BufferLineCol` share their entire behavior (the
-// `display_col_methods!` macro in the parent module) — one macro-generated
+// `display_col_methods!` macro in the parent module): one macro-generated
 // test body exercised against both, rather than two hand-copies that could
 // silently drift apart, mirrors how the implementation itself is shared.
 macro_rules! display_col_tests {
@@ -46,7 +46,7 @@ display_col_tests!(DisplayLineCol, display_line_col);
 display_col_tests!(BufferLineCol, buffer_line_col);
 
 // Not shared with `BufferLineCol`'s macro-generated tests above: only
-// `DisplayLineCol` derives `Default` — it's load-bearing (`DisplayLinePos`,
+// `DisplayLineCol` derives `Default`. It's load-bearing (`DisplayLinePos`,
 // `ScrollPosition`), `BufferLineCol`'s never was.
 #[test]
 fn display_line_col_default_is_column_zero() {

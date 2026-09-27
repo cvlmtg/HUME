@@ -15,7 +15,7 @@ use crate::offset::CharOffset;
 /// `GraphemeCursor` (from `unicode-segmentation`) operates in *byte* space
 /// because Unicode break algorithms work on UTF-8 encoded bytes. We convert
 /// the caller-facing char offset to a byte offset, run the cursor, then
-/// convert the result back — byte offsets never leave this module.
+/// convert the result back. Byte offsets never leave this module.
 ///
 /// # Why chunks instead of a full `&str`?
 ///
@@ -36,7 +36,7 @@ pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> 
 
     // Start with the chunk that contains `byte_offset`.
     // chunk_at_byte returns (chunk, byte_start, char_start, line_start); we only
-    // need the chunk text and its byte offset — the char/line starts are unused.
+    // need the chunk text and its byte offset; the char/line starts are unused.
     let (mut chunk, mut chunk_byte_start, _, _) = slice.chunk_at_byte(byte_offset);
 
     let mut gc = GraphemeCursor::new(byte_offset, len_bytes, true);
@@ -50,7 +50,7 @@ pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> 
             Err(GraphemeIncomplete::NextChunk) => {
                 let next_byte = chunk_byte_start + chunk.len();
                 if next_byte >= len_bytes {
-                    // No more chunks — treat as end.
+                    // No more chunks: treat as end.
                     return CharOffset::new(len_chars);
                 }
                 let (c, s, _, _) = slice.chunk_at_byte(next_byte);
@@ -67,7 +67,7 @@ pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> 
             }
 
             // All other variants are unreachable when using the public API
-            // correctly — `next_boundary` only returns the three above.
+            // correctly: `next_boundary` only returns the three above.
             Err(_) => unreachable!("unexpected GraphemeIncomplete variant"),
         }
     }
@@ -87,7 +87,7 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> 
     let byte_offset = slice.char_to_byte(char_offset);
 
     // Start one byte before `byte_offset` to land inside the preceding
-    // cluster — we want the chunk that *contains* the last byte of that
+    // cluster. We want the chunk that *contains* the last byte of that
     // cluster, not the chunk that starts exactly at `byte_offset`.
     let (mut chunk, mut chunk_byte_start, _, _) = slice.chunk_at_byte(byte_offset - 1);
 
@@ -118,20 +118,20 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> 
     }
 }
 
-/// Floor `char_offset` to the start of its own grapheme cluster — a no-op
+/// Floor `char_offset` to the start of its own grapheme cluster: a no-op
 /// when it's already a cluster start, otherwise the start of the cluster it
 /// sits inside.
 ///
 /// `next` then `prev` rather than `prev` alone: [`prev_grapheme_boundary`]
 /// answers "where does the *preceding* cluster start," which is one cluster
 /// too far back when `char_offset` is already a boundary. Advancing to the
-/// next boundary first — identity if already on one — then retreating lands
+/// next boundary first (identity if already on one), then retreating, lands
 /// on the boundary that actually opens `char_offset`'s own cluster.
 pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
     prev_grapheme_boundary(slice, next_grapheme_boundary(slice, char_offset))
 }
 
-/// Last codepoint of the grapheme cluster starting at `cluster_start` — the
+/// Last codepoint of the grapheme cluster starting at `cluster_start`: the
 /// inverse of [`snap_to_cluster_start`], and the inclusive counterpart to
 /// [`next_grapheme_boundary`]'s exclusive one.
 ///
@@ -154,7 +154,7 @@ pub fn cluster_last_char(slice: RopeSlice<'_>, cluster_start: CharOffset) -> Cha
     )
 }
 
-/// Byte offset of the start of the grapheme cluster ending at `byte_pos` —
+/// Byte offset of the start of the grapheme cluster ending at `byte_pos`:
 /// the `&str` sibling of [`prev_grapheme_boundary`], for the short, already
 /// contiguous strings the UI edits in place (a minibuffer prompt, a picker
 /// query) rather than a rope. `0` when `byte_pos` is already 0.
@@ -172,7 +172,7 @@ pub fn prev_str_boundary(s: &str, byte_pos: usize) -> usize {
         .unwrap_or(0)
 }
 
-/// Byte offset just past the grapheme cluster starting at `byte_pos` — the
+/// Byte offset just past the grapheme cluster starting at `byte_pos`: the
 /// `&str` sibling of [`next_grapheme_boundary`]. `s.len()` when `byte_pos` is
 /// at or past the end. See [`prev_str_boundary`] for why these exist.
 pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
@@ -185,10 +185,10 @@ pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
 
 /// Count grapheme clusters in the char range `[from_char, to_char)`.
 ///
-/// `to_char` is an **exclusive** upper bound — the character at `to_char` is
+/// `to_char` is an **exclusive** upper bound: the character at `to_char` is
 /// not itself counted. For example, if the cursor sits at char offset `c`,
 /// `grapheme_count(slice, line_start, c)` returns the number of grapheme
-/// clusters that precede the cursor on that line — its 0-based grapheme
+/// clusters that precede the cursor on that line, i.e. its 0-based grapheme
 /// column.
 ///
 /// If `to_char < from_char` the range is treated as empty and 0 is returned.
@@ -199,7 +199,7 @@ pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
 /// which allocates a heap String proportional to line length. Long lines
 /// (minified JSON, generated files, log files with no newlines) can be
 /// arbitrarily wide. This implementation uses the same chunk-at-a-time
-/// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
+/// `GraphemeCursor` strategy as `next_grapheme_boundary`: O(log n) per
 /// cluster with no heap allocation.
 pub(crate) fn grapheme_count(
     slice: RopeSlice<'_>,
@@ -267,13 +267,13 @@ pub fn grapheme_col_in_line(
     ))
 }
 
-/// Grapheme cluster `[start, end)` of `slice`, as text — the shape
+/// Grapheme cluster `[start, end)` of `slice`, as text: the shape
 /// `width::grapheme_width` needs to measure it, since `unicode-width`'s
 /// context-sensitive rules (e.g. combining marks folding into a base
 /// character's width) need the whole cluster, not just its first char.
 ///
 /// Borrowed with zero copy when the cluster lies entirely inside one rope
-/// chunk — true for the overwhelming majority of clusters, since chunks run
+/// chunk, true for the overwhelming majority of clusters, since chunks run
 /// hundreds of bytes and a cluster is rarely more than a handful of
 /// codepoints. Copied only for the rare cluster that straddles a chunk
 /// boundary.
@@ -292,7 +292,7 @@ fn cluster_str(slice: RopeSlice<'_>, start: CharOffset, end: CharOffset) -> Cow<
 
 /// 0-based display column of `char_pos` within line `line_idx`, with `\t`
 /// expanded to tab stops of width `tab_width` and every other grapheme
-/// weighted by [`crate::width::grapheme_width`] — the same convention the
+/// weighted by [`crate::width::grapheme_width`]. That is the same convention the
 /// renderer uses, so this and `hume_engine::format::grapheme_display` always
 /// agree on where a given position lands on screen.
 ///
@@ -331,20 +331,20 @@ pub fn display_col_in_line(
 ///
 /// For `target_display_col == 0` this is the line start. When
 /// `target_display_col` is a tab stop and the line's leading content is
-/// whitespace — dedent-on-Backspace's case — the position is exact: tabs
+/// whitespace (dedent-on-Backspace's case), the position is exact: tabs
 /// jump to multiples of `tab_width` and spaces step by one, so every tab
 /// stop along the way is hit. Otherwise the result is the closest position
 /// not exceeding `target_display_col`: a grapheme that would overshoot (a
 /// tab when not aligned, a double-width cluster straddling the target)
-/// leaves the walk at the position before it — `hume-ops`'s
+/// leaves the walk at the position before it. `hume-ops`'s
 /// `align_selections` relies on exactly this non-tab-stop case to resolve
 /// its removable-run cell target back to a char position, padding any
 /// resulting overshoot with spaces.
 ///
 /// The walk never leaves the line: a `target_display_col` beyond the line's
 /// width stops on the line's `\n`. A caller that wants a cursor position
-/// clamped back onto the last real character instead — vertical motion's
-/// case — wants `hume_engine::display_lines::DisplayLineMap::char_at_buffer_line_col`, which
+/// clamped back onto the last real character instead (vertical motion's
+/// case) wants `hume_engine::display_lines::DisplayLineMap::char_at_buffer_line_col`, which
 /// also sees the decoration layer this rope-only function can't.
 pub fn char_pos_at_display_col(
     slice: RopeSlice<'_>,
@@ -364,7 +364,7 @@ pub fn char_pos_at_display_col(
             break; // end of buffer
         }
         if slice.get_char(pos.index()) == Some('\n') {
-            break; // end of line — never walk onto the next line
+            break; // end of line: never walk onto the next line
         }
         let w = crate::width::grapheme_width(
             &cluster_str(slice, pos, next),
@@ -373,7 +373,7 @@ pub fn char_pos_at_display_col(
         );
         let advanced = display_col.advance_saturating(w as u32);
         if advanced > target_display_col {
-            break; // this grapheme would overshoot — stop here
+            break; // this grapheme would overshoot, stop here
         }
         display_col = advanced;
         pos = next;

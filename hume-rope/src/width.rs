@@ -1,10 +1,10 @@
-//! Display-column arithmetic — the single source of truth for "how many
+//! Display-column arithmetic: the single source of truth for "how many
 //! terminal cells does this text occupy", shared by every crate that renders
 //! or aligns text: `hume-engine` (buffer lines, virtual decoration rows),
 //! `hume-ops` (tab insert/dedent), and `hume-editor` (popups, pickers, the
 //! statusline). A caller measuring or drawing display width goes through
-//! this module rather than re-deriving its own tab/placeholder rules —
-//! two independent conventions can silently disagree at the exact cells
+//! this module rather than re-deriving its own tab/placeholder rules.
+//! Two independent conventions can silently disagree at the exact cells
 //! where a tab stop or an unrenderable cluster falls.
 //!
 //! Distinct from grapheme *indexing* (`crate::grapheme`, which counts
@@ -12,7 +12,7 @@
 //! (`crate::position_encoding`, which counts UTF-16 code units or bytes).
 
 // This module is `clippy.toml`'s named exception for `unicode_width`'s own
-// methods — the raw measurement they wrap into `tab_advance`/
+// methods: the raw measurement they wrap into `tab_advance`/
 // `grapheme_width`/`str_width` happens right here, once.
 #![allow(clippy::disallowed_methods)]
 
@@ -20,13 +20,13 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 /// The `tab_width` every caller measuring UI chrome text (a popup, a picker,
-/// a menu, the statusline, the minibuffer) passes — chrome has no tab stops
+/// a menu, the statusline, the minibuffer) passes: chrome has no tab stops
 /// of its own, so a tab there is pinned to exactly one cell, same as any
 /// other character. Named so that convention is stated once rather than
 /// repeated as a bare `1` at every chrome measurement/draw call site.
 pub const CHROME_TAB_WIDTH: u8 = 1;
 
-/// Columns a `\t` at display column `display_col` occupies — the distance to
+/// Columns a `\t` at display column `display_col` occupies: the distance to
 /// the next tab stop of width `tw`. Always in `[1, tw]`: a tab already
 /// sitting on a stop advances a full `tw` rather than zero. `tw < 1` is
 /// clamped to 1 (a zero-width tab stop is meaningless) so callers don't each
@@ -36,7 +36,7 @@ pub fn tab_advance(display_col: usize, tw: u8) -> usize {
     tw - display_col % tw
 }
 
-/// Largest tab stop of width `tw` strictly before `display_col` — the
+/// Largest tab stop of width `tw` strictly before `display_col`: the
 /// dedent-on-Backspace sibling of [`tab_advance`]. A `display_col` already
 /// sitting exactly on a stop still steps back to the *previous* one (never a
 /// no-op), matching how `tab_advance` never advances by zero. `0` for
@@ -47,36 +47,36 @@ pub fn prev_tab_stop(display_col: usize, tw: u8) -> usize {
     (display_col.saturating_sub(1) / tw) * tw
 }
 
-/// How a grapheme cluster renders — tab, unrenderable placeholder, or plain
-/// text — decided once by [`classify`] and carrying each variant's own
+/// How a grapheme cluster renders (tab, unrenderable placeholder, or plain
+/// text), decided once by [`classify`] and carrying each variant's own
 /// display width, so every caller that needs to know not just *how wide* a
 /// cluster is but *what to draw* for it reads that off one decision instead
 /// of re-deriving it: `format::grapheme_display`, `format::push_virtual_cells`,
 /// and `render::write_text_run` all need `cluster == "\t"` tested before
-/// [`needs_placeholder`], in that order ([`classify`]'s own doc) — one
+/// [`needs_placeholder`], in that order ([`classify`]'s own doc). That is one
 /// ordering hazard, checked once instead of at each call site, with no
 /// [`Placeholder`] rebuilt after `grapheme_width` already discarded it.
 pub enum Cluster {
     /// A tab, expanding to the next `tab_width` stop.
     Tab { width: usize },
-    /// A cluster the terminal must not be shown as itself — see
-    /// [`needs_placeholder`]. Carries its own [`Placeholder`] so a caller
+    /// A cluster the terminal must not be shown as itself (see
+    /// [`needs_placeholder`]). Carries its own [`Placeholder`] so a caller
     /// never has to build it twice.
     Placeholder(Placeholder),
     /// Every other cluster, measured with `unicode-width`. The cluster text
-    /// itself isn't carried — every caller already holds it (it's what was
+    /// itself isn't carried: every caller already holds it (it's what was
     /// passed to [`classify`]) and reads it from there instead.
     Plain { width: usize },
 }
 
 impl Cluster {
-    /// Display columns this cluster occupies. Never zero — see
-    /// [`grapheme_width`]'s own doc for why.
+    /// Display columns this cluster occupies. Never zero (see
+    /// [`grapheme_width`]'s own doc for why).
     pub fn width(&self) -> usize {
         match self {
             Cluster::Tab { width } | Cluster::Plain { width, .. } => *width,
             // A placeholder is ASCII-only ([`Placeholder::as_str`]), so its
-            // byte length is also its column count — read directly rather
+            // byte length is also its column count, so it is read directly rather
             // than through `as_str`, which re-validates the bytes as UTF-8.
             Cluster::Placeholder(p) => p.len,
         }
@@ -84,7 +84,7 @@ impl Cluster {
 }
 
 /// Classifies `cluster` for rendering at display column `display_col` and
-/// measures its width in the same pass — the one decision every caller
+/// measures its width in the same pass: the one decision every caller
 /// that draws text (not just measures it) must consume rather than
 /// re-derive. Re-deriving it independently is not just duplicated work but
 /// a duplicated *ordering* hazard: a tab is also a control character, so
@@ -97,7 +97,7 @@ pub fn classify(cluster: &str, display_col: usize, tab_width: u8) -> Cluster {
             width: tab_advance(display_col, tab_width),
         };
     }
-    // Printable ASCII — the overwhelming majority of what a source file is,
+    // Printable ASCII: the overwhelming majority of what a source file is,
     // and the one case decidable without measuring: never a control
     // character, never zero-width, always one column. `unicode-width` has no
     // ASCII shortcut of its own (every char walks its lookup tables carrying
@@ -122,7 +122,7 @@ pub fn classify(cluster: &str, display_col: usize, tab_width: u8) -> Cluster {
 /// stop; a cluster the terminal must not be shown ([`needs_placeholder`])
 /// occupies its [`placeholder`]; every other cluster is measured with
 /// `unicode-width`, capped at the two-cell layout the renderer gives a wide
-/// grapheme. Nothing measures zero — a cluster that would have needs a
+/// grapheme. Nothing measures zero: a cluster that would have needs a
 /// placeholder instead, which is never empty.
 ///
 /// A measure-only caller wants this; a caller that also draws the cluster
@@ -134,7 +134,7 @@ pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: u8) -> usize
 
 /// True when `cluster` must not be written to the terminal as itself.
 ///
-/// Two disjoint reasons, and a writer has to test for both — they do not
+/// Two disjoint reasons, and a writer has to test for both, since they do not
 /// imply each other:
 ///
 /// - **It holds a control character.** The backend writes a cell's symbol
@@ -143,20 +143,20 @@ pub fn grapheme_width(cluster: &str, display_col: usize, tab_width: u8) -> usize
 ///   of file content. `unicode-width` measures these as *1* (its rule 7,
 ///   "all other characters have width 1"), so a zero measure does not catch
 ///   them.
-/// - **It measures zero columns** — a zero-width space, a bare ZWJ, a
+/// - **It measures zero columns**: a zero-width space, a bare ZWJ, a
 ///   combining mark with no base character, or a bidi override. Written as
 ///   itself the terminal advances nothing and the rest of the row slides
 ///   left of where every display-column computation says it is.
 ///
 /// The second group is `Default_Ignorable_Code_Point`, which is why it also
-/// covers the bidi overrides behind Trojan Source (CVE-2021-42574) — the
+/// covers the bidi overrides behind Trojan Source (CVE-2021-42574), the
 /// reason these are shown as their codepoint rather than as a blank: a
 /// U+202E that renders like a space is exactly the attack.
 pub fn needs_placeholder(cluster: &str) -> bool {
     placeholder_at_width(cluster, cluster.width())
 }
 
-/// [`needs_placeholder`] for a caller that has already measured `cluster` —
+/// [`needs_placeholder`] for a caller that has already measured `cluster`:
 /// `w` must be `cluster.width()`. Split out so [`classify`] can decide from
 /// one measurement instead of taking a second one through the predicate.
 fn placeholder_at_width(cluster: &str, w: usize) -> bool {
@@ -174,7 +174,7 @@ const MAX_PLACEHOLDER: usize = 8;
 /// (`[200B]`). Showing the codepoint rather than a generic marker is what
 /// lets a reader tell a harmless zero-width space from a bidi override.
 ///
-/// Inline stack storage, no allocation — this is on the per-cell render
+/// Inline stack storage, no allocation: this is on the per-cell render
 /// path. A degenerate cluster of more than one such character reports its
 /// first; nothing in practice produces one.
 pub struct Placeholder {
@@ -218,7 +218,7 @@ pub fn placeholder(cluster: &str) -> Placeholder {
 }
 
 /// Display columns `s` occupies when rendered starting at display column
-/// `start_display_col` — the sum of its grapheme clusters' [`grapheme_width`].
+/// `start_display_col`: the sum of its grapheme clusters' [`grapheme_width`].
 pub fn str_width(s: &str, start_display_col: usize, tab_width: u8) -> usize {
     let mut display_col = start_display_col;
     for g in s.graphemes(true) {
@@ -228,7 +228,7 @@ pub fn str_width(s: &str, start_display_col: usize, tab_width: u8) -> usize {
 }
 
 /// Number of indent levels in `line`'s leading whitespace. One indent level
-/// is `tab_width` display columns — a run of spaces or a tab stop.
+/// is `tab_width` display columns (a run of spaces or a tab stop).
 /// `tab_width < 1` is clamped to 1. Leading whitespace is always ASCII
 /// (space/tab), so a byte scan is safe and faster than grapheme iteration.
 pub fn indent_depth(line: &str, tab_width: u8) -> u8 {
@@ -245,7 +245,7 @@ pub fn indent_depth(line: &str, tab_width: u8) -> u8 {
 }
 
 /// Display column of the `k`-th indent stop (`k` indent levels of
-/// `tab_width` display columns each) — the inverse of [`indent_depth`].
+/// `tab_width` display columns each), the inverse of [`indent_depth`].
 /// `tab_width < 1` is clamped to 1, the same clamp `indent_depth` applies, so
 /// the two can never disagree about what one indent level is worth.
 pub fn indent_stop(k: u32, tab_width: u8) -> u32 {
@@ -274,7 +274,7 @@ pub fn truncate_to_width(s: &str, max_display_width: usize, tab_width: u8) -> (&
 /// that suffix's width. Never splits a grapheme cluster.
 ///
 /// Measures back-to-front, accumulating width from the kept end rather than
-/// from `s`'s own start — exact for tab-free text, which is what every
+/// from `s`'s own start, exact for tab-free text, which is what every
 /// caller of this function has: chrome text, always measured at
 /// [`CHROME_TAB_WIDTH`], the only tab width this function knows. A tab's
 /// true expansion depends on what precedes it on screen, which a suffix

@@ -40,7 +40,7 @@ fn char_to_wire_pure_ascii() {
 #[test]
 fn char_to_wire_two_byte_char_diverges_utf8_vs_utf16() {
     let text = fixture();
-    // char_idx=5 is the '\n' right after 'é' — UTF-8 counts é as 2 bytes,
+    // char_idx=5 is the '\n' right after 'é': UTF-8 counts é as 2 bytes,
     // UTF-16 counts it as 1 unit, so the two encodings diverge here.
     assert_eq!(char_to_wire(&text, co(5), PositionEncoding::Utf8), wp(1, 3));
     assert_eq!(
@@ -52,14 +52,14 @@ fn char_to_wire_two_byte_char_diverges_utf8_vs_utf16() {
 #[test]
 fn char_to_wire_astral_char_diverges_utf8_vs_utf16() {
     let text = fixture();
-    // char_idx=6 is 😀 itself — both encodings agree at its start (0 code
+    // char_idx=6 is 😀 itself: both encodings agree at its start (0 code
     // units consumed yet).
     assert_eq!(char_to_wire(&text, co(6), PositionEncoding::Utf8), wp(2, 0));
     assert_eq!(
         char_to_wire(&text, co(6), PositionEncoding::Utf16),
         wp(2, 0)
     );
-    // char_idx=7 is 'd', right after 😀 — 4 bytes vs. a 2-unit surrogate
+    // char_idx=7 is 'd', right after 😀: 4 bytes vs. a 2-unit surrogate
     // pair.
     assert_eq!(char_to_wire(&text, co(7), PositionEncoding::Utf8), wp(2, 4));
     assert_eq!(
@@ -68,7 +68,7 @@ fn char_to_wire_astral_char_diverges_utf8_vs_utf16() {
     );
 }
 
-/// LSP 3.17's third `PositionEncodingKind` — `character` counts Unicode
+/// LSP 3.17's third `PositionEncodingKind`: `character` counts Unicode
 /// scalar values (chars), diverging from both `Utf8` (bytes) and `Utf16`
 /// (code units, 2 for a surrogate pair) at the same astral character.
 #[test]
@@ -79,7 +79,7 @@ fn char_to_wire_astral_char_diverges_utf32_from_both() {
         char_to_wire(&text, co(6), PositionEncoding::Utf32),
         wp(2, 0)
     );
-    // 'd', right after 😀 — Utf32 counts it as 1 char (the whole astral
+    // 'd', right after 😀: Utf32 counts it as 1 char (the whole astral
     // char, not its 2 UTF-16 units or 4 UTF-8 bytes).
     assert_eq!(
         char_to_wire(&text, co(7), PositionEncoding::Utf32),
@@ -147,7 +147,7 @@ fn char_range_to_wire_range_is_char_to_wire_on_each_end() {
 #[test]
 fn char_range_to_wire_range_astral_char_diverges_utf8_vs_utf16() {
     let text = fixture();
-    // Range spanning 😀 (char_idx 6..7) — UTF-8 counts it as 4 bytes,
+    // Range spanning 😀 (char_idx 6..7): UTF-8 counts it as 4 bytes,
     // UTF-16 as a 2-unit surrogate pair.
     assert_eq!(
         char_range_to_wire_range(
@@ -169,7 +169,7 @@ fn char_range_to_wire_range_astral_char_diverges_utf8_vs_utf16() {
 
 // ── A `\r` in the rope is content ────────────────────────────────────────
 //
-// A live `hume_editing::text::BufferText` never carries a `\r` at all — every
+// A live `hume_editing::text::BufferText` never carries a `\r` at all: every
 // text-insertion path normalizes it to `\n` first. These functions take a raw
 // `&Rope`, not a `&BufferText`, so one is built directly here to pin what the
 // wire math does with a `\r` it can only meet this way: nothing special. `\n`
@@ -180,7 +180,7 @@ fn char_range_to_wire_range_astral_char_diverges_utf8_vs_utf16() {
 fn wire_to_char_counts_a_cr_as_line_content() {
     // "ab\r\ncd\n": line 0 is "ab\r\n", terminated by the `\n` alone, so its
     // content is the 3 chars "ab\r". A character past the line end clamps to
-    // char 3 (the `\n`), not to 2 — the `\r` is inside the content, not part
+    // char 3 (the `\n`), not to 2, since the `\r` is inside the content, not part
     // of a two-char terminator.
     let text = Rope::from_str("ab\r\ncd\n");
     for enc in [
@@ -227,11 +227,11 @@ fn wire_to_char_clamps_line_past_eof_to_last_line() {
 #[test]
 fn wire_to_char_clamps_character_past_line_end_to_line_content_end() {
     let text = fixture();
-    // Line 1 ("cé") — character way past its length clamps to the same
+    // Line 1 ("cé"): character way past its length clamps to the same
     // char position as an exact request for the line's content end.
     assert_eq!(
         wire_to_char(&text, wp(1, 9_999), PositionEncoding::Utf8),
-        co(5) // the '\n' position — see the fixture layout above
+        co(5) // the '\n' position (see the fixture layout above)
     );
 }
 
@@ -239,7 +239,7 @@ fn wire_to_char_clamps_character_past_line_end_to_line_content_end() {
 fn wire_to_char_clamps_surrogate_pair_split_down_not_mid_char() {
     let text = fixture();
     // Line 2 starts with 😀 (a 2-unit surrogate pair at UTF-16 units
-    // [0, 2) within the line). character=1 lands on the low surrogate —
+    // [0, 2) within the line). character=1 lands on the low surrogate, so it
     // must clamp down to the astral char's own start (char_idx 6), never
     // to a position "inside" it.
     assert_eq!(
@@ -253,7 +253,7 @@ fn wire_to_char_utf32_character_one_is_the_char_after_the_astral_one() {
     // Line 2 starts with 😀 (char_idx 6). Under Utf16, character=1 lands
     // mid-surrogate and clamps *down* to 6 (see the sibling test above);
     // under Utf32, character=1 unambiguously means "1 char past the line
-    // start" — the whole astral char already consumed — landing on 'd'
+    // start" (the whole astral char already consumed), landing on 'd'
     // (char_idx 7), never clamped.
     let text = fixture();
     assert_eq!(
@@ -283,7 +283,7 @@ fn wire_to_line_char_col_matches_wire_to_char_minus_line_start() {
 
 #[test]
 fn wire_to_line_char_col_is_line_relative_not_absolute() {
-    // Line 1 ("cé\n") starts at char 3 — a request for character=1 (the
+    // Line 1 ("cé\n") starts at char 3, so a request for character=1 (the
     // 'é') must come back as column 1, not the absolute char index 4.
     let text = fixture();
     assert_eq!(
@@ -321,7 +321,7 @@ fn wire_range_to_char_range_is_wire_to_char_on_each_end() {
 #[test]
 fn wire_range_to_char_range_each_end_clamps_independently() {
     let text = fixture();
-    // Line 1 ("cé") — character way past its length clamps to that line's
+    // Line 1 ("cé"): character way past its length clamps to that line's
     // content end, same as a lone wire_to_char call.
     assert_eq!(
         wire_range_to_char_range(
@@ -336,7 +336,7 @@ fn wire_range_to_char_range_each_end_clamps_independently() {
 #[test]
 fn wire_range_to_char_range_reversed_input_is_not_reordered() {
     let text = fixture();
-    // end before start on the wire — the pair comes back reversed too, not
+    // end before start on the wire: the pair comes back reversed too, not
     // swapped into order. Callers that must reject this check it themselves.
     let range = wire_range_to_char_range(
         &text,
@@ -378,7 +378,7 @@ const LABEL: &str = "aé\u{1F600}b";
 #[test]
 fn wire_offset_to_char_index_counts_bytes_in_utf8_and_code_units_in_utf16() {
     let text = RopeSlice::from(LABEL);
-    // 😀 starts at byte 3 and at UTF-16 unit 2 — one char index, two
+    // 😀 starts at byte 3 and at UTF-16 unit 2: one char index, two
     // different offsets naming it.
     assert_eq!(
         wire_offset_to_char_index(text, 3, PositionEncoding::Utf8),
@@ -430,7 +430,7 @@ fn wire_offset_to_char_index_clamps_past_the_end_of_the_text() {
 
 #[test]
 fn wire_offsets_to_byte_range_slices_the_same_text_from_either_encoding() {
-    // One 😀, named by two different offset pairs — the divergence any
+    // One 😀, named by two different offset pairs: the divergence any
     // hardcoded-UTF-16 scan gets wrong the moment a server negotiates utf-8.
     assert_eq!(
         &LABEL[wire_offsets_to_byte_range(LABEL, 3, 7, PositionEncoding::Utf8)],

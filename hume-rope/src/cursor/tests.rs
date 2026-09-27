@@ -51,8 +51,8 @@ fn char_cursor_interleaved_next_prev_round_trips() {
     let buf = rope("hello");
     let mut c = chars_at(&buf, CharOffset::new(2));
     assert_eq!(c.next(), Some((CharOffset::new(2), 'l'))); // cursor now at 3
-    assert_eq!(c.prev(), Some((CharOffset::new(2), 'l'))); // back to 2 — same value
-    assert_eq!(c.next(), Some((CharOffset::new(2), 'l'))); // forward again — still consistent
+    assert_eq!(c.prev(), Some((CharOffset::new(2), 'l'))); // back to 2, same value
+    assert_eq!(c.next(), Some((CharOffset::new(2), 'l'))); // forward again, still consistent
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn char_cursor_at_eof() {
 fn char_cursor_yields_codepoints_not_grapheme_clusters() {
     // "caf" + e + U+0301 (combining acute, 2 codepoints) + structural \n:
     // c0 a1 f2 e3 U+0301(4) \n(5). The combining mark must come back as
-    // its own char, not merged with 'e' — CharCursor is char-level.
+    // its own char, not merged with 'e': CharCursor is char-level.
     let buf = rope("caf\u{0065}\u{0301}");
     let got: Vec<(CharOffset, char)> = chars_at(&buf, CharOffset::new(3)).collect();
     assert_eq!(

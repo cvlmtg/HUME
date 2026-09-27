@@ -4,7 +4,7 @@ use crate::test_support::rope;
 
 #[test]
 fn ropey_line_clamped_pulls_a_past_end_index_back_to_the_last_ropey_line() {
-    let r = rope("a\nb\n"); // ropey lines: "a\n", "b\n", "" (phantom) — last is 2
+    let r = rope("a\nb\n"); // ropey lines: "a\n", "b\n", "" (phantom), last is 2
     assert_eq!(RopeyLine::clamped(&r, 2), RopeyLine::new(2));
     assert_eq!(RopeyLine::clamped(&r, 99), RopeyLine::new(2));
 }

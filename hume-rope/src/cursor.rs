@@ -5,16 +5,16 @@ use crate::offset::CharOffset;
 /// A char-level cursor for scanning a contiguous range of a [`Rope`] without
 /// re-paying ropey's O(log n) tree descent on every step. Each `next()` /
 /// `prev()` call is amortized O(1) after the initial O(log n) seek in
-/// [`chars_at`] — an O(span × log n) loop of indexed char lookups becomes
+/// [`chars_at`]: an O(span × log n) loop of indexed char lookups becomes
 /// O(log n + span).
 ///
-/// **Char-level, not grapheme-level** — intended for ASCII delimiter scanning
+/// **Char-level, not grapheme-level**: intended for ASCII delimiter scanning
 /// (brackets, quotes, argument commas). Motion and selection logic must keep
 /// using [`crate::grapheme`]'s boundary helpers; a multi-codepoint cluster
 /// (e.g. `e` + U+0301) is yielded here as two separate chars.
 pub struct CharCursor<'a> {
     iter: ropey::iter::Chars<'a>,
-    /// Char offset of the position the cursor currently sits at — the
+    /// Char offset of the position the cursor currently sits at: the
     /// position `next()` would yield and `prev()` would land on.
     pos: CharOffset,
 }
@@ -48,7 +48,7 @@ impl Iterator for CharCursor<'_> {
 impl CharCursor<'_> {
     /// Step back and yield the char just before the cursor position.
     ///
-    /// Not a [`DoubleEndedIterator`] impl —
+    /// Not a [`DoubleEndedIterator`] impl:
     /// that trait means "consume from the far end of the same forward
     /// sequence," not "walk backward from here," which is what callers
     /// (bracket-pair scans) actually need.

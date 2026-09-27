@@ -6,7 +6,7 @@
 //!
 //! Wire math is **not** motion math: `character` counts code units in the
 //! negotiated encoding, never a grapheme or a raw byte. The grapheme
-//! helpers in [`crate::grapheme`] are the wrong tool in this module — do not
+//! helpers in [`crate::grapheme`] are the wrong tool in this module; do not
 //! reach for them here (hub: testing playbook).
 
 use std::ops::Range;
@@ -19,7 +19,7 @@ use crate::lines::line_terminator_start;
 use crate::offset::{CharOffset, ExclusiveRange};
 
 /// Wire-format position encoding negotiated with an LSP server. `Utf32` is
-/// LSP 3.17's own third `PositionEncodingKind` — `character` counts Unicode
+/// LSP 3.17's own third `PositionEncodingKind`: `character` counts Unicode
 /// scalar values (chars), never negotiated with a real server here, but the
 /// right, spec-defined choice for a `textEdit` from a non-`#:resolve`
 /// completion source (`hume-editor`'s `session/accept.rs`), which has no
@@ -32,10 +32,10 @@ pub enum PositionEncoding {
 }
 
 /// A raw LSP wire position: `line` is a 0-based line number, `character` a
-/// code-unit column in the negotiated encoding — never a char or grapheme
+/// code-unit column in the negotiated encoding, never a char or grapheme
 /// index (see the module doc). Fields are `pub`, matching
 /// [`crate::offset::ExclusiveRange`]'s own rationale: nothing here prevents
-/// arithmetic misuse the way a private-field domain type does — this exists
+/// arithmetic misuse the way a private-field domain type does. This exists
 /// purely so "which of the two wire numbers is which" is a name at the call
 /// site, not a positional-tuple lookup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,7 +48,7 @@ pub struct WirePos {
 ///
 /// Total: a `char_idx` past `text.len_chars()` clamps to the document end
 /// rather than panicking (ropey's own indexing functions panic past
-/// `len_chars()`) — mirrors [`wire_to_char`]'s clamp-don't-error convention.
+/// `len_chars()`). Mirrors [`wire_to_char`]'s clamp-don't-error convention.
 pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) -> WirePos {
     let char_idx = char_idx.index().min(text.len_chars());
     let line = crate::lines::char_to_ropey_line(text, CharOffset::new(char_idx)).index();
@@ -58,7 +58,7 @@ pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) ->
             let line_start = crate::lines::line_start_char(text, RopeyLine::new(line)).index();
             text.char_to_utf16_cu(char_idx) - text.char_to_utf16_cu(line_start)
         }
-        // `character` already *is* a char index — no code-unit conversion,
+        // `character` already *is* a char index: no code-unit conversion,
         // unlike the two wire encodings above.
         PositionEncoding::Utf32 => {
             char_idx - crate::lines::line_start_char(text, RopeyLine::new(line)).index()
@@ -85,14 +85,14 @@ pub fn char_range_to_wire_range(
 ///
 /// The shared step of every wire→char conversion here: [`wire_to_line_char_col`]
 /// applies it to one line's content (where the result *is* a line-relative
-/// char column — it wraps this in [`CharCol`] itself, the one place that's
+/// char column; it wraps this in [`CharCol`] itself, the one place that's
 /// true), [`wire_offsets_to_byte_range`] to a whole server-authored `&str`
 /// (where it isn't). Domain-free like `hume_rope::width`'s primitives, for
 /// the same reason: this function has no way to know which domain `text`
 /// is in, so it returns a bare index and leaves wrapping to whichever caller
 /// actually knows.
 ///
-/// Clamping lives here so both callers inherit one contract — an offset past
+/// Clamping lives here so both callers inherit one contract: an offset past
 /// `text` lands at its end, and one that would split a multi-byte char or a
 /// UTF-16 surrogate pair rounds *down* to that char's start rather than
 /// landing mid-char (ropey's `byte_to_char` / `utf16_cu_to_char` guarantee
@@ -101,7 +101,7 @@ fn wire_offset_to_char_index(text: RopeSlice<'_>, offset: usize, enc: PositionEn
     match enc {
         PositionEncoding::Utf8 => text.byte_to_char(offset.min(text.len_bytes())),
         PositionEncoding::Utf16 => text.utf16_cu_to_char(offset.min(text.len_utf16_cu())),
-        // `offset` already *is* a char index into `text` — clamp, no
+        // `offset` already *is* a char index into `text`: clamp, no
         // conversion.
         PositionEncoding::Utf32 => offset.min(text.len_chars()),
     }
@@ -110,8 +110,8 @@ fn wire_offset_to_char_index(text: RopeSlice<'_>, offset: usize, enc: PositionEn
 /// `(line, character)` → `(clamped line, line-relative char column)`.
 ///
 /// The wire-domain half of [`wire_to_char`], split out so a caller that
-/// still needs to *place* the result — snap it to a grapheme boundary, land
-/// it on the motion-domain line end rather than the wire-domain one — can
+/// still needs to *place* the result (snap it to a grapheme boundary, land
+/// it on the motion-domain line end rather than the wire-domain one) can
 /// feed the column to `hume_editing::lines::place_char_column` instead of
 /// treating the raw code-unit offset as a final cursor position. `line`
 /// past EOF clamps to the last line here; `character` clamps to the line's
@@ -133,21 +133,21 @@ pub fn wire_to_line_char_col(
 
 /// `(line, character)` → char offset.
 ///
-/// Out-of-range input clamps rather than errors — servers send past-end
+/// Out-of-range input clamps rather than errors: servers send past-end
 /// positions routinely. See [`wire_to_line_char_col`] for the clamp
 /// contract; this just folds its `(line, column)` pair into one absolute
 /// offset; a caller that must additionally land on a grapheme boundary
 /// wants that function directly, not this one.
 pub fn wire_to_char(text: &Rope, pos: WirePos, enc: PositionEncoding) -> CharOffset {
     let (line, char_col) = wire_to_line_char_col(text, pos, enc);
-    // `line_start` advanced by a validated in-line column — not a raw
+    // `line_start` advanced by a validated in-line column, not a raw
     // stepping hazard.
     crate::lines::line_start_char(text, line).shift(char_col.index() as isize)
 }
 
 /// A wire `[start, end)` range's two ends → `[start_char, end_char)`, via
 /// [`wire_to_char`] on each end independently. Each end clamps on its own
-/// (`wire_to_char`'s clamp-don't-error contract) — a reversed range (`end`
+/// (`wire_to_char`'s clamp-don't-error contract), so a reversed range (`end`
 /// before `start`) is passed through unreordered; callers that must reject
 /// one check `end < start` themselves. The inverse of
 /// [`char_range_to_wire_range`].
@@ -163,7 +163,7 @@ pub fn wire_range_to_char_range(
 }
 
 /// The byte range of `text` named by a `[start, end)` pair of flat wire
-/// code-unit offsets — for offsets that index a server-authored string
+/// code-unit offsets, for offsets that index a server-authored string
 /// rather than a document. `ParameterInformation.label`'s pair into its
 /// `SignatureInformation.label` is the only such shape in the protocol.
 ///
@@ -172,9 +172,9 @@ pub fn wire_range_to_char_range(
 /// indexes a `&str` directly, and `&text[3..1]` panics rather than yielding
 /// something a caller could inspect. A reversed pair gives an empty range.
 ///
-/// `RopeSlice::from` borrows rather than copies — it counts `text` once to
+/// `RopeSlice::from` borrows rather than copies: it counts `text` once to
 /// fill in the slice's char and surrogate tallies, then points at the same
-/// bytes — so reaching the shared kernel costs no rope allocation.
+/// bytes, so reaching the shared kernel costs no rope allocation.
 pub fn wire_offsets_to_byte_range(
     text: &str,
     start: usize,

@@ -17,15 +17,15 @@ use ropey::Rope;
 
 use crate::lines::{content_line_count, last_content_line, last_ropey_line};
 
-/// A line index in the ropey domain — ropey's own line indexing, phantom
+/// A line index in the ropey domain: ropey's own line indexing, phantom
 /// trailing line included. See the module doc for the domain distinction.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct RopeyLine(usize);
 
-/// A line index in the content domain — a real line of buffer content, never
+/// A line index in the content domain: a real line of buffer content, never
 /// the phantom trailing line. See the module doc for the domain distinction.
 ///
-/// `Default` is line 0 — see [`RopeyLine`]'s.
+/// `Default` is line 0; see [`RopeyLine`]'s.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct ContentLine(usize);
 
@@ -38,7 +38,7 @@ pub struct RopeyLineCount(usize);
 pub struct ContentLineCount(usize);
 
 impl RopeyLine {
-    /// Mint a ropey-domain line index already known to be valid — e.g. one
+    /// Mint a ropey-domain line index already known to be valid, e.g. one
     /// just read back from another ropey-domain value. Does not check
     /// against any rope; a caller minting from unvalidated input wants
     /// [`RopeyLine::clamped`] instead.
@@ -46,7 +46,7 @@ impl RopeyLine {
         Self(idx)
     }
 
-    /// Clamp `idx` to `rope`'s last ropey line — the bound a scripted or
+    /// Clamp `idx` to `rope`'s last ropey line: the bound a scripted or
     /// wire-supplied line target must respect to stay addressable.
     pub fn clamped(rope: &Rope, idx: usize) -> Self {
         Self(idx.min(last_ropey_line(rope).0))
@@ -59,12 +59,12 @@ impl RopeyLine {
         self.0
     }
 
-    /// `self`, `n` lines toward the end of the buffer. Unclamped — advancing
+    /// `self`, `n` lines toward the end of the buffer. Unclamped: advancing
     /// past the last ropey line is a caller bug, not a value this type
     /// silently repairs. Bare `advance`, not `advance_saturating`: unlike
     /// `retreat_saturating`'s floor of 0, there is no ropey-domain ceiling
     /// this type can saturate against without a `&Rope` in hand, so this
-    /// is the plain, unchecked op — matching `CharOffset::shift`/`retreat`'s
+    /// is the plain, unchecked op, matching `CharOffset::shift`/`retreat`'s
     /// own bare names for "no saturation," with `_saturating` reserved
     /// everywhere in the workspace for the clamped variant.
     pub fn advance(self, n: usize) -> Self {
@@ -103,7 +103,7 @@ impl ContentLine {
     }
 
     /// Decode a 1-based line number (CLI `path:line:col`, `:goto N`) into the
-    /// content-domain index it addresses, or `None` if `n` is `0` — there is
+    /// content-domain index it addresses, or `None` if `n` is `0`: there is
     /// no line 0 to land on.
     pub fn from_number(n: usize) -> Option<Self> {
         n.checked_sub(1).map(Self)
@@ -120,7 +120,7 @@ impl ContentLine {
         self.0 + 1
     }
 
-    /// `self`, `n` lines toward the end of the buffer. Unclamped — a caller
+    /// `self`, `n` lines toward the end of the buffer. Unclamped: a caller
     /// landing on or past the buffer's real content wants
     /// [`ContentLine::clamped`] to pull the result back in bounds. See
     /// [`RopeyLine::advance`] for why this is bare `advance`, not
@@ -131,14 +131,14 @@ impl ContentLine {
 
     /// `self`, `n` lines toward the start of the buffer, saturating at 0.
     /// Named `retreat_saturating`, not `up`, to match the same saturate-at-0
-    /// contract's name on `CharOffset`/`BufferLineCol` — this codebase has
+    /// contract's name on `CharOffset`/`BufferLineCol`. This codebase has
     /// no domain where a bare direction word and a `_saturating` suffix name
     /// the same behavior, so the two must not coexist for it here either.
     pub fn retreat_saturating(self, n: usize) -> Self {
         Self(self.0.saturating_sub(n))
     }
 
-    /// Unsigned distance between `self` and `other`, direction discarded —
+    /// Unsigned distance between `self` and `other`, direction discarded:
     /// the "how far apart are these two lines" metric a jump-distance
     /// threshold needs (`hume-editor`'s `step_record_jump`), where
     /// [`Self::lines_since`]'s ordering requirement would be the wrong tool.
@@ -146,13 +146,13 @@ impl ContentLine {
         self.0.abs_diff(other.0)
     }
 
-    /// Lines between `earlier` and `self` (`earlier <= self`) — the named
+    /// Lines between `earlier` and `self` (`earlier <= self`), the named
     /// forward-only form, mirroring `CharOffset::chars_since`. Debug-panics
     /// on inversion, where a raw subtraction would silently wrap.
     pub fn lines_since(self, earlier: Self) -> usize {
         debug_assert!(
             earlier <= self,
-            "lines_since: {earlier:?} is after {self:?} — lines_since measures forward only"
+            "lines_since: {earlier:?} is after {self:?}, lines_since measures forward only"
         );
         self.0.saturating_sub(earlier.0)
     }
@@ -179,7 +179,7 @@ impl ContentLineCount {
         self.0
     }
 
-    /// One past the last content line — the exclusive upper bound a
+    /// One past the last content line: the exclusive upper bound a
     /// half-open content-domain range (`viewport-range`, `buffer-lines`)
     /// ends at. The sanctioned way to name this index: unlike
     /// [`ContentLine::new`], which requires the value already be a real

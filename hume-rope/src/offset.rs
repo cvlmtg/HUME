@@ -14,33 +14,33 @@
 
 use ropey::Rope;
 
-/// A char offset into a buffer — an index into its sequence of Unicode
+/// A char offset into a buffer: an index into its sequence of Unicode
 /// scalar values, never a byte offset or a display column.
 ///
-/// `Default` is offset 0 — always valid, since every HUME buffer holds at
-/// least the structural trailing `\n` — for a caller that needs a `CharOffset`
+/// `Default` is offset 0 (always valid, since every HUME buffer holds at
+/// least the structural trailing `\n`), for a caller that needs a `CharOffset`
 /// with no rope in hand to mint from (e.g. `#[derive(Default)]` on a
 /// containing struct).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct CharOffset(usize);
 
 impl CharOffset {
-    /// Mint an offset already known to be valid — e.g. one just read back
+    /// Mint an offset already known to be valid, e.g. one just read back
     /// from another `CharOffset`, or a value a caller has proven safe by
     /// some other means (an ASCII delimiter scan). Does not check against
     /// any rope; a caller minting from unvalidated input wants
-    /// [`CharOffset::checked`] instead — there is no `clamped` counterpart,
-    /// see that method's own doc for why.
+    /// [`CharOffset::checked`] instead. There is no `clamped` counterpart
+    /// (see that method's own doc for why).
     pub fn new(idx: usize) -> Self {
         Self(idx)
     }
 
     /// `idx` if it names a valid char position in `rope` (`idx <=
-    /// rope.len_chars()`), else `None` — the mint for input whose validity
+    /// rope.len_chars()`), else `None`: the mint for input whose validity
     /// isn't yet established (a Steel builtin argument, a wire-supplied
     /// position). `CharOffset` has no `clamped`/`snapped` counterpart: a
     /// blind `idx.min(rope.len_chars())` is the wrong tool everywhere a
-    /// position needs clamping — an LSP wire position clamps line-then-column
+    /// position needs clamping. An LSP wire position clamps line-then-column
     /// ([`crate::position_encoding::wire_to_char`]), and landing on a
     /// grapheme boundary is [`crate::grapheme::snap_to_cluster_start`]'s job
     /// directly, taken on the type the caller already has rather than routed
@@ -50,35 +50,35 @@ impl CharOffset {
     }
 
     /// The bare 0-based char index, for handing to ropey itself, tree-sitter,
-    /// or an LSP wire-position conversion — every foreign coordinate system
+    /// or an LSP wire-position conversion: every foreign coordinate system
     /// that has no domain of its own.
     pub fn index(self) -> usize {
         self.0
     }
 
     /// Chars between `earlier` and `self` (`earlier <= self`). Debug-panics
-    /// on inversion — a raw `self - earlier` would silently wrap instead.
+    /// on inversion. A raw `self - earlier` would silently wrap instead.
     ///
-    /// The named form for "how many chars does this span cover" —
+    /// The named form for "how many chars does this span cover":
     /// `ChangeSetBuilder::retain`/`delete`, span-width comparisons, and
     /// similar length derivations all read `later.chars_since(earlier)`.
     /// `self` is the *later* offset deliberately: every call site today is a
     /// subtraction (`end - start`, `p - b.old_pos()`), and keeping `self` on
-    /// the same side as the minuend preserves that written order — a
+    /// the same side as the minuend preserves that written order. A
     /// receiver/argument swap is exactly the mistake a raw subtraction hides
     /// silently, caught (if at all) only by the debug-build assert below.
     pub fn chars_since(self, earlier: CharOffset) -> usize {
         debug_assert!(
             earlier <= self,
-            "chars_since: {earlier:?} is after {self:?} — chars_since measures backward only"
+            "chars_since: {earlier:?} is after {self:?}, chars_since measures forward only"
         );
         self.0.saturating_sub(earlier.0)
     }
 
-    /// `self` shifted by `delta` chars (may be negative) — for repositioning
+    /// `self` shifted by `delta` chars (may be negative), for repositioning
     /// a selection across an edit by a delta already known to preserve
     /// grapheme alignment (the shifted span's content is unchanged, only its
-    /// offset is — e.g. an edit-delta reposition of `anchor`/`head` across a
+    /// offset is, e.g. an edit-delta reposition of `anchor`/`head` across a
     /// retained span). Panics if the result would be negative.
     pub fn shift(self, delta: isize) -> CharOffset {
         Self(
@@ -88,7 +88,7 @@ impl CharOffset {
         )
     }
 
-    /// `self` moved back by `n` chars — the unsigned-length counterpart to
+    /// `self` moved back by `n` chars: the unsigned-length counterpart to
     /// [`Self::shift`], for the common case of retreating by a `usize`
     /// count (a removed run's length, a typed-char count) rather than a
     /// signed delta a caller would otherwise negate by hand. Same contract
@@ -101,7 +101,7 @@ impl CharOffset {
         )
     }
 
-    /// [`Self::retreat`] clamped to 0 instead of panicking — for a caller
+    /// [`Self::retreat`] clamped to 0 instead of panicking, for a caller
     /// retreating by a count that may legitimately exceed `self` (a
     /// cramped cursor near the buffer start, an edit delta larger than the
     /// position it lands on). Reach for `retreat` when the result is known
@@ -112,19 +112,19 @@ impl CharOffset {
     }
 }
 
-/// A half-open range `[start, end)` — `end` is one past the last position
+/// A half-open range `[start, end)`: `end` is one past the last position
 /// covered. Matches `BufferText::slice`, `ChangeSet`'s position-mapping API,
 /// and LSP wire ranges (half-open by protocol).
 ///
 /// Exists alongside [`InclusiveRange`] so the two `(T, T)`-shaped
-/// conventions this codebase uses for a char range — inclusive
+/// conventions this codebase uses for a char range, inclusive
 /// (`Selection`, every text-object/bracket/quote/tag/search finder) and
-/// exclusive (everything above) — are two distinct, named types instead of
+/// exclusive (everything above), are two distinct, named types instead of
 /// one bare tuple shape whose meaning depends on which function produced it.
 /// Fields are `pub`, unlike `CharOffset`: nothing here prevents arithmetic
-/// misuse the way `CharOffset`'s private field does — this type exists
-/// purely so "which convention" is a name, not a lookup — so it reads as
-/// ergonomically as `std::ops::Range` does.
+/// misuse the way `CharOffset`'s private field does. This type exists
+/// purely so "which convention" is a name, not a lookup, and public fields let
+/// it read as ergonomically as `std::ops::Range` does.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ExclusiveRange<T> {
     pub start: T,
@@ -153,7 +153,7 @@ impl<T: PartialEq> ExclusiveRange<T> {
     }
 }
 
-/// An inclusive range `[start, end]` — both ends are covered. Matches
+/// An inclusive range `[start, end]`: both ends are covered. Matches
 /// `Selection::start()`/`end()`, every text-object/bracket/quote/tag/search
 /// finder, and `ObjectSpans`. Never empty: a single position is `start ==
 /// end`. See [`ExclusiveRange`]'s doc for why this is a named type rather
@@ -177,7 +177,7 @@ impl<T: Copy + PartialOrd> InclusiveRange<T> {
 }
 
 impl InclusiveRange<CharOffset> {
-    /// This range as a half-open one — same span, exclusive end one char
+    /// This range as a half-open one: same span, exclusive end one char
     /// past `self.end` (via [`CharOffset::shift`], not a raw `.index() + 1`),
     /// for handing an inclusive result (`Selection`, a
     /// text-object/bracket/quote finder) to `text.slice()`, which wants an
