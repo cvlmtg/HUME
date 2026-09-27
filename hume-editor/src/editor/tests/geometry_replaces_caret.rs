@@ -7,10 +7,15 @@
 //! alone would stay `false` for every one of them. Each instead shows up
 //! as some field of `EditorState::layout_key(pane)` differing from
 //! `PaneBufferState::last_layout_key`, which `frame.rs`'s scroll step
-//! compares every frame. These tests pin that every layout input the
-//! mechanism is supposed to cover actually reaches it, plus (the last test)
-//! that a revisit with nothing changed does *not*: a parked view stays
-//! parked rather than snapping back onto the cursor on every buffer switch.
+//! compares every frame. Every pane in this suite is unparked throughout
+//! (its cursor is always in the scrolloff band), the condition a changed
+//! key needs to reveal it; `virtual_line_scroll.rs`'s parked-view
+//! tests are this suite's counterpart for `PaneBufferState::parked`, where
+//! the same layout-key changes must *not* reveal. These tests pin that
+//! every layout input the mechanism is supposed to cover actually reaches
+//! it, plus (the last test) that a revisit with nothing changed does *not*:
+//! a parked view stays parked rather than snapping back onto the cursor on
+//! every buffer switch.
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;

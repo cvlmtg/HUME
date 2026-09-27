@@ -16,6 +16,7 @@
 
 use super::doubles::{InlineHint, VirtualLineBlock};
 use super::*;
+use crate::editor::commands::open_pane_in_layout;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pane::WrapMode;
@@ -215,12 +216,12 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 // the cursor reaches the document's end, so a scroll all the way down and
 // the very next unrelated cursor move land on the same top.
 
-/// 10 content lines, a 5-line `After(9)` (last line) block. Repeated wheel
-/// notches must reach the point where the block's last virtual line renders
-/// `scrolloff` (default 3) rows above the bottom of the pane (not pinned to
-/// the bottom row itself) and then stay there.
-#[test]
-fn wheel_reaches_a_trailing_after_last_line_block() {
+/// 10 content lines, a 5-line `After(9)` (last line) block registered
+/// directly on the focused pane, cursor seeked to line 3, `mouse_scroll_lines`
+/// = 3. Shared by [`wheel_reaches_a_trailing_after_last_line_block`] and
+/// every parked-view test below it: they all need the same block to wheel
+/// into, only what happens once parked differs.
+fn trailing_block_editor() -> (Editor, Rect) {
     let content: String = numbered_lines(10);
     let mut ed = unwrapped_editor(&content, 0);
     seek_to_line(&mut ed, 3);
@@ -232,13 +233,36 @@ fn wheel_reaches_a_trailing_after_last_line_block() {
             5,
             "V",
         )));
-
     let rect = Rect::new(0, 0, 20, 9); // 8 content rows once the statusline takes one
+    (ed, rect)
+}
+
+/// Wheels the focused pane down until it parks behind `trailing_block_editor`'s
+/// block: [`wheel_reaches_a_trailing_after_last_line_block`] is the proof
+/// that ten notches actually reach and clamp against it, landing the cursor
+/// on the document's own last content line with the view stalled past it
+/// (`PaneBufferState::parked` set, since `carry` can't follow the cursor
+/// into the block). `Viewport::seed_top_for_test` (as
+/// `geometry_replaces_caret.rs`'s revisit test uses) builds a stale `top`
+/// directly but never sets `parked`; a real scroll pass through here is the
+/// only way to get a pane with `parked` actually set for the rest of this
+/// module's tests to build on.
+fn park_behind_trailing_block(ed: &mut Editor, rect: Rect) {
     ed.render_to_buf(rect);
     for _ in 0..10 {
         ed.handle_input(mouse_wheel(true));
         ed.render_to_buf(rect);
     }
+}
+
+/// 10 content lines, a 5-line `After(9)` (last line) block. Repeated wheel
+/// notches must reach the point where the block's last virtual line renders
+/// `scrolloff` (default 3) rows above the bottom of the pane (not pinned to
+/// the bottom row itself) and then stay there.
+#[test]
+fn wheel_reaches_a_trailing_after_last_line_block() {
+    let (mut ed, rect) = trailing_block_editor();
+    park_behind_trailing_block(&mut ed, rect);
 
     let settled = ed.render_to_buf(rect);
     // margin = min(3, (8-1)/2) = 3; the block's last virtual line lands at
@@ -263,6 +287,109 @@ fn wheel_reaches_a_trailing_after_last_line_block() {
         (ed.viewport().top().line, ed.viewport().top().slot),
         (top_before, slot_before),
         "once the margin below the block's end is reached, further scrolling is a no-op"
+    );
+}
+
+// ── A parked view is not disturbed by a change elsewhere ──────────────────
+//
+// `EditorState::layout_key` folds in the buffer's own edit generation
+// (`text_gen`) and decoration generation alongside layout facts like resize
+// and wrap mode. A parked pane (this module's own trailing-block fixture)
+// must not snap back onto its cursor just because one of those changed for
+// a reason that had nothing to do with this pane's own action.
+
+/// A decoration refresh (an inlay hint arriving with no input in between)
+/// must not un-park an already-parked view.
+#[test]
+fn a_parked_view_survives_a_decoration_change() {
+    let (mut ed, rect) = trailing_block_editor();
+    let bid = ed.focused_buffer_id();
+    park_behind_trailing_block(&mut ed, rect);
+    let top_before = ed.viewport().top();
+
+    ed.state.config.decorations.set_inlay_hints(
+        "test".to_string(),
+        bid,
+        vec![hume_decorations::InlayHintEntry {
+            pos: co(0),
+            text: "X".to_string(),
+            before: true,
+        }],
+    );
+    ed.render_to_buf(rect);
+
+    assert_eq!(
+        ed.viewport().top(),
+        top_before,
+        "a decoration change elsewhere must not snap a parked view back onto its cursor"
+    );
+}
+
+/// A sibling pane's edit to the same buffer, past this pane's own parked
+/// cursor, bumps `text_gen` but moves nothing this pane can see: it must not
+/// un-park this pane's view either.
+#[test]
+fn a_parked_view_survives_a_sibling_panes_edit() {
+    let (mut ed, rect) = trailing_block_editor();
+    let bid = ed.focused_buffer_id();
+    let pid_a = ed.state.focus.id();
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
+    park_behind_trailing_block(&mut ed, rect);
+    let top_before = ed.viewport().top();
+
+    // Typed at the buffer's very last valid cursor position (the trailing
+    // structural `\n`, one past the parked cursor's own line): the insertion
+    // lands after every position translation could move, so pane A's head
+    // is provably untouched by this edit, isolating the assertion to the
+    // `text_gen` change alone.
+    ed.switch_focused_pane(pid_b);
+    let end = ed.doc().text().len_chars() - 1;
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(end))));
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+    ed.switch_focused_pane(pid_a);
+
+    ed.render_to_buf(rect);
+    assert_eq!(
+        ed.view.panes[pid_a].viewport.top(),
+        top_before,
+        "a sibling pane's edit must not snap a parked view back onto its cursor"
+    );
+}
+
+/// A parked pane's *own* edit must still reveal it: `r` replacing the
+/// character under the parked cursor doesn't move the head, but
+/// `doc_ops::finish_edit` raises `reveal_pending` for the acting pane on
+/// every real edit regardless, so this is not the same case as the two
+/// tests above, where the edit lands through a sibling pane instead.
+#[test]
+fn a_parked_panes_own_edit_still_reveals_it() {
+    let (mut ed, rect) = trailing_block_editor();
+    park_behind_trailing_block(&mut ed, rect);
+    let top_before = ed.viewport().top();
+
+    ed.feed_key(key('r'));
+    ed.feed_key(key('X'));
+
+    let settled = ed.render_to_buf(rect);
+    assert_ne!(
+        ed.viewport().top(),
+        top_before,
+        "the pane's own edit must reveal it even though the cursor itself did not move"
+    );
+    assert_eq!(
+        cell(&settled, 0, 4),
+        "V",
+        "revealing must settle the cursor back at the same scrolloff-bound row \
+         `wheel_reaches_a_trailing_after_last_line_block` already pins"
     );
 }
 

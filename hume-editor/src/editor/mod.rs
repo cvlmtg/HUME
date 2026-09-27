@@ -552,9 +552,14 @@ impl Default for EditorState {
 /// gutter narrows the wrap column just like a resize, and reveal cares.
 ///
 /// `frame.rs`'s scroll step is the one comparison site: it stores this in
-/// `PaneBufferState::last_layout_key` each frame and reveals whenever it
-/// changes (resize, wrap-mode change, buffer switch, decoration generation,
-/// and any content edit, since `buffer_tag` includes `text_gen`).
+/// `PaneBufferState::last_layout_key` each frame and compares it against a
+/// fresh one every frame (resize, wrap-mode change, buffer switch,
+/// decoration generation, and any content edit to the buffer, since
+/// `buffer_tag` includes `text_gen`). A change reveals only a pane that
+/// isn't [`PaneBufferState::parked`](pane_state::PaneBufferState::parked):
+/// a parked pane's own edit still reveals it, through `reveal_pending`
+/// instead, but a change from elsewhere (a sibling pane's edit, a
+/// decoration refresh) leaves it where it is.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct LayoutKey {
     buffer_tag: hume_engine::display_lines::line_store::BufferTag,

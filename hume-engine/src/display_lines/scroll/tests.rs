@@ -234,6 +234,108 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     assert_eq!(v.top(), DisplayLinePos::new(ContentLine::new(2), 0));
 }
 
+// ── settled_row: "would reveal move top" without writing it ──────────────
+
+/// A cursor already inside the scrolloff band: `settled_row` must answer the
+/// same row `reveal` would have placed it at, without moving `top`.
+#[test]
+fn settled_row_matches_reveal_when_cursor_is_in_band() {
+    let r = Rope::from_str(&"a\n".repeat(50));
+    let mut v = viewport(10, 24, 80);
+    let providers = no_providers();
+    let cursor_pos = DisplayLinePos::new(ContentLine::new(15), 0);
+    let geo = v.geometry(3).unwrap();
+
+    let mut s = PaneLineStore::new();
+    let row = v
+        .settled_row(
+            &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+            geo,
+            cursor_pos,
+        )
+        .expect("cursor sits within the band");
+    let top_before = v.top();
+
+    let mut s = PaneLineStore::new();
+    let revealed_row = v.reveal(
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+        geo,
+        cursor_pos,
+    );
+
+    assert_eq!(v.top(), top_before, "an in-band cursor never moves top");
+    assert_eq!(
+        row, revealed_row,
+        "settled_row must agree with reveal's own row"
+    );
+}
+
+/// A cursor outside the scrolloff band (parked, e.g. behind an unfollowable
+/// virtual-line scroll): `settled_row` must answer `None`, the single
+/// definition of "parked" `hume-editor`'s scroll step reads.
+#[test]
+fn settled_row_is_none_when_cursor_is_outside_the_band() {
+    let r = Rope::from_str(&"a\n".repeat(50));
+    let mut v = viewport(10, 24, 80);
+    let providers = no_providers();
+    // Above top entirely: well outside the band on either side.
+    let cursor_pos = DisplayLinePos::new(ContentLine::new(2), 0);
+    let geo = v.geometry(3).unwrap();
+
+    let mut s = PaneLineStore::new();
+    let top_before = v.top();
+    assert_eq!(
+        v.settled_row(
+            &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+            geo,
+            cursor_pos
+        ),
+        None,
+        "a cursor above top is parked"
+    );
+    assert_eq!(v.top(), top_before, "settled_row must never move top");
+}
+
+/// Saturation at the document's first display line still counts as settled:
+/// a cursor within the margin band of the very start, where `reveal`'s own
+/// backward walk saturates at line 0 instead of overshooting past it, must
+/// answer `Some`, matching `reveal`'s fixed point there.
+#[test]
+fn settled_row_is_some_at_the_documents_start_saturation() {
+    let r = Rope::from_str(&"a\n".repeat(50));
+    let mut v = viewport(0, 24, 80);
+    let providers = no_providers();
+    let cursor_pos = DisplayLinePos::new(ContentLine::new(1), 0);
+    let geo = v.geometry(3).unwrap();
+
+    let mut s = PaneLineStore::new();
+    let row = v
+        .settled_row(
+            &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+            geo,
+            cursor_pos,
+        )
+        .expect("saturates at the document start rather than being parked");
+    let top_before = v.top();
+
+    let mut s = PaneLineStore::new();
+    let revealed_row = v.reveal(
+        &mut map(&r, WrapMode::None, &providers, 80, &mut s),
+        geo,
+        cursor_pos,
+    );
+
+    assert_eq!(
+        v.top(),
+        top_before,
+        "already at the saturated top, so reveal is a no-op"
+    );
+    assert_eq!(
+        row, revealed_row,
+        "settled_row must agree with reveal's own row"
+    );
+}
+
 // ── align (z z / z k / z j) with scrolloff ────────────────────────────────
 
 #[test]

@@ -529,17 +529,23 @@ impl Editor {
             let pbs = &mut self.state.panes.state[pid][buf_id];
             let cursor_char = pbs.selections().primary().head();
             let layout_changed = pbs.last_layout_key.replace(layout_key) != Some(layout_key);
-            let reveal_pending = std::mem::take(&mut pbs.reveal_pending) || layout_changed;
-            let cursor_screen = scroll_into_view(
+            // A layout change reveals only a pane that isn't parked: one
+            // parked behind an unfollowable scroll must not snap back onto
+            // its cursor just because something changed elsewhere in the
+            // buffer it's viewing. The pane's own action (a head move, or an
+            // edit it made) always reveals, via `reveal_pending`.
+            let reveal = std::mem::take(&mut pbs.reveal_pending) || (layout_changed && !pbs.parked);
+            let outcome = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &mut self.view.panes[pid],
                 cursor_char,
                 format_key,
                 scrolloff,
-                reveal_pending,
+                reveal,
             );
+            self.state.panes.state[pid][buf_id].parked = outcome.parked;
             if pid == self.state.focus.id() {
-                ctx.cursor_content_pos = cursor_screen;
+                ctx.cursor_content_pos = outcome.cursor_screen;
             }
 
             // A visible-range change arms the `OnViewportChange` debounce
@@ -621,14 +627,24 @@ impl Editor {
     }
 }
 
-/// Scroll the pane viewport so `cursor_char` stays within the visible area,
-/// and report where the cursor ended up on screen (pane-relative, before the
-/// gutter). `None` for a viewport with no display lines to place it in, or
-/// when the cursor has scrolled out of view (see below): a legitimate
-/// state, not a bug: the cursor can only occupy content display lines, so a
-/// pure view scroll into a virtual-line block can carry the viewport
-/// further than the cursor can follow. The terminal caret is simply hidden
-/// until an ordinary cursor motion resyncs the view.
+/// [`scroll_into_view`]'s result: where the cursor ended up on screen, and
+/// whether this pane came out of the pass parked (its cursor outside the
+/// scrolloff band). `PaneBufferState::parked`'s only writer is the caller,
+/// which stores this field back onto it.
+struct ScrollOutcome {
+    /// Pane-relative, before the gutter. `None` for a viewport with no
+    /// display lines to place it in, or when the cursor has scrolled out of
+    /// view: a legitimate state, not a bug. The cursor can only occupy
+    /// content display lines, so a pure view scroll into a virtual-line
+    /// block can carry the viewport further than the cursor can follow. The
+    /// terminal caret is simply hidden until an ordinary cursor motion
+    /// resyncs the view.
+    cursor_screen: Option<(u16, u16)>,
+    /// See [`PaneBufferState::parked`]'s own doc.
+    parked: bool,
+}
+
+/// Scroll the pane viewport so `cursor_char` stays within the visible area.
 ///
 /// Calls both the vertical (`reveal`) and horizontal (`reveal_horizontal`)
 /// verbs in one shot, over a single display-line map, so the two agree on
@@ -638,19 +654,23 @@ impl Editor {
 /// the display-line map holds no viewport, so no arm below can change what
 /// `locate` already answered.
 ///
-/// `reveal_pending` is `PaneBufferState::reveal_pending`'s value for this
-/// frame, already taken by the caller. See that field's own doc for why the
-/// vertical `reveal` correction runs only when it's `true`, falling back to
-/// a plain forward walk from `top` otherwise (resolved via `Viewport::top_at`
-/// either way, since `reveal` resolves its own), and what that leaves hidden.
+/// `reveal` is `PaneBufferState::reveal_pending`'s value for this frame
+/// (already taken by the caller) or'd with an unparked layout change; see
+/// that field's own doc. When `true`, `Viewport::reveal` runs and the pane
+/// comes out unparked. When `false`, `Viewport::settled_row`
+/// answers whether the cursor is already where `reveal` would have left it:
+/// `Some` places the cursor there directly (an unparked pane, same walk
+/// `reveal` itself would need); `None` means the cursor is outside the band,
+/// so this pass falls back to a plain forward walk from `top` (resolved via
+/// `Viewport::top_at`) and reports the pane parked.
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
     cursor_char: hume_rope::offset::CharOffset,
     format_key: hume_engine::display_lines::line_store::FormatKey,
     scrolloff: usize,
-    reveal_pending: bool,
-) -> Option<(u16, u16)> {
+    reveal: bool,
+) -> ScrollOutcome {
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done: both work through this pane's one store.
     let (mut dlm, viewport) = super::commands::pane_display_lines(doc, pane, format_key);
@@ -658,34 +678,53 @@ fn scroll_into_view(
     // Checked before `locate`, which would otherwise format the cursor's
     // line for an answer no one can use, and before `geometry`, which
     // returns `None` for exactly this case.
-    let geo = viewport.geometry(scrolloff)?;
+    let Some(geo) = viewport.geometry(scrolloff) else {
+        return ScrollOutcome {
+            cursor_screen: None,
+            parked: false,
+        };
+    };
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
     // Horizontal scroll is its own axis (a fixed margin, no `scrolloff`, no
     // document-edge special-casing; see `reveal_horizontal`'s own doc) and
     // has no snap-back to guard against, so it always runs: a
     // same-display-line cursor move (`l` on a long unwrapped line) changes
     // the column without changing `cursor_pos`, and gating this on the same
-    // `reveal_pending` the vertical arm below reads would leave it stale for
+    // `reveal` the vertical arm below reads would leave it stale for
     // exactly that case.
     viewport.reveal_horizontal(&mut dlm, cursor_display_col);
-    if reveal_pending {
+    if reveal {
         let screen_row = viewport.reveal(&mut dlm, geo, cursor_pos);
-        Some(super::cursor::place(
-            viewport,
-            cursor_display_col,
-            screen_row,
-        ))
+        return ScrollOutcome {
+            cursor_screen: Some(super::cursor::place(
+                viewport,
+                cursor_display_col,
+                screen_row,
+            )),
+            parked: false,
+        };
+    }
+    if let Some(screen_row) = viewport.settled_row(&mut dlm, geo, cursor_pos) {
+        ScrollOutcome {
+            cursor_screen: Some(super::cursor::place(
+                viewport,
+                cursor_display_col,
+                screen_row,
+            )),
+            parked: false,
+        }
     } else {
         // `reveal_horizontal` just guaranteed `cursor_display_col >=
         // horizontal_offset`, so this is `cursor::content_pos` minus the two
         // checks it exists to make for a caller that hasn't already done
         // them. Only its forward walk is left to redo.
         let top = viewport.top_at(&mut dlm);
-        let screen_row = dlm.distance(top, cursor_pos, geo.height - 1)?;
-        Some(super::cursor::place(
-            viewport,
-            cursor_display_col,
-            screen_row,
-        ))
+        let cursor_screen = dlm
+            .distance(top, cursor_pos, geo.height - 1)
+            .map(|screen_row| super::cursor::place(viewport, cursor_display_col, screen_row));
+        ScrollOutcome {
+            cursor_screen,
+            parked: true,
+        }
     }
 }

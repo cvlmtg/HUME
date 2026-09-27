@@ -97,9 +97,25 @@ impl Viewport {
         geo: ViewGeometry,
         cursor_pos: DisplayLinePos,
     ) -> usize {
+        let (top, row) = self.reveal_target(dlm, geo, cursor_pos);
+        self.top = top;
+        row
+    }
+
+    /// `reveal`'s decision, without writing it: the top `reveal` would
+    /// settle on plus the cursor's resulting row, both resolved against the
+    /// current (already-healed) `top`. [`Self::reveal`] and
+    /// [`Self::settled_row`] are this one decision's two readers, so it
+    /// exists to be identical between them rather than by convention.
+    fn reveal_target(
+        &mut self,
+        dlm: &mut DisplayLineMap<'_>,
+        geo: ViewGeometry,
+        cursor_pos: DisplayLinePos,
+    ) -> (DisplayLinePos, usize) {
         let top = self.top_at(dlm);
         if cursor_pos < top {
-            return self.scroll_back_from(dlm, cursor_pos, geo.margin);
+            return Self::scroll_back_target(dlm, cursor_pos, geo.margin);
         }
         // Capped at `geo.target` rather than `geo.height`: walking past
         // `geo.target` under wrap only pays for `format_buffer_line` calls
@@ -109,11 +125,28 @@ impl Viewport {
         // upper-bound check.
         match dlm.distance(top, cursor_pos, geo.target) {
             Some(display_lines_below_top) if display_lines_below_top < geo.margin => {
-                self.scroll_back_from(dlm, cursor_pos, geo.margin)
+                Self::scroll_back_target(dlm, cursor_pos, geo.margin)
             }
-            Some(display_lines_below_top) => display_lines_below_top,
-            None => self.scroll_back_from(dlm, cursor_pos, geo.target),
+            Some(display_lines_below_top) => (top, display_lines_below_top),
+            None => Self::scroll_back_target(dlm, cursor_pos, geo.target),
         }
+    }
+
+    /// Whether `cursor_pos` already sits where [`Self::reveal`] would leave
+    /// it, without moving `top`: the single definition of a pane being
+    /// "parked" (its cursor outside the scrolloff band, left behind by a
+    /// wheel/`Ctrl-d` scroll `carry` couldn't fully follow). `Some(row)`
+    /// when `top` is already `reveal`'s fixed point for `cursor_pos`, giving
+    /// the cursor's row for free; `None` otherwise.
+    pub fn settled_row(
+        &mut self,
+        dlm: &mut DisplayLineMap<'_>,
+        geo: ViewGeometry,
+        cursor_pos: DisplayLinePos,
+    ) -> Option<usize> {
+        let before = self.top_at(dlm);
+        let (target, row) = self.reveal_target(dlm, geo, cursor_pos);
+        (target == before).then_some(row)
     }
 
     /// Scroll so `cursor_pos` lands `display_lines_below_top` display lines
@@ -190,10 +223,21 @@ impl Viewport {
         cursor_pos: DisplayLinePos,
         display_lines_above: usize,
     ) -> usize {
-        let (top, stepped) =
-            dlm.advance_counted_saturating(cursor_pos, -(display_lines_above as isize));
+        let (top, stepped) = Self::scroll_back_target(dlm, cursor_pos, display_lines_above);
         self.top = top;
         stepped
+    }
+
+    /// [`Self::scroll_back_from`]'s walk, without the write: the target top
+    /// `display_lines_above` before `cursor_pos`, plus the cursor's row
+    /// under it. Takes no `&self` at all, since the answer depends only on
+    /// `dlm` and the two arguments.
+    fn scroll_back_target(
+        dlm: &mut DisplayLineMap<'_>,
+        cursor_pos: DisplayLinePos,
+        display_lines_above: usize,
+    ) -> (DisplayLinePos, usize) {
+        dlm.advance_counted_saturating(cursor_pos, -(display_lines_above as isize))
     }
 }
 

@@ -98,17 +98,18 @@ pub(crate) struct PaneBufferState {
     /// A fact worth re-settling the viewport for happened since the last
     /// frame handled one, raised at the source, not inferred from state.
     ///
-    /// The selection funnel [`PaneBufferState::set_selections`]/
-    /// `restore_selections`/`translate_selections_in_place` is this
-    /// field's only writer: set whenever a write actually moves the primary
-    /// head (not on a write that leaves it where it was: a
-    /// `commands::scroll_view` that couldn't carry a selection past a
-    /// virtual block, say, leaves this `false` for that write). Every
-    /// non-selection source (a resize, a wrap-mode change, a buffer switch,
-    /// a decoration-generation change) is folded into `frame.rs`'s scroll
-    /// step instead, as a comparison against [`PaneBufferState::last_layout_key`]
-    /// (see that field's own doc for why a derived comparison needs no
-    /// raise site per source).
+    /// Two writers: the selection funnel [`PaneBufferState::set_selections`]/
+    /// `restore_selections` (set whenever a write actually moves *this
+    /// pane's own* primary head; a `commands::scroll_view` that couldn't
+    /// carry a selection past a virtual block, say, leaves this `false` for
+    /// that write), and `doc_ops::finish_edit`, set for every real edit this
+    /// pane makes regardless of whether it moved the head (`r` replacing the
+    /// character under an unmoved cursor still deserves a reveal). A sibling
+    /// pane's edit does *not* raise this: `translate_selections_in_place`
+    /// only remaps the position, leaving the reveal decision for such
+    /// external changes to `frame.rs`'s [`PaneBufferState::last_layout_key`]/
+    /// [`PaneBufferState::parked`] comparison instead, which is gated on this
+    /// pane's own parked state rather than firing unconditionally.
     ///
     /// Read and cleared every frame by `frame.rs`'s scroll step, alongside
     /// that comparison: either one being true means the vertical
@@ -123,12 +124,15 @@ pub(crate) struct PaneBufferState {
     /// `EditorState::layout_key(pane)` every frame to derive reveals for
     /// every non-selection source at once: a resize, a wrap-mode pin or
     /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
-    /// pair is `None`, so it always differs), and a decoration-generation
-    /// change (inlay hints, EOL text, virtual lines) all show up as *some*
-    /// `LayoutKey` field changing, rather than needing their own raise site
-    /// each. `pub(in crate::editor)`, matching `reveal_pending`'s own
-    /// visibility: `frame.rs` is its only reader, and it is a pure memo
-    /// with no invariant to funnel through a narrower API.
+    /// pair is `None`, so it always differs), a decoration-generation
+    /// change (inlay hints, EOL text, virtual lines, signs), and any edit to
+    /// the buffer at all (`text_gen`), including one made through a sibling
+    /// pane. A changed key reveals only when [`PaneBufferState::parked`] is
+    /// `false`: a pane parked behind an unfollowable scroll must not snap
+    /// back onto its cursor just because something changed elsewhere in the
+    /// buffer it happens to be viewing. `pub(in crate::editor)`, matching
+    /// `reveal_pending`'s own visibility: `frame.rs` is its only reader, and
+    /// it is a pure memo with no invariant to funnel through a narrower API.
     ///
     /// Deliberately not reset on a buffer switch: a pane revisiting a
     /// buffer it showed before, with every layout input still identical to
@@ -139,6 +143,17 @@ pub(crate) struct PaneBufferState {
     /// `frame.rs`'s prune-cache doc: both die with the pane's own
     /// `SecondaryMap` entry, same as everything else on this struct).
     pub(in crate::editor) last_layout_key: Option<LayoutKey>,
+    /// Whether this pane's cursor sat outside the scrolloff band as of the
+    /// last frame `frame.rs`'s scroll step settled it: `Viewport::settled_row`
+    /// returning `None`, the case a wheel or `Ctrl-d` scroll leaves behind
+    /// when `carry` can't fully follow it (a virtual block too tall for the
+    /// band, a document edge). Gates whether a [`PaneBufferState::last_layout_key`]
+    /// change reveals this pane; see that field's own doc. Written and read
+    /// only there, same visibility and same "dies with the pane's own entry"
+    /// lifetime as `last_layout_key`, and for the same revisit reason left
+    /// unreset on a buffer switch: a pane revisiting a buffer finds its own
+    /// prior parked state, not a fresh unparked one.
+    pub(in crate::editor) parked: bool,
 }
 
 impl PaneBufferState {
@@ -190,22 +205,19 @@ impl PaneBufferState {
     }
 
     /// In-place remap for a sibling pane's selections after an edit another
-    /// pane made to the same buffer, raising [`PaneBufferState::reveal_pending`]
-    /// iff the primary head actually moved, the same rule
-    /// `set_selections`/`restore_selections` apply, since a sibling pane can
-    /// be visible in its own split with the shifted position now out of its
-    /// own view.
+    /// pane made to the same buffer. Raises no reveal of its own: a sibling
+    /// edit bumps `text_gen`, which `frame.rs`'s scroll step already reads
+    /// off `EditorState::layout_key` and reveals for, gated on
+    /// [`PaneBufferState::parked`] like every other external change (see
+    /// that field's own doc for why a parked pane must not snap back just
+    /// because the head it can't currently see also moved).
     pub(in crate::editor) fn translate_selections_in_place(
         &mut self,
         edits: &[hume_rope::offset::ExclusiveRange<CharOffset>],
         cs: &hume_editing::changeset::ChangeSet,
         text_pre: &hume_editing::text::BufferText,
     ) {
-        let old_head = self.selections.primary().head();
         self.selections.translate_in_place_with(edits, cs, text_pre);
-        if self.selections.primary().head() != old_head {
-            self.reveal_pending = true;
-        }
     }
 }
 

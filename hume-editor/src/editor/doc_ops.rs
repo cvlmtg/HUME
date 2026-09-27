@@ -127,6 +127,11 @@ fn finish_edit(
     if cs.is_identity() {
         return;
     }
+    // A real edit reveals the acting pane even when it didn't move the
+    // primary head (`r` replacing the character under the cursor): the
+    // selection funnel above only raises this for a head move, but the
+    // buffer under this pane just changed regardless.
+    pane_state[pane_id][buf_id].reveal_pending = true;
     buffers.bump_edit_seq();
     // Computed once and shared by both propagation steps below. Each would
     // otherwise rebuild the same `Vec` from `cs` (once per sibling pane here,
