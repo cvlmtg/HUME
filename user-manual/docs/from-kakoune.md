@@ -40,7 +40,7 @@ Bare `K` (no modifier) is not an extend at all in HUME: it shows LSP hover docs 
 
 ### Word motions
 
-Both editors re-anchor on every press, and both pull in a run of whitespace, but from opposite sides. Kakoune's `w` takes the word and the whitespace that *follows* it. HUME's `w` takes the word and the whitespace *before* it, except on the first word of a line, where a leading run would be indentation, so it takes the trailing whitespace instead.
+Kakoune's `w` selects the word and the whitespace after it. HUME's selects the word and the whitespace *before* it, so deleting a word never leaves a double space (see [Moving around](moving-around.md#basic-movement)). Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) to select the bare word.
 
 <div class="key-demo">
 <strong>Cursor on the first character</strong><br>
@@ -56,11 +56,9 @@ Kakoune&nbsp;&nbsp;Lorem <span class="sel">ipsum<span class="head">&nbsp;</span>
 HUME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Lorem ipsum<span class="sel">&nbsp;dolo<span class="head">r</span></span> sit
 </div>
 
-With words separated by single spaces the two land on visually similar spans; they diverge around punctuation and line ends. Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) if you would rather `w` selected the bare word.
+Kakoune's `e` toggles Extend mode here. To select the word under the cursor, use `m m`, or `m i w` for the bare word (Kakoune's `<a-i>w`).
 
-Kakoune's `e` has no counterpart: `e` toggles Extend mode here. To select the word the cursor already sits on, use `m m` (word plus one whitespace run) or `m i w` (bare word, Kakoune's `<a-i>w`).
-
-Kakoune's `extra_word_chars` option (default `_`) is HUME's `word-chars` buffer option. List the extra characters directly, e.g. `-` for CSS. HUME ships with no default set; configure it per language from an `on-language-set` hook (see [Configuration](configuration.md)).
+Kakoune's `extra_word_chars` is HUME's `word-chars` buffer option (see [Configuration](configuration.md)).
 
 ### Line selection
 
@@ -103,9 +101,7 @@ The search keys overlap heavily in spelling and barely at all in meaning.
 | `<c-/>` | | Set pattern from the selection, verbatim |
 
 ::: warning
-`?` is the trap. In Kakoune it extends to the next match; in HUME it opens a backward search, the way it does in Vim.
-
-`N` is the other one. Kakoune's incremental "add the next match too" has no key here. HUME goes the other way and gives you `m /`, which turns *every* match in the buffer into a selection in one press. Narrow from there with `,` and `(` / `)`.
+Two traps: `?` opens a backward search in HUME (Vim-style), not an extend like Kakoune's. And `N` has no equivalent — use `m /` to select every match at once instead, then narrow with `,` and `(`/`)`.
 :::
 
 Neither `*` moves the cursor; both just set the pattern for `n` to use. The difference is what they read: Kakoune uses whatever is selected, HUME expands to the whole word under the cursor and ignores the selection. `Ctrl-/` is the closer match to Kakoune's `*` family, and it needs kitty.
@@ -121,7 +117,7 @@ Kakoune reaches objects with `<a-i>` and `<a-a>`. HUME puts them behind an `m` p
 | `m` (jump to matching pair) | `#` |
 | `[` / `]` / `{` / `}` (to object start/end) | *(none)* |
 
-Two things to watch. Kakoune's `m` jumps to the matching bracket or tag; HUME's `m` prefix is the text-object key instead, so the jump moved to `#`. To select the surrounding pair rather than jump to it, use `m s` + the delimiter (`m s (` for parens), which needs you to name the delimiter, where Kakoune's `m` finds the enclosing pair on its own. And `[`, `]`, `{`, `}` are all taken: `[` and `]` cycle the kill ring after a paste, `{` and `}` are paragraph motions.
+Two things to watch: Kakoune's `m` jumps to the matching bracket/tag (HUME's is `#`, since `m` is taken by text objects; select the pair instead with `m s` + delimiter, e.g. `m s (`). And `[`/`]`/`{`/`}` are all bound elsewhere: kill-ring cycling and paragraph motions.
 
 The objects available are word (`w`), WORD (`W`), the bracket and quote pairs, argument (`a`), and line (`l`). HUME adds `m i i`, which selects the text you typed during your last insert, and `m w` + a delimiter, which wraps each selection in a pair.
 
@@ -140,7 +136,7 @@ Kakoune registers are lists of text, one entry per selection, and you name any o
 
 There is no arbitrary `"x`, and no register holding the buffer name or selection indices. Kakoune's `%`, `.` and `#` registers exist to feed `%sh{}`, which HUME has no use for.
 
-The larger difference is what happens by default. Kakoune ships without clipboard integration; you wire up `xclip` or `pbcopy` through a pipe. HUME has the system clipboard built in as `"c`, plus a kill ring behind it, and `p` picks between them: it pastes from the kill ring while nothing has been edited since your last delete/change/yank, and from the clipboard once something has. Right after a paste, `[` and `]` swap in older and newer kill-ring entries.
+Kakoune ships without clipboard integration; you wire up `xclip`/`pbcopy` yourself. HUME has the system clipboard built in as `"c`, plus a kill ring that `p` prefers until you've edited since your last delete/change/yank. `[`/`]` cycle through older/newer kill-ring entries after a paste.
 
 See [Register prefix](copy-and-paste.md#register-prefix) for the full syntax.
 

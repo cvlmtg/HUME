@@ -20,38 +20,13 @@ Unlike Helix, leaving Insert mode in HUME (however you entered it: `i`, `a`, `o`
 
 ### Word motions
 
-`w`, `b`: Both editors re-anchor on each press (the anchor moves with the head; it does not stay pinned at the origin). Helix selects the gap traversed: from the old position to the next word start, including the trailing whitespace. HUME selects the destination word itself and, by default, the whitespace *before* it too, except the first word of a line, which takes its trailing whitespace instead, since a leading run there would be indentation. In the common case of words separated by single spaces the two editors land on visually similar spans; they diverge in exactly where the whitespace sits (leading for HUME vs. trailing for Helix's traversed gap) and around punctuation or line ends, where the two models compute different things outright. Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) for HUME's bare-word behavior instead.
+Helix's `w` selects the word and the whitespace after it. HUME's selects the word and the whitespace *before* it, so deleting a word never leaves a double space (see [Moving around](moving-around.md#basic-movement)). Turn off `word-selects-whitespace` (see [Configuration](configuration.md)) to select the bare word.
 
-<div class="key-demo">
-<strong>Cursor on the first character</strong><br>
-Helix&nbsp;&nbsp;<span class="head">L</span>orem ipsum dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;<span class="head">L</span>orem ipsum dolor sit<br>
-<br>
-<strong>Press <code>w</code></strong><br>
-Helix&nbsp;&nbsp;<span class="sel">Lorem<span class="head">&nbsp;</span></span>ipsum dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;Lorem<span class="sel">&nbsp;ipsu<span class="head">m</span></span> dolor sit<br>
-<br>
-<strong>Press <code>w</code> again</strong><br>
-Helix&nbsp;&nbsp;Lorem <span class="sel">ipsum<span class="head">&nbsp;</span></span>dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;Lorem ipsum<span class="sel">&nbsp;dolo<span class="head">r</span></span> sit
-</div>
-
-To select the word the cursor is already sitting on (no forward jump), HUME binds `mm`. By default it selects the whole word plus one adjacent whitespace run (same rule as `w`/`b` above), no matter where in the word the cursor sits. Helix's closest equivalent is `maw`, match mode's around-word text object: it also grabs the whole word plus one whitespace run, independent of cursor position. The two pick sides differently: `maw` reaches for trailing whitespace first and only falls back to leading whitespace if the word has none, while `mm` reaches for leading whitespace first and switches to trailing only for a line's first word (where a leading run would be indentation), so they agree at line starts and for a line's last word, but land on opposite sides mid-line. `miw` (inner word, no whitespace) matches `mm` exactly, but only once `word-selects-whitespace` is turned off. `e` (move to end of word) only approximates `mm` when the cursor already sits on the word's first character. From the middle of a word it instead selects just cursor→end (`rem`), not the whole word.
-
-<div class="key-demo">
-<strong>Select the current word, cursor in the middle of the word</strong><br>
-Helix&nbsp;&nbsp;Lorem ip<span class="head">s</span>um dolor sit<br>
-HUME&nbsp;&nbsp;&nbsp;Lorem ip<span class="head">s</span>um dolor sit<br>
-<br>
-<strong>Press <code>maw</code></strong><br>
-Helix&nbsp;&nbsp;Lorem <span class="sel">ipsum<span class="head">&nbsp;</span></span>dolor sit<br>
-<strong>Press <code>mm</code></strong><br>
-HUME&nbsp;&nbsp;&nbsp;Lorem<span class="sel"> ipsu<span class="head">m</span></span> dolor sit
-</div>
+To select the word under the cursor, use `m m`, or `m i w` for the bare word.
 
 ### Growing selections
 
-To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl-w` under the kitty protocol). Both editors can shrink a grown selection back the same way: since extending keeps the anchor fixed and only moves the head, reversing direction (`b`/`Ctrl-b` after `w`/`Ctrl-w` in HUME; `b` after `w` in Helix's select mode) moves the head back toward the anchor instead of growing further. What differs is how you get into extending: Helix requires pressing `v` (select mode) first, after which every motion extends until you leave the mode; HUME's Extend mode (`e`) works the same way, but HUME also offers one-shot per-keystroke extends (`Ctrl-w`/`Ctrl-b`) that skip the mode switch entirely.
+Helix grows a selection in select mode (`v`). HUME's equivalent is Extend mode (`e`), where every motion extends until you act or press `Esc`. HUME also has one-shot extends (`Ctrl-w`, `Ctrl-b`, …) that extend for a single keystroke without changing mode; these need the kitty keyboard protocol.
 
 ### Line selection: `x` vs Extend mode (`e`)
 
@@ -67,7 +42,7 @@ Helix's `x` is **modal**: once pressed, all subsequent `x` presses extend the se
 
 HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`). In Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl-x` for a one-shot extend without entering the mode.
 
-Unlike its word motions, Helix's `x` doesn't share the anchor-fixed extend mechanism: it's hardcoded to always grow downward one line per press, and the default keymap has no key that shrinks a grown line selection back up (`X` normalizes the existing selection to whole-line boundaries rather than undoing a previous `x`; `Alt-x` shrinks to line bounds from an unrelated starting point). HUME's `x`/`X` are genuinely bidirectional: after growing downward with `x`/`Ctrl-x`, pressing `X`/`Ctrl-Shift-x` shrinks the selection back up one line at a time (and vice versa).
+`X` is the backward form: after growing a line selection downward, `X` (or `Ctrl-Shift-x`) shrinks it back up one line at a time. Helix has no key for that.
 
 ### Multiple selections
 
@@ -90,11 +65,9 @@ Both editors share the same foundations (multiple cursors, `;` to collapse, `S` 
 | Search selection literally, no anchors | `Alt-*` | `Ctrl-/` (kitty only) |
 
 ::: warning
-HUME's `*` is not the same operation as Helix's `*`. Helix's `*` searches the literal current selection (or just the character under a collapsed cursor), adding `\b` anchors only when that text looks like a word. It never expands past what's already selected. HUME's `*` is Vim-style: it expands to the whole run under the cursor, ignoring any existing selection. A word gets `\b` anchors; a run of punctuation is searched literally without them, and on whitespace `*` does nothing at all.
+HUME's `*` is Vim-style: it expands to the word (or punctuation run) under the cursor and ignores any existing selection, unlike Helix's `*`, which searches the literal current selection. HUME's `Ctrl-/` (kitty only) is the closer match to Helix's `Alt-*`.
 
-HUME's `Ctrl-/` is the closer match to Helix's `Alt-*` (literal selection, no anchors). HUME has no equivalent of Helix's `*` (selection-based search with automatic boundary detection).
-
-To put `Ctrl-/`'s behavior on the `*` key instead (matching Helix's `Alt-*`, not `*`), rebind it in your `init.scm`:
+To bind that behavior to `*` instead, rebind it in your `init.scm`:
 
 ```scheme
 (bind-key! 'normal "*" "search-selection")
