@@ -4,7 +4,7 @@ use steel::HashMap as SteelHashMap;
 use steel::gc::Gc;
 use steel::rvals::IntoSteelVal as _;
 
-/// Builds a Steel hashmap `SteelVal` from `(symbol-key, value)` pairs — the
+/// Builds a Steel hashmap `SteelVal` from `(symbol-key, value)` pairs: the
 /// `(hash 'k v ...)` shape `virtual_line_spec` decodes.
 fn hashmap(entries: Vec<(&str, SteelVal)>) -> SteelVal {
     let mut hm = SteelHashMap::new();
@@ -30,7 +30,7 @@ fn seg(start: isize, end: isize, scope: &str) -> SteelVal {
 
 /// Every decoration setter on a host with no `DecorationHost` capability
 /// (`NullHost`, the harness default) surfaces `require_cap`'s canonical
-/// message, naming the builtin — locks the message contract `require_cap`
+/// message, naming the builtin. Locks the message contract `require_cap`
 /// centralizes across `decorations.rs`/`edits.rs`/`completion.rs`/`ui.rs`.
 ///
 /// A setter written as `if let Some(decorations) = ... { ... } Ok(Void)`
@@ -127,7 +127,7 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
 
 #[test]
 fn set_signs_accepts_a_multi_codepoint_glyph() {
-    // Only *control* characters are rejected — a normal multi-byte glyph
+    // Only *control* characters are rejected: a normal multi-byte glyph
     // (here a combining sequence) must still reach the gutter untouched.
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
@@ -205,9 +205,9 @@ fn set_statusline_text_without_decoration_host_errors() {
 // ── `virtual_line_specs` decoder ─────────────────────────────────────────────
 //
 // These call the private decoder directly (`NullHost` has no `DecorationHost`,
-// so a full `set_virtual_lines` round trip can't reach the store from here) —
+// so a full `set_virtual_lines` round trip can't reach the store from here),
 // same pattern as `picker_items`'s tests in `builtins/ui.rs`. The decoder only
-// checks shape (arity, types) now — segment bounds/ordering/overlap/grapheme
+// checks shape (arity, types) now. Segment bounds/ordering/overlap/grapheme
 // validation moved to the host boundary (`host_impl.rs`'s
 // `virtual_line_segments_to_bytes`), tested there instead.
 
@@ -279,8 +279,8 @@ fn virtual_line_spec_rejects_unknown_key() {
         .unwrap_err()
         .to_string();
     // Not `err.contains("segment")`: the message always also prints the
-    // expected-keys list, which contains "segments" — a substring of
-    // "segment" — so that assertion would pass regardless of which key was
+    // expected-keys list, which contains "segments" (which contains
+    // "segment"), so that assertion would pass regardless of which key was
     // actually blamed. Assert on the phrase naming the offending key instead.
     assert!(err.contains("unknown key 'segment,"), "got: {err}");
 }
@@ -347,7 +347,7 @@ fn virtual_line_spec_rejects_carriage_return_in_text() {
 #[test]
 fn virtual_line_spec_keeps_a_literal_tab_in_text() {
     // The engine expands a tab in a virtual line's text to the next tab
-    // stop (`hume_engine::display_lines::segment_virtual_line`) — this builtin no
+    // stop (`hume_engine::display_lines::segment_virtual_line`); this builtin no
     // longer expands it, or rejects it, itself.
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(0)),
@@ -374,7 +374,7 @@ fn virtual_line_spec_keeps_a_control_character_verbatim() {
     let specs = virtual_line_specs(list(vec![entry])).expect("accepted, not rejected");
     assert_eq!(
         specs[0].text, "a\u{7}b",
-        "verbatim — no Steel-side substitution"
+        "verbatim, no Steel-side substitution"
     );
 }
 

@@ -3,12 +3,12 @@ use crate::test_support::{SteelCtxTestHarness, default_pane};
 
 // ── Gate (init mode rejection) ────────────────────────────────────────────
 //
-// Every builtin below is `cmd`-gated in `builtins!`'s registration table —
+// Every builtin below is `cmd`-gated in `builtins!`'s registration table:
 // the gate lives in the registration wrapper closure, not the function
 // body, so these test the gate primitive directly rather than calling the
 // builtin (its body has no guard to hit).
 
-/// `focused-pane` is blocked in init mode — no meaningful focus exists yet.
+/// `focused-pane` is blocked in init mode: no meaningful focus exists yet.
 ///
 /// An `open` table entry would return `PaneId::default()` during init, when
 /// there is no live host to read, silently giving wrong data.
@@ -137,14 +137,14 @@ fn line_to_offset_blocked_in_init_mode() {
 // `offset->line`/`%buffer-lines`/`line->offset`'s wrong-type-argument
 // checks are covered centrally, by `args::tests`' own unit tests on the
 // `Usize`/`OptUsize` `FromSteelVal` newtypes their `builtins!` table
-// entries declare — that decode happens at Steel's own registration
+// entries declare. That decode happens at Steel's own registration
 // boundary, before any of these functions' bodies (which take a plain
 // `usize`/`Option<usize>`) ever run, so it cannot be exercised by
 // calling the function directly with a malformed `SteelVal`.
 //
 // Likewise, every explicit-`pane` builtin's "invalid buffer id" error on a
 // closed buffer is raised by `args::LivePane`'s `BuiltinArg::resolve`,
-// in the `builtins!`-registered closure — before the function body (which
+// in the `builtins!`-registered closure, before the function body (which
 // takes a plain `PaneHandle`, already known live) ever runs. A direct
 // call here has no way to reach that check at all; it's covered once,
 // centrally, through a real `ScriptingHost` by
@@ -152,7 +152,7 @@ fn line_to_offset_blocked_in_init_mode() {
 
 // ── Command-mode success paths (NullHost read methods return None/empty) ──
 
-/// `focused-pane` reaches `ctx.host.buffers()` — the live host read —
+/// `focused-pane` reaches `ctx.host.buffers()` (the live host read),
 /// proven by NullHost's `PaneHandle::buffer_only(BufferId::default())`
 /// return round-tripping through `SteelPane`.
 ///
@@ -186,8 +186,8 @@ fn buffers_command_mode_returns_empty_list() {
     );
 }
 
-/// `buffer-cursor-line` raises when `pane` carries no pane state (NullHost) —
-/// kind-B fail-fast: a builtin that needs a pane to answer meaningfully
+/// `buffer-cursor-line` raises when `pane` carries no pane state (NullHost).
+/// Kind-B fail-fast: a builtin that needs a pane to answer meaningfully
 /// must say so loudly when it doesn't have one, not silently guess a
 /// default (see `CursorHost`'s doc).
 #[test]

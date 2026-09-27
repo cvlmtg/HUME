@@ -1,4 +1,4 @@
-//! Completion — registering a source, answering an invocation, reading
+//! Completion: registering a source, answering an invocation, reading
 //! the ranked view, accept/dismiss, plus trigger-character registration.
 
 use steel::rerrs::SteelErr;
@@ -14,7 +14,7 @@ use super::args::{
 };
 use super::errors::{generic_err, require_cap};
 
-/// Decodes `#:match` (`'fuzzy`/`'string`/`'delegated`) — a `String` source
+/// Decodes `#:match` (`'fuzzy`/`'string`/`'delegated`). A `String` source
 /// is case-sensitive by default; no Steel caller needs case-insensitive
 /// matching yet, so there's no second keyword for it (the native minibuffer
 /// sources set this directly in Rust, bypassing this decode entirely).
@@ -35,7 +35,7 @@ fn match_kind_arg(val: SteelVal, ctx_name: &str) -> Result<MatchKind, SteelErr> 
     )
 }
 
-/// Decodes `#:target` (`'buffer`/`'minibuf`) — each target has exactly one
+/// Decodes `#:target` (`'buffer`/`'minibuf`). Each target has exactly one
 /// token rule (see `CompletionSourceTarget`'s doc), so there is no separate
 /// `#:token` to decode.
 fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
@@ -50,14 +50,14 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
     )
 }
 
-/// `(register-trigger-chars! source language chars)` — `chars` is a list of
+/// `(register-trigger-chars! source language chars)`: `chars` is a list of
 /// 1-char strings, registered for exactly `(source, language)`. Callable
-/// from any context, including command bodies and hook handlers —
+/// from any context, including command bodies and hook handlers:
 /// signature help registers a server's trigger characters from inside an
 /// `on-lsp-attach` handler, which runs as plain command context (no
 /// `EvalMode` gate applies here, unlike `register-hook!` /
 /// `on-lsp-notification`). `chars` landing in Insert mode fires the
-/// `on-trigger-char` hook for any listener named `source` — a shared,
+/// `on-trigger-char` hook for any listener named `source`, a shared,
 /// listener-agnostic table, *not* how a completion source's own trigger
 /// chars are joined (that's `completion-set-trigger-chars!`, a completion
 /// source's own routing table, checked before invoking sources directly).
@@ -76,13 +76,13 @@ pub(crate) fn register_trigger_chars(
     Ok(SteelVal::Void)
 }
 
-/// `(%register-completion-source! name proc target match priority resolve)`
-/// — the `register-completion-source!` Scheme wrapper supplies `#:match`/
+/// `(%register-completion-source! name proc target match priority resolve)`:
+/// the `register-completion-source!` Scheme wrapper supplies `#:match`/
 /// `#:priority`/`#:resolve`'s defaults; `#:target` has none (every source
 /// states its choice explicitly). `proc` is called as `(proc id bid
 /// prefix)` for a `'buffer` source, `(proc id input cursor)` for a
 /// `'minibuf` one, and answers with `(completion-emit! id …)`. Queued as an
-/// `Effect`, not applied here — see `Effect::RegisterCompletionSource`.
+/// `Effect`, not applied here; see `Effect::RegisterCompletionSource`.
 ///
 /// `#:resolve #t` is refused outright on a `'minibuf` source: only a
 /// `'buffer` source's items can ever be a wire `CompletionItem` from a
@@ -121,11 +121,11 @@ pub(crate) fn register_completion_source(
     Ok(SteelVal::Void)
 }
 
-/// `(%completion-emit! id items incomplete)` — the `completion-emit!`
+/// `(%completion-emit! id items incomplete)`: the `completion-emit!`
 /// Scheme wrapper supplies `#:incomplete`'s `#f` default. `items` is either
 /// a list of `CompletionItem` hashmaps/bare-string labels, or one
 /// `JsonHandle` wrapping a whole LSP `textDocument/completion` response,
-/// passed straight through — `json_arg` (the same funnel every other
+/// passed straight through. `json_arg` (the same funnel every other
 /// JSON-taking builtin uses) takes it as either, with no deep copy either
 /// way: an already-handle argument crosses as-is, a plain list becomes a
 /// handle onto a fresh JSON array. The handle's own shape (bare array vs.
@@ -161,7 +161,7 @@ pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
     Ok(SteelVal::ListV(list.into()))
 }
 
-/// `(completion-accept! idx)` — `idx` indexes the ranked/filtered list
+/// `(completion-accept! idx)`: `idx` indexes the ranked/filtered list
 /// (`completion-top`'s order), not the raw response order.
 pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
     let idx = usize_arg(idx, "completion-accept!")?;
@@ -179,19 +179,19 @@ pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(completion-set-trigger-chars! source language chars)` — a `'buffer`
+/// `(completion-set-trigger-chars! source language chars)`: a `'buffer`
 /// completion source's own trigger characters for `language`, replacing
 /// that pair's previous set (`SourceRegistry::set_buffer_trigger_chars`).
 /// Callable from any context, same as `register-trigger-chars!`
 /// (`on-lsp-attach` runs as plain command context).
 ///
-/// Queued as an `Effect`, not applied here — see
+/// Queued as an `Effect`, not applied here; see
 /// `Effect::SetCompletionTriggerChars`'s own doc. Whether `source` names a
 /// registered `Buffer` source can only be checked once the effect applies
 /// (an earlier *queued* `register-completion-source!` in the same eval may
 /// be the one supplying it): a miss is reported as a log message there,
-/// never raised back to the caller. Argument decoding — a well-formed
-/// `chars` list — still fails synchronously here.
+/// never raised back to the caller. Argument decoding (a well-formed
+/// `chars` list) still fails synchronously here.
 pub(crate) fn completion_set_trigger_chars(
     ctx: &mut SteelCtx,
     source: SteelVal,

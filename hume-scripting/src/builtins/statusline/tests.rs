@@ -17,7 +17,7 @@ fn string_list(items: &[&str]) -> SteelVal {
 
 // ── Eval-mode gating ───────────────────────────────────────────────────────
 
-/// `configure-statusline!` is registered `open` (`builtins/mod.rs`) — no
+/// `configure-statusline!` is registered `open` (`builtins/mod.rs`): no
 /// eval-mode gate at all, since it writes the same `EditorSettings.statusline`
 /// field as `set-option!` (also `open`) through the same
 /// `editor::settings::ops::apply_global` chokepoint regardless of caller.

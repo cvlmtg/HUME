@@ -143,7 +143,7 @@ fn shift_tab_normalises_to_backtab() {
 
 #[test]
 fn angle_brackets_are_plain_chars() {
-    // < and > are just characters — no special quoting needed.
+    // < and > are just characters; no special quoting needed.
     assert_eq!(parse("<").unwrap(), vec![key(KeyCode::Char('<'))]);
     assert_eq!(parse(">").unwrap(), vec![key(KeyCode::Char('>'))]);
 }

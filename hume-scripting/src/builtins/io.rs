@@ -27,7 +27,7 @@ use crate::SteelCtx;
 use super::SteelResult;
 use super::errors::generic_err;
 
-/// Whether the host reports an inline-output bracket currently live —
+/// Whether the host reports an inline-output bracket currently live,
 /// read fresh from `ctx.host` on every call rather than a value cached at
 /// session start, so a bracket a `call!`-armed nested command opens mid-body
 /// (`OutputHost::arm_inline_output`) is visible to the very next print.
@@ -37,7 +37,7 @@ fn is_inline_output_command(ctx: &mut SteelCtx) -> bool {
         .is_some_and(|output| output.is_inline_output_command())
 }
 
-/// `(%stdout-gate!)` — called by each gated print shim (see
+/// `(%stdout-gate!)`: called by each gated print shim (see
 /// `PRINT_GATE_SHIMS` in `builtins/mod.rs`) immediately before it would write
 /// to the real stdout. Returns `#f` (write must be suppressed) unless it's
 /// currently safe to write directly to the real process stdout: init (before
@@ -48,7 +48,7 @@ fn is_inline_output_command(ctx: &mut SteelCtx) -> bool {
 /// command body.
 ///
 /// `inline` is read once and reused for both checks below (safe-at-all, then
-/// whether to enter the alt-screen) rather than re-read — each read is a
+/// whether to enter the alt-screen) rather than re-read, since each read is a
 /// non-devirtualizable hop through `ctx.host`.
 ///
 /// The two safe reasons are joined by `||`. Each is pinned on its own by

@@ -52,19 +52,19 @@ pub(crate) type SteelResult = Result<SteelVal, SteelErr>;
 
 /// Declarative builtin-registration table. Each entry is
 /// `<kind> "<steel-name>" <rust-path>(<arg>: <Type>, …);` where `<kind>` is:
-/// - `cmd`    — ctx-taking, gated by [`errors::require_cmd`] (buffer/pane/editor-state builtins)
-/// - `config` — ctx-taking, gated by [`errors::require_config`] (init/plugin-load-only verbs)
-/// - `open`   — ctx-taking, ungated (no legality gate, or a bespoke one the fn checks itself)
-/// - `plain`  — no `&mut SteelCtx` param at all (context-free predicates)
+/// - `cmd`: ctx-taking, gated by [`errors::require_cmd`] (buffer/pane/editor-state builtins)
+/// - `config`: ctx-taking, gated by [`errors::require_config`] (init/plugin-load-only verbs)
+/// - `open`: ctx-taking, ungated (no legality gate, or a bespoke one the fn checks itself)
+/// - `plain`: no `&mut SteelCtx` param at all (context-free predicates)
 ///
 /// The declared arg types are load-bearing, not documentation: each entry
 /// expands to a closure with exactly that parameter list, so a mismatch
-/// against the real function's signature is a compile error — a
+/// against the real function's signature is a compile error, a
 /// compile-time link between a builtin's registered name and its gate.
 ///
 /// Every ctx-taking kind (`cmd`/`config`/`open`) runs each decoded argument
 /// through `args::BuiltinArg::resolve` right after the gate, shadowing
-/// `$arg` with its `Out` type — the seam `args::LivePane` (raises on a
+/// `$arg` with its `Out` type: the seam `args::LivePane` (raises on a
 /// closed buffer, resolving to a plain `PaneHandle`) hooks into; every
 /// other declared type resolves to itself. `plain` (no ctx) never runs this
 /// step, so it can't declare a `LivePane` argument.
@@ -189,7 +189,7 @@ macro_rules! builtins {
 const BOOTSTRAP: &str = include_str!("bootstrap.scm");
 
 // PRINT_GATE_SHIMS is appended both to BOOTSTRAP (top level) and, verbatim,
-// to steel-core's own prelude string via set_prelude_string — since the
+// to steel-core's own prelude string via set_prelude_string. Since the
 // prelude is prepended to every `(require "path.scm")` unit, this closes the
 // gap where required-module (every real plugin's) print calls would
 // otherwise resolve straight to steel-core's raw, ungated originals. See
@@ -239,7 +239,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         config "bind-wait-char!" keymap_bind::bind_wait_char(mode: SteelVal, key_str: String, cmd_name: String);
         cmd    "set-register-prefix!" commands::set_register_prefix(name: String);
 
-        // Registers — direct read/write, independent of set-register-prefix!'s
+        // Registers: direct read/write, independent of set-register-prefix!'s
         // per-command targeting.
         open "read-register" registers::read_register(name: String);
         open "write-register!" registers::write_register(name: String, values: SteelVal);
@@ -254,25 +254,25 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "plugin-config" plugins::plugin_config();
         open "%load-plugin!" plugins::load_plugin(name: String, config: SteelVal);
 
-        // Inline activation primitives — called from the %activate-plugin-inline
+        // Inline activation primitives, called from the %activate-plugin-inline
         // Scheme helper to drive mid-eval plugin loading without &mut Engine.
         open "%begin-lazy-activation" plugins::begin_lazy_activation(id_str: String);
         open "%finish-lazy-activation" plugins::finish_lazy_activation(id_str: String, error: SteelVal);
         open "%lazy-command-owner" plugins::lazy_command_owner(name: String);
 
-        // Manifest resolution — zero-trigger declare-plugin routes here to eval
+        // Manifest resolution: zero-trigger declare-plugin routes here to eval
         // <plugin-dir>/manifest.scm so the plugin can declare its own defaults.
         open "%begin-manifest-declare!" plugins::begin_manifest_declare(name: String, config: SteelVal);
         open "%finish-manifest-declare!" plugins::finish_manifest_declare(name: String, error: SteelVal);
 
-        // Hook registration — init-only
+        // Hook registration (init-only)
         config "register-hook!" hooks::register_hook(name: SteelVal, proc: SteelVal);
 
         // Steel command definition. %define-command! is the native primitive;
         // the (define-command! …) Steel wrapper in BOOTSTRAP exposes keyword
         // args (#:repeatable, #:inline-output).
         config "%define-command!" commands::define_command(name: String, doc: String, proc: SteelVal, repeatable: bool, inline_output: bool);
-        // Typed (`:` command line) counterpart — see the module-doc paragraph
+        // Typed (`:` command line) counterpart. See the module-doc paragraph
         // above BOOTSTRAP. No #:repeatable keyword arg.
         config "%define-typed-command!" commands::define_typed_command(name: String, doc: String, proc: SteelVal, inline_output: bool, completer: SteelVal);
         // %call-native! is the Rust leaf for native/unknown dispatch; the variadic
@@ -284,21 +284,21 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "%lookup-plugin-proc" commands::lookup_plugin_proc(name: String);
         // %arm-inline-output!/%restore-inline-output!: the call!-path counterpart
         // of dispatch.rs's own inline-output arm/close, wrapping %dispatch-command's
-        // in-VM apply — see the BOOTSTRAP comment block above for the full picture.
+        // in-VM apply. See the BOOTSTRAP comment block above for the full picture.
         open "%arm-inline-output!" commands::arm_inline_output(name: String);
         open "%restore-inline-output!" commands::restore_inline_output(depth: SteelVal);
         cmd  "request-wait-char!" commands::request_wait_char(cmd: String);
         open "pending-char" commands::pending_char();
         open "command-plugin" commands::command_plugin(name: String);
 
-        // Grammar compilation — sandbox-free, full-trust plugin model. Kept as a
+        // Grammar compilation: sandbox-free, full-trust plugin model. Kept as a
         // Rust builtin only for the Windows compiler-selection dance (see
         // grammar.rs's module doc); `grammar-output-path` is plain Scheme.
         open "compile-grammar!" grammar::compile_grammar(src: String, out: String);
 
-        // LSP server install pipeline — sha256 hashing, archive unpacking,
+        // LSP server install pipeline: sha256 hashing, archive unpacking,
         // platform id, cross-process install lock.
-        // Sandbox-free — full-trust plugin model. `verify-sha256!`/`exe-on-path?`
+        // Sandbox-free, full-trust plugin model. `verify-sha256!`/`exe-on-path?`
         // /`git-clone`/`curl-fetch`/`npm-install!` are plain Scheme, atop Steel's
         // own `steel/process` stdlib (`which`, `spawn-process`).
         open  "sha256-file" install::sha256_file(path: String);
@@ -308,14 +308,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open  "release-install-lock!" install::release_install_lock();
         open  "%run-inline-output!" install::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal);
 
-        // Logging — push messages to the editor message log
+        // Logging: push messages to the editor message log
         open "log!" crate::log::log_msg(severity: SteelVal, message: String);
 
         // %stdout-gate! is the Rust leaf behind the gated print shims (displayln,
-        // display, print, println, newline) — see io.rs and PRINT_GATE_SHIMS above.
+        // display, print, println, newline). See io.rs and PRINT_GATE_SHIMS above.
         open "%stdout-gate!" io::stdout_gate();
 
-        // Opaque pane predicate — context-free; no SteelCtx needed. Equality
+        // Opaque pane predicate: context-free, no SteelCtx needed. Equality
         // is `equal?` (Custom::equality_hint), not a dedicated builtin.
         plain "pane?" ids::is_pane(val: SteelVal);
         plain "json-parse" json::json_parse(s: SteelVal);
@@ -326,7 +326,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "json-list" json::json_list(handle: SteelVal);
         plain "json-array?" json::is_json_array(val: SteelVal);
         plain "json-object?" json::is_json_object(val: SteelVal);
-        // Word tokenization — context-free text transform, no host/buffer needed.
+        // Word tokenization: context-free text transform, no host/buffer needed.
         plain "split-words" words::split_words(line: SteelVal, word_chars: SteelVal);
 
         // Multi-buffer read-only builtins
@@ -342,7 +342,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-text" buffers::buffer_text(pane: args::LivePane);
         cmd "buffer-line-count" buffers::buffer_line_count(pane: args::LivePane);
         cmd "%buffer-lines" buffers::buffer_lines(pane: args::LivePane, start: args::OptUsize, end: args::OptUsize);
-        // Live cursor read — reflects synchronous edits in the same eval.
+        // Live cursor read: reflects synchronous edits in the same eval.
         cmd "buffer-cursor-line" buffers::buffer_cursor_line(pane: args::LivePane);
         cmd "buffer-selections" buffers::buffer_selections(pane: args::LivePane);
         cmd "offset->line" buffers::offset_to_line(pane: args::LivePane, idx: args::Usize);
@@ -357,16 +357,16 @@ pub(crate) fn register_all(steel: &mut Engine) {
         config "%define-language!" syntax::define_language(name: SteelVal, exts_val: SteelVal, globs_val: SteelVal, shebangs_val: SteelVal, lsp_language_id_val: SteelVal);
         open   "%register-grammar!" syntax::register_grammar(name: SteelVal, grammar_path: SteelVal, symbol: SteelVal, highlights_path: SteelVal, injections_path: SteelVal, textobjects_path: SteelVal);
 
-        // LSP server registration — last-wins, queued (like language regs) and
+        // LSP server registration: last-wins, queued (like language regs) and
         // applied at the end of the current eval, from init, plugin activation,
         // or a command/hook body.
         open "%register-lsp-server!" lsp::register_lsp_server(language: SteelVal, command: SteelVal, args_val: SteelVal, root_markers_val: SteelVal, init_options: SteelVal, settings: SteelVal, env_val: SteelVal);
         open "unregister-lsp-server!" lsp::unregister_lsp_server(language: SteelVal);
-        // Lifecycle — stop/restart a running server, or open the status view.
+        // Lifecycle: stop/restart a running server, or open the status view.
         cmd "lsp-stop!" lsp::lsp_stop(target: args::LspTargetArg);
         cmd "lsp-restart!" lsp::lsp_restart(target: args::LspTargetArg);
         cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
-        // Generic LSP bridge — any protocol method reachable from Steel.
+        // Generic LSP bridge: any protocol method reachable from Steel.
         cmd "%lsp-request" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal);
         cmd "lsp-notify" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal);
         config "on-lsp-notification" lsp::on_lsp_notification(method: SteelVal, handler: SteelVal);
@@ -443,26 +443,26 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
         cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
         cmd "%picker-close!" ui::picker_close(token: SteelVal);
-        // Backs live-picker!'s #:command validation only — see args::is_callable's doc.
+        // Backs live-picker!'s #:command validation only. See args::is_callable's doc.
         plain "%callable?" args::is_callable(val: SteelVal);
 
-        // Timers — not LSP-specific; any plugin can schedule one.
+        // Timers: not LSP-specific, any plugin can schedule one.
         cmd "after" timers::after(ms: SteelVal, thunk: SteelVal);
         cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
 
-        // Generic async subprocess execution — one-shot capture, not a
+        // Generic async subprocess execution: one-shot capture, not a
         // streaming source (that's `picker-source-spawn!`'s shape).
         cmd "spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: SteelVal);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
 
-        // Blocking subprocess capture, no callback — backs `stdlib/run`.
+        // Blocking subprocess capture, no callback. Backs `stdlib/run`.
         // `open`, not `cmd`: Steel's own `spawn-process`/`wait`, which
         // `run_capture` stands in for (see its own doc), carry no legality
         // gate either, and `stdlib/run` is a plain helper any plugin body can
         // reach, not a top-level dispatched command. No `%` prefix: unlike
         // every other native primitive here, it takes no keyword arguments
         // to flatten, so it needs no `bootstrap.scm` wrapper of the same
-        // name minus the `%` — `stdlib/plugin.scm`'s `(define stdlib/run
+        // name minus the `%`: `stdlib/plugin.scm`'s `(define stdlib/run
         // run-capture!)` aliases it directly. A `%`-prefixed name would
         // have been invisible to `is_internal_name`'s host-global-names
         // filter with no such wrapper to stand in for it, leaving
@@ -494,32 +494,32 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_value("json-contains?", SteelVal::FuncV(json::json_contains));
     steel.register_value("json-ref-or", SteelVal::FuncV(json::json_ref_or));
 
-    // Evaluate the Scheme bootstrap (defines `load-plugin`, and — at its
-    // tail — captures steel-core's original print functions/port before
+    // Evaluate the Scheme bootstrap (defines `load-plugin`, and, at its
+    // tail, captures steel-core's original print functions/port before
     // anything shadows them). Runs before any user init.scm; HUME_CTX is not
     // yet set but the bootstrap only uses `define`, so no builtins are
     // called at this point.
     steel
         .compile_and_run_raw_program(BOOTSTRAP.to_owned())
-        .expect("HUME scripting bootstrap failed — this is a bug");
+        .expect("HUME scripting bootstrap failed: this is a bug");
 
     // PRINT_GATE_SHIMS must compile as its OWN program, separate from
     // BOOTSTRAP: steel-core rejects a single compiled unit that both
     // references a name (the `%raw-*` captures above) and redefines that
-    // same name later in the same unit — "variable redefined within the top
+    // same name later in the same unit: "variable redefined within the top
     // level definition" / "cannot reference an identifier before its
     // definition" (verified empirically against steel-core 0.8.3; see
     // io.rs's module doc). Splitting into two sequential top-level programs
     // sidesteps this: by the time this call compiles, `displayln` etc. are
     // ordinary already-bound globals, and redefining them here is a plain
-    // global rebind — no self-reference within the same unit.
+    // global rebind, with no self-reference within the same unit.
     steel
         .compile_and_run_raw_program(PRINT_GATE_SHIMS.to_owned())
-        .expect("HUME scripting print-gate shims failed — this is a bug");
+        .expect("HUME scripting print-gate shims failed: this is a bug");
 
     // Append the same shims to steel-core's prelude string. The prelude is
     // prepended to every `(require "path.scm")` compilation unit (steel-core
-    // internals — see io.rs's module doc), so this closes the gap where a
+    // internals; see io.rs's module doc), so this closes the gap where a
     // plugin's own displayln/display/print/println/newline calls would
     // otherwise resolve to steel-core's raw, ungated originals instead of
     // HUME's gate. Unlike the top-level case above, a required module's

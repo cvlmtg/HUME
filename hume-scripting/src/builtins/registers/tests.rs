@@ -26,8 +26,8 @@ fn register_arg_rejects_empty_name() {
 }
 
 /// `NullHost::is_valid_register_name` always answers `false` (no registry to
-/// validate against), so every single-char name — including a real one like
-/// `'3'` — surfaces as "invalid" through it. That's sufficient to prove the
+/// validate against), so every single-char name (including a real one like
+/// `'3'`) surfaces as "invalid" through it. That's sufficient to prove the
 /// rejection path fires and is worded correctly; the accept path needs a host
 /// with real validation logic, below.
 #[test]
@@ -70,7 +70,7 @@ fn register_arg_rejects_macro_and_search_even_with_real_validation() {
     }
 }
 
-/// `NullHost` has no `RegisterHost` capability — both builtins must surface
+/// `NullHost` has no `RegisterHost` capability: both builtins must surface
 /// the standard "not supported by this host" error, same as any other
 /// optional-capability builtin (`goto-location!`, `show-popup!`, …). Uses
 /// `ValidNameHost` (real name validation, no registers) rather than
@@ -105,8 +105,8 @@ fn write_register_without_capability_errors() {
     );
 }
 
-/// A bare string is rejected before the host capability is even consulted —
-/// register-name validation and value-shape validation are independent
+/// A bare string is rejected before the host capability is even consulted.
+/// Register-name validation and value-shape validation are independent
 /// checks, but this proves the value check fires against a capable host too,
 /// not just as a side effect of a missing capability.
 #[test]
@@ -122,7 +122,7 @@ fn write_register_rejects_bare_string_value() {
 /// End-to-end through the real registration table: `write-register!` then
 /// `read-register` on a host that actually stores values, proving the two
 /// builtins agree on the wire shape (a list of strings both ways). Ends in
-/// `log!` because `eval_source` reports only success/failure — same
+/// `log!` because `eval_source` reports only success/failure, the same
 /// round-trip-via-log idiom as `fs::tests::data_dir_resolves_through_real_registration`.
 #[test]
 fn write_then_read_round_trips_through_real_registration() {
@@ -142,7 +142,7 @@ fn write_then_read_round_trips_through_real_registration() {
 
 // ── Test hosts ────────────────────────────────────────────────────────────────
 
-/// Register names this crate's builtins must accept — mirrors
+/// Register names this crate's builtins must accept, mirroring
 /// `hume_ops::register::is_valid_register_name` without depending on
 /// `hume-ops` (a crate this layer intentionally doesn't pull in; see
 /// `crate::host::EditorHost`'s module doc on the dependency wall). The real
@@ -152,7 +152,7 @@ fn valid_test_register_name(ch: char) -> bool {
 }
 
 /// [`crate::null_host::NullHost`] wrapper with real register-name validation
-/// but no [`crate::host::RegisterHost`] capability — isolates "capability
+/// but no [`crate::host::RegisterHost`] capability. Isolates "capability
 /// missing" from "name rejected" in the tests above.
 #[derive(Default)]
 struct ValidNameHost {
@@ -235,7 +235,7 @@ impl crate::host::CommandHost for ValidNameHost {
     }
 }
 
-/// Like [`ValidNameHost`] but backed by a real in-memory register store —
+/// Like [`ValidNameHost`] but backed by a real in-memory register store,
 /// enough to prove `write-register!`/`read-register` round-trip correctly
 /// without pulling in a real `Editor`. Wraps `ValidNameHost` rather than
 /// `NullHost` directly so the `CommandHost` delegation (identical to

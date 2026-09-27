@@ -5,12 +5,12 @@ use super::*;
 
 /// Pins a real gotcha in Steel's own `steel/process` stdlib: `child-stderr`
 /// (and by extension `child-stdin`/`child-stdout`) must be captured
-/// *before* calling `wait` — calling it after returns `#f` even though the
+/// *before* calling `wait`: calling it after returns `#f` even though the
 /// stream was piped. Also pins the stdin-close-for-EOF pattern needed
 /// since stdin is not inherited by default. No in-tree Scheme calls
 /// `spawn-process` directly any more (`core:stdlib`'s `stdlib/run` is now
 /// `run-capture!`, a native builtin closing the exact deadlock this shape
-/// invites — see its own doc), but the full-trust plugin model leaves
+/// invites; see its own doc), but the full-trust plugin model leaves
 /// `spawn-process` reachable from any user plugin, so the gotcha stays live
 /// and worth pinning.
 #[test]
@@ -50,7 +50,7 @@ fn child_stderr_must_be_captured_before_wait() {
 /// Also reachable via `grammars.scm`'s `plum/resolve-query` (see
 /// `plum/fetch-raw-query`'s doc comment for the fix: never wrap the
 /// raising call in an inner catch-and-reraise). `#[should_panic]`
-/// regression pin — if a steel-core upgrade fixes this, revisit the
+/// regression pin. If a steel-core upgrade fixes this, revisit the
 /// `grammars.scm` workaround.
 #[test]
 #[should_panic(expected = "Failed to find an open continuation on the stack")]
@@ -78,7 +78,7 @@ fn known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrup
 #[test]
 fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
     // Shape: the native-builtin-raising call (run-inline-output!) is NOT
-    // wrapped by an inner with-handler at all — it propagates in one hop
+    // wrapped by an inner with-handler at all; it propagates in one hop
     // straight to the outer tolerant handler.
     let mut host = ScriptingHost::new();
     let mut null_host = NullHost;
@@ -135,14 +135,14 @@ fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
 
 /// **Second known steel-core 0.8.3 limitation**: `dynamic-wind`'s
 /// `after` thunk is not guaranteed to run when its body raises through an
-/// outer `with-handler` — reproduces the panic-pinning test's failure,
+/// outer `with-handler`. Reproduces the panic-pinning test's failure,
 /// wrapped in `dynamic-wind` instead of catch-and-reraise. This would
 /// otherwise be a safe way to guarantee `declare-plugin`'s manifest
 /// cleanup (`%finish-manifest-declare!`) runs without an inner handler,
-/// but `cleanup-ran` never fires — confirms cleanup-on-unwind stays in
+/// but `cleanup-ran` never fires, which confirms cleanup-on-unwind stays in
 /// Rust (explicit push/pop), never Steel `dynamic-wind`. Pinned like the
 /// test above: a steel-core fix flips `cleanup-ran` to `#t` and this
-/// starts failing — revisit then.
+/// starts failing; revisit then.
 #[test]
 fn known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_unwind() {
     let mut host = ScriptingHost::new();
@@ -163,7 +163,7 @@ fn known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_u
     "#;
     let result = host.eval_source(src, &mut null_host);
     let err = result.expect_err(
-        "dynamic-wind's cleanup thunk unexpectedly ran across the outer handler's unwind — \
+        "dynamic-wind's cleanup thunk unexpectedly ran across the outer handler's unwind; \
          if steel-core fixed this, declare-plugin's manifest branch could use dynamic-wind \
          instead of catch-and-reraise to avoid the panic pinned above",
     );

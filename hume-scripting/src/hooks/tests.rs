@@ -33,8 +33,8 @@ fn remove_owned_by_removes_only_matching_owner() {
     assert_eq!(survivors[1].owner, None);
 }
 
-/// A handler registered for one hook name is not returned for another —
-/// pins the name-keyed map against key collisions.
+/// A handler registered for one hook name is not returned for another.
+/// Pins the name-keyed map against key collisions.
 ///
 /// A hash or equality bug that mapped two distinct names to the same bucket
 /// would leak `on-buffer-save`'s handler into `on-buffer-open`'s list.

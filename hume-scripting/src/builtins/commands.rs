@@ -28,13 +28,13 @@ use hume_engine::types::MAX_COUNT;
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// The owner of `name`'s already-registered proc body — mappable
-/// (`command_table`) or typed (`typed_command_table`) — or `None` if no body
+/// The owner of `name`'s already-registered proc body (mappable
+/// (`command_table`) or typed (`typed_command_table`)), or `None` if no body
 /// has been defined yet under either table.
 ///
 /// A pre-seeded `cmd_owners` entry with no matching table entry (a lazy
 /// stub's activation-command ownership, written by `declare_plugin` before
-/// its body ever runs) doesn't count as "defined" — see `check_definable`'s
+/// its body ever runs) doesn't count as "defined"; see `check_definable`'s
 /// own doc for why that distinction matters.
 fn defined_owner<'a>(ctx: &'a SteelCtx, name: &str) -> Option<&'a Owner> {
     if ctx.registries.command_table.contains_key(name)
@@ -42,7 +42,7 @@ fn defined_owner<'a>(ctx: &'a SteelCtx, name: &str) -> Option<&'a Owner> {
     {
         // cmd_owners must have an entry whenever either table does (both are
         // written together, see the insert pairs in `define_command`/
-        // `define_typed_command`) — a miss here would be a registries-desync
+        // `define_typed_command`). A miss here would be a registries-desync
         // bug, not a normal "unknown owner" case.
         Some(
             ctx.registries.cmd_owners.get(name).expect(
@@ -56,7 +56,7 @@ fn defined_owner<'a>(ctx: &'a SteelCtx, name: &str) -> Option<&'a Owner> {
 
 /// Shared guards behind `define-command!` and `define-typed-command!`: name
 /// syntax, built-in shadowing, true re-definition, and lazy-stub self-
-/// ownership. `builtin_name` only changes the error text — both callers
+/// ownership. `builtin_name` only changes the error text: both callers
 /// check the same `command_table`/`typed_command_table`/`cmd_owners`, since a
 /// mappable and a typed command share one Steel-side proc namespace just as
 /// they share one namespace in the editor's `CommandRegistry`.
@@ -71,7 +71,7 @@ fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result
             builtin_name, name);
     }
     // Guard against true re-definition, mappable or typed: `cmd_owners` alone
-    // can't tell (see `defined_owner`'s doc) — checking it here would falsely
+    // can't tell (see `defined_owner`'s doc), and checking it here would falsely
     // reject a plugin defining its own lazy activation command.
     if let Some(owner) = defined_owner(ctx, name) {
         steel::stop!(Generic =>
@@ -102,15 +102,15 @@ fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result
 /// `name` and `doc` string.  The command can then be bound to a key via
 /// `(bind-key! …)`.
 ///
-/// `repeatable` and `inline_output` are mutually exclusive — passing both
+/// `repeatable` and `inline_output` are mutually exclusive: passing both
 /// `#t` raises a Steel error.
 ///
 /// When triggered by a key binding the lambda receives leading `pane`,
 /// `count`, and `extend` arguments based on its declared arity:
-/// - `(lambda ())` — no injection.
-/// - `(lambda (pane))` — receives the pane the command was invoked through.
-/// - `(lambda (pane count))` — pane and the repeat count (integer ≥ 1).
-/// - `(lambda (pane count extend))` — pane, count, and `#t`/`#f` extend flag.
+/// - `(lambda ())`: no injection.
+/// - `(lambda (pane))`: receives the pane the command was invoked through.
+/// - `(lambda (pane count))`: pane and the repeat count (integer ≥ 1).
+/// - `(lambda (pane count extend))`: pane, count, and `#t`/`#f` extend flag.
 /// - Variadic lambdas receive all three.
 ///
 /// Raises a Steel error if:
@@ -127,8 +127,8 @@ pub(crate) fn define_command(
 ) -> SteelResult {
     if repeatable && inline_output {
         steel::stop!(Generic =>
-            "define-command!: '#:repeatable #t' and '#:inline-output #t' are mutually exclusive \
-             — shell-out commands must not participate in dot-repeat");
+            "define-command!: '#:repeatable #t' and '#:inline-output #t' are mutually exclusive: \
+             shell-out commands must not participate in dot-repeat");
     }
     check_definable(ctx, "define-command!", &name)?;
     let proc = super::args::callable_arg(proc, "define-command! third arg (proc)")?;
@@ -138,7 +138,7 @@ pub(crate) fn define_command(
         // keymap injection passes no leading args rather than blindly injecting 2.
         _ => (0, false),
     };
-    // Register in the editor's CommandRegistry first — it can still reject the
+    // Register in the editor's CommandRegistry first: it can still reject the
     // name (e.g. it shadows a native command the empty command-mode builtin set
     // missed).  Only on success do command_table/cmd_owners record the command;
     // otherwise a failed define would leave entries that the plugin-failure
@@ -163,17 +163,17 @@ pub(crate) fn define_command(
 /// `(%define-typed-command! name doc proc inline-output)`
 ///
 /// Native primitive behind the `(define-typed-command! …)` Steel wrapper.
-/// Registers `proc` as a typed command invocable from the `:` command line —
+/// Registers `proc` as a typed command invocable from the `:` command line,
 /// the typed counterpart of [`define_command`]. No `repeatable` parameter:
 /// dot-repeat is meaningless for a `:` command, so there is nothing to
 /// mutually-exclude against `inline_output` the way `define-command!` does.
 ///
 /// When dispatched, the lambda receives leading `pane`/`arg`/`force`
 /// arguments based on its declared arity:
-/// - `(lambda ())` — no injection.
-/// - `(lambda (pane))` — the pane the command was invoked through.
-/// - `(lambda (pane arg))` — pane and the typed argument (a string), or `#f` if none.
-/// - `(lambda (pane arg force))` — pane, the argument, and whether `!` was appended.
+/// - `(lambda ())`: no injection.
+/// - `(lambda (pane))`: the pane the command was invoked through.
+/// - `(lambda (pane arg))`: pane and the typed argument (a string), or `#f` if none.
+/// - `(lambda (pane arg force))`: pane, the argument, and whether `!` was appended.
 ///
 /// Raises a Steel error under the same conditions as `define-command!`.
 pub(crate) fn define_typed_command(
@@ -204,7 +204,7 @@ pub(crate) fn define_typed_command(
         })
         .map_err(generic_err)?;
     let current_owner = ctx.plugin_stack.current_owner();
-    // typed_command_table, not command_table — see its own doc for why the
+    // typed_command_table, not command_table: see its own doc for why the
     // separation matters (keeps `call!` from reaching a `:`-only command).
     ctx.registries
         .typed_command_table
@@ -237,7 +237,7 @@ pub(crate) fn call_command_primitive(
             if ctx.session == crate::context::EvalSession::Init {
                 ctx.log(
                     LogLevel::Warning,
-                    format!("skipped runtime command '{name}' — it can't run while loading config; bind it to a key or call it from a hook instead"),
+                    format!("skipped runtime command '{name}': it can't run while loading config; bind it to a key or call it from a hook instead"),
                 );
                 return Ok(SteelVal::BoolV(false));
             }
@@ -268,11 +268,11 @@ pub(crate) fn call_command_primitive(
     }
 }
 
-/// `(%arm-inline-output! name)` — see `%apply-command` in `bootstrap.scm`.
+/// `(%arm-inline-output! name)`: see `%apply-command` in `bootstrap.scm`.
 /// Arms the alt-screen bracket for a `call!`-dispatched `name` if it is a
 /// Steel command declared `#:inline-output #t`. Returns the depth to
 /// truncate back to at the matching `%restore-inline-output!`, so the
-/// Scheme caller knows whether to pair a restore and, if so, with what — a
+/// Scheme caller knows whether to pair a restore and, if so, with what. A
 /// `#f` result (a native, unknown, or un-activated `Lazy` `name`, or a host
 /// with no inline-output authority at all) touches no state and needs no
 /// restore.
@@ -287,7 +287,7 @@ pub(crate) fn arm_inline_output(ctx: &mut SteelCtx, name: String) -> SteelResult
     })
 }
 
-/// `(%restore-inline-output! depth)` — truncates the bracket's frame stack
+/// `(%restore-inline-output! depth)`: truncates the bracket's frame stack
 /// back to `depth` (the value `%arm-inline-output!` returned for this same
 /// call). Only ever called after `%arm-inline-output!` returned non-`#f`; see
 /// `%apply-command` in `bootstrap.scm`'s BOOTSTRAP comment (`builtins/mod.rs`)
@@ -300,7 +300,7 @@ pub(crate) fn restore_inline_output(ctx: &mut SteelCtx, depth: SteelVal) -> Stee
     Ok(SteelVal::Void)
 }
 
-/// `%lookup-plugin-proc` — return the Steel closure for an activated plugin
+/// `%lookup-plugin-proc`: return the Steel closure for an activated plugin
 /// command, or `#f` if the name is not in the `command_table`.
 ///
 /// Works in both init and command mode: during init, `define-command!` populates
@@ -319,13 +319,13 @@ pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResul
 /// `[n, bool]` → `(decode(n), bool)`. All other shapes (e.g. a leading string,
 /// extra args) return `Err`.
 ///
-/// `decode(0)` is `None` — the Scheme spelling of "no count typed" (a bare
+/// `decode(0)` is `None`: the Scheme spelling of "no count typed" (a bare
 /// keypress), since Scheme has no `Option` to pass across the builtin-call
 /// boundary and `0` is otherwise unreachable as an explicit count. `None`
 /// makes `move-down`/`move-up` move by visual line instead of buffer line
 /// (see `EditorHost::run_command_sync`); every other native command treats
 /// it the same as `Some(1)`. Negative counts clamp to `Some(1)`; counts above
-/// [`MAX_COUNT`] clamp there — a script has no digit-by-digit accumulator to
+/// [`MAX_COUNT`] clamp there, since a script has no digit-by-digit accumulator to
 /// cap, so this is the only ceiling standing between an arbitrary `isize` and
 /// a command that loops the count with no fixed-point exit.
 ///
@@ -372,7 +372,7 @@ pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult 
     Ok(SteelVal::Void)
 }
 
-/// `(command-plugin name)` — return the owner of command `name` as a string.
+/// `(command-plugin name)`: return the owner of command `name` as a string.
 ///
 /// Returns the plugin id string (e.g. `"core:plum"`, `"user/repo"`) if the
 /// command was registered by a plugin, `"user"` if registered from top-level
@@ -386,7 +386,7 @@ pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {
     Ok(SteelVal::StringV(owner.to_string().into()))
 }
 
-/// `(pending-char)` — return the pending character as a one-character string,
+/// `(pending-char)`: return the pending character as a one-character string,
 /// or `#f` if no character is waiting.
 ///
 /// Only meaningful inside a `SteelBacked` command invocation reached via a
@@ -399,7 +399,7 @@ pub(crate) fn pending_char(ctx: &mut SteelCtx) -> SteelResult {
     }
 }
 
-/// `(set-register-prefix! name)` — arm a sticky register prefix for the
+/// `(set-register-prefix! name)`: arm a sticky register prefix for the
 /// remaining `(call! …)` calls in this command body.
 ///
 /// Every `(call! …)` after this point captures the given register, so

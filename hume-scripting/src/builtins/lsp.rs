@@ -1,7 +1,7 @@
 //! LSP server lifecycle (register/unregister/stop/restart/status), the
 //! generic request/notify bridge, and read-only introspection. Decorations,
 //! completion, edit/navigation primitives, and the minibuffer prompt live in
-//! their own modules — LSP is a client of those, not their owner.
+//! their own modules. LSP is a client of those, not their owner.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -21,7 +21,7 @@ use super::errors::generic_err;
 
 /// `Some(json)` → decoded to a Steel hashmap; `None` (unresolvable, no
 /// attached server, handshake incomplete, …) → `#f`. Shared by the three
-/// params-builder introspection builtins below — every field in these is
+/// params-builder introspection builtins below. Every field in these is
 /// HUME-computed, not server JSON, so they stay a native decode; see
 /// `lsp_capabilities`, which instead converts via `to_steel_handle` since
 /// its own JSON isn't HUME-computed.
@@ -34,7 +34,7 @@ fn json_or_false(json: Option<serde_json::Value>) -> SteelVal {
 
 /// `(%register-lsp-server! language command args root-markers init-options settings env)`
 ///
-/// Callable from init.scm, plugin activation, or a command/hook body —
+/// Callable from init.scm, plugin activation, or a command/hook body,
 /// unlike `%define-language!`, this is not gated to init/activation-only.
 /// Queues a last-wins registration: applied at the end of the *current*
 /// eval (see `Editor::apply_lsp_server_op`), replacing any existing
@@ -47,7 +47,7 @@ fn json_or_false(json: Option<serde_json::Value>) -> SteelVal {
 /// process's inherited environment. Pushes an
 /// `Effect::LspServerOp(PendingLspServerOp::Register)`.
 // Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
-// `register-lsp-server!`'s own Steel signature — bundling them into a struct
+// `register-lsp-server!`'s own Steel signature. Bundling them into a struct
 // would break that direct correspondence for no benefit, since every arg is
 // already decoded and validated independently right below.
 #[allow(clippy::too_many_arguments)]
@@ -83,12 +83,12 @@ pub(crate) fn register_lsp_server(
     Ok(SteelVal::Void)
 }
 
-/// `(unregister-lsp-server! language)` — queues removal of `language`'s
+/// `(unregister-lsp-server! language)`: queues removal of `language`'s
 /// registration and shutdown of any running clients for it, applied at the
 /// end of the current eval (see `Editor::apply_lsp_server_op`).
 ///
 /// Idempotent: unregistering a language with no registration and/or no
-/// running clients is not an error — `:lsp-uninstall` of an already-removed
+/// running clients is not an error: `:lsp-uninstall` of an already-removed
 /// or never-installed server must succeed silently.
 ///
 /// Applies at end-of-eval, so within the *same* eval the server process is
@@ -105,7 +105,7 @@ pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> S
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-stop! target)` — `target` a buffer-id (that buffer's attached
+/// `(lsp-stop! target)`: `target` a buffer-id (that buffer's attached
 /// server) or a string/symbol (every server registered for that language).
 /// Queues a stop, applied at the end of the current eval (see
 /// `Editor::apply_lsp_server_op`); the report of how many servers stopped is
@@ -115,14 +115,14 @@ pub(crate) fn lsp_stop(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelResu
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-restart! target)` — same argument shape as `lsp-stop!`. Queues a
+/// `(lsp-restart! target)`: same argument shape as `lsp-stop!`. Queues a
 /// stop-then-respawn, applied at the end of the current eval.
 pub(crate) fn lsp_restart(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelResult {
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Restart { target }));
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-show-status! pane)` — queues opening the `[lsp-status]` read-only
+/// `(lsp-show-status! pane)`: queues opening the `[lsp-status]` read-only
 /// view, applied at the end of the current eval. Kind-A: `pane` must be the
 /// focused pane, since the view opens anchored there.
 pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
@@ -147,7 +147,7 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
 /// actions), not background requests. It raises at once if `pane` carries no
 /// pane.
 // Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
-// `lsp-request`'s own Steel signature — same rationale as
+// `lsp-request`'s own Steel signature, same rationale as
 // `register_lsp_server`'s own `#[allow]`, just above in this file.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lsp_request(
@@ -184,7 +184,7 @@ pub(crate) fn lsp_request(
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-notify pane method params)` — fire-and-forget, no callback, no
+/// `(lsp-notify pane method params)`: fire-and-forget, no callback, no
 /// staleness tag (nothing to correlate a response against). Same queue
 /// discipline as `lsp-request`, including `pane`'s buffer resolution
 /// contract.
@@ -204,10 +204,10 @@ pub(crate) fn lsp_notify(
     Ok(SteelVal::Void)
 }
 
-/// `(on-lsp-notification method handler)` — registers `handler` for every
+/// `(on-lsp-notification method handler)`: registers `handler` for every
 /// server notification of `method` that Rust doesn't already special-case
 /// (window/logMessage, window/showMessage, $/progress, publishDiagnostics).
-/// Persistent, immediate registration straight onto `ctx.registries` — same
+/// Persistent, immediate registration straight onto `ctx.registries`, same
 /// init/plugin-load gate as `register-hook!`, no per-eval queue needed since
 /// registration doesn't touch the transport.
 pub(crate) fn on_lsp_notification(
@@ -286,14 +286,14 @@ pub(crate) fn lsp_server_for_buffer(ctx: &mut SteelCtx, pane: ArgPane) -> SteelR
 /// (`lsp-server-for-buffer` reports *attachment*, which can't make that
 /// distinction). Reads through the `Effect::LspServerOp` entries queued this
 /// eval/init, not yet applied, in emission order before falling back to the
-/// live registry — the last queued `Register`/`Unregister` for `language`
+/// live registry. The last queued `Register`/`Unregister` for `language`
 /// wins, matching `Editor::apply_lsp_server_op`'s own last-wins semantics
 /// exactly, so a same-eval registration is visible immediately instead of
 /// only after the next drain.
 ///
 /// Unlike its buffer/pane-touching siblings, this is a pure registry read
 /// (no `EditorHost` state beyond the LSP registry itself), so its table
-/// entry is `open` kind — no gate, callable during init/plugin load too.
+/// entry is `open` kind: no gate, callable during init/plugin load too.
 /// That lets `core:lsp`'s own load-time scan (`registration.scm`) query it
 /// directly to skip already-registered languages.
 pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
@@ -323,7 +323,7 @@ pub(crate) fn lsp_registered_for_language(ctx: &mut SteelCtx, language: SteelVal
 
 /// Adapts a kind-B `LspHost` params method's `Result<Option<Value>, String>`
 /// (`Err` on a stale `pane`, `Ok(None)` on no path/no attached server) to a
-/// `SteelResult` — `Ok(None)` becomes `#f`, matching `json_or_false`'s own
+/// `SteelResult`: `Ok(None)` becomes `#f`, matching `json_or_false`'s own
 /// convention for the "unavailable" case every one of these three builtins
 /// shares.
 fn params_result(result: Option<Result<Option<serde_json::Value>, String>>) -> SteelResult {
@@ -352,7 +352,7 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> 
 /// `(lsp-linewise-ranges-params pane)` → `{"textDocument" {"uri"} "ranges"
 /// [...]}`, one wire range per linewise selection in `pane`'s own pane
 /// (touching selections coalesced into one range apiece). Carries no
-/// all/none/mixed verdict — `:lsp-fmt` gets that from `selections-linewise?`/
+/// all/none/mixed verdict. `:lsp-fmt` gets that from `selections-linewise?`/
 /// `selections-charwise?` instead, since every `lsp-*-params` builtin's
 /// return value is a wire-ready params hash forwarded to `lsp-request`
 /// unchanged or with a protocol key inserted, and a non-protocol key here
@@ -379,10 +379,10 @@ fn json_usize(v: &serde_json::Value, ctx_name: &str) -> Result<usize, SteelErr> 
 /// `(lsp-position->offset pane position)` → `pane`'s buffer's char offset
 /// for the wire `{"line" "character"}` hashmap `position`, decoded in
 /// `position`'s own tagged producing-server encoding (`Err` if `position`
-/// isn't a value from an LSP server response — see
-/// `JsonHandle::position_encoding`) — or `#f` if `position` would land on
+/// isn't a value from an LSP server response; see
+/// `JsonHandle::position_encoding`), or `#f` if `position` would land on
 /// the buffer's trailing phantom line (a stale response racing an edit, or a
-/// server's past-end convention) — every point-anchored decoration setter
+/// server's past-end convention). Every point-anchored decoration setter
 /// (`set-inlay-hints!`) rejects that offset outright, so refusing here lets
 /// a caller filter one bad entry instead of the whole setter call failing
 /// on it.
@@ -412,7 +412,7 @@ pub(crate) fn lsp_position_to_offset(
 /// `(lsp-range->offsets pane range)` → `(start . end)` half-open char
 /// offsets for the wire `{"start" {"line" "character"} "end" {"line"
 /// "character"}}` hashmap `range`, same encoding rule as
-/// `lsp-position->offset` — decoded in `range`'s own tagged producing-server
+/// `lsp-position->offset`, decoded in `range`'s own tagged producing-server
 /// encoding.
 pub(crate) fn lsp_range_to_offsets(
     ctx: &mut SteelCtx,
@@ -451,14 +451,14 @@ pub(crate) fn lsp_range_to_offsets(
 ///
 /// `offsets` is the raw two-element `[start, end)` array straight off the
 /// wire, handed over undecoded the way `goto-location!` takes a raw
-/// `Location` — either a Steel list (the ordinary hashmap-decode shape) or a
+/// `Location`: either a Steel list (the ordinary hashmap-decode shape) or a
 /// JSON array handle, both routed through `json_arg` onto the one
 /// JSON-native decode below. Its encoding is read from its own tag: it is
 /// itself drawn from the same response `label` came from (`json-ref`), so it
-/// carries the producing server's negotiated encoding — errors on an
+/// carries the producing server's negotiated encoding, and errors on an
 /// untagged (hand-built) value, since there is then no server to have
 /// negotiated one with. The offsets count code units in that encoding, so
-/// Scheme can neither convert them nor index by them — that is the whole
+/// Scheme can neither convert them nor index by them. That is the whole
 /// reason this builtin exists rather than a Scheme helper.
 pub(crate) fn lsp_label_offsets_to_text(
     ctx: &mut SteelCtx,
@@ -492,13 +492,13 @@ pub(crate) fn lsp_label_offsets_to_text(
 
 /// `(lsp-locations->display-parts locs)` → one `(path line
 /// grapheme-col-or-wire)` list per entry in `locs`, a list of raw
-/// `Location`/`LocationLink` hashmaps/handles — the display-side
+/// `Location`/`LocationLink` hashmaps/handles: the display-side
 /// counterpart to `goto-location!`'s wire conversion, decoded through the
 /// same shared decoder. Each entry reads its own tagged producing-server
-/// encoding — see `LspHost::lsp_locations_display_parts`'s doc. The column
+/// encoding (see `LspHost::lsp_locations_display_parts`'s doc). The column
 /// is an exact grapheme column when the target has an open buffer, `#f`
 /// when it's an open buffer whose line is out of range, and otherwise the
-/// location's own wire `character` verbatim — this function never reads a
+/// location's own wire `character` verbatim; this function never reads a
 /// target file to refine that last case. `path`/`line` are always present,
 /// since they come from the location itself. See
 /// `LspHost::lsp_locations_display_parts`'s doc for the full column-unit

@@ -5,10 +5,10 @@ use crate::attribution::PluginId;
 use crate::types::{PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
 /// Command registry queries, synchronous native dispatch, and Steel command
-/// registration — accessed through [`EditorHost::commands`](super::EditorHost::commands).
+/// registration, accessed through [`EditorHost::commands`](super::EditorHost::commands).
 pub trait CommandHost {
-    /// Returns `Ok(true)` if `name` is a native (Rust-registered) command —
-    /// `Motion`, `Selection`, `Edit`, or `EditorCmd` — whose only valid `call!`
+    /// Returns `Ok(true)` if `name` is a native (Rust-registered) command
+    /// (`Motion`, `Selection`, `Edit`, or `EditorCmd`) whose only valid `call!`
     /// args are `count` and `extend`. Returns `Ok(false)` for Steel-defined
     /// commands (`SteelBacked`, `Lazy`) that accept arbitrary positional args.
     /// Returns `Err(msg)` if the name is unknown.
@@ -21,24 +21,24 @@ pub trait CommandHost {
     ///
     /// All four native variants (`Motion`, `Selection`, `Edit`, `EditorCmd`) apply
     /// their effect immediately; a subsequent read in the same eval sees the new
-    /// state. Non-native names (`SteelBacked`, `Lazy`) return `Err` — the
+    /// state. Non-native names (`SteelBacked`, `Lazy`) return `Err`: the
     /// implementation self-guards, so the caller need not pre-check via
     /// `command_is_native` (though doing so avoids a wasted lookup).
     ///
     /// `pane` names the pane (and its buffer) the command acts on, resolved
     /// against the command's own target requirement rather than always
     /// meaning "the focused pane": a command that needs any pane (`delete`,
-    /// `yank`, …) runs through `pane.pane()` directly — it must still be
+    /// `yank`, …) runs through `pane.pane()` directly. It must still be
     /// live and show `pane.buffer()`, but need not be focused; a command
     /// bound to the focused pane specifically (`insert-before`, a paste or
     /// search-prompt entry, a tab or mode switch, …) requires `pane.pane()`
-    /// to be the focused one. Every native command needs a pane — a
+    /// to be the focused one. Every native command needs a pane; a
     /// buffer-only handle is refused. Either way the implementation errors rather than
     /// silently falling back to whatever is focused, so a hook or async
     /// callback whose captured `pane` no longer resolves gets a loud
     /// failure instead of quietly editing the wrong buffer.
     ///
-    /// `count`: `None` means "as if no count was typed" — for `move-down`/`move-up`
+    /// `count`: `None` means "as if no count was typed". For `move-down`/`move-up`
     /// this selects visual-line movement instead of buffer-line movement (every other
     /// native command treats `None` the same as `Some(1)`). `parse_count_extend`
     /// decodes a Steel-side count of `0` to `None`.
@@ -49,10 +49,10 @@ pub trait CommandHost {
     ///
     /// Returns `Ok(false)` if the command's body refused outright (a
     /// too-small split, the last pane, a read-only buffer, no stashed
-    /// insertion, …) — refusal is reported to the user (as `Severity::Info`)
+    /// insertion, …). Refusal is reported to the user (as `Severity::Info`)
     /// before this returns, so the caller need not report it again. Returns
     /// `Ok(true)` otherwise: this is a negative signal only, not proof
-    /// anything changed — a command that no-ops silently at a buffer edge, or
+    /// anything changed: a command that no-ops silently at a buffer edge, or
     /// one that exhausts mid-count without ever refusing (undo/redo past the
     /// last step), still returns `Ok(true)`. This is the value `(call! …)`
     /// yields for a native command.
@@ -103,7 +103,7 @@ pub trait CommandHost {
     ///
     /// Called from `declare-plugin`'s `#:commands` processing, once per
     /// accepted command name, so the editor's `CommandRegistry` is the single
-    /// place a name is claimed — no separate scripting-side activation map.
+    /// place a name is claimed, with no separate scripting-side activation map.
     ///
     /// Returns `Err(msg)` if `name` is already claimed by any existing
     /// command (native, `SteelBacked`, or another plugin's `Lazy` stub); the
@@ -112,17 +112,17 @@ pub trait CommandHost {
 
     /// Register a typed `Lazy` activation stub for `name`, owned by `plugin`.
     ///
-    /// Called from `declare-plugin`'s `#:typed-commands` processing — the
+    /// Called from `declare-plugin`'s `#:typed-commands` processing: the
     /// typed counterpart of [`Self::register_lazy_command`]. Same conflict
     /// rules, same message shape.
     fn register_lazy_typed_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String>;
 
-    /// The plugin that owns `name`'s `Lazy` stub — mappable or typed alike —
+    /// The plugin that owns `name`'s `Lazy` stub (mappable or typed alike),
     /// or `None` if `name` is not a pending lazy activation entry (already
     /// activated, never declared, or a non-lazy command).
     fn lazy_command_owner(&self, name: &str) -> Option<PluginId>;
 
-    /// The plugin that owns `name`'s *mappable* `Lazy` stub — `None` if
+    /// The plugin that owns `name`'s *mappable* `Lazy` stub, or `None` if
     /// `name` has no pending mappable activation, even if a typed stub of
     /// the same name exists.
     ///
@@ -135,7 +135,7 @@ pub trait CommandHost {
     /// self-ownership guard, `register_lazy_*`, `:plugin-status`).
     fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId>;
 
-    /// Remove every remaining `Lazy` stub owned by `plugin` — mappable and
+    /// Remove every remaining `Lazy` stub owned by `plugin`, mappable and
     /// typed alike.
     ///
     /// Called by `finish_lazy_activation` on both the success and failure
@@ -143,7 +143,7 @@ pub trait CommandHost {
     /// `define-command!`/`define-typed-command!` is dead weight (the plugin
     /// is now `Loaded` and will never re-run its body); on failure, every
     /// stub the plugin ever claimed must be freed so a later plugin can claim
-    /// the name. Never removes a resolved `SteelBacked`/`Steel` command —
+    /// the name. Never removes a resolved `SteelBacked`/`Steel` command,
     /// only `Lazy` entries.
     fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId);
 }

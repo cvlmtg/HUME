@@ -3,7 +3,7 @@ use crate::test_support::SteelCtxTestHarness;
 use steel::rvals::IntoSteelVal;
 
 /// `NullHost`'s default `schedule_timer` returns `None` (no timer wheel
-/// to schedule onto) — `after` must surface that as an error, not
+/// to schedule onto), so `after` must surface that as an error, not
 /// silently return a meaningless id.
 #[test]
 fn after_errors_when_the_host_has_no_timer_support() {

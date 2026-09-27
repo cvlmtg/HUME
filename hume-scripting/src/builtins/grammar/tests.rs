@@ -4,7 +4,7 @@ use crate::test_support::SteelCtxTestHarness;
 use tempfile::TempDir;
 
 /// A missing `src` (and thus a failing `tree-sitter build`) logs a
-/// Warning and returns void during init — a broken grammar must never
+/// Warning and returns void during init: a broken grammar must never
 /// abort the editor on startup.
 #[test]
 fn compile_grammar_warns_instead_of_erroring_in_init_mode() {
@@ -40,7 +40,7 @@ fn compile_grammar_raises_in_command_mode() {
     assert!(compile_grammar(&mut ctx, src, out).is_err());
 }
 
-/// `tree-sitter build` inherits stdio — the bracket must open before the
+/// `tree-sitter build` inherits stdio, so the bracket must open before the
 /// spawn attempt in command mode, even when the build itself then fails.
 #[test]
 fn compile_grammar_calls_ensure_before_build_in_command_mode() {
@@ -61,7 +61,7 @@ fn compile_grammar_calls_ensure_before_build_in_command_mode() {
     assert_eq!(host.ensure_calls, 1);
 }
 
-/// Init-time compiles run pre-terminal — the bracket must never open.
+/// Init-time compiles run pre-terminal, so the bracket must never open.
 #[test]
 fn compile_grammar_does_not_call_ensure_in_init_mode() {
     let tmp = TempDir::new().unwrap();

@@ -29,7 +29,7 @@ use steel::rvals::{Custom, IntoSteelVal as _, SteelVal, as_underlying_type};
 
 use hume_rope::position_encoding::PositionEncoding;
 
-/// Converts a `serde_json::Value` into the equivalent `SteelVal`. Total —
+/// Converts a `serde_json::Value` into the equivalent `SteelVal`. Total:
 /// every JSON value has a representation, so this never fails.
 pub fn json_to_steel(v: &serde_json::Value) -> SteelVal {
     match v {
@@ -55,14 +55,14 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
     if let Some(i) = n.as_i64() {
         SteelVal::IntV(i as isize)
     } else if let Some(u) = n.as_u64() {
-        // In (i64::MAX, u64::MAX] — not i64-representable, but still an
+        // In (i64::MAX, u64::MAX]: not i64-representable, but still an
         // exact integer (e.g. a large id/hash field). Falling back to f64
         // here would silently lose precision; BigNum represents it exactly
         // instead, so a value echoed back through steel_to_json still
         // matches what the server sent.
         SteelVal::BigNum(Gc::new(u.into()))
     } else {
-        // Not representable as an integer at all — a genuine float.
+        // Not representable as an integer at all: a genuine float.
         // serde_json::Number is always finite and, without the
         // `arbitrary_precision` feature (which this workspace does not
         // enable), always convertible to f64.
@@ -75,7 +75,7 @@ fn number_to_steel(n: &serde_json::Number) -> SteelVal {
 
 /// Converts a `SteelVal` into the equivalent `serde_json::Value`. Fails on
 /// values with no JSON representation (functions, ports, custom types other
-/// than [`JsonHandle`], …) — the error names the offending kind rather than
+/// than [`JsonHandle`], …). The error names the offending kind rather than
 /// silently producing `null`.
 pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
     match v {
@@ -83,7 +83,7 @@ pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
         SteelVal::BoolV(b) => Ok(serde_json::Value::Bool(*b)),
         SteelVal::IntV(i) => Ok(serde_json::Value::Number((*i as i64).into())),
         // Only ever produced (by json_to_steel) for a u64-range JSON integer,
-        // so it always fits back into u64 exactly — but Steel code could in
+        // so it always fits back into u64 exactly, but Steel code could in
         // principle construct a bigger one directly, hence the checked
         // conversion rather than an infallible one.
         SteelVal::BigNum(b) => b
@@ -119,7 +119,7 @@ pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
         // A handle re-crossing into Rust (e.g. Scheme nests a completion
         // item's `"arguments"` sub-object inside a hash it builds itself for
         // `workspace/executeCommand`) resolves to its own value at zero
-        // reconversion cost — no walk of the handle's contents, just a clone
+        // reconversion cost: no walk of the handle's contents, just a clone
         // of the `Value` it already points at.
         SteelVal::Custom(_) => downcast_json_handle(v)
             .map(|h| h.value().clone())
@@ -128,7 +128,7 @@ pub(crate) fn steel_to_json(v: &SteelVal) -> Result<serde_json::Value, String> {
     }
 }
 
-/// A short, readable label for error messages — not exhaustive over every
+/// A short, readable label for error messages. Not exhaustive over every
 /// `SteelVal` variant, just the ones plausible enough to show up in a hashmap
 /// or list a plugin author built by hand.
 fn type_name(v: &SteelVal) -> &'static str {
@@ -153,7 +153,7 @@ fn type_name(v: &SteelVal) -> &'static str {
 
 /// One step of a [`JsonHandle`]'s path from its root: an object key or an
 /// array index. Only ever appended to a handle's path after a navigation
-/// step has already proven it resolves — see [`JsonHandle::resolve`] — so a
+/// step has already proven it resolves (see [`JsonHandle::resolve`]), so a
 /// handle's path is always valid against its own root by construction.
 /// `Arc<str>` (not `Box<str>`) so extending a path by one `Seg` is a
 /// refcount bump per existing segment, not a string copy.
@@ -180,15 +180,15 @@ pub struct JsonHandle {
     origin: WireOrigin,
 }
 
-/// Where a [`JsonHandle`]'s root value came from — see the field's own doc.
+/// Where a [`JsonHandle`]'s root value came from (see the field's own doc).
 #[derive(Debug, Clone, Copy)]
 pub enum WireOrigin {
-    /// A response from a server negotiated at this encoding — every wire
+    /// A response from a server negotiated at this encoding: every wire
     /// position anywhere in the tree is counted in it.
     Server(PositionEncoding),
     /// Not a server response: `json-parse`, `lsp-capabilities`, or a
     /// hashmap/handle a plugin built by hand. No encoding to decode a wire
-    /// position with — see [`JsonHandle::position_encoding`].
+    /// position with (see [`JsonHandle::position_encoding`]).
     Local,
 }
 
@@ -202,12 +202,12 @@ fn step<'v>(v: &'v serde_json::Value, seg: &Seg) -> Option<&'v serde_json::Value
     }
 }
 
-/// Walks `path` from `start` one [`step`] at a time — the one navigation
+/// Walks `path` from `start` one [`step`] at a time: the one navigation
 /// loop [`JsonHandle::value`], [`JsonHandle::lookup`], [`JsonHandle::contains`],
 /// and [`JsonHandle::resolve`] all go through, so a path is only ever walked
 /// once per call. `Ok` is the resolved value; `Err` is the value the failing
 /// step started from, the segment that failed, and the segments consumed so
-/// far (relative to `start`) — everything [`miss_reason`] needs to classify
+/// far (relative to `start`): everything [`miss_reason`] needs to classify
 /// *why*, without a second walk to find the failure point again.
 fn walk<'v, 's>(
     start: &'v serde_json::Value,
@@ -226,7 +226,7 @@ fn walk<'v, 's>(
 /// The wrong-kind/missing-key/out-of-range text `resolve` raises, given the
 /// value a failed step started from, the segment that failed, and the path
 /// so far. Re-matches `(current, seg)` to classify *why* [`step`] returned
-/// `None` — the same four shapes `step` itself distinguishes.
+/// `None`, using the same four shapes `step` itself distinguishes.
 fn miss_reason(current: &serde_json::Value, seg: &Seg, so_far: &[Seg], ctx_name: &str) -> String {
     match (current, seg) {
         (serde_json::Value::Object(_), Seg::Key(k)) => {
@@ -246,7 +246,7 @@ fn miss_reason(current: &serde_json::Value, seg: &Seg, so_far: &[Seg], ctx_name:
             path_repr(so_far)
         ),
         (_, seg) => format!(
-            "{ctx_name}: cannot look up {} at {} — not an object or array",
+            "{ctx_name}: cannot look up {} at {}: not an object or array",
             seg_repr(seg),
             path_repr(so_far)
         ),
@@ -254,7 +254,7 @@ fn miss_reason(current: &serde_json::Value, seg: &Seg, so_far: &[Seg], ctx_name:
 }
 
 /// Renders a path the way `json-ref`'s error text names it: `$` for the
-/// root, then `.key` / `[index]` per step — e.g. `$.items[2].label`.
+/// root, then `.key` / `[index]` per step, e.g. `$.items[2].label`.
 fn path_repr(segs: &[Seg]) -> String {
     let mut s = String::from("$");
     for seg in segs {
@@ -284,11 +284,11 @@ fn seg_repr(seg: &Seg) -> String {
 /// container (object/array) becomes a [`JsonHandle`] at `path()`, tagged with
 /// `origin` (inherited from the parent handle a navigation method calls this
 /// from), a scalar crosses natively via [`json_to_steel`] (so `(string=? s
-/// "x")`/`(= n 5)` just work with no accessor) — same three-way split
+/// "x")`/`(= n 5)` just work with no accessor), the same three-way split
 /// `json_to_steel` uses for a scalar, but a container never gets walked into
 /// Steel structures here. `path` is a closure rather than an already-built
 /// `Arc<[Seg]>` so a scalar result (most `json-list` elements, most object
-/// fields) costs no path allocation at all — only a container result ever
+/// fields) costs no path allocation at all. Only a container result ever
 /// calls it.
 fn scalar_or_child(
     v: &serde_json::Value,
@@ -310,18 +310,18 @@ fn scalar_or_child(
 /// Converts a freshly-received external JSON value to its Steel
 /// representation via `scalar_or_child`, rooted at `value` itself. The one
 /// call every external crossing makes instead of `json_to_steel`. `origin`
-/// tags the root — see [`JsonHandle`]'s own doc.
+/// tags the root (see [`JsonHandle`]'s own doc).
 pub fn to_steel_handle(value: Arc<serde_json::Value>, origin: WireOrigin) -> SteelVal {
     scalar_or_child(value.as_ref(), &value, origin, || Arc::from(Vec::new()))
 }
 
 impl JsonHandle {
     /// Wraps a value as a handle unconditionally, even when it happens to be
-    /// a scalar — for a caller that already knows it wants a handle
+    /// a scalar, for a caller that already knows it wants a handle
     /// regardless (`json_arg`'s fallback path, `builtins/args.rs`). Always
     /// [`WireOrigin::Local`]: every caller builds `value` itself (a plugin's
     /// own hashmap, `json-parse`'s decode) rather than receiving it from a
-    /// server — a real server response only ever reaches Steel through
+    /// server. A real server response only ever reaches Steel through
     /// [`to_steel_handle`], which takes the origin explicitly.
     pub fn new(value: serde_json::Value) -> Self {
         Self {
@@ -345,7 +345,7 @@ impl JsonHandle {
         }
     }
 
-    /// This handle's tree's negotiated encoding — `Err` if it didn't come
+    /// This handle's tree's negotiated encoding, or `Err` if it didn't come
     /// from a server ([`WireOrigin::Local`]), naming `ctx_name` (the
     /// builtin asking) so the error identifies which call needs a real
     /// response. The funnel every wire-position decode reads its encoding
@@ -355,14 +355,14 @@ impl JsonHandle {
         match self.origin {
             WireOrigin::Server(encoding) => Ok(encoding),
             WireOrigin::Local => Err(format!(
-                "{ctx_name}: not a value from an LSP server response — no encoding to decode a \
+                "{ctx_name}: not a value from an LSP server response: no encoding to decode a \
                  wire position with"
             )),
         }
     }
 
     /// The value this handle points at, resolved by walking its `path` from
-    /// `root`. `expect`s the walk succeeds — sound because a handle's path
+    /// `root`. `expect`s the walk succeeds, which is sound because a handle's path
     /// is only ever extended by `JsonHandle::resolve` after that exact
     /// step already proved it resolves.
     pub fn value(&self) -> &serde_json::Value {
@@ -371,7 +371,7 @@ impl JsonHandle {
     }
 
     /// Walks `path` from this handle's own position, `None` if any step
-    /// doesn't resolve. `json-ref-or`'s host builtin — the one caller that
+    /// doesn't resolve. `json-ref-or`'s host builtin: the one caller that
     /// wants a container result wrapped in a handle (unlike
     /// [`JsonHandle::contains`], which only needs a yes/no and so calls
     /// [`walk`] directly rather than paying for a child handle nobody wants).
@@ -384,7 +384,7 @@ impl JsonHandle {
 
     /// `(json-ref j seg ...)`'s implementation. `Err` names the full path
     /// and the reason: a missing key, an out-of-range index, or indexing
-    /// into the wrong container kind (or a scalar) — [`walk`]'s `Err` arm
+    /// into the wrong container kind (or a scalar). [`walk`]'s `Err` arm
     /// already carries everything [`miss_reason`] needs, no second walk.
     pub(crate) fn resolve(&self, path: &[Seg], ctx_name: &str) -> Result<SteelVal, String> {
         match walk(self.value(), path) {
@@ -399,7 +399,7 @@ impl JsonHandle {
     }
 
     /// `(json-contains? j seg ...)`'s implementation. `#t` iff `path`
-    /// resolves — a `null` value at the end still counts as present, same
+    /// resolves. A `null` value at the end still counts as present, same
     /// as `hash-contains?` on a decoded hashmap. Doesn't route through
     /// [`JsonHandle::lookup`]: a container match there still pays for a
     /// child handle nobody wants, where this only needs a yes/no.
@@ -429,16 +429,16 @@ impl JsonHandle {
     }
 
     /// A child handle onto `key`'s array (or this handle's own value, if
-    /// `key` is `None`) at `index` — the one shape a `textDocument/completion`
+    /// `key` is `None`) at `index`: the one shape a `textDocument/completion`
     /// response's per-item slice needs (a bare `CompletionItem[]` array, or
     /// a `CompletionList`'s `"items"` array), so a Rust caller that already
     /// holds a slice reference into `self.value()` (e.g.
     /// `hume_lsp::completion_item::completion_response_items`'s result) can
-    /// hand Steel a live pointer into the original response — sharing this
-    /// handle's root `Arc` — instead of cloning the item out. `None` if
+    /// hand Steel a live pointer into the original response (sharing this
+    /// handle's root `Arc`) instead of cloning the item out. `None` if
     /// either step doesn't resolve, same contract as `JsonHandle::lookup`,
     /// just returning the handle unconditionally rather than routing a
-    /// container result through `scalar_or_child` — the caller already
+    /// container result through `scalar_or_child`, since the caller already
     /// knows it wants a handle regardless of whether the target is a
     /// container or a scalar (see [`JsonHandle::new`]'s own reasoning).
     pub fn indexed_child(&self, key: Option<&str>, index: usize) -> Option<JsonHandle> {
@@ -455,7 +455,7 @@ impl JsonHandle {
         })
     }
 
-    /// Convert to a `SteelVal` without returning `Result` — `IntoSteelVal`
+    /// Convert to a `SteelVal` without returning `Result`: `IntoSteelVal`
     /// for custom types is infallible, matching `SteelPane::
     /// into_steel_val`'s own reasoning.
     pub fn into_steel_val(self) -> SteelVal {
@@ -477,12 +477,12 @@ impl Custom for JsonHandle {
     }
 }
 
-/// Hashes the resolved JSON value, not the handle's identity — needed so
+/// Hashes the resolved JSON value, not the handle's identity, so
 /// `try_as_dyn_hash` agrees with `equality_hint`'s value comparison (two
 /// handles onto equal JSON must hash the same to be usable as Steel hash
 /// keys). Object hashing is order-insensitive (XOR-combine each entry's own
 /// hash) to agree with `serde_json::Value`'s own `PartialEq` on `Map`, which
-/// — backed by `indexmap` under this workspace's `preserve_order` feature —
+/// (backed by `indexmap` under this workspace's `preserve_order` feature)
 /// already compares as a set of pairs, not a sequence. Array hashing stays
 /// order-sensitive, matching array equality.
 impl std::hash::Hash for JsonHandle {
@@ -504,7 +504,7 @@ fn hash_json_value<H: std::hash::Hasher>(v: &serde_json::Value, state: &mut H) {
             2u8.hash(state);
             // Number derives Hash directly (this workspace doesn't enable
             // its arbitrary_precision feature), so this stays consistent
-            // with equality by construction — including its float arm,
+            // with equality by construction, including its float arm,
             // which hashes +0.0 and -0.0 alike to agree with their PartialEq.
             n.hash(state);
         }

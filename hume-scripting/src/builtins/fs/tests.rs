@@ -68,12 +68,12 @@ fn path_to_display_leaves_unrelated_path_unchanged() {
 
 /// `~`-collapse: a path under `$HOME` must come back with the home prefix
 /// replaced by `~`, built here from the raw separator rather than by calling
-/// `display_form`/`shorten_home` — the two behaviours this builtin exists for
+/// `display_form`/`shorten_home`: the two behaviours this builtin exists for
 /// (this one and UNC-strip below) must each have a hand-computed expectation.
 #[test]
 fn path_to_display_collapses_home_prefix() {
     let Some(home) = hume_platform::dirs::home_dir() else {
-        return; // no $HOME in this environment — nothing to collapse against
+        return; // no $HOME in this environment, nothing to collapse against
     };
     let input = home.join("dev").join("hume").join("x.rs");
     let sep = std::path::MAIN_SEPARATOR;
@@ -105,7 +105,7 @@ fn path_to_display_type_error() {
 
 // ── path-separator (steel-core builtin, not registered by HUME) ──────────
 
-/// `(path-separator)` is not a HUME builtin — it comes from steel-core's
+/// `(path-separator)` is not a HUME builtin: it comes from steel-core's
 /// `steel/meta` module, already a bare global in `Engine::new()`. Prove it
 /// resolves *through a loaded plugin*, not just at the top level: a
 /// `register_value` of a non-function value is known to silently stub out
@@ -167,7 +167,7 @@ fn data_dir_no_unc_prefix() {
 
 /// End-to-end through the real registration table (`builtins::mod`'s
 /// `builtins!` table registers `data-dir` as a ctx-injected `open`
-/// builtin) — proves `(data-dir)` resolves to `ctx.dirs` through that path.
+/// builtin), proving `(data-dir)` resolves to `ctx.dirs` through that path.
 /// `eval_source` only reports success/failure, not a return value, so
 /// the result is round-tripped through `log!` and read back from the
 /// message log.
@@ -184,10 +184,10 @@ fn data_dir_resolves_through_real_registration() {
         .expect("(data-dir) must evaluate through the real registration table");
 
     // macOS TempDir paths are under /var, which is itself a symlink to
-    // /private/var — canonicalize the *expected* side so the comparison
+    // /private/var, so canonicalize the *expected* side so the comparison
     // isn't platform-dependent.
     // On Windows canonicalize yields a `\\?\`-prefixed path, but
-    // `(data-dir)` returns the display form — strip the prefix to match.
+    // `(data-dir)` returns the display form, so strip the prefix to match.
     let expected = hume_platform::path::strip_unc_prefix(std::fs::canonicalize(&data_dir).unwrap());
     let msgs = host.take_pending_messages();
     assert!(

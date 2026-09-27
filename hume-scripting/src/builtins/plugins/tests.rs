@@ -122,7 +122,7 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
-    // One below the cap — must still be allowed.
+    // One below the cap: must still be allowed.
     let dummy = PluginId::parse("core:dummy").unwrap();
     for _ in 0..MAX_ACTIVATION_DEPTH - 1 {
         host.push_plugin_for_test(dummy.clone());
@@ -141,8 +141,8 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
 }
 
 /// `%begin-lazy-activation` failing at the depth cap must clean up exactly
-/// like `%finish-lazy-activation`'s failure branch does — dropping the
-/// plugin's activation-event/language entries and its `Lazy` command stub —
+/// like `%finish-lazy-activation`'s failure branch does (dropping the
+/// plugin's activation-event/language entries and its `Lazy` command stub),
 /// even though the body never ran and `%finish-lazy-activation` never fires
 /// for it.
 ///
@@ -252,7 +252,7 @@ fn declare_plugin_unknown_hook_names_the_builtin() {
     );
 }
 
-/// `#:events` entries are symbols, not strings — same rule `register-hook!`
+/// `#:events` entries are symbols, not strings, the same rule `register-hook!`
 /// enforces. A string entry hard-errors instead of being silently accepted.
 #[test]
 fn declare_plugin_rejects_string_event_names() {
@@ -264,7 +264,7 @@ fn declare_plugin_rejects_string_event_names() {
 }
 
 /// A `#:events` entry rejected for being unknown/malformed must leave no
-/// trace in `declared_plugins`/`plugin_configs` — PLUM reads the former to
+/// trace in `declared_plugins`/`plugin_configs`: PLUM reads the former to
 /// decide what to install, and a name that appears there with no matching
 /// `LazyRegistry` entry can never be reconciled short of a restart.
 ///
@@ -301,7 +301,7 @@ fn declare_plugin_rejected_events_records_nothing() {
 // ── Command-name character validation ─────────────────────────────────────
 
 /// `declare-plugin` hard-errors on a `#:commands` entry containing `"` or
-/// `\` — the same rule `define-command!` enforces.
+/// `\`, the same rule `define-command!` enforces.
 #[test]
 fn declare_plugin_command_name_with_quote_errors() {
     use crate::ScriptingHost;
@@ -388,7 +388,7 @@ fn declare_plugin_core_absent_logs_error() {
 }
 
 /// `declare-plugin "user/X"` absent on disk → `Info` log (not yet installed;
-/// PLUM will surface it on :plum-install-plugins — no change needed in HUME).
+/// PLUM will surface it on :plum-install-plugins; no change needed in HUME).
 #[test]
 fn declare_plugin_user_absent_logs_info() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -468,7 +468,7 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
         err.contains("claimed as an activation command"),
         "error must name the collision; got: {err}"
     );
-    // The stub must survive — only unregister_lazy_stubs_of removes it (on load/fail).
+    // The stub must survive: only unregister_lazy_stubs_of removes it (on load/fail).
     assert_eq!(
         editor_host.commands().lazy_command_owner("my-lazy-cmd"),
         Some(id),
@@ -510,7 +510,7 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
         err.contains("claimed as an activation command"),
         "error must name the collision; got: {err}"
     );
-    // The stub must survive — only unregister_lazy_stubs_of removes it (on load/fail).
+    // The stub must survive: only unregister_lazy_stubs_of removes it (on load/fail).
     assert_eq!(
         editor_host.commands().lazy_command_owner("my-lazy-cmd"),
         Some(id),
@@ -603,7 +603,7 @@ fn declare_plugin_bang_direct_zero_trigger_call_errors() {
 }
 
 /// A zero-trigger declare of a plugin whose directory doesn't exist at all is a
-/// soft no-op — Info log, `declared_plugins` recorded for PLUM, no plugin state.
+/// soft no-op: Info log, `declared_plugins` recorded for PLUM, no plugin state.
 /// Mirrors the existing `declare_plugin_user_absent_logs_info` behavior for the
 /// trigger-ful path.
 ///

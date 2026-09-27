@@ -1,4 +1,4 @@
-//! Multi-buffer Steel builtins — buffer/pane query and lifecycle ops.
+//! Multi-buffer Steel builtins: buffer/pane query and lifecycle ops.
 //!
 //! All builtins guard against init-eval context (`EvalMode::Init` or
 //! `PluginLoad`) via the `cmd`-gated `builtins!` registration table entry,
@@ -18,12 +18,12 @@ use crate::{SteelCtx, types::Effect};
 // ── Focus builtins ─────────────────────────────────────────────────────────────
 
 /// `(focused-pane)` → the pane focused *right now*, paired with the buffer
-/// it shows — a live host read, freshly resolved on every call. See
+/// it shows: a live host read, freshly resolved on every call. See
 /// [`crate::host::BufferHost::focused_pane`]'s doc for when this is (and
 /// isn't) the right one to reach for: a command declaring a leading `pane`
 /// parameter receives the pane it was invoked through that way (dispatch
 /// injects it, same mechanism as `count`/`extend`/`arg`/`force`) instead of
-/// reading this — it exists for code with no pane of its own to act on.
+/// reading this. It exists for code with no pane of its own to act on.
 pub(crate) fn focused_pane(ctx: &mut SteelCtx) -> SteelResult {
     Ok(SteelPane(ctx.host.buffers().focused_pane()).into_steel_val())
 }
@@ -43,7 +43,7 @@ pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
     list.into_steelval().map_err(generic_err)
 }
 
-/// `(panes)` → list of every open pane, across every tab — including panes
+/// `(panes)` → list of every open pane, across every tab, including panes
 /// in inactive tabs, not just the ones currently on screen.
 pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
     let list: Vec<SteelVal> = ctx
@@ -57,7 +57,7 @@ pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 /// `(buffer-panes pane)` → list of every pane showing `pane`'s buffer,
-/// focused pane first, then the rest of the active tab, then other tabs —
+/// focused pane first, then the rest of the active tab, then other tabs:
 /// the explicit choice a caller makes in place of the pane guess this
 /// design removed. `(car (buffer-panes pane))` reproduces that guess.
 pub(crate) fn buffer_panes(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
@@ -72,7 +72,7 @@ pub(crate) fn buffer_panes(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult 
 }
 
 /// `(buffer-key pane)` → an opaque, hashable, `equal?`-comparable key naming
-/// `pane`'s buffer alone — two panes on the same buffer produce equal keys,
+/// `pane`'s buffer alone. Two panes on the same buffer produce equal keys,
 /// unlike a `SteelPane` value itself (see `builtins::ids`'s module doc for
 /// why this is a distinct type rather than a pane with its pane field
 /// cleared). The idiom for per-buffer plugin state (a hash keyed by buffer,
@@ -99,7 +99,7 @@ pub(crate) fn buffer_path(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
 }
 
 /// `(buffer-display-path pane)` → fully display-ready path string
-/// (absolutized, lexically normalized, UNC-stripped, `~`-collapsed) — print
+/// (absolutized, lexically normalized, UNC-stripped, `~`-collapsed) to print
 /// verbatim, or `#f` for unsaved buffers. Unlike `buffer-path`, never
 /// suitable for filesystem ops.
 pub(crate) fn buffer_display_path(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
@@ -112,7 +112,7 @@ pub(crate) fn buffer_display_path(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
 /// `(buffer-name pane)` → display name (filename or `"*scratch*"`). `pane`'s
 /// buffer liveness is already checked at decode time (`LivePane`), so a
 /// `None` here would mean the host answered inconsistently with
-/// `buffer_exists` — never observed, but the trait still returns `Option`,
+/// `buffer_exists`. Never observed, but the trait still returns `Option`,
 /// so it's handled rather than assumed.
 pub(crate) fn buffer_name(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     let bid = pane.buffer();
@@ -125,7 +125,7 @@ pub(crate) fn buffer_name(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
 }
 
 /// `(buffer-live? pane)` → `#t` if `pane`'s buffer still names an open
-/// buffer, `#f` otherwise — never raises, unlike every `LivePane`-checked
+/// buffer, `#f` otherwise. Never raises, unlike every `LivePane`-checked
 /// builtin. The idiom for a timer, debounce, or async continuation whose
 /// captured `pane` may have closed by the time it fires: check this first,
 /// rather than discovering the fact via a raise from whatever builtin the
@@ -137,7 +137,7 @@ pub(crate) fn buffer_live(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
 }
 
 /// `(pane-live? pane)` → `#t` if `pane` names a pane that still exists and
-/// still shows its own buffer, `#f` otherwise — never raises, the pane-aware
+/// still shows its own buffer, `#f` otherwise. Never raises: the pane-aware
 /// sibling of `buffer-live?` above. See [`BufferHost::pane_live`]'s doc for
 /// the async-continuation use case this exists for.
 pub(crate) fn pane_live(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
@@ -155,7 +155,7 @@ pub(crate) fn buffer_dirty(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult 
     Ok(SteelVal::BoolV(dirty))
 }
 
-/// `(buffer-generation pane)` → int — bumped by every mutation to `pane`'s
+/// `(buffer-generation pane)` → int, bumped by every mutation to `pane`'s
 /// buffer. Steel-side staleness token; not LSP-specific despite the
 /// motivation.
 pub(crate) fn buffer_generation(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
@@ -180,7 +180,7 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(buffer-line-count pane)` → int — `pane`'s buffer's content line count,
+/// `(buffer-line-count pane)` → int: `pane`'s buffer's content line count,
 /// excluding the phantom line past its structural trailing `\n` (matches
 /// the statusline and `:w`). O(1): reads `buffer_line_count` directly rather
 /// than counting a materialized `(buffer-lines pane)` list.
@@ -194,12 +194,12 @@ pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
     Ok(SteelVal::IntV(count as isize))
 }
 
-/// `(%buffer-lines pane start end)` — Rust half of the bootstrap-wrapped
+/// `(%buffer-lines pane start end)`: Rust half of the bootstrap-wrapped
 /// `(buffer-lines pane #:start .. #:end ..)`. `start`/`end` are already-decoded
 /// `Option<usize>` from `bootstrap.scm`'s `#f`-defaulted keyword args:
 /// `start` defaults to `0`, `end` to the buffer's content line count.
 /// Content lines in `[start, end)`, 0-based, end-exclusive, each with its
-/// trailing line break stripped — the phantom line past the buffer's
+/// trailing line break stripped. The phantom line past the buffer's
 /// structural trailing `\n` is never included (matches the statusline's and
 /// `:w`'s line count). Raises rather than clamping on `start > end` or
 /// `end` past the line count.
@@ -211,7 +211,7 @@ pub(crate) fn buffer_lines(
 ) -> SteelResult {
     let bid = pane.buffer();
     let start = start.unwrap_or(0);
-    // One error message for both lookups below — the second is unreachable
+    // One error message for both lookups below: the second is unreachable
     // in practice (nothing can close `bid` between two synchronous host
     // calls) but the trait returns `Option`, so it's handled, not assumed.
     let invalid_id = || not_live_err("buffer-lines", bid);
@@ -226,7 +226,7 @@ pub(crate) fn buffer_lines(
             "buffer-lines: range {start}..{end} out of bounds for a {line_count}-line buffer"
         )));
     }
-    // Trusted mint: the check above is what licenses ContentLine::new here —
+    // Trusted mint: the check above is what licenses ContentLine::new here.
     // `end` may legitimately equal `line_count` (the one-past-last-line
     // exclusive bound `ContentLineCount::end_exclusive()` also names), which
     // `ContentLine::checked` would reject.
@@ -248,11 +248,11 @@ pub(crate) fn buffer_lines(
 ///
 /// Opens `path` as a new buffer and returns its handle. If the path is
 /// already open, returns the existing buffer's handle without opening a new
-/// one. Does not switch the focused pane — call `(switch-to-buffer! pane
+/// one. Does not switch the focused pane; call `(switch-to-buffer! pane
 /// target)` separately if desired.
 ///
-/// Language detection can't run inline here — it needs Steel-eval capability
-/// this builtin's host doesn't hold — so the editor-side open chokepoint
+/// Language detection can't run inline here (it needs Steel-eval capability
+/// this builtin's host doesn't hold), so the editor-side open chokepoint
 /// (`buffer::lifecycle::open_buffer_and_notify`) queues it onto
 /// `EditorState.pending_language_detection` instead; `Editor::
 /// apply_script_effects` drains it once this eval returns.
@@ -273,7 +273,7 @@ pub(crate) fn open_buffer(ctx: &mut SteelCtx, path: String) -> SteelResult {
 /// buffer.
 pub(crate) fn close_buffer(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     // The host applies the close (and its focus fallout) synchronously, not
-    // as a deferred effect — `focused-pane`/`switch-to-buffer!`'s own
+    // as a deferred effect: `focused-pane`/`switch-to-buffer!`'s own
     // `focused_pane()` read already sees it on their very next call.
     ctx.host
         .buffers()
@@ -338,7 +338,7 @@ pub(crate) fn buffer_language(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
 /// `(buffer-cursor-line pane)` → 1-indexed line number of the primary
 /// cursor in `pane`'s own pane.
 ///
-/// Reads live state — reflects any synchronous edits or motions that ran
+/// Reads live state: reflects any synchronous edits or motions that ran
 /// earlier in the same Steel eval (e.g. after `(move-left)`).
 pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     Ok(SteelVal::IntV(
@@ -350,7 +350,7 @@ pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelR
 }
 
 /// `(buffer-selections pane)` → list of `(anchor head primary?)` per
-/// selection in `pane`'s own pane — raw 0-indexed inclusive char offsets,
+/// selection in `pane`'s own pane: raw 0-indexed inclusive char offsets,
 /// direction preserved (anchor > head when backward), sorted by selection
 /// start, exactly one `primary?` = `#t`.
 pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
@@ -377,7 +377,7 @@ pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
 /// `(offset->line pane idx)` → 1-indexed line number containing 0-indexed
 /// char offset `idx` in `pane`'s buffer's live text, or `#f` when `idx` is
 /// out of range (> buffer length in chars). Raises on a stale buffer, same
-/// liveness contract as every other explicit-pane builtin — checked at
+/// liveness contract as every other explicit-pane builtin, checked at
 /// decode time (`LivePane`) before `idx` is ever looked at, so a malformed
 /// `idx` still raises its own error on a stale buffer rather than being
 /// masked behind the liveness one (steel-core decodes `idx`'s own `Usize`
@@ -392,7 +392,7 @@ pub(crate) fn offset_to_line(ctx: &mut SteelCtx, pane: PaneHandle, idx: usize) -
 
 /// `(line->offset pane line)` → 0-based char offset where 0-based content
 /// `line` starts in `pane`'s buffer's live text. Raises on a stale buffer or
-/// a `line` past the content line count — same bounds contract as
+/// a `line` past the content line count, same bounds contract as
 /// `buffer-lines` (raises rather than clamping).
 ///
 /// Not the inverse of `offset->line`: that builtin's *result* is
@@ -425,11 +425,11 @@ pub(crate) fn line_to_offset(ctx: &mut SteelCtx, pane: PaneHandle, line: usize) 
 }
 
 /// `(viewport-range pane)` → `(first-line . end-line)` currently visible in
-/// `pane`'s own pane — 0-based, end-exclusive, matching `buffer-lines`'
+/// `pane`'s own pane: 0-based, end-exclusive, matching `buffer-lines`'
 /// range convention. Raises when `pane` carries no pane, a closed one, or
 /// one that no longer shows `pane`'s buffer. Answers for a background-tab
 /// pane too, but its scroll position may lag until that tab is next
-/// focused — see `EditorHostImpl::viewport_range`'s own doc. Reads live
+/// focused (see `EditorHostImpl::viewport_range`'s own doc). Reads live
 /// view state, which only exists at command dispatch, hook fire, or a
 /// queued-call drain.
 pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
@@ -475,7 +475,7 @@ pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
     ))
 }
 
-/// `(set-buffer-language! pane lang-or-#f)` — deferred; applied after the eval returns.
+/// `(set-buffer-language! pane lang-or-#f)`: deferred, applied after the eval returns.
 pub(crate) fn set_buffer_language_steel(
     ctx: &mut SteelCtx,
     pane: PaneHandle,

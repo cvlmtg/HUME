@@ -68,7 +68,7 @@ fn require_config_error_names_builtin() {
 
 /// A `%`-prefixed registration name (a Rust primitive wrapped by a
 /// BOOTSTRAP Scheme function) surfaces in the gate message WITHOUT the
-/// `%` — the message must name the wrapper a plugin author actually
+/// `%`: the message must name the wrapper a plugin author actually
 /// calls, not the internal primitive.
 #[test]
 fn gate_strips_leading_percent_from_registered_name() {
@@ -81,7 +81,7 @@ fn gate_strips_leading_percent_from_registered_name() {
 
 /// `generic_err` preserves the source message verbatim and constructs a
 /// `Generic`-kind error (surfaced only via `Display`, not asserted
-/// elsewhere — no test in this crate checks `ErrorKind`).
+/// elsewhere; no test in this crate checks `ErrorKind`).
 #[test]
 fn generic_err_preserves_message() {
     let err = generic_err("buffer-path: no such buffer");

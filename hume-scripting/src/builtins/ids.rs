@@ -4,12 +4,12 @@
 //! completion source, and builtin argument or return that names a buffer
 //! carries a `PaneHandle` wrapped in `SteelPane`. Plugins receive and pass
 //! these between builtins but cannot construct or inspect them
-//! arithmetically — they are purely opaque handles. [`SteelBufferKey`] is
+//! arithmetically; they are purely opaque handles. [`SteelBufferKey`] is
 //! `(buffer-key pane)`'s own return type: a per-buffer hash/comparison key,
 //! deliberately undecodable by [`super::args::ArgPane`]/[`super::args::LivePane`]
 //! so a key can't be passed back into a builtin expecting a pane. A pane
 //! value and a plain per-buffer key must stay two distinct kinds of thing,
-//! not the same value with its pane field cleared — collapsing them would
+//! not the same value with its pane field cleared. Collapsing them would
 //! let a key masquerade as a pane-less handle anywhere a pane is expected,
 //! silently reintroducing the implicit-pane guessing this design exists to
 //! remove (see `types::PaneHandle`'s own doc).
@@ -28,7 +28,7 @@ use crate::types::PaneHandle;
 
 // ── Wrapper types ─────────────────────────────────────────────────────────────
 
-/// Opaque Steel handle for a [`PaneHandle`] — see this module's own doc.
+/// Opaque Steel handle for a [`PaneHandle`]; see this module's own doc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SteelPane(pub(crate) PaneHandle);
 
@@ -47,8 +47,8 @@ impl SteelPane {
     }
 }
 
-/// `(buffer-key pane)`'s return: `pane`'s buffer, with no pane component —
-/// see this module's own doc for why this is a distinct type rather than a
+/// `(buffer-key pane)`'s return: `pane`'s buffer, with no pane component.
+/// See this module's own doc for why this is a distinct type rather than a
 /// [`SteelPane`] with its pane field cleared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct SteelBufferKey(pub(crate) BufferId);
@@ -90,7 +90,7 @@ impl Custom for SteelBufferKey {
 
 // ── Predicate builtins ────────────────────────────────────────────────────────
 
-/// `(pane? v)` — return `#t` if `v` is an opaque pane handle.
+/// `(pane? v)`: return `#t` if `v` is an opaque pane handle.
 pub(crate) fn is_pane(val: SteelVal) -> bool {
     if let SteelVal::Custom(v) = &val {
         v.read().as_any_ref().downcast_ref::<SteelPane>().is_some()

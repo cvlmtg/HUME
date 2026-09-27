@@ -25,7 +25,7 @@ use steel::rvals::SteelVal;
 use super::SteelResult;
 use crate::SteelCtx;
 
-/// `(hume/yield!)` — check the interrupt flag and abort if it is set.
+/// `(hume/yield!)`: check the interrupt flag and abort if it is set.
 ///
 /// Call this inside long-running loops to make scripts interruptible:
 ///

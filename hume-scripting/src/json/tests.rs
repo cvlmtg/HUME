@@ -43,7 +43,7 @@ fn round_trips_integers_and_floats() {
 /// through an f64 fallback.
 #[test]
 fn round_trips_u64_range_integers_exactly_via_bignum() {
-    let huge = u64::MAX; // 18446744073709551615 — not i64- or f64-exact-representable
+    let huge = u64::MAX; // 18446744073709551615: not i64- or f64-exact-representable
     round_trip(json!(huge));
 
     let steel = json_to_steel(&json!(huge));
@@ -147,7 +147,7 @@ fn downcast_json_handle_rejects_an_unrelated_value() {
 }
 
 /// Real `equal?` dispatch through the Steel VM, not just Rust-level
-/// `PartialEq` on `serde_json::Value` — without `equality_hint`/
+/// `PartialEq` on `serde_json::Value`. Without `equality_hint`/
 /// `try_as_dyn_hash`, steel-core's default `equality_hint` returns `true`
 /// for any two `Custom` values of the same type regardless of contents,
 /// which is exactly the bug this test would catch.
@@ -173,7 +173,7 @@ fn equal_compares_by_resolved_value_through_a_real_steel_eval() {
     );
 }
 
-/// Object key order must not affect equality or hashing — `serde_json`'s
+/// Object key order must not affect equality or hashing: `serde_json`'s
 /// `Map` (backed by `indexmap` under this workspace's `preserve_order`
 /// feature) already compares order-insensitively; this pins that a
 /// `JsonHandle` built over a differently-ordered object still `equal?`s.
@@ -196,7 +196,7 @@ fn equal_ignores_object_key_order() {
     assert_eq!(results.into_iter().next().unwrap(), SteelVal::BoolV(true));
 }
 
-/// A `JsonHandle` must be usable as a Steel hash key — `equality_hint` alone
+/// A `JsonHandle` must be usable as a Steel hash key: `equality_hint` alone
 /// is not enough; `try_as_dyn_hash` must agree with it.
 #[test]
 fn json_handle_is_usable_as_a_steel_hash_key() {
@@ -212,7 +212,7 @@ fn json_handle_is_usable_as_a_steel_hash_key() {
 }
 
 /// `-0.0` and `0.0` compare equal under `serde_json::Number`'s `PartialEq`
-/// but print as different strings — hashing via `Number`'s own derived
+/// but print as different strings. Hashing via `Number`'s own derived
 /// `Hash` (rather than its `Display`) keeps `try_as_dyn_hash` consistent
 /// with `equality_hint` for this pair the way it already is for every
 /// other Number.
@@ -230,7 +230,7 @@ fn negative_zero_and_zero_handles_share_a_hash_key() {
 }
 
 /// A sub-handle produced by navigating a container must share its parent's
-/// root `Arc` rather than cloning the subtree — the whole point of rooting
+/// root `Arc` rather than cloning the subtree, the whole point of rooting
 /// a handle instead of wrapping each navigation result independently.
 #[test]
 fn navigating_a_container_shares_the_root_arc() {
@@ -288,7 +288,7 @@ fn contains_false_for_absent_field() {
 
 // ── WireOrigin propagation ──────────────────────────────────────────────────
 
-/// `JsonHandle::new` — every hand-built handle (a `json-parse` result, a
+/// `JsonHandle::new`: every hand-built handle (a `json-parse` result, a
 /// plugin's own hashmap) is untagged: `position_encoding` refuses.
 #[test]
 fn new_is_untagged() {

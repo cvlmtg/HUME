@@ -3,7 +3,7 @@ use crate::test_support::SteelCtxTestHarness;
 
 // ── Gate (init mode rejection) ────────────────────────────────────────────
 //
-// All three builtins are `cmd`-gated in `builtins!`'s registration table —
+// All three builtins are `cmd`-gated in `builtins!`'s registration table:
 // the gate lives in the registration wrapper closure, not the function
 // body, so these test the gate primitive directly rather than calling the
 // builtin (its body has no guard to hit).
@@ -114,7 +114,7 @@ fn diff_lines_reports_an_unsupported_host() {
 }
 
 /// `diff-buffer-lines` on a host with no `DiffHost` capability raises an
-/// error naming the builtin, same as `diff-lines`/`diff-words` — `bid`'s
+/// error naming the builtin, same as `diff-lines`/`diff-words`. `bid`'s
 /// own liveness is already checked at decode time (`LiveBid`, in the
 /// `builtins!`-registered closure, unreachable from this direct call), so
 /// `require_cap` is the first gate this call actually reaches.

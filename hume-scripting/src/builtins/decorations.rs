@@ -1,6 +1,6 @@
 //! Decoration stores (inlay hints, signs, virtual lines, EOL text, extra
 //! highlights, line backgrounds, statusline text) and the diagnostics pull
-//! API. Not LSP-specific — any Steel plugin can populate these — but LSP is
+//! API. Not LSP-specific (any Steel plugin can populate these), but LSP is
 //! the first and heaviest client.
 
 use steel::HashMap as SteelHashMap;
@@ -20,10 +20,10 @@ use super::args::{
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(set-inlay-hints! source pane hints)` — `hints`: list of `(offset text
+/// `(set-inlay-hints! source pane hints)`: `hints`: list of `(offset text
 /// 'before|'after)`, `offset` a char offset. LSP wire `{"line"
 /// "character"}` positions convert via `lsp-position->offset` before
-/// reaching this builtin — the Steel decoration surface speaks editor-native
+/// reaching this builtin. The Steel decoration surface speaks editor-native
 /// units only, so a caller never needs to know which server's encoding a
 /// wire position came in.
 pub(crate) fn set_inlay_hints(
@@ -60,13 +60,13 @@ pub(crate) fn set_inlay_hints(
     Ok(SteelVal::Void)
 }
 
-/// `(register-sign-source! name pane priority)` — declares a sign channel
+/// `(register-sign-source! name pane priority)`: declares a sign channel
 /// *for `pane`'s buffer*: its gutter slot is this call's rank among every source
-/// registered for that same buffer, by `(priority desc, name asc)` — a
+/// registered for that same buffer, by `(priority desc, name asc)`, a
 /// property of the *source*, not of any one `set-signs!` call, and scoped to
 /// that buffer, not shared with any other. A slot is reserved the first time
-/// a source registers for a buffer, even before it's placed any signs there
-/// — this is what keeps the gutter width stable as signs come and go,
+/// a source registers for a buffer, even before it's placed any signs there.
+/// This is what keeps the gutter width stable as signs come and go,
 /// instead of tracking whichever priorities happen to be live right now.
 /// There is no `unregister-sign-source!`: a source holds its slot in a
 /// buffer for that buffer's life. Re-registering `name` for the same buffer
@@ -90,7 +90,7 @@ pub(crate) fn register_sign_source(
     Ok(SteelVal::Void)
 }
 
-/// `(set-signs! source pane signs)` — `signs`: list of `(line text scope)`.
+/// `(set-signs! source pane signs)`: `signs`: list of `(line text scope)`.
 /// `source` selects the already-registered channel (see
 /// `register-sign-source!`) whose slot every entry here renders in; an
 /// unregistered `source` errors rather than being silently dropped.
@@ -115,7 +115,7 @@ pub(crate) fn set_signs(
             // it but writes it with a terminal-buffer writer that drops what
             // it can't draw, so a tab would reserve columns that then stay
             // blank and push the padding off. Rejected outright rather than
-            // substituted — unlike `set-virtual-lines!`, which maps them to
+            // substituted, unlike `set-virtual-lines!`, which maps them to
             // spaces because its callers' `'segments` offsets have to keep
             // lining up with the text.
             if text.contains(char::is_control) {
@@ -135,13 +135,13 @@ pub(crate) fn set_signs(
     Ok(SteelVal::Void)
 }
 
-/// `(set-virtual-lines! source pane lines)` — `lines`: list of hashmaps, each
+/// `(set-virtual-lines! source pane lines)`: `lines`: list of hashmaps, each
 /// with required `'line`/`'text`, plus optional `'anchor` (`'before` or
-/// `'after`, default `'after`), `'scope` (whole-line base style — `ui.virtual`
+/// `'after`, default `'after`), `'scope` (whole-line base style, `ui.virtual`
 /// fallback when absent), and `'segments` (list of `(start end scope)` char
 /// ranges into `text`, styling only the covered chars; chars outside every
 /// segment keep `'scope`'s style). Segment bounds/ordering/overlap are
-/// validated at the host boundary, not here — see `VirtualLineSpec::segments`.
+/// validated at the host boundary, not here (see `VirtualLineSpec::segments`).
 pub(crate) fn set_virtual_lines(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -161,7 +161,7 @@ const VIRTUAL_LINE_KEYS: &[&str] = &["line", "text", "anchor", "scope", "segment
 
 /// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap, shaped
 /// to match `set-virtual-lines!`'s contract with its first real caller, the
-/// git-diff plugin. Only decodes shape (arity, types) —
+/// git-diff plugin. Only decodes shape (arity, types):
 /// segment bounds/ordering/overlap validation happens at the host boundary
 /// (`host_impl.rs`'s `set_virtual_lines`), the sole enforcement point for
 /// that contract.
@@ -198,15 +198,15 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     let text = string_arg(text, "set-virtual-lines! text")?;
     if text.contains(['\n', '\r']) {
         steel::stop!(Generic =>
-            "set-virtual-lines!: 'text must not contain a newline — virtual lines render as a \
-             single line");
+            "set-virtual-lines!: 'text must not contain a newline (virtual lines render as a \
+             single line)");
     }
-    // A tab renders like a real buffer line's tab — the engine expands it to
+    // A tab renders like a real buffer line's tab: the engine expands it to
     // the next tab stop (`hume_engine::display_lines::segment_virtual_line`), so
     // callers pass it through unexpanded. Any other unrenderable character
     // (a control character, an invisible one) is left verbatim:
     // `push_virtual_cells` substitutes it with its codepoint placeholder,
-    // the same chokepoint every other text source goes through — a
+    // the same chokepoint every other text source goes through. A
     // char-for-char blank here would be a second, weaker copy of that
     // policy, and one that hides exactly what the codepoint substitution
     // exists to surface (a bidi override rendering like a space, say).
@@ -242,7 +242,7 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
 }
 
 /// Decodes `'segments`: each a `(start end scope)` char range into `text`.
-/// Shape only (arity, types) — bounds, ordering, overlap, and
+/// Shape only (arity, types): bounds, ordering, overlap, and
 /// grapheme-cluster alignment are validated at the host boundary
 /// (`host_impl.rs`'s `set_virtual_lines`), which also converts these char
 /// offsets to the byte offsets the engine needs.
@@ -261,8 +261,8 @@ fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String
     )
 }
 
-/// `(set-eol-text! source pane lines)` — `lines`: list of `(line text
-/// scope)`. Not diagnostics-specific — the diagnostics plugin is its first
+/// `(set-eol-text! source pane lines)`: `lines`: list of `(line text
+/// scope)`. Not diagnostics-specific: the diagnostics plugin is its first
 /// client, not its owner, same as every other decoration kind is to LSP.
 pub(crate) fn set_eol_text(
     ctx: &mut SteelCtx,
@@ -291,7 +291,7 @@ pub(crate) fn set_eol_text(
     Ok(SteelVal::Void)
 }
 
-/// `(set-extra-highlights! source pane spans)` — `spans`: list of `(start end scope)`.
+/// `(set-extra-highlights! source pane spans)`: `spans`: list of `(start end scope)`.
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -319,9 +319,9 @@ pub(crate) fn set_extra_highlights(
     Ok(SteelVal::Void)
 }
 
-/// `(set-line-backgrounds! source pane entries)` — `entries`: list of `(line
+/// `(set-line-backgrounds! source pane entries)`: `entries`: list of `(line
 /// scope)`. A full-row background tint on each named line. No `priority`
-/// field — unlike signs, row tints have no single-slot contention; same-line
+/// field: unlike signs, row tints have no single-slot contention; same-line
 /// entries from different sources break ties by source name.
 pub(crate) fn set_line_backgrounds(
     ctx: &mut SteelCtx,
@@ -349,9 +349,9 @@ pub(crate) fn set_line_backgrounds(
     Ok(SteelVal::Void)
 }
 
-/// `(set-statusline-text! source pane text)` — replaces `source`'s
+/// `(set-statusline-text! source pane text)`: replaces `source`'s
 /// statusline text for `pane`'s buffer wholesale. Rendered by the `steel:<source>`
-/// statusline element (see `configure-statusline!`) — placing it is a
+/// statusline element (see `configure-statusline!`). Placing it is a
 /// separate step, this only pushes the value a placed element will show.
 pub(crate) fn set_statusline_text(
     ctx: &mut SteelCtx,
@@ -368,7 +368,7 @@ pub(crate) fn set_statusline_text(
     Ok(SteelVal::Void)
 }
 
-/// `(%diagnostics-for-buffer pane severity range)` — the `diagnostics-for-buffer`
+/// `(%diagnostics-for-buffer pane severity range)`: the `diagnostics-for-buffer`
 /// Scheme wrapper supplies `#:severity`/`#:range` defaults. `severity`: a
 /// symbol or `#f`. `range`: a `(start . end)` dotted pair or `#f`.
 pub(crate) fn diagnostics_for_buffer(
@@ -397,7 +397,7 @@ pub(crate) fn diagnostics_for_buffer(
 }
 
 /// `DiagnosticEntry` -> a Steel hashmap, field-by-field native except
-/// `"raw"` — the one field that crosses as a `JsonHandle` sharing the
+/// `"raw"`, the one field that crosses as a `JsonHandle` sharing the
 /// entry's own `Arc` rather than a value rebuilt (and reconverted) just to
 /// carry it. Written by hand rather than `json_to_steel` on a
 /// `serde_json::Value` blob precisely so `"raw"` can take that different

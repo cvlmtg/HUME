@@ -19,7 +19,7 @@ fn stdout_gate_returns_false_when_closed() {
 /// Gate open via the init session alone: returns `#t`, no bracket entry
 /// (there is no alt-screen to leave before the terminal exists).
 ///
-/// `inline_output: false` isolates this from the *other* safety reason —
+/// `inline_output: false` isolates this from the *other* safety reason:
 /// without it, `RecordingInlineOutputHost`'s own default (`true`) would make
 /// this pass for the wrong reason, since `stdout_is_safe` reads the host
 /// live regardless of session.
@@ -52,17 +52,17 @@ fn stdout_gate_returns_true_and_calls_ensure_when_open_via_inline_output_command
 
 /// Guards the require-module hazard documented in this
 /// module's doc comment: a plugin file loaded via `(require "path.scm")`
-/// is a separately-compiled module — exactly the shape of every real
+/// is a separately-compiled module, exactly the shape of every real
 /// `#:inline-output` plugin command (core:lsp's `servers.scm`'s
 /// `lsp-servers`, core:plum's `grammars.scm`'s grammar-compile line).
 ///
 /// Defines a command inside a required module (mirroring how every real
-/// plugin command is defined) and dispatches it via `call_steel_cmd` — the
-/// same path `Editor::run_steel_command` uses — with a host reporting
+/// plugin command is defined) and dispatches it via `call_steel_cmd` (the
+/// same path `Editor::run_steel_command` uses) with a host reporting
 /// `is_inline_output_command() == true`. If the required module's
 /// `displayln` call resolved to steel-core's raw prelude version instead
 /// of the gated shim, `ensure_calls` stays 0 despite the dispatch
-/// succeeding — the exact silent-bypass shape this test guards against.
+/// succeeding, the exact silent-bypass shape this test guards against.
 #[test]
 fn required_module_displayln_call_reaches_the_gate() {
     use crate::ScriptingHost;
@@ -100,11 +100,11 @@ fn required_module_displayln_call_reaches_the_gate() {
     );
 }
 
-/// The other four gated names (`display`, `newline`, `println` — `print`
+/// The other four gated names (`display`, `newline`, `println`; `print`
 /// is exercised transitively via `println`) reach the gate from inside a
 /// required module too, not just `displayln`. Three implicit-port calls
-/// in one command body must open the bracket three times — once per
-/// gated call — since `RecordingInlineOutputHost` counts every
+/// in one command body must open the bracket three times (once per
+/// gated call), since `RecordingInlineOutputHost` counts every
 /// `ensure_inline_output_screen` invocation unconditionally (unlike the
 /// real editor host, which only acts on the first).
 #[test]
@@ -148,7 +148,7 @@ fn required_module_other_print_fns_reach_the_gate() {
 
 /// The write-family names (`write`, `write-string`, `write-char`,
 /// `simple-display`, `simple-displayln`) reach the gate from inside a
-/// required module too — an unshimmed member of this family would be an
+/// required module too: an unshimmed member of this family would be an
 /// ungated path to the real stdout.
 #[test]
 fn required_module_write_family_reaches_the_gate() {
@@ -192,7 +192,7 @@ fn required_module_write_family_reaches_the_gate() {
 }
 
 /// A `displayln` call at the top level (no `(require …)` involved) must
-/// also reach the gate — this is the load-bearing BOOTSTRAP-shim path,
+/// also reach the gate. This is the load-bearing BOOTSTRAP-shim path,
 /// since steel never re-imports the print names into top-level programs.
 #[test]
 fn top_level_displayln_call_reaches_the_gate() {
@@ -221,7 +221,7 @@ fn top_level_displayln_call_reaches_the_gate() {
 }
 
 /// Writes to an explicit custom port (`with-output-to-string`) pass
-/// through untouched even when the gate is closed — `%stdout-safe?`'s
+/// through untouched even when the gate is closed: `%stdout-safe?`'s
 /// `eq?` check against the real stdout port fails inside the
 /// parameterized dynamic extent, so the write is never suppressed.
 #[test]
@@ -252,7 +252,7 @@ fn custom_port_write_bypasses_gate_when_closed() {
 }
 
 /// The explicit-port branch forwards straight to the original case-lambda
-/// rather than reimplementing arity checking — for a non-stdout port
+/// rather than reimplementing arity checking. For a non-stdout port
 /// (`%port-safe?` is `#t` unconditionally), an extra positional argument
 /// still raises an arity error.
 #[test]
@@ -340,7 +340,7 @@ fn write_string_implicit_form_honors_output_redirect() {
     )
     .expect("defining the command must not error");
 
-    // NullHost defaults is_inline_output_command() to false → gate closed —
+    // NullHost defaults is_inline_output_command() to false → gate closed;
     // pins that a captured, non-stdout port is never suppressed regardless.
     host.call_steel_cmd("probe-write-string-redirect", None, vec![], &mut null_host)
         .expect("dispatching the command must not error");

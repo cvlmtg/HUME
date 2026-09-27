@@ -9,7 +9,7 @@ fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
 // ── Init-only guard ───────────────────────────────────────────────────────
 //
 // All four bind builtins below are `config`-gated in `builtins!`'s
-// registration table — the gate lives in the registration wrapper
+// registration table. The gate lives in the registration wrapper
 // closure, not the body, so these test the gate primitive directly.
 
 /// `bind-key!` is blocked in plain command mode (`EvalMode::Command`).
@@ -106,7 +106,7 @@ fn unbind_key_invalid_mode_errors() {
     );
 }
 
-/// `bind-key!` rejects a string mode — mode must be a symbol.
+/// `bind-key!` rejects a string mode: mode must be a symbol.
 #[test]
 fn bind_key_string_mode_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -177,7 +177,7 @@ fn unbind_key_invalid_key_sequence_errors() {
 // ── Guard passes, effect queued ───────────────────────────────────────────
 
 /// In init mode with valid args, `bind-key!` passes the guard and queues an
-/// `Effect::BindKey` carrying the parsed mode/keys/command — nothing touches
+/// `Effect::BindKey` carrying the parsed mode/keys/command. Nothing touches
 /// the keymap at builtin time; the editor applies it later via
 /// `Editor::apply_script_effects`.
 #[test]
@@ -204,7 +204,7 @@ fn bind_key_init_mode_queues_bind_effect() {
     );
 }
 
-/// `bind-key-extend!` queues the same effect with `force_extend: true` —
+/// `bind-key-extend!` queues the same effect with `force_extend: true`;
 /// the flag is the only thing distinguishing it from `bind-key!`.
 #[test]
 fn bind_key_extend_queues_force_extend_effect() {
@@ -229,7 +229,7 @@ fn bind_key_extend_queues_force_extend_effect() {
     );
 }
 
-/// `bind-wait-char!` queues `Effect::BindWaitChar`, not `Effect::BindKey` —
+/// `bind-wait-char!` queues `Effect::BindWaitChar`, not `Effect::BindKey`:
 /// a WaitChar node consumes the next keypress as an argument, so routing it
 /// to a plain leaf would silently break `pending-char`.
 #[test]
@@ -255,7 +255,7 @@ fn bind_wait_char_queues_wait_char_effect() {
     );
 }
 
-/// `unbind-key!` queues `Effect::UnbindKey` — deferred like the three
+/// `unbind-key!` queues `Effect::UnbindKey`, deferred like the three
 /// binders so a same-eval bind-then-unbind on one key applies in Steel's
 /// emission order rather than the unbind racing ahead.
 #[test]

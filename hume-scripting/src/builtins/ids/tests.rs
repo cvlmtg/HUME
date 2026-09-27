@@ -94,7 +94,7 @@ fn equal_compares_by_value_through_a_real_steel_eval() {
 }
 
 /// A `SteelPane` must be usable as a Steel hash key: two distinct wrappings
-/// of the same `PaneHandle` must hash-collide and `hash-ref` the same entry —
+/// of the same `PaneHandle` must hash-collide and `hash-ref` the same entry:
 /// the concrete capability per-(buffer,pane) plugin state needs.
 #[test]
 fn pane_is_usable_as_a_steel_hash_key() {

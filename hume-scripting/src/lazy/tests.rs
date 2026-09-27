@@ -63,7 +63,7 @@ fn duplicate_declare_is_noop() {
         vec!["on-buffer-save".to_string()],
         vec![],
     );
-    // Second declare with a different path and an additional activation entry — both ignored.
+    // Second declare with a different path and an additional activation entry: both ignored.
     reg.declare(
         id.clone(),
         Some(PathBuf::from("/other/plugin.scm")),
@@ -85,7 +85,7 @@ fn duplicate_declare_is_noop() {
 fn case_insensitive_dedup() {
     let mut reg = LazyRegistry::default();
     reg.declare(id_user("Alice", "Foo"), Some(fake_path()), vec![], vec![]);
-    // Same plugin, different casing — PluginId equality is case-insensitive.
+    // Same plugin, different casing: PluginId equality is case-insensitive.
     reg.declare(id_user("alice", "foo"), Some(fake_path()), vec![], vec![]);
     assert_eq!(reg.plugins.len(), 1, "case-insensitive dedup must fire");
 }
@@ -223,7 +223,7 @@ fn format_status_waiting_with_triggers() {
 // The data layer accepts zero-activation plugins (LazyRegistry::declare has no
 // policy gate); the policy guard lives in declare_plugin (builtins layer).
 // This test exercises the defensive placeholder fallback in
-// pending_activations — which glyph is used is an appearance detail, not
+// pending_activations. Which glyph is used is an appearance detail, not
 // asserted here.
 #[test]
 fn format_status_zero_trigger_shows_a_placeholder() {
@@ -251,7 +251,7 @@ fn format_status_loaded_shows_no_triggers() {
     reg.declare(id.clone(), Some(fake_path()), vec![], vec![]);
     // Simulate finish_lazy_activation: set Loaded. The editor's Lazy stub for
     // "eager-cmd" is gone by now too (unregister_lazy_stubs_of already
-    // ran), so the caller passes an empty lazy_cmds — exactly what a real
+    // ran), so the caller passes an empty lazy_cmds, exactly what a real
     // post-activation `:plugin-status` call would see.
     *reg.plugins.get_mut(&id).unwrap() = PluginState::Loaded;
 

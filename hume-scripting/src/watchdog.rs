@@ -8,12 +8,12 @@ use std::time::{Duration, Instant};
 /// Enforces a wall-clock budget for Steel evals.
 ///
 /// One watchdog thread persists for the lifetime of the `ScriptingHost` and is
-/// re-armed per eval — command dispatch runs on the keystroke hot path, so
+/// re-armed per eval: command dispatch runs on the keystroke hot path, so
 /// spawning and joining an OS thread per eval would be pure overhead.
 ///
 /// When an armed budget expires the interrupt flag is set to `true`,
 /// signalling `(hume/yield!)` calls inside the script to abort.  Interruption
-/// is cooperative only — Steel 0.8.3 has no op-callback for involuntary stop.
+/// is cooperative only: Steel 0.8.3 has no op-callback for involuntary stop.
 ///
 /// The armed wait loops on `recv_timeout`, re-checking the deadline on every
 /// wake, so an early or spurious wake can never fire the interrupt before the
@@ -31,7 +31,7 @@ pub struct EvalWatchdog {
     thread: Option<std::thread::JoinHandle<()>>,
     /// Caller-side mirror of the thread's armed/idle state, used only to
     /// `debug_assert` that `arm`/`cancel` calls stay strictly paired. Checked
-    /// here — on the caller's own thread — rather than in `watchdog_loop`, so
+    /// here, on the caller's own thread, rather than in `watchdog_loop`, so
     /// a violation fails at the actual call site instead of unwinding the
     /// detached watchdog thread (which would otherwise surface later as a
     /// misleading "watchdog thread alive" panic on an unrelated `send`).
@@ -66,7 +66,7 @@ impl EvalWatchdog {
     pub fn arm(&self, flag: Arc<AtomicBool>, budget: Duration) {
         debug_assert!(
             !self.armed.swap(true, Ordering::Relaxed),
-            "EvalWatchdog::arm called while already armed — missing cancel() after the previous eval"
+            "EvalWatchdog::arm called while already armed: missing cancel() after the previous eval"
         );
         self.send(WatchdogMsg::Arm {
             deadline: Instant::now() + budget,
@@ -76,7 +76,7 @@ impl EvalWatchdog {
 
     /// Defuse the current arm and wait for the thread to acknowledge.
     ///
-    /// Always called after eval returns — on both success and error paths.
+    /// Always called after eval returns, on both success and error paths.
     /// If the budget already expired, this drains the pending state so the
     /// next `arm` starts clean.
     pub fn cancel(&self) {
@@ -99,7 +99,7 @@ impl EvalWatchdog {
 impl Drop for EvalWatchdog {
     fn drop(&mut self) {
         // Disconnect the channel so the thread's blocking recv returns Err
-        // and the loop exits; then join.  Ignore a panicked thread — never
+        // and the loop exits; then join.  Ignore a panicked thread: never
         // panic inside Drop.
         self.tx = None;
         if let Some(thread) = self.thread.take() {
@@ -139,7 +139,7 @@ fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<()>) {
                     // debug_asserts this on the caller's own thread), but
                     // re-arming is the sensible recovery if it ever does. Never
                     // panic here: this thread is detached, so a panic wouldn't
-                    // surface at the call site — it would instead unwind this
+                    // surface at the call site; it would instead unwind this
                     // thread and turn the *next* unrelated `send` into a
                     // misleading "watchdog thread alive" panic.
                     Ok(WatchdogMsg::Arm {
@@ -149,17 +149,17 @@ fn watchdog_loop(rx: Receiver<WatchdogMsg>, ack_tx: Sender<()>) {
                         deadline = d;
                         flag = f;
                     }
-                    // Woke early — the outer loop re-checks the deadline.
+                    // Woke early: the outer loop re-checks the deadline.
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => return,
                 }
             },
             // Cancel while idle: the previous arm already fired (or there was
-            // nothing armed) — acknowledge so the caller's cancel() unblocks.
+            // nothing armed), so acknowledge so the caller's cancel() unblocks.
             Ok(WatchdogMsg::Cancel) => {
                 let _ = ack_tx.send(());
             }
-            // Sender dropped (host shutdown) — exit.
+            // Sender dropped (host shutdown): exit.
             Err(_) => return,
         }
     }

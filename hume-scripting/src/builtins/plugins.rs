@@ -28,16 +28,16 @@ fn log_absent_core(ctx: &mut SteelCtx, name: &str, verb: &str) {
     ctx.log(
         crate::log::LogLevel::Error,
         format!(
-            "{verb}: unknown core plugin '{name}' — not found in runtime dir \
+            "{verb}: unknown core plugin '{name}': not found in runtime dir \
              (typo, or HUME_RUNTIME misconfigured)"
         ),
     );
 }
 
 /// Logs the "plugin file absent on disk" outcome, per plugin kind: `core:`
-/// plugins go through [`log_absent_core`] (typo or broken `HUME_RUNTIME` —
+/// plugins go through [`log_absent_core`] (typo or broken `HUME_RUNTIME`,
 /// never installed by PLUM); `user/repo` plugins log a softer Info (not yet
-/// installed — PLUM will fetch it on `:plum-install-plugins`).
+/// installed; PLUM will fetch it on `:plum-install-plugins`).
 ///
 /// Shared by `declare_plugin` and `begin_manifest_declare`'s identical
 /// absent-on-disk fork.
@@ -52,7 +52,7 @@ fn log_absent_plugin(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str, verb:
 }
 
 /// PLUM compat: records `name` in `declared_plugins` if not already present
-/// (case-insensitive), regardless of whether the plugin resolves on disk —
+/// (case-insensitive), regardless of whether the plugin resolves on disk.
 /// PLUM reads this list to know what to install on `:plum-install-plugins`.
 ///
 /// Shared by `declare_plugin`, `load_plugin`, and `begin_manifest_declare`.
@@ -70,7 +70,7 @@ fn record_declared(ctx: &mut SteelCtx, name: &str) {
 /// Shared idempotency rule for both `declare-plugin` forms (regular and the
 /// manifest zero-trigger fallback): `Loaded` → soft error, else first
 /// declaration wins. Returns `true` if the caller should short-circuit
-/// immediately (with its own success sentinel — `declare_plugin` and
+/// immediately (with its own success sentinel: `declare_plugin` and
 /// `begin_manifest_declare` return different `SteelVal`s on this path).
 fn already_declared(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str) -> bool {
     match ctx.registries.lazy_registry.plugins.get(plugin_id) {
@@ -92,12 +92,12 @@ fn already_declared(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str) -> boo
 }
 
 /// Builds a quoted Steel string literal for `path` (`"…"`, backslashes
-/// doubled so Windows paths like `C:\Users\…` survive embedding — `\U` etc.
+/// doubled so Windows paths like `C:\Users\…` survive embedding, since `\U` etc.
 /// are invalid Steel escapes), or `None` if `path` contains `"`, which no
 /// amount of escaping can embed in a Scheme string literal.
 ///
 /// Also exposed as [`crate::steel_path_literal`] for test call sites (any
-/// `.scm` source built by string interpolation from a real filesystem path —
+/// `.scm` source built by string interpolation from a real filesystem path:
 /// `open-buffer!`, `picker!`, `require`, …) that would otherwise hand-roll
 /// this same escaping per site.
 pub fn steel_path_literal(path: &std::path::Path) -> Option<String> {
@@ -114,7 +114,7 @@ pub fn steel_path_literal(path: &std::path::Path) -> Option<String> {
 ///
 /// `kind` names what `path` is, for the error message (`"plugin"` /
 /// `"plugin manifest"`). `on_unquotable` runs (for its side effect only)
-/// before the shared error is raised — `begin_lazy_activation` uses it to
+/// before the shared error is raised. `begin_lazy_activation` uses it to
 /// mark the plugin `Failed` first; `begin_manifest_declare` has no
 /// plugin-stack state to unwind yet, so passes a no-op.
 fn require_program_for_path(
@@ -125,16 +125,16 @@ fn require_program_for_path(
     let Some(literal) = steel_path_literal(path) else {
         on_unquotable();
         steel::stop!(Generic =>
-            "{} path contains '\"' — cannot embed in require: {}", kind, path.display());
+            "{} path contains '\"', so it cannot be embedded in require: {}", kind, path.display());
     };
     Ok(format!("(require {literal})"))
 }
 
 /// Gate for plugin-registration verbs (`load-plugin`, `declare-plugin`).
 ///
-/// Both verbs are valid only at the top level of `init.scm` — i.e. only
+/// Both verbs are valid only at the top level of `init.scm`, i.e. only
 /// [`crate::context::EvalMode::Init`]. A plugin can never load or declare
-/// another plugin — dependency declarations are the user's / plugin-manager's
+/// another plugin: dependency declarations are the user's / plugin-manager's
 /// responsibility, not a plugin's.
 fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
     match ctx.mode() {
@@ -153,7 +153,7 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
 ///
 /// Inside manifest resolution the offending code is the *plugin's*
 /// `manifest.scm`, not the user's `init.scm` that the init-eval error prefix
-/// will otherwise imply — so name it, and the plugin, explicitly.
+/// will otherwise imply, so name it, and the plugin, explicitly.
 fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
     match &ctx.manifest_resolving {
         Some(id) => format!("declare-plugin {keyword} in manifest.scm for '{id}'"),
@@ -218,7 +218,7 @@ pub(crate) fn declare_plugin(
     let plugin_id = PluginId::parse(&name).map_err(generic_err)?;
 
     // A manifest.scm being resolved by %begin-manifest-declare! may only ever
-    // declare the plugin it was resolved for — otherwise a manifest for
+    // declare the plugin it was resolved for. Otherwise a manifest for
     // "foo/bar" could smuggle in an unrelated "baz/qux" declaration under the
     // same zero-trigger gate.
     if let Some(expected) = &ctx.manifest_resolving
@@ -234,7 +234,7 @@ pub(crate) fn declare_plugin(
     }
 
     // Decode and validate every activation-entry list before recording any state
-    // below — a malformed entry must leave `declared_plugins`/`plugin_configs`
+    // below: a malformed entry must leave `declared_plugins`/`plugin_configs`
     // untouched, or PLUM would list a plugin the lazy registry never learns about.
     let cmd_list = list_to_strings(commands, &declare_arg_label(ctx, "#:commands"))?;
     let typed_cmd_list =
@@ -247,7 +247,7 @@ pub(crate) fn declare_plugin(
     let lang_list = list_to_strings(languages, &declare_arg_label(ctx, "#:languages"))?;
 
     // Malformed name (not a collision) → hard error, same rule as
-    // define-command!.  A name that can't survive quoting is a typo — this
+    // define-command!.  A name that can't survive quoting is a typo. This
     // check is independent of the plugin's on-disk path, so it runs
     // regardless of whether the plugin turns out to be absent.
     for cmd in cmd_list.iter().chain(typed_cmd_list.iter()) {
@@ -258,7 +258,7 @@ pub(crate) fn declare_plugin(
     }
 
     // Hard error: nothing declared at all. Checked against the raw (unfiltered)
-    // lists, before path resolution — collision filtering only happens once the
+    // lists, before path resolution: collision filtering only happens once the
     // plugin is confirmed present on disk (see below), so a non-empty
     // `cmd_list`/`typed_cmd_list` always skips this branch regardless of what
     // filtering later drops.
@@ -276,7 +276,7 @@ pub(crate) fn declare_plugin(
     // First declaration wins for config too, matching the state no-op above:
     // stored now so it is already in place by the time activation runs the body.
     // Inside manifest resolution, the user's #:config was already stored by
-    // %begin-manifest-declare! before manifest.scm ran — that must win over the
+    // %begin-manifest-declare! before manifest.scm ran, and that must win over the
     // manifest's own default, so use or_insert instead of an unconditional overwrite.
     if ctx.manifest_resolving.is_some() {
         ctx.registries
@@ -298,11 +298,11 @@ pub(crate) fn declare_plugin(
     )
     .map_err(generic_err)?;
 
-    // When the plugin file is absent on disk, it can never be activated —
+    // When the plugin file is absent on disk, it can never be activated:
     // collision-checking (which claims the name in the editor's registry) would
     // be pointless and would leave the name claimed with no path to clean it up
     // via drop_activations_for's usual load/fail transition.  For user/ plugins,
-    // log Info — absent is expected before :plum-install-plugins.  For core: plugins,
+    // log Info, since absent is expected before :plum-install-plugins.  For core: plugins,
     // absent means a typo or broken HUME_RUNTIME; PLUM never installs core:
     // plugins, so it can't catch the error.  `declared_plugins` is already
     // recorded above for PLUM.
@@ -311,7 +311,7 @@ pub(crate) fn declare_plugin(
         return Ok(SteelVal::Void);
     };
 
-    // Filter colliding command names against the editor's live registry —
+    // Filter colliding command names against the editor's live registry,
     // reached only now that the plugin is confirmed on disk. Each collision
     // logs a non-fatal Error (visible in :messages) and the name is dropped.
     // `register_lazy_command`/`register_lazy_typed_command` claims the name
@@ -327,9 +327,9 @@ pub(crate) fn declare_plugin(
         });
 
     // Hard error: all supplied #:commands/#:typed-commands entries collided,
-    // and no #:events/#:languages entries either — the plugin has no usable
+    // and no #:events/#:languages entries either: the plugin has no usable
     // activation entry left. The all-empty case already returned above, so
-    // reaching here means at least one list was non-empty before filtering —
+    // reaching here means at least one list was non-empty before filtering, so
     // the message always names the collision, never "none were supplied".
     if cmd_list.is_empty()
         && typed_cmd_list.is_empty()
@@ -345,7 +345,7 @@ pub(crate) fn declare_plugin(
 
     // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
     // the plugin body is evaluated (before activation).  Only for accepted
-    // names — a filtered-out collision must not gain attribution here.
+    // names: a filtered-out collision must not gain attribution here.
     for cmd in cmd_list.iter().chain(typed_cmd_list.iter()) {
         ctx.registries
             .cmd_owners
@@ -359,7 +359,7 @@ pub(crate) fn declare_plugin(
     Ok(SteelVal::Void)
 }
 
-/// The directory a plugin's files live in, given its id — `core:` plugins
+/// The directory a plugin's files live in, given its id: `core:` plugins
 /// under `runtime_dir`, `user/repo` plugins under `data_dir`. `None` when the
 /// relevant root is unset (`HOME`/`APPDATA` unset for user plugins).
 ///
@@ -376,7 +376,7 @@ fn plugin_dir_for_id(
             runtime_dir.map(|rt| rt.join("plugins").join("core").join(core_name))
         }
         // When data_dir is None (HOME/APPDATA unset), user plugins cannot be
-        // resolved — return None rather than panicking.
+        // resolved, so return None rather than panicking.
         PluginId::User { user, repo } => data_dir.map(|d| d.join("plugins").join(user).join(repo)),
     }
 }
@@ -413,7 +413,7 @@ pub(crate) fn resolve_path_for_name(
     }
 }
 
-/// `(resolve-plugin-path name)` — return the resolved path string if the
+/// `(resolve-plugin-path name)`: return the resolved path string if the
 /// plugin file exists on disk, or `#f` if absent.  Raises a Steel error for
 /// malformed names.
 pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResult {
@@ -429,14 +429,14 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
     }
 }
 
-/// `(%load-plugin! "name" config)` — Rust primitive backing the Scheme-side
+/// `(%load-plugin! "name" config)`: Rust primitive backing the Scheme-side
 /// `load-plugin` wrapper (eager).
 ///
-/// Top-level only: a plugin can never load another plugin — see
-/// `ensure_top_level`.
+/// Top-level only: a plugin can never load another plugin (see
+/// `ensure_top_level`).
 ///
 /// Stores `config` unconditionally, overriding any prior value (unlike
-/// `declare-plugin`'s first-wins) — a bare `(load-plugin "x")` after
+/// `declare-plugin`'s first-wins): a bare `(load-plugin "x")` after
 /// `(declare-plugin "x" #:config h)` runs the body with the empty default,
 /// not `h`, since the most recent call should always win. Read back by the
 /// body via `(plugin-config)`.
@@ -455,7 +455,7 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
     ctx.registries.plugin_configs.insert(id.clone(), config);
 
     // Soft error: if this plugin was already declared lazily, loading it eagerly
-    // contradicts the declare.  Warn and fall through — the wrapper still activates it.
+    // contradicts the declare.  Warn and fall through; the wrapper still activates it.
     if matches!(
         ctx.registries.lazy_registry.plugins.get(&id),
         Some(PluginState::Declared { .. })
@@ -511,12 +511,12 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
 const MAX_ACTIVATION_DEPTH: usize = 16;
 
 /// Marks `id` `Failed` and runs the same cleanup `finish_lazy_activation`
-/// would on failure — `drop_activations_for` (expired activation-event/language
+/// would on failure: `drop_activations_for` (expired activation-event/language
 /// entries) and `unregister_lazy_stubs_of` (dead `Lazy` command stub).
 ///
 /// Shared by `begin_lazy_activation`'s two pre-body-eval raise paths (depth
-/// limit, unquotable path) and `finish_lazy_activation`'s failure branch —
-/// both leave a `Failed` plugin with no live activation footprint. Command/
+/// limit, unquotable path) and `finish_lazy_activation`'s failure branch.
+/// Both leave a `Failed` plugin with no live activation footprint. Command/
 /// hook rollback stays out of this helper: `begin_lazy_activation` raises
 /// before the body ever runs, so no commands or hooks are registered under
 /// this id yet.
@@ -529,7 +529,7 @@ fn fail_plugin_activation(ctx: &mut SteelCtx, id: &PluginId) {
     ctx.host.commands().unregister_lazy_stubs_of(id);
 }
 
-/// `(%begin-lazy-activation id-str)` — Rust primitive for inline activation.
+/// `(%begin-lazy-activation id-str)`: Rust primitive for inline activation.
 ///
 /// Called from the BOOTSTRAP `%activate-plugin-inline` helper immediately before
 /// `(hm.eval-string require-string)`.  If the plugin is `Declared`, transitions
@@ -549,8 +549,8 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     if ctx.plugin_stack.len() >= MAX_ACTIVATION_DEPTH {
         fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>
-            "%begin-lazy-activation: activation depth limit ({}) exceeded — \
-             check for circular load-plugin chains; '{}' marked Failed",
+            "%begin-lazy-activation: activation depth limit ({}) exceeded \
+             (check for circular load-plugin chains); '{}' marked Failed",
             MAX_ACTIVATION_DEPTH, id_str);
     }
 
@@ -592,11 +592,11 @@ pub(crate) fn finish_lazy_activation(
     error: SteelVal,
 ) -> SteelResult {
     // `plugin_stack.pop()` and `pop_effect_marks` below must run
-    // unconditionally, before any fallible decode — `begin_lazy_activation`
+    // unconditionally, before any fallible decode. `begin_lazy_activation`
     // pushed both unconditionally, and this is their only pairing site. A
     // `?` short-circuit on `error`'s decode here would leave them
     // permanently unbalanced whenever `error` fails to decode as `#f` or a
-    // caught error value — skewing `EvalMode` for the rest of the session
+    // caught error value, skewing `EvalMode` for the rest of the session
     // and leaking the queued effects a never-popped mark hides. A decode
     // failure becomes the failure *reason* instead: `unwrap_or_else` folds
     // it into `Some`, same shape as a body's own raised error.
@@ -618,8 +618,8 @@ pub(crate) fn finish_lazy_activation(
             .map(|(name, _)| name.clone())
             .collect();
         for name in orphans {
-            // Only one of the two ever has an entry for a given name — the
-            // other remove is a no-op — since command_table/typed_command_table
+            // Only one of the two ever has an entry for a given name (the
+            // other remove is a no-op), since command_table/typed_command_table
             // are disjoint by kind (see typed_command_table's own doc).
             ctx.registries.command_table.remove(&name);
             ctx.registries.typed_command_table.remove(&name);
@@ -637,7 +637,7 @@ pub(crate) fn finish_lazy_activation(
             .plugins
             .insert(id.clone(), PluginState::Loaded);
         ctx.registries.lazy_registry.drop_activations_for(&id);
-        // Drop any `Lazy` stub the plugin didn't replace via `define-command!` —
+        // Drop any `Lazy` stub the plugin didn't replace via `define-command!`:
         // dead weight now that the plugin is Loaded and won't re-run its body.
         ctx.host.commands().unregister_lazy_stubs_of(&id);
     }
@@ -645,15 +645,15 @@ pub(crate) fn finish_lazy_activation(
     Ok(SteelVal::Void)
 }
 
-/// `(%lazy-command-owner name)` — return the owning plugin's id string if `name`
+/// `(%lazy-command-owner name)`: return the owning plugin's id string if `name`
 /// is a registered *mappable* activation command, or `#f` if not.  Used by
 /// `%dispatch-command` to decide whether a `command_table` miss should trigger
 /// inline activation.
 ///
 /// Mappable-only deliberately: `%dispatch-command` backs `call!`, which can
-/// never reach a typed command (`typed_command_table` is a separate table —
+/// never reach a typed command (`typed_command_table` is a separate table;
 /// see its own doc). Reporting a typed-only stub as activatable here would
-/// load the plugin for a lookup that misses again right after and errors —
+/// load the plugin for a lookup that misses again right after and errors:
 /// a permanent side effect for a call that could never succeed.
 pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResult {
     match ctx.host.commands().lazy_mappable_command_owner(&name) {
@@ -662,7 +662,7 @@ pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResul
     }
 }
 
-/// `(%begin-manifest-declare! name config)` — Rust primitive backing the
+/// `(%begin-manifest-declare! name config)`: Rust primitive backing the
 /// zero-trigger branch of the Scheme `declare-plugin` wrapper.
 ///
 /// A `(declare-plugin "id")` call with no
@@ -673,11 +673,11 @@ pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResul
 ///
 /// Returns the `(require "<abs manifest.scm>")` string to eval (mirrors
 /// `%begin-lazy-activation`), or `#f` for the no-op cases: already declared
-/// (first-wins) or absent on disk (soft-logged exactly like `%declare-plugin!`
-/// — a user plugin not yet installed by PLUM, or a core plugin typo/broken
+/// (first-wins) or absent on disk (soft-logged exactly like `%declare-plugin!`:
+/// a user plugin not yet installed by PLUM, or a core plugin typo/broken
 /// `HUME_RUNTIME`). Hard-errors when the plugin directory exists but has no
 /// `manifest.scm` (a misconfigured plugin, not a "not installed yet" state),
-/// and when a manifest resolution is already in progress — a manifest whose
+/// and when a manifest resolution is already in progress: a manifest whose
 /// own self-declare is itself zero-trigger would otherwise recurse forever.
 pub(crate) fn begin_manifest_declare(
     ctx: &mut SteelCtx,
@@ -689,7 +689,7 @@ pub(crate) fn begin_manifest_declare(
     if ctx.manifest_resolving.is_some() {
         steel::stop!(Generic =>
             "declare-plugin: '{}' has no activation entries and manifest.scm \
-             must declare at least one — a manifest.scm cannot itself be zero-trigger",
+             must declare at least one (a manifest.scm cannot itself be zero-trigger)",
             name);
     }
 
@@ -735,29 +735,29 @@ pub(crate) fn begin_manifest_declare(
     ctx.manifest_resolving = Some(plugin_id);
     // Mirrors `begin_lazy_activation`'s own mark: anything manifest.scm
     // queues (`register-lsp-server!`, a nested activation, …) rolls back
-    // with the rest of a failed resolution — see `finish_manifest_declare`'s
-    // `pop_effect_marks` call.
+    // with the rest of a failed resolution (see `finish_manifest_declare`'s
+    // `pop_effect_marks` call).
     ctx.mark_effects();
 
     Ok(SteelVal::StringV(require_program.into()))
 }
 
-/// `(%finish-manifest-declare! name error)` — Rust primitive; the tail half
+/// `(%finish-manifest-declare! name error)`: Rust primitive; the tail half
 /// of the zero-trigger `declare-plugin` path (mirrors `%finish-lazy-activation`,
 /// including its `error` argument convention and its unconditional-before-
-/// any-fallible-decode ordering — see that function's doc for why).
+/// any-fallible-decode ordering; see that function's doc for why).
 ///
 /// Clears `manifest_resolving` and pops the effect mark `begin_manifest_declare`
 /// pushed unconditionally, before decoding `error`. On success, verifies the
-/// manifest actually declared the plugin — a `manifest.scm` that evaluates
+/// manifest actually declared the plugin: a `manifest.scm` that evaluates
 /// without error but never calls `declare-plugin` would otherwise leave the
 /// plugin silently undeclared; that check's own failure is raised, caught by
 /// the same `with-handler` in `bootstrap.scm`, and reaches this function a
 /// second time as a genuine failure. On failure, rolls the plugin back to
 /// `Failed` via `fail_plugin_activation` (same helper a lazy activation
-/// failure uses) and drops its `plugin_configs` entry — undoing a self-declare
+/// failure uses) and drops its `plugin_configs` entry, undoing a self-declare
 /// manifest.scm committed before a later top-level form in the same file
-/// raised (see the `Some(err)` arm below) — then records the failure exactly
+/// raised (see the `Some(err)` arm below), then records the failure exactly
 /// like a body error into `ctx.failed_activations` (see `run_steel_session`).
 pub(crate) fn finish_manifest_declare(
     ctx: &mut SteelCtx,
@@ -765,8 +765,8 @@ pub(crate) fn finish_manifest_declare(
     error: SteelVal,
 ) -> SteelResult {
     // `manifest_resolving` must clear unconditionally, before any fallible
-    // decode, mirroring `finish_lazy_activation`'s stack/marks discipline —
-    // otherwise a decode failure would leave manifest resolution permanently
+    // decode, mirroring `finish_lazy_activation`'s stack/marks discipline.
+    // Otherwise a decode failure would leave manifest resolution permanently
     // "in progress", and every later zero-trigger `declare-plugin` would
     // hard-error on `begin_manifest_declare`'s reentrancy guard.
     ctx.manifest_resolving = None;
@@ -778,7 +778,7 @@ pub(crate) fn finish_manifest_declare(
     match error {
         None if !ctx.registries.lazy_registry.plugins.contains_key(&id) => {
             return Err(generic_err(format!(
-                "declare-plugin: manifest.scm for '{name}' did not declare '{name}' — a \
+                "declare-plugin: manifest.scm for '{name}' did not declare '{name}': a \
                  manifest.scm must call (declare-plugin \"{name}\" …) with at least one \
                  activation entry"
             )));
@@ -786,17 +786,17 @@ pub(crate) fn finish_manifest_declare(
         None => {}
         Some(err) => {
             // A manifest can self-declare (a direct, non-zero-trigger
-            // `declare-plugin` call inside manifest.scm — see
+            // `declare-plugin` call inside manifest.scm; see
             // `begin_manifest_declare`'s own doc for how `manifest_resolving`
             // licenses it) before a *later* top-level form in the same file
             // raises. `hm.eval-string` runs manifest.scm as one program, so
-            // that self-declare's `Declared` state is already committed —
+            // that self-declare's `Declared` state is already committed, and
             // rolling the whole manifest resolution back to `Failed` (the
             // same helper a lazy activation failure uses) undoes it, so a
             // half-evaluated manifest.scm never leaves a live command stub
             // behind for a plugin the user was just told failed to load.
-            // `declared_plugins` (the flat PLUM-visible list) is untouched —
-            // `fail_plugin_activation` never touches it — so PLUM still
+            // `declared_plugins` (the flat PLUM-visible list) is untouched
+            // (`fail_plugin_activation` never touches it), so PLUM still
             // offers to install/update the plugin.
             fail_plugin_activation(ctx, &id);
             ctx.registries.plugin_configs.remove(&id);
@@ -807,7 +807,7 @@ pub(crate) fn finish_manifest_declare(
     Ok(SteelVal::Void)
 }
 
-/// `(loaded-plugins)` — return a Steel list of plugin names in `Loaded` state.
+/// `(loaded-plugins)`: return a Steel list of plugin names in `Loaded` state.
 ///
 /// Derived from `LazyRegistry` so lazy plugins correctly read as not-yet-loaded
 /// until their body has been evaluated.
@@ -823,7 +823,7 @@ pub(crate) fn loaded_plugins(ctx: &mut SteelCtx) -> SteelResult {
     vals.into_steelval().map_err(generic_err)
 }
 
-/// `(declared-plugins)` — return a Steel list of every declared plugin name,
+/// `(declared-plugins)`: return a Steel list of every declared plugin name,
 /// `core:*` included.  PLUM filters out `core:*` itself where install policy
 /// requires it (core plugins are bundled, never installed by PLUM).
 pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
@@ -836,18 +836,18 @@ pub(crate) fn declared_plugins(ctx: &mut SteelCtx) -> SteelResult {
     vals.into_steelval().map_err(generic_err)
 }
 
-/// Empty Steel hash — the `(plugin-config)` default when no config was passed.
+/// Empty Steel hash: the `(plugin-config)` default when no config was passed.
 fn empty_config() -> SteelResult {
     std::collections::HashMap::<String, SteelVal>::new()
         .into_steelval()
         .map_err(generic_err)
 }
 
-/// `(plugin-config)` — return the calling plugin's `#:config` value, or an
+/// `(plugin-config)`: return the calling plugin's `#:config` value, or an
 /// empty hash if none was passed (or if called outside a plugin body).
 ///
 /// Resolved via the top of `plugin_stack`, which is non-empty for the whole
-/// duration of a plugin body's evaluation — pushed in `begin_lazy_activation`
+/// duration of a plugin body's evaluation, pushed in `begin_lazy_activation`
 /// before either `load-plugin` (eager) or a deferred lazy activation runs the
 /// `(require …)`. Both paths therefore read config identically.
 pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {

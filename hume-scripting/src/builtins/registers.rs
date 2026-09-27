@@ -1,6 +1,6 @@
 //! `(read-register name)` / `(write-register! name values)` builtins.
 //!
-//! A register holds one string per selection captured at yank time — the
+//! A register holds one string per selection captured at yank time, the
 //! same `Vec<String>` shape [`crate::host::RegisterHost`] exposes. Reading
 //! and writing speak that one shape on both ends: `write-register!` takes a
 //! list, `read-register` returns one (or `#f`), so a read result feeds
@@ -8,7 +8,7 @@
 //!
 //! Macro registers (recorded key sequences) are out of scope: there is no
 //! wire format yet for handing a `Vec<KeyEvent>` to Scheme. `read-register`
-//! on one answers `#f`, indistinguishable from an empty register — a future
+//! on one answers `#f`, indistinguishable from an empty register. A future
 //! addition could serialize the sequence instead, but nothing calls for that
 //! today.
 
@@ -21,7 +21,7 @@ use super::errors::{generic_err, require_cap};
 use crate::SteelCtx;
 
 /// Decode a single-character register name and validate it against the same
-/// set the `"<reg>` keymap prefix accepts (`0`–`9`, `k`, `c`, `b`) — shared by
+/// set the `"<reg>` keymap prefix accepts (`0`–`9`, `k`, `c`, `b`). Shared by
 /// `read-register`/`write-register!` here and `set-register-prefix!` in
 /// `commands.rs`, so all three builtins reject `q`/`s`/multi-char names with
 /// one wording.

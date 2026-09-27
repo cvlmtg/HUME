@@ -32,7 +32,7 @@ fn mode_from_symbol(mode: &SteelVal, fn_name: &str) -> Result<BindMode, SteelErr
 }
 
 /// A WaitChar bind has no `force_extend` notion (see `Effect::BindWaitChar`'s
-/// doc) — carried on the variant, not as a sibling parameter, so the illegal
+/// doc), so it is carried on the variant, not as a sibling parameter, so the illegal
 /// combination can't be constructed.
 enum BindKind {
     Normal { force_extend: bool },
@@ -51,7 +51,7 @@ fn bind_inner(
     let keys = parse_key_sequence(&key_str).map_err(generic_err)?;
     // Queued, not applied: a failed plugin activation's binds are dropped by
     // `pop_effect_marks(false)` before the editor ever sees them. Validation
-    // above still fails synchronously — a bad mode or key sequence is the
+    // above still fails synchronously: a bad mode or key sequence is the
     // script's bug, not a side effect to defer.
     ctx.push_effect(match kind {
         BindKind::Normal { force_extend } => Effect::BindKey {
@@ -75,9 +75,9 @@ fn bind_inner(
 ///
 /// Binds a key sequence in the given mode to a named command.
 ///
-/// - `mode` — a symbol: `'normal`, `'extend`, or `'insert`.
-/// - `key-sequence` — a string parsed by [`parse_key_sequence`].
-/// - `command-name` — the canonical command name (must be registered in
+/// - `mode`: a symbol: `'normal`, `'extend`, or `'insert`.
+/// - `key-sequence`: a string parsed by [`parse_key_sequence`].
+/// - `command-name`: the canonical command name (must be registered in
 ///   the editor's `CommandRegistry` at dispatch time; not validated here).
 ///
 /// Only valid during `init.scm` or plugin load.

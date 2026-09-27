@@ -1,10 +1,10 @@
-//! `(split-words line word-chars)` — native word tokenization for Steel
+//! `(split-words line word-chars)`: native word tokenization for Steel
 //! plugins.
 //!
 //! Reuses `hume-ops`'s own word-motion scan primitives (`word_runs`, built
 //! on the same grapheme-cluster/combining-mark-safe stepping and
 //! `WordChars::classify` that `w`/`b` motions and text objects already use)
-//! rather than approximating classification in Steel — Steel has no
+//! rather than approximating classification in Steel, since Steel has no
 //! Unicode character-category table, so a hand-rolled Steel classifier
 //! either merges non-ASCII punctuation into words or has to special-case
 //! every script by hand. A word this returns is, by construction, exactly
@@ -26,7 +26,7 @@ use super::errors::generic_err;
 
 /// `(split-words line word-chars)` -> list of word strings, in order.
 ///
-/// Validates `word_chars` first — unlike `core:buffer-words`' own calls
+/// Validates `word_chars` first. Unlike `core:buffer-words`' own calls
 /// (which read an already-validated `get-buffer-option bid "word-chars"` once per
 /// reindex), this builtin's input is untrusted Steel-side data, the same as
 /// `buffer-lines`' range args, so a value `WordChars::classify` couldn't

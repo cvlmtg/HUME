@@ -23,7 +23,7 @@ fn lang_regs(h: &SteelCtxTestHarness) -> Vec<&PendingLanguageReg> {
 
 // ── %define-language! ────────────────────────────────────────────────────
 
-/// `%define-language!` is blocked in plain command mode — gated at
+/// `%define-language!` is blocked in plain command mode, gated at
 /// registration time (`config` kind in `builtins!`'s table), not in the
 /// body, so this tests the gate primitive directly rather than calling
 /// `define_language` (its body has no guard to hit).
@@ -113,7 +113,7 @@ fn define_language_accepts_symbol_name() {
 }
 
 /// `%define-language!`'s 5th arg decodes into `PendingLanguageReg::Identity`'s
-/// `lsp_language_id` — `#f` becomes `None`, a string becomes `Some`.
+/// `lsp_language_id`: `#f` becomes `None`, a string becomes `Some`.
 #[test]
 fn define_language_decodes_lsp_language_id_arg() {
     let mut h = SteelCtxTestHarness::new();
@@ -185,7 +185,7 @@ fn register_grammar_command_mode_calls_host() {
             "NullHost must return Err from attach_grammar"
         );
     }
-    // Nothing queued — command mode calls the host directly.
+    // Nothing queued: command mode calls the host directly.
     assert!(
         lang_regs(&h).is_empty(),
         "command mode must not queue pending regs"

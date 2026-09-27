@@ -3,25 +3,25 @@
 use hume_engine::pipeline::BufferId;
 
 /// A single line-level change between two texts, 0-based and Steel-surface
-/// ready — `set-signs!`/`set-virtual-lines!` are 0-indexed at the Steel
+/// ready: `set-signs!`/`set-virtual-lines!` are 0-indexed at the Steel
 /// boundary, so no arithmetic is needed to feed a hunk into either. The
-/// count each side covers is `old_lines.len()`/`new_lines.len()` — there is
+/// count each side covers is `old_lines.len()`/`new_lines.len()`; there is
 /// no separate count field to keep in sync. A zero-length side needs no
 /// special anchoring case: its empty line list already sits exactly at the
 /// insertion/deletion point (`old_lines` empty for a pure insert, `new_lines`
-/// empty for a pure deletion). `Equal` runs are never represented —
+/// empty for a pure deletion). `Equal` runs are never represented:
 /// `DiffHost` methods drop them before returning.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffHunk {
     /// Content line in the old text where this hunk starts. A pure insertion
     /// (`old_lines` empty) names an *insertion position*, not a changed
-    /// line — it may legitimately equal the old text's content line count
+    /// line: it may legitimately equal the old text's content line count
     /// (one past the last line), the same one-past-last-line value
     /// `ContentLineCount::end_exclusive()` names, which is why this is
     /// minted trusted (`ContentLine::new`) rather than through `::checked`,
     /// which would reject exactly that value.
     pub old_start: hume_rope::line::ContentLine,
-    /// Line index in the new text where this hunk starts — see `old_start`'s
+    /// Line index in the new text where this hunk starts; see `old_start`'s
     /// doc; the same insertion-position case applies here for a pure
     /// deletion (`new_lines` empty).
     pub new_start: hume_rope::line::ContentLine,
@@ -31,7 +31,7 @@ pub struct DiffHunk {
     pub new_lines: Vec<String>,
 }
 
-/// A single word-level change between two texts — e.g. a single changed
+/// A single word-level change between two texts, e.g. a single changed
 /// line's old/new text, as passed from a `diff-lines`/`diff-buffer-lines`
 /// `Replace` hunk. Ranges are 0-based **char offsets**, not byte offsets,
 /// matching `WordHunk`/`ExtraHighlightEntry`/`set-virtual-lines!`'s
@@ -40,7 +40,7 @@ pub struct DiffHunk {
 /// Unlike [`DiffHunk`] (line-index `start` into a rebuilt line list), a
 /// word hunk is one contiguous span of text per side, so it carries `end`
 /// (an exclusive char offset) and one `String` per side rather than a line
-/// list — reusing `DiffHunk`'s shape here would force a fake
+/// list. Reusing `DiffHunk`'s shape here would force a fake
 /// single-element `Vec<String>` that doesn't mean the same thing.
 ///
 /// A zero-width side (`start == end`) needs no special case, same
@@ -57,14 +57,14 @@ pub struct WordDiffHunk {
     pub new_text: String,
 }
 
-/// BufferText diffing — accessed through [`EditorHost::diff`](super::EditorHost::diff). Backs
+/// BufferText diffing, accessed through [`EditorHost::diff`](super::EditorHost::diff). Backs
 /// `(diff-lines old-text new-text)` / `(diff-buffer-lines bid ref-text)` /
 /// `(diff-words old-text new-text)`.
 ///
 /// `diff_lines`/`diff_buffer_lines` treat their string inputs as buffer
 /// text: every line ending becomes LF and a trailing newline is added if
 /// missing, matching how HUME would load them from disk. This is a
-/// deliberate divergence from `git diff`'s raw byte comparison — a file
+/// deliberate divergence from `git diff`'s raw byte comparison: a file
 /// missing its final newline reports no change on that line, since nothing
 /// would change about it on save either. `diff_words` does **no** such
 /// normalization: its inputs are
@@ -76,9 +76,9 @@ pub trait DiffHost {
     fn diff_lines(&self, old: &str, new: &str) -> Vec<DiffHunk>;
 
     /// As [`diff_lines`](DiffHost::diff_lines), diffing `ref_text` against
-    /// `bid`'s live (dirty) in-memory text — avoids materializing the whole
+    /// `bid`'s live (dirty) in-memory text, which avoids materializing the whole
     /// buffer as a Steel string on every debounced call. `None` for an
-    /// unknown/stale `bid` — the single liveness check this call needs
+    /// unknown/stale `bid`, the single liveness check this call needs
     /// (looking up the buffer's text also answers "does it exist"), so the
     /// Steel boundary maps `None` straight to an error rather than checking
     /// liveness a second time first.
@@ -87,7 +87,7 @@ pub trait DiffHost {
     /// Word-level hunks between `old` and `new`, `Equal` runs dropped. The
     /// returned `bool` mirrors `WordDiff::deadline_hit()`: `true` means the
     /// underlying Myers pass could not finish within its deadline and
-    /// returned a coarse (Replace-all) result — unlike line-diff's Myers
+    /// returned a coarse (Replace-all) result. Unlike line-diff's Myers
     /// fallback (still a correct partition), a word-diff timeout result
     /// should be treated as a fallback, not a precise diff (skip word
     /// highlighting, fall back to a whole-line scope).

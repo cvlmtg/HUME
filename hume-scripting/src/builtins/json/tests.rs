@@ -119,7 +119,7 @@ fn json_ref_raises_on_out_of_range_index() {
 #[test]
 fn json_ref_raises_on_wrong_container_kind() {
     let h = handle(json!({"a": [1, 2]}));
-    // "a" is an array — looking up a string key on it is a kind mismatch.
+    // "a" is an array; looking up a string key on it is a kind mismatch.
     let args = call_args(
         h,
         vec![SteelVal::StringV("a".into()), SteelVal::StringV("b".into())],

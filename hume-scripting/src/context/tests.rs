@@ -116,8 +116,8 @@ fn pop_effect_marks_success_commits_marked_range() {
 }
 
 /// Nested marks: A1 (no mark), mark B, B1, mark C, C1/C2, pop(true) commits
-/// C1/C2, B2, pop(false). B's own entries (B1, B2) are dropped but C1/C2 —
-/// already committed by the nested activation that finished inside B —
+/// C1/C2, B2, pop(false). B's own entries (B1, B2) are dropped but C1/C2
+/// (already committed by the nested activation that finished inside B)
 /// survive B's failure, in their original order, alongside untouched A1.
 ///
 /// A plain `self.effects.truncate(mark)` in `pop_effect_marks`'s failure
@@ -133,9 +133,9 @@ fn pop_effect_marks_failure_keeps_committed_entries_in_order() {
         ctx.mark_effects(); // C begins, nested inside B
         ctx.push_effect(Effect::GrammarSweep("c1".into()));
         ctx.push_effect(Effect::GrammarSweep("c2".into()));
-        ctx.pop_effect_marks(true); // C succeeds — commits c1, c2
+        ctx.pop_effect_marks(true); // C succeeds: commits c1, c2
         ctx.push_effect(Effect::GrammarSweep("b2".into()));
-        ctx.pop_effect_marks(false); // B fails — drops b1/b2, keeps c1/c2
+        ctx.pop_effect_marks(false); // B fails: drops b1/b2, keeps c1/c2
     }
     let names: Vec<&str> = h
         .effects

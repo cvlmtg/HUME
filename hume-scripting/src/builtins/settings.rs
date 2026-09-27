@@ -26,9 +26,9 @@ fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<String, Steel
 /// `(set-option! key value)`
 ///
 /// Sets the global setting `key` to `value`. The value may be a Steel string,
-/// boolean, or integer — it is converted to a string and forwarded to the
+/// boolean, or integer. It is converted to a string and forwarded to the
 /// editor's settings layer, which is the single validating chokepoint
-/// (`editor::settings::ops::apply_global`) regardless of caller — so this is
+/// (`editor::settings::ops::apply_global`) regardless of caller, so this is
 /// callable from any context: `init.scm`, plugin load, plugin activation, or
 /// a plain command/hook body. Use `:set buffer …` from the command line, or
 /// `(set-buffer-option! pane key value)` from a script, to override a setting
@@ -50,10 +50,10 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// coercion as `set-option!`). The override persists on the buffer until
 /// overwritten, same as `:set buffer key=value`.
 ///
-/// `key` must not be `"language"` — that lives on the buffer's language
+/// `key` must not be `"language"`: that lives on the buffer's language
 /// identity, not its settings; use `(set-buffer-language! pane lang)` instead.
 ///
-/// Command/hook context only (`cmd` kind) — the idiomatic caller is an
+/// Command/hook context only (`cmd` kind). The idiomatic caller is an
 /// `on-language-set` hook handler, which receives the target buffer id as an
 /// explicit argument rather than relying on `(focused-pane)` (a live read
 /// that may differ from the buffer whose language just changed).
@@ -67,7 +67,7 @@ pub(crate) fn set_buffer_option(
     let value_str = coerce_option_value(&value, "set-buffer-option!")?;
     if key == "language" {
         steel::stop!(Generic =>
-            "set-buffer-option!: .language. is not a setting — use (set-buffer-language! pane lang)");
+            "set-buffer-option!: .language. is not a setting: use (set-buffer-language! pane lang)");
     }
 
     ctx.host
@@ -86,7 +86,7 @@ fn option_value_to_steel(value: OptionValue) -> SteelVal {
     }
 }
 
-/// `(get-option key)` — `key`'s global value, ignoring any buffer override
+/// `(get-option key)`: `key`'s global value, ignoring any buffer override
 /// even if one exists (mirrors `set-option!`, `open` kind: callable from
 /// any context, including `init.scm`). Use `(get-buffer-option pane key)`
 /// for a specific buffer's effective value instead.
@@ -98,13 +98,13 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(get-buffer-option pane key)` — the effective value of `key` for `pane`'s buffer:
+/// `(get-buffer-option pane key)`: the effective value of `key` for `pane`'s buffer:
 /// its buffer override if one is set, else the global default.
 ///
-/// Command/hook context only (`cmd` kind) — the idiomatic caller is an
+/// Command/hook context only (`cmd` kind). The idiomatic caller is an
 /// `on-language-set` hook handler, which receives the target buffer id as an
 /// explicit argument rather than relying on `(focused-pane)` (a live read
-/// that may differ from the buffer whose language just changed) — same
+/// that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
 pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, pane: PaneHandle, key: String) -> SteelResult {
     ctx.host

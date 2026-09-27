@@ -1,20 +1,20 @@
 use hume_engine::pipeline::{BufferId, PaneId};
 use steel::rvals::SteelVal;
 
-/// A buffer paired with the pane it was invoked/observed through, if any —
+/// A buffer paired with the pane it was invoked/observed through, if any:
 /// the value injected everywhere command dispatch, hooks, completion
 /// sources, and `(buffers)`/`(panes)` name a buffer, and the sole argument
 /// shape every buffer-taking builtin decodes.
 ///
 /// `pane` is `None` for a value with no pane of its own (a buffer-level hook
-/// argument, `(buffers)`'s list, `open-buffer!`'s return) — a builtin that
+/// argument, `(buffers)`'s list, `open-buffer!`'s return). A builtin that
 /// needs pane state (selections, viewport, focus) fails fast on `None`
 /// rather than guessing one. A builtin that needs only the buffer
 /// ([`Self::buffer`]) works the same either way.
 ///
 /// Private fields: the only mints are [`Self::with_pane`]/[`Self::buffer_only`],
 /// so a value can't be assembled from a bid and an unrelated pid that never
-/// actually showed it — every mint site already holds both halves together
+/// actually showed it: every mint site already holds both halves together
 /// (`FocusedPane::current`, a completion session's own `pane_id`, a resolved
 /// dispatch target).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,7 +32,7 @@ impl PaneHandle {
         }
     }
 
-    /// A buffer with no pane of its own — see this type's own doc for when
+    /// A buffer with no pane of its own. See this type's own doc for when
     /// that's the right mint.
     pub fn buffer_only(buffer: BufferId) -> Self {
         Self { buffer, pane: None }
@@ -50,7 +50,7 @@ impl PaneHandle {
 /// A Steel command definition built by `define-command!` during init or plugin load.
 ///
 /// Passed immediately to [`crate::host::CommandHost::register_command`] so the
-/// editor can insert a `SteelBacked` entry in its `CommandRegistry` inline — no
+/// editor can insert a `SteelBacked` entry in its `CommandRegistry` inline, with no
 /// deferred second pass after a successful eval.
 #[derive(Debug)]
 pub struct SteelCmdDef {
@@ -67,7 +67,7 @@ pub struct SteelCmdDef {
     /// `true` if pressing `.` should repeat this command.
     ///
     /// Opt in via `#:repeatable #t` in `(define-command! …)`.
-    /// Mutually exclusive with `inline_output` — enforced at definition time.
+    /// Mutually exclusive with `inline_output`, enforced at definition time.
     pub repeatable: bool,
 }
 
@@ -76,18 +76,18 @@ pub struct SteelCmdDef {
 ///
 /// Passed immediately to [`crate::host::CommandHost::register_typed_command`]
 /// so the editor can insert a typed `Command::Typed` entry in its
-/// `CommandRegistry` inline — no deferred second pass after a successful eval.
+/// `CommandRegistry` inline, with no deferred second pass after a successful eval.
 /// No `repeatable` field: dot-repeat is meaningless for a `:` command, so
 /// `define-typed-command!`'s Scheme wrapper declares no `#:repeatable`
 /// keyword to carry one from (an unrecognized `#:key value` pair at the call
 /// site is silently ignored by Steel's keyword-arg lambda syntax, not
-/// rejected — there is no enforcement here beyond the absent keyword).
+/// rejected: there is no enforcement here beyond the absent keyword).
 #[derive(Debug)]
 pub struct SteelTypedCmdDef {
     pub name: String,
     pub doc: String,
     /// Number of required positional parameters the lambda accepts (0, 1, or
-    /// 2 — `(arg)`/`(arg force)`). Introspected once at definition time from
+    /// 2: `(arg)`/`(arg force)`). Introspected once at definition time from
     /// the closure's arity.
     pub arity: u16,
     /// `true` if the lambda accepts a rest parameter (variadic).
@@ -95,7 +95,7 @@ pub struct SteelTypedCmdDef {
     /// `true` if dispatch should bracket this command with an alt-screen exit
     /// so subprocess output streams live to the terminal.
     pub inline_output: bool,
-    /// `#:complete` — the name of the completion source (`register-
+    /// `#:complete`: the name of the completion source (`register-
     /// completion-source!`'s, or a native one such as `"path"`) that
     /// completes this command's `:` argument on Tab. Resolved by name at
     /// completion time, same as a built-in's declared completer.
@@ -121,7 +121,7 @@ pub enum PendingLanguageReg {
 ///
 /// A named struct rather than six fields inlined into the variant *and* six
 /// parameters on [`crate::host::LanguageHost::attach_grammar`], because both
-/// spellings feed the same registry call — an owned struct is what lets the
+/// spellings feed the same registry call. An owned struct is what lets the
 /// init-mode effect and the command-mode host call reach one shared
 /// implementation instead of two adapters that must be kept identical.
 /// `SteelCmdDef` already crosses the host boundary this way.
@@ -143,7 +143,7 @@ pub struct GrammarReg {
 
 /// One `(set-virtual-lines! …)` entry, decoded from its Steel hashmap shape
 /// (`hume-scripting/src/builtins/decorations.rs`'s `virtual_line_specs`),
-/// which only validates shape (arity, types) — `segments` here are
+/// which only validates shape (arity, types): `segments` here are
 /// **caller-supplied and unvalidated** char ranges, not yet sorted,
 /// bounds-checked, or overlap-checked. `DecorationHost::set_virtual_lines`
 /// (the host boundary) is the sole enforcement point: it sorts, validates
@@ -160,7 +160,7 @@ pub struct VirtualLineSpec {
     /// this (or `ui.virtual` if also absent).
     pub scope: Option<String>,
     /// `(char_start, char_end, scope_name)` into `text`, styling only the
-    /// covered chars — unvalidated, see the struct doc. The host boundary
+    /// covered chars (unvalidated, see the struct doc). The host boundary
     /// converts these to the byte offsets `VirtualLineEntry` stores.
     pub segments: Vec<(usize, usize, String)>,
 }
@@ -168,7 +168,7 @@ pub struct VirtualLineSpec {
 /// One `(register-lsp-server! …)` call queued for the end-of-eval drain.
 ///
 /// `init_options`/`settings` are decoded at the Steel boundary via
-/// `crate::json::steel_to_json` — Steel data structures in, real JSON out.
+/// `crate::json::steel_to_json`: Steel data structures in, real JSON out.
 #[derive(Debug)]
 pub struct PendingLspServerReg {
     pub language: String,
@@ -177,7 +177,7 @@ pub struct PendingLspServerReg {
     pub root_markers: Vec<String>,
     pub init_options: Option<serde_json::Value>,
     pub settings: Option<serde_json::Value>,
-    /// `#:env` — extra environment variables applied additively (never
+    /// `#:env`: extra environment variables applied additively (never
     /// clearing the inherited environment) when the server process spawns.
     pub env: Vec<(String, String)>,
 }
@@ -195,12 +195,12 @@ pub enum LspServerTarget {
 
 /// An LSP server registration, unregistration, stop/restart, or status-view
 /// request queued during any eval (init.scm, plugin activation, or a
-/// command/hook body) and applied — in order — by
+/// command/hook body) and applied, in order, by
 /// `Editor::apply_lsp_server_op` as part of `Effect::LspServerOp` application.
 ///
 /// `Stop`/`Restart`/`ShowStatus` ride the same op enum as `Register`/
 /// `Unregister` because they too need `&mut Editor`, which the Steel-eval-time
-/// `EditorHost` impl doesn't hold — a reinstall's `Unregister` then `Register`
+/// `EditorHost` impl doesn't hold. A reinstall's `Unregister` then `Register`
 /// stay ordered because they're both entries in the same [`Effect`] log.
 #[derive(Debug)]
 pub enum PendingLspServerOp {
@@ -211,13 +211,13 @@ pub enum PendingLspServerOp {
     ShowStatus,
 }
 
-/// One entry of `(lsp-server-status)` — mirrors `:lsp-status`'s data
+/// One entry of `(lsp-server-status)`, mirroring `:lsp-status`'s data
 /// (`Editor::lsp_status_text`) in structured form for Steel.
 #[derive(Debug, Clone)]
 pub struct LspServerStatusEntry {
     pub language: String,
     pub root: std::path::PathBuf,
-    /// `LspClient::state`'s `Debug` spelling (`"Running"`, `"Starting"`, …) —
+    /// `LspClient::state`'s `Debug` spelling (`"Running"`, `"Starting"`, …), so
     /// the trait boundary stays free of a `hume-lsp` dependency.
     pub state: String,
     pub pending: usize,
@@ -227,7 +227,7 @@ pub struct LspServerStatusEntry {
 /// queued during a command, hook, or queued-Steel-call eval and sent by
 /// `Editor::send_one_lsp_request` as part of `Effect::LspRequest` application.
 ///
-/// `bid` is resolved to its attached server at that apply-time point —
+/// `bid` is resolved to its attached server at that apply-time point,
 /// never a fallback to live focus, so a response callback that fires a
 /// follow-up request resolves against the buffer the original request was
 /// about, not whatever happens to be focused when the callback runs.
@@ -242,11 +242,11 @@ pub struct PendingLspRequest {
     pub allow_stale: bool,
     /// If `Some(key)`, the bridge cancels the caller's own previous
     /// still-pending request filed under `(server, key)` before sending
-    /// this one — an explicit opt-in, not automatic by method/buffer, so
+    /// this one: an explicit opt-in, not automatic by method/buffer, so
     /// two features issuing the same method concurrently never cancel each
     /// other by accident.
     pub supersede: Option<String>,
-    /// `#:require-focus` — the pane `(lsp-request …)` was called with, if
+    /// `#:require-focus`: the pane `(lsp-request …)` was called with, if
     /// the callback should fire only while it's still the focused pane when
     /// the response arrives (never re-derived from `bid` alone, which would
     /// pass on any pane still showing it rather than the exact pane the
@@ -259,7 +259,7 @@ pub struct PendingLspRequest {
 }
 
 // Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the
-// closure — everything else is real data, still useful in a panic message.
+// closure. Everything else is real data, still useful in a panic message.
 impl std::fmt::Debug for PendingLspRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PendingLspRequest")
@@ -275,7 +275,7 @@ impl std::fmt::Debug for PendingLspRequest {
 }
 
 /// `(lsp-notify bid method params)` calls queued the same way as
-/// [`PendingLspRequest`], minus the callback — notifications get no response.
+/// [`PendingLspRequest`], minus the callback: notifications get no response.
 #[derive(Debug)]
 pub struct PendingLspNotify {
     pub bid: BufferId,
@@ -290,7 +290,7 @@ pub struct SteelCmdResult {
     pub effects: Vec<Effect>,
 }
 
-/// One side effect queued by a Steel builtin during an eval — a mutation
+/// One side effect queued by a Steel builtin during an eval: a mutation
 /// that needs `&mut Editor` state the Steel-eval-time `EditorHost` doesn't
 /// hold, so it's logged instead of applied inline.
 ///
@@ -299,7 +299,7 @@ pub struct SteelCmdResult {
 /// [`super::ScriptingHost::eval_init`], [`super::ScriptingHost::activate_plugin_inline`])
 /// returns the effects it queued, in the exact order Steel builtins pushed
 /// them (`SteelCtx::effects`, backed by the persistent `ScriptingHost::effects`
-/// log). The editor applies them in that same order — a single ordered log,
+/// log). The editor applies them in that same order: a single ordered log,
 /// not five separate channels with a hardcoded apply order.
 #[derive(Debug)]
 pub enum Effect {
@@ -316,13 +316,13 @@ pub enum Effect {
     GrammarSweep(String),
     LspRequest(PendingLspRequest),
     LspNotify(PendingLspNotify),
-    /// `(bind-key! …)` / `(bind-key-extend! …)` — applied via
+    /// `(bind-key! …)` / `(bind-key-extend! …)`: applied via
     /// `Keymap::bind_user_with_extend`.
     ///
     /// Queued rather than applied inline through a host capability so a failed
     /// plugin activation's binds are *never applied*: `pop_effect_marks(false)`
     /// drops them with everything else the failed body queued, so there is no
-    /// ledger to keep and no unbind pass to run — and a bind that would have
+    /// ledger to keep and no unbind pass to run, and a bind that would have
     /// shadowed an existing one leaves it untouched, since nothing was ever
     /// overwritten. Mode and key-sequence validation still fails synchronously
     /// inside the builtin.
@@ -332,7 +332,7 @@ pub enum Effect {
         cmd: String,
         force_extend: bool,
     },
-    /// `(bind-wait-char! …)` — applied via `Keymap::bind_wait_char_user`.
+    /// `(bind-wait-char! …)`: applied via `Keymap::bind_wait_char_user`.
     ///
     /// Separate from [`Effect::BindKey`] rather than a flag on it: a WaitChar
     /// node has no `force_extend` notion, so merging the two would make an
@@ -342,14 +342,14 @@ pub enum Effect {
         keys: Vec<termina::event::KeyEvent>,
         cmd: String,
     },
-    /// `(unbind-key! …)` — applied via `Keymap::unbind_user`. Queued like the
+    /// `(unbind-key! …)`: applied via `Keymap::unbind_user`. Queued like the
     /// three binders above so a same-eval bind-then-unbind on one key applies
     /// in Steel's emission order.
     UnbindKey {
         mode: crate::host::BindMode,
         keys: Vec<termina::event::KeyEvent>,
     },
-    /// `(register-completion-source! …)` — applied into the editor's
+    /// `(register-completion-source! …)`: applied into the editor's
     /// completion source registry. Queued rather than applied inline through
     /// a host capability for exactly [`Effect::BindKey`]'s reason: a failed
     /// plugin activation's registration is never applied, so there is no
@@ -357,13 +357,13 @@ pub enum Effect {
     /// validation (a callable `proc`, a `#:target` that exists) still fails
     /// synchronously inside the builtin.
     RegisterCompletionSource(crate::host::PendingCompletionSource),
-    /// `(completion-set-trigger-chars! source language chars)` — applied
+    /// `(completion-set-trigger-chars! source language chars)`: applied
     /// into the named `Buffer` source's own trigger-char table. Queued
     /// alongside [`Effect::RegisterCompletionSource`] for the same ordering
     /// reason `Effect::UnbindKey` gives for the three binders it follows: a
     /// source registered earlier in the *same* eval must exist by the time
     /// this applies, and `ScriptingHost`'s effects are one ordered queue
-    /// applied in emission order — checking the registry synchronously
+    /// applied in emission order. Checking the registry synchronously
     /// would race a same-eval `register-completion-source!`, which only
     /// takes effect once the whole eval succeeds.
     SetCompletionTriggerChars {
@@ -379,13 +379,13 @@ pub(crate) struct QueuedEffect {
     pub(crate) effect: Effect,
     /// Set by `SteelCtx::pop_effect_marks(true)` when the plugin activation
     /// that queued this effect finishes successfully. Committed effects
-    /// survive an enclosing eval's failure — see `ScriptingHost::take_eval_effects`.
+    /// survive an enclosing eval's failure (see `ScriptingHost::take_eval_effects`).
     pub(crate) committed: bool,
 }
 
 /// A failed eval, carrying effects committed by nested successful plugin
 /// activations (see `QueuedEffect`). Callers MUST apply `effects` (in order)
-/// before reporting `message` — a committed activation's effects are
+/// before reporting `message`: a committed activation's effects are
 /// delivered regardless of the enclosing eval's fate.
 #[derive(Debug)]
 pub struct EvalError {

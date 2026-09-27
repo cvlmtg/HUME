@@ -70,7 +70,7 @@ fn sha256_file_missing_source_is_error() {
 // Round-trip behavior (content, exec bit, zip entries, symlink safety)
 // is covered by `hume-platform`'s own tests against the real system
 // tools; these tests pin the Steel-boundary argument wiring and error
-// propagation only — no sandbox checks (full-trust plugin model).
+// propagation only, no sandbox checks (full-trust plugin model).
 
 #[test]
 fn unpack_gz_missing_src_is_error() {
@@ -109,7 +109,7 @@ fn unpack_zip_missing_src_is_error() {
     );
 }
 
-/// `unpack-zip` shells out to `unzip`/`tar` with inherited stdio — it
+/// `unpack-zip` shells out to `unzip`/`tar` with inherited stdio, so it
 /// must open the inline-output bracket before spawning that tool, even
 /// when the spawn itself then fails (missing src).
 #[test]
@@ -165,7 +165,7 @@ fn acquire_install_lock_replaces_a_stale_lock_with_a_warning() {
     let mut ctx = h.ctx();
     acquire_install_lock(&mut ctx).expect("first acquire");
 
-    // Backdate the lock file's mtime past the 1h staleness threshold —
+    // Backdate the lock file's mtime past the 1h staleness threshold,
     // no real waiting required.
     let lock_path = servers.join(".install-lock");
     let file = OpenOptions::new().write(true).open(&lock_path).unwrap();
@@ -187,7 +187,7 @@ fn acquire_install_lock_replaces_a_stale_lock_with_a_warning() {
 
 /// A lock file with an mtime in the FUTURE (clock skew, or a
 /// networked/synced filesystem racing the write) must never be treated
-/// as stale — `duration_since` errors on a future mtime, and that error
+/// as stale: `duration_since` errors on a future mtime, and that error
 /// must fall on the "live, don't delete" side, not the "unknown age,
 /// assume abandoned" side.
 #[test]
@@ -271,7 +271,7 @@ fn run_inline_output_missing_binary_raises() {
     assert!(err.to_string().contains("definitely-not-a-real-binary-xyz"));
 }
 
-/// The spawned process inherits stdio — the bracket must open before the
+/// The spawned process inherits stdio, so the bracket must open before the
 /// spawn attempt, even when the spawn itself then fails.
 #[test]
 fn run_inline_output_calls_ensure_before_spawn() {

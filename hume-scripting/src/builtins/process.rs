@@ -1,9 +1,9 @@
-//! `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)` — generic
-//! async subprocess execution. `run-capture!` — a blocking counterpart with
+//! `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)`: generic
+//! async subprocess execution. `run-capture!`: a blocking counterpart with
 //! no callback, backing `core:stdlib`'s `stdlib/run`.
 //!
 //! Spawns a command off the main thread and delivers its whole
-//! stdout/stderr/exit-status to `callback` once, at completion —
+//! stdout/stderr/exit-status to `callback` once, at completion.
 //! `hume-platform`'s `process::job` module is the transport; see its module
 //! doc for why this is a one-shot capture rather than the picker's
 //! line-batch streaming (`picker-source-spawn!`).
@@ -17,13 +17,13 @@ use super::SteelResult;
 use super::args::{list_to_strings, optional_path_arg, string_arg, usize_arg};
 use super::errors::require_cap;
 
-/// `(spawn-async! cmd args cwd callback)` — runs `cmd` with `args` (direct
+/// `(spawn-async! cmd args cwd callback)`: runs `cmd` with `args` (direct
 /// argv, no shell) in `cwd` (`#f` = the editor's own cwd), off the main
-/// thread. `callback` fires exactly once — `(stdout stderr exit-code)` —
+/// thread. `callback` fires exactly once, with `(stdout stderr exit-code)`,
 /// once the child exits; never inline, so typing never stalls waiting for
 /// it. Unlike `picker-source-spawn!`, a spawn failure (missing binary, bad
 /// `cwd`) does not raise: `callback` still fires, with empty stdout, a
-/// message naming `cmd` in stderr, and `exit-code` `-1` — the same
+/// message naming `cmd` in stderr, and `exit-code` `-1`: the same
 /// "callback always fires, exactly once" contract as `lsp-request`, so a
 /// plugin never has to handle failure in two places. Returns a job id for
 /// `cancel-async!`.
@@ -49,8 +49,8 @@ pub(crate) fn spawn_async(
 
 /// `(cancel-async! id)` → void. Kills the job's child and drops its
 /// callback without firing it. Idempotent: an already-completed,
-/// already-cancelled, or unknown id — including a spawn failure that
-/// already fired its callback — is a no-op, matching `cancel-timer!`'s
+/// already-cancelled, or unknown id (including a spawn failure that
+/// already fired its callback) is a no-op, matching `cancel-timer!`'s
 /// contract.
 pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
     let id = usize_arg(id, "cancel-async!")? as u64;
@@ -62,11 +62,11 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
 
 /// `(run-capture! cmd args cwd)` → `(stdout stderr exit-code)`. Runs `cmd`
 /// with `args` (direct argv, no shell) in `cwd` (`#f` = the editor's own
-/// cwd), blocking the calling thread until it exits — the small-output,
+/// cwd), blocking the calling thread until it exits: the small-output,
 /// synchronous-with-the-TUI-still-up shape `stdlib/run` is for; use
 /// `spawn-async!` instead for anything that shouldn't stall typing.
 ///
-/// `exit-code` is `#f` — never a sentinel int — for a spawn failure (`cmd`
+/// `exit-code` is `#f` (never a sentinel int) for a spawn failure (`cmd`
 /// not found, bad `cwd`) or a signal-killed child, matching Steel's own
 /// `wait` (`ExitStatus::code()` is `None` in both shapes `run_capture`
 /// collapses into one `Err`, and in the signal-killed shape it returns

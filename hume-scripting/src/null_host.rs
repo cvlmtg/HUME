@@ -1,7 +1,7 @@
-//! [`NullHost`] — a minimal [`EditorHost`] for scripting crate unit tests.
+//! [`NullHost`]: a minimal [`EditorHost`] for scripting crate unit tests.
 //!
 //! Does not depend on any editor types.  Read methods return empty / default
-//! values; **all mutators return `Err`** — so any test that accidentally drives
+//! values; **all mutators return `Err`**, so any test that accidentally drives
 //! a mutating builtin through NullHost fails loudly instead of silently succeeding.
 //!
 //! Suitable only for guard tests (init-guard, activation-state, budget, register
@@ -24,7 +24,7 @@ use crate::host::{
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
-/// Event names `NullHost` reports as known — the names scripting-crate unit
+/// Event names `NullHost` reports as known: the names scripting-crate unit
 /// tests actually register (`on-buffer-open`, `on-buffer-save`), plus one
 /// synthetic name (`on-stub-only`) the editor never defines. That divergence
 /// from the editor's real event set is deliberate: it lets tests prove that
@@ -76,7 +76,7 @@ impl BufferHost for NullHost {
         vec![pane]
     }
     // Read-like, not a mutator: there's no real focus state to check a
-    // `pane` against here, so this permissively passes — the `UiHost`
+    // `pane` against here, so this permissively passes. The `UiHost`
     // openers this backs have no `NullHost` implementation at all (`ui()`
     // returns `None`), so a test exercising the gate itself needs
     // `EditorHostImpl`/`MockHost`, not this stub.
@@ -186,7 +186,7 @@ impl CommandHost for NullHost {
         false
     }
     fn command_is_native(&self, _name: &str) -> Result<bool, String> {
-        // No registry — treat every command as Steel/forward-raw.
+        // No registry: treat every command as Steel/forward-raw.
         Ok(false)
     }
     fn run_command_sync(
@@ -329,7 +329,7 @@ impl CommandHost for FailingRegisterHost {
 }
 
 /// Like [`NullHost`] but reports `is_inline_output_command() == true`, and
-/// counts calls to `ensure_inline_output_screen` — lets a test assert a
+/// counts calls to `ensure_inline_output_screen`. Lets a test assert a
 /// builtin opens the inline-output bracket exactly when (and only when) it
 /// has real terminal output to produce, without a real terminal. Exercises
 /// the `SteelCtx::new_command` wiring that reads the flag off the host (see
@@ -338,7 +338,7 @@ impl CommandHost for FailingRegisterHost {
 pub(crate) struct RecordingInlineOutputHost {
     inner: NullHost,
     /// Backs `is_inline_output_command`. Defaults to `true` (see the manual
-    /// `Default` impl below — `#[derive(Default)]` would default this `false`
+    /// `Default` impl below: `#[derive(Default)]` would default this `false`
     /// and silently close the gate every other test using this host relies
     /// on being open). Set to `false` explicitly by the one test that needs
     /// it isolated from `EvalSession::Init`'s own, independent safety reason.
@@ -390,7 +390,7 @@ impl OutputHost for RecordingInlineOutputHost {
     }
     // This host has no command registry to consult (unlike
     // `is_inline_output_command` above, which is a fixed stance for gate
-    // tests, not a per-command decision) — the `call!`-nesting behavior
+    // tests, not a per-command decision). The `call!`-nesting behavior
     // these two back is exercised against the real `EditorHostImpl`
     // instead (`hume-editor`'s inline-output dispatch tests).
     fn arm_inline_output(&mut self, _name: &str) -> Option<usize> {
@@ -404,7 +404,7 @@ impl OutputHost for RecordingInlineOutputHost {
 /// collision detection without a real editor.
 ///
 /// Distinguishes two kinds of claim, mirroring the editor's registry:
-/// `defined` (a `SteelBacked`/native name — permanent for the test) and `lazy`
+/// `defined` (a `SteelBacked`/native name, permanent for the test) and `lazy`
 /// (a `Lazy` stub's owning plugin, replaceable by that same plugin's own
 /// `define-command!`). `NullHost::register_command`'s "always Ok" behavior
 /// would make every declare-plugin collision test pass vacuously, so this
@@ -440,14 +440,14 @@ impl EditorHost for LazyStubHost {
 
 impl LazyStubHost {
     /// Shared body behind `register_command`/`register_typed_command`: both
-    /// claim `name` in the same `defined` set — the real `CommandRegistry`
+    /// claim `name` in the same `defined` set: the real `CommandRegistry`
     /// keeps mappable and typed names in one namespace, so a name defined as
     /// one kind must collide when re-defined as the other.
     fn register_defined(&mut self, name: String) -> Result<(), String> {
         if self.defined.contains(&name) {
             return Err(format!("'{name}' conflicts with existing command"));
         }
-        // A define overwrites a same-name Lazy stub — mirrors
+        // A define overwrites a same-name Lazy stub, mirroring
         // CommandRegistry::register/register_typed allowing Some(Lazy) | None.
         self.lazy.remove(&name);
         self.defined.insert(name);
@@ -507,12 +507,12 @@ impl CommandHost for LazyStubHost {
     fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
         self.lazy.get(name).cloned()
     }
-    // `lazy` tracks no kind (see the field doc) — this test double can't
+    // `lazy` tracks no kind (see the field doc). This test double can't
     // distinguish a typed-only stub from a mappable one, so it answers the
     // same as `lazy_command_owner`. Fine for every current caller: no
     // `hume-scripting` test dispatches `call!` against a typed-only lazy
-    // stub through this host (that scenario needs the real `EditorHostImpl`
-    // — see `lazy_mappable_command_owner`'s own doc).
+    // stub through this host (that scenario needs the real `EditorHostImpl`;
+    // see `lazy_mappable_command_owner`'s own doc).
     fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId> {
         self.lazy.get(name).cloned()
     }

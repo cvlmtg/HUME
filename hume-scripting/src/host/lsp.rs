@@ -7,9 +7,9 @@ use hume_rope::position_encoding::PositionEncoding;
 
 use crate::types::PaneHandle;
 
-/// LSP server introspection — accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
+/// LSP server introspection, accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
 pub trait LspHost {
-    /// The wire `ServerCapabilities` for `bid`'s attached server — `None` if
+    /// The wire `ServerCapabilities` for `bid`'s attached server, or `None` if
     /// `bid` has none attached, or the server hasn't finished its handshake
     /// yet. `Arc`-wrapped so the `JsonHandle` `(lsp-capabilities …)` hands
     /// Steel shares this allocation instead of a value rebuilt per call.
@@ -23,10 +23,10 @@ pub trait LspHost {
     fn lsp_server_for_buffer(&self, id: BufferId) -> Option<String>;
 
     /// Whether `language` currently has a `register-lsp-server!` config
-    /// (registered, not necessarily attached/running) — used by the
+    /// (registered, not necessarily attached/running). Used by the
     /// `on-language-set` missing-server hint to distinguish "not installed"
     /// from "still starting". Reports state *as of the last completed
-    /// drain* — the `lsp-registered-for-language?` builtin overlays this
+    /// drain*: the `lsp-registered-for-language?` builtin overlays this
     /// with the `Effect::LspServerOp` entries queued this eval/init before
     /// falling back here, so same-eval visibility is handled at the builtin
     /// layer, not this trait method.
@@ -34,7 +34,7 @@ pub trait LspHost {
 
     /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
     /// params for the primary cursor head in `pane`'s own pane, in its
-    /// buffer's attached server's negotiated encoding — `Ok(None)` if the
+    /// buffer's attached server's negotiated encoding. `Ok(None)` if the
     /// buffer has no path or no attached server. `Err` (kind-B fail-fast)
     /// when `pane` carries no pane, a closed one, or one that no longer
     /// shows `pane`'s buffer.
@@ -48,11 +48,11 @@ pub trait LspHost {
         pane: PaneHandle,
     ) -> Result<Option<serde_json::Value>, String>;
 
-    /// `{"textDocument" {"uri"} "ranges" [...]}` — one wire range per
+    /// `{"textDocument" {"uri"} "ranges" [...]}`: one wire range per
     /// *linewise* selection in `pane`'s own pane, coalescing any run of
     /// selections that touch end-to-end into a single range (an LSP range
     /// is naturally contiguous, so a touching run needs no splitting). A
-    /// non-linewise selection is skipped, not an error — `ranges` is simply
+    /// non-linewise selection is skipped, not an error: `ranges` is simply
     /// empty when none of the selections are linewise. `Ok(None)` (as
     /// opposed to an empty `ranges`) only for the same reason
     /// `lsp_primary_range_params` returns `Ok(None)`: no path or no attached
@@ -63,7 +63,7 @@ pub trait LspHost {
     ) -> Result<Option<serde_json::Value>, String>;
 
     /// A [`WirePos`](hume_rope::position_encoding::WirePos) → char offset,
-    /// decoded in `encoding` — backs `lsp-range->offsets`. `encoding` comes
+    /// decoded in `encoding`. Backs `lsp-range->offsets`. `encoding` comes
     /// from the caller's own tagged `JsonHandle` (the response the position
     /// was read out of), not from `id`'s *currently* attached server: the
     /// two can diverge (a restart renegotiates, a detach leaves none), and
@@ -83,7 +83,7 @@ pub trait LspHost {
     /// backs `lsp-position->offset` specifically: refuses (`None`) rather
     /// than clamping when the wire position would land on the buffer's
     /// trailing phantom line, since every point-anchored decoration setter
-    /// (`set-inlay-hints!`) rejects that offset outright — see
+    /// (`set-inlay-hints!`) rejects that offset outright. See
     /// `wire_point_to_char_for_buffer`'s doc for why the two must differ.
     fn lsp_wire_point_to_char(
         &self,
@@ -92,15 +92,15 @@ pub trait LspHost {
         encoding: PositionEncoding,
     ) -> Option<usize>;
 
-    /// Backs `(lsp-label-offsets->text label offsets)` — the `[start, end)`
+    /// Backs `(lsp-label-offsets->text label offsets)`: the `[start, end)`
     /// slice of `label` named by a `ParameterInformation.label` wire offset
     /// pair, in `encoding` (the builtin's own read of `offsets`'s tagged
-    /// producing-server encoding — `offsets` is itself drawn from the same
+    /// producing-server encoding; `offsets` is itself drawn from the same
     /// response `label` came from, via `json-ref`).
     ///
     /// `label` is server-authored display text (a
     /// `SignatureInformation.label`), never document text, so no buffer
-    /// holds it and the other converters here don't fit — this needs no
+    /// holds it and the other converters here don't fit. This needs no
     /// `BufferId` at all, only the encoding.
     fn lsp_label_offsets_to_text(
         &self,
@@ -110,7 +110,7 @@ pub trait LspHost {
         encoding: PositionEncoding,
     ) -> String;
 
-    /// `(lsp-locations->display-parts locs)` — the filesystem path, wire
+    /// `(lsp-locations->display-parts locs)`: the filesystem path, wire
     /// line, and column of each raw `Location`/`LocationLink` handle in
     /// `locs`, decoded through the same `hume_lsp::location::decode_location`
     /// `goto-location!` uses. Backs `lsp/location-display`'s drawer rows:
@@ -119,7 +119,7 @@ pub trait LspHost {
     ///
     /// The column is an exact grapheme column when the target has an open
     /// buffer, `None` when it's an open buffer whose line is out of range,
-    /// and otherwise the location's own wire `character` verbatim — see
+    /// and otherwise the location's own wire `character` verbatim. See
     /// `LocationDisplay`'s `grapheme_col_or_wire` field doc for why that last case
     /// is the one sanctioned exception to "never render a wire unit
     /// directly".
@@ -128,17 +128,17 @@ pub trait LspHost {
     /// from one decode: reading `range.start.line` a second time in Scheme
     /// to render the row prefix is how a row ends up naming a position that
     /// doesn't match the one its column was read from. Each entry's own
-    /// `JsonHandle` carries its own producing-server encoding — same
-    /// rationale `GotoTarget::Wire` uses for the actual jump — so a batch
+    /// `JsonHandle` carries its own producing-server encoding (same
+    /// rationale `GotoTarget::Wire` uses for the actual jump), so a batch
     /// built from locations spanning more than one response decodes each
     /// correctly rather than assuming they share one server.
     ///
-    /// `Err` — aborting the whole batch, not just one row — only for a
+    /// `Err` (aborting the whole batch, not just one row) only for a
     /// location whose shape can't be decoded at all (missing `uri`/`range`,
     /// unparseable URI, or untagged): such a location names no destination
     /// `goto-location!` could reach either, so a drawer row for it would be
     /// unselectable by construction. Degrading only this builtin wouldn't
-    /// help either — the same malformed location would still abort three
+    /// help either: the same malformed location would still abort three
     /// lines later inside `lsp/location-display`, which is why both routes
     /// decode through the one shared `decode_location` instead of
     /// tolerating a bad shape here. See `decode_location`'s doc for the
@@ -149,7 +149,7 @@ pub trait LspHost {
     ) -> Result<Vec<LocationDisplay>, String>;
 }
 
-/// One `lsp-locations->display-parts` result row — see
+/// One `lsp-locations->display-parts` result row. See
 /// [`LspHost::lsp_locations_display_parts`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocationDisplay {
@@ -157,13 +157,13 @@ pub struct LocationDisplay {
     pub path: String,
     /// 0-based wire line, straight from the location's `range.start.line`.
     pub line: usize,
-    /// 0-based column — a grapheme column when the location's target has an
+    /// 0-based column: a grapheme column when the location's target has an
     /// open buffer, `None` when it does and `line` is out of its range,
     /// otherwise the location's own wire `character` verbatim (the display
     /// companion never reads an unopened target's file to refine this
     /// number; see `location_display_parts`'s doc, `hume-editor`, for the
     /// full reasoning and the resulting unit divergence). Named for both
-    /// possible units, not just the common one — see CLAUDE.md's "Line/buffer
+    /// possible units, not just the common one. See CLAUDE.md's "Line/buffer
     /// columns" invariant's one sanctioned exception.
     pub grapheme_col_or_wire: Option<usize>,
 }

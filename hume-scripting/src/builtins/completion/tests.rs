@@ -40,7 +40,7 @@ fn register_with_resolve(
 // ── register-completion-source! ───────────────────────────────────────────
 
 /// A valid call queues one `Effect::RegisterCompletionSource` carrying
-/// every decoded field — nothing is applied inline.
+/// every decoded field; nothing is applied inline.
 #[test]
 fn register_queues_an_effect_with_the_decoded_fields() {
     let mut h = SteelCtxTestHarness::new();
@@ -78,7 +78,7 @@ fn register_decodes_resolve_true_on_a_buffer_source() {
 }
 
 /// `#:resolve #t` on a `'minibuf` source is a caller error, not a silently
-/// dropped claim — only a `'buffer` source's items can ever be a wire item
+/// dropped claim: only a `'buffer` source's items can ever be a wire item
 /// from the buffer's own attached server.
 #[test]
 fn register_rejects_resolve_true_on_a_minibuf_source() {
@@ -136,7 +136,7 @@ fn register_rejects_a_non_callable_proc() {
 }
 
 /// `register-completion-source!` is `config`-gated in `builtins!`'s
-/// registration table — the gate lives in the registration wrapper, so
+/// registration table. The gate lives in the registration wrapper, so
 /// this tests the gate primitive directly, same as `bind-key!`'s tests.
 #[test]
 fn register_is_blocked_in_command_mode() {
@@ -151,7 +151,7 @@ fn register_is_blocked_in_command_mode() {
 
 // ── completion-set-trigger-chars! ─────────────────────────────────────────
 
-/// Queues an `Effect::SetCompletionTriggerChars` with the decoded fields —
+/// Queues an `Effect::SetCompletionTriggerChars` with the decoded fields,
 /// nothing applied inline, same shape as `register-completion-source!`'s
 /// own test above. This is what lets a same-eval
 /// `register-completion-source!` + `completion-set-trigger-chars!` pair

@@ -1,14 +1,14 @@
 // These two tests exercise a `cmd` and a `config` table entry through a
 // real `ScriptingHost` (register_all → Steel dispatch → the wrapper
 // closure's gate call) rather than calling `errors::require_cmd`/
-// `require_config` directly — proving the registration table's kind tags
+// `require_config` directly, proving the registration table's kind tags
 // actually wire a builtin to its gate, which the per-builtin unit tests
 // (calling the gate primitive with the builtin's name as a string) can't
 // catch on their own: a `cmd` entry mistyped as `open` would silently
 // stop gating without failing any of those.
 
-/// A `cmd`-gated builtin (`focused-pane`) called from init.scm — where
-/// `register_all`'s wrapper closure is the only place the gate lives —
+/// A `cmd`-gated builtin (`focused-pane`) called from init.scm (where
+/// `register_all`'s wrapper closure is the only place the gate lives)
 /// must still raise "not available during init".
 #[test]
 fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
@@ -25,7 +25,7 @@ fn cmd_gated_builtin_rejected_from_init_through_real_registration() {
 /// still raise "not from a Steel command body".
 ///
 /// `set-option!` and `configure-statusline!` are `open` (callable from any
-/// context — see `builtins/settings.rs`'s and `builtins/statusline.rs`'s
+/// context; see `builtins/settings.rs`'s and `builtins/statusline.rs`'s
 /// docs), so they can't exercise this rejection path; `bind-key!` is
 /// genuinely `config`-gated.
 #[test]
@@ -45,16 +45,16 @@ fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
 }
 
 /// Every explicit-`bid` builtin declared `args::LivePane` in the `builtins!`
-/// table raises the same "invalid buffer id" wording on a stale `bid` —
+/// table raises the same "invalid buffer id" wording on a stale `bid`,
 /// checked at argument-resolve time (`args::BuiltinArg::resolve`, wired in
 /// by the `builtins!` macro), before the builtin's own body ever runs. A
 /// direct Rust call to the underlying function can't prove this: it skips
 /// the resolve step entirely, so this goes through a real `ScriptingHost`
-/// and Steel dispatch instead — the same real-registration discipline as
+/// and Steel dispatch instead: the same real-registration discipline as
 /// the two gate tests above.
 ///
-/// Each probe passes `(focused-pane)` as `bid` — `NullHost::
-/// buffer_exists` always answers `false`, so it's never live — with just
+/// Each probe passes `(focused-pane)` as `bid` (`NullHost::
+/// buffer_exists` always answers `false`, so it's never live), with just
 /// enough well-formed sibling arguments to reach `bid`'s own resolve.
 ///
 /// A `builtins!` table entry using `args::ArgPane` in place of
@@ -174,7 +174,7 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
     }
 }
 
-/// `(lsp-stop! #f)` / `(lsp-restart! #f)` — there is no "focused buffer"
+/// `(lsp-stop! #f)` / `(lsp-restart! #f)`: there is no "focused buffer"
 /// fallback left to decode `#f` into (`registration.scm`'s typed commands
 /// supply the invoking buffer explicitly instead), so `#f` must raise a
 /// type error through the real dispatch path, the same as passing any other

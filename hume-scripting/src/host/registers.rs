@@ -1,6 +1,6 @@
 //! Register content reads/writes.
 
-/// Register content reads/writes — accessed through [`EditorHost::registers`](super::EditorHost::registers).
+/// Register content reads/writes, accessed through [`EditorHost::registers`](super::EditorHost::registers).
 ///
 /// A register holds one string per selection captured at yank time. Macro
 /// registers (recorded key sequences, not text) are out of scope: there is no

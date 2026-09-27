@@ -1,5 +1,5 @@
 //! `(diff-lines old-text new-text)` / `(diff-buffer-lines pane ref-text)` /
-//! `(diff-words old-text new-text)` — native line and word diff, exposed to
+//! `(diff-words old-text new-text)`: native line and word diff, exposed to
 //! Steel plugins.
 
 use steel::rvals::SteelVal;
@@ -16,7 +16,7 @@ use super::errors::require_cap;
 /// first. Each hunk is `(old-start old-count new-start new-count old-lines
 /// new-lines)`, 0-based; `Equal` runs are dropped. See [`DiffHost`]'s doc
 /// for the exact contract (both texts normalized as buffer content).
-/// `old-count`/`new-count` are `(length old-lines)`/`(length new-lines)` —
+/// `old-count`/`new-count` are `(length old-lines)`/`(length new-lines)`.
 /// [`DiffHunk`] carries no separate count field, so the Steel tuple derives
 /// them at the boundary rather than duplicating state Rust-side.
 ///
@@ -40,7 +40,7 @@ pub(crate) fn diff_buffer_lines(
     let ref_text = string_arg(ref_text, "diff-buffer-lines ref-text")?;
     // `bid`'s liveness is already checked at decode time (`LivePane`), so
     // `DiffHost::diff_buffer_lines` returning `None` here would mean the
-    // host answered inconsistently with `buffer_exists` — never observed,
+    // host answered inconsistently with `buffer_exists`. Never observed,
     // but the trait still returns `Option`, so it's handled rather than
     // assumed.
     let hunks = require_cap(ctx.host.diff(), "diff-buffer-lines")?
@@ -69,7 +69,7 @@ fn hunk_to_steel(hunk: DiffHunk) -> SteelVal {
 /// `(diff-words old-text new-text)` → `(hunks . deadline-hit?)`. `hunks` is
 /// a list of `(old-start old-end new-start new-end old-text new-text)`
 /// tuples, char offsets, `Equal` runs dropped. `deadline-hit?` is `#t` when
-/// the underlying Myers pass timed out and returned a coarse result — see
+/// the underlying Myers pass timed out and returned a coarse result. See
 /// [`DiffHost::diff_words`]'s doc for how a caller should react.
 ///
 /// [`DiffHost::diff_words`]: crate::host::DiffHost::diff_words

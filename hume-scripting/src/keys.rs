@@ -121,7 +121,7 @@ fn parse_key_code(key_name: &str) -> Result<KeyCode, String> {
         return Ok(KeyCode::Function(n));
     }
 
-    // Single Unicode character — must be exactly one char.
+    // Single Unicode character: must be exactly one char.
     let mut chars = key_name.chars();
     let Some(ch) = chars.next() else {
         return Err("key name is empty after modifiers".to_string());
@@ -173,7 +173,7 @@ pub fn parse_key_stream(s: &str) -> Result<Vec<KeyEvent>, String> {
             keys.push(parse_single_key(inner)?);
             i = start + close + 1; // advance past '>'
         } else {
-            // Literal character — may be multi-byte UTF-8.
+            // Literal character: may be multi-byte UTF-8.
             let ch = s[i..]
                 .chars()
                 .next()

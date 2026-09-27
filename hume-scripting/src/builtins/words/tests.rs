@@ -73,7 +73,7 @@ fn raises_on_non_string_word_chars_argument() {
 /// `word-chars` containing a whitespace character `classify_char` doesn't
 /// recognize as `Space` (form feed, not one of the four it special-cases)
 /// would silently promote it to `Word` via `WordChars::classify`'s
-/// `Punctuation`-only match arm, breaking every run's termination — this
+/// `Punctuation`-only match arm, breaking every run's termination. This
 /// must raise instead, same as the settings layer's own `word-chars`
 /// validation does at `:set`/`set-option!` time.
 #[test]

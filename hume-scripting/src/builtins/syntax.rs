@@ -8,7 +8,7 @@ use super::SteelResult;
 use super::args::{list_to_strings, optional_path_arg, optional_string_arg, path_arg, string_arg};
 use super::errors::generic_err;
 
-/// `(%define-language! name extensions globs shebangs lsp-language-id)` — init-only.
+/// `(%define-language! name extensions globs shebangs lsp-language-id)`: init-only.
 ///
 /// All three list args must be lists of strings; `lsp-language-id` is a
 /// string or `#f`. Pushes an `Effect::LanguageReg(PendingLanguageReg::Identity)`;
@@ -43,7 +43,7 @@ pub(crate) fn define_language(
 }
 
 /// `(%register-grammar! name grammar-path symbol highlights-path injections-path
-/// textobjects-path)` — init or command. `injections-path` and
+/// textobjects-path)`: init or command. `injections-path` and
 /// `textobjects-path` are each a string or `#f`; the Scheme-side
 /// `register-grammar!` wrapper (`prelude.scm`) supplies `#f` for either
 /// keyword the caller omits.
@@ -77,7 +77,7 @@ pub(crate) fn register_grammar(
         return Ok(SteelVal::Void);
     }
 
-    // Command mode — attach immediately via host and trigger a buffer sweep.
+    // Command mode: attach immediately via host and trigger a buffer sweep.
     // The host (`EditorHostImpl::attach_grammar`) owns the `register-grammar! '<name>':`
     // prefix; just lift its String error into a SteelErr without re-prefixing.
     ctx.host
@@ -88,7 +88,7 @@ pub(crate) fn register_grammar(
     Ok(SteelVal::Void)
 }
 
-/// `(language-has-grammar? name)` — returns `#t` if `name` has an attached grammar.
+/// `(language-has-grammar? name)` returns `#t` if `name` has an attached grammar.
 pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelResult {
     let name = string_arg(name, "language-has-grammar?")?;
     Ok(SteelVal::BoolV(ctx.host.language().has_grammar(&name)))

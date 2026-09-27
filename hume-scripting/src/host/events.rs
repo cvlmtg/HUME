@@ -1,6 +1,6 @@
 //! Event-name introspection.
 
-/// Event-name introspection — accessed through [`EditorHost::events`](super::EditorHost::events).
+/// Event-name introspection, accessed through [`EditorHost::events`](super::EditorHost::events).
 ///
 /// The name-based boundary this crate is built on: `hume-scripting` has no
 /// compiled-in knowledge of which event names exist (that's the editor's

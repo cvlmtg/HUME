@@ -5,7 +5,7 @@
 //! in registration order inside a single `with_mut_reference` session.
 //!
 //! Name-keyed, not enum-keyed: this crate has no compiled-in knowledge of
-//! which event names exist — that's `hume-editor`'s `EditorEvent`, reached
+//! which event names exist. That's `hume-editor`'s `EditorEvent`, reached
 //! only through `EditorHost::events().known_event_names()` for validation.
 //! See `builtins::hooks::register_hook` and `builtins::plugins::declare_plugin`.
 
@@ -17,9 +17,9 @@ use crate::attribution::PluginId;
 
 // ── HookRegistry ──────────────────────────────────────────────────────────────
 
-/// A single hook handler plus the plugin whose body registered it (`None` —
+/// A single hook handler plus the plugin whose body registered it (`None`:
 /// top-level `init.scm`/user config, never rolled back). The owner drives
-/// per-plugin rollback when a plugin activation fails — see `remove_owned_by`.
+/// per-plugin rollback when a plugin activation fails; see `remove_owned_by`.
 #[derive(Debug)]
 pub(crate) struct HookEntry {
     pub(crate) owner: Option<PluginId>,
@@ -51,7 +51,7 @@ impl HookRegistry {
         self.handlers.get(name).is_none_or(Vec::is_empty)
     }
 
-    /// Remove every handler owned by `owner`, across all hook names — called
+    /// Remove every handler owned by `owner`, across all hook names. Called
     /// by `finish_lazy_activation` on activation failure so a `Failed`
     /// plugin's hooks stop firing. Entries with `owner: None` (top-level) are
     /// never matched.

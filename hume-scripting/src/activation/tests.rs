@@ -95,7 +95,7 @@ fn syntax_error_transitions_to_failed() {
 }
 
 /// A failed plugin body's log message names the plugin and points at the
-/// exact file, line, and column of the failing reference — not just
+/// exact file, line, and column of the failing reference, not just
 /// `init.scm`, the file that happened to `load-plugin` it.
 /// `describe_steel_error` resolves the error's span against the engine's own
 /// `Sources`. Without that, the message would read bare
@@ -142,7 +142,7 @@ fn failed_activation_message_names_plugin_and_location() {
     );
     assert!(
         msg.contains(":2:2"),
-        "must point at line 2, column 2 — where the bad identifier starts; got: {msg}"
+        "must point at line 2, column 2, where the bad identifier starts; got: {msg}"
     );
     assert!(
         msg.contains("call-does-not-exist"),
@@ -263,12 +263,12 @@ fn path_with_quote_char_transitions_to_failed() {
 // ── Stage B: eval-string plumbing ─────────────────────────────────────────
 
 /// A `define-command!` issued via `eval-string` inside a `run_steel` session
-/// registers the command in `command_table` — proving that the nested eval-string
+/// registers the command in `command_table`, proving that the nested eval-string
 /// sees the same `ctx.registries` as the outer eval.
 #[test]
 fn eval_string_nested_registers_command_in_command_table() {
     let mut host = ScriptingHost::new();
-    // Eval a snippet that eval-strings a define-command! — the outer eval is
+    // Eval a snippet that eval-strings a define-command!. The outer eval is
     // in EvalMode::Init, which allows define-command!.
     let program = r#"
 (hm.eval-string "(define-command! \"inner-cmd\" \"doc\" (lambda () 0))")
@@ -308,7 +308,7 @@ fn begin_lazy_activation_declared_returns_require_string() {
         ),
         "Declared plugin must be Loading after %begin-lazy-activation"
     );
-    // plugin_stack must have grown by one — begin pushed the id.
+    // plugin_stack must have grown by one: begin pushed the id.
     assert_eq!(
         host.plugin_stack_depth_for_test(),
         1,
@@ -327,7 +327,7 @@ fn begin_lazy_activation_loading_returns_false() {
         .insert(id.clone(), PluginState::Loading);
 
     // The result `#f` means the (when prog ...) in %activate-plugin-inline
-    // does nothing — activation is a no-op.
+    // does nothing: activation is a no-op.
     let program = r#"
 (define result (%begin-lazy-activation "core:cycling"))
 (when result (error "cycle guard must return #f!"))
@@ -376,7 +376,7 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
 /// `%finish-lazy-activation` with `error` bound to a caught exception value
 /// transitions to `Failed`. `(with-handler (lambda (e) e) (error …))` is the
 /// idiomatic way to get that exact value in hand outside an actual
-/// `with-handler`-wrapped activation body — Steel hands the raised
+/// `with-handler`-wrapped activation body. Steel hands the raised
 /// `SteelErr`'s `into_steelval()` form to the handler lambda, which here
 /// just returns it.
 #[test]
@@ -408,7 +408,7 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
 
 /// A plugin body that defines one command and then errors: the plugin
 /// transitions to `Failed` and `finish_lazy_activation` rolls back the
-/// partial `define-command!` — removing it from `command_table` and
+/// partial `define-command!`, removing it from `command_table` and
 /// `cmd_owners`.  A `Failed` plugin must not leave callable orphan commands.
 #[test]
 fn partial_define_before_failure_is_rolled_back() {
@@ -439,7 +439,7 @@ fn partial_define_before_failure_is_rolled_back() {
         ),
         "plugin must be Failed after mid-body error"
     );
-    // The partial define must be rolled back — no callable orphan left behind.
+    // The partial define must be rolled back: no callable orphan left behind.
     assert!(
         !host.registries.command_table.contains_key("partial-cmd"),
         "partial define-command! must be removed from command_table on failure"
@@ -490,7 +490,7 @@ fn queued_effects_before_failure_are_rolled_back() {
 /// A command dispatched via `call_steel_cmd` `call!`s a lazy command owned
 /// by plugin B; B activates inline mid-body and finishes successfully
 /// (queuing `register-lsp-server!` and committing `Loaded`), then the
-/// outer command errors afterward. B's committed effect must survive —
+/// outer command errors afterward. B's committed effect must survive:
 /// discarding it while B stays permanently `Loaded` would mean its LSP
 /// server never registers (activation is one-shot). Effects the outer
 /// command itself queued, before and after the nested activation, must
@@ -562,7 +562,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
             host.registries.lazy_registry.plugins.get(&id_b),
             Some(PluginState::Loaded)
         ),
-        "B must be Loaded — its activation succeeded before A's own failure"
+        "B must be Loaded: its activation succeeded before A's own failure"
     );
     assert!(
         host.effects_for_test().is_empty(),
@@ -572,7 +572,7 @@ fn committed_activation_effects_survive_failed_outer_command() {
 
 /// One level deeper: plugin C activates successfully inside plugin B's
 /// body (via `call!` to a command C owns), and B then fails. C's
-/// committed `register-lsp-server!` must survive B's own rollback — C is
+/// committed `register-lsp-server!` must survive B's own rollback. C is
 /// `Loaded` and its effect is irreversible-by-omission, same reasoning as
 /// the outer-command case above, but exercised through nested
 /// `pop_effect_marks` calls instead of `take_eval_effects` alone. B's own
@@ -644,11 +644,11 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
             host.registries.lazy_registry.plugins.get(&id_c),
             Some(PluginState::Loaded)
         ),
-        "C must be Loaded — its activation succeeded before B's own failure"
+        "C must be Loaded: its activation succeeded before B's own failure"
     );
     assert!(
         host.registries.command_table.contains_key("c-cmd"),
-        "C's command must remain registered — C is Loaded, not rolled back"
+        "C's command must remain registered: C is Loaded, not rolled back"
     );
     assert!(
         host.effects_for_test().is_empty(),
@@ -668,7 +668,7 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
 // ── Hook rollback on activation failure ───────────────────────────────────
 
 /// A plugin body that registers a hook and then errors: the hook must not
-/// survive — a `Failed` plugin's hooks must stop firing.
+/// survive: a `Failed` plugin's hooks must stop firing.
 ///
 /// `finish_lazy_activation` drops the hook through
 /// `HookRegistry::remove_owned_by`.
@@ -709,7 +709,7 @@ fn hook_registered_before_failure_is_rolled_back() {
 
 /// One level deeper: plugin C registers a hook and activates successfully
 /// inside plugin B's body, and B then fails afterward. C's hook must
-/// survive B's rollback — rollback is by owner identity, not by eval-scoped
+/// survive B's rollback. Rollback is by owner identity, not by eval-scoped
 /// position, so B's failure can never touch C's entries.
 #[test]
 fn nested_activation_hook_survives_enclosing_plugin_failure() {
@@ -765,11 +765,11 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
             host.registries.lazy_registry.plugins.get(&id_c),
             Some(PluginState::Loaded)
         ),
-        "C must be Loaded — its activation succeeded before B's own failure"
+        "C must be Loaded: its activation succeeded before B's own failure"
     );
     assert!(
         host.has_hook_handlers("on-buffer-save"),
-        "C's hook must survive B's failure — rollback is scoped to B's own id"
+        "C's hook must survive B's failure: rollback is scoped to B's own id"
     );
 }
 
@@ -802,7 +802,7 @@ fn lazy_plugin_can_define_its_own_activation_command() {
         .insert(id.clone(), PluginState::Declared { path });
 
     // Simulate declare-plugin having claimed self-act-cmd as the
-    // activation entry — now tracked in the editor's registry (here,
+    // activation entry, now tracked in the editor's registry (here,
     // the stateful test host), not a scripting-crate map.
     let mut editor_host = LazyStubHost::default();
     editor_host
@@ -832,9 +832,9 @@ fn lazy_plugin_can_define_its_own_activation_command() {
 // ── Interrupt during activation aborts the enclosing eval ─────────────────
 
 /// A's body raises via `(hume/yield!)` while the interrupt flag is already
-/// set (a real budget exhaustion sets this flag the same way — see
+/// set (a real budget exhaustion sets this flag the same way; see
 /// `EvalWatchdog`): A's own activation is contained exactly as any other
-/// body error (Failed, rolled back), but the interrupt itself must not be —
+/// body error (Failed, rolled back), but the interrupt itself must not be:
 /// it must abort the whole eval before B ever loads. Without that,
 /// `%dispatch-command`'s later `(load-plugin "core:b")` would run past an
 /// exhausted budget, and B would falsely be blamed as "failed to load" for
@@ -897,7 +897,7 @@ fn interrupt_during_activation_aborts_before_next_plugin_loads() {
 /// A lazy plugin's command is `call!`ed (e.g. from another plugin's body);
 /// activation runs inline, fails, and is contained. `%dispatch-command`
 /// must not then fall through to `%call-native!` and silently return `#f`
-/// as if the name were simply unknown — the plugin failed, and the caller
+/// as if the name were simply unknown. The plugin failed, and the caller
 /// needs to know that, not receive a value indistinguishable from success.
 ///
 /// The `%lazy-command-owner` check after a failed inline activation is what
@@ -938,7 +938,7 @@ fn call_of_command_owned_by_newly_failed_plugin_errors() {
 /// `manifest.scm` successfully declares itself with `#:commands` (a real,
 /// direct `%declare-plugin!` call, not the zero-trigger path) and then a
 /// later top-level form in the same file raises. The plugin must end up
-/// `Failed` with no live command stub — not left half-`Declared` with a
+/// `Failed` with no live command stub, not left half-`Declared` with a
 /// callable stub for a plugin whose manifest never finished evaluating.
 ///
 /// `finish_manifest_declare`'s error branch performs that rollback to
@@ -952,7 +952,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     let plugin_dir = dir.path().join("plugins").join("user").join("selfdecl");
     std::fs::create_dir_all(&plugin_dir).unwrap();
     // The full (non-zero-trigger) `declare-plugin` inside manifest.scm only
-    // registers `Declared` state once `plugin.scm` resolves on disk — absent,
+    // registers `Declared` state once `plugin.scm` resolves on disk. Absent,
     // it soft-logs and no-ops, which would make this test pass for the wrong
     // reason (never-declared, not rolled-back-after-declared).
     std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
@@ -996,12 +996,12 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
 
 /// `(%finish-lazy-activation id garbage)` where `garbage` decodes as
 /// neither `#f` nor a caught error value: the plugin stack and the
-/// activation-effect marks must still be popped and balanced — a decode
+/// activation-effect marks must still be popped and balanced: a decode
 /// failure must become the failure *reason*, not skip the bookkeeping that
 /// every other failure path performs. `%begin-lazy-activation` and a queued
 /// `register-lsp-server!` run first in the same eval, since
 /// `activation_effect_marks` is per-eval transient state (rebuilt fresh in
-/// every `SteelCtx`) — only observable by whether its own effect survives.
+/// every `SteelCtx`), only observable by whether its own effect survives.
 ///
 /// Decoding `error` must not short-circuit ahead of `plugin_stack.pop()` and
 /// `pop_effect_marks`. If it did, the stack would stay at depth 1 and the
@@ -1032,7 +1032,7 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
     );
     assert!(
         host.effects_for_test().is_empty(),
-        "the queued register-lsp-server! must be rolled back — the activation-effect \
+        "the queued register-lsp-server! must be rolled back: the activation-effect \
          mark must be popped even when the error value fails to decode"
     );
     assert!(

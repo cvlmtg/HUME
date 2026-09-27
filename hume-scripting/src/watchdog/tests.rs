@@ -24,7 +24,7 @@ fn expiry_sets_flag() {
 fn cancel_prevents_flag() {
     let flag = Arc::new(AtomicBool::new(false));
     let dog = EvalWatchdog::new();
-    // Use a 30-second budget — the watchdog must not fire before cancel().
+    // Use a 30-second budget: the watchdog must not fire before cancel().
     dog.arm(Arc::clone(&flag), Duration::from_secs(30));
     dog.cancel(); // synchronous: the thread is disarmed when this returns
     assert!(
@@ -34,7 +34,7 @@ fn cancel_prevents_flag() {
 }
 
 /// An unpaired second `arm` (no `cancel` in between) must be caught by the
-/// caller-side `debug_assert` in `arm` itself — on the test's own thread —
+/// caller-side `debug_assert` in `arm` itself, on the test's own thread,
 /// rather than silently recovering inside the detached watchdog thread.
 ///
 /// If the assert lived in `watchdog_loop`, it would run on the detached
@@ -46,7 +46,7 @@ fn unpaired_arm_is_caught_on_callers_thread() {
     let flag = Arc::new(AtomicBool::new(false));
     let dog = EvalWatchdog::new();
     dog.arm(Arc::clone(&flag), Duration::from_secs(30));
-    dog.arm(flag, Duration::from_secs(30)); // missing cancel() — must panic here
+    dog.arm(flag, Duration::from_secs(30)); // missing cancel(): must panic here
 }
 
 /// The persistent thread survives an arm/cancel cycle and fires on a

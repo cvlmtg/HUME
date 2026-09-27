@@ -4,7 +4,7 @@
 //! [`super::SteelCtx`] during every eval.  It tracks each plugin's lifecycle
 //! state and the two activation maps consulted by event firing and
 //! language-set to activate lazy plugins on demand.  Command activation
-//! routing is *not* tracked here — the editor's `CommandRegistry` is the sole
+//! routing is *not* tracked here: the editor's `CommandRegistry` is the sole
 //! owner of `Lazy` command stubs (see `CommandHost::register_lazy_command`),
 //! reached through the host rather than a parallel map.
 
@@ -52,7 +52,7 @@ impl LazyRegistry {
     ///
     /// Command activation entries are registered separately, directly in the
     /// editor's `CommandRegistry` via `CommandHost::register_lazy_command`
-    /// (see `declare_plugin` in `builtins/plugins.rs`) — this method only
+    /// (see `declare_plugin` in `builtins/plugins.rs`); this method only
     /// records plugin lifecycle state and the event/language activation maps.
     ///
     /// - Duplicate `id` (case-insensitive) → no-op (first declaration wins).
@@ -68,10 +68,10 @@ impl LazyRegistry {
         languages: Vec<String>,
     ) {
         if self.plugins.contains_key(&id) {
-            return; // already declared — duplicate declare-plugin call, ignore
+            return; // already declared: duplicate declare-plugin call, ignore
         }
         let Some(path) = path else {
-            return; // absent on disk — silently skip, no activation entries
+            return; // absent on disk: silently skip, no activation entries
         };
         self.plugins
             .insert(id.clone(), PluginState::Declared { path });
@@ -112,12 +112,12 @@ impl LazyRegistry {
     ///
     /// Rows are sorted by plugin id for stable output.  For plugins still in
     /// the `Declared` state (not yet loaded), the pending activation entries are
-    /// read from the live maps — exactly the entries the plugin is still waiting
+    /// read from the live maps, exactly the entries the plugin is still waiting
     /// on.  Once a plugin loads or fails, `finish_lazy_activation` drops its
     /// entries from the maps, so `Loaded`/`Failed` rows show no activations.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
-    /// plugin, `is_typed`) — the sole source of pending command activations;
+    /// plugin, `is_typed`), the sole source of pending command activations;
     /// this registry does not track them itself.
     ///
     /// Returns `""` if no plugins are declared; the caller reports "No plugins
@@ -150,7 +150,7 @@ impl LazyRegistry {
         rows.sort_by(|a, b| a.0.cmp(&b.0));
 
         // Padded by display width, not `str::len`/Rust's own `{:<w$}` (both
-        // count chars/bytes, not terminal cells) — this table becomes buffer
+        // count chars/bytes, not terminal cells). This table becomes buffer
         // content in a read-only view, rendered through the normal
         // grapheme-width-aware pipeline, so its own padding must agree with
         // that pipeline's unit.
@@ -183,13 +183,13 @@ impl LazyRegistry {
     /// Invert the live activation maps (plus the caller-supplied `Lazy`-stub
     /// list) to collect the pending entries for `id`.
     ///
-    /// Only meaningful for `Declared` plugins — on load/fail
+    /// Only meaningful for `Declared` plugins: on load/fail
     /// `finish_lazy_activation` drops the plugin's entries, so a non-`Declared`
     /// id yields nothing.
     fn pending_activations(&self, id: &PluginId, lazy_cmds: &[(String, PluginId, bool)]) -> String {
         let mut parts = Vec::new();
 
-        // Split by kind — `cmd:` names are reachable once bound to a key,
+        // Split by kind: `cmd:` names are reachable once bound to a key,
         // `:cmd:` names only from `:`; a flat list couldn't tell the user
         // which a still-`Declared` plugin's pending name would turn out to be.
         let mut cmds: Vec<&str> = lazy_cmds
@@ -244,7 +244,7 @@ impl LazyRegistry {
     }
 }
 
-/// Right-pad `s` with spaces to `width` display columns — [`format_status`]'s
+/// Right-pad `s` with spaces to `width` display columns: [`format_status`]'s
 /// own padding, since Rust's `{:<w$}` measures by char count, not
 /// `hume_rope::width`, the unit the buffer view this table becomes will
 /// actually render it in.

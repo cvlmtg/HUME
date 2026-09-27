@@ -15,8 +15,8 @@
 //! - Lazy keypress dispatch: `%dispatch-command` activates the owner inline on a
 //!   `command_table` miss, then retries.
 //! - Event/language activations: `activate_plugin_inline` (Rust) bounces into
-//!   `(%activate-plugin-inline id)` via `run_steel_call` — a direct function
-//!   call, not source — using the `ScriptingHost`'s one persistent watchdog.
+//!   `(%activate-plugin-inline id)` via `run_steel_call` (a direct function
+//!   call, not source), using the `ScriptingHost`'s one persistent watchdog.
 
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
@@ -39,16 +39,16 @@ use crate::watchdog::EvalWatchdog;
 /// Arm the watchdog, run `body` against `steel` with `ctx` visible as
 /// `*hume.ctx*`, then cancel the watchdog, reset the interrupt flag, and
 /// truncate any unrestored inline-output frame back to zero
-/// (`OutputHost::truncate_inline_output`) — the backstop for a `call!`-armed
+/// (`OutputHost::truncate_inline_output`): the backstop for a `call!`-armed
 /// bracket (`bootstrap.scm`'s `%apply-command`) whose body raised before
 /// reaching its matching restore; see that function's own comment in
 /// `builtins/mod.rs`'s BOOTSTRAP block for why it isn't paired via
 /// `with-handler` instead. A no-op whenever every arm this session was
-/// already paired — the common case.
+/// already paired, the common case.
 ///
 /// Shared by `eval_source_raw` (compiles a source program), `call_steel_cmd` /
 /// `fire_hook` / `activate_plugin_inline` (direct function calls) so the
-/// arm / eval / cancel / reset / truncate ceremony lives in one place — the
+/// arm / eval / cancel / reset / truncate ceremony lives in one place: the
 /// one boundary every Steel entry point passes through regardless of
 /// outcome.
 pub(crate) fn run_steel_session<'a, R>(
@@ -63,8 +63,8 @@ pub(crate) fn run_steel_session<'a, R>(
         std::time::Duration::from_millis(budget_ms),
     );
     // Bound to a `let` (rather than chained straight onto `.map`/`.map_err`)
-    // so the `LifetimeGuard` `with_mut_reference` returns is fully dropped —
-    // ending its exclusive borrow of `steel` — before `describe_steel_error`
+    // so the `LifetimeGuard` `with_mut_reference` returns is fully dropped
+    // (ending its exclusive borrow of `steel`) before `describe_steel_error`
     // below needs `steel` back for an immutable read.
     let raw_result: Result<R, SteelErr> = steel
         .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(ctx)
@@ -90,7 +90,7 @@ pub(crate) fn run_steel_session<'a, R>(
 
     // A plugin activation contained mid-session (see `finish_lazy_activation`/
     // `finish_manifest_declare` in `builtins/plugins.rs`) never surfaces as
-    // this session's own `Err` — it's reported here instead, once per
+    // this session's own `Err`. It's reported here instead, once per
     // failure, through the same `pending_messages` sink every other `log!`
     // and soft-error uses, so it reaches the user via the ordinary message
     // pipeline regardless of which entry point (`init.scm`, a command body, a
@@ -116,7 +116,7 @@ pub(crate) fn run_steel_session<'a, R>(
 /// raised when the step budget is exceeded) rather than an ordinary Steel
 /// error (a raised exception, a stale-buffer `LivePane` raise, an arity
 /// mismatch). `interrupted` is read off `ctx.interrupt_flag` before this
-/// session resets it — a caller that only wants the message (most of them)
+/// session resets it. A caller that only wants the message (most of them)
 /// reads `.message` and ignores it; [`crate::ScriptingHost::run_steel_calls`]
 /// is the one caller that needs to know which.
 pub(crate) struct SessionError {
@@ -124,7 +124,7 @@ pub(crate) struct SessionError {
     pub(crate) interrupted: bool,
 }
 
-/// Render a `SteelErr` with its source location when one is available —
+/// Render a `SteelErr` with its source location when one is available,
 /// resolving the error's span against the engine's own `Sources` map (every
 /// `(require "<path>")`'d file, including a plugin's `plugin.scm`/
 /// `manifest.scm`, is registered there by Steel's module loader) and
@@ -132,7 +132,7 @@ pub(crate) struct SessionError {
 /// renderer Steel's own top-level error reporting uses.
 ///
 /// Deliberately not `Engine::raise_error_to_string`: that also walks the
-/// live call stack and prepends a `note:` block per frame — useful for a
+/// live call stack and prepends a `note:` block per frame. That is useful for a
 /// script author debugging their own Steel code interactively, but here the
 /// frames are `bootstrap.scm`'s own activation plumbing (an empty file name,
 /// since it's compiled from a string, not a real path) and Steel's
@@ -154,7 +154,7 @@ fn describe_steel_error(steel: &Engine, err: &SteelErr) -> String {
     .unwrap_or_else(|| err.to_string())
 }
 
-/// [`run_steel_session`] with a source-program body — parse + compile + run.
+/// [`run_steel_session`] with a source-program body: parse + compile + run.
 ///
 /// Only for genuinely dynamic source (init.scm, test snippets).  Fixed-shape
 /// invocations use [`run_steel_call`], which skips the compiler entirely.
@@ -173,7 +173,7 @@ pub(crate) fn run_steel<'a>(
 
 /// [`run_steel_session`] with a direct function-call body.
 ///
-/// Calls the global Steel function `fn_name` with `args` — no source string,
+/// Calls the global Steel function `fn_name` with `args`: no source string,
 /// no compilation, and no way for a hostile name or argument to alter program
 /// structure (args are passed as values, never spliced into source).
 pub(crate) fn run_steel_call<'a>(
@@ -190,7 +190,7 @@ pub(crate) fn run_steel_call<'a>(
     .map_err(|e| e.message)
 }
 
-// ── ScriptingHost — activation impl ──────────────────────────────────────────
+// ── ScriptingHost: activation impl ───────────────────────────────────────────
 
 impl ScriptingHost {
     /// Core eval machinery used by [`ScriptingHost::eval_init`].
@@ -202,7 +202,7 @@ impl ScriptingHost {
     /// directly into the editor's `CommandRegistry` via `host.register_command`.
     ///
     /// Returns the effects this eval queued (atomically on success; on error,
-    /// only effects committed by a nested successful plugin activation — see
+    /// only effects committed by a nested successful plugin activation; see
     /// `ScriptingHost::take_eval_effects`).
     pub(crate) fn eval_source_raw(
         &mut self,
@@ -229,14 +229,14 @@ impl ScriptingHost {
     /// inside the body register directly into `host.register_command` inline.
     ///
     /// Returns the activating body's queued effects (`register-lsp-server!`,
-    /// `set-buffer-language!`, etc.) so the caller can apply them immediately —
-    /// otherwise they'd sit unapplied until some unrelated later drain, which can
+    /// `set-buffer-language!`, etc.) so the caller can apply them immediately.
+    /// Otherwise they'd sit unapplied until some unrelated later drain, which can
     /// skip attaching the very buffer that triggered this activation.
     ///
     /// A failed activation's own effects are already rolled back by the
     /// BOOTSTRAP `%activate-plugin-inline` wrapper's `%begin-lazy-activation`/
     /// `%finish-lazy-activation` mark/pop (`ctx.pop_effect_marks`) before the
-    /// error reaches here — except any effects committed by a nested
+    /// error reaches here, except any effects committed by a nested
     /// successful plugin activation, which `pop_effect_marks` keeps and which
     /// `take_eval_effects` salvages onto the returned `EvalError`.
     pub fn activate_plugin_inline(

@@ -18,11 +18,11 @@ use super::SteelResult;
 use super::args::list_to_strings;
 use super::errors::generic_err;
 
-/// `(configure-statusline! left center right)` — configure the three sections
+/// `(configure-statusline! left center right)`: configure the three sections
 /// of the statusline.
 ///
 /// Each argument is a Steel list of element-name strings.  Pass `'()` for an
-/// empty section.  The new config takes effect immediately — the next rendered
+/// empty section.  The new config takes effect immediately: the next rendered
 /// frame picks it up automatically.
 ///
 /// Valid during `init.scm` or any plugin load.

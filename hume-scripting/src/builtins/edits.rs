@@ -16,12 +16,12 @@ use super::args::{
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(%apply-text-edits! pane edits expect-gen)` — `edits`: a list of
+/// `(%apply-text-edits! pane edits expect-gen)`. `edits` is a list of
 /// `JsonHandle`s onto wire `TextEdit`s (unconverted response elements, e.g.
-/// from `textDocument/formatting`) — see `wire_text_edit_arg`.
+/// from `textDocument/formatting`); see `wire_text_edit_arg`.
 ///
 /// `edits` decodes manually via `wire_text_edit_arg` per entry rather than a
-/// typed `Vec<WireTextEdit>` param — steel-core's blanket
+/// typed `Vec<WireTextEdit>` param: steel-core's blanket
 /// `FromSteelVal for Vec<T>` impl discards the inner per-element error on
 /// failure, replacing it with a generic message; decoding manually keeps
 /// `wire_text_edit_arg`'s specific shape-error text.
@@ -43,9 +43,9 @@ pub(crate) fn apply_text_edits(
         .map_err(generic_err)
 }
 
-/// `(%apply-workspace-edit! pane wsedit expect-gen)` — `wsedit`: a
+/// `(%apply-workspace-edit! pane wsedit expect-gen)`. `wsedit` is a
 /// `WorkspaceEdit` hashmap or JSON handle. Its positions decode using the
-/// handle's own tagged encoding (the server that produced it — see
+/// handle's own tagged encoding (the server that produced it; see
 /// `JsonHandle::position_encoding`), so unlike `goto-location!`'s
 /// char-indexed shape this errors on a hand-built (untagged) value: there
 /// is no server to have negotiated an encoding with. Returns the number of
@@ -69,18 +69,18 @@ pub(crate) fn apply_workspace_edit(
     Ok(SteelVal::IntV(count as isize))
 }
 
-/// `(goto-location! pane loc)` — `loc` is one of two shapes, dispatched here
+/// `(goto-location! pane loc)`: `loc` is one of two shapes, dispatched here
 /// (not in Scheme):
 ///
 /// - a raw `Location`/`LocationLink` hashmap or JSON handle: wire position,
-///   decoded and converted using the handle's own tagged encoding — the
+///   decoded and converted using the handle's own tagged encoding. The
 ///   server that produced the response negotiated it for the request that's
 ///   being answered, regardless of which file the location points into (an
 ///   LSP round-trip is async; the user is free to switch panes while a
 ///   request is in flight, which is exactly why the jump lands in `pane`,
 ///   not necessarily the focused one). Errors on an untagged (hand-built)
 ///   value, same as `apply-workspace-edit!`.
-/// - `(list target line char-col)`, already char-indexed — `target` is a
+/// - `(list target line char-col)`, already char-indexed: `target` is a
 ///   path string, a `file://` URI string, or a pane. This shape never
 ///   touches server encoding.
 pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal) -> SteelResult {
@@ -126,7 +126,7 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
     }
 }
 
-/// `(insert-key! pane key)` — `key` is a `bind-key!`-syntax spec naming
+/// `(insert-key! pane key)`: `key` is a `bind-key!`-syntax spec naming
 /// exactly one chord (see [`single_key_arg`]), decoded here rather than
 /// left to the host: the host trait takes an already-parsed `KeyEvent`,
 /// same as every other typed `EditHost` param.

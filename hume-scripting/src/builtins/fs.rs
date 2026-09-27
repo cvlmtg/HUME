@@ -14,7 +14,7 @@
 //! | `path-join`     | `string… → string`             | OS-native join; no sandbox, no filesystem access |
 //! | `path->display` | `string → string`               | UNC-strip + `~`-collapse; no filesystem access |
 //!
-//! `path-separator` is *not* registered here — steel-core's `steel/meta`
+//! `path-separator` is *not* registered here: steel-core's `steel/meta`
 //! module already provides it as a bare global (`Engine::new()` baseline),
 //! and HUME registering its own would silently shadow it.
 
@@ -42,7 +42,7 @@ fn dir_builtin(dir: Option<&Path>) -> SteelResult {
     }
 }
 
-/// `(data-dir)` — returns the HUME data directory as a string, or `#f` if
+/// `(data-dir)`: returns the HUME data directory as a string, or `#f` if
 /// HOME/APPDATA is unset.
 ///
 /// The returned path is the display form (no `\\?\` extended-length prefix on
@@ -52,7 +52,7 @@ pub(crate) fn data_dir(ctx: &mut SteelCtx) -> SteelResult {
     dir_builtin(ctx.dirs.data_dir_display.as_deref())
 }
 
-/// `(runtime-dir)` — returns the HUME runtime directory as a string, or `#f`
+/// `(runtime-dir)`: returns the HUME runtime directory as a string, or `#f`
 /// if no runtime directory was found.
 ///
 /// The returned path is the display form (no `\\?\` extended-length prefix on
@@ -63,14 +63,14 @@ pub(crate) fn runtime_dir(ctx: &mut SteelCtx) -> SteelResult {
 
 // ── path-join ─────────────────────────────────────────────────────────────────
 
-/// `(path-join seg1 seg2 …)` — join path segments using the OS-native
+/// `(path-join seg1 seg2 …)`: join path segments using the OS-native
 /// separator and return the result as a string.
 ///
 /// Uses `PathBuf::push` semantics: if any segment is an absolute path it
 /// replaces everything to the left (the same rule as `Path::join`).  This
 /// lets plugins build paths portably without hard-coding `"/"` or `"\\"`.
 ///
-/// No sandbox check — this is a pure string-construction helper that does not
+/// No sandbox check. This is a pure string-construction helper that does not
 /// access the filesystem.
 pub(crate) fn path_join(args: &[SteelVal]) -> SteelResult {
     if args.is_empty() {
@@ -93,13 +93,13 @@ pub(crate) fn path_join(args: &[SteelVal]) -> SteelResult {
 
 // ── path->display ─────────────────────────────────────────────────────────────
 
-/// `(path->display path)` — run `path` through HUME's display-form pipeline
+/// `(path->display path)`: run `path` through HUME's display-form pipeline
 /// (Windows `\\?\` stripping, `~`-collapse) so a path a plugin only has as a
 /// string (e.g. `lsp/location-display`'s `path->display` call on the
 /// already-decoded path `lsp-locations->display-parts` hands it) renders the
 /// same way as paths that came from `buffer-display-path`. No filesystem
-/// access; expects an absolute path — `~`-collapse is a no-op on relative
-/// input.
+/// access; expects an absolute path (`~`-collapse is a no-op on relative
+/// input).
 pub(crate) fn path_to_display(args: &[SteelVal]) -> SteelResult {
     if args.len() != 1 {
         steel::stop!(ArityMismatch => "path->display expects exactly 1 arg, got {}", args.len());

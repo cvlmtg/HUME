@@ -51,14 +51,14 @@ pub use types::{
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
 // through a ScriptingHost eval entry point. Outside test/test-util builds,
 // `EvalWatchdog` is still needed unqualified below (the `watchdog` field,
-// `steel_and_bundle`'s signature) — just not re-exported past this crate.
+// `steel_and_bundle`'s signature), just not re-exported past this crate.
 #[cfg(any(test, feature = "test-util"))]
 pub use watchdog::EvalWatchdog;
 #[cfg(not(any(test, feature = "test-util")))]
 use watchdog::EvalWatchdog;
 // Test-only external visibility: every test crate that builds `.scm` source
 // by interpolating a real filesystem path (`open-buffer!`, `picker!`, …)
-// needs this same Windows-safe escaping — see `steel_path_literal`'s own doc
+// needs this same Windows-safe escaping. See `steel_path_literal`'s own doc
 // comment for why it isn't hand-rolled per call site.
 #[cfg(any(test, feature = "test-util"))]
 pub use builtins::plugins::steel_path_literal;
@@ -86,7 +86,7 @@ use host::EditorHost;
 use lazy::{LazyRegistry, PluginState};
 
 /// The persistent registry fields bundled as a unit so they can be
-/// borrowed as a single `&mut ScriptingRegistries` — disjoint from the
+/// borrowed as a single `&mut ScriptingRegistries`, disjoint from the
 /// Steel VM (`steel`) and the rest of `ScriptingHost`.
 #[derive(Default)]
 pub(crate) struct ScriptingRegistries {
@@ -111,19 +111,19 @@ pub(crate) struct ScriptingRegistries {
     pub(crate) command_table: rustc_hash::FxHashMap<String, SteelVal>,
     /// Same as `command_table`, but for `define-typed-command!` procs.
     ///
-    /// Kept separate — not a second key range in `command_table` — so
+    /// Kept separate (not a second key range in `command_table`) so
     /// `%lookup-plugin-proc`/`%dispatch-command` (the `call!` path, which
     /// only ever reads `command_table`) can never reach a typed command's
     /// proc: `call!` invoking a `:`-only command would break the strict
     /// mappable/typed separation the editor's `CommandRegistry` enforces
-    /// (see `registry/mod.rs`'s module doc there). `call_steel_cmd` — the
+    /// (see `registry/mod.rs`'s module doc there). `call_steel_cmd` (the
     /// Rust-driven path used by both keypress/`call!` dispatch and `:`
-    /// dispatch — checks both tables, since its caller has already resolved
+    /// dispatch) checks both tables, since its caller has already resolved
     /// which kind `name` is through the editor's own registry.
     pub(crate) typed_command_table: rustc_hash::FxHashMap<String, SteelVal>,
     /// Per-plugin config value passed via `#:config` on `(load-plugin …)` /
     /// `(declare-plugin …)`. Read back by the plugin body through `(plugin-config)`,
-    /// resolved via the top of `plugin_stack` — works identically whether the
+    /// resolved via the top of `plugin_stack`. Works identically whether the
     /// plugin activates immediately (eager) or much later (lazy).
     pub(crate) plugin_configs: rustc_hash::FxHashMap<PluginId, SteelVal>,
     /// Handlers registered by `(on-lsp-notification method handler)`, keyed
@@ -157,7 +157,7 @@ pub(crate) struct HostBundle<'a> {
 /// Constructed once during `Editor::init_scripting()` and held for the
 /// lifetime of the process.
 pub struct ScriptingHost {
-    /// The Scheme VM — always called `steel` (never bare "engine", which refers to the `engine/` crate).
+    /// The Scheme VM, always called `steel` (never bare "engine", which refers to the `engine/` crate).
     steel: Engine,
     /// The persistent registries borrowed as a unit into `SteelCtx`, disjoint
     /// from `steel` so the VM and command/hook state can be borrowed
@@ -173,7 +173,7 @@ pub struct ScriptingHost {
     /// point (`call_steel_cmd`, `fire_hook`, `run_steel_calls`, `eval_init`,
     /// `activate_plugin_inline`) drains exactly what it pushed back out on
     /// success (`Vec<Effect>`). On error it drains only the entries committed
-    /// by a nested successful plugin activation (`QueuedEffect::committed`) —
+    /// by a nested successful plugin activation (`QueuedEffect::committed`);
     /// see `take_eval_effects` and `types::EvalError`.
     effects: Vec<types::QueuedEffect>,
     /// Data/runtime directories (raw + display form) and the install-lock
@@ -181,8 +181,8 @@ pub struct ScriptingHost {
     dirs: builtins::dirs::ScriptDirs,
     /// Shared interrupt flag.  Set to `true` by the watchdog to signal that
     /// `(hume/yield!)` calls should abort the running script.  Reset to
-    /// `false` after every eval — command dispatch, hook fires, and plugin
-    /// activation, not just `eval_init`.
+    /// `false` after every eval (command dispatch, hook fires, and plugin
+    /// activation, not just `eval_init`).
     interrupt_flag: Arc<AtomicBool>,
     /// Persistent budget-enforcement thread, re-armed around every eval.
     watchdog: EvalWatchdog,
@@ -278,15 +278,15 @@ impl ScriptingHost {
     /// Pre-register native command names as callable Steel bindings.
     ///
     /// For each name, evaluates `(define name (lambda args (%dispatch-command
-    /// "name" args)))` — makes bare `(move-left pane)` callable without
+    /// "name" args)))`. This makes bare `(move-left pane)` callable without
     /// `(call! "move-left" pane)`, and variadic, so `(move-down pane 3)` /
     /// `(move-down pane 0)` work too (count `0` = "no count typed", see
     /// `parse_count_extend`). `pane` is always the first arg, same as
-    /// `%call-native!`'s own contract — this binding is a thin wrapper over
+    /// `%call-native!`'s own contract: this binding is a thin wrapper over
     /// the same dispatcher, not a separate calling convention.
     ///
     /// Calls `%dispatch-command` directly rather than the public `call!` macro
-    /// (which desugars to exactly this) — the variadic lambda's args are
+    /// (which desugars to exactly this): the variadic lambda's args are
     /// already the list `%dispatch-command` expects, no intermediate
     /// `(list ...)` needed.
     ///
@@ -308,7 +308,7 @@ impl ScriptingHost {
         }
         self.steel
             .compile_and_run_raw_program(source)
-            .expect("command name pre-registration failed — this is a bug");
+            .expect("command name pre-registration failed: this is a bug");
     }
 
     /// Runtime directory for core plugins, themes, and docs.
@@ -322,14 +322,14 @@ impl ScriptingHost {
     }
 
     /// Every top-level global and macro name HUME's own layers add on top of
-    /// a pristine Steel engine, minus HUME's own internal-only names — the
+    /// a pristine Steel engine, minus HUME's own internal-only names: the
     /// payload for the generated `steel-language-server` host-globals file
     /// (see `runtime/plugins/core/steel-server/lsp-home/hume-globals.scm`'s
     /// generator).
     ///
     /// Diffs against a fresh `Engine::new()` so upstream Steel stdlib names
-    /// never appear in the output — the server already knows those from its
-    /// own internal engine — then drops anything `is_internal_name` flags:
+    /// never appear in the output (the server already knows those from its
+    /// own internal engine), then drops anything `is_internal_name` flags:
     /// HUME's own naming conventions for "never called by plugin code",
     /// checked against a full, real-world generated list to confirm no
     /// legitimate public name matches any of them.
@@ -338,11 +338,11 @@ impl ScriptingHost {
     /// generated file.
     ///
     /// Reads two guards on the same `RwLock` sequentially (never held
-    /// simultaneously — `parking_lot`'s `RwLock` is not reentrant): globals
+    /// simultaneously, since `parking_lot`'s `RwLock` is not reentrant): globals
     /// first, then macros, each collected into an owned `Vec` before the
     /// guard drops.
     ///
-    /// Only called by the editor's `hume-globals.scm` drift test — no
+    /// Only called by the editor's `hume-globals.scm` drift test; no
     /// production caller.
     #[cfg(any(test, feature = "test-util"))]
     pub fn host_global_names(&self) -> Vec<String> {
@@ -424,7 +424,7 @@ impl ScriptingHost {
     ///
     /// Unions entries keyed by `language` with entries keyed by the wildcard
     /// `"*"` (a manifest that can't enumerate every language it might ever
-    /// support) — deduped so a plugin listed under both activates once.
+    /// support), deduped so a plugin listed under both activates once.
     pub fn activation_language_plugins(&self, language: &str) -> Vec<attribution::PluginId> {
         let activation_languages = &self.registries.lazy_registry.activation_languages;
         let specific = activation_languages.get(language);
@@ -473,7 +473,7 @@ impl ScriptingHost {
     /// Format a human-readable plugin status table for `:plugin-status`.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
-    /// plugin, `is_typed`) — this crate doesn't track pending command
+    /// plugin, `is_typed`). This crate doesn't track pending command
     /// activations itself, so the caller supplies its live registry snapshot.
     pub fn lazy_status_string(
         &self,
@@ -488,7 +488,7 @@ impl ScriptingHost {
         &self.pending_messages
     }
 
-    /// Peek at the effect log without draining.  Only for test assertions —
+    /// Peek at the effect log without draining.  Only for test assertions:
     /// production code always goes through an eval entry point's own
     /// atomic drain (`take_eval_effects`).
     #[cfg(any(test, feature = "test-util"))]
@@ -525,7 +525,7 @@ impl ScriptingHost {
     }
 
     /// Owner of each Steel-registered command, as the display string
-    /// `(command-plugin …)` would return — `Owner` itself is crate-private,
+    /// `(command-plugin …)` would return. `Owner` itself is crate-private,
     /// so this is the boundary form for the editor crate's test suite.
     #[cfg(any(test, feature = "test-util"))]
     pub fn cmd_owners_for_test(&self) -> rustc_hash::FxHashMap<String, String> {
@@ -539,7 +539,7 @@ impl ScriptingHost {
     /// Read-only view of the in-Steel plugin dispatch table.
     ///
     /// Maps activated plugin command name → its Steel closure. Used in tests to
-    /// assert inline `define-command!` populated the table correctly — which is the
+    /// assert inline `define-command!` populated the table correctly, which is the
     /// precondition for `%lookup-plugin-proc` returning the closure rather than `#f`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn command_table_for_test(&self) -> &rustc_hash::FxHashMap<String, steel::rvals::SteelVal> {
@@ -552,16 +552,16 @@ impl ScriptingHost {
     /// (settings, keymap) via `host` for the duration of the call.
     ///
     /// - Returns `Ok(effects)` if the file does not exist (missing config is
-    ///   normal — `effects` is empty) or if eval succeeds, with every effect
+    ///   normal: `effects` is empty) or if eval succeeds, with every effect
     ///   this file's eval queued, in emission order.  Commands defined during
     ///   eval are registered into the `CommandRegistry` inline via
     ///   `host.register_command`. A plugin (`load-plugin`/`declare-plugin`)
-    ///   body raising is contained here too, not a cause of `Err` — its own
+    ///   body raising is contained here too, not a cause of `Err`: its own
     ///   activation is atomically rolled back (see
     ///   `builtins::plugins::finish_lazy_activation`), reported by name and
     ///   location as an `Error`-severity pending message (drained by
     ///   `take_pending_messages`; queued from `activation::run_steel_session`),
-    ///   and the rest of the file keeps running — a broken third-party
+    ///   and the rest of the file keeps running. A broken third-party
     ///   plugin never blocks a `core:plum` declared later in the same file
     ///   from being reached.
     /// - Returns `Err(EvalError)` if the file exists but fails to parse, or
@@ -601,8 +601,8 @@ impl ScriptingHost {
     /// success, drain exactly the effects this eval pushed (`effects_start`
     /// onward) and return them. On error, drain the same range but keep only
     /// the entries committed by a nested successful plugin activation
-    /// (`QueuedEffect::committed`, set by `SteelCtx::pop_effect_marks`) —
-    /// those effects are salvaged into the returned `EvalError` so the caller
+    /// (`QueuedEffect::committed`, set by `SteelCtx::pop_effect_marks`).
+    /// Those effects are salvaged into the returned `EvalError` so the caller
     /// can still apply them, since the activation that queued them already
     /// committed irreversible state (`PluginState::Loaded`). Everything else
     /// the failed eval queued is discarded.
@@ -636,7 +636,7 @@ impl ScriptingHost {
     /// script runs past the budget, `(hume/yield!)` calls abort it (cooperative
     /// interruption).
     ///
-    /// # Design note — Steel in the signature
+    /// # Design note: Steel in the signature
     /// `args` is `Vec<SteelVal>` rather than an opaque owned type because the
     /// caller (editor dispatch) constructs the args by wrapping already-resolved
     /// Rust values via `IntoSteelVal` and passing them straight in. Introducing
@@ -656,8 +656,8 @@ impl ScriptingHost {
         // The editor already resolved any Lazy stub and activated its owning
         // plugin before calling here (see Editor::run_steel_command), so
         // `name` must already have a live closure in command_table. A miss
-        // means the editor's registry and this table have desynced — a bug,
-        // not a retry case — so this fails loudly rather than falling back to
+        // means the editor's registry and this table have desynced (a bug,
+        // not a retry case), so this fails loudly rather than falling back to
         // %dispatch-command's own miss-handling (that dispatcher is reserved
         // for call!/bare-name calls originating inside the VM).
         let proc = self
@@ -669,7 +669,7 @@ impl ScriptingHost {
             .ok_or_else(|| {
                 format!(
                     "call_steel_cmd: '{name}' has no registered command body \
-                     — registry/command_table desync"
+                     (registry/command_table desync)"
                 )
             })?;
 
@@ -707,7 +707,7 @@ impl ScriptingHost {
         args: &[SteelVal],
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
-        // Every handler gets the same args — pair them up and hand the batch
+        // Every handler gets the same args: pair them up and hand the batch
         // to run_steel_calls, which already is the general "run these
         // (proc, args) pairs in one session, first error aborts the rest"
         // machinery this needs.
@@ -721,7 +721,7 @@ impl ScriptingHost {
         self.run_steel_calls(calls, host)
     }
 
-    /// Calls each `(proc, args)` pair directly, in order — the shared
+    /// Calls each `(proc, args)` pair directly, in order: the shared
     /// mechanism behind the `lsp-request` callback, timer thunks, and the
     /// prompt callback, and (via [`fire_hook`](Self::fire_hook)) every
     /// handler registered for one event.
@@ -734,22 +734,22 @@ impl ScriptingHost {
     /// batch. A cooperative watchdog interrupt (`hume/yield!`, raised when
     /// the step budget is exceeded) is the one exception: it means the
     /// whole batch's time is spent, not just this call's, so it still
-    /// aborts the rest — distinguished via [`activation::SessionError::
+    /// aborts the rest, distinguished via [`activation::SessionError::
     /// interrupted`], read off `ctx.interrupt_flag` before that session
     /// resets it, rather than sniffing the interrupt's own fixed message
     /// text.
     ///
     /// The *first* failure (interrupt or not) is returned as this function's
-    /// own `Err` — callers key cleanup on it (`Editor::run_call_batch`'s
+    /// own `Err`. Callers key cleanup on it (`Editor::run_call_batch`'s
     /// completion-session teardown on a raising source) and report it
     /// themselves (`apply_script_result`'s `"steel call error: "`/`"hook
     /// error: "` prefix). A *second* (or later) failure in the same batch
     /// would otherwise have no trace at all, since it doesn't abort
-    /// anything — logged here directly, with the same `"steel call error: "`
+    /// anything. It is logged here directly, with the same `"steel call error: "`
     /// text, so it isn't silently dropped.
     ///
     /// Never called from inside a completion-detection borrow (LSP drain,
-    /// timer drain, minibuffer key handling) — the caller queues `(proc,
+    /// timer drain, minibuffer key handling). The caller queues `(proc,
     /// args)` and this runs at the drain boundary.
     pub fn run_steel_calls<'a>(
         &'a mut self,
@@ -811,7 +811,7 @@ impl ScriptingHost {
     ///
     /// Convenience wrapper for testing, at the default 10-second init budget
     /// (harmless for normal tests that complete quickly). Returns the
-    /// effects the eval queued, in emission order — same contract as
+    /// effects the eval queued, in emission order, same contract as
     /// `eval_init`, so a test can assert on what a builtin marshalled across
     /// the boundary.
     pub fn eval_source(

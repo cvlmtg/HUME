@@ -226,11 +226,11 @@ fn arg_pane_accepts_a_real_pane() {
 
 // ── LivePane ─────────────────────────────────────────────────────────────
 
-/// `LivePane::from_steelval` — type check only, same as `ArgPane`'s; the
+/// `LivePane::from_steelval`: type check only, same as `ArgPane`'s; the
 /// liveness half is `BuiltinArg::resolve`'s job (proven through a real
 /// `ScriptingHost`, `builtins::tests::
-/// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration` —
-/// a direct call here has no `SteelCtx`/host to check liveness against).
+/// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`,
+/// since a direct call here has no `SteelCtx`/host to check liveness against).
 #[test]
 fn live_pane_rejects_non_pane() {
     let err = LivePane::from_steelval(&SteelVal::StringV("not-a-pane".into())).unwrap_err();
@@ -296,7 +296,7 @@ fn opt_string_newtype_false_is_none_string_and_symbol_are_some() {
 
 // ── LspTargetArg ─────────────────────────────────────────────────────────
 
-/// `LspTargetArg::from_steelval` — type check only, deciding `Buffer` vs
+/// `LspTargetArg::from_steelval`: type check only, deciding `Buffer` vs
 /// `Language`; the `Buffer` case's liveness half is `BuiltinArg::resolve`'s
 /// job (proven through a real `ScriptingHost`, `builtins::tests::
 /// live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`'s
@@ -323,7 +323,7 @@ fn lsp_target_arg_accepts_a_string_or_symbol_language() {
     ));
 }
 
-/// No fallback left to decode `#f` into — the typed-command wrapper
+/// No fallback left to decode `#f` into: the typed-command wrapper
 /// (`registration.scm`) supplies the focused buffer explicitly instead.
 #[test]
 fn lsp_target_arg_rejects_false() {
@@ -337,8 +337,8 @@ fn lsp_target_arg_rejects_false() {
 
 // ── wire_text_edit_arg ───────────────────────────────────────────────────
 
-/// A `JsonHandle` onto a wire `TextEdit` — an unconverted element straight
-/// from a `textDocument/formatting`-shaped response — decodes, and carries
+/// A `JsonHandle` onto a wire `TextEdit` (an unconverted element straight
+/// from a `textDocument/formatting`-shaped response) decodes, and carries
 /// its tagged server encoding forward.
 #[test]
 fn wire_text_edit_arg_decodes_a_json_handle() {
@@ -373,7 +373,7 @@ fn wire_text_edit_arg_rejects_a_malformed_handle() {
 }
 
 /// Not a `JsonHandle` at all (the removed hand-built tuple shape, or any
-/// other scalar) — rejected outright, not silently decoded as if it had no
+/// other scalar) is rejected outright, not silently decoded as if it had no
 /// encoding.
 #[test]
 fn wire_text_edit_arg_rejects_a_non_handle() {
@@ -389,7 +389,7 @@ fn wire_text_edit_arg_rejects_a_non_handle() {
 }
 
 /// A hand-built (`JsonHandle::new`, untagged) handle is rejected the same
-/// way — it decodes as JSON fine, but has no server to read an encoding
+/// way: it decodes as JSON fine, but has no server to read an encoding
 /// from.
 #[test]
 fn wire_text_edit_arg_rejects_an_untagged_handle() {

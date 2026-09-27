@@ -15,7 +15,7 @@ fn list_of(items: &[&str]) -> SteelVal {
         .unwrap()
 }
 
-/// Builds a Steel hashmap `SteelVal` from `(symbol-key, value)` pairs — the
+/// Builds a Steel hashmap `SteelVal` from `(symbol-key, value)` pairs, the
 /// `(hash 'k v ...)` shape `wire_position` decodes.
 fn hashmap(entries: Vec<(&str, SteelVal)>) -> SteelVal {
     let mut hm = SteelHashMap::new();
@@ -45,7 +45,7 @@ fn lsp_server_ops(h: &SteelCtxTestHarness) -> Vec<&PendingLspServerOp> {
 }
 
 /// `Effect::LspRequest` entries queued so far on a live `ctx`, in
-/// emission order — `ctx.effects` (not the harness) since these tests
+/// emission order. `ctx.effects` (not the harness) since these tests
 /// read before `ctx` drops.
 fn lsp_requests<'a>(ctx: &'a SteelCtx) -> Vec<&'a PendingLspRequest> {
     ctx.effects
@@ -58,7 +58,7 @@ fn lsp_requests<'a>(ctx: &'a SteelCtx) -> Vec<&'a PendingLspRequest> {
 }
 
 /// Unwraps the single queued op as a `Register`, panicking with a message
-/// naming the actual variant otherwise — so a misrouted `Unregister`
+/// naming the actual variant otherwise, so a misrouted `Unregister`
 /// fails loudly instead of silently indexing the wrong data.
 fn expect_register(h: &SteelCtxTestHarness) -> &crate::PendingLspServerReg {
     let ops = lsp_server_ops(h);
@@ -95,7 +95,7 @@ fn queues_a_pending_registration_in_init_mode() {
 }
 
 /// `#:env` decodes a list of `("KEY" . "VALUE")` dotted pairs into
-/// `PendingLspServerReg.env` — the wire shape `steel-server/plugin.scm`
+/// `PendingLspServerReg.env`, the wire shape `steel-server/plugin.scm`
 /// uses to point `STEEL_LSP_HOME` at the generated host-globals file.
 #[test]
 fn decodes_env_dotted_pairs() {
@@ -243,7 +243,7 @@ fn unregister_is_callable_from_init_mode_too() {
 
 /// A reinstall eval emits unregister-then-register; the queue must
 /// preserve that order so the apply side sees "tear down the old
-/// registration, then install the new one" — not the reverse.
+/// registration, then install the new one", not the reverse.
 #[test]
 fn register_unregister_register_ordering_is_preserved() {
     let mut h = SteelCtxTestHarness::new();
@@ -390,7 +390,7 @@ fn lsp_show_status_rejects_init_context() {
 
 /// Unlike the buffer/pane-touching LSP builtins above,
 /// `lsp-registered-for-language?` is a pure registry read and must stay
-/// callable during init — `core:lsp`'s load-time scan
+/// callable during init: `core:lsp`'s load-time scan
 /// (`registration.scm`) calls it directly to skip already-registered
 /// languages, with no `with-handler` fallback to catch a gate error.
 ///
@@ -428,7 +428,7 @@ fn pending_unregister(language: &str) -> Effect {
 }
 
 /// `lsp-registered-for-language?` reads through the `Effect::LspServerOp`
-/// entries queued this eval before falling back to the host — a
+/// entries queued this eval before falling back to the host. A
 /// `Register` queued this eval must be visible immediately, not only
 /// after the next drain.
 #[test]
@@ -440,7 +440,7 @@ fn a_queued_register_reports_true_within_the_same_eval() {
     assert_eq!(result.unwrap(), SteelVal::BoolV(true));
 }
 
-/// Queue order, not queue presence, decides the answer — a later
+/// Queue order, not queue presence, decides the answer: a later
 /// `Unregister` overrides an earlier `Register` for the same language,
 /// matching `Editor::apply_lsp_server_op`'s own last-wins application
 /// order exactly.
@@ -454,7 +454,7 @@ fn register_then_unregister_in_queue_order_reports_false() {
     assert_eq!(result.unwrap(), SteelVal::BoolV(false));
 }
 
-/// The reverse order: this is exactly the install-path shape —
+/// The reverse order: this is exactly the install-path shape:
 /// `lsp/install-server!` queues `Unregister` for every seeded language
 /// before the post-install rescan queues `Register` behind it.
 #[test]
@@ -481,7 +481,7 @@ fn a_queued_op_for_a_different_language_does_not_flip_the_answer() {
     );
 }
 
-/// `Stop`/`Restart`/`ShowStatus` never change registration state — only
+/// `Stop`/`Restart`/`ShowStatus` never change registration state; only
 /// `Register`/`Unregister` may flip the answer.
 #[test]
 fn a_stop_op_alone_does_not_flip_the_answer() {
@@ -558,12 +558,12 @@ fn lsp_request_decodes_require_focus() {
     assert!(requests[0].require_focus.is_some());
 }
 
-/// A hand-built (untagged) position/range — `wire_pos`/`hashmap`'s own
-/// shape — is rejected outright, before this builtin ever reaches its
+/// A hand-built (untagged) position/range (`wire_pos`/`hashmap`'s own
+/// shape) is rejected outright, before this builtin ever reaches its
 /// "no LSP host" branch: `JsonHandle::position_encoding` errors on
 /// `WireOrigin::Local` first. This is `lsp_position_to_offset_untagged_
 /// handle_errors`/`lsp_range_to_offsets_untagged_handle_errors`'s own
-/// unit-level counterpart — the two `hume-editor` regression tests exercise
+/// unit-level counterpart; the two `hume-editor` regression tests exercise
 /// the same rule through a real command dispatch.
 #[test]
 fn lsp_position_to_offset_untagged_handle_errors() {
@@ -576,7 +576,7 @@ fn lsp_position_to_offset_untagged_handle_errors() {
 
 /// [`lsp_position_to_offset_untagged_handle_errors`]'s "no LSP host"
 /// sibling: given a *tagged* handle (so the encoding check passes), a
-/// harness with no LSP host still answers `#f`, not an error — the
+/// harness with no LSP host still answers `#f`, not an error: the
 /// `ctx.host.lsp()` branch, unaffected by where the encoding came from.
 #[test]
 fn lsp_position_to_offset_without_lsp_host_returns_false() {
@@ -679,7 +679,7 @@ fn lsp_range_to_offsets_errors_on_malformed_start() {
     assert!(msg.contains("lsp-range->offsets"), "got: {msg}");
 }
 
-/// The raw `[start, end]` shape a `ParameterInformation.label` arrives in —
+/// The raw `[start, end]` shape a `ParameterInformation.label` arrives in,
 /// always server-tagged in practice (`json-ref`'d straight out of the
 /// signature-help response `label` rode in on), so this mints a
 /// server-tagged handle rather than a hand-built Steel list.
@@ -745,7 +745,7 @@ fn lsp_label_offsets_to_text_errors_on_a_non_string_label() {
 }
 
 /// A hand-built (untagged) offsets value has no producing server to have
-/// negotiated an encoding with — rejected before the array-shape check
+/// negotiated an encoding with, so it is rejected before the array-shape check
 /// even runs.
 #[test]
 fn lsp_label_offsets_to_text_rejects_an_untagged_offsets_value() {

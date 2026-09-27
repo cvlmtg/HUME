@@ -8,13 +8,13 @@ use crate::SteelCtx;
 /// Decode a Steel event name: a symbol, validated against the host's
 /// `known_event_names()`.
 ///
-/// Shared by `register-hook!` and `declare-plugin`'s `#:events` — the two
-/// verbs that name an event — so the accepted form and the error text can't
+/// Shared by `register-hook!` and `declare-plugin`'s `#:events` (the two
+/// verbs that name an event), so the accepted form and the error text can't
 /// drift apart between them.
 ///
 /// Symbol, not string: the event set is closed and host-defined, same rule
 /// as `bind-key!`'s mode argument. `#:commands` / `#:typed-commands` /
-/// `#:languages` stay strings — those names are open and user-chosen, not
+/// `#:languages` stay strings: those names are open and user-chosen, not
 /// host-enumerated.
 ///
 /// This crate has no compiled-in list of event names of its own; the editor
@@ -42,7 +42,7 @@ pub(crate) fn event_name_arg(
     Ok(name_str)
 }
 
-/// `(register-hook! 'name proc)` — register `proc` as a handler for the
+/// `(register-hook! 'name proc)`: register `proc` as a handler for the
 /// named hook.  Must be called during init or plugin load (`EvalMode::Init`,
 /// `PluginLoad`, or `PluginActivation`).
 ///

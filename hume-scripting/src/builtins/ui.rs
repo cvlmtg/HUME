@@ -1,6 +1,6 @@
 //! Generic Steel-scriptable UI widget builtins.
 //!
-//! LSP is the first client of these widgets, not their owner — any plugin
+//! LSP is the first client of these widgets, not their owner: any plugin
 //! can call `show-popup!`. `hume-editor`'s `EditorHostImpl` is the only
 //! implementation that actually renders anything; other hosts (tests,
 //! `MockHost`) have no `UiHost`, so `ctx.host.ui()` returns `None` and each
@@ -24,11 +24,11 @@ use super::args::{
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(%show-popup! text anchor kind lang)` — the `show-popup!` Scheme wrapper
+/// `(%show-popup! text anchor kind lang)`: the `show-popup!` Scheme wrapper
 /// supplies `#:anchor`/`#:kind`/`#:lang`'s defaults. `anchor` selects the
 /// render layout: `'cursor` floats near the focused pane's cursor (default);
 /// `'bottom` docks as a full-width band above the statusline, reserving pane
-/// space like the drawer. `kind` selects the dismiss behavior — see
+/// space like the drawer. `kind` selects the dismiss behavior; see
 /// [`PopupKind`].
 pub(crate) fn show_popup(
     ctx: &mut SteelCtx,
@@ -69,7 +69,7 @@ pub(crate) fn close_popup(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(show-menu! items on-select)` — no keyword defaults, so this registers
+/// `(show-menu! items on-select)`: no keyword defaults, so this registers
 /// directly (no `%`-prefix wrapper needed).
 pub(crate) fn show_menu(
     ctx: &mut SteelCtx,
@@ -92,11 +92,11 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(show-drawer-list! items on-select)` — no keyword defaults, so this
+/// `(show-drawer-list! items on-select)`: no keyword defaults, so this
 /// registers directly (no `%`-prefix wrapper needed). Errors on empty
 /// `items`; callers close (or never open) instead. Returns a token scoping
 /// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
-/// drawer, same shape as `picker!`'s own return — or `#f` when the request
+/// drawer, same shape as `picker!`'s own return, or `#f` when the request
 /// was dropped as stale (the stack moved before it could open; see
 /// `UiHost::show_drawer_list`'s own doc), which callers must branch on
 /// rather than treat as a live drawer's token.
@@ -125,10 +125,10 @@ pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(update-drawer-list! token items on-select selected)` — no keyword
+/// `(update-drawer-list! token items on-select selected)`: no keyword
 /// defaults, so this registers directly. Replaces the open drawer's rows in
 /// place, keeping the browse session; `selected` is clamped into the new
-/// list. Returns whether the update applied — `#f` when no drawer is open
+/// list. Returns whether the update applied: `#f` when no drawer is open
 /// or `token` doesn't match the open drawer's own (an expected-normal race,
 /// never an error, same contract as `picker-replace!`'s stale token) or when
 /// `items` is empty (callers close instead).
@@ -147,7 +147,7 @@ pub(crate) fn update_drawer_list(
     Ok(SteelVal::BoolV(applied))
 }
 
-/// `(drawer-selected-index token)` — the open drawer's selected row, or
+/// `(drawer-selected-index token)`: the open drawer's selected row, or
 /// `#f` when no drawer is open or `token` doesn't match its own.
 pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = usize_arg(token, "drawer-selected-index token")? as u64;
@@ -157,9 +157,9 @@ pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> Stee
     }
 }
 
-/// `(%prompt! label prefill on-confirm)` — the `prompt!` Scheme wrapper
+/// `(%prompt! label prefill on-confirm)`: the `prompt!` Scheme wrapper
 /// supplies `#:prefill`'s default. `on-confirm` fires exactly once, later
-/// (queued, never inline) — with the confirmed text, or `#f` on cancel.
+/// (queued, never inline), with the confirmed text, or `#f` on cancel.
 pub(crate) fn prompt(
     ctx: &mut SteelCtx,
     pane: PaneHandle,
@@ -176,9 +176,9 @@ pub(crate) fn prompt(
 }
 
 /// Decodes a picker `items` list: each entry must be a `(display . payload)`
-/// dotted pair — a proper list entry is rejected by `pair_fields`.
+/// dotted pair; a proper list entry is rejected by `pair_fields`.
 /// `payload` stays an opaque `SteelVal`; Rust
-/// never interprets it, except to reject `#f` — that value is reserved for
+/// never interprets it, except to reject `#f`: that value is reserved for
 /// the dismiss signal (`on-select` receives it on Esc / `picker-close!` /
 /// replace), so a `#f` payload would make an accepted row indistinguishable
 /// from a dismissal.
@@ -197,9 +197,9 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
 }
 
 /// Decodes `picker!`'s/`live-picker!`'s `#:actions` alist: each entry is a
-/// `(key-spec . proc)` dotted pair — a proper list entry is rejected by
+/// `(key-spec . proc)` dotted pair; a proper list entry is rejected by
 /// `pair_fields`, same as `picker_items`. `key-spec` must parse (via
-/// [`single_key_arg`]) to exactly one `KeyEvent` — the picker dispatches
+/// [`single_key_arg`]) to exactly one `KeyEvent`. The picker dispatches
 /// one chord at a time, so a multi-key spec like `"z f"` silently binding
 /// only its first key would be a trap rather than a useful feature.
 fn picker_actions(
@@ -217,7 +217,7 @@ fn picker_actions(
         .collect()
 }
 
-/// Decodes `picker!`'s/`live-picker!`'s `#:truncate` symbol — `'head`
+/// Decodes `picker!`'s/`live-picker!`'s `#:truncate` symbol: `'head`
 /// (default, drop the front) or `'tail` (drop the back). Shared so the two
 /// builtins can't drift on the accepted spelling or the error message.
 fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelErr> {
@@ -228,11 +228,11 @@ fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelE
     )
 }
 
-/// `(%picker! items on-select prompt pending query truncate actions)` — the
+/// `(%picker! items on-select prompt pending query truncate actions)`: the
 /// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
 /// session's token.
 // Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
-// `picker!`'s own Steel signature — bundling them into a struct would break
+// `picker!`'s own Steel signature. Bundling them into a struct would break
 // that direct correspondence for no benefit, since every arg is already
 // decoded and validated independently right below.
 #[allow(clippy::too_many_arguments)]
@@ -266,17 +266,17 @@ pub(crate) fn picker(
     Ok(SteelVal::IntV(token as isize))
 }
 
-/// `(%live-picker! on-select prompt query on-query-change truncate actions)` — the
+/// `(%live-picker! on-select prompt query on-query-change truncate actions)`: the
 /// `live-picker!` Scheme wrapper supplies the keyword defaults and composes
 /// `on-query-change` itself (stop-and-clear-then-debounce around the
 /// caller's `#:command`); this layer only decodes it as a required
-/// callable — checked here, unlike `on-select`: a bad `on-select` only ever
+/// callable, checked here unlike `on-select`: a bad `on-select` only ever
 /// errors at accept/dismiss time, but a live session has no other use for
 /// this argument, so a bad value is a definition-time mistake, not a
 /// runtime one.
 // Same shape as `picker`'s own allow, just above: each param is a
 // positional/keyword arg the `builtins!` table maps 1:1 from `live-picker!`'s
-// own Steel signature — bundling them into a struct would break that direct
+// own Steel signature. Bundling them into a struct would break that direct
 // correspondence for no benefit, since every arg is already decoded and
 // validated independently right below.
 #[allow(clippy::too_many_arguments)]
@@ -308,7 +308,7 @@ pub(crate) fn live_picker(
     Ok(SteelVal::IntV(token as isize))
 }
 
-/// Shared body of `picker-push!`/`picker-replace!` — identical shape, differing
+/// Shared body of `picker-push!`/`picker-replace!`: identical shape, differing
 /// only in `name` (for error messages) and `mode` (the merge policy
 /// `UiHost::picker_feed` applies; see its doc, `"One method for both"`).
 fn picker_feed_builtin(
@@ -324,14 +324,14 @@ fn picker_feed_builtin(
     Ok(SteelVal::BoolV(applied))
 }
 
-/// `(picker-push! token items)` — no keyword defaults, so this registers
+/// `(picker-push! token items)`: no keyword defaults, so this registers
 /// directly. Returns whether the push was applied (`#f` for a stale token
-/// or no open picker — never an error, both are expected-normal races).
+/// or no open picker; never an error, both are expected-normal races).
 pub(crate) fn picker_push(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
     picker_feed_builtin(ctx, token, items, "picker-push!", PickerFeedMode::Append)
 }
 
-/// `(picker-replace! token items)` — no keyword defaults, so this registers
+/// `(picker-replace! token items)`: no keyword defaults, so this registers
 /// directly, same shape as `picker-push!` but replacing the item list
 /// instead of appending to it. Returns whether the replace was applied.
 pub(crate) fn picker_replace(ctx: &mut SteelCtx, token: SteelVal, items: SteelVal) -> SteelResult {
@@ -344,7 +344,7 @@ pub(crate) fn picker_replace(ctx: &mut SteelCtx, token: SteelVal, items: SteelVa
     )
 }
 
-/// `(%picker-source-spawn! token cmd args cwd nul ok-exit-codes)` — the
+/// `(%picker-source-spawn! token cmd args cwd nul ok-exit-codes)`: the
 /// `picker-source-spawn!` Scheme wrapper supplies
 /// `#:cwd`/`#:nul`/`#:ok-exit-codes`'s defaults. A stale token or no open
 /// picker returns `#f` without spawning anything, the same
@@ -380,7 +380,7 @@ pub(crate) fn picker_source_spawn(
     Ok(SteelVal::BoolV(applied))
 }
 
-/// `(picker-source-stop! token)` — no keyword defaults, so this registers
+/// `(picker-source-stop! token)`: no keyword defaults, so this registers
 /// directly, same shape as `picker-push!`/`picker-replace!`. Returns
 /// whether `token` matched the open session (the same expected-normal-race
 /// contract as `picker-push!`), regardless of whether a source was actually
@@ -391,7 +391,7 @@ pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelRe
     Ok(SteelVal::BoolV(applied))
 }
 
-/// `(%picker-close! token)` — the `picker-close!` Scheme wrapper supplies
+/// `(%picker-close! token)`: the `picker-close!` Scheme wrapper supplies
 /// `#:token`'s `#f` default.
 pub(crate) fn picker_close(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = optional_usize_arg(token, "picker-close! #:token")?.map(|t| t as u64);

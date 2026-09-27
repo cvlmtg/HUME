@@ -22,7 +22,7 @@ fn call_bang_unknown_command_logs_error() {
     assert_eq!(
         result,
         SteelVal::BoolV(false),
-        "a miss must return #f, not #void — a Scheme guard like \
+        "a miss must return #f, not #void: a Scheme guard like \
          `(when (call! …) …)` must treat it as a refusal, not a truthy no-op"
     );
     assert!(
@@ -132,7 +132,7 @@ fn parse_count_extend_count_and_extend() {
     );
 }
 
-/// Negative counts clamp to `Some(1)` — same as a native keypress count.
+/// Negative counts clamp to `Some(1)`, same as a native keypress count.
 #[test]
 fn parse_count_extend_negative_clamps_to_one() {
     assert_eq!(
@@ -145,7 +145,7 @@ fn parse_count_extend_negative_clamps_to_one() {
     );
 }
 
-/// Zero is the Scheme spelling of "no count typed" — decodes to `None`,
+/// Zero is the Scheme spelling of "no count typed" and decodes to `None`,
 /// not `Some(1)` (a bare keypress and an explicit count of 1 are different
 /// dispatch origins even though both apply a command once).
 #[test]
@@ -161,7 +161,7 @@ fn parse_count_extend_zero_means_no_count() {
 }
 
 /// A script has no digit-by-digit accumulator to overflow, but can still
-/// pass an arbitrary `isize` count straight through — must clamp to the same
+/// pass an arbitrary `isize` count straight through, so it must clamp to the same
 /// ceiling the keyboard accumulator enforces, or a command that loops the
 /// count with no fixed-point exit (e.g. macro replay) can be made to hang.
 #[test]
@@ -247,7 +247,7 @@ fn define_typed_command_name_with_backslash_errors() {
 }
 
 /// When the host rejects the registration, `typed_command_table` and
-/// `cmd_owners` must stay clean — the host call runs *before* the table
+/// `cmd_owners` must stay clean: the host call runs *before* the table
 /// inserts. Mirrors `define_command_host_rejection_leaves_tables_clean`.
 #[test]
 fn define_typed_command_host_rejection_leaves_tables_clean() {
@@ -325,7 +325,7 @@ fn define_command_name_with_backslash_errors() {
 }
 
 /// When the host rejects the registration, `command_table` and `cmd_owners`
-/// must stay clean — the host call runs *before* the table inserts.
+/// must stay clean: the host call runs *before* the table inserts.
 ///
 /// A stale entry would later make the plugin-failure rollback unregister a
 /// command the plugin never actually owned.
@@ -367,7 +367,7 @@ fn define_command_dup_names_error_names_existing_owner() {
     let mut h = SteelCtxTestHarness::new();
     // Simulate a command already fully defined by core:plum.
     // Both command_table (actually defined) and cmd_owners (attribution)
-    // must be set — cmd_owners alone is pre-seeded by declare_plugin for
+    // must be set: cmd_owners alone is pre-seeded by declare_plugin for
     // activation command ownership, so the guard checks command_table.
     h.registries
         .command_table

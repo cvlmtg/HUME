@@ -69,20 +69,20 @@ pub(crate) struct SteelCtx<'a> {
     /// which also depends on the live `plugin_stack`.
     pub(crate) session: EvalSession,
     /// Effect-log length snapshots, one per currently-nested plugin body
-    /// (`begin_lazy_activation` pushes, `finish_lazy_activation` pops — LIFO,
+    /// (`begin_lazy_activation` pushes, `finish_lazy_activation` pops; LIFO,
     /// matching `plugin_stack`). Lets a failed body's own queued effects be
-    /// rolled back — while keeping any entries a nested successful activation
-    /// already committed — without touching whatever the enclosing eval
+    /// rolled back (while keeping any entries a nested successful activation
+    /// already committed) without touching whatever the enclosing eval
     /// queued before this activation began. See `pop_effect_marks`.
     pub(crate) activation_effect_marks: Vec<usize>,
     /// Set for the duration of a `manifest.scm` eval driven by a zero-trigger
-    /// `(declare-plugin "id")` — the id being resolved. `%begin-manifest-declare!`
+    /// `(declare-plugin "id")`: the id being resolved. `%begin-manifest-declare!`
     /// sets it, `%finish-manifest-declare!` clears it. Guards against a manifest
     /// declaring a different plugin than the one it was resolved for, and against
     /// a manifest whose own `declare-plugin` is itself zero-trigger (which would
     /// otherwise recurse into manifest resolution forever).
     pub(crate) manifest_resolving: Option<PluginId>,
-    /// Plugin activations contained mid-session — `finish_lazy_activation`/
+    /// Plugin activations contained mid-session: `finish_lazy_activation`/
     /// `finish_manifest_declare` push here instead of letting the body's
     /// error propagate (see their own docs). Drained and reported by
     /// `run_steel_session` once the session ends, in emission order.
@@ -92,7 +92,7 @@ pub(crate) struct SteelCtx<'a> {
 /// Which entry point started this eval session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EvalSession {
-    /// `eval_source_raw` — init.scm, before the TUI is up.
+    /// `eval_source_raw`: init.scm, before the TUI is up.
     Init,
     /// `call_steel_cmd` / `fire_hook` / `run_steel_calls` / `activate_plugin_inline`.
     Runtime,
@@ -103,7 +103,7 @@ pub(crate) enum EvalSession {
 /// is executing, possibly nested inside a command or init eval). `plugin_stack`
 /// is pushed/popped mid-eval by `begin_lazy_activation`/`finish_lazy_activation`
 /// (`builtins/plugins.rs`), so this is derived fresh via [`SteelCtx::mode`]
-/// rather than stored — a single stored 3-variant enum can't distinguish the
+/// rather than stored: a single stored 3-variant enum can't distinguish the
 /// init-top-level state from the eager-plugin-load-during-init state, which
 /// have different gate outcomes (see the table below).
 ///
@@ -173,7 +173,7 @@ impl<'a> SteelCtx<'a> {
         }
     }
 
-    /// The effective legality context builtins gate on — see [`EvalMode`].
+    /// The effective legality context builtins gate on. See [`EvalMode`].
     pub(crate) fn mode(&self) -> EvalMode {
         match (self.session, self.plugin_stack.is_empty()) {
             (EvalSession::Init, true) => EvalMode::Init,
@@ -183,14 +183,14 @@ impl<'a> SteelCtx<'a> {
         }
     }
 
-    /// Push a log message — prefer this over direct `pending_messages.push` so
+    /// Push a log message. Prefer this over direct `pending_messages.push` so
     /// any future severity filter is applied uniformly.
     pub(crate) fn log(&mut self, level: LogLevel, msg: String) {
         self.pending_messages.push((level, msg));
     }
 
     /// Queue `effect` (uncommitted). All builtins push through here so the
-    /// `committed` flag has a single origin — see `pop_effect_marks`.
+    /// `committed` flag has a single origin; see `pop_effect_marks`.
     pub(crate) fn push_effect(&mut self, effect: Effect) {
         self.effects.push(QueuedEffect {
             effect,
@@ -198,7 +198,7 @@ impl<'a> SteelCtx<'a> {
         });
     }
 
-    /// Snapshot the effect log's current length and push it — called by
+    /// Snapshot the effect log's current length and push it. Called by
     /// `begin_lazy_activation` right after it pushes `plugin_stack`, so the
     /// two stacks stay in lockstep (LIFO, one mark per currently-nested body).
     pub(crate) fn mark_effects(&mut self) {
@@ -207,14 +207,14 @@ impl<'a> SteelCtx<'a> {
 
     /// Pop the most recent mark.
     ///
-    /// On `success == true`, marks every entry at `[mark..]` as committed —
+    /// On `success == true`, marks every entry at `[mark..]` as committed,
     /// including entries already committed by an activation nested deeper
     /// inside this one. Committed effects survive a later enclosing failure
     /// (see `ScriptingHost::take_eval_effects`), because activation itself
     /// (the `PluginState::Loaded` transition, commands registered inline) is
     /// never rolled back once this body finishes successfully.
     ///
-    /// On `success == false`, discards whatever this body queued — except
+    /// On `success == false`, discards whatever this body queued, except
     /// entries already committed by a nested successful activation, which are
     /// kept in place (order preserved). Marks are LIFO and both branches only
     /// touch `[mark..]`, so outer marks and any `effects_start` snapshot

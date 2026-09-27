@@ -3,7 +3,7 @@ use crate::test_support::{SteelCtxTestHarness, default_pane};
 use hume_engine::pipeline::BufferId;
 use steel::rvals::IntoSteelVal as _;
 
-/// `set-option!` is registered `open` (`builtins/mod.rs`) — no eval-mode
+/// `set-option!` is registered `open` (`builtins/mod.rs`): no eval-mode
 /// gate at all, since `set_option` (this file) has no gate check of its own
 /// and the write it forwards to already goes through the validating
 /// chokepoint (`editor::settings::ops::apply_global`) regardless of caller.
@@ -33,7 +33,7 @@ fn set_option_reaches_host_from_command_mode() {
 fn set_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    // Pass a list — not a valid value type.
+    // Pass a list, not a valid value type.
     let list: SteelVal = Vec::<SteelVal>::new().into_steelval().unwrap();
     let result = set_option(&mut ctx, "tab-width".into(), list);
     assert!(
@@ -49,7 +49,7 @@ fn set_option_init_mode_calls_host() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
     let result = set_option(&mut ctx, "tab-width".into(), SteelVal::IntV(4));
-    // NullHost.set_global_option returns Err — the error must NOT be the guard error.
+    // NullHost.set_global_option returns Err; the error must NOT be the guard error.
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -84,9 +84,9 @@ fn set_option_accepts_string_bool_int_values() {
     }
 }
 
-/// `get-option` is registered `open` — readable during init eval too,
+/// `get-option` is registered `open`, so it is readable during init eval too,
 /// mirroring `set-option!`. `get-buffer-option` is `cmd`-gated instead,
-/// mirroring `set-buffer-option!` — see that test below.
+/// mirroring `set-buffer-option!` (see that test below).
 ///
 /// With a `cmd` table entry, this call would hit a gate error during init.
 #[test]
@@ -103,7 +103,7 @@ fn get_option_reaches_host_during_init_eval() {
 }
 
 /// `get-buffer-option` is blocked in init mode, mirroring
-/// `set-buffer-option!` — there is no meaningful buffer to resolve against
+/// `set-buffer-option!`: there is no meaningful buffer to resolve against
 /// yet.
 #[test]
 fn get_buffer_option_blocked_in_init_mode() {
@@ -129,7 +129,7 @@ fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
 
 // ── set-buffer-option! ──────────────────────────────────────────────────────
 
-/// `set-buffer-option!` is blocked in init mode (`cmd` kind) — gated at
+/// `set-buffer-option!` is blocked in init mode (`cmd` kind), gated at
 /// registration time, tested via the gate primitive directly.
 ///
 /// `init.scm` has no meaningful buffer to target, so the entry must stay
@@ -163,8 +163,8 @@ fn set_buffer_option_invalid_value_type_errors() {
     );
 }
 
-/// `set-buffer-option!` rejects `"language"` outright — that lives on the
-/// buffer's language identity, not its settings — before checking the bid,
+/// `set-buffer-option!` rejects `"language"` outright (that lives on the
+/// buffer's language identity, not its settings) before checking the bid,
 /// so the error names `set-buffer-language!` rather than the (also true,
 /// but less useful) "invalid buffer id" from `NullHost`.
 #[test]
@@ -186,8 +186,8 @@ fn set_buffer_option_language_key_errors() {
 }
 
 // `set-buffer-option!`'s `bid` is now validated live before the builtin
-// body (this function) ever runs — `args::LivePane`'s `BuiltinArg::resolve`,
-// in the `builtins!`-registered closure — covered once, centrally, through
+// body (this function) ever runs (`args::LivePane`'s `BuiltinArg::resolve`,
+// in the `builtins!`-registered closure), covered once, centrally, through
 // a real `ScriptingHost` by `builtins::tests::
 // live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`.
 // A direct call to this function (as every other test in this file makes)
@@ -195,7 +195,7 @@ fn set_buffer_option_language_key_errors() {
 
 /// `set-buffer-option!` accepts all three valid value types without a
 /// type-mismatch error (the host may still reject the call for other
-/// reasons — `NullHost` always does).
+/// reasons; `NullHost` always does).
 #[test]
 fn set_buffer_option_accepts_string_bool_int_values() {
     let mut h = SteelCtxTestHarness::new();
@@ -218,7 +218,7 @@ fn set_buffer_option_accepts_string_bool_int_values() {
 /// A [`crate::null_host::NullHost`] wrapper that reports every buffer id as
 /// existing and records `set_buffer_option` calls, so a test can prove the
 /// builtin's guards were all passed and the exact `(key, value, bid)` the
-/// host received — without a real editor.
+/// host received, without a real editor.
 #[derive(Default)]
 struct RecordingBufferOptionHost {
     inner: crate::null_host::NullHost,

@@ -13,7 +13,7 @@ pub enum LogLevel {
 
 // ── log! builtin ──────────────────────────────────────────────────────────────
 
-/// `(log! severity message)` — push `message` to the pending message buffer.
+/// `(log! severity message)`: push `message` to the pending message buffer.
 ///
 /// `severity` must be one of the symbols `'trace`, `'info`, `'warn`, or
 /// `'error`.  Any other value raises a Steel error.

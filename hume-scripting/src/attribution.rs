@@ -11,8 +11,8 @@ use std::hash::{Hash, Hasher};
 /// case-insensitive for equality and hashing.
 ///
 /// Two valid forms:
-/// - `Core(name)` — a bundled core plugin: `core:<name>`
-/// - `User { user, repo }` — a third-party plugin: `<user>/<repo>`
+/// - `Core(name)`: a bundled core plugin: `core:<name>`
+/// - `User { user, repo }`: a third-party plugin: `<user>/<repo>`
 ///
 /// `"SomeUser/CoolPlugin"` and `"someuser/coolplugin"` are equal on
 /// case-insensitive filesystems (APFS, NTFS) while the original casing is
@@ -27,11 +27,11 @@ impl PluginId {
     /// Parse and validate a plugin name string.
     ///
     /// Valid forms:
-    /// - `core:<name>` — bundled core plugin
-    /// - `<user>/<repo>` — third-party plugin (exactly one `/`)
+    /// - `core:<name>`: bundled core plugin
+    /// - `<user>/<repo>`: third-party plugin (exactly one `/`)
     ///
     /// Segments must be non-empty, must not be `.` or `..`, and must not
-    /// contain `/`, `\`, `"`, `:`, or NUL — ensuring the components are safe
+    /// contain `/`, `\`, `"`, `:`, or NUL, ensuring the components are safe
     /// to use as filesystem path segments.  Validated by
     /// [`hume_platform::path::is_safe_segment`].
     ///
@@ -88,7 +88,7 @@ impl fmt::Display for Owner {
     }
 }
 
-/// Case-insensitive equality (ASCII fold — plugin names are ASCII by design).
+/// Case-insensitive equality (ASCII fold; plugin names are ASCII by design).
 ///
 /// `Core("PLUM") == Core("plum")`, `User { "Alice", "Bar" } == User { "alice", "bar" }`.
 /// Different variants are never equal.
@@ -109,7 +109,7 @@ impl Eq for PluginId {}
 /// Hash must be consistent with `PartialEq`: equal IDs → equal hashes.
 impl Hash for PluginId {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // Discriminant is hashed implicitly via the match — different variants
+        // Discriminant is hashed implicitly via the match: different variants
         // hash differently even if the inner strings happen to be the same.
         match self {
             PluginId::Core(name) => {
@@ -151,7 +151,7 @@ pub(crate) enum Owner {
 ///
 /// Every Steel mutation is attributed to `stack.last()`: `Some(id)` means a
 /// plugin body is executing; `None` means top-level `init.scm` (→ [`Owner::User`]).
-/// Core state is never mutated through the scripting layer — [`Owner::Core`] is
+/// Core state is never mutated through the scripting layer. [`Owner::Core`] is
 /// only ever a *prior*, never the active attribution.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct PluginStack {
@@ -166,7 +166,7 @@ impl PluginStack {
 
     /// Pop the top attribution when leaving a plugin body.
     ///
-    /// Gracefully no-ops on an empty stack — avoids panics on error-path
+    /// Gracefully no-ops on an empty stack. Avoids panics on error-path
     /// cleanup where the stack may already be empty.
     pub(crate) fn pop(&mut self) {
         self.stack.pop();
@@ -192,7 +192,7 @@ impl PluginStack {
 
     /// The [`PluginId`] whose body is currently executing, if any.
     ///
-    /// Used by `(plugin-config)` to look up the caller's own `#:config` value —
+    /// Used by `(plugin-config)` to look up the caller's own `#:config` value,
     /// valid during both eager (`load-plugin`) and lazy (`declare-plugin`,
     /// activated later) bodies, since both push here for the duration of the eval.
     pub(crate) fn current(&self) -> Option<&PluginId> {

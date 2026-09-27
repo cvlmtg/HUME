@@ -22,7 +22,7 @@ fn process_and_fs_globals_are_available_unrequired() {
                  ; `Ok?`/`Err?`/`Ok->value`/`Err->value` are the raw
                  ; `steel/core/result` struct ops and ARE globally bound;
                  ; the higher-level `unwrap-ok`/`unwrap-err` wrapper
-                 ; (`steel/result`) is NOT reachable here — `(require-builtin
+                 ; (`steel/result`) is NOT reachable here: `(require-builtin
                  ; steel/result)` fails with "module not found" in HUME's
                  ; embedding, unlike steel-core's own bundled module-name
                  ; resolution. Use `Ok->value`/`Err->value` in plugin code.
@@ -130,7 +130,7 @@ fn file_write_read_port_round_trip() {
 }
 
 /// A Steel string literal, once parsed back by the VM,
-/// must have the same character count as the original path — proof the
+/// must have the same character count as the original path, proof the
 /// escaping round-trips rather than just "doesn't panic".
 #[test]
 fn steel_path_literal_escapes_windows_backslashes_for_round_trip_through_steel() {

@@ -169,7 +169,7 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
 
 /// `#:config` passed to `(declare-plugin …)` at declare time must be observable
 /// by the plugin body via `(plugin-config)` whenever activation eventually runs
-/// it — the general mechanism this feature relies on, exercised on the lazy
+/// it. This is the general mechanism this feature relies on, exercised on the lazy
 /// path where declare and activation are separated in time.
 ///
 /// This depends on `declare_plugin` storing `config` into `plugin_configs`
@@ -198,7 +198,7 @@ fn plugin_config_survives_lazy_declare_to_activation() {
     )
     .expect("declare-plugin with #:config must succeed");
 
-    // Activation happens later, decoupled from declare — exactly the lazy
+    // Activation happens later, decoupled from declare: exactly the lazy
     // scenario the config channel must survive.
     host.eval_source(r#"(%activate-plugin-inline "user/cfgtest")"#, &mut NullHost)
         .expect("lazy activation must succeed");
@@ -258,7 +258,7 @@ fn manifest_declare_resolves_and_evaluates_manifest_scm() {
 
 /// `#:config` on the outer zero-trigger `declare-plugin` call wins over whatever
 /// the manifest's own `declare-plugin` passes (the manifest here passes none,
-/// i.e. the empty-hash default) — a plugin body reading `(plugin-config)` at
+/// i.e. the empty-hash default). A plugin body reading `(plugin-config)` at
 /// activation must see the user's value.
 ///
 /// `declare_plugin` stores the config with `or_insert` during manifest
@@ -332,7 +332,7 @@ fn manifest_declare_dir_present_without_manifest_scm_errors() {
 }
 
 /// A manifest.scm that declares a *different* plugin id than the one it was
-/// resolved for must be rejected — a manifest for "user/wrongname" cannot smuggle
+/// resolved for must be rejected: a manifest for "user/wrongname" cannot smuggle
 /// in a declaration for "user/somebody-else".
 ///
 /// The `manifest_resolving` mismatch guard in `declare_plugin` enforces this.
@@ -377,7 +377,7 @@ fn manifest_declaring_different_plugin_name_errors() {
 }
 
 /// A malformed activation entry inside a manifest.scm's own `declare-plugin`
-/// call must name `manifest.scm` and the plugin — the user's `init.scm` only
+/// call must name `manifest.scm` and the plugin. The user's `init.scm` only
 /// contains the bare zero-trigger declare, so a bare `declare-plugin #:events`
 /// error would point at a line that doesn't exist in their config.
 #[test]
@@ -455,7 +455,7 @@ fn manifest_with_zero_trigger_self_declare_errors_without_recursing() {
 }
 
 /// A manifest.scm that evaluates without error but never calls `declare-plugin`
-/// must still be rejected — otherwise the outer declare silently no-ops with no
+/// must still be rejected. Otherwise the outer declare silently no-ops with no
 /// plugin ever registered.
 ///
 /// The post-eval check in `%finish-manifest-declare!` catches this case.
@@ -490,7 +490,7 @@ fn manifest_that_never_declares_errors() {
 }
 
 /// A second zero-trigger declare of an already-declared plugin is a silent
-/// no-op — `manifest.scm` is not re-evaluated.
+/// no-op: `manifest.scm` is not re-evaluated.
 ///
 /// Without the pre-eval state check in `%begin-manifest-declare!`, the
 /// manifest would run twice and register its activation entries twice.

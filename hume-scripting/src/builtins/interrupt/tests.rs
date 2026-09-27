@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 #[test]
 fn hume_yield_returns_void_when_flag_clear() {
     let mut h = SteelCtxTestHarness::new();
-    // Flag starts `false` (clear) — yield must be a transparent no-op.
+    // Flag starts `false` (clear), so yield must be a transparent no-op.
     let mut ctx = h.ctx();
     let result = hume_yield(&mut ctx);
     assert!(result.is_ok(), "yield with clear flag must return Ok");

@@ -1,4 +1,4 @@
-//! `(after ms thunk)` / `(cancel-timer! id)` — Steel timer surface.
+//! `(after ms thunk)` / `(cancel-timer! id)`: Steel timer surface.
 //! Not LSP-specific (any plugin can debounce/delay work), hence a sibling
 //! module rather than living in `lsp.rs`.
 
@@ -10,7 +10,7 @@ use super::SteelResult;
 use super::args::usize_arg;
 
 /// `(after ms thunk)` → timer id (int). `thunk` is called with no args at
-/// the drain boundary once `ms` milliseconds have passed (never inline —
+/// the drain boundary once `ms` milliseconds have passed (never inline;
 /// same queued-Steel-call delivery as the LSP callbacks).
 pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: SteelVal) -> SteelResult {
     let ms = usize_arg(ms, "after")? as u64;
