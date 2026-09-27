@@ -38,6 +38,36 @@ What each step shows:
 
 For a hands-on tour of everything else, type `:tutor` and press `Enter`: it opens an interactive tutorial you can edit freely.
 
+## Bringing your config over
+
+HUME has no TOML config file. Every setting and keybinding is a call to a Scheme function in [`init.scm`](configuration.md): `(set-option! "name" value)` for options, `(bind-key! 'normal "keys" "command")` for keys. Being a real programming language, `init.scm` also has conditionals, loops, and abstraction, which a static TOML file doesn't.
+
+| Setting | Helix `config.toml` | HUME `init.scm` |
+|---|---|---|
+| Theme | `theme = "onedark"` | `(set-option! "theme" "onedark")` |
+| Line numbers | `[editor]`<br>`line-number = "relative"` | `(set-option! "line-number-style" "relative")` |
+| Scroll padding | `scrolloff = 5` | `(set-option! "scrolloff" 5)` |
+| Mouse | `mouse = false` | `(set-option! "mouse-enabled" #f)` |
+| Soft wrap | `[editor.soft-wrap]`<br>`enable = true` | `(set-option! "wrap-mode" "soft")` |
+| Whitespace indicators | `[editor.whitespace]`<br>`render = "all"` | `(set-option! "whitespace-space" "all")`<br>`(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-newline" "all")` |
+| Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "cursor-shape-insert" "bar")` |
+| Auto-pairs | `auto-pairs = false` | `(set-option! "auto-pairs-enabled" #f)` |
+| Inlay hints | `[editor.lsp]`<br>`display-inlay-hints = true` | `(set-option! "lsp.inlay-hints" #t)` |
+| Statusline | `[editor.statusline]`<br>`left = [...]` | `(configure-statusline! '(...) '(...) '(...))`, see [Statusline](#statusline) |
+| Keybinding | `[keys.normal]`<br>`"C-j" = "move_line_down"` | `(bind-key! 'normal "ctrl-j" "move-down")` |
+
+Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages.toml`) is a buffer option in HUME, so it's set per language from a hook instead of a separate file:
+
+```scheme
+(register-hook! 'on-language-set
+  (lambda (pane lang)
+    (when (equal? lang "python")
+      (set-buffer-option! pane "tab-width" 4)
+      (set-buffer-option! pane "tab-style" "soft"))))
+```
+
+`bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.
+
 ## What's the same
 
 - Select-then-act: motions change the selection; operators act on it
@@ -135,17 +165,6 @@ To bind that behavior to `*` instead, rebind it in your `init.scm`:
 ::: warning
 HUME's `:sort` permutes whole rows, keyed by whatever text you select on each one. Select whole lines and it behaves like a plain line sort; select a column across several lines and it sorts by that column, moving the entire rows along with it. `%` followed by `:sort` sorts the whole file directly, with no splitting step needed.
 :::
-
-### Configuration language
-
-Helix uses TOML. HUME uses **Scheme** ([`init.scm`](configuration.md)). You bind keys and set options by calling Scheme functions:
-
-```scheme
-(set-option! "theme" "sand")
-(bind-key! 'normal "ctrl-j" "move-down")
-```
-
-This makes HUME's config a real programming language: conditionals, loops, and abstraction are available from day one.
 
 ### Statusline
 

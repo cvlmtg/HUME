@@ -39,6 +39,34 @@ Shift does not extend a selection: `W`, `H`, `J`, `K`, `L` do something else her
 
 For a hands-on tour of everything else, type `:tutor` and press `Enter`: it opens an interactive tutorial you can edit freely.
 
+## Bringing your config over
+
+`kakrc` is kakscript: `set-option` for options, `map` for keys, `hook` for events, `define-command` for new commands. HUME's [`init.scm`](configuration.md) is Scheme, with the same four ideas under different names, plus conditionals, loops, and abstraction from day one, closer to what you would reach `%sh{}` for in kakrc, without leaving the editor: `(set-option! "name" value)` for options, `(bind-key! 'normal "keys" "command")` for keys.
+
+| Setting | Kakoune `kakrc` | HUME `init.scm` |
+|---|---|---|
+| Theme | `colorscheme onedark` | `(set-option! "theme" "onedark")` |
+| Line numbers | `add-highlighter global/numbers number-lines -relative` | `(set-option! "line-number-style" "relative")` |
+| Tab width | `set-option global tabstop 4` | `(set-option! "tab-width" 4)` |
+| Indent width | `set-option global indentwidth 4` | same as tab width: HUME has one `tab-width` option, not two |
+| Spaces vs tabs | `set-option global indentwidth 0` (tabs) | `(set-option! "tab-style" "soft")` (spaces) or `"hard"` (tabs) |
+| Scroll padding | `set-option global scrolloff 5,0` | `(set-option! "scrolloff" 5)` (lines only; HUME has no horizontal scrolloff) |
+| Extra word characters | `set-option global extra_word_chars '_'` | `(set-option! "word-chars" "_")` |
+| Reload on external change | `set-option global autoreload yes` | `(set-option! "autoread" #t)` |
+| Whitespace indicators | `add-highlighter global/whitespace show-whitespaces` | `(set-option! "whitespace-space" "all")`<br>`(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-newline" "all")` |
+| Keybinding | `map global normal <c-j> ...` | `(bind-key! 'normal "ctrl-j" "move-down")` |
+
+Kakoune's `extra_word_chars` is usually set per filetype from a `hook`. HUME's equivalent is `on-language-set`:
+
+```scheme
+(register-hook! 'on-language-set
+  (lambda (pane lang)
+    (when (member lang '("css" "scss" "less"))
+      (set-buffer-option! pane "word-chars" "-"))))
+```
+
+`bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.
+
 ## What's the same
 
 These work the way you expect, same keys:
@@ -55,6 +83,12 @@ These work the way you expect, same keys:
 - `g h` line start, `g l` line end, `g g` first line
 
 ## Key differences
+
+### No shell integration
+
+Kakoune is built to hand text to other programs: `|` pipes selections through a command, `!` inserts a command's output, and `%sh{ … }` expansions let the config shell out for anything the editor doesn't do itself. None of that exists in HUME.
+
+The philosophies genuinely differ here. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the entire shell ecosystem.
 
 ### Extending selections
 
@@ -167,12 +201,6 @@ Same keys (`Q` starts and stops recording, `q` replays), but the storage differs
 
 Kakoune's `.` repeats the last insert-mode change, and `<a-.>` repeats the last object or `f`/`t` selection. HUME's `.` is broader: it repeats the last editing command *or* insert session: deletes, changes and pastes included. Give it a count to override the original. Repeating a find is `=` forward and `-` backward.
 
-### No shell integration
-
-Kakoune is built to hand text to other programs: `|` pipes selections through a command, `!` inserts a command's output, and `%sh{ … }` expansions let the config shell out for anything the editor doesn't do itself. None of that exists in HUME.
-
-The philosophies genuinely differ here. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the entire shell ecosystem.
-
 ### Splits, windows, and tabs
 
 Kakoune has no window management by design: you run multiple clients against one session and let tmux or your window manager arrange them.
@@ -181,18 +209,9 @@ HUME has panes built in: `Ctrl-p` is the prefix, `Ctrl-p s` and `Ctrl-p v` split
 
 On top of that, a **tab** saves a whole pane layout: its own splits and focused pane. `:tabnew` opens a second arrangement, `:tabclose` drops it, and `Ctrl-p t` / `Ctrl-p T` cycle between them. Buffers are shared across every tab; only the layout differs. The nearest Kakoune analogue is a second tmux window with another client attached to the same session. See [Tabs](files-and-buffers.md#tabs).
 
-### Configuration
+### User modes
 
-Kakoune's `kakrc` is kakscript: `map` for keys, `set-option` for options, `hook` for events, `define-command` for new commands. HUME's [`init.scm`](configuration.md) is Scheme, with the same four ideas under different names:
-
-```scheme
-(set-option! "theme" "sand")
-(bind-key! 'normal "ctrl-j" "move-down")
-```
-
-Being a real programming language, the config has conditionals, loops and abstraction from day one, closer to what you would reach `%sh{}` for in kakrc, without leaving the editor.
-
-One thing that does not carry over: Kakoune's user mode (the `Space` leader) and `declare-user-mode` have no direct equivalent. HUME's prefixes (`g`, `m`, `z`, `Ctrl-p`) can't be declared from your config.
+Kakoune's user mode (the `Space` leader) and `declare-user-mode` have no direct equivalent. HUME's prefixes (`g`, `m`, `z`, `Ctrl-p`) can't be declared from your config.
 
 ### Plugins and language servers
 

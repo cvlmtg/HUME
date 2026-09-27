@@ -57,6 +57,36 @@ HUME writes no swap files, and undo history doesn't survive a restart (not yet).
 
 For a hands-on tour of everything else, type `:tutor` and press `Enter`: it opens an interactive tutorial you can edit freely.
 
+## Bringing your config over
+
+HUME has no `vimrc`. Every setting and keybinding is a call to a Scheme function in [`init.scm`](configuration.md): `(set-option! "name" value)` for options, `(bind-key! 'normal "keys" "command")` for keys. Being a real programming language, `init.scm` also has conditionals, loops, and abstraction, closer to what you would reach for `.vim`/Lua scripting to do.
+
+| Setting | `vimrc` | HUME `init.scm` |
+|---|---|---|
+| Theme | `colorscheme onedark` | `(set-option! "theme" "onedark")` |
+| Line numbers | `set number relativenumber` | `(set-option! "line-number-style" "relative")` |
+| Tab width | `set tabstop=4 shiftwidth=4` | `(set-option! "tab-width" 4)` |
+| Spaces vs tabs | `set expandtab` | `(set-option! "tab-style" "soft")` |
+| Scroll padding | `set scrolloff=5` | `(set-option! "scrolloff" 5)` |
+| Mouse | `set mouse=a` | `(set-option! "mouse-enabled" #t)` |
+| Line wrapping | `set wrap linebreak breakindent` | `(set-option! "wrap-mode" "indent")` |
+| Whitespace indicators | `set list listchars=tab:>-,trail:-` | `(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-space" "trailing")` |
+| Reload on external change | `set autoread` | `(set-option! "autoread" #t)` |
+| Word characters | `set iskeyword+=-` | `(set-option! "word-chars" "-")` |
+| Keybinding | `nnoremap <C-j> ...` | `(bind-key! 'normal "ctrl-j" "move-down")` |
+
+`iskeyword`'s range syntax (`48-57`, `@`, `192-255`) doesn't carry over; `word-chars` takes the literal characters instead. Vim's per-filetype `autocmd FileType python set …` becomes an `on-language-set` hook:
+
+```scheme
+(register-hook! 'on-language-set
+  (lambda (pane lang)
+    (when (equal? lang "python")
+      (set-buffer-option! pane "tab-width" 4)
+      (set-buffer-option! pane "tab-style" "soft"))))
+```
+
+`bind-key!` takes a command *name* (the same names listed in [Builtin Commands](builtin-commands.md)), not a key sequence — there's no key-to-key remapping.
+
 ## Mode map
 
 | Vim mode | HUME equivalent |
