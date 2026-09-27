@@ -222,12 +222,12 @@ Language server support is a bundled plugin rather than a separate process you c
 
 ## What HUME has that Kakoune doesn't
 
-- A built-in system clipboard, a kill ring, and a paste that picks the right source
-- Extend mode, plus one-shot extends that need no mode switch
-- Built-in panes, splits, and tab pages
-- A built-in plugin manager, Scheme scripting, and a hook system
-- Bundled language-server and tree-sitter support
-- Dot-repeat covering arbitrary edits, not just insert-mode changes
-- An undo tree
-- Selecting every search match at once (`m /`)
-- Tree-sitter-backed structural text objects and navigation (functions, classes, arguments, comments, tests)
+- A built-in system clipboard, a [kill ring, and a paste](copy-and-paste.md) that picks the right source
+- [Extend mode](#extending-selections), plus one-shot extends that need no mode switch
+- Built-in [panes and splits](files-and-buffers.md#splits-and-panes), and [tab pages](files-and-buffers.md#tabs)
+- A built-in [plugin manager](core-plugins.md#core-plum), [Scheme scripting](configuration.md), and a [hook system](plugins.md#hooks)
+- Bundled [language-server](lsp.md) and [tree-sitter](syntax-highlighting.md) support
+- [Dot-repeat](editing.md#repeat) covering arbitrary edits, not just insert-mode changes
+- An [undo tree](editing.md#undo-and-redo)
+- [Selecting every search match at once](moving-around.md#search-navigation) (`m /`)
+- Tree-sitter-backed [structural text objects](#text-objects) and [navigation](moving-around.md#structural-navigation) (functions, classes, arguments, comments, tests)

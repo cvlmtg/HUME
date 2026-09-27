@@ -48,7 +48,39 @@ For a hands-on tour of everything else, type `:tutor` and press `Enter`: it open
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount, so a mixed-tabs-and-spaces indent gets normalized as a side effect
 - `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u`: the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, or unit test for any language with a tree-sitter grammar that ships a textobjects query
 
+### Themes
+
+Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader reads the same file format, the same color forms (hex, a palette name, or one of the sixteen bare terminal color names like `red`), the same modifier names, and the same underline styles, so most Helix themes work in HUME unchanged.
+
+::: details Where HUME's theme format differs
+A terminal color name resolves to a fixed value from the standard terminal palette rather than to your own terminal's configured color, so a theme reads the same everywhere.
+
+One thing a theme can contain isn't supported, though it doesn't stop the rest of the theme from loading: the top-level `rainbow` array, which HUME has no rainbow-bracket feature to read. A theme fails to load outright only when the problem is with the document rather than one entry in it: invalid TOML, an `inherits` parent that doesn't exist or forms a cycle or nests more than eight deep, or an `inherits`/`palette` key of the wrong type. Any other malformed entry is left unstyled and named in `:messages` instead. See [Theme scopes](configuration.md#theme-scopes) for the scopes HUME doesn't read.
+
+HUME also extends the format in one direction: a scope can be written as a TOML section header (`[ui.cursor]`) where Helix only reads flat dotted keys. A theme hand-authored in HUME using section headers needs them flattened to plain dotted keys before Helix will take it. The theme editor's own exports are already flat, so this only matters for a theme you write by hand.
+:::
+
+Themes install the same way plugins do: run `:plum-install-theme <user/repo>` and [PLUM](core-plugins.md#core-plum) fetches the theme repo from GitHub.
+
+Then type `:theme ` and press Tab to try it for the session, or set it as your default theme in your [`init.scm`](configuration.md#example-init-scm): Here's [Everforest](https://github.com/cvlmtg/everforest.hume), the first third-party theme for HUME, ported as-is from Helix.
+
+```scheme
+(set-option! "theme" "everforest_dark")
+```
+
+
+A theme editor is also available online: a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
+
 ## Key differences
+
+### Plugin system
+
+Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#core-plum), a plugin manager where plugins are Scheme scripts installed from GitHub. Declare the plugin in your [`init.scm`](configuration.md#example-init-scm), then run `:plum-install-plugins` to fetch it. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
+
+```scheme
+(declare-plugin "core:stdlib")
+(load-plugin "cvlmtg/grep.hume")
+```
 
 ### Growing selections
 
@@ -115,15 +147,6 @@ Helix uses TOML. HUME uses **Scheme** ([`init.scm`](configuration.md)). You bind
 
 This makes HUME's config a real programming language: conditionals, loops, and abstraction are available from day one.
 
-### Plugin system
-
-Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#core-plum), a plugin manager where plugins are Scheme scripts installed from GitHub. Declare the plugin, then run `:plum-install-plugins` to fetch it. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
-
-```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "cvlmtg/grep.hume")
-```
-
 ### Statusline
 
 Helix's statusline is configurable via TOML (`[editor.statusline]`); HUME's is configured from Scheme. Both work the same way in practice: you reorder and toggle a fixed set of built-in elements across left/center/right zones:
@@ -174,15 +197,25 @@ Several features were intentionally adopted from Helix rather than reinvented:
 - **Helix-style surround**: the `core:helix-surround` plugin remaps surround operations to `ms` (wrap), `md` (delete), and `mr` (replace), matching Helix's keybindings. This is opt-in; HUME's default surround follows its own select-then-act model.
 - **Kitty keyboard protocol support**: HUME uses the `termina` crate so the same detection and encoding work consistently on Unix and Windows terminals alike, falling back to legacy key encoding where the protocol isn't available.
 - **Cursor shape**: HUME's Insert-mode cursor defaults to a thin bar, matching the look Helix gives you once you set `insert = "bar"` in `[editor.cursor-shape]`; set `cursor-shape-insert` to `block` or `underline` for the other two shapes (see [Global options](configuration.md#global-options)). Normal and Extend mode have no shape setting of their own and are always a block, same as Helix's own default for every mode it doesn't override. HUME departs from Helix for multi-cursor editing: Helix always shows every extra cursor as a colored block regardless of shape, since only one of them can ever be the real terminal cursor. HUME instead applies `cursor-shape-insert` to every cursor alike. With `block`, each one is painted from the theme's own cursor colors (`ui.cursor.insert`/`ui.cursor.primary.insert`, and their Normal/Extend equivalents); with `bar` or `underline`, only the real terminal cursor marks the primary one, and the rest are visible only where they sit inside a highlighted selection.
-- **Theme format**: Helix uses TOML with `[palette]` indirection and dot-separated UI scope names. HUME's theme loader reads the same file format, the same color forms (hex, a palette name, or one of the sixteen bare terminal color names like `red`), the same modifier names (`crossed_out`, `underlined`), and the same underline styles (`line`, `curl`, `dotted`, `dashed`, `double_line`), so most Helix themes work in HUME unchanged. A terminal color name resolves to a fixed value from the standard terminal palette rather than to your own terminal's configured color, so a theme reads the same everywhere. One thing a theme can contain isn't supported, though it doesn't stop the rest of the theme from loading: the top-level `rainbow` array, which HUME has no rainbow-bracket feature to read. A theme fails to load outright only when the problem is with the document rather than one entry in it: invalid TOML, an `inherits` parent that doesn't exist or forms a cycle or nests more than eight deep, or an `inherits`/`palette` key of the wrong type. Any other malformed entry is left unstyled and named in `:messages` instead. See [Theme scopes](configuration.md#theme-scopes) for the scopes HUME doesn't read.
 
-  Sharing goes less far in the other direction: HUME lets a scope be written as a TOML section header (`[ui.cursor]`) where Helix only reads flat dotted keys. A theme hand-authored in HUME using section headers needs them flattened to plain dotted keys before Helix will take it. The theme editor's own exports are already flat, so this only matters for a theme you write by hand.
+## What Helix has that HUME doesn't
 
-A theme editor is also available online: a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
+- Duplicating a selection onto the line *above* (`Alt-C`); HUME only binds the downward form (`C`)
+- `*` searching the selection with automatic word-boundary anchors: HUME's `Ctrl-/` matches a selection literally (Helix's `Alt-*`), and HUME's own `*` searches the word under the cursor instead of the selection. See [Search](#multiple-selections)
+- Rainbow bracket highlighting: HUME reads the rest of a theme that defines a top-level `rainbow` array but has no feature to act on it
+- Shell pipe integration: piping selections through a command (`|`), inserting a command's output (`!`), or filtering selections by a shell command's exit status (`$`). Anything you'd reach for these for is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands
+- Merging every selection into one span across gaps (`Alt--`); HUME only merges selections that already touch, automatically
+- `:x` and `:o`/`:open` as command aliases; use `:wq`/`:write-quit` and `:e` instead
 
-### What HUME has that Helix doesn't
+## What HUME has that Helix doesn't
 
-- Scripting and plugins (Scheme)
-- Smart paste with kill ring
-- Hook system (on-buffer-open, on-buffer-save, etc.)
-- Tab pages: each tab a saved window layout, not a buffer strip
+- A built-in plugin manager ([PLUM](core-plugins.md#core-plum)) shipping in every release, installing plugins from GitHub; Helix's Steel plugin system is still an unmerged branch
+- [Tab pages](files-and-buffers.md#tabs): a saved whole pane layout, distinct from a strip of buffers
+- [Smart paste](copy-and-paste.md#smart-p-paste) with kill ring
+- [Hook system](plugins.md#hooks) (on-buffer-open, on-buffer-save, etc.)
+- [One-shot extends](#growing-selections) that extend a single motion without switching to a select/extend mode
+- Backward line-selection shrinking (`X`/`Ctrl-Shift-x`; see [Line selection](#line-selection-x-vs-extend-mode-e))
+- A structural text object and navigation kind for array/tuple/struct values ([`m i v`/`m a v`](selections.md#text-objects), [`g v`/`g V`](moving-around.md#structural-navigation))
+- [Custom statusline elements](configuration.md#custom-elements) written in Scheme
+- Per-cursor shape and theme coloring for every multi-cursor, not just the primary one (see [Global options](configuration.md#global-options))
+- A real programming language for configuration ([`init.scm`](configuration.md)): conditionals, loops, and custom commands, not static TOML
