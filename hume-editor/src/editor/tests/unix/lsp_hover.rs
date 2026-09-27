@@ -364,10 +364,9 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
 /// see `tall_content_docks_instead_of_using_the_drawer` below); a 23-row
 /// pane can (`⌊23/3⌋ == 7`, `⌊24/3⌋ == 8`).
 ///
-/// Fail oracle: reinstating `(+ 1 (- (cdr range) (car range)))` in
-/// `lib.scm`'s `lsp/visible-lines` reports 24 visible lines instead of 23,
-/// raising the threshold to 8 — 8 content lines would then float instead of
-/// dock, failing the first assertion below.
+/// Computing `(+ 1 (- (cdr range) (car range)))` in `lib.scm`'s
+/// `lsp/visible-lines` would report 24 visible lines instead of 23 and raise
+/// the threshold to 8, so 8 content lines would float instead of dock.
 #[test]
 fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
     let tmp = safe_tempdir();
@@ -465,8 +464,8 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
     // No response scripted for "textDocument/hover" — if the capability
     // gate failed open (called the request thunk anyway), the request
     // would go unanswered and `status_msg` would stay unset, not mention
-    // "not supported"; this is a sufficient oracle without needing to
-    // inspect the (trait-erased, post-boxing unreachable) sent log.
+    // "not supported". That is enough to tell, without inspecting the
+    // (trait-erased, post-boxing unreachable) sent log.
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     // No hoverProvider in the advertised capabilities.
@@ -489,7 +488,7 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
 #[test]
 fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
     // A `null` capability field is not the same as advertising support —
-    // same oracle as the missing-key case above, just via an explicit
+    // same check as the missing-key case above, just via an explicit
     // `null` rather than an absent key.
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
@@ -517,10 +516,9 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
 /// `hover.scm`'s own body) once the focused buffer no longer matches the
 /// buffer that sent the request.
 ///
-/// Fail oracle: drop `#:require-focus` from `hover.scm`'s `lsp-request`
-/// call — the popup would show regardless of which buffer answered, since a
-/// queued callback's `(focused-pane)` is live focus at drain time, not
-/// the buffer the request was sent for.
+/// Without `#:require-focus` on `hover.scm`'s `lsp-request`, the popup would
+/// show regardless of which buffer answered, since a queued callback's
+/// `(focused-pane)` is live focus at drain time.
 #[test]
 fn stale_response_after_a_buffer_switch_shows_no_popup() {
     let tmp = safe_tempdir();

@@ -30,12 +30,11 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
 
 #[test]
 fn set_option_applies_history_capacity() {
-    // Fail oracle: revert set_global_option to call crate::editor::settings::write_global
-    // directly (bypassing settings::ops::apply_global's resync step).
-    // settings.history_capacity still updates — write_global's own job — so
-    // that assertion stays green; state.history's actual capacity never
-    // resyncs, so it's the post-push assertion at the bottom (verified
-    // empirically: fails "left: 4, right: 2") that goes red.
+    // If set_global_option called crate::editor::settings::write_global
+    // directly, skipping settings::ops::apply_global's resync step,
+    // settings.history_capacity would still update. Only the post-push
+    // assertion at the bottom checks that state.history's real capacity
+    // was resynced.
     let mut ed = editor_from("-[h]>ello\n");
     for cmd in ["a", "b", "c"] {
         ed.state
@@ -72,12 +71,9 @@ fn set_option_applies_history_capacity() {
 
 #[test]
 fn set_option_applies_jump_list_capacity() {
-    // Fail oracle: revert set_global_option to call crate::editor::settings::write_global
-    // directly (bypassing settings::ops::apply_global's resync step).
-    // settings.jump_list_capacity still updates — write_global's own job —
-    // so that assertion stays green; the live jump list's actual capacity
-    // never resyncs, so it's the post-push assertion at the bottom (verified
-    // empirically: fails "left: 6, right: 2") that goes red.
+    // As above: settings.jump_list_capacity would update even without
+    // settings::ops::apply_global's resync step. The post-push assertion at
+    // the bottom is the one that checks the live jump list's capacity.
     let mut ed = editor_from("-[h]>ello\n");
     let pid = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
@@ -138,9 +134,9 @@ fn set_option_applies_jump_list_capacity() {
 /// around the same comparison, exercised whenever a real terminal is
 /// attached.
 ///
-/// Fail oracle: remove the `self.resync_mouse_mode()` call from
-/// `prepare_frame` — `applied_mouse_mode` stays `(true, false)` (the
-/// constructor default) even after this `:set`, and the assertion fails.
+/// Without the `self.resync_mouse_mode()` call in `prepare_frame`,
+/// `applied_mouse_mode` would keep its constructor default `(true, false)`
+/// after this `:set`.
 #[test]
 fn set_global_mouse_enabled_resyncs_applied_mode_next_frame() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -175,10 +171,9 @@ fn set_global_mouse_enabled_resyncs_applied_mode_next_frame() {
 
 #[test]
 fn set_option_statusline_mode_colors_gates_whole_row_tint() {
-    // Fail oracle: drop the `statusline_mode_colors` check from
-    // `HumeStatusline::render` (always resolve the real mode) and the
-    // "colors off" assertion below fails — the row would still tint cyan in
-    // Insert mode.
+    // `HumeStatusline::render` checks `statusline_mode_colors` before
+    // resolving the real mode. Without that check the row would still tint
+    // cyan in Insert mode with colors off.
     //
     // The fixture theme gives `ui.statusline` and `ui.statusline.normal`
     // *different* backgrounds — every bundled theme makes them equal, which
@@ -259,8 +254,8 @@ fn set_option_statusline_mode_colors_gates_whole_row_tint() {
 
 #[test]
 fn set_option_applies_undo_levels() {
-    // Fail oracle: same as above, for the undo-levels arm — without the
-    // inline resync, the second edit below would stay undoable.
+    // Same idea for the undo-levels arm: without the inline resync, the
+    // second edit below would stay undoable.
     let mut ed = editor_from("-[h]>ello\n");
     let result = eval_set_option(&mut ed, r#"(set-option! "undo-levels" 1)"#);
     assert!(result.is_ok(), "eval must succeed: {result:?}");
@@ -283,19 +278,16 @@ fn set_option_applies_undo_levels() {
 
 #[test]
 fn set_option_theme_failure_does_not_persist() {
-    // The real bug: set_global_option used to write the raw value with no
-    // resync at all, so a bad theme name from `set-option!` (e.g. from a
-    // lazily-activated plugin) would sit in settings.theme forever, later
-    // reported as "current theme" even though it never loaded.
-    // Fail oracle: drop the rollback in settings::ops::apply and
-    // settings.theme ends up "no_such_theme_xyz" instead of empty.
+    // A bad theme name from `set-option!` (e.g. from a lazily-activated
+    // plugin) must not stay in settings.theme, where it would later be
+    // reported as "current theme" even though it never loaded. The rollback
+    // in settings::ops::apply keeps settings.theme empty here.
     let mut ed = editor_from("-[h]>ello\n");
     let result = eval_set_option(&mut ed, r#"(set-option! "theme" "no_such_theme_xyz")"#);
     // apply_global surfaces a failed theme load as an Err (rather than
     // Ok(()) with only a message-log entry) so a plugin's own
-    // (with-handler ...) around set-option! actually fires. Fail oracle
-    // for *this* assertion: revert apply_global's Err return and this
-    // becomes Ok, silently hiding the failure from Steel callers again.
+    // (with-handler ...) around set-option! actually fires. An Ok here
+    // would hide the failure from Steel callers.
     assert!(
         result.is_err(),
         "a failed theme load must surface as a Steel error: {result:?}"
@@ -316,10 +308,9 @@ fn set_option_theme_failure_does_not_persist() {
 
 #[test]
 fn typed_set_theme_failure_does_not_persist() {
-    // Same bug, same rollback, via `:set global` instead of Steel. Before
-    // the rollback fix, `:set global theme=bad` persisted "bad" into settings
-    // (store-then-load), unlike `:theme bad` (load-then-store) — the two
-    // entry points disagreed. Fail oracle: same as above.
+    // Same rollback, via `:set global` instead of Steel. Without it,
+    // `:set global theme=bad` would persist "bad" (store-then-load) while
+    // `:theme bad` would not (load-then-store).
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.state);
     let result = crate::editor::commands::typed_set(
@@ -349,10 +340,9 @@ fn typed_theme_bad_name_leaves_setting() {
     // editor::tests::commands::load_theme_by_name_fails_gracefully, but
     // through the typed_theme entry point instead of calling the loader
     // directly.
-    // Fail oracle: drop the rollback in settings::ops::apply (the same
-    // mutation settings_effects.rs's theme tests above are verified
-    // against) — settings.theme ends up "no_such_theme_xyz" here too, since
-    // :theme now shares that code path.
+    // :theme shares settings::ops::apply's rollback with the theme tests
+    // above, so without it settings.theme would end up "no_such_theme_xyz"
+    // here too.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.state);
     let result =
@@ -412,10 +402,8 @@ impl Drop for RealThemeRuntimeGuard {
 
 #[test]
 fn typed_theme_sets_setting_on_success() {
-    // Fail oracle: revert typed_theme to its own load-then-store path (still
-    // correct on its own) with a typo in the delegated key string (e.g.
-    // "themes" instead of "theme") — write_global would then return
-    // Err("unknown setting"), and this test's Ok() assertion would fail.
+    // A typo in the key string typed_theme delegates with (e.g. "themes")
+    // would make write_global return Err("unknown setting").
     let _guard = RealThemeRuntimeGuard::new();
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.state);
@@ -430,9 +418,6 @@ fn typed_theme_sets_setting_on_success() {
 /// hook's own `bid`, writes the target buffer's override and leaves the
 /// global setting untouched — proving the write lands in `BufferOverrides`,
 /// not `EditorSettings`.
-///
-/// Fail oracle: route the builtin through `set_global_option` instead of
-/// `set_buffer_option` and the second assertion fails (global becomes 8).
 #[test]
 fn set_buffer_option_from_hook_writes_target_override() {
     let mut ed = editor_from("-[a]>b\n");
@@ -501,9 +486,8 @@ fn get_buffer_option_round_trips_word_chars() {
 /// immediately — resolution is lazy (pane → buffer → global), not a seed
 /// applied only to panes opened afterward.
 ///
-/// Fail oracle: if `wrap-mode` were still global-only (its pre-buffer-scope
-/// shape), `set-buffer-option!` would error before either assertion below
-/// is ever reached.
+/// A global-only `wrap-mode` would make `set-buffer-option!` error before
+/// either assertion below is reached.
 #[test]
 fn set_buffer_option_wrap_mode_from_hook_changes_the_open_pane() {
     let mut ed = editor_from("-[a]>b\n");
@@ -533,10 +517,6 @@ fn set_buffer_option_wrap_mode_from_hook_changes_the_open_pane() {
 /// pins the distinction that `settle` runs with the *focused* buffer as
 /// scripting context while the hook's own `bid` may name a background
 /// buffer.
-///
-/// Fail oracle: implement the builtin against `(focused-pane)` instead of
-/// the explicit `bid` argument — both assertions below would fail (the
-/// focused buffer would get the override, the background buffer would not).
 #[test]
 fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
     let mut ed = editor_from("-[a]>b\n");
@@ -568,10 +548,6 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
 /// reads the *named* buffer's override — not the focused buffer's — the
 /// read-side half of the same hook-bid distinction
 /// `set_buffer_option_targets_hook_bid_not_focused_buffer` pins for writes.
-///
-/// Fail oracle: read `self.focused_buffer_id()` unconditionally instead of
-/// the `bid` argument — this would read the focused buffer's default (4)
-/// instead of bid2's override (8).
 #[test]
 fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
     use hume_scripting::host::{EditorHost, OptionValue};
@@ -613,9 +589,6 @@ fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
 /// `set-buffer-option!`'s own `try_get` guard (`EditorHostImpl::set_buffer_option`)
 /// — a stale bid is invalid input, not a request for "whatever the global
 /// default is".
-///
-/// Fail oracle: without the `try_get` check, this silently returns the
-/// global `tab-width` default instead of erroring.
 #[test]
 fn get_buffer_option_closed_bid_errors() {
     use hume_scripting::host::EditorHost;
@@ -641,9 +614,8 @@ fn get_buffer_option_closed_bid_errors() {
 /// A global-only key rejected by `write_buffer`'s global-only arm is
 /// reported as a hook error and leaves the global setting unchanged.
 ///
-/// Fail oracle: drop the scope check in `write_buffer` (or bypass it) and
-/// `scrolloff` would silently end up in the buffer's override slot instead
-/// of erroring.
+/// Without the scope check in `write_buffer`, `scrolloff` would silently end
+/// up in the buffer's override slot.
 #[test]
 fn set_buffer_option_global_only_key_errors_from_hook() {
     let mut ed = editor_from("-[a]>b\n");
@@ -673,9 +645,6 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
 /// `EditorHostImpl::set_buffer_option` returns `Err` for a stale bid instead
 /// of panicking — `settings::ops::apply`'s `get_mut` panics on an unseeded
 /// id, so the host method's own `try_get` guard must run first.
-///
-/// Fail oracle: remove the `try_get` guard added alongside this method —
-/// this test panics ("unseeded BufferId") instead of observing an `Err`.
 #[test]
 fn host_set_buffer_option_invalid_bid_errors() {
     use hume_engine::pipeline::BufferId;

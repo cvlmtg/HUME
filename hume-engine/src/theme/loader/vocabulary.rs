@@ -140,8 +140,9 @@ export const CURSOR_MATCH_SCOPES = {cursor_match_scopes};
     )
 }
 
-/// Fail oracle: edit one name in the shipped `vocabulary.generated.js` (or
-/// delete a line) — this test must fail, naming the file as stale.
+/// The shipped `vocabulary.generated.js` must match what the loader would
+/// render now. Any edited or missing line fails the test, naming the file
+/// as stale.
 #[test]
 fn theme_vocabulary_js_matches_loader() {
     assert!(

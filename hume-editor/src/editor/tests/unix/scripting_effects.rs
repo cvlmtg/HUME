@@ -31,11 +31,10 @@ fn write_efx_plugin(
 /// `define-language!` having run first, so a per-kind grouping scheme could
 /// silently get away with reordering these.
 ///
-/// Fail oracle: reintroduce separate per-kind accumulators in `SteelCtx`
-/// (e.g. a dedicated `pending_lsp_server_ops` alongside `effects`) — a
-/// builtin pushing to the wrong one would still leave `effects.len() == 3`
-/// here (nothing dropped) but with a different relative order, and the
-/// `effects[0]`/`effects[1]`/`effects[2]` variant assertions below fail.
+/// With separate per-kind accumulators in `SteelCtx` (say, a dedicated
+/// `pending_lsp_server_ops` next to `effects`), nothing would be dropped but
+/// the relative order would change. The per-index variant assertions below
+/// catch that.
 #[test]
 fn effect_log_preserves_emission_order_across_kinds() {
     let dir = safe_tempdir();
@@ -129,9 +128,9 @@ fn effect_log_preserves_emission_order_across_kinds() {
 /// registered, since activation is one-shot. The outer command's own effects
 /// (queued before and after the nested activation) must not apply.
 ///
-/// Fail oracle: drop the `self.apply_script_effects(e.effects)` call from
-/// `run_steel_command`'s `Err` arm — `config_command_for_test("widget")`
-/// comes back `None` even though the plugin is `Loaded`.
+/// Without the `self.apply_script_effects(e.effects)` call in
+/// `run_steel_command`'s `Err` arm, `config_command_for_test("widget")` would
+/// return `None` even though the plugin is `Loaded`.
 #[test]
 fn failed_command_delivers_committed_activation_effects() {
     let dir = safe_tempdir();
@@ -260,9 +259,9 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
 /// pipeline: `:go` → `call_steel_cmd` → `open-buffer!` opens (queuing the
 /// bid) → `apply_script_effects`'s tail drain runs `detect_and_set_language`.
 ///
-/// Fail oracle: drop the `state.config.pending_language_detection.push(bid)` line
-/// from `open_buffer_and_notify` (or the tail drain from
-/// `apply_script_effects`) — the opened buffer's `language` stays `None`.
+/// Both the `state.config.pending_language_detection.push(bid)` line in
+/// `open_buffer_and_notify` and the tail drain in `apply_script_effects` are
+/// needed. Without either, the opened buffer's `language` stays `None`.
 #[test]
 fn steel_open_buffer_detects_language() {
     let dir = safe_tempdir();
@@ -370,9 +369,8 @@ fn steel_open_buffer_missing_path_opens_new_file() {
 /// must not announce a close, or a plugin sees a close for an id it never
 /// heard opened.
 ///
-/// Fail oracle: drop the `open_announced` gate in `close_buffer_and_notify`
-/// (queue `OnBufferClose` unconditionally) — `pending_work` gains an
-/// `OnBufferClose` entry after `:go`, with no matching `OnBufferOpen`.
+/// The `open_announced` gate in `close_buffer_and_notify` is what keeps an
+/// unmatched `OnBufferClose` out of `pending_work` here.
 #[test]
 fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
     use crate::editor::event::EditorEvent;

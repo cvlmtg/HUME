@@ -409,9 +409,8 @@ fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
 /// request in the first place, since the debounce timer only fires (and
 /// the request only gets built) after this switch, not before it.
 ///
-/// Fail oracle: `lsp/sighelp-request` (`sighelp.scm`) sending its
-/// `lsp-request` without `#:require-focus` — the popup would show
-/// regardless of which pane is focused when the response arrives.
+/// This depends on `lsp/sighelp-request` (`sighelp.scm`) passing
+/// `#:require-focus` to its `lsp-request`.
 #[test]
 fn stale_response_after_a_pane_switch_shows_no_popup() {
     let tmp = safe_tempdir();

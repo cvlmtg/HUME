@@ -3,9 +3,8 @@ use crate::test_support::SteelCtxTestHarness;
 
 /// `register-hook!` is blocked in plain command mode (init/plugin-load only).
 ///
-/// Fail oracle: change `register-hook!`'s table entry from `config` to
-/// `open` → the hook is silently registered from a command body, allowing
-/// plugins to change global behaviour at runtime.
+/// An `open` table entry would let a command body silently register hooks,
+/// changing global behaviour at runtime.
 #[test]
 fn register_hook_blocked_in_command_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -20,8 +19,8 @@ fn register_hook_blocked_in_command_mode() {
 
 /// `register-hook!` errors when the first argument is not a symbol.
 ///
-/// Fail oracle: remove the symbol check → strings or integers would be silently
-/// accepted, and the hook name lookup would silently fail.
+/// Without the symbol check, strings or integers would be accepted and the
+/// hook name lookup would fail silently.
 #[test]
 fn register_hook_non_symbol_arg_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -39,8 +38,8 @@ fn register_hook_non_symbol_arg_errors() {
 
 /// `register-hook!` errors for an unknown hook name.
 ///
-/// Fail oracle: remove the `known_event_names()` lookup guard → typos
-/// silently register a hook that is never fired.
+/// Without the `known_event_names()` guard, a typo would register a hook
+/// that never fires.
 #[test]
 fn register_hook_unknown_hook_name_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -66,9 +65,6 @@ fn register_hook_unknown_hook_name_errors() {
 }
 
 /// `register-hook!` in init mode with a valid name registers the handler.
-///
-/// Fail oracle: make `register` a no-op → `handlers_for` returns empty slice →
-/// last assert fires.
 #[test]
 fn register_hook_valid_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -128,11 +124,6 @@ fn register_hook_valid_during_plugin_load() {
 /// a synthetic `on-stub-only` name the editor never defines, and omits real
 /// editor events like `on-lsp-attach`. `register-hook!` must follow the
 /// host's list exactly in both directions.
-///
-/// Fail oracle: if `register_hook` consulted a compiled-in name list instead
-/// of `ctx.host.events().known_event_names()`, `on-stub-only` would be
-/// rejected (it's not a real `EditorEvent`) and `on-lsp-attach` would be
-/// accepted (it is) — both assertions below would flip.
 #[test]
 fn register_hook_validates_against_the_host_not_a_compiled_in_table() {
     let mut h = SteelCtxTestHarness::new();

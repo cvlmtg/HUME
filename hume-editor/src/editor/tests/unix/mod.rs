@@ -74,7 +74,7 @@ fn source_detached(ed: &Editor) -> bool {
 
 // ── Shared process-liveness helper ──────────────────────────────────────────
 
-/// `kill -0` against the real OS as an independent liveness oracle — never
+/// `kill -0` against the real OS as an independent liveness check. It never
 /// asks the handle itself whether it thinks the child is alive.
 fn process_is_alive(pid: u32) -> bool {
     std::process::Command::new("kill")

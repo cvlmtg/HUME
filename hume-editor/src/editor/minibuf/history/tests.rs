@@ -199,8 +199,8 @@ fn kind_for_prompt_maps_colon_slash_question() {
 
 #[test]
 fn set_capacity_defers_trim_to_next_push() {
-    // Fail oracle: if set_capacity trimmed immediately, entries.len() would
-    // drop to 2 right after the call instead of only on the next push.
+    // Lowering the cap takes effect on the next push. An immediate trim
+    // would drop entries.len() to 2 right after the call.
     let mut h = h(10);
     h.push("a".into());
     h.push("b".into());
@@ -245,10 +245,8 @@ fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
     );
 
     // init.scm re-raising the setting. Still no push — nothing to converge.
-    // Fail oracle: an eager trim on the shrink above would have already
-    // dropped every entry past 5, and raising the cap back up here can't
-    // resurrect what's already gone — entries.len() would stay at 5 instead
-    // of climbing back to 20.
+    // An eager trim on the shrink above would already have dropped every
+    // entry past 5, and raising the cap here could not bring them back.
     h.set_capacity(20);
     assert_eq!(
         h.entries.len(),
@@ -265,9 +263,8 @@ fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
 
 #[test]
 fn set_capacity_shrink_converges_on_a_duplicate_push() {
-    // Fail oracle: if the consecutive-duplicate branch returned before the
-    // trim loop, a shrink would only converge on a push that landed a
-    // genuinely new entry — never on a resubmission of the same entry.
+    // The consecutive-duplicate branch must still reach the trim loop, so a
+    // shrink also converges on a resubmission of the same entry.
     let mut h = h(10);
     h.push("a".into());
     h.push("b".into());

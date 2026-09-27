@@ -1,6 +1,6 @@
 // Document sync glue: didOpen / didChange /
 // didSave / didClose. The load-bearing test is the version-sync invariant:
-// replaying the recorded protocol stream against an independent oracle
+// replaying the recorded protocol stream against an independent reference
 // (hume_lsp's string-mirror, reused via the `test-util` feature) must
 // reproduce the buffer's real final text and text_gen exactly.
 
@@ -102,7 +102,7 @@ fn attached_editor_with_handshake(
 
 /// Replays a recorded `(method, params)` stream against a plain `String`
 /// mirror. `didOpen` seeds the mirror and the version; `didChange` applies
-/// each `contentChanges` entry (ranged via the hume-lsp oracle, or whole-
+/// each `contentChanges` entry (ranged via the hume-lsp mirror, or whole-
 /// document when `range` is absent — the `:e!`/`reload` case).
 fn replay(log: &[(String, serde_json::Value)]) -> (String, Option<i64>) {
     let mut mirror = String::new();
@@ -144,7 +144,7 @@ fn did_changes(log: &[(String, serde_json::Value)]) -> Vec<(String, serde_json::
         .collect()
 }
 
-/// Replays `log` against the independent string-mirror oracle and asserts it
+/// Replays `log` against the independent string mirror and asserts it
 /// reproduces the buffer's real text and the real `text_gen` — the invariant
 /// every LSP-sync test in this file ultimately checks. `context` names the
 /// scenario in the assertion message (e.g. "a 3-step composed undo").
@@ -192,10 +192,7 @@ fn did_open_carries_full_text_and_language_id() {
 /// a bare `typescript-language-server` rejects `"tsx"` and logs "Invalid
 /// languageId", correcting it to `"typescriptreact"` itself. The expected
 /// string here is a hardcoded literal, never derived from `name_of` /
-/// `lsp_language_id_of` — an independent oracle.
-///
-/// Flip: reverting `lsp_did_open` to `name_of` instead of
-/// `lsp_language_id_of` makes this fail (`languageId` would be `"tsx"`).
+/// `lsp_language_id_of`.
 #[test]
 fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
     let tmp = safe_tempdir();
@@ -377,11 +374,11 @@ fn did_save_and_did_close_each_fire_once() {
 /// Regression: `:e!` under macro replay — an edit queued but not yet
 /// drained (`drain_replay_queue` loops `handle_input` with no `drain_lsp`
 /// between keys), immediately followed by a reload in the same window.
-/// Before the fix, the reload's whole-document `didChange` (at the new,
-/// higher version) reached the wire ahead of the still-queued incremental
-/// one (computed against the pre-reload text, at an older version) — a
-/// version regression the server can't recover from, permanently
-/// desyncing its copy of the document for the rest of the session.
+/// The still-queued incremental `didChange` (computed against the pre-reload
+/// text, at an older version) must reach the wire before the reload's
+/// whole-document one. The reverse order is a version regression the server
+/// can't recover from, and its copy of the document stays out of sync for
+/// the rest of the session.
 #[test]
 fn reload_flushes_pending_change_before_the_whole_document_didchange() {
     let tmp = safe_tempdir();
@@ -435,9 +432,9 @@ fn reload_flushes_pending_change_before_the_whole_document_didchange() {
 /// server's point of view: a second notification carrying a version it
 /// already has).
 ///
-/// Fail oracle: un-gate `lsp_did_change_whole_document` in
-/// `reload_buffer_in_place` (send it unconditionally, as before the fix) →
-/// a second `didChange` appears at the same version as the last one on file.
+/// Sending `lsp_did_change_whole_document` unconditionally from
+/// `reload_buffer_in_place` would add a second `didChange` at the same
+/// version as the last one on file.
 #[test]
 fn identical_reload_sends_no_didchange() {
     let tmp = safe_tempdir();
@@ -532,7 +529,7 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
 /// didchange_per_flush`: an insert session queues one `LspPendingChange` per
 /// keystroke, and each queued entry must reach the wire as its own
 /// `didChange` — replaying the whole sequence must still reproduce the
-/// buffer exactly, pinned against the independent string-mirror oracle.
+/// buffer exactly, checked against the independent string mirror.
 #[test]
 fn insert_session_sends_one_didchange_per_keystroke() {
     let tmp = safe_tempdir();

@@ -5,7 +5,7 @@
 //! `RealRuntimeGuard` instead (`git_diff_plugin.rs`'s reason for the same
 //! choice — see its module doc).
 //!
-//! Independent oracle throughout: every expected word set below is written
+//! Every expected word set below is written
 //! by hand from the fixture's own text, never produced by the plugin's own
 //! scan.
 
@@ -152,14 +152,11 @@ fn ctrl_space_offers_identifiers_from_the_buffer() {
 
 /// A word far from the cursor, on a buffer with many more lines than one
 /// tick's `"lines"` budget, is still found — the actual case a background
-/// walk exists for. Not a red/green oracle for the line-windowed rewrite:
-/// the pre-rewrite whole-buffer read would also eventually find this word
-/// (same total content, just read eagerly rather than incrementally), so
-/// there is no meaningful pre-rewrite baseline to diverge from here. This is
-/// a regression/characterization test for `bw/walk!`'s per-tick fetch
-/// arithmetic instead: an off-by-one in `fwd-hi`/`bwd-lo` would skip the
-/// line this fixture puts the target word on, rather than merely being
-/// masked by overlap with an already-covered line.
+/// walk exists for. A whole-buffer read would also find this word, so the
+/// test mainly checks `bw/walk!`'s per-tick fetch arithmetic: an off-by-one
+/// in `fwd-hi`/`bwd-lo` would skip the line this fixture puts the target
+/// word on, rather than merely being masked by overlap with an
+/// already-covered line.
 #[test]
 fn a_word_many_lines_past_the_cursor_is_offered() {
     let tmp = safe_tempdir();
@@ -190,8 +187,8 @@ fn the_partially_typed_token_is_not_offered_back() {
     trigger(&mut ed);
     let got = labels(&ed);
     assert!(!got.contains(&"hello".to_string()), "{got:?}");
-    // Not a zero-effect check on its own: an empty menu would vacuously
-    // satisfy the assertion above without proving anything. "helloworld"
+    // An empty menu would vacuously satisfy the assertion above without
+    // proving anything. "helloworld"
     // also starts with the live prefix "hello" (so Rust's own re-ranking
     // doesn't filter it out the way it would something unrelated), but
     // isn't *equal* to it — pinning that the exclusion is specifically
@@ -1259,11 +1256,7 @@ fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
 /// A word with an inner capital (`HashMap`, `iPhone`) or in ALL-CAPS
 /// (`MAX_LEN`) gets no twin at all — `bw/case-twin` only flips a *plain*
 /// word's first letter, never one whose tail already carries case
-/// information that flipping the head would destroy. Not a red/green
-/// oracle for the case-twin change: this passes identically before and
-/// after it, by design (behavior-preserving on this input shape), so there
-/// is no red run to record here — see `docs/LESSONS.md`'s red-first rule,
-/// "When Red-First Does Not Apply".
+/// information that flipping the head would destroy.
 #[test]
 fn mixed_case_and_all_caps_words_get_no_twin() {
     let tmp = safe_tempdir();

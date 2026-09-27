@@ -255,9 +255,9 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
 
 /// The success-side counterpart of `files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing`:
 /// in a pane wide enough to split, Ctrl-v creates the new pane and opens the
-/// selection there, leaving the source pane's buffer untouched — the positive
-/// oracle for `stdlib/with-pane-command`'s `(when (call! command) (handler
-/// payload))` guard (untested at the Scheme level before this).
+/// selection there, leaving the source pane's buffer untouched. This covers
+/// the success branch of `stdlib/with-pane-command`'s `(when (call! command)
+/// (handler payload))` guard.
 #[test]
 fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
     let guard = HumeRuntimeGuard::new();
@@ -452,7 +452,7 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
     );
 }
 
-// Fail oracle for this test: `PickerSession::seed` only clears `pending`
+// `PickerSession::seed` only clears `pending`
 // when the seed is non-empty. `git status` hasn't run yet when this picker
 // opens, so `picker!` seeds it with an empty list — if `seed` cleared
 // `pending` unconditionally, this session would read as "already populated"
@@ -830,9 +830,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
     assert_eq!(
         ed.state.config.async_jobs.len(),
         1,
-        "the `git status` job must be tracked while the picker is open — \
-         this is the fail oracle for `(cancel-async! job-id)`: delete that \
-         call from plugin.scm and this job leaks past Esc below"
+        "the `git status` job must be tracked while the picker is open"
     );
 
     ed.feed_key(key_esc());

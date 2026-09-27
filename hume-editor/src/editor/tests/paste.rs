@@ -157,8 +157,8 @@ fn register_prefix_ignores_paste_stamp() {
     );
 }
 
-/// After an explicit `"Xp` the register prefix must be consumed (not leaked).
-/// Before the fix the prefix persisted and the NEXT command accidentally used it.
+/// After an explicit `"Xp` the register prefix must be consumed, so the next
+/// command does not pick it up.
 #[test]
 fn register_prefix_consumed_by_paste() {
     let mut ed = editor_from("-[x]>\n");
@@ -220,9 +220,9 @@ fn smart_p_dp_reads_ring() {
 /// insert session is marked kill-opened (`PaneBufferState::kill_opened_session`)
 /// so `end_insert_session` refreshes the stamp's `seq` once typing stops.
 ///
-/// Fail oracle: drop the `kill_opened_session` refresh in `end_insert_session`
-/// → the stamp stays stamped at the pre-typing `edit_seq`, `p` sees it as
-/// stale, and falls through to the clipboard ("CLIP" would appear instead of 'a').
+/// Without the `kill_opened_session` refresh in `end_insert_session`, the
+/// stamp would keep the pre-typing `edit_seq` and `p` would treat it as stale
+/// and paste the clipboard ("CLIP") instead of 'a'.
 #[test]
 fn smart_p_after_change_reads_ring() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -254,10 +254,9 @@ fn smart_p_after_change_reads_ring() {
 /// would refresh whatever stale stamp happens to exist, making a later bare
 /// `p` wrongly read `"aaa"` again instead of falling to the clipboard.
 ///
-/// Fail oracle: set `kill_opened_session` unconditionally in `cmd_change`
-/// (drop the `if state.route_kill(yanked)` gate) → the stale "aaa" stamp
-/// gets refreshed by the `"5c` session anyway, and `p` pastes "aaa" instead
-/// of "CLIP".
+/// Setting `kill_opened_session` without the `if state.route_kill(yanked)`
+/// gate in `cmd_change` would let the `"5c` session refresh the stale "aaa"
+/// stamp, and `p` would paste "aaa" instead of "CLIP".
 #[test]
 fn explicit_register_change_does_not_resurrect_stale_stamp() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -1556,12 +1555,11 @@ fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_i
 /// requires a *still-open* Paste session to do anything at all) finds none
 /// and no-ops instead of re-pasting from a now-stale snapshot.
 ///
-/// Fail oracle: without that commit, the open session's `text_snapshot` is
-/// still the pre-bracketed-paste text. `[` then re-derives the whole buffer
+/// Without that commit, the open session's `text_snapshot` would still be
+/// the pre-bracketed-paste text. `[` would then re-derive the whole buffer
 /// from that stale snapshot (`apply_edit_regrouped`'s own contract: "every
-/// cycle cleanly discards the previous paste output") and calls `set_text`
-/// with the result, silently discarding the bracketed paste along with it —
-/// 'Z' would be missing from the asserted buffer below.
+/// cycle cleanly discards the previous paste output") and call `set_text`
+/// with the result, silently discarding the bracketed paste along with it.
 #[test]
 fn direct_edit_during_open_paste_session_commits_it_first() {
     let mut ed = editor_from("-[c]>d\n"); // cursor on 'c' at index 0

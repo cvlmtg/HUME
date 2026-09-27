@@ -66,10 +66,6 @@ fn sample_pane_id() -> PaneId {
 
 /// Every variant has a name, that name is in `EVENT_NAMES`, and the two
 /// lists are the same length with no duplicates.
-///
-/// Fail oracle: drop a `name()` match arm's string, or remove it from
-/// `EVENT_NAMES`, or duplicate an entry in `EVENT_NAMES` — any of those
-/// fails one of the three assertions below.
 #[test]
 fn every_variant_has_a_name_and_matches_the_known_names_table() {
     let variants = all_variants();
@@ -101,9 +97,8 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
 // ── steel_args shape table ──────────────────────────────────────────────────
 //
 // Expected values are written by hand from the documented Steel contract,
-// never derived from `steel_args` itself — an independent oracle. Fail
-// oracle for each: swap two fields in the corresponding `steel_args` match
-// arm, or drop one, and the row fails.
+// never derived from `steel_args` itself. Swapping or dropping a field in a
+// `steel_args` match arm makes the matching row fail.
 
 /// `SteelPane` doesn't expose its inner `PaneHandle` outside
 /// `hume-scripting` — compare the wrapped `SteelVal` for equality against a

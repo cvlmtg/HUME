@@ -11,8 +11,8 @@ use hume_scripting::PluginStatus;
 /// "core:lsp")`, through the full production `init_scripting` path against the
 /// repo's actual `runtime/` tree.
 ///
-/// Flip: a syntax error, a wrong plugin name, or a stale command list in the
-/// real `runtime/plugins/core/lsp/manifest.scm` would fail this test while
+/// A syntax error, a wrong plugin name, or a stale command list in the real
+/// `runtime/plugins/core/lsp/manifest.scm` would fail this test even while
 /// every synthetic-fixture test elsewhere in this file still passes.
 #[test]
 fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
@@ -87,9 +87,9 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
 /// zero-trigger `(declare-plugin "core:stdlib")`, through the full production
 /// `init_scripting` path against the repo's actual `runtime/` tree.
 ///
-/// Flip: a syntax error, a wrong plugin name, or a stale command list in the real
-/// `runtime/plugins/core/stdlib/manifest.scm` would fail this test while every
-/// synthetic-fixture test elsewhere in this file still passes.
+/// The synthetic-fixture tests in this file cannot see breakage in the real
+/// `runtime/plugins/core/stdlib/manifest.scm` (a syntax error, a wrong plugin
+/// name, a stale command list); this one can.
 #[test]
 fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
@@ -154,11 +154,11 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
 /// (`hume-scripting/src/builtins/bootstrap.scm`) inline-activates
 /// `core:stdlib` to `Loaded` before the config read runs.
 ///
-/// Flip: a dependency guard checking `(loaded-plugins)` instead of
-/// `(declared-plugins)` rejects this — `core:stdlib` is `Declared`, not yet
-/// `Loaded`, when `core:pickers`'s guard runs — and `init_scripting` logs an
-/// error naming `core:stdlib` instead of ever reaching `core:pickers`'s
-/// config read.
+/// A dependency guard that checked `(loaded-plugins)` would reject this, since
+/// `core:stdlib` is still `Declared` when `core:pickers`'s guard runs, and
+/// `init_scripting` would log an error naming `core:stdlib` before
+/// `core:pickers`'s config read ever ran. The guard checks
+/// `(declared-plugins)` for that reason.
 #[test]
 fn declared_core_stdlib_serves_dependent_body_time_call() {
     use crate::editor::Severity;
@@ -211,9 +211,9 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
 /// zero-trigger `(declare-plugin "core:plum")`, through the full production `init_scripting`
 /// path against the repo's actual `runtime/` tree.
 ///
-/// Flip: a syntax error, a wrong plugin name, or a stale command/language list in the real
-/// `runtime/plugins/core/plum/manifest.scm` would fail this test while every synthetic-fixture
-/// test elsewhere in this file still passes.
+/// Only this test would notice a syntax error, a wrong plugin name, or a stale
+/// command/language list in the real `runtime/plugins/core/plum/manifest.scm`;
+/// the other tests here use synthetic fixtures.
 #[test]
 fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
@@ -280,17 +280,14 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 }
 
-/// Regression test for the scenario that motivated plugin-activation
-/// containment: a third-party `load-plugin` fails, and `core:plum` — the
-/// user's only in-editor path to update and fix a broken plugin — is
-/// declared afterward, on a later line of the same `init.scm`. Before
-/// containment, the failed load re-raised and aborted `init.scm`, so
-/// `core:plum` (and everything after the failing line) never got declared
-/// at all: no `:plum-update-plugins` to reach for, short of hand-editing
-/// the plugin on disk.
-///
-/// Flip: revert the `with-handler` no-re-raise change in `bootstrap.scm`
-/// and this fails — `plum-update-plugins` is never registered.
+/// The scenario plugin-activation containment exists for: a third-party
+/// `load-plugin` fails, and `core:plum` (the user's only in-editor path to
+/// update and fix a broken plugin) is declared afterward, on a later line of
+/// the same `init.scm`. If the failed load re-raised and aborted `init.scm`,
+/// `core:plum` and everything after the failing line would never be declared,
+/// leaving no `:plum-update-plugins` to reach for short of hand-editing the
+/// plugin on disk. The `with-handler` in `bootstrap.scm` does not re-raise,
+/// which is what keeps `plum-update-plugins` registered here.
 #[test]
 fn failed_third_party_load_does_not_block_plum_declared_afterward() {
     use crate::editor::Severity;
@@ -377,9 +374,9 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
 /// zero-trigger `(declare-plugin "core:git-diff")`, through the full production
 /// `init_scripting` path against the repo's actual `runtime/` tree.
 ///
-/// Flip: a syntax error, a wrong plugin name, or a stale command/event list in the real
-/// `runtime/plugins/core/git-diff/manifest.scm` would fail this test while every
-/// synthetic-fixture test elsewhere in this file still passes.
+/// It guards the real `runtime/plugins/core/git-diff/manifest.scm` against a
+/// syntax error, a wrong plugin name, or a stale command/event list, none of
+/// which the synthetic-fixture tests in this file would catch.
 #[test]
 fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
     use crate::editor::Severity;
@@ -459,9 +456,6 @@ fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
 }
 
 /// Keymap lint is silent when every bound key targets a registered command.
-///
-/// Flip: the test above binds an *unknown* name and asserts a Warning is
-/// produced — this test confirms the warning path does not fire for valid names.
 #[test]
 fn keymap_lint_silent_for_known_command() {
     use crate::editor::Severity;

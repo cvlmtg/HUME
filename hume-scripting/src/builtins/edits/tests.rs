@@ -37,9 +37,6 @@ fn insert_key_rejects_a_multi_key_spec() {
 /// the harness default) surfaces `require_cap`'s canonical message,
 /// naming the builtin — locks the message contract `require_cap`
 /// centralizes across `edits.rs`/`completion.rs`/`ui.rs`.
-///
-/// Fail oracle: `require_cap` drops the `name` interpolation → the
-/// second assert fires (message no longer identifies the builtin).
 #[test]
 fn apply_text_edits_without_edit_host_names_the_builtin() {
     let mut h = SteelCtxTestHarness::new();
@@ -137,9 +134,8 @@ fn goto_location_rejects_a_bare_scalar() {
 /// — a hand-built (untagged) hashmap has no server to have negotiated one
 /// with, so it's rejected before ever reaching the host.
 ///
-/// Fail oracle: falling back to some default encoding instead of requiring
-/// a tagged handle would make this reach "not supported by this host"
-/// instead.
+/// A default-encoding fallback for untagged handles would let this reach
+/// "not supported by this host" instead.
 #[test]
 fn goto_location_wire_shape_requires_a_tagged_handle() {
     let mut h = SteelCtxTestHarness::new();

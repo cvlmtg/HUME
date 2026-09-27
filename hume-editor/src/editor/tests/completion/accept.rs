@@ -324,11 +324,10 @@ fn accept_after_the_pane_switched_buffers_errors() {
 /// async LSP callback reaches it, bypassing `Editor::dispatch` entirely so
 /// the injected session below survives to see it.
 ///
-/// Fail oracle: `opened_group` used to be `state.active_session.is_none()`,
-/// which reads *any* open session, of any kind, as "the group I need is
-/// already open" and skips `doc_ops::begin_edit_group` entirely. The later
-/// `apply_doc_edit_grouped` call then requires an *Insert*-kind session on
-/// this (pane, buffer) and `.expect()`-panics on the kind mismatch instead.
+/// `opened_group` must look for an Insert-kind session on this (pane,
+/// buffer). If any open session counted as the needed group,
+/// `doc_ops::begin_edit_group` would be skipped and the later
+/// `apply_doc_edit_grouped` call would `.expect()`-panic on the kind mismatch.
 #[test]
 fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
     use hume_scripting::host::CompletionHost;

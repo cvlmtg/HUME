@@ -654,8 +654,8 @@ fn undo_past_saved_revision_is_dirty() {
 fn promotion_remaps_saved_revision_to_root() {
     // The saved revision is exactly the one `undo-levels` trimming promotes
     // into the root. Undoing past the next edit must still read as saved.
-    // Fail oracle: skip the saved_revision remap in record_revision and
-    // is_dirty() stays true forever after the promotion.
+    // Without the saved_revision remap in record_revision, is_dirty() would
+    // stay true forever after the promotion.
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|b, s| insert_char(b, s, 'x'));
     let saved_state = state(&d);
@@ -674,12 +674,9 @@ fn promotion_overwriting_root_invalidates_saved_revision() {
     // The buffer is opened and never saved since (saved_revision == ROOT).
     // A promotion overwrites ROOT's content with a later revision's, so the
     // saved id must stop reading as clean even though it's still `ROOT` —
-    // ROOT no longer represents the state it was saved at.
-    // Fail oracle: if record_revision only remapped saved_revision when it
-    // equals the promoted node (never invalidating a saved-at-ROOT id),
-    // undoing back to the new root would wrongly read clean here even
-    // though the buffer's text ('xhello') differs from the saved state
-    // ('hello').
+    // ROOT no longer represents the state it was saved at. The buffer's
+    // text ('xhello') differs from the saved state ('hello'), so undoing
+    // back to the new root must still read dirty.
     let mut d = doc("-[h]>ello\n");
     d.set_undo_levels(1);
     d.apply_edit(|b, s| insert_char(b, s, 'x'));
@@ -695,8 +692,6 @@ fn evicted_saved_revision_stays_dirty() {
     // (not promoted) when a sibling branch grows past the cap. Since
     // RevisionIds are never reused, the buffer must never spontaneously
     // read as clean again until an explicit mark_saved.
-    // Fail oracle: if a future revision could reuse the evicted saved
-    // revision's numeric id, is_dirty() would wrongly read false.
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|b, s| insert_char(b, s, 'a'));
     d.apply_edit(|b, s| insert_char(b, s, 'b'));
@@ -721,8 +716,6 @@ fn undo_after_eviction_stops_at_new_root() {
     // from 'c' must still reproduce a's post-edit text (b's and c's inverse
     // transactions are untouched by promotion) and land at the new root,
     // where a further undo is a safe no-op.
-    // Fail oracle: if promotion corrupted the parent chain or an inverse
-    // transaction, this would land on the wrong text or panic.
     let mut d = doc("-[h]>ello\n");
     d.set_undo_levels(2);
     d.apply_edit(|b, s| insert_char(b, s, 'a'));

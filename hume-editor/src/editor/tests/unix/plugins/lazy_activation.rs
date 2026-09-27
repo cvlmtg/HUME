@@ -8,8 +8,6 @@ use hume_scripting::PluginStatus;
 /// After `eval_init`, a `Lazy` stub is present for the declared command name —
 /// `declare-plugin` registers it directly via `CommandHost::register_lazy_command`
 /// as the manifest is processed, with no separate post-init pass.
-///
-/// Flip: without the stub registration, `get_mappable("bar")` would be `None`.
 #[test]
 fn lazy_stub_present_after_init() {
     let (ed, _dir) = setup_lazy_editor(
@@ -32,9 +30,6 @@ fn lazy_stub_present_after_init() {
 
 /// Dispatching a lazy command the first time activates the plugin, replaces the
 /// stub with `SteelBacked`, and executes the real command (cursor moves).
-///
-/// Flip: if dispatch does nothing (stub stays Lazy), the cursor would not move
-/// and the command would still be `Lazy`.
 #[test]
 fn first_dispatch_activates_plugin_and_runs() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -100,7 +95,7 @@ fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
 /// for a lookup that will miss again right after is a permanent side effect
 /// for a call that could never succeed.
 ///
-/// Flip: without a mappable-only `%lazy-command-owner`, `(call! "bar")` would
+/// If `%lazy-command-owner` were not mappable-only, `(call! "bar")` would
 /// see the typed `Lazy` stub as an activatable owner, load the plugin, miss
 /// again in `command_table`, and leave the plugin `Loaded` anyway.
 #[test]
@@ -136,7 +131,7 @@ fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
 /// Loop guard: if the plugin body never defines the declared command, the stub
 /// is removed after dispatch and a Warning is reported.
 ///
-/// Flip: without the loop guard, the stub would remain (infinite retry).
+/// Without the loop guard the stub would stay, and every dispatch would retry.
 #[test]
 fn loop_guard_removes_stub_when_body_never_defines_command() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -169,8 +164,8 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 /// `apply_script_effects`'s own inline application, nor leak into some later
 /// unrelated drain.
 ///
-/// Flip: without `SteelCtx::pop_effect_marks` rolling back on failure,
-/// `config_command_for_test("rust")` comes back `Some(..)`.
+/// The rollback in `SteelCtx::pop_effect_marks` is what keeps
+/// `config_command_for_test("rust")` at `None`.
 #[test]
 fn failed_activation_does_not_leave_a_queued_lsp_registration() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -191,9 +186,6 @@ fn failed_activation_does_not_leave_a_queued_lsp_registration() {
 /// `define-language!`) is applied in the very same activation call —
 /// `apply_script_effects` drains `pending_language_regs` at runtime, not
 /// only at the `eval_init` boundary.
-///
-/// Flip: without the runtime drain in `apply_script_effects`,
-/// `languages.by_name("foo")` stays `None` after dispatch.
 #[test]
 fn lazy_plugin_defined_language_is_registered_on_activation() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -223,7 +215,7 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
 /// buffer no longer holds the value it's about to fire `OnLanguageSet` for,
 /// and bail out rather than enqueue a second, stale hook.
 ///
-/// Flip: without the re-entrancy guard, `pending_work` holds two
+/// Without the re-entrancy guard, `pending_work` would hold two
 /// `OnLanguageSet` entries (python, then a stale rust) instead of one.
 #[test]
 fn set_buffer_language_reentrant_activation_uses_final_value() {
@@ -269,8 +261,6 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
 
 /// Body-error path: if the plugin body raises an error, the state becomes
 /// `Failed`, the stub is removed, and a Warning/Error is reported.
-///
-/// Flip: without error handling, the stub would survive and allow re-entry.
 #[test]
 fn body_error_removes_stub_and_marks_failed() {
     use hume_scripting::attribution::PluginId;
@@ -311,8 +301,8 @@ fn body_error_removes_stub_and_marks_failed() {
 /// `:bar arg` on a lazy command: the arg is correctly passed to a
 /// `(bid arg)`-arity command on first call (after activation).
 ///
-/// Flip: if arg were silently dropped, the Steel command would receive false
-/// (#f) instead of the string and the test string would not appear as output.
+/// A dropped arg would reach the Steel command as `#f` instead of the string,
+/// and the test string would be missing from the output.
 #[test]
 fn lazy_cmd_arg_passed_on_first_call() {
     use hume_scripting::attribution::PluginId;
@@ -351,9 +341,6 @@ fn lazy_cmd_arg_passed_on_first_call() {
 /// A key bound to a lazy command name activates the plugin on first press,
 /// exercising the `execute_keymap_command` Lazy arm — the path the
 /// implementation claims keys use "for free".
-///
-/// Flip: if the Lazy arm did nothing, the cursor would not move and the stub
-/// would remain Lazy.
 #[test]
 fn key_press_activates_lazy_plugin_via_keymap() {
     use crate::editor::keymap::BindMode;
@@ -398,9 +385,9 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 /// declaration fails with "no activation entries", the eager SteelBacked
 /// command survives, and no `Lazy` stub is ever registered for "foo".
 ///
-/// Flip: remove the eager-command check from `declare_plugin`'s filter loop
-/// → declare-plugin succeeds, "foo" registers as a `Lazy` stub shadowing the
-/// eager command, and the first assertion (eval_init returns Err) flips to Ok.
+/// Without the eager-command check in `declare_plugin`'s filter loop, the
+/// declaration would succeed and register "foo" as a `Lazy` stub shadowing the
+/// eager command.
 #[test]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let dir = safe_tempdir();
@@ -470,7 +457,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 /// `MockHost` copy of the same rules would risk silently drifting from the
 /// real behavior it's meant to prove.
 ///
-/// Flip: remove the `register_lazy_command` collision check → "bar" would
+/// Without the collision check in `register_lazy_command`, "bar" would
 /// register twice, the second `Lazy { plugin: pb, .. }` silently overwriting
 /// the first in the registry, so pa's real ownership would be lost with no
 /// error logged.

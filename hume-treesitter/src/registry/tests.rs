@@ -260,7 +260,7 @@ fn register_identity_then_by_name_returns_entry() {
         reg.by_extension("toml").is_some(),
         "extension lookup must work after identity reg"
     );
-    // Flip: unknown ext should not match.
+    // Unknown ext should not match.
     assert!(reg.by_extension("yaml").is_none());
 }
 
@@ -279,7 +279,7 @@ fn register_identity_with_globs_lookup() {
     assert!(!matches.is_empty(), "Makefile should match registered glob");
     let name = reg.glob_lang_id(matches[0]).map(|id| reg.name_of(id));
     assert_eq!(name, Some("makefile"));
-    // Flip: non-matching path must produce empty match.
+    // A path the globs don't cover yields no match.
     assert!(
         reg.compiled_globs()
             .matches(Path::new("Cargo.toml"))
@@ -300,7 +300,6 @@ fn remove_clears_glob_and_shebang_entries() {
 
     assert!(reg.by_extension("py").is_none());
     assert!(reg.by_shebang("python").is_none());
-    // Flip expectation: after remove, matches must be empty.
     assert!(reg.compiled_globs().matches(Path::new("foo.py")).is_empty());
 }
 
@@ -308,10 +307,6 @@ fn remove_clears_glob_and_shebang_entries() {
 /// `c` and `cpp` both claim `.h` (last-registered wins, so `cpp` takes
 /// it); re-registering `c` without `.h` must not evict `cpp`'s mapping —
 /// `c` never owned it at the time of re-registration.
-///
-/// Flip: an unconditional `by_ext.remove(ext)` in `deindex` (no ownership
-/// check) makes this test fail — `cpp` loses `.h` even though it's the
-/// current owner.
 #[test]
 fn deindex_does_not_clobber_another_languages_shared_extension() {
     let mut reg = LanguageRegistry::new();
@@ -340,9 +335,8 @@ fn deindex_does_not_clobber_another_languages_shared_extension() {
 /// an already-grammared language) must not undo the grammar `grammars.scm`
 /// attached at startup — identity and grammar are independent facts.
 ///
-/// Flip: restoring the `grammars[id].take()` clear in
-/// `register_identity_no_rebuild` makes `has_grammar`/`grammar_snapshot`
-/// go empty here.
+/// If `register_identity_no_rebuild` cleared `grammars[id]`, both
+/// `has_grammar` and `grammar_snapshot` would come back empty here.
 #[test]
 fn attached_grammar_survives_identity_re_registration() {
     require_grammars(&["rust"]);
@@ -387,9 +381,6 @@ fn attached_grammar_survives_identity_re_registration() {
 
 /// With no `lsp_language_id` override, the wire `languageId` falls back to
 /// the language's own name.
-///
-/// Flip: hardcoding `lsp_language_id_of` to always return the override
-/// (ignoring the `None` case) makes this fail — there is no override here.
 #[test]
 fn lsp_language_id_of_falls_back_to_name_when_unset() {
     let mut reg = LanguageRegistry::new();
@@ -401,9 +392,6 @@ fn lsp_language_id_of_falls_back_to_name_when_unset() {
 
 /// An `lsp_language_id` override is returned verbatim instead of the name —
 /// the case this whole feature exists for (`tsx` -> `typescriptreact`).
-///
-/// Flip: making `lsp_language_id_of` always return `name_of` regardless of
-/// the stored override makes this fail.
 #[test]
 fn lsp_language_id_of_returns_override_when_set() {
     let mut reg = LanguageRegistry::new();
@@ -419,9 +407,6 @@ fn lsp_language_id_of_returns_override_when_set() {
 /// wholesale (see `attached_grammar_survives_identity_re_registration`, which
 /// covers the sibling "grammar survives, identity doesn't" half of the same
 /// contract).
-///
-/// Flip: merging the new identity into the old one instead of replacing it
-/// would keep the stale override here, and this assertion would fail.
 #[test]
 fn identity_re_registration_resets_lsp_language_id_override() {
     let mut reg = LanguageRegistry::new();
@@ -446,7 +431,7 @@ fn detect_language_by_extension() {
         .unwrap();
     let id = detect_language(Some(Path::new("foo.rs")), None, &reg);
     assert_eq!(id, reg.id_of("rust"));
-    // Flip: wrong extension must not detect.
+    // A different extension must not detect.
     let no_match = detect_language(Some(Path::new("foo.py")), None, &reg);
     assert!(no_match.is_none());
 }
@@ -485,7 +470,7 @@ fn detect_language_glob_beats_extension() {
         .unwrap();
     let id = detect_language(Some(Path::new("tsconfig.json")), None, &reg);
     assert_eq!(id, reg.id_of("tsconfig"));
-    // Flip: without the glob match, a plain .json should detect as json.
+    // A plain .json that no glob covers still detects as json.
     let plain = detect_language(Some(Path::new("other.json")), None, &reg);
     assert_eq!(plain, reg.id_of("json"));
 }
@@ -524,7 +509,7 @@ fn detect_language_by_shebang() {
         &reg,
     );
     assert_eq!(id, reg.id_of("python"));
-    // Flip: wrong shebang must not match.
+    // Some other shebang must not match.
     let no_match = detect_language(Some(Path::new("script")), Some("#!/bin/bash"), &reg);
     assert!(no_match.is_none());
 }
@@ -552,8 +537,8 @@ fn detect_language_no_match() {
 /// Extensions are matched case-sensitively, so `"c"` and `"C"` map to
 /// distinct languages — `foo.c` detects as `c`, `foo.C` detects as `cpp`.
 ///
-/// Flip: if extensions were folded to lowercase both would map to the
-/// later-registered language (cpp wins, .c misdetects as cpp).
+/// Folding extensions to lowercase would send both files to cpp, the
+/// later-registered language.
 #[test]
 fn extension_matching_is_case_sensitive() {
     let mut reg = LanguageRegistry::new();

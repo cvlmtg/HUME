@@ -5,8 +5,6 @@ use crate::test_support::SteelCtxTestHarness;
 // ── Mode discriminant ─────────────────────────────────────────────────────
 
 /// `new_init` sets `session = EvalSession::Init`.
-///
-/// Fail oracle: swap `EvalSession::Init` → `Runtime` in `new_init` → assert fires.
 #[test]
 fn new_init_has_init_session() {
     let mut h = SteelCtxTestHarness::new();
@@ -19,8 +17,6 @@ fn new_init_has_init_session() {
 }
 
 /// `new_command` sets `session = EvalSession::Runtime`.
-///
-/// Fail oracle: swap `EvalSession::Runtime` → `Init` in `new_command` → assert fires.
 #[test]
 fn new_command_has_runtime_session() {
     let mut h = SteelCtxTestHarness::new();
@@ -35,8 +31,8 @@ fn new_command_has_runtime_session() {
 /// `new_activation` sets `session = EvalSession::Runtime` (same as command mode).
 ///
 /// Runtime-activated plugin bodies use `new_activation` so `(call! …)` is
-/// allowed inside them.  Fail oracle: set `session: EvalSession::Init` →
-/// plugin bodies would be blocked from calling native commands.
+/// allowed inside them.  With `EvalSession::Init`, plugin bodies would be
+/// blocked from calling native commands.
 #[test]
 fn new_activation_has_runtime_session() {
     let mut h = SteelCtxTestHarness::new();
@@ -49,11 +45,8 @@ fn new_activation_has_runtime_session() {
 }
 
 /// `mode()` derives the correct `EvalMode` for all four `(session,
-/// plugin_stack)` states. Independent oracle: expected variants come from
-/// the truth table in `EvalMode`'s doc, not from `mode()`'s own logic.
-///
-/// Fail oracle: swap any two arms in `SteelCtx::mode`'s match → one of
-/// these four assertions fires.
+/// plugin_stack)` states. The expected variants come from the truth table in
+/// `EvalMode`'s doc.
 #[test]
 fn mode_derives_from_session_and_plugin_stack() {
     use crate::attribution::PluginId;
@@ -82,8 +75,6 @@ fn new_command_stores_pending_char() {
 // ── log helper ────────────────────────────────────────────────────────────
 
 /// `ctx.log(…)` appends to `pending_messages`.
-///
-/// Fail oracle: make `log` a no-op → pending_messages stays empty → assert fires.
 #[test]
 fn log_pushes_to_pending_messages() {
     let mut h = SteelCtxTestHarness::new();
@@ -102,8 +93,8 @@ fn log_pushes_to_pending_messages() {
 /// `pop_effect_marks(true)` marks every entry pushed since the mark as
 /// committed, and leaves anything pushed before the mark untouched.
 ///
-/// Fail oracle: mark all of `effects` (not just `[mark..]`) as committed
-/// → the pre-mark entry ends up committed too → the first assert fires.
+/// Committing all of `effects` instead of only `[mark..]` would also commit
+/// the pre-mark entry.
 #[test]
 fn pop_effect_marks_success_commits_marked_range() {
     let mut h = SteelCtxTestHarness::new();
@@ -129,9 +120,8 @@ fn pop_effect_marks_success_commits_marked_range() {
 /// already committed by the nested activation that finished inside B —
 /// survive B's failure, in their original order, alongside untouched A1.
 ///
-/// Fail oracle: revert `pop_effect_marks`'s failure branch to
-/// `self.effects.truncate(mark)` → C1/C2 vanish along with B1/B2 → the
-/// log ends up `["a1"]` instead of `["a1", "c1", "c2"]`.
+/// A plain `self.effects.truncate(mark)` in `pop_effect_marks`'s failure
+/// branch would drop C1/C2 along with B1/B2, leaving only `["a1"]`.
 #[test]
 fn pop_effect_marks_failure_keeps_committed_entries_in_order() {
     let mut h = SteelCtxTestHarness::new();

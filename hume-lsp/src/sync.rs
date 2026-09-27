@@ -67,12 +67,12 @@ fn wire_range(rope: &Rope, range: ExclusiveRange<CharOffset>, enc: PositionEncod
         .expect("rope-derived wire position fits u32 — a real document's line/character count")
 }
 
-/// Independent oracle: applies emitted events to a plain `String` using its
-/// own line/character math — no ropey, no `hume_rope::position_encoding`
-/// — so it cannot share a bug with `changeset_to_content_changes`. Exposed
-/// (behind `test-util`) so consumer crates' invariant tests (e.g.
-/// hume-editor's version-sync test) can reuse it instead of re-deriving
-/// their own oracle.
+/// Reference implementation used by the tests: applies emitted events to a
+/// plain `String` using its own line/character math, with no ropey and no
+/// `hume_rope::position_encoding`, so it cannot share a bug with
+/// `changeset_to_content_changes`. Exposed (behind `test-util`) so consumer
+/// crates' invariant tests (e.g. hume-editor's version-sync test) can reuse
+/// it instead of re-deriving their own.
 #[cfg(any(test, feature = "test-util"))]
 pub fn apply_events_to_string_mirror(
     mut text: String,
@@ -99,10 +99,10 @@ pub fn wire_version(text_gen: u64) -> i32 {
 
 /// `(line, character)` → byte offset in `text`, via plain string scanning —
 /// deliberately re-implemented rather than delegating to
-/// `hume_rope::position_encoding` so this stays an independent oracle.
+/// `hume_rope::position_encoding` so the test mirror shares no code with it.
 /// Splits on `\n` alone, matching `hume_rope`'s "LF is the only line break"
 /// crate doc: no other character terminates a line, in a rope or in this
-/// oracle's own string mirror.
+/// string mirror.
 #[cfg(any(test, feature = "test-util"))]
 fn wire_pos_to_byte(text: &str, pos: lsp_types::Position, enc: PositionEncoding) -> usize {
     let mut line_start = 0usize;

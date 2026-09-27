@@ -3,8 +3,7 @@
 // `EditorHostImpl` (`eval_with_real_host`, same eval path `init_scripting`
 // uses), confirms the write landed, calls `reset_config_state` directly,
 // then asserts the surface is back to its compiled-in default. Every
-// assertion is written so it fails if `reset_config_state` did nothing —
-// see each test's oracle.
+// assertion is written so it fails if `reset_config_state` did nothing.
 //
 // `Editor::resync_config_state` — the repopulation half, exercised in the
 // `-- Resync --` section below: it repopulates state `reset_config_state`
@@ -34,7 +33,7 @@ use hume_lsp::inline::InlineLspBackend;
 
 /// A `bind-key!` override must revert to the compiled-in default binding —
 /// not stay overridden, not end up unbound. Compared against a fresh
-/// `Keymap::default()` (independent oracle) rather than a hardcoded
+/// `Keymap::default()` rather than a hardcoded
 /// expectation for 'Q', which has no default binding at all.
 #[test]
 fn reset_reverts_bind_key_to_default() {

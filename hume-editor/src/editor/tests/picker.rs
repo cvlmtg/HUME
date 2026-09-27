@@ -393,11 +393,8 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 /// picker's own `on_select` with `#f` exactly once — not twice, and not
 /// silently dropped by `Insert`'s teardown running first.
 ///
-/// Fail oracle: before this fix (`close_picker_with`'s raw `truncate` +
-/// `removed.pop()`), only the *last* removed layer (the picker) was ever
-/// downcast and acted on — `Insert`'s own `tear_down` never ran, so
-/// `active_session` would stay `Some` and the typed char's edit group would
-/// stay open.
+/// Acting only on the last removed layer (the picker) would skip `Insert`'s
+/// `tear_down`, leaving `active_session` set and the edit group open.
 #[test]
 fn close_picker_tears_down_an_insert_session_stacked_above_it() {
     use crate::editor::commands::{FocusedPane, cmd_insert_before};

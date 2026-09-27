@@ -47,10 +47,10 @@ fn first_cell_keys(section: &str) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
-/// Fail oracle: add a new entry to `define_settings!` (any section) or
-/// to `user-manual/docs/configuration.md`'s option tables without the
-/// matching change on the other side — this test fails naming the key
-/// and which direction it's missing.
+/// Every key in `define_settings!` (any section) must appear in
+/// `user-manual/docs/configuration.md`'s option tables, and every table key
+/// must be a real setting. A failure names the key and the side it is
+/// missing from.
 #[test]
 fn user_manual_option_tables_match_all_setting_keys() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")

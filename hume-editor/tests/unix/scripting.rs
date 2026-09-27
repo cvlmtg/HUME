@@ -369,7 +369,8 @@ fn eager_plugin_body_error_is_contained() {
 /// colliding activation entry is dropped, a `Severity::Error` is logged, init continues with
 /// the remaining valid activation entry "my-cmd".
 ///
-/// Flip: a non-builtin name produces no Error and the activation entry is registered.
+/// The second half checks the control case: a non-builtin name logs no Error and its
+/// activation entry is registered.
 #[test]
 fn manifest_collision_with_builtin_logs_error_continues() {
     use hume_scripting::host::CommandHost;
@@ -417,7 +418,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
         h.plugin_status(&id)
     );
 
-    // Flip: non-colliding entry produces no Error and is registered.
+    // A non-colliding entry, by contrast, logs no Error and is registered.
     let (dir2, init_path2) = plugin_fixture(
         r#"(declare-plugin "user/tp" #:commands '("not-a-builtin"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
@@ -450,8 +451,6 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 
 /// After a lazy declare, `cmd_owners["bar"]` maps to the plugin id — not to
 /// `"hume"` — even before the plugin body is evaluated.
-///
-/// Flip: assert it is NOT `"hume"` after the lazy declare.
 #[test]
 fn cmd_owners_pre_seeded_before_activation() {
     let (dir, init_path) = plugin_fixture(
@@ -520,8 +519,8 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 /// `(declare-plugin "user/tp" #:languages '("rust"))` → plugin stays lazy,
 /// `activation_languages["rust"]` contains the plugin, body not evaluated.
 ///
-/// Flip: if the `#:languages` list were not threaded through `%declare-plugin!`, the
-/// plugin would stay Declared but with an empty activation_languages map.
+/// If `%declare-plugin!` dropped the `#:languages` list, the plugin would still be
+/// Declared but its activation_languages map would be empty.
 #[test]
 fn on_language_trigger_populates_registry_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
@@ -557,8 +556,8 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
 
 /// `activate_plugin` on a language-matched plugin drops the activation entry on success.
 ///
-/// Flip: without the `activation_languages.retain` in the Ok branch, the activation
-/// entry would survive and falsely appear pending on subsequent language sets.
+/// The `activation_languages.retain` in the Ok branch does the removal; if it were
+/// skipped, the entry would look pending on every later language set.
 #[test]
 fn activate_plugin_drops_language_activation_on_loaded() {
     let (dir, init_path) = plugin_fixture(
@@ -593,8 +592,8 @@ fn activate_plugin_drops_language_activation_on_loaded() {
 /// `(load-plugin "x")` after `(declare-plugin "x" #:commands …)` force-activates
 /// the plugin: state transitions to `Loaded` and the activation command entry is cleared.
 ///
-/// Flip: without the %activate-plugin-inline call in the load-plugin wrapper,
-/// the plugin would stay `Declared` and the activation entry would remain.
+/// The activation comes from the `%activate-plugin-inline` call in the load-plugin
+/// wrapper. Lacking it, the plugin would stay `Declared` with its entry intact.
 #[test]
 fn declare_then_load_activates_and_logs_soft_error() {
     use hume_scripting::host::CommandHost;
@@ -643,9 +642,9 @@ fn declare_then_load_activates_and_logs_soft_error() {
 /// `(load-plugin "foo")` then `(declare-plugin "foo" …)` — load runs first,
 /// plugin is `Loaded`; the declare is ignored with a soft error.
 ///
-/// Flip: remove the load-then-declare guard in declare_plugin and the declare
-/// silently no-ops (via the existing PluginState::Declared duplicate guard) without
-/// logging an error.
+/// That error comes from the load-then-declare guard in `declare_plugin`. Without
+/// it the declare would fall through to the generic duplicate guard and no-op with
+/// nothing logged.
 #[test]
 fn load_then_declare_ignored_with_soft_error() {
     use hume_scripting::host::CommandHost;
@@ -694,8 +693,8 @@ fn load_then_declare_ignored_with_soft_error() {
 /// error like any other), so `eval_init` still succeeds; `pb` itself ends up
 /// `Failed`.
 ///
-/// Flip: weaken `ensure_top_level` to also accept `EvalMode::PluginLoad` and
-/// the eager in-body call succeeds instead of erroring.
+/// Were `ensure_top_level` to accept `EvalMode::PluginLoad` too, the eager
+/// in-body call would succeed.
 #[test]
 fn load_plugin_in_plugin_body_rejected() {
     // Plugin pb calls (load-plugin "user/dep") in its body; dep IS present on
@@ -741,8 +740,8 @@ fn load_plugin_in_plugin_body_rejected() {
 /// like any other), so `eval_init` still succeeds; `pb` itself ends up
 /// `Failed`.
 ///
-/// Flip: remove the `ensure_top_level` gate from `declare_plugin` and the call
-/// succeeds, silently registering a plugin from inside a plugin body.
+/// The `ensure_top_level` gate in `declare_plugin` is what stops a plugin body
+/// from quietly registering another plugin.
 #[test]
 fn declare_plugin_in_plugin_body_rejected() {
     let dir = tempfile::tempdir().unwrap();
@@ -788,8 +787,8 @@ fn declare_plugin_in_plugin_body_rejected() {
 /// editor needed) — a plugin directory without a manifest doesn't support the
 /// zero-trigger form at all.
 ///
-/// Flip: remove the manifest-presence check in `%begin-manifest-declare!` and
-/// eval_source succeeds instead (silently doing nothing).
+/// The manifest-presence check in `%begin-manifest-declare!` raises it; with that
+/// check gone, eval_source would succeed and do nothing.
 #[test]
 fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
     let dir = tempfile::tempdir().unwrap();
@@ -820,7 +819,7 @@ fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
 /// hard-errors when called directly, bypassing the Scheme `declare-plugin`
 /// wrapper's zero-trigger → manifest.scm routing.
 ///
-/// Flip: remove the zero-entry guard in `declare_plugin` and eval_source succeeds.
+/// Without the zero-entry guard in `declare_plugin`, eval_source would succeed.
 #[test]
 fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
     let dir = tempfile::tempdir().unwrap();
@@ -853,8 +852,8 @@ fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
 /// `#:commands` names that ALL collide with builtins leave zero effective
 /// activation entries → hard error (the post-filter zero-entry check fires).
 ///
-/// Flip: check entry emptiness before collision filtering (pre-filter) and
-/// this test passes with a misleading success.
+/// The emptiness check has to run after collision filtering. Checked before it,
+/// the list still holds one name and the declare would wrongly succeed.
 #[test]
 fn declare_plugin_all_commands_collide_is_hard_error() {
     let dir = tempfile::tempdir().unwrap();
@@ -884,7 +883,7 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
 
 /// Duplicate `(declare-plugin …)` for the same name stays a silent no-op.
 ///
-/// Flip: add a duplicate-declare error in LazyRegistry::declare and this errors.
+/// `LazyRegistry::declare` must not treat the repeat as an error.
 #[test]
 fn duplicate_declare_remains_silent_noop() {
     let (dir, init_path) = plugin_fixture(
@@ -912,7 +911,7 @@ fn duplicate_declare_remains_silent_noop() {
 
 /// Duplicate `(load-plugin …)` for the same name stays a silent no-op.
 ///
-/// Flip: add a duplicate-load error and this panics on the second load.
+/// The second load must neither error nor panic.
 #[test]
 fn duplicate_load_remains_silent_noop() {
     let (dir, init_path) = plugin_fixture(

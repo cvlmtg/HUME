@@ -13,9 +13,6 @@ use super::*;
 /// disk (absent plugins skip it entirely), so this test needs
 /// a real on-disk plugin, unlike a same-named `core:` plugin that would
 /// otherwise hit the absent-path branch first.
-///
-/// Fail oracle: remove the "all filtered" branch → generic "Add #:commands"
-/// message → second assertion fires.
 #[test]
 fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
     use crate::ScriptingHost;
@@ -61,10 +58,6 @@ fn declare_plugin_all_on_command_collided_message_mentions_conflict() {
 /// `declare-plugin` drops `#:commands` entries that conflict with already-registered
 /// eager commands; when the dropped entry was the sole activation signal, it errors
 /// immediately (no orphan entry, no plugin stuck `Declared`).
-///
-/// Fail oracle: remove the eager-command check from `declare_plugin`'s filter
-/// loop → the name slips through as a `Lazy` stub and the "no activation
-/// entries" error is not raised.
 #[test]
 fn declare_plugin_drops_sole_command_conflicting_with_eager() {
     use crate::ScriptingHost;
@@ -125,10 +118,6 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
 /// survives" — every prior collision test collided on the sole entry. One
 /// colliding name (`existing-typed`, already defined) must log an `Error`
 /// and be dropped; the plugin still declares because `fresh-typed` survives.
-///
-/// Fail oracle: if `filter_and_register_lazy` claimed `existing-typed`
-/// anyway, `lazy_command_owner("existing-typed")` would come back `Some`
-/// instead of `None`.
 #[test]
 fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
     use crate::ScriptingHost;
@@ -185,10 +174,9 @@ fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
 /// it — the general mechanism this feature relies on, exercised on the lazy
 /// path where declare and activation are separated in time.
 ///
-/// Fail oracle: if `declare_plugin` didn't store `config` into
-/// `plugin_configs`, or `plugin_config` didn't resolve the right `PluginId`
-/// from `plugin_stack`, the body would observe an empty hash instead of "val"
-/// and `log!` would never record it.
+/// This depends on `declare_plugin` storing `config` into `plugin_configs`
+/// and on `plugin_config` resolving the right `PluginId` from
+/// `plugin_stack`.
 #[test]
 fn plugin_config_survives_lazy_declare_to_activation() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -229,9 +217,8 @@ fn plugin_config_survives_lazy_declare_to_activation() {
 /// A zero-trigger `(declare-plugin "id")` with a `manifest.scm` present resolves
 /// and evaluates it, registering whatever the manifest declares for itself.
 ///
-/// Fail oracle: if the Scheme wrapper didn't route to `%begin-manifest-declare!`
-/// on empty lists, this would hit the "could never be activated" backstop error
-/// instead of succeeding.
+/// The Scheme wrapper routes empty lists to `%begin-manifest-declare!`, which
+/// keeps this call clear of the "could never be activated" backstop error.
 #[test]
 fn manifest_declare_resolves_and_evaluates_manifest_scm() {
     use crate::ScriptingHost;
@@ -276,9 +263,8 @@ fn manifest_declare_resolves_and_evaluates_manifest_scm() {
 /// i.e. the empty-hash default) — a plugin body reading `(plugin-config)` at
 /// activation must see the user's value.
 ///
-/// Fail oracle: if `declare_plugin`'s config store were an unconditional insert
-/// during manifest resolution (instead of `or_insert`), the manifest's own
-/// default would clobber the user's value and the message would never appear.
+/// `declare_plugin` stores the config with `or_insert` during manifest
+/// resolution, so the manifest's own default can't clobber the user's value.
 #[test]
 fn manifest_declare_user_config_wins_over_manifest_default() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -323,9 +309,8 @@ fn manifest_declare_user_config_wins_over_manifest_default() {
 /// A zero-trigger declare of a plugin whose directory exists but has no
 /// `manifest.scm` is a hard error, distinct from "not installed yet".
 ///
-/// Fail oracle: treating this the same as an absent directory would silently
-/// no-op instead of telling the user their plugin doesn't support default
-/// activation.
+/// A silent no-op here would hide the fact that the plugin doesn't support
+/// default activation.
 #[test]
 fn manifest_declare_dir_present_without_manifest_scm_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -352,8 +337,7 @@ fn manifest_declare_dir_present_without_manifest_scm_errors() {
 /// resolved for must be rejected — a manifest for "user/wrongname" cannot smuggle
 /// in a declaration for "user/somebody-else".
 ///
-/// Fail oracle: without the `manifest_resolving` mismatch guard in
-/// `declare_plugin`, the smuggled-in id would register successfully.
+/// The `manifest_resolving` mismatch guard in `declare_plugin` enforces this.
 #[test]
 fn manifest_declaring_different_plugin_name_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -398,10 +382,6 @@ fn manifest_declaring_different_plugin_name_errors() {
 /// call must name `manifest.scm` and the plugin — the user's `init.scm` only
 /// contains the bare zero-trigger declare, so a bare `declare-plugin #:events`
 /// error would point at a line that doesn't exist in their config.
-///
-/// Fail oracle: drop the `manifest_resolving` arm from `declare_arg_label` →
-/// the error reads bare `declare-plugin #:events` and the second assertion
-/// fails.
 #[test]
 fn manifest_bad_events_names_manifest_scm_and_plugin() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -440,9 +420,9 @@ fn manifest_bad_events_names_manifest_scm_and_plugin() {
 /// A manifest.scm whose own `declare-plugin` call is itself zero-trigger must
 /// error immediately instead of recursing into manifest resolution again.
 ///
-/// Fail oracle: without the `manifest_resolving.is_some()` guard in
-/// `%begin-manifest-declare!`, this would loop (bounded only by the Steel VM's
-/// own stack, not a designed guard) instead of erroring cleanly.
+/// The `manifest_resolving.is_some()` guard in `%begin-manifest-declare!`
+/// stops the recursion, which would otherwise run until the Steel VM's own
+/// stack gave out.
 #[test]
 fn manifest_with_zero_trigger_self_declare_errors_without_recursing() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -480,8 +460,7 @@ fn manifest_with_zero_trigger_self_declare_errors_without_recursing() {
 /// must still be rejected — otherwise the outer declare silently no-ops with no
 /// plugin ever registered.
 ///
-/// Fail oracle: without the post-eval check in `%finish-manifest-declare!`, this
-/// call would return `Ok` with nothing declared.
+/// The post-eval check in `%finish-manifest-declare!` catches this case.
 #[test]
 fn manifest_that_never_declares_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -515,8 +494,8 @@ fn manifest_that_never_declares_errors() {
 /// A second zero-trigger declare of an already-declared plugin is a silent
 /// no-op — `manifest.scm` is not re-evaluated.
 ///
-/// Fail oracle: without the pre-eval state check in `%begin-manifest-declare!`,
-/// the manifest would run twice, double-registering activation entries.
+/// Without the pre-eval state check in `%begin-manifest-declare!`, the
+/// manifest would run twice and register its activation entries twice.
 #[test]
 fn manifest_declare_second_call_is_silent_noop() {
     use crate::{ScriptingHost, null_host::NullHost};

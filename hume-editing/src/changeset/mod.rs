@@ -427,8 +427,8 @@ impl ChangeSet {
     /// One-shot convenience over [`PosMapCursor`] — batch callers mapping
     /// several sorted positions (e.g. `SelectionSet::translate_in_place`)
     /// should use `PosMapCursor` directly instead, so the walk isn't
-    /// restarted per position. Test-only: exists as the independent oracle
-    /// that pins `PosMapCursor`'s per-query semantics.
+    /// restarted per position. Test-only: the tests use it as a reference
+    /// implementation that pins `PosMapCursor`'s per-query semantics.
     ///
     /// # Panics
     /// Panics (debug) if `pos > self.len_before`.

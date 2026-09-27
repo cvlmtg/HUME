@@ -177,15 +177,15 @@ fn multibyte_utf8_byte_offsets() {
     assert_eq!(e.new_end_byte, 0);
 }
 
-/// Regression: a single changeset with edits at two non-adjacent positions must
-/// produce an incremental parse tree identical to a full reparse of the same bytes.
+/// A single changeset with edits at two non-adjacent positions must produce an
+/// incremental parse tree identical to a full reparse of the same bytes.
 ///
-/// The fix: `input_edits_from_changeset` returns edits in DESCENDING start-byte
-/// order.  `tree.edit()` mutates coordinates in-place, so the rightmost edit must
-/// be applied first — its original-coordinate bytes stay valid because nothing to
-/// its left has been touched yet.  Before the fix (ascending order), a left edit's
-/// byte-delta corrupted the right edit's coordinates, misaligning nodes and causing
-/// highlight queries to return wrong results after multi-cursor edits.
+/// `input_edits_from_changeset` returns edits in DESCENDING start-byte order.
+/// `tree.edit()` mutates coordinates in-place, so the rightmost edit must be
+/// applied first — its original-coordinate bytes stay valid because nothing to
+/// its left has been touched yet. In ascending order, a left edit's byte-delta
+/// would corrupt the right edit's coordinates, misaligning nodes and making
+/// highlight queries return wrong results after multi-cursor edits.
 ///
 /// Uses the JSON grammar from `tests/fixtures/grammars/` (requires
 /// `scripts/fetch-test-grammars.sh`).

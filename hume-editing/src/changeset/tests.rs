@@ -144,7 +144,7 @@ fn builder_insert_normalizes_line_endings() {
     // The one chokepoint where text becomes buffer content: whatever
     // convention a caller hands in, only `\n` gets stored. Expected values
     // are literals, derived from the input by hand rather than by calling
-    // the normalizer — an independent oracle.
+    // the normalizer.
     let mut b = ChangeSetBuilder::new(co(0));
     b.insert("a\r\nb");
     let cs = b.finish();
@@ -742,13 +742,13 @@ fn map_ranges_multiple_disjoint_ranges_matches_map_pos_oracle() {
 
 #[test]
 fn map_ranges_nested_ranges_do_not_panic_and_match_map_pos_oracle() {
-    // Regression: (0,20) fully contains (4,15) — sorted by start (0<=4) but
+    // (0,20) fully contains (4,15) — sorted by start (0<=4) but
     // *not* by end (20>15), the exact shape two LSP diagnostics on the same
     // buffer can take (an outer "note" wrapping an inner "warning", e.g.
     // rustc's unused-import note spanning the whole `use` line around the
-    // narrower warning inside it). Before the fix, walking ends in
-    // start-order made the second query go backwards through the resumable
-    // cursor, underflowing `pos - self.old`.
+    // narrower warning inside it). Ends must not be walked in start order,
+    // since the second query would then go backwards through the resumable
+    // cursor and underflow `pos - self.old`.
     let mut b = ChangeSetBuilder::new(co(20));
     b.retain(2);
     b.insert("XX");
@@ -1144,7 +1144,7 @@ fn compose_two_inserts() {
     b_b.retain_rest();
     let b = b_b.finish();
 
-    // Step-by-step oracle: apply a then b separately.
+    // Expected result: apply a then b separately.
     let mid = a.clone().apply(&text).unwrap();
     let step_by_step = b.clone().apply(&mid).unwrap();
     let composed = a.compose(b);

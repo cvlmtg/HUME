@@ -230,7 +230,7 @@ fn ansi_color_name_resolves_with_no_warning() {
 
 #[test]
 fn every_ansi_color_name_resolves() {
-    // Independent oracle: xterm's own default palette, not a read-back of
+    // Expected values are xterm's own default palette, not a read-back of
     // the loader's own table — catches a typo'd name or transposed value
     // that a self-referential check would miss. Each color is used as its
     // own scope key (an arbitrary string as far as the loader is concerned),
@@ -1022,7 +1022,7 @@ dark_gray = "#808080"
     let theme = super::parse_theme(toml).unwrap().theme;
 
     let cursor = theme.resolve_by_name(crate::types::Scope("ui.cursor"));
-    // Independent oracle: expected colors derived directly from palette hex values.
+    // Expected colors derived directly from palette hex values.
     assert_eq!(cursor.fg, Some(Rgb(0x00, 0x00, 0x00)));
     assert_eq!(cursor.bg, Some(Rgb(0xff, 0xff, 0xff)));
 

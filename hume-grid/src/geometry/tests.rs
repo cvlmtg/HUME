@@ -39,7 +39,7 @@ fn empty_rect_contains_nothing() {
 
 #[test]
 fn inset_shrinks_both_sides() {
-    // Oracle: a 1-cell border around a 10x5 box leaves 8x3 at (3, 4).
+    // A 1-cell border around a 10x5 box leaves 8x3 at (3, 4).
     assert_eq!(Rect::new(2, 3, 10, 5).inset(1, 1), Rect::new(3, 4, 8, 3));
 }
 
@@ -57,7 +57,7 @@ fn inset_past_the_rect_yields_empty_not_wrapped() {
 
 #[test]
 fn centered_places_evenly() {
-    // Oracle: 10 wide inside 20 leaves 5 on each side.
+    // 10 wide inside 20 leaves 5 on each side.
     assert_eq!(
         Rect::new(0, 0, 20, 10).centered(10, 4),
         Rect::new(5, 3, 10, 4)

@@ -49,7 +49,7 @@ fn tab_no_match_is_noop() {
     assert!(ed.state.input.minibuf_completion().is_none());
 }
 
-// Independent oracle for the three tests below: "w" matches exactly three
+// Expected values for the three tests below: "w" matches exactly three
 // canonical command names, alphabetically (tied score, sortText-ascending
 // tiebreak — `complete_command`'s own sort_text is the name itself):
 // write, write-all, write-quit. `complete_command` omits aliases and the
@@ -340,7 +340,7 @@ fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
 /// `arg_span` (a Steel `'minibuf` source's own token) must be the argument
 /// the cursor is *in*, not everything after the command name — a
 /// multi-argument typed command's second argument must not drag the first
-/// one along into the span/filter. Independent oracle: `"bexyz"` only
+/// one along into the span/filter. `"bexyz"` only
 /// `starts_with` `"be"` (the second argument alone), never `"alpha be"`
 /// (what a first-space split would wrongly hand over).
 #[test]

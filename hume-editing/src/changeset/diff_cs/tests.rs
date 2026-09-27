@@ -1,7 +1,7 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
-/// Independent oracle: forward(old) == new and inverse(new) == old.
+/// Checks forward(old) == new and inverse(new) == old.
 fn assert_round_trip(old: &str, new: &str) {
     let old_t = BufferText::from(old);
     let new_t = BufferText::from(new);
@@ -83,9 +83,8 @@ fn trailing_newline_buffer() {
     assert_round_trip("a\n", "a\n");
     assert_round_trip("a\n", "b\n");
     assert_round_trip("a\nb\n", "a\n");
-    // Regression for the original oracle failure: a single-content-line
-    // buffer vs a single-`\n` buffer. The bare-`split('\n')` approach
-    // desynced the cursors by one `\n` here.
+    // A single-content-line buffer vs a single-`\n` buffer. Splitting on a
+    // bare `split('\n')` would desync the cursors by one `\n` here.
     assert_round_trip("a\n", "\n");
     assert_round_trip("\n", "a\n");
 }

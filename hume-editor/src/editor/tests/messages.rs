@@ -62,7 +62,7 @@ fn messages_populates_the_extra_highlights_store() {
     ed.execute_typed("messages", None).unwrap();
     let bid = ed.focused_buffer_id();
 
-    // Independent oracle, same as message_log's own offset test: "[warning]"
+    // Offsets counted by hand, as in message_log's own offset test: "[warning]"
     // is 9 chars (0..9), "bad key" is 7 (10..17); "[error]" is 7 chars
     // (18..25), "crash" is 5 (26..31).
     let spans = ed

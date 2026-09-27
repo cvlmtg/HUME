@@ -624,9 +624,8 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
 /// that made the manual's documented recipe (`user-manual/docs/plugins.md`)
 /// overshoot `buffer-lines`' bounds check whenever the viewport reaches EOF.
 ///
-/// Fail oracle: clamping to `ropey_line_count()` (one past the phantom-line
-/// index) instead of `content_line_count()` would report `(cdr vr)` one past
-/// what this asserts.
+/// Clamping to `ropey_line_count()` rather than `content_line_count()` would
+/// report `(cdr vr)` one higher than this asserts.
 #[test]
 fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
     let tmp = safe_tempdir();
@@ -650,8 +649,8 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 /// probe) so the pane's height is exactly what this test set, not whatever a
 /// dispatched command might have touched.
 ///
-/// Fail oracle: the pre-fix `first_line + height + 1` reports 4 for a 3-row
-/// pane at the top of a 6-line buffer, naming a row past what's on screen.
+/// `first_line + height + 1` would report 4 for a 3-row pane at the top of a
+/// 6-line buffer, naming a row past what's on screen.
 #[test]
 fn viewport_range_end_is_one_past_the_last_visible_row() {
     let mut ed = editor_from("-[a]>\nb\nc\nd\ne\nf\n");
@@ -1003,8 +1002,8 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
 /// to (the exact bug `a548a117` fixed everywhere else in this crate, missed
 /// here).
 ///
-/// Fail oracle: without `JsonHandle::position_encoding`'s `Err`, this would
-/// silently decode against the running UTF-16 server instead of erroring.
+/// Without `JsonHandle::position_encoding`'s `Err`, this would silently
+/// decode against the running UTF-16 server.
 #[test]
 fn lsp_position_to_offset_untagged_handle_errors() {
     let tmp = safe_tempdir();
@@ -1194,10 +1193,8 @@ fn lsp_range_to_offsets_untagged_handle_errors() {
 /// not silently resolve to the UTF-16 default the way the removed
 /// `encoding_for_buffer` once did.
 ///
-/// Fail oracle: without `JsonHandle::position_encoding`'s `Err` (a guessed
-/// UTF-16 fallback instead), this would return `Ok(vec![...])` for a
-/// well-formed but untagged location instead of erroring before ever
-/// measuring it.
+/// A guessed UTF-16 fallback in `JsonHandle::position_encoding` would return
+/// `Ok(vec![...])` for a well-formed but untagged location.
 #[test]
 fn lsp_locations_display_parts_untagged_handle_errors() {
     let ed = editor_from("-[a]>bcdef\n");

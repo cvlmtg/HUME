@@ -10,8 +10,8 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     Rect::new(x, y, w, h)
 }
 
-/// Independent width oracle for the code under test — see `clippy.toml`'s
-/// `disallowed-methods` entry.
+/// Measures width without going through the code under test. See
+/// `clippy.toml`'s `disallowed-methods` entry.
 #[allow(clippy::disallowed_methods)]
 fn oracle_width(s: &str) -> usize {
     unicode_width::UnicodeWidthStr::width(s)

@@ -28,9 +28,8 @@ fn lang_regs(h: &SteelCtxTestHarness) -> Vec<&PendingLanguageReg> {
 /// body, so this tests the gate primitive directly rather than calling
 /// `define_language` (its body has no guard to hit).
 ///
-/// Fail oracle: change `%define-language!`'s table entry from `config` to
-/// `open` → language identity could be defined at runtime, corrupting the
-/// language registry.
+/// An `open` table entry would let language identity be defined at runtime,
+/// corrupting the language registry.
 #[test]
 fn define_language_blocked_in_command_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -66,9 +65,6 @@ fn define_language_non_string_name_errors() {
 }
 
 /// `%define-language!` in init mode queues a `PendingLanguageReg::Identity`.
-///
-/// Fail oracle: make the call a no-op → the effect log stays empty →
-/// last assert fires.
 #[test]
 fn define_language_queues_pending_reg() {
     let mut h = SteelCtxTestHarness::new();
@@ -118,10 +114,6 @@ fn define_language_accepts_symbol_name() {
 
 /// `%define-language!`'s 5th arg decodes into `PendingLanguageReg::Identity`'s
 /// `lsp_language_id` — `#f` becomes `None`, a string becomes `Some`.
-///
-/// Fail oracle: dropping the 5th arg or ignoring it would leave
-/// `lsp_language_id` `None` even when a string was passed — the second
-/// assertion below would fail.
 #[test]
 fn define_language_decodes_lsp_language_id_arg() {
     let mut h = SteelCtxTestHarness::new();
@@ -148,9 +140,6 @@ fn define_language_decodes_lsp_language_id_arg() {
 
 /// In init mode, `register-grammar!` queues a `PendingLanguageReg::Grammar`
 /// instead of calling the host immediately.
-///
-/// Fail oracle: call host immediately in init mode → the effect log
-/// stays empty → last assert fires.
 #[test]
 fn register_grammar_init_mode_queues_pending_reg() {
     let mut h = SteelCtxTestHarness::new();
@@ -176,9 +165,6 @@ fn register_grammar_init_mode_queues_pending_reg() {
 
 /// In command mode, `register-grammar!` calls the host immediately.
 /// NullHost returns Err, proving the call reached the host.
-///
-/// Fail oracle: always queue in init path even for command mode → host is never
-/// called → the error would be absent and the effect log would be non-empty.
 #[test]
 fn register_grammar_command_mode_calls_host() {
     let mut h = SteelCtxTestHarness::new();
@@ -207,10 +193,9 @@ fn register_grammar_command_mode_calls_host() {
 }
 
 /// A string (not `#f`) in the 5th position must reach
-/// `PendingLanguageReg::Grammar.injections_path` as `Some`.
-///
-/// Flip: if `optional_path_arg` ignored the string branch, this would be
-/// `None` — same as the `#f` case in the tests above.
+/// `PendingLanguageReg::Grammar.injections_path` as `Some`. If
+/// `optional_path_arg` ignored the string branch, it would be `None`, just
+/// like the `#f` case in the tests above.
 #[test]
 fn register_grammar_with_injections_path_populates_pending_reg() {
     let mut h = SteelCtxTestHarness::new();
@@ -237,10 +222,8 @@ fn register_grammar_with_injections_path_populates_pending_reg() {
 }
 
 /// A string (not `#f`) in the 6th position must reach
-/// `PendingLanguageReg::Grammar.textobjects_path` as `Some`.
-///
-/// Flip: if `optional_path_arg` ignored the string branch, this would be
-/// `None` — same as the `#f` case in the tests above.
+/// `PendingLanguageReg::Grammar.textobjects_path` as `Some`, which it
+/// could not do if `optional_path_arg` dropped the string branch.
 #[test]
 fn register_grammar_with_textobjects_path_populates_pending_reg() {
     let mut h = SteelCtxTestHarness::new();

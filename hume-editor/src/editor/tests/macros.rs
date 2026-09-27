@@ -757,9 +757,9 @@ fn macro_q1_replay_after_undo() {
 }
 
 /// Regression: a macro containing two consecutive `p` commands must not panic
-/// or corrupt undo. Before the fix, `commit_paste_session` was gated on
-/// `!is_replaying`, so the second `p` hit `begin_edit_group` on an already-open
-/// `paste_group` → `debug_assert` panic.
+/// or corrupt undo. `commit_paste_session` must run during replay too, or
+/// the second `p` hits `begin_edit_group` on an already-open `paste_group`
+/// and trips a `debug_assert`.
 #[test]
 fn macro_with_two_pastes_does_not_panic() {
     let mut ed = editor_from("-[AB]>CD\n");
@@ -796,9 +796,9 @@ fn macro_with_two_pastes_does_not_panic() {
 /// inside the loop, then `.` reads it and fires `replay_dot` at the tail
 /// of the inner `handle_key` call — within `drain_replay_queue`'s loop, not after.
 ///
-/// Fail oracle: if `replay_dot` were called only AFTER the replay loop
-/// (not inside it), the `.` would set `pending_repeat` during the last iteration
-/// but it would not drain until outside, leaving buffer with only one `d` applied.
+/// If `replay_dot` ran only after the replay loop, the `.` would set
+/// `pending_repeat` on the last iteration without draining it, leaving the
+/// buffer with only one `d` applied.
 #[test]
 fn dot_inside_macro_replay_fires_drain() {
     // Four chars so deletes leave visible residue.
@@ -810,7 +810,7 @@ fn dot_inside_macro_replay_fires_drain() {
         .registers
         .write_macro('q', vec![key('d'), key('.')]);
 
-    // Replay: qq + drain — see the fail oracle above for what each replayed
+    // Replay: qq + drain. The doc comment above explains what each replayed
     // key does inside `drain_replay_queue`'s loop.
     ed.handle_key(key('q'));
     ed.handle_key(key('q'));
@@ -952,14 +952,12 @@ fn macro_replay_resolves_non_conformant_shift_delivery_like_clean_press() {
 /// synchronously); the hook it drives writes a buffer-scoped `tab-style`
 /// override that the very next key, `<tab>`, reads. `recorded` replays the
 /// macro in one shot; `direct` uses `feed_event` to mirror `Editor::run`'s
-/// loop (dispatch, then settle, per key) — the independent oracle for what
-/// "typed by hand" produces.
+/// loop (dispatch, then settle, per key), as the reference for what "typed
+/// by hand" produces.
 ///
-/// Fail oracle: revert `drain_replay_queue` to settle once at the end of the
-/// loop instead of once per key — `recorded`'s `<tab>` would then dispatch
-/// while `tab-style` is still the compiled-in default (`Hard`), inserting a
-/// literal `\t` where `direct` inserts spaces, and the final `assert_eq!`
-/// fails.
+/// If `drain_replay_queue` settled only once at the end of the loop,
+/// `recorded`'s `<tab>` would run while `tab-style` is still the compiled-in
+/// `Hard` and insert a literal `\t` where `direct` inserts spaces.
 #[test]
 fn macro_replay_runs_a_replayed_keys_own_hook_before_the_next_replayed_key() {
     use crate::editor::tests::language::attach_host;

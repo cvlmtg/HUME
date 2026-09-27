@@ -37,9 +37,8 @@ fn cancel_prevents_flag() {
 /// caller-side `debug_assert` in `arm` itself — on the test's own thread —
 /// rather than silently recovering inside the detached watchdog thread.
 ///
-/// Fail oracle: move the assert into `watchdog_loop` (checked on the
-/// detached thread) → this test's `#[should_panic]` never fires because
-/// nothing on the *caller's* stack panics.
+/// If the assert lived in `watchdog_loop`, it would run on the detached
+/// thread and this test's `#[should_panic]` would never fire.
 #[test]
 #[should_panic(expected = "missing cancel() after the previous eval")]
 #[cfg(debug_assertions)]
@@ -52,9 +51,6 @@ fn unpaired_arm_is_caught_on_callers_thread() {
 
 /// The persistent thread survives an arm/cancel cycle and fires on a
 /// subsequent arm.
-///
-/// Fail oracle: make the thread exit after the first cancel → the second
-/// arm never fires (or `arm` panics on a dead channel).
 #[test]
 fn rearming_after_cancel_still_fires() {
     let flag = Arc::new(AtomicBool::new(false));

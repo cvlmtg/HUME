@@ -105,9 +105,6 @@ fn edit_seq_starts_at_zero_and_bumps_explicitly() {
 /// not a user edit — it must not advance `edit_seq`, or a `PasteStamp`
 /// stamped by a capture would go stale just from the user glancing at
 /// `:messages` between a kill and a paste.
-///
-/// Fail oracle: route `set_view_content` through `BufferStore::bump_edit_seq`
-/// (or through the `doc_ops` chokepoint) → this test's `assert_eq!` fails.
 #[test]
 fn view_content_refresh_does_not_bump_edit_seq() {
     let (mut store, mut ev) = store_with_engine();
@@ -159,8 +156,8 @@ fn take_text_changed_reports_nothing_for_an_untouched_store() {
 /// second immediate call reports nothing, since the baseline already caught
 /// up.
 ///
-/// Fail oracle: drop the `announced_text_gen = text_gen` write in
-/// `take_text_changed` → the second call still returns `[id]`.
+/// Without the `announced_text_gen` write in `take_text_changed`, the second
+/// call would still return `[id]`.
 #[test]
 fn take_text_changed_reports_a_touched_buffer_once() {
     let (mut store, mut ev) = store_with_engine();

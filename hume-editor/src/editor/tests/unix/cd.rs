@@ -288,9 +288,9 @@ fn cwd_sandbox_restores_cwd_and_deletes_tempdir() {
 /// property a single after-the-fact check can't: cwd is never left dangling
 /// even under concurrent reads, for the whole lifetime of every sandbox.
 ///
-/// Fail oracle: swap `CwdSandbox` here for the historical buggy pattern
-/// (`CwdGuard::new()` + a separately-scoped `tempfile::tempdir()` local) and
-/// the reader thread reliably observes `current_dir()` failing mid-loop.
+/// Using `CwdGuard::new()` with a separately scoped `tempfile::tempdir()`
+/// local in place of `CwdSandbox` makes the reader thread reliably see
+/// `current_dir()` fail mid-loop.
 #[test]
 fn cwd_sandbox_never_dangles_under_concurrent_reads() {
     use std::sync::Arc;

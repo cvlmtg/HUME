@@ -127,8 +127,8 @@ fn render_hume_globals_scm(names: &[String]) -> String {
     out
 }
 
-/// Fail oracle: delete one line from the shipped `hume-globals.scm` (or
-/// edit one name) — this test must fail, naming the file as stale.
+/// Any missing or renamed line in the shipped `hume-globals.scm` must fail
+/// this test, naming the file as stale.
 #[test]
 fn hume_globals_scm_matches_generated_host_names() {
     let (host, ..) = host_and_editor_after_runtime_layers();
@@ -179,10 +179,10 @@ fn hume_globals_scm_matches_generated_host_names() {
 /// `Some("steel-language-server")` assertion below can only be satisfied by
 /// the `steel-server/register!` call under test, not by that load-time tail.
 ///
-/// Flip: rename `lsp-home/` on disk (or point `steel-server/lsp-home` at a
-/// nonexistent directory) — this test starts failing on the `STEEL_LSP_HOME`
-/// assertion, since the plugin's own `path-exists?` guard falls through to
-/// the `#f`/no-`#:env` branch.
+/// If `lsp-home/` were missing on disk (or `steel-server/lsp-home` pointed at
+/// a nonexistent directory), the plugin's own `path-exists?` guard would fall
+/// through to the `#f`/no-`#:env` branch and the `STEEL_LSP_HOME` assertion
+/// would fail.
 #[test]
 fn steel_server_plugin_registers_scheme_with_generated_globals_env() {
     let (mut host, mut ed, builtin_names) = host_and_editor_after_runtime_layers();

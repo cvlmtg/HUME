@@ -282,8 +282,8 @@ fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
 /// `apply_script_effects` once this eval (reached via `settle`'s `Call` arm,
 /// the rename response callback) returns.
 ///
-/// Fail oracle: revert `resolve_or_open` to call the bare (pre-fix)
-/// `lifecycle::open_or_dedup` — `lib.rs`'s buffer never gets a `language`.
+/// If `resolve_or_open` called the bare `lifecycle::open_or_dedup`,
+/// `lib.rs`'s buffer would never get a `language`.
 #[test]
 fn multi_file_workspace_edit_detects_language_of_the_newly_opened_file() {
     let tmp = safe_tempdir();

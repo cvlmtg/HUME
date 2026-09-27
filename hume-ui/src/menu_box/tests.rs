@@ -528,7 +528,7 @@ fn scrollbar_thumb_length_is_proportional_and_leaves_track_visible() {
 /// above (`view=3,total=4`) only exercises the clamp — the ratio term there
 /// (`ceil(9/4)=3`) gets clamped down to 2 regardless, so deleting that term
 /// entirely and hardcoding `view-1` would still pass it. Hand-computed
-/// (independent-oracle) expected lengths here land below the clamp ceiling,
+/// expected lengths here land below the clamp ceiling,
 /// so only the real ratio term can produce them.
 #[test]
 fn scrollbar_thumb_length_scales_with_visible_fraction_not_just_the_clamp() {

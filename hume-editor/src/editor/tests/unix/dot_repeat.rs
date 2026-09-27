@@ -7,9 +7,9 @@ use super::*;
 /// The re-query in `editor/mod.rs` `dispatch()` reads `meta().repeatable` on the
 /// now-SteelBacked entry (not the pre-dispatch Lazy stub, which is never repeatable).
 ///
-/// Fail oracle: if the re-query used the pre-dispatch `Lazy` variant,
-/// `last_repeatable_action` would be `None` on first dispatch — `.` is then
-/// a no-op and "bar" survives.
+/// A re-query against the pre-dispatch `Lazy` variant would leave
+/// `last_repeatable_action` as `None` on first dispatch, so `.` would do
+/// nothing and "bar" would survive.
 ///
 /// Not on Windows: Scheme `require` strings embed OS paths with forward slashes.
 #[test]

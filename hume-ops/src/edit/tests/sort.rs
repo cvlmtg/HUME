@@ -105,7 +105,7 @@ fn sort_numeric_auto_detects_and_orders_correctly() {
         "-[1]>\n-[2]>\n-[10]>\n"
     );
 
-    // Independent oracle: pins numeric detection actually firing. A pure
+    // Pins numeric detection actually firing. A pure
     // lexicographic sort of the same three strings produces a different
     // order ("1", "10", "2") — if numeric detection silently stopped firing,
     // the assertion above would start seeing this order instead.
@@ -122,7 +122,7 @@ fn sort_decimal_keys_order_numerically() {
         "-[2.75]>\n-[9.5]>\n-[10.2]>\n"
     );
 
-    // Independent oracle: pins float detection actually firing. A pure
+    // Pins float detection actually firing. A pure
     // lexicographic sort of the same three strings produces a different
     // order ("10.2", "2.75", "9.5") — if float detection silently stopped
     // firing, the assertion above would start seeing this order instead.

@@ -564,9 +564,8 @@ mod marshal_leading_args_tests {
 
     /// Arity 1 gets pane alone, not `first` — pane is always the leading slot.
     ///
-    /// Fail oracle: injecting `first` here instead would silently bind the
-    /// pane to whatever a `(lambda (arg) …)`-style command names its single
-    /// parameter, rather than giving pane its own visible arity-1 slot.
+    /// Injecting `first` here would silently bind the pane to whatever a
+    /// `(lambda (arg) …)`-style command names its single parameter.
     #[test]
     fn arity_one_gets_pane_only() {
         assert_eq!(probe(1, false), vec![pane_stand_in()]);

@@ -396,8 +396,8 @@ fn multiple_sequential_undos() {
 
 #[test]
 fn cap_zero_never_evicts() {
-    // Fail oracle: if enforce_undo_levels ran regardless of the 0 sentinel,
-    // this would trim down to 1 revision instead of staying at 6.
+    // A cap of 0 means unlimited. Trimming here would leave 1 revision
+    // instead of 6.
     let mut h = History::new(sel_at(0), 6);
     for i in 0..5 {
         h.record(
@@ -412,8 +412,8 @@ fn cap_zero_never_evicts() {
 
 #[test]
 fn set_undo_levels_does_not_trim_until_next_record() {
-    // Fail oracle: if set_undo_levels trimmed immediately, len() would drop
-    // to 3 right after the call instead of only on the next record.
+    // Lowering the cap takes effect on the next record. An immediate trim
+    // would drop len() to 3 right after the call.
     let mut h = History::new(sel_at(0), 6);
     for i in 0..5 {
         h.record(
@@ -435,10 +435,8 @@ fn set_undo_levels_does_not_trim_until_next_record() {
 
 #[test]
 fn linear_chain_promotes_oldest() {
-    // Fail oracle: without promotion, len() would stay at 4 (root+a+b+c)
-    // instead of dropping to 3, and `a`'s parent would still be `ROOT`
-    // instead of becoming unreachable (`None`) once `a` itself is promoted
-    // away.
+    // Promoting `a` into the root drops len() from 4 (root+a+b+c) to 3 and
+    // leaves `a` with no parent at all.
     let mut h = History::new(sel_at(0), 6);
     h.set_undo_levels(2);
     let a = h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // a = RevisionId(1)
@@ -461,8 +459,7 @@ fn linear_chain_promotes_oldest() {
 
 #[test]
 fn cap_one_current_never_evicted() {
-    // Fail oracle: if current could be evicted, len() would collapse to 1
-    // (root only) instead of holding at 2 (root + current).
+    // Current is never evicted, so len() holds at 2 (root + current).
     let mut h = History::new(sel_at(0), 6);
     h.set_undo_levels(1);
     for i in 0..4 {
@@ -483,7 +480,6 @@ fn oldest_branch_evicted_first() {
     // Tree: root -> A (rev1) -> B (rev2); undo to A; record C (rev3, branch).
     // current is under C. Capping to 1 must drop the whole {A, B} branch
     // and promote C, not touch C's own subtree.
-    // Fail oracle: evicting C's branch instead of A/B would break current.
     let mut h = History::new(sel_at(0), 6);
     h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1 = A
     h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // rev2 = B
@@ -641,10 +637,9 @@ fn redo_steps_newer_than_walks_last_child_chain() {
 /// with `undo_steps_older_than`, which never had this bug: its clamp only
 /// ever fires from inside the walk, at the root.
 ///
-/// Fail oracle: before the fix, the zero-step tail compared the *current*
-/// revision's own age against `age` whenever it had no children, so this
-/// would have returned `Err(1)` (a false "Already at newest change" extra
-/// step) instead of `Ok(0)`.
+/// Comparing the *current* revision's own age against `age` when it has no
+/// children would return `Err(1)`, a false "Already at newest change" extra
+/// step, where `Ok(0)` is correct.
 #[test]
 fn redo_steps_newer_than_at_the_tip_is_satisfied_regardless_of_the_tip_s_own_age() {
     let h = aged_chain(); // current = rev3 (tip), backdated to 1m, no children

@@ -58,8 +58,8 @@ fn call_path_to_display(path: &str) -> String {
 }
 
 /// A path with no home prefix and no Windows verbatim prefix must come back
-/// byte-identical — an oracle independent of `display_form`'s own logic,
-/// unlike comparing against `display_form`'s output directly.
+/// byte-identical. Comparing against the input keeps `display_form`'s own
+/// logic out of the expected value.
 #[test]
 fn path_to_display_leaves_unrelated_path_unchanged() {
     let input = "/some/absolute/path/file.rs";
@@ -109,13 +109,11 @@ fn path_to_display_type_error() {
 /// `steel/meta` module, already a bare global in `Engine::new()`. Prove it
 /// resolves *through a loaded plugin*, not just at the top level: a
 /// `register_value` of a non-function value is known to silently stub out
-/// inside `load-plugin`'d code (see memory
-/// `reference_steel_load_plugin_bare_globals`), and this name must not
+/// inside `load-plugin`'d code, and this name must not
 /// regress to a HUME-registered shadow that could reintroduce that trap.
 ///
-/// Fail oracle: reintroducing `fs::path_separator` registered as a bare
-/// value (not a niladic function) would make this test hang or error
-/// instead of logging the separator.
+/// An `fs::path_separator` registered as a bare value instead of a niladic
+/// function would make this test hang or error.
 #[test]
 fn path_separator_resolves_inside_loaded_plugin() {
     use tempfile::TempDir;
@@ -187,7 +185,7 @@ fn data_dir_resolves_through_real_registration() {
 
     // macOS TempDir paths are under /var, which is itself a symlink to
     // /private/var — canonicalize the *expected* side so the comparison
-    // isn't platform-dependent (see memory feedback_macos_tempfile_canonicalize).
+    // isn't platform-dependent.
     // On Windows canonicalize yields a `\\?\`-prefixed path, but
     // `(data-dir)` returns the display form — strip the prefix to match.
     let expected = hume_platform::path::strip_unc_prefix(std::fs::canonicalize(&data_dir).unwrap());

@@ -257,12 +257,10 @@ fn d5_insert_session_is_pane_buffer_scoped() {
 /// clear *that pane's buffer's* search state, not whatever the click just
 /// focused.
 ///
-/// Fail oracle: before this fix, every restore/clear site read
-/// `state.focus.id()`/`ed.focused_buffer_id()` instead of the session's own
-/// originating pane — the click moves focus to B, so `Esc` would restore
-/// nothing on A (B has no stash) and clear B's buffer's search state
-/// instead of A's, leaving A's matches highlighted and its cursor wherever
-/// live-search's last preview left it.
+/// The click moves focus to B. A restore/clear that read `state.focus.id()`
+/// or `ed.focused_buffer_id()` would restore nothing on A (B has no stash)
+/// and clear B's search state, leaving A's matches highlighted and its
+/// cursor wherever live-search's last preview left it.
 #[test]
 fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
     let tmp = safe_tempdir();
@@ -740,9 +738,8 @@ fn split_via_command_mode_moves_focus() {
 // ── T3: Multi-pane render / prepare_frame ──────────────────────────────────────
 
 /// After `:vsplit`, `prepare_frame` must size both panes from the layout tree,
-/// not just the focused one. Regression guard: before the fix the sibling
-/// pane kept its `Pane::new` default viewport instead of tiling its half of
-/// the terminal.
+/// not just the focused one. The sibling pane must tile its half of the
+/// terminal rather than keep its `Pane::new` default viewport.
 #[test]
 fn vsplit_sizes_both_panes_from_layout() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -1045,10 +1042,6 @@ fn fifth_pane_split_succeeds_when_post_equalize_size_still_fits() {
 /// unguarded `Rect` claiming a row regardless of `area.height` would send
 /// the provider's `Buffer::set_string` calls out-of-bounds and panic, unlike
 /// the background fill which clamps.
-///
-/// Fail oracle: drop the `area.height > 0` guard around the chrome-row
-/// rendering in `EngineView::render` — this test panics instead of returning
-/// an empty string.
 #[test]
 fn zero_height_render_does_not_panic() {
     use super::render_snapshot::render_to_styled_string;
@@ -1195,7 +1188,7 @@ fn insert_mode_hides_cursor_only_in_focused_pane() {
 /// the initial pane — not the empty `ProviderSet` `Pane::new` alone would give
 /// it. Uses the real `Editor::open` constructor (not the bare-pane `for_testing`
 /// harness used elsewhere in this file) so the initial pane reflects actual
-/// production setup. Independent oracle: compare the split pane's
+/// production setup. It compares the split pane's
 /// `gutter_columns().count()` against the pre-existing initial pane's, rather
 /// than asserting a hardcoded count that could pass even if both were wrongly
 /// empty.
@@ -1443,7 +1436,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
 }
 
 /// Closing one leaf of a 2×2 grid promotes the correct sibling and leaves the
-/// other three panes untouched. Independent oracle: the expected post-close
+/// other three panes untouched. The expected post-close
 /// shape (`Split{Leaf(A), Split{B, C}}`) is derived from how the grid was
 /// built, not by re-running the close logic.
 #[test]
@@ -1923,10 +1916,10 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 /// A search match that spans a `\n` must produce one highlight span per line
 /// it touches, each clipped to that line's own content — not a single span
 /// computed by converting the match's absolute end offset through whichever
-/// line the *start* happened to be on (which, before the fix, produced a
-/// corrupt or inverted span whenever a match crossed a line boundary).
+/// line the *start* happened to be on (which gives a corrupt or inverted
+/// span whenever a match crosses a line boundary).
 ///
-/// Independent oracle: byte offsets are hand-computed from the known ASCII
+/// Byte offsets are hand-computed from the known ASCII
 /// content ("abc\ndef\n"), not derived by calling the code under test.
 #[test]
 fn multiline_search_match_splits_into_per_line_highlight_spans() {

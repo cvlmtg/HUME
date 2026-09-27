@@ -166,7 +166,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
     );
 }
 
-/// Independent oracle: byte offsets are hand-computed from the known ASCII
+/// Byte offsets are hand-computed from the known ASCII
 /// content, not derived by calling the code under test (matches the
 /// multiline search-match test's convention in `multi_pane.rs`).
 #[test]

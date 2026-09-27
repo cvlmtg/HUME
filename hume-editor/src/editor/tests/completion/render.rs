@@ -130,7 +130,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         (state.rect.x, state.rect.y)
     };
 
-    // Independent oracle: re-derive the cell via a fresh `DisplayLineMap`
+    // Re-derive the cell independently via a fresh `DisplayLineMap`
     // and `cursor::content_pos`, bypassing `ctx.cursor_content_pos`.
     let bid = ed.focused_buffer_id();
     let anchor = ed

@@ -23,10 +23,9 @@ fn fresh_from_buf_seeds_initial_sels() {
 fn fresh_from_buf_seeds_stable_initial_sels_across_promotion() {
     // A pane that first views a buffer *after* undo-levels promotion has run
     // must still see the buffer's true open-time selection, not a later
-    // revision's post-edit cursor.
-    // Fail oracle: if enforce_undo_levels overwrote the root's `forward`
-    // transaction on promotion, `initial_sels()` (and this seed) would
-    // return the promoted revision's post-edit selection instead.
+    // revision's post-edit cursor. If enforce_undo_levels overwrote the
+    // root's `forward` transaction on promotion, `initial_sels()` and this
+    // seed would both return that later selection.
     use crate::editor::buffer::Buffer;
     use hume_editing::text::BufferText;
     use hume_ops::edit::insert_char;

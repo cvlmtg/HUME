@@ -94,10 +94,8 @@ fn unbind_key_invalid_mode_errors() {
 // These tests load the three macros via eval_source (as init_scripting does via
 // eval_init before init.scm), then exercise each macro.
 //
-// Independent oracle: the expected bindings come from the literal key/cmd pairs
+// The expected bindings come from the literal key/cmd pairs
 // passed to the macro — not from re-reading the keymap.
-// Zero-effect check: swap a cmd name in a pair; the assertion catches it because
-// it compares against the literal name from the input, not "whatever the keymap says".
 
 /// Real `runtime/scheme/prelude.scm` source, read fresh per call so these tests
 /// exercise the file plugin authors actually get — same `CARGO_MANIFEST_DIR`-

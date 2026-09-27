@@ -123,9 +123,9 @@ fn select_word_nearest_on_line_follows_word_chars() {
 /// sub-row rather than the whole buffer line.
 ///
 /// Wrapping at column 12 puts "hello world " on row 0 and "foo-bar" on row 1.
-/// Fail oracle, both halves at once: dropping `word-chars` from the wrap
-/// branch selects "bar" alone; losing the sub-row bound absorbs row 0's
-/// trailing space.
+/// The test covers both halves. Ignoring `word-chars` in the wrap branch
+/// would select "bar" alone, and losing the sub-row bound would absorb row
+/// 0's trailing space.
 #[test]
 fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line() {
     let mut ed = editor_from("hello world foo-b-[a]>r\n");

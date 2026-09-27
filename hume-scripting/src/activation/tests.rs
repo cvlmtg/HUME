@@ -105,8 +105,8 @@ fn syntax_error_transitions_to_failed() {
 fn failed_activation_message_names_plugin_and_location() {
     let dir = TempDir::new().unwrap();
     // Line 2, column 2 (1-based): right at "call-does-not-exist", after the
-    // opening paren — hand-computed so the location assertion below is an
-    // independent oracle, not derived from the implementation under test.
+    // opening paren. Hand-computed from the source text for the location
+    // assertion below.
     let path = write_plugin(&dir, "located.scm", "(define x 1)\n(call-does-not-exist)\n");
     let id = plugin_id("core:located");
     let mut host = ScriptingHost::new();
@@ -265,8 +265,6 @@ fn path_with_quote_char_transitions_to_failed() {
 /// A `define-command!` issued via `eval-string` inside a `run_steel` session
 /// registers the command in `command_table` — proving that the nested eval-string
 /// sees the same `ctx.registries` as the outer eval.
-///
-/// Verification: commenting out the `eval-string` call makes the assert fail.
 #[test]
 fn eval_string_nested_registers_command_in_command_table() {
     let mut host = ScriptingHost::new();
@@ -412,9 +410,6 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
 /// transitions to `Failed` and `finish_lazy_activation` rolls back the
 /// partial `define-command!` — removing it from `command_table` and
 /// `cmd_owners`.  A `Failed` plugin must not leave callable orphan commands.
-///
-/// Fail oracle: without the rollback the key persists in `command_table` →
-/// the `command_table` assert fires, exposing the orphan.
 #[test]
 fn partial_define_before_failure_is_rolled_back() {
     let dir = TempDir::new().unwrap();
@@ -459,8 +454,8 @@ fn partial_define_before_failure_is_rolled_back() {
 /// registration and then errors: both must be rolled back from the
 /// effect log, not left for some later unrelated drain to silently apply.
 ///
-/// Fail oracle: without `SteelCtx::pop_effect_marks` truncating on
-/// failure, `effects_for_test()` comes back non-empty.
+/// Without `SteelCtx::pop_effect_marks` truncating on failure,
+/// `effects_for_test()` would come back non-empty.
 #[test]
 fn queued_effects_before_failure_are_rolled_back() {
     let dir = TempDir::new().unwrap();
@@ -501,9 +496,8 @@ fn queued_effects_before_failure_are_rolled_back() {
 /// command itself queued, before and after the nested activation, must
 /// NOT survive.
 ///
-/// Fail oracle: revert `take_eval_effects`'s `Err` arm to a flat
-/// `self.effects.truncate(effects_start)` → `e.effects` comes back empty
-/// even though B is `Loaded`.
+/// A flat `self.effects.truncate(effects_start)` in `take_eval_effects`'s
+/// `Err` arm would leave `e.effects` empty even though B is `Loaded`.
 #[test]
 fn committed_activation_effects_survive_failed_outer_command() {
     use crate::host::EditorHost;
@@ -676,8 +670,8 @@ fn nested_activation_commit_survives_enclosing_plugin_failure() {
 /// A plugin body that registers a hook and then errors: the hook must not
 /// survive — a `Failed` plugin's hooks must stop firing.
 ///
-/// Fail oracle: without `HookRegistry::remove_owned_by` in
-/// `finish_lazy_activation`, `has_hook_handlers` comes back `true`.
+/// `finish_lazy_activation` drops the hook through
+/// `HookRegistry::remove_owned_by`.
 #[test]
 fn hook_registered_before_failure_is_rolled_back() {
     let dir = TempDir::new().unwrap();
@@ -717,10 +711,6 @@ fn hook_registered_before_failure_is_rolled_back() {
 /// inside plugin B's body, and B then fails afterward. C's hook must
 /// survive B's rollback — rollback is by owner identity, not by eval-scoped
 /// position, so B's failure can never touch C's entries.
-///
-/// Fail oracle: if rollback matched by something other than plugin
-/// identity (e.g. "everything registered since B started"), C's hook
-/// would be wrongly removed too.
 #[test]
 fn nested_activation_hook_survives_enclosing_plugin_failure() {
     use crate::host::EditorHost;
@@ -791,8 +781,8 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
 /// `unregister_lazy_stubs_of` *after* the body completes in
 /// `finish_lazy_activation`).
 ///
-/// Fail oracle: remove the `is_self` exemption from `define_command` →
-/// the plugin's `define-command!` call is rejected → activation returns Err.
+/// The `is_self` exemption in `define_command` allows this. Without it the
+/// call would be rejected and activation would return Err.
 #[test]
 fn lazy_plugin_can_define_its_own_activation_command() {
     use crate::host::EditorHost;
@@ -850,8 +840,8 @@ fn lazy_plugin_can_define_its_own_activation_command() {
 /// exhausted budget, and B would falsely be blamed as "failed to load" for
 /// hitting the same still-set flag on its own first `(hume/yield!)`.
 ///
-/// Fail oracle: without `%activate-plugin-inline`'s post-`with-handler`
-/// `(hume/yield!)` re-check, this returns `Ok` and B ends up `Loaded`.
+/// The abort comes from the `(hume/yield!)` re-check that
+/// `%activate-plugin-inline` runs after its `with-handler`.
 #[test]
 fn interrupt_during_activation_aborts_before_next_plugin_loads() {
     use crate::null_host::LazyStubHost;
@@ -910,9 +900,9 @@ fn interrupt_during_activation_aborts_before_next_plugin_loads() {
 /// as if the name were simply unknown — the plugin failed, and the caller
 /// needs to know that, not receive a value indistinguishable from success.
 ///
-/// Fail oracle: without the `%lazy-command-owner` check after a failed
-/// inline activation, this returns `Ok` with the native-command-miss log
-/// message instead of erroring.
+/// The `%lazy-command-owner` check after a failed inline activation is what
+/// turns this into an error. Without it the call would return `Ok` and log
+/// a native-command miss.
 #[test]
 fn call_of_command_owned_by_newly_failed_plugin_errors() {
     use crate::host::EditorHost;
@@ -951,9 +941,8 @@ fn call_of_command_owned_by_newly_failed_plugin_errors() {
 /// `Failed` with no live command stub — not left half-`Declared` with a
 /// callable stub for a plugin whose manifest never finished evaluating.
 ///
-/// Fail oracle: without rolling the plugin back to `Failed` in
-/// `finish_manifest_declare`'s error branch, `lazy_registry.plugins` stays
-/// `Declared` and the stub remains claimable.
+/// `finish_manifest_declare`'s error branch performs that rollback to
+/// `Failed`.
 #[test]
 fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     use crate::host::EditorHost;
@@ -1014,10 +1003,9 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
 /// `activation_effect_marks` is per-eval transient state (rebuilt fresh in
 /// every `SteelCtx`) — only observable by whether its own effect survives.
 ///
-/// Fail oracle: with the old `optional_steel_error_arg(error, ...)?`
-/// short-circuiting before `plugin_stack.pop()`/`pop_effect_marks`, both
-/// assertions below fail — the stack stays at depth 1 and the queued
-/// `register-lsp-server!` effect is never rolled back.
+/// Decoding `error` must not short-circuit ahead of `plugin_stack.pop()` and
+/// `pop_effect_marks`. If it did, the stack would stay at depth 1 and the
+/// queued `register-lsp-server!` effect would never be rolled back.
 #[test]
 fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
     let dir = TempDir::new().unwrap();

@@ -97,15 +97,13 @@ fn capacity_cap() {
     // `backward`'s own "save current position" append enforces the same cap
     // as `push` — it evicts one more entry (line 1) to make room for the
     // saved position, so the true oldest survivor is line 2, not line 1.
-    // Fail oracle: dropping that trim (leaving `backward` free to grow the
-    // list to `CAP + 1`) would keep line 1 reachable and this assertion red.
     assert_eq!(oldest, hume_rope::line::ContentLine::new(2));
 }
 
 #[test]
 fn set_capacity_defers_trim_to_next_push() {
-    // Fail oracle: if set_capacity trimmed immediately, jl.len() would drop
-    // to 2 right after the call instead of only on the next push.
+    // Lowering the cap takes effect on the next push. An immediate trim
+    // would drop jl.len() to 2 right after the call.
     let mut jl = JumpList::new(10);
     for i in 0..5 {
         jl.push(entry(i * 10, i));
@@ -124,8 +122,8 @@ fn set_capacity_defers_trim_to_next_push() {
     // `backward`'s own "save current position" append enforces the same cap
     // as `push` — with capacity 2 already full (line 4, line 5), saving the
     // current position evicts line 4 to make room, so only one step back is
-    // reachable. Fail oracle: without that trim, the list would transiently
-    // hold 3 entries and line 4 would still be reachable as a second step.
+    // reachable. Without that trim the list would briefly hold 3 entries
+    // and line 4 would still be reachable as a second step.
     let e = jl.backward(entry(9999, 9999)).unwrap();
     assert_eq!(
         e.primary_line,
@@ -141,9 +139,9 @@ fn set_capacity_defers_trim_to_next_push() {
 
 #[test]
 fn set_capacity_shrink_converges_on_a_deduplicated_push() {
-    // Fail oracle: if the dedup branch returned before the trim loop, a
-    // shrink would only converge on a push that landed a genuinely new
-    // entry — never on one that overwrote the last entry in place.
+    // The dedup branch must still reach the trim loop. Otherwise a shrink
+    // would only converge on a push that landed a genuinely new entry, and
+    // never on one that overwrote the last entry in place.
     let mut jl = JumpList::new(10);
     for i in 0..5 {
         jl.push(entry(i * 10, i));
@@ -209,11 +207,9 @@ fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
     );
 
     // init.scm re-raising the setting. Still no push — nothing to converge.
-    // Fail oracle: make `set_capacity` (or `push`'s trim) eager instead of
-    // deferred and the first `set_capacity` call above would have already
-    // dropped every entry past 100 — raising the cap back up here can't
-    // resurrect what an eager trim already discarded, so `len()` would stay
-    // at 100 instead of climbing back to `OVER_DEFAULT`.
+    // An eager trim in the first `set_capacity` call above would already
+    // have dropped every entry past 100, and raising the cap here could not
+    // bring them back. `len()` would then stay at 100.
     jl.set_capacity(OVER_DEFAULT);
     assert_eq!(
         jl.len(),

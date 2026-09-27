@@ -129,7 +129,7 @@ fn file_write_read_port_round_trip() {
         .expect("file write/read port probe failed");
 }
 
-/// Independent oracle: a Steel string literal, once parsed back by the VM,
+/// A Steel string literal, once parsed back by the VM,
 /// must have the same character count as the original path — proof the
 /// escaping round-trips rather than just "doesn't panic".
 #[test]

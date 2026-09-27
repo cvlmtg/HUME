@@ -41,7 +41,7 @@ fn set_buffer_language_writes_language_field() {
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("rust")
     );
-    // Flip: wrong language must not match.
+    // A different language must not match.
     assert_ne!(
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("python")
@@ -95,7 +95,7 @@ fn detect_and_set_language_matches_extension() {
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("rust")
     );
-    // Flip: the language must not be absent after detection of a registered ext.
+    // Detection of a registered ext must leave a language set.
     assert!(ed.state.buffers.get(bid).language.is_some());
 }
 
@@ -278,8 +278,8 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
 /// arm must check liveness itself rather than let `set_buffer_language_
 /// explicit`'s panicking `get_mut` hit an unseeded slot.
 ///
-/// Fail oracle: drop the `try_get` guard in `apply_script_effects`'s
-/// `SetBufferLanguage` arm → `BufferStore: unseeded BufferId` panic.
+/// Without the `try_get` guard in `apply_script_effects`'s
+/// `SetBufferLanguage` arm, this panics with `BufferStore: unseeded BufferId`.
 #[test]
 fn set_buffer_language_then_close_in_one_eval_does_not_panic() {
     use hume_editing::selection::SelectionSet;

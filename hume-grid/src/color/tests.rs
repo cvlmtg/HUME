@@ -14,7 +14,7 @@ fn lerp_full_factor_reaches_target() {
 
 #[test]
 fn lerp_half_factor_is_the_midpoint() {
-    // Oracle: the midpoint of each channel, computed by hand rather than
+    // The midpoint of each channel, computed by hand rather than
     // through the implementation's own expression.
     assert_eq!(
         Rgb(0, 100, 255).lerp(Rgb(100, 200, 255), 0.5),

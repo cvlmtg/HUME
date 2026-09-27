@@ -378,8 +378,8 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
 /// pops. Two panes on one buffer; focus is moved to B *without* running any
 /// teardown (the raw test-only setter), then the session ends.
 ///
-/// Fail oracle: a teardown that re-derives its pane from focus commits A's
-/// revision with B's selections and runs the exit-cursor motion on B.
+/// A teardown that re-derived its pane from focus would commit A's revision
+/// with B's selections and run the exit-cursor motion on B.
 #[test]
 fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
     use crate::editor::commands::open_pane_in_layout;

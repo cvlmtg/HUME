@@ -129,7 +129,7 @@ fn apply_text_edits_normalizes_crlf_in_new_text() {
     assert_eq!(ed.doc().text().to_string(), "aX\nYdef\n");
 }
 
-/// The encoding oracle: on line "aébcdef", `é` is 1 char but 2 UTF-8 bytes
+/// On line "aébcdef", `é` is 1 char but 2 UTF-8 bytes
 /// and only 1 UTF-16 code unit, so byte offset 3 and code-unit offset 3 name
 /// different characters (`b` vs `c`). A wire edit of `(0,3)-(0,4)` must
 /// replace `b`, not `c` — if `apply-text-edits!` ever stopped consulting the
@@ -881,9 +881,6 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
 /// response's own tagged encoding — same divergent fixture as
 /// `apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units`: on
 /// "aébcdef", byte offset 3 is `b`, UTF-16 code-unit offset 3 is `c`.
-///
-/// Fail oracle: guessing UTF-16 instead of reading the response's own tag
-/// would land on `c` instead of `b`.
 #[test]
 fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
     let tmp = safe_tempdir();
@@ -1043,8 +1040,8 @@ fn server_initiated_apply_edit_actually_applies_and_answers_true() {
 /// on this path (a server-initiated request answered from `drain_lsp`) ever
 /// reaches `apply_script_effects`.
 ///
-/// Fail oracle: drop the `self.detect_pending_languages()` call from
-/// `apply_edit_request_response` — the opened buffer's `language` stays `None`.
+/// Without the `self.detect_pending_languages()` call in
+/// `apply_edit_request_response`, the opened buffer's `language` stays `None`.
 #[test]
 fn server_initiated_apply_edit_detects_language_of_newly_opened_file() {
     let tmp = safe_tempdir();

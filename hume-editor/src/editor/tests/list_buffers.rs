@@ -52,7 +52,7 @@ fn ls_long_alias_works() {
 fn ls_header_columns_align_with_data_columns() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     // `set_path` derives `display_path` from the same path it stores, so the
-    // oracle can read `path()` directly with no canonicalize step.
+    // expected value can read `path()` directly with no canonicalize step.
     let doc_path = ed.doc().path().unwrap().to_path_buf();
     let out = ls_output(&mut ed);
     let mut lines = out.lines();

@@ -96,7 +96,7 @@ fn replace_around_cursors_normalizes_crlf_in_replacement() {
 #[test]
 fn replace_around_cursors_zero_span_matches_insert_str() {
     // back=0 forward=0 degenerates to a pure multi-cursor insert.
-    // Independent oracle: insert_str is a separately implemented op, so
+    // insert_str is a separately implemented op, so
     // agreement here isn't circular against replace_around_cursors's own
     // logic.
     let text = BufferText::from("foo bar\n");
@@ -328,7 +328,6 @@ fn replace_multiline_selection_skips_newline() {
 fn replace_selection_including_structural_trailing_newline_preserves_newline() {
     // When the selection reaches the structural trailing '\n', that newline
     // must be preserved — replace_selections skips '\n' graphemes entirely.
-    // Before the fix this path existed but had no explicit test.
     assert_state!(
         "-[hello\n]>",
         |(text, sels)| replace_selections(text, sels, 'x'),

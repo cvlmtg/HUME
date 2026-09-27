@@ -13,11 +13,6 @@ use hume_scripting::ScriptingHost;
 /// must leave nothing behind in the log — with no nested activation to
 /// commit anything, `ScriptingHost::take_eval_effects` has nothing to
 /// salvage on `Err`, so the whole eval's own uncommitted entries are dropped.
-///
-/// Flip: in `take_eval_effects`, salvage every entry regardless of
-/// `committed` on the `Err` arm — this test starts failing because
-/// `host.effects_for_test()` comes back non-empty (the queued
-/// `register-lsp-server!` survives the error).
 #[test]
 fn failed_command_eval_effects_do_not_leak() {
     let mut ed = editor_from("-[a]>bcdef\n");

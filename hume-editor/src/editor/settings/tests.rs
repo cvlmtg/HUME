@@ -185,10 +185,10 @@ fn setting_value_subfield_key_falls_back_to_global_whitespace() {
 
 #[test]
 fn setting_value_whitespace_newline_round_trips_through_write_global() {
-    // Independent-oracle guard, mirroring `setting_value_statusline_round_
-    // trips_through_write_global`: write the wire string via write_global,
-    // read it back via setting_value — must match, proving
-    // format_show_newline really is parse_show_newline's inverse.
+    // Mirrors `setting_value_statusline_round_trips_through_write_global`:
+    // write the wire string via write_global, read it back via
+    // setting_value — must match, proving format_show_newline really is
+    // parse_show_newline's inverse.
     for wire in SHOW_NEWLINE_VALUES {
         let mut s = EditorSettings::default();
         write_global("whitespace-newline", wire, &mut s).unwrap();
@@ -214,11 +214,10 @@ fn setting_value_subfield_key_buffer_override_wins_over_global() {
 
 #[test]
 fn setting_value_statusline_round_trips_through_write_global() {
-    // Independent-oracle guard: write a wire string via write_global, then
-    // read it back via setting_value — must match, proving format_statusline
-    // really is parse_statusline's inverse. Before this, (get-option
-    // "statusline") returned None ("unknown setting") even after a
-    // successful :set global statusline=... write.
+    // Write a wire string via write_global, then read it back via
+    // setting_value — must match, proving format_statusline really is
+    // parse_statusline's inverse. (get-option "statusline") must return the
+    // written value after a successful :set global statusline=... write.
     let mut s = EditorSettings::default();
     write_global("statusline", "Mode,FileName||Position", &mut s).unwrap();
     assert_eq!(
@@ -244,7 +243,7 @@ fn tab_style_rejects_unknown() {
 
 #[test]
 fn tab_style_values_round_trip_through_from_str() {
-    // Independent-oracle guard: every completion-offered value must
+    // Every completion-offered value must
     // actually parse, so `VALUES` can't silently drift from `FromStr`.
     for v in TabStyle::VALUES {
         assert!(
@@ -633,10 +632,10 @@ fn set_global_whitespace_newline_trailing_rejected() {
 
 #[test]
 fn show_newline_values_round_trip_through_parse_show_newline() {
-    // Independent-oracle guard, mirroring `whitespace_render_values_
-    // round_trip_through_from_str` (hume-engine/src/pane.rs): every
-    // completion-offered value must actually parse, so `SHOW_NEWLINE_
-    // VALUES` can't silently drift from `parse_show_newline`.
+    // Mirrors `whitespace_render_values_round_trip_through_from_str`
+    // (hume-engine/src/pane.rs): every completion-offered value must
+    // actually parse, so `SHOW_NEWLINE_VALUES` can't silently drift from
+    // `parse_show_newline`.
     for v in SHOW_NEWLINE_VALUES {
         let parsed = parse_show_newline(v);
         assert!(parsed.is_ok(), "'{v}' should parse via parse_show_newline");
@@ -939,10 +938,6 @@ fn every_pane_scoped_key_has_a_typed_set_arm() {
     // add a second pane-scoped key without adding its `typed_set` arm, and
     // this fails immediately instead of panicking a live editor at `:set`
     // time.
-    //
-    // Fail oracle: add `Scope::Pane` to any other macro entry's `scope:`
-    // list (e.g. `tab-width`) without touching `typed_set` — this test must
-    // fail naming that key.
     let pane_scoped: Vec<&str> = all_setting_keys()
         .iter()
         .copied()
@@ -964,10 +959,6 @@ fn every_pane_scoped_key_has_a_typed_set_arm() {
 /// can't reach a pane-scoped setting at all — which is exactly the gap
 /// `wrap-mode` used to have (`scope: [Scope::Global, Scope::Pane]`, no
 /// `Scope::Buffer`) before it grew a buffer rung.
-///
-/// Fail oracle: change any entry's `scope:` list to
-/// `[Scope::Global, Scope::Pane]` (wrap-mode's own pre-buffer-scope shape) —
-/// this test fails naming that key and its missing `buffer` rung.
 #[test]
 fn every_pane_scoped_key_is_also_buffer_and_global_scoped() {
     let missing: Vec<String> = all_setting_keys()
@@ -1072,7 +1063,7 @@ fn signcolumn_rejects_columns_above_127() {
 
 #[test]
 fn signcolumn_values_round_trip_through_from_str() {
-    // Independent-oracle guard: every completion-offered value must
+    // Every completion-offered value must
     // actually parse, so `VALUES` can't silently drift from `FromStr`
     // (mirrors `tab_style_values_round_trip_through_from_str`).
     for v in SignColumnConfig::VALUES {

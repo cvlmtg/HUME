@@ -39,10 +39,8 @@ fn edit_existing_buffer_switches_without_reread() {
 /// still focused therefore stays silent — the deferred warning still
 /// arrives on the next *genuine* buffer-enter.
 ///
-/// Fail oracle: if a no-op `:e` ran a disk check unconditionally (as
-/// `enter_buffer_with_jump`'s deleted special case used to), the first
-/// assertion below would already see the "no longer exists" warning before
-/// any real focus change occurred.
+/// A disk check on a no-op `:e` would surface the "no longer exists" warning
+/// before any real focus change.
 #[test]
 fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_enter() {
     let dir = safe_tempdir();
@@ -830,9 +828,9 @@ fn wa_preserves_focus_on_single_buffer() {
 /// `:wa` must skip a read-only dirty buffer (e.g. one dirtied by set-text) and
 /// still save the remaining writable dirty buffers — no mid-batch abort.
 ///
-/// Fail oracle: remove `&& !buf.is_read_only()` from the typed_write_all filter —
-/// write_buffer_by_id returns Err("Buffer is read-only") and the loop propagates
-/// it via `?`, leaving bid2 unsaved.
+/// The `&& !buf.is_read_only()` filter in typed_write_all matters: otherwise
+/// write_buffer_by_id returns Err("Buffer is read-only"), the loop propagates
+/// it via `?`, and bid2 stays unsaved.
 #[test]
 fn wa_skips_read_only_dirty_buffer() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();

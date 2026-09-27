@@ -170,7 +170,7 @@ fn mode_element_uses_row_style_not_a_per_mode_pill() {
     // that mode, whatever mode is active. The label text itself is appearance,
     // pinned via inline snapshot rather than a hardcoded assertion.
     //
-    // Independent oracle: the expected fg comes straight from make_mode_theme's
+    // The expected fg comes straight from make_mode_theme's
     // per-scope color table, not from colors.statusline — asserting against
     // colors.statusline itself would pass even if from_theme resolved the wrong
     // scope entirely.
@@ -203,7 +203,8 @@ fn mode_element_uses_row_style_not_a_per_mode_pill() {
 #[test]
 fn macro_recording_uses_row_style() {
     // The recording label must match whatever the row is currently tinted —
-    // not a fixed accent of its own. Independent oracle, same rationale as
+    // not a fixed accent of its own. Expected colors come from the theme's
+    // scope table, for the same reason as in
     // mode_element_uses_row_style_not_a_per_mode_pill above.
     use hume_engine::types::EditorMode;
 
@@ -294,8 +295,8 @@ fn position_element_three_digit_line_and_col() {
 /// `tests/unix/column_display_agreement.rs`) with that file's diagnostics/
 /// goto-references assertions: the line `"e\u{0301}\u{1D11E}x"` puts three
 /// different "column" units at three different values for the same
-/// position (before 'x'), an independent-oracle count from the string
-/// itself, not from any HUME helper:
+/// position (before 'x'). Each count is taken from the string itself, not
+/// from any HUME helper:
 /// - grapheme: 2 — `"e\u{0301}"` (e + combining acute, one cluster) then
 ///   `"\u{1D11E}"` (one astral-plane cluster) = 2 clusters before 'x'.
 /// - char: 3 — those same two clusters are 2 + 1 = 3 Rust `char`s.
@@ -540,7 +541,7 @@ fn shorten_path_abbreviates_first_dir() {
     // "~/foo/bar/baz.txt" → "~/f/bar/baz.txt" when narrowed enough.
     let path = "~/foo/bar/baz.txt";
     // Full width = 17. At 15 we expect first dir abbreviated.
-    // Independent oracle: "~/f/bar/baz.txt" = 15 chars = 15 cols.
+    // "~/f/bar/baz.txt" = 15 chars = 15 cols.
     let result = shorten_path_to_width(path, 15);
     assert_eq!(result, "~/f/bar/baz.txt");
 }
@@ -577,7 +578,7 @@ fn shorten_path_ellipsis_on_very_narrow() {
 
 #[test]
 fn shorten_path_zero_budget_returns_empty() {
-    // Fail oracle: if budget logic doesn't check for 0, could produce garbage.
+    // A zero budget must yield an empty string.
     let result = shorten_path_to_width("~/foo/bar.txt", 0);
     assert_eq!(result, "");
 }
@@ -617,14 +618,14 @@ fn shorten_path_unicode_dir_name() {
 
 #[test]
 fn shorten_path_actually_abbreviates_when_too_wide() {
-    // Flip-a-condition check: path would fail if we just returned input.
+    // Returning the input unchanged must fail this.
     let path = "~/aaaa/bbbb/cccc.txt"; // 20 cols
     let result = shorten_path_to_width(path, 15);
     assert_ne!(
         result, path,
         "path was not shortened when it should have been"
     );
-    // Independent width oracle for the code under test — see `clippy.toml`'s
+    // Width measured without the code under test. See `clippy.toml`'s
     // `disallowed-methods` entry.
     #[allow(clippy::disallowed_methods)]
     let oracle_width = unicode_width::UnicodeWidthStr::width(result.as_str());
@@ -641,11 +642,11 @@ fn shorten_path_actually_abbreviates_when_too_wide() {
 
 // ── statusline_display_path (label fallback for path-less buffers) ────────
 //
-// Regression: consulting only display_path()/path() renders "" for
-// scratch/synthetic buffers — the label-aware display_name() (same as `:ls`
-// in typed_misc.rs) is required for their name to show. Independent oracle:
-// the expected strings below are literal names (`*scratch*`, `[buffers]`),
-// not derived from display_name()'s own logic.
+// Scratch/synthetic buffers have no path, so display_path()/path() alone
+// would render "". The label-aware display_name() (same as `:ls` in
+// typed_misc.rs) is required for their name to show. The expected strings
+// below are literal names (`*scratch*`, `[buffers]`), not derived from
+// display_name()'s own logic.
 
 #[test]
 fn statusline_display_path_scratch_buffer_shows_scratch_name() {

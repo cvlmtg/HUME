@@ -706,7 +706,7 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
     assert_eq!(
         ed.doc().text().to_string(),
         "barfoo\n",
-        "sanity: accept must actually have run (not a zero-effect pass)"
+        "sanity: accept must actually have run"
     );
     assert_eq!(
         request_count(&requests, "completionItem/resolve"),

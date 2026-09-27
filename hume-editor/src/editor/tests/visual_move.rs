@@ -1105,10 +1105,10 @@ fn select_word_nearest_scopes_to_visual_display_line() {
 }
 
 /// Two consecutive `j` + `select-word-nearest-on-line` sequences must advance
-/// the head forward — no oscillation. The bug this guards against was:
+/// the head forward — no oscillation. The pattern this guards against was:
 ///   j → head=76 (space); select → head=75 ('+', wrong display line);
 ///   j → head=76 again;   select → head=75 again. (oscillation)
-/// With the fix the second select must land strictly past the first.
+/// The second select must land strictly past the first.
 #[test]
 fn select_word_nearest_no_oscillation_on_repeated_j() {
     let mut ed = word_wrap_editor();
@@ -1170,10 +1170,9 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
 
 /// A word beginning exactly at a wrapped display line's start (no leading space
 /// within that display line — the space is the *previous* display line's trailing char) must
-/// not have that space pulled into its around-selection. Before the fix,
-/// `expand_word_unit`'s leading scan ignored the display-line bound
-/// `nearest_word_on_line` was given and walked straight through it into the
-/// previous visual display line.
+/// not have that space pulled into its around-selection. `expand_word_unit`'s
+/// leading scan must stop at the display-line bound `nearest_word_on_line`
+/// was given instead of walking into the previous display line.
 #[test]
 fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -1357,9 +1356,8 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
 /// to `None` through `parse_count_extend` — the count-forwarding contract
 /// documented in `plugins.md`'s "Calling other commands" section.
 ///
-/// Fail oracle: a `run_steel_command` that injects `ctx.count.unwrap_or(1)`
-/// instead of `0` would make the lambda see `1` and always move the buffer
-/// line (head 81), never 76.
+/// If `run_steel_command` injected `ctx.count.unwrap_or(1)` instead of `0`,
+/// the lambda would see `1` and always move by buffer line (head 81), never 76.
 #[test]
 fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
     use crate::editor::host_impl::EditorHostImpl;

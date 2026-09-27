@@ -60,9 +60,6 @@ fn run_command_sync_motion_moves_cursor() {
 
 /// `run_command_sync` for an `EditorCmd` (the fourth native variant) must apply
 /// its effect immediately — not queue it.
-///
-/// Fail oracle: return `Ok(())` from `run_command_sync` without calling
-/// `commands::run` → `undo` never reverts the deletion → assertion fails.
 #[test]
 fn run_command_sync_editor_cmd_runs_sync() {
     // Buffer "abc\n", selection on 'a'. Delete it via the normal keymap path to
@@ -109,9 +106,6 @@ fn run_command_sync_unknown_name_errors() {
 /// exercises through the Steel sync path) must return `Ok(false)` — this is
 /// the value `stdlib/with-pane-command` reads via `call!` to decide whether
 /// to run its handler.
-///
-/// Fail oracle: hardcode `Ok(true)`/`Ok(())` in
-/// `EditorHostImpl::run_command_sync` → this passes when it should fail.
 #[test]
 fn run_command_sync_returns_false_when_the_split_is_refused() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -138,9 +132,9 @@ fn run_command_sync_returns_false_when_the_split_is_refused() {
     );
 }
 
-/// The success-side counterpart: a split that fits must return `Ok(true)` —
-/// the independent oracle proving `run_command_sync` doesn't just always
-/// return `false` for `pane-vsplit`.
+/// The success-side counterpart: a split that fits must return `Ok(true)`.
+/// Together with the refused case, this shows `run_command_sync` reports the
+/// real outcome of `pane-vsplit` instead of a constant.
 #[test]
 fn run_command_sync_returns_true_on_a_successful_split() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -224,7 +218,6 @@ fn run_command_sync_selection_updates_sel() {
 ///
 /// Verifies the native count path: classify → `Ok(true)` → `parse_count_extend`
 /// extracts `count=5` → `run_command_sync("move-right", pane, 5, false)` runs immediately.
-/// Fail oracle: change expected cursor to 1 — test fails.
 #[test]
 fn call_bang_count_arg_dispatches_synchronously() {
     let mut ed = editor_from("-[a]>bcdef\n");
@@ -258,8 +251,6 @@ fn call_bang_count_arg_dispatches_synchronously() {
 ///
 /// Verifies fail-fast: classify happens before `run_command_sync`, so the command
 /// never executes. The error message must mention the malformed args.
-/// Fail oracle: if `execute_keymap_command` returns without error, `state(ed)`
-/// would differ from the initial state — the assert catches that.
 #[test]
 fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
     let mut ed = editor_from("-[a]>bc\n");
@@ -291,7 +282,7 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 ///   bid) 2) ...)` arm fires and calls `(move-down bid)` a second time → final
 ///   line 3.
 ///
-/// Fail oracle: if dispatch defers commands → cursor lands on line 2 instead of 3.
+/// A deferred dispatch would leave the cursor on line 2.
 #[test]
 fn case_b_sync_cursor_read_reflects_motion() {
     // "-[a]>\nb\nc\n" — cursor on line 1.
@@ -310,7 +301,6 @@ fn case_b_sync_cursor_read_reflects_motion() {
 
     let final_state = state(&ed);
     // Both moves ran inside the lambda → cursor on line 3, "a\nb\n-[c]>\n".
-    // Fail oracle: if dispatch defers → cursor on line 2, "a\n-[b]>\nc\n".
     assert_eq!(
         final_state, "a\nb\n-[c]>\n",
         "sync dispatch: (buffer-cursor-line bid) must reflect (move-down) effect within same eval"
@@ -330,9 +320,9 @@ fn case_b_sync_cursor_read_reflects_motion() {
 /// The test drives the key through `feed_key` so the full `handle_key` tail
 /// (including `replay_dot`) executes before we inspect the buffer.
 ///
-/// Fail oracle: if `replay_dot` were not called at `handle_key`'s tail,
-/// `pending_repeat` would be set but never consumed, and the buffer would be
-/// unchanged after pressing the Steel key.
+/// If `replay_dot` were not called at `handle_key`'s tail, `pending_repeat`
+/// would be set but never consumed, and the buffer would be unchanged after
+/// pressing the Steel key.
 #[test]
 fn steel_call_repeat_last_action_drains_via_handle_key() {
     use crate::editor::keymap::BindMode;
@@ -390,13 +380,9 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
 /// `MappableCommand::is_native()`, `command_is_native()`, and the
 /// `native_mappable_names()` set must all return the same true/false answer.
 ///
-/// The independent oracle is a hand-written exhaustive match (no `_`) inside
-/// this test, re-stating the four-variant native set from first principles.
-/// If any of the three sites diverges from the oracle, this test fails.
-///
-/// Fail oracle: flip one variant to `false` in the oracle closure — the test
-/// fails for every registered command of that variant type, proving all three
-/// sites are actually checked.
+/// The expected answer comes from a hand-written exhaustive match (no `_`)
+/// inside this test, re-stating the four-variant native set from first
+/// principles. If any of the three sites diverges from it, this test fails.
 #[test]
 fn classification_sites_all_agree() {
     use crate::editor::registry::MappableCommand;
@@ -404,8 +390,8 @@ fn classification_sites_all_agree() {
 
     let mut ed = editor_from("-[a]>\n");
 
-    // Independent oracle: exhaustive match, no `_`.
-    // A new MappableCommand variant is a compile error here too.
+    // Exhaustive match, no `_`: a new MappableCommand variant is a compile
+    // error here too.
     let oracle = |cmd: &MappableCommand| -> bool {
         match cmd {
             MappableCommand::Motion { .. }
@@ -445,16 +431,16 @@ fn classification_sites_all_agree() {
         .map(str::to_owned)
         .collect();
 
-    // Phase 2: is_native() vs oracle, native_mappable_names() vs oracle.
+    // Phase 2: is_native() and native_mappable_names() vs `oracle`.
     for (name, is_nat, expected) in &triples {
         assert_eq!(
             *is_nat, *expected,
-            "is_native() disagrees with oracle for '{name}'"
+            "is_native() disagrees with the expected native set for '{name}'"
         );
         assert_eq!(
             native_names.contains(name.as_str()),
             *expected,
-            "native_mappable_names() membership disagrees with oracle for '{name}'"
+            "native_mappable_names() membership disagrees with the expected native set for '{name}'"
         );
     }
 
@@ -464,7 +450,7 @@ fn classification_sites_all_agree() {
         assert_eq!(
             host.command_is_native(name).expect("must be registered"),
             *expected,
-            "command_is_native() disagrees with oracle for '{name}'"
+            "command_is_native() disagrees with the expected native set for '{name}'"
         );
     }
 }
@@ -473,13 +459,12 @@ fn classification_sites_all_agree() {
 //
 // Each test verifies that a command dispatched from Steel via (call!)
 // produces the same bookkeeping as a direct keypress on the same command.
-// Flip any assertion to confirm it catches a regression.
 
 /// **Finding 1 — register prefix**: `(set-register-prefix! "a") (call! "yank" bid)` must
 /// route the yank to named register `a`, not to the kill ring or clipboard.
 ///
-/// Fail oracle: comment out `register: ctx.current_register_prefix` in
-/// `run_command_sync` → register 'a' is empty after the call.
+/// Without `register: ctx.current_register_prefix` in `run_command_sync`, the
+/// target register would still be empty after the call.
 #[test]
 fn steel_call_native_respects_register_prefix() {
     let mut ed = editor_from("-[hello]>\n");
@@ -512,8 +497,8 @@ fn steel_call_native_respects_register_prefix() {
 /// **Finding 3 — dot-repeat**: a repeatable native command invoked via Steel must
 /// set `last_repeatable_action` so `.` can replay it.
 ///
-/// Fail oracle: comment out the `step_stamp_repeatable` call in `commands::run`
-/// → `last_repeatable_action` is None after the call.
+/// `commands::run` stamps it through `step_stamp_repeatable`; skipping that
+/// step would leave `last_repeatable_action` as `None`.
 #[test]
 fn steel_call_repeatable_cmd_sets_dot_repeat() {
     let mut ed = editor_from("-[foo]> bar\n");
@@ -552,8 +537,8 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
 /// **Finding 4 — jump list**: an explicit-jump EditorCmd (`goto-last-line`) invoked
 /// via Steel must push a `JumpEntry` so Ctrl-o can return.
 ///
-/// Fail oracle: comment out the `step_capture_pre_jump` call in `commands::run`
-/// → jump list is empty after the call.
+/// The entry comes from the `step_capture_pre_jump` call in `commands::run`.
+/// Without it the jump list stays empty.
 #[test]
 fn steel_call_jump_cmd_records_jump_entry() {
     // 10-line buffer so goto-last-line causes a large line delta.
@@ -583,8 +568,8 @@ fn steel_call_jump_cmd_records_jump_entry() {
 /// `(call! "move-down" bid)` in one body must commit the paste session so that
 /// one undo step reverts the paste cleanly.
 ///
-/// Fail oracle: remove the `step_paste_commit` call from `commands::run`
-/// → after undo, the paste text is still present.
+/// The commit happens in `commands::run`'s `step_paste_commit`. If that step
+/// were skipped, the pasted text would survive the undo.
 #[test]
 fn steel_call_paste_then_motion_commits_paste_session() {
     // Seed the kill ring with "hello" — plain paste-after's bare (no "<reg>
@@ -622,12 +607,6 @@ fn steel_call_paste_then_motion_commits_paste_session() {
 /// Under the in-Steel dispatch model: `steel-move-right` is applied inline as a Steel
 /// funcall (no Rust queue); `delete` is a native and runs synchronously via
 /// `%call-native!`. Source order is preserved by the call stack.
-///
-/// Fail oracle: if `%dispatch-command` forwarded plugin commands to `%call-native!`
-/// instead of applying them inline, both would queue and drain post-eval — the order
-/// dependency would be removed and the test would become order-independent (both
-/// deleting 'a' or 'b' depending on residual state), but still "a\n" by accident.
-/// More reliable: flip the expected assertion to "b\n" and confirm it fails.
 #[test]
 fn steel_call_source_order_native_after_steel() {
     // Buffer "ab\n", cursor on 'a'. The Steel command moves right; delete then
@@ -660,9 +639,6 @@ fn steel_call_source_order_native_after_steel() {
 /// `noop-steel` is applied inline (no effect); `(call! "move-down" bid 3)` dispatches
 /// via `%call-native!` → `parse_count_extend` extracts `count=3` →
 /// `run_command_sync("move-down", pane, 3, false)` → lands on line 4.
-///
-/// Fail oracle: replace `(call! "move-down" bid 3)` with `(call! "move-down" bid 1)` →
-/// cursor lands on line 2 instead of 4; the count-preservation assertion fails.
 #[test]
 fn steel_native_via_call_preserves_own_count() {
     // Buffer with at least 5 lines; cursor starts at line 1.
@@ -695,8 +671,8 @@ fn steel_native_via_call_preserves_own_count() {
 /// between two valid moves must execute both valid moves, not abort on the
 /// typo. `call!` logs an `Error` for the miss but never raises into Steel.
 ///
-/// Fail oracle: reinstate `Err(e) => steel::stop!` in `call_command_primitive`
-/// → the second move-right never runs.
+/// If `call_command_primitive` raised a `steel::stop!` on the lookup error, the
+/// second move-right would never run.
 #[test]
 fn steel_unknown_cmd_errors_and_continues() {
     // "-[a]>bc\n", cursor at 0. Two moves should bring cursor to 2.
@@ -732,8 +708,8 @@ fn steel_unknown_cmd_errors_and_continues() {
 /// No scripting host is needed — `settle()` skips hooks with no registered
 /// handlers while still clearing the queue.
 ///
-/// Fail oracle: reintroduce a drain call inside `handle_input` → the first
-/// assertion (still queued right after the click) fails.
+/// A drain call inside `handle_input` would empty the queue before the
+/// first post-click assertion.
 #[test]
 fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     use crate::editor::event::EditorEvent;
@@ -795,8 +771,8 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
 /// A `(lambda (bid count extend))` command receives the leading bid, the
 /// keymap count, and the extend flag.
 ///
-/// Fail oracle: without injection, `(call! "move-right" bid count)` always passes 1
-/// and the cursor lands at column 1 instead of `count`.
+/// Without injection, `(call! "move-right" bid count)` would always pass 1 and
+/// the cursor would land at column 1 instead of `count`.
 #[test]
 fn steel_lambda_receives_bid_count_and_extend() {
     // 10-char buffer; cursor starts at 0.
@@ -828,7 +804,7 @@ fn steel_lambda_receives_bid_count_and_extend() {
         "count=4 must move cursor 4 positions; got {idx:?}"
     );
 
-    // Fail oracle: if injection were disabled, cursor would be at 1 (count defaults to 1).
+    // If injection were disabled, the cursor would be at 1 (count defaults to 1).
     // Restate with count=1 to prove the assert is live.
     ed.execute_keymap_command("step-right".into(), Some(1), false);
     let idx2 = ed
@@ -852,9 +828,9 @@ fn steel_lambda_receives_bid_count_and_extend() {
 
 /// A `(lambda ())` command ignores injection — no arity-mismatch error.
 ///
-/// Fail oracle: if injection always passed 2 args regardless of arity, Steel
-/// would raise an arity error and execute_keymap_command would report it; the
-/// cursor would not move.
+/// If injection always passed 2 args regardless of arity, Steel would raise
+/// an arity error and execute_keymap_command would report it; the cursor
+/// would not move.
 #[test]
 fn steel_zero_arity_lambda_ignores_injection() {
     let mut ed = editor_from("-[a]>bc\n");
@@ -912,10 +888,10 @@ fn steel_zero_arity_lambda_ignores_injection() {
 /// extend. `bid` is the leading slot at every non-zero arity, so arity 1
 /// means "receives bid", never "receives count".
 ///
-/// Fail oracle: if the arity-1 branch injected `[count]` instead of `[bid]`,
-/// `bid` would be bound to the count value and any buffer builtin called on
-/// it would error on a non-buffer-id argument, or (as here) count injection
-/// would silently apply and the cursor would move 5 instead of 1.
+/// If the arity-1 branch injected `[count]` instead of `[bid]`, `bid` would
+/// be bound to the count value and any buffer builtin called on it would
+/// error on a non-buffer-id argument, or (as here) count injection would
+/// silently apply and the cursor would move 5 instead of 1.
 #[test]
 fn steel_arity_1_lambda_receives_bid_only() {
     let mut ed = editor_from("-[a]>bc\n");
@@ -1021,9 +997,6 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
 /// `clears_extend=true`.  Mode is still `Extend` when the inner pipeline fires,
 /// so it flips to Normal.  The outer Steel dispatch branch deliberately omits
 /// `step_clear_extend` — the inner command's meta drives the transition.
-///
-/// Fail oracle: replace `(call! "delete" bid)` with `(+ 1 0)` (no-op body) →
-/// mode stays `Extend` → the mode assertion fails, proving the test is not vacuous.
 #[test]
 fn steel_call_delete_in_extend_exits_extend_mode() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -1056,15 +1029,9 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 // paste-session commit) was silently dropped.  These tests assert that
 // dispatching the same native command via the keypress path AND via a Steel
 // `(call! …)` wrapper leaves IDENTICAL `BookkeepingSnapshot` state.
-//
-// Each test documents a fail oracle: which single line in `commands::run`
-// (commands/pipeline.rs) to revert to confirm the assertion breaks on that field.
 
 /// **Parity: repeatable edit** — `delete` dispatched via keypress vs via Steel
 /// `(call! "delete" bid)` must produce the same `last_repeatable`.
-///
-/// Fail oracle (last_repeatable): comment out the `if is_repeatable { … }` block
-///   at commands/pipeline.rs:213–220 → snap_steel.last_repeatable is None; assertion fails.
 #[test]
 fn parity_delete_bookkeeping_keypress_vs_steel() {
     // Path A — keypress.
@@ -1098,9 +1065,6 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
 
 /// **Parity: explicit jump command** — `goto-last-line` dispatched via keypress vs
 /// via Steel `(call! "goto-last-line" bid)` must push the same number of jump entries.
-///
-/// Fail oracle (jump_len): comment out the `pre_jump` / jump-list push block
-///   at commands/pipeline.rs:181–197 → snap_steel.jump_len stays 0; assertion fails.
 #[test]
 fn parity_jump_bookkeeping_keypress_vs_steel() {
     let content = "-[l]>ine1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n";
@@ -1139,12 +1103,9 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 /// one pipeline and forgotten in the other. Pinning the full cluster here
 /// means any such omission causes a divergence.
 ///
-/// Fail oracle (dot-repeat): delete the `step_stamp_repeatable` call in the Steel
-///   AFTER block of `Editor::dispatch` → `steel.last_repeatable` is `None` while
-///   native is `Some` → assertion fails.
-/// Fail oracle (paste-session): delete the `step_paste_commit` call in the Steel
-///   BEFORE block of `Editor::dispatch` → a pre-armed session survives on the Steel
-///   path → `paste_session_open` diverges.
+/// On the Steel path, `last_repeatable` is stamped by the `step_stamp_repeatable`
+/// call in the AFTER block of `Editor::dispatch`. A pre-armed paste session is
+/// closed by the `step_paste_commit` call in its BEFORE block.
 #[test]
 fn parity_steel_branch_cluster_vs_native() {
     // ── Case 1: repeatable edit — pins the dot-repeat stage ───────────────────
@@ -1176,10 +1137,8 @@ fn parity_steel_branch_cluster_vs_native() {
     // Steel AFTER records `last_repeatable` for the OUTER command name ("steel-del"),
     // not the inner "delete" from `call!`. Outer-name-wins preserves the correct
     // semantic so `.` replays the outer Steel command, not the primitive it wrapped.
-    //
-    // Fail oracle: delete the `step_stamp_repeatable` call in the Steel AFTER block
-    //   of `Editor::dispatch` → the inner `call! "delete"` dispatch stamps "delete"
-    //   as the name instead → `s_name == "delete"` ≠ "steel-del" → assertion fails.
+    // Without that outer stamp, the inner `call! "delete"` would leave "delete"
+    // as the recorded name.
     let (s_name, s_count, s_char) = snap_steel
         .last_repeatable
         .as_ref()
@@ -1201,9 +1160,6 @@ fn parity_steel_branch_cluster_vs_native() {
     // A paste session (`p`) must be committed by `step_paste_commit` in the
     // Steel BEFORE stage before any non-ring-cycle command runs. Ring-cycle
     // commands (`[`/`]`) are exempt; a plain Steel command is not.
-    //
-    // Fail oracle: delete the `step_paste_commit` call in the Steel BEFORE block
-    //   of `Editor::dispatch` → the paste session remains open → assertion fails.
     let mut ed2 = editor_from("-[a]>bc\n");
     // Seed the kill ring so `p` has something to paste. No stamp is set, but
     // the test harness's clipboard is unavailable, so smart-paste's bare
@@ -1228,9 +1184,6 @@ fn parity_steel_branch_cluster_vs_native() {
     );
     ed2.execute_keymap_command("pure-noop".into(), Some(1), false);
 
-    // Fail oracle: delete the `step_paste_commit` call in the Steel BEFORE block
-    //   of `Editor::dispatch` → pure-noop runs without committing →
-    //   active_session stays Some → assertion fails.
     assert!(
         ed2.state.active_session.is_none(),
         "step_paste_commit must close the paste session on the Steel path"
@@ -1246,9 +1199,6 @@ fn parity_steel_branch_cluster_vs_native() {
 /// `commands::run`, which runs `step_clear_extend` with `delete`'s
 /// `clears_extend=true`. Mode is `Extend` when the inner pipeline fires, so both
 /// paths exit to Normal.
-///
-/// Fail oracle: change the Steel body to `(+ 1 0)` (no inner delete) →
-/// Steel path's `mode` stays `Extend` ≠ `Normal` → `assert_eq!(snap_key, snap_steel)` fails.
 #[test]
 fn parity_extend_exit_keypress_vs_steel() {
     // Path A — keypress.
@@ -1280,11 +1230,6 @@ fn parity_extend_exit_keypress_vs_steel() {
 /// pins on: every route into a native command — key press, Steel `call!`, a
 /// hook, `run_command_sync` — clears the run identically, so Esc never goes
 /// on to select across text a motion moved away from.
-///
-/// Fail oracle: revert `step_clear_typed_run` (or its call site in
-///   `commands::run`) — `typed_run_open` stays `true` after both
-///   dispatches, or (if only the Steel path regresses) `snap_steel.typed_run_open`
-///   diverges from `snap_key.typed_run_open`.
 #[test]
 fn parity_typed_run_invalidation_keypress_vs_steel() {
     // Path A — native dispatch while in Insert mode.
@@ -1328,10 +1273,10 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
 /// on line 2 by the time `(buffer-cursor-line bid)` is evaluated → the
 /// `(when …)` branch fires → second move-down → line 3.
 ///
-/// Fail oracle: comment out the `if proc { apply proc args }` branch in
-/// `%dispatch-command` so all commands fall through to `%call-native!` — the
-/// plugin command queues, cursor stays on line 1 during eval, branch does not
-/// fire → line 2.
+/// This depends on the `if proc { apply proc args }` branch in
+/// `%dispatch-command`. If plugin commands fell through to `%call-native!`
+/// instead, the inner move would queue, the cursor would still be on line 1
+/// during eval, and the branch would not fire (final line 2).
 #[test]
 fn plugin_calls_plugin_cursor_read_is_live() {
     // "-[a]>\nb\nc\n", cursor on line 1.
@@ -1367,11 +1312,8 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 ///
 /// `command_table` is what `%lookup-plugin-proc` queries to decide whether to apply
 /// a command inline in Steel. This test confirms the table is populated after
-/// `eval_source` — the precondition for all in-Steel dispatch tests.
-///
-/// Fail oracle: remove the `command_table.insert(…)` line in `define_command`
-/// → `command_table` is empty → `%lookup-plugin-proc` always returns `#f` →
-/// `plugin_calls_plugin_cursor_read_is_live` regresses to cursor=1.
+/// `eval_source` — the precondition for all in-Steel dispatch tests. With an
+/// empty table, `%lookup-plugin-proc` would always return `#f`.
 #[test]
 fn command_table_populated_after_define_command() {
     let mut host = ScriptingHost::new();
@@ -1409,9 +1351,8 @@ fn command_table_populated_after_define_command() {
 /// 2. `history-capacity` set after the native call is applied (eval continued past it).
 /// 3. The cursor did not move (command was skipped, not run).
 ///
-/// Fail oracle: reinstate `steel::stop!` in `call_command_primitive` for the
-/// `EvalSession::Init` branch → eval returns `Err`, the `(set-option! …)` is
-/// never reached, assertions 1 and 2 fail.
+/// A `steel::stop!` in `call_command_primitive`'s `EvalSession::Init` branch
+/// would make eval return `Err` before the second `(set-option! …)` runs.
 #[test]
 fn native_call_bang_at_init_top_level_warns_and_skips() {
     // Content is irrelevant — cursor stays at 0.
@@ -1490,11 +1431,10 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::ev
 /// A Steel `#:repeatable` command that calls `(call! "insert-before" bid)` must
 /// record typed text in `insert_inputs` and replay it on `.`.
 ///
-/// Fail oracle:
-/// - If the typed inputs landed anywhere but the outer Steel action,
-///   `insert_inputs` would be empty → `.` inserts nothing → final buffer differs.
-/// - If the pre-body snapshot fix were reverted, `.` would still insert but only
-///   at the raw cursor position instead of the recipe-established one.
+/// If the typed inputs landed anywhere but the outer Steel action,
+/// `insert_inputs` would be empty and `.` would insert nothing. Without the
+/// pre-body recipe snapshot, `.` would still insert, but at the raw cursor
+/// position instead of the recipe-established one.
 #[test]
 fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
     let mut ed = editor_from("-[x]>\n");
@@ -1545,12 +1485,10 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// The `selection_recipe` snapshot taken before the Steel body runs must NOT be
 /// clobbered by an inner `(call! "insert-before" bid)` dispatch.
 ///
-/// Fail oracle (Gap A): without the pre-body `.clone()` snapshot in the Steel
-/// `dispatch` path, `step_stamp_repeatable` would read whatever
-/// `insert-before`'s inner dispatch left `selection_recipe` as via
-/// `commands::run`'s own `step_update_recipe` (an `EditorCmd` that is
-/// `Untracked`, so it clears). The white-box assertion `selection_recipe.len()
-/// == 1` catches this — it passes with the snapshot, fails without it.
+/// The Steel `dispatch` path clones the recipe before the body runs. Without
+/// that snapshot, `step_stamp_repeatable` would read whatever `insert-before`'s
+/// inner dispatch left `selection_recipe` as via `commands::run`'s own
+/// `step_update_recipe` (an `EditorCmd` that is `Untracked`, so it clears).
 #[test]
 fn steel_repeatable_insert_preserves_prior_selection_recipe() {
     // `x` (select-line) on "foo bar\n" selects the whole line — an in-place
@@ -1603,10 +1541,9 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
 /// mirroring vim-keybind's `vim-change-to-eol-or-copy-line` wrapper around
 /// the native `C` binding (`runtime/plugins/core/vim-keybind/plugin.scm`).
 ///
-/// Fail oracle: if `Editor::dispatch`'s Steel branch still `mem::take`s the
-/// recipe before running the body (instead of cloning), the inner `call!`
-/// would append onto an empty recipe and the `x` step would be lost —
-/// `selection_recipe.len()` would be 1, not 2.
+/// If `Editor::dispatch`'s Steel branch took the recipe with `mem::take` before
+/// running the body, the inner `call!` would append onto an empty recipe and
+/// the `x` step would be lost.
 #[test]
 fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -1643,10 +1580,9 @@ fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
 /// all must still clear the recipe — the same as any other Untracked
 /// command would — so a prior `x` doesn't leak into a later, unrelated edit.
 ///
-/// Fail oracle: without the `selection_recipe_writes` guard in
-/// `Editor::dispatch`'s Steel branch, a pure-Steel body has no
-/// `step_update_recipe` call to make this decision for it, and the recipe
-/// would survive untouched — `selection_recipe.len()` would stay 1.
+/// A pure-Steel body makes no `step_update_recipe` call, so the
+/// `selection_recipe_writes` guard in `Editor::dispatch`'s Steel branch is
+/// what clears the recipe here.
 #[test]
 fn steel_body_with_no_native_dispatch_clears_the_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -1721,11 +1657,10 @@ fn steel_repeatable_insert_dot_repeat_single_undo() {
 /// pre-open still runs, and `do_paste` must retarget that still-empty
 /// session to `Paste` instead of colliding with it.
 ///
-/// Fail oracle: before `edit_session::open_or_retarget`, `do_paste` hit its
-/// own `debug_assert!(state.active_session.is_none(), …)` here — a panic in
-/// this (debug-assertions-on) test build, and in release a silent overwrite
-/// of the pre-opened session that would still leave the paste applied but
-/// corrupt the undo group underneath it.
+/// `do_paste` goes through `edit_session::open_or_retarget` for this reason.
+/// Opening a second session here would panic under debug assertions, and in
+/// release it would overwrite the pre-opened session and corrupt the undo
+/// group underneath the paste.
 #[test]
 fn steel_repeatable_paste_dot_repeat_replays_command() {
     let mut ed = editor_from("-[a]>bc\n");
@@ -1823,9 +1758,9 @@ fn steel_repeatable_change_via_call_records_insert_inputs() {
 /// invocations with explicit args) but must produce a graceful error when
 /// dispatched via keymap injection — which supplies at most 2 args.
 ///
-/// Fail oracle: remove the `cmd_arity > 2` guard in `execute_keymap_command` —
-/// the dispatch falls through to Steel with too few args, producing a raw
-/// Steel arity-mismatch error instead of a friendly editor message.
+/// Without the `cmd_arity > 2` guard in `execute_keymap_command`, the dispatch
+/// would reach Steel with too few args and the user would see a raw Steel
+/// arity-mismatch error.
 #[test]
 fn keymap_dispatch_arity_over_3_reports_error() {
     let mut ed = editor_from("-[a]>b\n");
@@ -1850,10 +1785,6 @@ fn keymap_dispatch_arity_over_3_reports_error() {
 /// native wait-char consumers do via `.take()`.  A stale `Some(ch)` left
 /// behind would make every later `(pending-char)` call — and every later
 /// repeatable command's `char_arg` stamp — see a garbage character.
-///
-/// Fail oracle: revert `.take()` to a plain read in `Editor::dispatch` — the
-/// second dispatch still sees `Some('x')`, moves the cursor again, and the
-/// final assertion fails.
 #[test]
 fn steel_dispatch_consumes_pending_char() {
     let mut ed = editor_from("-[a]>bcdef\n");
@@ -1907,11 +1838,9 @@ fn steel_dispatch_consumes_pending_char() {
     // as an explicit parameter — unlike `Editor::dispatch`'s Steel branch
     // (exercised above), which reads (and `.take()`s) `state.pending_char`
     // itself — so there is no read of the state field on the replay path to
-    // consume a stray write.
-    //
-    // Fail oracle: have `replay_dot` set `self.state.pending_char =
-    // action.char_arg` unconditionally before dispatching (as it once did) —
-    // the assertion below then sees `Some('y')`.
+    // consume a stray write. If `replay_dot` set `self.state.pending_char =
+    // action.char_arg` before dispatching, the final assertion would see
+    // `Some('y')`.
     ed.state.pending_char = Some('y');
     ed.execute_keymap_command("probe-char".into(), Some(1), false);
     assert_eq!(
@@ -1931,8 +1860,8 @@ fn steel_dispatch_consumes_pending_char() {
 
 /// `buffer_selections` returns all selections sorted by start, one per cursor.
 ///
-/// Fail oracle: hardcoding a single-element result would pass for one cursor
-/// but fail here, where two cursors must both appear in start order.
+/// A hardcoded single-element result would pass for one cursor but fail
+/// here, where two cursors must both appear in start order.
 #[test]
 fn buffer_selections_sorted_multi_cursor() {
     // "-[ab]>c -[de]>f\n" — text "abc def\n": selection 1 anchor=0 head=1,
@@ -1953,9 +1882,6 @@ fn buffer_selections_sorted_multi_cursor() {
 
 /// `buffer_selections` must preserve backward direction (anchor > head),
 /// never normalize it.
-///
-/// Fail oracle: normalizing to `(min, max)` would report `(0, 1, true)`
-/// instead of `(1, 0, true)`.
 #[test]
 fn buffer_selections_preserves_backward_direction() {
     // "<[ab]-c\n" — backward selection: head=0, anchor=1 (hand-counted).
@@ -1975,9 +1901,6 @@ fn buffer_selections_preserves_backward_direction() {
 
 /// The `primary?` flag must follow `SelectionSet`'s `primary_index`, not
 /// always the first (start-sorted) selection.
-///
-/// Fail oracle: always flagging index 0 as primary would report
-/// `(0, 0, true)` instead of `(4, 4, true)`.
 #[test]
 fn buffer_selections_primary_flag_follows_primary_index() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -2002,8 +1925,8 @@ fn buffer_selections_primary_flag_follows_primary_index() {
 
 /// `offset_to_line` maps a 0-indexed char offset to its 1-indexed line.
 ///
-/// Independent oracle: expected lines are hand-counted from the buffer text,
-/// not derived via `char_to_line` or any shared helper.
+/// Expected lines are hand-counted from the buffer text rather than derived
+/// via `char_to_line` or any shared helper.
 #[test]
 fn offset_to_line_maps_offsets() {
     // "ab\ncd\n" — a=0 b=1 \n=2 c=3 d=4 \n=5 (6 chars).
@@ -2052,9 +1975,9 @@ fn offset_to_line_out_of_range_returns_none() {
 /// ints/bools/list shape that crosses the Steel boundary, not just the
 /// Rust-side tuple data.
 ///
-/// Fail oracle: if the Steel-visible shape were wrong (wrong index order,
-/// wrong types), `equal?` would fail, the `unless` would fire, and `delete`
-/// would mutate the buffer — the assertion on `state(&ed)` catches that.
+/// If the Steel-visible shape were wrong (wrong index order, wrong types),
+/// `equal?` would fail, the `unless` would fire, and `delete` would mutate the
+/// buffer.
 #[test]
 fn buffer_selections_steel_roundtrip() {
     let mut ed = editor_from("-[a]>bc\n");

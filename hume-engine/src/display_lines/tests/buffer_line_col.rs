@@ -11,7 +11,7 @@ fn line_display_col_matches_locate_column_in_no_wrap() {
     // No-wrap: a line is exactly one display line, so the buffer-line-relative
     // column and `locate`'s display-line-relative one must agree everywhere — the invariant
     // `BufferLineCol::as_display_line_unwrapped` relies on to treat the two origins
-    // as interchangeable there. `locate` is the oracle, pinned independently
+    // as interchangeable there. `locate` is the reference, pinned separately
     // by the `locate_*` tests above.
     let rope = Rope::from_str("hello\tworld\n");
     let providers = ProviderSet::new();
@@ -32,7 +32,7 @@ fn line_display_col_matches_locate_column_in_no_wrap() {
 fn buffer_line_col_accumulates_across_a_wrap_display_line() {
     // "永永永永\n": 4 CJK graphemes, each exactly 2 columns wide regardless of
     // position (unlike a tab), wrapped 2-per-display-line at width 4. The line-relative
-    // column is then just 2x the char offset — an oracle independent of the
+    // column is then just 2x the char offset, independent of the
     // wrap point, which this asserts crosses the display-line boundary (offsets 2, 3).
     let rope = Rope::from_str("永永永永\n");
     let providers = ProviderSet::new();
@@ -62,7 +62,7 @@ fn line_display_col_excludes_wrap_indent() {
     // `WrapMode::Indent` opens the continuation display line 4 columns in. Every
     // grapheme here is exactly one cell wide with no tabs past the leading
     // run, so a position's TRUE line-relative column is trivially its own
-    // char offset — an oracle independent of both `DisplayLineMap` and exactly where
+    // char offset, independent of both `DisplayLineMap` and exactly where
     // the line wraps.
     let rope = Rope::from_str("    ab cd\n");
     let providers = ProviderSet::new();
@@ -185,7 +185,7 @@ fn char_at_line_display_col_lands_on_newline_for_an_empty_line() {
 fn char_at_line_display_col_matches_char_at_in_no_wrap() {
     // No-wrap: buffer-line-relative and display-line-relative columns coincide,
     // so `char_at_buffer_line_col` must agree with `char_at` (display line 0)
-    // everywhere — `char_at` is the oracle here, pinned independently by the
+    // everywhere — `char_at` is the reference here, pinned separately by the
     // `char_at_*` tests above. Covers, via that agreement rather than by
     // duplicating hardcoded expectations, the same tab/CJK/width-boundary
     // cases: a tab or wide grapheme before the target,

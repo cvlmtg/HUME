@@ -264,10 +264,9 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
 /// selecting a row must jump into the buffer the drawer was opened for, not
 /// whatever buffer happens to be focused when Enter is pressed.
 ///
-/// Fail oracle: if `lsp/diag-jump-to!` resolved against `(focused-pane)`
-/// instead of its explicit `bid`, `focused_buffer_id()` below would still
-/// read `other_bid`, and the selection would land clamped inside
-/// `other.rs`'s two short lines instead of at A's start in `main.rs`.
+/// If `lsp/diag-jump-to!` resolved against `(focused-pane)` instead of its
+/// explicit `bid`, focus would stay on `other_bid` and the selection would
+/// land clamped inside `other.rs`'s two short lines.
 #[test]
 fn enter_jumps_into_the_drawer_s_buffer_even_after_switching_away() {
     let tmp = safe_tempdir();
@@ -438,9 +437,6 @@ fn drawer_closes_when_all_diagnostics_are_fixed() {
 /// Raising `lsp.diagnostics-severity-floor` must refresh the open drawer,
 /// not just future opens and the decorations — the drawer snapshots
 /// `diagnostics-for-buffer` (which defaults to the floor) at open time.
-///
-/// Fail oracle: before the fix the drawer kept both rows after the floor
-/// hid the warning.
 #[test]
 fn drawer_refreshes_rows_when_the_severity_floor_changes() {
     let tmp = safe_tempdir();
@@ -475,11 +471,10 @@ fn drawer_refreshes_rows_when_the_severity_floor_changes() {
 /// ordinary "selected < scroll" arm regardless of the `len` cap this test
 /// targets.
 ///
-/// Fail oracle: before `clamp_drawer_scroll_to_terminal` existed, `scroll`
-/// would have stayed at `1` here (the ordinary arm's answer, `selected`
-/// itself) instead of `0`, and `DrawerWidget::render`'s
-/// `.skip(scroll).take(visible)` would have painted one blank row above the
-/// two surviving diagnostics on a band sized to show both.
+/// Without `clamp_drawer_scroll_to_terminal`, `scroll` would stay at `1`
+/// (the ordinary arm's answer, `selected` itself) and
+/// `DrawerWidget::render`'s `.skip(scroll).take(visible)` would paint a
+/// blank row above the two surviving diagnostics on a band sized to show both.
 #[test]
 fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
     use crate::editor::input_stack::DrawerLayer;

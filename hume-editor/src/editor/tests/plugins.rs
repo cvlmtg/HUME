@@ -12,10 +12,6 @@ use hume_scripting::ScriptingHost;
 /// When a lazy command's claimed name collides with an already-registered
 /// name, `CommandHost::register_lazy_command` must return `Err` and NOT
 /// register a `Lazy` stub for it.
-///
-/// Flip: if collision detection were removed, the call would return `Ok` and
-/// `get_mappable("move-right")` would return `Some(Lazy {..})`, shadowing the
-/// built-in — both assertions would fire.
 #[test]
 fn lazy_stub_collision_rejected_and_stub_not_registered() {
     use hume_scripting::attribution::PluginId;
@@ -55,10 +51,9 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
 /// arise from `define-command!` in production — it simulates a desync
 /// directly to pin `call_steel_cmd`'s fail-fast guard.
 ///
-/// Fail oracle: if `call_steel_cmd` fell back to invoking `%dispatch-command`
-/// on a `command_table` miss (the pre-consolidation behavior), this would
-/// silently report "unknown command" via the native/call! fallback instead
-/// of naming the desync explicitly.
+/// A fallback to `%dispatch-command` on a `command_table` miss would report
+/// a vague "unknown command" through the native/call! path instead of naming
+/// the desync.
 #[test]
 fn keypress_dispatch_command_table_desync_reports_error() {
     let mut ed = editor_from("-[a]>b\n");

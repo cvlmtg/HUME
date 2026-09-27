@@ -76,9 +76,8 @@ fn pane_selections_synced_after_exit_insert() {
 /// `pane.primary_idx` must still identify the actual primary (not the
 /// earliest).
 ///
-/// Fail oracle: iterating sorted-by-position instead of preserving
-/// `primary_idx` would make the engine treat the earliest selection as
-/// primary regardless of which one actually is.
+/// Iterating sorted by position without preserving `primary_idx` would make
+/// the engine treat the earliest selection as primary.
 #[test]
 fn pane_selections_primary_is_first_even_when_not_earliest() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -118,9 +117,8 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
 }
 
 /// Backward selections (head < anchor) can cause start()-order to differ from
-/// head-order. Fail oracle: passing pane selections in start()-order instead
-/// of head-order would trip the engine's `debug_assert!(selections sorted by
-/// head)`.
+/// head-order. Pane selections passed in start()-order would trip the
+/// engine's `debug_assert!(selections sorted by head)`.
 ///
 /// Reproduction: two selections where their start() order differs from head order:
 ///   A: anchor=10, head=3  → start()=3, head=3   (backward)

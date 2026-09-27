@@ -168,8 +168,8 @@ fn soft_and_word_differ_at_same_width() {
     // Same input/width as above; Word backtracks to the space, keeping it
     // as line0's last cell ("hello ", 6 graphemes — the space ends the display line
     // it was seen on, not the continuation display line's first cell),
-    // while Soft splits mid-word ("hello w", 7 graphemes). This is the
-    // regression guard: before the fix both produced identical output.
+    // while Soft splits mid-word ("hello w", 7 graphemes). The two modes
+    // must not produce identical output.
     let (soft_lines, soft_graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
     let (word_lines, word_graphemes) = do_format("hello world", WrapMode::Word { width: 7 });
     let soft_line0 = &soft_graphemes[soft_lines[0].graphemes.clone()];
@@ -627,9 +627,8 @@ fn word_wrap_space_ends_previous_display_line_not_starts_continuation() {
     // "a b" at width 2 (a boundary case): 'a' fits at col0; the space
     // fits exactly at col1 (current_display_col becomes 2); 'b' then overflows
     // (2+1>2), backtracking to the space. The space (char offset 1) must
-    // end line0 ("a "), not become line1's leading cell — splitting so the
-    // new display line would start with the space, rather than after it, was the
-    // bug. Independent oracle: char_offset is the input's own char index,
+    // end line0 ("a "), not become line1's leading cell: the new display
+    // line starts after the space. char_offset is the input's own char index,
     // computed by hand from "a b" (a=0, space=1, b=2), not derived from
     // any wrap-logic internals.
     let (lines, graphemes) = do_format("a b", WrapMode::Word { width: 2 });
@@ -802,8 +801,7 @@ fn long_line_no_wrap_clips_to_window_without_panic() {
 fn long_line_no_wrap_window_scrolled_right_has_correct_display_cols() {
     // Same 70,000-char ASCII line, scrolled to h_offset = 65,000. Since
     // every char is 1 column wide, display_col must equal char index
-    // (independent oracle) for every grapheme actually emitted around the
-    // window.
+    // for every grapheme actually emitted around the window.
     let text: String = "a".repeat(70_000);
     let (lines, graphemes) =
         do_format_windowed(&text, WrapMode::None, Some(dc(65_000)..dc(65_080)));
@@ -1207,8 +1205,8 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
 fn no_window_caller_reaches_true_column_past_former_u16_ceiling() {
     // `current_display_col`/`Grapheme::display_col` are `u32`: the column at
     // the end of a 70,000-char pure-ASCII line is its true (unclamped) char
-    // index, never saturating at `u16::MAX` (65,535). Independent oracle:
-    // every char is 1 column wide, so display_col == index.
+    // index, never saturating at `u16::MAX` (65,535). Every char is 1
+    // column wide, so display_col == index.
     let text: String = "a".repeat(70_000);
     let (lines, graphemes) = do_format_windowed(&text, WrapMode::None, None);
     assert_eq!(lines.len(), 1);

@@ -574,8 +574,6 @@ fn collect_merges_spans_across_root_and_injected_layers() {
 
 /// The same selector, twice, must hand back the *same* `ObjectSpans` rather
 /// than re-walking the tree.
-///
-/// Flip: drop the cache lookup in `for_selector` and the pointers differ.
 #[test]
 fn for_selector_returns_the_same_spans_for_a_repeated_selector() {
     let (syn, text) = rust_syntax("fn foo() {\n    1\n}\n");
@@ -609,7 +607,7 @@ fn for_selector_does_not_answer_a_different_selector_from_the_cache() {
     );
     assert!(!Arc::ptr_eq(&around, &inside));
 
-    // Independent oracle: each must equal what the uncached collector returns.
+    // Each must equal what the uncached collector returns.
     let pos = text.byte_to_char("fn foo(a: i32) {\n    1".find('1').unwrap());
     for (cached, span) in [(&around, ObjectSpan::Around), (&inside, ObjectSpan::Inside)] {
         let fresh = ObjectSpans::collect(layers, &text, ObjectKind::Function, span);
@@ -620,9 +618,6 @@ fn for_selector_does_not_answer_a_different_selector_from_the_cache() {
 /// `bake` edits every layer's tree *in place* — the one mutation that does
 /// not replace `SyntaxLayers` outright — so it must drop the cache too, or a
 /// structural command reads spans collected from the pre-edit tree.
-///
-/// Flip: remove `bake`'s cache clear and the second lookup returns the stale
-/// `Arc`, whose spans no longer match a fresh collect over the baked tree.
 #[test]
 fn for_selector_cache_does_not_survive_a_bake() {
     let source = "fn foo() {\n    1\n}\n";

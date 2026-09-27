@@ -57,9 +57,9 @@ fn config_gated_builtin_rejected_from_command_body_through_real_registration() {
 /// buffer_exists` always answers `false`, so it's never live — with just
 /// enough well-formed sibling arguments to reach `bid`'s own resolve.
 ///
-/// Fail oracle: a `builtins!` table entry accidentally left (or reverted
-/// to) `args::ArgPane` instead of `args::LivePane` would make its probe
-/// return `Ok`/`#f` instead of raising here.
+/// A `builtins!` table entry using `args::ArgPane` in place of
+/// `args::LivePane` would make its probe return `Ok`/`#f` instead of
+/// raising here.
 #[test]
 fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
     const PROBES: &[(&str, &str)] = &[
@@ -179,9 +179,6 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
 /// supply the invoking buffer explicitly instead), so `#f` must raise a
 /// type error through the real dispatch path, the same as passing any other
 /// value neither a buffer-id nor a string/symbol names.
-///
-/// Fail oracle: `LspTargetArg::from_steelval` accepting `#f` (e.g. reviving
-/// the old "no target" fallback) would make either call return `Ok`.
 #[test]
 fn lsp_stop_and_restart_reject_false_target_through_real_registration() {
     for expr in ["(lsp-stop! #f)", "(lsp-restart! #f)"] {

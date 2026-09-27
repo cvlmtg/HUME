@@ -367,8 +367,8 @@ fn insert_tab_soft_two_cursors_same_line() {
     // Cursor 0: col 2 → 2 spaces to reach col 4. display_col_shift = +2.
     // Cursor 1: original col 6 + shift 2 = effective col 8. 8 is a tab stop,
     //           so a full tw=4 spaces to reach col 12.
-    // Independent oracle: after cursor 0's 2 spaces, 'z' sits at col 8;
-    //                     next stop = 12; spaces needed = 4.
+    // After cursor 0's 2 spaces, 'z' sits at col 8; next stop = 12;
+    // spaces needed = 4.
     assert_state!(
         "ab-[c]> xy-[z]>\n",
         |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
@@ -385,8 +385,8 @@ fn insert_tab_soft_two_cursors_same_line_not_on_stop() {
     // Cursor 0: col 3 → 1 space to reach col 4. display_col_shift = +1.
     // Cursor 1: original col 8 + shift 1 = effective col 9. Next stop = 12.
     //           Spaces = 12 - 9 = 3.
-    // Independent oracle: after cursor 0's 1 space, 'h' is at col 9; next stop
-    //                     at col 12; spaces needed = 3.
+    // After cursor 0's 1 space, 'h' is at col 9; next stop at col 12;
+    // spaces needed = 3.
     assert_state!(
         "abc-[d]>e fg-[h]>\n",
         |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
@@ -600,15 +600,15 @@ fn newline_indent_two_cursors_same_blank_line_merge() {
 
 #[test]
 fn newline_indent_two_cursors_second_on_blank_line_newline_no_underflow() {
-    // Regression: the first cursor (head 0) trims the blank line "  \n",
+    // The first cursor (head 0) trims the blank line "  \n",
     // advancing the builder's `old_pos()` to 2 — exactly the position of
     // the second cursor's head, which sits on the line's structural '\n'.
     // The `pos < b.old_pos()` "already consumed" guard requires strict
     // inequality, so `2 < 2` is false and the second cursor is NOT treated
     // as consumed; its own `line_start` (0) is what has actually been
-    // passed. Before the fix, `try_trim_blank_line` didn't check
-    // `line_start` against `old_pos()` and computed `b.retain(0 - 2)`,
-    // underflowing. The fix falls back to the non-blank arm instead: both
+    // passed. `try_trim_blank_line` must check `line_start` against
+    // `old_pos()`, or it would compute `b.retain(0 - 2)` and underflow. It
+    // falls back to the non-blank arm instead: both
     // cursors independently run their own Enter-with-copied-indent, each
     // landing on its own freshly opened line — no crash.
     assert_state!(

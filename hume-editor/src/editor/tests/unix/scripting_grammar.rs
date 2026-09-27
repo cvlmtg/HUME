@@ -79,8 +79,8 @@ fn curl_fetch_for_test(
 /// Effect::GrammarSweep → apply_script_effects → sweep_buffers_for_grammars
 /// → setup_buffer_syntax → Buffer.syntax (Syntax::attach).
 ///
-/// Flip: if the command body ran in init mode (queuing instead of attaching),
-/// no sweep would fire and syntax would stay None.
+/// Were the command body to run in init mode (queuing instead of attaching),
+/// no sweep would fire and syntax would stay `None`.
 #[test]
 fn register_grammar_command_mode_attaches_and_sweeps() {
     require_grammars(&["json"]);
@@ -174,7 +174,7 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
 /// structural objects but nothing embedded — populates the bundle's
 /// `textobjects` and leaves `injections` `None`.
 ///
-/// Flip: if the Steel wrapper dropped or swapped the `#:injections`/
+/// If the Steel wrapper dropped or swapped the `#:injections`/
 /// `#:textobjects` keyword argument it forwards to `%register-grammar!`,
 /// this would see `injections` populated instead (or `textobjects` still
 /// `None`).
@@ -244,9 +244,8 @@ fn register_grammar_injections_only_populates_injections() {
 /// separately, so the risk — if any remains — is scoped to calls within a
 /// single file, exactly what this test constructs.
 ///
-/// Flip: if the miscompile were still present, `eval_init` would return
-/// `Err` with a `FreeIdentifier` message instead of registering the
-/// grammar.
+/// A miscompile here would make `eval_init` return `Err` with a
+/// `FreeIdentifier` message instead of registering the grammar.
 #[test]
 fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() {
     require_grammars(&["json"]);
@@ -284,7 +283,7 @@ fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() 
 /// the same init logs a warning but does not abort — unknown commands are
 /// soft failures during init (buffer access unavailable; command not native).
 ///
-/// Flip: if passive load crashed, `eval_init` would return `Err`.  If the
+/// If passive load crashed, `eval_init` would return `Err`.  If the
 /// unknown `(call!)` aborted the eval, the grammar registration that preceded
 /// it would not show up in `pending_language_regs`.
 #[test]
@@ -557,9 +556,9 @@ fn setup_editor_with_languages_scm(
 /// `languages.scm`. Exercises both call shapes side by side: `plain-lang` (no
 /// keyword, the pre-existing shape) and `tsx` (with the override).
 ///
-/// Flip: reverting `%define-language!`'s arity (or `prelude.scm`'s function)
-/// to the old 4-arg macro breaks eval outright — `init_scripting` would log
-/// an error and neither identity would register.
+/// With the old 4-arg macro arity for `%define-language!` (or `prelude.scm`'s
+/// function), eval would break outright: `init_scripting` would log an error
+/// and neither identity would register.
 #[test]
 fn define_language_language_id_keyword_round_trips_through_real_prelude() {
     let languages_scm = r#"
@@ -614,9 +613,8 @@ fn define_language_language_id_keyword_round_trips_through_real_prelude() {
 /// fixture) so this fails if a future `scripts/sync-grammars.py` run ever
 /// drops the `#:language-id` overrides again.
 ///
-/// Fail oracle: drop `tsx`'s `#:language-id` override from `languages.scm`
-/// (or have `lsp_language_id_of` fall back to `name_of`) → the assertion
-/// below sees `"tsx"` instead of `"typescriptreact"` and fails.
+/// Without `tsx`'s `#:language-id` override in `languages.scm`, or with
+/// `lsp_language_id_of` falling back to `name_of`, the id would be `"tsx"`.
 #[test]
 fn tsx_bundled_language_id_is_typescriptreact() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
@@ -661,8 +659,8 @@ fn tsx_bundled_language_id_is_typescriptreact() {
 /// The detection + parse-post happens via the end-of-init
 /// `detect_and_set_language` loop in `scripting_setup.rs`.
 ///
-/// Flip: comment out that end-of-init loop — `syntax` stays `None` after
-/// `init_scripting` and the first assertion fails.
+/// Without that loop, `syntax` would still be `None` when `init_scripting`
+/// returns.
 #[test]
 fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
     require_grammars(&["json"]);
@@ -739,8 +737,8 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
 /// `grammar-sources.scm` catalog and `grammars.scm` registrar run), and runs
 /// `init_scripting` against an `init.scm` that never mentions PLUM.
 ///
-/// Flip: if grammar registration were still PLUM-only, `has_grammar` would
-/// stay false and the buffer would render unhighlighted.
+/// If grammar registration depended on PLUM, `has_grammar` would stay false
+/// and the buffer would render unhighlighted.
 #[test]
 fn grammar_registration_survives_plum_absence() {
     require_grammars(&["json"]);
@@ -805,7 +803,7 @@ fn grammar_registration_survives_plum_absence() {
 /// it in `init.scm` — this exercises exactly that documented pattern for an
 /// already-grammared language and asserts highlighting survives it.
 ///
-/// Flip: if `register_identity_no_rebuild` still dropped an attached grammar
+/// If `register_identity_no_rebuild` dropped an attached grammar
 /// on re-registration, `has_grammar` would go false and the buffer would
 /// render unhighlighted after `init.scm`'s `define-language!` call.
 #[test]
@@ -928,9 +926,8 @@ fn init_errors_with_catalog(
 ///
 /// Uses a syntactically broken catalog as the tripwire — if anything forces it,
 /// `grammars.scm` raises and `init_scripting` logs an error. The second half
-/// (a compiled file present ⇒ the same broken catalog now *does* raise) is what
-/// keeps this from being a zero-effect assertion: it proves the tripwire works
-/// and that the first half passed for the right reason.
+/// (a compiled file present ⇒ the same broken catalog now *does* raise) proves
+/// the tripwire works, so the first half cannot pass vacuously.
 #[test]
 fn grammar_catalog_is_read_lazily_on_first_use() {
     let broken = "( (\"json\" \"url\" \"rev\" \"sym\"";
@@ -968,8 +965,8 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
 /// install directory reaches it where the old catalog-driven walk never could,
 /// so registration must skip it rather than raise on the missing entry.
 ///
-/// Flip: drop the `grammar-source-known?` guard in `register-installed-grammars!`
-/// and `grammar-source-symbol`'s `hash-ref` raises, failing the error assertion.
+/// Without the `grammar-source-known?` guard in `register-installed-grammars!`,
+/// `grammar-source-symbol`'s `hash-ref` would raise.
 #[test]
 fn orphan_compiled_grammar_is_skipped_not_registered() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
@@ -1059,9 +1056,9 @@ fn known_grammar_missing_highlights_warns_and_is_not_registered() {
 /// attach logs a `Warning` (`editor/syntax/mod.rs`), so an attempt leaves a
 /// trace in the message log that a skip does not.
 ///
-/// Flip: match on "has any extension" instead of the platform extension in
-/// `installed-grammars` and this file starts matching, so `register-grammar!`
-/// is attempted and logs `register-grammar! 'json': grammar library not found`.
+/// An `installed-grammars` that matched on "has any extension" rather than the
+/// platform extension would pick this file up, attempt `register-grammar!`,
+/// and log `register-grammar! 'json': grammar library not found`.
 #[test]
 fn wrong_extension_grammar_is_skipped_not_registered() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
@@ -1108,9 +1105,6 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
 /// extension would put `b-x` ahead of `b`. Neither name is catalog-known, so
 /// `register-installed-grammars!` skips both silently — only the list order
 /// is under test.
-///
-/// Flip: sort the full filenames (as `installed-grammars` did before it was
-/// fixed to sort stems) and this fails, returning `"b-x,b"`.
 #[test]
 fn installed_grammars_sorts_by_stem_not_filename() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";

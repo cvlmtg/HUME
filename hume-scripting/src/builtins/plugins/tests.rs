@@ -58,8 +58,8 @@ fn invalid_segments() {
 /// `%begin-lazy-activation` refuses to start when `plugin_stack` depth is at
 /// `MAX_ACTIVATION_DEPTH`, marks the plugin `Failed`, and returns a Steel error.
 ///
-/// Fail oracle: remove the depth-cap check from `begin_lazy_activation` →
-/// an infinite cycle would stack-overflow instead of hard-erroring.
+/// Without that check, an activation cycle would overflow the stack instead
+/// of hard-erroring.
 #[test]
 fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -146,10 +146,10 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
 /// even though the body never ran and `%finish-lazy-activation` never fires
 /// for it.
 ///
-/// Fail oracle: revert the depth-cap branch in `begin_lazy_activation` to a
-/// bare `plugins.insert(id, Failed)` (dropping the `fail_plugin_activation`
-/// call) → the event/language entries and the stub survive the failure and
-/// re-trigger a no-op activation attempt on every later matching event.
+/// The depth-cap branch gets this cleanup from `fail_plugin_activation`. A
+/// bare `plugins.insert(id, Failed)` would leave the event/language entries
+/// and the stub behind, re-triggering a no-op activation attempt on every
+/// later matching event.
 #[test]
 fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
     use crate::ScriptingHost;
@@ -220,9 +220,6 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
 /// `declare-plugin`'s argument decoders must name the builtin in their error,
 /// matching every other builtin's naming idiom, with one spelling
 /// (`#:commands`/`#:events`/`#:languages`) shared by all three.
-///
-/// Fail oracle: revert the label args back to bare `"commands"` →
-/// the assertion on the `declare-plugin #:commands` prefix fails.
 #[test]
 fn declare_plugin_bad_commands_names_the_builtin() {
     let err = declare_err(r#"(declare-plugin "user/tp" #:commands '(1))"#);
@@ -235,10 +232,6 @@ fn declare_plugin_bad_commands_names_the_builtin() {
 /// Same naming requirement for `#:typed-commands` — the sibling decoder no
 /// `hume-scripting` test exercised before this: every other `declare-plugin`
 /// decode test in this file supplies `#:commands` only.
-///
-/// Fail oracle: revert `declare_arg_label(ctx, "#:typed-commands")` back to a
-/// bare `"typed-commands"` label → the assertion on the
-/// `declare-plugin #:typed-commands` prefix fails.
 #[test]
 fn declare_plugin_bad_typed_commands_names_the_builtin() {
     let err = declare_err(r#"(declare-plugin "user/tp" #:typed-commands '(1))"#);
@@ -261,9 +254,6 @@ fn declare_plugin_unknown_hook_names_the_builtin() {
 
 /// `#:events` entries are symbols, not strings — same rule `register-hook!`
 /// enforces. A string entry hard-errors instead of being silently accepted.
-///
-/// Fail oracle: revert `declare_plugin`'s `#:events` decode back to
-/// `list_to_strings` → the string entry is accepted and this test fails.
 #[test]
 fn declare_plugin_rejects_string_event_names() {
     let err = declare_err(r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#);
@@ -278,9 +268,8 @@ fn declare_plugin_rejects_string_event_names() {
 /// decide what to install, and a name that appears there with no matching
 /// `LazyRegistry` entry can never be reconciled short of a restart.
 ///
-/// Fail oracle: move the decode back below the `plugin_configs`
-/// write/`record_declared` call → this test fails because the name is
-/// recorded despite the rejection.
+/// The decode therefore has to run before the `plugin_configs` write and the
+/// `record_declared` call.
 #[test]
 fn declare_plugin_rejected_events_records_nothing() {
     use crate::ScriptingHost;
@@ -313,9 +302,6 @@ fn declare_plugin_rejected_events_records_nothing() {
 
 /// `declare-plugin` hard-errors on a `#:commands` entry containing `"` or
 /// `\` — the same rule `define-command!` enforces.
-///
-/// Fail oracle: remove the character check from the filter loop → the name
-/// registers as an activation entry and the declare succeeds.
 #[test]
 fn declare_plugin_command_name_with_quote_errors() {
     use crate::ScriptingHost;
@@ -349,9 +335,6 @@ fn declare_plugin_command_name_with_quote_errors() {
 /// plugin would otherwise leave orphan attribution entries that
 /// `drop_activations_for` could never clean up. The invariant: the
 /// absent-path early-return fires before the pre-seed loop.
-///
-/// Fail oracle: remove the `if path.is_none() { return Ok(…) }` early-return →
-/// cmd_owners gets seeded → assertion fires.
 #[test]
 fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -375,8 +358,6 @@ fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
 
 /// `declare-plugin "core:X"` absent on disk → `Error` log (typo / broken
 /// HUME_RUNTIME; PLUM never installs core: plugins so it can't catch this).
-///
-/// Fail oracle: remove `log_absent_core` call → no Error message → assertion fires.
 #[test]
 fn declare_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -408,8 +389,6 @@ fn declare_plugin_core_absent_logs_error() {
 
 /// `declare-plugin "user/X"` absent on disk → `Info` log (not yet installed;
 /// PLUM will surface it on :plum-install-plugins — no change needed in HUME).
-///
-/// Fail oracle: swap Info→Error → assertion fires.
 #[test]
 fn declare_plugin_user_absent_logs_info() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -432,8 +411,6 @@ fn declare_plugin_user_absent_logs_info() {
 }
 
 /// `load-plugin "core:X"` absent on disk → `Error` log (was silently swallowed).
-///
-/// Fail oracle: remove `log_absent_core` call in load_plugin → no Error message → assertion fires.
 #[test]
 fn load_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -459,9 +436,9 @@ fn load_plugin_core_absent_logs_error() {
 /// `define-command!` rejects a name already claimed as a lazy plugin's `Lazy`
 /// stub, even when the eager `define-command!` runs first.
 ///
-/// Fail oracle: remove the `lazy_command_owner` guard from `define_command`
-/// → the eager define succeeds, the stub is orphaned, the plugin is stuck
-/// `Declared` and can never load.
+/// Without the `lazy_command_owner` guard in `define_command`, the eager
+/// define would orphan the stub and leave the plugin stuck `Declared`,
+/// never able to load.
 #[test]
 fn define_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::ScriptingHost;
@@ -504,9 +481,7 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
 /// `define-typed-command!` must reject a name already claimed as a lazy
 /// plugin's typed `Lazy` stub, even when the eager define runs first.
 ///
-/// Fail oracle: remove the `lazy_command_owner` guard from
-/// `define_typed_command` → the eager define succeeds, the stub is orphaned,
-/// the plugin is stuck `Declared` and can never load.
+/// `define_typed_command` has its own `lazy_command_owner` guard for this.
 #[test]
 fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
     use crate::ScriptingHost;
@@ -553,13 +528,6 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
 /// This test inserts a synthetic backslash-bearing path without creating a
 /// real file; it checks only the returned require-string by comparing against
 /// the hand-computed expected value via Steel's `equal?`.
-///
-/// Fail oracle: remove the `replace('\\', "\\\\")` call from
-/// `steel_path_literal` (which `begin_lazy_activation` reaches via
-/// `require_program_for_path`) → the returned string is
-/// `(require "C:\Users\x\plugin.scm")` (raw backslashes) while the expected
-/// literal is `(require "C:\\Users\\x\\plugin.scm")` → `equal?` is `#f` →
-/// `error` fires → `eval_source` returns `Err` → `unwrap` panics.
 #[test]
 fn begin_lazy_activation_escapes_backslashes_in_path() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -574,8 +542,8 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
         },
     );
 
-    // Oracle: each `\` in the path is doubled by the fix, so the Steel string
-    // value held in `__result` is:
+    // Each `\` in the path is doubled, so the Steel string value held in
+    // `__result` is:
     //   (require "C:\\Users\\x\\plugin.scm")
     // To express that as a Steel string literal we double every `\` again:
     //   "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"
@@ -602,9 +570,8 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
 /// `(plugin-config)` called outside any plugin body (top-level init.scm) must
 /// return an empty hash, not error.
 ///
-/// Fail oracle: if `plugin_stack.current()` were mis-read (e.g. always
-/// returning the last-ever-pushed id instead of `None` once popped), this
-/// would return a stale plugin's config instead of empty.
+/// A `plugin_stack.current()` that kept returning the last pushed id after
+/// its pop would hand back a stale plugin's config here.
 #[test]
 fn plugin_config_outside_plugin_body_is_empty() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -621,9 +588,6 @@ fn plugin_config_outside_plugin_body_is_empty() {
 /// A direct `%declare-plugin!` call with all three activation lists empty must
 /// hard-error — the pre-existing backstop the Scheme `declare-plugin` wrapper's
 /// zero-trigger routing sits in front of. No prior test exercised this directly.
-///
-/// Fail oracle: remove the zero-entry check in `declare_plugin` → this call
-/// silently registers nothing and returns `Ok`.
 #[test]
 fn declare_plugin_bang_direct_zero_trigger_call_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -644,9 +608,9 @@ fn declare_plugin_bang_direct_zero_trigger_call_errors() {
 /// Mirrors the existing `declare_plugin_user_absent_logs_info` behavior for the
 /// trigger-ful path.
 ///
-/// Fail oracle: routing "not installed yet" to the same hard error as "installed
-/// but missing manifest.scm" would break the declare-then-:plum-install-plugins flow for
-/// every zero-trigger declare of an as-yet-uninstalled plugin.
+/// Treating "not installed yet" like "installed but missing manifest.scm"
+/// would break the declare-then-:plum-install-plugins flow for every
+/// zero-trigger declare of a plugin that isn't installed yet.
 #[test]
 fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {
     use crate::{ScriptingHost, null_host::NullHost};

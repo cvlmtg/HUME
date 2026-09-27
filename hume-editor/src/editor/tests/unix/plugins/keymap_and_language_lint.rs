@@ -9,8 +9,8 @@ use hume_scripting::PluginStatus;
 
 /// Keymap lint warns when a bind-key! targets a name not in the command registry.
 ///
-/// Flip: binding to a known command ("move-down") must produce no warning, so
-/// the warning here is definitely about the unknown name, not an always-fire.
+/// A known command such as "move-down" gets no warning, so this one is about
+/// the unknown name and is not a lint that fires unconditionally.
 #[test]
 fn keymap_lint_warns_on_unknown_command() {
     use crate::editor::Severity;
@@ -38,9 +38,9 @@ fn keymap_lint_warns_on_unknown_command() {
 /// kind confusion keypress dispatch guards against, here caught at init time
 /// instead of silently waiting for the first press.
 ///
-/// Flip: a name genuinely absent from the registry (`bogus-unknown-cmd`,
-/// `keymap_lint_warns_on_unknown_command` above) must keep the generic
-/// message, since there's no other kind to name.
+/// A name genuinely absent from the registry (`bogus-unknown-cmd` in
+/// `keymap_lint_warns_on_unknown_command` above) keeps the generic message,
+/// since there is no other kind to name.
 #[test]
 fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
     use crate::editor::Severity;
@@ -67,9 +67,6 @@ fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
 /// one (`registry/defaults/editor_cmds.rs`), so an editor that never loads
 /// or declares any plugin must start up with no keymap-lint warning naming
 /// it.
-///
-/// Flip: rebinding Ctrl-Space in `default_insert_keymap` to a command only a
-/// plugin defines makes this fail.
 #[test]
 fn no_keymap_lint_warning_for_completion_trigger_without_plugins() {
     use crate::editor::Severity;
@@ -93,9 +90,6 @@ fn no_keymap_lint_warning_for_completion_trigger_without_plugins() {
 /// `(load-plugin …)` called from a plugin body during *runtime* activation
 /// (command activation) is rejected — registration verbs are top-level-only.
 /// The parent plugin is marked `Failed` and an `Error` is logged.
-///
-/// Flip: remove `ensure_top_level` from `load_plugin` and the call succeeds
-/// at runtime instead of failing fast.
 #[test]
 fn load_plugin_in_runtime_plugin_body_fails_fast() {
     use crate::editor::Severity;
@@ -159,9 +153,6 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
 /// Defining "move-right" in init.scm must leave the built-in intact and log
 /// Severity::Error.  Without this check the Steel definition would silently
 /// replace the built-in.
-///
-/// Flip: if the collision check were removed, move-right would become
-/// SteelBacked and the Error assertion would fail.
 #[test]
 fn define_command_collision_with_builtin_keeps_builtin() {
     use crate::editor::Severity;
@@ -204,8 +195,9 @@ fn define_command_collision_with_builtin_keeps_builtin() {
 /// activation).  `activate_plugin_inline` runs with `session = EvalSession::Runtime`
 /// so `%call-native!` dispatches synchronously via `run_command_sync`.
 ///
-/// Flip: change `new_activation` to `new_init` in `activate_plugin_inline`
-/// → `session = EvalSession::Init` → `%call-native!` warns and skips → cursor stays.
+/// With `new_init` in place of `new_activation` in `activate_plugin_inline`, the
+/// session would be `EvalSession::Init`, so `%call-native!` would warn and skip
+/// and the cursor would stay put.
 #[test]
 fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     // Plugin defines "trigger-me" (the command stub key) + calls move-right at
@@ -231,9 +223,6 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
 
 /// Language-activation lint warns when `#:languages` names a language that no
 /// `define-language!` has registered.
-///
-/// Flip: remove the post-init language-activation lint → no Warning produced →
-/// assertion fires.
 #[test]
 fn language_activation_lint_warns_on_unknown_language() {
     use crate::editor::Severity;
@@ -257,9 +246,9 @@ fn language_activation_lint_warns_on_unknown_language() {
 /// Language-activation lint is silent when the declared language was registered via
 /// `define-language!` earlier in the same init.scm.
 ///
-/// Flip: running the lint before the second language flush (instead of after)
-/// would incorrectly warn here because the flush has not yet applied the
-/// `define-language!` call to `state.config.languages`.
+/// The lint has to run after the second language flush. Run any earlier, it
+/// would warn here, since `define-language!` would not yet have reached
+/// `state.config.languages`.
 #[test]
 fn language_trigger_lint_silent_for_known_language() {
     use crate::editor::Severity;
@@ -291,10 +280,6 @@ fn language_trigger_lint_silent_for_known_language() {
 /// A declare-time check would see "foo" absent from the live registry and falsely
 /// reject it.  The post-init placement (after every eval's effects are applied)
 /// makes the check order-independent.
-///
-/// Flip: move the lint before `init.scm`'s `apply_script_effects` call →
-/// "foo" is not yet in `state.config.languages` → lint emits a spurious Warning →
-/// assertion fires.
 #[test]
 fn language_trigger_lint_silent_for_forward_defined_language() {
     use crate::editor::Severity;
@@ -322,9 +307,9 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
 /// Language-activation lint never warns about `"*"` — it's the any-language
 /// wildcard, not a language identity to look up in the registry.
 ///
-/// Flip: drop the `lang != "*"` guard from the lint → "*" is looked up in
-/// `state.config.languages`, is never found, and a spurious Warning fires on every
-/// startup for any manifest.scm using the wildcard.
+/// Without the `lang != "*"` guard, the lint would look "*" up in
+/// `state.config.languages`, never find it, and warn on every startup for any
+/// manifest.scm using the wildcard.
 #[test]
 fn language_activation_lint_silent_for_wildcard() {
     use crate::editor::Severity;
@@ -350,8 +335,8 @@ fn language_activation_lint_silent_for_wildcard() {
 /// repo's actual `runtime/` tree — the manifest opt-in doesn't silently make
 /// every plugin support the zero-trigger form.
 ///
-/// Flip: if manifest resolution fell back to some default instead of hard
-/// erroring on a missing file, this would incorrectly log no error at all.
+/// Were manifest resolution to fall back to a default on a missing file, no
+/// error would be logged here at all.
 #[test]
 fn core_vim_keybind_has_no_manifest_scm_zero_trigger_declare_errors() {
     use crate::editor::Severity;

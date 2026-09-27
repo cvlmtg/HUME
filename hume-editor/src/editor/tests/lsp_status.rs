@@ -102,9 +102,9 @@ fn lsp_stop_deregisters_the_server_and_clears_buffer_attachment() {
 /// replacing the old `Option<&str>` (which had no way to name a buffer at
 /// all, only "the focused one" via `None`).
 ///
-/// Fail oracle: `lsp_targets` reading `self.focused_buffer_id()` instead of
-/// the given `bid` would stop 0 servers here, since the focused buffer (`a`)
-/// has none attached.
+/// If `lsp_targets` read `self.focused_buffer_id()` instead of the given
+/// `bid`, it would stop 0 servers here, since the focused buffer (`a`) has
+/// none attached.
 #[test]
 fn lsp_stop_targets_the_named_buffer_regardless_of_focus() {
     let mut ed = editor_from("-[w]>ord\n");

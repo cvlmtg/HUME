@@ -141,8 +141,8 @@ fn viewport_change_triggers_one_debounced_request() {
 /// `+ 1` (re-adding the pre-exclusive-range LSP-end-conversion) would ask
 /// for one line past the pane's actual viewport with no test failing.
 ///
-/// Fail oracle: change `inlay.scm`'s `"end" (hash "line" end ...)` to
-/// `(hash "line" (+ end 1) ...)` — `range.end.line` below becomes 2.
+/// With `(hash "line" (+ end 1) ...)` in `inlay.scm`'s `"end"`,
+/// `range.end.line` below would be 2.
 #[test]
 fn inlay_hint_request_range_matches_the_viewport() {
     let tmp = safe_tempdir();

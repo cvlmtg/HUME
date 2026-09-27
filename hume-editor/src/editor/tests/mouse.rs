@@ -91,8 +91,8 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     // The blank line's "  " is trimmed on exit (buffer shrinks to
     // "  x\n\ncd\n"), and the click must land on 'd' in the *new* buffer —
     // not at the stale pre-trim offset, which would land 2 chars past 'd'
-    // (out of bounds before the fix, since the buffer is now 2 chars
-    // shorter than it was when the click coordinates were captured).
+    // and out of bounds, since the buffer is now 2 chars shorter than it was
+    // when the click coordinates were captured.
     assert_eq!(state(&ed), "  x\n\nc-[d]>\n");
 }
 
@@ -514,11 +514,9 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
 }
 
 /// The stacked-split analogue: a click's *row* must also be translated by
-/// the clicked pane's rect origin, not just its column. Before the fix, the
-/// lower pane's own `viewport.height` guard alone rejected every click at an
-/// absolute row at or past it — which, for the lower half of a stacked
-/// split, is *every* row inside that pane, since its rect starts well past
-/// row 0.
+/// the clicked pane's rect origin, not just its column. Checked against an
+/// absolute row, the lower pane's `viewport.height` guard would reject every
+/// click inside it, since its rect starts well past row 0.
 ///
 /// Terminal height 25 (24 usable after the statusline): `:split` (1-row
 /// seam, ratio 0.5) gives pane A (top) `y ∈ [0, 11)`, pane B (bottom)

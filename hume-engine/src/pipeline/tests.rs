@@ -341,11 +341,8 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
     // the document, so it clamps to the block's last display line — the same
     // address `Viewport::top_at` resolves to, which is the point (production
     // never reaches this case directly, since the render pass resolves the
-    // top itself every frame).
-    //
-    // Fail oracle: treating an over-large offset as display-lines-to-skip
-    // instead of clamping would carry over into line 1, disagreeing with the
-    // clamp's own "line 0's last display line" answer.
+    // top itself every frame). Skipping display lines by the raw offset
+    // would carry over into line 1 instead.
     let past_end =
         render_wrapped_pane_with_virtual_line(5, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
@@ -634,11 +631,10 @@ fn scrolled_pane_renders_from_top_line_onward() {
 #[test]
 fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
     // Filler display lines past EOF must still get their gutter column
-    // consulted — before the fix, only compose_display_line's gutter loop
-    // ran for real display lines; render_tilde_fillers never called it, so a
-    // filler display line's gutter area was silently blank regardless of
-    // what a custom
-    // GutterColumn would render for DisplayLineKind::Filler.
+    // consulted, the same as compose_display_line's gutter loop does for
+    // real display lines. Otherwise a filler display line's gutter area
+    // would be silently blank regardless of what a custom GutterColumn
+    // renders for DisplayLineKind::Filler.
     struct MarkerGutter;
     impl crate::providers::GutterColumn for MarkerGutter {
         fn width(&self, _: RopeyLine) -> u8 {
@@ -1285,7 +1281,7 @@ fn split_leaf_thrice_gives_equal_thirds() {
         }
     );
 
-    // Independent oracle: read the rects back, not the ratios again.
+    // Read the rects back, not the ratios again.
     let mut out = Vec::new();
     tree.collect_rects_into(rect(0, 0, 99, 10), false, &mut out);
     assert_eq!(out.len(), 3);
@@ -1422,9 +1418,8 @@ fn remove_leaf_equalizes_survivors() {
     );
 }
 
-/// Fail oracle: change `contains_leaf` to `matches!(self, LayoutTree::Leaf(id)
-/// if *id == target)` (dropping the recursive `Split` arm) — the nested-tree
-/// assertion below must start failing.
+/// `contains_leaf` must recurse through `Split` nodes, so a leaf nested two
+/// levels down is still found.
 #[test]
 fn contains_leaf_finds_a_leaf_at_any_depth() {
     let [a, b, c, missing] = pane_ids();
@@ -1445,9 +1440,8 @@ fn contains_leaf_finds_a_leaf_at_any_depth() {
     assert!(!tree.contains_leaf(missing));
 }
 
-/// Fail oracle: change `into_detached` to only push the root's own id
-/// (`out.push(DetachedPane(...))` without recursing into `Split`) — the
-/// length assertion below must start failing.
+/// `into_detached` must recurse through `Split` nodes and yield a token for
+/// every nested leaf, not just the top level.
 #[test]
 fn into_detached_yields_one_token_per_leaf() {
     let [a, b, c] = pane_ids();

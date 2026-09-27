@@ -6,10 +6,10 @@
 //! the test runner's generic "running for over 60s" notice on a process-wide
 //! lock that then starved every other concurrently-running test too.
 //!
-//! Fail oracle: swap `TestGlobals::inner`'s `parking_lot::ReentrantMutex` for
-//! a plain `std::sync::Mutex` and the first two tests below hang instead of
-//! completing — there is no timeout to assert against directly, since a hang
-//! is exactly the failure mode this type exists to make impossible.
+//! With a plain `std::sync::Mutex` in place of `TestGlobals::inner`'s
+//! `parking_lot::ReentrantMutex`, the first two tests below would hang.
+//! There is no timeout to assert against, since a hang is exactly the
+//! failure this type exists to rule out.
 
 use super::*;
 

@@ -146,7 +146,7 @@ fn format_with_spans_offsets_and_scopes() {
     let (text, spans) = log.format_with_spans();
     assert_eq!(text, "[warning] bad key\n[error] crash\n");
 
-    // Oracle derived from the `[label] text\n` format spec, independent of
+    // Expected offsets come from the `[label] text\n` format spec, not from
     // the implementation's own offset bookkeeping:
     // "[warning]" is 9 chars (0..9), " " at 9, "bad key" is 7 chars (10..17),
     // "\n" at 17. "[error]" is 7 chars (18..25), " " at 25, "crash" is 5
@@ -239,9 +239,8 @@ fn push_cap_adjusts_seen_up_to() {
 /// `totals()` must keep counting past `MAX_ENTRIES` — the whole reason it
 /// exists over `unseen_counts()`, which reads the live (evicting) deque and
 /// so cannot answer "how many errors/warnings ever landed" once eviction
-/// starts. Fail oracle: change `total_errors`/`total_warnings` to derive
-/// from `entries.len()` instead of their own monotonic counters, and this
-/// must start failing once eviction kicks in.
+/// starts. Counters derived from `entries.len()` would fail here once
+/// eviction kicks in.
 #[test]
 fn totals_survive_eviction_past_max_entries() {
     let mut log = MessageLog::new();

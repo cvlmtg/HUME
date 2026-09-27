@@ -166,9 +166,9 @@ fn d_after_select_line_removes_entire_line() {
 /// `d` on a blank last line must delete it, not silently no-op.
 ///
 /// A blank last line is a collapsed cursor on the structural trailing `\n`.
-/// Before the fix, `delete_one_grapheme` would no-op because the cursor is
-/// already on the structural `\n`. After the fix it routes through
-/// `delete_sel_region`'s merge path, consuming the preceding `\n`.
+/// `delete_one_grapheme` alone would no-op there, since the cursor already
+/// sits on the structural `\n`. The delete goes through `delete_sel_region`'s
+/// merge path instead, consuming the preceding `\n`.
 #[test]
 fn d_on_blank_last_line_removes_it() {
     let mut ed = editor_from("foo\n-[\n]>");

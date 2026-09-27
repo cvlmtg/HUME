@@ -691,10 +691,9 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 /// `init.scm` at all — proving the survival is core's doing, not a reload
 /// re-running an install command.
 ///
-/// Flip: revert the `buf.syntax = None` addition to
-/// `clear_languages_all` and the final `syntax.is_some()` assertion fails —
-/// the buffer keeps reparsing forever against a registry that no longer
-/// exists.
+/// Without `buf.syntax = None` in `clear_languages_all`, the buffer would keep
+/// reparsing against a registry that no longer exists and the final
+/// `syntax.is_some()` assertion would fail.
 #[test]
 fn reload_config_keeps_a_startup_grammar_registered() {
     test_fixtures::require_grammars(&["json"]);

@@ -1465,7 +1465,7 @@ fn fill_row_bg_none_empty_range_no_panic() {
 // ── fused dim (compose path) ───────────────────────────────────────
 
 /// `dim` on `Canvas` must blend each written cell's fg/bg toward the
-/// target inline. Verifies the same lerp oracle (255→0 at 0.5 ⇒ 128) holds
+/// target inline. The same lerp result (255 to 0 at 0.5 gives 128) must hold
 /// through `compose_display_line`.
 #[test]
 fn compose_display_line_dims_cells_inline() {
@@ -1520,7 +1520,7 @@ fn compose_display_line_dims_cells_inline() {
         None,
     );
     let cell = buf.cell(0, 0).unwrap();
-    // Independent oracle: 255 lerp 0 at 0.5 ⇒ 127.5, rounds to 128.
+    // 255 lerp 0 at 0.5 is 127.5, which rounds to 128.
     assert_eq!(cell.style().fg, Some(Rgb(128, 128, 128)));
     // bg already at target ⇒ blend is a no-op.
     assert_eq!(cell.style().bg, Some(Rgb(0, 0, 0)));

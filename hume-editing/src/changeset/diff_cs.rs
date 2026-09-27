@@ -165,7 +165,7 @@ fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<CharOffset
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 //
-// The load-bearing oracle: apply `forward` to a copy of `old` and assert it
+// The core check: apply `forward` to a copy of `old` and assert it
 // equals `new`; apply `inverse` to a copy of `new` and assert it equals `old`.
 // This catches any off-by-one in line → char offset translation, hunk-walk
 // gaps, or `retain_rest` misuse — independent of the line-diff implementation.

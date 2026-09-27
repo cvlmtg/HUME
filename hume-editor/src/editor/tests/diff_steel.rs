@@ -7,9 +7,9 @@ use hume_scripting::ScriptingHost;
 
 /// `diff-lines` returns 0-based hunk tuples, oldest side first.
 ///
-/// Fail oracle: any change to field order, base, or list-vs-vector encoding
-/// at the Steel boundary stops this probe from firing — it is the one test
-/// that pins the *registered* Steel shape, not just the Rust struct.
+/// This is the one test that pins the shape registered at the Steel
+/// boundary. Any change to field order, base, or list-vs-vector encoding
+/// stops the probe from firing.
 #[test]
 fn diff_lines_returns_zero_based_hunk_tuples() {
     let tmp = safe_tempdir();
@@ -29,8 +29,8 @@ fn diff_lines_returns_zero_based_hunk_tuples() {
 /// — this pins the argument order: `old-lines` is the ref's line,
 /// `new-lines` is the buffer's.
 ///
-/// Fail oracle: swap ref/buffer inside `DiffHost::diff_buffer_lines` — the
-/// hunk's old/new sides invert and the probe stops firing. Also stands in
+/// Swapping ref and buffer inside `DiffHost::diff_buffer_lines` would invert
+/// the hunk's old/new sides and stop the probe from firing. Also stands in
 /// for the doc's `diff-buffer-lines` ≡ `diff-lines` equivalence check —
 /// since both route through the same `diff_bridge::line_hunks`, this single
 /// assertion (same texts fed both ways) is structurally guaranteed rather
@@ -63,9 +63,9 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 /// → `apply_script_result`), not as a Rust panic or a silent no-op — hence
 /// checking the log instead of a `run_probe` boolean.
 ///
-/// Fail oracle: revert `diff-buffer-lines`'s `builtins!` table entry from
-/// `args::LiveBid` to `args::BidArg` — this assertion goes red while every
-/// other test in this file, none of which pass a stale bid, stays green.
+/// If `diff-buffer-lines`'s `builtins!` table entry took `args::BidArg`
+/// instead of `args::LiveBid`, only this test would fail. No other test in
+/// this file passes a stale bid.
 #[test]
 fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     let tmp = safe_tempdir();
@@ -102,9 +102,9 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
 /// `diff-words` returns a `(hunks . deadline-hit?)` dotted pair of 6-element
 /// char-offset tuples.
 ///
-/// Fail oracle: any change to field order, offset base, or the dotted-pair-
-/// vs-list outer shape stops this probe from firing — it is the one test
-/// that pins the *registered* Steel shape, not just the Rust struct. Offsets
+/// This is the one test that pins the shape registered at the Steel
+/// boundary. Any change to field order, offset base, or the dotted-pair
+/// outer shape stops the probe from firing. Offsets
 /// worked out by hand from `split_word_bounds()`'s tokenization of "foo bar"
 /// (`"foo"`, `" "`, `"bar"`/`"baz"` — offsets `0,3,4,7`).
 #[test]

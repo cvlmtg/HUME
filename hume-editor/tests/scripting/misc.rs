@@ -7,8 +7,6 @@ use super::*;
 
 /// An arity-1 command that validates its arg is a non-empty list must error
 /// when called with no args (#f from minibuffer path).
-///
-/// Flip: change `unless` guard to `(when #t ...)` and the error disappears.
 #[test]
 fn arity1_list_command_rejects_false_arg() {
     use steel::rvals::SteelVal;
@@ -35,8 +33,6 @@ fn arity1_list_command_rejects_false_arg() {
 
 /// An arity-1 command that validates its arg is a non-empty list must succeed
 /// when passed a real list.
-///
-/// Flip: change the guard to always error and the Ok below becomes Err.
 #[test]
 fn arity1_list_command_accepts_list_arg() {
     use steel::rvals::IntoSteelVal as _;
@@ -66,8 +62,8 @@ fn arity1_list_command_accepts_list_arg() {
 /// `(load-plugin …)` raises a Steel error when called from a command body
 /// (`EvalMode::Command`) — the `ensure_top_level` gate rejects it.
 ///
-/// Flip: remove `ensure_top_level` from `load_plugin` and the call returns `Ok`,
-/// silently queuing a load request that is never drained.
+/// Without that gate the call would return `Ok` and queue a load request that
+/// nothing ever drains.
 #[test]
 fn load_plugin_runtime_guard_fires() {
     // (load-plugin ...) from a command body (EvalMode::Command) must be rejected.
@@ -98,7 +94,7 @@ fn plum_grammars_scm_balanced() {
 
     // Count structural parens only. Parens inside string literals, `;` line
     // comments, `#| |#` block comments, and `#\(` char literals are not
-    // structural and must be skipped, or the oracle is not independent of the
+    // structural and must be skipped, or the count would depend on the
     // file's prose (a comment with an unbalanced paren would mask or fake an
     // imbalance in the actual code).
     let mut opens = 0usize;

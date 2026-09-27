@@ -22,10 +22,8 @@ fn two_edits(ed: &mut Editor) -> String {
 
 #[test]
 fn typed_set_applies_to_open_buffers() {
-    // Fail oracle: remove the "undo-levels" arm from
-    // settings::ops::resync_derived_state and the cap is never pushed to the
-    // buffer — both edits would remain undoable instead of the first being
-    // evicted/promoted away.
+    // The "undo-levels" arm in settings::ops::resync_derived_state pushes the
+    // cap to the buffer. Without it both edits would stay undoable.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.state);
     crate::editor::commands::typed_set(&mut ed, fp, Some("global undo-levels=1"), false)
@@ -43,8 +41,8 @@ fn typed_set_applies_to_open_buffers() {
 fn new_buffer_inherits_undo_levels() {
     // A buffer opened after the :set must pick up the already-configured
     // cap, not start at History's unlimited default.
-    // Fail oracle: skip threading undo_levels through lifecycle::open_buffer
-    // and this second buffer would allow both edits to stay undoable.
+    // lifecycle::open_buffer must thread undo_levels through, or this second
+    // buffer would keep both edits undoable.
     let mut ed = editor_from("-[h]>ello\n");
     let fp = FocusedPane::current(&ed.state);
     crate::editor::commands::typed_set(&mut ed, fp, Some("global undo-levels=1"), false)
@@ -68,9 +66,8 @@ fn steel_set_option_applies_undo_levels() {
     // set-option! routes through EditorHostImpl::set_global_option ->
     // settings::ops::apply_global, which resyncs every open buffer's cap
     // inline — no separate pickup step needed after eval returns.
-    // Fail oracle: reintroduce a raw write_global call in set_global_option
-    // (bypassing settings::ops::apply_global) and this cap never reaches the
-    // buffer, so the second undo would still succeed.
+    // A raw write_global call in set_global_option that skipped
+    // settings::ops::apply_global would never deliver the cap to the buffer.
     let mut ed = editor_from("-[h]>ello\n");
 
     let names: Vec<String> = ed

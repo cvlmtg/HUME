@@ -369,8 +369,8 @@ fn half_page_down_overshoots_a_virtual_line_block_taller_than_the_budget() {
 
 // ── half_page: the shared half-page-step formula ────────────────────────────
 //
-// Independent oracle: expected values written out by hand, not derived by
-// calling `half_page` back on itself.
+// Expected values are written out by hand rather than derived by calling
+// `half_page` back on itself.
 
 #[test]
 fn half_page_steps_floor_visible_rows_over_two_clamped_to_one_zero_safe() {

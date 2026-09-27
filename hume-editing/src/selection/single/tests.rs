@@ -73,7 +73,7 @@ fn content_end_combining_grapheme() {
     // content_end = min(1, 1) = 1 — the combiner is still content, not the structural '\n'.
     let (text, _) = parse_state("-[e]>\u{0301}\n");
     let sel = Selection::collapsed(co(0));
-    // Independent oracle: chars 0 and 1 are content; char 2 is the structural '\n'.
+    // Chars 0 and 1 are content; char 2 is the structural '\n'.
     // content_end must equal 1 (includes the combining codepoint, stops before '\n').
     assert_eq!(sel.content_end(&text), co(1));
 }
@@ -169,8 +169,7 @@ fn is_selection_linewise_false_partial_line_with_newline() {
     // a=0, b=1, c=2, \n=3
     let (text, _) = parse_state("-[a]>bc\n");
     let sel = Selection::new(co(1), co(3)); // starts mid-line, ends on '\n'
-    // Flip condition to verify this test catches the bug: if we only checked
-    // ends_on_newline, we'd get true — the is_line_start check prevents that.
+    // Ending on '\n' alone is not enough. The start must also be a line start.
     assert!(!is_selection_linewise(&text, &sel));
 }
 

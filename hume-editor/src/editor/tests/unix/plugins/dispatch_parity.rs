@@ -19,9 +19,9 @@ use crate::editor::registry::{MappableCommand, TypedBody};
 /// inner command's, so a 3-way keypress/`:`/`call!` identity claim would be
 /// asserting behavior the system deliberately does not have.
 ///
-/// Fail oracle: if lazy activation's AFTER-stage bookkeeping (jump/paste/
-/// dot-repeat) diverged between the two entry points — e.g. one skipped
-/// the repeatable-action stamp — one of the two snapshots would differ.
+/// If lazy activation's AFTER-stage bookkeeping (jump/paste/dot-repeat)
+/// diverged between the two entry points, for example by skipping the
+/// repeatable-action stamp in one, the two snapshots would differ.
 /// A lazy *mappable* command's first dispatch via keypress activates its
 /// plugin and runs the real body — same invariant the typed path exercises
 /// in `lazy_typed_command_first_dispatch_via_command_line` below, covering
@@ -54,9 +54,9 @@ fn lazy_command_first_dispatch_via_keypress() {
 /// `TypedBody::Steel`) must complete before arg marshalling reads the
 /// resolved arity.
 ///
-/// Fail oracle: if activation ran after arg marshalling instead of before,
-/// the stub's `Lazy` arity (not yet resolved) would be used instead of the
-/// real lambda's arity, and the forwarded arg would never reach `call!`.
+/// If activation ran after arg marshalling, the stub's unresolved `Lazy`
+/// arity would be used instead of the real lambda's, and the forwarded arg
+/// would never reach `call!`.
 #[test]
 fn lazy_typed_command_first_dispatch_via_command_line() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -100,9 +100,8 @@ fn lazy_typed_command_first_dispatch_via_command_line() {
 /// (and only then cleaned up by the per-dispatch loop guard) — a behavior
 /// improvement this test pins.
 ///
-/// Fail oracle: revert to only unregistering the dispatched stub (the old
-/// per-dispatch loop guard alone) → `stub-b` survives as `Lazy` after
-/// `stub-a`'s activation fails.
+/// Unregistering only the dispatched stub would leave `stub-b` as `Lazy`
+/// after `stub-a`'s activation fails.
 #[test]
 fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_one() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -150,9 +149,8 @@ fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_on
 /// `lazy_status_string`/`format_status` now require since this crate no
 /// longer tracks pending command activations itself.
 ///
-/// Fail oracle: if `typed_plugin_status` stopped passing `registry.lazy_stubs()`
-/// through, `:plugin-status` would show no `cmd:` entries for any `Declared`
-/// plugin regardless of what it actually declared.
+/// If `typed_plugin_status` did not pass `registry.lazy_stubs()` through,
+/// `:plugin-status` would show no `cmd:` entries for any `Declared` plugin.
 #[test]
 fn plugin_status_shows_pending_command_from_live_registry_stubs() {
     let (mut ed, _dir) = setup_lazy_editor(
@@ -179,7 +177,7 @@ fn plugin_status_shows_pending_command_from_live_registry_stubs() {
 /// `cmd:` a mappable entry gets, so the user knows which reachability a
 /// still-`Declared` plugin's pending name will have.
 ///
-/// Flip: without the kind split, this would show `cmd:bar` instead — the
+/// Without the kind split, this would show `cmd:bar` instead, the
 /// same string `plugin_status_shows_pending_command_from_live_registry_stubs`
 /// asserts for a *mappable* pending entry.
 #[test]
@@ -213,9 +211,6 @@ const INIT_SCM_EXAMPLE_PATH: &str =
 /// against the real runtime — a removed builtin or a renamed keyword arg
 /// (exactly this commit's kind of change) fails here, not first when a user
 /// copies the example and starts HUME.
-///
-/// Fail oracle: rename a keyword arg in `runtime/init.scm.example` (e.g.
-/// `#:events` to `#:event`) → `eval_init` fails and this test catches it.
 #[test]
 fn init_scm_example_is_valid_source() {
     let example =

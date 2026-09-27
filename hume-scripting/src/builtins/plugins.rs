@@ -78,8 +78,8 @@ fn already_declared(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str) -> boo
             // Stays Error, not Info: `hume-editor/tests/unix/scripting.rs`'s
             // `load_then_declare_ignored_with_soft_error` pins this as a
             // deliberately-logged contradiction (load-then-declare), not an
-            // ordinary idempotent no-op — its own `Flip:` comment treats
-            // losing the log entry as the regression.
+            // ordinary idempotent no-op, and that test fails if the log
+            // entry goes away.
             ctx.log(
                 crate::log::LogLevel::Error,
                 format!("declare-plugin: '{name}' is already loaded; ignoring declare"),

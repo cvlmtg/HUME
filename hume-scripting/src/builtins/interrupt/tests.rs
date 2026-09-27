@@ -3,8 +3,6 @@ use crate::test_support::SteelCtxTestHarness;
 use std::sync::atomic::Ordering;
 
 /// `hume_yield` returns `Void` when the interrupt flag is clear.
-///
-/// Fail oracle: always fire the stop! regardless of the flag → this test errors.
 #[test]
 fn hume_yield_returns_void_when_flag_clear() {
     let mut h = SteelCtxTestHarness::new();
@@ -19,8 +17,6 @@ fn hume_yield_returns_void_when_flag_clear() {
 }
 
 /// `hume_yield` raises a Steel error when the interrupt flag is set.
-///
-/// Fail oracle: remove the flag check → the error is never raised → test fails.
 #[test]
 fn hume_yield_errors_when_flag_set() {
     let mut h = SteelCtxTestHarness::new();

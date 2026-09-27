@@ -9,7 +9,7 @@ use std::sync::Arc;
 use super::*;
 use hume_engine::pipeline::RenderContext;
 
-/// Independent width oracle for the code under test — see `clippy.toml`'s
+/// Width measured independently of the code under test. See `clippy.toml`'s
 /// `disallowed-methods` entry.
 #[allow(clippy::disallowed_methods)]
 fn oracle_width(s: &str) -> usize {
@@ -126,10 +126,6 @@ fn show_popup_rejects_an_unknown_anchor() {
 /// `show-popup! #:kind 'scrollable` must not land above a full-modal picker
 /// — it would own the next Ctrl-u/Ctrl-d without ever being visible
 /// (`register_overlays`' fixed z-order paints the picker on top).
-///
-/// Fail oracle: before this fix, the `Scrollable` arm pushed unconditionally
-/// — `ed.state.input.popup()` below would be `Some` and the picker would
-/// have lost its own paging keys to the invisible popup.
 #[test]
 fn show_popup_scrollable_does_not_land_above_an_open_picker() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -686,10 +682,9 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     // frame, but that clamp writes only into the view copy, never back into
     // the model. If the popup's visible window grows without a scroll key
     // touching the model (e.g. the terminal resizes taller), the model can
-    // hold a scroll value now far beyond the shrunk `max_scroll`. Fail
-    // oracle: subtracting from that stale value directly, without first
-    // clamping it to the current `max_scroll`, could still land above it —
-    // visibly a no-op on the first Ctrl-u press.
+    // hold a scroll value now far beyond the shrunk `max_scroll`. Ctrl-u must
+    // clamp that stale value to the current `max_scroll` before subtracting,
+    // or the first press could still land above it and look like a no-op.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..40)
@@ -889,8 +884,8 @@ fn a_mouse_click_closes_a_scrollable_popup() {
 
 #[test]
 fn a_sticky_popup_survives_mouse_input() {
-    // Regression guard, not a red/green case: signature help's default
-    // `'sticky` popup must stay untouched by mouse input, same as by keys.
+    // Signature help's default `'sticky` popup must stay untouched by mouse
+    // input, same as by keys.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(

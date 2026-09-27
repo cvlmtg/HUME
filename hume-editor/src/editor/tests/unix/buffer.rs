@@ -189,11 +189,11 @@ fn buffer_tilde_path_switches() {
 /// `display_path`, which `~`-collapses paths under `$HOME` — retyping the
 /// exact label shown must resolve, not error again with "no buffer matching".
 ///
-/// Fail oracle: drop the `hume_platform::path::expand` call from
-/// `resolve_buffer_arg`'s absolute-path branch — `Path::is_absolute()` on a
-/// literal `~/...` string is `false`, so the retype falls through to the
+/// `resolve_buffer_arg`'s absolute-path branch needs its
+/// `hume_platform::path::expand` call: `Path::is_absolute()` on a literal
+/// `~/...` string is `false`, so the retype would fall through to the
 /// basename/prefix branches (which compare against the bare basename, not
-/// the full label) and errors "no buffer matching".
+/// the full label) and error with "no buffer matching".
 #[test]
 fn buffer_ambiguous_label_is_retypeable() {
     let dir1 = HomeScratchDir::new(".hume_test_tilde_p1");

@@ -10,9 +10,8 @@ use steel::rvals::IntoSteelVal as _;
 /// Reaches the host from ordinary command-mode context, same as
 /// `set-buffer-option!`/`get-option`.
 ///
-/// Fail oracle: change `set-option!`'s table entry back to `config` →
-/// this call would fail with a gate error instead of reaching (and
-/// erroring on) `NullHost`.
+/// Registering it `config` would turn this call into a gate error, and
+/// `NullHost` would never be reached.
 #[test]
 fn set_option_reaches_host_from_command_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -28,8 +27,8 @@ fn set_option_reaches_host_from_command_mode() {
 
 /// `set-option!` rejects value types that are not string, bool, or integer.
 ///
-/// Fail oracle: remove the type check → a list or void would be silently
-/// stringified via `{:?}` and applied as a setting value.
+/// Without the type check, a list or void would be stringified via `{:?}`
+/// and applied as a setting value.
 #[test]
 fn set_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -45,9 +44,6 @@ fn set_option_invalid_value_type_errors() {
 
 /// In init mode with valid args, `set-option!` reaches the host (NullHost → Err,
 /// proving the guard was passed and the host was called).
-///
-/// Fail oracle: make the guard unconditionally reject → the host is never called
-/// → the error message would contain "init" instead of "NullHost".
 #[test]
 fn set_option_init_mode_calls_host() {
     let mut h = SteelCtxTestHarness::new();
@@ -92,9 +88,7 @@ fn set_option_accepts_string_bool_int_values() {
 /// mirroring `set-option!`. `get-buffer-option` is `cmd`-gated instead,
 /// mirroring `set-buffer-option!` — see that test below.
 ///
-/// Fail oracle: change `get-option`'s table entry to `cmd` → this call
-/// would fail with a gate error during init instead of reaching (and
-/// erroring on) `NullHost`.
+/// With a `cmd` table entry, this call would hit a gate error during init.
 #[test]
 fn get_option_reaches_host_during_init_eval() {
     let mut h = SteelCtxTestHarness::new();
@@ -138,8 +132,8 @@ fn get_buffer_option_command_mode_calls_host_with_explicit_bid() {
 /// `set-buffer-option!` is blocked in init mode (`cmd` kind) — gated at
 /// registration time, tested via the gate primitive directly.
 ///
-/// Fail oracle: change the table entry from `cmd` to `open` → callable from
-/// `init.scm`, where there is no meaningful buffer to target.
+/// `init.scm` has no meaningful buffer to target, so the entry must stay
+/// `cmd`.
 #[test]
 fn set_buffer_option_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -157,9 +151,6 @@ fn set_buffer_option_blocked_in_init_mode() {
 
 /// `set-buffer-option!` rejects value types that are not string, bool, or
 /// integer, before ever consulting the host.
-///
-/// Fail oracle: remove the type check → a list would be silently
-/// stringified via `{:?}` and applied as a setting value.
 #[test]
 fn set_buffer_option_invalid_value_type_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -176,9 +167,6 @@ fn set_buffer_option_invalid_value_type_errors() {
 /// buffer's language identity, not its settings — before checking the bid,
 /// so the error names `set-buffer-language!` rather than the (also true,
 /// but less useful) "invalid buffer id" from `NullHost`.
-///
-/// Fail oracle: drop the special case → the error becomes "invalid buffer
-/// id" here, or "unknown setting 'language'" against a real host.
 #[test]
 fn set_buffer_option_language_key_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -365,9 +353,8 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
 /// With valid args and a bid the host recognizes, `set-buffer-option!`
 /// reaches the host and forwards exactly the coerced `(key, value, bid)`.
 ///
-/// Fail oracle: any guard rejecting unconditionally, or the builtin
-/// forwarding live focus instead of the explicit `bid`, would leave
-/// `calls` empty or wrong.
+/// Forwarding live focus in place of the explicit `bid` would show up as a
+/// wrong entry in `calls`.
 #[test]
 fn set_buffer_option_reaches_host() {
     let mut h = SteelCtxTestHarness::new();

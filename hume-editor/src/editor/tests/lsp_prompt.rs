@@ -112,10 +112,8 @@ fn second_prompt_while_one_is_open_errors() {
 /// above_it`). `close-drawer!` now excises the drawer in place instead of
 /// truncating everything above it.
 ///
-/// Fail oracle: before the excise fix, `close_drawer` truncated at the
-/// drawer's own ref, sweeping the prompt above it and firing its callback
-/// with `#f` as collateral — `ed.state.minibuf()` below would be `None` and
-/// `pending_work` would hold the `#f` call.
+/// Truncating at the drawer's own ref would sweep the prompt and fire its
+/// callback with `#f`.
 #[test]
 fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -154,9 +152,8 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
 /// owns the keyboard and paints over everything else, so painting a dead
 /// prompt row underneath it would show state nothing can act on.
 ///
-/// Fail oracle: before this fix, `EditorState::minibuf()` delegated to
-/// `InputStack::minibuf()` (topmost-of-any-depth), so the first assertion
-/// below would still find the buried prompt.
+/// Delegating `EditorState::minibuf()` to `InputStack::minibuf()`
+/// (topmost of any depth) would still find the buried prompt.
 #[test]
 fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
     let tmp = safe_tempdir();
@@ -317,12 +314,10 @@ fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
 /// a registered mappable command reachable via `(call! "exit-insert" bid)` from
 /// any mode, not gated on Insert actually being current.
 ///
-/// Fail oracle: if `end_insert_session` truncated `mode_layer()`
-/// unconditionally (whatever layer that happens to be) instead of looking
-/// up the `Insert` layer by kind, this call would truncate `Prompt` instead
-/// — running its `tear_down` (which never fires a Steel callback) instead
-/// of `finish_steel_prompt`, so `on-confirm` would never fire and the
-/// assertions below would fail.
+/// `end_insert_session` must look up the `Insert` layer by kind. Truncating
+/// whatever `mode_layer()` returns would tear down `Prompt` here through its
+/// `tear_down`, which never fires a Steel callback, so `on-confirm` would
+/// never run.
 #[test]
 fn exit_insert_outside_insert_does_not_cancel_an_unrelated_prompt() {
     let tmp = safe_tempdir();

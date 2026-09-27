@@ -521,7 +521,7 @@ fn lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_
     // Regression: a resolution failure must never silently drop the
     // callback — the documented `(err result)` contract (exactly one
     // non-`#f`) must hold even when no request/response pair could ever
-    // exist. Before the fix, the callback simply never fired here.
+    // exist.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {});
@@ -563,9 +563,8 @@ fn lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_
 fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     // Same contract as the unknown-server case above, for the other
     // resolve_server failure mode: a server that resolved fine at
-    // registration time but has since crashed. Without the fix, a plugin
-    // relying on the err branch (e.g. sighelp's popup-close-on-error) would
-    // never see it — the request would just sit silently dropped.
+    // registration time but has since crashed. A plugin relying on the err
+    // branch (e.g. sighelp's popup-close-on-error) must still see it.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let sid = setup_with(&mut ed, |_b, _sid| {});
@@ -680,9 +679,8 @@ fn require_focus_drops_the_callback_after_a_buffer_switch() {
 /// (onto a sibling pane showing the very same buffer) would still admit the
 /// response and deliver it into whichever pane happened to be focused.
 ///
-/// Fail oracle: revert `anchor_admits` to compare `self.focused_buffer_id()
-/// != anchor.bid` instead of the pane — this test goes red because the
-/// split never changes the buffer, only the pane.
+/// Comparing `self.focused_buffer_id()` against `anchor.bid` in
+/// `anchor_admits` would miss this, since the split changes only the pane.
 #[test]
 fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
     use hume_scripting::host::CommandHost;
@@ -778,10 +776,9 @@ fn no_require_focus_still_delivers_after_a_buffer_switch() {
 /// Callback 2 (`#:require-focus #t`) must be re-checked *at that point*, not
 /// just once back at drain time, or it fires over the wrong buffer anyway.
 ///
-/// Fail oracle: without `Editor::run_pending_batch`'s per-call re-check
-/// (a plain `PendingWork::Call(proc, args)` with no anchor to re-check),
-/// callback 2 runs unconditionally once dequeued and "b-fired" lands in the
-/// message log despite the switch.
+/// Without `Editor::run_pending_batch`'s per-call re-check, callback 2
+/// would run once dequeued and "b-fired" would land in the message log
+/// despite the switch.
 #[test]
 fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
     let tmp = safe_tempdir();
@@ -835,10 +832,6 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
 /// drain, both admitted at drain time (neither has run, so `bid`'s
 /// `text_gen` still matches both anchors) — only a re-check at dequeue,
 /// after callback 1's edit has actually landed, catches the staleness.
-///
-/// Fail oracle: same as the focus-switch sibling test above — without the
-/// per-call re-check, callback 2 fires despite the edit callback 1 just
-/// applied.
 #[test]
 fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch() {
     let tmp = safe_tempdir();

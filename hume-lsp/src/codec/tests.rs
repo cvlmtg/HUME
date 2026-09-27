@@ -255,7 +255,7 @@ fn write_emits_exact_crlf_crlf() {
     let s = String::from_utf8_lossy(&buf);
     assert!(s.starts_with("Content-Length: "));
     assert!(s.contains("\r\n\r\n"));
-    // Flip check: a bare "\n\n" terminator (no \r) must NOT appear before body.
+    // A bare "\n\n" terminator (no \r) must not appear before the body.
     let header_end = s.find("\r\n\r\n").unwrap();
     assert!(!s[..header_end].contains("\n\n"));
 }

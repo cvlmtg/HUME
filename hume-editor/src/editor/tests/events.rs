@@ -10,8 +10,8 @@ use hume_grid::Rect;
 /// what turns that into the fired hook, not any write at the truncate site
 /// itself.
 ///
-/// Verification: install an `on-mode-change` handler that logs a message;
-/// a new log entry proves the hook fired. Deliberately not a cursor motion
+/// The test installs an `on-mode-change` handler that logs a message, so a
+/// new log entry shows the hook fired. Deliberately not a cursor motion
 /// (as the sibling mouse-click test below uses) — with `select-inserted-text`
 /// on, the entry hook's own `move-right` would land inside the pinned typed
 /// run and get folded into the Esc-time auto-select, then cancelled out by
@@ -131,8 +131,8 @@ fn mouse_click_in_insert_fires_on_mode_change() {
 /// livelocking the editor.  The watchdog only bounds each individual eval,
 /// not the re-drain loop.
 ///
-/// Fail oracle: remove the `MAX_EVENT_DRAIN` cap from `settle` →
-/// this test never returns.
+/// Without the `MAX_EVENT_DRAIN` cap in `settle`, this test would never
+/// return.
 #[test]
 fn hook_feedback_loop_is_cut_off_by_drain_cap() {
     use crate::testing::MockHost;
@@ -181,9 +181,6 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
 /// since the two calls always differ, both are genuine changes and both
 /// re-enqueue `OnLanguageSet` — independent of what the previous invocation
 /// left behind.
-///
-/// Fail oracle: cap `settle` on pass count instead of total hooks
-/// processed → this test times out instead of returning.
 #[test]
 fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
     use crate::testing::MockHost;
@@ -234,9 +231,6 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 /// fires them, via its own `settle()` call — the same one that fires
 /// everything else. This test pins the underlying property `settle()` relies
 /// on: `queue_event` alone never fires a handler.
-///
-/// Fail oracle: skip calling `settle()` after `queue_event` — the handler
-/// never runs, and `pending_work` never empties.
 #[test]
 fn queued_hooks_require_explicit_settle() {
     use crate::editor::event::EditorEvent;
@@ -289,10 +283,10 @@ fn queued_hooks_require_explicit_settle() {
 /// (e.g. an `on-language-set` handler that installs per-language state an
 /// `on-buffer-open` handler then reads).
 ///
-/// Fail oracle: reorder `detect_pending_languages` back to firing
-/// `OnBufferOpen` before `detect_and_set_language`, or revert
-/// `open_buffer_and_notify` to push `OnBufferOpen` at open time — either way
-/// `hook_order` flips to `[OnBufferOpen, OnLanguageSet]`.
+/// `detect_pending_languages` runs `detect_and_set_language` before it fires
+/// `OnBufferOpen`, and `open_buffer_and_notify` does not push `OnBufferOpen`
+/// at open time. Breaking either one flips `hook_order` to
+/// `[OnBufferOpen, OnLanguageSet]`.
 #[test]
 fn on_buffer_open_queued_after_on_language_set() {
     use crate::editor::buffer::Buffer;
@@ -354,9 +348,9 @@ fn on_buffer_open_queued_after_on_language_set() {
 /// a second time for this buffer, which would append a spurious third entry
 /// if `set_buffer_language_impl`'s unchanged-value early return ever broke.
 ///
-/// Fail oracle: drop the `open_hook_pending`/`pending_language_detection`
-/// bookkeeping `Editor::open` now does → `hook_order` is `["on-language-set"]`
-/// (or empty, if language detection also finds nothing to change).
+/// Without the `open_hook_pending`/`pending_language_detection` bookkeeping
+/// in `Editor::open`, `hook_order` would be `["on-language-set"]` (or empty,
+/// if language detection also finds nothing to change).
 #[test]
 fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
     use crate::testing::MockHost;
@@ -415,10 +409,10 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
 /// `OnBufferOpen` was already announced — the pairing invariant
 /// `close_buffer_and_notify` documents and
 /// `unix::scripting_effects::buffer_opened_and_closed_in_one_eval_fires_neither_hook`
-/// already asserts for a buffer opened mid-eval. Before the fix, the startup
-/// buffer's `open_hook_pending` defaulted to `false` (it never went through
-/// `open_buffer_and_notify`), so closing it fired an unpaired
-/// `on-buffer-close` despite `on-buffer-open` never having fired.
+/// already asserts for a buffer opened mid-eval. The startup buffer never
+/// goes through `open_buffer_and_notify`, so `Editor::open` sets its
+/// `open_hook_pending` itself. Left at `false`, closing the buffer would
+/// fire an unpaired `on-buffer-close` though `on-buffer-open` never fired.
 #[test]
 fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
     let dir = safe_tempdir();
@@ -524,9 +518,8 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
 /// sat idle (or an `(after 0 …)` timer firing between keystrokes) never
 /// reached its handler — not late, never.
 ///
-/// Fail oracle: move the drain back into `handle_input` (equivalently: make
-/// `settle()`'s merged fixpoint a no-op unless a keystroke just ran) → the
-/// handler never fires, since this test dispatches nothing at all.
+/// A drain that lived in `handle_input`, or that only ran after a keystroke,
+/// would never fire the handler here, since this test dispatches nothing.
 #[test]
 fn event_raised_from_async_work_fires_on_settle_with_no_input() {
     use crate::testing::MockHost;
@@ -572,11 +565,6 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
 /// correct FIFO trace and is caught either way. Pins the merge's core
 /// guarantee: one FIFO queue, drained front-to-back, not the
 /// old two-queue, two-drain-site split.
-///
-/// Fail oracle: drain every queued `Call` before any `Event` (or vice
-/// versa) instead of popping the merged queue in insertion order → the
-/// trace log below no longer matches
-/// `["call-0", "event", "call-a", "call-b"]`.
 #[test]
 fn fifo_order_preserved_across_call_and_event_items() {
     let tmp = safe_tempdir();
@@ -632,10 +620,10 @@ fn fifo_order_preserved_across_call_and_event_items() {
 /// Bounded counterpart to the cascade-cap tests below: exactly two fires,
 /// not a runaway loop.
 ///
-/// Fail oracle: revert `settle`'s inner loop to a single pass over one
-/// snapshot (the pre-merge `drain_pending_steel_calls` shape) → the second,
-/// handler-queued fire is left in `pending_work` after this `settle()` call
-/// returns, and the buffer's language stays at the first-fire value.
+/// If `settle`'s inner loop made a single pass over one snapshot, the
+/// second, handler-queued fire would still be in `pending_work` when
+/// `settle()` returns, and the buffer's language would stay at the
+/// first-fire value.
 #[test]
 fn handler_queued_event_drains_within_the_same_settle_call() {
     use crate::testing::MockHost;
@@ -683,10 +671,6 @@ fn handler_queued_event_drains_within_the_same_settle_call() {
 /// queued; a following `settle()` call is what fires it. Pins the
 /// separation of concerns: draining moved entirely out of the per-frame
 /// render-prep path.
-///
-/// Fail oracle: reintroduce a drain call inside `prepare_frame` → the first
-/// assertion below fails (the handler already ran before `settle()` was
-/// ever called).
 #[test]
 fn prepare_frame_alone_does_not_drain_pending_work() {
     use crate::testing::MockHost;
@@ -742,11 +726,9 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
 /// Two buffers, one `on-buffer-save` hook queued per buffer (mirroring what
 /// two `:wa` writes would queue), both drained in the same `settle()` batch.
 ///
-/// Fail oracle: falling back to the focused pane instead of erroring on an
-/// empty `(buffer-panes bid)` → both hook runs silently delete from A
-/// (whichever buffer is focused), so A ends up with both chars removed and
-/// B untouched, with no error in the message log — the exact "wrong buffer"
-/// bug this test exists to catch.
+/// Falling back to the focused pane on an empty `(buffer-panes bid)` would
+/// make both hook runs delete from A (whichever buffer is focused), leaving
+/// B untouched and no error in the message log.
 #[test]
 fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
     use hume_editing::selection::SelectionSet;
@@ -886,11 +868,6 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
 /// itself needs a live terminal to drive (see its own doc), so this pins the
 /// drain half of that guarantee directly: dispatch `:wq`, then `settle()`,
 /// and confirm both the hook ran and `should_quit` is set.
-///
-/// Fail oracle: observe `should_quit` before the hook gets a chance to
-/// drain (`break` on `should_quit` instead of `continue`) → a `:wq` that
-/// also sets `should_quit` in the same dispatch would never fire its
-/// `OnBufferSave` handler.
 #[test]
 fn wq_fires_on_buffer_save_before_quitting() {
     use crate::testing::MockHost;
@@ -929,10 +906,7 @@ fn wq_fires_on_buffer_save_before_quitting() {
 /// even queued until then — `detect_mode_change`'s diff runs inside
 /// `drain_pending_work`'s loop, which only `settle()` calls, so there
 /// is no "queued but undrained" state to observe in between the way there
-/// is for `OnBufferEnter`; the oracle here is the hook's own side effect.
-///
-/// Fail oracle: fold `settle()` into `step()` itself → the first assertion
-/// (still pending right after `step`) fails.
+/// is for `OnBufferEnter`, so the test checks the hook's own side effect.
 #[test]
 fn headless_step_then_settle_fires_a_queued_hook() {
     use crate::testing::MockHost;
@@ -981,8 +955,8 @@ fn headless_step_then_settle_fires_a_queued_hook() {
 /// `on-buffer-enter` for the startup buffer — matching Vim's `BufEnter`
 /// firing once on open.
 ///
-/// Fail oracle: seed `last_entered_buffer` with the startup buffer instead
-/// of `None` → the diff finds nothing new and the hook never fires.
+/// Seeded with the startup buffer, the diff would find nothing new and the
+/// hook would never fire.
 #[test]
 fn startup_buffer_fires_on_buffer_enter_on_the_first_settle() {
     use crate::testing::MockHost;
@@ -1019,8 +993,8 @@ fn startup_buffer_fires_on_buffer_enter_on_the_first_settle() {
 /// fresh `OnBufferEnter` — an unconditional fire would mean a `stat` (via
 /// its Rust reaction) and a Steel call on every idle frame.
 ///
-/// Fail oracle: drop the `last_entered_buffer` comparison in
-/// `Editor::detect_buffer_enter` → every `settle()` fires again.
+/// The `last_entered_buffer` comparison in `Editor::detect_buffer_enter` is
+/// what keeps it quiet.
 #[test]
 fn settle_with_no_focus_change_raises_no_further_on_buffer_enter() {
     use crate::testing::MockHost;
@@ -1061,9 +1035,6 @@ fn settle_with_no_focus_change_raises_no_further_on_buffer_enter() {
 /// `OnBufferEnter`, for the *final* buffer — not one per intermediate write.
 /// The diff is taken against `last_entered_buffer`, not against every raw
 /// write to `state.focus`/`pane.buffer_id`.
-///
-/// Fail oracle: a raise site on the write itself (instead of a diff at
-/// `settle()`'s observation point) would fire twice here.
 #[test]
 fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buffer() {
     use crate::editor::buffer::Buffer;
@@ -1118,10 +1089,6 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
 /// still coalesce into a single `OnBufferEnter` for wherever focus ends up
 /// — `focused_buffer_id()` is one join evaluated once per pass, not two
 /// independent things to diff separately.
-///
-/// Fail oracle: a raise site tied to either write individually (instead of
-/// the derived-join diff at `settle()`'s single observation point) would
-/// fire twice here — once for the pane move, once for the buffer switch.
 #[test]
 fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
     use crate::editor::buffer::Buffer;
@@ -1190,9 +1157,8 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
 /// legal from inside a fired hook, which runs under `Command` mode
 /// (`ScriptingHost::run_steel_calls`).
 ///
-/// Fail oracle: take the diff once before the drain loop instead of once per
-/// pass inside it → only one "entered" fires,
-/// and the handler's own switch is picked up a `settle()` later.
+/// A diff taken once before the drain loop would log only one "entered" and
+/// pick up the handler's own switch a `settle()` later.
 #[test]
 fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_call() {
     let tmp = safe_tempdir();
@@ -1246,8 +1212,8 @@ fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_ca
 /// mechanism, since regaining terminal focus may be relevant to every open
 /// buffer, not just the focused one.
 ///
-/// Fail oracle: raise site missing, or wired to the wrong Steel name, or
-/// `steel_args` returning a non-empty payload.
+/// A missing raise site, a wrong Steel name, or a non-empty `steel_args`
+/// payload would each break this test.
 #[test]
 fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
     use crate::testing::MockHost;
@@ -1286,9 +1252,9 @@ fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
 /// `setting_off_via_set_command_clears_hints_through_the_plugin_hook` covers
 /// the same raise reached through the real shipped plugin's own handler.
 ///
-/// Fail oracle: raise site missing or misplaced (before the write, or on the
-/// buffer-scoped `apply_buffer` path too), wired to the wrong Steel name, or
-/// `steel_args` passing the wrong pair.
+/// The raise has to exist, sit after the write (and off the buffer-scoped
+/// `apply_buffer` path), use the right Steel name, and pass the right pair
+/// through `steel_args`.
 #[test]
 fn on_option_change_fires_key_and_value_after_a_set_global() {
     use crate::testing::MockHost;
@@ -1324,8 +1290,8 @@ fn on_option_change_fires_key_and_value_after_a_set_global() {
 /// Typing one character fires exactly one `on-text-changed`, naming the
 /// edited buffer.
 ///
-/// Fail oracle: swap `bid` for a stale/wrong id in `steel_args`, or drop the
-/// raise entirely → either the count or the buffer-id check below fails.
+/// A stale or wrong id in `steel_args`, or a missing raise, trips either the
+/// count or the buffer-id check below.
 #[test]
 fn typing_one_character_fires_on_text_changed_once() {
     use crate::testing::MockHost;
@@ -1366,9 +1332,6 @@ fn typing_one_character_fires_on_text_changed_once() {
 /// Several mutations to the same buffer before a single `settle()` coalesce
 /// into one `on-text-changed` — the contract `on-text-changed`'s doc states
 /// and `BufferStore::take_text_changed` implements.
-///
-/// Fail oracle: raise from a per-mutation write site instead of the
-/// `text_gen` diff → three fires instead of one.
 #[test]
 fn several_edits_before_one_settle_coalesce_into_one_event() {
     use crate::testing::MockHost;
@@ -1492,8 +1455,8 @@ fn e_bang_reload_fires_on_text_changed() {
 /// `return` before `cmd` ever runs) never bumps `text_gen`, so it must not
 /// fire `on-text-changed`.
 ///
-/// Fail oracle: remove the read-only guard, or move this raise upstream of
-/// it → `insert_char` runs, `text_gen` bumps, and this fires.
+/// Without the read-only guard, or with this raise moved upstream of it,
+/// `insert_char` would run, `text_gen` would bump, and the hook would fire.
 #[test]
 fn read_only_refused_edit_fires_no_on_text_changed() {
     use crate::editor::doc_ops;
@@ -1596,9 +1559,6 @@ fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
 /// an uppercase one lowercases), so every invocation bumps `text_gen` and
 /// re-triggers `on-text-changed`, guaranteeing the loop never runs dry on
 /// its own.
-///
-/// Fail oracle: move `detect_text_changed` outside the fixpoint (mirroring
-/// `drain_async_sources`) → this test never returns.
 #[test]
 fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
     // Selection starts on the letter `a` and never moves — `make-text-*`
@@ -1648,10 +1608,9 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
 /// the new scratch buffer instead announces its own `on-buffer-open`, like
 /// any other freshly opened buffer.
 ///
-/// Fail oracle: if `close_buffer`'s last-buffer branch still swapped content
-/// in place under the closed id, `focused_buffer_id()` would equal the
-/// closed `bid` and `on-text-changed` would fire once instead of
-/// `on-buffer-open`.
+/// A content swap under the closed id would leave `focused_buffer_id()`
+/// equal to the closed `bid` and fire `on-text-changed` where
+/// `on-buffer-open` belongs.
 #[test]
 fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
     use crate::testing::MockHost;
@@ -1712,9 +1671,9 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
 /// coverage never exercised end-to-end (it calls `set_view_content`
 /// directly, bypassing `open_read_only_view`'s reuse path).
 ///
-/// Fail oracle: change `open_read_only_view`'s reuse branch to close and
-/// reopen the view buffer instead of calling `set_view_content` → the second
-/// open also starts from a fresh baseline and this fires zero times.
+/// If `open_read_only_view`'s reuse branch closed and reopened the view
+/// buffer, the second open would start from a fresh baseline too and the
+/// hook would never fire.
 #[test]
 fn read_only_view_refresh_fires_on_text_changed() {
     use crate::testing::MockHost;
@@ -1773,10 +1732,6 @@ fn read_only_view_refresh_fires_on_text_changed() {
 /// global paste-staleness counter, see `BufferStore::edit_seq`'s doc) must
 /// not move either, or a no-op edit command would wrongly stale a pending
 /// paste stamp.
-///
-/// Fail oracle: remove the `cs.is_identity()` guard in `Buffer::apply_edit`
-/// → `text_gen` bumps and this fires once. Remove the matching guard in
-/// `doc_ops::finish_edit` → `edit_seq` bumps even though `text_gen` didn't.
 #[test]
 fn identity_edit_fires_no_on_text_changed() {
     use crate::editor::doc_ops;
@@ -1840,10 +1795,6 @@ fn identity_edit_fires_no_on_text_changed() {
 /// returns before `record_revision`): `u` right after one must undo the
 /// *previous* real edit directly, not silently do nothing as if the
 /// identity edit itself were on the undo stack.
-///
-/// Fail oracle: remove the guard (or move it after `record_revision`) → the
-/// identity edit becomes an undo step of its own, and `u` reverts *it*
-/// (a no-op, since it changed nothing) rather than the real edit beneath it.
 #[test]
 fn identity_edit_records_no_undo_revision() {
     use crate::editor::doc_ops;
@@ -1906,10 +1857,10 @@ fn identity_edit_records_no_undo_revision() {
 /// job is narrower: making sure nothing lands on the undo stack for `u` to
 /// later replay as a *second*, phantom mutation.
 ///
-/// Fail oracle: remove `commit_edit_group`'s `cs.is_identity()` guard → the
-/// no-op revision is recorded, `is_dirty()`/`can_undo()` both read `true`
-/// right after `<Esc>`, and `u` fires a second, spurious `on-text-changed`
-/// for a byte-identical buffer instead of being a silent no-op.
+/// Without `commit_edit_group`'s `cs.is_identity()` guard, the no-op
+/// revision would be recorded, `is_dirty()`/`can_undo()` would both read
+/// `true` right after `<Esc>`, and `u` would fire a second `on-text-changed`
+/// for a byte-identical buffer.
 #[test]
 fn insert_then_backspace_records_no_revision() {
     use crate::testing::MockHost;
@@ -1985,8 +1936,9 @@ fn insert_then_backspace_records_no_revision() {
 /// A byte-identical `:e!` reload (`reload_from_text`'s `forward.is_identity()`
 /// case) must not bump `text_gen`, so it must not fire `on-text-changed`.
 ///
-/// Fail oracle: move the identity guard back below `set_text` (its original
-/// position) → `text_gen` bumps before the guard returns, and this fires.
+/// The identity guard sits above `set_text`. Below it, `text_gen` would
+/// already have bumped by the time the guard returned, and the hook would
+/// fire.
 #[test]
 fn identity_reload_fires_no_on_text_changed() {
     use crate::testing::MockHost;
@@ -2032,10 +1984,9 @@ fn identity_reload_fires_no_on_text_changed() {
 /// that closes the edited buffer before its own `on-text-changed` fires must
 /// not hand a dead `BufferId` to any handler.
 ///
-/// Fail oracle: remove `fire_one_event`'s liveness check → the handler
-/// receives the closed buffer's dead id and its first buffer builtin on it
-/// errors, which would surface as a `Severity::Error` the last assertion
-/// below catches.
+/// Without `fire_one_event`'s liveness check, the handler would receive the
+/// closed buffer's dead id, and its first buffer builtin on it would log a
+/// `Severity::Error`.
 #[test]
 fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     let tmp = safe_tempdir();
@@ -2106,9 +2057,9 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
 /// exactly one event per action, not once per write site it happens to
 /// coalesce.
 ///
-/// Fail oracle: a second raise site parallel to `detect_buffer_enter` (or
-/// `detect_buffer_enter` re-firing on a pass where focus didn't actually
-/// change again) would bump either count above 1.
+/// A second raise site parallel to `detect_buffer_enter`, or
+/// `detect_buffer_enter` re-firing on a pass where focus did not change
+/// again, would push either count above 1.
 #[test]
 fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     use hume_scripting::ScriptingHost;
@@ -2178,10 +2129,10 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
 /// first closed the buffer this event was about", the same race an
 /// intervening timer thunk or async callback in the same batch would cause.
 ///
-/// Fail oracle: without `EditorEvent::buffer()`'s generalized check,
-/// `fire_one_event` would run the handler against a dead bid, or —
-/// depending on what the handler's body reads — hit a `LiveBid` raise
-/// logged as a spurious hook error instead of being silently skipped.
+/// Without `EditorEvent::buffer()`'s generalized check, `fire_one_event`
+/// would run the handler against a dead bid. Depending on what the
+/// handler's body reads, that could also hit a `LiveBid` raise and log a
+/// spurious hook error.
 #[test]
 fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     use crate::testing::MockHost;
@@ -2228,10 +2179,9 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
 /// close it before this event's own turn, even though the buffer itself
 /// stays open elsewhere.
 ///
-/// Fail oracle: without the pane half of `run_pending_batch`'s filter, the
-/// handler runs against a closed pane and `viewport-range` (which needs a
-/// live pane) raises, surfacing as a hook error instead of being silently
-/// skipped.
+/// Without the pane half of `run_pending_batch`'s filter, the handler would
+/// run against a closed pane, and `viewport-range` (which needs a live pane)
+/// would raise and log a hook error.
 #[test]
 fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
     use crate::testing::MockHost;
@@ -2295,9 +2245,9 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
 /// handler must not silently drop every handler registered after it for
 /// the same event.
 ///
-/// Fail oracle: without `run_steel_calls`'s per-call isolation, the first
-/// handler's raise aborts the whole `with_mut_reference` session and
-/// "second-fired" never lands in the message log.
+/// Without `run_steel_calls`'s per-call isolation, the first handler's raise
+/// would abort the whole `with_mut_reference` session and "second-fired"
+/// would never reach the message log.
 #[test]
 fn a_raising_hook_handler_does_not_drop_the_next_handler_for_the_same_event() {
     use crate::testing::MockHost;

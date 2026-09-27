@@ -5,11 +5,9 @@ use super::*;
 // ── call! ─────────────────────────────────────────────────────────────────
 
 /// `call_steel_cmd` forwards positional args by value into the invoked
-/// lambda (direct `%dispatch-command` function call).  Independent oracle:
-/// the expected dispatch name is derived from the input arg, not from
-/// re-reading the implementation.
-///
-/// Verification validity: changing "hello" in the assert to "world" makes the test fail.
+/// lambda (direct `%dispatch-command` function call). The expected dispatch
+/// name is derived from the input arg, not from re-reading the
+/// implementation.
 #[test]
 fn call_bang_passes_args_to_command() {
     use steel::rvals::SteelVal;
@@ -43,8 +41,7 @@ fn call_bang_passes_args_to_command() {
 #[test]
 fn call_bang_forwards_multiple_args_to_lambda() {
     // Tests multi-arg forwarding beyond the first positional arg.
-    // Oracle: each dispatched command name equals the corresponding input arg.
-    // Verification: change "z" to "w" in the assert → test fails.
+    // Each dispatched command name equals the corresponding input arg.
     use steel::rvals::SteelVal;
     let mut h = host();
     let mut mock = MockHost::new();

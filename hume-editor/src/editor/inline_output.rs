@@ -213,9 +213,8 @@ mod tests {
     /// still remove both the leaked frame and its own — not just the top
     /// one a blind pop would take.
     ///
-    /// Fail oracle: replace `truncate`'s body with `self.frames.pop();`
-    /// (ignoring `depth`) — `frame_count()` reports `2` (only the leak was
-    /// removed, `middle` itself stuck) instead of `1`.
+    /// A single `self.frames.pop()` that ignores `depth` would remove only the
+    /// leak and leave `frame_count()` at `2`.
     #[test]
     fn truncate_drops_a_leaked_descendant_frame_above_its_own() {
         let mut io = InlineOutput::default();
@@ -255,9 +254,6 @@ mod tests {
     /// not some ambient default — the whole reason `Frame` captures it
     /// rather than a caller re-reading `Editor::kitty_enabled` later (a
     /// different, or differently-configured, host may disagree).
-    ///
-    /// Fail oracle: have `push` ignore its `kitty` argument (always store
-    /// `false`) → this returns `false` instead of `true`.
     #[test]
     fn needs_enter_returns_the_frame_s_own_captured_kitty() {
         let mut io = InlineOutput::default();

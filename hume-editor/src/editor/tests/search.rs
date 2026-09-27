@@ -51,10 +51,9 @@ fn search_esc_restores_position() {
 /// before the first session, and only then does the new stash read
 /// `current_selections`.
 ///
-/// Fail oracle: `push_mode_layer` only no-ops on same-kind re-entry for
-/// `Insert` — if `Search` were made to no-op the same way, this would leave
-/// the `/` prompt and its stash exactly as they were, and the assertion on
-/// `?` below would fail. Stashing *before* the push instead of in
+/// `push_mode_layer` only no-ops on same-kind re-entry for `Insert`. If
+/// `Search` did the same, the `/` prompt and its stash would stay as they
+/// were and `?` would not take over. Stashing *before* the push instead of in
 /// `SearchLayer::setup` would capture the mid-`/`-search preview selection
 /// instead, and cancelling would land on `"world"`, not the original
 /// pre-search position.

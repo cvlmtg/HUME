@@ -74,7 +74,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     // scopes in the real markdown grammar's highlights.scm, so a correctly
     // highlighted line must coalesce into at least two distinct-style runs.
     // Asserting against the popup's own *base* style (not `ResolvedStyle::default`,
-    // which the base style already isn't) is the real oracle here — every
+    // which the base style already isn't) is what makes this meaningful: every
     // run trivially differs from `ResolvedStyle::default` regardless of whether any
     // tree-sitter span was ever applied, which would make this assertion
     // pass even if highlighting were completely broken.

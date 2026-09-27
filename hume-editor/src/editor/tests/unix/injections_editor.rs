@@ -64,9 +64,8 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
 /// directory — `Path::read_dir` on a non-directory errors, and that error
 /// propagated uncaught out of `:plum-list-plugins`.
 ///
-/// Fail oracle: revert `stdlib/list-subdirs` to list every entry instead of
-/// filtering by `is-dir?` → this test's `errors.is_empty()` fails, catching
-/// the same raise a real `.DS_Store` next to an installed plugin used to hit.
+/// `stdlib/list-subdirs` must filter by `is-dir?`, or a real `.DS_Store` next
+/// to an installed plugin raises the same error.
 #[test]
 fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
     let _lock = lock();
@@ -266,12 +265,9 @@ fn plum_install_grammar_unknown_name_warns() {
 
 /// A typed argument wins over the current buffer's language.
 ///
-/// Flip: before the arity-1 fix, `plum-install-grammar` was arity-0 so the
-/// minibuffer silently dropped `nosuchlang` and the command installed `rust`
-/// (the buffer's language) instead — verified by reverting the lambda to
-/// arity-0, which made this test fail because it actually ran a real
-/// `git-clone-rev`/`curl-fetch`/`compile-grammar!` install of `rust` instead
-/// of ever mentioning `nosuchlang`.
+/// An arity-0 `plum-install-grammar` lambda would have the minibuffer drop
+/// `nosuchlang` silently and run a real install of `rust` (the buffer's
+/// language), so the message would never mention `nosuchlang`.
 #[test]
 fn plum_install_grammar_arg_overrides_buffer_language() {
     let _lock = lock();
@@ -337,9 +333,9 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
 /// rather than the real terminal: printing must succeed without ever
 /// entering the alt-screen.
 ///
-/// Flip: drop the `needs_enter`/`tui` guard so `ensure_inline_output_screen`
-/// always enters → this test hangs on `wait_for_keypress` against a real
-/// TTY, or panics against a non-TTY stdin in CI.
+/// Without the `needs_enter`/`tui` guard, `ensure_inline_output_screen` would
+/// always enter, and this test would hang on `wait_for_keypress` against a
+/// real TTY or panic against a non-TTY stdin in CI.
 #[test]
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
     let _lock = lock();
@@ -375,10 +371,9 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 /// Hits the network (real git clone + curl fetch + tree-sitter build of the
 /// `json` grammar); requires `git`, `curl`, and `tree-sitter` on `PATH`.
 ///
-/// Flip: without the `(delete-dir src-dir)` fix in `plum/install-grammar`,
-/// `git-clone-rev` refuses to clone into this pre-seeded non-empty dir and
-/// the command logs an error instead of installing — `out_path` never
-/// appears, and this assertion fails.
+/// Without `(delete-dir src-dir)` in `plum/install-grammar`, `git-clone-rev`
+/// would refuse to clone into this pre-seeded non-empty dir and the command
+/// would log an error, so `out_path` would never appear.
 #[test]
 fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
     let _lock = lock();
@@ -428,10 +423,9 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 /// `_jsx` query dependencies); requires `git`, `curl`, and `tree-sitter` on
 /// `PATH`.
 ///
-/// Flip: reverting the `plum/fetch-query!` call sites back to plain
-/// `curl-fetch` leaves `highlights.scm` as the raw `; inherits: …` stub —
-/// the `starts_with("; inherits")` and `contains('@')` assertions below both
-/// fail on that stub (no `@capture` in a comment-only file).
+/// Plain `curl-fetch` in place of `plum/fetch-query!` would leave
+/// `highlights.scm` as the raw `; inherits: …` stub, a comment-only file with
+/// no `@capture` in it.
 #[test]
 fn plum_install_grammar_resolves_helix_inherits_chain() {
     let _lock = lock();

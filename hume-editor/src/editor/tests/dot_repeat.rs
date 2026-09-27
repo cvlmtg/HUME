@@ -64,8 +64,8 @@ fn dot_repeats_change_with_insert() {
 /// but the pipeline stamps `last_repeatable_action = "delete"` anyway,
 /// silently discarding the user's earlier `change`.
 ///
-/// Fail oracle: without a refusal gate on the stamp, the final assert sees
-/// `command == "delete"` instead of `"change"`.
+/// A refusal gate on the stamp prevents this. Without it, the final assert
+/// would see `command == "delete"`.
 #[test]
 fn read_only_refusal_does_not_clobber_dot_repeat() {
     let mut ed = editor_from("-[foo]> bar\n");
@@ -208,8 +208,8 @@ fn dot_repeat_replays_a_empty_run_step_back() {
     set_cursor(&mut ed, 1);
     ed.feed_key(key('.'));
 
-    // Without the fix, the replayed session's step-back flag is a silent
-    // no-op, leaving the cursor one grapheme past 'e' instead of on it.
+    // The replayed session must honor its step-back flag. If it were ignored,
+    // the cursor would end one grapheme past 'e'.
     assert_eq!(state(&ed), "h-[e]>llo\n");
 }
 
@@ -267,9 +267,6 @@ fn dot_repeats_replace() {
 ///
 /// The original count must survive so that a subsequent plain `.` can still
 /// reproduce the original repetition count.
-///
-/// Fail oracle: if `replay_dot` wrote `PendingRepeat.count` back into
-/// `last_repeatable_action.count`, the final `assert_eq!` would fail.
 #[test]
 fn explicit_count_on_dot_does_not_corrupt_stored_count() {
     let mut ed = editor_from("-[foo]> bar\n");
@@ -403,8 +400,8 @@ fn dot_repeats_plain_paste_after() {
 /// `x d` (select-line, delete) records recipe `[select-line F]`. Pressing `.`
 /// on the next line re-selects the whole line and deletes it.
 ///
-/// Independent oracle: three-line buffer, first `x d` leaves two lines, second
-/// `x d` leaves one line — derived by hand, not from the implementation.
+/// Three-line buffer: the first `x d` leaves two lines and the second leaves
+/// one.
 ///
 /// Regression: if the recipe replay is absent, `.` would delete only the char
 /// the cursor happened to be on (collapsed selection), not the whole line.
@@ -441,8 +438,8 @@ fn dot_repeats_select_line_delete() {
 /// `x Ctrl-x d` selects two lines (one establish + one extend) and deletes them.
 /// `.` replays the full two-step recipe, deleting the next two lines.
 ///
-/// Independent oracle: four-line buffer: first `x Ctrl-x d` leaves two lines;
-/// second replay deletes both → one structural line remains.
+/// Four-line buffer: the first `x Ctrl-x d` leaves two lines, and the replay
+/// deletes both, so one structural line remains.
 #[test]
 fn dot_repeats_extend_select_delete() {
     // Four lines; cursor on 'a'.
@@ -476,14 +473,13 @@ fn dot_repeats_extend_select_delete() {
 /// Navigation (`j` = move-down) before `x d` must NOT appear in the recipe.
 /// Only the `x` (establish) step is recorded; `.` does NOT move down first.
 ///
-/// Independent oracle: four-line buffer; `j x d` deletes line 1 ("bbb\n"),
+/// Four-line buffer; `j x d` deletes line 1 ("bbb\n"),
 /// leaving "aaa\nccc\nddd\n". `.` must re-select line 1 ("ccc\n") and delete
 /// it, giving "aaa\nddd\n". If `j` were in the recipe, `.` would instead move
 /// down from "ccc" to "ddd" first, deleting "ddd\n" and leaving "aaa\nccc\n".
 ///
-/// Fail oracle: if the `is_collapsed()` guard were removed, `j` (a Motion in
-/// Move mode) would always enter the recipe as a first step, making `.` move
-/// down before deleting, producing "aaa\nccc\n" instead of "aaa\nddd\n".
+/// The `is_collapsed()` guard is what keeps `j` (a Motion in Move mode) out of
+/// the recipe.
 #[test]
 fn dot_repeat_navigation_not_in_recipe() {
     // Four lines so that the last-line structural-'\n' protection does not
@@ -509,7 +505,7 @@ fn dot_repeat_navigation_not_in_recipe() {
 
     // `.` replays x (selects current line "ccc\n") + d (deletes it).
     // If j were in the recipe, `.` would move down to "ddd\n" first and delete
-    // that, leaving "aaa\nccc\n" — the oracle below distinguishes the two cases.
+    // that, leaving "aaa\nccc\n". The assertion below tells the two cases apart.
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -542,7 +538,6 @@ fn dot_repeat_collapsed_cursor_empty_recipe() {
 
     // `.` repeats just the delete (no line reselection).
     ed.feed_key(key('.'));
-    // Oracle: second 'b' deleted → "aaa\nb\nccc\n"
     assert_eq!(
         ed.doc().text().to_string(),
         "aaa\nb\nccc\n",
@@ -553,13 +548,10 @@ fn dot_repeat_collapsed_cursor_empty_recipe() {
 /// `x c <text> Esc` records recipe=[select-line F] + insert_inputs=[...]. `.` on
 /// another line re-selects the full line, runs change, and retypes the text.
 ///
-/// Independent oracle: three-line buffer; `x c z Esc` on line 0 deletes
-/// "aaa\n" and inserts 'z' before the remaining content → "zbbb\nccc\n".
-/// Then `.` on line 1 re-selects "ccc\n" via the recipe, runs change (deletes
-/// "ccc", leaving the structural '\n'), inserts 'z' → "zbbb\nz\n".
-///
-/// Fail oracle: without the recipe, `.` would run change on the collapsed
-/// 1-char cursor at 'b', deleting only 'b' and inserting 'z' → "z\nzbb\nccc\n".
+/// Three-line buffer; `x c z Esc` on line 0 replaces "aaa" with 'z' and keeps
+/// the line's '\n' → "z\nbbb\nccc\n". Then `.` on line 1 re-selects "bbb\n"
+/// via the recipe, runs change, and inserts 'z' → "z\nz\nccc\n". Without the
+/// recipe, `.` would change only the 1-char cursor on 'b' → "z\nzbb\nccc\n".
 #[test]
 fn dot_repeats_change_reselects_line() {
     // Three lines; `c` after select-line removes the content but keeps the `\n`.
@@ -590,7 +582,7 @@ fn dot_repeats_change_reselects_line() {
     ed.feed_key(key('j')); // move-down to 'b' (line 1)
     ed.feed_key(key('.')); // re-select "bbb\n" via recipe, change, retype 'z'
 
-    // Oracle: recipe re-selects "bbb\n", change deletes "bbb" (keeps '\n'),
+    // Recipe re-selects "bbb\n", change deletes "bbb" (keeps '\n'),
     // inserts 'z' → "z\nz\nccc\n". Without recipe, only 'b' would be deleted → "z\nzbb\nccc\n".
     assert_eq!(
         ed.doc().text().to_string(),
@@ -602,10 +594,8 @@ fn dot_repeats_change_reselects_line() {
 /// `undo` must clear the selection-recipe buffer so a stale `select-line` does
 /// not leak into the next edit's recipe.
 ///
-/// Fail oracle: drop the `SelectionTracking::Untracked` early-return clear in
-/// `step_update_recipe` (`commands/pipeline.rs`) — `undo` is `Untracked`, so
-/// `selection_recipe` would not be cleared and the assert would see len=1
-/// instead of 0.
+/// `undo` is `Untracked`, and the `SelectionTracking::Untracked` early-return
+/// in `step_update_recipe` (`commands/pipeline.rs`) is what clears the recipe.
 #[test]
 fn undo_clears_selection_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -676,13 +666,13 @@ fn copy_selection_on_next_line_appends_to_the_selection_recipe() {
 /// existing, correct `C` behavior, orthogonal to this test; a word selection
 /// (all content chars, no newline in range) sidesteps it entirely.
 ///
-/// Independent oracle: on `"foo\nbar\nfoo\nbar\n"`, `mm` selects "foo" (line
+/// On `"foo\nbar\nfoo\nbar\n"`, `mm` selects "foo" (line
 /// 0), `C` duplicates it onto "bar" (line 1) at the same columns, `d`
 /// deletes both — each line's own newline survives, leaving
 /// `"\n\nfoo\nbar\n"`. Move down two buffer lines to the second "foo\nbar\n"
 /// pair; `.` must replay `mm` + `C` + `d` there too, leaving `"\n\n\n\n"`.
 ///
-/// Fail oracle: if `copy-selection-on-next-line` reset the recipe instead of
+/// If `copy-selection-on-next-line` reset the recipe instead of
 /// composing (`SelectionTracking::Establishes` instead of `Composes`), `.`
 /// would replay `[C, d]` from a bare cursor instead of `[mm, C, d]` — `C` on
 /// a collapsed cursor duplicates one cursor onto the next line, and `d`
@@ -735,10 +725,9 @@ fn dot_after_find_is_noop() {
 /// `BufferStore::edit_seq()` exactly as a live `d` would: nothing treats a
 /// replayed delete differently from a typed one.
 ///
-/// Fail oracle: make `route_kill`/`capture_to_ring` skip stamping when
-/// called from `run_body` outside the dispatch pipeline (i.e. during
-/// replay) — the ring head would then be stale by the time `p` reads it and
-/// `p` would fall through to "CLIP" instead.
+/// If `route_kill`/`capture_to_ring` skipped stamping when called from
+/// `run_body` outside the dispatch pipeline (i.e. during replay), the ring
+/// head would be stale by the time `p` reads it and `p` would paste "CLIP".
 #[test]
 fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -773,19 +762,15 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
 /// `w d` (word motion select then delete) must record an empty selection
 /// recipe. A bare `.` then deletes the *current* selection, NOT the next word.
 ///
-/// This is the dot-repeat drift bug: before the fix, `w` pushed an establish
-/// step, so `.` re-ran `select-next-word` from the new cursor position and
-/// advanced past the intended word, deleting the one after it instead.
+/// If `w` pushed an establish step, `.` would re-run `select-next-word` from
+/// the new cursor position and advance past the intended word, deleting the
+/// one after it. The `!ctx.extend` exclusion in `step_update_recipe`'s
+/// `SelectionTracking::Extends` arm keeps `w` (a `Motion`, always `Extends`)
+/// out of the recipe.
 ///
-/// Independent oracle: buffer "a foo bar baz\n". `w` selects "foo", `d` deletes
-/// it → "a  bar baz\n". Then `w` selects "bar". `.` must delete "bar" (current
-/// selection), leaving "a   baz\n". The buggy version would re-run
-/// `select-next-word` from "bar", select "baz", and delete that instead.
-///
-/// Fail oracle: remove the `!ctx.extend` exclusion from `step_update_recipe`'s
-/// `SelectionTracking::Extends` arm → `w` (a `Motion`, always `Extends`)
-/// pushes an establish step → recipe is non-empty → `.` selects the NEXT word
-/// ("baz") → buffer would contain "bar" but not "baz".
+/// Buffer "a  foo bar baz\n". `w` selects "foo", `d` deletes it →
+/// "a   bar baz\n". Then `w` selects "bar". `.` must delete "bar" (current
+/// selection), leaving "a    baz\n".
 #[test]
 fn dot_repeat_word_motion_acts_on_current_selection() {
     let mut ed = editor_from("-[a]>  foo bar baz\n");
@@ -831,7 +816,7 @@ fn dot_repeat_word_motion_acts_on_current_selection() {
 /// the two parens, `d` deletes them → "foo (bar) baz". Collapse to one cursor,
 /// move to "bar", `.` must replay `ms(` + `d` on "(bar)" → "foo bar baz".
 ///
-/// Fail oracle: if `ms(` is not recorded in the selection recipe (e.g.
+/// If `ms(` is not recorded in the selection recipe (e.g.
 /// `surround-paren`'s `selection_tracking` were `Untracked`), the recipe is
 /// empty and `.` deletes only the current "bar" selection, leaving
 /// "foo () baz" instead of "foo bar baz".
@@ -957,7 +942,7 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
 /// `m/` + `,` + `d` — re-selecting all remaining "foo" matches, keeping the
 /// (new) primary, and deleting it too.
 ///
-/// Fail oracle: if `keep-primary-selection` reset the recipe instead of
+/// If `keep-primary-selection` reset the recipe instead of
 /// composing, `.` would replay `[,, d]` from whatever selection happens to
 /// remain after the first delete — `,` on a single selection is a no-op, so
 /// `d` would just delete that leftover selection instead of re-running the
@@ -1013,7 +998,7 @@ fn dot_repeat_of_keep_primary_selection_composes_onto_the_prior_recipe() {
 /// "\nccc\nddd\n". `.` must replay `x` + `Ctrl-x` + `S` + `d` on the next two
 /// lines too, removing another: "\n\n".
 ///
-/// Fail oracle: if `split-selection-on-newlines` reset the recipe instead of
+/// If `split-selection-on-newlines` reset the recipe instead of
 /// composing, `.` would replay `[S, d]` from whatever selection happens to
 /// remain — `S` on a single-line (already-collapsed) selection is a no-op,
 /// so `d` would delete only that leftover selection.
@@ -1060,13 +1045,13 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
 /// therefore be inert: `.` still replays the original insert verbatim, not
 /// some "reselect + act" recipe.
 ///
-/// Independent oracle: `i "ab" Esc` on "x" gives "abx"; `mii` re-selects "ab"
+/// `i "ab" Esc` on "x" gives "abx"; `mii` re-selects "ab"
 /// (the just-typed span, unrelated to where `.` will act); replaying the
 /// insert places "ab" again at the selection's start → "ab" + "ab" + "x" =
 /// "ababx". The buffer only grows — no delete ever happens — which is the
 /// signal that `.` ran the insert and nothing resembling "mii + d".
 ///
-/// Fail oracle: if `mii` corrupted `last_repeatable_action` (e.g. by being
+/// If `mii` corrupted `last_repeatable_action` (e.g. by being
 /// misclassified as repeatable) or leaked into its frozen recipe, `.` would
 /// replay some other action (or reselect "ab" again as an operator target)
 /// instead of inserting — the buffer would not end up "ababx".
@@ -1111,9 +1096,8 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
 /// re-selecting the whole word "bar" rather than deleting just that 1-char
 /// cursor.
 ///
-/// Fail oracle: `Untracked` (its state before this fix) means the recipe
-/// stays empty, so `.` would delete only the 1-char cursor left behind,
-/// leaving "ar\n" instead of "\n".
+/// If the command were `Untracked`, the recipe would stay empty and `.` would
+/// delete only the 1-char cursor left behind, leaving "ar\n".
 #[test]
 fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
     let mut ed = editor_from("-[f]>oo bar\n");
@@ -1145,8 +1129,8 @@ fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
 /// leaving "bbb\nccc\n". Move to "ccc"; `.` must replay `select-line` + `d`
 /// there too, leaving "bbb\n".
 ///
-/// Fail oracle: without the "selection unchanged" gate, `m/`'s failed run
-/// still resets the recipe to `[select-all-matches]` — `.` replays that
+/// Without the "selection unchanged" gate, `m/`'s failed run would still
+/// reset the recipe to `[select-all-matches]` — `.` replays that
 /// (another no-op) then `delete`, which acts on the current 1-char cursor
 /// instead of the whole line, leaving "bb\n" instead of "bbb\n".
 #[test]
@@ -1186,8 +1170,8 @@ fn dot_repeat_of_failed_select_all_matches_preserves_prior_recipe() {
 /// `ms(` on it would no-op); `d` deletes it, leaving "bbb\nccc\n". Move to
 /// "ccc"; `.` must replay `select-line` + `d` there too, leaving "bbb\n".
 ///
-/// Fail oracle: without the "selection unchanged" gate, the no-op `ms(`
-/// still resets the recipe to `[surround-paren]` — `.` replays that (another
+/// Without the "selection unchanged" gate, the no-op `ms(` would still
+/// reset the recipe to `[surround-paren]` — `.` replays that (another
 /// no-op, cursor unchanged) then `delete`, which acts on the current 1-char
 /// cursor instead of the whole line, leaving "bb\n" instead of "bbb\n".
 #[test]
@@ -1226,10 +1210,10 @@ fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
 /// `repeat-last-action`'s registration (`registry/defaults/editor_cmds.rs`)
 /// and `Editor::replay_dot`'s own paste-commit step.
 ///
-/// Independent oracle: `KillRing::cycle_position()` is the ring's own cursor,
+/// `KillRing::cycle_position()` is the ring's own cursor,
 /// read directly rather than inferred from which text ended up pasted.
 ///
-/// Fail oracle: without `repeat-last-action`'s `.defers_paste_commit()` (and
+/// Without `repeat-last-action`'s `.defers_paste_commit()` (and
 /// the matching commit/defer decision in `replay_dot`), the paste session is
 /// closed before the replay runs; `do_paste_cycle` sees no open Paste-kind
 /// `active_session` and returns before ever calling `cycle_older()`, so
@@ -1302,7 +1286,7 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
 /// `last_repeatable_action` with its own name so `.` replays the outer
 /// Steel body, not the inner native command.
 ///
-/// Independent oracle: buffer is "foo bar\n", initial selection is "foo".
+/// Buffer is "foo bar\n", initial selection is "foo".
 /// Run `del-sel` (repeatable Steel command that calls delete internally) →
 /// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar" — the
 /// first (and only) word on its line, so its leading space is indentation
@@ -1310,13 +1294,11 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
 /// follows) — the default around-word span is bare "bar" — then `.` replays
 /// `del-sel` on that selection, leaving " \n".
 ///
-/// Fail oracle 1: if `meta().repeatable` returned `false` for `SteelBacked`,
-/// `last_repeatable_action` would be `None` (no prior recording) — `.` would
-/// be a no-op and "bar" would survive.
-///
-/// Fail oracle 2: if the outer name didn't win the slot, `last_repeatable_action`
-/// would be `"delete"` (the inner native) — the result would be the same but
-/// the name assertion below would catch the missing outer-name record.
+/// If `meta().repeatable` returned `false` for `SteelBacked`,
+/// `last_repeatable_action` would be `None` (no prior recording), so `.` would
+/// be a no-op and "bar" would survive. The name assertion covers the other
+/// case: if the outer name didn't win the slot, the buffer result would be
+/// the same but `last_repeatable_action` would name the inner `"delete"`.
 #[test]
 fn steel_dot_repeatable_round_trip() {
     let mut ed = editor_with_steel(
@@ -1344,7 +1326,6 @@ fn steel_dot_repeatable_round_trip() {
     // Select "bar" then press `.` — replay must delete the current selection.
     ed.feed_key(key('w')); // select "bar" (bare — indent kept)
     ed.feed_key(key('.')); // replay "del-sel" → delete "bar"
-    // Oracle: " bar\n" → " \n" after "bar" is deleted.
     assert_eq!(
         ed.doc().text().to_string(),
         " \n",
@@ -1355,10 +1336,9 @@ fn steel_dot_repeatable_round_trip() {
 /// A plain `define-command!` (non-repeatable) must not overwrite
 /// `last_repeatable_action` set by a prior native edit.
 ///
-/// Fail oracle: if `meta().repeatable` returned `true` for `SteelBacked`,
-/// running the Steel command would stamp `last_repeatable_action` with its
-/// name; the subsequent `.` would replay the Steel command instead of the
-/// native delete.
+/// If `meta().repeatable` returned `true` for `SteelBacked`, running the
+/// Steel command would stamp `last_repeatable_action` with its name; the
+/// subsequent `.` would replay the Steel command instead of the native delete.
 #[test]
 fn steel_command_is_not_repeatable() {
     let mut ed = editor_with_steel(
@@ -1395,10 +1375,9 @@ fn steel_command_is_not_repeatable() {
 /// A plain `define-command!` (non-repeatable) must NOT overwrite
 /// `last_repeatable_action` set by a prior native edit.
 ///
-/// Fail oracle: change `meta().repeatable` to `true` for all `SteelBacked`
-/// commands in `editor/mod.rs` `dispatch()` and the non-repeatable Steel command
-/// would overwrite `last_repeatable_action` — the subsequent `.` would replay
-/// the Steel command, the name assertion would differ.
+/// If `meta().repeatable` were `true` for every `SteelBacked` command, the
+/// non-repeatable Steel command would overwrite `last_repeatable_action` and
+/// the subsequent `.` would replay it.
 #[test]
 fn non_repeatable_steel_does_not_hijack_dot() {
     let mut ed = editor_with_steel(
@@ -1458,7 +1437,7 @@ fn non_repeatable_steel_does_not_hijack_dot() {
 /// a word motion whose landing spot relative to the punctuation would add
 /// another such context difference.)
 ///
-/// Independent oracle: "hello" typed then deleted word-backward nets to
+/// "hello" typed then deleted word-backward nets to
 /// nothing, so a correct replay gives the exact same result as typing just
 /// "hi" directly into either pair of parens. If `Ctrl-w` weren't replayed,
 /// the typed "hello" would survive in the second pair: "(hi) (hellohi)\n".
@@ -1488,8 +1467,8 @@ fn dot_repeats_ctrl_w_inside_insert() {
 
 /// Same proof for a Steel command that calls a native command mid-Insert
 /// (`dispatch`'s Steel path → `call!` → `run_command_sync`), rather than a
-/// native binding like `Ctrl-w`. Same independent oracle as
-/// `dot_repeats_ctrl_w_inside_insert`.
+/// native binding like `Ctrl-w`. The expected result is derived the same way
+/// as in `dot_repeats_ctrl_w_inside_insert`.
 #[test]
 fn steel_insert_binding_calling_native_command_is_recorded_for_dot_repeat() {
     let tmp = safe_tempdir();
@@ -1527,7 +1506,7 @@ fn steel_insert_binding_calling_native_command_is_recorded_for_dot_repeat() {
 /// fallback's raw key — see `InsertInput`'s own doc for why the binding is
 /// what's recorded), and recorded only once.
 ///
-/// Independent oracle: identical setup and expected result to `tabs.rs`'s
+/// Identical setup and expected result to `tabs.rs`'s
 /// `dot_repeat_replays_tab` (the plain unbound-Tab case) — `tab-or-complete`
 /// must reproduce that exact behaviour, not a doubled or dropped tab.
 #[test]
@@ -1772,7 +1751,7 @@ fn tab_or_complete_completion_branch_leaves_no_popup_after_dot_repeat() {
 /// Asserts that shape, and that `.` on "bar" reproduces the same text in one
 /// undo step.
 ///
-/// Independent oracle: the text a live `c he<accept>` wrote in the first
+/// The text a live `c he<accept>` wrote in the first
 /// pair of parens is exactly what `.` must write in the second.
 fn assert_accepted_completion_is_dot_repeated(extra_script: &str, accept: KeyEvent, then: &str) {
     let tmp = safe_tempdir();
@@ -1864,7 +1843,7 @@ fn dot_repeats_an_insert_key_binding_that_accepts_then_edits() {
 /// A bound motion inside the session (here the Left arrow) is replayed in
 /// order, so text typed after it lands where it did live.
 ///
-/// Independent oracle: `i ab <Left> c` writes "acb" — the `c` lands between
+/// `i ab <Left> c` writes "acb" — the `c` lands between
 /// `a` and `b` — so `.` at the next line's start must write "acb" too.
 #[test]
 fn dot_repeats_an_arrow_key_inside_insert() {
@@ -1891,7 +1870,7 @@ fn dot_repeats_an_arrow_key_inside_insert() {
 /// that action's `insert_inputs` instead (proven by
 /// `dot_repeats_ctrl_w_inside_insert`'s same mechanism).
 ///
-/// Fail oracle: without the `repeat_slot_owned` gate on `step_stamp_repeatable`,
+/// Without the `repeat_slot_owned` gate on `step_stamp_repeatable`,
 /// `last_repeatable_action.command` would read `"delete"` (stamped by
 /// `Ctrl-x`'s own dispatch through `commands::run`) instead of the command
 /// that opened the session.
@@ -1925,7 +1904,7 @@ fn native_command_bound_mid_insert_does_not_hijack_last_repeatable_action() {
 /// again on replay, at the new site, rather than always writing wherever
 /// the very first run wrote.
 ///
-/// Independent oracle: deleting "a" then "d" with register 3 armed each
+/// Deleting "a" then "d" with register 3 armed each
 /// time must leave register 3 holding "d" (the most recent capture) — the
 /// same as pressing the binding twice by hand, once per site.
 #[test]
@@ -1964,10 +1943,10 @@ fn insert_key_binding_register_prefix_reruns_on_replay() {
 /// naming the command that *opened* the session — and `.` must reproduce
 /// both the typed text and the binding's own edit at the new site.
 ///
-/// Independent oracle: "delete a char, type one char, then immediately
-/// delete that same char" nets to exactly the original deletion — so a
-/// correct replay leaves the second site exactly as if only the plain
-/// delete had run there, with no typed character surviving.
+/// "Delete a char, type one char, then immediately delete that same char"
+/// nets to exactly the original deletion — so a correct replay leaves the
+/// second site exactly as if only the plain delete had run there, with no
+/// typed character surviving.
 #[test]
 fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
     let tmp = safe_tempdir();
@@ -2018,7 +1997,7 @@ fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
 /// about — what matters is that the *same* placement, relative to the
 /// motion's own destination, reproduces at the second line on replay.
 ///
-/// Independent oracle: without the motion being replayed, the fallback
+/// Without the motion being replayed, the fallback
 /// would insert right where `insert-at-selection-start` left the cursor —
 /// before "e" — giving "d;ef" instead.
 #[test]
@@ -2059,7 +2038,7 @@ fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
 /// `delete-word-backward` chosen once a real item is picked) is recorded
 /// as an `InsertInput::Result` and replayed directly.
 ///
-/// Independent oracle: live `i <ctrl-y> <enter>` deletes the word behind
+/// A live `i <ctrl-y> <enter>` deletes the word behind
 /// the cursor ("abc ") with nothing typed in between — so `.` at the front
 /// of "xyz" must delete "uvw " the same way, with no picker ever opening
 /// during replay.

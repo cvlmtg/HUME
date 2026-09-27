@@ -197,7 +197,7 @@ mod tests {
         assert!(m.score(&p, "FooBar").is_some());
     }
 
-    /// Independent oracle: a contiguous/boundary match must outrank a
+    /// A contiguous/boundary match must outrank a
     /// scattered subsequence match for the same query, regardless of the
     /// exact score values nucleo assigns (those are the crate's internal
     /// tuning and would make the test brittle to a version bump).

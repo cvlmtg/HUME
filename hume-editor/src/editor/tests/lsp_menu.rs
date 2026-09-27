@@ -280,9 +280,8 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
 /// above — a code-action menu must still open while the user is browsing
 /// diagnostics in the drawer.
 ///
-/// Fail oracle: before this fix, `is_stack_settled()` was `top() ==
-/// mode_layer()`, so any overlay — including a non-modal drawer — made it
-/// `false`; the first assertion below would find no menu.
+/// If `is_stack_settled()` were `top() == mode_layer()`, any overlay,
+/// non-modal drawer included, would make it `false` and no menu would open.
 #[test]
 fn show_menu_opens_over_an_open_drawer() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -319,9 +318,8 @@ fn show_menu_opens_over_an_open_drawer() {
 /// staleness — firing the outgoing menu's callback with `#f` via ordinary
 /// teardown, same shape `show-drawer-list!`'s own self-replace already has.
 ///
-/// Fail oracle: before this fix, `show_menu` had no `top`-is-`Menu`
-/// exception, so the second call would be dropped as stale (`is_none()`
-/// would fail) and the first menu's callback would never fire.
+/// Without `show_menu`'s `top`-is-`Menu` exception, the second call would be
+/// dropped as stale and the first menu's callback would never fire.
 #[test]
 fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
     use crate::editor::host_impl::EditorHostImpl;

@@ -8,9 +8,6 @@ use hume_scripting::ScriptingHost;
 
 /// `buffer-text` returns the buffer's live, unsaved content — not a stale
 /// on-open snapshot.
-///
-/// Fail oracle: reading the buffer's content at open time (or from disk)
-/// instead of its current rope would still see "abcdef\n", not "Xabcdef\n".
 #[test]
 fn buffer_text_returns_live_dirty_content() {
     let tmp = safe_tempdir();
@@ -34,9 +31,6 @@ fn buffer_text_returns_live_dirty_content() {
 /// `buffer-lines` excludes the phantom trailing line ropey counts past a
 /// buffer's structural trailing `\n` — the same line the statusline and
 /// `:w` never count either.
-///
-/// Fail oracle: dropping the ghost-line subtraction would return a fourth,
-/// empty trailing entry.
 #[test]
 fn buffer_lines_excludes_the_phantom_trailing_line() {
     let tmp = safe_tempdir();
@@ -57,9 +51,8 @@ fn buffer_lines_excludes_the_phantom_trailing_line() {
 /// `buffer-line-count` excludes the same phantom trailing line as
 /// `buffer-lines`.
 ///
-/// Independent oracle: `3` is read off the fixture by eye (three content
-/// lines), not derived from `buffer-lines`. Fail oracle: dropping the
-/// ghost-line subtraction would return 4.
+/// The expected `3` is read off the fixture by eye (three content lines)
+/// rather than derived from `buffer-lines`.
 #[test]
 fn buffer_line_count_excludes_the_phantom_trailing_line() {
     let tmp = safe_tempdir();
@@ -138,9 +131,6 @@ fn buffer_lines_start_only_defaults_end_to_the_line_count() {
 /// `buffer-text` always returns `\n` line endings, even for a buffer whose
 /// source used `\r\n` — `BufferText::from`'s CRLF normalization, not a second
 /// strip pass in the builtin itself.
-///
-/// Fail oracle: reading the rope's raw content without normalization would
-/// still see the `\r` bytes.
 #[test]
 fn buffer_text_normalizes_crlf_to_lf() {
     let tmp = safe_tempdir();
@@ -160,9 +150,6 @@ fn buffer_text_normalizes_crlf_to_lf() {
 
 /// An `#:end` past the buffer's line count raises rather than silently
 /// clamping — fail-fast, matching the project's error-handling convention.
-///
-/// Fail oracle: silently clamping `end` to the line count would leave
-/// `:messages` empty instead of logging this error.
 #[test]
 fn buffer_lines_out_of_range_end_raises() {
     let tmp = safe_tempdir();
@@ -191,10 +178,6 @@ fn buffer_lines_out_of_range_end_raises() {
 /// A `#:start` past `#:end` raises too — the other half of the `start > end
 /// || end > line_count` guard, previously untested (deleting `start > end
 /// ||` from the guard would have left the whole suite green).
-///
-/// Fail oracle: silently treating an inverted range as empty (or as
-/// underflowing range math) would leave `:messages` empty instead of
-/// logging this error.
 #[test]
 fn buffer_lines_start_past_end_raises() {
     let tmp = safe_tempdir();
@@ -226,10 +209,9 @@ fn buffer_lines_start_past_end_raises() {
 /// the buffer's last content line — both ranges are 0-based and
 /// end-exclusive, so `#:end` takes `(cdr vr)` directly, no `+ 1` needed.
 ///
-/// Fail oracle: `viewport-range` returning one past the ropey phantom-line
-/// index (two past the last content line) instead of one past the last
-/// content line would make `#:end (cdr vr)` overshoot `buffer-lines`' bounds
-/// check and raise instead of returning every content line.
+/// If `viewport-range` ended one past the ropey phantom line (two past the
+/// last content line), `#:end (cdr vr)` would fail `buffer-lines`' bounds
+/// check and raise.
 #[test]
 fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
     let tmp = safe_tempdir();
@@ -305,8 +287,8 @@ fn buffer_line_count_on_a_stale_bid_raises_invalid_buffer_id() {
 
 /// `line->offset` returns the char offset where each content line starts.
 ///
-/// Fail oracle: an off-by-one (e.g. forgetting the previous lines' `\n`
-/// separators) would return 1 for line 1 instead of 2.
+/// Forgetting the previous lines' `\n` separators would return 1 for line 1
+/// instead of 2.
 #[test]
 fn line_to_offset_returns_each_lines_start_char_offset() {
     let tmp = safe_tempdir();
@@ -329,8 +311,8 @@ fn line_to_offset_returns_each_lines_start_char_offset() {
 /// `line->offset` counts in chars, not bytes — a line after a multi-byte
 /// character must not be offset by its UTF-8 byte width.
 ///
-/// Fail oracle: a byte-offset implementation would return 4 for line 1
-/// instead of 2 ("é" is 1 char but 2 UTF-8 bytes, "a\n" contributes 2 chars).
+/// Line 1 starts at char 2: "é" is 1 char (2 UTF-8 bytes) and the `\n`
+/// adds one more. Counting bytes would give 3.
 #[test]
 fn line_to_offset_counts_chars_not_bytes() {
     let tmp = safe_tempdir();
@@ -633,7 +615,7 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
     );
 }
 
-/// Oracle: `diff-buffer-lines` against a ref must agree with `diff-lines`
+/// `diff-buffer-lines` against a ref must agree with `diff-lines`
 /// called on the ref and a `buffer-text` read — the cheaper, buffer-avoiding
 /// path and the general-purpose path must produce identical hunks for the
 /// same input.

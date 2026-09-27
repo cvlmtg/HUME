@@ -169,7 +169,7 @@ fn collect_command_names_includes_leaves_and_waitchars() {
     trie.collect_command_names(&mut names);
     names.sort();
 
-    // Independent oracle: exact expected set.
+    // Exact expected set.
     assert!(
         names.contains(&"delete-char-forward".to_string()),
         "leaf must appear"

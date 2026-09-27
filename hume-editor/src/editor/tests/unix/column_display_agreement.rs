@@ -3,7 +3,7 @@
 // same position, not the char column or the raw UTF-16 wire column. See
 // `hume-editor/src/statusline/tests.rs`'s
 // `position_element_shows_grapheme_column_not_char_or_utf16_count` for the
-// statusline half and the independent-oracle derivation of this file's
+// statusline half and the independent derivation of this file's
 // shared fixture line (grapheme col 2 / char col 3 / UTF-16 col 4 before
 // 'x').
 //
@@ -101,9 +101,8 @@ fn setup_diagnostics(file: &Path, tmp: &Path) -> (Editor, RealRuntimeGuard) {
     (ed, guard)
 }
 
-/// Fail oracle: swap `diagnostics.scm`'s `:diagnostics` row back to reading
-/// `"char-col"` — the row would show `1:4` (the char column) instead of the
-/// correct grapheme column `1:3`.
+/// A `:diagnostics` row in `diagnostics.scm` that read `"char-col"` would
+/// show `1:4` (the char column) instead of the grapheme column `1:3`.
 #[test]
 fn diagnostics_drawer_shows_grapheme_column() {
     let tmp = safe_tempdir();
@@ -208,11 +207,9 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 /// coincide once nothing non-ASCII precedes the target — the reason the
 /// exception is tolerable in practice.
 ///
-/// Fail oracle: make the unopened branch call `wire_pos_to_grapheme_col`
-/// against a freshly-read `BufferText` (this function's behavior before it stopped
-/// reading files) — row 1 would read `1:3`, identical to row 0, and the
-/// divergence assertion below would fail to catch a regression back to
-/// reading the file.
+/// If the unopened branch read the file and called
+/// `wire_pos_to_grapheme_col` on it, row 1 would read `1:3`, identical to
+/// row 0.
 #[test]
 fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_targets() {
     let tmp = safe_tempdir();
@@ -338,9 +335,8 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
 /// whole batch rather than render an unselectable row for it — see
 /// `hume_lsp::location::decode_location`'s doc.
 ///
-/// Sabotage oracle: loosen `decode_location` to tolerate a missing `range`
-/// (e.g. defaulting to line 0) — the drawer would open with four rows
-/// instead of erroring, and this test would fail.
+/// If `decode_location` tolerated a missing `range` (say, by defaulting to
+/// line 0), the drawer would open with four rows instead of erroring.
 #[test]
 fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
     let tmp = safe_tempdir();

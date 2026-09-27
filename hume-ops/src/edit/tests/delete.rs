@@ -109,7 +109,7 @@ fn dedent_two_cursors_same_line_independent() {
     // delete, old_pos=2; target 4 > 2 → no clamp needed. Delete 1 char (pos 4).
     // Result: 2 spaces remain, then '\n'.
     //
-    // Independent oracle: "     \n" → cursor 0 deletes "  " from front,
+    // "     \n": cursor 0 deletes "  " from front,
     // cursor 1 deletes the last space before '\n'. Result: "  \n".
     assert_state!(
         "  -[ ]>  -[\n]>",
@@ -126,10 +126,11 @@ fn dedent_two_cursors_same_line_target_overlap() {
     // "      \n" (6 spaces): cursor 0 at col 5 (char 5), cursor 1 at col 6 ('\n').
     // Cursor 0: col 5, prev_stop = floor(4/4)*4 = 4. retain 4, delete 1. old_pos=5.
     // Cursor 1: col 6, prev_stop = floor(5/4)*4 = 4. target = char_pos_at_col_4 = 4.
-    //   Without fix: target(4) < old_pos(5) → no-op; bug: cursor 1 leaves 1 space.
-    //   With fix:    target clamped to max(4,5) = 5; delete 1 char. Both land at 4.
+    //   target(4) < old_pos(5), so the target is clamped to max(4,5) = 5 and
+    //   1 char is deleted. Unclamped, cursor 1 would be a no-op and leave 1
+    //   space. Both land at 4.
     //
-    // Independent oracle: cursor 0 deletes the space at col 4..5; cursor 1 deletes
+    // Cursor 0 deletes the space at col 4..5; cursor 1 deletes
     // the space at col 5..6 (clamped start). Net: 2 spaces removed → 4 remain.
     assert_state!(
         "     -[ ]>-[\n]>",
@@ -147,7 +148,7 @@ fn dedent_two_cursors_same_line_same_target() {
     // inverted delete when the second cursor sits at the first cursor's
     // old_pos.
     //
-    // Independent oracle: all 4 spaces deleted.
+    // All 4 spaces deleted.
     assert_state!(
         "   -[ ]>-[\n]>",
         |(text, sels)| dedent_tab_backward(text, sels, 4),
@@ -566,11 +567,11 @@ fn delete_selection_grapheme_cluster() {
 #[test]
 fn delete_selection_multi_char_ends_at_grapheme_base() {
     // Multi-char selection whose head (sel.end()) lands on the base codepoint
-    // 'e' of the grapheme {e\u{0301}} = é. The fix extends the delete to
-    // include the combining mark at position 4, so no orphaned accent remains.
+    // 'e' of the grapheme {e\u{0301}} = é. The delete extends to include the
+    // combining mark at position 4, so no orphaned accent remains.
     // Text: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
-    // Without the fix: only chars 0-3 deleted → "\u{0301} x\n" (broken).
-    // With the fix: chars 0-4 deleted → " x\n" (correct).
+    // Chars 0-4 are deleted, leaving " x\n". Stopping at char 3 would leave
+    // "\u{0301} x\n" with an orphaned accent.
     assert_state!(
         "-[cafe]>\u{0301} x\n",
         |(text, sels)| delete_selection(text, sels),

@@ -1095,11 +1095,10 @@ fn extend_select_next_word_anchor_ending_in_combining_cluster_stays_whole() {
     // `unit_end` when the anchor's word ends in a combining sequence — a
     // normal, reachable selection shape, not a contrived position.
     //
-    // Fail oracle: read `classify_char` on the raw anchor codepoint instead
-    // of snapping to the cluster start first — the combining mark alone
-    // classifies as `Punctuation` (not `Word`), so the anchor's own word gets
-    // misread as just that trailing mark and truncated to "foo café-[´ bar]>"
-    // instead of keeping "café" whole.
+    // The anchor is snapped to the cluster start before `classify_char`
+    // runs. The combining mark alone classifies as `Punctuation`, so reading
+    // the raw codepoint would truncate the selection to "foo café-[´ bar]>"
+    // and lose "café" as a whole word.
     assert_state!(
         "foo <[cafe\u{0301}]- bar\n",
         |(text, sels)| cmd_select_next_word(&text, sels, 1, WordCtx::bare(MotionMode::Extend)),

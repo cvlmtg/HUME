@@ -10,9 +10,8 @@ use crate::test_support::{SteelCtxTestHarness, default_pane};
 
 /// `focused-pane` is blocked in init mode — no meaningful focus exists yet.
 ///
-/// Fail oracle: change `focused-pane`'s table entry from `cmd` to `open` →
-/// `PaneId::default()` (there is no live host to read during init) would
-/// be returned, silently giving wrong data.
+/// An `open` table entry would return `PaneId::default()` during init, when
+/// there is no live host to read, silently giving wrong data.
 #[test]
 fn focused_pane_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -157,12 +156,10 @@ fn line_to_offset_blocked_in_init_mode() {
 /// proven by NullHost's `PaneHandle::buffer_only(BufferId::default())`
 /// return round-tripping through `SteelPane`.
 ///
-/// Fail oracle: reading a stale cached snapshot instead of calling
-/// through the host would still pass this specific assertion (both are
-/// the same default on a fresh harness) — the real guarantee this
-/// locks is architectural (grep `ctx.host.buffers()` in the function body),
-/// not something a single value comparison can distinguish from the
-/// snapshot. See `wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus`
+/// A stale cached snapshot would still pass this assertion, since both hold
+/// the same default on a fresh harness. The live read is guaranteed by the
+/// function body calling `ctx.host.buffers()`. See
+/// `wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus`
 /// (`hume-editor`) for a case where the two genuinely diverge.
 #[test]
 fn focused_pane_command_mode_returns_steel_pane_id() {

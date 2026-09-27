@@ -232,8 +232,8 @@ fn set_buffer_wrap_mode_affects_only_the_unpinned_sibling() {
 
 // ── `:wrap` toggle ───────────────────────────────────────────────────────────
 
-/// Flip: toggling `:wrap` back on must restore the configured mode, not
-/// hardcode `Indent` — a hardcoded toggle would fail here with
+/// Toggling `:wrap` back on must restore the configured mode. A toggle that
+/// hardcoded `Indent` would fail here with
 /// `Soft { width: 0 } != Indent { width: 0 }`.
 #[test]
 fn wrap_toggle_restores_configured_mode_not_hardcoded_indent() {
@@ -319,9 +319,9 @@ fn wrap_toggle_on_falls_back_to_the_configured_global_style_not_indent() {
 /// setting happened to resolve to at toggle-off time. The pane keeps
 /// following later buffer-scoped changes.
 ///
-/// Fail oracle: if `saved_wrap_mode` stored the resolved mode instead of the
-/// override to restore, the pane would stay pinned to `word` (the mode it
-/// was wrapping with at toggle-off) and this assertion would fail.
+/// If `saved_wrap_mode` stored the resolved mode instead of the override to
+/// restore, the pane would stay pinned to `word`, the mode it was wrapping
+/// with at toggle-off.
 #[test]
 fn wrap_toggle_off_then_on_restores_inheritance_not_a_pin() {
     let mut ed = editor_from("-[a]>b\n");

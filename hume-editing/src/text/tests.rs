@@ -163,8 +163,8 @@ fn line_tokens_back_from_walks_backward_across_a_chunk_boundary() {
     let last = text.last_content_line();
     let tokens: Vec<_> = text.line_tokens_back_from(last.into()).collect();
     assert_eq!(tokens.len(), text.content_line_count().get());
-    // Independent oracle: line `n`'s own content, not derived from
-    // `line_tokens_back_from` itself.
+    // Expected tokens are rebuilt from each line's own content, without
+    // going through `line_tokens_back_from`.
     for (steps_back, token) in tokens.iter().enumerate() {
         assert_eq!(
             token.to_string(),

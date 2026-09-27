@@ -386,10 +386,9 @@ fn inlay_hints_remap_through_an_edit() {
 
 /// Regression: decorations are not LSP-owned — LSP is just their first
 /// client (any plugin can call `set-extra-highlights!`/`set-inlay-hints!`
-/// on any buffer). Before the fix, `record_lsp_edits` only queued a
-/// buffer's edits for the remap chokepoint when it had an attached LSP
-/// server, so a buffer with decorations but no server drifted silently out
-/// of position on every edit.
+/// on any buffer). `record_lsp_edits` must queue a buffer's edits for the
+/// remap chokepoint whether or not an LSP server is attached, or a buffer
+/// with decorations but no server drifts out of position on every edit.
 #[test]
 fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     let tmp = safe_tempdir();

@@ -177,7 +177,7 @@ fn a_gap_merge_can_span_a_whole_glyph() {
 
 // ── Property-based test (proptest) ───────────────────────────────────────
 //
-// Oracle: replay the diff's runs onto a copy of the previous frame the way a
+// Replay the diff's runs onto a copy of the previous frame the way a
 // terminal would — draw each non-continuation cell's text at the cursor, then
 // advance by that glyph's own width — and require the result to equal the
 // next frame exactly. This checks completeness (nothing changed was left

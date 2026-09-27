@@ -246,10 +246,9 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
 /// between the command being sent and its response draining must not
 /// suppress this error report.
 ///
-/// Fail oracle: `lsp/exec-command` sending without `#:allow-stale` — the
-/// bridge's own bid-anchored staleness check (now applied to every request,
-/// `textDocument`-bearing or not) would drop this response, and the error
-/// would never reach the log.
+/// Without `#:allow-stale` on `lsp/exec-command`, the bridge's bid-anchored
+/// staleness check (applied to every request, `textDocument`-bearing or not)
+/// would drop this response and the error would never reach the log.
 #[test]
 fn a_command_execution_error_is_still_reported_after_an_intervening_edit() {
     let tmp = safe_tempdir();
@@ -582,10 +581,6 @@ fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
 /// request is in flight — same async-round-trip race `lsp-hover`'s own
 /// `#:require-focus` guards against. A response for a buffer that's no
 /// longer focused must not open a menu over whatever the user switched to.
-///
-/// Fail oracle: `lsp-code-actions` (`actions.scm`) sending its
-/// `lsp-request` without `#:require-focus` — the menu would open
-/// regardless of which buffer answered.
 #[test]
 fn stale_response_after_a_buffer_switch_opens_no_menu() {
     let tmp = safe_tempdir();

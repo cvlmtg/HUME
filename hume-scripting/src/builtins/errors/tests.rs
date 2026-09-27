@@ -4,8 +4,7 @@ use crate::test_support::SteelCtxTestHarness;
 
 /// `require_cmd` rejects `Init` and `PluginLoad`, allows the other two.
 ///
-/// Independent oracle: expected pass/fail per state comes from
-/// `EvalMode`'s doc table, not from `require_cmd`'s own logic.
+/// The expected pass/fail per state comes from `EvalMode`'s doc table.
 #[test]
 fn require_cmd_gates_by_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -47,9 +46,6 @@ fn require_config_gates_by_mode() {
 }
 
 /// `require_cmd`'s error message names the builtin and mentions "init".
-///
-/// Fail oracle: drop the `name` interpolation → message no longer
-/// identifies which builtin rejected the call.
 #[test]
 fn require_cmd_error_names_builtin() {
     let mut h = SteelCtxTestHarness::new();
@@ -74,9 +70,6 @@ fn require_config_error_names_builtin() {
 /// BOOTSTRAP Scheme function) surfaces in the gate message WITHOUT the
 /// `%` — the message must name the wrapper a plugin author actually
 /// calls, not the internal primitive.
-///
-/// Fail oracle: pass `name` straight through without stripping → the
-/// message contains "%apply-text-edits!" instead of "apply-text-edits!".
 #[test]
 fn gate_strips_leading_percent_from_registered_name() {
     let mut h = SteelCtxTestHarness::new();

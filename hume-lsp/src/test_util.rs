@@ -40,7 +40,8 @@ pub type ResponseLog = Rc<
 /// notification's `(method, params)` into a shared log. Once a backend is
 /// boxed into `Box<dyn LspBackend>` (as `LspState` does), the trait object
 /// erases access to `InlineLspBackend::sent` — this lets a test recover the
-/// wire stream anyway, for invariants that replay it against an oracle.
+/// wire stream anyway, for invariants that replay it against a reference
+/// mirror.
 pub struct RecordingLspBackend {
     inner: InlineLspBackend,
     log: NotificationLog,

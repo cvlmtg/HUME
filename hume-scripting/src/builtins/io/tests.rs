@@ -5,7 +5,7 @@ use crate::test_support::SteelCtxTestHarness;
 // ── stdout_gate: behavior around the gate ──────────────────────────────────
 //
 // The three tests below between them pin the `||` semantics of the safety
-// check inside `stdout_gate` — see that function's own fail-oracle comment.
+// check inside `stdout_gate`, as described in that function's doc comment.
 
 /// Gate closed: returns `#f`, no bracket entry.
 #[test]

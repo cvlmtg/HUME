@@ -34,7 +34,7 @@ fn make_theme_with_statusline(
 fn from_theme_reads_statusline_scope() {
     let theme = make_theme_with_statusline(Rgb(255, 0, 0), Rgb(0, 255, 0), Rgb(0, 255, 255));
 
-    // Independent oracle: expected values come from the input scopes, not
+    // Expected values come from the input scopes, not
     // from `from_theme`. A scope that sets only fg/bg carries no modifiers.
     let want_base = ResolvedStyle {
         fg: Some(Rgb(255, 0, 0)),

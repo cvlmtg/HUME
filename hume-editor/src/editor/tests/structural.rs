@@ -367,10 +367,10 @@ fn structural_command_before_the_first_parse_lands_is_a_no_op() {
 /// pre-edit text, so reading them would resolve spans against byte offsets
 /// the buffer no longer has.
 ///
-/// Flip: gate `ensure_syntax_current` on `parsed_gen() == Some(text_gen)`
-/// instead of `Syntax::is_current` and it returns early here, leaving `m i f`
-/// to collect from the stale gen-0 tree — which selects the pre-edit body
-/// text (or trips `collect_hulls`'s `end_byte <= len_bytes` debug assert).
+/// A gate on `parsed_gen() == Some(text_gen)` in place of `Syntax::is_current`
+/// would return early here and leave `m i f` collecting from the stale gen-0
+/// tree, selecting the pre-edit body text (or tripping `collect_hulls`'s
+/// `end_byte <= len_bytes` debug assert).
 #[test]
 fn structural_command_after_a_failed_parse_reparses_instead_of_reading_stale_layers() {
     use hume_treesitter::parse_worker::{ParseDone, ParseOutcome};
@@ -450,8 +450,8 @@ fn dot_repeat_of_around_function_deletes_the_function_under_the_new_cursor() {
 /// `drain_replay_queue()` batch, must see the post-edit tree for its second
 /// step — not the pre-edit byte ranges the first step invalidated.
 ///
-/// Fail oracle: if `SelectionBody::Structural`'s dispatch arm omitted its
-/// `ensure_syntax_current` call, the `m i f` step would compute its span
+/// Without the `ensure_syntax_current` call in `SelectionBody::Structural`'s
+/// dispatch arm, the `m i f` step would compute its span
 /// from the stale pre-`x d` tree, either mismatching `direct`'s result or
 /// tripping the `end_byte <= text.len_bytes()` debug_assert in
 /// `hume-treesitter`'s hull collector.

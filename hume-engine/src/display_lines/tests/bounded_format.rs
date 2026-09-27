@@ -2,9 +2,8 @@
 
 use super::*;
 
-/// How many graphemes the formatter actually emitted for `line` — an oracle
-/// over `format.rs`'s output, read from the store after the map that filled
-/// it is gone.
+/// How many graphemes the formatter actually emitted for `line`, read from
+/// the store after the map that filled it is gone.
 fn stored_graphemes(store: &PaneLineStore, line: ContentLine) -> usize {
     store
         .find(line)
@@ -43,8 +42,8 @@ fn locate_formats_only_as_far_as_the_target_offset() {
     );
 
     // Dropping the map releases its borrow of the store, letting the test
-    // read what the formatter actually emitted — an oracle over `format.rs`'s
-    // output rather than anything `DisplayLineMap` reports about itself.
+    // read what the formatter actually emitted, rather than anything
+    // `DisplayLineMap` reports about itself.
     drop(dlm);
     assert_eq!(
         stored_graphemes(&s, ContentLine::new(0)),
@@ -132,9 +131,9 @@ fn locate_display_line_answers_without_formatting_in_no_wrap() {
 
 #[test]
 fn locate_display_line_agrees_with_locate_in_both_wrap_modes() {
-    // `locate` is the oracle here, which is not circular: the claim *is* that
-    // the two agree, and `locate`'s own answers are pinned independently by
-    // the `locate_*` tests above.
+    // `locate` is the reference here. The claim *is* that the two agree, and
+    // `locate`'s own answers are pinned separately by the `locate_*` tests
+    // above.
     //
     // "a\n\nébc\n" covers an empty line, a line with Before display lines above it, a
     // multi-byte grapheme, and the phantom line past the last `\n`.

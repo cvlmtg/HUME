@@ -117,9 +117,6 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
 
 /// Declaring `core:lsp` (not loading it) leaves it `Declared` — nothing has
 /// run its body yet.
-///
-/// Flip: if `declare-plugin` eagerly loaded the plugin (a bug reintroducing
-/// eager semantics), status would already read `Loaded` here.
 #[test]
 fn declared_but_undispatched_plugin_is_declared_not_loaded() {
     let tmp = safe_tempdir();
@@ -142,7 +139,7 @@ fn declared_but_undispatched_plugin_is_declared_not_loaded() {
 /// the real plugin body from disk, replaces the lazy stub, and runs the real
 /// hover request through to a populated popup.
 ///
-/// Flip: without `CommandHost::register_lazy_command` claiming the stub at
+/// Without `CommandHost::register_lazy_command` claiming the stub at
 /// declare time, `:lsp-hover` would be an unknown command and this would
 /// report an error, not show a popup; without the real activation wiring,
 /// `plugin_status` would stay `Declared`.
@@ -191,7 +188,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 /// `activate_lazy_event_plugins(OnLspAttach)` picking up the hook that
 /// `setup_declared`'s handshake already queued.
 ///
-/// Flip: `attach_event_does_not_activate_a_plugin_declared_for_a_different_event`
+/// `attach_event_does_not_activate_a_plugin_declared_for_a_different_event`
 /// runs the identical attach sequence against a manifest declared on
 /// `on-buffer-save` instead, and confirms it stays `Declared` — ruling out
 /// some other confound in `setup_declared`'s staging (e.g. `load-plugin
@@ -226,7 +223,7 @@ fn attach_event_alone_activates_the_declared_plugin() {
     );
 }
 
-/// Flip counterpart to `attach_event_alone_activates_the_declared_plugin`:
+/// Counterpart to `attach_event_alone_activates_the_declared_plugin`:
 /// declaring `core:lsp` on `on-buffer-save` instead of `on-lsp-attach` and
 /// running the same attach sequence must leave it `Declared`.
 #[test]
@@ -265,10 +262,9 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
 /// and `G L` is asserted via `lookup_command` after the loop, as load-order
 /// proofs that `core:lsp` slots in beside these rather than clobbering them.
 ///
-/// Flip: renaming a binding's target command in `plugin.scm` without
-/// updating this table (or vice versa) makes the matching iteration fail
-/// with "unknown command" — checked at least once by temporarily renaming
-/// `"G R"`'s target in `plugin.scm` to a typo and confirming this test fails.
+/// Renaming a binding's target command in `plugin.scm` without updating this
+/// table (or the other way round) makes the matching iteration fail with
+/// "unknown command".
 #[test]
 fn every_default_lsp_binding_dispatches_without_error() {
     use crate::editor::keymap::BindMode;

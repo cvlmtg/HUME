@@ -394,8 +394,8 @@ fn lsp_show_status_rejects_init_context() {
 /// (`registration.scm`) calls it directly to skip already-registered
 /// languages, with no `with-handler` fallback to catch a gate error.
 ///
-/// Fail oracle: change `lsp-registered-for-language?`'s table entry from
-/// `open` to `cmd` → this returns `Err` instead of `Ok`.
+/// Its table entry is `open` for that reason. A `cmd` entry would make this
+/// return `Err`.
 #[test]
 fn lsp_registered_for_language_is_callable_during_init() {
     let mut h = SteelCtxTestHarness::new();

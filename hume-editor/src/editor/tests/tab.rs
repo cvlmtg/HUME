@@ -609,16 +609,13 @@ fn tabline_always_shows_even_with_one_tab() {
     assert!(ed.state.tabline_view.read().visible);
 }
 
-/// Characterization (behavior unchanged: no red run needed):
-/// `close_tab`'s Insert-session
-/// teardown reads and writes exclusively through pool-based lookups
+/// `close_tab`'s Insert-session teardown reads and writes exclusively through pool-based lookups
 /// (`focused_buffer_id` indexes `view.panes` directly by id, never through
-/// `view.layout`), so it already resolved correctly regardless of whether
-/// `view.layout` had been swapped to the survivor's tree yet — this passes
-/// identically before and after moving the teardown to run before that
-/// swap. The fix closes a *structural* inconsistency window (layout and
-/// focus transiently naming different tabs) that no current consumer
-/// observes, not an active bug; this test pins that the closing tab's own
+/// `view.layout`), so it resolves correctly whether or not `view.layout`
+/// has been swapped to the survivor's tree yet. Running the teardown before
+/// that swap closes a *structural* inconsistency window (layout and focus
+/// transiently naming different tabs) that no current consumer observes.
+/// This test pins that the closing tab's own
 /// edit lands on its own buffer, not the survivor's, so a future consumer
 /// that *does* resolve through the layout during teardown stays correct too.
 #[test]

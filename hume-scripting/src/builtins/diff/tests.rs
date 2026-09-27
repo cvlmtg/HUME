@@ -10,9 +10,8 @@ use crate::test_support::SteelCtxTestHarness;
 
 /// `diff-lines` is blocked in init mode.
 ///
-/// Fail oracle: change `diff-lines`'s table entry from `cmd` to `open` →
-/// callable from `init.scm`, where there is no meaningful live state to
-/// diff against.
+/// An `open` table entry would make it callable from `init.scm`, where there
+/// is no meaningful live state to diff against.
 #[test]
 fn diff_lines_blocked_in_init_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -39,8 +38,8 @@ fn diff_words_blocked_in_init_mode() {
 
 /// `diff-lines` rejects a non-string argument.
 ///
-/// Fail oracle: hand-roll a `to_string()` coercion instead of `string_arg` —
-/// `(diff-lines 1 "x")` would silently diff the literal text `"1"`.
+/// A hand-rolled `to_string()` coercion in place of `string_arg` would make
+/// `(diff-lines 1 "x")` silently diff the literal text `"1"`.
 #[test]
 fn diff_lines_rejects_a_non_string_argument() {
     let mut h = SteelCtxTestHarness::new();
@@ -57,8 +56,8 @@ fn diff_lines_rejects_a_non_string_argument() {
 
 /// `diff-words` rejects a non-string `old` argument.
 ///
-/// Fail oracle: hand-roll a `to_string()` coercion instead of `string_arg` —
-/// `(diff-words 1 "x")` would silently diff the literal text `"1"`.
+/// Coercing with `to_string()` instead of `string_arg` would silently diff
+/// the text `"1"` for `(diff-words 1 "x")`.
 #[test]
 fn diff_words_rejects_a_non_string_old_argument() {
     let mut h = SteelCtxTestHarness::new();
@@ -93,9 +92,9 @@ fn diff_words_rejects_a_non_string_new_argument() {
 /// `diff-lines` on a host with no `DiffHost` capability raises an error
 /// naming the builtin.
 ///
-/// Fail oracle: `ctx.host.diff().map(...).unwrap_or_default()` instead of
-/// `require_cap` — a host that cannot diff at all would silently report
-/// "no differences" instead of failing.
+/// Falling back with `ctx.host.diff().map(...).unwrap_or_default()` would
+/// have a host that cannot diff at all report "no differences" instead of
+/// failing.
 #[test]
 fn diff_lines_reports_an_unsupported_host() {
     let mut h = SteelCtxTestHarness::new();
@@ -119,10 +118,6 @@ fn diff_lines_reports_an_unsupported_host() {
 /// own liveness is already checked at decode time (`LiveBid`, in the
 /// `builtins!`-registered closure, unreachable from this direct call), so
 /// `require_cap` is the first gate this call actually reaches.
-///
-/// Fail oracle: `ctx.host.diff().map(...).unwrap_or_default()` instead of
-/// `require_cap` — a host that cannot diff at all would silently report
-/// "no differences" instead of failing.
 #[test]
 fn diff_buffer_lines_reports_an_unsupported_host() {
     let mut h = SteelCtxTestHarness::new();
@@ -141,9 +136,8 @@ fn diff_buffer_lines_reports_an_unsupported_host() {
 /// `diff-words` on a host with no `DiffHost` capability raises an error
 /// naming the builtin.
 ///
-/// Fail oracle: `ctx.host.diff().map(...).unwrap_or_default()` instead of
-/// `require_cap` — a host that cannot diff at all would silently report
-/// "no differences" instead of failing.
+/// A silent `unwrap_or_default()` fallback here would report "no
+/// differences" on a host that cannot diff.
 #[test]
 fn diff_words_reports_an_unsupported_host() {
     let mut h = SteelCtxTestHarness::new();

@@ -28,7 +28,7 @@ fn is_line_start_second_line_start() {
     // h=0, i=1, \n=2, b=3, y=4, e=5, \n=6
     let (text, _) = parse_state("-[h]>i\nbye\n");
     assert!(is_line_start(&text, &Selection::collapsed(co(3))));
-    // Verify a non-boundary on line 1 is false (independent oracle: char 4 = 'y').
+    // Char 4 is 'y', mid-line on line 1, so it is not a line start.
     assert!(!is_line_start(&text, &Selection::collapsed(co(4))));
 }
 

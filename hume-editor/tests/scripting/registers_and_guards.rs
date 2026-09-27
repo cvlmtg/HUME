@@ -38,8 +38,8 @@ fn set_register_prefix_passed_to_dispatch() {
 /// typed" (`parse_count_extend`), distinct from `Some(1)` even though both
 /// apply the command once.
 ///
-/// Fail oracle: a `parse_count_extend` that clamps `0` to `1` would make
-/// `dispatched_native[0].2` come out `Some(1)`, not `None`.
+/// Clamping `0` to `1` in `parse_count_extend` would make
+/// `dispatched_native[0].2` come out `Some(1)`.
 #[test]
 fn call_native_zero_count_decodes_to_none() {
     let mut h = host();
@@ -184,9 +184,6 @@ fn set_register_prefix_at_init_errors() {
 /// included) reports the type error, not the gate error.
 /// The gate itself is covered directly in `hume-scripting`'s
 /// `buffers::tests::close_buffer_blocked_in_init_mode`.
-///
-/// Flip: accept any `SteelVal` (no `LivePane` decode) and the eval returns
-/// Ok (or panics), not Err.
 #[test]
 fn close_buffer_errors_in_init_mode() {
     let mut h = host();
@@ -204,9 +201,6 @@ fn close_buffer_errors_in_init_mode() {
 /// raise a Steel error rather than crashing.  Mirrors
 /// `close_buffer_errors_in_init_mode` — see its doc for why this asserts
 /// the type error, not the gate error.
-///
-/// Flip: accept any `SteelVal` (no `LivePane` decode) and the eval returns
-/// Ok (or panics), not Err.
 #[test]
 fn switch_to_buffer_errors_in_init_mode() {
     let mut h = host();
@@ -223,10 +217,8 @@ fn switch_to_buffer_errors_in_init_mode() {
 /// `(buffer-language …)` / `(set-buffer-language! …)` on a stale buffer id must
 /// raise a Steel error, not silently return `#f` or push a no-op. `bid`
 /// (MockHost's `buffer_exists` returns false unconditionally) is a stale
-/// handle from the builtins' point of view — exercising the guard path.
-///
-/// Flip: remove the `buffer_exists` guard in either builtin and that eval
-/// returns Ok instead of Err.
+/// handle from the builtins' point of view — exercising the guard path. Each
+/// builtin relies on its own `buffer_exists` guard for its eval to fail.
 #[test]
 fn language_builtins_error_on_stale_buffer_id() {
     let mut h = host();

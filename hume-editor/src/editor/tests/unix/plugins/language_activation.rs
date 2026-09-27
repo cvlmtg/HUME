@@ -9,8 +9,8 @@ use hume_scripting::PluginStatus;
 /// `#:languages` plugin activates on first matching language set; its
 /// `on-language-set` handler runs in the same call that caused activation.
 ///
-/// Flip: without `activate_lazy_language_plugins` in `set_buffer_language`,
-/// the plugin stays `Declared` and the cursor never moves.
+/// If `set_buffer_language` skipped `activate_lazy_language_plugins`, the
+/// plugin would stay `Declared` and the cursor would not move.
 #[test]
 fn language_trigger_activates_on_set() {
     use hume_scripting::attribution::PluginId;
@@ -70,9 +70,9 @@ fn language_trigger_activates_on_set() {
 
 /// Second set to the same language: handler still runs; no re-activation.
 ///
-/// Flip: if `activation_languages` were not cleared on load, a second matching set
-/// would attempt activation again — `activate_plugin`'s `Loaded` guard prevents
-/// a crash, but the test documents the intended fast path.
+/// With `activation_languages` left uncleared on load, a second matching set
+/// would attempt activation again. `activate_plugin`'s `Loaded` guard keeps
+/// that harmless, so this test is about the intended fast path.
 #[test]
 fn language_trigger_idempotent_on_round_trip() {
     use hume_scripting::attribution::PluginId;
@@ -131,9 +131,6 @@ fn language_trigger_idempotent_on_round_trip() {
 
 /// 1:many: two plugins both declare `#:languages '("rust")`; a single language
 /// set activates both.
-///
-/// Flip: if only the first plugin in the activation Vec were activated, the second
-/// would stay `Declared` with its handler never registering.
 #[test]
 fn language_trigger_one_to_many_activates_all() {
     use hume_scripting::attribution::PluginId;
@@ -208,9 +205,6 @@ fn language_trigger_one_to_many_activates_all() {
 }
 
 /// Language set for an unregistered language → plugin stays `Declared`.
-///
-/// Flip: if `activate_lazy_language_plugins` looked up the wrong map or iterated
-/// unconditionally, the plugin would load on any language set.
 #[test]
 fn language_trigger_does_not_fire_on_unrelated_language() {
     use hume_scripting::attribution::PluginId;
@@ -249,8 +243,8 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
 /// the wildcard a manifest.scm uses because it can't enumerate every language a
 /// user might want it for.
 ///
-/// Flip: if `activation_language_plugins` only checked the exact key, the
-/// wildcard entry would never fire and the plugin would stay `Declared` forever.
+/// An exact-key-only lookup in `activation_language_plugins` would never match
+/// the wildcard entry, and the plugin would stay `Declared` forever.
 #[test]
 fn language_wildcard_trigger_activates_on_any_language() {
     use hume_scripting::attribution::PluginId;
@@ -297,9 +291,8 @@ fn language_wildcard_trigger_activates_on_any_language() {
 /// a set for a language only the wildcard plugin matches activates that plugin
 /// alone, leaving the specific-language plugin `Declared`.
 ///
-/// Flip: if the union in `activation_language_plugins` deduped incorrectly or
-/// dropped the specific-language map, either the wrong plugin would activate or
-/// both would.
+/// A union in `activation_language_plugins` that deduped wrongly or dropped the
+/// specific-language map would activate the wrong plugin, or both.
 #[test]
 fn language_wildcard_and_specific_entry_coexist() {
     use hume_scripting::attribution::PluginId;
@@ -360,10 +353,8 @@ fn language_wildcard_and_specific_entry_coexist() {
 // ── Load-time activation reporting ──────────────────────────
 
 /// Command activation: first dispatch of a lazy command logs a Trace entry naming
-/// the activating command.
-///
-/// Flip: before dispatch, no such Trace exists — confirming the entry is
-/// produced by the activation path, not during init.
+/// the activating command. No such Trace exists before dispatch, so the entry
+/// comes from the activation path and not from init.
 #[test]
 fn command_trigger_logs_trace_on_activation() {
     use crate::editor::Severity;

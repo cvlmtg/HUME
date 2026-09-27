@@ -82,11 +82,10 @@ fn is_inline_output_command(ctx: &mut SteelCtx) -> bool {
 /// whether to enter the alt-screen) rather than re-read — each read is a
 /// non-devirtualizable hop through `ctx.host`.
 ///
-/// Fail oracle for the `||`: flip the guard to `session != Init || !inline`
-/// (De Morgan's negation of `&&` rather than `||`) → pinned by
+/// The two safe reasons are joined by `||`. Each is pinned on its own by
 /// `stdout_gate_returns_true_and_skips_ensure_when_open_via_init_session_only`
 /// and `stdout_gate_returns_true_and_calls_ensure_when_open_via_inline_output_command`
-/// below, each isolating one of the two safe reasons from the other.
+/// below, so a guard of `session != Init || !inline` fails one of them.
 pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> SteelResult {
     let inline = is_inline_output_command(ctx);
     if ctx.session != crate::context::EvalSession::Init && !inline {

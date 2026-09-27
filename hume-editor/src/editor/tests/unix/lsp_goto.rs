@@ -376,9 +376,8 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
 /// `apply_script_effects` once this eval (`run_goto`'s `:lsp-goto-definition`
 /// dispatch) returns.
 ///
-/// Fail oracle: revert `resolve_or_open` to call the bare (pre-fix)
-/// `lifecycle::open_or_dedup` — the newly-opened buffer never gets a
-/// `language`.
+/// If `resolve_or_open` called the bare `lifecycle::open_or_dedup`, the
+/// newly-opened buffer would never get a `language`.
 #[test]
 fn goto_to_an_unopened_file_detects_its_language() {
     let tmp = safe_tempdir();
@@ -430,13 +429,10 @@ fn goto_to_an_unopened_file_detects_its_language() {
 /// (`=`, since `π` occupies 2 bytes but 1 char); under the UTF-16 default
 /// (code-unit offset), the same wire value decodes to char offset 7 (the
 /// space after `=`). The test switches focus to an unrelated, server-less
-/// buffer between sending the request and draining its response — the
-/// pre-fix code read that live-focused buffer's encoding (UTF-16 default)
-/// at decode time, landing one char short of where the requesting server
-/// (`main.rs`'s, UTF-8) actually meant.
-///
-/// Fail oracle: `resolve_goto_target`'s Wire arm reading live focus instead
-/// of `origin` lands the cursor at char offset 7, not 6.
+/// buffer between sending the request and draining its response. If
+/// `resolve_goto_target`'s Wire arm read that buffer's encoding (UTF-16
+/// default) instead of `origin`'s, the cursor would land at char offset 7
+/// instead of 6.
 #[test]
 fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
     let tmp = safe_tempdir();
@@ -603,11 +599,9 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
 /// `hume_lsp::location::decode_location`: a `Location` missing `range` must
 /// error rather than silently jumping to line 0.
 ///
-/// Sabotage oracle: loosening `decode_location` to tolerate a missing
-/// `range` would fail this test *and*
-/// `column_display_agreement.rs`'s
-/// `a_malformed_location_aborts_the_batch_instead_of_a_degraded_row`,
-/// proving both paths share the one decoder.
+/// This test and `column_display_agreement.rs`'s
+/// `a_malformed_location_aborts_the_batch_instead_of_a_degraded_row` both
+/// go through the one shared decoder.
 #[test]
 fn location_missing_range_errors_instead_of_jumping() {
     let tmp = safe_tempdir();
@@ -669,10 +663,9 @@ fn each_command_sends_its_own_method() {
 /// command-side raise. Must raise exactly one `OnBufferEnter`, same as every
 /// other focus-changing action.
 ///
-/// Fail oracle: `goto-location!`'s buffer switch bypassing `settle()`'s
-/// diff (a direct raise wired only into typed/keyed commands) would leave
-/// the trace log empty; a duplicate raise on the same switch would produce
-/// more than one entry.
+/// If `goto-location!`'s buffer switch bypassed `settle()`'s diff, the trace
+/// log would stay empty. A duplicate raise on the same switch would add a
+/// second entry.
 #[test]
 fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
     let tmp = safe_tempdir();

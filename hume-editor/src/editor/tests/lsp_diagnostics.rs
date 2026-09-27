@@ -360,10 +360,9 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
 /// `buffer::lifecycle::close_buffer_and_notify` chokepoint — plus fire
 /// `OnBufferClose`, which the direct-Rust-call test above never exercises.
 ///
-/// Fail oracle: revert `EditorHostImpl::close_buffer` to call the bare
-/// `lifecycle::close_buffer` (skipping the didClose/diagnostics/decorations/
-/// hook-enqueue orchestration) — the diagnostics/decoration assertions below
-/// fail, and the log line the hook writes never appears.
+/// If `EditorHostImpl::close_buffer` called the bare `lifecycle::close_buffer`,
+/// it would skip the didClose, diagnostics, decorations, and hook steps. The
+/// assertions below and the hook's log line would all fail.
 #[test]
 fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     use hume_scripting::ScriptingHost;

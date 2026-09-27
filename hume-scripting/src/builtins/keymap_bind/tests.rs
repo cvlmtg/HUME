@@ -14,8 +14,8 @@ fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
 
 /// `bind-key!` is blocked in plain command mode (`EvalMode::Command`).
 ///
-/// Fail oracle: change `bind-key!`'s table entry from `config` to `open`
-/// → a plugin command body could rebind keys at runtime.
+/// An `open` table entry would let a plugin command body rebind keys at
+/// runtime.
 #[test]
 fn bind_key_blocked_in_command_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -67,8 +67,8 @@ fn bind_wait_char_blocked_in_command_mode() {
 
 /// `bind-key!` rejects an unknown mode name.
 ///
-/// Fail oracle: remove `mode_from_symbol` validation → 'visual silently picks an
-/// arbitrary arm in the match and inserts into the wrong trie.
+/// Without `mode_from_symbol` validation, 'visual would fall into an
+/// arbitrary match arm and insert into the wrong trie.
 #[test]
 fn bind_key_invalid_mode_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -107,9 +107,6 @@ fn unbind_key_invalid_mode_errors() {
 }
 
 /// `bind-key!` rejects a string mode — mode must be a symbol.
-///
-/// Fail oracle: if `mode_from_symbol` still coerced strings, this would pass
-/// silently instead of raising a type mismatch.
 #[test]
 fn bind_key_string_mode_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -132,8 +129,8 @@ fn bind_key_string_mode_errors() {
 
 /// `bind-key!` rejects an invalid key-sequence string.
 ///
-/// Fail oracle: short-circuit key parsing to always return Ok([]) →
-/// the binding is silently inserted under an empty key, which is unreachable.
+/// Parsing that returned `Ok([])` on bad input would insert the binding
+/// under an empty key, where no keypress can reach it.
 #[test]
 fn bind_key_invalid_key_sequence_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -183,9 +180,6 @@ fn unbind_key_invalid_key_sequence_errors() {
 /// `Effect::BindKey` carrying the parsed mode/keys/command — nothing touches
 /// the keymap at builtin time; the editor applies it later via
 /// `Editor::apply_script_effects`.
-///
-/// Fail oracle: drop the `push_effect` from `bind_inner` → `effects` comes
-/// back empty and the binding vanishes silently.
 #[test]
 fn bind_key_init_mode_queues_bind_effect() {
     let mut h = SteelCtxTestHarness::new();
@@ -212,10 +206,6 @@ fn bind_key_init_mode_queues_bind_effect() {
 
 /// `bind-key-extend!` queues the same effect with `force_extend: true` —
 /// the flag is the only thing distinguishing it from `bind-key!`.
-///
-/// Fail oracle: hardcode `force_extend: false` in `bind_inner`'s
-/// `Effect::BindKey` → this fires while `bind_key_init_mode_queues_bind_effect`
-/// still passes.
 #[test]
 fn bind_key_extend_queues_force_extend_effect() {
     let mut h = SteelCtxTestHarness::new();
@@ -242,9 +232,6 @@ fn bind_key_extend_queues_force_extend_effect() {
 /// `bind-wait-char!` queues `Effect::BindWaitChar`, not `Effect::BindKey` —
 /// a WaitChar node consumes the next keypress as an argument, so routing it
 /// to a plain leaf would silently break `pending-char`.
-///
-/// Fail oracle: collapse `bind_inner`'s `BindKind` match to always emit
-/// `BindKey` → the binding becomes a plain leaf and this fires.
 #[test]
 fn bind_wait_char_queues_wait_char_effect() {
     let mut h = SteelCtxTestHarness::new();
@@ -271,9 +258,6 @@ fn bind_wait_char_queues_wait_char_effect() {
 /// `unbind-key!` queues `Effect::UnbindKey` — deferred like the three
 /// binders so a same-eval bind-then-unbind on one key applies in Steel's
 /// emission order rather than the unbind racing ahead.
-///
-/// Fail oracle: revert `unbind_key` to a direct host call → `effects` comes
-/// back empty and the unbind is dropped.
 #[test]
 fn unbind_key_queues_unbind_effect() {
     let mut h = SteelCtxTestHarness::new();

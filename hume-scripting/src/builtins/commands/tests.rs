@@ -250,9 +250,6 @@ fn define_typed_command_name_with_backslash_errors() {
 /// When the host rejects the registration, `typed_command_table` and
 /// `cmd_owners` must stay clean — the host call runs *before* the table
 /// inserts. Mirrors `define_command_host_rejection_leaves_tables_clean`.
-///
-/// Fail oracle: move the inserts back above `host.register_typed_command` →
-/// the entries linger after the Err and both cleanliness asserts fire.
 #[test]
 fn define_typed_command_host_rejection_leaves_tables_clean() {
     fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
@@ -331,10 +328,8 @@ fn define_command_name_with_backslash_errors() {
 /// When the host rejects the registration, `command_table` and `cmd_owners`
 /// must stay clean — the host call runs *before* the table inserts.
 ///
-/// Fail oracle: move the inserts back above `host.register_command` → the
-/// entries linger after the Err and both cleanliness asserts fire.  A stale
-/// entry would later make the plugin-failure rollback unregister a command
-/// the plugin never actually owned.
+/// A stale entry would later make the plugin-failure rollback unregister a
+/// command the plugin never actually owned.
 #[test]
 fn define_command_host_rejection_leaves_tables_clean() {
     fn dummy_proc(_args: &[SteelVal]) -> SteelResult {

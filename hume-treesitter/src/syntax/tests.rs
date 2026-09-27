@@ -39,7 +39,7 @@ fn make_bundle_with_real_highlights(name: &str, symbol: &str) -> Arc<GrammarBund
 /// Real end-to-end parse via `do_parse`-equivalent: build a `ParseDone`
 /// by parsing `text` directly with a fresh `tree_sitter::Parser`, so
 /// tests exercise `Syntax::install` against a genuine tree rather than a
-/// hand-rolled stand-in (independent oracle, not circular).
+/// hand-rolled stand-in.
 fn parse_done_for(
     bundle: &Arc<GrammarBundle>,
     bid: BufferId,
@@ -283,7 +283,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
         "pending edits must be cleared after a successful bake"
     );
 
-    // Independent oracle: the baked root tree's end_byte must equal the
+    // The baked root tree's end_byte must equal the
     // new text's byte length — computed from the string, not the tree.
     let expected_end_byte = "{\"a\":1}\n".len();
     let root = syn.layers().unwrap().root_tree().unwrap();
@@ -415,7 +415,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
         .iter()
         .find(|l| l.depth > 0)
         .expect("rust injected layer must survive the bake");
-    // Independent oracle: the shift is exactly `prefix.len()` bytes,
+    // The shift is exactly `prefix.len()` bytes,
     // computed from the inserted string — not re-derived from the tree.
     assert_eq!(
         rust_layer.ranges[0].start_byte,
@@ -637,9 +637,6 @@ fn install_recovers_from_a_parse_failed_for_the_same_generation() {
 /// "current" over a tree that predates the edit, which is exactly the state
 /// that lets a structural query hand `byte_to_char` an offset past the
 /// buffer's end.
-///
-/// Flip: drop the `tree_gen` half of `is_current` and the final assertion
-/// flips to `true`, restoring that bug.
 #[test]
 fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers() {
     require_grammars(&["json"]);
@@ -717,7 +714,7 @@ fn ensure_current_parses_a_never_parsed_attachment() {
             .root_node()
             .end_byte(),
         "{}\n".len(),
-        "independent oracle: the installed root must span the source string"
+        "the installed root must span the source string"
     );
     assert_eq!(syn.parsed_gen(), Some(0));
 }
@@ -750,7 +747,7 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
     let outcome = syn.ensure_current(bid, 1, &new_text, &empty_langs());
     assert!(outcome.is_none(), "a contiguous chain is not a break");
 
-    // Independent oracle: computed from the new string, not the tree.
+    // Computed from the new string, not the tree.
     let expected_end_byte = "{\"a\":1}\n".len();
     assert_eq!(
         syn.layers()

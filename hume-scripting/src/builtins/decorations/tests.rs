@@ -33,9 +33,8 @@ fn seg(start: isize, end: isize, scope: &str) -> SteelVal {
 /// message, naming the builtin — locks the message contract `require_cap`
 /// centralizes across `decorations.rs`/`edits.rs`/`completion.rs`/`ui.rs`.
 ///
-/// Fail oracle: revert a setter to `if let Some(decorations) = ... { ... }
-/// Ok(Void)` — the write silently no-ops instead of erroring, and this
-/// assert fires because `.unwrap_err()` panics on an `Ok`.
+/// A setter written as `if let Some(decorations) = ... { ... } Ok(Void)`
+/// would silently no-op, and `.unwrap_err()` would panic on its `Ok`.
 fn assert_names_builtin(result: SteelResult, builtin: &str) {
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");

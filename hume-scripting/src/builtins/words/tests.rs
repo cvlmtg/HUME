@@ -1,9 +1,8 @@
 use super::*;
 use steel::rvals::IntoSteelVal;
 
-/// Extracts the list of strings a successful `split-words` call returns, as
-/// an independent oracle read — never assuming the encoding shape, walking
-/// it explicitly instead.
+/// Extracts the list of strings a successful `split-words` call returns. It
+/// walks the list explicitly and assumes nothing about the encoding shape.
 fn words(result: SteelResult) -> Vec<String> {
     let SteelVal::ListV(list) = result.expect("split-words must succeed") else {
         panic!("expected a list");

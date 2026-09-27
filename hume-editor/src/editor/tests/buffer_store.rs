@@ -93,8 +93,8 @@ fn p6_close_last_buffer_becomes_scratch() {
 /// since the closed id would still `try_get` successfully against unrelated
 /// scratch content.
 ///
-/// Fail oracle: if `close_buffer`'s last-buffer branch still reused `id` in
-/// place, `get-buffer-option` would succeed against the scratch buffer
+/// If `close_buffer`'s last-buffer branch reused `id` in place,
+/// `get-buffer-option` would succeed against the scratch buffer
 /// instead of raising "invalid buffer id".
 #[test]
 fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {

@@ -69,8 +69,8 @@ pub(super) fn grammar_fixture(name: &str) -> (PathBuf, PathBuf) {
 // Direct-attach tests (Rust API only; no Steel dispatch)
 // ---------------------------------------------------------------------------
 
-/// Flip: without attach_grammar the grammar field is None so setup_buffer_syntax
-/// returns early — all three handles stay None.
+/// Without `attach_grammar` the grammar field would be `None`, so
+/// `setup_buffer_syntax` would return early and leave `syntax` unset.
 #[test]
 fn attach_then_set_language_attaches_syntax() {
     require_grammars(&["json"]);
@@ -106,8 +106,8 @@ fn attach_then_set_language_attaches_syntax() {
 /// `set_buffer_language` entirely — it writes `buf.language = None` directly,
 /// which is the bug `clear_language_detaches_syntax_keeps_identity` above
 /// doesn't cover: that test clears through `set_buffer_language`, the normal
-/// path that also tears down `buf.syntax` via `setup_buffer_syntax`. Flip:
-/// if `clear_languages_all` forgot to clear `syntax` too, this would still
+/// path that also tears down `buf.syntax` via `setup_buffer_syntax`. If
+/// `clear_languages_all` left `syntax` in place, it would still
 /// be `Some` after `reset_config_state`, holding an `Arc<GrammarBundle>`
 /// from the registry the reset is about to replace.
 #[test]
@@ -139,7 +139,7 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
     );
 }
 
-/// Flip: if clear didn't propagate, parser/syntax/tree would still be Some after set(None).
+/// Setting the language to `None` drops the syntax attachment and its tree.
 #[test]
 fn clear_language_detaches_syntax_keeps_identity() {
     require_grammars(&["json"]);
@@ -167,7 +167,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
     );
 }
 
-/// Flip: if sweep ignored the name filter it would attach after the rust-sweep midpoint.
+/// A sweep for the buffer's own language attaches syntax once the grammar exists.
 #[test]
 fn sweep_attaches_syntax_on_matching_language() {
     require_grammars(&["json"]);
@@ -195,7 +195,7 @@ fn sweep_attaches_syntax_on_matching_language() {
     );
 }
 
-/// Flip: if sweep applies to all buffers regardless of name, the first assert would fail.
+/// A sweep only touches buffers whose language is in the swept list.
 #[test]
 fn sweep_no_op_for_nonmatching_language() {
     require_grammars(&["json"]);
@@ -219,7 +219,7 @@ fn sweep_no_op_for_nonmatching_language() {
         "wrong-language sweep must not attach parser for json buffer",
     );
 
-    // Sanity flip: sweeping "json" does attach.
+    // Sweeping "json" does attach.
     attach_fixture_grammar(&mut ed, "json", "tree_sitter_json");
     let json_id = ed.state.config.languages.intern("json");
     ed.sweep_buffers_for_grammars(vec![json_id]);
@@ -229,7 +229,7 @@ fn sweep_no_op_for_nonmatching_language() {
     );
 }
 
-/// Flip: without reparse_stale_buffers the parsed_gen would stay at gen0 even after the edit.
+/// Without `reparse_stale_buffers`, `parsed_gen` would stay at gen0 after the edit.
 #[test]
 fn reparse_advances_parsed_gen_after_edit() {
     require_grammars(&["json"]);
@@ -308,7 +308,7 @@ fn reparse_advances_parsed_gen_after_edit() {
     );
 }
 
-/// Flip: without the max_bytes gate, parser would still be Some after reparse.
+/// A buffer that grows past `syntax_highlight_max_bytes` loses its syntax on the next reparse.
 #[test]
 fn reparse_detaches_when_buffer_exceeds_max_bytes() {
     require_grammars(&["json"]);
@@ -340,7 +340,7 @@ fn reparse_detaches_when_buffer_exceeds_max_bytes() {
 // has_grammar reflection
 // ---------------------------------------------------------------------------
 
-/// Flip: if has_grammar ignored grammar presence it would return true for identity-only.
+/// `has_grammar` is false for an identity-only language and true once a grammar is attached.
 #[test]
 fn language_has_grammar_false_for_identity_only_true_after_attach() {
     require_grammars(&["json"]);
@@ -376,8 +376,6 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 /// syntax attachment (and the committed tree it owns) anywhere the engine
 /// can still reach it — `bid`'s own slot must be gone, and the new scratch
 /// buffer must start with no syntax attached, not inherit the old tree.
-///
-/// Flip: if `ev.buffers.remove(id)` were skipped, `bid`'s slot check fails.
 #[test]
 fn closing_the_last_buffer_clears_engine_syntax_state() {
     require_grammars(&["json"]);
@@ -421,8 +419,6 @@ fn closing_the_last_buffer_clears_engine_syntax_state() {
 /// Regression: once a buffer's syntax is detached (via the max_bytes growth branch),
 /// reparse_stale_buffers must re-attach it on shrink below cap. Without the re-attach
 /// branch, the second `reparse_stale_buffers` call leaves parser=None.
-///
-/// Flip: if the re-attach branch is removed, the final `parser.is_some()` assert fails.
 #[test]
 fn reparse_reattaches_after_shrink_under_cap() {
     require_grammars(&["json"]);
@@ -562,9 +558,6 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // `clear_layers` on that no-mutation path — doing so would drop the tree
     // just installed above with no `text_gen` bump to trigger a reparse,
     // leaving the buffer unhighlighted until the next real edit.
-    //
-    // Fail oracle: gate `clear_layers` on `mutated` removed (call it
-    // unconditionally, as before this fix) → `layers()` is `None` here.
     let mut identical = Buffer::new(BufferText::from(new_text), SelectionSet::default());
     identical.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), identical);
@@ -652,8 +645,8 @@ fn parse_worker_result_is_async_then_installed() {
 /// Verify that sweeping with a new grammar after one is already in flight does not
 /// leave a stale `InFlight` entry that silences the follow-up request.
 ///
-/// Flip: if sweep_buffers_for_grammars did not clear in_flight[bid], the
-/// next reparse_stale_buffers call would see in_flight.text_gen == text_gen and
+/// If `sweep_buffers_for_grammars` did not clear `in_flight[bid]`, the
+/// next `reparse_stale_buffers` call would see in_flight.text_gen == text_gen and
 /// skip posting, leaving parsed_gen permanently stale.
 #[test]
 fn grammar_swap_clears_stale_in_flight() {
@@ -706,9 +699,6 @@ fn grammar_swap_clears_stale_in_flight() {
 /// `grammar_source` / `helix_pin` must parse real values out of the runtime
 /// catalog so the e2e installs the actually-pinned revision. Always runs (no
 /// network), so a malformed catalog or a broken parser is caught in normal CI.
-///
-/// Flip: point `grammar_source` at a bogus field index → the SHA-length /
-/// prefix assertions below fail.
 #[test]
 fn catalog_parsing_extracts_json_pins() {
     let (url, rev) = grammar_source("json");
@@ -739,8 +729,8 @@ fn catalog_parsing_extracts_json_pins() {
 ///
 /// Requires `scripts/fetch-test-grammars.sh` (handled by `grammar_fixture`).
 ///
-/// Flip: remove `theme.bake` and this snapshot fails because all scopes resolve
-/// to the default style — proving the assertion is not a zero-effect check.
+/// Without `theme.bake` every scope would resolve to the default style and the
+/// snapshot would change.
 #[test]
 fn rust_function_highlight_snapshot() {
     use hume_treesitter::highlight::layer_highlights_for_line;

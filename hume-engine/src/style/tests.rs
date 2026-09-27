@@ -127,9 +127,6 @@ fn no_selections_yields_default_style() {
 /// a fg/modifier applied here would show up on content cells but nowhere the
 /// row-fill site paints (gutter, trailing fill past end-of-line),
 /// contradicting a kind documented as a full-row *background* tint.
-///
-/// Fail oracle: layering the tint's whole `ResolvedStyle` (the pre-fix
-/// behavior) makes this fail on both the fg and the modifier assertions.
 #[test]
 fn line_tint_applies_only_background_not_fg_or_modifiers() {
     let graphemes = make_graphemes(3);
@@ -321,9 +318,9 @@ fn selection_range_highlighted() {
     );
 }
 
-/// Regression test: backward selections (head < anchor, e.g. after flip-selections)
-/// must highlight their full inclusive range. Before the fix, the anchor cell at
-/// the high end of the range was excluded from the selection span and rendered plain.
+/// Backward selections (head < anchor, e.g. after flip-selections) must
+/// highlight their full inclusive range, including the anchor cell at the
+/// high end.
 #[test]
 fn backward_selection_anchor_cell_highlighted() {
     // "foo": chars 0,1,2. Backward selection: head=0, anchor=2.

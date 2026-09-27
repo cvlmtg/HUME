@@ -206,8 +206,8 @@ fn optional_pair_fields_false_is_none_pair_is_some() {
 /// the "expected pane" substring every buffer-touching builtin's
 /// wrong-type test asserts on.
 ///
-/// Fail oracle: return `Ok` for any value → any argument would silently
-/// decode as a pane.
+/// Accepting any value here would let every argument silently decode as a
+/// pane.
 #[test]
 fn arg_pane_rejects_non_pane() {
     let err = ArgPane::from_steelval(&SteelVal::StringV("not-a-pane".into())).unwrap_err();
@@ -325,8 +325,6 @@ fn lsp_target_arg_accepts_a_string_or_symbol_language() {
 
 /// No fallback left to decode `#f` into — the typed-command wrapper
 /// (`registration.scm`) supplies the focused buffer explicitly instead.
-///
-/// Fail oracle: `#f` decoding to a "no target" variant instead of erroring.
 #[test]
 fn lsp_target_arg_rejects_false() {
     let err = LspTargetArg::from_steelval(&SteelVal::BoolV(false)).unwrap_err();

@@ -8,8 +8,8 @@ use hume_scripting::ScriptingHost;
 /// extend=false → move-down. Dispatching with extend=true must move the cursor
 /// right, not down.
 ///
-/// Fail oracle: if the Lazy path did not forward extend correctly (e.g. always
-/// injected extend=false), the cursor would move down instead of right.
+/// A Lazy path that dropped extend (always injecting extend=false) would move
+/// the cursor down instead.
 #[test]
 fn lazy_command_first_dispatch_forwards_extend() {
     let dir = safe_tempdir();

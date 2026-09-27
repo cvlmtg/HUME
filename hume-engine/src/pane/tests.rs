@@ -85,7 +85,7 @@ fn wrap_mode_from_str_error_non_numeric_width() {
 
 #[test]
 fn wrap_mode_values_round_trip_through_from_str() {
-    // Independent-oracle guard: every completion-offered value must
+    // Every completion-offered value must
     // actually parse, so `VALUES` can't silently drift from `FromStr`.
     // One-directional: this can't catch a variant added to `FromStr` but
     // left out of `VALUES` (it would just silently vanish from
@@ -156,7 +156,7 @@ fn whitespace_render_from_str_error() {
 
 #[test]
 fn whitespace_render_values_round_trip_through_from_str() {
-    // Independent-oracle guard: every completion-offered value must
+    // Every completion-offered value must
     // actually parse, so `VALUES` can't silently drift from `FromStr`.
     // One-directional: this can't catch a variant added to `FromStr` but
     // left out of `VALUES` (it would just silently vanish from

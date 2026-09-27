@@ -82,7 +82,7 @@ fn load_plugin_missing_plugin_declared_not_loaded() {
         .unwrap();
 
     // Persistence check: the host field should contain the declared name even
-    // before eval #2 (direct, independent oracle).
+    // before eval #2, read directly from the host.
     assert!(
         h.declared_plugins()
             .iter()
@@ -446,9 +446,6 @@ fn define_command_repeatable_sets_flag() {
 
 /// `#:repeatable #t` and `#:inline-output #t` together must raise a Steel error
 /// and must not register the command.
-///
-/// Fail oracle: remove the mutual-exclusion guard in define_command —
-/// the eval would succeed and register the command with both flags set.
 #[test]
 fn repeatable_and_inline_output_mutually_exclusive() {
     let mut h = host();

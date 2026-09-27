@@ -88,7 +88,7 @@ fn star_on_partial_selection_expands_to_word() {
     assert_eq!(state(&ed), "-[hello]> world\n");
     assert_eq!(reg(&ed, 's'), vec![r"\bhello\b"]);
 
-    // Independent oracle: the pattern must actually match "hello" in the buffer.
+    // The pattern must actually match "hello" in the buffer.
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
@@ -207,7 +207,7 @@ fn star_on_double_slash_punctuation_run_stays_literal() {
     ed.handle_key(key('*'));
     assert_eq!(reg(&ed, 's'), vec!["//"]);
 
-    // Independent oracle: the compiled pattern must match the "//" run
+    // The compiled pattern must match the "//" run
     // itself, not a single '/' (what an empty-flag-run misparse produces).
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
@@ -237,7 +237,7 @@ fn search_selection_uses_literal_text() {
     // (verbatim) flag prefix Ctrl-/ now sets instead of hand-escaping.
     assert_eq!(reg(&ed, 's'), vec!["v/ell"]);
 
-    // Independent oracle: matches both the substring inside "hello" (1..4) and
+    // Matches both the substring inside "hello" (1..4) and
     // the standalone "ell" (6..9) — proving it's substring, not whole-word, search.
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
@@ -274,7 +274,7 @@ fn search_selection_escapes_metacharacters() {
     // escaping now happens at compile time, not at register-write time.
     assert_eq!(reg(&ed, 's'), vec!["v/a.b"]);
 
-    // Oracle: the escaped '.' must NOT match "axb" as a wildcard.
+    // The escaped '.' must NOT match "axb" as a wildcard.
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);

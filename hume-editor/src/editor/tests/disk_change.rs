@@ -29,8 +29,8 @@ fn external_rewrite_is_detected_and_opens_confirm() {
     let bid = ed.focused_buffer_id();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
-    // Fail oracle: a mtime-only comparison could miss this on a filesystem
-    // whose mtime resolution is coarser than the test's wall-clock delta.
+    // A mtime-only comparison could miss this on a filesystem whose mtime
+    // resolution is coarser than the test's wall-clock delta.
     assert!(ed.doc().is_disk_stale());
     assert!(ed.state.input.confirm().is_some());
 }
@@ -76,9 +76,8 @@ fn deleted_file_warns_and_never_prompts() {
 /// stay silent — same "don't nag again for the same thing" rule `Changed`
 /// follows, just with no signature to compare (there's only one "vanished").
 ///
-/// Fail oracle: if the `Vanished` arm never recorded that it had already
-/// reported, every later ambient trigger (each terminal focus regain) would
-/// warn all over again, forever.
+/// If the `Vanished` arm never recorded that it had already reported, every
+/// later ambient trigger (each terminal focus regain) would warn again.
 #[test]
 fn vanished_file_does_not_refire_on_every_trigger() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -118,9 +117,9 @@ fn pathless_buffers_are_never_flagged() {
 /// buffer-enter) for a condition the user already saw once would be pure
 /// noise. A *further*, distinct external change must still fire.
 ///
-/// Fail oracle: if `check_buffer_disk_state` left the buffer's stored
-/// signature untouched after reporting, this second check would compare
-/// against the same stale signature and warn all over again.
+/// If `check_buffer_disk_state` left the buffer's stored signature untouched
+/// after reporting, the second check would compare against the same stale
+/// signature and warn again.
 #[test]
 fn unactioned_change_does_not_refire_until_a_further_change_happens() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -152,10 +151,10 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
 /// an externally-changed buffer this way must not silently show stale
 /// content with `:w` free to clobber the external edit.
 ///
-/// Fail oracle: without `detect_buffer_enter`'s focus diff (`scripting_setup.rs`)
+/// Without `detect_buffer_enter`'s focus diff (`scripting_setup.rs`)
 /// observing the pane's new buffer and queuing `OnBufferEnter`, the target
-/// buffer's disk state stays `InSync` no matter what changed externally —
-/// this holds for any switch primitive `:bnext`/`:bprev` route through, since
+/// buffer's disk state would stay `InSync` no matter what changed externally.
+/// This holds for any switch primitive `:bnext`/`:bprev` route through, since
 /// the diff is keyed on the focused (pane, buffer) pair, not on the call
 /// site. Driven via `type_cmd_event`, not `type_cmd`: the check is
 /// `OnBufferEnter`'s Rust reaction, observed only once `Editor::settle()`
@@ -179,7 +178,7 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
         ed.state.input.confirm().is_some(),
-        "Fail oracle: :bp must run the buffer-enter disk check, not just switch"
+        ":bp must run the buffer-enter disk check as well as switching"
     );
 }
 
@@ -188,9 +187,9 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
 /// confirm, even though nothing has changed on disk since the warning: this
 /// is the documented "asked about on its own next buffer-enter" promise.
 ///
-/// Fail oracle: if `BufferEnter` deduped an already-reported `Changed` state
-/// exactly like `Ambient` does, `:b #` landing on the buffer would find
-/// nothing new to report and stay silent — silently breaking the promise.
+/// If `BufferEnter` deduped an already-reported `Changed` state the way
+/// `Ambient` does, `:b #` landing on the buffer would find nothing new to
+/// report and stay silent, breaking that promise.
 /// The final `:b #` is driven via `type_cmd_event`: the disk check is
 /// `OnBufferEnter`'s Rust reaction, observed only once `Editor::settle()`
 /// runs its focus diff after the switch.
@@ -238,9 +237,6 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
 /// `autoread` off — and, like that non-focused case, only a `BufferEnter`
 /// check reopens the deferred prompt; a further `Ambient` recheck stays
 /// silent for the same already-reported state.
-///
-/// Fail oracle: if the confirm ignored mode entirely, the first assertion
-/// below would find a confirm open while `ed.state.mode()` reads `Insert`.
 #[test]
 fn change_detected_mid_insert_warns_instead_of_prompting() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -319,7 +315,7 @@ fn confirm_reload_choice_reloads_and_clears_disk_stale() {
     assert!(!ed.doc().is_dirty());
     assert!(
         !ed.doc().is_disk_stale(),
-        "Fail oracle: without clearing the stale flag on reload, :w would keep refusing forever"
+        "reload must clear the stale flag, or :w would keep refusing forever"
     );
     assert!(
         ed.doc().can_undo(),
@@ -362,10 +358,6 @@ fn confirm_esc_dismisses_without_answering() {
 /// but — unlike `Esc` — is not swallowed: it still runs its own binding in
 /// the same dispatch. `/` opens the search line; a bug that ate the
 /// keystroke would leave the mode at `Normal` with the search line unopened.
-///
-/// Fail oracle: before the fall-through fix, `confirm_input` consumed every
-/// key unconditionally, so the second assertion (`Mode::Search`) would
-/// fail — the `/` never reached `handle_normal`.
 #[test]
 fn confirm_stray_key_dismisses_and_still_runs_its_binding() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -388,9 +380,9 @@ fn confirm_stray_key_dismisses_and_still_runs_its_binding() {
 /// A choice key held with a modifier (`Ctrl-k`, the kitty one-shot extend
 /// for `move-up`) must not answer the prompt — only a bare `r`/`k` does.
 ///
-/// Fail oracle: before the modifier gate, `key.code == KeyCode::Char('k')`
-/// matched regardless of `key.modifiers`, so `Ctrl-k` silently declined
-/// (`DiskState::Declined`) instead of falling through to `move-up`.
+/// The choice match has to look at `key.modifiers`. Matching on
+/// `key.code == KeyCode::Char('k')` alone would make `Ctrl-k` decline
+/// (`DiskState::Declined`) and never reach `move-up`.
 #[test]
 fn confirm_choice_key_with_ctrl_does_not_answer_the_prompt() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -412,10 +404,10 @@ fn confirm_choice_key_with_ctrl_does_not_answer_the_prompt() {
 /// not through input dispatch, which the `Confirm` layer would otherwise see
 /// first) must not reload, and must not panic.
 ///
-/// Fail oracle: without the focus guard, `reload_buffer_from_disk` would
-/// call `reload_buffer_in_place(bid_a, ..)` while focus is on B, and its
-/// `.expect("focused pane must view the reloaded buffer")` would panic —
-/// there is no pane state for A's post-heads at the now-focused pane.
+/// Without the focus guard, `reload_buffer_from_disk` would call
+/// `reload_buffer_in_place(bid_a, ..)` while focus is on B, and its
+/// `.expect("focused pane must view the reloaded buffer")` would panic,
+/// since the now-focused pane holds no state for A's post-heads.
 #[test]
 fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -465,9 +457,9 @@ fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
 /// last read or wrote — a fresh stat at write time, not a cached flag set by
 /// some earlier trigger. `:w!` overrides.
 ///
-/// Fail oracle: no trigger (`check_buffer_disk_state`) runs anywhere in this
-/// test, so a flag-based guard would see `disk_state == InSync` and let the
-/// write through, silently clobbering the external change.
+/// No trigger (`check_buffer_disk_state`) runs anywhere in this test, so a
+/// flag-based guard would see `disk_state == InSync` and let the write
+/// through, clobbering the external change.
 #[test]
 fn write_refuses_on_externally_changed_file_but_bang_overrides() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -499,8 +491,8 @@ fn write_refuses_on_externally_changed_file_but_bang_overrides() {
 /// there is no external content to clobber, only the user's own unsaved
 /// work to write back.
 ///
-/// Fail oracle: a guard that blocked on any stat error (not just a genuine
-/// content mismatch) would refuse this write and strand the user's edits.
+/// A guard that blocked on every stat error would refuse this write and
+/// strand the user's edits.
 #[test]
 fn write_recreates_a_vanished_file() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -553,9 +545,8 @@ fn write_percent_refuses_on_externally_changed_own_file() {
 /// though the buffer's *own* file changed on disk — `targets_own_file` is
 /// false, so there is nothing to guard against on the new path.
 ///
-/// Fail oracle: a guard keyed only on "did the buffer's own baseline
-/// change" (ignoring which path is actually being written) would refuse
-/// this save-as too, even though it targets an unrelated file.
+/// A guard that only asked whether the buffer's own baseline changed, and
+/// ignored which path is being written, would refuse this save-as too.
 #[test]
 fn save_as_to_unrelated_path_succeeds_despite_own_file_changing() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -694,9 +685,7 @@ fn write_all_skips_stale_buffer_but_writes_the_rest_bang_overrides() {
 /// external rewrite landing back on the exact original mtime+size, which
 /// isn't reliably reproducible from a test.
 ///
-/// Fail oracle: without the `Unchanged` arm writing `InSync`, `disk_state`
-/// would stay at the injected `Changed` value even though the file already
-/// matches its baseline, and the second assertion would fail.
+/// The reset happens in the `Unchanged` arm, which writes `InSync`.
 #[test]
 fn unchanged_check_resets_disk_state_to_in_sync() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -722,9 +711,6 @@ fn unchanged_check_resets_disk_state_to_in_sync() {
 /// says nothing about whether the buffer is actually back in sync. A
 /// pathless buffer is the deterministic way to reach `Indeterminate` from a
 /// test (a transient stat error isn't reproducible portably).
-///
-/// Fail oracle: if `Indeterminate` reset `disk_state` to `InSync` the same
-/// way `Unchanged` does, the assertion below would fail.
 #[test]
 fn indeterminate_check_never_touches_disk_state() {
     let mut ed = editor_from("-[h]>ello\n"); // scratch buffer, no file_meta
@@ -773,10 +759,6 @@ fn vanished_file_recreated_with_different_content_rereports() {
 /// The blocked change only warns, and the
 /// deferred prompt still arrives on the next buffer-enter after the picker
 /// closes, same deferral rule as a mode-blocked or non-focused change.
-///
-/// Fail oracle: without the picker check in `can_open_confirm`, the first
-/// assertion below would find a confirm open while the picker is still
-/// live.
 #[test]
 fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -823,10 +805,9 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
 /// overlay sitting on `Base`, so this is a reachable stack) has nothing to
 /// do with the question the confirm was answering.
 ///
-/// Fail oracle: before this fix, the retirement used `truncate_layers` at
-/// the confirm's own ref, which removes it *and everything above it* — the
-/// `minibuf().is_some()` assertion below would fail, and the prompt's
-/// callback would have fired with `#f` it was never supposed to fire.
+/// The retirement must remove the confirm alone. `truncate_layers` at the
+/// confirm's own ref would also remove every layer above it, closing the
+/// prompt and firing its callback with `#f`.
 #[test]
 fn stale_confirm_retirement_does_not_take_a_prompt_above_it_with_it() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -890,10 +871,9 @@ fn stale_confirm_retirement_does_not_take_a_prompt_above_it_with_it() {
 /// no keys beyond Ctrl-u/d and dies on the very next one anyway, so it must
 /// not block the one prompt that actually needs the keyboard.
 ///
-/// Fail oracle: before this fix, `can_open_confirm`'s gate was
-/// `is::<BaseLayer>(top())`, which a `Popup` layer landing above `Base` also
-/// fails — the confirm would never open and only the `Severity::Warning`
-/// fallback would fire.
+/// For that reason `can_open_confirm` cannot gate on
+/// `is::<BaseLayer>(top())`. A `Popup` above `Base` would fail that check,
+/// and only the `Severity::Warning` fallback would fire.
 #[test]
 fn confirm_still_opens_over_an_open_scrollable_popup() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -979,11 +959,9 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
 /// truncates, specifically because the picker has nothing to do with the
 /// question the confirm was answering and must not be taken as collateral.
 ///
-/// Fail oracle: before this fix, this retirement used `truncate_layers` at
-/// the confirm's own ref, which removes it *and everything above it* — the
-/// `picker().is_some()` assertion below would fail, and the picker's own
-/// `tear_down` (its "fires exactly once" contract for an incidental
-/// removal) would have fired `on_select` with `#f` it was never supposed to.
+/// Truncating at the confirm's ref would also remove the picker, and the
+/// picker's `tear_down` (its "fires exactly once" contract for an incidental
+/// removal) would fire `on_select` with `#f`.
 #[test]
 fn picker_above_a_retired_confirm_survives_untouched() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1039,11 +1017,10 @@ fn picker_above_a_retired_confirm_survives_untouched() {
 /// longer owns the keyboard, so the statusline must not paint its row
 /// over the minibuffer that does.
 ///
-/// Fail oracle: before this fix, `EditorState::confirm()` delegated
-/// straight to `InputStack::confirm()` (finds a confirm anywhere on the
-/// stack), so the first assertion below would find `Some` even with the
-/// prompt on top, and the statusline would render the disk-change prompt
-/// while the user typed into an invisible minibuffer.
+/// `EditorState::confirm()` therefore cannot just delegate to
+/// `InputStack::confirm()`, which finds a confirm anywhere on the stack.
+/// Doing so would render the disk-change prompt while the user typed into
+/// an invisible minibuffer.
 #[test]
 fn statusline_seam_hides_a_confirm_buried_under_a_prompt() {
     let script_tmp = safe_tempdir();
@@ -1084,8 +1061,7 @@ fn statusline_seam_hides_a_confirm_buried_under_a_prompt() {
 /// multi-key sequence (e.g. `d` waiting for its motion) already owns the
 /// very next keystroke.
 ///
-/// Fail oracle: without the `pending_keys` check in `can_open_confirm`, the
-/// confirm would open and the assertion below would fail.
+/// `can_open_confirm` checks `pending_keys` for this.
 #[test]
 fn confirm_does_not_open_mid_pending_key_sequence() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1136,11 +1112,10 @@ fn two_panes_with_b_focused() -> (
 /// (B) and reveals A, which must re-prompt for its own already-warned
 /// change.
 ///
-/// Fail oracle: before the `handle_input`-tail check, `:q` → `Editor::
-/// close_buffer` → `lifecycle::close_buffer` → `switch_pane_to_buffer` moved
-/// the focused pane onto A with no `BufferEnter` check anywhere on the path,
-/// so A's already-warned `Changed` state was never re-surfaced and the
-/// statusline fell back to the still-unseen log summary. This is also the
+/// `:q` moves the focused pane onto A through `Editor::close_buffer`,
+/// `lifecycle::close_buffer` and `switch_pane_to_buffer`, and none of them
+/// runs a `BufferEnter` check. A's already-warned `Changed` state is
+/// re-surfaced only by the focus diff in `settle()`. This is also the
 /// only test in this section that pins the *trigger*: an `Ambient` recheck
 /// (the second assertion) must stay silent for an already-reported change.
 #[test]
@@ -1212,8 +1187,8 @@ fn buffer_delete_prompts_the_revealed_buffer() {
 /// Multi-pane `:q` closes the focused pane and reveals its sibling, which
 /// must re-prompt for its own deferred change.
 ///
-/// Fail oracle: `close_focused_pane` takes `(&mut EditorState, &mut
-/// EngineView)` and cannot call an `Editor` method — a fix that only patched
+/// `close_focused_pane` takes `(&mut EditorState, &mut EngineView)` and
+/// cannot call an `Editor` method. A check living only in
 /// `Editor::close_buffer` would leave multi-pane `:q` silent while
 /// single-pane `:q` (`quit_closing_a_buffer_prompts_the_revealed_one`)
 /// prompted correctly.
@@ -1347,10 +1322,9 @@ fn clicking_into_another_pane_prompts_that_panes_buffer() {
 /// through input dispatch, so the `Confirm` layer never gets a chance to
 /// dismiss it for us.
 ///
-/// Fail oracle: without `close_buffer_and_notify` retiring a confirm that
-/// `targets_buffer(id)`, the assertion below would find the stale confirm
-/// still present — and with the `confirm.is_none()` guard in place, it would
-/// additionally block every later prompt until some stray key dismissed it.
+/// `close_buffer_and_notify` retires any confirm that `targets_buffer(id)`.
+/// A stale confirm left behind would also block every later prompt through
+/// the `confirm.is_none()` guard, until some stray key dismissed it.
 #[test]
 fn closing_a_buffer_retires_its_open_reload_confirm() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1384,11 +1358,9 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
 /// the live pattern) if it incorrectly ran, unlike `Prompt`'s (a
 /// history-nav reset with no externally visible signal).
 ///
-/// Fail oracle: before this fix, the retirement used `truncate_layers` at
-/// the confirm's own ref, which removes it *and everything above it* — the
-/// `find::<SearchLayer>().is_some()` assertion below would fail, and
-/// Search's own `tear_down` would have run, clearing the live pattern and
-/// restoring the pre-search selection the user is still actively editing.
+/// `truncate_layers` at the confirm's own ref would also remove every layer
+/// above it. Search's `tear_down` would then run, clearing the live pattern
+/// and restoring the pre-search selection the user is still editing.
 #[test]
 fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() {
     use crate::editor::commands::{FocusedPane, cmd_search_forward};
@@ -1456,9 +1428,8 @@ fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() 
 /// saw. B's deferred change stays a warning instead, same as any other
 /// blocked-confirm case.
 ///
-/// Fail oracle: without `confirm.is_none()` in `can_open_confirm`, the
-/// second `open_disk_change_confirm` call would replace the live model with
-/// B's, and the first assertion below would fail.
+/// The `confirm.is_none()` check in `can_open_confirm` keeps a second
+/// `open_disk_change_confirm` call from replacing the live model with B's.
 #[test]
 fn a_second_confirm_never_replaces_a_live_one() {
     // Both buffers opened up front: once A's confirm is live, the very
@@ -1509,11 +1480,9 @@ fn a_second_confirm_never_replaces_a_live_one() {
 /// the macro. Mirrors `change_detected_mid_insert_warns_instead_of_prompting`'s
 /// shape: blocked during replay, deferred prompt still honoured afterward.
 ///
-/// Fail oracle: without `!self.state.is_replaying` in `can_open_confirm`,
-/// the confirm would open partway through `drain_replay_queue`, and the
-/// first assertion below (confirm still `None`) would fail; the second
-/// (focus actually reached B) would also fail if the open confirm had eaten
-/// the macro's remaining keys.
+/// Without `!self.state.is_replaying` in `can_open_confirm`, the confirm
+/// would open partway through `drain_replay_queue` and could eat the macro's
+/// remaining keys before focus reached B.
 #[test]
 fn confirm_does_not_open_during_macro_replay() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1579,11 +1548,10 @@ fn confirm_does_not_open_during_macro_replay() {
 /// silent would leave the user editing content that no longer matches disk
 /// with no indication anywhere until `:w` refuses.
 ///
-/// Fail oracle: with only the `!already_reported` warn clause (no
-/// `is_buffer_enter && promptable` fallback), `already_reported` is already
-/// `true` from the pre-replay ambient check below, so the replay-triggered
-/// `BufferEnter` check would find nothing new to say and stay silent — the
-/// final assertion would fail.
+/// The `is_buffer_enter && promptable` fallback covers this. The
+/// `!already_reported` warn clause alone is not enough: `already_reported`
+/// is `true` from the pre-replay ambient check below, so the
+/// replay-triggered `BufferEnter` check would find nothing new to say.
 #[test]
 fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1648,10 +1616,10 @@ fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
 /// enqueues a replay in the same dispatch today, so this drives
 /// `EditorState` directly rather than through a real key.
 ///
-/// Fail oracle: drop the `message_already_logged` save/restore in
-/// `drain_replay_queue` → `status_msg` ends up as `"world: file has changed
-/// on disk"` instead of staying `None` (what `:b #`'s own `Enter` dispatch
-/// leaves it as, since a successful `:b` reports nothing on its own).
+/// Without the `message_already_logged` save/restore in
+/// `drain_replay_queue`, `status_msg` would read `"world: file has changed
+/// on disk"`. It should stay `None`, which is what `:b #`'s own `Enter`
+/// dispatch leaves behind, since a successful `:b` reports nothing.
 #[test]
 fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1707,12 +1675,11 @@ fn message_logged_before_a_macro_replay_survives_its_trailing_settle() {
 /// it, and must not steal the keystroke meant to answer the error (e.g.
 /// retrying with `:qa!`).
 ///
-/// Fail oracle: without the `message_logged_this_input` guard in
-/// `can_open_confirm` (set by `Editor::handle_input` for the duration of its
-/// post-dispatch focus-change check), the focus diff `typed_quit_all`
-/// produces would still let `check_buffer_disk_state` open a reload confirm
-/// over the "Unsaved changes" error — the second assertion below
-/// (`confirm.is_none()`) would fail. `open_disk_change_confirm` never writes
+/// The `message_logged_this_input` guard in `can_open_confirm` (set by
+/// `Editor::handle_input` for the duration of its post-dispatch
+/// focus-change check) stops `check_buffer_disk_state` from opening a reload
+/// confirm over the "Unsaved changes" error after the focus diff
+/// `typed_quit_all` produces. `open_disk_change_confirm` never writes
 /// `status_msg`, so the first assertion doesn't distinguish the two cases;
 /// it documents the desired behaviour, not this guard specifically — see
 /// `quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error`
@@ -1759,12 +1726,11 @@ fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
 /// status line but the change is still discoverable, matching every other
 /// blocked-confirm case (mode-blocked, mid-replay).
 ///
-/// Fail oracle: without `report_disk_state` falling back to
-/// `message_log.push` (log-only) instead of `Editor::report` (which also
-/// writes `status_msg`) whenever `message_logged_this_input` is set, this
-/// warning would either clobber `status_msg` (breaking the sibling test) or
-/// — if suppressed outright instead — never increment the warning total at
-/// all, and the final assertion here would fail.
+/// While `message_logged_this_input` is set, `report_disk_state` uses the
+/// log-only `message_log.push` in place of `Editor::report`, which also
+/// writes `status_msg`. Using `Editor::report` would clobber `status_msg`
+/// and break the sibling test. Suppressing the warning outright would leave
+/// the warning total unchanged.
 #[test]
 fn quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1801,10 +1767,9 @@ fn quit_all_focus_move_still_logs_the_disk_change_without_shadowing_the_error() 
 /// question on a later, unrelated focus change — only a further external
 /// change (a new signature) should ask again. See `DiskState::Declined`.
 ///
-/// Fail oracle: without recording the decline, cycling away and back would
-/// still find `disk_state` at `Changed` for the same signature, and the
-/// `BufferEnter` re-prompt rule would reopen the confirm — the middle
-/// assertion below would fail.
+/// If the decline were not recorded, cycling away and back would still find
+/// `disk_state` at `Changed` for the same signature, and the `BufferEnter`
+/// re-prompt rule would reopen the confirm.
 #[test]
 fn declined_confirm_does_not_reopen_on_later_focus_change() {
     let (mut ed, tmp_a, _tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
@@ -1857,10 +1822,9 @@ fn declined_confirm_does_not_reopen_on_later_focus_change() {
 /// out of sync with disk indefinitely, with only `:w`'s bare refusal (no
 /// explanation) as a clue.
 ///
-/// Fail oracle: without the `DiskCheckTrigger::Explicit` branch in the
-/// `Changed` arm's `Declined` early-return, `:checktime` here would find
-/// `declined` true and return before reporting anything — the final
-/// assertion (`warnings_after == warnings_before + 1`) would fail.
+/// Without the `DiskCheckTrigger::Explicit` branch in the `Changed` arm's
+/// `Declined` early-return, `:checktime` would find `declined` true and
+/// return before reporting anything.
 #[test]
 fn declined_change_still_warns_on_explicit_checktime() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1896,10 +1860,8 @@ fn declined_change_still_warns_on_explicit_checktime() {
 /// report — it must not swallow an unrelated later `Vanished` warning for
 /// the same buffer.
 ///
-/// Fail oracle: if the `Declined` short-circuit lived above the match on
-/// `DiskChange` instead of inside the `Changed` arm alone, a stale guard
-/// would suppress the `Vanished` warning too — the final assertion would
-/// fail.
+/// The `Declined` short-circuit lives inside the `Changed` arm. Placed above
+/// the match on `DiskChange`, it would suppress the `Vanished` warning too.
 #[test]
 fn declined_change_then_vanished_file_still_warns() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1928,11 +1890,10 @@ fn declined_change_then_vanished_file_still_warns() {
 /// in view — and the buffer the click actually landed on must get its own
 /// deferred prompt, not be blocked by the stale one.
 ///
-/// Fail oracle: without `enter_buffer_disk_check` (`OnBufferEnter`'s Rust
-/// reaction) retiring a confirm that no longer targets the newly-focused
-/// buffer, the assertion below would still find B's confirm naming B,
-/// blocking A's own prompt via `can_open_confirm`'s `confirm.is_none()`
-/// gate.
+/// `enter_buffer_disk_check` (`OnBufferEnter`'s Rust reaction) retires a
+/// confirm that no longer targets the newly focused buffer. Left in place,
+/// B's confirm would block A's own prompt via `can_open_confirm`'s
+/// `confirm.is_none()` gate.
 #[test]
 fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     let (mut ed, tmp_a, tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
@@ -1982,11 +1943,9 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
 /// queues as a `PendingWork::Call`, drained by the next `render_to_buf`
 /// (`settle()` internally), same as `on-buffer-enter`.
 ///
-/// Fail oracle: a disk check wired only into typed commands — the picker
-/// path never ran through `enter_buffer_with_jump` (a fuzzy picker doesn't
-/// dispatch `:e`/`:b`) or
-/// `handle_input`'s tail check (the switch happens a frame later, inside the
-/// drain), so `ed.state.input.confirm()` stays `None`.
+/// A disk check wired only into typed commands would miss this path: a fuzzy
+/// picker never dispatches `:e`/`:b`, and the switch happens a frame later,
+/// inside the drain, so nothing at the end of `handle_input` sees it either.
 #[test]
 fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     let tmp = safe_tempdir();
@@ -2054,9 +2013,9 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
 /// `switch_to_buffer_with_jump` (what non-interactive callers use) never
 /// called it.
 ///
-/// Fail oracle: gate the reaction on `Editor::handle_input`'s dispatch
-/// somehow surviving instead of living in `settle()`'s own diff → a switch
-/// with no interactive dispatch behind it never reaches the check.
+/// The reaction lives in `settle()`'s own diff. Gated on
+/// `Editor::handle_input`'s dispatch, a switch with no interactive dispatch
+/// behind it would never reach the check.
 #[test]
 fn non_interactive_switch_to_buffer_onto_a_stale_buffer_opens_the_reload_confirm() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -2084,9 +2043,6 @@ fn non_interactive_switch_to_buffer_onto_a_stale_buffer_opens_the_reload_confirm
 
 /// `OnFocusGained`'s reaction is `check_all_disk_state(Ambient)` — a sweep
 /// over every open buffer, not just the focused one.
-///
-/// Fail oracle: wire the reaction to a single-buffer check on the focused
-/// buffer instead → the non-focused buffer's warning never fires.
 #[test]
 fn focus_gained_sweeps_every_open_buffer_not_just_the_focused_one() {
     use termina::event::Event as TerminalEvent;
@@ -2124,11 +2080,6 @@ fn focus_gained_sweeps_every_open_buffer_not_just_the_focused_one() {
 /// find the confirm already open (`can_open_confirm`'s `confirm.is_none()`
 /// guard blocks it) and fall through to `report_disk_state`'s warn fallback
 /// instead — an extra `:messages` entry alongside the confirm.
-///
-/// Fail oracle: leave a direct `check_buffer_disk_state`/
-/// `enter_buffer_disk_check` call wired in at the `:b` command itself,
-/// alongside the diff → `warnings_after` is one higher than
-/// `warnings_before`.
 #[test]
 fn switching_onto_a_stale_buffer_checks_disk_state_exactly_once() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -2178,11 +2129,11 @@ fn switching_onto_a_stale_buffer_checks_disk_state_exactly_once() {
 /// never unrelated — it exists because of this exact command — so it must be
 /// exempt.
 ///
-/// Fail oracle: apply the message-shadow clause unconditionally (drop the
-/// `trigger != DiskCheckTrigger::BufferEnter` guard) — `message_logged_this_input`
-/// is `true` from this dispatch's own `log!` warning by the time the queued
-/// `OnFocusGained` reaction runs in the next `settle()`, so `confirm` would
-/// stay `None` and only a `:messages` line would appear.
+/// The `trigger != DiskCheckTrigger::BufferEnter` guard provides that
+/// exemption. `message_logged_this_input` is already `true` from this
+/// dispatch's own `log!` warning when the queued `OnFocusGained` reaction
+/// runs in the next `settle()`, so an unconditional clause would leave only
+/// a `:messages` line and no confirm.
 #[test]
 fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
     use crate::editor::keymap::BindMode;

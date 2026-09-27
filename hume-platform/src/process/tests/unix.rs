@@ -69,9 +69,6 @@ fn run_inline_output_returns_exit_status_of_child() {
 /// foreground one, so a credential prompt it wrote would be followed by a
 /// read that hangs on `SIGTTIN` rather than an answerable question. Must
 /// deny the prompt outright, the same as `run_capture`.
-///
-/// Fail oracle: before the fix, `$GIT_TERMINAL_PROMPT` was unset here, so
-/// `out.txt` would contain the empty string.
 #[test]
 fn run_inline_output_sets_git_terminal_prompt_to_deny_credential_prompts() {
     // Inherited stdio means the child's stdout is this test process's own —

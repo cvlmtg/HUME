@@ -4,8 +4,8 @@ use super::*;
 /// An invalid glob pattern in `define-language!` is warned and silently skipped;
 /// valid patterns and other languages still register correctly.
 ///
-/// Flip: without validation, a bad glob would silently drop at compile time with
-/// no message, making it undetectable to the user.
+/// Without validation, a bad glob would be dropped at compile time with no
+/// message, and the user would have no way to notice.
 #[test]
 fn invalid_glob_in_define_language_warns_and_skips() {
     use hume_scripting::PendingLanguageReg;

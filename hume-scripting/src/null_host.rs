@@ -27,9 +27,9 @@ use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 /// Event names `NullHost` reports as known — the names scripting-crate unit
 /// tests actually register (`on-buffer-open`, `on-buffer-save`), plus one
 /// synthetic name (`on-stub-only`) the editor never defines. That divergence
-/// from the editor's real event set is deliberate: it's the independent
-/// oracle proving `register-hook!`/`declare-plugin` validate through
-/// `EditorHost::events()` rather than a compiled-in table.
+/// from the editor's real event set is deliberate: it lets tests prove that
+/// `register-hook!`/`declare-plugin` validate through `EditorHost::events()`
+/// rather than a compiled-in table.
 const NULL_HOST_EVENT_NAMES: &[&str] = &["on-buffer-open", "on-buffer-save", "on-stub-only"];
 
 #[derive(Default)]

@@ -2,7 +2,7 @@ use super::*;
 use hume_editing::changeset::ChangeSetBuilder;
 
 /// Build a `ChangeSet` over `before` (LF-only) and return its emitted
-/// content changes plus the string the oracle should reach.
+/// content changes plus the string the mirror should reach.
 fn check(before: &str, build: impl FnOnce(&mut ChangeSetBuilder), enc: PositionEncoding) {
     let rope = Rope::from_str(before);
     let mut builder = ChangeSetBuilder::new(hume_rope::offset::CharOffset::new(rope.len_chars()));
@@ -18,7 +18,7 @@ fn check(before: &str, build: impl FnOnce(&mut ChangeSetBuilder), enc: PositionE
     let mirrored = apply_events_to_string_mirror(before.to_owned(), &events, enc);
     assert_eq!(
         mirrored, expected,
-        "oracle mismatch for enc={enc:?}, events={events:?}"
+        "mirror disagrees with the applied changeset for enc={enc:?}, events={events:?}"
     );
 }
 
@@ -51,7 +51,7 @@ fn single_insert() {
 /// A `\r` must count as one ordinary content char on both sides of the wire
 /// conversion — never as a line break. "a\rb\n" is one ropey line here (`\n`
 /// is the only break), so an insert at char 2 goes out as (line 0, character
-/// 2); an oracle that treated the `\r` as a break would place it on a
+/// 2); a mirror that treated the `\r` as a break would place it on a
 /// nonexistent line 1 and desync the mirror.
 ///
 /// Doesn't use `check()`: that helper's `expected` goes through
@@ -75,7 +75,7 @@ fn single_insert_on_a_buffer_containing_a_bare_cr() {
         let mirrored = apply_events_to_string_mirror(before.to_owned(), &events, enc);
         assert_eq!(
             mirrored, "a\rXb\n",
-            "oracle mismatch for enc={enc:?}, events={events:?}"
+            "mirror must match the literal expected text for enc={enc:?}, events={events:?}"
         );
     }
 }

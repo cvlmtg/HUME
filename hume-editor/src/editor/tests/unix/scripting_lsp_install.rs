@@ -147,7 +147,7 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
     );
 }
 
-/// Independent oracle: the expected JSON is transcribed by hand from
+/// The expected JSON is transcribed by hand from
 /// runtime/scheme/lsp-servers.scm's current text, not derived by calling
 /// `lsp/settings->hash` — this is the settings-conversion correctness
 /// check, so it must not share logic with the thing it verifies.

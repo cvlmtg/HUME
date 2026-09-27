@@ -47,8 +47,8 @@ fn core_stdlib_plugin_loads_eagerly() {
 /// straight through untouched — the same cross-plugin surface
 /// `core:vim-keybind` uses for its conditional `C` binding.
 ///
-/// Each assertion is a hand-written literal-tuple oracle, independent of the
-/// implementation: if any command computes the wrong result, its `unless`
+/// Each assertion compares against a hand-written literal tuple, independent
+/// of the implementation. If any command computes the wrong result, its `unless`
 /// fires `(error ...)`, which propagates as an `Err` — caught by the assert
 /// below, failing the test with the offending assertion name.
 ///
@@ -112,7 +112,7 @@ fn core_stdlib_selection_commands() {
 /// `stdlib/safe-path-segment?` — the merged `core:plum`/`core:lsp`
 /// path-segment predicate — must reject every unsafe input (empty, `.`,
 /// `..`, a path separator, `:`, `"`, NUL) and accept ordinary names.
-/// Independent oracle: each literal input/expected pair is hand-picked, not
+/// Each literal input/expected pair is hand-picked, not
 /// derived from the implementation, mirroring `hume-platform/src/path/tests.rs`'s
 /// `is_safe_segment` coverage for the Rust copy.
 #[test]
@@ -261,8 +261,8 @@ fn core_stdlib_config_commands() {
 /// existed (see `injections_editor.rs`'s
 /// `plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir`).
 ///
-/// Independent oracle: a directory tree built directly via `std::fs`, with
-/// the expected sorted subdir list written out by hand.
+/// The directory tree is built directly via `std::fs`, with the expected
+/// sorted subdir list written out by hand.
 #[test]
 fn core_stdlib_list_subdirs_filters_stray_files() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
@@ -296,7 +296,7 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
 /// overwrite its leading bytes — writing a shorter string over a longer
 /// existing file must not leave the old tail behind.
 ///
-/// Independent oracle: the file is read back with `std::fs::read_to_string`
+/// The file is read back with `std::fs::read_to_string`
 /// on the Rust side, not through any Steel port primitive `write-file`
 /// itself might share a bug with.
 #[test]
@@ -335,7 +335,7 @@ fn core_stdlib_write_file_truncates_existing_content() {
 /// spawn failure (nonexistent binary) reporting exit-code `#f` with the
 /// failure reason standing in for stderr.
 ///
-/// Independent oracle: each case's expected shape is asserted directly
+/// Each case's expected shape is asserted directly
 /// against the real `sh`/nonexistent-binary spawn, not against any of
 /// `stdlib/run`'s own internals.
 #[test]
@@ -378,7 +378,7 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
 /// (`tests/mod.rs`) uses — rather than `eval_source`'s bare init-mode
 /// assertions.
 ///
-/// Independent oracle: the buffer's language is set via `set-buffer-language!`
+/// The buffer's language is set via `set-buffer-language!`
 /// (a command already covered elsewhere), and the expected fallback value is
 /// asserted literally, not derived from `stdlib/resolve-lang-arg` itself.
 #[test]
@@ -435,8 +435,8 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
 /// `stdlib/split-words` must tokenize using the *given* buffer's own
 /// `word-chars` — pulled via `get-buffer-option` internally, not a value the
 /// caller fetches and passes itself (the SSOT concern a bare `split-words`
-/// call site would otherwise have to manage by hand). Independent oracle:
-/// each expected token list is hand-written from the literal input.
+/// call site would otherwise have to manage by hand). Each expected token
+/// list is hand-written from the literal input.
 /// `bid` only exists as a dispatched command's own injected leading
 /// parameter, unavailable during init evaluation, so this runs the
 /// assertions from inside a typed command (`:probe-split-words`), the same
@@ -483,7 +483,7 @@ fn core_stdlib_split_words_uses_the_buffers_own_word_chars() {
 /// subdirectory of it — the case that actually exercises `--show-toplevel`
 /// rather than just echoing cwd back.
 ///
-/// Independent oracle: the expected root is `sandbox.path()`, the tempdir's
+/// The expected root is `sandbox.path()`, the tempdir's
 /// own canonicalized path, asserted literally — never re-derived through
 /// either command under test.
 #[test]

@@ -208,9 +208,6 @@ fn incremental_tree_matches_full_reparse() {
 /// NOT drain in the same call.  So after exactly one `reparse_stale_buffers`:
 /// - the bake has run  (tree_gen == text_gen, pending cleared, tree coords shifted)
 /// - the precise parse is queued but NOT yet installed (parsed_gen < text_gen)
-///
-/// Flip: without the bake the tree's root end_byte would still equal the
-/// pre-edit byte count.
 #[test]
 fn bake_aligns_committed_tree_before_precise_install() {
     require_grammars(&["json"]);

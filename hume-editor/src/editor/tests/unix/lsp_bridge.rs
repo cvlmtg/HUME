@@ -104,9 +104,9 @@ fn setup_with_real_file(
     (bid, uri)
 }
 
-/// Flip oracle for the two staleness tests below: with the same setup but no
-/// intervening edit, the callback fires normally (proves the harness itself
-/// isn't what's suppressing it).
+/// Same setup as the two staleness tests below, but with no intervening
+/// edit: the callback fires normally, so the harness itself isn't what
+/// suppresses it there.
 #[test]
 fn callback_fires_normally_without_an_intervening_edit() {
     let tmp = safe_tempdir();
@@ -260,8 +260,8 @@ fn stale_response_without_text_document_is_dropped() {
     );
 }
 
-/// `#:allow-stale` still opts out with no `textDocument` in params — same
-/// flip oracle as `stale_response_without_text_document_is_dropped`.
+/// `#:allow-stale` still opts out with no `textDocument` in params. This is
+/// the counterpart of `stale_response_without_text_document_is_dropped`.
 #[test]
 fn allow_stale_without_text_document_delivers() {
     let tmp = safe_tempdir();

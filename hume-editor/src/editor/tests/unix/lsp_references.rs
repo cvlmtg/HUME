@@ -182,10 +182,6 @@ fn null_result_reports_no_references() {
 /// navigation the user asked for, completed regardless of focus),
 /// references always opens a drawer — cursor-anchored UI that must not
 /// appear over whatever the user switched to.
-///
-/// Fail oracle: `lsp-references` (`goto.scm`) sending its `lsp-request`
-/// without `#:require-focus` — the drawer would open regardless of which
-/// buffer answered.
 #[test]
 fn stale_response_after_a_buffer_switch_opens_no_drawer() {
     let tmp = safe_tempdir();

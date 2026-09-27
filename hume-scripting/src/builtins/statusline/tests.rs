@@ -23,9 +23,8 @@ fn string_list(items: &[&str]) -> SteelVal {
 /// `editor::settings::ops::apply_global` chokepoint regardless of caller.
 /// Reaches the host from ordinary command-mode context.
 ///
-/// Fail oracle: change `configure-statusline!`'s table entry back to
-/// `config` → this call would fail with a gate error instead of reaching
-/// (and erroring on) `NullHost`.
+/// A `config` table entry would make this call fail with a gate error
+/// before it reached `NullHost`.
 #[test]
 fn configure_statusline_reaches_host_from_command_mode() {
     let mut h = SteelCtxTestHarness::new();
@@ -43,9 +42,6 @@ fn configure_statusline_reaches_host_from_command_mode() {
 // ── Type validation of section args ───────────────────────────────────────
 
 /// `configure-statusline!` rejects a non-list `left` argument.
-///
-/// Fail oracle: remove the list check → a boolean would be accepted and the
-/// iterator would produce garbage.
 #[test]
 fn configure_statusline_non_list_left_errors() {
     let mut h = SteelCtxTestHarness::new();
@@ -92,9 +88,6 @@ fn configure_statusline_non_list_right_errors() {
 }
 
 /// `configure-statusline!` rejects a list that contains a non-string element.
-///
-/// Fail oracle: remove the element type check → integer elements would be
-/// passed as-is to the host and likely panic or produce garbage element names.
 #[test]
 fn configure_statusline_non_string_list_item_errors() {
     let mut h = SteelCtxTestHarness::new();

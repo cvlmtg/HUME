@@ -60,8 +60,8 @@ fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
 /// otherwise left open (only keypress/`:` dispatch armed the bracket before
 /// this).
 ///
-/// Fail oracle: drop `(%arm-inline-output! name)` from `%apply-command`
-/// (`bootstrap.scm`) → logs `"gate-closed"`.
+/// Without `(%arm-inline-output! name)` in `%apply-command`
+/// (`bootstrap.scm`), the probe would log `"gate-closed"`.
 ///
 /// Also covers the depth-`0` restore: `trigger` itself is not declared
 /// `#:inline-output`, so `%arm-inline-output!` returns `#f` for it and its
@@ -73,9 +73,8 @@ fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
 /// treats `(IntV 0)` as true — pinning the after-open/after-closed pair here
 /// exercises that depth-`0` branch instead of assuming it.
 ///
-/// Fail oracle: make `%apply-command` skip the restore whenever `depth` is
-/// `0` (a plausible but wrong "falsy" reading) → logs `"trigger-after-open"`
-/// instead of `"trigger-after-closed"`.
+/// Reading a `depth` of `0` as falsy and skipping the restore would log
+/// `"trigger-after-open"` instead of `"trigger-after-closed"`.
 #[test]
 fn call_bang_to_inline_output_editor_command_opens_the_gate() {
     let ed = dispatch_backslash(
@@ -144,9 +143,8 @@ fn call_bang_to_inline_output_typed_command_is_unreachable() {
 /// arm the bracket, even mid-body of an unrelated command and even with a
 /// live TUI.
 ///
-/// Fail oracle: drop the declared-flag check from
-/// `EditorHostImpl::arm_inline_output` (arm unconditionally) → `plain-inner`
-/// observes an open gate it never declared.
+/// The declared-flag check in `EditorHostImpl::arm_inline_output` is what
+/// keeps `plain-inner` from seeing an open gate it never declared.
 #[test]
 fn call_bang_to_a_non_declared_command_never_arms() {
     let ed = dispatch_backslash(
@@ -172,9 +170,9 @@ fn call_bang_to_a_non_declared_command_never_arms() {
 /// prints still reach the gate once the nested call returns — the nested
 /// arm must truncate back to its own saved depth, not wipe the whole stack.
 ///
-/// Fail oracle: make `%restore-inline-output!` always truncate to `0`
-/// instead of the depth `%arm-inline-output!` returned → `"outer-after-closed"`
-/// logs instead of `"outer-after-open"`.
+/// If `%restore-inline-output!` always truncated to `0` rather than to the
+/// depth `%arm-inline-output!` returned, the log would read
+/// `"outer-after-closed"` instead of `"outer-after-open"`.
 #[test]
 fn nested_call_bang_restores_the_outer_commands_state() {
     let ed = dispatch_backslash(
@@ -214,9 +212,8 @@ fn nested_call_bang_restores_the_outer_commands_state() {
 /// pair with here — nesting `with-handler` + a re-raised native error is
 /// the pinned VM-stack-corruption hazard).
 ///
-/// Fail oracle: remove the `ctx.host.output()...truncate_inline_output(0)`
-/// call from `run_steel_session` (`activation.rs`) → `is_open()` stays
-/// `true` after the raising dispatch returns.
+/// The `ctx.host.output()...truncate_inline_output(0)` call in
+/// `run_steel_session` (`activation.rs`) is what closes the gate here.
 #[test]
 fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
     let ed = dispatch_backslash(
@@ -240,11 +237,10 @@ fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
 /// same way `call_steel_command_body` does for direct dispatch (see
 /// `apply_script_result`'s own doc).
 ///
-/// Fail oracle: drop `self.close_inline_output_bracket()` from
-/// `apply_script_result` (`scripting_setup.rs`) → this test still passes (the
-/// gate opens either way) but a later dispatch would inherit a stuck bracket
-/// — covered instead by asserting the reset here, immediately after the
-/// batch that armed it.
+/// The gate opens whether or not `apply_script_result` (`scripting_setup.rs`)
+/// calls `self.close_inline_output_bracket()`. A missing close would leave a
+/// stuck bracket for the next dispatch, so the test also asserts the reset
+/// right after the batch that armed it.
 #[test]
 fn timer_call_bang_to_inline_output_command_opens_the_gate() {
     let tmp = safe_tempdir();
@@ -282,8 +278,8 @@ fn timer_call_bang_to_inline_output_command_opens_the_gate() {
 /// command, and then prints again itself after the nested call returns,
 /// must still enter the alt-screen exactly once for the whole dispatch.
 ///
-/// Fail oracle: in `InlineOutput::needs_enter`, drop the `entered.is_some()`
-/// early return — `enter_count()` reports `2`.
+/// The `entered.is_some()` early return in `InlineOutput::needs_enter` keeps
+/// `enter_count()` at `1`.
 #[test]
 fn nested_call_bang_after_entered_does_not_reenter_the_alt_screen() {
     let ed = dispatch_backslash(
@@ -315,7 +311,7 @@ fn nested_call_bang_after_entered_does_not_reenter_the_alt_screen() {
 /// not re-enter it either: the outer's own frame is armed but the alt-screen
 /// hasn't been entered yet at the moment it arms the nested frame.
 ///
-/// Fail oracle: same as above — drop the `entered.is_some()` guard.
+/// This also depends on the `entered.is_some()` guard.
 #[test]
 fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
     let ed = dispatch_backslash(
@@ -342,10 +338,9 @@ fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
 /// dispatch returns — the `run_steel_session` tail truncate is the backstop
 /// either way, not just for an uncaught raise.
 ///
-/// Fail oracle: drop the `ctx.host.output()...truncate_inline_output(0)`
-/// call from `run_steel_session` (`activation.rs`) → `is_open()` stays
-/// `true` after this dispatch, and the next dispatch's `SteelCtx` inherits
-/// an already-open gate it never armed.
+/// Without the `ctx.host.output()...truncate_inline_output(0)` call in
+/// `run_steel_session` (`activation.rs`), the next dispatch's `SteelCtx`
+/// would inherit an already-open gate it never armed.
 #[test]
 fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -400,7 +395,7 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
 /// `is_open()` alone can't tell whether the close actually ran: every Steel
 /// session's own tail (`run_steel_session`) drains the frame stack
 /// unconditionally regardless (see `caught_error_inside_call_bang_…`'s doc).
-/// The oracle here instead is `close_inline_output_bracket`'s *other*
+/// The test checks `close_inline_output_bracket`'s *other*
 /// job — queuing `OnFocusGained` because the hook ran with the real
 /// terminal — which nothing else in this scenario produces: `OnBufferSave`
 /// itself triggers no disk check (`scripting_setup.rs`'s event-name match
@@ -408,9 +403,6 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
 /// the initial `settle()` drains `editor_with_file`'s own `OnBufferEnter`
 /// disk check before the external rewrite below, so that one can't produce
 /// a `confirm` of its own either.
-///
-/// Fail oracle: drop `self.close_inline_output_bracket()` from
-/// `apply_script_result` → `confirm` stays `None`.
 #[test]
 fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -460,8 +452,8 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
 /// both `Off` and active, asserting the alt-screen enters only in the latter
 /// case.
 ///
-/// Fail oracle: hardcode `EditorHostImpl::init`'s `tui` parameter to
-/// `Tui::Off` → `enter_count` stays `0` after the active block too.
+/// If `EditorHostImpl::init` ignored its `tui` parameter and used
+/// `Tui::Off`, `enter_count` would stay `0` after the active block too.
 #[test]
 fn editor_host_impl_init_threads_live_tui_into_arm() {
     use hume_scripting::host::EditorHost;
@@ -539,8 +531,8 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
 /// mistakenly enter later against whatever `tui` the *next* host it's rebuilt
 /// with happens to carry.
 ///
-/// Fail oracle: give `new` `Some(Tui::Off)` instead of `None` → `declared`
-/// still matches, `arm_inline_output` returns `Some(0)` instead of `None`.
+/// With `Some(Tui::Off)` in `new` instead of `None`, `declared` would still
+/// match and `arm_inline_output` would return `Some(0)`.
 #[test]
 fn new_host_has_no_inline_output_authority() {
     use hume_scripting::host::EditorHost;
@@ -582,14 +574,10 @@ fn new_host_has_no_inline_output_authority() {
 /// frame that really is active, or enter it under the wrong kitty state —
 /// this pins the deeper, correct behavior instead.
 ///
-/// Fail oracle (tui): gate `ensure_inline_output_screen` on `self.tui.as_ref()`
-/// again (returning early when it's `None`) instead of reading the frame's
-/// own captured `tui` from `needs_enter()` → `enter_count` stays `0`.
-///
-/// Fail oracle (kitty): read `self.kitty_enabled` in
-/// `ensure_inline_output_screen` instead of the frame's own captured value →
-/// `Entered::kitty` reports `false`, the completing host's own value, instead
-/// of `true`, the arming host's.
+/// Gating `ensure_inline_output_screen` on `self.tui` would leave
+/// `enter_count` at `0`. Reading `self.kitty_enabled` there would make
+/// `Entered::kitty` report the completing host's `false` instead of the
+/// arming host's `true`.
 #[test]
 fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_one() {
     use hume_scripting::host::EditorHost;
@@ -661,9 +649,8 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
 /// that early return: a later dispatch's `%stdout-gate!` must not inherit a
 /// gate this command never actually opened.
 ///
-/// Fail oracle: this is the bug itself — push happens unconditionally ahead
-/// of the `let Some(scripting) = self.scripting.as_mut() else { return false }`
-/// guard in `call_steel_command_body`.
+/// The `let Some(scripting) = self.scripting.as_mut() else { return false }`
+/// guard in `call_steel_command_body` must run before any frame is pushed.
 #[test]
 fn no_scripting_host_does_not_leak_a_pushed_frame() {
     let tmp = safe_tempdir();

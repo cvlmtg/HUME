@@ -70,7 +70,7 @@ fn bake_if_stale_rebakes_scopes_interned_after_bake() {
 
     theme.bake_if_stale(&reg);
     assert_eq!(theme.baked.len(), reg.len());
-    // Independent oracle: the themed color, not the pre-rebake default.
+    // The themed color, not the pre-rebake default.
     assert_eq!(theme.resolve(kw_op).fg, Some(Rgb(0, 255, 255)));
     assert_eq!(theme.resolve(kw).fg, Some(Rgb(0, 0, 255)));
 

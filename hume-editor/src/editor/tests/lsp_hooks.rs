@@ -113,8 +113,8 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     // register-trigger-chars! must work from command context (not just
     // init/plugin-load) — hover/signature-help register a server's trigger characters from
     // inside their on-lsp-attach handler, which runs as plain command
-    // context. Oracle mirrors `on_trigger_char_fires_only_for_registered_
-    // chars_in_insert_mode_after_insertion`: compare against a parallel
+    // context. Like `on_trigger_char_fires_only_for_registered_
+    // chars_in_insert_mode_after_insertion`, compare against a parallel
     // plain editor so the assertion isolates "did the extra move-right
     // additionally fire" from "was '.' inserted" (typing '.' changes state
     // either way, so a bare before/after diff on `ed` alone wouldn't catch

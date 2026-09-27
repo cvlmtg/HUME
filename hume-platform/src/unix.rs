@@ -649,7 +649,8 @@ mod terminator_tests {
         assert_eq!(drain_signal_pipe(fd.as_fd()), Drained::Closed);
     }
 
-    /// Zero-effect check: fails if `OrphanGuard`'s `Drop` were a no-op.
+    /// `OrphanGuard`'s `Drop` must set the flag whether the scope ends by
+    /// returning or by unwinding.
     #[test]
     fn orphan_guard_arms_the_fallback_on_return_and_on_panic() {
         let flag = Arc::new(AtomicBool::new(false));

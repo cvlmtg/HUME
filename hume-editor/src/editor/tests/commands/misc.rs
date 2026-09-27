@@ -52,10 +52,6 @@ fn extend_preserved_after_yank() {
 /// "does not gate on the current mode layer" and always writes `Base`'s
 /// flag directly, so without `cmd_toggle_extend`'s own guard, Esc out of
 /// Insert would land in Extend instead of Normal.
-///
-/// Fail oracle: without the `is::<BaseLayer>(mode_layer())` guard in
-/// `cmd_toggle_extend`, this arms `Base.extend` while Insert is current,
-/// and the assertion below (mode is Normal after Esc, not Extend) fails.
 #[test]
 fn toggle_extend_from_insert_is_a_no_op() {
     use crate::editor::commands::cmd_toggle_extend;
@@ -82,9 +78,6 @@ fn toggle_extend_from_insert_is_a_no_op() {
 /// every transition that goes through `push_mode_layer` — except
 /// Normal↔Extend, which never does, since both share the same `Base` mode
 /// layer.
-///
-/// Fail oracle: before this fix, `set_extend` never cleared a popup, so the
-/// assertion below would still find one open after the toggle.
 #[test]
 fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
     use crate::editor::commands::cmd_toggle_extend;
@@ -122,9 +115,8 @@ fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
 // ── `o`/`O` undo grouping ─────────────────────────────────────────────────────
 
 /// `o` must group the structural newline insertion and the subsequent insert
-/// session into one undo step. Without the fix, the newline would be a
-/// separate `apply_edit` revision, so `u` would only undo the typed text and
-/// leave behind an empty line.
+/// session into one undo step. As a separate `apply_edit` revision, `u`
+/// would only undo the typed text and leave behind an empty line.
 #[test]
 fn o_groups_newline_and_insert_session_into_one_undo_step() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -301,8 +293,7 @@ fn typed_arity_rule_supplies_bid_only_at_arity_1() {
 
 /// arity-2 (`bid arg`): the typed arg reaches the lambda as `StringV`, queued
 /// as a command name via `call!`, which runs `move-right`.
-/// Oracle: state changes → cursor moved → arg was forwarded.
-/// Verification: changing "move-right" in the assert to something else → fails.
+/// The cursor moving shows the arg was forwarded.
 #[test]
 fn typed_arity_rule_forwards_string_arg_to_arity_2() {
     let mut ed = setup_typed_arity_test(
@@ -428,10 +419,9 @@ fn typed_arity_rule_errors_on_arity_4() {
 
 /// A multi-key wait-char sequence bound in sticky-Extend mode must clear
 /// `pending_keys` (and `pending_ctrl_extend`) once the sequence resolves —
-/// mirroring what the normal-trie `WaitChar` arm already does. Before the fix,
-/// the Extend-trie arm left the prefix key (`g`) sitting in `pending_keys`,
-/// so the very next ordinary keystroke walked the trie as `[g, <key>]`
-/// instead of `[<key>]` alone — silently swallowing it.
+/// mirroring what the normal-trie `WaitChar` arm already does. A prefix key
+/// (`g`) left in `pending_keys` would make the next ordinary keystroke walk
+/// the trie as `[g, <key>]`, silently swallowing it.
 #[test]
 fn extend_trie_wait_char_sequence_clears_pending_keys() {
     use crate::editor::keymap::{BindMode, WaitCharPending};

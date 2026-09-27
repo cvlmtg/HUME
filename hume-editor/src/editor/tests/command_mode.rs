@@ -831,10 +831,9 @@ fn colon_w_path_on_read_only_buffer_exports_without_mutating_source() {
     // :w <path> on a read-only buffer is an export: the content lands on
     // disk at the new path, but the source buffer must not be touched —
     // no mark_saved, no path/file_meta repoint, dirty state unchanged.
-    // Fail oracle: drop the `is_save_as` guard in write_file's save-as
-    // branch (route every :w <path> through mark_written_and_synced
-    // unconditionally) — is_dirty() below becomes false and original_path
-    // gets overwritten with new_path.
+    // Without the `is_save_as` guard in write_file's save-as branch, every
+    // :w <path> would go through mark_written_and_synced. is_dirty() below
+    // would then be false and original_path would be replaced by new_path.
     let (mut ed, original_path) = editor_with_file("-[h]>ello\n", "hello\n");
     let original_path_buf = original_path.to_path_buf();
     ed.handle_key(key('i'));

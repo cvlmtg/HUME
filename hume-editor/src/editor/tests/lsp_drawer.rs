@@ -45,9 +45,6 @@ fn show_drawer_list_populates_model_and_view() {
 /// itself would clear the popup via `push_mode_layer`'s own unconditional
 /// clear, before `show-drawer-list!` ever ran, masking exactly the
 /// behavior this test exists to pin.
-///
-/// Fail oracle: before the fix, the drawer landed above the popup instead
-/// of clearing it — `ed.state.input.popup()` would still read `Some` here.
 #[test]
 fn show_drawer_list_over_a_live_popup_clears_it() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -265,10 +262,9 @@ fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
 /// there would reallocate all of them every frame for as long as the drawer
 /// stays open.
 ///
-/// Sabotage oracle: revert `DrawerLayer::items` and `DrawerViewState::rows`
-/// to a bare `Vec<String>` (with `sync_drawer_view` deep-cloning it, as
-/// before) — this test fails to compile, since there is no `Arc` left on
-/// either side for `Arc::ptr_eq` to compare.
+/// The test relies on `DrawerLayer::items` and `DrawerViewState::rows` both
+/// holding an `Arc`. With a bare `Vec<String>` there would be nothing for
+/// `Arc::ptr_eq` to compare, and it would not compile.
 #[test]
 fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
     let tmp = safe_tempdir();
@@ -422,9 +418,8 @@ fn drawer_selected_index_with_a_mismatched_token_reports_none() {
 /// excise the drawer and leave the session running rather than take it down
 /// as collateral.
 ///
-/// Fail oracle: before the excise fix, `close_drawer` truncated at the
-/// drawer's own ref, sweeping the `Insert` layer above it — `mode()` below
-/// would read `Normal` and the second keystroke would be lost.
+/// Truncating at the drawer's own ref would sweep the `Insert` layer, and the
+/// second keystroke would be lost.
 #[test]
 fn close_drawer_closes_a_drawer_buried_under_insert_leaving_insert_intact() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -471,11 +466,6 @@ fn close_drawer_closes_a_drawer_buried_under_insert_leaving_insert_intact() {
 /// lets a menu open while the user browses one) is unrelated to, not
 /// dependent on, the drawer beneath it — `close-drawer!` must excise the
 /// drawer and leave the menu open and unfired.
-///
-/// Fail oracle: before the excise fix, `close_drawer` truncated at the
-/// drawer's own ref, sweeping the menu above it and firing its callback
-/// with `#f` as collateral — `ed.state.input.menu()` below would be `None`
-/// and `status_msg` would read `"#false"`.
 #[test]
 fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -527,9 +517,6 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
 /// shape as `show-menu!`'s own self-replace). The `:diagnostics` drawer
 /// refresh relies on this to drop its open-tracking instead of refreshing a
 /// dead drawer over someone else's list.
-///
-/// Fail oracle: before the fix the replace was silent — `status_msg` would
-/// still be `None` below instead of `"#false"`.
 #[test]
 fn replace_fires_false_to_the_outgoing_callback() {
     let tmp = safe_tempdir();
@@ -662,8 +649,6 @@ fn update_and_selected_index_with_none_open_report_false() {
 
 /// An empty `show-drawer-list!` is rejected — a 0-row drawer would leave
 /// `Enter` firing `0` with no row behind it.
-///
-/// Fail oracle: before the fix the empty drawer opened with `selected` 0.
 #[test]
 fn show_with_empty_items_errors_and_opens_nothing() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -690,8 +675,8 @@ fn show_with_empty_items_errors_and_opens_nothing() {
 /// An empty `update-drawer-list!` is a no-op `#f` — callers close instead
 /// of clearing through an update.
 ///
-/// Fail oracle: before the fix the update applied (`#true`) and wiped the
-/// rows, leaving a 0-row drawer where `Enter` would fire `0`.
+/// Applying the update would wipe the rows and leave a 0-row drawer where
+/// `Enter` fires `0`.
 #[test]
 fn update_with_empty_items_is_a_noop_false() {
     let tmp = safe_tempdir();

@@ -304,7 +304,7 @@ fn diff_words_cjk() {
 
 // ── Property-based round-trip tests ──────────────────────────────────────
 //
-// Independent oracle: the hunk ranges must partition the input, so
+// The hunk ranges must partition the input, so
 // concatenating the covered slices reconstructs the original input. This
 // catches off-by-one range bugs without mirroring the implementation.
 

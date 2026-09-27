@@ -11,9 +11,9 @@ use hume_scripting::ScriptingHost;
 /// `(write-register! "3" (list "hi"))` stores exactly the given list — the
 /// same in-memory slot `"3y`/`"3p` read and write.
 ///
-/// Fail oracle: reading the result back through `read-register` instead of
-/// `ed.state.registers` directly would pass even if the builtin wrote
-/// somewhere else that `read-register` happens to also read from.
+/// The check reads `ed.state.registers` directly. Going through
+/// `read-register` would pass even if the builtin wrote somewhere else that
+/// `read-register` also reads from.
 #[test]
 fn write_register_stores_text_for_a_named_register() {
     let tmp = safe_tempdir();
@@ -71,9 +71,9 @@ fn read_register_returns_text_written_from_rust() {
 /// as one operation — a bare `p` right after must resume from the ring, not
 /// fall through to the clipboard.
 ///
-/// Fail oracle: writing straight to a hypothetical `'k'` slot in `RegisterSet`
-/// (bypassing `capture_to_ring`) would leave `paste_stamp` unset, silently
-/// breaking the following bare paste's smart-paste routing.
+/// Writing straight to a `'k'` slot in `RegisterSet` without
+/// `capture_to_ring` would leave `paste_stamp` unset and break the following
+/// bare paste's smart-paste routing.
 #[test]
 fn write_register_k_pushes_ring_and_stamps_paste() {
     let tmp = safe_tempdir();

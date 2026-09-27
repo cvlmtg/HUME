@@ -9,7 +9,7 @@
 // seam to reach that from Rust — see `plugin-architecture.md`'s module
 // isolation rule).
 //
-// Independent oracle: every expected sign/line/span below is derived by
+// Every expected sign/line/span below is derived by
 // hand from the committed-vs-buffer text each fixture sets up, never by
 // calling `diff-buffer-lines`/`diff-words` in the test itself.
 

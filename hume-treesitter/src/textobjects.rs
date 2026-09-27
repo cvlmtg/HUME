@@ -261,7 +261,7 @@ impl ObjectSpans {
     /// The memo lives on `SyntaxLayers` and dies with it; see
     /// `SyntaxLayers::textobject_memo` for why that placement is what makes
     /// invalidation total. The two collectors below stay public, pure and
-    /// uncached — they are the independent oracle this path is tested
+    /// uncached. The tests use them as the reference this path is checked
     /// against.
     ///
     /// Not in tension with `highlight.rs`'s documented refusal to cache

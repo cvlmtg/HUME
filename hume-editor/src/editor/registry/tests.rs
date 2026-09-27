@@ -13,7 +13,7 @@ const EXPECTED_COMMAND_COUNT: usize = 196;
 /// commands and zero keybindings — a quieter failure than the out-of-bounds
 /// panic `object_enum!`'s own generated `ALL` exists to prevent.
 ///
-/// Flip: delete a row and this fails naming the orphaned kind;
+/// A missing row makes this fail with the orphaned kind's name, where
 /// `registry_has_expected_count` alone would only report a number.
 #[test]
 fn structural_objects_cover_every_object_kind() {
@@ -452,9 +452,6 @@ fn steel_backed_names_filters_by_variant() {
 /// `unregister` removes dynamic (`SteelBacked`/`Lazy`) entries but refuses
 /// native commands — a failed-plugin rollback must never be able to delete
 /// a built-in for the rest of the session.
-///
-/// Fail oracle: revert `unregister` to an unconditional `remove` → the
-/// `move-left` assert fires.
 #[test]
 fn unregister_removes_dynamic_but_not_native() {
     use hume_scripting::attribution::PluginId;
