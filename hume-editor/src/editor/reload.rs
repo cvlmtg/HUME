@@ -29,7 +29,7 @@ pub(crate) struct ReloadSnapshot {
     /// last-buffer branch allocates a fresh key for its scratch replacement
     /// rather than reusing the closed one in place — so membership in this
     /// set plus current liveness is sufficient identity; no generation stamp
-    /// is needed to rule out a same-key content swap the way one used to be.
+    /// is needed to rule out a same-key content swap.
     pre_reload_bids: rustc_hash::FxHashSet<BufferId>,
     /// `(bid, explicit-language-name)` for every buffer whose language was
     /// an explicit assertion (`:set buffer language=`/`set-buffer-language!`)
@@ -126,7 +126,7 @@ impl Editor {
         // `state.input` instead and are dropped by the explicit
         // `input.truncate_to_base()` call further down — nothing here reads
         // any of them in between, so there's nothing to clear early.
-        // `Insert` is no longer among them: `end_focus_sessions` above
+        // `Insert` is not among them: `end_focus_sessions` above
         // already ended it, so `truncate_to_base` only ever finds `Base` or
         // one of the other layers still on the stack. `truncate_layers`'
         // own teardown (`EditorState::tear_down`) never fires a Steel

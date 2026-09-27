@@ -545,16 +545,14 @@ impl InputStack {
     /// so this never needs a lookup. Does not gate on the current mode
     /// layer; a toggle reads `mode()` first to decide the target value.
     ///
-    /// Clears any open popup when the flag actually flips — the deleted
-    /// `lib.scm` hook (`on-mode-change → close-popup!`) covered every mode
-    /// transition; `push_mode_layer`'s own `clear_popups()` call replaced it
-    /// for every transition that goes through `push_mode_layer`, except
-    /// Normal↔Extend, which never does (this is the one write site for
-    /// that transition). Gated on an observed diff, not unconditional, so a
-    /// same-value call (the two collapse-and-exit-extend commands call this
-    /// with `false` even when already Normal) doesn't spuriously kill an
-    /// unrelated popup — mirrors `detect_mode_change`'s own "only on a
-    /// diff" contract for the same hook this replaces.
+    /// Clears any open popup when the flag actually flips. `push_mode_layer`
+    /// evicts popups on every mode transition it performs (see its doc), but
+    /// the switch between Normal and Extend never goes through it. This is
+    /// the one write site for that transition. Gated on an observed diff, not
+    /// unconditional, so a same-value call (the two collapse-and-exit-extend
+    /// commands call this with `false` even when already Normal) doesn't
+    /// spuriously kill an unrelated popup. This mirrors
+    /// `detect_mode_change`'s own "only on a diff" contract.
     pub(in crate::editor) fn set_extend(&mut self, extend: bool) {
         let base = self.layers[0]
             .1

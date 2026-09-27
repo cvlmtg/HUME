@@ -374,9 +374,8 @@ impl JsonHandle {
     /// from a server ([`WireOrigin::Local`]), naming `ctx_name` (the
     /// builtin asking) so the error identifies which call needs a real
     /// response. The funnel every wire-position decode reads its encoding
-    /// through, now that a response carries it instead of a caller
-    /// resolving it from a `bid`'s *currently* attached server (which may
-    /// have since restarted or detached).
+    /// through. The encoding travels with the response because a `bid`'s
+    /// *currently* attached server may have restarted or detached since.
     pub fn position_encoding(&self, ctx_name: &str) -> Result<PositionEncoding, String> {
         match self.origin {
             WireOrigin::Server(encoding) => Ok(encoding),

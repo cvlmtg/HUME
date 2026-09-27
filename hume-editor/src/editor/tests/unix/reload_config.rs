@@ -451,7 +451,7 @@ fn reload_config_under_no_config_errors() {
 /// The fixture's `HUME_RUNTIME` points at an empty tempdir, so neither the
 /// real `runtime/scheme/languages.scm` nor `prelude.scm` loads — hence the
 /// raw `%define-language!` call below (the ergonomic `define-language!` is
-/// a `prelude.scm` macro, unavailable here). The test's own registration is
+/// defined in `prelude.scm`, unavailable here). The test's own registration is
 /// what makes `"rust"` detectable at all.
 #[test]
 fn reload_config_reapplies_on_language_set_buffer_overrides() {
@@ -787,14 +787,13 @@ impl NoConfigDirGuard {
     }
 }
 
-/// Regression test for the half-reset `init_scripting` used to leave behind
-/// when `config_dir()` resolved to `None` mid-reload: `reset_config_state`
-/// would already have wiped languages/keymap/theme/highlighting before
-/// `init_scripting`'s own `None`-directory early return, permanently
-/// degrading the editor with `scripting` left `None`. `typed_reload_config`
-/// now checks `config_dir()` *before* touching anything, so this asserts
-/// nothing was touched at all: the error is reported, and a live config
-/// override (a bound key) survives untouched.
+/// `typed_reload_config` checks `config_dir()` *before* touching anything.
+/// A `None` config dir found only after `reset_config_state` had wiped
+/// languages/keymap/theme/highlighting would hit `init_scripting`'s own
+/// `None`-directory early return and leave the editor permanently degraded,
+/// with `scripting` left `None`. This asserts nothing was touched at all:
+/// the error is reported, and a live config override (a bound key) survives
+/// untouched.
 #[test]
 fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
     let _guard = NoConfigDirGuard::new();

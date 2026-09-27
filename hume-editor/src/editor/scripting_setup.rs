@@ -301,7 +301,7 @@ impl Editor {
         self.drain_async_sources();
         if self.drain_pending_work() {
             // The span `Editor::handle_input` opened ("this input's own
-            // dispatch just logged a message") closes here, now that this
+            // dispatch just logged a message") closes here, once this
             // settle() has run the buffer-enter disk check that span exists
             // to protect against — see `EditorState::message_logged_this_input`'s
             // doc.

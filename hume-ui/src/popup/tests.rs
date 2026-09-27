@@ -4,11 +4,11 @@ use hume_grid::{Rect, Rgb};
 
 // ── wrap_text ──────────────────────────────────────────────────────────
 //
-// Production code no longer has a separate `wrap_text` — plain popup text
+// Production code has no separate `wrap_text`. Plain popup text
 // is exactly a single default-style run through `wrap_styled` (see
 // `PopupContent::plain`). This local helper keeps that single-style edge-
-// case coverage (word boundaries, hard breaks, explicit newlines) without
-// duplicating a wrapper `wrap_styled` itself made redundant.
+// case coverage (word boundaries, hard breaks, explicit newlines) without a
+// production wrapper.
 fn wrap_text(text: &str, max_width: u16) -> Vec<String> {
     let runs = [(text.to_string(), ResolvedStyle::default())];
     wrap_styled(&runs, max_width)

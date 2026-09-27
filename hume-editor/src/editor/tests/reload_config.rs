@@ -484,15 +484,12 @@ fn reset_cancels_pending_steel_timers() {
 
 // ── Overlays ─────────────────────────────────────────────────────────────────
 
-/// Regression test: `reset_config_state`'s `input.truncate_to_base()` call
-/// drops the drawer layer directly (not through `close-drawer!`, which would
-/// queue a callback the reset already drops), with no paired view sync at
-/// that call site — unlike
-/// popup/menu/picker, whose views re-resolve from the model every frame, the
-/// drawer's view previously synced only on-mutation, so nothing ever told it
-/// the model had changed. Fixed by making `prepare_frame` sync the drawer
-/// view unconditionally every frame, like the other three overlays; this
-/// drives one frame after the reset and confirms the view catches up.
+/// `reset_config_state`'s `input.truncate_to_base()` call drops the drawer
+/// layer directly (not through `close-drawer!`, which would queue a callback
+/// the reset already drops), with no paired view sync at that call site.
+/// `prepare_frame` syncs the drawer view every frame, like popup/menu/picker,
+/// so the view still learns the model changed. This drives one frame after
+/// the reset and confirms the view catches up.
 #[test]
 fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -591,7 +588,7 @@ fn reset_tears_down_an_open_prompt_session_completely() {
 }
 
 /// `truncate_to_base` resets `Base`'s `extend` flag — Extend must not
-/// survive a reload the way it did before this refactor (nothing reset it).
+/// survive a reload.
 /// Also pins the `last_observed_mode` re-baseline (`reset_config_state`,
 /// right after `truncate_to_base`): the *old*, still-attached hook must
 /// never see a phantom `Extend→Normal` transition it didn't itself observe

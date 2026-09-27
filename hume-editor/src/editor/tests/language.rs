@@ -110,12 +110,11 @@ fn detect_and_set_language_no_match_leaves_none() {
     assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
-/// Regression test: `open-buffer!` then `set-buffer-language!` on the same
-/// new buffer, in one eval — `apply_script_effects`'s tail
-/// (`detect_pending_languages`) used to unconditionally re-detect every
-/// freshly-opened buffer, silently overwriting the explicit assertion the
-/// same eval had *just* made (the `SetBufferLanguage` effect applies first,
-/// earlier in the same effect log). Detection would pick "rust" from the
+/// `open-buffer!` then `set-buffer-language!` on the same new buffer, in one
+/// eval. `apply_script_effects`'s tail (`detect_pending_languages`) must not
+/// re-detect the freshly-opened buffer over the explicit assertion the same
+/// eval *just* made (the `SetBufferLanguage` effect applies first, earlier
+/// in the same effect log). Detection would pick "rust" from the
 /// `.rs` extension; the explicit `set-buffer-language!` call asks for
 /// "notes" — the explicit call must win.
 #[test]
@@ -270,7 +269,7 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
     );
 }
 
-/// Hole E regression: `(set-buffer-language! bid "rust") (close-buffer!
+/// `(set-buffer-language! bid "rust") (close-buffer!
 /// bid)` in one eval must not panic. The `Effect::SetBufferLanguage` this
 /// queues only applies after the eval returns (`apply_script_effects`
 /// drains the effect vec after the whole body ran), so by the time it

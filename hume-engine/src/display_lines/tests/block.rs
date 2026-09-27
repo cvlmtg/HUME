@@ -120,7 +120,7 @@ fn layout_stage_never_queries_a_paint_only_kind() {
 
 #[test]
 fn block_counts_inline_inserts_toward_wrapping() {
-    // The bug this fixes: an inlay hint participates in wrapping, so a line
+    // An inlay hint participates in wrapping, so a line
     // that fits without it can need two display lines with it, and display line counting that
     // ignores inserts disagrees with what the renderer emits.
     //

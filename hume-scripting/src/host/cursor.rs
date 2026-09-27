@@ -10,8 +10,7 @@ use crate::types::PaneHandle;
 /// pane-targeting convention): it acts through `pane`'s own pane, and raises
 /// (`Err`) rather than answering a default when `pane` carries no pane, a
 /// closed one, or one that no longer shows `pane`'s buffer — the same
-/// fail-fast contract every pane-needing builtin now shares, in place of the
-/// old "not shown in any pane → `#f`" answer this replaces.
+/// fail-fast contract every pane-needing builtin shares.
 pub trait CursorHost {
     /// `(buffer-cursor-line pane)` — line number (1-indexed) of the primary
     /// cursor in `pane`'s own pane.

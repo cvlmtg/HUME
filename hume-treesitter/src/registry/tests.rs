@@ -303,7 +303,7 @@ fn remove_clears_glob_and_shebang_entries() {
     assert!(reg.compiled_globs().matches(Path::new("foo.py")).is_empty());
 }
 
-/// Regression: `deindex` must only remove an index entry it still owns.
+/// `deindex` must only remove an index entry it still owns.
 /// `c` and `cpp` both claim `.h` (last-registered wins, so `cpp` takes
 /// it); re-registering `c` without `.h` must not evict `cpp`'s mapping —
 /// `c` never owned it at the time of re-registration.

@@ -407,8 +407,8 @@ fn widest_of_an_empty_run_is_zero() {
 // ── band_capacity ──────────────────────────────────────────────────────
 
 /// `content_rows as u16 + chrome_rows` overflows at exactly `u16::MAX` rows
-/// and truncates silently above it — both would previously wrap to a
-/// near-zero `u16` instead of clamping to `max`. Shared by the drawer (1
+/// and truncates silently above it. Either would wrap to a near-zero `u16`,
+/// so `band_capacity` must clamp both cases to `max`. Shared by the drawer (1
 /// chrome row) and the docked popup band (2), so one guard covers both.
 #[test]
 fn band_capacity_clamps_instead_of_overflowing_u16() {

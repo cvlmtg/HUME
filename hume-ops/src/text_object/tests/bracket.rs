@@ -213,7 +213,7 @@ fn extend_around_paren_grows_selection() {
 
 #[test]
 fn extend_around_paren_from_matched_pair_grows_outward() {
-    // Regression: selection is already "(b)" via a prior `ma(`; pressing
+    // Selection is already "(b)" via a prior `ma(`; pressing
     // extend-`ma(` again should grow to the enclosing "(a (b) a)".
     //
     // "(a (b) a)\n": (=0,a=1,' '=2,(=3,b=4,)=5,' '=6,a=7,)=8,\n=9

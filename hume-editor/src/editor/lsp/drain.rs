@@ -293,8 +293,7 @@ impl Editor {
         }
         // The registered language is the "server name" the Steel surface deals
         // in, since that's what `register-lsp-server!` uses — the sole
-        // remaining server-name-string argument on the LSP builtins surface,
-        // now that `lsp-request` resolves its server from a `bid` instead.
+        // server-name-string argument on the LSP builtins surface.
         let server_val = match introspect::server_language(&self.lsp, server_id) {
             Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
             None => steel::rvals::SteelVal::BoolV(false),

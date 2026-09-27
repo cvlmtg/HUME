@@ -45,7 +45,7 @@ fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) 
 /// [`attach_running_server`] plus one canned response for `"test/echo"` —
 /// the setup every `lsp-position->offset`/`lsp-range->offsets` test below
 /// needs to hand the builtin a position that carries a real producing-server
-/// tag, now that an untagged (hand-built) hash is rejected outright.
+/// tag, since an untagged (hand-built) hash is rejected outright.
 fn attach_running_server_with_echo(
     ed: &mut Editor,
     initialize_result: serde_json::Value,
@@ -669,8 +669,7 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
 
 /// `(viewport-range pane)` needs a pane, not just a buffer — kind-B fail-fast
 /// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
-/// own return shape) raises, replacing the old "not shown anywhere → `#f`"
-/// degrade.
+/// own return shape) raises.
 #[test]
 fn viewport_range_raises_for_a_paneless_buffer_handle() {
     let tmp = safe_tempdir();
@@ -853,7 +852,7 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
 /// `on-viewport-change`, which fires for any pane, not just the focused
 /// one) — but only once the caller names that pane explicitly via
 /// `(buffer-panes hidden)`; a bare buffer handle (`(buffers)`'s own shape)
-/// no longer resolves on its own (see the sibling `_raises_` test above).
+/// does not resolve on its own (see the sibling `_raises_` test above).
 #[test]
 fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
     let tmp = safe_tempdir();
@@ -895,14 +894,12 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
     );
 }
 
-/// Regression: the removed `pane_showing_buffer`'s active-tab restriction
-/// used to gate `shown_buffer_state`'s resolution too — but none of its
-/// callers (`lsp-position-params` among them) ever read a viewport, only a
+/// `shown_buffer_state`'s resolution has no active-tab restriction: none of
+/// its callers (`lsp-position-params` among them) reads a viewport, only a
 /// cursor, which stays live no matter which tab is active. A buffer shown
 /// only in a *background* tab's pane must still resolve via `buffer-panes`,
-/// the same as one shown in a non-focused *pane* does above (that's the
-/// active-tab restriction working as intended, for the one caller —
-/// `viewport-range` — that actually needs it).
+/// the same as one shown in a non-focused *pane* does above. The active-tab
+/// restriction applies to `viewport-range`, the one caller that needs it.
 #[test]
 fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
     let tmp = safe_tempdir();
@@ -998,9 +995,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
 
 /// `lsp-position->offset` reads the position's own tagged producing-server
 /// encoding — an untagged (hand-built) hash must error, not silently
-/// resolve via `bid`'s currently attached server the way this builtin used
-/// to (the exact bug `a548a117` fixed everywhere else in this crate, missed
-/// here).
+/// resolve via `bid`'s currently attached server.
 ///
 /// Without `JsonHandle::position_encoding`'s `Err`, this would silently
 /// decode against the running UTF-16 server.
@@ -1025,7 +1020,7 @@ fn lsp_position_to_offset_untagged_handle_errors() {
     );
 }
 
-/// The other half of the fix this holds regression for: a *tagged* position
+/// The tagged counterpart of the test above: a *tagged* position
 /// decodes correctly even when `bid` currently has no server attached at
 /// all — the encoding travels with the response, not with `bid`'s live
 /// attachment. The request is dispatched (and its response tagged) while
@@ -1190,8 +1185,7 @@ fn lsp_range_to_offsets_untagged_handle_errors() {
 
 /// `lsp-locations->display-parts` reads each location's own tagged
 /// producing-server encoding — an untagged (hand-built) handle must error,
-/// not silently resolve to the UTF-16 default the way the removed
-/// `encoding_for_buffer` once did.
+/// not silently resolve to the UTF-16 default.
 ///
 /// A guessed UTF-16 fallback in `JsonHandle::position_encoding` would return
 /// `Ok(vec![...])` for a well-formed but untagged location.

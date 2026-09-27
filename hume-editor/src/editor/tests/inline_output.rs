@@ -638,15 +638,15 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
 // ── A pushed frame must never outlive a dispatch that never reaches a
 //    Steel session ──────────────────────────────────────────────────────────
 
-/// `call_steel_command_body` pushes a frame for a declared `#:inline-output`
-/// command before checking whether there is a scripting host to actually run
-/// it against. If `self.scripting` is `None` — the registry still knows the
+/// `call_steel_command_body` checks whether there is a scripting host to run
+/// a declared `#:inline-output` command against before it pushes that
+/// command's frame. If `self.scripting` is `None` — the registry still knows the
 /// command (it was registered before the host went away), but there is
 /// nothing left to call — dispatch returns early without ever reaching
 /// `run_steel_session` (whose tail truncate-to-zero is what drains every
 /// *other* early-exit path) and without calling
-/// `close_inline_output_bracket` either. The pushed frame must not survive
-/// that early return: a later dispatch's `%stdout-gate!` must not inherit a
+/// `close_inline_output_bracket` either. No frame may be pushed on that
+/// early return: a later dispatch's `%stdout-gate!` must not inherit a
 /// gate this command never actually opened.
 ///
 /// The `let Some(scripting) = self.scripting.as_mut() else { return false }`

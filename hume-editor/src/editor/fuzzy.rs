@@ -156,8 +156,7 @@ mod tests {
     /// A space in the query is completion's own token boundary, typed past
     /// — never a term separator the way it is for `Picker` — so it must
     /// score every candidate `None`, not fall through to an effectively
-    /// empty pattern that matches everything. Regression guard for the
-    /// deleted hand-rolled matcher's replacement: `Atom` (`AtomKind::Fuzzy`)
+    /// empty pattern that matches everything. `Atom` (`AtomKind::Fuzzy`)
     /// scores the whole string including whitespace, unlike `Pattern::
     /// parse`, which would word-split on the space and drop the trailing
     /// empty atom.

@@ -208,8 +208,8 @@ fn for_range_respects_range_bounds() {
 
 #[test]
 fn for_range_keeps_a_diagnostic_that_starts_before_the_range_but_overlaps_it() {
-    // Regression test for the partition_point optimization in `for_range`:
-    // the inner Vec is sorted by `start`, not `end`, so a diagnostic that
+    // `for_range` cuts with partition_point, but the inner Vec is sorted by
+    // `start`, not `end`, so a diagnostic that
     // starts before the queried range can still overlap it and must not
     // be dropped by the upper-bound cut.
     let mut store = DiagnosticsStore::default();

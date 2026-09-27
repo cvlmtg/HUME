@@ -308,8 +308,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
         "Ctrl-u must scroll the hover popup, not close it"
     );
 
-    // Any other key (here, cursor movement) dismisses it — the fix for
-    // hover only closing on a mode change.
+    // Any other key (here, cursor movement) dismisses it.
     ed.feed_key(key('j'));
     assert!(
         ed.state.input.popup().is_none(),
@@ -321,8 +320,8 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
 fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     // A hover popup whose content fits on screen has nothing to scroll —
     // Ctrl-d/Ctrl-u must not become a silent no-op that also blocks the
-    // buffer's own half-page scroll (the bug: `scroll_popup` used to consume
-    // the key unconditionally, even with `max_scroll == 0`).
+    // buffer's own half-page scroll. `scroll_popup` must not consume the key
+    // when `max_scroll == 0`.
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let (mut ed, _guard, _sid) = setup(
@@ -587,8 +586,7 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
     // means to exercise. The `i`/`X`/Esc mode-change hooks below simply
     // accumulate in `pending_work`, unfired, until the one settle() call at
     // the end — by which point no popup exists yet for a dismiss to race
-    // against, which is what the old multi-settle staging was working
-    // around.
+    // against.
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     ed.feed_key(key_esc());

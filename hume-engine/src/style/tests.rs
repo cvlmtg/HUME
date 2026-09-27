@@ -360,7 +360,7 @@ fn backward_selection_anchor_cell_highlighted() {
         Some(Rgb(0, 0, 255)),
         "display_col 1 is inside selection — must have selection bg"
     );
-    // Regression: display_col 2 is the anchor (highest char), was rendered plain before fix.
+    // display_col 2 is the anchor (highest char) and must be highlighted too.
     assert_eq!(
         scratch.styles[2].bg,
         Some(Rgb(0, 0, 255)),
@@ -368,7 +368,7 @@ fn backward_selection_anchor_cell_highlighted() {
     );
 }
 
-/// Regression: a collapsed selection (anchor == head, i.e. bare cursor) must
+/// A collapsed selection (anchor == head, i.e. bare cursor) must
 /// not emit a selection-highlight span — a bare cursor marks a position, not a
 /// one-character selection.
 #[test]
@@ -504,11 +504,11 @@ fn cursorline_background_applied_to_cursor_line_only() {
     assert_eq!(scratch.styles[3].bg, None, "line 1 has no cursorline bg");
 }
 
-/// Regression: everforest defines `ui.cursor.insert` (the secondary scope)
+/// Everforest defines `ui.cursor.insert` (the secondary scope)
 /// and `ui.cursor` (the plain block scope), but no `ui.cursor.primary.insert`
 /// or `ui.cursor.primary`. A block-shape primary head must land on the plain
-/// `ui.cursor` colour — the bug this ladder replaced gave it the *secondary*
-/// insert colour instead, making both heads identical.
+/// `ui.cursor` colour. The *secondary* insert colour would make both heads
+/// identical.
 #[test]
 fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
     let rope = ropey::Rope::from_str("ab");
@@ -1073,8 +1073,7 @@ fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
 
 #[test]
 fn normal_mode_still_uses_plain_cursor_scope_not_select() {
-    // Regression guard: adding Extend-mode select scopes must not leak
-    // into Normal mode.
+    // Extend-mode select scopes must not leak into Normal mode.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
     let lines = vec![make_display_line(0..5)];

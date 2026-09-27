@@ -465,10 +465,8 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
     );
 }
 
-/// A buffer with no attached server reports that, and sends no request — the
-/// coverage `lsp/guard-capability` used to give this case before
-/// `lsp-linewise-ranges-params` (which returns `#f` for it) replaced the
-/// direct capability check.
+/// A buffer with no attached server reports that, and sends no request.
+/// `lsp-linewise-ranges-params` returns `#f` for it.
 #[test]
 fn no_attached_server_reports_and_sends_nothing() {
     let tmp = safe_tempdir();

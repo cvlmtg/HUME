@@ -549,16 +549,15 @@ fn setup_editor_with_languages_scm(
     (ed, vec![config_tmp, runtime_tmp, data_tmp])
 }
 
-/// `define-language!`'s `#:language-id` keyword — introduced as a plain
-/// function (converted from a `syntax-rules` macro) so it can take an
-/// optional trailing keyword arg — round-trips through the real `prelude.scm`
-/// exactly like the old positional-only calls still used everywhere else in
-/// `languages.scm`. Exercises both call shapes side by side: `plain-lang` (no
-/// keyword, the pre-existing shape) and `tsx` (with the override).
+/// `define-language!`'s `#:language-id` keyword round-trips through the real
+/// `prelude.scm` exactly like the positional-only calls used everywhere else
+/// in `languages.scm`. `define-language!` is a plain function so it can take
+/// an optional trailing keyword arg. Exercises both call shapes side by side:
+/// `plain-lang` (no keyword) and `tsx` (with the override).
 ///
-/// With the old 4-arg macro arity for `%define-language!` (or `prelude.scm`'s
-/// function), eval would break outright: `init_scripting` would log an error
-/// and neither identity would register.
+/// A 4-arg arity for `%define-language!` (or `prelude.scm`'s function) would
+/// break eval outright: `init_scripting` would log an error and neither
+/// identity would register.
 #[test]
 fn define_language_language_id_keyword_round_trips_through_real_prelude() {
     let languages_scm = r#"
@@ -962,8 +961,8 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
 
 /// A compiled grammar whose name is no longer in the catalog (installed, then
 /// dropped by a HUME update) has no tree-sitter symbol to look up. Walking the
-/// install directory reaches it where the old catalog-driven walk never could,
-/// so registration must skip it rather than raise on the missing entry.
+/// install directory reaches it anyway, so registration must skip it rather
+/// than raise on the missing entry.
 ///
 /// Without the `grammar-source-known?` guard in `register-installed-grammars!`,
 /// `grammar-source-symbol`'s `hash-ref` would raise.

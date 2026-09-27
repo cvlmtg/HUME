@@ -1124,9 +1124,9 @@ impl GutterColumn for HugeGutter {
 
 #[test]
 fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
-    // Regression: nothing clamped a gutter column's configured width against
-    // the pane's actual width, so a gutter wider than the pane (reachable
-    // via `signcolumn always:N` in a narrow vsplit) wrote straight through
+    // A gutter column's configured width must be clamped to the pane's
+    // actual width. A gutter wider than the pane (reachable via
+    // `signcolumn always:N` in a narrow vsplit) would otherwise write through
     // the pane's right edge into whatever the shared terminal buffer holds
     // next to it — typically a neighbouring pane.
     let graphemes = vec![simple_grapheme(0, 0, 1)];
@@ -1610,11 +1610,11 @@ fn fill_rect_bg_clears_stale_modifiers() {
 
 #[test]
 fn write_text_run_draws_a_tab_as_one_space_not_a_placeholder() {
-    // Regression test: `grapheme_width` reserves exactly one cell for a tab
-    // (chrome has no tab stops), but `write_text_run` used to test
-    // `needs_placeholder` first — true for any control character, including
-    // `\t` — and draw the 3-cell `<9>` placeholder into that one cell,
-    // corrupting whatever followed it.
+    // `grapheme_width` reserves exactly one cell for a tab (chrome has no
+    // tab stops). `needs_placeholder` is true for any control character,
+    // including `\t`, so `write_text_run` must handle a tab before that
+    // check. A 3-cell `<9>` placeholder drawn into that one cell would
+    // corrupt whatever followed it.
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle::default();
     let theme = Theme::default();

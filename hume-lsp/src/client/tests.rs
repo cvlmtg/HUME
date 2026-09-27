@@ -813,7 +813,7 @@ fn shutdown_sends_shutdown_request_then_exit_notification_in_order() {
     }
 }
 
-/// Regression: nothing but `initialize` is legal on the wire before
+/// Nothing but `initialize` is legal on the wire before
 /// `initialized` — `begin_shutdown` on a still-Starting client must
 /// send neither `shutdown` nor `exit` (it still transitions to `Dead`;
 /// transport-level teardown reaps the process regardless).
@@ -836,7 +836,7 @@ fn begin_shutdown_sends_nothing_while_still_starting() {
     );
 }
 
-/// Regression: `begin_shutdown` on a still-`Starting` client jumps
+/// `begin_shutdown` on a still-`Starting` client jumps
 /// straight to `Dead` without cancelling (or waiting for) the in-flight
 /// `initialize` — its `pending`/`initialize_id` entries are untouched.
 /// A response that lands afterward must not resurrect the client into
@@ -1014,7 +1014,7 @@ fn cancel_removes_pending_and_sends_cancel_notification() {
     assert!(actions.is_empty());
 }
 
-/// Minor regression: nothing but `initialize` is legal on the wire
+/// Nothing but `initialize` is legal on the wire
 /// before `initialized` — a request cancelled or timed out while still
 /// `Starting` must not put `$/cancelRequest` on the wire, since its own
 /// send is still sitting in `queued`, unsent, and the server never saw
@@ -1064,7 +1064,7 @@ fn cancel_and_timeout_send_no_cancel_request_while_still_starting() {
     );
 }
 
-/// Regression: a request cancelled while still `Starting` must not
+/// A request cancelled while still `Starting` must not
 /// resurface once the handshake completes — its `Message::Request` sat
 /// unsent in `queued` (removed from `pending` by `cancel`), and without
 /// also stripping it from `queued`, `handle_initialize_response`'s
@@ -1394,7 +1394,7 @@ fn eof_reports_crashed_only_once_even_if_fed_again() {
     );
 }
 
-/// Minor regression: a trailing `Eof` racing a graceful `begin_shutdown`
+/// A trailing `Eof` racing a graceful `begin_shutdown`
 /// teardown must not report a spurious "server crashed" — `Dead` is as
 /// valid a "connection is already known gone, on purpose" state as
 /// `Crashed`.

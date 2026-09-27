@@ -486,9 +486,7 @@ fn a_non_completion_handle_raises() {
 }
 
 /// A `CompletionList` handle's own `isIncomplete` conflicting with an
-/// explicit `#:incomplete #t` still raises — this is a characterization
-/// test, not new behavior (the pre-fix code rejected this combination for
-/// every handle, this one included).
+/// explicit `#:incomplete #t` raises.
 #[test]
 fn a_completion_list_handle_rejects_incomplete() {
     let tmp = safe_tempdir();

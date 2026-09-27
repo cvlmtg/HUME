@@ -2,9 +2,7 @@
 //! (`tools/theme-editor/src/lib/vocabulary.generated.js`): keeps it in sync
 //! with the loader's own accepted-name tables and `super::super`'s
 //! `ui_scopes`/`diagnostic_scopes`/`CURSOR_MATCH*` scope-name tables, so a
-//! name added, removed, or renamed on the Rust side fails here instead of
-//! only in the JS test suite that used to regex-scrape this crate's source
-//! to find it.
+//! name added, removed, or renamed on the Rust side fails here.
 
 use crate::theme::diagnostic_scopes;
 use crate::theme::ui_scopes;

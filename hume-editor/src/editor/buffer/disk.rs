@@ -253,7 +253,7 @@ impl Editor {
     /// reaching for it. `Editor::enter_buffer_disk_check` retires a confirm
     /// that no longer targets the buffer focus just landed on before it ever
     /// reaches this check — for *every* switch, interactive or not (a
-    /// Steel/LSP `switch-to-buffer!` included, now that both run through the
+    /// Steel/LSP `switch-to-buffer!` included, since both run through the
     /// same `OnBufferEnter` reaction) — so this guard only needs to cover a
     /// *different* buffer's check racing a still-open, still-valid confirm.
     ///

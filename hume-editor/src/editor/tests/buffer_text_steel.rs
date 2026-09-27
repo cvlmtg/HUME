@@ -176,8 +176,7 @@ fn buffer_lines_out_of_range_end_raises() {
 }
 
 /// A `#:start` past `#:end` raises too — the other half of the `start > end
-/// || end > line_count` guard, previously untested (deleting `start > end
-/// ||` from the guard would have left the whole suite green).
+/// || end > line_count` guard.
 #[test]
 fn buffer_lines_start_past_end_raises() {
     let tmp = safe_tempdir();
@@ -488,8 +487,7 @@ fn selections_linewise_false_when_one_of_several_selections_is_partial() {
     );
 }
 
-/// The mixed case is the state the old single-predicate API could not
-/// express: neither all-linewise nor all-charwise.
+/// The mixed case: neither all-linewise nor all-charwise.
 #[test]
 fn selections_charwise_false_for_a_mixed_selection_set() {
     assert_selections_predicate(

@@ -5,10 +5,8 @@ use super::*;
 
 // ── run_capture ────────────────────────────────────────────────────────────
 
-/// Regression test for the deadlock `run_capture`'s own doc comment
-/// documents: reading stdout to EOF, then waiting, then reading stderr (the
-/// Steel `spawn-process`/`wait`/`child-stdout`/`child-stderr` shape
-/// `stdlib/run` used before) blocks forever once a child fills its stderr
+/// Guards the deadlock `run_capture`'s own doc comment documents: reading
+/// stdout to EOF, then waiting, then reading stderr blocks forever once a child fills its stderr
 /// pipe before exiting. `Command::output` drains both concurrently, so this
 /// must return well under any reasonable test timeout rather than hang.
 #[test]

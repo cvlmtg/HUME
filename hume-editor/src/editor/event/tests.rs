@@ -4,9 +4,8 @@ use steel::rvals::SteelVal;
 
 use super::*;
 
-/// One sample per variant — a `const` slice is impossible once variants
-/// carry `String`/`serde_json::Value` payloads, unlike the old fieldless
-/// enum. Field values are distinctive (not defaults) so the shape tests
+/// One sample per variant — a `const` slice is impossible because variants
+/// carry `String`/`serde_json::Value` payloads. Field values are distinctive (not defaults) so the shape tests
 /// below can tell fields apart if `steel_args` ever swaps two of them.
 fn all_variants() -> Vec<EditorEvent> {
     let buffer = BufferId::default();

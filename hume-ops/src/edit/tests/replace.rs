@@ -23,7 +23,7 @@ fn replace_around_cursors_single_cursor_baseline() {
 
 #[test]
 fn replace_around_cursors_two_cursors_uniform_spacing() {
-    // The op-level shape of the multi-cursor completion bug: two cursors,
+    // The op-level shape of multi-cursor completion: two cursors,
     // each right after its own typed "st", both get the same replacement.
     assert_state!(
         "st-[ ]>st-[\n]>",

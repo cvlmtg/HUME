@@ -559,7 +559,7 @@ fn lsp_request_decodes_require_focus() {
 }
 
 /// A hand-built (untagged) position/range — `wire_pos`/`hashmap`'s own
-/// shape — is rejected outright now, before this builtin ever reaches its
+/// shape — is rejected outright, before this builtin ever reaches its
 /// "no LSP host" branch: `JsonHandle::position_encoding` errors on
 /// `WireOrigin::Local` first. This is `lsp_position_to_offset_untagged_
 /// handle_errors`/`lsp_range_to_offsets_untagged_handle_errors`'s own

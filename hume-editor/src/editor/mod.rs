@@ -164,8 +164,8 @@ pub(crate) struct ConfigState {
     /// (`EditorState::queue_event`) and specific-closure completions
     /// (`EditorState::queue_steel_call`: an `lsp-request` callback, a timer
     /// thunk, a prompt callback) — drained in FIFO order by `Editor::settle`.
-    /// One queue, not two: see `event::PendingWork`'s doc for why the merge
-    /// matters. No work item is ever evaluated inline during command
+    /// One queue, not two: see `event::PendingWork`'s doc for why a shared
+    /// queue matters. No work item is ever evaluated inline during command
     /// execution or a completion callback.
     pub(in crate::editor) pending_work: VecDeque<event::PendingWork>,
     /// Buffers awaiting language detection, drained by
@@ -738,7 +738,7 @@ impl EditorState {
     }
 
     /// Pushes a mode layer — the single write path for all mode transitions
-    /// (`OnModeChange` itself no longer fires from here; it's raised by
+    /// (`OnModeChange` itself does not fire from here; it's raised by
     /// `Editor::detect_mode_change`'s observation-point diff at the next
     /// `settle()`).
     ///
@@ -768,10 +768,8 @@ impl EditorState {
     /// `truncate_layers` skips, and so the one case nothing else here would
     /// otherwise clear) still evicts whatever `Popup` layer or `Sticky`
     /// popup was sitting in `Base`'s own slot before the incoming layer
-    /// lands, sandwiching neither between the two. This replaces the Steel
-    /// `on-mode-change → close-popup!` hook the popup used to need for
-    /// exactly this case. Extend is this call's own rule, since nothing
-    /// else resets it; `setup` is left for what's specific to one layer
+    /// lands, sandwiching neither between the two. Extend is this call's
+    /// own rule, since nothing else resets it; `setup` is left for what's specific to one layer
     /// (`SearchLayer`/`SiftLayer` capture their pre-entry selections there).
     ///
     /// Never gated: a mode key only ever reaches `Base` after every overlay

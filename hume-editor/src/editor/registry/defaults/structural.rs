@@ -34,9 +34,9 @@ pub(in crate::editor) struct StructuralObject {
     pub(in crate::editor) noun: &'static str,
 }
 
-/// Keys mostly follow Helix (`t` = type, for `class`). `a` (argument) reuses
-/// the `inner-argument`/`around-argument` names the lexical scan registered
-/// before this feature — see `Argument`'s doc on `StructuralBody`.
+/// Keys mostly follow Helix (`t` = type, for `class`). `a` (argument) uses
+/// the `inner-argument`/`around-argument` names, with the lexical scan as
+/// fallback. See `Argument`'s doc on `StructuralBody`.
 ///
 /// `test` and `entry` deliberately diverge from Helix's own letters (`T` and
 /// `e`) to fit `keymap/defaults::build_goto_trie`'s `g <key>`/`g <KEY>`
@@ -131,8 +131,8 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
 
 impl CommandRegistry {
     /// Register the six structural kinds' four commands each (24 names; the
-    /// two `Parameter` names are the pre-existing `inner-argument`/
-    /// `around-argument`, now `Argument`-bodied instead of lexical-only).
+    /// two `Parameter` names are `inner-argument`/`around-argument`,
+    /// `Argument`-bodied with the lexical scan as fallback).
     ///
     /// `Select`/`Argument` register as `Selection` (`Establishes` — each
     /// replayable on its own from a fresh cursor, same as `select-line`/

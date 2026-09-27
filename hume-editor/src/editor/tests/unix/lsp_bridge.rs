@@ -222,7 +222,7 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
 /// Same staleness drop as `stale_response_is_dropped_without_allow_stale`,
 /// but with params that carry no `textDocument` at all — proving the check
 /// is keyed off the request's own `bid` (mandatory on every `lsp-request`),
-/// not off sniffing `params.textDocument.uri` the way it used to be.
+/// not off sniffing `params.textDocument.uri`.
 #[test]
 fn stale_response_without_text_document_is_dropped() {
     let tmp = safe_tempdir();
@@ -298,14 +298,12 @@ fn allow_stale_without_text_document_delivers() {
     );
 }
 
-/// Regression: a Steel command that edits the buffer (queuing an LSP
-/// `didChange`) and then immediately fires an `lsp-request` — the same
-/// shape as a trigger-char hook firing right after the edit that triggered
-/// it — must put the `didChange` on the wire *before* the request. Before
-/// the fix, `send_one_lsp_request` sent the request straight away and left
-/// the queued edit sitting in `Buffer.lsp_pending` until the next frame's
-/// `prepare_frame`, so the request reached the server ahead of the edit it
-/// was computed against.
+/// A Steel command that edits the buffer (queuing an LSP `didChange`) and
+/// then immediately fires an `lsp-request` — the same shape as a
+/// trigger-char hook firing right after the edit that triggered it — must
+/// put the `didChange` on the wire *before* the request. Left in
+/// `Buffer.lsp_pending` until the next frame's `prepare_frame`, the queued
+/// edit would reach the server after the request computed against it.
 #[test]
 fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     let tmp = safe_tempdir();

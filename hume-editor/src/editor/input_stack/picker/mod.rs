@@ -22,12 +22,6 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 pub(in crate::editor) use session::item;
 pub(in crate::editor) use session::{PickerItem, PickerSession, picker_items};
 
-/// A fuzzy-picker layer. Wraps `PickerSession` directly — unlike the closed
-/// `enum` this crate's stack replaced, `Box<dyn Layer>` already indirects
-/// every layer uniformly, so there's no need to box the session a second
-/// time just to keep this layer's own footprint from sizing anything else
-/// (the reason the old `enum` boxed it: `clippy::large_enum_variant`, a
-/// concern only a shared inline `enum` has).
 pub(in crate::editor) struct PickerLayer(pub(in crate::editor) PickerSession);
 
 impl Layer for PickerLayer {

@@ -159,14 +159,14 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
 
 #[test]
 fn docked_popup_survives_a_multiline_capture_node() {
-    // Regression for the `z k` panic: `(fenced_code_block) @text.literal`
-    // captures the whole block (opening fence through closing fence), not
-    // just its own line — `collect_line_spans` used to emit that node's
-    // absolute end byte relative to *this* line's start with no clamp, so
-    // on the (short) opening-fence line the span end ran past the line's
-    // own length and `MarkupSyntax::styled_row`'s `&line[start..end]` slice
-    // panicked. Single-line grammars never produced an over-long span, so
-    // this only ever surfaced through markdown. `styled_row` is shared by
+    // `(fenced_code_block) @text.literal` captures the whole block (opening
+    // fence through closing fence), not just its own line, so
+    // `collect_line_spans` clamps that node's end byte to *this* line.
+    // Unclamped, on the (short) opening-fence line the span end would run
+    // past the line's own length and `MarkupSyntax::styled_row`'s
+    // `&line[start..end]` slice would panic under `z k`. Single-line
+    // grammars never produce an over-long span, so this only surfaces
+    // through markdown. `styled_row` is shared by
     // every caller (cursor popup, docked popup) — exercised here through
     // the docked layout, hover's actual long-content path.
     require_grammars(&["markdown"]);

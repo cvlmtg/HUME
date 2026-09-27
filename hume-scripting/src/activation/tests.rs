@@ -96,9 +96,9 @@ fn syntax_error_transitions_to_failed() {
 
 /// A failed plugin body's log message names the plugin and points at the
 /// exact file, line, and column of the failing reference — not just
-/// `init.scm`, the file that happened to `load-plugin` it. This is the
-/// regression case: before `describe_steel_error` resolved the error's span
-/// against the engine's own `Sources`, the message read bare
+/// `init.scm`, the file that happened to `load-plugin` it.
+/// `describe_steel_error` resolves the error's span against the engine's own
+/// `Sources`. Without that, the message would read bare
 /// `init.scm: Error: FreeIdentifier: …` with no way to tell which plugin,
 /// file, or line was at fault.
 #[test]

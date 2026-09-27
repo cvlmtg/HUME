@@ -623,7 +623,7 @@ fn select_prev_uppercase_word_around_first_word_of_buffer_takes_trailing() {
 
 #[test]
 fn select_prev_word_around_second_press_advances_past_first_word() {
-    // Regression: `select_prev_word`'s "am I still on the word I just found"
+    // `select_prev_word`'s "am I still on the word I just found"
     // check uses `current.start()` as the search origin (not `head()`,
     // which after a *first-word* landing can sit in that word's trailing
     // whitespace, just outside its own bounds — see apply_word_select's doc
@@ -646,7 +646,7 @@ fn select_prev_word_around_second_press_advances_past_first_word() {
 #[test]
 #[allow(non_snake_case)]
 fn select_prev_uppercase_word_around_second_press_advances_past_first_word() {
-    // Same regression as select_prev_word_around_second_press_advances_past_first_word,
+    // Same case as select_prev_word_around_second_press_advances_past_first_word,
     // for B: "three.x" is one WORD (punctuation merged in).
     assert_state!(
         "one two three.x -[f]>our\n",
@@ -1262,9 +1262,9 @@ fn word_runs_keeps_a_combining_grapheme_cluster_whole() {
 
 #[test]
 fn word_runs_does_not_absorb_non_ascii_punctuation() {
-    // U+2019 (right single quotation mark) is Punctuation per `classify_char`
-    // — the exact gap the old Steel-side `>= 128` approximation had: it
-    // treated this as a word char and merged the whole thing into one run.
+    // U+2019 (right single quotation mark) is Punctuation per `classify_char`.
+    // Treating every char `>= 128` as a word char would merge the whole
+    // thing into one run.
     assert_eq!(
         runs("l\u{2019}\u{e9}l\u{e9}ment", WordChars::default()),
         vec!["l", "\u{e9}l\u{e9}ment"]

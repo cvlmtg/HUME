@@ -115,7 +115,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
 /// `close_picker_with`) — the Rust-level unit tests in `tests/picker.rs`
 /// cover the dispatch mechanism itself with a synthetic session; this proves
 /// `core:pickers`' actual shipped wiring, `stdlib/with-tab`'s `(call!
-/// "tab-new")`, and the hoisted-handler refactor all still compose.
+/// "tab-new")`, and the action handlers all compose.
 #[test]
 fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
     let guard = HumeRuntimeGuard::new();

@@ -244,7 +244,7 @@ fn bake_aligns_committed_tree_before_precise_install() {
     );
 
     // Committed tree must be coordinate-aligned: root end_byte == new text length.
-    // Pre-fix: root end_byte == old_byte_len (stale coords → highlight column shift).
+    // A root still ending at old_byte_len has stale coords and shifts highlight columns.
     let root_end = syn
         .layers()
         .and_then(hume_treesitter::layers::SyntaxLayers::root_tree)
@@ -254,7 +254,7 @@ fn bake_aligns_committed_tree_before_precise_install() {
     assert_eq!(
         root_end, new_byte_len,
         "baked tree root end_byte must equal new text byte count; \
-         pre-fix this would equal {} (stale)",
+         a stale tree would end at {}",
         old_byte_len,
     );
 }

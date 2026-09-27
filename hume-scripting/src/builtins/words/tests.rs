@@ -37,7 +37,7 @@ fn honors_word_chars() {
 
 #[test]
 fn does_not_absorb_non_ascii_punctuation() {
-    // The gap the old Steel-side `>= 128` approximation had: this must come
+    // A `>= 128` word-char approximation would merge these. This must come
     // back as two words, not one merged "l’élément".
     let got = words(split_words(
         "l\u{2019}\u{e9}l\u{e9}ment".into_steelval().unwrap(),

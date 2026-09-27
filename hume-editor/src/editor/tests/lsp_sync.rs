@@ -229,7 +229,7 @@ fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
     assert_eq!(params["textDocument"]["languageId"], "typescriptreact");
 }
 
-/// Fix 1: `lsp_did_open` must queue behind the handshake, never write to
+/// `lsp_did_open` must queue behind the handshake, never write to
 /// the wire before `initialize` completes — the spec forbids anything else
 /// arriving first. Before the drain that carries the initialize response,
 /// nothing has been sent at all; after it, the log is exactly
@@ -313,11 +313,10 @@ fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
     assert_mirror_matches(&ed, bid, &log.borrow(), "full session replay");
 }
 
-/// The load-bearing case for the composed-walk fix: a counted `u` that
+/// The load-bearing case for the composed walk: a counted `u` that
 /// crosses several revisions must reach an INCREMENTAL-sync server as one
-/// `didChange` for the net change, not one per revision it walked. Before
-/// the fix, `3u` queued three separate `LspPendingChange` entries and this
-/// count would have been 3.
+/// `didChange` for the net change, not one per revision it walked. Queuing
+/// one `LspPendingChange` per revision would make this count 3.
 #[test]
 fn counted_undo_on_an_incremental_server_sends_one_didchange_for_the_whole_walk() {
     let tmp = safe_tempdir();
@@ -480,8 +479,7 @@ fn save_flushes_pending_change_before_did_save() {
     );
 }
 
-/// Regression test for the scheme-LSP wrong-line-diagnostics bug: a server
-/// declaring `textDocumentSync: FULL` (as `steel-language-server` does) must
+/// A server declaring `textDocumentSync: FULL` (as `steel-language-server` does) must
 /// never receive a ranged `didChange` — per spec it ignores `range` and
 /// treats each event's `text` as the whole new document, so a ranged insert
 /// becomes the entire file, and every diagnostic position it computes next

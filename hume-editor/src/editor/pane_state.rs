@@ -109,8 +109,8 @@ pub(crate) struct PaneBufferState {
     /// non-selection source (a resize, a wrap-mode change, a buffer switch,
     /// a decoration-generation change) is folded into `frame.rs`'s scroll
     /// step instead, as a comparison against [`PaneBufferState::last_layout_key`]
-    /// — see that field's own doc for why a derived comparison replaced
-    /// what used to be six more raise sites here.
+    /// — see that field's own doc for why a derived comparison needs no
+    /// raise site per source.
     ///
     /// Read and cleared every frame by `frame.rs`'s scroll step, alongside
     /// that comparison: either one being true means the vertical
@@ -382,7 +382,7 @@ impl PaneView {
 /// `ProviderSet` (no gutter column). Sole caller of
 /// `hume_decorations::build_providers`/`hume_ui::register_overlays` — the
 /// two sibling calls that together populate one pane's `ProviderSet`, one
-/// per crate now that decoration providers and overlay widgets live apart.
+/// per crate, since decoration providers and overlay widgets live apart.
 pub(in crate::editor) fn build_pane(
     registry: &mut hume_engine::theme::ScopeRegistry,
     views: &hume_ui::OverlayViews,

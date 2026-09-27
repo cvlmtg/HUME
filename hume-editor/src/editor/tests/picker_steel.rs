@@ -517,9 +517,9 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     ed.feed_key(key_enter());
 
     // The next prepare_frame drains the callback (switching the pane to the
-    // 3-char buffer) then renders. Pre-fix, this panicked in ropey's
-    // char_to_line: the engine's selection mirror still held buffer A's
-    // stale head (499) against buffer B's 3-char rope.
+    // 3-char buffer) then renders. An engine selection mirror still holding
+    // buffer A's stale head (499) against buffer B's 3-char rope would panic
+    // in ropey's char_to_line.
     let _ = ed.render_to_buf(rect);
 
     let bid = ed.focused_buffer_id();

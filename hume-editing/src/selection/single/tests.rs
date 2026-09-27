@@ -125,12 +125,12 @@ fn content_end_exclusive_clamps_at_the_structural_newline() {
 #[test]
 fn content_end_exclusive_on_the_minimal_buffer_is_zero_not_one() {
     // "\n" alone (len_chars == 1) — the one case where this genuinely
-    // diverges from the `content_end(text) + 1` idiom it replaces.
+    // diverges from a `content_end(text) + 1` computation.
     // end() = 0, end_inclusive = 0 (the '\n' is its own one-char cluster),
     // end_exclusive = next_grapheme_boundary(0) = 1 = len_chars().
     // last_char() = len_chars() - 1 = 0, so content_end_exclusive = min(1, 0) = 0.
     //
-    // The old idiom instead computed content_end(text) + 1: content_end =
+    // `content_end(text) + 1` would compute: content_end =
     // end_inclusive.min(last_content_char) = 0.min(len_chars().saturating_sub(2))
     // = 0.min(0) = 0, so `content_end + 1` = 1 — one past the structural
     // '\n', which would delete it and trip `ChangeSet::apply`'s

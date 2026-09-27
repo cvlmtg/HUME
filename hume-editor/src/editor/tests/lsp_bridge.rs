@@ -458,8 +458,8 @@ fn callback_error_lands_in_message_log_not_a_crash() {
 /// Wraps `InlineLspBackend`, logging the method name of every `send()` call
 /// — `Request` and `Notification` alike — into one shared, arrival-ordered
 /// log. `RecordingLspBackend` (test_util) keeps requests and notifications
-/// in two separate logs, which can't answer "did the didChange reach the
-/// wire before this request" ordering bug: only a single combined
+/// in two separate logs, which can't answer the ordering question "did the
+/// didChange reach the wire before this request": only a single combined
 /// log can.
 #[cfg(unix)]
 pub(super) struct OrderedLogBackend {
@@ -672,12 +672,11 @@ fn require_focus_drops_the_callback_after_a_buffer_switch() {
     );
 }
 
-/// Regression (pane refactor): `#:require-focus #t` must drop the callback
-/// when focus moves to a *different pane still showing the same buffer* —
-/// not just on a buffer switch. Before the pane refactor, `anchor_admits`
-/// compared only `bid`, so a split that moved focus off the requesting pane
-/// (onto a sibling pane showing the very same buffer) would still admit the
-/// response and deliver it into whichever pane happened to be focused.
+/// `#:require-focus #t` must drop the callback when focus moves to a
+/// *different pane still showing the same buffer*, as well as on a buffer
+/// switch. A split that moves focus off the requesting pane (onto a sibling
+/// pane showing the very same buffer) must not deliver the response into
+/// whichever pane happens to be focused.
 ///
 /// Comparing `self.focused_buffer_id()` against `anchor.bid` in
 /// `anchor_admits` would miss this, since the split changes only the pane.
@@ -769,7 +768,7 @@ fn no_require_focus_still_delivers_after_a_buffer_switch() {
     );
 }
 
-/// Hole B regression: two responses land in the same LSP drain, so both are
+/// Two responses land in the same LSP drain, so both are
 /// admitted by `dispatch_completed`'s drain-time `anchor_admits` check —
 /// neither callback has run yet, so focus hasn't moved. Only once they're
 /// dequeued does callback 1 actually execute and switch focus away.
@@ -827,7 +826,7 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
     );
 }
 
-/// Hole B's staleness counterpart: callback 1 edits `bid` (bumping its
+/// The staleness counterpart of the test above: callback 1 edits `bid` (bumping its
 /// `text_gen`), callback 2 has no `#:allow-stale`. Both land in the same
 /// drain, both admitted at drain time (neither has run, so `bid`'s
 /// `text_gen` still matches both anchors) — only a re-check at dequeue,

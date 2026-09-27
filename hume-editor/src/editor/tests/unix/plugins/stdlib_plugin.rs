@@ -256,9 +256,8 @@ fn core_stdlib_config_commands() {
 }
 
 /// `stdlib/list-subdirs` must return only subdirectory basenames, sorted,
-/// filtering out a stray file that sits alongside them (e.g. `.DS_Store`) —
-/// the case `core:plum`'s plugin walk used to raise on before this helper
-/// existed (see `injections_editor.rs`'s
+/// filtering out a stray file that sits alongside them (e.g. `.DS_Store`),
+/// which `core:plum`'s plugin walk must skip (see `injections_editor.rs`'s
 /// `plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir`).
 ///
 /// The directory tree is built directly via `std::fs`, with the expected

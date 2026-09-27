@@ -956,9 +956,7 @@ fn every_pane_scoped_key_has_a_typed_set_arm() {
 /// narrowest place a setting can be pinned, so anything settable there must
 /// also be settable for a whole buffer and for the whole editor. Without the
 /// buffer rung, a per-language `on-language-set` hook (`set-buffer-option!`)
-/// can't reach a pane-scoped setting at all — which is exactly the gap
-/// `wrap-mode` used to have (`scope: [Scope::Global, Scope::Pane]`, no
-/// `Scope::Buffer`) before it grew a buffer rung.
+/// can't reach a pane-scoped setting at all.
 #[test]
 fn every_pane_scoped_key_is_also_buffer_and_global_scoped() {
     let missing: Vec<String> = all_setting_keys()

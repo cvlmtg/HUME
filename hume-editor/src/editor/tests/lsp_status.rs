@@ -98,9 +98,8 @@ fn lsp_stop_deregisters_the_server_and_clears_buffer_attachment() {
 }
 
 /// `(lsp-stop! bid)` targets `bid`'s own attached server, regardless of
-/// which buffer is currently focused — the whole point of `LspServerTarget`
-/// replacing the old `Option<&str>` (which had no way to name a buffer at
-/// all, only "the focused one" via `None`).
+/// which buffer is currently focused. `LspServerTarget` names the buffer
+/// explicitly.
 ///
 /// If `lsp_targets` read `self.focused_buffer_id()` instead of the given
 /// `bid`, it would stop 0 servers here, since the focused buffer (`a`) has
@@ -246,7 +245,7 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
     );
 }
 
-/// Regression: without `DiagnosticsStore::remove_server`, a restarted
+/// Without `DiagnosticsStore::remove_server`, a restarted
 /// server's fresh `ServerId` would coexist with the old (frozen, detached)
 /// server's entry for the same buffer — `replace`'s "push if no matching
 /// sid" path — doubling the count instead of replacing it.
@@ -473,7 +472,7 @@ fn progress_report_events_are_dropped_without_any_log_line() {
     );
 }
 
-// ── Fix 3 — graceful shutdown on quit ──────────────────────────────────────
+// ── Graceful shutdown on quit ──────────────────────────────────────────────
 
 #[test]
 fn lsp_shutdown_all_transitions_every_running_client_to_dead() {

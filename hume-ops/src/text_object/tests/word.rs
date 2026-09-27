@@ -267,7 +267,7 @@ fn around_word_on_whitespace_only_buffer_is_noop() {
 
 #[test]
 fn select_word_around_extend_at_buffer_end_never_consumes_trailing_newline() {
-    // Regression: the extend retry from past the selection end lands on the
+    // The extend retry from past the selection end lands on the
     // structural '\n'; its unit must resolve to the preceding word (already
     // covered), not grow the selection onto the newline.
     assert_state!(
@@ -354,7 +354,7 @@ fn around_uppercase_word_no_trailing_space_uses_leading() {
 #[test]
 #[allow(non_snake_case)]
 fn around_uppercase_word_first_word_of_line_uses_uppercase_word_boundary() {
-    // Regression: word_unit_at must call inner_word_impl with the right
+    // word_unit_at must call inner_word_impl with the right
     // predicate (is_uppercase_word_boundary, not is_word_boundary). This
     // test catches that by using a WORD that contains punctuation —
     // `is_word_boundary` would split "foo.bar" into two words while

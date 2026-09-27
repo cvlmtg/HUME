@@ -663,7 +663,7 @@ fn statusline_display_path_synthetic_buffer_shows_label() {
 
 #[test]
 fn statusline_display_path_real_file_still_shows_path() {
-    // Regression guard: the label fallback must not shadow a real path.
+    // The label fallback must not shadow a real path.
     //
     // Expectation is hand-built, not `display_form(path)` — that would be
     // circular with `Buffer::set_path`, which derives `display_path` by

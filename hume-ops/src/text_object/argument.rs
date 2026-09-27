@@ -214,8 +214,7 @@ pub fn inner_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRan
 /// forward over its own trailing blank run (newline-inclusive, `is_blank`
 /// — a no-op for every argument but the last, which has none to eat *except*
 /// the newline before a multi-line list's closing delimiter, which this
-/// branch does consume; matches the lexical scan's pre-existing behavior,
-/// not a new asymmetry). Otherwise, if the blank run immediately after `end`
+/// branch does consume). Otherwise, if the blank run immediately after `end`
 /// is bounded by a comma, this argument is first: `start` extends backward
 /// over blanks — reaching the opening delimiter, never a comma, since the
 /// first rule would have fired otherwise — and `end` extends through the

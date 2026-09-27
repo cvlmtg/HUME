@@ -87,11 +87,10 @@ fn p6_close_last_buffer_becomes_scratch() {
     );
 }
 
-/// Hole D regression: a bid captured before `:bd` on the last buffer must
-/// read as dead afterward — the exact case a same-slot in-place replace
-/// (the previous design) defeated every `LiveBid`-checked builtin against,
-/// since the closed id would still `try_get` successfully against unrelated
-/// scratch content.
+/// A bid captured before `:bd` on the last buffer must read as dead
+/// afterward. A same-slot in-place replace would defeat every
+/// `LiveBid`-checked builtin here, since the closed id would still `try_get`
+/// successfully against unrelated scratch content.
 ///
 /// If `close_buffer`'s last-buffer branch reused `id` in place,
 /// `get-buffer-option` would succeed against the scratch buffer

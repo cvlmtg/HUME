@@ -13,9 +13,9 @@ impl EditorState {
     ///
     /// The single spelling of that comparison. Three paths ask it — attach
     /// refusal, the per-frame detach/re-attach sweep, and the on-demand
-    /// freshness check below — and before this predicate they asked it
-    /// inline, two of them with `>` and one with `<=`, which is how half of
-    /// a future cap change would have slipped through.
+    /// freshness check below. Asking it inline at each path would let the
+    /// copies drift apart (one `>`, another `<=`), so a cap change could
+    /// reach only some of them.
     pub(in crate::editor::syntax::parse) fn syntax_size_ok(&self, bid: BufferId) -> bool {
         self.buffers.get(bid).text().len_bytes() <= self.settings.syntax_highlight_max_bytes
     }

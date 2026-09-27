@@ -28,8 +28,8 @@ fn zero_is_a_digit_only_inside_a_count() {
     );
 }
 
-/// Unbounded digit entry (`999999999999999999999w`) overflows `usize`
-/// arithmetic in the accumulator before this cap existed — this is the
+/// Unbounded digit entry (`999999999999999999999w`) would overflow `usize`
+/// arithmetic in the accumulator without a cap. This is the
 /// resource-safety floor for every command that loops `count` times.
 #[test]
 fn count_prefix_caps_at_max_count() {

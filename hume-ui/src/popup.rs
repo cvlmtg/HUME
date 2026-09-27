@@ -358,8 +358,7 @@ pub fn resolve_popup(
     border: bool,
 ) -> PopupState {
     // Reserve 2 cells on each axis for the popup's 1-cell frame, so
-    // content + border together fit the same envelope this budget used to
-    // give to content alone.
+    // content and border together fit inside the envelope.
     let max_width = MAX_POPUP_WIDTH
         .min(placement.content_width.saturating_sub(4))
         .saturating_sub(2);

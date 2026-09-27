@@ -633,9 +633,9 @@ fn redo_steps_newer_than_walks_last_child_chain() {
 
 /// A leaf has nothing newer to redo onto regardless of the request — the
 /// tip's own age must never be compared against `age` the way a genuine
-/// over-travel (walking onto a leaf that is still too old) is. Asymmetric
-/// with `undo_steps_older_than`, which never had this bug: its clamp only
-/// ever fires from inside the walk, at the root.
+/// over-travel (walking onto a leaf that is still too old) is.
+/// `undo_steps_older_than` has no such case: its clamp only ever fires from
+/// inside the walk, at the root.
 ///
 /// Comparing the *current* revision's own age against `age` when it has no
 /// children would return `Err(1)`, a false "Already at newest change" extra

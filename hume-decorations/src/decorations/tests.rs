@@ -42,8 +42,7 @@ fn eol(pos: usize, text: &str) -> EolTextEntry {
 
 #[test]
 fn eol_text_for_buffer_does_not_leak_another_buffers_entries() {
-    // Regression test for the by-BufferId restructure: a reader keyed by
-    // (source, BufferId) that regressed to scanning every buffer would
+    // A reader keyed by (source, BufferId) that scanned every buffer would
     // still pass a single-buffer test, so this exercises two buffers
     // under the *same* source name and asserts isolation.
     let mut store = DecorationStores::default();
@@ -225,8 +224,8 @@ fn remove_buffer_clears_its_sign_source_registrations() {
 }
 
 /// `signs_in_range` resolves each entry's source to its registered slot
-/// itself, once per source group — the bridge no longer looks the source up
-/// — and still prunes to the given char range the same way `in_range` does.
+/// itself, once per source group, and prunes to the given char range the
+/// same way `in_range` does.
 #[test]
 fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
     let mut store = DecorationStores::default();
@@ -294,16 +293,12 @@ fn remove_buffer_bumps_generation() {
     );
 }
 
-/// Post-ship correction to the original dirty-tracking design:
-/// `remap_through` used to bump the (then
-/// store-wide) generation unconditionally, on every queued edit in *any*
-/// LSP-attached buffer — including one with zero decorations, which
-/// `record_lsp_edits` (`doc_ops.rs`) still queues, since it gates on
-/// `lsp_server.is_some() || has_any(bid)`. With a per-buffer stamp, the same
-/// unconditional bump would just narrow the blast radius from "every pane on
-/// every buffer" to "every pane on this one buffer" — still wrong for a
-/// buffer with nothing to invalidate. `remap_through` must only touch a
-/// buffer's stamp when a kind actually had an entry to remap.
+/// `remap_through` must only touch a buffer's stamp when a kind actually had
+/// an entry to remap. `record_lsp_edits` (`doc_ops.rs`) queues edits for any
+/// LSP-attached buffer, since it gates on `lsp_server.is_some() ||
+/// has_any(bid)`, so a buffer with zero decorations still reaches
+/// `remap_through`. Bumping its stamp would resync every pane on that buffer
+/// with nothing to invalidate.
 #[test]
 fn remap_through_only_touches_a_buffer_that_has_decorations() {
     use hume_editing::changeset::ChangeSetBuilder;
@@ -349,11 +344,10 @@ fn inlay(pos: usize, text: &str, before: bool) -> InlayHintEntry {
 }
 
 /// A deletion that swallows a point-anchored entry's whole anchor character
-/// must drop the entry, not park it on whatever text moved into the gap —
-/// the "reappearing inlay hint" bug (`x` selects a line including its `\n`,
-/// `d` deletes it; the hint used to survive, re-anchored to the deleted
-/// line's replacement text). A survivor past the deletion still shifts, same
-/// as before.
+/// must drop the entry, not park it on whatever text moved into the gap.
+/// Example: `x` selects a line including its `\n` and `d` deletes it; the
+/// line's inlay hint must go with it. A survivor past the deletion still
+/// shifts.
 #[test]
 fn remap_points_drops_an_entry_whose_anchor_was_deleted() {
     use hume_editing::changeset::ChangeSetBuilder;

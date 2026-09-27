@@ -16,8 +16,8 @@ use super::*;
 #[test]
 fn safe_tempdir_does_not_deadlock_under_a_held_env_claim() {
     let _claim = TEST_GLOBALS.claim(Global::Env);
-    // Would hang forever under the old non-reentrant `HUME_RUNTIME_MUTEX` —
-    // this is the exact call shape that caused both real hangs.
+    // `safe_tempdir` under an already-held env claim: a non-reentrant lock
+    // would hang forever on this call shape.
     let dir = safe_tempdir();
     assert!(dir.path().is_dir());
 }

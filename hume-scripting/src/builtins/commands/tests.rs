@@ -206,8 +206,7 @@ fn command_plugin_known_returns_owner() {
 
 // ── define-typed-command! validation ──────────────────────────────────────
 //
-// Mirrors "── define-command! validation ──" below — no test in this crate
-// called `define_typed_command` before this section.
+// Mirrors "── define-command! validation ──" below.
 
 #[test]
 fn define_typed_command_name_with_double_quote_errors() {
@@ -399,10 +398,10 @@ fn define_command_dup_names_error_names_existing_owner() {
 }
 
 /// Same collision, but both sides typed: `check_definable`'s re-definition
-/// guard used to check only `command_table`, so a second
-/// `define-typed-command!` for the same name fell through to the generic
-/// "conflicts with existing command" the editor-side host reports instead of
-/// naming the owner here. Mirrors
+/// guard checks `typed_command_table` too, so a second
+/// `define-typed-command!` for the same name names the owner here. The
+/// editor-side host's generic "conflicts with existing command" error
+/// would not. Mirrors
 /// `define_command_dup_names_error_names_existing_owner`, seeding
 /// `typed_command_table` instead of `command_table`.
 #[test]

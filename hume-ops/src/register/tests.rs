@@ -546,8 +546,7 @@ fn valid_register_names_accepted() {
 
 #[test]
 fn letter_a_is_not_a_valid_register_name() {
-    // Regression guard: 'a' is not a valid register name —
-    // is_valid_register_name must keep rejecting it.
+    // 'a' is not a valid register name.
     assert!(!is_valid_register_name('a'), "'a' must be invalid");
 }
 

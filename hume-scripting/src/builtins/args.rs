@@ -120,7 +120,7 @@ pub(crate) fn symbol_enum_arg<T: Copy>(
 
 /// Renders `["a", "b", "c"]` as `"'a, 'b, or 'c"` (or `"'a or 'b"` for two,
 /// `"'a"` for one) — the quoted, Oxford-comma phrasing every enum-keyword
-/// error message already used before this helper existed.
+/// error message uses.
 fn format_symbol_choices(names: &[&str]) -> String {
     match names {
         [] => String::new(),

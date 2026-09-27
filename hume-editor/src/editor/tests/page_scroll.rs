@@ -112,16 +112,14 @@ fn page_up_moves_full_viewport() {
     );
 }
 
-// ── Ctrl-d/Ctrl-u/PageDown/PageUp now scroll the view, not just the cursor ──
+// ── Ctrl-d/Ctrl-u/PageDown/PageUp scroll the view, not just the cursor ──────
 //
-// Before unification, these commands only moved the cursor; the viewport
-// followed later, once the cursor reached `scrolloff`. From the top of a
-// file that never happened for a single page. Now `scroll_view` writes the
-// viewport directly, matching vim/Helix.
+// `scroll_view` writes the viewport directly, matching vim/Helix. Moving
+// only the cursor would leave the viewport in place until the cursor reached
+// `scrolloff`, which from the top of a file never happens for a single page.
 
 /// Half-page-down from the top of a file moves the *view* by `height / 2`
-/// display lines, not just the cursor. Previously the viewport stayed at 0
-/// (the cursor at line 12 was still comfortably inside the first screen).
+/// display lines, not just the cursor.
 ///
 /// The cursor itself lands at line 15, not 12: landing exactly at the new
 /// top (row 0) is `carry`'s band clamp's job to catch, not something a fresh

@@ -100,8 +100,7 @@ pub fn format_buffer_line(
     let word_break = matches!(wrap_mode, WrapMode::Word { .. } | WrapMode::Indent { .. });
 
     // ── Display line / column state ─────────────────────────────────────
-    // Aliases into the output buffers so the rest of the function can use
-    // the original `lines_out` / `graphemes_out` names without further changes.
+    // Short aliases into the output buffers for the rest of the function.
     let lines_out = &mut out.display_lines;
     let graphemes_out = &mut out.graphemes;
     let virtual_texts_out = &mut out.virtual_texts;

@@ -377,7 +377,7 @@ fn display_col_wide_cjk_before_tab_shifts_the_stop() {
     // 漢 takes display col 0→2; tab from display col 2 advances to the next
     // stop, display col 4; 'x' lands at display col 4. A char-counting (not
     // display-column-counting) walk would have put the tab's stop at
-    // display col 3 instead — the bug this module fixes.
+    // display col 3 instead.
     let buf = rope("\u{6F22}\tx\n");
     assert_eq!(
         display_col_in_line(buf.slice(..), ContentLine::new(0), co(1), 4),

@@ -182,9 +182,9 @@ impl EditorState {
     /// bound, and a resize is the one trigger no *write*-side clamp could
     /// ever catch, since nothing about the drawer changes when it happens.
     /// One read-time clamp catches both, instead of `clamp_scroll_to_window`
-    /// carrying a `len` parameter every caller has to supply — `set_drawer_items`
-    /// no longer needs `EditorState` to see the terminal height at all as a
-    /// result.
+    /// carrying a `len` parameter every caller has to supply. It also keeps
+    /// `set_drawer_items` from needing `EditorState` to see the terminal
+    /// height at all.
     pub(in crate::editor) fn clamp_drawer_scroll_to_terminal(&mut self, terminal_height: u16) {
         let Some(drawer) = self.input.find_mut::<DrawerLayer>() else {
             return;

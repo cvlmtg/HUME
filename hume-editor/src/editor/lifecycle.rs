@@ -310,8 +310,8 @@ impl Editor {
     ///
     /// Each iteration:
     /// 1. Sync viewport geometry, settle (drain async sources and the merged
-    ///    work queue to quiescence — see `Editor::settle`'s doc; this is
-    ///    what closes the stranded-events bug), observe
+    ///    work queue to quiescence — see `Editor::settle`'s doc; this keeps
+    ///    a queued event from stranding), observe
     ///    `should_quit`, then prepare the frame: sync all editor state to
     ///    the engine pane.
     /// 2. Render.

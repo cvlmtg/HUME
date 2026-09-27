@@ -112,11 +112,9 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
 }
 
 /// The typed twin of [`declare_plugin_drops_sole_command_conflicting_with_eager`],
-/// but a *partial* collision: no `hume-scripting` test exercised
-/// `#:typed-commands` through a real on-disk `declare-plugin` before this
-/// one, and no existing test (either kind) covers "one entry collides, one
-/// survives" — every prior collision test collided on the sole entry. One
-/// colliding name (`existing-typed`, already defined) must log an `Error`
+/// but a *partial* collision. It drives `#:typed-commands` through a real
+/// on-disk `declare-plugin` and covers "one entry collides, one survives".
+/// One colliding name (`existing-typed`, already defined) must log an `Error`
 /// and be dropped; the plugin still declares because `fresh-typed` survives.
 #[test]
 fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {

@@ -57,12 +57,9 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
 }
 
 /// A stray file directly inside `<data>/plugins/` (e.g. a macOS `.DS_Store`)
-/// used to make `plum/installed-plugins` raise: `stdlib/list-subdirs`'s
-/// predecessor (the plum-local `plum/valid-dir-entry?`) only filtered `"."`/
-/// `".."`, which `read-dir` never returns, so the stray name passed straight
-/// through and `read-dir` was then called on it as if it were a "user"
-/// directory — `Path::read_dir` on a non-directory errors, and that error
-/// propagated uncaught out of `:plum-list-plugins`.
+/// must not make `plum/installed-plugins` raise. Walking into it as if it
+/// were a "user" directory would call `Path::read_dir` on a non-directory,
+/// and that error would propagate uncaught out of `:plum-list-plugins`.
 ///
 /// `stdlib/list-subdirs` must filter by `is-dir?`, or a real `.DS_Store` next
 /// to an installed plugin raises the same error.

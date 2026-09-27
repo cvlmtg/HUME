@@ -301,11 +301,11 @@ fn cursor_primary_never_visits_the_secondary_normal_scope() {
     assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(1, 1, 1)));
 }
 
-/// Everforest's own regression: `ui.cursor.insert` (secondary) and
+/// Everforest's case: `ui.cursor.insert` (secondary) and
 /// `ui.cursor.primary` (plain block) are both defined, but
 /// `ui.cursor.primary.insert` is not. The primary Insert-mode head must land
-/// on the block colour, never on the secondary Insert colour — the bug this
-/// ladder replaced gave both heads the same `ui.cursor.insert` colour.
+/// on the block colour, never on the secondary Insert colour, so the two
+/// heads stay distinguishable.
 #[test]
 fn cursor_insert_primary_never_visits_the_secondary_insert_scope() {
     let theme = theme_with([

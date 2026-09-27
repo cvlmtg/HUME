@@ -170,8 +170,7 @@ impl FocusedPane {
 /// get one is bound to a body that needs exactly that variant, inside
 /// [`Bound`]; nothing outside this file ever names `Target` at all, so a
 /// caller cannot pair a `Target::Pane` with a body that requires focus (see
-/// [`Bound`]'s own doc for why that pairing used to be checked at runtime
-/// instead of ruled out by construction).
+/// [`Bound`]'s own doc for why that pairing is ruled out by construction).
 ///
 /// A `FocusedPane`-only body ([`Bound::FocusedCmd`]) never holds a `Target`
 /// at all — it carries a bare [`FocusedPane`] directly, since it has no
@@ -294,13 +293,11 @@ impl<F> NativeBody<F> {
 /// through. One arm per body shape, each carrying exactly the target type
 /// that shape's signature needs — `FocusedCmd` a bare [`FocusedPane`], every
 /// other arm a [`Target`] (`Pane` or `Focused`, since those bodies accept
-/// either). This is what closes the hole a loose `(MappableCommand, Target)`
-/// pair left open: nothing stopped pairing an `EditorCmdBody::FocusedPane`
-/// handler with a `Target::Pane` built for some other command, which used to
-/// be caught only by an `unreachable!` at the one place that called the
-/// mismatched pair — a panic in release builds, reachable by any future
-/// caller that constructs a `Target` independently of the body it's handed
-/// to. A `Bound` cannot express that pair at all: there is no variant whose
+/// either). A loose `(MappableCommand, Target)` pair would allow pairing an
+/// `EditorCmdBody::FocusedPane` handler with a `Target::Pane` built for some
+/// other command. Only a runtime check could catch that, as a panic in
+/// release builds, reachable by any caller that constructs a `Target`
+/// independently of the body it's handed to. A `Bound` cannot express that pair at all: there is no variant whose
 /// fields are `(FocusedCmdFn, Target)`.
 ///
 /// Built only by [`BoundCommand::focused`]/[`BoundCommand::resolve`], which

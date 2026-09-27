@@ -390,8 +390,7 @@ fn test_around_two_sequential_tests_has_no_spurious_merged_span() {
     );
 }
 
-// Pre-existing behavior, unrelated to and unaffected by the contiguity fix
-// below: proven with a raw match dump that tree-sitter's `.` anchor does
+// Proven with a raw match dump: tree-sitter's `.` anchor does
 // *not* treat a comment (a grammar `extra`, per
 // `tests/fixtures/grammars/rust/src/grammar.json`'s `extras` list) as
 // transparent. `function.around`'s `((attribute_item)* @function.around .
@@ -399,7 +398,7 @@ fn test_around_two_sequential_tests_has_no_spurious_merged_span() {
 // creates, so the quantifier backtracks to its zero-attribute alternative —
 // the attribute is captured by *no* match here, not merged into one that
 // skips over the comment. `collect_hulls` never sees a multi-node hull to
-// reason about in this case; there is no gap for the fix below to cross.
+// reason about in this case, so the contiguity check never applies.
 #[test]
 fn function_around_drops_the_attribute_across_a_comment_today() {
     let source = "#[inline]\n// why inline\nfn foo() {\n    1\n}\n";
@@ -412,11 +411,11 @@ fn function_around_drops_the_attribute_across_a_comment_today() {
     assert_eq!(span_text(&text, span), "fn foo() {\n    1\n}");
 }
 
-/// Characterization test the contiguity fix must preserve: `test.around`'s
+/// Characterization test for the contiguity check: `test.around`'s
 /// quantified group lists `(line_comment) @test.around` as one of its own
 /// alternatives, so a comment between `#[test]` and `fn` is captured
 /// directly as an ordinary adjacent sibling — a real multi-node hull with
-/// zero gap between any two of its nodes, not a case the fix should touch.
+/// zero gap between any two of its nodes, which the check accepts.
 #[test]
 fn test_around_hulls_a_comment_explicitly_captured_between_attribute_and_function() {
     let source = "#[test]\n// why\nfn one() {\n    assert!(true);\n}\n";
@@ -432,7 +431,7 @@ fn test_around_hulls_a_comment_explicitly_captured_between_attribute_and_functio
     );
 }
 
-/// The legitimate neighbor of the bug: `[(attribute_item)|(line_comment)]*`
+/// The legitimate neighbor of the non-contiguous case: `[(attribute_item)|(line_comment)]*`
 /// exists so a *second* real attribute on the same test is still part of
 /// one object, not dropped as non-contiguous.
 #[test]

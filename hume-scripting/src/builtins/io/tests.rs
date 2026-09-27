@@ -50,7 +50,7 @@ fn stdout_gate_returns_true_and_calls_ensure_when_open_via_inline_output_command
 
 // ── End-to-end: gated print shims via the real ScriptingHost ───────────────
 
-/// Regression guard for the require-module bug documented in this
+/// Guards the require-module hazard documented in this
 /// module's doc comment: a plugin file loaded via `(require "path.scm")`
 /// is a separately-compiled module — exactly the shape of every real
 /// `#:inline-output` plugin command (core:lsp's `servers.scm`'s
@@ -254,7 +254,7 @@ fn custom_port_write_bypasses_gate_when_closed() {
 /// The explicit-port branch forwards straight to the original case-lambda
 /// rather than reimplementing arity checking — for a non-stdout port
 /// (`%port-safe?` is `#t` unconditionally), an extra positional argument
-/// still raises, exactly as it did before the gate existed.
+/// still raises an arity error.
 #[test]
 fn explicit_port_form_still_enforces_arity() {
     use crate::ScriptingHost;
@@ -280,9 +280,9 @@ fn explicit_port_form_still_enforces_arity() {
 
 /// An explicit-port call where the supplied port genuinely IS the real
 /// stdout port (`(display obj (current-output-port))`, unparameterized)
-/// must still reach the gate — the bug this regression guards: the old
-/// shims forwarded any 2+-arg call unconditionally, so this exact call
-/// bypassed the gate entirely and wrote raw bytes onto the alt-screen.
+/// must still reach the gate. A shim that forwards every 2+-arg call
+/// unconditionally would let this exact call bypass the gate and write raw
+/// bytes onto the alt-screen.
 #[test]
 fn explicit_stdout_port_call_reaches_the_gate() {
     use crate::ScriptingHost;

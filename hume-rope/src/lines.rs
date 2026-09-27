@@ -40,8 +40,8 @@ pub fn line_start_char(rope: &Rope, line: RopeyLine) -> CharOffset {
 }
 
 /// [`line_start_char`]'s `RopeSlice` counterpart — `hume-rope/src/grapheme.rs`'s
-/// line-relative column resolvers hold a slice, not a whole `&Rope`, and had
-/// no wrapper to route through before this one.
+/// line-relative column resolvers hold a slice, not a whole `&Rope`, and
+/// route through this wrapper.
 pub fn slice_line_start_char(slice: RopeSlice<'_>, line: RopeyLine) -> CharOffset {
     CharOffset::new(slice.line_to_char(line.index()))
 }

@@ -292,9 +292,9 @@ impl LayoutTree {
 
     /// Whether this subtree is a single, unsplit pane. The count callers need
     /// when deciding whether a pane can be closed: `EngineView::panes` is a
-    /// global pool shared by every tab, so `panes.len() > 1` stopped meaning
-    /// "this window has another pane to fall back to" once tab pages landed —
-    /// this reads the one tree that's still scoped to the active tab.
+    /// global pool shared by every tab, so `panes.len() > 1` does not mean
+    /// "this window has another pane to fall back to". This reads the one
+    /// tree scoped to the active tab.
     pub fn is_single_pane(&self) -> bool {
         matches!(self, LayoutTree::Leaf(_))
     }

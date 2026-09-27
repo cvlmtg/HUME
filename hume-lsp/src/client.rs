@@ -764,8 +764,8 @@ fn build_client_capabilities() -> ClientCapabilities {
             //
             // `resource_operations` must be present (non-empty) or
             // rust-analyzer refuses *every* rename outright — confirmed
-            // live: omitting it reproduces the original blanket rejection,
-            // not just the file-rename-adjacent case below. `edits::
+            // live. That covers more than the file-rename-adjacent case
+            // below. `edits::
             // collect_edit_entries` has no HUME equivalent for an actual
             // `DocumentChangeOperation::Op` and rejects the whole edit if
             // one ever arrives (a rename whose target shares its name with

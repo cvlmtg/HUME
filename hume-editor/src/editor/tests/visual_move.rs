@@ -897,9 +897,9 @@ fn visual_move_per_selection_sticky_display_col() {
 // decoration (an inlay hint, say) sits on a line a buffer-line move touches.
 
 /// `9j`/`9k` pressed with no prior latch resolves its column by re-deriving
-/// from `head` — the path the rope-only mirror used to own. A 3-column hint
-/// sitting before the cursor on its own line shifts the on-screen column by
-/// 3; the rope-only mirror never saw it and would land 3 columns short.
+/// from `head`. A 3-column hint sitting before the cursor on its own line
+/// shifts the on-screen column by 3; a rope-only column measure would miss
+/// it and land 3 columns short.
 #[test]
 fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
     // line 0: hint "HHH" (3 cols) before "abc" — cursor on 'c' (char 2,

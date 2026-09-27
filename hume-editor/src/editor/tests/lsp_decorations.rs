@@ -51,7 +51,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
     // "🎉" is 1 char, 2 UTF-16 code units, 4 UTF-8 bytes — a wire character
     // offset of 2 (the emoji's UTF-16 width) must land on char index 1, the
     // char right after it, not byte/char index 2 or 4. `set-inlay-hints!`
-    // no longer decodes wire positions itself — a plugin composes
+    // does not decode wire positions itself: a plugin composes
     // `lsp-position->offset` before calling the setter.
     //
     // The position must arrive as a real tagged handle — `lsp-position->
@@ -441,11 +441,11 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     );
 }
 
-/// Regression: `signs`/`virtual_lines`/`eol_text` used to be
-/// line-indexed and never remapped at all — a sign would silently drift
-/// onto the wrong line the moment a line was inserted or deleted above it.
+/// `signs`/`virtual_lines`/`eol_text` remap through edits like every other
+/// kind. A line-indexed sign that never remapped would silently drift onto
+/// the wrong line the moment a line was inserted or deleted above it.
 /// Deliberately no `attach_running_server` call: `has_any`
-/// now covers every kind, so a signs-only buffer with no LSP server still
+/// covers every kind, so a signs-only buffer with no LSP server still
 /// gets its edits queued for the remap chokepoint.
 #[test]
 fn sign_remaps_through_a_line_inserted_above_it() {

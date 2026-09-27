@@ -89,7 +89,7 @@ fn insert_char_replaces_forward_selection() {
 #[test]
 fn insert_char_replaces_selection_grapheme_base() {
     // Selection head lands on the base codepoint 'e' of {e\u{0301}} = é.
-    // The fix extends the delete to include the combining mark, so typing
+    // The delete extends to include the combining mark, so typing
     // 'Z' fully replaces "café" rather than leaving an orphaned accent.
     // Text: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
     // Result: chars 0-4 deleted, 'Z' inserted → "Z x\n", cursor at 1 (' ').
@@ -672,8 +672,7 @@ fn open_line_above_two_cursors_different_indents() {
 // ── owned_blank_indent (autoindent ownership containment) ────────────────
 //
 // `insert_newline_indent_owning`/`clear_blank_line_indent_owning` above cover
-// the case every pre-existing test needed: a session that owns exactly its
-// cursor's current line. These exercise the containment check itself — what
+// the common case: a session that owns exactly its cursor's current line. These exercise the containment check itself — what
 // changes ownership once a session's record and the buffer diverge.
 
 #[test]
@@ -765,7 +764,7 @@ fn clear_blank_line_indent_two_cursors_same_line_merge() {
 
 #[test]
 fn clear_blank_line_indent_second_cursor_on_blank_line_newline_no_underflow() {
-    // Same regression as `newline_indent_two_cursors_second_on_blank_line_
+    // Same case as `newline_indent_two_cursors_second_on_blank_line_
     // newline_no_underflow`, for the Esc/exit-insert path: the second
     // cursor sits exactly on the blank line's structural '\n', at a
     // position equal to (not less than) `old_pos()` after the first

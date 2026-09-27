@@ -507,16 +507,15 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     );
 }
 
-// ── settle(), merged queue, loop restructure ──────────────────────────────────
+// ── settle() and the pending-work queue ───────────────────────────────────────
 
-/// **The stranded-events bug, executable.** An event raised from async
+/// **Async events fire with no input.** An event raised from async
 /// work — here, `queue_diagnostics_changed`, the same call `drain_lsp` makes
 /// when a `publishDiagnostics` batch lands — must fire once `settle()` runs,
-/// even with **no input dispatched at all**. Before the merge, the drain
-/// only ran inside `handle_input`; `Ok(false) => continue` in `Editor::run`'s
-/// poll skipped it entirely, so a diagnostics batch landing while the user
-/// sat idle (or an `(after 0 …)` timer firing between keystrokes) never
-/// reached its handler — not late, never.
+/// even with **no input dispatched at all**. `Editor::run`'s poll loops back
+/// on `Ok(false)` without dispatching anything, so this is the path a
+/// diagnostics batch takes while the user sits idle (or an `(after 0 …)`
+/// timer firing between keystrokes).
 ///
 /// A drain that lived in `handle_input`, or that only ran after a keystroke,
 /// would never fire the handler here, since this test dispatches nothing.
@@ -562,9 +561,8 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
 /// two timer calls after the leading call/event pair, so a naive by-kind
 /// grouping (`["call-0","call-a","call-b","event"]` or
 /// `["event","call-0","call-a","call-b"]`) reads differently from the
-/// correct FIFO trace and is caught either way. Pins the merge's core
-/// guarantee: one FIFO queue, drained front-to-back, not the
-/// old two-queue, two-drain-site split.
+/// correct FIFO trace and is caught either way. Pins the queue's core
+/// guarantee: one FIFO queue, drained front-to-back.
 #[test]
 fn fifo_order_preserved_across_call_and_event_items() {
     let tmp = safe_tempdir();
@@ -666,11 +664,11 @@ fn handler_queued_event_drains_within_the_same_settle_call() {
     );
 }
 
-/// **`prepare_frame` no longer drains.** Queuing an event and calling only
+/// **`prepare_frame` does not drain.** Queuing an event and calling only
 /// `sync_viewport_dims` + `prepare_frame` (skipping `settle()`) must leave it
 /// queued; a following `settle()` call is what fires it. Pins the
-/// separation of concerns: draining moved entirely out of the per-frame
-/// render-prep path.
+/// separation of concerns: draining stays out of the per-frame render-prep
+/// path.
 #[test]
 fn prepare_frame_alone_does_not_drain_pending_work() {
     use crate::testing::MockHost;
@@ -713,7 +711,7 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
     );
 }
 
-/// **Pane refactor regression, paneless case**: `on-buffer-save`'s own
+/// **Paneless case**: `on-buffer-save`'s own
 /// payload is a *buffer*-level handle (see `EditorEvent::steel_args`'s
 /// doc) — it never carries a pane, even for a
 /// buffer that happens to be shown somewhere, so a hook that wants to reach
@@ -781,14 +779,12 @@ fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
     );
 }
 
-/// **Pane refactor regression, remote-pane case**: the mirror of the
+/// **Remote-pane case**: the mirror of the
 /// paneless test above — B is shown in a non-focused split, so
 /// `(buffer-panes bid)` names its own pane and the resulting `call!`
-/// succeeds, editing B while leaving A (and focus) untouched. This is the
-/// actual feature the explicit-bid *and* explicit-pane refactors add
-/// together: a native `call!` no longer requires its target to be the
-/// focused buffer, only that some pane shows it — and a hook now names that
-/// pane itself rather than relying on `call!` to guess it.
+/// succeeds, editing B while leaving A (and focus) untouched. A native
+/// `call!` requires only that some pane shows its target buffer, and the
+/// hook names that pane itself.
 #[test]
 fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
     use crate::editor::commands::open_pane_in_layout;
@@ -845,7 +841,7 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
         ed.state.buffers.get(bid_b).text().to_string(),
         "bb\n",
         "B (shown in a non-focused split) must also have its own hook's \
-         delete applied — a native call! no longer requires focus"
+         delete applied — a native call! does not require focus"
     );
     assert_eq!(
         ed.state.focus.id(),
@@ -859,10 +855,9 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
     );
 }
 
-/// **`:wq` fires `OnBufferSave`.** Regression guard for the quit-path
-/// restructure: `Editor::run`'s loop observes `should_quit` right after
-/// `settle()`, and the post-dispatch check that used to `break` immediately
-/// now `continue`s instead — specifically so a hook queued by the same
+/// **`:wq` fires `OnBufferSave`.** `Editor::run`'s loop observes
+/// `should_quit` right after `settle()`, and the post-dispatch check
+/// `continue`s so a hook queued by the same
 /// dispatch that set `should_quit` (`:wq`'s `OnBufferSave`) survives to be
 /// drained by the loop's *next* iteration before it actually exits. `run`
 /// itself needs a live terminal to drive (see its own doc), so this pins the
@@ -2122,7 +2117,7 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     );
 }
 
-/// Hole F regression: `run_pending_batch` must skip *any* buffer-scoped
+/// `run_pending_batch` must skip *any* buffer-scoped
 /// event whose buffer has died since it was queued, not just
 /// `OnTextChanged`. Queues `OnDiagnosticsChanged` for `bid`, then closes
 /// `bid` before the batch drains — reproducing "something else that ran
@@ -2173,7 +2168,7 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     );
 }
 
-/// The pane half of the same Hole F class: `OnViewportChange`/
+/// The pane half of the same check: `OnViewportChange`/
 /// `OnTriggerChar`/`OnCompletionAccept`/`OnBufferEnter` all carry a pane too,
 /// and a handler earlier in the same batch (a timer's own `pane-close`) can
 /// close it before this event's own turn, even though the buffer itself
@@ -2240,7 +2235,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
     );
 }
 
-/// Hole G regression: two handlers registered for the same event, in a
+/// Two handlers registered for the same event, in a
 /// batch where the first raises, must both run — a plugin bug in one
 /// handler must not silently drop every handler registered after it for
 /// the same event.

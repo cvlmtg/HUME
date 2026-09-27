@@ -284,8 +284,8 @@ mod tests {
         fn child_still_running_after_pipes_close_is_not_reported_as_killed() {
             // Closes both pipes, then keeps running for a bit before a
             // real, successful exit — both pipes reaching EOF must not be
-            // mistaken for the child having exited (regression: it used to
-            // be `reap()`ed right there, turning this into exit code -1).
+            // mistaken for the child having exited (reaping it right there
+            // would turn this into exit code -1).
             let args = vec![
                 "-c".to_string(),
                 "printf hi; exec 1>&- 2>&-; sleep 0.3; exit 0".to_string(),

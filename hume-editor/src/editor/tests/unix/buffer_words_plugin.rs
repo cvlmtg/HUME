@@ -442,11 +442,9 @@ fn word_chars_extends_what_counts_as_a_word() {
     assert!(!got.contains(&"bar".to_string()), "{got:?}");
 }
 
-/// The gap finding 6 of the `/code-review` on `9434e1b4` flagged: the old
-/// Steel-side `>= 128` approximation read non-ASCII *punctuation* as a word
-/// character too, merging an em-dash-joined pair into one unreachable
-/// candidate. `split-words` classifies exactly, so this must now offer both
-/// halves separately.
+/// Non-ASCII *punctuation* is a word boundary. An em dash between two words
+/// must not merge them into one unreachable candidate. `split-words`
+/// classifies exactly, so both halves are offered separately.
 #[test]
 fn non_ascii_punctuation_does_not_merge_the_words_around_it() {
     let tmp = safe_tempdir();
@@ -464,7 +462,7 @@ fn non_ascii_punctuation_does_not_merge_the_words_around_it() {
     assert!(!got.contains(&"foo\u{2014}bar".to_string()), "{got:?}");
 }
 
-/// Same gap, a different script: a curly apostrophe (U+2019) must split the
+/// Same rule for a different character: a curly apostrophe (U+2019) must split the
 /// word around it rather than being absorbed into it.
 #[test]
 fn a_curly_apostrophe_splits_the_word_around_it() {
@@ -481,8 +479,7 @@ fn a_curly_apostrophe_splits_the_word_around_it() {
     assert!(got.contains(&"\u{e9}l\u{e9}ment".to_string()), "{got:?}");
 }
 
-/// The other half of the old approximation's own reasoning (README's former
-/// "Non-ASCII words" section): a combining-mark accent must stay attached
+/// A combining-mark accent must stay attached
 /// to its word, not read as a boundary — `café` spelled as `e` + U+0301
 /// (combining acute), not the precomposed codepoint, is the case that
 /// actually exercises grapheme-cluster handling rather than a single-char
@@ -620,9 +617,8 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
 /// Closing the *last* open buffer frees its slot and opens a fresh scratch
 /// buffer under a brand new `BufferId` — a genuine open, so `bw/reindex!`
 /// picks it up via the plugin's own `on-buffer-open` handler like any other
-/// freshly opened buffer, not via the `on-text-changed` fallback this test
-/// used to be the only regression guard for (see README.md's
-/// "Cursor-outward, line-windowed indexing").
+/// freshly opened buffer (see README.md's "Cursor-outward, line-windowed
+/// indexing").
 #[test]
 fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() {
     let tmp = safe_tempdir();

@@ -64,20 +64,14 @@ impl super::ProbeChannel for TtyChannel {
 // for it to exit on its own before force-exiting with that code anyway, or
 // with a second signal's code if one arrives inside the window.
 //
-// This module used to also watch `/dev/tty` directly, on its own fd
-// independent of the main loop's reader, because a pty teardown (e.g. `vhs`
-// closing the master after a recording) isn't guaranteed to deliver SIGHUP
-// — hume is rarely the session leader of its tty — and termina 0.3.3's
-// `UnixEventSource::try_read` mapped the resulting tty EOF to `Ok(None)`
-// rather than an error, so the main loop's event wait spun forever without
-// ever returning. termina ≥0.4.0 fixes this at the source (`try_read` now
-// returns `Err(io::ErrorKind::UnexpectedEof)` on that same zero-byte read),
-// so the main loop's own reader now surfaces
-// a hangup as an ordinary error and returns on its own — see
-// `hume_platform::hangup_exit_code` for how the exit code that used to come
-// from this thread's tty watch is now derived from that error instead. Do
-// not re-add a tty watch here; the failure mode it existed for no longer
-// exists upstream.
+// A pty teardown (e.g. `vhs` closing the master after a recording) isn't
+// guaranteed to deliver SIGHUP, since hume is rarely the session leader of
+// its tty. This module needs no `/dev/tty` watch for that case: termina's
+// `UnixEventSource::try_read` returns `Err(io::ErrorKind::UnexpectedEof)` on
+// the resulting zero-byte read, so the main loop's own reader surfaces a
+// hangup as an ordinary error and returns on its own. See
+// `hume_platform::hangup_exit_code` for how the exit code is derived from
+// that error.
 //
 // Setup order enforces one invariant: a replaced signal disposition must
 // exist only while something can act on it. `signal_hook` has no way to
@@ -471,9 +465,7 @@ mod terminator_tests {
     /// hasn't within `bound`. A regression to the drain-less spin
     /// `terminator_exits_instead_of_spinning_when_the_pipe_closes` guards
     /// against — an unbounded `watch` call that never returns — is a real
-    /// failure mode for this module (observed directly: a sabotage run of
-    /// this module's own signal-detection test sat at 100% CPU for three
-    /// days before being mistaken for a live bug). Polling `is_finished()`
+    /// failure mode for this module. Polling `is_finished()`
     /// against a deadline turns a spin into a fast, visible test failure
     /// instead of hanging `cargo test` forever, while `join()`ing rather than
     /// snapshotting once also gives an unscheduled-but-not-spinning thread
@@ -518,8 +510,8 @@ mod terminator_tests {
         );
     }
 
-    /// Regression test for the spin the actor-before-disposition reorder
-    /// would otherwise introduce: once every write end of the signal pipe is
+    /// Guards against a spin the actor-before-disposition setup order makes
+    /// possible: once every write end of the signal pipe is
     /// gone, the pipe reads EOF-ready forever, and a `bool`-returning drain
     /// that treated "nothing read" as "keep waiting" would burn 100% CPU
     /// instead of ever returning. Bounded by a timeout so a regression fails

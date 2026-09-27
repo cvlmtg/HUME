@@ -349,9 +349,8 @@ fn around_argument_single_on_outer_bracket_descends_into_nested() {
 #[test]
 fn around_argument_empty_slot_is_noop() {
     // All-whitespace segment (empty argument slot): `trim_segment` yields
-    // `None` here exactly as it already does for `inner_argument` — matches
-    // that existing no-op rather than the old raw-segment fallback, which
-    // used to select " , ".
+    // `None` here exactly as it does for `inner_argument`, so the command
+    // is a no-op and never selects " , ".
     assert_state!(
         "foo(-[ ]>, bbb)\n",
         |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
@@ -431,8 +430,7 @@ fn around_from_inner_multiline_last_argument_eats_the_trailing_newline() {
     // Unlike the first-argument case above (inline blank only, no newline),
     // the preceding-comma branch extends `end` through a newline-inclusive
     // blank run — the last argument in a multi-line list eats the newline
-    // before the closing delimiter. Matches the pre-existing lexical scan's
-    // behavior exactly; not a new asymmetry introduced alongside it.
+    // before the closing delimiter.
     assert_state!(
         "foo(\n    a,\n    -[b]>\n)\n",
         |(text, sels)| cmd_around_from_inner(&text, sels, 0, MotionMode::Move),

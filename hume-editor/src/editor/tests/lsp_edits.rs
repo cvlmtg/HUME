@@ -55,10 +55,8 @@ fn attach_running_utf8_server(ed: &mut Editor) -> ServerId {
     attach_running_utf8_server_with(ed, |_, _| {})
 }
 
-/// One wire `TextEdit` JSON object, the shape `apply-text-edits!` now
-/// requires every entry to be tagged as (via a real response) — the
-/// `((start-line . start-char) (end-line . end-char) text)` hand-built
-/// tuple shape this used to build directly no longer exists.
+/// One wire `TextEdit` JSON object, the shape `apply-text-edits!`
+/// requires every entry to be tagged as (via a real response).
 fn wire_edit(start: (u32, u32), end: (u32, u32), new_text: &str) -> serde_json::Value {
     serde_json::json!({
         "range": {
@@ -72,7 +70,7 @@ fn wire_edit(start: (u32, u32), end: (u32, u32), new_text: &str) -> serde_json::
 /// Sends `edits` (built with [`wire_edit`]) through a scripted
 /// `test/textEdits` request/response round trip and applies the response to
 /// the focused buffer via `apply-text-edits!` — the one way a test can hand
-/// it a server-tagged value, now that the hand-built tuple shape is gone.
+/// it a server-tagged value.
 /// `expect_gen_clause` is spliced into the call verbatim (empty string to
 /// omit `#:expect-generation`).
 fn apply_wire_text_edits(
@@ -295,9 +293,8 @@ fn apply_text_edits_version_mismatch_rejected() {
 /// `apply-text-edits!` only accepts server-tagged wire edits (via a real
 /// response) — a hand-built entry (constructed directly in Scheme, never
 /// crossed through a response) has no producing server to have negotiated
-/// an encoding with, and is rejected before ever reaching the host, rather
-/// than silently guessing UTF-16 the way the removed `encoding_for_buffer`
-/// once did.
+/// an encoding with, so it is rejected before ever reaching the host. Any
+/// encoding guessed for it could be silently wrong.
 #[test]
 fn apply_text_edits_rejects_a_hand_built_edit() {
     let tmp = safe_tempdir();
@@ -326,8 +323,7 @@ fn apply_text_edits_rejects_a_hand_built_edit() {
 /// Sends `wsedit` (a `WorkspaceEdit` JSON blob) through a scripted
 /// `test/workspaceEdit` request/response round trip and applies the
 /// response via `apply-workspace-edit!` — the one way a test can hand it a
-/// server-tagged value, now that `#:from`/a hand-built hashmap no longer
-/// carries any encoding at all.
+/// server-tagged value, since a hand-built hashmap carries no encoding.
 fn apply_wire_workspace_edit(ed: &mut Editor, tmp: &std::path::Path, wsedit: serde_json::Value) {
     attach_running_utf8_server_with(ed, |backend, _sid| {
         backend.respond_to("test/workspaceEdit", wsedit);
@@ -582,9 +578,9 @@ fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files
     )
     .expect("split must succeed");
 
-    // ok.txt listed first, conflict.txt second — under the old commit-time-
-    // only check, ok.txt would already have been committed by the time
-    // conflict.txt's own conflict aborted the loop.
+    // ok.txt listed first, conflict.txt second. A check made only at commit
+    // time would already have committed ok.txt by the time conflict.txt's
+    // own conflict aborted the loop.
     let wsedit = serde_json::json!({"documentChanges": [
         {"textDocument": {"uri": ok_uri.as_str(), "version": null},
          "edits": [{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},

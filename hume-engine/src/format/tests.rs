@@ -511,12 +511,10 @@ fn tab_indicator_all_mode() {
 
 #[test]
 fn space_indicator_trailing_mode_interior() {
-    // Regression test: only true trailing whitespace (nothing but
+    // Only true trailing whitespace (nothing but
     // whitespace follows it on the line) renders as an indicator.
     // Leading and interior spaces must stay plain even though they come
-    // after some earlier non-ws content — the bug was classifying any ws
-    // following *some* non-ws grapheme as trailing, regardless of
-    // whether more content followed.
+    // after some earlier non-ws content.
     let ws = WhitespaceConfig {
         space: crate::pane::WhitespaceRender::Trailing,
         space_char: "·",
@@ -569,10 +567,10 @@ fn space_indicator_trailing_mode_blank_line() {
 
 #[test]
 fn tab_indicator_trailing_mode_interior() {
-    // Same interior-whitespace bug, for tabs. The leading/interior tabs
+    // Same interior-whitespace case, for tabs. The leading/interior tabs
     // must be `TabFill` (blank, no scope) and only the trailing tab a
-    // `Whitespace` glyph — the variant itself is now the "shown" vs.
-    // "hidden" distinction, rather than a string compare on arena text.
+    // `Whitespace` glyph. The variant itself carries the "shown" vs.
+    // "hidden" distinction.
     let ws = WhitespaceConfig {
         tab: crate::pane::WhitespaceRender::Trailing,
         tab_char: "→",
@@ -1220,8 +1218,8 @@ fn no_window_caller_reaches_true_column_past_former_u16_ceiling() {
 
 #[test]
 fn wrapping_modes_unaffected_by_h_window_none() {
-    // Regression: passing None (the only value wrapping modes ever get)
-    // must reproduce the existing wrap test's output exactly.
+    // Passing None (the only value wrapping modes ever get) must
+    // reproduce the unwindowed wrap test's output exactly.
     let (lines, graphemes) = do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
     let line0 = &graphemes[lines[0].graphemes.clone()];
     assert_eq!(

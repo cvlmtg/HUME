@@ -214,13 +214,13 @@ pub fn align_selections(
 
     // `line_shift` tracks the net display-cell delta on the current line so
     // far, approximating the shift from original-buffer anchor display
-    // columns to post-edit ones. Both branches now measure cells exactly
+    // columns to post-edit ones. Both branches measure cells exactly
     // (insertion is always spaces; removal resolves its char count from the
     // exact cell need, padding any tab-overshoot). The one residual
     // imprecision: `line_shift` sums *original-buffer* cell deltas applied to
     // *original-buffer* columns, so a tab sitting between two slots on the
     // same line is still weighed at its pre-edit stop rather than its
-    // post-edit one — zero for a line's first slot, and unchanged by this fix.
+    // post-edit one. That error is zero for a line's first slot.
     let mut current_line: Option<ContentLine> = None;
     let mut line_shift = 0isize;
 

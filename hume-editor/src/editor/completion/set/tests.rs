@@ -194,9 +194,10 @@ fn set_completer_value_span_start_stops_at_equals_not_internal_space() {
 
 // ── complete_set: stray whitespace robustness ─────────────────────────────
 //
-// A naive first-space split collapses the parsed scope to "" when extra
-// whitespace appears anywhere before the key token (e.g. a double
-// space-bar tap), silently emptying the popup. These pin the fix.
+// A naive first-space split would collapse the parsed scope to "" when
+// extra whitespace appears anywhere before the key token (e.g. a double
+// space-bar tap), silently emptying the popup. These tests check that the
+// completer still lists the right keys in that case.
 
 #[test]
 fn set_completer_double_space_after_set_still_lists_buffer_keys() {

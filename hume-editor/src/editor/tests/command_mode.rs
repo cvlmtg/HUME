@@ -24,8 +24,8 @@ fn colon_enters_command_mode() {
 /// Truncate-before-execute: a `:cmd` body runs with the `Command` layer
 /// already gone (truncated back to `Base` before `execute_command` is
 /// called), so a body that itself pushes `Insert` lands on a clean stack
-/// and stays there — Enter no longer stomps it back to Normal the way the
-/// old execute-then-close order did.
+/// and stays there. Closing the `Command` layer after execution would stomp
+/// it back to Normal.
 #[test]
 fn typed_command_body_entering_insert_stays_in_insert() {
     let tmp = safe_tempdir();
@@ -1779,13 +1779,12 @@ fn later_old_age_is_noop_and_silent() {
 
 /// `:later <age>` at the tip (no prior `:earlier`) must stay silent — there
 /// is nothing newer to redo onto regardless of how the tip's own age
-/// compares to the requested one. The bug this guards against
-/// (`hume-editing`'s `redo_steps_newer_than_at_the_tip_is_satisfied_
-/// regardless_of_the_tip_s_own_age`) needs a tip old enough to exceed the
-/// requested age to manifest, which this test can't force without a clock
-/// seam — it's a characterization test for the dispatch path, not a red-first
-/// regression test for the specific bug; that lives at the `hume-editing`
-/// unit level, where backdating a revision's timestamp is possible.
+/// compares to the requested one. The age comparison itself needs a tip old
+/// enough to exceed the requested age, which this test can't force without a
+/// clock seam. This test covers the dispatch path. The age case is tested at
+/// the `hume-editing` unit level (`redo_steps_newer_than_at_the_tip_is_satisfied_
+/// regardless_of_the_tip_s_own_age`), where backdating a revision's timestamp
+/// is possible.
 #[test]
 fn later_at_the_tip_with_no_prior_earlier_is_silent() {
     let mut ed = editor_from("-[h]>ello\n");

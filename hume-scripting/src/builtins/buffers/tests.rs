@@ -137,15 +137,15 @@ fn line_to_offset_blocked_in_init_mode() {
 // `offset->line`/`%buffer-lines`/`line->offset`'s wrong-type-argument
 // checks are covered centrally, by `args::tests`' own unit tests on the
 // `Usize`/`OptUsize` `FromSteelVal` newtypes their `builtins!` table
-// entries now declare — that decode happens at Steel's own registration
-// boundary, before any of these functions' bodies (which now take a plain
-// `usize`/`Option<usize>`) ever run, so it can no longer be exercised by
+// entries declare — that decode happens at Steel's own registration
+// boundary, before any of these functions' bodies (which take a plain
+// `usize`/`Option<usize>`) ever run, so it cannot be exercised by
 // calling the function directly with a malformed `SteelVal`.
 //
 // Likewise, every explicit-`pane` builtin's "invalid buffer id" error on a
-// closed buffer is now raised by `args::LivePane`'s `BuiltinArg::resolve`,
+// closed buffer is raised by `args::LivePane`'s `BuiltinArg::resolve`,
 // in the `builtins!`-registered closure — before the function body (which
-// now takes a plain `PaneHandle`, already known live) ever runs. A direct
+// takes a plain `PaneHandle`, already known live) ever runs. A direct
 // call here has no way to reach that check at all; it's covered once,
 // centrally, through a real `ScriptingHost` by
 // `builtins::tests::live_pane_builtins_raise_on_a_closed_buffer_through_real_registration`.
@@ -187,8 +187,7 @@ fn buffers_command_mode_returns_empty_list() {
 }
 
 /// `buffer-cursor-line` raises when `pane` carries no pane state (NullHost) —
-/// kind-B fail-fast, unlike the old bid-only "not shown anywhere → `#f`"
-/// degrade this replaces: a builtin that needs a pane to answer meaningfully
+/// kind-B fail-fast: a builtin that needs a pane to answer meaningfully
 /// must say so loudly when it doesn't have one, not silently guess a
 /// default (see `CursorHost`'s doc).
 #[test]

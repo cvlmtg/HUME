@@ -367,10 +367,10 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 }
 
 // ---------------------------------------------------------------------------
-// Fix 1 — closing the last buffer must clear stale engine syntax state
+// Closing the last buffer must clear stale engine syntax state
 // ---------------------------------------------------------------------------
 
-/// Regression: closing the last open buffer (`buffer::lifecycle::
+/// Closing the last open buffer (`buffer::lifecycle::
 /// close_buffer`'s `None` branch — frees `bid`'s slot outright and opens a
 /// fresh scratch buffer under a new id) must not leak the closed buffer's
 /// syntax attachment (and the committed tree it owns) anywhere the engine
@@ -413,10 +413,10 @@ fn closing_the_last_buffer_clears_engine_syntax_state() {
 }
 
 // ---------------------------------------------------------------------------
-// Fix 3 — reparse_stale_buffers must re-attach on shrink below cap
+// reparse_stale_buffers must re-attach on shrink below cap
 // ---------------------------------------------------------------------------
 
-/// Regression: once a buffer's syntax is detached (via the max_bytes growth branch),
+/// Once a buffer's syntax is detached (via the max_bytes growth branch),
 /// reparse_stale_buffers must re-attach it on shrink below cap. Without the re-attach
 /// branch, the second `reparse_stale_buffers` call leaves parser=None.
 #[test]

@@ -54,10 +54,9 @@ fn full_message_reaches_the_render_provider_untruncated() {
 
 /// Two entries from the *same* source landing on the same line — the shape a
 /// remap produces when an edit collapses several originally-distinct lines
-/// into one; `last_writer_per_line` folds them, keeping the last. Before
-/// this fix, `update_eol_text_providers` pushed onto a per-line `Vec`
-/// instead of folding, so both entries survived and rendered concatenated at
-/// the same byte offset.
+/// into one; `last_writer_per_line` folds them, keeping the last. Pushing
+/// onto a per-line `Vec` in `update_eol_text_providers` would keep both
+/// entries and render them concatenated at the same byte offset.
 #[test]
 fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();

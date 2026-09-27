@@ -9,10 +9,10 @@ fn s(n: u16) -> ScopeId {
 /// Run the shared sweep (`hume_engine::interval_sweep`) the same way
 /// `layer_highlights_for_line` does — `TieBreak::LastPushed`, `(start, end,
 /// depth, scope)` field order — with every interval at depth 0
-/// (single-layer, the pre-injection behavior). `d()` below builds
+/// (single-layer, as with no injections). `d()` below builds
 /// multi-depth input for the depth-priority tests. Pins tree-sitter's
-/// depth-priority *semantics* against the shared implementation, not a
-/// treesitter-local one — this crate no longer owns the sweep algorithm.
+/// depth-priority *semantics* against the shared implementation. This crate
+/// does not own the sweep algorithm.
 fn run(raw: Vec<(usize, usize, ScopeId)>) -> Vec<(usize, usize, ScopeId)> {
     run_d(raw.into_iter().map(|(a, b, c)| (a, b, c, 0)).collect())
 }
@@ -37,8 +37,8 @@ fn run_d(raw: Vec<(usize, usize, ScopeId, u8)>) -> Vec<(usize, usize, ScopeId)> 
 
 #[test]
 fn inner_wins_non_shared_start() {
-    // Regression: outer @string [0,8), inner @string.escape [5,7).
-    // Old sweep dropped the inner; stack flattener emits it correctly.
+    // Outer @string [0,8), inner @string.escape [5,7). The inner must be
+    // emitted.
     let got = run(vec![(0, 8, s(0)), (5, 7, s(1))]);
     assert_eq!(got, vec![(0, 5, s(0)), (5, 7, s(1)), (7, 8, s(0))]);
 }
@@ -102,7 +102,7 @@ fn same_start_three_way_tie_resolves_by_seq() {
 
 #[test]
 fn scratch_reuse_across_calls_leaves_no_stale_events() {
-    // Regression: `events`/`stack` are caller-owned scratch reused
+    // `events`/`stack` are caller-owned scratch reused
     // across calls (mirroring TsState in the real highlighter). A second,
     // disjoint call through the same scratch must not see the first
     // call's intervals leak through.

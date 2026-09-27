@@ -203,8 +203,8 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     }
     // A tab renders like a real buffer line's tab — the engine expands it to
     // the next tab stop (`hume_engine::display_lines::segment_virtual_line`), so
-    // callers no longer need to expand it themselves. Any other unrenderable
-    // character (a control character, an invisible one) is left verbatim:
+    // callers pass it through unexpanded. Any other unrenderable character
+    // (a control character, an invisible one) is left verbatim:
     // `push_virtual_cells` substitutes it with its codepoint placeholder,
     // the same chokepoint every other text source goes through — a
     // char-for-char blank here would be a second, weaker copy of that

@@ -220,8 +220,7 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
 
 /// `:theme-debug`'s cursor rows must name a real rung chain — the bundled
 /// `gruvbox` theme sets `ui.cursor.normal` directly, so that row's chain must
-/// say so, not print the placeholder word the pre-fix implementation used in
-/// place of every cursor row's chain. Pinned to `gruvbox` rather than `sand`:
+/// say so, not print a placeholder word. Pinned to `gruvbox` rather than `sand`:
 /// gruvbox mirrors an established upstream Helix theme and isn't expected to
 /// change, where `sand` is HUME's own theme and still gets retuned — a
 /// fixture that happens to rely on one of its rungs would drift out from

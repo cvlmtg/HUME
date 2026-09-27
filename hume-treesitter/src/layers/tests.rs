@@ -54,11 +54,9 @@ fn injected_layer_does_not_cover_a_line_entirely_after_its_range() {
 }
 
 /// The multi-range case a real combined `markdown.inline` layer produces
-/// (one range per paragraph) — the gap here is exactly what earlier
-/// coverage was missing: every prior test used a root layer (empty
-/// `ranges`, short-circuits before the binary search ever runs) or a
-/// single-range layer, so `partition_point` always resolved to index 0
-/// or 1. This exercises a line landing on the *second* range, and a line
+/// (one range per paragraph). A root layer (empty `ranges`) short-circuits
+/// before the binary search runs, and a single-range layer only resolves
+/// `partition_point` to index 0 or 1. This exercises a line landing on the *second* range, and a line
 /// falling in the gap between the two — real multi-candidate lookups.
 #[test]
 fn injected_layer_binary_search_finds_a_non_first_range() {

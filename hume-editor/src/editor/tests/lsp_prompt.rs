@@ -425,8 +425,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
 
 /// `symbol-under-cursor` needs a pane, not just a buffer — kind-B fail-fast
 /// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
-/// own return shape) raises, replacing the old "no pane shows it → \"\""
-/// degrade.
+/// own return shape) raises.
 #[test]
 fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let tmp = safe_tempdir();

@@ -355,9 +355,9 @@ impl Editor {
         // arming implementation. A command not declared `#:inline-output`
         // pushes nothing — `is_inline_output_command` must read closed for it
         // even if its own body later `call!`s into a declared one. Pushed
-        // only once there is a host to actually run the session that would
-        // otherwise drain it — an earlier push, before this guard, leaked a
-        // frame on the no-scripting-host early return below.
+        // only after the no-scripting-host early return above, since only a
+        // host can run the session that drains the frame. Pushing before that
+        // return would leak the frame.
         if inline_output {
             self.state
                 .inline_output

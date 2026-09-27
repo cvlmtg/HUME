@@ -670,14 +670,12 @@ fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
     );
 }
 
-/// Regression: `last_viewport_key` used to be keyed only by pane id, and
-/// `prepare_frame`'s step 4 only ever visits *active-tab* panes — so a
-/// background tab's pane kept its last-observed `(top_line, height)`
-/// untouched the whole time it was hidden. Returning to it at unchanged
-/// terminal geometry then matched that stale entry and never re-armed
-/// `on-viewport-change`, so a viewport-driven consumer (LSP inlay hints)
-/// stayed pinned to whatever it last saw before the tab went to the
-/// background.
+/// `prepare_frame`'s step 4 only ever visits *active-tab* panes, so a
+/// background tab's pane is not observed while it is hidden. Returning to it
+/// at unchanged terminal geometry must still re-arm `on-viewport-change`.
+/// A stale `last_viewport_key` entry matching on return would leave a
+/// viewport-driven consumer (LSP inlay hints) pinned to whatever it last saw
+/// before the tab went to the background.
 #[test]
 fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_change() {
     let tmp = safe_tempdir();
@@ -718,9 +716,8 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
     );
 }
 
-/// Regression: `last_viewport_key`'s key used to be `(top_line, height)`
-/// alone, with no `buffer_id` — so a pane switching buffers (`:e`, `:b#`)
-/// at unchanged geometry matched its own stale entry and never re-armed
+/// `last_viewport_key`'s key includes the `buffer_id`, so a pane switching
+/// buffers (`:e`, `:b#`) at unchanged geometry must re-arm
 /// `on-viewport-change` for the newly-shown buffer. Single pane, single
 /// tab — this is the
 /// same-tab twin of `returning_to_a_background_tab_...` above, which covers
@@ -835,10 +832,9 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     );
 }
 
-/// Regression: `sync_tabline_view` used to rebuild `TablineViewState` from
-/// scratch every frame — one allocating `display_name()` call per tab plus
-/// an O(n²) scroll probe — even on a frame where nothing about the tab bar
-/// changed. `tabline_signature` gates the rebuild now; this pins that a
+/// A `TablineViewState` rebuild costs one allocating `display_name()` call
+/// per tab plus an O(n²) scroll probe, so `tabline_signature` gates it to
+/// frames where something about the tab bar changed. This pins that a
 /// second `prepare_frame` with nothing tab-affecting in between really does
 /// skip it, not just happen to recompute an identical result.
 #[test]

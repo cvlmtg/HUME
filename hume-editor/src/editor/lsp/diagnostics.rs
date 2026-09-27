@@ -123,8 +123,8 @@ impl DiagnosticsStore {
     /// Replaces one server's diagnostics for `bid` (already coalesced —
     /// the caller keeps only the last `publishDiagnostics` per (server,
     /// uri) within a drain batch). `SourceStore::set` sorts by `start`
-    /// (`StoredDiag`'s `Positioned` impl), so callers no longer need to
-    /// pre-sort themselves.
+    /// (`StoredDiag`'s `Positioned` impl), so callers need not pre-sort
+    /// themselves.
     pub(in crate::editor) fn replace(
         &mut self,
         server: ServerId,

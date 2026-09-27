@@ -179,8 +179,8 @@ fn set_option_statusline_mode_colors_gates_whole_row_tint() {
     // *different* backgrounds — every bundled theme makes them equal, which
     // would let the off-state assertion pass whether the opt-out reads the
     // base scope (correct) or silently substitutes `EditorMode::Normal`
-    // (the bug: an imported theme with a distinct Normal-mode accent, e.g.
-    // Helix's old pill idiom, would still tint the row).
+    // (an imported theme with a distinct Normal-mode accent, e.g. Helix's
+    // old pill idiom, would then still tint the row).
     use hume_engine::types::{ResolvedStyle, Scope};
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -335,8 +335,8 @@ fn typed_set_theme_failure_does_not_persist() {
 
 #[test]
 fn typed_theme_bad_name_leaves_setting() {
-    // Regression guard: :theme's own load-then-store behavior must survive
-    // delegating to settings::ops::apply. Mirrors
+    // :theme's own load-then-store behavior must hold when it delegates to
+    // settings::ops::apply. Mirrors
     // editor::tests::commands::load_theme_by_name_fails_gracefully, but
     // through the typed_theme entry point instead of calling the loader
     // directly.

@@ -8,8 +8,8 @@ use super::*;
 /// A reload (`:e!`) that shrinks the document past a scrolled-down
 /// viewport's top must not leave that top permanently stale: once the next
 /// frame's scroll/render pass resolves it (`Viewport::top_at`), it must land
-/// inside the new, shorter document — `reload_buffer_in_place` itself no
-/// longer touches the viewport at all, having no map to resolve it against.
+/// inside the new, shorter document — `reload_buffer_in_place` itself does
+/// not touch the viewport at all, having no map to resolve it against.
 ///
 /// Characterization test: passes unchanged whether or not `reload_buffer_in_place`
 /// resolves the top itself, so long as *some* pass resolves it before this

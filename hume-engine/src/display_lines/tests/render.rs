@@ -75,8 +75,7 @@ fn render_display_line_segments_a_virtual_lines_text() {
 fn render_display_line_expands_a_tab_in_a_virtual_lines_text() {
     // A virtual display line must be tab-aware exactly like a real buffer line — this
     // is what lets `set-virtual-lines!` accept a literal `\t` in `'text`
-    // instead of requiring the caller to expand it by hand (previously the
-    // git-diff plugin's job, and the source of its column-counting bug).
+    // instead of requiring the caller to expand it by hand.
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(NoVirtualLines));
@@ -110,9 +109,8 @@ fn render_display_line_expands_a_tab_in_a_virtual_lines_text() {
 #[test]
 fn render_display_line_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
     // A wide CJK grapheme before a tab must shift the tab's stop by its full
-    // 2-column width, matching a real buffer line — the exact case
-    // `git-diff/render.scm` used to get wrong when it counted one Steel char
-    // (not one display column) per preceding character.
+    // 2-column width, matching a real buffer line. Counting one char per
+    // preceding character would misplace the stop.
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(NoVirtualLines));

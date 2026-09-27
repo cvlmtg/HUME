@@ -188,8 +188,7 @@ fn step_bracket(
 /// `pos + 1` or later, so the span it could still achieve is `> dl`. The
 /// mirror argument bounds the rightward scan by `dr`. This makes the common
 /// case — one type (`[]`, almost always) never resolving — cost O(winning
-/// span) instead of O(buffer), the unconditional cost every type paid
-/// before this bound existed.
+/// span) instead of O(buffer).
 ///
 /// Two things the bound alone doesn't give for free: a side stops as soon as
 /// it has nothing left to find, regardless of the bound

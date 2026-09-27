@@ -185,7 +185,7 @@ fn acquire_install_lock_replaces_a_stale_lock_with_a_warning() {
     );
 }
 
-/// Regression: a lock file with an mtime in the FUTURE (clock skew, or a
+/// A lock file with an mtime in the FUTURE (clock skew, or a
 /// networked/synced filesystem racing the write) must never be treated
 /// as stale — `duration_since` errors on a future mtime, and that error
 /// must fall on the "live, don't delete" side, not the "unknown age,

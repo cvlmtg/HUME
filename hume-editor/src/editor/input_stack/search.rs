@@ -165,10 +165,9 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 /// same scan with `PastSelection`, for `n`/`N`.
 ///
 /// Called on every keystroke while in Search mode. Targets the *focused*
-/// pane/buffer, same as before this session's stash moved onto
-/// `SearchLayer` — a live preview while typing has always followed focus,
-/// unlike cancel-restore/clear below, which must target the session's own
-/// originating pane instead (see [`PaneSnapshot`]'s own doc).
+/// pane/buffer, since a live preview while typing follows focus.
+/// Cancel-restore/clear below must target the session's own originating pane
+/// instead (see [`PaneSnapshot`]'s own doc).
 ///
 /// Warms the match cache ([`search::ops::update_buffer_matches`]) before
 /// scanning so every selection's hop binary-searches it instead of running

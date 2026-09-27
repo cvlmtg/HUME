@@ -146,7 +146,7 @@ fn equal_canonical_keys_hash_equally() {
     // Two raw KeyEvents that canonicalization collapses to the same binding
     // identity must also collapse to the same CanonicalKey, and produce
     // equal hashes — Eq and Hash both read `encode`, so this is exactly the
-    // contract a derived Eq used to carry only because `canonical` happens
+    // contract a derived Eq would carry only because `canonical` happens
     // to pin the fields it would otherwise also compare.
     let a = CanonicalKey::from(KeyEvent::new(KeyCode::Char('G'), Modifiers::NONE));
     let b = CanonicalKey::from(KeyEvent::new(KeyCode::Char('G'), Modifiers::SHIFT));

@@ -14,8 +14,8 @@ use crate::types::VirtualLineSpec;
 pub trait DecorationHost {
     /// `(set-inlay-hints! source pane hints)` — replaces `source`'s inlay
     /// hints for `bid` wholesale. Each entry is `(offset, text, before)`,
-    /// `offset` already a char offset — the Steel builtin no longer accepts
-    /// LSP wire positions directly (see `lsp-position->offset`).
+    /// `offset` already a char offset. The Steel builtin accepts char offsets
+    /// only (see `lsp-position->offset` to convert an LSP wire position).
     fn set_inlay_hints(
         &mut self,
         source: String,

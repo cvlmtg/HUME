@@ -230,8 +230,8 @@ fn virtual_line_spec_decodes_every_field() {
     assert_eq!(spec.text, "- let x = 5");
     assert!(spec.before, "'anchor 'before must decode to before: true");
     assert_eq!(spec.scope.as_deref(), Some("diff.minus"));
-    // Char offsets, passed through verbatim — this layer no longer sorts,
-    // bounds-checks, or validates them.
+    // Char offsets, passed through verbatim. This layer does not sort,
+    // bounds-check, or validate them.
     assert_eq!(
         spec.segments,
         vec![
@@ -256,7 +256,7 @@ fn virtual_line_spec_defaults_anchor_to_after_and_scope_to_none() {
 
 #[test]
 fn virtual_line_spec_rejects_positional_list_entry() {
-    // The shape `set-virtual-lines!` accepted before this change.
+    // A positional `(line text scope)` entry.
     let old_shape = list(vec![
         SteelVal::IntV(0),
         SteelVal::StringV("text".into()),

@@ -208,8 +208,8 @@ macro_rules! builtins {
 // under settle()'s always-draining loop, not a corner case.
 //
 // debounce-by — as debounce, but keyed per `#:key`'s own read of the
-// debounced proc's arguments (default: the first argument, unapplied — the
-// old `(car args)` behavior) instead of one shared pending timer, with the
+// debounced proc's arguments (default: the first argument, unapplied)
+// instead of one shared pending timer, with the
 // same current-entry check per key: a call keyed k1 never cancels a call
 // keyed k2. A caller whose first argument is a pane that may arrive with or
 // without a pane component for the same buffer passes `#:key (lambda (p .
@@ -256,12 +256,12 @@ macro_rules! builtins {
 // (PickerSession::requery_armed).
 //
 // The previous pattern's rows stay on screen through the whole stop/
-// debounce/respawn gap — clearing immediately, the first design, produced
-// a visible blank-then-repaint flash on every keystroke. `picker-source-stop!`
-// still runs immediately (a still-running source for the old pattern must
-// not keep appending rows while the query changes again); only the *clear*
-// moved, into `spawn-for`'s #f branch, so it fires solely when a query
-// settles on nothing to search rather than on every intermediate keystroke.
+// debounce/respawn gap. Clearing immediately would flash a blank frame on
+// every keystroke. `picker-source-stop!` still runs immediately (a
+// still-running source for the old pattern must not keep appending rows
+// while the query changes again). The *clear* lives in `spawn-for`'s #f
+// branch, so it fires solely when a query settles on nothing to search
+// rather than on every intermediate keystroke.
 // The swap itself lives in `PickerSession::attach_source`/`push`
 // (hume-editor::editor::input_stack::picker): a live session's attached source is
 // marked to replace `items` wholesale on its own first batch, instead of
@@ -599,9 +599,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
 
         // Blocking subprocess capture, no callback — backs `stdlib/run`.
-        // `open`, not `cmd`: Steel's own `spawn-process`/`wait` this
-        // replaces (see `run_capture`'s own doc) carried no legality gate
-        // either, and `stdlib/run` is a plain helper any plugin body can
+        // `open`, not `cmd`: Steel's own `spawn-process`/`wait`, which
+        // `run_capture` stands in for (see its own doc), carry no legality
+        // gate either, and `stdlib/run` is a plain helper any plugin body can
         // reach, not a top-level dispatched command. No `%` prefix: unlike
         // every other native primitive here, it takes no keyword arguments
         // to flatten, so it needs no `bootstrap.scm` wrapper of the same
@@ -620,8 +620,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "set-buffer-language!" buffers::set_buffer_language_steel(pane: args::LivePane, lang: args::OptString);
 
         // Editor-integration directory info, read from `ctx.dirs` (computed
-        // once by `ScriptingHost::new`). Callable from anywhere (`open`) —
-        // same reach as the context-free builtins these replaced.
+        // once by `ScriptingHost::new`). Callable from anywhere (`open`).
         open "data-dir" fs::data_dir();
         open "runtime-dir" fs::runtime_dir();
     }

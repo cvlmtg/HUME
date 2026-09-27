@@ -259,7 +259,7 @@ pub(in crate::editor) enum EditSessionKind {
 /// with_dot_capture`; if the dispatch it wraps opens a picker,
 /// `picker::open_picker` takes it off the session and attaches it to the
 /// `PickerSession` instead (so an edit made elsewhere while the picker is
-/// open — a timer, an LSP response — no longer lands in `edits`, since
+/// open — a timer, an LSP response — does not land in `edits`, since
 /// nothing is armed on the `EditSession` to feed); when the picker resolves,
 /// `close_picker_with`/`PickerLayer::tear_down` hand it to the queued
 /// `PendingWork::Call` that will run its `on_select`; `Editor::

@@ -993,7 +993,7 @@ fn focused_seam_segment_partial_for_shared_seam() {
     // A over B|C: A spans the full width; the horizontal seam below A
     // is shared by B (left half) and C (right half). Focusing B or C
     // should only highlight the half of the seam above that pane, not
-    // the whole seam — this is the bug this function fixes.
+    // the whole seam.
     let seam = rect(0, 24, 100, 1);
     let pane_b = rect(0, 25, 50, 25);
     let pane_c = rect(50, 25, 50, 25);

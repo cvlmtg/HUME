@@ -144,11 +144,10 @@ fn validate_offset_accepts_the_last_real_char() {
 
 #[test]
 fn validate_offset_rejects_one_past_the_end() {
-    // Pre-fix, this was deliberately admitted as "an 'after hint at
-    // end-of-buffer" — but `visible_char_range` is half-open, so that
-    // position could never pass its `contains` check: the hint would be
-    // silently accepted and then silently never rendered. Must now error
-    // loudly instead, same as every other out-of-range offset.
+    // `visible_char_range` is half-open, so an 'after' hint at end-of-buffer
+    // could never pass its `contains` check: the hint would be silently
+    // accepted and then silently never rendered. It must error loudly
+    // instead, same as every other out-of-range offset.
     let text = hume_editing::text::BufferText::from("abc\n");
     let err = validate_offset(&text, 4, true, "test").unwrap_err();
     assert!(err.contains("out of range"), "got: {err}");

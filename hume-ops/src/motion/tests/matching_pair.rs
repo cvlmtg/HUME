@@ -385,8 +385,7 @@ fn goto_matching_pair_tag_close_to_open_nested_same_name() {
 fn goto_matching_pair_tag_close_to_open_picks_innermost_unclosed_open() {
     // Two opens, one close: the close must pair with the nearer
     // (innermost) open, leaving the outer one permanently unmatched — the
-    // "unmatched same-name open earlier in the buffer" case the old from-0
-    // scan was designed around.
+    // "unmatched same-name open earlier in the buffer" case.
     assert_state!(
         "<div>\n<div>x-[<]>/div>\n",
         |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),

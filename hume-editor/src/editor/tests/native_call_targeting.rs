@@ -383,13 +383,12 @@ fn mock_host_records_a_non_focused_pane_unchanged() {
 
 // ── A remote edit must not corrupt another pane's open insert session ──────
 
-/// Regression: `apply_doc_edit` used to check only the *editing* pane's own
-/// `edit_group` — a remote `call!` targeting a different pane showing the
-/// same buffer found that pane's slot empty and took the standalone-
-/// revision path, recording a normal undo revision underneath the focused
-/// pane's still-open insert-session group. The focused pane's next
-/// keystroke would then panic composing against a buffer whose length had
-/// moved out from under it.
+/// A remote `call!` targeting a different pane showing the same buffer
+/// finds that pane's own `edit_group` slot empty. It must still be refused
+/// while the focused pane has an open insert-session group. Taking the
+/// standalone-revision path would record a normal undo revision underneath
+/// that group, and the focused pane's next keystroke would panic composing
+/// against a buffer whose length had moved out from under it.
 #[test]
 fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
     let mut ed = editor_from("-[a]>aaa\n");
@@ -580,12 +579,13 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
     );
 }
 
-/// Regression: unlike the reused-slot case above, a closed pane whose slot
-/// has *not* been reused left `SecondaryMap::entry` unable to tell "closed"
-/// from "never seeded" — `remove` drops the slot back to `Vacant` at version
-/// 0, and `entry` returns `Some(Vacant)` for that, same as a pid that simply
-/// never touched this map. `try_ensure` used to trust that read and silently
-/// resurrect a ghost `pane_state[dead_pid]` entry instead of erroring.
+/// Unlike the reused-slot case above, a closed pane whose slot has *not*
+/// been reused leaves `SecondaryMap::entry` unable to tell "closed" from
+/// "never seeded" — `remove` drops the slot back to `Vacant` at version 0,
+/// and `entry` returns `Some(Vacant)` for that, same as a pid that simply
+/// never touched this map. `try_ensure` must not trust that read, or it
+/// would silently resurrect a ghost `pane_state[dead_pid]` entry instead of
+/// erroring.
 #[test]
 fn try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused() {
     let mut ed = editor_from("-[a]>aaa\n");

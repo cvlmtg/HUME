@@ -180,8 +180,7 @@ fn object_jump_align_off_setting_restores_old_behavior() {
         hume_rope::line::ContentLine::new(0)
     );
 
-    // The old (pre-feature) per-frame `scrolloff` scroll still runs and
-    // still parks the cursor at `height - scrolloff - 1` rows from the top.
+    // The per-frame `scrolloff` scroll still runs and parks the cursor at `height - scrolloff - 1` rows from the top.
     frame(&mut ed, 80, 24);
     let scrolloff = ed.state.settings.scrolloff;
     let height = ed.viewport().height as usize;

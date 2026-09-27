@@ -507,8 +507,8 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
     );
 }
 
-/// The scenario the fix is actually for: a `Before` block on the top line
-/// that the pre-fix reset would blow past. Wrap on, scrolled so `top_line`
+/// The main case: a `Before` block on the top line, which a reset of
+/// `top_slot` would blow past. Wrap on, scrolled so `top_line`
 /// sits inside a 3-row `Before(0)` block (`top_slot = 1`, one row
 /// already scrolled past, two still showing); `:set wrap-mode=none` must not
 /// jump the viewport back up to the top of that block — the address is

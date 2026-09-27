@@ -268,7 +268,7 @@ fn align_two_slots_overflow_widens_primary() {
 
 #[test]
 fn align_two_slots_static_text_between() {
-    // Regression: static non-selected text before slot 0 and between slots must
+    // Static non-selected text before slot 0 and between slots must
     // set the floor, not the selection edge geometry.
     //
     // Input (each '=' and '//' selected, primary on line 0's '='):

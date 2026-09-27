@@ -363,9 +363,9 @@ pub enum Effect {
     /// reason `Effect::UnbindKey` gives for the three binders it follows: a
     /// source registered earlier in the *same* eval must exist by the time
     /// this applies, and `ScriptingHost`'s effects are one ordered queue
-    /// applied in emission order — checking the registry synchronously (as
-    /// this builtin used to) raced a same-eval `register-completion-source!`,
-    /// which only takes effect once the whole eval succeeds.
+    /// applied in emission order — checking the registry synchronously
+    /// would race a same-eval `register-completion-source!`, which only
+    /// takes effect once the whole eval succeeds.
     SetCompletionTriggerChars {
         source: String,
         language: String,

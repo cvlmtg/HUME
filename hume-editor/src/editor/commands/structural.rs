@@ -59,7 +59,7 @@ impl StructuralBody {
     /// The `Argument` fallback to the lexical scan is per-probe, not per
     /// buffer: a comma list the query doesn't cover (a top-level array
     /// literal), a region under a syntax error, and a scratch buffer with no
-    /// grammar all behave exactly as they did before this feature. Where a
+    /// grammar all use the lexical scan. Where a
     /// tree span exists it wins outright — `m i a` on `2` in `foo([1, 2,
     /// 3])` selects the whole array (the call's argument), not the lexical
     /// scan's `2`; array/tuple/struct members are `entry`-kind objects,

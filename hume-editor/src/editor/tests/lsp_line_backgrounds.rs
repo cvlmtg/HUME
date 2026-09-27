@@ -229,7 +229,6 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
     );
 }
 
-/// Regression guard for the decoration-bridge snapshot unification:
 /// `update_line_bg_providers` runs in `prepare_frame` step 5, *after* the
 /// scroll step, and must read that step's viewport — not the snapshot step 3
 /// takes before scrolling (which the sign/inlay-hint/virtual-line/EOL-text

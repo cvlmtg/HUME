@@ -51,10 +51,10 @@ struct Invocation {
 }
 
 // Classify validated args into a run mode plus a config source — the two are
-// orthogonal (any ConfigSource is valid with either Mode), unlike the old
-// `--config`/`--keys` coupling this replaces. clap guarantees `output` is
-// present whenever `keys` is, and vice-versa, via `requires`, and that
-// `config` and `no_config` never appear together, via `conflicts_with`. The
+// orthogonal (any ConfigSource is valid with either Mode). clap guarantees
+// `output` is present whenever `keys` is, and vice-versa, via `requires`,
+// and that `config` and `no_config` never appear together, via
+// `conflicts_with`. The
 // constraints clap can't express — exactly one input file in headless mode,
 // `config` naming a real file — are checked here.
 fn resolve(cli: Cli) -> Result<Invocation, String> {
@@ -64,7 +64,7 @@ fn resolve(cli: Cli) -> Result<Invocation, String> {
     // enters raw mode (or, in headless mode, before any key is replayed),
     // not silently boot unconfigured. `File::open` (not `fs::metadata`, a
     // bare `stat`) proves the path is both present and readable in one
-    // syscall. Runs for both modes: `--config` is no longer `--keys`-only.
+    // syscall. Runs for both modes.
     let config = if cli.no_config {
         hume_editor::cli::ConfigSource::Skip
     } else if let Some(path) = cli.config {
@@ -404,8 +404,7 @@ mod tests {
 
     // The `--config` validation/pinning path is shared code, exercised in
     // full above under normal mode — this pins that headless mode reaches
-    // the same code, not a bypassed copy, now that `--config` and `--keys`
-    // are no longer mutually exclusive.
+    // the same code, not a bypassed copy.
     #[test]
     fn resolve_headless_config_flag_validates_and_pins() {
         let dir = tempfile::tempdir().unwrap();

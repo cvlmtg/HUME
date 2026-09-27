@@ -509,7 +509,7 @@ impl Editor {
     /// `text`/`segments` clone per entry is costlier to redo unconditionally
     /// every frame than the other bridges' viewport-filtered passes. The
     /// stamp is per-buffer (not a single store-wide counter): an edit only
-    /// bumps the buffer it edited, so typing in one buffer no longer forces
+    /// bumps the buffer it edited, so typing in one buffer does not force
     /// every pane on every *other* buffer to resync too. Called from
     /// `prepare_frame`'s step 3 — unlike the rest of that step, has no
     /// viewport dependency (so which [`Self::decorated_panes`] snapshot it

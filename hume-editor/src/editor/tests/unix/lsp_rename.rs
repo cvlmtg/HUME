@@ -221,12 +221,11 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
     );
 }
 
-/// `textDocument/rename`'s request now carries `#:allow-stale #t`, so an
+/// `textDocument/rename`'s request carries `#:allow-stale #t`, so an
 /// edit landing between confirming the new name and the response draining
 /// must not silently drop the rename — but `apply-workspace-edit!`'s own
 /// `#:expect-generation` must then refuse to apply it, rather than silently
-/// doing nothing (the old request-side drop) or applying against text that
-/// has since moved.
+/// doing nothing or applying against text that has since moved.
 #[test]
 fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
     let tmp = safe_tempdir();

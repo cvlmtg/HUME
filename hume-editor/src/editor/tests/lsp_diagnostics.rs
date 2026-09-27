@@ -456,7 +456,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
 // ── Diagnostics cleared on `:lsp-stop` ─────────────────────────────────
 
 /// Without `DiagnosticsStore::remove_server`, a stopped server's diagnostics
-/// stayed rendered forever (squiggles/signs keep showing) and stopped
+/// would stay rendered forever (squiggles/signs keep showing) and stop
 /// remapping (the buffer is no longer attached, so `flush_lsp_pending_changes`
 /// never touches it), drifting silently out of sync with further edits.
 #[test]
@@ -500,13 +500,13 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
     );
 }
 
-/// `lsp_stop_one` used to null `buf.lsp_server` and clear `buf.lsp_pending`
-/// without first draining it through the decoration remap chokepoint
-/// (`flush_lsp_pending_changes` — `lsp_pending` is its only carrier). Any
-/// edit queued since the last frame's flush was discarded unremapped,
-/// leaving a plugin's sign anchored at its pre-edit position permanently —
-/// a detached buffer no longer gets queued for the remap at all, so it
-/// never resyncs later either.
+/// `lsp_stop_one` must drain `buf.lsp_pending` through the decoration remap
+/// chokepoint (`flush_lsp_pending_changes` — `lsp_pending` is its only
+/// carrier) before it nulls `buf.lsp_server` and clears `buf.lsp_pending`.
+/// Otherwise any edit queued since the last frame's flush is discarded
+/// unremapped, leaving a plugin's sign anchored at its pre-edit position
+/// permanently — a detached buffer is not queued for the remap at all, so
+/// it never resyncs later either.
 #[test]
 fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
     let tmp = safe_tempdir();

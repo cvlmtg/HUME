@@ -38,7 +38,7 @@ fn round_trips_integers_and_floats() {
     assert!(matches!(json_to_steel(&json!(1.5)), SteelVal::NumV(n) if n == 1.5));
 }
 
-/// Regression: a JSON integer in `(i64::MAX, u64::MAX]` (e.g. a large
+/// A JSON integer in `(i64::MAX, u64::MAX]` (e.g. a large
 /// id/hash field) must round-trip exactly, not silently lose precision
 /// through an f64 fallback.
 #[test]

@@ -121,8 +121,7 @@ fn ls_scratch_buffer_shows_scratch_name() {
 
 /// A buffer carrying both a label and a path must show the label — matching
 /// `Buffer::display_name()`, which every other surface (`:tabnew`'s tabline,
-/// the statusline) reads through. `:ls` used to hand-roll a path-first
-/// derivation that disagreed with all of them for exactly this buffer shape.
+/// the statusline) reads through.
 #[test]
 fn ls_prefers_a_buffers_label_over_its_path_basename() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -333,8 +332,7 @@ fn read_only_buffer_blocks_undo_and_redo() {
     // somehow has undo history — e.g. from a future API path).
     ed.doc_mut().read_only = true;
 
-    // u (undo) must be a no-op, and must report why (refuse_if_read_only,
-    // not the old silent doc_ops early return).
+    // u (undo) must be a no-op, and must report why (refuse_if_read_only).
     ed.handle_key(key('u'));
     assert_eq!(
         ed.doc().text().to_string(),

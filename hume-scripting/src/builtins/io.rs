@@ -9,7 +9,7 @@
 //! only shadows the name in its own compilation unit — these ten names are
 //! prelude exports, and steel-core prepends its prelude source to every
 //! compiled unit including each `(require "path.scm")` plugin file, so every
-//! plugin unit still imports the original straight from the prelude. Fix:
+//! plugin unit still imports the original straight from the prelude. So
 //! HUME appends gated redefinitions of all ten names to steel-core's own
 //! prelude string via `Engine::set_prelude_string` (see
 //! `builtins/mod.rs::register_all`), so the shims shadow the imports inside

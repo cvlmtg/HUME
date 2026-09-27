@@ -12,9 +12,9 @@ fn unix_like_sep(c: char) -> bool {
 
 #[test]
 fn shorten_path_windows_seps_abbreviates_dirs() {
-    // Regression for the reported bug: on Windows the path uses '\' and was
-    // not being abbreviated at all, falling straight to whole-string
-    // truncation ("~\foo\bar\baz\fi…"). Mirrors shorten_path_abbreviates_multiple_dirs.
+    // On Windows the path uses '\'. Its directories must still be
+    // abbreviated, not fall straight to whole-string truncation
+    // ("~\foo\bar\baz\fi…"). Mirrors shorten_path_abbreviates_multiple_dirs.
     let path = r"~\foo\bar\baz.txt"; // 17 cols
     let result = shorten_path_to_width_with(path, 13, windows_like_sep);
     assert_eq!(result, r"~\f\b\baz.txt");

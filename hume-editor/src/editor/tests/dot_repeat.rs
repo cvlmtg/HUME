@@ -56,16 +56,11 @@ fn dot_repeats_change_with_insert() {
 /// `last_repeatable_action` — it changed nothing, so there is nothing new to
 /// repeat.
 ///
-/// `step_stamp_repeatable` (`commands/pipeline.rs`) fires unconditionally
-/// whenever `meta.repeatable`, with no "did the body actually do anything"
-/// gate — unlike `step_update_recipe`, which is gated on
-/// `selection_changed` for exactly this reason. `cmd_delete` refuses via
-/// `refuse_if_read_only` and returns `Ok(())` without touching the buffer,
-/// but the pipeline stamps `last_repeatable_action = "delete"` anyway,
-/// silently discarding the user's earlier `change`.
-///
-/// A refusal gate on the stamp prevents this. Without it, the final assert
-/// would see `command == "delete"`.
+/// `cmd_delete` refuses via `refuse_if_read_only` and returns `Ok(())`
+/// without touching the buffer. `refuse_if_read_only` sets
+/// `command_refused`, and the pipeline skips `step_stamp_repeatable` for a
+/// refused dispatch, so the user's earlier `change` stays in the slot.
+/// Without that gate, the final assert would see `command == "delete"`.
 #[test]
 fn read_only_refusal_does_not_clobber_dot_repeat() {
     let mut ed = editor_from("-[foo]> bar\n");
@@ -403,7 +398,7 @@ fn dot_repeats_plain_paste_after() {
 /// Three-line buffer: the first `x d` leaves two lines and the second leaves
 /// one.
 ///
-/// Regression: if the recipe replay is absent, `.` would delete only the char
+/// Without the recipe replay, `.` would delete only the char
 /// the cursor happened to be on (collapsed selection), not the whole line.
 #[test]
 fn dot_repeats_select_line_delete() {
@@ -845,12 +840,11 @@ fn dot_repeat_of_match_surround_deletes_both_parens() {
     );
 }
 
-/// `ma(` (select around `()`, including the delimiters) is characterization
-/// coverage, not regression coverage: unlike `ms(` (`dot_repeat_of_match_surround_deletes_both_parens`
-/// above), `ma(` on `(foo)` already leaves a non-collapsed selection, so the
-/// pre-fix `!is_collapsed()` gate already recorded it — this pins that it
-/// still replays correctly under `SelectionTracking::Establishes` (restarts
-/// the dot-repeat recipe in Move mode — see `step_update_recipe`).
+/// `ma(` (select around `()`, including the delimiters) on `(foo)` leaves a
+/// non-collapsed selection, unlike `ms(`
+/// (`dot_repeat_of_match_surround_deletes_both_parens` above). This pins that
+/// it replays correctly under `SelectionTracking::Establishes`, which
+/// restarts the dot-repeat recipe in Move mode (see `step_update_recipe`).
 #[test]
 fn dot_repeat_of_match_around_deletes_content() {
     let mut ed = editor_from("(-[f]>oo) (bar) baz\n");
@@ -1204,9 +1198,9 @@ fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
 /// `.` replaying a paste-ring cycle (`[`/`]`) must actually cycle the ring
 /// again, not no-op.
 ///
-/// `repeat-last-action`'s own dispatch used to commit — and thereby close —
-/// the still-open paste session before `replay_dot` ever got a chance to look
-/// at what it was replaying. See `.defers_paste_commit()` on
+/// `repeat-last-action`'s own dispatch must not commit (and thereby close)
+/// the still-open paste session before `replay_dot` looks at what it is
+/// replaying. See `.defers_paste_commit()` on
 /// `repeat-last-action`'s registration (`registry/defaults/editor_cmds.rs`)
 /// and `Editor::replay_dot`'s own paste-commit step.
 ///
@@ -2345,7 +2339,7 @@ fn dot_repeat_smart_accept_binding_fallback_branch() {
 /// recorded as an `InsertInput::Result`, not a `Binding`, so `.` applies
 /// the accepted text directly rather than re-checking `completion-top`
 /// (which would find no session during replay and wrongly fall back to a
-/// literal tab — the bug this fixes).
+/// literal tab).
 #[test]
 fn dot_repeat_smart_accept_binding_accept_branch() {
     let tmp = safe_tempdir();

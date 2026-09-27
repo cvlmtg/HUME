@@ -411,9 +411,8 @@ impl<K, T: PointAnchored> SourceStore<K, T> {
     /// `PosMapCursor` pass per source, using `T::ASSOC`. Drops an entry whose
     /// anchor character a deletion consumed — same policy `remap_ranges`
     /// already applies to a range a deletion collapses — rather than parking
-    /// the decoration on whatever text moved into the gap (the "reappearing
-    /// inlay hint" bug: a deleted line's hint used to survive, re-anchored
-    /// to the deletion point). Returns whether `bid` had any entry to remap
+    /// the decoration on whatever text moved into the gap (a deleted line's inlay
+    /// hint would reappear, re-anchored to the deletion point). Returns whether `bid` had any entry to remap
     /// — callers use this to skip a dirty-tracking stamp bump when `bid` had
     /// nothing for this kind.
     fn remap_points(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {

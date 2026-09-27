@@ -97,13 +97,12 @@ fn o_then_enter_keeps_indent_on_new_line_and_trims_first() {
     assert_eq!(state(&ed), "\tfoo\n\n\t-[\n]>");
 }
 
-/// Regression: `o` armed the session's autoindent record, but no
-/// cursor-motion key cleared it — a bare Esc after moving down onto an
-/// unrelated, *pre-existing* blank line silently deleted that line's own
-/// whitespace. The positional ownership record fixes this structurally: the
-/// record still names the line `o` opened, which the cursor is no longer on,
-/// so the containment check refuses it without any motion handler having to
-/// intervene.
+/// `o` arms the session's autoindent record, and no cursor-motion key
+/// clears it. A bare Esc after moving down onto an unrelated, *pre-existing*
+/// blank line must not delete that line's own whitespace. The ownership
+/// record is positional: it still names the line `o` opened, which the
+/// cursor is no longer on, so the containment check refuses it without any
+/// motion handler having to intervene.
 #[test]
 fn o_then_down_onto_pre_existing_blank_line_then_esc_preserves_it() {
     let mut ed = editor_from("-[f]>oo\n    \nbar\n");
@@ -132,9 +131,8 @@ fn o_then_noop_delete_then_esc_still_trims_indent() {
 /// `o`, typing a char, then Backspacing it back off, then Esc: the session's
 /// own indent is still exactly what's left on the line, so it's the
 /// session's to vacate — matching vim's own `<BS>` carve-out (`:help
-/// autoindent`) and, as a side effect, resolving where the cursor lands
-/// (previously stranded mid-indent; the positional record now trims it away
-/// like any other bare Esc).
+/// autoindent`). The positional record trims the indent away like any other
+/// bare Esc, so the cursor does not strand mid-indent.
 #[test]
 fn o_type_then_backspace_then_esc_trims_indent() {
     let mut ed = editor_from("\t-[f]>oo\n");

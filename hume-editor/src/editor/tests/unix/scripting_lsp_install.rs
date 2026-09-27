@@ -1238,7 +1238,7 @@ fn discovery_hint_fires_for_cargo_kind_now_installable() {
     load_lsp(&mut ed, data_tmp.path());
 
     // pest-language-server (cargo-kind, language "pest") must report
-    // installable now that core:lsp has a cargo installer — cargo is
+    // installable: core:lsp has a cargo installer, and cargo is
     // guaranteed on $PATH since this test suite itself runs under cargo.
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("pest");

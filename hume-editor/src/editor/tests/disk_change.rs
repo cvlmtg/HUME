@@ -1107,7 +1107,7 @@ fn two_panes_with_b_focused() -> (
     (ed, tmp_a, tmp_b_guard, bid_a, bid_b)
 }
 
-/// The reported repro: A and B both change on disk; B's confirm is answered
+/// A and B both change on disk; B's confirm is answered
 /// (implicitly, by the test just moving on); `:q` closes the focused buffer
 /// (B) and reveals A, which must re-prompt for its own already-warned
 /// change.
@@ -1115,9 +1115,9 @@ fn two_panes_with_b_focused() -> (
 /// `:q` moves the focused pane onto A through `Editor::close_buffer`,
 /// `lifecycle::close_buffer` and `switch_pane_to_buffer`, and none of them
 /// runs a `BufferEnter` check. A's already-warned `Changed` state is
-/// re-surfaced only by the focus diff in `settle()`. This is also the
-/// only test in this section that pins the *trigger*: an `Ambient` recheck
-/// (the second assertion) must stay silent for an already-reported change.
+/// re-surfaced only by the focus diff in `settle()`. The setup also pins
+/// the *trigger*: an `Ambient` check on the unfocused A warns once (the
+/// first assertion) and opens no confirm.
 #[test]
 fn quit_closing_a_buffer_prompts_the_revealed_one() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -1281,9 +1281,8 @@ fn pane_focus_cycling_prompts_the_buffer_it_lands_on() {
 }
 
 /// A click into another pane (`mouse_left_down`'s click-to-focus) routes
-/// through the same `focus_pane` and never touches `handle_key` at all — a
-/// chokepoint placed only in `handle_key` would have to duplicate itself for
-/// a mouse-triggered focus change; `handle_input` covers both for free.
+/// through the same `focus_pane` and never touches `handle_key` at all. The
+/// focus diff in `settle()` sees the change whatever input caused it.
 #[test]
 fn clicking_into_another_pane_prompts_that_panes_buffer() {
     let (mut ed, tmp_a, _tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
@@ -1937,7 +1936,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
 
 // ── OnBufferEnter / OnFocusGained ──────────────────────────────────────────────
 
-/// The originating bug, end to end: a picker accept switching onto a buffer
+/// End to end: a picker accept switching onto a buffer
 /// whose backing file changed externally must open the reload confirm. Built
 /// on `tests/picker_steel.rs`'s harness — a picker's `on_select` callback
 /// queues as a `PendingWork::Call`, drained by the next `render_to_buf`
@@ -2001,17 +2000,13 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     );
     assert!(
         ed.state.input.confirm().is_some(),
-        "picker accept onto an externally-changed buffer must open the reload confirm \
-         — the originating bug this refactor fixes"
+        "picker accept onto an externally-changed buffer must open the reload confirm"
     );
 }
 
 /// A non-interactive `switch-to-buffer!` — Steel's builtin, LSP goto-
 /// definition, any async callback — onto a stale buffer must open the reload
-/// confirm too. This path used to run no check at all: the deleted
-/// `enter_buffer_with_jump` was only reachable from typed commands, and
-/// `switch_to_buffer_with_jump` (what non-interactive callers use) never
-/// called it.
+/// confirm too.
 ///
 /// The reaction lives in `settle()`'s own diff. Gated on
 /// `Editor::handle_input`'s dispatch, a switch with no interactive dispatch

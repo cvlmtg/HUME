@@ -121,9 +121,9 @@ pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
 /// `(display label, mode scope, primary mode scope)` — the mode-identity half
 /// [`cursor_ladder_ids`] itself leaves to its caller. Single source for both
 /// `Theme::compute_ui` and `:theme-debug`, so renaming a mode's scope (or
-/// adding a fourth mode) can't leave one of them naming the old pair — the
-/// exact drift the shared rung-list function below was introduced to
-/// prevent, one level up.
+/// adding a fourth mode) can't leave one of them naming the old pair. This
+/// is the same drift guard the shared rung-list function below provides,
+/// one level up.
 pub const CURSOR_MODES: [(&str, &str, &str); 3] = [
     ("normal", "ui.cursor.normal", "ui.cursor.primary.normal"),
     ("insert", "ui.cursor.insert", "ui.cursor.primary.insert"),

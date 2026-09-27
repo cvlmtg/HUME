@@ -25,11 +25,11 @@ use hume_editing::text::BufferText;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// [`apply_doc_history_walk`]'s result — keeps a read-only refusal
-/// distinguishable from genuine root/leaf exhaustion. Both used to collapse
-/// to `0`, which is safe only because every current caller
+/// distinguishable from genuine root/leaf exhaustion. Collapsing both to
+/// `0` would be safe only because every current caller
 /// (`history_step`) already calls `refuse_if_read_only` first; a caller that
 /// leans on this function's own guard alone (the production `goto-revision`
-/// `docs/UNDOTREE.md` plans) would otherwise report "Already at oldest
+/// `docs/UNDOTREE.md` plans) would then report "Already at oldest
 /// change" for a read-only buffer — a wrong diagnosis sending the user to
 /// look for missing history that was never there to find.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

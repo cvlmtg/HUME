@@ -220,9 +220,9 @@ pub(super) fn begin_insert_session_preserving_register(
 /// `(call! "exit-insert" pane)` can reach here from any mode (a hook, a timer, an
 /// async LSP callback), not only from a key path that already proved
 /// `Insert` is current. Truncating `state.input.mode_layer()` unconditionally
-/// used to cancel whatever mode layer happened to be current — a `prompt!`
-/// session reached this way lost its callback silently, since teardown never
-/// fires one.
+/// would cancel whatever mode layer happened to be current. A `prompt!`
+/// session reached this way would lose its callback silently, since teardown
+/// never fires one.
 pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
     if let Some(r) = state
         .input

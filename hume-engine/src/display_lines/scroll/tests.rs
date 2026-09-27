@@ -142,11 +142,11 @@ fn no_wrap_cursor_above_viewport_scrolls_up() {
 }
 
 /// A `scrolloff` at or above half the viewport height (`:set scrolloff=999`'s
-/// "always center" idiom, at an even height) used to leave the "no scroll
-/// needed" window empty: the two correction arms disagreed about where the
-/// cursor should land and rescrolled every single frame. Calling `reveal`
-/// again with the cursor unmoved must be a no-op — it wasn't, before capping
-/// the margin at `(height - 1) / 2`.
+/// "always center" idiom, at an even height) would leave the "no scroll
+/// needed" window empty if uncapped: the two correction arms would disagree
+/// about where the cursor should land and rescroll every frame. The margin
+/// is capped at `(height - 1) / 2`, so calling `reveal` again with the
+/// cursor unmoved must be a no-op.
 #[test]
 fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
     let text: String = (0..50).map(|i| format!("line{i}\n")).collect();

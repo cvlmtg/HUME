@@ -937,10 +937,8 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
 
 /// A click under the bottom drawer falls through untouched — same
 /// Helix-style "browse while editing" treatment `drawer_input` gives any key
-/// it doesn't bind (Ctrl-d/Ctrl-u/Enter/Esc). Characterization, not a red
-/// test: mouse dispatch already bypassed every overlay outright before this
-/// layer existed, so this pins the pre-existing behavior rather than a
-/// newly introduced one.
+/// it doesn't bind (Ctrl-d/Ctrl-u/Enter/Esc). Mouse dispatch bypasses every
+/// overlay outright, so this pins that behavior.
 #[test]
 fn click_under_drawer_falls_through_leaving_it_open() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -986,10 +984,9 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
 
 /// A click in Insert mode with an LSP completion session open ends Insert
 /// (via `focus_pane`'s own teardown, which every click already runs) and
-/// takes the completion layer above it with it — characterization: this
-/// already held before the input-stack refactor, since `mouse_left_down`
-/// unconditionally calls `focus_pane` regardless of what's on the input
-/// stack.
+/// takes the completion layer above it with it. This holds because
+/// `mouse_left_down` unconditionally calls `focus_pane` regardless of what's
+/// on the input stack.
 #[test]
 fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
     let mut ed = editor_from("-[h]>ello\n");

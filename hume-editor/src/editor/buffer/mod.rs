@@ -747,7 +747,7 @@ impl Buffer {
         self.history.current_id()
     }
 
-    /// Test-only: production no longer branches on this — `undo_n`/`redo_n`
+    /// Test-only: production does not branch on this — `undo_n`/`redo_n`
     /// clamp at the root themselves and report `taken < requested` instead
     /// of checking `can_undo` up front.
     #[cfg(test)]

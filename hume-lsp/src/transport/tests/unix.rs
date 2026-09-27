@@ -102,8 +102,7 @@ fn env_reaches_the_spawned_process() {
 
 #[test]
 fn drop_does_not_hang_when_stderr_floods_past_the_bound() {
-    // Regression for the Drop deadlock fixed alongside the bounded
-    // stderr channel: a thread blocked mid-`send` on a full channel is
+    // Guards a `Drop` deadlock with the bounded stderr channel: a thread blocked mid-`send` on a full channel is
     // NOT unblocked by `child.kill()` alone (killing only ends a
     // blocking *read*) — `Drop` must also close the receivers. On
     // regression this test hangs (caught by the harness's own test

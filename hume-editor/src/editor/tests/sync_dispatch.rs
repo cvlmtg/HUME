@@ -455,13 +455,13 @@ fn classification_sites_all_agree() {
     }
 }
 
-// ── Bookkeeping regression tests (findings 1–5) ───────────────────────────────
+// ── Bookkeeping parity tests ──────────────────────────────────────────────────
 //
 // Each test verifies that a command dispatched from Steel via (call!)
 // produces the same bookkeeping as a direct keypress on the same command.
 
-/// **Finding 1 — register prefix**: `(set-register-prefix! "a") (call! "yank" bid)` must
-/// route the yank to named register `a`, not to the kill ring or clipboard.
+/// **Register prefix**: `(set-register-prefix! "0") (call! "yank" bid)` must
+/// route the yank to register `0`, not to the kill ring or clipboard.
 ///
 /// Without `register: ctx.current_register_prefix` in `run_command_sync`, the
 /// target register would still be empty after the call.
@@ -494,7 +494,7 @@ fn steel_call_native_respects_register_prefix() {
     );
 }
 
-/// **Finding 3 — dot-repeat**: a repeatable native command invoked via Steel must
+/// **Dot-repeat**: a repeatable native command invoked via Steel must
 /// set `last_repeatable_action` so `.` can replay it.
 ///
 /// `commands::run` stamps it through `step_stamp_repeatable`; skipping that
@@ -534,7 +534,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
     );
 }
 
-/// **Finding 4 — jump list**: an explicit-jump EditorCmd (`goto-last-line`) invoked
+/// **Jump list**: an explicit-jump EditorCmd (`goto-last-line`) invoked
 /// via Steel must push a `JumpEntry` so Ctrl-o can return.
 ///
 /// The entry comes from the `step_capture_pre_jump` call in `commands::run`.
@@ -564,7 +564,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
     );
 }
 
-/// **Finding 5 — paste session**: `(call! "paste-after" bid)` followed by
+/// **Paste session**: `(call! "paste-after" bid)` followed by
 /// `(call! "move-down" bid)` in one body must commit the paste session so that
 /// one undo step reverts the paste cleanly.
 ///
@@ -601,7 +601,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
     );
 }
 
-/// **Finding 7 — source order**: a Steel body `(call! my-steel-cmd) (call! "delete" bid)`
+/// **Source order**: a Steel body `(call! my-steel-cmd) (call! "delete" bid)`
 /// must execute the Steel command first, then the delete — not reversed.
 ///
 /// Under the in-Steel dispatch model: `steel-move-right` is applied inline as a Steel
@@ -633,7 +633,7 @@ fn steel_call_source_order_native_after_steel() {
     );
 }
 
-/// **Finding 7 — native count preserved across plugin→native chain**: a native
+/// **Native count preserved across plugin→native chain**: a native
 /// command that follows a plugin command in the same body must use its own count.
 ///
 /// `noop-steel` is applied inline (no effect); `(call! "move-down" bid 3)` dispatches
@@ -667,7 +667,7 @@ fn steel_native_via_call_preserves_own_count() {
     );
 }
 
-/// **Finding 8 — unknown errors, no abort**: a body with an unknown command
+/// **Unknown errors, no abort**: a body with an unknown command
 /// between two valid moves must execute both valid moves, not abort on the
 /// typo. `call!` logs an `Error` for the miss but never raises into Steel.
 ///
@@ -696,13 +696,10 @@ fn steel_unknown_cmd_errors_and_continues() {
     );
 }
 
-/// **Mouse input no longer drains pending work itself; `Editor::run`'s loop
-/// does, once per iteration, via `settle()`.** Before the merge, `handle_input` was the
-/// single interactive drain choke point, so a hook seeded before a mouse
-/// click was gone by the time `handle_input` returned. After the merge, the
-/// drain moved to the top of the run loop (so it also covers async work that
-/// arrives without any input at all — the bug this rebuild fixes) and
-/// `handle_input` no longer drains.
+/// **Mouse input does not drain pending work itself; `Editor::run`'s loop
+/// does, once per iteration, via `settle()`.** The drain sits at the top of
+/// the run loop so it also covers async work that arrives without any input
+/// at all.
 ///
 /// Setup: a hook is seeded directly into `pending_work` via `queue_event`.
 /// No scripting host is needed — `settle()` skips hooks with no registered
@@ -1024,9 +1021,9 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 
 // ── Dual-path parity tests ────────────────────────────────────────────────────
 //
-// The original regression: `run_command_sync` executed native commands naked —
-// cursor moved correctly but the bookkeeping cluster (jump list, dot-repeat,
-// paste-session commit) was silently dropped.  These tests assert that
+// A native command run through `run_command_sync` must run the same
+// bookkeeping cluster (jump list, dot-repeat, paste-session commit) as a
+// keypress. These tests assert that
 // dispatching the same native command via the keypress path AND via a Steel
 // `(call! …)` wrapper leaves IDENTICAL `BookkeepingSnapshot` state.
 

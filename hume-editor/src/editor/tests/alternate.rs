@@ -76,7 +76,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     );
 
     // First remote call: B (baz) → bar, the buffer excluded by the *focused*
-    // pane's history — not baz, B's own buffer, which the pre-fix code used.
+    // pane's history — not baz, B's own buffer.
     let ran = live_host!(ed)
         .run_command_sync(
             "goto-alternate-buffer",

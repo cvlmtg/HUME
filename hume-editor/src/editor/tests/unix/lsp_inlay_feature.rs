@@ -214,11 +214,10 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
     assert!(hints[0].before);
 }
 
-/// Regression coverage for the render bridge no longer gating on
-/// `lsp.inlay-hints` itself (`decoration_providers.rs`'s
-/// `update_inlay_hint_providers`): the real shipped plugin must still make
-/// toggling the setting off clear its own hints, now via the
-/// `on-option-change` hook (`inlay.scm`) instead of a Rust-side wipe. Goes
+/// The render bridge (`decoration_providers.rs`'s
+/// `update_inlay_hint_providers`) does not gate on `lsp.inlay-hints` itself,
+/// so the real shipped plugin must make toggling the setting off clear its
+/// own hints, via the `on-option-change` hook (`inlay.scm`). Goes
 /// through `:set global`, not a direct field write, so the real event fires.
 #[test]
 fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
@@ -260,11 +259,11 @@ fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
     );
 }
 
-/// Regression coverage for the `on-option-change` hook trusting the raw
-/// `:set` string instead of `get-option`'s coerced bool (`inlay.scm`'s
-/// handler used to test `(equal? value "true")`, so any of `parse-bool`'s
-/// other accepted spellings — `on`/`yes`/`1` — took the *else* branch and
-/// **cleared** hints instead of requesting them).
+/// The `on-option-change` hook (`inlay.scm`) must read `get-option`'s
+/// coerced bool. A handler testing the raw `:set` string with
+/// `(equal? value "true")` would send any of `parse-bool`'s other accepted
+/// spellings (`on`/`yes`/`1`) down the *else* branch, which **clears** hints
+/// instead of requesting them.
 ///
 /// Writes through `settings::ops::apply_global` directly (the exact
 /// production path `:set global`/`set-option!`/`:theme` all funnel
@@ -529,7 +528,7 @@ fn an_empty_response_clears_previously_stored_hints() {
     );
 }
 
-/// The debounce-bug regression this fix targets: two attached, visible
+/// Two attached, visible
 /// buffers each get an `on-diagnostics-changed` fire within the same
 /// debounce window. A plain `debounce` shares one pending timer across
 /// every call regardless of args — buffer B's call would cancel buffer A's

@@ -335,9 +335,9 @@ fn select_all_from_last_char_still_records_jump() {
 }
 
 /// A no-op `#` (cursor not on a bracket or tag) must not truncate forward
-/// jump-list history — `is_jump` alone used to record an entry regardless
-/// of whether the command actually moved, and `JumpList::push` truncates
-/// forward history unconditionally.
+/// jump-list history. `JumpList::push` truncates forward history
+/// unconditionally, so `is_jump` alone must not record an entry when the
+/// command did not move.
 #[test]
 fn goto_matching_pair_noop_does_not_clobber_forward_history() {
     let mut ed = jump_editor(10);

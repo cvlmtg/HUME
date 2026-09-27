@@ -270,7 +270,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 /// Converts `segments`' char offsets into `text` to byte offsets, sorting by
 /// `start` and validating in the process — the sole enforcement point for
 /// `set-virtual-lines!`'s segment contract (bounds, ordering, non-overlap,
-/// grapheme-cluster alignment), now that the Steel boundary
+/// grapheme-cluster alignment). The Steel boundary
 /// (`virtual_line_specs` in `hume-scripting`'s `builtins/decorations.rs`)
 /// only decodes shape. See `VirtualLineSpec::segments`'s doc.
 ///

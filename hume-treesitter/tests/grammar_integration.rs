@@ -270,7 +270,7 @@ fn highlight_overlap_fully_contained_is_dropped() {
     );
 }
 
-// Regression: Helix-style queries rely on a later, more specific pattern
+// Helix-style queries rely on a later, more specific pattern
 // overriding an earlier catch-all for the SAME node — e.g. `(identifier)
 // @variable` followed by `(call_expression function: (identifier)
 // @function)`. `foo`'s identifier node is nested inside the call_expression

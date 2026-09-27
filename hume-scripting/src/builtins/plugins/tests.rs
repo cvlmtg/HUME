@@ -229,9 +229,9 @@ fn declare_plugin_bad_commands_names_the_builtin() {
     );
 }
 
-/// Same naming requirement for `#:typed-commands` — the sibling decoder no
-/// `hume-scripting` test exercised before this: every other `declare-plugin`
-/// decode test in this file supplies `#:commands` only.
+/// Same naming requirement for `#:typed-commands`, the sibling decoder.
+/// Every other `declare-plugin` decode test in this file supplies
+/// `#:commands` only.
 #[test]
 fn declare_plugin_bad_typed_commands_names_the_builtin() {
     let err = declare_err(r#"(declare-plugin "user/tp" #:typed-commands '(1))"#);
@@ -410,7 +410,7 @@ fn declare_plugin_user_absent_logs_info() {
     );
 }
 
-/// `load-plugin "core:X"` absent on disk → `Error` log (was silently swallowed).
+/// `load-plugin "core:X"` absent on disk → `Error` log.
 #[test]
 fn load_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
@@ -476,8 +476,7 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
     );
 }
 
-/// The typed twin of [`define_command_rejects_name_claimed_by_lazy_plugin`] —
-/// this section's "symmetric checks" had only the mappable half before this.
+/// The typed twin of [`define_command_rejects_name_claimed_by_lazy_plugin`].
 /// `define-typed-command!` must reject a name already claimed as a lazy
 /// plugin's typed `Lazy` stub, even when the eager define runs first.
 ///
@@ -586,8 +585,8 @@ fn plugin_config_outside_plugin_body_is_empty() {
 // ── Zero-trigger backstop (direct %declare-plugin! call) ──────────────────
 
 /// A direct `%declare-plugin!` call with all three activation lists empty must
-/// hard-error — the pre-existing backstop the Scheme `declare-plugin` wrapper's
-/// zero-trigger routing sits in front of. No prior test exercised this directly.
+/// hard-error. This is the backstop the Scheme `declare-plugin` wrapper's
+/// zero-trigger routing sits in front of.
 #[test]
 fn declare_plugin_bang_direct_zero_trigger_call_errors() {
     use crate::{ScriptingHost, null_host::NullHost};

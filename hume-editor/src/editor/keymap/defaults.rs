@@ -125,8 +125,8 @@ fn build_text_object_trie() -> KeyTrie {
     // Structural kinds (function/class/argument/comment/unit-test/value) — one
     // table shared with `register_structural` (`registry/defaults/
     // structural.rs`), so a kind added there needs no change here. `a`
-    // (argument) reuses the same two names the lexical scan registered
-    // before this feature — see `StructuralObject`'s doc.
+    // (argument) uses the `inner-argument`/`around-argument` names. See
+    // `StructuralObject`'s doc.
     for obj in STRUCTURAL_OBJECTS {
         let k = KeyEvent::new(KeyCode::Char(obj.key), Modifiers::NONE);
         inner_trie.bind_leaf(k, cmd!(obj.inner));
