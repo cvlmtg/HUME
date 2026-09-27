@@ -20,30 +20,20 @@ const H_WINDOW_SLACK: u16 = 4;
 
 /// Render one pane by walking its display lines.
 ///
-/// The walk *is* the layout: starting from the viewport's top display-line
-/// address and stepping one display line at a time through
-/// `display_lines::DisplayLineMap` visits exactly the display lines on
-/// screen, in order, whether each comes from a buffer line's wrapping or
-/// from a VIRTUAL_LINE-kind `DecorationSource`. There is no separate "which
-/// lines are visible" estimate to disagree with what gets emitted, and no
-/// skip counter to run down before the first display line — the starting
-/// address already accounts for a viewport parked partway into a line's
-/// block.
+/// The walk is the layout: stepping `DisplayLineMap` from the viewport's top
+/// address visits exactly the on-screen display lines in order, wrap and
+/// virtual lines alike, so no separate visibility estimate can disagree with
+/// what is drawn. The top address already covers a viewport parked partway
+/// into a line's block.
 ///
-/// Per-line work (formatting, highlight intervals) happens on the display
-/// line that first enters a line and is reused by its remaining display
-/// lines, so a wrapped line is formatted once however many of its display
-/// lines are on screen — and, since `store` is the pane's own and every
-/// other walk of it shares that, not reformatted at all if the scroll step
-/// (or a `z`-scroll since the last frame) already visited the line.
+/// Per-line work (formatting, highlights) runs once per buffer line and is
+/// reused by its display lines; lines the scroll step already formatted in
+/// the shared `store` are not formatted again.
 ///
-/// Peak scratch memory is one retained [`crate::display_lines::line_store::LineEntry`]
-/// per line any walk of this pane visited this frame —
-/// O(total_visible_graphemes), not O(max_graphemes_per_line), and only lines
-/// something formatted contribute to it at all.
-/// [`crate::format::LineFormat::reset_and_shrink`] is what keeps one
-/// pathologically wide line (a minified-JS file's single line) from pinning
-/// that peak for the rest of the session: the frame boundary hands it back.
+/// Peak scratch memory is one [`crate::display_lines::line_store::LineEntry`]
+/// per line visited this frame, O(total visible graphemes).
+/// [`crate::format::LineFormat::reset_and_shrink`] releases a pathologically
+/// wide line's buffers at the frame boundary.
 pub(crate) fn render_pane(
     pane_ctx: &mut PaneRenderCtx,
     scratch: &mut FrameScratch,

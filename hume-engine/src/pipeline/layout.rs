@@ -336,13 +336,7 @@ impl LayoutTree {
 
     /// How many side-by-side shares this subtree occupies along `direction`'s
     /// axis — the unit [`Self::equalize`] balances a split's two children in.
-    /// Named `share`, not `slot`: `slot` is this crate's viewport/scroll
-    /// vocabulary for `DisplayLinePos`'s
-    /// display-line-within-a-block index (see `CLAUDE.md`'s "Buffer lines,
-    /// display lines, and rows" invariant) — an unrelated concept that
-    /// happens to live in the same crate, so the two must not share a name
-    /// here (the sign-column gutter's own, user-facing `slot` is a separate,
-    /// documented carve-out from that rule).
+    /// Named `share` because `slot` is this crate's display-line vocabulary.
     /// A leaf is always one share. A split *on* `direction`'s axis is the sum
     /// of its children's shares, since each becomes its own share of that
     /// axis. A split on the *other* axis (a stacked or side-by-side group)

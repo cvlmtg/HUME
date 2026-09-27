@@ -1,33 +1,20 @@
 //! Helix-compatible TOML theme loader.
 //!
 //! Supports:
-//! - `inherits = "parent"` — the parent and child TOML documents (`[palette]`
-//!   included) are merged before anything is resolved to a color, so a
-//!   child's palette override reaches every scope that references it, not
-//!   just the scopes the child redeclares. Child wins on conflict, in both
-//!   the palette and the scope table.
-//! - `[palette]` — named-color indirection; palette names are resolved after
-//!   the whole `inherits` chain is merged, so they appear as `fg`/`bg` values
-//!   in scope entries just once, from the final merged document
-//! - The sixteen ANSI terminal color names (`red`, `light-gray`, …) as a
-//!   fallback for any color value not found in the palette — see
-//!   `loader::values::ANSI_COLORS`
-//! - Flat dotted keys: `"keyword.function" = { fg = "red", modifiers = ["bold"] }`
-//! - Real TOML section headers: `[keyword.function]` / `fg = "red"` is
-//!   equivalent to the flat form above — promoted to the same dotted scope
-//!   name before anything else runs, matching the theme editor's own
-//!   `walkScopes` (`tools/theme-editor/src/lib/toml.js`)
-//! - Shorthand string values: `"keyword" = "red"` sets `fg` from the named color
+//! - `inherits = "parent"`: parent and child documents (`[palette]` included)
+//!   merge before any color resolves, child winning, so a child's palette
+//!   override reaches every scope that uses it.
+//! - `[palette]` named colors, falling back to the sixteen ANSI names
+//!   (`loader::values::ANSI_COLORS`).
+//! - Flat dotted keys (`"keyword.function" = { fg = "red" }`) and section
+//!   headers (`[keyword.function]`), promoted to the same dotted name as the
+//!   theme editor's `walkScopes` does.
+//! - Shorthand values: `"keyword" = "red"` sets `fg`.
 //!
-//! Every error names the theme file it came from, tracing back through an
-//! `inherits` chain to the document that actually defined the offending key.
-//!
-//! A malformed *entry* — a bad color, an unknown modifier, a scope value in
-//! the wrong shape (Helix's `rainbow` bracket array, for instance) — doesn't
-//! fail the load. Helix collects these as warnings and gives the offending
-//! key a default style rather than discarding the whole theme, and this
-//! loader does the same (see `resolve_theme_table`'s doc for exactly what
-//! stays fatal instead).
+//! Errors name the file in the `inherits` chain that defined the key. A
+//! malformed entry (bad color, unknown modifier, Helix's `rainbow` array) is a
+//! warning and gets a default style, as in Helix; `resolve_theme_table`
+//! documents what stays fatal.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

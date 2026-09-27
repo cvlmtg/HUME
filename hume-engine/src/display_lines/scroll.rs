@@ -1,49 +1,21 @@
-//! The viewport's scroll verbs, and [`carry`] — the free-standing cursor-side
-//! walk a view-scroll command (`commands::scroll_view` in `hume-editor`) runs
-//! per selection, alongside a [`Viewport::scroll_by`] call, with the same
-//! requested delta.
+//! The viewport's scroll verbs, and [`carry`], the per-selection cursor walk a
+//! view-scroll command (`commands::scroll_view` in `hume-editor`) runs
+//! alongside [`Viewport::scroll_by`] with the same requested delta.
 //!
-//! Every verb here is the *only* way [`Viewport::top`](crate::pane::Viewport::top)
-//! changes from outside this crate — the single chokepoint for scrolloff
-//! arithmetic against a `DisplayLinePos` address. [`Viewport::top_at`] is the
-//! read counterpart to that write chokepoint: the only way to obtain a `top`
-//! that is safe to walk. A [`ViewGeometry`] is resolved once per call
-//! (`Viewport::geometry`) and threaded through, so no verb recomputes
-//! `margin`/`target` itself and no verb can observe a zero-height viewport.
+//! These verbs are the only way [`Viewport::top`](crate::pane::Viewport::top)
+//! changes from outside this crate, and [`Viewport::top_at`] is the only safe
+//! way to read one. A [`ViewGeometry`] is resolved once per call and threaded
+//! through, so no verb recomputes `margin`/`target` or sees a zero height.
 //!
-//! `carry` deliberately walks the requested `delta` on its own, rather than
-//! being handed how far `scroll_by` actually moved: `scroll_by`'s bound
-//! (`max_scroll_top`, a scrolloff-margin bound near EOF) can be tighter than
-//! `carry`'s own document/virtual-block-bounded one, so within
-//! `geo.height` buffer lines of EOF a large scroll request can move the
-//! viewport less than it moves the cursor — the cursor is still fully
-//! visible (well inside the viewport's own margin), it just didn't need to
-//! travel as far as the view did. Coupling the two would under-move the
-//! cursor in exactly that case — worse, tying `carry` to `scroll_by`'s
-//! *actual* movement stalls it permanently once the viewport saturates at
-//! that bound (every later call would see zero further movement and repeat
-//! the same landing forever), never reaching the document's true last line
-//! even though it's already on screen. Farther from EOF the two bounds
-//! can't diverge at all (`scroll_by`'s own `lines_to_end` skip proves it —
-//! see that check's own comment), so each walking its own bound against the
-//! same requested delta costs nothing there and is what keeps the cursor
-//! correct near EOF.
+//! `carry` walks the requested delta itself rather than following how far
+//! `scroll_by` moved. Near EOF `scroll_by`'s scrolloff bound is tighter than
+//! the document bound, and following it would stall the cursor short of the
+//! last line once the viewport saturates. Farther from EOF the two agree.
 //!
-//! `commands::scroll_view` (`hume-editor`) must leave every carried
-//! selection's head inside the scrolloff band, or the selection untouched —
-//! and nothing enforces that on its own: `max_scroll_top`'s bound and
-//! [`Viewport::reveal`]'s own settle point merely happen to share a
-//! `geo.target` number. `carry` closes that gap itself instead, in a second
-//! pass over whatever the delta-walk above already landed on: it clamps how
-//! many display lines below the viewport's *new* top that landing sits (the
-//! caller reads `Viewport::top` after its own `scroll_by` call), into `[geo.margin,
-//! geo.target]` — walking forward from the new top to the band's near or
-//! far edge if the raw landing fell outside it. A landing already in-band
-//! (the common case — most scrolls have somewhere to land within it) passes
-//! through unchanged, so "the cursor keeps its screen row" still holds
-//! exactly there. The corollary this restores: [`Viewport::reveal`] is
-//! provably idle after every `scroll_view` call, since whatever `carry`
-//! returns already satisfies `reveal`'s own contract.
+//! `carry` then clamps the landing into `[geo.margin, geo.target]` display
+//! lines below the viewport's new top, so the head always ends inside the
+//! scrolloff band and [`Viewport::reveal`] is idle after `scroll_view`. An
+//! in-band landing is unchanged, keeping the cursor's screen row.
 
 use super::{DisplayLineMap, DisplayLinePos};
 use crate::pane::{ViewGeometry, Viewport};

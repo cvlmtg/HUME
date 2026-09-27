@@ -33,32 +33,19 @@ pub(super) fn is_safe_theme_name(name: &str) -> bool {
             .all(|c| c != '/' && c != '\\' && c != '"' && c != '\0' && c != ':')
 }
 
-/// Finds and reads the first `<name>.toml` in `search_paths` not already in
-/// `visited`, inserting its canonical path into `visited` before returning
-/// its source alongside that same canonical path (the file's identity for
-/// error attribution).
+/// Finds and reads the first `<name>.toml` in `search_paths` whose canonical
+/// path is not in `visited`, inserts that path into `visited`, and returns the
+/// source with it (the file's identity for error attribution).
 ///
-/// A candidate whose canonical path is already in `visited` is a cycle
-/// through *that specific file* — but not necessarily through `name`: a
-/// config-dir theme shadowing a bundled theme of the same name legitimately
-/// `inherits`s the bundled (lower-priority, distinct-file) copy, so a match
-/// on the first, higher-priority candidate must not end the search. Skip and
-/// keep scanning (matching Helix's own `Loader::path`); only report `Cycle`
-/// once every candidate has been exhausted this way.
+/// A visited candidate is skipped, not an error: a config-dir theme may
+/// `inherits` the bundled theme of the same name. `Cycle` is reported only
+/// once every candidate is exhausted (as in Helix's `Loader::path`). If
+/// canonicalizing fails after a successful read, the unresolved path is the
+/// cycle key.
 ///
-/// Reads each candidate first (matching on `NotFound` to skip to the next
-/// search dir), then canonicalizes the path for the visited-check. Canonicalize
-/// failure after a successful read uses the unresolved path as the cycle key —
-/// safe because a deleted-after-read file cannot form a cycle.
-///
-/// A candidate that exists but can't be read for some other reason (a
-/// directory left in its place, a permissions error) is likewise skipped
-/// rather than aborting the whole search: search order is a priority list,
-/// and one broken higher-priority candidate must not shadow a working
-/// lower-priority one — most concretely the bundled copy a config-dir theme
-/// of the same name would otherwise make unreachable. The first such error is
-/// remembered and only reported if nothing later in the list works either, so
-/// a real problem still surfaces instead of silently becoming `NotFound`.
+/// An unreadable candidate (a directory, a permissions error) is also skipped,
+/// so a broken higher-priority file can't shadow a working lower-priority one.
+/// The first such error is reported if nothing later works.
 pub(super) fn find_theme_file(
     name: &str,
     search_paths: &[PathBuf],

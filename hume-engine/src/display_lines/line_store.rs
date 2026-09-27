@@ -1,76 +1,25 @@
 //! What a [`DisplayLineMap`](super::DisplayLineMap) knows about the lines it is walking.
 //!
-//! One store holds one entry per line visited: the line's virtual display
-//! lines and block shape, plus its formatted content display lines once
-//! anything has needed them. A `DisplayLineMap` borrows a store for its
-//! lifetime and reads everything through it — there is no second copy of a
-//! line anywhere.
+//! One [`LineEntry`] per visited line: its block shape from creation, and its
+//! [`LineFormat`] once something formats it. Under `WrapMode::None` the shape
+//! is known without formatting; under wrapping they arrive together.
 //!
-//! # One store per pane, shared by everything that walks it
+//! A [`PaneLineStore`] lives on its [`Pane`](crate::pane::Pane), so the scroll
+//! pass, render pass and between-frame consumers (mouse, visual movement,
+//! `z`-scroll) share entries. It is per pane because [`FormatKey`] names no
+//! pane: two panes on the same buffer and width resolve an identical key.
 //!
-//! A [`PaneLineStore`] lives on the [`Pane`](crate::pane::Pane) it describes,
-//! so every walker of that pane reads and writes the same entries:
-//!
-//! - The frame's two passes — the editor's scroll step, deciding where the
-//!   viewport lands, and the render pass drawing it. Whichever reaches a line
-//!   first formats it; the other finds it already done. Under a wrapping mode
-//!   they walk nearly the same range, so this is most of the work either does.
-//! - The between-frame consumers (mouse mapping, visual movement, the
-//!   `z`-scroll commands), which run after a frame has drawn and so find the
-//!   visible range already formatted.
-//!
-//! Ownership by the pane is what makes that sharing safe to state: two panes
-//! can show the same buffer at the same width and resolve a bit-identical
-//! [`FormatKey`], which names no pane — so a store reachable from both would
-//! serve one pane's block shapes for the other.
-//!
-//! # Two-phase entries
-//!
-//! [`LineEntry`] carries its block shape from the moment it exists, and its
-//! [`LineFormat`] only once something formats the line. The gap is real
-//! rather than an artefact: under `WrapMode::None` a line's block shape is
-//! known without formatting anything (one content display line, whatever
-//! its length), so an entry sits metadata-only until a render walk reaches
-//! it. Under a wrapping mode the display-line *count* is the formatter's
-//! output, so the format arrives with the shape.
-//!
-//! # Scope key
-//!
-//! Entries describe a line's *block shape* under one set of formatting
-//! inputs. [`FormatKey`] carries all of them, and a store whose key changes
-//! drops what it holds. That is what keeps the two passes honest about
-//! sharing:
-//!
-//! - Wrapping: both passes resolve the same key, so they share.
-//! - `WrapMode::None`: the render pass clips to an `h_window` and the scroll
-//!   pass does not. A windowed format *drops* leading graphemes rather than
-//!   truncating, so a windowed and an unwindowed format are not
-//!   interchangeable — but block shape (virtual display lines,
-//!   `before`/`after`) does not depend on the window, so both passes still
-//!   share *that*. `h_window`
-//!   is recorded on [`LineFormat`] instead of on `FormatKey`, and
-//!   [`LineFormat::covers`](crate::format::LineFormat::covers) is what keeps
-//!   a windowed and an unwindowed format from answering for each other,
-//!   without evicting the shape they agree on.
-//!
-//! `buffer_tag` is opaque here on purpose: identifying a buffer's content
-//! means reading its identity, its content generation and its decoration
-//! store's generation, and this crate depends on neither the editing nor the
-//! editor crate. The caller supplies those as a [`BufferTag`], which this
-//! module only ever compares.
-//!
-//! # Lifetime: never across a frame
+//! A store drops its entries when its [`FormatKey`] changes. The unwrapped
+//! render's `h_window` is not in the key because it doesn't affect block
+//! shape; it lives on [`LineFormat`], where
+//! [`LineFormat::covers`](crate::format::LineFormat::covers) keeps windowed and
+//! unwindowed formats apart.
 //!
 //! [`EngineView::begin_frame`](crate::pipeline::EngineView::begin_frame)
-//! rewinds every pane's store, and that is a correctness requirement rather
-//! than hygiene. The per-pane inlay-hint and
-//! EOL-text mirrors are rebuilt each frame *filtered to the viewport that
-//! frame shows*, without bumping the decoration store's generation — so a
-//! line scrolling into view can gain inline inserts that change its
-//! wrap-display-line count while both the buffer's content generation and
-//! the decoration generation stay put. Nothing in [`FormatKey`] can see that, and nothing
-//! needs to while entries never outlive the frame that made them. Reusing
-//! them across frames would need the visible window in the key.
+//! rewinds every store, and correctness depends on it: inlay-hint and EOL-text
+//! mirrors are rebuilt per frame for the visible viewport without bumping the
+//! decoration generation, so a line scrolling into view can change its wrap
+//! count under an unchanged key.
 
 use rustc_hash::FxHashMap;
 
