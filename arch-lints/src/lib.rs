@@ -147,6 +147,23 @@ pub fn workspace_source_paths(
     paths
 }
 
+/// Every `.rs` file in every workspace member, `src/` and `tests/` alike.
+/// For lints about comments rather than code, where test files matter as
+/// much as production ones.
+pub fn workspace_all_rs_paths(workspace_root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    for c in workspace_member_crates(workspace_root) {
+        let dir = workspace_root.join(&c);
+        assert!(
+            dir.is_dir(),
+            "workspace member {c} not found at {}",
+            dir.display()
+        );
+        collect_all_rs(&dir, &mut paths);
+    }
+    paths
+}
+
 /// The portion of `line` before any line comment (`//`), skipping `//`
 /// that appears inside a string literal — a naive `line.find("//")` would
 /// truncate a call like `log_path("cache//tempfile::tempdir()")` at the
@@ -337,8 +354,7 @@ pub fn quoted_strings(s: &str) -> Vec<String> {
 
 #[test]
 fn strip_line_comment_cases() {
-    // Fail oracle: revert strip_line_comment to a naive `line.find("//")`
-    // and the string-literal cases below (2nd and 4th) must start failing.
+    // The 2nd and 4th cases put `//` inside a string literal.
     assert_eq!(strip_line_comment("foo(); // bar"), "foo(); ");
     assert_eq!(strip_line_comment("foo();"), "foo();");
     assert_eq!(strip_line_comment(r#"call("a//b")"#), r#"call("a//b")"#);

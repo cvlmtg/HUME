@@ -423,12 +423,9 @@ fn scan(
     violations
 }
 
-/// Fail oracle: add `std::process::Command::new("some-tool").spawn()` to any
-/// `#[test] fn` body in `editor/tests/` with no preceding auto-claim marker —
-/// this test must fail naming that line. (Sabotage-verified against the
-/// pre-fix shape of `git_diff_plugin.rs`, which called `git_init`/
-/// `commit_file` — themselves calling `unix/mod.rs`'s unqualified
-/// `Command::new("git")` — before `setup()`'s `RealRuntimeGuard::new()`.)
+/// An unqualified `Command::new(..)` spawn in an `editor/tests/` test body,
+/// reached before any auto-claim marker, is reported with its line. Helpers
+/// that spawn on the test's behalf (`unix/mod.rs`'s git helpers) count too.
 #[test]
 fn unguarded_unqualified_spawn() {
     let workspace_root = workspace_root();

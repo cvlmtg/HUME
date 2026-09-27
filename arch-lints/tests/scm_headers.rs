@@ -69,12 +69,8 @@ fn header_drift(template: &str, generated: &str) -> Option<String> {
     None
 }
 
-/// Fail oracle: append a header paragraph to a generated file without
-/// touching its template. `header_drift` compares *template* lines against
-/// `generated` but must also flag anything `generated` has left over past
-/// the template's length — a template exactly as long as the generated
-/// header (the common case) passes clean either way, so this needs a case
-/// where `generated` genuinely has more.
+/// Extra `;;;` lines past the end of the template count as drift, not
+/// only lines that differ from it.
 #[test]
 fn header_drift_catches_a_hand_appended_header_paragraph() {
     let template = ";;; one\n;;; two";
@@ -100,9 +96,8 @@ fn header_drift_ignores_non_comment_lines_past_the_header() {
     );
 }
 
-/// Fail oracle: hand-edit a sentence in `runtime/scheme/languages.scm`'s
-/// header without updating `LANGUAGES_HEADER` in `sync-grammars.py` —
-/// this test must fail naming the diverging line.
+/// A hand-edited header line in a generated `.scm` file is reported with
+/// the line that diverges from its generator's template.
 #[test]
 fn generated_scm_headers_match_their_generator_templates() {
     let workspace_root = arch_lints::workspace_root();

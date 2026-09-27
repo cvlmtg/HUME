@@ -67,10 +67,8 @@ fn reads_absent_marker_distinguishes_read_from_construct() {
     }
 }
 
-/// Fail oracle: hand-roll a `SteelVal::BoolV(false) => None`-shaped decode in
-/// any non-test, non-`args.rs` file (e.g. reintroduce the old
-/// `diagnostics_for_buffer` decode in `decorations.rs`) and this test names
-/// the file and line.
+/// A hand-rolled `SteelVal::BoolV(false) => None` decode in any non-test
+/// file other than `args.rs` is reported with its file and line.
 #[test]
 fn absent_marker_is_decoded_only_in_args_rs() {
     let workspace_root = workspace_root();

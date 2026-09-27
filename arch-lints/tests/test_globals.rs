@@ -28,8 +28,8 @@
 
 use arch_lints::{editor_test_tree_paths, scan_forbidden, workspace_root};
 
-/// Fail oracle: add `let dir = tempfile::tempdir().unwrap();` to any test
-/// file other than `tests/mod.rs` — this test must fail naming that line.
+/// A raw `tempfile::tempdir()` in any test file other than `tests/mod.rs`
+/// is reported with its line.
 #[test]
 fn no_bare_tempdir_outside_the_safe_constructors() {
     let workspace_root = workspace_root();

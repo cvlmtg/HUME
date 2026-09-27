@@ -126,12 +126,9 @@ fn defined_commands(dir: &std::path::Path, definer: &str) -> Vec<String> {
     names
 }
 
-/// Fail oracle: comment out one entry in `core:lsp/manifest.scm`'s
-/// `#:commands` list (e.g. delete `"lsp-hover"`) — this test must fail
-/// naming `lsp-hover` as manifest-missing. Move `"lsp-status"` from
-/// `#:typed-commands` to `#:commands` in the same manifest — this test must
-/// fail naming `lsp-status` as belonging in `#:typed-commands`, as a single
-/// wrong-clause violation (not two unpaired missing/stale lines).
+/// A command defined by a plugin but absent from its manifest is reported
+/// as missing. A typed command listed under `#:commands` (or the reverse)
+/// is reported once, as being in the wrong clause.
 #[test]
 fn plugin_manifest_commands_match_defined_commands() {
     let workspace_root = workspace_root();

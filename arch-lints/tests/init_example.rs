@@ -43,11 +43,8 @@ fn example_core_plugins(example: &str) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
-/// Fail oracle: `mv runtime/plugins/core/git-diff runtime/plugins/core/gitdiff`
-/// (on-disk name no longer matches the example's `"core:git-diff"`) — this
-/// test must fail listing both the missing `core:gitdiff` and the stale
-/// `core:git-diff`. Commenting out the `core:git-diff` line's plugin name
-/// entirely produces the same missing-entry failure.
+/// A renamed plugin directory is reported twice: once as missing from the
+/// example under its new name, once as a stale entry under the old one.
 #[test]
 fn init_scm_example_lists_every_core_plugin() {
     let workspace_root = workspace_root();
