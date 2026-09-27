@@ -2,7 +2,7 @@
 //!
 //! Free functions (not `impl Editor` methods) so the same logic can be
 //! called by both the `Editor` methods (thin delegators) and command bodies
-//! that hold disjoint borrows from other `Editor` fields — avoiding the
+//! that hold disjoint borrows from other `Editor` fields, avoiding the
 //! whole-struct `&mut self` lock that forces callers to clone captured text.
 //!
 //! Each function that may emit a clipboard warning returns `Option<String>`
@@ -17,7 +17,7 @@ use hume_ops::register::{CLIPBOARD_REGISTER, RegisterSet, is_register_linewise};
 /// Pending state for the two-keystroke `"<reg>` register-prefix sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RegisterPrefix {
-    /// `"` pressed — waiting for the register-name character.
+    /// `"` pressed, waiting for the register-name character.
     Awaiting,
     /// Register name received; armed for the next yank/delete/change/paste.
     Selected(char),
@@ -42,7 +42,7 @@ pub(in crate::editor) fn read_register_text<'a>(
         match clipboard.read() {
             Ok(text) => {
                 // When the OS clipboard matches what we last wrote, the in-memory
-                // 'c' register is in sync — prefer its structured Vec<String>,
+                // 'c' register is in sync, so prefer its structured Vec<String>,
                 // which preserves multi-selection boundaries.  When they differ,
                 // the clipboard was externally modified; use its content directly.
                 if registers.clipboard_blob() == Some(&text)
@@ -51,7 +51,7 @@ pub(in crate::editor) fn read_register_text<'a>(
                     return (Some(Cow::Borrowed(mem)), None);
                 }
                 // Only past the blob-equality check above, which compares
-                // against the raw bytes HUME itself last wrote to the OS —
+                // against the raw bytes HUME itself last wrote to the OS;
                 // normalizing before that check would break self-round-trip
                 // detection for a CRLF-bearing clipboard entry.
                 let text = normalize_line_endings(&text).into_owned();

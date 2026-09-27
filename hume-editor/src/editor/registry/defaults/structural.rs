@@ -9,16 +9,16 @@ use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 /// One row of the structural text-object / navigation family: the kind, its
 /// `m i` / `m a` third-level key, the four command names it registers, and
 /// the `inner`/`around` pair's doc strings, static rather than templated
-/// from `noun` — "including its delimiters" is wrong for an argument (a
+/// from `noun`: "including its delimiters" is wrong for an argument (a
 /// separator comma, never brackets) and a function (its signature, not
 /// delimiters). `next`/`prev`'s docs carry no such per-kind irregularity
 /// ("Select the next/previous `<noun>`." is exact for all six), so
 /// `register_structural` derives them from `noun` instead of a fifth and
 /// sixth static string. One table drives both registration
 /// (`register_structural`, below) and the keymap
-/// (`keymap/defaults::build_text_object_trie`) — a kind added here needs no
+/// (`keymap/defaults::build_text_object_trie`), so a kind added here needs no
 /// change anywhere else. Doc wording mirrors
-/// `user-manual/docs/builtin-commands.md`'s rows for these commands — update
+/// `user-manual/docs/builtin-commands.md`'s rows for these commands; update
 /// both together.
 pub(in crate::editor) struct StructuralObject {
     pub(in crate::editor) kind: ObjectKind,
@@ -29,7 +29,7 @@ pub(in crate::editor) struct StructuralObject {
     pub(in crate::editor) around_doc: &'static str,
     pub(in crate::editor) next: &'static str,
     pub(in crate::editor) prev: &'static str,
-    /// The kind's name as it reads in "Select the next/previous `<noun>`." —
+    /// The kind's name as it reads in "Select the next/previous `<noun>`.",
     /// e.g. `"function"`, `"class or type"`.
     pub(in crate::editor) noun: &'static str,
 }
@@ -40,7 +40,7 @@ pub(in crate::editor) struct StructuralObject {
 ///
 /// `test` and `entry` deliberately diverge from Helix's own letters (`T` and
 /// `e`) to fit `keymap/defaults::build_goto_trie`'s `g <key>`/`g <KEY>`
-/// scheme, which derives the "previous" bind by uppercasing `key` — that
+/// scheme, which derives the "previous" bind by uppercasing `key`. That
 /// requires every `key` here to be lowercase (enforced by a
 /// `debug_assert!` in that function) and every uppercased form to be
 /// distinct. Helix's `T` has no such lowercase form, and `e` collides with
@@ -112,7 +112,7 @@ pub(in crate::editor) const STRUCTURAL_OBJECTS: &[StructuralObject] = &[
     StructuralObject {
         // `ObjectKind::Entry` names the tree-sitter capture half
         // (`@entry.inside`/`@entry.around`) in upstream Helix-format
-        // `textobjects.scm` files — not ours to rename. Only the
+        // `textobjects.scm` files, not ours to rename. Only the
         // user-facing command names, key, and doc strings below use
         // "value" instead.
         kind: ObjectKind::Entry,
@@ -134,9 +134,9 @@ impl CommandRegistry {
     /// two `Parameter` names are `inner-argument`/`around-argument`,
     /// `Argument`-bodied with the lexical scan as fallback).
     ///
-    /// `Select`/`Argument` register as `Selection` (`Establishes` — each
+    /// `Select`/`Argument` register as `Selection` (`Establishes`: each
     /// replayable on its own from a fresh cursor, same as `select-line`/
-    /// `ms(`); `Goto` registers as `Motion` (`jump: true` — a goto records a
+    /// `ms(`); `Goto` registers as `Motion` (`jump: true`, since a goto records a
     /// jump-list entry, and `Motion` always carries `SelectionTracking::
     /// Extends`, so a Move-mode press is not replayed by `.` while an Extend
     /// step is).
@@ -182,7 +182,7 @@ impl CommandRegistry {
                     dir: Direction::Forward,
                 })),
                 jump: true,
-                // Same forward-object-jump problem as `}` — see
+                // Same forward-object-jump problem as `}`; see
                 // `CmdMeta::aligns_view`'s doc.
                 aligns_view: true,
             });

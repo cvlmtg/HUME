@@ -17,17 +17,17 @@ use crate::editor::error::CommandError;
 /// same distance, so the cursor keeps its screen row.
 ///
 /// The single implementation behind the wheel, `Ctrl-d`/`Ctrl-u` and
-/// `PageDown`/`PageUp` — they differ only in `count` and which pane they pass
+/// `PageDown`/`PageUp`: they differ only in `count` and which pane they pass
 /// (always `state.focus.id()`, except the wheel, which hit-tests the pointer
-/// against `pane_at_screen_pos` — see `editor/mouse.rs`). `Viewport::scroll_by`
+/// against `pane_at_screen_pos`; see `editor/mouse.rs`). `Viewport::scroll_by`
 /// is what makes a scroll move the view even while the cursor is still
 /// inside it (a `Ctrl-d` from the top of a file); `carry`, called per
 /// selection below with the same requested `delta` and the viewport's own
-/// post-scroll `top` — walking its own bound independently of `scroll_by`'s,
-/// see `hume_engine::display_lines::scroll`'s module doc for why — is what
+/// post-scroll `top` (walking its own bound independently of `scroll_by`'s;
+/// see `hume_engine::display_lines::scroll`'s module doc for why) is what
 /// keeps the cursor at the same relative position (or, failing that, lands
 /// it back inside the scrolloff band) instead of being snapped back next
-/// frame — see `carry`'s own doc for why a selection it can't place stays
+/// frame. See `carry`'s own doc for why a selection it can't place stays
 /// untouched rather than collapsing.
 pub(in crate::editor) fn scroll_view(
     state: &mut EditorState,
@@ -54,7 +54,7 @@ pub(in crate::editor) fn scroll_view(
     let top = viewport.top();
 
     // `apply_doc_motion`'s own head-before/after comparison is what raises
-    // `PaneBufferState::reveal_pending` here — no separate pin to track: a
+    // `PaneBufferState::reveal_pending` here. No separate pin to track: a
     // scroll that couldn't carry a selection anywhere (parked behind a
     // virtual block, or already at a document edge) leaves that selection's
     // head unchanged, which is exactly the case the funnel already treats
@@ -82,7 +82,7 @@ pub(in crate::editor) fn scroll_view(
     );
 }
 
-/// How far `Ctrl-d`/`Ctrl-u` move given `visible_rows` rows on screen — the
+/// How far `Ctrl-d`/`Ctrl-u` move given `visible_rows` rows on screen. The
 /// buffer viewport, the bottom drawer, the fuzzy picker, and a scrollable
 /// popup all page by this same step, so a browsed drawer or picker feels
 /// like a scrolled pane under the same keys.
@@ -164,7 +164,7 @@ fn cmd_view_scroll_to_display_line(
         .panes
         .buffer_state(pid, buf_id)
         .expect(
-            "pane has no seeded state for the buffer it is showing — \
+            "pane has no seeded state for the buffer it is showing: \
              pane.buffer_id and panes.state are out of sync",
         )
         .selections()
@@ -185,7 +185,7 @@ fn cmd_view_scroll_to_display_line(
 /// Center the head in the viewport, like `z z`. Infallible core shared by
 /// [`cmd_view_center`] (the registered `z z` command) and any other caller
 /// that wants the same effect without going through a native `EditorCmd`'s
-/// `Result` — `lifecycle.rs`'s post-file-load placement, LSP goto-definition
+/// `Result`: `lifecycle.rs`'s post-file-load placement, LSP goto-definition
 /// (`lsp/edits.rs`), and `step_align_view`'s `Center` arm.
 pub(in crate::editor) fn view_center(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
     let target = (viewport(view, pid).height as usize) / 2;

@@ -1,5 +1,5 @@
 //! The introspection surface: capabilities, server status, generation, and
-//! ready-made wire-position params. All read-only — no queueing, unlike
+//! ready-made wire-position params. All read-only: no queueing, unlike
 //! request/notify (which must defer to the eval-result drain boundary
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
@@ -16,14 +16,14 @@ use crate::editor::EditorState;
 
 /// Resolves `bid`'s own attached server to a running `ServerId`. Shared by
 /// `lsp-request`/`lsp-notify` (`bridge.rs`'s `send_one_lsp_request`/
-/// `send_one_lsp_notify`) and `lsp-capabilities` — never a fallback to
+/// `send_one_lsp_notify`) and `lsp-capabilities`, never a fallback to
 /// whichever buffer happens to be focused when this runs, so a caller
 /// resolving a follow-up request from inside a response callback gets the
 /// buffer the original request was about, not one a user's intervening
 /// keystrokes moved focus to.
 ///
 /// Errors loudly on a Crashed (or otherwise untracked) server rather than
-/// resolving to it — its sends are silently dropped (`send_or_queue`), so a
+/// resolving to it: its sends are silently dropped (`send_or_queue`), so a
 /// caller would otherwise learn of the problem only as a generic timeout at
 /// the request's deadline. `Starting` still resolves: `send_or_queue`'s
 /// Starting-queue correctly defers the send until the handshake completes.
@@ -43,20 +43,20 @@ pub(super) fn resolve_server_for_buffer(
             Ok(sid) // send_or_queue handles Starting's deferred send correctly
         }
         Some(hume_lsp::client::ServerState::Crashed) => {
-            Err("lsp server crashed — run :lsp-restart".to_string())
+            Err("lsp server crashed (run :lsp-restart)".to_string())
         }
         Some(hume_lsp::client::ServerState::Dead) | None => Err("lsp server stopped".to_string()),
     }
 }
 
-/// The registered language for `server_id` — reverse of the
+/// The registered language for `server_id`: reverse of the
 /// `(language, root) -> ServerId` lookup `lsp/registration.scm` uses to
 /// attach a buffer to a server.
 pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<LanguageName> {
     lsp.servers.get(&server_id)?.language.clone()
 }
 
-/// Whether `server` advertises `completionProvider.resolveProvider` — the
+/// Whether `server` advertises `completionProvider.resolveProvider`, the
 /// gate `BufferSession::accept`'s resolve round trip reads
 /// (`editor/completion/session/accept.rs`). A narrow reader rather than
 /// widening `LspState.servers`/`ServerEntry.client` themselves: the
@@ -72,7 +72,7 @@ pub(in crate::editor) fn completion_resolve_provider(lsp: &LspState, server: Ser
         .unwrap_or(false)
 }
 
-/// The server's raw wire capabilities — see `LspClient::capabilities_json`'s
+/// The server's raw wire capabilities. See `LspClient::capabilities_json`'s
 /// doc comment for why this, not the typed decode, is what
 /// `(lsp-capabilities …)` must hand to Steel. `Arc`-wrapped: this clone is
 /// just a refcount bump, not a deep copy of the capabilities blob.
@@ -85,7 +85,7 @@ pub(in crate::editor) fn capabilities(
     lsp.servers.get(&sid)?.client.capabilities_json().cloned()
 }
 
-/// One entry per running (language, root) server — `:lsp-status`'s data in
+/// One entry per running (language, root) server: `:lsp-status`'s data in
 /// structured form.
 pub(in crate::editor) fn server_status(
     lsp: &LspState,
@@ -114,15 +114,15 @@ pub(in crate::editor) fn server_for_buffer(
     server_language(lsp, sid)
 }
 
-/// A buffer's attached server's loading state — drives the statusline's
+/// A buffer's attached server's loading state. Drives the statusline's
 /// loading spinner (`statusline::elements::diagnostics`).
 pub(crate) enum LspActivity {
     /// No attached server, a `Running` server with no progress task in
-    /// flight, or a `Crashed`/`Dead` one — nothing to animate.
+    /// flight, or a `Crashed`/`Dead` one: nothing to animate.
     Idle,
     /// Mid `initialize` handshake.
     Starting,
-    /// A `$/progress` task (indexing, loading, ...) is in flight — the most
+    /// A `$/progress` task (indexing, loading, ...) is in flight: the most
     /// recently begun one, if the server is running more than one. Carries
     /// no title: the statusline only shows the spinner + percentage
     /// (`statusline::elements::diagnostics`); the underlying task's
@@ -150,7 +150,7 @@ pub(crate) fn activity(state: &EditorState, lsp: &LspState, id: BufferId) -> Lsp
     }
 }
 
-/// Whether `language` currently has a `register-lsp-server!` config —
+/// Whether `language` currently has a `register-lsp-server!` config:
 /// registered, not necessarily attached/running. Distinguishes "no server
 /// registered" from "registered but still starting", which
 /// `server_for_buffer` (attachment, not registration) can't tell apart.
@@ -176,7 +176,7 @@ fn uri_and_encoding(
 
 /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
 /// params from the primary cursor head in `t`'s own pane. `None` only when
-/// `t`'s buffer has no path or no attached server — `t` is already resolved
+/// `t`'s buffer has no path or no attached server. `t` is already resolved
 /// (see `commands::CommandPane::resolve`), so there is no "not shown" case left.
 pub(in crate::editor) fn position_params(
     state: &EditorState,
@@ -199,7 +199,7 @@ pub(in crate::editor) fn position_params(
     }))
 }
 
-/// The negotiated encoding of a specific running server — the counterpart
+/// The negotiated encoding of a specific running server: the counterpart
 /// for a caller that already has a `ServerId` in hand instead of resolving
 /// one from a `BufferId` (a server-initiated request, or a response being
 /// tagged at dispatch time). `None` if the server is no longer tracked.
@@ -212,16 +212,16 @@ pub(in crate::editor) fn server_encoding(
 
 /// Wire `(line, character)` → char offset, decoded in `encoding`, for
 /// `lsp-range->offsets`. `None` if `id` is unknown. `encoding` is the
-/// caller's own resolve — the tagged producing-server encoding of the
+/// caller's own resolve: the tagged producing-server encoding of the
 /// response the position was read out of (`JsonHandle::position_encoding`),
 /// never `id`'s *currently* attached server: the two can diverge (a restart
 /// renegotiates a different encoding, a detach leaves none), and the tag is
 /// always the encoding the position was actually written in. No `LspState`
-/// lookup needed at all — same reasoning as [`label_slice`]'s own `encoding`
+/// lookup needed at all, for the same reasoning as [`label_slice`]'s own `encoding`
 /// parameter, below.
 ///
 /// Clamps rather than errors on an out-of-range `line`/`character`, same as
-/// `wire_to_char` itself — a range's `end` legitimately lands exactly at
+/// `wire_to_char` itself: a range's `end` legitimately lands exactly at
 /// the buffer's `len_chars()` (`set-extra-highlights!`'s `validate_range`
 /// accepts that boundary), so this must not reject it. Point-anchored
 /// callers want the opposite; see [`wire_point_to_char_for_buffer`].
@@ -239,7 +239,7 @@ pub(in crate::editor) fn wire_to_char_for_buffer(
 
 /// Wire `(line, character)` → char offset, for `lsp-position->offset`.
 /// Same conversion as [`wire_to_char_for_buffer`], but refuses (`None`)
-/// when the result lands at `len_chars()` — the position `wire_to_char`
+/// when the result lands at `len_chars()`: the position `wire_to_char`
 /// clamps a past-end `line` onto (the buffer's trailing phantom line, every
 /// buffer ending with a structural `\n`). A point-anchored decoration
 /// setter (`set-inlay-hints!`'s `validate_offset`) rejects that offset
@@ -264,7 +264,7 @@ pub(in crate::editor) fn wire_point_to_char_for_buffer(
 /// address `SignatureInformation.label`, which never reaches a buffer, so
 /// none of the `bid`-anchored converters above fit. `encoding` is the
 /// caller's own resolve (the `offsets` handle's tagged producing-server
-/// encoding) — this function needs no buffer or `LspState` lookup at all.
+/// encoding). This function needs no buffer or `LspState` lookup at all.
 pub(in crate::editor) fn label_slice(
     label: &str,
     start: usize,
@@ -276,15 +276,15 @@ pub(in crate::editor) fn label_slice(
     label[range].to_string()
 }
 
-/// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))` —
+/// `(diagnostics-for-buffer bid #:severity floor #:range (start . end))`:
 /// decoded, filtered, capped-at-1000 hashmaps. `start`/`end`
 /// are char offsets; `line`/`char-col` are the char-indexed start position,
-/// ready for `goto-location!` shape 2 — an *addressing* unit, exact and
+/// ready for `goto-location!` shape 2, an *addressing* unit, exact and
 /// lossless. `grapheme-col` is the same position as a grapheme column
-/// instead, for *display* — the one unit every HUME surface (statusline,
+/// instead, for *display*: the one unit every HUME surface (statusline,
 /// diagnostics, LSP location lists) shows the user; never render `char-col`
 /// directly. `end-line` is the range's *end* clamped and converted the same
-/// way `line` is — the diagnostics plugin's gutter-sign pass expands
+/// way `line` is. The diagnostics plugin's gutter-sign pass expands
 /// `[line, end-line]` inclusive to mark every line a multi-line diagnostic
 /// touches. `severity-rank` is `DiagSeverity`'s own `Ord` discriminant (`0`
 /// for error, counting up to `3` for hint) alongside the `severity` string,
@@ -293,7 +293,7 @@ pub(in crate::editor) fn label_slice(
 /// (e.g. `'warn` typoed for `'warning`) rather than silently returning
 /// nothing that qualifies.
 ///
-/// With no `#:severity`, defaults to `lsp.diagnostics-severity-floor` — the
+/// With no `#:severity`, defaults to `lsp.diagnostics-severity-floor`, the
 /// same floor `update_highlight_providers` applies to underlines, so a
 /// caller (e.g. the diagnostics plugin's EOL summary and gutter signs)
 /// agrees with what's on screen unless it explicitly asks for a different
@@ -316,7 +316,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     };
     // `text.end()`, not a `usize::MAX` sentinel: the buffer's own exclusive
     // end bound is the honest "whole buffer" default, and only becomes
-    // available once `text` is in hand — this is why the default is
+    // available once `text` is in hand. This is why the default is
     // resolved here rather than at the Host seam that converts `range` into
     // this type.
     let range = range.unwrap_or_else(|| {
@@ -332,7 +332,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             // server can report a diagnostic anchored at end-of-file, one
             // past the buffer's last real char, and `len_chars()` itself
             // resolves to the buffer's trailing phantom empty line (every
-            // buffer ends with a structural `\n` — see
+            // buffer ends with a structural `\n`; see
             // `hume-editor/src/editor/host_impl.rs`'s `line_start_offset`).
             // Landing there instead of the buffer's last content line would
             // hand plugins a `line` that later fails the fail-fast bound
@@ -345,7 +345,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
                 hume_editing::grapheme::grapheme_col_in_line(text, line, clamped_start);
             // `end-line` mirrors `line`'s clamp so a range that reaches (or
             // overshoots) end-of-file still names the buffer's last content
-            // line rather than the phantom trailing one — the gutter-sign
+            // line rather than the phantom trailing one. The gutter-sign
             // plugin expands `[line, end-line]` inclusive to mark every line
             // a multi-line diagnostic touches.
             let end_line = text.char_to_line(d.end.retreat_saturating(1).min(last_content_char));
@@ -383,14 +383,14 @@ pub(crate) fn spinner_frame(lsp: &LspState) -> usize {
 }
 
 /// `line`/`character` clamped into `text`'s addressable range and converted
-/// to a grapheme column — `None` when `line` names no real content, rather
+/// to a grapheme column. `None` when `line` names no real content, rather
 /// than silently reporting a column under a `line` that doesn't match it.
 ///
 /// The bound is the last *content* line, so a server's past-end response and
 /// the buffer's own phantom trailing line (the one the structural `\n`
 /// creates) both return `None`. Clamping to the ropey domain instead would
 /// admit the phantom line and report column 1 of a line that has no
-/// characters — a drawer row pointing one line past the file's end.
+/// characters: a drawer row pointing one line past the file's end.
 fn wire_pos_to_grapheme_col(
     text: &hume_editing::text::BufferText,
     pos: hume_rope::position_encoding::WirePos,
@@ -467,7 +467,7 @@ pub(in crate::editor) fn location_display_parts(
                     wire_pos_to_grapheme_col(text, wl.pos, encoding)
                         .map(hume_rope::column::GraphemeCol::index)
                 }
-                // No open buffer to measure against — see this function's
+                // No open buffer to measure against. See this function's
                 // doc for why that means the wire unit itself, not a read.
                 None => Some(wl.pos.character),
             };
@@ -482,7 +482,7 @@ pub(in crate::editor) fn location_display_parts(
 
 /// Char range → wire `{"start" "end"}`. HUME selections are inclusive
 /// (`range.end` names the last included char); LSP ranges are half-open, so
-/// `end` is one grapheme cluster past — `next_grapheme_boundary`, not
+/// `end` is one grapheme cluster past: `next_grapheme_boundary`, not
 /// `to_exclusive`/a raw `+ 1`, since `range.end` may be the first char of a
 /// multi-char cluster (`é` = e + U+0301, a ZWJ emoji sequence): stepping by
 /// one raw char would land the wire range mid-cluster.
@@ -501,7 +501,7 @@ fn char_range_to_wire(
 }
 
 /// Ready-made range params from the primary selection alone, in `t`'s own
-/// pane — the shape `:lsp-code-actions` needs, since its diagnostics context
+/// pane: the shape `:lsp-code-actions` needs, since its diagnostics context
 /// (`lsp/primary-selection-range` in `actions.scm`) is primary-scoped too.
 pub(in crate::editor) fn primary_range_params(
     state: &EditorState,
@@ -528,12 +528,12 @@ pub(in crate::editor) fn primary_range_params(
 /// of selections that touch end-to-end (`next.start() == prev.end() + 1`)
 /// collapses into one range, since an LSP range is naturally contiguous and
 /// splitting a touching run into separate ranges would buy nothing. A
-/// non-linewise selection is simply skipped — the caller decides what an
+/// non-linewise selection is simply skipped: the caller decides what an
 /// all-linewise, all-partial, or mixed selection set means
 /// (`(selections-linewise? id)` is the "all of them" read; `ranges` empty
 /// here is the "none of them" read). An ambiguous selection (see
 /// `hume_editing::selection::linewise_classification`) is skipped the same
-/// way — including from the touch check, so a stray cursor can't bridge two
+/// way, including from the touch check, so a stray cursor can't bridge two
 /// real linewise neighbors into one coalesced range that silently reformats
 /// the blank line between them too. `None` only when `t`'s buffer has no
 /// path or no attached server, matching every other params builder in this
@@ -571,13 +571,13 @@ pub(in crate::editor) fn linewise_ranges_params(
 }
 
 /// `pane`'s visible line range, end-exclusive, clamped to a buffer of
-/// `content_lines` — the single computation shared by `queue_viewport_change`
+/// `content_lines`: the single computation shared by `queue_viewport_change`
 /// (pane -> its own range, for the `on-viewport-change` hook payload) and
 /// [`viewport_range`] (buffer -> the pane showing it, for the synchronous
 /// `(viewport-range bid)` builtin, which wraps this range in a dotted-pair
 /// wire value). Clamped to `content_lines` so the range never points past the
-/// buffer's last *content* line — not ropey's phantom line past the
-/// structural trailing `\n` — even when the pane's viewport height exceeds
+/// buffer's last *content* line (not ropey's phantom line past the
+/// structural trailing `\n`), even when the pane's viewport height exceeds
 /// the buffer.
 ///
 /// `height.max(1)` (not `height` directly): a `height == 0` pane (no visible
@@ -592,7 +592,7 @@ pub(in crate::editor) fn pane_visible_range(
     // Terminal-row count added to a buffer-line index: under wrap one buffer
     // line can span multiple display lines (and therefore fewer terminal
     // rows than buffer lines), so this over-estimates how many buffer lines
-    // are visible. Safe here — the range only needs to cover every buffer
+    // are visible. Safe here: the range only needs to cover every buffer
     // line that *could* be visible, not name the true last one exactly.
     let height_rows = pane.viewport.height.max(1) as usize;
     let end_line = first_line
@@ -601,11 +601,11 @@ pub(in crate::editor) fn pane_visible_range(
     hume_rope::offset::ExclusiveRange::new(first_line, end_line)
 }
 
-/// `(viewport-range pane)` — the visible line range (end-exclusive)
+/// `(viewport-range pane)`: the visible line range (end-exclusive)
 /// currently visible in `t`'s own pane. `t` is already resolved (see
 /// `commands::CommandPane::resolve`) by the time this runs, so unlike every other
 /// `id: BufferId`-taking function in this file, there is no "not shown"
-/// case left to report here — the caller's own resolve raised on that
+/// case left to report here. The caller's own resolve raised on that
 /// already.
 pub(in crate::editor) fn viewport_range(
     state: &EditorState,
@@ -636,7 +636,7 @@ impl crate::editor::Editor {
         }
         for (language, client) in servers {
             lines.push(format!(
-                "{language} @ {} — {:?}, {} in flight, encoding: {:?}",
+                "{language} @ {}: {:?}, {} in flight, encoding: {:?}",
                 client.root().display(),
                 client.state(),
                 client.pending_count(),
@@ -652,7 +652,7 @@ impl crate::editor::Editor {
                 buf.lsp_server.map(|_| {
                     let (errors, warnings) = self.lsp.diagnostics.counts(bid);
                     format!(
-                        "  {} — {errors} error(s), {warnings} warning(s)",
+                        "  {}: {errors} error(s), {warnings} warning(s)",
                         buf.display_name()
                     )
                 })

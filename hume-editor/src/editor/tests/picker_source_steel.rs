@@ -1,5 +1,5 @@
 // The Steel surface for `picker-source-spawn!`.
-// Portable half: the token gate, the empty-cmd/spawn-failure raise paths —
+// Portable half: the token gate, the empty-cmd/spawn-failure raise paths;
 // none of these ever actually spawn a live child, so they need no `sh`.
 // See `tests/unix/picker_source_steel.rs` for the real-spawn end-to-end
 // coverage (happy path, #:nul, nonzero exit, kill-on-close).
@@ -35,7 +35,7 @@ fn stale_token_returns_false_without_spawning() {
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "#false",
-        "a stale token must return #f, not raise — the bogus binary name proves nothing was spawned"
+        "a stale token must return #f, not raise; the bogus binary name proves nothing was spawned"
     );
     assert!(
         ed.state.input.picker().is_some(),
@@ -106,7 +106,7 @@ fn empty_cmd_raises_naming_the_arg() {
 //
 // `#:ok-exit-codes` decodes before the spawn call (see
 // `ui::picker_source_spawn`), so an out-of-range code raises before anything
-// is spawned — the bogus binary name below proves that.
+// is spawned; the bogus binary name below proves that.
 
 #[test]
 fn ok_exit_codes_rejects_a_value_outside_i32_range() {

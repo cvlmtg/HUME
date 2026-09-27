@@ -1,5 +1,5 @@
 //! Tree-sitter structural text objects (`m i f`, `m a c`, …) and navigation
-//! (`goto-next-<kind>`, `goto-prev-<kind>`) — the `SelectionBody::Structural`
+//! (`goto-next-<kind>`, `goto-prev-<kind>`): the `SelectionBody::Structural`
 //! interpreter and the `ObjectSpans` collection a `StructuralBody` probes.
 //!
 //! Tree *freshness* before a query is `syntax::ensure_syntax_current`, next to
@@ -22,7 +22,7 @@ use super::super::registry::StructuralBody;
 
 /// The spans this body probes.
 ///
-/// `Argument` resolves to `parameter.inside` — not `.around`, which Helix
+/// `Argument` resolves to `parameter.inside`, not `.around`, which Helix
 /// hulls with the trailing comma `m i a`/`m a a` deliberately reject, and the
 /// same span the lexical `inner_argument` fallback produces.
 fn selector_for(body: StructuralBody) -> SpanSelector {
@@ -35,7 +35,7 @@ fn selector_for(body: StructuralBody) -> SpanSelector {
     }
 }
 
-/// The `ObjectSpans` a `StructuralBody` probes against. Shared borrows only —
+/// The `ObjectSpans` a `StructuralBody` probes against. Shared borrows only:
 /// the pipeline arm calling this still holds `&state.buffers` when it does,
 /// and the memo behind `for_selector` is why that stays true.
 ///
@@ -60,7 +60,7 @@ impl StructuralBody {
     /// buffer: a comma list the query doesn't cover (a top-level array
     /// literal), a region under a syntax error, and a scratch buffer with no
     /// grammar all use the lexical scan. Where a
-    /// tree span exists it wins outright — `m i a` on `2` in `foo([1, 2,
+    /// tree span exists it wins outright: `m i a` on `2` in `foo([1, 2,
     /// 3])` selects the whole array (the call's argument), not the lexical
     /// scan's `2`; array/tuple/struct members are `entry`-kind objects,
     /// exposed as the `value` text object (`m i v`).

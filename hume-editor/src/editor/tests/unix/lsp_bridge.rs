@@ -9,8 +9,8 @@ use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
 /// Two `#:supersede "k"` requests queued in the same command dispatch (so
-/// both flush in one batch, the first still pending when the second sends)
-/// — the second must cancel the first: exactly one `$/cancelRequest` on the
+/// both flush in one batch, the first still pending when the second sends):
+/// the second must cancel the first: exactly one `$/cancelRequest` on the
 /// wire, the first callback never fires, the second does, and neither the
 /// callback nor the supersede-key entry leaks.
 #[test]
@@ -220,7 +220,7 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
 }
 
 /// Same staleness drop as `stale_response_is_dropped_without_allow_stale`,
-/// but with params that carry no `textDocument` at all — proving the check
+/// but with params that carry no `textDocument` at all, proving the check
 /// is keyed off the request's own `bid` (mandatory on every `lsp-request`),
 /// not off sniffing `params.textDocument.uri`.
 #[test]
@@ -255,7 +255,7 @@ fn stale_response_without_text_document_is_dropped() {
     assert_eq!(
         state(&ed),
         before,
-        "params with no textDocument must still be dropped as stale — the \
+        "params with no textDocument must still be dropped as stale; the \
          check reads the request's bid, not the wire params"
     );
 }
@@ -299,8 +299,8 @@ fn allow_stale_without_text_document_delivers() {
 }
 
 /// A Steel command that edits the buffer (queuing an LSP `didChange`) and
-/// then immediately fires an `lsp-request` — the same shape as a
-/// trigger-char hook firing right after the edit that triggered it — must
+/// then immediately fires an `lsp-request` (the same shape as a
+/// trigger-char hook firing right after the edit that triggered it) must
 /// put the `didChange` on the wire *before* the request. Left in
 /// `Buffer.lsp_pending` until the next frame's `prepare_frame`, the queued
 /// edit would reach the server after the request computed against it.
@@ -315,7 +315,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     let (mut raw_backend, log) = OrderedLogBackend::new();
     raw_backend.respond_to("textDocument/hover", serde_json::json!({"contents": "hi"}));
     // `apply-text-edits!` now only accepts a server-tagged wire edit (via a
-    // real response) — this canned response is what the `:stash` dispatch
+    // real response); this canned response is what the `:stash` dispatch
     // below turns into one, ahead of (and logged separately from) the
     // dispatch under test.
     raw_backend.respond_to(

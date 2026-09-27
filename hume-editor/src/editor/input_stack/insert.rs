@@ -5,7 +5,7 @@
 //!
 //! `handle_insert` itself only walks the Insert keymap and dispatches a
 //! match; a key with no match runs its *default* behaviour via
-//! `commands::insert_default_key` — see that function's own doc (`commands/
+//! `commands::insert_default_key`. See that function's own doc (`commands/
 //! insert_keys.rs`) for why it's a free function rather than inlined here.
 
 use termina::event::KeyEvent;
@@ -21,7 +21,7 @@ use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 /// The fixed dispatch context for a key that resolved to an Insert keymap
-/// leaf — always an explicit count of 1, never extending. Shared by
+/// leaf: always an explicit count of 1, never extending. Shared by
 /// `handle_insert` and `replay.rs`'s replay of a recorded
 /// `InsertInput::Binding` entry, so a binding re-run on `.` sees exactly
 /// the context it ran with the first time.
@@ -59,7 +59,7 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             ed.apply_insert_mode_paste(&text);
             ed.state.record_insert_input(InsertInput::Paste(text));
         }
-        // A click or a wheel notch is Base's own action to run — most
+        // A click or a wheel notch is Base's own action to run. Most
         // visibly, a click's `focus_pane` ends this very Insert session
         // before resolving the click (see `focus::focus_pane`'s doc).
         InputEvent::Mouse(mouse) => ed.fall_through(r, InputEvent::Mouse(mouse)),
@@ -69,7 +69,7 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its
 /// command, an unbound one runs its default behaviour
 /// (`commands::insert_default_key`). Either way, records the key as the
-/// input it was — see `InsertInput`'s own doc.
+/// input it was; see `InsertInput`'s own doc.
 fn handle_insert(ed: &mut Editor, key: KeyEvent) {
     // Only Esc, Ctrl-c, arrows, and user bindings live in the insert trie;
     // plain chars, Tab, Enter, Backspace, and Delete fall through to their
@@ -79,7 +79,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
         WalkResult::Leaf(cmd) => {
             // A bound command edits through `commands::run_body`, never
             // `insert_default_key`, so it hands no `ChangeSet` back to an
-            // open completion session — dismissing that session is
+            // open completion session. Dismissing that session is
             // `completion_input`'s job: it peeks this same trie walk before
             // falling through here, and retires its layer once this call
             // returns (see its own doc).
@@ -87,7 +87,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
                 return;
             };
             // Wrapped in a dot-capture: replay re-runs this binding, so it
-            // decides again at the new cursor — unless it turns out
+            // decides again at the new cursor, unless it turns out
             // interactive, in which case the capture's own net edit is
             // recorded instead (see `edit_session::DotCapture`'s own doc).
             // Through the full pipeline like any keypress: an edit composes
@@ -120,11 +120,11 @@ impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
     /// Runs `f` with `EditorState::in_insert_key_dispatch` set, restoring
-    /// its prior value afterward — shared by `handle_insert`'s trie-leaf
+    /// its prior value afterward. Shared by `handle_insert`'s trie-leaf
     /// dispatch and `replay.rs`'s replay of a recorded `InsertInput::
     /// Binding` entry, so a binding re-run on `.` sees the same flag it saw
     /// live. Set for the whole call regardless of what `f` does internally
-    /// (mode switches included — dispatch is synchronous all the way
+    /// (mode switches included: dispatch is synchronous all the way
     /// through a Steel `call!`, so this never outlives the call it wraps).
     /// See `commands::repeat_slot_owned`'s own doc for what the flag
     /// itself gates.
@@ -138,7 +138,7 @@ impl Editor {
         r
     }
 
-    /// Bulk-insert `text` into the focused buffer as one grouped edit — the
+    /// Bulk-insert `text` into the focused buffer as one grouped edit: the
     /// Insert-mode paste path. Also used by dot-repeat replay so a replayed
     /// paste re-runs as one edit rather than as synthesized per-char keys
     /// (which would wrongly re-trigger auto-indent on an embedded newline).

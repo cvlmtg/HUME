@@ -42,20 +42,20 @@ fn vsplit_path_opens_that_buffer() {
 /// `:split <missing-path>` opens a new-file buffer bound to the path (same
 /// `:e`-on-a-missing-file semantics as `Editor::resolve_open_path`) in the new
 /// pane, with the display path exactly as the user typed it, not its
-/// tilde-expanded form — a symlinked or relative path resolved to an
+/// tilde-expanded form. A symlinked or relative path resolved to an
 /// unrecognizable absolute path would otherwise be more confusing, not less.
 ///
 /// Uses a `~`-prefixed path rather than a plain relative one: `expand()` is a
 /// no-op on inputs with no `~`/env-var sigil, so a plain relative path (e.g.
 /// `./foo.txt`) round-trips identically through both "show what was typed"
-/// and "show the expanded-but-unresolved path" — it can't tell the two
+/// and "show the expanded-but-unresolved path", so it can't tell the two
 /// implementations apart. Only an input `expand()` actually rewrites, like
 /// `~/...`, can prove which one the display path is built from.
 #[test]
 fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
     // `resolve_buffer_path` canonicalizes the *parent* dir when the file
-    // itself doesn't exist — canonicalize `home` here too, or this
+    // itself doesn't exist, so canonicalize `home` here too, or this
     // assertion can fail on a platform/CI layout where $HOME is itself a
     // symlink.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
@@ -81,8 +81,8 @@ fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
     );
 }
 
-/// `:split <dir>` must still error, not silently open a new-file buffer —
-/// mirrors `edit_directory_path_still_errors` in `file_io.rs`. Also proves
+/// `:split <dir>` must still error, not silently open a new-file buffer.
+/// Mirrors `edit_directory_path_still_errors` in `file_io.rs`. Also proves
 /// the error echoes the raw typed path (`~`), not its expanded `$HOME` form.
 #[test]
 fn split_directory_path_still_errors_with_raw_typed_path() {
@@ -151,8 +151,8 @@ fn vsplit_directory_path_still_errors_with_raw_typed_path() {
     );
 }
 
-/// `:vsplit <path>` onto a different buffer starts fresh and unpinned — no
-/// snapshot of the source pane's (unrelated) mode — so its effective mode
+/// `:vsplit <path>` onto a different buffer starts fresh and unpinned (no
+/// snapshot of the source pane's unrelated mode), so its effective mode
 /// reads through to the global default.
 #[test]
 fn new_file_split_has_no_override_and_reads_the_global_default() {
@@ -215,7 +215,7 @@ fn split_path_arg_does_not_inherit_source_panes_view() {
 }
 
 /// A `:vsplit <path>` onto a different buffer keeps the new pane's jump list
-/// empty — the source pane's history is irrelevant to a different file.
+/// empty: the source pane's history is irrelevant to a different file.
 #[test]
 fn split_different_buffer_keeps_empty_jump_list() {
     let (path, _tmp_path) = temp_file("other file\n");
@@ -246,7 +246,7 @@ fn split_different_buffer_keeps_empty_jump_list() {
 /// different pane viewing an unrelated buffer.
 ///
 /// Uses `Editor::open` (not the bare-pane `for_testing` harness) so both
-/// panes get real `ScopedHighlighter` providers wired via `build_pane` — the
+/// panes get real `ScopedHighlighter` providers wired via `build_pane`. The
 /// bug only reproduces when a pane actually has highlight-reading providers.
 #[test]
 fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {

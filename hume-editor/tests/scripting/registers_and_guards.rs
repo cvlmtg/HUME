@@ -34,7 +34,7 @@ fn set_register_prefix_passed_to_dispatch() {
 }
 
 /// `(call! "paste-after" bid 0)` must decode to `count: None` at the
-/// `run_command_sync` boundary — `0` is the Scheme spelling of "no count
+/// `run_command_sync` boundary: `0` is the Scheme spelling of "no count
 /// typed" (`parse_count_extend`), distinct from `Some(1)` even though both
 /// apply the command once.
 ///
@@ -177,9 +177,9 @@ fn set_register_prefix_at_init_errors() {
 
 /// `(close-buffer! …)` called from init.scm with a malformed `bid` must
 /// raise a Steel error rather than crashing. `bid` is a typed `LiveBid`
-/// param, so steel-core decodes it (type only — liveness is a separate,
-/// later check) before the registration wrapper's `cmd`-gate closure runs —
-/// a call that is both wrong-mode and wrong-typed (as here: init.scm has no
+/// param, so steel-core decodes it (type only; liveness is a separate,
+/// later check) before the registration wrapper's `cmd`-gate closure runs.
+/// A call that is both wrong-mode and wrong-typed (as here: init.scm has no
 /// way to construct a real pane, cmd-gated builtins like `focused-pane`
 /// included) reports the type error, not the gate error.
 /// The gate itself is covered directly in `hume-scripting`'s
@@ -199,7 +199,7 @@ fn close_buffer_errors_in_init_mode() {
 
 /// `(switch-to-buffer! …)` called from init.scm with a malformed `bid` must
 /// raise a Steel error rather than crashing.  Mirrors
-/// `close_buffer_errors_in_init_mode` — see its doc for why this asserts
+/// `close_buffer_errors_in_init_mode`. See its doc for why this asserts
 /// the type error, not the gate error.
 #[test]
 fn switch_to_buffer_errors_in_init_mode() {
@@ -217,7 +217,7 @@ fn switch_to_buffer_errors_in_init_mode() {
 /// `(buffer-language …)` / `(set-buffer-language! …)` on a stale buffer id must
 /// raise a Steel error, not silently return `#f` or push a no-op. `bid`
 /// (MockHost's `buffer_exists` returns false unconditionally) is a stale
-/// handle from the builtins' point of view — exercising the guard path. Each
+/// handle from the builtins' point of view, exercising the guard path. Each
 /// builtin relies on its own `buffer_exists` guard for its eval to fail.
 #[test]
 fn language_builtins_error_on_stale_buffer_id() {

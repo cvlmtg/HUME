@@ -8,7 +8,7 @@
 //! that reset to a real `init.scm` reload on disk.
 
 // `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
+// vars, always under a `TEST_GLOBALS` claim (a guard struct, or this
 // module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
 // *new* raw call elsewhere in the crate gets caught; these are the sanctioned
 // callers it lists as exempt.
@@ -23,7 +23,7 @@ use crate::editor::minibuf::history::HistoryKind;
 
 /// Owns three isolated tempdirs (`config`, `data`, `runtime`) and keeps
 /// `XDG_CONFIG_HOME`/`HUME_RUNTIME`/`XDG_DATA_HOME` pointed at them for its
-/// whole lifetime — unlike `unix::plugins::setup_editor_with_init_scripting`,
+/// whole lifetime, unlike `unix::plugins::setup_editor_with_init_scripting`,
 /// which unsets the env vars right after its one `init_scripting()` call,
 /// this fixture stays alive across an initial `init_scripting()` and a later
 /// `:reload-config` dispatch against the *same* config path.
@@ -32,7 +32,7 @@ struct ReloadFixture {
     _config_tmp: tempfile::TempDir,
     _data_tmp: tempfile::TempDir,
     _runtime_tmp: tempfile::TempDir,
-    // Last field — released after the tempdirs above are deleted (see
+    // Last field: released after the tempdirs above are deleted (see
     // `HumeRuntimeGuard`'s doc for why the drop order matters).
     _lock: ClaimGuard,
 }
@@ -65,8 +65,8 @@ impl ReloadFixture {
     }
 
     /// Write a `--config` override file *outside* `config_dir` (the tmp
-    /// root, not the `hume/` subdir), so a test can prove the override — not
-    /// the default `init.scm` — is what actually ran.
+    /// root, not the `hume/` subdir), so a test can prove the override (not
+    /// the default `init.scm`) is what actually ran.
     fn write_override(&self, name: &str, init_scm: &str) -> std::path::PathBuf {
         let path = self._config_tmp.path().join(name);
         std::fs::write(&path, init_scm).unwrap();
@@ -163,29 +163,29 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
         ed.state.status_msg.as_deref(),
         Some("Config reloaded"),
         "a reload whose only new log output is Trace-level must still \
-         report success — regression test for MessageLog::totals \
+         report success (regression test for MessageLog::totals \
          deliberately excluding Trace/Info from the before/after \
-         comparison typed_reload_config gates on"
+         comparison typed_reload_config gates on)"
     );
 }
 
 /// `:reload-config` must not leave an `on-buffer-enter`-driven `steel:<name>`
-/// statusline element blank until the next buffer switch or save —
+/// statusline element blank until the next buffer switch or save:
 /// regression test for the real bug `resync_refires_buffer_enter_for_the_
 /// focused_buffer` (`tests/reload_config.rs`) pins at the `resync_config_
 /// state` level: `set-statusline-text!`'s target, `ConfigState::
 /// statusline_text`, is correctly wiped by the reset (it's config-owned
-/// state — the plugin that pushed it may not even be loaded by the new
-/// config), but nothing repopulated it because `on-buffer-enter` — the only
+/// state; the plugin that pushed it may not even be loaded by the new
+/// config), but nothing repopulated it because `on-buffer-enter` (the only
 /// hook `core:git-diff`'s `steel:git-branch` element (and this test's own
-/// stand-in) refreshes from — was never in the resync replay.
+/// stand-in) refreshes from) was never in the resync replay.
 ///
 /// `ed.settle()` runs once before the reload for the same reason
-/// `resync_refires_buffer_enter_for_the_focused_buffer` needs it — see that
+/// `resync_refires_buffer_enter_for_the_focused_buffer` needs it; see that
 /// test's doc for why skipping it would prove nothing.
 #[test]
 fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
-    // Held for its `Drop` (env var cleanup) only — this test reloads the
+    // Held for its `Drop` (env var cleanup) only: this test reloads the
     // same `init.scm` unchanged, unlike every other fixture user, which
     // rewrites it via `write_init` before reloading.
     let _fixture = ReloadFixture::new(
@@ -229,7 +229,7 @@ fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
 
 /// `set_config_source` (the `--config` flag's editor-side setter) must make
 /// `init_scripting` evaluate the override file instead of the default
-/// `<config_dir>/init.scm` — even though a real, different `init.scm` exists
+/// `<config_dir>/init.scm`, even though a real, different `init.scm` exists
 /// on disk right where `config_dir()` would otherwise find it.
 #[test]
 fn config_override_is_evaluated_instead_of_default_init_scm() {
@@ -248,7 +248,7 @@ fn config_override_is_evaluated_instead_of_default_init_scm() {
 }
 
 /// `:reload-config` must re-run the *override* file, not fall back to the
-/// default `init.scm` once scripting resets — the override has to survive
+/// default `init.scm` once scripting resets. The override has to survive
 /// as session state across the reload, not just the initial `init_scripting`.
 #[test]
 fn config_override_survives_reload_config() {
@@ -288,7 +288,7 @@ fn config_override_survives_reload_config() {
 /// `:reload-config` against an override that existed at startup but is gone
 /// by reload time (moved, deleted) must report an error and leave `settings`
 /// at their post-reset defaults, not silently treat the missing file the way
-/// a missing *default* `init.scm` is treated (a normal, silent no-op) — an
+/// a missing *default* `init.scm` is treated (a normal, silent no-op): an
 /// explicit `--config` path is an assertion, and that assertion has to be
 /// re-checked on every reload, not just once at process start.
 #[test]
@@ -336,7 +336,7 @@ fn config_override_missing_at_reload_reports_error_and_does_not_report_success()
 }
 
 /// A `--config` override must work even with no resolvable config directory
-/// at all (`HOME`/`XDG_CONFIG_HOME` both unset) — the whole point of an
+/// at all (`HOME`/`XDG_CONFIG_HOME` both unset): the whole point of an
 /// explicit override is that it doesn't depend on the standard directories.
 /// Both `init_scripting` and the `:reload-config` fail-fast pre-check must
 /// treat the override as a valid config path.
@@ -384,9 +384,9 @@ fn config_override_works_with_no_config_dir() {
 // --no-config
 // ---------------------------------------------------------------------------
 
-/// `ConfigSource::Skip` (`--no-config`) must skip the user's `init.scm` —
+/// `ConfigSource::Skip` (`--no-config`) must skip the user's `init.scm`:
 /// `scrolloff` stays at its compiled-in default despite the fixture's
-/// `init.scm` setting it to 9 — while still initialising the scripting host
+/// `init.scm` setting it to 9, while still initialising the scripting host
 /// itself (the bundled runtime Scheme load is a silent no-op here since
 /// `HUME_RUNTIME` points at an empty tempdir, not exercised by this test).
 #[test]
@@ -408,7 +408,7 @@ fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
     );
 }
 
-/// `:reload-config` must refuse outright under `--no-config` — see
+/// `:reload-config` must refuse outright under `--no-config`; see
 /// `typed_reload_config`'s doc for why.
 #[test]
 fn reload_config_under_no_config_errors() {
@@ -440,8 +440,8 @@ fn reload_config_under_no_config_errors() {
     );
 }
 
-/// A `set-buffer-option!` written from an `on-language-set` hook — the
-/// pattern `user-manual/docs/plugins.md` documents — must still be in
+/// A `set-buffer-option!` written from an `on-language-set` hook (the
+/// pattern `user-manual/docs/plugins.md` documents) must still be in
 /// effect after `:reload-config`, not silently revert: `reset_config_state`
 /// clears the buffer's language identity (see `clear_languages_all`)
 /// precisely so `init_scripting`'s post-reload re-detect sweep is a real
@@ -449,7 +449,7 @@ fn reload_config_under_no_config_errors() {
 /// `set_buffer_language`'s unchanged-value early return.
 ///
 /// The fixture's `HUME_RUNTIME` points at an empty tempdir, so neither the
-/// real `runtime/scheme/languages.scm` nor `prelude.scm` loads — hence the
+/// real `runtime/scheme/languages.scm` nor `prelude.scm` loads, hence the
 /// raw `%define-language!` call below (the ergonomic `define-language!` is
 /// defined in `prelude.scm`, unavailable here). The test's own registration is
 /// what makes `"rust"` detectable at all.
@@ -482,7 +482,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
     assert_eq!(
         ed.state.buffers.get(bid).overrides.tab_width,
         Some(7),
-        "on-language-set's set-buffer-option! must reapply after reload — the \
+        "on-language-set's set-buffer-option! must reapply after reload: the \
          language didn't 'change' in the sense the buffer notices, but the \
          config that set it was just re-run"
     );
@@ -502,7 +502,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 
 /// A buffer opened by a lazy `#:languages` plugin's activation body during
 /// `:reload-config`'s own `init_scripting()` call must not get
-/// `OnBufferOpen` fired twice — see the portable `tests/reload_config.rs`'s
+/// `OnBufferOpen` fired twice; see the portable `tests/reload_config.rs`'s
 /// `resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload`
 /// for why `open-buffer!` is callable here at all (`EvalMode::Init` normally
 /// rejects it). Here the double-fire risk is the ordinary open path
@@ -516,7 +516,7 @@ fn reload_config_reapplies_on_language_set_buffer_overrides() {
 /// prior one) so the plugin's `open-buffer!` genuinely opens a new buffer
 /// here rather than deduping against one from an earlier init.
 ///
-/// Counts via a `tab-width` override incremented once per fire — a plain
+/// Counts via a `tab-width` override incremented once per fire: a plain
 /// "did it fire at all" check can't distinguish once from twice.
 #[test]
 fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
@@ -580,7 +580,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
 }
 
 /// A `:reload-config` whose new `init.scm` fails to evaluate must not claim
-/// success — regression test for `typed_reload_config` unconditionally
+/// success: regression test for `typed_reload_config` unconditionally
 /// reporting `Severity::Info, "Config reloaded"` after `init_scripting()`,
 /// which overwrote the `status_msg` that `init_scripting`'s own
 /// `Severity::Error` report had just set.
@@ -618,7 +618,7 @@ fn reload_config_does_not_report_success_when_init_scm_errors() {
 
 /// A `:set buffer language=` assertion on a buffer whose language can never
 /// be auto-detected (no matching extension, glob, or shebang) must survive
-/// `:reload-config` — regression test for `reset_config_state` clearing
+/// `:reload-config`: regression test for `reset_config_state` clearing
 /// `Buffer.language` and letting the post-reload re-detect sweep's plain
 /// detection be the only thing that repopulates it, silently dropping an
 /// explicit assertion detection could never have produced in the first place.
@@ -688,7 +688,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 /// Uses a real compiled JSON grammar staged under `StagedGrammarFixture`
 /// (real `HUME_RUNTIME`, so the real `grammar-sources.scm` catalog and
 /// `grammars.scm` registrar run both times) with no `core:plum` in
-/// `init.scm` at all — proving the survival is core's doing, not a reload
+/// `init.scm` at all, proving the survival is core's doing, not a reload
 /// re-running an install command.
 ///
 /// Without `buf.syntax = None` in `clear_languages_all`, the buffer would keep
@@ -752,17 +752,17 @@ fn reload_config_keeps_a_startup_grammar_registered() {
 /// RAII guard: unsets `XDG_CONFIG_HOME` and `HOME` for its lifetime (the
 /// only two env vars `hume_platform::dirs::config_dir()` ever consults on
 /// Unix), restoring each to its original value on drop rather than just
-/// removing it — several other tests read `HOME` via
+/// removing it: several other tests read `HOME` via
 /// `hume_platform::dirs::home_dir().expect(...)` and would panic on a
 /// missing var. Restoring it here only protects those readers *after* this
-/// guard drops; it does not serialize against them while `HOME` is unset —
+/// guard drops; it does not serialize against them while `HOME` is unset:
 /// none of those call sites claim `Global::Env` themselves, so this only
 /// narrows the unset window to this guard's own lifetime rather than
 /// closing it.
 struct NoConfigDirGuard {
     _xdg_config_home: EnvVarGuard,
     _home: EnvVarGuard,
-    // Last field — released after both vars above are restored (fields drop
+    // Last field: released after both vars above are restored (fields drop
     // in declaration order; see `HumeRuntimeGuard`'s doc for why the order
     // matters here too).
     _lock: ClaimGuard,
@@ -771,7 +771,7 @@ struct NoConfigDirGuard {
 impl NoConfigDirGuard {
     fn new() -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
-        // `capture` (not `set`) — the mutation here is `remove_var`, not a
+        // `capture` (not `set`): the mutation here is `remove_var`, not a
         // new value, so only the restore-on-drop half applies.
         let xdg_config_home = EnvVarGuard::capture("XDG_CONFIG_HOME");
         let home = EnvVarGuard::capture("HOME");
@@ -799,7 +799,7 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
     let _guard = NoConfigDirGuard::new();
 
     let mut ed = editor_from("-[a]>b\n");
-    // No scripting host at all — mirrors what a real editor looks like when
+    // No scripting host at all, mirroring what a real editor looks like when
     // `Editor::open`'s caller never resolved a config dir either. Still has
     // a live keymap override from `Editor::open`'s own `ConfigState::new`,
     // which the failed reload must leave untouched.
@@ -848,7 +848,7 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
 // ---------------------------------------------------------------------------
 
 /// Two reloads back to back must both fully apply the (changing) config on
-/// disk — regression coverage for state that's `mem::take`n exactly once
+/// disk: regression coverage for state that's `mem::take`n exactly once
 /// per reload (`ReloadSnapshot::take_explicit_languages`) or recomputed
 /// fresh each call (`pre_reload_bids`/`buffer_stamps`): either forgetting to
 /// reset between calls, or a snapshot silently going stale on the second
@@ -896,9 +896,9 @@ fn reload_config_twice_in_a_row_both_apply_cleanly() {
 // ---------------------------------------------------------------------------
 
 /// A bid whose buffer closed between the snapshot and the resync sweep must
-/// not have its pre-reload explicit language restored — `ReloadSnapshot::
+/// not have its pre-reload explicit language restored. `ReloadSnapshot::
 /// survives` reads `bid`'s current liveness, not a stale stamp, so a closed
-/// bid (its slot genuinely freed — see `close_buffer`, which allocates a
+/// bid (its slot genuinely freed; see `close_buffer`, which allocates a
 /// fresh `BufferId` for its last-buffer scratch replacement rather than
 /// reusing the closed one) never passes.
 ///
@@ -942,7 +942,7 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
     ed.scripting = None;
 
     // The close lands between the snapshot and the sweep that would
-    // otherwise restore onto `bid` — `bid`'s slot is now genuinely freed.
+    // otherwise restore onto `bid`: `bid`'s slot is now genuinely freed.
     ed.close_buffer(bid);
     assert!(
         ed.state.buffers.try_get(bid).is_none(),
@@ -953,23 +953,23 @@ fn reload_config_explicit_language_restore_skips_a_bid_that_closed_after_the_sna
 
     assert!(
         ed.state.buffers.try_get(bid).is_none(),
-        "bid must still be gone — nothing should have resurrected it"
+        "bid must still be gone; nothing should have resurrected it"
     );
 
     drop(fixture);
 }
 
 // ---------------------------------------------------------------------------
-// :reload-config preserves editing state — undo, jump list, minibuf
+// :reload-config preserves editing state: undo, jump list, minibuf
 // history, registers, mode/selection, and pane focus
 // ---------------------------------------------------------------------------
 
 /// A real `:reload-config` dispatch must leave every piece of *editing*
-/// state exactly as `typed_reload_config`'s doc comment promises — "buffers,
+/// state exactly as `typed_reload_config`'s doc comment promises: "buffers,
 /// panes, undo history, registers, and running LSP server processes are
-/// untouched — only config resets". Drives each piece of state through the
+/// untouched; only config resets". Drives each piece of state through the
 /// same key/command DSL a user would (not direct field pokes), then
-/// verifies each one still *works* after the reload — not just that a
+/// verifies each one still *works* after the reload, not just that a
 /// field happens to hold the same value, but that undo actually undoes,
 /// jump-backward actually navigates, and the recalled history entry is the
 /// one that was typed.
@@ -984,7 +984,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
     let text_before_edit = ed.doc().text().to_string();
 
     // Jump list: a large motion (goto-last-line) records the pre-jump
-    // position (line 0) — `ge`'s own binding is verified in defaults.rs;
+    // position (line 0). `ge`'s own binding is verified in defaults.rs;
     // see `goto_last_line_records_jump` for the same pattern.
     ed.feed_key(key('g'));
     ed.feed_key(key('e'));
@@ -1057,7 +1057,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
         "a written register must survive the reload"
     );
 
-    // Minibuf command history: the pre-reload command is still there —
+    // Minibuf command history: the pre-reload command is still there:
     // `:reload-config` itself is pushed onto the same ring right before it
     // dispatches (`handle_command` records raw input before `execute_command`
     // runs), so it's expected as the newest entry alongside it.

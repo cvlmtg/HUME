@@ -34,14 +34,14 @@ fn show_drawer_list_populates_model_and_view() {
 }
 
 /// A drawer opening while a `Scrollable` popup is up must retire the popup
-/// first — `DrawerLayer::setup` runs `InputStack::clear_popups` before
+/// first: `DrawerLayer::setup` runs `InputStack::clear_popups` before
 /// landing, keeping `PopupLayer`'s "never buried" invariant true. A
 /// `Drawer` is non-modal, so nothing else in `show-drawer-list!`'s own gate
 /// (`is_settled_for`) would otherwise stop it landing directly above the
 /// popup.
 ///
 /// Calls `EditorHostImpl::show_drawer_list` directly rather than typing a
-/// `:` command to trigger it — entering Command mode for the keystroke
+/// `:` command to trigger it. Entering Command mode for the keystroke
 /// itself would clear the popup via `push_mode_layer`'s own unconditional
 /// clear, before `show-drawer-list!` ever ran, masking exactly the
 /// behavior this test exists to pin.
@@ -77,7 +77,7 @@ fn show_drawer_list_over_a_live_popup_clears_it() {
 /// triggered the other way: the mode layer is still `Base`, but a picker
 /// landed on top of it while the references response was in flight.
 /// `show-drawer-list!` must not bury a picker under a drawer it never asked
-/// for — it drops silently, same as the mode-changed case.
+/// for. It drops silently, same as the mode-changed case.
 #[test]
 fn show_drawer_list_drops_silently_when_a_picker_is_open() {
     use crate::editor::Severity;
@@ -103,7 +103,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
     let result = host.show_drawer_list(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
         result.is_ok(),
-        "a stale async response must never error — it would abort the whole call batch"
+        "a stale async response must never error: it would abort the whole call batch"
     );
     assert!(
         ed.state.input.drawer().is_none(),
@@ -122,7 +122,7 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
 }
 
 /// `push_mode_layer` pushes a new mode layer *above* whatever overlay
-/// already sits on `Base` — so `i` while a drawer is open lands `Insert`
+/// already sits on `Base`, so `i` while a drawer is open lands `Insert`
 /// on top of it (dispatch reaches `Insert`, not the drawer, for every key
 /// typed), and `Esc` ending Insert truncates only its own layer, leaving
 /// the drawer exactly where it was: still open, still driving Ctrl-d/
@@ -162,7 +162,7 @@ fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
 
 /// `show-drawer-list!` from Insert never errors (it would abort the whole
 /// `run_call_batch` a real async callback is batched into) but is not a
-/// silent no-op either — same as the menu's own rule, checked the other
+/// silent no-op either: same as the menu's own rule, checked the other
 /// way: the mode layer itself has moved, rather than the stack above it.
 /// Logs a `Warning` naming the mode that refused it, whether it's a benign
 /// timing issue (a references response landing after the user left
@@ -190,7 +190,7 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
     let result = host.show_drawer_list(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
         result.is_ok(),
-        "a mode-layer race must never error — it would abort the whole call batch"
+        "a mode-layer race must never error: it would abort the whole call batch"
     );
     assert!(
         ed.state.input.drawer().is_none(),
@@ -218,7 +218,7 @@ fn show_drawer_list_from_insert_warns_instead_of_opening() {
 
 /// A list that shrinks while `scroll` is still positioned deep into a
 /// longer one it no longer matches must not leave `scroll` past the point
-/// where a full window of content remains — otherwise `DrawerWidget::render`'s
+/// where a full window of content remains. Otherwise `DrawerWidget::render`'s
 /// `.skip(scroll).take(visible)` paints mostly blank rows below a handful of
 /// real ones. Pokes a stale `scroll` directly rather than shrinking a real
 /// list first: the clamp only reads the drawer's *current* `items.len()` and
@@ -257,7 +257,7 @@ fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
 
 /// `sync_drawer_view` runs unconditionally every frame while the drawer is
 /// open (the self-healing backstop this module's header comment describes),
-/// so its row list must be shared (`Arc::clone`) rather than deep-copied —
+/// so its row list must be shared (`Arc::clone`) rather than deep-copied:
 /// a references batch can carry thousands of rows, and a plain `Vec::clone`
 /// there would reallocate all of them every frame for as long as the drawer
 /// stays open.
@@ -326,7 +326,7 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
 }
 
 /// A token that doesn't name the open drawer must leave it completely
-/// untouched — the mechanism that stops a diagnostics refresh from reaching
+/// untouched. That is the mechanism that stops a diagnostics refresh from reaching
 /// a references drawer that has since replaced it (or vice versa): each
 /// plugin only ever calls with the token *its own* `show-drawer-list!`
 /// returned, and Rust checks it before acting.
@@ -352,7 +352,7 @@ fn close_drawer_with_a_mismatched_token_leaves_it_open() {
     );
 }
 
-/// Same mismatch guard for `update-drawer-list!` — must report `#f` and
+/// Same mismatch guard for `update-drawer-list!`: must report `#f` and
 /// leave the open drawer's rows/callback/selection untouched.
 #[test]
 fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
@@ -380,7 +380,7 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     );
 }
 
-/// Same mismatch guard for `drawer-selected-index` — must report `#f` even
+/// Same mismatch guard for `drawer-selected-index`: must report `#f` even
 /// though a drawer genuinely is open, since it isn't the caller's own.
 #[test]
 fn drawer_selected_index_with_a_mismatched_token_reports_none() {
@@ -406,14 +406,14 @@ fn drawer_selected_index_with_a_mismatched_token_reports_none() {
 
 /// `close-drawer!` while the drawer is buried under `Insert` (browsing while
 /// editing, `insert_above_an_open_drawer_…` above) is the drawer's *normal*
-/// state, not a "wrong widget is active" mistake — it must close the
+/// state, not a "wrong widget is active" mistake. It must close the
 /// drawer wherever it sits on the stack, same as every Rust-internal
 /// retirement (`buffer::disk`/`buffer::lifecycle`'s confirm-on-close checks,
 /// `lsp_stop_one`'s own doc) already does, rather than erroring because it
 /// isn't `top()`. `truncate` is the only removal op, so this takes `Insert`
-/// with it too — same "closing a buried widget takes everything above it"
+/// with it too (same "closing a buried widget takes everything above it"
 /// contract `lsp_stop_one` already accepts for a `Completion` a picker has
-/// landed on — but unlike that case, an `Insert` session above a drawer is
+/// landed on), but unlike that case, an `Insert` session above a drawer is
 /// browsing it by coincidence, not depending on it, so `close-drawer!` must
 /// excise the drawer and leave the session running rather than take it down
 /// as collateral.
@@ -446,7 +446,7 @@ fn close_drawer_closes_a_drawer_buried_under_insert_leaving_insert_intact() {
     assert_eq!(
         ed.state.mode(),
         Mode::Insert,
-        "excise leaves the Insert session running — it never asked to depend on the drawer"
+        "excise leaves the Insert session running: it never asked to depend on the drawer"
     );
 
     // The session must still be live, not merely un-truncated: typing and
@@ -462,9 +462,9 @@ fn close_drawer_closes_a_drawer_buried_under_insert_leaving_insert_intact() {
 }
 
 /// A code-action menu opened above an open references drawer (explicitly
-/// supported — `DrawerLayer::is_modal` returning `false` is exactly what
+/// supported: `DrawerLayer::is_modal` returning `false` is exactly what
 /// lets a menu open while the user browses one) is unrelated to, not
-/// dependent on, the drawer beneath it — `close-drawer!` must excise the
+/// dependent on, the drawer beneath it, so `close-drawer!` must excise the
 /// drawer and leave the menu open and unfired.
 #[test]
 fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
@@ -502,17 +502,17 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
     assert!(ed.state.input.drawer().is_none(), "the drawer must be gone");
     assert!(
         ed.state.input.menu().is_some(),
-        "the menu must stay open — it is unrelated to the drawer beneath it, not collateral"
+        "the menu must stay open: it is unrelated to the drawer beneath it, not collateral"
     );
     assert_eq!(
         ed.state.status_msg, None,
-        "the menu's callback must not fire — it has not been answered"
+        "the menu's callback must not fire: it has not been answered"
     );
 }
 
 // ── Self-replace fires #f to the outgoing callback ───────────────────────────
 
-/// A second `show-drawer-list!` while one is open replaces it — and the
+/// A second `show-drawer-list!` while one is open replaces it, and the
 /// outgoing drawer owner must learn its drawer is gone via `#f` (the same
 /// shape as `show-menu!`'s own self-replace). The `:diagnostics` drawer
 /// refresh relies on this to drop its open-tracking instead of refreshing a
@@ -553,7 +553,7 @@ fn replace_fires_false_to_the_outgoing_callback() {
 // ── update-drawer-list! / drawer-selected-index ──────────────────────────────
 
 /// `update-drawer-list!` replaces rows + callback in place (no reset to row
-/// 0, no `#f` to the outgoing callback — it is a refresh, not a replace),
+/// 0, no `#f` to the outgoing callback: it is a refresh, not a replace),
 /// clamps an out-of-range selection, and reports whether it applied.
 #[test]
 fn update_replaces_rows_callback_and_selection_in_place() {
@@ -620,7 +620,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
 
 /// With no drawer open both new builtins degrade to `#f`: the update applies
 /// nothing (and opens nothing), the getter reports no selection. Never an
-/// error — a closed-or-replaced drawer is an expected-normal race.
+/// error: a closed-or-replaced drawer is an expected-normal race.
 #[test]
 fn update_and_selected_index_with_none_open_report_false() {
     let tmp = safe_tempdir();
@@ -647,7 +647,7 @@ fn update_and_selected_index_with_none_open_report_false() {
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
 }
 
-/// An empty `show-drawer-list!` is rejected — a 0-row drawer would leave
+/// An empty `show-drawer-list!` is rejected: a 0-row drawer would leave
 /// `Enter` firing `0` with no row behind it.
 #[test]
 fn show_with_empty_items_errors_and_opens_nothing() {
@@ -672,7 +672,7 @@ fn show_with_empty_items_errors_and_opens_nothing() {
     );
 }
 
-/// An empty `update-drawer-list!` is a no-op `#f` — callers close instead
+/// An empty `update-drawer-list!` is a no-op `#f`. Callers close instead
 /// of clearing through an update.
 ///
 /// Applying the update would wipe the rows and leave a 0-row drawer where
@@ -740,7 +740,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
         "must stay open after Enter"
     );
 
-    // Move selection and fire again — the callback must still be usable
+    // Move selection and fire again: the callback must still be usable
     // (cloned, not consumed by the first Enter).
     ed.feed_key(key_ctrl('d'));
     ed.feed_key(key_enter());
@@ -792,7 +792,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
     arm_three_items(&mut ed, tmp.path());
 
     let head_before = ed.current_selections().primary().head();
-    ed.feed_key(key('l')); // move-right — not one of the drawer's keys
+    ed.feed_key(key('l')); // move-right, not one of the drawer's keys
     ed.settle();
 
     assert!(
@@ -810,7 +810,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
     );
 }
 
-/// `j`/`k` and the arrow keys are not drawer keys — they fall through to
+/// `j`/`k` and the arrow keys are not drawer keys. They fall through to
 /// the source buffer (so vertical motion keeps working while browsing),
 /// leaving the drawer open with its selection untouched.
 #[test]
@@ -890,7 +890,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
         ),
     );
 
-    // Populate `last_terminal_area` before any key handling needs it — the
+    // Populate `last_terminal_area` before any key handling needs it: the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(40, 15);
@@ -899,7 +899,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     type_cmd(&mut ed, ":go");
 
     // capacity = min(20 items + 1, 15 rows * 0.35 = 5) = 5; visible_rows = 4.
-    // Shift-Down, not Ctrl-d, so each press moves exactly one row — this
+    // Shift-Down, not Ctrl-d, so each press moves exactly one row. This
     // test is about the scroll-follows-selection mechanism, not paging.
     for _ in 0..6 {
         ed.feed_key(key_shift_down());
@@ -909,7 +909,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     assert_eq!(drawer.selected, 6);
     assert!(
         drawer.scroll > 0,
-        "scroll must advance — only 4 rows are visible but selection moved to row 6"
+        "scroll must advance: only 4 rows are visible but selection moved to row 6"
     );
     assert!(
         drawer.selected + 1 - drawer.scroll <= 4,
@@ -940,7 +940,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
                    (lambda (idx) (log! 'info (to-string idx))))))"#
         ),
     );
-    // Populate `last_terminal_area` before any key handling needs it — the
+    // Populate `last_terminal_area` before any key handling needs it: the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(40, 15);

@@ -155,7 +155,7 @@ fn setting_value_falls_back_to_global_when_no_override() {
 
 #[test]
 fn setting_value_global_only_key_ignores_overrides_arg() {
-    // "mouse-enabled" is global-only — passing `Some(&ov)` must not
+    // "mouse-enabled" is global-only: passing `Some(&ov)` must not
     // change the outcome (there is no per-buffer storage for it).
     let global = EditorSettings::default();
     let ov = BufferOverrides::default();
@@ -169,7 +169,7 @@ fn setting_value_global_only_key_ignores_overrides_arg() {
 fn setting_value_subfield_key_falls_back_to_global_whitespace() {
     // Before the `subfield` macro section existed, `whitespace-space`/
     // `whitespace-tab`/`whitespace-newline` had no `setting_value` support
-    // at all — `(get-option "whitespace-space")` returned "unknown setting".
+    // at all: `(get-option "whitespace-space")` returned "unknown setting".
     let mut global = EditorSettings::default();
     global.whitespace.space = WhitespaceRender::Trailing;
     global.whitespace.newline = true;
@@ -187,7 +187,7 @@ fn setting_value_subfield_key_falls_back_to_global_whitespace() {
 fn setting_value_whitespace_newline_round_trips_through_write_global() {
     // Mirrors `setting_value_statusline_round_trips_through_write_global`:
     // write the wire string via write_global, read it back via
-    // setting_value — must match, proving format_show_newline really is
+    // setting_value. They must match, proving format_show_newline really is
     // parse_show_newline's inverse.
     for wire in SHOW_NEWLINE_VALUES {
         let mut s = EditorSettings::default();
@@ -215,7 +215,7 @@ fn setting_value_subfield_key_buffer_override_wins_over_global() {
 #[test]
 fn setting_value_statusline_round_trips_through_write_global() {
     // Write a wire string via write_global, then read it back via
-    // setting_value — must match, proving format_statusline really is
+    // setting_value. They must match, proving format_statusline really is
     // parse_statusline's inverse. (get-option "statusline") must return the
     // written value after a successful :set global statusline=... write.
     let mut s = EditorSettings::default();
@@ -451,7 +451,7 @@ fn set_global_lsp_viewport_debounce_ms() {
 #[test]
 fn set_global_lsp_viewport_debounce_ms_zero_errors() {
     // 0 would fire on every frame during a scroll burst instead of
-    // collapsing it into one OnViewportChange — defeats the setting.
+    // collapsing it into one OnViewportChange, which defeats the setting.
     assert!(global("lsp.viewport-debounce-ms", "0").is_err());
 }
 
@@ -581,7 +581,7 @@ fn set_global_word_chars() {
 
 #[test]
 fn word_chars_rejects_whitespace() {
-    // Validated at the `write_global`/`write_buffer` chokepoint — a value
+    // Validated at the `write_global`/`write_buffer` chokepoint: a value
     // containing whitespace or newline is refused, never stored.
     assert!(global("word-chars", "- ").is_err());
     assert!(buffer("word-chars", "-\n").is_err());
@@ -621,7 +621,7 @@ fn set_global_whitespace_newline() {
 
 #[test]
 fn set_global_whitespace_newline_trailing_rejected() {
-    // `trailing` is meaningless for newlines (always at end-of-line) —
+    // `trailing` is meaningless for newlines (always at end-of-line), so
     // only `none`/`all` are accepted.
     let err = global("whitespace-newline", "trailing").err().unwrap();
     assert!(
@@ -780,7 +780,7 @@ fn set_buffer_global_only_setting_errors() {
 #[test]
 fn set_buffer_global_only_all_keys_error() {
     // Derived from `all_setting_keys()` filtered to exactly `[Scope::Global]`
-    // (no Buffer, no Pane), rather than a hand-copied list — self-maintaining
+    // (no Buffer, no Pane), rather than a hand-copied list, so it is self-maintaining
     // against a newly added global-only key.
     let mut ov = BufferOverrides::default();
     for key in all_setting_keys() {
@@ -883,20 +883,20 @@ fn is_bool_setting_matches_every_bool_field() {
 //
 // `all_setting_keys()` and `setting_scopes()` are both generated from the
 // same `$gkey`/`$bkey`/`$skey`/`$mkey` token stream, with a non-empty
-// `scope: […]` required by the macro's own grammar (`+` repetition) — so
+// `scope: […]` required by the macro's own grammar (`+` repetition), so
 // every key in `all_setting_keys()` having a declared scope is a structural
 // guarantee, not something a test can catch drifting. What a test *can*
 // catch: a key declared in `global`/`buffer`/`subfield`/`manual_keys` that
 // has no matching arm in `write_global`/`write_buffer` (a typo in the
 // hand-written `manual_keys` arms, since the macro-generated arms can't
-// drift from their own key list) — falling through to the `_ => "unknown
+// drift from their own key list), falling through to the `_ => "unknown
 // setting"` catch-all. That's what this guardrail checks.
 
 #[test]
 fn all_setting_keys_are_recognized_by_apply_setting() {
     for key in all_setting_keys() {
         // A value no parser accepts: for most keys this is rejected as an
-        // *invalid value*, not as an *unrecognized key* — either outcome
+        // *invalid value*, not as an *unrecognized key*. Either outcome
         // is fine here, we only guard against the "unknown setting"
         // catch-all, which would mean the key isn't wired into
         // `write_global`/`write_buffer` at all.
@@ -947,7 +947,7 @@ fn every_pane_scoped_key_has_a_typed_set_arm() {
         pane_scoped,
         vec!["wrap-mode"],
         "typed_file::typed_set's Scope::Pane match only has an arm for \
-         \"wrap-mode\" — a new pane-scoped key here needs a matching arm \
+         \"wrap-mode\", so a new pane-scoped key here needs a matching arm \
          added there too"
     );
 }

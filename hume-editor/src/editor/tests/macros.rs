@@ -8,7 +8,7 @@ use pretty_assertions::assert_eq;
 #[test]
 fn macro_qq_records_into_register_q() {
     let mut ed = editor_from("-[a]>bcd\n");
-    // First `Q` sets the pending state — recording hasn't started yet.
+    // First `Q` sets the pending state; recording hasn't started yet.
     ed.handle_key(key('Q'));
     assert!(
         ed.state.macro_recording.is_none(),
@@ -19,7 +19,7 @@ fn macro_qq_records_into_register_q() {
         "pending should be set after Q"
     );
 
-    // Second `Q` is consumed as the register name — recording starts now.
+    // Second `Q` is consumed as the register name; recording starts now.
     ed.handle_key(key('Q'));
     assert!(
         ed.state.macro_recording.is_some(),
@@ -120,7 +120,7 @@ fn macro_big_q_replays_from_register() {
 
     let before = ed.current_selections().primary().head();
 
-    // `qq` replays from the default register — no extra key needed.
+    // `qq` replays from the default register, no extra key needed.
     ed.handle_key(key('q'));
     ed.handle_key(key('q'));
 
@@ -130,7 +130,7 @@ fn macro_big_q_replays_from_register() {
     assert!(after > before, "cursor should have moved down after replay");
 }
 
-/// `q` followed by a non-register key cancels replay — key is swallowed.
+/// `q` followed by a non-register key cancels replay; key is swallowed.
 #[test]
 fn macro_big_q_non_register_key_cancels() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
@@ -143,7 +143,7 @@ fn macro_big_q_non_register_key_cancels() {
 
     let before = ed.current_selections().primary().head();
 
-    // `q` then `Q` (uppercase, not a valid register) — cancelled, cursor stays put.
+    // `q` then `Q` (uppercase, not a valid register): cancelled, cursor stays put.
     ed.handle_key(key('q'));
     ed.handle_key(key('Q'));
 
@@ -159,14 +159,14 @@ fn macro_replay_empty_register_is_noop() {
     let mut ed = editor_from("-[a]>bcd\n");
     let before = state(&ed);
 
-    // `q` must arm macro_pending — proving the dispatch path ran.
+    // `q` must arm macro_pending, proving the dispatch path ran.
     ed.handle_key(key('q'));
     assert!(
         ed.state.macro_pending.is_some(),
         "macro_pending should be set after q"
     );
 
-    // Register 'z' has never been written — macro_pending is consumed but
+    // Register 'z' has never been written: macro_pending is consumed but
     // no keys are queued and state is unchanged.
     ed.handle_key(key('z'));
     assert!(
@@ -205,7 +205,7 @@ fn macro_no_nested_recording_during_replay() {
 
     ed.drain_replay_queue();
 
-    // Recording should NOT have started — the Q intercept is suppressed during replay
+    // Recording should NOT have started: the Q intercept is suppressed during replay
     assert!(
         ed.state.macro_recording.is_none(),
         "nested recording must be suppressed"
@@ -296,7 +296,7 @@ fn macro_records_insert_mode_keys() {
     assert_eq!(
         keys.len(),
         3,
-        "expected i, x, Esc — got {} keys: {:?}",
+        "expected i, x, Esc; got {} keys: {:?}",
         keys.len(),
         keys
     );
@@ -332,7 +332,7 @@ fn macro_replay_with_count() {
         "cursor should be on line 0 before replay"
     );
 
-    // `3qq` — count 3, replay from register 'q'.
+    // `3qq`: count 3, replay from register 'q'.
     ed.handle_key(key('3'));
     ed.handle_key(key('q'));
     ed.handle_key(key('q'));
@@ -449,7 +449,7 @@ fn macro_insert_mode_round_trip() {
     assert_ne!(after, before, "replay should have modified the buffer");
     assert!(
         ed.doc().text().to_string().matches('x').count() == 2,
-        "there should be two 'x' chars — one from recording, one from replay"
+        "there should be two 'x' chars: one from recording, one from replay"
     );
 }
 
@@ -472,7 +472,7 @@ fn macro_replay_preserves_dot_repeat() {
         "last_repeatable_action should be 'delete'"
     );
 
-    // Record a `j` motion macro (not repeatable — should not overwrite last_repeatable_action).
+    // Record a `j` motion macro (not repeatable, should not overwrite last_repeatable_action).
     ed.handle_key(key('Q'));
     ed.handle_key(key('Q'));
     ed.handle_key(key('j'));
@@ -497,8 +497,8 @@ fn macro_replay_preserves_dot_repeat() {
     );
 }
 
-/// Pressing `q` while recording should be silently captured as a recorded key
-/// — it must not arm macro_pending or trigger replay.
+/// Pressing `q` while recording should be silently captured as a recorded key.
+/// It must not arm macro_pending or trigger replay.
 #[test]
 fn macro_q_during_recording_is_captured() {
     let mut ed = editor_from("-[a]>bcd\n");
@@ -540,7 +540,7 @@ fn macro_q_during_recording_is_captured() {
     assert_eq!(keys[0].code, KeyCode::Char('q'));
 }
 
-/// A macro containing `qq` (self-replay) must not actually replay during replay —
+/// A macro containing `qq` (self-replay) must not actually replay during replay:
 /// the `is_replaying` guard must suppress the nested `q` intercept.
 #[test]
 fn macro_recursive_replay_suppressed() {
@@ -575,7 +575,7 @@ fn macro_recursive_replay_suppressed() {
     );
 }
 
-/// `QQ Q` — record with zero keys, then stop. The register should hold an
+/// `QQ Q`: record with zero keys, then stop. The register should hold an
 /// empty macro. Replaying it is a no-op.
 #[test]
 fn macro_empty_recording() {
@@ -619,7 +619,7 @@ fn macro_esc_during_recording_is_captured() {
     ed.handle_key(key('Q'));
     assert!(ed.state.macro_recording.is_some());
 
-    // Press Esc — this should be recorded, not stop the session.
+    // Press Esc: this should be recorded, not stop the session.
     ed.handle_key(key_esc());
     assert!(
         ed.state.macro_recording.is_some(),
@@ -653,12 +653,12 @@ fn macro_esc_during_recording_is_captured() {
 }
 
 /// A count prefix before `Q` (e.g. `3Qq`) must not leak into the recording
-/// session — the count is consumed by the `Q` intercept and not stored.
+/// session: the count is consumed by the `Q` intercept and not stored.
 #[test]
 fn macro_count_prefix_before_record_does_not_leak() {
     let mut ed = editor_from("-[a]>bcd\n");
 
-    // `3` then `Q` then `q` — count prefix before start-record sequence.
+    // `3` then `Q` then `q`: count prefix before start-record sequence.
     ed.handle_key(key('3'));
     ed.handle_key(key('Q'));
     ed.handle_key(key('q')); // register name
@@ -711,7 +711,7 @@ fn macro_replay_undo() {
     );
 }
 
-/// Record into register 1, undo, then replay — the edit should be reapplied.
+/// Record into register 1, undo, then replay; the edit should be reapplied.
 #[test]
 fn macro_q1_replay_after_undo() {
     let mut ed = editor_from("-[h]>ello world\nhello world\n");
@@ -766,7 +766,7 @@ fn macro_with_two_pastes_does_not_panic() {
     // Push "AB" onto the ring by deleting it.
     ed.handle_key(key('d')); // kill "AB"; ring head = "AB"; buffer = "-[C]>D\n"
 
-    // Seed a macro [p, p] — two consecutive pastes — into register 'q'.
+    // Seed a macro [p, p] (two consecutive pastes) into register 'q'.
     ed.state
         .registers
         .write_macro('q', vec![key('p'), key('p')]);
@@ -776,7 +776,7 @@ fn macro_with_two_pastes_does_not_panic() {
     ed.handle_key(key('q'));
     ed.drain_replay_queue();
 
-    // Both pastes must have fired — "AB" appears exactly twice.
+    // Both pastes must have fired: "AB" appears exactly twice.
     let buf = ed.doc().text().to_string();
     assert_eq!(
         buf.matches("AB").count(),
@@ -794,7 +794,7 @@ fn macro_with_two_pastes_does_not_panic() {
 ///
 /// Macro `['d', '.']` reproduces this: the inner `d` stamps `last_repeatable_action`
 /// inside the loop, then `.` reads it and fires `replay_dot` at the tail
-/// of the inner `handle_key` call — within `drain_replay_queue`'s loop, not after.
+/// of the inner `handle_key` call, within `drain_replay_queue`'s loop, not after.
 ///
 /// If `replay_dot` ran only after the replay loop, the `.` would set
 /// `pending_repeat` on the last iteration without draining it, leaving the
@@ -804,8 +804,8 @@ fn dot_inside_macro_replay_fires_drain() {
     // Four chars so deletes leave visible residue.
     let mut ed = editor_from("-[a]>bcde\n");
 
-    // Record a macro ["d", "."] — d deletes, then . repeats the delete.
-    // seed directly to avoid mutating the buffer during the recording phase.
+    // Record a macro ["d", "."]: d deletes, then . repeats the delete.
+    // Seed directly to avoid mutating the buffer during the recording phase.
     ed.state
         .registers
         .write_macro('q', vec![key('d'), key('.')]);
@@ -852,7 +852,7 @@ fn macro_q_on_read_only_buffer_does_not_arm_pending() {
     );
 
     // The key that would have been swallowed as a register name must dispatch
-    // normally — Up should move the cursor backward in the buffer.
+    // normally: Up should move the cursor backward in the buffer.
     ed.handle_key(key_up());
     assert!(
         ed.current_selections().primary().head() < head_before,
@@ -880,7 +880,7 @@ fn macro_big_q_on_read_only_buffer_does_not_arm_pending() {
 }
 
 /// A recording started on a normal buffer can be stopped with `Q` after
-/// navigating to a read-only buffer — the stop branch must not be blocked.
+/// navigating to a read-only buffer; the stop branch must not be blocked.
 #[test]
 fn macro_recording_can_be_stopped_on_read_only_buffer() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -904,14 +904,14 @@ fn macro_recording_can_be_stopped_on_read_only_buffer() {
 }
 
 /// A macro register can hold a raw `KeyEvent` from a non-conformant delivery
-/// — the uppercase codepoint with SHIFT still set, per `handle_normal`'s doc
-/// comment — however it got recorded. Replaying it must resolve identically
+/// (the uppercase codepoint with SHIFT still set, per `handle_normal`'s doc
+/// comment), however it got recorded. Replaying it must resolve identically
 /// to a live press of the same key delivered cleanly: the stored key routes
 /// back through `handle_key`, which applies the same SHIFT-strip and trie
 /// canonicalization it would for any live keypress.
 ///
 /// The register is written directly (rather than via `QQ...Q` recording) so
-/// this test isolates the replay path from live dispatch during recording —
+/// this test isolates the replay path from live dispatch during recording:
 /// `non_conformant_i` here is never dispatched except through replay.
 #[test]
 fn macro_replay_resolves_non_conformant_shift_delivery_like_clean_press() {
@@ -944,11 +944,11 @@ fn macro_replay_resolves_non_conformant_shift_delivery_like_clean_press() {
 }
 
 /// A hook a macro's own early key queues must run before the macro's later
-/// keys dispatch — `drain_replay_queue` settles after every replayed key,
+/// keys dispatch: `drain_replay_queue` settles after every replayed key,
 /// not once after the whole queue, so a replayed `@q` matches typing the
 /// same keys by hand.
 ///
-/// `i` queues `OnModeChange` (deferred — fired by the next `settle()`, not
+/// `i` queues `OnModeChange` (deferred: fired by the next `settle()`, not
 /// synchronously); the hook it drives writes a buffer-scoped `tab-style`
 /// override that the very next key, `<tab>`, reads. `recorded` replays the
 /// macro in one shot; `direct` uses `feed_event` to mirror `Editor::run`'s

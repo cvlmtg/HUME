@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn take_due_pops_in_deadline_order_not_insertion_order() {
     let mut wheel = TimerWheel::new();
-    // Insert far-then-near-then-mid — pop order must follow deadline,
+    // Insert far-then-near-then-mid: pop order must follow deadline,
     // not the order `schedule` was called in.
     let far = wheel.schedule(Duration::from_secs(10));
     let near = wheel.schedule(Duration::from_millis(1));
@@ -63,7 +63,7 @@ fn take_due_respects_the_deadline_boundary() {
     let before = Instant::now();
     let id = wheel.schedule(Duration::from_millis(50));
     // `before` predates `schedule`'s own `Instant::now()` read, so the
-    // real deadline is >= before + 50ms — but the two reads can tie on
+    // real deadline is >= before + 50ms, but the two reads can tie on
     // some clocks, and `take_due`'s `<=` is deliberately inclusive (a
     // deadline exactly at `now` must fire), so an exact `before + 50ms`
     // query isn't safely "not yet due". Query below the guaranteed
@@ -85,7 +85,7 @@ fn idle_wheel_has_no_wake() {
 
 #[test]
 fn distant_timer_reports_its_own_deadline_not_a_pending_poll() {
-    // AsyncSource::next_wake must return the timer's real deadline — a
+    // AsyncSource::next_wake must return the timer's real deadline: a
     // distant timer must not collapse to a short poll cadence (see the
     // impl above).
     let mut wheel = TimerWheel::new();
@@ -103,7 +103,7 @@ fn distant_timer_reports_its_own_deadline_not_a_pending_poll() {
 #[test]
 fn many_cancelled_entries_do_not_need_a_compaction_pass() {
     // Cancel everything without ever calling take_due/next_deadline in
-    // between — the cancelled set only shrinks when entries eventually
+    // between. The cancelled set only shrinks when entries eventually
     // surface at the heap head, never needs an explicit sweep.
     let mut wheel = TimerWheel::new();
     let ids: Vec<TimerId> = (0..50)

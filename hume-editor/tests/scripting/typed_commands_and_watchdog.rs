@@ -25,7 +25,7 @@ fn define_typed_command_registers_into_typed_table() {
     );
 }
 
-/// `define-typed-command!` has no `#:repeatable` keyword — dot-repeat has
+/// `define-typed-command!` has no `#:repeatable` keyword: dot-repeat has
 /// no meaning for a `:` command. Steel's keyword-arg lambda syntax silently
 /// ignores an unrecognized `#:key value` pair rather than erroring, so this
 /// pins that outcome (registration still succeeds) rather than a rejection
@@ -49,7 +49,7 @@ fn define_typed_command_ignores_unrecognized_repeatable_keyword() {
 }
 
 /// `#:inline-output #t` sets `SteelTypedCmdDef.inline_output: true`; plain
-/// `define-typed-command!` sets it to `false` — the typed counterpart of
+/// `define-typed-command!` sets it to `false`, the typed counterpart of
 /// `define_command_inline_output_sets_flag`, asserted independently rather
 /// than inferred from the mappable side: the two registries are strictly
 /// separate and free to diverge.
@@ -86,7 +86,7 @@ fn define_typed_command_inline_output_sets_flag() {
 }
 
 /// A name already claimed by `define-command!` (mappable) collides with
-/// `define-typed-command!` for the same name, and vice versa — the two
+/// `define-typed-command!` for the same name, and vice versa: the two
 /// kinds share one namespace in the real `CommandRegistry`.
 #[test]
 fn define_typed_command_collides_with_existing_mappable_name() {
@@ -109,7 +109,7 @@ fn define_typed_command_collides_with_existing_mappable_name() {
     );
 }
 
-/// The reverse direction of the collision above — asserted in that test's
+/// The reverse direction of the collision above, asserted in that test's
 /// own doc comment ("and vice versa") but never actually exercised until
 /// this test.
 #[test]
@@ -180,7 +180,7 @@ fn eval_source_watchdog_aborts_runaway() {
         err.contains("interrupted"),
         "expected 'interrupted' in error, got: {err}"
     );
-    // Must abort well within a second — if not, the watchdog didn't fire.
+    // Must abort well within a second; if not, the watchdog didn't fire.
     assert!(
         start.elapsed() < std::time::Duration::from_secs(1),
         "eval took too long: {:?}",
@@ -263,10 +263,10 @@ fn call_steel_cmd_interrupt_leaves_settings_unchanged() {
     );
 }
 
-/// `set-option!` is registered `open` (no eval-mode gate) — calling it from
+/// `set-option!` is registered `open` (no eval-mode gate), so calling it from
 /// a Steel command body (`call_steel_cmd` runs with `EvalMode::Command`)
 /// must actually apply the setting, not raise a gate error. A plugin-defined
-/// command can now toggle a global setting at runtime — the gap this closes.
+/// command can now toggle a global setting at runtime, the gap this closes.
 #[test]
 fn call_steel_cmd_set_option_from_body_applies_the_setting() {
     let mut h = host();

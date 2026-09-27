@@ -21,14 +21,14 @@ fn wire_client(ed: &mut Editor, backend: InlineLspBackend, sid: ServerId) {
     // Running, not the `Starting` default: these tests exercise request/
     // response/staleness bookkeeping, not the handshake queue (covered by
     // hume-lsp's own `send_request_while_starting_is_queued_then_flushed_*`
-    // test) — a Starting client queues instead of sending, which would
+    // test): a Starting client queues instead of sending, which would
     // leave every `send_request` below stuck unsent.
     let mut client = LspClient::new(sid, PathBuf::from("."));
     client.set_state_for_test(ServerState::Running);
     ed.lsp.insert_client_for_test(client);
 }
 
-/// A `ResponseAnchor` that never drops the response — for a test exercising
+/// A `ResponseAnchor` that never drops the response, for a test exercising
 /// something other than the anchor's own text-gen/focus checks.
 /// `allow_stale: true` makes `bid`/`text_gen` irrelevant to admission.
 fn no_drop_anchor(ed: &Editor) -> ResponseAnchor {
@@ -107,14 +107,14 @@ fn callback_never_fires_for_a_request_with_no_response() {
 
     assert!(
         !*fired.borrow(),
-        "no canned response — callback must not fire"
+        "no canned response: callback must not fire"
     );
 }
 
 #[test]
 fn timed_out_request_dispatches_callback_with_timed_out_outcome_and_logs_trace() {
     // Deviates from "timed-out -> log + drop":
-    // a callback that never fires on timeout has no way to notice — the
+    // a callback that never fires on timeout has no way to notice. The
     // Steel callbacks are `(err result)`-shaped and need this to map a
     // timeout to `err` rather than hanging silently.
     let mut ed = editor_from("-[w]>ord\n");
@@ -202,7 +202,7 @@ fn stale_response_is_dropped_when_buffer_moved_past_text_gen() {
 
     assert!(
         !*fired.borrow(),
-        "the buffer moved past the request's text_gen — the callback must be dropped"
+        "the buffer moved past the request's text_gen: the callback must be dropped"
     );
 }
 
@@ -246,7 +246,7 @@ fn allow_stale_delivers_despite_buffer_moving_past_text_gen() {
 
     assert!(
         *fired.borrow(),
-        "allow_stale opts out of the staleness drop — the callback must still fire"
+        "allow_stale opts out of the staleness drop: the callback must still fire"
     );
 }
 
@@ -269,7 +269,7 @@ fn crashed_action_is_reported_to_the_message_log() {
 
     let log = ed.state.message_log.format_for_display();
     // `wire_client` registers under the "lsp" test-only placeholder name
-    // (`insert_client_for_test`) — a real registration's server name would
+    // (`insert_client_for_test`); a real registration's server name would
     // appear here instead, so multiple crashed servers are distinguishable.
     assert!(log.contains("lsp crashed") && log.contains("boom"));
 }
@@ -279,7 +279,7 @@ fn crash_fails_in_flight_requests_immediately_instead_of_waiting_for_their_deadl
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    // No response scripted — this request would otherwise sit pending
+    // No response scripted: this request would otherwise sit pending
     // until its (deliberately far-future) deadline.
     wire_client(&mut ed, backend, sid);
 
@@ -388,7 +388,7 @@ fn server_request_action_gets_exactly_one_response() {
     // panic and drained cleanly. The dispatch table itself (every method,
     // including MethodNotFound) is exhaustively unit-tested directly in
     // `hume_lsp::client::tests` against the pure `server_request_response`
-    // function — that's the right altitude for table-shape assertions.
+    // function; that's the right altitude for table-shape assertions.
     assert!(ed.lsp.backend_mut().drain().is_empty());
 }
 
@@ -396,7 +396,7 @@ fn server_request_action_gets_exactly_one_response() {
 fn workspace_configuration_resolves_the_attached_servers_registered_settings() {
     // The dispatch-table shape (section resolution, null-per-item) is
     // covered exhaustively in `hume_lsp::client::tests`; what's specific to
-    // this layer is the glue — that dispatch actually looks up the
+    // this layer is the glue: that dispatch actually looks up the
     // *requesting* server's own registered settings (via `server_id` ->
     // `introspect::server_language` -> `LspState.configs`) rather than
     // some other server's, or none at all.
@@ -447,7 +447,7 @@ fn workspace_configuration_resolves_the_attached_servers_registered_settings() {
 #[test]
 fn workspace_configuration_answers_null_when_requesting_server_has_no_registered_settings() {
     // Same shape, but the attached server's config carries no `#:settings`
-    // at all — must fall back to null per item, not panic or leak another
+    // at all, and must fall back to null per item, not panic or leak another
     // server's settings.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[w]>ord\n");
@@ -488,7 +488,7 @@ fn workspace_configuration_answers_null_when_requesting_server_has_no_registered
 
 #[test]
 fn workspace_configuration_never_leaks_another_servers_settings() {
-    // Two servers, two languages, two different settings blobs — the
+    // Two servers, two languages, two different settings blobs. The
     // requesting server's own id must resolve only its own language's
     // config, never the other one's, even though both configs live in the
     // same `LspState.configs` map.
@@ -550,7 +550,7 @@ fn workspace_configuration_never_leaks_another_servers_settings() {
 #[test]
 fn lsp_stop_dispatches_timed_out_for_in_flight_callbacks_instead_of_orphaning_them() {
     // Without draining a removed client's `pending` map, `:lsp-stop` dropped
-    // the `LspClient` (and its pending requests) outright — a registered
+    // the `LspClient` (and its pending requests) outright: a registered
     // callback for a request still in flight never fired, and its
     // `CallbackEntry` leaked in `LspState.callbacks` forever.
     let mut ed = editor_from("-[w]>ord\n");
@@ -646,7 +646,7 @@ fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &
 #[test]
 fn second_registration_replaces_first() {
     // Last-wins: a second register-lsp-server! for an already-registered
-    // language replaces the config rather than being rejected — matching
+    // language replaces the config rather than being rejected, matching
     // define-language!'s semantics. No error is logged.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[w]>ord\n");
@@ -679,12 +679,12 @@ fn second_registration_replaces_first() {
 }
 
 /// `#:env` decodes from a list of `("KEY" . "VALUE")` dotted pairs all the
-/// way into `LspServerConfig.env` — the wire shape `steel-server/plugin.scm`
+/// way into `LspServerConfig.env`, the wire shape `steel-server/plugin.scm`
 /// uses for `STEEL_LSP_HOME`. Complements the Steel-boundary decode test in
 /// `hume-scripting`'s `builtins::lsp::tests::decodes_env_dotted_pairs`
 /// (which stops at `PendingLspServerReg`) and the real-process delivery
 /// test in `hume-lsp`'s `transport::tests::unix` (which stops at
-/// `ServerHandle::spawn`) — this one is the middle link, the editor-level
+/// `ServerHandle::spawn`). This one is the middle link, the editor-level
 /// apply path (`apply_pending_lsp_server_reg`).
 #[test]
 fn env_round_trips_into_lsp_server_config() {
@@ -714,7 +714,7 @@ fn env_round_trips_into_lsp_server_config() {
 fn runtime_registration_attaches_already_open_buffer() {
     // A buffer opened before its language has any registered server gets
     // its language set (via detection) but stays unattached. Registering
-    // the server afterward must sweep it in — no separate attach step.
+    // the server afterward must sweep it in, with no separate attach step.
     let tmp = safe_tempdir();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
     std::fs::write(root.join("Cargo.toml"), b"").unwrap();
@@ -824,7 +824,7 @@ fn unregister_of_never_registered_language_is_silent_success() {
 #[test]
 fn replace_while_running_leaves_old_client_untouched() {
     // Spec: replacing an already-registered language does NOT shut down
-    // running clients — that only happens via an explicit unregister
+    // running clients; that only happens via an explicit unregister
     // (the reinstall path). The old client keeps running on the old config
     // until its next spawn.
     let tmp = safe_tempdir();
@@ -1016,7 +1016,7 @@ fn crashed_server_is_not_silently_reattached_to() {
     assert_eq!(
         ed.lsp.server_count_for_test(),
         1,
-        "must not spawn a second server either — the corpse blocks reattachment until :lsp-restart"
+        "must not spawn a second server either: the corpse blocks reattachment until :lsp-restart"
     );
     let log = ed.state.message_log.format_for_display();
     assert!(

@@ -21,7 +21,7 @@ use crate::editor::error::CommandError;
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
-/// Shared body of `cmd_search_forward`/`cmd_search_backward` — opens the
+/// Shared body of `cmd_search_forward`/`cmd_search_backward`: opens the
 /// mini-buffer with `prompt` (`/` or `?`); `SearchLayer::setup` snapshots
 /// the current selections for cancel-restore once the layer lands (see its
 /// own doc for why that capture happens there rather than here).
@@ -90,10 +90,10 @@ fn ensure_search_regex(state: &mut EditorState, view: &EngineView, t: CommandPan
 /// Reads the cached `search_regex` (compiled during the search session), or
 /// recompiles from the `'s'` register if the cache is empty. Repeats `count`
 /// times (e.g. `3n` jumps 3 matches forward). Moves or extends the primary
-/// selection depending on `extend` — or, when the pattern's `m` flag is set,
-/// every selection independently. Both are `MatchScan::advance`/`advance_all`,
+/// selection depending on `extend` (or, when the pattern's `m` flag is set,
+/// every selection independently). Both are `MatchScan::advance`/`advance_all`,
 /// which also back live search's preview (`update_live_search` in
-/// `input_stack/search.rs`) — this is the `PastSelection` seed, that one is
+/// `input_stack/search.rs`); this is the `PastSelection` seed, that one is
 /// `AtSelection`.
 fn search_jump(
     state: &mut EditorState,
@@ -228,7 +228,7 @@ pub(in crate::editor) fn cmd_sift_within(
         return Ok(());
     }
     // `SiftLayer::setup` snapshots the current selections once the layer
-    // lands — see `SearchLayer::setup`'s doc for why the capture happens
+    // lands; see `SearchLayer::setup`'s doc for why the capture happens
     // there rather than here.
     state.push_mode_layer(
         view,
@@ -257,10 +257,10 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     // Always search the word under the head, regardless of any existing selection
     // (matches Vim: `*` targets the word under the cursor, not the visual selection).
     //
-    // No-op on \n or whitespace — no word to search for. On \n, inner_word_impl
+    // No-op on \n or whitespace: no word to search for. On \n, inner_word_impl
     // would otherwise expand the cursor to the adjacent \n run and set a useless
     // newline regex; on whitespace, it would expand to the whitespace run itself
-    // and set a bare-space pattern (Vim instead scans to the nearest word — HUME
+    // and set a bare-space pattern (Vim instead scans to the nearest word; HUME
     // deliberately no-ops rather than adding that scan).
     match chars.classify(text.char_at(primary.head()).unwrap_or('\n')) {
         CharClass::Eol | CharClass::Space => return Ok(()),
@@ -282,7 +282,7 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
 
 // ── Search selection (Ctrl-/) ────────────────────────────────────────────────
 
-/// Use the primary selection's literal text as the search pattern — unlike
+/// Use the primary selection's literal text as the search pattern. Unlike
 /// `*`, no whole-word anchors and no word expansion. Selects the exact text
 /// the user already highlighted, so `n`/`N` cycle its other occurrences
 /// (Helix's `search_selection`).
@@ -297,11 +297,11 @@ pub(in crate::editor) fn cmd_search_selection(
     let primary = pane_selections(state, view, t).primary();
     let selected = primary.slice(text).to_string();
 
-    // No-op on a bare structural newline (a collapsed cursor sitting on one) —
+    // No-op on a bare structural newline (a collapsed cursor sitting on one):
     // a raw `\n` pattern would match every line end, the same "useless
     // newline regex" `*` avoids above. A multi-char selection that merely
     // *contains* a newline (e.g. a whole-line selection) keeps the literal
-    // semantics this command promises — only the single-newline case is
+    // semantics this command promises; only the single-newline case is
     // guarded.
     if selected == "\n" {
         return Ok(());
@@ -316,14 +316,14 @@ pub(in crate::editor) fn cmd_search_selection(
 
 /// Compile `pattern` under `flags`, write the rendered flagged form to the
 /// search register, and set it as `t`'s buffer's active search pattern
-/// (forward direction). Shared tail of `*` and Ctrl-/ — both set the same
+/// (forward direction). Shared tail of `*` and Ctrl-/. Both set the same
 /// (register, direction, pattern) triple that live search sets on confirm;
 /// the match-cache/highlights are rebuilt lazily per-frame regardless of
 /// which path set the pattern.
 ///
 /// Renders through `render_search_input` rather than compiling `pattern`
 /// directly, so `SearchPattern::compile` stays the crate's one compilation
-/// path — see `render_search_input`'s own doc for why the round trip is
+/// path; see `render_search_input`'s own doc for why the round trip is
 /// safe for both of this function's callers.
 fn set_search_pattern(
     state: &mut EditorState,

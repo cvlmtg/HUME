@@ -2,15 +2,15 @@
 //! Steel-facing [`DiffHunk`]/[`WordDiffHunk`] shapes.
 //!
 //! **Line diff** normalizes both sides through [`BufferText::from`] before
-//! tokenizing — every line ending becomes LF and a trailing newline is added
+//! tokenizing: every line ending becomes LF and a trailing newline is added
 //! if missing, the same as loading the text as a HUME buffer. This is
 //! deliberate: it matches how a plugin's git-ref text and the live buffer are
 //! actually compared (as buffer content, not raw bytes), and it means a ref
-//! blob missing its final newline — routine in git — produces no phantom
+//! blob missing its final newline (routine in git) produces no phantom
 //! trailing-line hunk against a buffer that (by HUME's own invariant) always
 //! has one.
 //!
-//! **Word diff** does no such normalization and no re-slicing — see
+//! **Word diff** does no such normalization and no re-slicing. See
 //! [`word_hunks`]'s doc.
 
 use std::ops::Range;
@@ -23,14 +23,14 @@ use hume_rope::lines::line_token_content;
 
 use hume_scripting::host::{DiffHunk, WordDiffHunk};
 
-/// Line-level hunks between two texts, neither yet loaded as a HUME buffer —
+/// Line-level hunks between two texts, neither yet loaded as a HUME buffer:
 /// both sides go through [`BufferText::from`]'s normalization (see the module doc).
 pub(in crate::editor) fn line_hunks(old: &str, new: &str) -> Vec<DiffHunk> {
     hunks(&BufferText::from(old), &BufferText::from(new))
 }
 
-/// As [`line_hunks`], diffing `ref_text` (normalized here) against `buffer`
-/// — already a live, normalized `BufferText`, so it needs no second pass.
+/// As [`line_hunks`], diffing `ref_text` (normalized here) against `buffer`,
+/// already a live, normalized `BufferText`, so it needs no second pass.
 pub(in crate::editor) fn line_hunks_against_buffer(
     ref_text: &str,
     buffer: &BufferText,
@@ -39,18 +39,18 @@ pub(in crate::editor) fn line_hunks_against_buffer(
 }
 
 /// `Equal` runs are dropped; each [`DiffHunk`]'s line lists are re-sliced
-/// from the tokenized input — `LineHunkKind` carries no payload to split
+/// from the tokenized input, since `LineHunkKind` carries no payload to split
 /// (`hume-editing/src/diff.rs`).
 ///
 /// `old.start`/`new.start` mint trusted `ContentLine`s from `LineHunk`'s bare
-/// `usize`s (ropey-domain token indices — `line_tokens()` includes the
+/// `usize`s (ropey-domain token indices: `line_tokens()` includes the
 /// phantom trailing line, per the module doc's normalization). Sound: the
 /// phantom line is an empty token on both sides by construction (the module
 /// doc's normalization guarantee), so it can only ever match as an `Equal`
-/// run — already filtered out above — never surface as a hunk's own start.
+/// run (already filtered out above), never surface as a hunk's own start.
 /// A hunk's start is therefore always a real content line, *or* the
 /// legitimate one-past-last-line insertion/deletion position `DiffHunk`'s
-/// own doc describes (`ContentLineCount::end_exclusive()`'s value) — never
+/// own doc describes (`ContentLineCount::end_exclusive()`'s value), never
 /// the phantom index itself.
 fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
     let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
@@ -73,7 +73,7 @@ fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
 }
 
 /// Slices `tokens[range]` into owned lines with each token's trailing line
-/// break stripped (via [`line_token_content`]) — a [`DiffHunk`]'s line
+/// break stripped (via [`line_token_content`]): a [`DiffHunk`]'s line
 /// payloads never carry one, since a plugin may feed one straight into
 /// `set-virtual-lines!`'s row text. Only these surviving (non-`Equal`) lines
 /// are ever materialized.

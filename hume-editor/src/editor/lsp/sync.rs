@@ -1,6 +1,6 @@
 //! Document sync: mirrors buffer text to attached LSP servers via
 //! `textDocument/didOpen` / `didChange` / `didSave` / `didClose`. Pure
-//! protocol — zero Steel involvement. Version = `Buffer.text_gen`, no
+//! protocol, zero Steel involvement. Version = `Buffer.text_gen`, no
 //! second counter.
 
 use hume_editing::changeset::ChangeSet;
@@ -20,7 +20,7 @@ use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 
 /// One text mutation queued for `didChange` conversion. `before` is the
-/// pre-edit rope (an O(1) clone via ropey's structural sharing — the same
+/// pre-edit rope (an O(1) clone via ropey's structural sharing, the same
 /// discipline `doc_ops.rs` already uses for `propagate_cs_to_panes`);
 /// `version` is the buffer's `text_gen` *after* this edit, the version the
 /// eventual `didChange` notification claims.
@@ -32,7 +32,7 @@ pub(in crate::editor) struct LspPendingChange {
 
 impl Editor {
     /// Shared preamble for every per-buffer document-sync notification. See
-    /// the free [`send_doc_notification`] below for the body — this is a
+    /// the free [`send_doc_notification`] below for the body; this is a
     /// thin `self.state`/`self.lsp` delegate, same shape as
     /// `flush_lsp_pending_changes`.
     fn send_doc_notification(
@@ -45,9 +45,9 @@ impl Editor {
     }
 
     /// Sends the buffer's full text as `textDocument/didOpen`. Called once,
-    /// right after `lsp_attach_buffer` sets `Buffer.lsp_server` — the buffer
+    /// right after `lsp_attach_buffer` sets `Buffer.lsp_server`. The buffer
     /// is guaranteed to have a path at that point (unnamed buffers never
-    /// attach). Queued instead of sent if the handshake hasn't completed —
+    /// attach). Queued instead of sent if the handshake hasn't completed:
     /// the spec forbids anything but `initialize` before `initialized`.
     pub(super) fn lsp_did_open(&mut self, bid: BufferId) {
         let language_id = self
@@ -75,7 +75,7 @@ impl Editor {
         });
     }
 
-    /// `textDocument/didSave` — never includes text (`didSave.includeText`
+    /// `textDocument/didSave`, which never includes text (`didSave.includeText`
     /// is never advertised in the handshake). Queued while `Starting`,
     /// same as every other send site here.
     pub(in crate::editor) fn lsp_did_save(&mut self, bid: BufferId) {
@@ -88,10 +88,10 @@ impl Editor {
 
     /// Whole-document `didChange` (no `range`, legal per spec regardless of
     /// the server's declared sync kind) for reload paths that replace the
-    /// text outright (`:e!`) rather than applying a `ChangeSet` —
+    /// text outright (`:e!`) rather than applying a `ChangeSet`.
     /// `Buffer::reload_from_text` computes a line-diff CS for *undo*, but the
     /// wire message here is simplest as a full-text sync. Skipped entirely
-    /// when `change_sync` reads `None` — a server that declared `NONE` (or
+    /// when `change_sync` reads `None`: a server that declared `NONE` (or
     /// nothing) asked for no change notifications, full-document or
     /// otherwise. Queued while `Starting`, same as every other send site
     /// here.
@@ -108,10 +108,10 @@ impl Editor {
     }
 
     /// Converts and sends every pending change recorded since the last
-    /// flush, one `didChange` notification per entry, in order — draining
+    /// flush, one `didChange` notification per entry, in order, draining
     /// `Buffer.lsp_pending`. Called from the LSP per-frame drain
     /// (`drain_lsp`), before the diagnostics remap consumes the same entries
-    /// for diagnostics (same source, both consumers — the entries aren't
+    /// for diagnostics (same source, both consumers; the entries aren't
     /// cleared until every consumer of this drain pass has run).
     ///
     /// `lsp_pending` isn't LSP-exclusive: `record_lsp_edits` (`doc_ops.rs`)
@@ -119,7 +119,7 @@ impl Editor {
     /// char-offset decorations (`set-inlay-hints!`/`set-extra-highlights!`)
     /// that still need to track edits. This drains and remaps *every*
     /// buffer with pending entries; sending a `didChange` is the one part
-    /// gated on actually having a server, path, and URI to send it to —
+    /// gated on actually having a server, path, and URI to send it to:
     /// missing any of those skips the send but never skips the remap, so a
     /// decoration-only buffer's positions don't silently drift.
     pub(in crate::editor) fn flush_lsp_pending_changes(&mut self) {
@@ -127,11 +127,11 @@ impl Editor {
     }
 }
 
-/// Free-function body of [`Editor::flush_lsp_pending_changes`] — operates on
+/// Free-function body of [`Editor::flush_lsp_pending_changes`]. Operates on
 /// disjoint `state`/`lsp` borrows only (no other `Editor` field), so it's
 /// also callable from `EditorHostImpl` (completion's accept path needs this
 /// same flush, synchronously, before sending a `completionItem/resolve`
-/// request — see `completion::BufferSession::accept`).
+/// request; see `completion::BufferSession::accept`).
 pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspState) {
     let with_pending: Vec<BufferId> = state
         .buffers
@@ -143,14 +143,14 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
     for bid in with_pending {
         let buf = state.buffers.get(bid);
         // Resolved *before* taking the queue below, from the buffer's
-        // state at this instant — a missing server/path/URI just means
+        // state at this instant: a missing server/path/URI just means
         // there's nothing to send, not that the entries should be
         // dropped unremapped.
         let send_target = buf
             .lsp_server
             .and_then(|sid| Some((sid, hume_lsp::uri::path_to_uri(buf.path()?).ok()?)));
         // The form this flush's didChange(s) must take, resolved once per
-        // buffer rather than per queued entry — a server's declared sync
+        // buffer rather than per queued entry, since a server's declared sync
         // kind can't change mid-flush. `None` (declared `NONE`, or no
         // server at all) means nothing gets sent below, same as an absent
         // `send_target`.
@@ -171,7 +171,7 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
         } = lsp;
 
         // A FULL-sync server ignores `range` entirely and treats each
-        // event's `text` as the whole new document — sending one such event
+        // event's `text` as the whole new document, so sending one such event
         // per queued entry would each carry the *final* text under a
         // *stale* version. So instead of sending inside the loop, this only
         // notes whether anything actually changed; the one collapsed event
@@ -179,19 +179,19 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
         let mut full_doc_pending = false;
 
         for change in pending {
-            // Same source as the didChange conversion below — remap
+            // Same source as the didChange conversion below: remap
             // stored diagnostics through the identical ChangeSet before
             // it's consumed, so both consumers see the exact
             // same edit stream, including undo/redo. The char-offset
             // decoration stores (inlay hints, extra highlights) go
-            // through the same chokepoint for the same reason — done
+            // through the same chokepoint for the same reason, done
             // unconditionally, whether or not this buffer has anywhere
             // to send a didChange.
             diagnostics.remap_through(bid, &change.cs);
             state.config.decorations.remap_through(bid, &change.cs);
 
             let Some((server_id, uri)) = &send_target else {
-                continue; // no attached server (or no path/URI yet) — nothing to send
+                continue; // no attached server (or no path/URI yet): nothing to send
             };
             match sync_kind {
                 None => continue, // server wants no change notifications at all
@@ -200,7 +200,7 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
                 }
                 Some(_) => {
                     // INCREMENTAL (the only other kind `change_sync` can
-                    // return — `NONE` is already folded into `None` above).
+                    // return; `NONE` is already folded into `None` above).
                     let Some(client) = servers.get_mut(server_id).map(|e| &mut e.client) else {
                         continue; // can't happen once attached, but never send into the void
                     };
@@ -225,7 +225,7 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
         }
 
         // `full_doc_pending` is only ever set inside the branch above that
-        // already matched `send_target` — reachable here only together
+        // already matched `send_target`, reachable here only together
         // with it, never on its own.
         if full_doc_pending
             && let Some((server_id, uri)) = &send_target
@@ -249,7 +249,7 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
 
 /// The `didChange` form `bid`'s attached server wants, or `None` when there
 /// is no server attached, or its declared `textDocumentSync` is `NONE` (or
-/// absent) — both cases mean "send nothing", so callers don't need to tell
+/// absent). Both cases mean "send nothing", so callers don't need to tell
 /// them apart. See [`hume_lsp::client::LspClient::change_sync`] for the
 /// pre-handshake default.
 fn change_sync(state: &EditorState, lsp: &LspState, bid: BufferId) -> Option<TextDocumentSyncKind> {
@@ -257,7 +257,7 @@ fn change_sync(state: &EditorState, lsp: &LspState, bid: BufferId) -> Option<Tex
     lsp.servers.get(&server_id)?.client.change_sync()
 }
 
-/// Free-function body of [`Editor::send_doc_notification`] — same disjoint
+/// Free-function body of [`Editor::send_doc_notification`], with the same disjoint
 /// `state`/`lsp` shape as [`flush_lsp_pending_changes`]. Resolves the
 /// buffer's attached server and URI, builds `params` from the buffer, then
 /// sends through the client's Starting-queue discipline. No-op when the
@@ -293,14 +293,14 @@ fn send_doc_notification(
 }
 
 /// `textDocument/didClose`, sent from
-/// `crate::editor::buffer::lifecycle::close_buffer_and_notify` — the single
+/// `crate::editor::buffer::lifecycle::close_buffer_and_notify`, the single
 /// chokepoint both `Editor::close_buffer` and
 /// `EditorHostImpl::close_buffer` (`(close-buffer! …)`) go through, so this
 /// has no other caller and no `impl Editor` wrapper of its own.
 ///
-/// Must run *before* the buffer slot is freed — it needs the buffer's path
+/// Must run *before* the buffer slot is freed: it needs the buffer's path
 /// and `lsp_server` to build the notification. Queued while `Starting`, same
-/// as every other send site here — a queued didClose flushes after a queued
+/// as every other send site here. A queued didClose flushes after a queued
 /// didOpen, in order, so the pair stays coherent even if a buffer opens and
 /// closes before the handshake completes.
 pub(in crate::editor) fn lsp_did_close(state: &mut EditorState, lsp: &mut LspState, bid: BufferId) {

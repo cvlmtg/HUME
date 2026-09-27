@@ -6,7 +6,7 @@ use pretty_assertions::assert_eq;
 /// `select-all-matches` turns every match into a selection.
 #[test]
 fn select_all_matches_creates_selection_per_match() {
-    // "ab cd ab\n" — two "ab" matches at 0 and 6.
+    // "ab cd ab\n": two "ab" matches at 0 and 6.
     let mut ed = editor_from("-[a]>b cd ab\n").with_search_regex("ab");
 
     ed.execute_keymap_command("select-all-matches".into(), Some(1), false);
@@ -37,7 +37,7 @@ fn select_all_matches_no_search_is_noop() {
 fn select_all_matches_uses_search_register_fallback() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     ed.state.registers.set_search_register("ab".to_string());
-    // No live regex — forces register fallback.
+    // No live regex: forces register fallback.
     assert!(ed.search_pattern().is_none());
 
     ed.execute_keymap_command("select-all-matches".into(), Some(1), false);
@@ -75,7 +75,7 @@ fn star_on_cursor_expands_to_word() {
     assert!(ed.search_pattern().is_some());
 }
 
-/// `*` on a partial-word selection expands to the whole word under the head —
+/// `*` on a partial-word selection expands to the whole word under the head:
 /// it must NOT search the literal partial text. Searching the literal
 /// substring would produce `\bell\b` (from "ell"), which can never match
 /// anything, because `\b` doesn't exist inside "hello".
@@ -110,7 +110,7 @@ fn star_on_multiword_selection_uses_word_under_head() {
     assert_eq!(reg(&ed, 's'), vec![r"\bworld\b"]);
 }
 
-/// `*` on a `\n` cursor is a noop — no word to search for.
+/// `*` on a `\n` cursor is a noop: no word to search for.
 ///
 /// Without the `CharClass::Eol` guard, `inner_word_impl` would expand the
 /// cursor to the adjacent newline run and set a useless newline regex.
@@ -126,7 +126,7 @@ fn star_on_trailing_newline_is_noop() {
     assert!(reg(&ed, 's').is_empty());
 }
 
-/// `*` with the head on whitespace is a no-op — no word to search for.
+/// `*` with the head on whitespace is a no-op: no word to search for.
 ///
 /// Regression: without the `CharClass::Space` guard, `inner_word_impl` would
 /// expand the cursor to the adjacent whitespace run and set a bare-space
@@ -145,13 +145,13 @@ fn star_on_whitespace_is_noop() {
 /// `*` escapes regex metacharacters in the word it expands to.
 #[test]
 fn star_escapes_metacharacters() {
-    // "a.b\n", cursor on '.' — a 1-char Punctuation run, escaped literally.
+    // "a.b\n", cursor on '.': a 1-char Punctuation run, escaped literally.
     let mut ed = editor_from("a-[.]>b\n");
     ed.handle_key(key('*'));
     assert_eq!(reg(&ed, 's'), vec![r"\."]);
 }
 
-/// `*` on a word matches whole words only — the `as` in `"last"` must not match.
+/// `*` on a word matches whole words only: the `as` in `"last"` must not match.
 #[test]
 fn star_whole_word_skips_substring_matches() {
     // Buffer: "as last\n". Cursor on 'a' (position 0).
@@ -190,7 +190,7 @@ fn star_punctuation_run_stays_literal() {
 
     ed.handle_key(key('*'));
     let r = reg(&ed, 's');
-    // '-' and '>' are both Punctuation — no \b boundaries should be added.
+    // '-' and '>' are both Punctuation, so no \b boundaries should be added.
     // '-' is escaped as a regex-syntax meta char (superfluous outside `[...]`,
     // matches the same literal '-').
     assert_eq!(r, vec![r"\->"]);
@@ -221,24 +221,24 @@ fn star_on_double_slash_punctuation_run_stays_literal() {
 
 // ── Search selection (Ctrl-/) ────────────────────────────────────────────────
 
-/// `Ctrl-/` on a partial-word selection searches the literal substring —
-/// unlike `*`, it does NOT expand to the whole word, and it does NOT add
+/// `Ctrl-/` on a partial-word selection searches the literal substring.
+/// Unlike `*`, it does NOT expand to the whole word, and it does NOT add
 /// word-boundary anchors. This is the point of the feature: it finds "ell"
 /// wherever it occurs, including as a substring of other words.
 #[test]
 fn search_selection_uses_literal_text() {
-    // "hello ell x\n" — selection covers "ell" inside "hello" (head on second 'l').
+    // "hello ell x\n": selection covers "ell" inside "hello" (head on second 'l').
     let mut ed = editor_from("h-[ell]>o ell x\n");
     ed.handle_key(key_ctrl('/'));
 
     // Selection is untouched (no expansion).
     assert_eq!(state(&ed), "h-[ell]>o ell x\n");
-    // No \b anchors — literal substring pattern. Register carries the `v`
+    // No \b anchors: literal substring pattern. Register carries the `v`
     // (verbatim) flag prefix Ctrl-/ now sets instead of hand-escaping.
     assert_eq!(reg(&ed, 's'), vec!["v/ell"]);
 
     // Matches both the substring inside "hello" (1..4) and
-    // the standalone "ell" (6..9) — proving it's substring, not whole-word, search.
+    // the standalone "ell" (6..9), proving it's substring, not whole-word, search.
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
@@ -251,26 +251,26 @@ fn search_selection_uses_literal_text() {
     );
 }
 
-/// After `Ctrl-/`, `n` cycles to the next literal occurrence — the full
+/// After `Ctrl-/`, `n` cycles to the next literal occurrence: the full
 /// "select, mark as search, jump" flow this feature exists for.
 #[test]
 fn search_selection_then_n_jumps_to_next_occurrence() {
-    // "hello ell x\n" — select "ell" inside "hello".
+    // "hello ell x\n": select "ell" inside "hello".
     let mut ed = editor_from("h-[ell]>o ell x\n");
     ed.handle_key(key_ctrl('/'));
     ed.handle_key(key('n'));
 
-    // Jumps to the next "ell" — the standalone one at position 6.
+    // Jumps to the next "ell", the standalone one at position 6.
     assert_eq!(state(&ed), "hello -[ell]> x\n");
 }
 
 /// `Ctrl-/` escapes regex metacharacters in the selected text.
 #[test]
 fn search_selection_escapes_metacharacters() {
-    // "a.b axb\n" — select "a.b".
+    // "a.b axb\n": select "a.b".
     let mut ed = editor_from("-[a.b]> axb\n");
     ed.handle_key(key_ctrl('/'));
-    // Register stores the raw, unescaped selection behind the `v` flag —
+    // Register stores the raw, unescaped selection behind the `v` flag;
     // escaping now happens at compile time, not at register-write time.
     assert_eq!(reg(&ed, 's'), vec!["v/a.b"]);
 
@@ -296,7 +296,7 @@ fn search_selection_on_collapsed_cursor_searches_char() {
 /// `Ctrl-/` on a collapsed cursor sitting on a structural `\n` is a no-op.
 ///
 /// Regression: without this guard, the 1-char selection "\n" becomes the
-/// search pattern — a raw-newline regex that matches every line end,
+/// search pattern: a raw-newline regex that matches every line end,
 /// clobbering the search register with something useless (the same
 /// degenerate case `*` avoids via its `CharClass::Eol` guard).
 #[test]

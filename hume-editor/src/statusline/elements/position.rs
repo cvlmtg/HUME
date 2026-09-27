@@ -15,7 +15,7 @@ pub(in crate::statusline) struct Position {
     line: usize,
     /// 1-based grapheme column (CLAUDE.md's "Displayed value" invariant).
     grapheme_col: usize,
-    /// Highest 1-based line number the cursor can reach in the buffer —
+    /// Highest 1-based line number the cursor can reach in the buffer:
     /// sizes the padding field.
     max_line: usize,
 }

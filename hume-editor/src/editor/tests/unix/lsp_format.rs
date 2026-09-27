@@ -17,11 +17,11 @@ use hume_scripting::ScriptingHost;
 
 /// Every test's buffer content unless a test needs a different line shape.
 /// Char offsets: line0 'line1' = 0..5 (+\n at 5), line1 'line2' = 6..11
-/// (+\n at 11), line2 'line3' = 12..17 (+\n at 17) — the selection helpers
+/// (+\n at 11), line2 'line3' = 12..17 (+\n at 17). The selection helpers
 /// below reference these offsets directly.
 const THREE_LINES: &str = "line1\nline2\nline3\n";
 
-/// Handshake caps advertise `rangeFormatting` without `rangesSupport` — the
+/// Handshake caps advertise `rangeFormatting` without `rangesSupport`: the
 /// common case, and what every fan-out test wants.
 fn setup(
     file: &Path,
@@ -31,7 +31,7 @@ fn setup(
     setup_with_content(file, tmp, THREE_LINES, configure)
 }
 
-/// Same as `setup`, with the file content under caller control — for a test
+/// Same as `setup`, with the file content under caller control, for a test
 /// needing a different line shape (e.g. a blank line).
 fn setup_with_content(
     file: &Path,
@@ -52,7 +52,7 @@ fn setup_with_content(
 }
 
 /// Same as `setup_with_content`, with the handshake's `initialize` result
-/// also under caller control — for the `rangesSupport` tests, which need it
+/// also under caller control, for the `rangesSupport` tests, which need it
 /// to differ from the common case above.
 fn setup_with_caps(
     file: &Path,
@@ -103,13 +103,13 @@ fn setup_with_caps(
 }
 
 fn select_full_line_1(ed: &mut Editor) {
-    // 'line1\n' — chars [0, 6).
+    // 'line1\n': chars [0, 6).
     ed.set_current_selections(SelectionSet::single(Selection::new(co(0), co(5))));
 }
 
 fn select_full_lines_1_and_3(ed: &mut Editor) {
     // Two disjoint linewise selections: 'line1\n' (chars [0, 6)) and
-    // 'line3\n' (chars [12, 17]) — 'line2\n' in between is untouched by
+    // 'line3\n' (chars [12, 17]). 'line2\n' in between is untouched by
     // either.
     ed.set_current_selections(SelectionSet::from_vec(
         vec![Selection::new(co(0), co(5)), Selection::new(co(12), co(17))],
@@ -118,7 +118,7 @@ fn select_full_lines_1_and_3(ed: &mut Editor) {
 }
 
 fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
-    // 'line1\n' whole (chars [0, 6)), plus "lin" on line 2 (chars 6..=8) —
+    // 'line1\n' whole (chars [0, 6)), plus "lin" on line 2 (chars 6..=8),
     // not linewise.
     ed.set_current_selections(SelectionSet::from_vec(
         vec![Selection::new(co(0), co(5)), Selection::new(co(6), co(8))],
@@ -128,7 +128,7 @@ fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
 
 /// For `"line1\n\nline3\n"` (a blank line2): a real charwise selection on
 /// "in" within line1 (chars 1..=2), plus a collapsed cursor on the blank
-/// line2 (char 6) — the shape a multi-cursor command can leave behind when
+/// line2 (char 6): the shape a multi-cursor command can leave behind when
 /// one cursor happens to land on a blank line.
 fn select_mid_line_and_a_blank_line_cursor(ed: &mut Editor) {
     ed.set_current_selections(SelectionSet::from_vec(
@@ -139,7 +139,7 @@ fn select_mid_line_and_a_blank_line_cursor(ed: &mut Editor) {
 
 fn run_fmt(ed: &mut Editor) {
     // :format-source and the key-bindable lsp-fmt share one body
-    // (lsp/format-source!) — dispatch through the typed `:` entry point.
+    // (lsp/format-source!); dispatch through the typed `:` entry point.
     type_cmd(ed, ":format-source");
     ed.settle();
     ed.drain_lsp();
@@ -192,7 +192,7 @@ fn whole_buffer_edit_is_one_undo_step() {
 
 /// `:format-source` (typed) and `lsp-fmt` (editor command, dispatched here
 /// via `call!` the way an `on-buffer-save` hook does) share one
-/// implementation (`lsp/format-source!`) — both must format identically.
+/// implementation (`lsp/format-source!`), so both must format identically.
 #[test]
 fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
     let tmp = safe_tempdir();
@@ -214,7 +214,7 @@ fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
         },
     );
 
-    // lsp-fmt is key-bindable, not typed — dispatch through the keymap
+    // lsp-fmt is key-bindable, not typed: dispatch through the keymap
     // pipeline, the way an `on-buffer-save` hook's `(call! "lsp-fmt" bid)`
     // would.
     ed.execute_keymap_command("lsp-fmt".into(), Some(1), false);
@@ -231,7 +231,7 @@ fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
 
 #[test]
 fn sub_line_selection_still_formats_the_whole_buffer() {
-    // Default cursor: a bare collapsed selection — never spans a full line.
+    // Default cursor: a bare collapsed selection, never spans a full line.
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let (mut ed, _guard) = setup(
@@ -288,7 +288,7 @@ fn full_line_selection_sends_range_formatting() {
 
 /// Two disjoint linewise selections (line 1 and line 3, with line 2
 /// untouched by either) can't be expressed as one LSP range without also
-/// covering the untouched line in between — `:lsp-fmt` sends one
+/// covering the untouched line in between, so `:lsp-fmt` sends one
 /// `rangeFormatting` per range instead (the server here doesn't advertise
 /// `rangesSupport`), and applies both edits as a single transaction.
 #[test]
@@ -330,7 +330,7 @@ fn disjoint_full_line_selections_send_two_range_formatting_requests() {
     );
 }
 
-/// Same shape as above, but the server advertises `rangesSupport` — one
+/// Same shape as above, but the server advertises `rangesSupport`: one
 /// `textDocument/rangesFormatting` request carrying both ranges, not two
 /// separate `rangeFormatting` round trips.
 #[test]
@@ -373,14 +373,14 @@ fn disjoint_full_line_selections_send_one_ranges_formatting_request_when_support
         ed.doc().text().to_string(),
         "RANGE1\nline2\nRANGE3\n",
         "a server advertising rangesSupport must get one rangesFormatting request \
-         carrying both ranges — a fan-out or whole-buffer request instead would \
+         carrying both ranges; a fan-out or whole-buffer request instead would \
          either apply a decoy edit or (fan-out, with only one decoy queued) leave \
          the buffer unchanged, neither of which matches"
     );
 }
 
 /// A single full-line selection stays on the `rangeFormatting` path even
-/// when the server advertises `rangesSupport` — that capability only
+/// when the server advertises `rangesSupport`. That capability only
 /// changes how *multiple* ranges are sent (one `rangesFormatting` request
 /// instead of a fan-out), and one range has nothing to batch with.
 #[test]
@@ -426,7 +426,7 @@ fn single_full_line_selection_sends_range_formatting_even_when_ranges_supported(
 }
 
 /// Same shape as `disjoint_full_line_selections_send_two_range_formatting_requests`,
-/// but past `lsp.format-max-ranges` — a server advertising `rangesSupport` sends every
+/// but past `lsp.format-max-ranges`: a server advertising `rangesSupport` sends every
 /// range in one `rangesFormatting` request, so the cap (which bounds one-request-per-
 /// range fan-out) has nothing to bound and never fires.
 #[test]
@@ -460,7 +460,7 @@ fn ranges_formatting_is_not_capped_by_format_max_ranges() {
         ed.doc().text().to_string(),
         "RANGE1\nline2\nRANGE3\n",
         "a rangesSupport server must format both ranges in one request even when \
-         their count exceeds lsp.format-max-ranges — the cap only bounds the \
+         their count exceeds lsp.format-max-ranges; the cap only bounds the \
          one-request-per-range fan-out path"
     );
 }
@@ -535,8 +535,8 @@ fn buffer_with_no_path_reports_and_sends_nothing() {
     );
 }
 
-/// A whole-line selection and a sub-line selection together are ambiguous
-/// — `:lsp-fmt` warns and formats nothing, rather than guessing which
+/// A whole-line selection and a sub-line selection together are ambiguous:
+/// `:lsp-fmt` warns and formats nothing, rather than guessing which
 /// reading the user meant.
 #[test]
 fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
@@ -575,7 +575,7 @@ fn mixed_linewise_and_sub_line_selections_warn_and_format_nothing() {
 }
 
 /// A stray blank-line cursor is ambiguous (see `linewise_classification`),
-/// not a deliberate whole-line selection — end-to-end through `:lsp-fmt`,
+/// not a deliberate whole-line selection. End-to-end through `:lsp-fmt`,
 /// on top of the unit coverage in `buffer_text_steel.rs` and
 /// `lsp_introspect.rs`.
 #[test]
@@ -612,7 +612,7 @@ fn stray_blank_line_cursor_does_not_trigger_the_mixed_selection_refusal() {
 }
 
 /// Past `lsp.format-max-ranges`, `:lsp-fmt` refuses and warns instead of
-/// silently narrowing an N-region request into a 1-region one — the same
+/// silently narrowing an N-region request into a 1-region one: the same
 /// contract the mixed-selection case above uses for "can't do this
 /// unambiguously".
 #[test]
@@ -648,7 +648,7 @@ fn fan_out_past_the_cap_warns_and_formats_nothing() {
     );
 }
 
-/// The cap is exclusive — exactly `lsp.format-max-ranges` ranges still fans
+/// The cap is exclusive: exactly `lsp.format-max-ranges` ranges still fans
 /// out normally, only `n > cap` refuses.
 #[test]
 fn fan_out_at_the_cap_formats_normally() {
@@ -714,7 +714,7 @@ fn fan_out_applies_as_one_undo_step() {
     );
 }
 
-/// One range's error response aborts the whole fan-out — no partial
+/// One range's error response aborts the whole fan-out, with no partial
 /// format from the range that did succeed.
 #[test]
 fn fan_out_error_response_applies_nothing() {
@@ -791,6 +791,6 @@ fn loading_the_plugin_registers_no_save_hook() {
     assert_eq!(
         ed.doc().text().to_string(),
         before,
-        "loading core:lsp must not register an on-buffer-save formatter — v1 is manual :lsp-fmt only"
+        "loading core:lsp must not register an on-buffer-save formatter: v1 is manual :lsp-fmt only"
     );
 }

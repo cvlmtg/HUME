@@ -26,6 +26,6 @@ fn cancel_async_on_an_unknown_id_is_a_silent_no_op() {
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "done",
-        "cancel-async! on an unknown id must not raise — execution must reach past it"
+        "cancel-async! on an unknown id must not raise; execution must reach past it"
     );
 }

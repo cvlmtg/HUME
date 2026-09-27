@@ -194,7 +194,7 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
             Some(PluginStatus::Loaded)
         ),
         "core:stdlib must be inline-activated to Loaded by core:pickers's \
-         body-time call! — staying Declared would mean the config read \
+         body-time call!; staying Declared would mean the config read \
          either errored or silently reached an unactivated stub"
     );
     let id_pickers = PluginId::Core("pickers".to_string());
@@ -203,7 +203,7 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
             ed.scripting.as_ref().unwrap().plugin_status(&id_pickers),
             Some(PluginStatus::Loaded)
         ),
-        "core:pickers must itself be Loaded — its own eager load-plugin completed"
+        "core:pickers must itself be Loaded: its own eager load-plugin completed"
     );
 }
 
@@ -275,7 +275,7 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
             .unwrap()
             .activation_language_plugins("some-made-up-language")
             .is_empty(),
-        "manifest.scm declares no #:languages — startup grammar registration is \
+        "manifest.scm declares no #:languages: startup grammar registration is \
          core's job, so core:plum has no reason to activate on a language set"
     );
 }
@@ -354,7 +354,7 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
     );
 
     // core:plum, declared AFTER the failing line, must still have been
-    // reached and resolved its manifest.scm — a failed plugin load must
+    // reached and resolved its manifest.scm. A failed plugin load must
     // not abort the rest of init.scm.
     assert!(
         matches!(
@@ -365,7 +365,7 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
                 .map(|tc| &tc.body),
             Some(TypedBody::Lazy(_))
         ),
-        "core:plum's plum-update-plugins must be registered — proving init.scm \
+        "core:plum's plum-update-plugins must be registered, proving init.scm \
          continued past the failed third-party plugin instead of aborting"
     );
 }
@@ -477,7 +477,7 @@ fn keymap_lint_silent_for_known_command() {
             .collect::<Vec<_>>()
     );
     // The lint reads all three tries at once, so it can't tell Normal from
-    // Insert — this is what pins `Effect::BindKey`'s mode all the way through
+    // Insert. This is what pins `Effect::BindKey`'s mode all the way through
     // `to_editor_bind_mode` into the right trie.
     assert!(
         ed.state

@@ -3,7 +3,7 @@
 //!
 //! The five position-validation free functions below are `pub(super)` where
 //! `host_impl/tests.rs` (a sibling of this module, not a descendant) needs
-//! them — the same reachable set (`host_impl` and its descendants) they had
+//! them: the same reachable set (`host_impl` and its descendants) they had
 //! as private items directly in `host_impl.rs`, just spelled differently now
 //! that a caller of them lives outside this module.
 
@@ -70,7 +70,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .is_none()
         {
             return Err(format!(
-                "set-signs!: unregistered sign source {source:?} — call \
+                "set-signs!: unregistered sign source {source:?}, call \
                  (register-sign-source! …) first"
             ));
         }
@@ -214,15 +214,15 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         text: String,
     ) -> Result<(), String> {
-        // Return value discarded — called purely to reuse the SSOT "unknown
+        // Return value discarded: called purely to reuse the SSOT "unknown
         // buffer" wording every sibling setter raises for a stale `bid`.
         buffer_text(self.state, bid, "set-statusline-text!")?;
-        // A name `StatusElement::from_str` would reject can never be placed
-        // — reject it here too, or the push silently stores an entry no
+        // A name `StatusElement::from_str` would reject can never be placed,
+        // so reject it here too, or the push silently stores an entry no
         // `steel:<name>` element can ever render.
         StatusElement::custom(&source).map_err(|e| format!("set-statusline-text!: {e}"))?;
         // Wholesale replace, same as every sibling decoration setter
-        // (`SourceStore::set`) — an empty `text` is stored as-is rather than
+        // (`SourceStore::set`): an empty `text` is stored as-is rather than
         // pruned; `render_element`'s `Custom` arm and `render_section` both
         // already treat empty and absent identically.
         self.state
@@ -243,7 +243,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Ok(Vec::new());
         };
-        // Converted immediately at the Steel/LSP host seam — `range` arrives
+        // Converted immediately at the Steel/LSP host seam: `range` arrives
         // as the raw `(usize, usize)` tuple the FFI boundary decodes Steel's
         // `#:range` argument into (see `CharOffset`'s doc on this one carve-out)
         // and must not travel any further as one.
@@ -268,7 +268,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 }
 
 /// Converts `segments`' char offsets into `text` to byte offsets, sorting by
-/// `start` and validating in the process — the sole enforcement point for
+/// `start` and validating in the process: the sole enforcement point for
 /// `set-virtual-lines!`'s segment contract (bounds, ordering, non-overlap,
 /// grapheme-cluster alignment). The Steel boundary
 /// (`virtual_line_specs` in `hume-scripting`'s `builtins/decorations.rs`)
@@ -280,7 +280,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 /// edge that splits a multi-codepoint cluster (e.g. `e` + combining acute)
 /// would still pass a char-boundary check, but the engine's per-cluster
 /// lookup would either paint the whole cluster with a segment that only
-/// claimed part of it, or miss a segment that only claimed part of it — both
+/// claimed part of it, or miss a segment that only claimed part of it, both
 /// silent.
 pub(super) fn virtual_line_segments_to_bytes(
     text: &str,
@@ -299,7 +299,7 @@ pub(super) fn virtual_line_segments_to_bytes(
         .collect();
     let char_count = char_to_byte.len() - 1;
 
-    // Every grapheme-cluster start byte offset, plus end-of-text — sorted,
+    // Every grapheme-cluster start byte offset, plus end-of-text, sorted,
     // since `grapheme_indices` yields ascending byte offsets. Built once per
     // entry rather than re-walking `text` on every boundary check below.
     let grapheme_boundaries: Vec<usize> = text
@@ -349,7 +349,7 @@ pub(super) fn virtual_line_segments_to_bytes(
 /// its Steel-facing positions. `bid`'s liveness is already checked before
 /// any of these setters' bodies run (`args::LivePane`'s `BuiltinArg::resolve`
 /// in the `builtins!`-registered closure), so the `Err` arm here is a
-/// defensive fallback, not the primary check — kept because `try_get` could
+/// defensive fallback, not the primary check. It is kept because `try_get` could
 /// in principle diverge from the liveness check's own `buffer_exists`.
 fn buffer_text<'s>(
     state: &'s EditorState,
@@ -365,13 +365,13 @@ fn buffer_text<'s>(
 
 /// `line`'s line-start char offset, or `Err` naming `builtin` if `line` is
 /// out of range. Signs/virtual-lines/EOL-text/line-backgrounds keep their
-/// Steel-facing `line` unit — this is the one place — already holding the
-/// rope — where that converts to the internal char-offset position model.
+/// Steel-facing `line` unit. This is the one place (already holding the
+/// rope) where that converts to the internal char-offset position model.
 ///
 /// Rejects the buffer's last *ropey* line, not just any out-of-range line:
 /// the buffer invariant (every buffer ends with a structural `\n`) means
 /// that last line is always the empty phantom line the trailing `\n`
-/// produces — zero-width, at `pos == len_chars()`, nothing to decorate.
+/// produces: zero-width, at `pos == len_chars()`, nothing to decorate.
 /// `DisplayLineMap::last_line()` never lays it out, so admitting it would hand a
 /// caller a position no render pass can resolve to a real line.
 pub(super) fn line_start_offset(
@@ -388,18 +388,18 @@ pub(super) fn line_start_offset(
     Ok(text.line_to_char(line.into()))
 }
 
-/// `pos` must address a real char in `text` (`<` its length) — `Err` naming
+/// `pos` must address a real char in `text` (`<` its length), `Err` naming
 /// `builtin` otherwise. One past the last char looks tempting for an
 /// `'after` hint at end-of-buffer, but there's no char there to anchor to:
 /// `visible_char_range` is half-open, so `pos == len_chars()` can never pass
-/// its `contains` check and the hint would silently never render — reject it
+/// its `contains` check and the hint would silently never render. Reject it
 /// here instead, same as every other position-taking decoration kind.
 ///
 /// `before == false` ('after') gets a second check: the render bridge
 /// (`decoration_providers.rs`'s `update_inlay_hint_providers`) anchors an
 /// 'after' hint at `pos + 1`, so a hint on the buffer's last content char
 /// (its trailing structural `\n`) would resolve to the trailing phantom
-/// line — same unresolvable position `line_start_offset` already refuses
+/// line, the same unresolvable position `line_start_offset` already refuses
 /// for the line-anchored kinds, but reachable here through a char offset
 /// instead of a line number, so that check alone doesn't catch it.
 pub(super) fn validate_offset(
@@ -416,7 +416,7 @@ pub(super) fn validate_offset(
     }
     if !before {
         // `pos < text.len_chars()` is checked above, so `pos` shifted by one
-        // codepoint stays `<= len_chars()` — the one past-the-end position
+        // codepoint stays `<= len_chars()`: the one past-the-end position
         // `ropey_char_to_line` (ropey domain) accepts, needed to find which
         // line an 'after' hint at `pos + 1` actually lands on.
         let landing_line = text.ropey_char_to_line(CharOffset::new(pos).shift(1));
@@ -432,7 +432,7 @@ pub(super) fn validate_offset(
     Ok(CharOffset::new(pos))
 }
 
-/// `(start, end)` must be a valid, non-empty char range into `text` — `Err`
+/// `(start, end)` must be a valid, non-empty char range into `text`, `Err`
 /// naming `builtin` otherwise.
 fn validate_range(
     text: &hume_editing::text::BufferText,

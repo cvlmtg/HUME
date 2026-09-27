@@ -27,7 +27,7 @@ const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
 /// A named element that can appear in a statusline section.
 ///
 /// Elements are the building blocks of the statusline. The mode indicator,
-/// separators, and data fields are all first-class element variants —
+/// separators, and data fields are all first-class element variants:
 /// there is no special chrome. You control the layout by choosing which
 /// elements appear in each section and in what order.
 ///
@@ -37,8 +37,8 @@ const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
 pub enum StatusElement {
     /// The mode indicator: `"NOR"`, `"INS"`, `"EXT"`, `"CMD"`, `"SRC"`, or `"SEL"`.
     ///
-    /// Rendered in the row style, like every other element — the whole row
-    /// tints with the mode, not just this label. Contains no padding — the
+    /// Rendered in the row style, like every other element: the whole row
+    /// tints with the mode, not just this label. Contains no padding; the
     /// renderer's edge padding and inter-element spacing handle surrounding
     /// whitespace.
     Mode,
@@ -58,7 +58,7 @@ pub enum StatusElement {
     ///
     /// Intended for the `left` section where it has the most available space.
     /// For scratch and synthetic buffers (no path) this falls back to the
-    /// buffer's display name — its label, or `*scratch*`.
+    /// buffer's display name: its label, or `*scratch*`.
     FilePath,
     /// Current working directory, with the home prefix replaced by `~`.
     ///
@@ -74,11 +74,11 @@ pub enum StatusElement {
     /// Dirty indicator: `"[+]"` when the buffer has unsaved changes, empty otherwise.
     DirtyIndicator,
     /// Line-ending indicator: `"LF"` or `"CRLF"` reflecting the buffer's write-back
-    /// encoding. Always shown — LF is the common case but worth making explicit.
+    /// encoding. Always shown: LF is the common case but worth making explicit.
     LineEnding,
     /// Search match count: `"[3/42]"` when a search regex is active, empty otherwise.
     ///
-    /// The current index is 1-based — the match whose range contains the primary
+    /// The current index is 1-based: the match whose range contains the primary
     /// cursor head. Shows `0` when the cursor is between matches (e.g. the live
     /// search has no hit yet).
     SearchMatches,
@@ -96,17 +96,17 @@ pub enum StatusElement {
     ReadOnly,
     /// Diagnostic counts for the focused buffer: `"✘ 3 ⚠ 12"`, empty when
     /// both counts are zero. Reads the diagnostics store directly in
-    /// Rust — the statusline renders every frame, so this never goes
+    /// Rust. The statusline renders every frame, so this never goes
     /// through Steel's `(diagnostic-counts …)` builtin (that one is for
     /// plugins, not the render path).
     Diagnostics,
     /// A plugin-defined element, named by `(set-statusline-text! source bid
-    /// text)`'s `source` argument. Wire name is `steel:<source>` — carries
+    /// text)`'s `source` argument. Wire name is `steel:<source>`; carries
     /// the name rather than an interned id, which is what costs this enum
     /// its `Copy` derive.
     ///
     /// Renders the focused buffer's last-pushed text for `name`, or empty
-    /// if nothing has been pushed yet — same "absent = empty" convention as
+    /// if nothing has been pushed yet: same "absent = empty" convention as
     /// every other element. Steel is never called on the render path (see
     /// `Diagnostics`'s doc above); this element only ever reads the cache
     /// `set-statusline-text!` already wrote.
@@ -114,7 +114,7 @@ pub enum StatusElement {
 }
 
 /// Wire-format name for every non-[`Custom`](StatusElement::Custom)
-/// `StatusElement` variant — the single source both directions of the
+/// `StatusElement` variant: the single source both directions of the
 /// name↔variant mapping read from, so adding a variant here (`Custom` is
 /// exempt: a data-carrying variant can't live in a fixed table, so `Display`
 /// and `FromStr` special-case it directly instead) is one entry instead of
@@ -139,7 +139,7 @@ const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
     ("Diagnostics", StatusElement::Diagnostics),
 ];
 
-/// Wire-format prefix for [`StatusElement::Custom`] — one constant so
+/// Wire-format prefix for [`StatusElement::Custom`]: one constant so
 /// `Display` and `FromStr` can't drift out of agreement on the string that
 /// makes a name round-trip through both.
 const CUSTOM_PREFIX: &str = "steel:";
@@ -147,7 +147,7 @@ const CUSTOM_PREFIX: &str = "steel:";
 impl StatusElement {
     /// Validates and builds a [`Custom`](StatusElement::Custom) element from
     /// a bare name (no `steel:` prefix). Shared by `FromStr`'s parse path
-    /// and `set_statusline_text`'s push path (`host_impl.rs`) — a name that
+    /// and `set_statusline_text`'s push path (`host_impl.rs`). A name that
     /// fails here can never round-trip through `"left|center|right"`
     /// (`settings::parse_statusline` splits on `,`/`|` with no escaping), so
     /// both the place that names an element and the place that pushes to
@@ -182,7 +182,7 @@ impl FromStr for StatusElement {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // `StatusElement::custom` also gates `set-statusline-text!`'s push
-        // path (`host_impl.rs`) — a name rejected there can never be placed
+        // path (`host_impl.rs`): a name rejected there can never be placed
         // here, and vice versa.
         if let Some(name) = s.strip_prefix(CUSTOM_PREFIX) {
             return StatusElement::custom(name).map_err(|e| format!("unknown element '{s}': {e}"));
@@ -228,7 +228,7 @@ pub struct StatusLineConfig {
 
 /// Parse one `configure-statusline!` section (`left`/`center`/`right`) from
 /// its wire-format element names, labeling a parse failure with which
-/// section it came from. Shared by the production host and the test mock —
+/// section it came from. Shared by the production host and the test mock:
 /// `mock_host.rs` is reachable from external integration-test crates via the
 /// `test-util` feature (`lib.rs`'s `extern crate self as hume` lets them use
 /// `hume::` paths uniformly), so this must be `pub` like
@@ -331,10 +331,10 @@ fn draw_section(
 /// statusline reads, rather than `&Editor`.
 ///
 /// Created each frame and passed to `EngineView::render()`. No snapshot, no
-/// Arc, no Mutex — it reads editor state on demand during the render call.
+/// Arc, no Mutex: it reads editor state on demand during the render call.
 ///
 /// Narrow on purpose: `EngineView::render` takes `&mut self`, so a provider
-/// holding `&Editor` would keep the whole editor — `view` included — borrowed
+/// holding `&Editor` would keep the whole editor (`view` included) borrowed
 /// across it. The one thing here that comes from `view` is the focused pane's
 /// buffer, read out once up front as a `Copy` id.
 pub(crate) struct HumeStatusline<'a> {
@@ -400,7 +400,7 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
         let y = area.y;
 
         // An open confirm overlay (disk-change reload, …) owns the whole
-        // row when it's still the one driving the keyboard — `EditorState::
+        // row when it's still the one driving the keyboard. `EditorState::
         // confirm()` reads `Some` only while the confirm is `top()`: a
         // Steel-initiated push (a timer's `prompt!`) can otherwise land
         // above it without truncating it (`push_mode_layer` only truncates
@@ -475,7 +475,7 @@ fn render_statusline(
     // The FilePath element is flexible: it shrinks when the row is narrow.
     // Measure pass: render with FilePath = "" to find the total fixed width.
     // Final pass: shorten the path to the remaining budget, then render for
-    // real — but only the section(s) that actually place `FilePath`. It
+    // real, but only the section(s) that actually place `FilePath`. It
     // contributes no width to a section that doesn't contain it, so that
     // section's measure-pass spans are already its final ones; re-rendering
     // it again would just reallocate every other element's `Cow` a second
@@ -557,11 +557,11 @@ fn render_statusline(
 
 /// Crate-wide, not `pub(in crate::statusline)`: two independent test
 /// suites call this directly by design (see the module doc split in
-/// `editor::tests::lsp_statusline`) — `statusline::tests` pins exact
+/// `editor::tests::lsp_statusline`): `statusline::tests` pins exact
 /// glyphs/spacing with synthetic `Data`, `editor::tests::lsp_statusline`
 /// checks that a live LSP diagnostics flow produces the right *counts*
 /// without re-asserting their rendering. Pure formatting function, no
-/// mutable state — the crossing carries no risk `pub(in ...)` would avoid.
+/// mutable state; the crossing carries no risk `pub(in ...)` would avoid.
 pub(crate) fn render_element(
     seg: &StatusElement,
     editor: &HumeStatusline<'_>,

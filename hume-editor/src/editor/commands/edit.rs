@@ -45,12 +45,12 @@ pub(in crate::editor) fn cmd_delete(
     Ok(())
 }
 
-/// Yank, delete, then enter insert mode — all in one undo group.
+/// Yank, delete, then enter insert mode, all in one undo group.
 ///
 /// **Bare default**: pushes to kill ring only. **Explicit register**: routes through
-/// `write_register` — same as `cmd_delete`.
+/// `write_register`, same as `cmd_delete`.
 ///
-/// Unlike `d`, a trailing `\n` at the end of a selection is not deleted — `c`
+/// Unlike `d`, a trailing `\n` at the end of a selection is not deleted: `c`
 /// clears line content but keeps the line. The yank is trimmed accordingly so
 /// the kill-ring entry matches what was removed (no trailing `\n`).
 pub(in crate::editor) fn cmd_change(
@@ -74,18 +74,18 @@ pub(in crate::editor) fn cmd_change(
             .collect::<Vec<_>>()
     };
     // Preserving, not `begin_insert_session`: `c` is itself a register-
-    // consuming operator (see `state.route_kill` below) — clearing the
+    // consuming operator (see `state.route_kill` below), so clearing the
     // prefix here would consume it a step too early.
     begin_insert_session_preserving_register(state, view, fp)?;
     apply_focused_edit_grouped(state, view, fp, delete_selection_content);
     // Pins the anchor `mii` and (if `select-inserted-text` is on) Esc itself
-    // reconstruct the typed replacement from — same helper every insert-entry
+    // reconstruct the typed replacement from: the same helper every insert-entry
     // command uses, so `c`'s auto-select behaves identically to theirs. `c`
     // never steps the cursor back on an empty run, same as `i`/`I`.
     begin_typed_run(state, view, fp, ExitCursor::StayPut);
     // Kill-opened only when the yank actually captured to the ring: the
     // capture stamped `PasteStamp`, but every keystroke about to be typed in
-    // the session bumps `edit_seq` and would strand it — the flag makes
+    // the session bumps `edit_seq` and would strand it. The flag makes
     // `end_insert_session` refresh the stamp's `seq` once typing stops. An
     // explicit-register change (`"5c`) writes no stamp, and refreshing
     // whatever stale stamp might pre-exist would wrongly resurrect it. Lives
@@ -108,7 +108,7 @@ pub(in crate::editor) fn cmd_change(
 ///
 /// Refuses (leaving selections untouched) if there is no stashed insertion,
 /// or if a later mutation (any edit, undo, or redo) has moved the buffer's
-/// `text_gen` past the stamp — see [`crate::editor::buffer::LastInsert`].
+/// `text_gen` past the stamp. See [`crate::editor::buffer::LastInsert`].
 pub(in crate::editor) fn cmd_select_last_insertion(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -127,7 +127,7 @@ pub(in crate::editor) fn cmd_select_last_insertion(
     };
     // Non-empty by construction: `tear_down_insert` only ever stashes a
     // non-empty `spans` vec (see `begin_typed_run`'s caller). The last
-    // span is spatially last (stashed in ascending-start order) — primary
+    // span is spatially last (stashed in ascending-start order), so primary
     // there, matching the entry command's own cursor placement.
     let insertion_primary = spans.len() - 1;
     let insertion_sels: Vec<Selection> = spans
@@ -138,7 +138,7 @@ pub(in crate::editor) fn cmd_select_last_insertion(
         MotionMode::Move => SelectionSet::from_vec(insertion_sels, insertion_primary),
         MotionMode::Extend => {
             // `from_vec` sorts and merges genuinely overlapping selections,
-            // so this is a plain union — no need to zip against current
+            // so this is a plain union, with no need to zip against current
             // selections one-to-one (their counts can differ freely, e.g.
             // `mii` invoked after the selection count changed since the
             // insert). Merely-adjacent (touching, non-overlapping) spans
@@ -181,7 +181,7 @@ pub(in crate::editor) fn cmd_yank(
     Ok(())
 }
 
-/// Exhaustion messages `history_step` reports below — shared by `cmd_undo`/
+/// Exhaustion messages `history_step` reports below, shared by `cmd_undo`/
 /// `cmd_redo` and, via those same functions, `:earlier`/`:later`
 /// (`commands::typed_misc::travel`, which calls `cmd_undo`/`cmd_redo`
 /// directly rather than a second copy of this reporting), so one undo
@@ -191,7 +191,7 @@ const UNDO_EXHAUSTED_MSG: &str = "Already at oldest change";
 const REDO_EXHAUSTED_MSG: &str = "Already at newest change";
 
 /// Walk the undo/redo history `count` steps as one composed transform,
-/// reporting exhaustion when the walk fell short — shared by `cmd_undo`/
+/// reporting exhaustion when the walk fell short. Shared by `cmd_undo`/
 /// `cmd_redo`, which differ only in direction. Duplicating this instead would
 /// split the exhaustion message and the one-`finish_edit`-per-walk contract
 /// in two.
@@ -215,7 +215,7 @@ fn history_step(
         |b| walk(b, count),
     )?;
     // `RefusedReadOnly` stays a distinct arm rather than folding into
-    // `Took(0)` — see `HistoryWalk`'s own doc for why.
+    // `Took(0)`. See `HistoryWalk`'s own doc for why.
     if let doc_ops::HistoryWalk::Took(taken) = result
         && taken < count
     {
@@ -225,7 +225,7 @@ fn history_step(
 }
 
 /// `:earlier`/`:later` (`commands::typed_misc::travel`) call this directly
-/// too, via a function pointer on `TravelDir` — the same undo path `u`/
+/// too, via a function pointer on `TravelDir`: the same undo path `u`/
 /// `Ctrl-r` take, `refuse_if_read_only` guard included, rather than a second
 /// hand-copied one.
 pub(in crate::editor) fn cmd_undo(
@@ -241,7 +241,7 @@ pub(in crate::editor) fn cmd_undo(
     history_step(state, view, t, count, Buffer::undo_n, UNDO_EXHAUSTED_MSG)
 }
 
-/// See [`cmd_undo`]'s doc — same sharing, redo direction.
+/// See [`cmd_undo`]'s doc: same sharing, redo direction.
 pub(in crate::editor) fn cmd_redo(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -338,11 +338,11 @@ pub(in crate::editor) fn cmd_unindent(
 /// Delete the word before each cursor (Ctrl-w in insert mode).
 ///
 /// Promoted from a plain `MappableCommand::Edit` to an `EditorCmd` so it can
-/// resolve this buffer's `word-chars` and close over it — the same pattern
+/// resolve this buffer's `word-chars` and close over it, the same pattern
 /// [`cmd_align_selections`] uses for `tab_width`. Ctrl-w is a *word*
 /// operation by name: leaving it on the built-in word rule would mean `b`
 /// then `d` deletes a whole hyphenated run while Ctrl-w deletes only the
-/// last piece — a split a user would notice within a minute.
+/// last piece, a split a user would notice within a minute.
 pub(in crate::editor) fn cmd_delete_word_backward(
     state: &mut EditorState,
     view: &mut EngineView,

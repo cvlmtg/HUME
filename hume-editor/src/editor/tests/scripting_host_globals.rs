@@ -38,7 +38,7 @@ fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash:
 
     let mut host = {
         let _lock = TEST_GLOBALS.claim(Global::Env);
-        // SAFETY (not the unsafe-block kind — env vars are just inherently
+        // SAFETY (not the unsafe-block kind; env vars are just inherently
         // process-global): guarded by the claim above.
         unsafe {
             std::env::set_var("HUME_RUNTIME", &runtime_root);
@@ -71,7 +71,7 @@ fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash:
 
 /// Renders `hume-globals.scm`'s exact expected content from `names`. Panics
 /// on a name containing a character that can't sit inside a Scheme string
-/// literal unescaped — none of HUME's builtin/macro/command names ever do
+/// literal unescaped. None of HUME's builtin/macro/command names ever do
 /// (they're all identifier-shaped), so this is a canary against a future
 /// name that would otherwise emit malformed Scheme. Malformed Scheme is not
 /// a cosmetic bug here: `steel-language-server` compiles every file in its
@@ -83,7 +83,7 @@ fn render_hume_globals_scm(names: &[String]) -> String {
         assert!(
             !name.contains(['"', '\\']) && !name.chars().any(char::is_whitespace),
             "host global name {name:?} cannot be embedded in a Scheme string literal \
-             unescaped — update render_hume_globals_scm to escape it"
+             unescaped: update render_hume_globals_scm to escape it"
         );
     }
     let mut out = String::from(
@@ -136,7 +136,7 @@ fn hume_globals_scm_matches_generated_host_names() {
 
     let actual = std::fs::read_to_string(&path).unwrap_or_else(|e| {
         panic!(
-            "cannot read {}: {e} — generate it with:\n  \
+            "cannot read {}: {e}; generate it with:\n  \
              HUME_WRITE_STEEL_GLOBALS=1 cargo test -p hume-editor \
              hume_globals_scm_matches_generated_host_names",
             path.display()
@@ -162,7 +162,7 @@ fn hume_globals_scm_matches_generated_host_names() {
 /// have already registered `"scheme"` if `steel-language-server` happens to
 /// be on this machine's `$PATH` (harmless no-op then, guarded by `unless
 /// (lsp-registered-for-language? "scheme")`), so this test explicitly
-/// unregisters first and asserts the cleared pre-state — proving the
+/// unregisters first and asserts the cleared pre-state, proving the
 /// `Some("steel-language-server")` assertion below can only be satisfied by
 /// the `steel-server/register!` call under test, not by that load-time tail.
 ///

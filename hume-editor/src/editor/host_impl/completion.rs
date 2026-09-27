@@ -10,7 +10,7 @@ use super::EditorHostImpl;
 use hume_scripting::host::{self, CompletionHost};
 
 /// `hume-scripting`'s `MatchKind` is the Steel/host-trait boundary's own
-/// mirror (see its doc) — converted here into the editor's richer internal
+/// mirror (see its doc), converted here into the editor's richer internal
 /// enum, one-to-one, the same crossing every other Steel-facing option
 /// (`PickerFeedMode`, `TruncateEnd`) makes at this same seam.
 fn match_kind_from_host(m: host::MatchKind) -> crate::editor::completion::MatchKind {
@@ -23,12 +23,12 @@ fn match_kind_from_host(m: host::MatchKind) -> crate::editor::completion::MatchK
 }
 
 impl crate::editor::Editor {
-    /// Applies a queued `Effect::RegisterCompletionSource` — a Steel
+    /// Applies a queued `Effect::RegisterCompletionSource`: a Steel
     /// source entering `ConfigState.completion_sources`. Queued rather
     /// than applied through the host trait inline so a failed plugin
     /// activation's registration is never applied (see `Effect::BindKey`'s
     /// doc for the same reasoning). `#:target` picks the namespace
-    /// (`SourceRegistry::register_buffer`/`register_minibuf`) — a
+    /// (`SourceRegistry::register_buffer`/`register_minibuf`); a
     /// re-registration under a name already taken *in that namespace*
     /// replaces it (a plugin swapping in its own `path` source is a
     /// feature) and says so in the log; the same name in the *other*
@@ -83,9 +83,9 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     ) -> Result<bool, String> {
         // `hume-scripting` funnels both of `completion-emit!`'s item-input
         // shapes (a plain Steel list, or an `lsp-request` response passed
-        // straight through) into one `JsonHandle` — it knows nothing about
+        // straight through) into one `JsonHandle`. It knows nothing about
         // LSP response shapes itself (the handle is opaque to it, by
-        // design — see `JsonHandle`'s own doc). Deciding the response's own
+        // design; see `JsonHandle`'s own doc). Deciding the response's own
         // items/isIncomplete happens here, the one place that already
         // depends on both `hume_lsp` and this store's `CompletionItem`.
         // Both error cases below are caller mistakes (a handle that isn't a
@@ -95,7 +95,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // silent empty answer.
         // `items_key`: `Some("items")` for a `CompletionList` (its items
         // live under that key), `None` for a bare `CompletionItem[]` array
-        // (its items are the response's own elements) — the same
+        // (its items are the response's own elements), the same
         // distinction `completion_response_items` makes, carried forward so
         // each item's `indexed_child` below walks the correct path.
         let (items, incomplete, items_key) =
@@ -103,7 +103,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 Some((_, Some(own))) if incomplete => {
                     return Err(format!(
                         "completion-emit!: #:incomplete #t has no effect on a CompletionList \
-                         response — the response's own isIncomplete field is used instead \
+                         response; the response's own isIncomplete field is used instead \
                          (here, {})",
                         if own { "#t" } else { "#f" }
                     ));
@@ -119,7 +119,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 }
             };
         // A malformed item (missing the spec-required `label`) is skipped,
-        // not fatal to the whole batch — one bad item from a misbehaving
+        // not fatal to the whole batch: one bad item from a misbehaving
         // server must not silently drop every good one.
         let mut parsed = Vec::with_capacity(items.len());
         for (i, v) in items.iter().enumerate() {
@@ -158,10 +158,10 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp.as_deref_mut() else {
             return Err("completion-accept!: no LSP state available".to_string());
         };
-        // Checked *before* `take_buffer_completion` — that call is
+        // Checked *before* `take_buffer_completion`: that call is
         // destructive (truncates the layer off the stack, per its own doc),
         // so erroring here first leaves a `Minibuf` session (and its own
-        // `minibuf_completion` view slot, which `take_layer` never clears —
+        // `minibuf_completion` view slot, which `take_layer` never clears;
         // see `take_buffer_completion`'s doc) fully intact instead of torn
         // down on a call that was never going to succeed anyway.
         if self.state.input.minibuf_completion().is_some() {

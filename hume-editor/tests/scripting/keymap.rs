@@ -63,7 +63,7 @@ fn unbind_key_queues_unbind_effect() {
         .eval_source(r#"(unbind-key! 'normal "h")"#, &mut mock)
         .unwrap();
 
-    // Whether 'h' was bound is `Keymap`'s business, not the builtin's —
+    // Whether 'h' was bound is `Keymap`'s business, not the builtin's;
     // `remove_sequence_nonexistent_is_noop` (editor/keymap/mod.rs) owns that.
     use termina::event::{KeyCode, KeyEvent, Modifiers};
     let h_key = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
@@ -95,10 +95,10 @@ fn unbind_key_invalid_mode_errors() {
 // eval_init before init.scm), then exercise each macro.
 //
 // The expected bindings come from the literal key/cmd pairs
-// passed to the macro — not from re-reading the keymap.
+// passed to the macro, not from re-reading the keymap.
 
 /// Real `runtime/scheme/prelude.scm` source, read fresh per call so these tests
-/// exercise the file plugin authors actually get — same `CARGO_MANIFEST_DIR`-
+/// exercise the file plugin authors actually get, using the same `CARGO_MANIFEST_DIR`-
 /// relative approach as `editor::tests::scripting_grammar::runtime_scheme_dir`,
 /// which is independent of the test runner's CWD.
 fn real_prelude_source() -> String {
@@ -227,7 +227,7 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
     )
     .unwrap();
 
-    // Load prelude first, then init.scm — mirroring init_scripting's sequence.
+    // Load prelude first, then init.scm, mirroring init_scripting's sequence.
     h.eval_init(&prelude_path, 10_000, &mut mock, builtin_names.clone())
         .expect("prelude eval_init must succeed");
     assert!(
@@ -261,13 +261,13 @@ fn prelude_eval_init_sequence_makes_macros_available_to_init_scm() {
 }
 
 /// When init.scm uses bind-keys! but the prelude was never loaded, the eval
-/// fails with a clear error (macro undefined) — not a panic.
+/// fails with a clear error (macro undefined), not a panic.
 #[test]
 fn bind_keys_without_prelude_fails_gracefully() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    // bind-keys! is NOT defined — init.scm uses it directly.
+    // bind-keys! is NOT defined; init.scm uses it directly.
     let err = h
         .eval_source(r#"(bind-keys! 'normal ("z" "move-left"))"#, &mut mock)
         .unwrap_err();

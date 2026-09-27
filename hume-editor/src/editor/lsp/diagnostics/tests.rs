@@ -19,7 +19,7 @@ fn make_bid() -> BufferId {
     ev.buffers.insert(())
 }
 
-/// Two guaranteed-distinct `BufferId`s — `make_bid()` calls each start a
+/// Two guaranteed-distinct `BufferId`s: `make_bid()` calls each start a
 /// fresh `EngineView` with its own slotmap, so two separate calls are
 /// *not* guaranteed distinct (both can land on the same first-insert
 /// key). Needed by tests that must tell "this buffer" from "some other
@@ -106,7 +106,7 @@ fn for_range_is_globally_sorted_across_multiple_servers() {
     let mut store = DiagnosticsStore::default();
     let bid = make_bid();
     // Server 0 (inserted first) publishes a diagnostic starting later;
-    // server 1 (inserted after) publishes one starting earlier —
+    // server 1 (inserted after) publishes one starting earlier;
     // concatenating in insertion order would put the later one first.
     store.replace(ServerId(0), bid, vec![diag(10, 12, DiagSeverity::Error)]);
     store.replace(ServerId(1), bid, vec![diag(0, 2, DiagSeverity::Warning)]);
@@ -312,7 +312,7 @@ fn remap_deletion_covering_the_range_drops_it() {
 
 /// `DiagnosticsStore::remap_through` now goes through the same
 /// `SourceStore::remap_ranges` `ExtraHighlightEntry` uses
-/// (`hume-decorations`'s `decorations.rs`) — this pins that shared policy for the diagnostics
+/// (`hume-decorations`'s `decorations.rs`). This pins that shared policy for the diagnostics
 /// instantiation: a diagnostic a covering deletion collapses to zero width
 /// is dropped, not kept as a zero-width entry.
 #[test]
@@ -321,13 +321,13 @@ fn remap_through_drops_a_diagnostic_a_covering_deletion_collapses() {
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(2, 5, DiagSeverity::Error)]);
 
-    // Delete chars 0..8 of a 10-char document — fully covers [2, 5).
+    // Delete chars 0..8 of a 10-char document, fully covers [2, 5).
     let mut b = ChangeSetBuilder::new(co(10));
     b.delete(8).retain_rest();
     let cs = b.finish();
     store.remap_through(bid, &cs);
 
-    // `counts` iterates every stored entry with no range/severity filter —
+    // `counts` iterates every stored entry with no range/severity filter:
     // unlike `for_range`, it can't coincidentally exclude a surviving
     // zero-width entry the way a `d.end > lo` check with `lo == 0` would.
     assert_eq!(
@@ -372,7 +372,7 @@ fn widen_zero_length_widens_forward_mid_line() {
 #[test]
 fn widen_zero_length_widens_backward_at_end_of_line() {
     let rope = Rope::from_str("hello\n");
-    // Position 5 is the '\n' — widening forward would cross the line
+    // Position 5 is the '\n': widening forward would cross the line
     // boundary, so it must widen backward instead.
     assert_eq!(widen_zero_length(&rope, co(5)), ex(4, 5));
 }
@@ -384,7 +384,7 @@ fn widen_zero_length_widens_backward_at_end_of_buffer() {
 }
 
 /// On the minimal 1-char "\n" buffer, `pos = 0` has no char to widen
-/// onto in either direction under the general rule — it must widen onto
+/// onto in either direction under the general rule, so it must widen onto
 /// the structural newline itself rather than staying `(0, 0)`.
 #[test]
 fn widen_zero_length_widens_onto_the_newline_on_the_minimal_buffer() {

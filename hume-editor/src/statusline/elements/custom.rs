@@ -10,7 +10,7 @@ use crate::statusline::colors::EditorColors;
 ///
 /// Renders the focused buffer's last-pushed text for `name` (`(set-
 /// statusline-text! name bid text)`), or empty if nothing has been pushed
-/// yet — same "absent = empty" convention as every other element.
+/// yet: same "absent = empty" convention as every other element.
 pub(in crate::statusline) fn render(
     editor: &HumeStatusline<'_>,
     name: &str,

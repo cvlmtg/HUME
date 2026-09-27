@@ -4,7 +4,7 @@
 // and the extra-highlights store.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
-// bare `Pane::new`) — highlight providers are only registered by
+// bare `Pane::new`): highlight providers are only registered by
 // `build_pane`, which only the real `Editor::open`/`:e` construction path
 // runs (see `editor/mod.rs`'s `for_testing` doc comment on why its own
 // pane has no `PaneHighlights` entry at all).
@@ -21,7 +21,7 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// `((start_line, start_char), (end_line, end_char), severity)` — same shape
+/// `((start_line, start_char), (end_line, end_char), severity)`, the same shape
 /// as `lsp_diagnostics.rs`'s fixture (kept independent per this codebase's
 /// one-file-owns-its-fixtures convention).
 type DiagFixture = ((u32, u32), (u32, u32), i64);
@@ -171,7 +171,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
 /// multiline search-match test's convention in `multi_pane.rs`).
 #[test]
 fn multiline_diagnostic_splits_into_per_line_spans() {
-    // "abc\ndef\n" — a diagnostic covering char 2 ('c') through char 6 ('f'),
+    // "abc\ndef\n": a diagnostic covering char 2 ('c') through char 6 ('f'),
     // crossing the line-0/line-1 boundary at the '\n' (char 3).
     let c = setup_with_diagnostics("abc\ndef\n", &[((0, 2), (1, 3), 1)]);
     let error_scope = scope(&c.ed, "diagnostic.error");
@@ -201,12 +201,12 @@ fn zero_diagnostics_produce_empty_provider_output() {
     let c = setup_with_diagnostics("abcdefgh\n", &[]);
     assert!(
         pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic).is_empty(),
-        "no diagnostics published — the diagnostics Arc must stay empty"
+        "no diagnostics published; the diagnostics Arc must stay empty"
     );
 }
 
 /// Unlike search/bracket-match highlights, diagnostics stay visible while
-/// typing — an error squiggle is exactly as relevant mid-edit as it is in
+/// typing: an error squiggle is exactly as relevant mid-edit as it is in
 /// Normal mode.
 #[test]
 fn diagnostics_stay_visible_in_insert_mode() {
@@ -308,7 +308,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
 
 /// Two sources' extra highlights overlapping the same range must resolve
 /// the tie in alphabetical source-name order, not whichever source called
-/// `set-extra-highlights!` first — `SourceStore::set` keeps a buffer's
+/// `set-extra-highlights!` first. `SourceStore::set` keeps a buffer's
 /// sources sorted ascending by name, and `flatten_priority_overlaps`
 /// resolves same-priority ties by push order, so "zzz" set before "aaa"
 /// must still lose the overlap to "aaa".
@@ -328,7 +328,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
         tmp.path(),
     );
     ed.scripting = Some(host);
-    // "zzz" armed first — if the tie-break followed call order this would win.
+    // "zzz" armed first: if the tie-break followed call order this would win.
     type_cmd(&mut ed, ":arm-zzz");
     type_cmd(&mut ed, ":arm-aaa");
 
@@ -355,7 +355,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
 /// Reproduces the same-frame scope-intern-then-resolve race: a scope name
 /// that has never been interned before must render its real style on the
 /// very first frame it appears in, not a stale/default style (or panic).
-/// `render_to_buf`'s internal `prepare_frame` is the ONLY frame here — no
+/// `render_to_buf`'s internal `prepare_frame` is the ONLY frame here, with no
 /// warm-up frame, unlike most tests in this file, since a warm-up frame is
 /// exactly what would paper over the bug this asserts against. Uses a
 /// dot-notation sub-key of an existing scope ("diagnostic.warning") so the
@@ -407,7 +407,7 @@ fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() 
 // ── Cross-tier layering (engine-level, confirms end-to-end wiring) ──────────
 
 /// Search matches (tier `SearchMatch`) must beat extra highlights (tier
-/// `Extra`) in an overlapping region — the engine's per-tier `HighlightStack`
+/// `Extra`) in an overlapping region. The engine's per-tier `HighlightStack`
 /// composes this automatically; this snapshot proves the two new registrations
 /// in `build_pane` actually feed it, not just that the Arcs are populated.
 #[test]
@@ -419,7 +419,7 @@ fn search_match_beats_extra_highlight_in_overlapping_region() {
     let mut host = ScriptingHost::new();
     // Reuses the theme's "diagnostic.warning" name as the extra highlight's
     // scope purely so the span has a *visible* style to prove the tier
-    // ordering with — extra highlights don't otherwise care what string a
+    // ordering with; extra highlights don't otherwise care what string a
     // plugin passes.
     eval_with_real_host(
         &mut ed,

@@ -13,7 +13,7 @@ use steel::rvals::SteelVal;
 use super::Editor;
 use super::timers::TimerId;
 
-/// What firing a `TimerId` actually does — a Steel closure (the `after`
+/// What firing a `TimerId` actually does: a Steel closure (the `after`
 /// builtin) or a native Rust action (the viewport-change debounce, which has no Steel
 /// closure to call: the fire site always reads the *current* visible range,
 /// not whatever it was when the timer was scheduled).
@@ -23,10 +23,10 @@ pub(super) enum TimerPayload {
 }
 
 /// Disjoint-borrow handle over `Editor`'s timer wheel + payload table,
-/// passed into `EditorHostImpl` the same way `&LspState` is passed — `Some`
+/// passed into `EditorHostImpl` the same way `&LspState` is passed. `Some`
 /// only at the eval call sites that can reach a Steel builtin. Fields are
 /// `pub(super)` (not a constructor) so callers build it from `&mut
-/// self.timer_wheel` / `&mut self.timer_payloads` directly — going through a
+/// self.timer_wheel` / `&mut self.timer_payloads` directly; going through a
 /// `&mut self` method here would borrow all of `Editor`, defeating the
 /// disjoint-field borrow the call sites need alongside `&mut self.state` /
 /// `&mut self.scripting`.
@@ -52,7 +52,7 @@ impl<'a> TimerHandle<'a> {
 }
 
 impl Editor {
-    /// Fires every due timer — a Steel thunk is queued (never evaluated
+    /// Fires every due timer: a Steel thunk is queued (never evaluated
     /// inline; this runs from `drain_async_sources`, the per-frame
     /// chokepoint, same discipline as the LSP callbacks), a viewport
     /// debounce fires `OnViewportChange` directly with the pane's *current*
@@ -75,15 +75,15 @@ impl Editor {
     }
 
     /// (Re)schedules `pane_id`'s viewport-change debounce, cancelling
-    /// whichever timer from a previous call is still pending — a scroll
+    /// whichever timer from a previous call is still pending, so a scroll
     /// burst collapses to one fire, `lsp.viewport-debounce-ms` after the
     /// burst settles. Called from `prepare_frame`'s scroll step whenever a
-    /// pane's visible range actually changed since the last frame —
+    /// pane's visible range actually changed since the last frame,
     /// never from the render math itself, just this cheap follow-up.
     ///
     /// This coalescer is Rust, not the Scheme `debounce` builtin: that one
     /// wraps a user-supplied proc, but this guards a *built-in* fire site
-    /// (every scroll step, every frame) — a scroll burst must not queue
+    /// (every scroll step, every frame): a scroll burst must not queue
     /// hundreds of hook evals waiting for Steel to debounce them itself.
     pub(super) fn debounce_viewport_change(&mut self, pane_id: PaneId) {
         if let Some(old_id) = self.viewport_debounce.remove(&pane_id) {

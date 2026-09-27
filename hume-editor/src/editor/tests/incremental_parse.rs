@@ -18,7 +18,7 @@ use hume_editing::text::BufferText;
 /// Create an editor with `source` as buffer text and a JSON grammar attached.
 /// Runs `reparse_stale_buffers()` once to complete the initial (full) parse.
 /// Works because `setup_buffer_syntax` posts the request *before* the first
-/// `reparse_stale_buffers` call — InlineParseBackend resolves it immediately,
+/// `reparse_stale_buffers` call: InlineParseBackend resolves it immediately,
 /// so the first drain installs it.
 fn json_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let buf = Buffer::new(BufferText::from(source), SelectionSet::default());
@@ -236,7 +236,7 @@ fn bake_aligns_committed_tree_before_precise_install() {
     );
     assert!(
         syn.parsed_gen() < Some(text_gen_after),
-        "parsed_gen must not yet equal text_gen — precise parse queued, not installed",
+        "parsed_gen must not yet equal text_gen: precise parse queued, not installed",
     );
     assert!(
         syn.pending_edits().is_empty(),

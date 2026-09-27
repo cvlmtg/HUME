@@ -27,10 +27,10 @@ fn register_prefix_clears_after_one_operation() {
     ed.handle_key(key('5'));
     ed.handle_key(key('y'));
 
-    // Now the prefix is cleared — move right to get a different selection,
+    // Now the prefix is cleared. Move right to get a different selection,
     // then yank again without a prefix.
     ed.handle_key(key('l')); // move right
-    ed.handle_key(key('y')); // bare yank — writes clipboard + kill ring
+    ed.handle_key(key('y')); // bare yank: writes clipboard + kill ring
 
     // The second yank updated the clipboard, not register '5'.
     assert!(
@@ -47,11 +47,11 @@ fn register_prefix_clears_after_one_operation() {
 }
 
 /// `i` (and `a`/`o`) don't consume a `"<reg>` prefix the way an operator
-/// like `d`/`c`/`p` does — matching Vim, where a register spec applies to
+/// like `d`/`c`/`p` does, matching Vim, where a register spec applies to
 /// the operator immediately after it, not to entering Insert mode.
 /// `begin_insert_session` clears the prefix itself, unconditionally, so a
 /// subsequent operator after Insert exits never silently redirects into a
-/// register the user armed before an insert they didn't mean it for — and
+/// register the user armed before an insert they didn't mean it for, and
 /// so a writable buffer agrees with a read-only one, which already cleared
 /// it via `refuse_if_read_only`.
 ///
@@ -77,7 +77,7 @@ fn insert_session_clears_register_prefix_on_a_writable_buffer() {
     );
 }
 
-/// `Esc` after `"` cancels the prefix — the next `y` writes to clipboard + ring.
+/// `Esc` after `"` cancels the prefix; the next `y` writes to clipboard + ring.
 #[test]
 fn esc_cancels_register_prefix() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -100,7 +100,7 @@ fn esc_cancels_register_prefix() {
     assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
 }
 
-/// `"by` discards the yank — `'"'` must remain empty.
+/// `"by` discards the yank: `'"'` must remain empty.
 #[test]
 fn black_hole_register_via_prefix() {
     use hume_ops::register::BLACK_HOLE_REGISTER;
@@ -241,7 +241,7 @@ fn repeated_kill_of_same_word_takes_one_ring_slot() {
     ed.feed_key(key('w')); // land on "bar"
     ed.feed_key(key('w')); // land on the second "foo"
     ed.feed_keys([key('m'), key('i'), key('w')]); // narrow to the bare word (whitespace-setting-proof)
-    ed.feed_key(key('d')); // delete it — same text, already in the ring
+    ed.feed_key(key('d')); // delete it: same text, already in the ring
     assert_eq!(
         ed.state.kill_ring.len(),
         1,
@@ -249,7 +249,7 @@ fn repeated_kill_of_same_word_takes_one_ring_slot() {
     );
 }
 
-/// `"cy` writes clipboard only — no kill-ring push.
+/// `"cy` writes clipboard only, no kill-ring push.
 #[test]
 fn explicit_cy_writes_clipboard_only() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -312,14 +312,14 @@ fn digit_register_roundtrip_inmemory() {
 // ── Register prefix persistence across non-register commands ────────────────
 
 /// `"5` arms the prefix; `l` (a motion) does not consume it; the next `y` writes
-/// to register 5. This is the intended sticky behaviour — the prefix persists
+/// to register 5. This is the intended sticky behaviour: the prefix persists
 /// until a register-consuming command runs or Esc cancels it.
 #[test]
 fn register_prefix_persists_across_motion() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
-    ed.handle_key(key('l')); // motion — does not consume the prefix
+    ed.handle_key(key('l')); // motion, does not consume the prefix
     ed.handle_key(key('y')); // yank targets register 5, not '"'
 
     assert!(

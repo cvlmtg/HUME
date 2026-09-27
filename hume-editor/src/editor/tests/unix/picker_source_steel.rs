@@ -1,5 +1,5 @@
 // `picker-source-spawn!` end-to-end through real Steel source with a real
-// spawned child (`sh`) — unix-only. See `picker_source_steel.rs` (portable)
+// spawned child (`sh`), unix-only. See `picker_source_steel.rs` (portable)
 // for the token-gate/raise-path coverage that never actually spawns
 // anything, and `unix/picker_source.rs` for the Rust-only drain coverage
 // that skips Steel entirely.
@@ -22,7 +22,7 @@ fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
 
 #[test]
 fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -55,7 +55,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
 
 #[test]
 fn nul_delimited_source_splits_on_nul() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -77,7 +77,7 @@ fn nul_delimited_source_splits_on_nul() {
 
 #[test]
 fn nonzero_exit_reports_a_status_message() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -100,7 +100,7 @@ fn nonzero_exit_reports_a_status_message() {
 
 #[test]
 fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -117,7 +117,7 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
     call(&mut ed, "spawn-no-matches");
     assert!(
         ed.state.input.picker().is_some_and(|p| p.has_source()),
-        "spawn must have attached a source — otherwise the drain_until below \
+        "spawn must have attached a source; otherwise the drain_until below \
          would pass vacuously on the very first poll"
     );
     drain_until(&mut ed, source_detached);
@@ -137,7 +137,7 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
 
 #[test]
 fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
-    // Spawns "sh" and "kill" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" and "kill" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -192,7 +192,7 @@ fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
 
 #[test]
 fn respawn_reports_an_already_exited_outgoing_source() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -209,7 +209,7 @@ fn respawn_reports_an_already_exited_outgoing_source() {
     ed.state.status_msg = None;
     call(&mut ed, "spawn-first");
 
-    // Poll the child's own OS exit status directly — never `ed.settle()`
+    // Poll the child's own OS exit status directly, never `ed.settle()`
     // here, which would drain and report it through the ordinary disconnect
     // path this test is deliberately racing ahead of with a respawn.
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -236,7 +236,7 @@ fn respawn_reports_an_already_exited_outgoing_source() {
 
 #[test]
 fn respawn_does_not_report_a_still_running_outgoing_source() {
-    // Spawns "sh"/"sleep" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh"/"sleep" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -263,7 +263,7 @@ fn respawn_does_not_report_a_still_running_outgoing_source() {
 
 #[test]
 fn picker_close_kills_the_source_child() {
-    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sleep" and "kill" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -290,8 +290,8 @@ fn picker_close_kills_the_source_child() {
     ed.feed_key(key_esc());
     ed.settle();
     // `sleep 30` makes a broken kill observable two ways: the liveness
-    // check below (a wait()-only Drop still reaps it, just 30s later) AND —
-    // the check that actually catches that case fast — Esc itself must not
+    // check below (a wait()-only Drop still reaps it, just 30s later) AND
+    // (the check that actually catches that case fast) Esc itself must not
     // block for the child's remaining lifetime.
     assert!(
         started.elapsed() < Duration::from_secs(5),
@@ -326,7 +326,7 @@ fn picker_close_kills_the_source_child() {
 
 #[test]
 fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -355,7 +355,7 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
     );
 
     ed.feed_key(key('b'));
-    // The stop half runs immediately, before the debounced respawn — same
+    // The stop half runs immediately, before the debounced respawn, the same
     // ordering the portable
     // `live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers`
     // test pins without a real spawn. The previous pattern's row stays on
@@ -390,7 +390,7 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
     // Two settles, as the portable debounce-ms-0 tests document: the first
     // drains the two queued wrapped-callback calls (stopping the source,
     // arming then re-arming the 0ms timer for the latest, now-empty,
-    // query); the second lets that surviving timer fire — calling
+    // query); the second lets that surviving timer fire, calling
     // #:command with "" here, which returns #f, which is what actually
     // clears the rows (see `spawn-for`'s #f branch in bootstrap.scm).
     ed.settle();
@@ -408,7 +408,7 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
 
 #[test]
 fn live_picker_requery_with_no_output_clears_the_previous_rows() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
@@ -438,11 +438,11 @@ fn live_picker_requery_with_no_output_clears_the_previous_rows() {
         "the #:query seed must have spawned synchronously"
     );
 
-    // "az" spawns `sh -c "exit 1"` — an allowlisted (`#:ok-exit-codes '(0 1)`)
+    // "az" spawns `sh -c "exit 1"`: an allowlisted (`#:ok-exit-codes '(0 1)`)
     // but silent exit. It never delivers a batch to swap the old row out
     // (`PickerSession::push`'s `take_supersede` branch), so
     // `drain_picker_source`'s disconnect-with-nothing-delivered check is
-    // what has to clear it instead — see `picker_source.rs`'s doc.
+    // what has to clear it instead; see `picker_source.rs`'s doc.
     ed.feed_key(key('z'));
     ed.settle();
     ed.settle();

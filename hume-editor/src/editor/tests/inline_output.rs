@@ -1,5 +1,5 @@
-//! `#:inline-output` reached via `(call! …)` — from a key-bound command's own
-//! body, a hook, or a queued timer thunk — rather than dispatched directly
+//! `#:inline-output` reached via `(call! …)` from a key-bound command's own
+//! body, a hook, or a queued timer thunk, rather than dispatched directly
 //! by keypress or `:`. See `Editor::call_steel_command_body`'s doc for the
 //! direct-dispatch case this complements; `dispatch.rs`'s own
 //! `inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm`
@@ -7,7 +7,7 @@
 //! that side.
 //!
 //! Every probe here calls `(%stdout-gate!)` directly and logs which branch it
-//! took — the same builtin every gated print shim (`displayln`, …) calls
+//! took: the same builtin every gated print shim (`displayln`, …) calls
 //! before writing, so a probe result is exactly what a real print would have
 //! done, without needing a real terminal.
 
@@ -15,7 +15,7 @@ use super::*;
 use crate::editor::keymap::BindMode;
 use crate::editor::tui::Tui;
 
-/// Bind `cmd` to `\` in Normal mode — the one key every test here uses, so a
+/// Bind `cmd` to `\` in Normal mode: the one key every test here uses, so a
 /// bound command's body can be reached with a single `feed_event`.
 fn bind_backslash(ed: &mut Editor, cmd: &str) {
     ed.state.config.keymap.bind_user_with_extend(
@@ -34,7 +34,7 @@ fn logged(ed: &Editor, needle: &str) -> bool {
 }
 
 /// Build an editor over `"-[a]>bcdef\n"`, define `source`'s commands, bind
-/// `cmd` to `\` in Normal mode, and dispatch it — the setup+dispatch shape
+/// `cmd` to `\` in Normal mode, and dispatch it: the setup+dispatch shape
 /// every `call!`-nesting test below needs, differing only in `source`/`cmd`,
 /// whether the dispatch runs with a live TUI, and what each asserts
 /// afterward.
@@ -56,7 +56,7 @@ fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
 
 /// A plain (non-`#:inline-output`) editor command's own body can `call!` an
 /// `#:inline-output` command and have *that* command's prints reach the
-/// gate — the runtime gap `%dispatch-command`'s in-VM `(apply proc args)`
+/// gate: the runtime gap `%dispatch-command`'s in-VM `(apply proc args)`
 /// otherwise left open (only keypress/`:` dispatch armed the bracket before
 /// this).
 ///
@@ -65,12 +65,12 @@ fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
 ///
 /// Also covers the depth-`0` restore: `trigger` itself is not declared
 /// `#:inline-output`, so `%arm-inline-output!` returns `#f` for it and its
-/// own gate reads closed both before and after the nested `call!` — the
+/// own gate reads closed both before and after the nested `call!`: the
 /// common case, distinct from `nested_call_bang_restores_the_outer_commands_state`
 /// below, where the *outer* command is itself declared and restores to depth
 /// `1`. `%apply-command` discriminates "no restore" from "restore to this
 /// depth" with `(when depth …)`, which only works because Steel's `is_truthy`
-/// treats `(IntV 0)` as true — pinning the after-open/after-closed pair here
+/// treats `(IntV 0)` as true. Pinning the after-open/after-closed pair here
 /// exercises that depth-`0` branch instead of assuming it.
 ///
 /// Reading a `depth` of `0` as falsy and skipping the restore would log
@@ -103,9 +103,9 @@ fn call_bang_to_inline_output_editor_command_opens_the_gate() {
     assert!(!logged(&ed, "trigger-after-open"));
 }
 
-/// A typed command is never reachable through `call!` — `%dispatch-command`
+/// A typed command is never reachable through `call!`. `%dispatch-command`
 /// only ever resolves `command_table` (mappable names), never
-/// `typed_command_table` — so declaring one `#:inline-output` gives it no
+/// `typed_command_table`, so declaring one `#:inline-output` gives it no
 /// `call!` path to arm through. Pins the separation rather than assuming it:
 /// if it ever broke, `inner-typed-probe`'s body would silently start
 /// running from a `call!` site nothing should reach it from.
@@ -126,7 +126,7 @@ fn call_bang_to_inline_output_typed_command_is_unreachable() {
     );
     assert!(
         logged(&ed, "unknown command"),
-        "call! to a typed-only name must fall through as unresolvable — it's absent \
+        "call! to a typed-only name must fall through as unresolvable: it's absent \
          from the mappable registry `command_is_native` consults, same as any other \
          name never registered as a mappable command"
     );
@@ -167,7 +167,7 @@ fn call_bang_to_a_non_declared_command_never_arms() {
 /// An `#:inline-output` command already dispatched (and already past its
 /// first print, so the alt-screen has already been entered) that `call!`s a
 /// *second* `#:inline-output` command mid-body must have its own remaining
-/// prints still reach the gate once the nested call returns — the nested
+/// prints still reach the gate once the nested call returns. The nested
 /// arm must truncate back to its own saved depth, not wipe the whole stack.
 ///
 /// If `%restore-inline-output!` always truncated to `0` rather than to the
@@ -206,10 +206,10 @@ fn nested_call_bang_restores_the_outer_commands_state() {
 // ── Error unwind ─────────────────────────────────────────────────────────────
 
 /// A body that raises between `%arm-inline-output!` and
-/// `%restore-inline-output!` leaves its frame untruncated — the backstop is
+/// `%restore-inline-output!` leaves its frame untruncated. The backstop is
 /// `run_steel_session`'s own unconditional truncate-to-zero at the tail of
 /// the session, not a Steel-side unwind (Steel has no unwind-safe hook to
-/// pair with here — nesting `with-handler` + a re-raised native error is
+/// pair with here: nesting `with-handler` + a re-raised native error is
 /// the pinned VM-stack-corruption hazard).
 ///
 /// The `ctx.host.output()...truncate_inline_output(0)` call in
@@ -233,7 +233,7 @@ fn raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state() {
 
 /// A timer thunk's own `call!` to an `#:inline-output` command must reach
 /// the gate too, and leave the bracket closed once the queued-call batch
-/// finishes — `run_call_batch`'s own `apply_script_result` call closes it the
+/// finishes: `run_call_batch`'s own `apply_script_result` call closes it the
 /// same way `call_steel_command_body` does for direct dispatch (see
 /// `apply_script_result`'s own doc).
 ///
@@ -269,7 +269,7 @@ fn timer_call_bang_to_inline_output_command_opens_the_gate() {
 //
 // `Tui::OnHeadless` drives the whole state machine (entering the alt-screen,
 // `close_inline_output_bracket`'s physical-teardown branch) without a real
-// TTY — see `ActiveTui`'s doc, and `disk_change.rs`'s
+// TTY; see `ActiveTui`'s doc, and `disk_change.rs`'s
 // `inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm`
 // for the same pattern.
 
@@ -306,7 +306,7 @@ fn nested_call_bang_after_entered_does_not_reenter_the_alt_screen() {
 }
 
 /// The mirror case: an outer command `call!`s a nested declared command
-/// *before* its own first print — the nested call enters the alt-screen
+/// *before* its own first print. The nested call enters the alt-screen
 /// first, and the outer's own print (after the nested call returns) must
 /// not re-enter it either: the outer's own frame is armed but the alt-screen
 /// hasn't been entered yet at the moment it arms the nested frame.
@@ -335,7 +335,7 @@ fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
 /// never reaches dispatch as an `Err`, unlike
 /// `raise_inside_call_bang_to_inline_output_command_does_not_leak_saved_state`
 /// above) must still be gone, and the bracket still closed, once the whole
-/// dispatch returns — the `run_steel_session` tail truncate is the backstop
+/// dispatch returns. The `run_steel_session` tail truncate is the backstop
 /// either way, not just for an uncaught raise.
 ///
 /// Without the `ctx.host.output()...truncate_inline_output(0)` call in
@@ -346,8 +346,8 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     ed.tui = Tui::OnHeadless;
     // Drain `editor_with_file`'s own `OnBufferEnter` disk check before the
-    // external rewrite below, so it can't produce a `confirm` of its own —
-    // see `hook_call_bang_…`'s identical drain.
+    // external rewrite below, so it can't produce a `confirm` of its own
+    // (see `hook_call_bang_…`'s identical drain).
     ed.settle();
     assert!(ed.state.input.confirm().is_none());
     let scm_dir = safe_tempdir();
@@ -390,14 +390,14 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
 
 /// A hook body's own `call!` to a declared command must have its bracket
 /// closed by `fire_one_event` the same way `run_call_batch` closes it for a
-/// timer thunk — both now go through `apply_script_result`'s shared close.
+/// timer thunk: both now go through `apply_script_result`'s shared close.
 ///
 /// `is_open()` alone can't tell whether the close actually ran: every Steel
 /// session's own tail (`run_steel_session`) drains the frame stack
 /// unconditionally regardless (see `caught_error_inside_call_bang_…`'s doc).
 /// The test checks `close_inline_output_bracket`'s *other*
-/// job — queuing `OnFocusGained` because the hook ran with the real
-/// terminal — which nothing else in this scenario produces: `OnBufferSave`
+/// job (queuing `OnFocusGained` because the hook ran with the real
+/// terminal), which nothing else in this scenario produces: `OnBufferSave`
 /// itself triggers no disk check (`scripting_setup.rs`'s event-name match
 /// groups it with the events `react_to_event` does nothing extra for), and
 /// the initial `settle()` drains `editor_with_file`'s own `OnBufferEnter`
@@ -441,9 +441,9 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
 
 // ── EditorHostImpl::init threads the live terminal state ───────────────────
 
-/// `EditorHostImpl::init` — the constructor behind every init/activation
+/// `EditorHostImpl::init`, the constructor behind every init/activation
 /// call site, including `Editor::activate_and_register`'s runtime
-/// lazy-plugin activation (`mappings/lazy.rs`) — must arm `Tui`-aware
+/// lazy-plugin activation (`mappings/lazy.rs`), must arm `Tui`-aware
 /// rather than hardcoding it, since unlike `init.scm`'s own evals, a runtime
 /// activation can run with `Editor::run` already owning the terminal.
 ///
@@ -466,8 +466,8 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
         r#"(define-command! "init-host-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
     );
 
-    // Off the event loop (`Tui::Off`) — the shape `init_scripting`'s own two
-    // evals always run in — arms a frame the gate opens for, but
+    // Off the event loop (`Tui::Off`), the shape `init_scripting`'s own two
+    // evals always run in, arms a frame the gate opens for, but
     // `ensure_inline_output_screen` must never enter the (nonexistent)
     // alt-screen for it.
     {
@@ -494,7 +494,7 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
         "Tui::Off must never enter the alt-screen"
     );
 
-    // Live `Editor::run` — the shape a runtime lazy plugin activation can be
+    // Live `Editor::run`: the shape a runtime lazy plugin activation can be
     // in: a `call!`-armed nested command's raw stdout writes must hit the
     // bracket, not a live alt-screen directly.
     {
@@ -522,8 +522,8 @@ fn editor_host_impl_init_threads_live_tui_into_arm() {
     );
 }
 
-/// `EditorHostImpl::new` — the convenience constructor for callers with no
-/// terminal/`OutputHost` need — must have no inline-output authority at all,
+/// `EditorHostImpl::new`, the convenience constructor for callers with no
+/// terminal/`OutputHost` need, must have no inline-output authority at all,
 /// regardless of whether `Editor::run`'s loop happens to be live. Unlike
 /// `init`'s `Tui::Off`, which legitimately means "not in the loop right now"
 /// and still runs the bracket's state machine, `new` has nothing to say about
@@ -564,15 +564,15 @@ fn new_host_has_no_inline_output_authority() {
 }
 
 /// A frame armed by a real host must be completed correctly by *any* later
-/// host that reaches it — including one with no inline-output authority of
-/// its own (`EditorHostImpl::new`) — because entry is a property of what the
+/// host that reaches it (including one with no inline-output authority of
+/// its own, `EditorHostImpl::new`), because entry is a property of what the
 /// frame itself captured (`Tui::as_active`'s result, and `kitty_enabled`, both
 /// at push time), not of whichever host happens to be asking. A guard that
 /// instead checks the *asking* host's own `tui`/`kitty_enabled` (as
 /// `EditorHostImpl::new`'s lack of authority, and its hardcoded
 /// `kitty_enabled: false`, might tempt one to write) would incorrectly skip a
-/// frame that really is active, or enter it under the wrong kitty state —
-/// this pins the deeper, correct behavior instead.
+/// frame that really is active, or enter it under the wrong kitty state.
+/// This pins the deeper, correct behavior instead.
 ///
 /// Gating `ensure_inline_output_screen` on `self.tui` would leave
 /// `enter_count` at `0`. Reading `self.kitty_enabled` there would make
@@ -590,7 +590,7 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
         r#"(define-command! "relay-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
     );
 
-    // A real host, with kitty active, arms the frame — the same shape a
+    // A real host, with kitty active, arms the frame: the same shape a
     // top-level dispatch or a `call!`-armed nested command would leave
     // behind.
     {
@@ -607,7 +607,7 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
     }
 
     // A different host, with no inline-output authority at all and kitty
-    // hardcoded `false`, is the one that ends up completing the entry — e.g.
+    // hardcoded `false`, is the one that ends up completing the entry, e.g.
     // a hook fire built its own `EditorHostImpl` between the arm and the
     // first print. The bracket must still open under the kitty state the
     // arming host captured, not this host's own (stale) `kitty_enabled`.
@@ -640,9 +640,9 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
 
 /// `call_steel_command_body` checks whether there is a scripting host to run
 /// a declared `#:inline-output` command against before it pushes that
-/// command's frame. If `self.scripting` is `None` — the registry still knows the
+/// command's frame. If `self.scripting` is `None` (the registry still knows the
 /// command (it was registered before the host went away), but there is
-/// nothing left to call — dispatch returns early without ever reaching
+/// nothing left to call), dispatch returns early without ever reaching
 /// `run_steel_session` (whose tail truncate-to-zero is what drains every
 /// *other* early-exit path) and without calling
 /// `close_inline_output_bracket` either. No frame may be pushed on that
@@ -662,7 +662,7 @@ fn no_scripting_host_does_not_leak_a_pushed_frame() {
     );
     bind_backslash(&mut ed, "orphan");
     // Simulate the scripting host having gone away after the command was
-    // registered — `run_steel_command` still resolves `orphan` from the
+    // registered: `run_steel_command` still resolves `orphan` from the
     // registry (a separate store from the host's own `command_table`), so
     // dispatch proceeds all the way to `call_steel_command_body` before
     // finding out there is no host left to call.

@@ -34,7 +34,7 @@ impl<'a> EditorHostImpl<'a> {
 impl<'a> CommandHost for EditorHostImpl<'a> {
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
         // `get_mappable` misses a name claimed by a typed command (it returns
-        // `None` for a `Command::Typed` entry, same as for a free name) —
+        // `None` for a `Command::Typed` entry, same as for a free name);
         // `contains` is the kind-agnostic check needed to reject that case too.
         let claimed_by_other = match self.state.config.registry.get_mappable(&def.name) {
             Some(MappableCommand::Lazy { .. }) => false,
@@ -115,7 +115,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         if self.claim_lazy_name(name, plugin)? {
             self.state.config.registry.register_typed(TypedCommand {
                 name: name.to_owned().into(),
-                // No doc for a not-yet-loaded stub — mirrors `MappableCommand::Lazy`,
+                // No doc for a not-yet-loaded stub, mirroring `MappableCommand::Lazy`,
                 // which carries no doc field at all (`MappableCommand::doc()`
                 // answers `""` for it too).
                 doc: std::borrow::Cow::Borrowed(""),
@@ -127,7 +127,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    /// The plugin owning `name`'s `Lazy` stub — mappable or typed alike.
+    /// The plugin owning `name`'s `Lazy` stub, mappable or typed alike.
     /// See [`crate::editor::registry::CommandRegistry::lazy_owner`].
     fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
         self.state.config.registry.lazy_owner(name).cloned()
@@ -174,7 +174,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
-        // Resolve `cmd` against `pane`, per `cmd`'s own body — see
+        // Resolve `cmd` against `pane`, per `cmd`'s own body; see
         // `commands::BoundCommand::resolve`. Resolved *before* arming the
         // register prefix, so a refusal here leaves no prefix armed behind
         // it.
@@ -184,7 +184,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             Ok(bound) => bound,
             Err(crate::editor::commands::BindError::NotNative) => {
                 return Err(format!(
-                    "{name} is not a native command — use call! instead of call-native!"
+                    "{name} is not a native command; use call! instead of call-native!"
                 ));
             }
             Err(crate::editor::commands::BindError::Target(e)) => {
@@ -197,7 +197,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             self.state.register_prefix =
                 Some(crate::editor::register_ops::RegisterPrefix::Selected(r));
         }
-        // Delegate to the shared pipeline — all bookkeeping (paste session, jump
+        // Delegate to the shared pipeline: all bookkeeping (paste session, jump
         // list, dot-repeat) lives there so the sync path is identical to the
         // keypress path, except that a target other than the focused pane
         // skips the focus-bound steps.
@@ -207,7 +207,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             bound,
             crate::editor::dispatch::CmdCtx {
                 // `count` came from `parse_count_extend`, which decodes a
-                // Steel-side count of 0 to `None` — the script's way of asking
+                // Steel-side count of 0 to `None`, the script's way of asking
                 // for "as if no count was typed" (move-down/move-up read this
                 // as visual-line movement instead of buffer-line movement).
                 count,

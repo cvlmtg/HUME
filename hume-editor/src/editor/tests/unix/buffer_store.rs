@@ -44,7 +44,7 @@ fn p6_edit_deduplicates_open_file() {
     // Switch back to scratch.
     let scratch_bid = ed.state.buffers.prev(bid_first_open);
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), scratch_bid);
-    // Open the same file again — should switch to existing buffer, not create new.
+    // Open the same file again: should switch to existing buffer, not create new.
     let r2 = ed.execute_typed("e", Some(path.to_str().unwrap()));
     assert!(r2.is_ok());
     assert_eq!(
@@ -117,8 +117,8 @@ fn p6_e_bang_undo_restores_pre_reload_buffer() {
     assert_eq!(ed.doc().text().to_string(), "changed\n");
     assert!(!ed.doc().is_dirty(), "reload marks the buffer clean");
 
-    // Single undo restores the pre-reload buffer ("Xoriginal\n") — NOT the
-    // disk version "original\n" — so the prior edit's undo tree is intact
+    // Single undo restores the pre-reload buffer ("Xoriginal\n"), NOT the
+    // disk version "original\n", so the prior edit's undo tree is intact
     // beneath the reload.
     ed.handle_key(key('u'));
     assert_eq!(
@@ -179,7 +179,7 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
     assert_ne!(r_reload, r_e1);
     assert_eq!(ed.doc().text().to_string(), "changed\n");
 
-    // Undo back to E1, then redo — last child is the reload.
+    // Undo back to E1, then redo: last child is the reload.
     ed.handle_key(key('u'));
     assert_eq!(ed.doc().revision_id(), r_e1);
     ed.handle_key(key_ctrl('r'));

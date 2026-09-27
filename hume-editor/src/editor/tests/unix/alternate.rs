@@ -121,7 +121,7 @@ fn alternate_follows_focus_order_not_open_order() {
 
     // Stand-in for a file-picker jump back to A (both reach the same
     // `switch-to-buffer!` chokepoint): re-opening an already-open path dedups
-    // rather than reopening — assert the count is unchanged so a dedup miss
+    // rather than reopening. Assert the count is unchanged so a dedup miss
     // fails here instead of silently invalidating the assertions below.
     type_cmd_event(&mut ed, &format!(":e {}", c1.display()));
     assert_eq!(ed.focused_buffer_id(), id_a, "re-open of A must dedup");
@@ -177,7 +177,7 @@ fn alternate_follows_pane_focus_moves_alone() {
     let id_b = ed.focused_buffer_id();
     type_cmd_event(&mut ed, &format!(":e {}", p3.to_str().unwrap()));
 
-    // Two extra panes, each pinned to an older buffer — from here on, moving
+    // Two extra panes, each pinned to an older buffer. From here on, moving
     // focus between them (never `:e`, which is already covered above) is the
     // only thing that can reorder A or B.
     let start_pid = ed.state.focus.id();
@@ -198,7 +198,7 @@ fn alternate_follows_pane_focus_moves_alone() {
     )
     .unwrap();
 
-    // Visit A, then B — both by pane focus alone — then revisit A. If focus
+    // Visit A, then B (both by pane focus alone), then revisit A. If focus
     // moves promote MRU, A's alternate is now B (visited in between); an
     // open-order-only implementation would still say C (never revisited).
     ed.switch_focused_pane(pid_a);

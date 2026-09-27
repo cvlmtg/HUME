@@ -40,7 +40,7 @@ pub(crate) struct WaitCharPending {
 
 /// What a key binding resolves to after trie lookup.
 ///
-/// Every binding — including composite editor operations — is expressed as
+/// Every binding, including composite editor operations, is expressed as
 /// a command name referencing an entry in the [`CommandRegistry`]. Extend-mode
 /// pairing is stored in the registry, not here.
 ///
@@ -58,9 +58,9 @@ pub(in crate::editor) struct KeymapCommand {
 
 /// The outcome of walking a key sequence through a [`KeyTrie`].
 pub(super) enum WalkResult {
-    /// The sequence matches a leaf command — execute it.
+    /// The sequence matches a leaf command: execute it.
     Leaf(KeymapCommand),
-    /// At an interior trie node — more keys are needed.
+    /// At an interior trie node: more keys are needed.
     Interior,
     /// The last key of the sequence matches a wait-char binding. The caller
     /// should consume the next character, store it in `pending_char`, and
@@ -82,9 +82,9 @@ pub(super) struct KeyTrie {
 
 #[derive(Clone)]
 enum KeyTrieNode {
-    /// Terminal node — execute this command.
+    /// Terminal node: execute this command.
     Leaf(KeymapCommand),
-    /// Interior node — more keys needed.
+    /// Interior node: more keys needed.
     Node(KeyTrie),
     /// The next character is consumed as an argument (f/t/F/T/r).
     WaitChar(WaitCharPending),
@@ -101,7 +101,7 @@ impl KeyTrie {
         self.map.insert(CanonicalKey::from(key), node);
     }
 
-    /// True when nothing is bound — every [`Self::walk`] would return
+    /// True when nothing is bound: every [`Self::walk`] would return
     /// [`WalkResult::NoMatch`]. Lets a caller skip building the sequence to
     /// walk with, which for the Extend trie (empty until a plugin binds into
     /// it) is the usual case.
@@ -202,7 +202,7 @@ impl KeyTrie {
                     return WalkResult::Leaf(cmd.clone());
                 }
                 Some(KeyTrieNode::Leaf(_)) => {
-                    // A leaf was reached before consuming all keys — the extra
+                    // A leaf was reached before consuming all keys: the extra
                     // keys have no match.
                     return WalkResult::NoMatch;
                 }
@@ -210,7 +210,7 @@ impl KeyTrie {
                     return WalkResult::WaitChar(wc.clone());
                 }
                 Some(KeyTrieNode::WaitChar(_)) => {
-                    // WaitChar is always a leaf — can't go deeper.
+                    // WaitChar is always a leaf and can't go deeper.
                     return WalkResult::NoMatch;
                 }
                 Some(KeyTrieNode::Node(_)) if i == last => {
@@ -259,7 +259,7 @@ pub(in crate::editor) struct Keymap {
     /// (e.g. `core:vim-keybind`'s `o → flip-selections`).
     ///
     /// Checked before the normal trie when the editor is in Extend mode.
-    /// A match dispatches directly with `extend = false` — these are
+    /// A match dispatches directly with `extend = false`: these are
     /// different commands, not extend variants of normal commands.
     /// A miss falls through to the normal trie with `extend = true`.
     pub(super) extend: KeyTrie,

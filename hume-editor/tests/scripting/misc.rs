@@ -60,7 +60,7 @@ fn arity1_list_command_accepts_list_arg() {
 }
 
 /// `(load-plugin …)` raises a Steel error when called from a command body
-/// (`EvalMode::Command`) — the `ensure_top_level` gate rejects it.
+/// (`EvalMode::Command`): the `ensure_top_level` gate rejects it.
 ///
 /// Without that gate the call would return `Ok` and queue a load request that
 /// nothing ever drains.
@@ -103,7 +103,7 @@ fn plum_grammars_scm_balanced() {
     while let Some(c) = chars.next() {
         match c {
             '"' => {
-                // String literal — consume to the closing quote, honoring `\` escapes.
+                // String literal: consume to the closing quote, honoring `\` escapes.
                 while let Some(s) = chars.next() {
                     match s {
                         '\\' => {
@@ -115,16 +115,16 @@ fn plum_grammars_scm_balanced() {
                 }
             }
             ';' => {
-                // Line comment — consume to end of line.
+                // Line comment: consume to end of line.
                 while chars.next_if(|&s| s != '\n').is_some() {}
             }
             '#' if chars.peek() == Some(&'\\') => {
-                // Char literal `#\x` (e.g. `#\(`) — skip the `\` and the char.
+                // Char literal `#\x` (e.g. `#\(`): skip the `\` and the char.
                 chars.next();
                 chars.next();
             }
             '#' if chars.peek() == Some(&'|') => {
-                // Block comment `#| ... |#` — consume to the closing `|#`.
+                // Block comment `#| ... |#`: consume to the closing `|#`.
                 chars.next();
                 while let Some(s) = chars.next() {
                     if s == '|' && chars.next_if(|&t| t == '#').is_some() {
@@ -140,6 +140,6 @@ fn plum_grammars_scm_balanced() {
 
     assert_eq!(
         opens, closes,
-        "grammars.scm: {opens} opens vs {closes} closes — unbalanced parens",
+        "grammars.scm: {opens} opens vs {closes} closes, unbalanced parens",
     );
 }

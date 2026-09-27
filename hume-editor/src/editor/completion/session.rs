@@ -45,10 +45,10 @@ pub(in crate::editor) enum MatchKind {
     Delegated,
 }
 
-/// Whether `pos` sits within the closed interval `[range.start, range.end]`
-/// — the completion model's own span-containment convention (a token or
+/// Whether `pos` sits within the closed interval `[range.start, range.end]`:
+/// the completion model's own span-containment convention (a token or
 /// replacement span always includes both its own endpoints, since the
-/// cursor is allowed to sit exactly at either — unlike
+/// cursor is allowed to sit exactly at either, unlike
 /// `hume_rope::offset::ExclusiveRange`'s half-open one, which doesn't apply
 /// here). Shared by every span-containment check in this module tree and by
 /// `accept.rs`.
@@ -56,7 +56,7 @@ fn contains_cursor<T: PartialOrd>(range: &Range<T>, pos: T) -> bool {
     range.start <= pos && pos <= range.end
 }
 
-/// Boundary-safe prefix check shared by every `MatchKind::String` source —
+/// Boundary-safe prefix check shared by every `MatchKind::String` source:
 /// `str::get` returns `None` (never a panic) when `prefix.len()` lands off a
 /// char boundary or past `haystack`'s end, matching `complete_command`'s own
 /// original safety for non-ASCII names.

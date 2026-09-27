@@ -1,7 +1,7 @@
 use super::*;
 
 // All tutor tests set HUME_RUNTIME and TMPDIR to temp dirs, so they are
-// unix-only — HUME_RUNTIME is not honoured on Windows because runtime_dir()
+// unix-only: HUME_RUNTIME is not honoured on Windows because runtime_dir()
 // uses a different branch there, and env::set_var in parallel tests is
 // unsafe and requires the mutex guard.
 
@@ -157,7 +157,7 @@ fn tutor_buffer_is_editable() {
 
     assert_ne!(
         before, after,
-        "tutor buffer must be editable — text must change after insert"
+        "tutor buffer must be editable; text must change after insert"
     );
     assert!(
         after.contains('Z'),
@@ -169,7 +169,7 @@ fn tutor_buffer_is_editable() {
 
 #[test]
 fn tutor_missing_file_returns_error() {
-    // Do NOT write tutor.rst — the runtime directory is empty.
+    // Do NOT write tutor.rst: the runtime directory is empty.
     let _guard = HumeRuntimeGuard::new();
 
     let mut ed = editor_from("-[h]>ello\n");

@@ -7,7 +7,7 @@
 use super::*;
 
 /// Every test's buffer content. Char offsets: line0 `'aa'` = 0..2, line1
-/// `'bb'` = 3..5, line2 `'cc'` = 6..8, line3 `'dd'` = 9..11 — several
+/// `'bb'` = 3..5, line2 `'cc'` = 6..8, line3 `'dd'` = 9..11. Several
 /// assertions below reference a line's line-start char offset directly
 /// (3, 9, ...) against this fixture.
 const FIXTURE: &str = "aa\nbb\ncc\ndd\n";
@@ -54,7 +54,7 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
 #[test]
 fn two_diagnostics_on_the_same_line_show_count_and_leftmost_message() {
     // Both on line1 ("bb", chars 3..5): D1 at col0 (char3), D2 at col1
-    // (char4) — diagnostics-for-buffer is start-ascending, so D1 (leftmost)
+    // (char4); diagnostics-for-buffer is start-ascending, so D1 (leftmost)
     // supplies the message.
     let d1: DiagFixture = ((1, 0), (1, 1), 2, "warn near start");
     let d2: DiagFixture = ((1, 1), (1, 2), 1, "error further right");
@@ -111,7 +111,7 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
 
 /// `diagnostics-for-buffer` (no `#:severity`) must default to
 /// `lsp.diagnostics-severity-floor`, same as the underline/gutter-sign
-/// bridges — a below-floor diagnostic must not appear in the EOL summary
+/// bridges: a below-floor diagnostic must not appear in the EOL summary
 /// either. And raising the floor at runtime must refresh already-rendered
 /// summaries via the `on-option-change` hook, not just future ones.
 #[test]
@@ -188,7 +188,7 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
         ..
     } = setup_diagnostics(FIXTURE, &[diag]);
 
-    // The real `g n` keybinding, not `:goto-next-diagnostic` — invoking via
+    // The real `g n` keybinding, not `:goto-next-diagnostic`: invoking via
     // the command line round-trips Command -> Normal mode, firing
     // hover.scm's unconditional `on-mode-change` -> `close-popup!` and
     // wiping the popup this same command just set. `g n` stays in Normal
@@ -268,6 +268,6 @@ fn diagnostics_drawer_selection_does_not_open_a_popup() {
     assert!(
         ed.state.input.popup().is_none(),
         "selecting a row in the :diagnostics drawer must jump without \
-         opening the gn/gp overlay — only gn/gp show it"
+         opening the gn/gp overlay; only gn/gp show it"
     );
 }

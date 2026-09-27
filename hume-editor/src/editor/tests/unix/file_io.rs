@@ -28,7 +28,7 @@ fn edit_existing_buffer_switches_without_reread() {
     );
     assert!(
         ed.doc().is_dirty(),
-        "dirty flag must be preserved — buffer was not re-read"
+        "dirty flag must be preserved: buffer was not re-read"
     );
 }
 
@@ -36,7 +36,7 @@ fn edit_existing_buffer_switches_without_reread() {
 /// switch: it raises no `OnBufferEnter` and runs no disk
 /// check, matching Vim (`:e` doesn't re-fire `BufEnter` for the buffer
 /// you're already on). Deleting the file externally and re-`:e`-ing it while
-/// still focused therefore stays silent — the deferred warning still
+/// still focused therefore stays silent; the deferred warning still
 /// arrives on the next *genuine* buffer-enter.
 ///
 /// A disk check on a no-op `:e` would surface the "no longer exists" warning
@@ -69,7 +69,7 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
         ed.state.status_msg.as_deref()
     );
 
-    // A genuine buffer-enter — switch away, then back — still surfaces it.
+    // A genuine buffer-enter (switch away, then back) still surfaces it.
     let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), scratch);
     ed.settle();
@@ -94,7 +94,7 @@ fn edit_deleted_file_on_already_focused_buffer_is_silent_until_a_real_buffer_ent
 fn edit_deleted_file_with_no_buffer_reopens_as_new_file() {
     let dir = safe_tempdir();
     let path = dir.path().join("never_opened.txt");
-    // Path never existed — no buffer open for it.
+    // Path never existed: no buffer open for it.
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
 
@@ -120,7 +120,7 @@ fn edit_deleted_file_with_no_buffer_reopens_as_new_file() {
 }
 
 /// `:e <missing-path>` opens a buffer whose display path is exactly the path
-/// the user typed, `~`-collapsed — not its tilde-expanded `$HOME` form.
+/// the user typed, `~`-collapsed, not its tilde-expanded `$HOME` form.
 /// Matches `:split`/`:vsplit`
 /// (`split_missing_file_opens_new_file_with_raw_typed_display_path` in
 /// `multi_pane.rs`), which both share `Editor::resolve_open_path`.
@@ -184,7 +184,7 @@ fn edit_missing_file_then_write_creates_it() {
 }
 
 /// `:e` with no argument on a new-file buffer has nothing on disk to reload
-/// from — it must be a no-op (reported, not silent), not the ENOENT error
+/// from: it must be a no-op (reported, not silent), not the ENOENT error
 /// `reload_from_path` would otherwise raise.
 #[test]
 fn edit_no_arg_on_new_file_buffer_is_noop() {
@@ -209,7 +209,7 @@ fn edit_no_arg_on_new_file_buffer_is_noop() {
     );
 }
 
-/// Same, but with unsaved edits and `:e!` — the force path must also be a
+/// Same, but with unsaved edits and `:e!`: the force path must also be a
 /// no-op rather than erroring or discarding the in-memory content (there is
 /// nothing on disk to discard *to*).
 #[test]
@@ -226,7 +226,7 @@ fn edit_force_no_arg_on_dirty_new_file_buffer_is_noop() {
     ed.handle_key(key_esc());
     assert!(ed.doc().is_dirty());
 
-    ed.execute_typed("e", None).unwrap(); // no `!` — the dirty gate must never trigger
+    ed.execute_typed("e", None).unwrap(); // no `!`: the dirty gate must never trigger
 
     assert!(
         ed.doc().is_new_file(),
@@ -326,7 +326,7 @@ fn write_new_file_buffer_refuses_when_file_appeared_externally() {
 /// A new-file buffer opened via `resolve_buffer_path`'s lexical fallback
 /// (parent didn't exist at `:e` time) must have its `path` re-keyed to the
 /// fully resolved `FileMeta::resolved_path` once `:w` actually creates the
-/// file — otherwise `find_by_path` dedup breaks the moment the file exists.
+/// file. Otherwise `find_by_path` dedup breaks the moment the file exists.
 #[test]
 fn write_new_file_buffer_rekeys_path_to_resolved_target() {
     let dir = safe_tempdir();
@@ -359,11 +359,11 @@ fn write_new_file_buffer_rekeys_path_to_resolved_target() {
 }
 
 /// A directory target must still error, not silently open a new-file
-/// buffer — the one case in `:e`'s open path that's still a genuine
+/// buffer: the one case in `:e`'s open path that's still a genuine
 /// failure (`Buffer::from_file_or_new` only tolerates `NotFound`). Also
 /// proves the error echoes the raw typed path (`~`), not its expanded
-/// `$HOME` form — matches `:e`'s missing-path message
-/// (`edit_missing_file_shows_raw_typed_display_path`) — using `~` alone
+/// `$HOME` form, matching `:e`'s missing-path message
+/// (`edit_missing_file_shows_raw_typed_display_path`), using `~` alone
 /// rather than a plain absolute path, since `expand()` is a no-op on inputs
 /// with no `~`/env-var sigil and a plain path can't distinguish the two.
 #[test]
@@ -417,7 +417,7 @@ fn edit_relative_path_matches_existing_buffer() {
 
 /// A new-file buffer opened while an intermediate directory was missing is
 /// keyed by `resolve_buffer_path`'s fully-lexical fallback (parent couldn't
-/// be canonicalized either) — once that directory appears, re-resolving the
+/// be canonicalized either). Once that directory appears, re-resolving the
 /// same typed string canonicalizes further and would miss a plain
 /// `find_by_path` lookup. `:b` (via `find_buffer_by_path_arg`'s lexical
 /// fallback) and `:e`'s dedup must still find it, not treat it as unopened.
@@ -494,8 +494,8 @@ use hume_rope::column::GraphemeCol;
 fn apply_startup_positions_places_focused_cursor() {
     let f = safe_named_tempfile();
     // "line one\n" is 9 chars, so line 1 (0-based) starts at char 9; column
-    // 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two" — hand
-    // counted, not derived from `place_grapheme_column` itself.
+    // 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two" (hand
+    // counted, not derived from `place_grapheme_column` itself).
     std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
 
@@ -515,15 +515,15 @@ fn apply_startup_positions_places_focused_cursor() {
     assert_eq!(ed.current_selections().primary().head(), co(14));
 }
 
-/// The `cmd_view_center` call inside `apply_startup_positions` — and its
-/// ordering after `sync_viewport_dims` — has no coverage from the other
+/// The `cmd_view_center` call inside `apply_startup_positions` (and its
+/// ordering after `sync_viewport_dims`) has no coverage from the other
 /// startup-position tests, which all use files short enough that the whole
 /// buffer fits on screen and centering is a no-op. A file taller than the
 /// viewport is required to prove the viewport actually moved.
 #[test]
 fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     let f = safe_named_tempfile();
-    // 200 short lines — well past a 24-row terminal, and each far under 80
+    // 200 short lines: well past a 24-row terminal, and each far under 80
     // columns so nothing soft-wraps regardless of the buffer's wrap-mode
     // default, keeping the buffer-line-to-display-line mapping 1:1.
     let content: String = (1..=200).map(|n| format!("line {n}\n")).collect();
@@ -545,7 +545,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
 
     // cmd_view_center's target row is height/2 = 23/2 = 11; cursor sits on
     // (0-based) buffer line 149 with a 1:1 line-to-row mapping, so
-    // top_line = 149 - 11 = 138 — hand derived, not read back from the
+    // top_line = 149 - 11 = 138, hand derived, not read back from the
     // viewport under test. Fails if `apply_startup_positions` dropped the
     // `cmd_view_center` call, or ran it before `sync_viewport_dims` (which
     // would center against `Pane::new`'s 80x24 placeholder instead).
@@ -562,7 +562,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     let f1 = safe_named_tempfile();
     let f2 = safe_named_tempfile();
     std::fs::write(f1.path(), "hello\n").unwrap();
-    // "alpha\n" (6 chars) then "beta\n" (5 chars) — line 2 (0-based) starts
+    // "alpha\n" (6 chars) then "beta\n" (5 chars): line 2 (0-based) starts
     // at char 11; column 2 (grapheme index 1) lands one grapheme in.
     std::fs::write(f2.path(), "alpha\nbeta\ngamma\n").unwrap();
     let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
@@ -604,7 +604,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
 fn apply_startup_positions_clamps_a_line_past_the_end() {
     let f = safe_named_tempfile();
     // "line one\n" and "line two\n" are 9 chars each, so the last content
-    // line ("last line") starts at char 18 — hand counted, distinct from
+    // line ("last line") starts at char 18, hand counted, distinct from
     // both 0 and any line-999-sized offset, so a wrong clamp (or none)
     // can't coincidentally match.
     std::fs::write(f.path(), "line one\nline two\nlast line\n").unwrap();
@@ -631,7 +631,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
 }
 
 /// `hume newfile.txt` (the *first* CLI file argument, `Editor::open`'s own
-/// `Buffer::from_file(path)?` branch — distinct from `open_extra_file`,
+/// `Buffer::from_file(path)?` branch, distinct from `open_extra_file`,
 /// which only handles trailing args) must open a new-file buffer instead of
 /// exiting on ENOENT.
 #[test]
@@ -657,7 +657,7 @@ fn open_extra_file_deduplicates() {
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
 
     let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
-    // Open the same path twice — must still result in exactly one buffer.
+    // Open the same path twice: must still result in exactly one buffer.
     ed.open_extra_file(&canonical);
     ed.open_extra_file(&canonical);
 
@@ -760,7 +760,7 @@ fn wa_skips_pathless_buffers() {
     ed.doc_mut().file_meta = Some(meta);
     dirty_focused(&mut ed);
 
-    // Only one file buffer — scratch shouldn't add to the count.
+    // Only one file buffer: scratch shouldn't add to the count.
     let scratch_bid = {
         let scratch = Buffer::new(BufferText::from("scratch\n"), SelectionSet::default());
         let bid = ed.open_buffer(scratch);
@@ -826,7 +826,7 @@ fn wa_preserves_focus_on_single_buffer() {
 }
 
 /// `:wa` must skip a read-only dirty buffer (e.g. one dirtied by set-text) and
-/// still save the remaining writable dirty buffers — no mid-batch abort.
+/// still save the remaining writable dirty buffers, no mid-batch abort.
 ///
 /// The `&& !buf.is_read_only()` filter in typed_write_all matters: otherwise
 /// write_buffer_by_id returns Err("Buffer is read-only"), the loop propagates
@@ -834,13 +834,13 @@ fn wa_preserves_focus_on_single_buffer() {
 #[test]
 fn wa_skips_read_only_dirty_buffer() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    // bid1 — writable dirty buffer backed by a file.
+    // bid1: writable dirty buffer backed by a file.
     let (tmp1_path, bid1) = open_file_buffer(&mut ed, "one\n");
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid1);
     dirty_focused(&mut ed);
     assert!(ed.state.buffers.get(bid1).is_dirty());
 
-    // bid2 — a buffer that's been made read-only while dirty.
+    // bid2: a buffer that's been made read-only while dirty.
     let (tmp2_path, bid2) = open_file_buffer(&mut ed, "two\n");
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid2);
     dirty_focused(&mut ed);
@@ -899,7 +899,7 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
             .message_log
             .entries()
             .any(|e| e.text.contains("Failed to open")),
-        "must not warn for a missing path — it opens instead"
+        "must not warn for a missing path: it opens instead"
     );
     // Info severity reports to `status_msg`, not `message_log` (see
     // `Severity::Info`'s routing).
@@ -917,7 +917,7 @@ fn open_extra_file_nonexistent_opens_new_file_buffer() {
 /// A tilde-literal input is required to prove this: `expand()` is a no-op on
 /// inputs with no `~`/env-var sigil, so a plain absolute path (as in
 /// `open_extra_file_nonexistent_opens_new_file_buffer` above) can't tell
-/// "typed-derived display form" apart from "expanded-but-unresolved path" —
+/// "typed-derived display form" apart from "expanded-but-unresolved path";
 /// both would render identically for such input.
 #[test]
 fn open_extra_file_new_file_shows_untransformed_display_path() {
@@ -926,12 +926,12 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
     let canonical = std::fs::canonicalize(f1.path()).unwrap();
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");
     // `resolve_buffer_path` canonicalizes the *parent* dir when the file
-    // itself doesn't exist — canonicalize `home` here too, or this lookup
+    // itself doesn't exist. Canonicalize `home` here too, or this lookup
     // can miss on a platform/CI layout where $HOME is itself a symlink.
     let canonical_home = std::fs::canonicalize(&home).unwrap();
 
     let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
-    // Bypass shell tilde expansion by constructing the PathBuf directly —
+    // Bypass shell tilde expansion by constructing the PathBuf directly:
     // exercises callers (e.g. Steel scripting) that may pass a literal `~`.
     let tilde_path = std::path::PathBuf::from("~/hume-test-no-such-file-xyz.txt");
 
@@ -957,10 +957,10 @@ fn open_extra_file_new_file_shows_untransformed_display_path() {
 /// A tilde-literal input is required to prove this: `expand()` is a no-op on
 /// inputs with no `~`/env-var sigil, so a plain absolute path can't tell
 /// "warns with the raw arg" apart from "warns with an internally-expanded/
-/// resolved path" — both would render identically for such input. Targets
+/// resolved path"; both would render identically for such input. Targets
 /// `~` (home dir) itself, not a missing filename under it: a missing path
 /// now opens a new-file buffer instead of warning (see
-/// `open_extra_file_nonexistent_opens_new_file_buffer`) — a directory is
+/// `open_extra_file_nonexistent_opens_new_file_buffer`). A directory is
 /// still a genuine open failure, so it's the only case left that still
 /// warns.
 #[test]
@@ -1041,7 +1041,7 @@ fn write_follows_symlink() {
     let link_path = link_dir.path().join("link.txt");
     symlink(real.path(), &link_path).unwrap();
 
-    // Open via the symlink — io::read_file should resolve it.
+    // Open via the symlink: io::read_file should resolve it.
     let (_, meta) = hume_platform::io::read_file(&link_path).unwrap();
     assert_eq!(
         meta.resolved_path().to_path_buf(),
@@ -1079,7 +1079,7 @@ fn write_follows_symlink() {
 // ── :w! force-write ───────────────────────────────────────────────────────────
 
 /// `write_file_atomic` returns `false` (no retry needed) for a normal writable
-/// file — verifies the plain-write path of the new return value.
+/// file. Verifies the plain-write path of the new return value.
 #[test]
 fn write_file_atomic_returns_false_on_plain_write() {
     let tmp = safe_named_tempfile();
@@ -1094,7 +1094,7 @@ fn write_file_atomic_returns_false_on_plain_write() {
 /// `:w!` on a `0o444` target succeeds and preserves the readonly mode on the
 /// new inode. Note: on POSIX, `rename(2)` ignores the target file's permission
 /// bits when the directory is writable, so the chmod-retry branch in
-/// `write_file_atomic` is *not* exercised here — that branch is reached on
+/// `write_file_atomic` is *not* exercised here; that branch is reached on
 /// Windows (READONLY attribute) and exotic filesystems. This test verifies the
 /// observable user behaviour either way.
 #[test]

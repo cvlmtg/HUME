@@ -95,7 +95,7 @@ fn write_cb<'a>(
 fn write_register_linewise_concats_without_extra_newline() {
     // Two linewise values (each ends with '\n'): blob must be their concat,
     // NOT join("\n") which inserts a spurious blank line between them.
-    // Expected value is hand-computed — independent of the impl's concat/join.
+    // Expected value is hand-computed, independent of the impl's concat/join.
     let mut regs = RegisterSet::new();
     let mut cb = SystemClipboard::new_unavailable();
     write_cb(&mut regs, &mut cb, vec!["foo\n".into(), "bar\n".into()]);
@@ -113,12 +113,12 @@ fn write_register_charwise_joins_with_newline() {
 
 #[test]
 fn write_register_read_round_trip_preserves_structure() {
-    // End-to-end: write 3 charwise values, then read back — must return
+    // End-to-end: write 3 charwise values, then read back, which must return
     // the 3-element Vec, not a flat 1-element blob.
     // Uses the real write_register→blob-stash→read_register_text→blob-compare
     // path; no hand-seeding of clipboard_blob.
     // new_mock(): write() must succeed (Ok) so no warning is emitted and
-    // read() returns the stored blob — new_unavailable() would make write()
+    // read() returns the stored blob; new_unavailable() would make write()
     // return Err and read() fall through to the register fallback instead.
     let mut regs = RegisterSet::new();
     let mut cb = SystemClipboard::new_mock();

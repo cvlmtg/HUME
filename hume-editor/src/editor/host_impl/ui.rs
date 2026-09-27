@@ -14,7 +14,7 @@ use hume_scripting::host::{
 
 impl<'a> EditorHostImpl<'a> {
     /// Synchronously parses `text` through the grammar named `lang`, if one
-    /// is registered — `None` otherwise (no such grammar), which leaves the
+    /// is registered, `None` otherwise (no such grammar), which leaves the
     /// popup rendering plain. `show_popup`'s only caller, shared across its
     /// cursor and docked layouts.
     fn build_markup_syntax(
@@ -44,7 +44,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
         self.require_focused_pane(pane)?;
-        // Not "a Command-mode minibuffer is open" — a `prompt!` called from
+        // Not "a Command-mode minibuffer is open": a `prompt!` called from
         // a `:command`'s body runs while that command line's own `Command`
         // layer is still on the stack (it's truncated only after the
         // command returns, per truncate-before-execute). Only a `Prompt`
@@ -70,22 +70,22 @@ impl<'a> UiHost for EditorHostImpl<'a> {
 
     // ── Cursor-anchored / docked popup ───────────────────────────────────
     /// `Scrollable` pushes its own `Popup` layer, gated only against a
-    /// full-modal `Picker` — unlike `show_menu`/`show_drawer_list` below, a
+    /// full-modal `Picker`. Unlike `show_menu`/`show_drawer_list` below, a
     /// late hover response must still open even while a references drawer is
     /// up (browse-while-editing is the drawer's whole point), and a popup
     /// owns no input beyond Ctrl-u/Ctrl-d, so it never conflicts with
     /// whatever else is open. A picker is the one exception: it's
     /// full-modal and paints over everything else, so a popup landing above
-    /// it would own Ctrl-u/d without ever being visible — dropped the same
+    /// it would own Ctrl-u/d without ever being visible, so it is dropped the same
     /// way a stale `show-menu!`/`show-drawer-list!` response is. `Sticky`
-    /// instead writes into the *current* mode layer's own slot —
+    /// instead writes into the *current* mode layer's own slot:
     /// `Base`/`Insert` are the only kinds with one (`sticky_popup_slot_mut`
     /// is the SSOT for that), so a `Sticky` `show-popup!` with any other
     /// layer on top drops silently (`Trace`, `Ok`), same shape as
     /// `show_menu`'s own staleness drop. `Scrollable` gets its
     /// clear-every-home-first policy from `PopupLayer::setup`, run by
     /// `push_layer`; the `Sticky` arm never pushes (it writes straight into
-    /// the slot), so it clears explicitly here instead — both kinds end up
+    /// the slot), so it clears explicitly here instead. Both kinds end up
     /// clearing the same way, which is what makes `(show-popup! …)` replace
     /// rather than stack regardless of which of the two was showing before.
     fn show_popup(
@@ -115,7 +115,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                 if self.state.input.sticky_popup_slot_mut().is_none() {
                     self.state.report(
                         Severity::Trace,
-                        "show-popup!: no mode layer can hold a sticky popup right now — ignored"
+                        "show-popup!: no mode layer can hold a sticky popup right now, ignored"
                             .to_string(),
                     );
                     return Ok(());
@@ -129,7 +129,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             }
             PopupKind::Scrollable => {
                 // A picker is full-modal (owns every key) and paints over
-                // everything else (`register_overlays`'s fixed z-order) —
+                // everything else (`register_overlays`'s fixed z-order), so
                 // a popup landing above it would own Ctrl-u/d without ever
                 // being visible. Dropped the same way a stale
                 // show-menu!/show-drawer-list! response is: the user moved
@@ -138,7 +138,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                 if self.state.input.picker().is_some() {
                     self.state.report(
                         Severity::Trace,
-                        "show-popup!: a picker is open — ignored".to_string(),
+                        "show-popup!: a picker is open, ignored".to_string(),
                     );
                     return Ok(());
                 }
@@ -148,7 +148,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    /// Idempotent — clears whichever home currently holds a popup, or does
+    /// Idempotent: clears whichever home currently holds a popup, or does
     /// nothing if neither does, same as `close_menu`/`close_drawer` below: a
     /// `Popup` layer is never buried (see `PopupLayer`'s `Layer` doc,
     /// `input_stack/stack.rs`) and a `Sticky` popup's slot never occupies
@@ -167,7 +167,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
         self.require_focused_pane(pane)?;
-        // Async staleness — see `EditorState::async_opener_stale`'s own doc.
+        // Async staleness; see `EditorState::async_opener_stale`'s own doc.
         // `top` `Menu` is the self-replace exception below: a second
         // `lsp-code-action` response while the first menu is still open
         // replaces it rather than being read as stale.
@@ -190,9 +190,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    /// Idempotent — a no-op if no menu is open. Excises at the menu's own
+    /// Idempotent: a no-op if no menu is open. Excises at the menu's own
     /// ref rather than only when it's `top()`: a `Popup` (non-modal) can now
-    /// land above it, so being buried is an ordinary state, not a mistake —
+    /// land above it, so being buried is an ordinary state, not a mistake.
     /// `MenuLayer::removal_scope` is `SelfOnly` for exactly this reason,
     /// same as `close_drawer` below.
     fn close_menu(&mut self) -> Result<(), String> {
@@ -214,7 +214,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if items.is_empty() {
             return Err("show-drawer-list!: items must not be empty".to_string());
         }
-        // Async staleness — see `EditorState::async_opener_stale`'s own doc.
+        // Async staleness; see `EditorState::async_opener_stale`'s own doc.
         // `top` `Drawer` is the self-replace exception below: a second
         // `show-drawer-list!` call while the first is still open (a
         // `:refresh`-style re-run, or a references response the user
@@ -241,16 +241,16 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(Some(token))
     }
 
-    /// Idempotent — a no-op if no drawer is open, or if `token` doesn't
+    /// Idempotent: a no-op if no drawer is open, or if `token` doesn't
     /// match the open drawer's own (an expected-normal race, the same shape
-    /// `update_drawer_list` already has — the caller's drawer was closed or
+    /// `update_drawer_list` already has: the caller's drawer was closed or
     /// replaced since). Excises the drawer at its own ref rather than only
     /// when it's `top()`: since the drawer stays open across `Insert`/a
     /// `Popup`/etc. by design, being buried is its *normal* state, not a
-    /// mistake — see `show_drawer_list`'s own doc. Excise, not retire's
+    /// mistake; see `show_drawer_list`'s own doc. Excise, not retire's
     /// default: `DrawerLayer::removal_scope` is `SelfOnly` for exactly this
     /// reason (whatever sits above is browsing over it by coincidence, not
-    /// because it depends on the drawer being open) — this call excises
+    /// because it depends on the drawer being open). This call excises
     /// directly rather than through `retire::<DrawerLayer>` because it needs
     /// the token-matched ref, not just "topmost of type".
     fn close_drawer(&mut self, token: u64) -> Result<(), String> {
@@ -261,13 +261,13 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    /// In-place refresh — clamping `selected` into the new list lives in
+    /// In-place refresh. Clamping `selected` into the new list lives in
     /// `EditorState::set_drawer_items`; `scroll` is caught by the frame-time
     /// `clamp_drawer_scroll_to_terminal` pass instead (see its own doc), so
     /// this needs no terminal geometry of its own. A buried drawer refreshes
     /// the same way: browse-while-editing is its normal state, and the model
     /// is what `sync_drawer_view` mirrors, not its stack position. `token`
-    /// must match the open drawer's own — see `set_drawer_items`'s own doc
+    /// must match the open drawer's own; see `set_drawer_items`'s own doc
     /// for the no-op contract on a mismatch.
     fn update_drawer_list(
         &mut self,

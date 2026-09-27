@@ -19,7 +19,7 @@ use hume_lsp::transport::InboundEvent;
 use hume_scripting::ScriptingHost;
 
 /// Wires a scripted backend with a Running client attached to the focused
-/// buffer's `lsp_server` and registered under language `"rust"` — enough
+/// buffer's `lsp_server` and registered under language `"rust"`, enough
 /// for both a `bid`-resolved lookup and a `"rust"`-named one.
 pub(super) fn setup_with(
     ed: &mut Editor,
@@ -67,7 +67,7 @@ pub(super) fn setup_with_recording(
 // ── #:supersede ──────────────────────────────────────────────────────────────
 
 /// Two `lsp-request` calls with no `#:supersede` key must never cancel each
-/// other — both are independent, both fire.
+/// other: both are independent, both fire.
 #[test]
 fn requests_without_a_supersede_key_do_not_cancel_each_other() {
     let tmp = safe_tempdir();
@@ -118,14 +118,14 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
 }
 
 /// `:lsp-stop` must clear any tracked supersede-key entries for that
-/// server, alongside its existing timed-out-callback contract — otherwise a
+/// server, alongside its existing timed-out-callback contract. Otherwise a
 /// stopped server's stale request id could linger in the map forever.
 #[test]
 fn lsp_stop_clears_supersede_entries() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {
-        // No canned response — the request stays pending until :lsp-stop.
+        // No canned response: the request stays pending until :lsp-stop.
     });
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -220,7 +220,7 @@ fn request_delivers_an_opaque_handle_not_a_hashmap() {
     );
 }
 
-/// A `null` response still crosses as `Void` — the `(void? result)` check
+/// A `null` response still crosses as `Void`: the `(void? result)` check
 /// every LSP feature already uses to detect a server declining with no
 /// data stays meaningful.
 #[test]
@@ -289,7 +289,7 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
 fn timeout_delivers_err_string_timeout_to_callback() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    // No canned response for textDocument/hover — it sits pending forever
+    // No canned response for textDocument/hover, so it sits pending forever
     // until the (zeroed) deadline scan in `take_completed` claims it.
     setup_with(&mut ed, |_b, _sid| {});
     ed.state.settings.lsp_request_timeout_ms = 0;
@@ -373,12 +373,12 @@ fn unhandled_notification_without_a_registered_handler_only_logs_trace() {
     let log = ed.state.message_log.format_for_display();
     assert!(
         log.contains("unhandled notification custom/unhandled"),
-        "no handler registered — must fall back to the existing Trace log: {log:?}"
+        "no handler registered; must fall back to the existing Trace log: {log:?}"
     );
 }
 
 /// A callback that itself calls `lsp-request` must not evaluate the second
-/// request's callback synchronously within the same Steel session — it only
+/// request's callback synchronously within the same Steel session. It only
 /// resolves on a later drain cycle, one cursor move per completed cycle.
 #[test]
 fn callback_calling_lsp_request_does_not_reenter_synchronously() {
@@ -414,7 +414,7 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
     let after_first = state(&ed);
     assert_ne!(start, after_first, "first callback must have fired exactly");
 
-    // The second request was only just queued by the first callback — it
+    // The second request was only just queued by the first callback: it
     // cannot have been answered (let alone re-entrantly evaluated) within
     // the same drain/eval pass that sent it.
     ed.drain_lsp();
@@ -456,7 +456,7 @@ fn callback_error_lands_in_message_log_not_a_crash() {
 }
 
 /// Wraps `InlineLspBackend`, logging the method name of every `send()` call
-/// — `Request` and `Notification` alike — into one shared, arrival-ordered
+/// (`Request` and `Notification` alike) into one shared, arrival-ordered
 /// log. `RecordingLspBackend` (test_util) keeps requests and notifications
 /// in two separate logs, which can't answer the ordering question "did the
 /// didChange reach the wire before this request": only a single combined
@@ -519,14 +519,14 @@ impl LspBackend for OrderedLogBackend {
 #[test]
 fn lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_err() {
     // Regression: a resolution failure must never silently drop the
-    // callback — the documented `(err result)` contract (exactly one
+    // callback: the documented `(err result)` contract (exactly one
     // non-`#f`) must hold even when no request/response pair could ever
     // exist.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |_b, _sid| {});
-    // `setup_with` attaches the server to the focused buffer unconditionally
-    // — detach it again so `bid` genuinely resolves to no server,
+    // `setup_with` attaches the server to the focused buffer unconditionally.
+    // Detach it again so `bid` genuinely resolves to no server,
     // reproducing the resolution-failure path this test targets.
     let focused = ed.focused_buffer_id();
     ed.state.buffers.get_mut(focused).lsp_server = None;
@@ -629,7 +629,7 @@ fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
 // ── #:require-focus ──────────────────────────────────────────────────────────
 
 /// `#:require-focus #t` drops the callback if the focused buffer has moved
-/// on by the time the response arrives — the one Rust-side check every
+/// on by the time the response arrives: the one Rust-side check every
 /// cursor-anchored async opener (hover, signature help, a code-action menu)
 /// shares, rather than each plugin re-implementing its own
 /// `(equal? bid (focused-pane))` guard.
@@ -654,7 +654,7 @@ fn require_focus_drops_the_callback_after_a_buffer_switch() {
 
     type_cmd(&mut ed, ":test-cmd");
 
-    // Switch focus before draining — no settle() until after, since settle()
+    // Switch focus before draining. No settle() until after, since settle()
     // unconditionally drains LSP and would deliver the response first.
     let other = file_dir.path().join("other.txt");
     std::fs::write(&other, "abc\n").unwrap();
@@ -668,7 +668,7 @@ fn require_focus_drops_the_callback_after_a_buffer_switch() {
     assert_eq!(
         state(&ed),
         after_switch,
-        "the callback must not have fired — the switched-to buffer's own state is untouched"
+        "the callback must not have fired: the switched-to buffer's own state is untouched"
     );
 }
 
@@ -702,7 +702,7 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
 
     type_cmd(&mut ed, ":test-cmd");
 
-    // Split the focused (requesting) pane — `pane-vsplit` focuses the new
+    // Split the focused (requesting) pane. `pane-vsplit` focuses the new
     // pane, so the requesting pane is no longer focused even though both
     // panes show the same buffer.
     let pane = focused_pane(&ed);
@@ -723,14 +723,14 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
 }
 
 /// Without `#:require-focus` (the default), the callback still fires after
-/// a buffer switch — every background request (formatting, rename,
+/// a buffer switch: every background request (formatting, rename,
 /// completion, diagnostics) must keep delivering regardless of focus.
 ///
 /// Proved via `log!`, not a native `call!`: a native command now requires
 /// its `bid` to be the *focused* buffer (`run_command_sync`'s own contract),
 /// so a callback that ran `(call! "move-right" bid)` against the requesting
 /// buffer after focus moved elsewhere would correctly error instead of
-/// moving anything — that would prove the wrong thing here. `log!` has no
+/// moving anything, which would prove the wrong thing here. `log!` has no
 /// such buffer-targeting constraint, so it isolates "did the callback fire
 /// at all" from "which buffer can a native command act on".
 #[test]
@@ -769,7 +769,7 @@ fn no_require_focus_still_delivers_after_a_buffer_switch() {
 }
 
 /// Two responses land in the same LSP drain, so both are
-/// admitted by `dispatch_completed`'s drain-time `anchor_admits` check —
+/// admitted by `dispatch_completed`'s drain-time `anchor_admits` check:
 /// neither callback has run yet, so focus hasn't moved. Only once they're
 /// dequeued does callback 1 actually execute and switch focus away.
 /// Callback 2 (`#:require-focus #t`) must be re-checked *at that point*, not
@@ -812,7 +812,7 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":test-cmd");
-    // Both responses land here — both admitted at drain time, since focus
+    // Both responses land here, both admitted at drain time, since focus
     // is still on the requesting buffer and neither callback has run.
     ed.drain_lsp();
     // Callback 1 runs first (queued first), switches focus; callback 2's
@@ -829,7 +829,7 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
 /// The staleness counterpart of the test above: callback 1 edits `bid` (bumping its
 /// `text_gen`), callback 2 has no `#:allow-stale`. Both land in the same
 /// drain, both admitted at drain time (neither has run, so `bid`'s
-/// `text_gen` still matches both anchors) — only a re-check at dequeue,
+/// `text_gen` still matches both anchors). Only a re-check at dequeue,
 /// after callback 1's edit has actually landed, catches the staleness.
 #[test]
 fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch() {

@@ -1,11 +1,11 @@
 // Diagnostic gutter signs, placed by `core:lsp` itself through `set-signs!`
-// (source `"lsp-diagnostics"`) — see `runtime/plugins/core/lsp/diagnostics.scm`'s
+// (source `"lsp-diagnostics"`); see `runtime/plugins/core/lsp/diagnostics.scm`'s
 // `lsp/refresh-diagnostic-decorations`. Shares `setup_diagnostics` with
 // `lsp_diagnostics_inline.rs` (hoisted to `tests/unix/mod.rs`), since both
 // decorations are driven by the same `on-diagnostics-changed` hook.
 //
 // Plugin-only signs (no diagnostics involved) are covered by the portable
-// `tests/lsp_signs.rs` instead — this file is only for the diagnostic
+// `tests/lsp_signs.rs` instead. This file is only for the diagnostic
 // source itself and its interaction with an ordinary plugin sign.
 
 use super::*;
@@ -38,7 +38,7 @@ fn error_line_gets_a_sign_with_the_error_scope() {
     assert_eq!(sign.scope, error_scope);
     assert_eq!(
         sign.slot, 0,
-        "diagnostics are this buffer's only sign channel — slot 0"
+        "diagnostics are this buffer's only sign channel: slot 0"
     );
 }
 
@@ -116,7 +116,7 @@ fn error_beats_warning_on_the_same_line() {
 
 #[test]
 fn multiline_diagnostic_marks_every_line_it_touches() {
-    // "abc\ndef\n" — a diagnostic covering char 2 ('c') through char 6 ('f'),
+    // "abc\ndef\n": a diagnostic covering char 2 ('c') through char 6 ('f'),
     // crossing the line-0/line-1 boundary.
     let diag: DiagFixture = ((0, 2), (1, 3), 1, "boom");
     let DiagSetup {
@@ -139,7 +139,7 @@ fn multiline_diagnostic_marks_every_line_it_touches() {
 
 /// `diagnostics-for-buffer`'s `"end-line"` field itself (D9), independent of
 /// its sign-placement consequence above: equal to `"line"` for a diagnostic
-/// that stays on one line, greater for one that crosses a line boundary —
+/// that stays on one line, greater for one that crosses a line boundary:
 /// the span `lsp/diagnostic-signs` expands over.
 #[test]
 fn end_line_equals_line_for_single_line_and_diverges_for_multiline() {
@@ -190,7 +190,7 @@ fn zero_diagnostics_produce_no_signs() {
         ed.state.config.decorations.sign_source_count(bid),
         0,
         "a buffer with no diagnostics ever published must never reserve a \
-         gutter slot — core:lsp only registers from inside the function \
+         gutter slot: core:lsp only registers from inside the function \
          that places or clears a diagnostic sign, and that never ran here"
     );
 }
@@ -209,7 +209,7 @@ fn gutter_width_is_the_default_when_a_diagnostic_exists() {
     assert_eq!(
         sign_column_width(&ed, pid),
         2,
-        "a diagnostic exists — column shows at the default width"
+        "a diagnostic exists: column shows at the default width"
     );
 }
 
@@ -234,18 +234,18 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
 }
 
 /// Diagnostic signs are placed through the same `set-signs!` path as any
-/// other plugin sign (source `"lsp-diagnostics"`) — this proves a
+/// other plugin sign (source `"lsp-diagnostics"`). This proves a
 /// diagnostic sign and an unrelated plugin sign on the *same* line both
 /// survive into one render, in priority order, sharing the one per-pane
 /// sign map rather than two.
 // Quarantined: flaky panic in steel-core 0.8.2's `HeapRef::get()`
-// (values/closed.rs:2166, `Option::unwrap()` on a `None` value) — a weak ref
+// (values/closed.rs:2166, `Option::unwrap()` on a `None` value): a weak ref
 // into a heap slot mark-and-sweep already reclaimed. Not reproducible running
 // this module alone (8/8 clean, single-threaded); only seen in the full
 // suite, so it depends on heap-reuse state built up by the ~2900 tests that
 // ran before it. steel-core's `sync` feature (its only cross-thread GC code,
-// `ParallelMarker`/`MARKER`) isn't even enabled in this build — `im` isn't in
-// Cargo.lock — so this is a single-threaded steel-core bug, not a race.
+// `ParallelMarker`/`MARKER`) isn't even enabled in this build (`im` isn't in
+// Cargo.lock), so this is a single-threaded steel-core bug, not a race.
 // Serial test-thread runs only mitigated the symptom, so no such
 // workaround is kept.
 #[test]
@@ -300,7 +300,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     assert_eq!(
         cells[0].as_str(),
         "!",
-        "plugin sign priority 20 outranks the diagnostic's fixed priority 10 — slot 0"
+        "plugin sign priority 20 outranks the diagnostic's fixed priority 10: slot 0"
     );
     assert_eq!(
         cells[1].as_str(),
@@ -310,7 +310,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
 }
 
 /// A source's slot comes from the registry, not from which signs are
-/// actually visible this frame — a diagnostic scrolled out of view still
+/// actually visible this frame. A diagnostic scrolled out of view still
 /// reserves its registered slot, so a lower-priority plugin sign on a
 /// visible line doesn't slide into slot 0 just because the diagnostic isn't
 /// sharing this particular frame with it.
@@ -352,20 +352,20 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
     assert_eq!(
         sign.slot, 1,
         "the off-screen diagnostic (registered at priority 10) still reserves \
-         slot 0 — the visible priority-0 git sign is pushed to slot 1"
+         slot 0; the visible priority-0 git sign is pushed to slot 1"
     );
 }
 
 /// Regression: a stored diagnostic computed against the pre-reload text can
 /// end up with offsets past the new (shorter) content. `:e!` must clear
 /// diagnostics for the reloaded buffer and re-fire `on-diagnostics-changed`
-/// so `core:lsp` clears the now-stale sign along with the EOL summary —
-/// this proves the sign side of that hook does the same, not just the
+/// so `core:lsp` clears the now-stale sign along with the EOL summary.
+/// This proves the sign side of that hook does the same, not just the
 /// text-highlight side `introspect::diagnostics_for_buffer` already guards
 /// via its own end-of-file clamp.
 #[test]
 fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
-    // Wire end character 27 — the original (longer) content's length, far
+    // Wire end character 27: the original (longer) content's length, far
     // past the much shorter reloaded content's 4 chars below.
     let diag: DiagFixture = ((0, 0), (0, 27), 1, "boom");
     let DiagSetup {

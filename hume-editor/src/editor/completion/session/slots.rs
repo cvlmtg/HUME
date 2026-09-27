@@ -1,6 +1,6 @@
 //! The bookkeeping shared by both completion targets: one participating
 //! source's slot ([`SourceSlot`]), the current ranked list, the fuzzy
-//! matcher, and the menu's selected row — bundled as [`SlotSet`], generic
+//! matcher, and the menu's selected row, bundled as [`SlotSet`], generic
 //! over a target's own id type (`BufferSourceId`/`MinibufSourceId`) and
 //! span shape (`BufferSpan`/`MinibufSpan`). [`super::BufferSession`]/
 //! [`super::MinibufSession`] each hold one, plus whatever is genuinely
@@ -24,7 +24,7 @@ enum InvocationState {
 /// One call of one source for one trigger: the id the source answers to,
 /// the span it was asked about, and its answer once it has one. Minted by
 /// `orchestrate.rs` against the live document, stored in a [`SourceSlot`].
-/// Generic over the span shape (`BufferSpan`/`MinibufSpan`) — each session
+/// Generic over the span shape (`BufferSpan`/`MinibufSpan`): each session
 /// type's own `SlotSet` fixes it to that target's own shape, so there is no
 /// runtime tag to mismatch. `id`/`state` are this module's own; a target's
 /// own `impl Invocation<ItsSpan>` (in `buffer.rs`/`minibuf.rs`) adds the
@@ -65,7 +65,7 @@ impl<S> Invocation<S> {
 /// One participating source: the answer currently ranked (`shown`) and, if
 /// the source was re-invoked since, the newer call whose answer hasn't
 /// landed yet (`inflight`). An emission applies only to the *latest* of the
-/// two ids — a late answer to a superseded call is dropped, so a slow LSP
+/// two ids. A late answer to a superseded call is dropped, so a slow LSP
 /// response can never overwrite a newer one. Generic over the id type
 /// (`BufferSourceId`/`MinibufSourceId`) and span shape, both fixed by
 /// whichever session type's `SlotSet` holds this.
@@ -83,7 +83,7 @@ impl<Id: Copy + PartialEq, S> SourceSlot<Id, S> {
             .map(|inv| inv.id)
     }
 
-    /// Whether the source has answered with at least one item — a slot
+    /// Whether the source has answered with at least one item. A slot
     /// narrowed to zero *matches* is still live (Backspace can bring its
     /// items back); one that answered empty, or whose token the cursor
     /// left, is not.
@@ -93,7 +93,7 @@ impl<Id: Copy + PartialEq, S> SourceSlot<Id, S> {
             .is_some_and(|inv| !inv.items().is_empty())
     }
 
-    /// The item at ranked index `i` of this slot's shown answer — every
+    /// The item at ranked index `i` of this slot's shown answer. Every
     /// caller already knows `i` came from a still-valid ranked entry (see
     /// [`SlotSet::ranked_indices`]), so this is `.expect`, not `Option`.
     pub(super) fn item(&self, i: usize) -> &CompletionItem {
@@ -101,7 +101,7 @@ impl<Id: Copy + PartialEq, S> SourceSlot<Id, S> {
     }
 }
 
-/// Looks up a source id's static facts in the registry — implemented once
+/// Looks up a source id's static facts in the registry, implemented once
 /// per id type so [`SlotSet`]'s generic methods (`rank_with`, `top`) don't
 /// need a per-target match to find the right registry half.
 pub(super) trait SourceId: Copy + PartialEq {
@@ -124,7 +124,7 @@ impl SourceId for MinibufSourceId {
 
 /// [`SlotSet::rank_with`]'s own scratch state, reborrowed disjointly from
 /// `self` and threaded through [`score_slot`] as one bundle rather than
-/// three separate parameters — every one of the three is reused across
+/// three separate parameters: every one of the three is reused across
 /// every slot. `dedup_hidden` is `None` for a target with no cross-source
 /// dedup concept (`Minibuf` invokes exactly one source, so there is never a
 /// second slot to dedup against) rather than an always-empty set a session
@@ -137,8 +137,8 @@ struct ScoreCtx<'a> {
 
 /// Scores every item in `items` against `filter` per `match_kind`, dropping
 /// a no-op item first, and pushes `(score, priority, s, i)` into
-/// `ctx.rank_scratch` for each survivor. Returns whether anything survived
-/// — [`SlotSet::rank_with`]'s own signal to fold this slot's token start
+/// `ctx.rank_scratch` for each survivor. Returns whether anything survived:
+/// [`SlotSet::rank_with`]'s own signal to fold this slot's token start
 /// into the menu anchor.
 fn score_slot(
     ctx: &mut ScoreCtx<'_>,
@@ -165,9 +165,9 @@ fn score_slot(
             MatchKind::String { case_sensitive } => {
                 super::prefix_matches(&item.filter_text, filter, case_sensitive).then_some(0)
             }
-            // The source already produced a finished, ordered result —
+            // The source already produced a finished, ordered result:
             // never excluded here; the rank key's tiebreak chain (skipping
-            // sortText for a `Delegated` slot — see `rank_with`'s own sort
+            // sortText for a `Delegated` slot; see `rank_with`'s own sort
             // key) preserves that order via the final index-ascending key.
             MatchKind::Delegated => Some(0),
         };
@@ -186,20 +186,20 @@ fn score_slot(
 pub(super) struct SlotSet<Id, S> {
     slots: Vec<SourceSlot<Id, S>>,
     /// `(score, priority, slot, item)` for every surviving candidate,
-    /// rebuilt and sorted by every [`Self::rank_with`] call — this *is* the
+    /// rebuilt and sorted by every [`Self::rank_with`] call. This *is* the
     /// set's own ranked list (`len`/`ranked_indices`/`rows_in` all read it
     /// directly). Retained across calls so per-keystroke filtering doesn't
     /// allocate a fresh `Vec` every time. `priority` is
-    /// `BufferSourceEntry`/`MinibufSourceEntry`'s own `i64`, not narrowed —
+    /// `BufferSourceEntry`/`MinibufSourceEntry`'s own `i64`, not narrowed:
     /// this tuple is sorted, never used as a lookup key, so there's no
     /// reason to risk a truncating cast.
     ranked: Vec<(u32, i64, u32, u32)>,
-    /// Reusable scoring engine — `FuzzyProfile::Autocomplete` (see its doc)
+    /// Reusable scoring engine. `FuzzyProfile::Autocomplete` (see its doc)
     /// distinguishes this from the picker's own instance. One instance per
     /// session, consulted only for a `MatchKind::Fuzzy` slot.
     matcher: FuzzyMatcher,
     /// The menu's selected row. Reset to `0` by every [`Self::rank_with`]
-    /// call, not by a separate step a caller might forget — every path that
+    /// call, not by a separate step a caller might forget: every path that
     /// re-ranks the list changes what row `0` even means, so resetting it
     /// anywhere but at the one place the list itself is rebuilt would leave
     /// a window where the two disagree.
@@ -238,7 +238,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     }
 
     /// Lands an answer for invocation `id`. `false` when `id` isn't the
-    /// latest call of any slot here — a superseded or already-replaced
+    /// latest call of any slot here: a superseded or already-replaced
     /// invocation, expected-normal for a late async source, never an
     /// error.
     pub(super) fn contribute(
@@ -270,7 +270,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         self.slots.iter().any(SourceSlot::is_live)
     }
 
-    /// Whether this set has nothing left to show and nothing on its way —
+    /// Whether this set has nothing left to show and nothing on its way:
     /// every source answered empty, or the cursor typed out of every
     /// token.
     pub(super) fn is_spent(&self) -> bool {
@@ -319,7 +319,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         self.ranked.is_empty()
     }
 
-    /// The raw `(slot, item)` indices behind ranked position `idx` — every
+    /// The raw `(slot, item)` indices behind ranked position `idx`. Every
     /// other reader resolves `idx` through this first.
     fn ranked_indices(&self, idx: usize) -> Option<(u32, u32)> {
         let &(_, _, s, i) = self.ranked.get(idx)?;
@@ -335,7 +335,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         Some(self.item(s, i))
     }
 
-    /// The source/invocation/item behind ranked position `idx` — `accept`
+    /// The source/invocation/item behind ranked position `idx`. `accept`
     /// is the only caller that needs the source id (to read
     /// `BufferSourceEntry::resolve`) and the invocation itself (for its
     /// span); every other reader just wants the item
@@ -347,7 +347,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         Some((slot.source, inv, &inv.items()[i as usize]))
     }
 
-    /// Row content for the candidates at `range` in ranked order — the only
+    /// Row content for the candidates at `range` in ranked order: the only
     /// way rows leave this set, and `range` is `menu_window`'s own window
     /// (`hume_ui::popup`), so a frame formats at most `MAX_MENU_ROWS` rows
     /// and never the whole ranked list.
@@ -363,7 +363,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     }
 
     /// Moves the menu selection by one row, wrapping at either end. `false`
-    /// on an empty ranked list — a no-op, so a caller can't divide by, or
+    /// on an empty ranked list: a no-op, so a caller can't divide by, or
     /// subtract from, zero.
     pub(super) fn step_selection(&mut self, forward: bool) -> bool {
         let n = self.ranked.len();
@@ -396,20 +396,20 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
     /// that text first (`CompletionItem::is_noop_for`) regardless of
     /// `MatchKind`, and any item `hidden` already marked as a
     /// lower-priority duplicate. Rank key: score descending, then source
-    /// priority descending (a tiebreaker only — match quality stays king —
+    /// priority descending (a tiebreaker only, match quality stays king,
     /// applied before sortText so a higher-priority source's item wins a
     /// tie regardless of how its label sorts; direction matches
     /// `register_sign_source`'s own `(priority desc, name asc)`), then
     /// sortText ascending (the server's own ordering hint, the *only*
-    /// signal left on an empty filter — nucleo scores every haystack `0`
-    /// for an empty pattern) — skipped for a `Delegated` slot, which
+    /// signal left on an empty filter: nucleo scores every haystack `0`
+    /// for an empty pattern), skipped for a `Delegated` slot, which
     /// contributes no distinguishing sortText regardless of what its own
-    /// items' `sort_text` field holds — then slot and item index (sortText
+    /// items' `sort_text` field holds; then slot and item index (sortText
     /// is very often duplicated across a server's items).
     ///
     /// `token_of` returns this invocation's own filter text and an "anchor"
     /// value (the live token start, in whatever unit the caller's `A` is)
-    /// for a slot that should be scored at all — `None` skips it (an
+    /// for a slot that should be scored at all. `None` skips it (an
     /// out-of-range token against the live document, say). Resets
     /// [`Self::selected`] to `0` and returns the leftmost anchor among
     /// contributing slots, or `None` with nothing ranked.

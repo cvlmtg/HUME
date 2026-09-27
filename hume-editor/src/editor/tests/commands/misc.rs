@@ -1,4 +1,4 @@
-//! misc.rs — everything left: extend-mode exit rules, undo grouping, line text objects, typed-command arity, and case transforms.
+//! misc.rs: everything left: extend-mode exit rules, undo grouping, line text objects, typed-command arity, and case transforms.
 
 use super::super::*;
 use pretty_assertions::assert_eq;
@@ -6,7 +6,7 @@ use pretty_assertions::assert_eq;
 // ── Extend mode exits after selection-consuming edits ────────────────────────
 //
 // Mirrors Vim visual-mode: any operator on a visual selection returns to Normal.
-// Yank is the deliberate exception — it is non-destructive and preserves the
+// Yank is the deliberate exception: it is non-destructive and preserves the
 // selection (Helix-like).
 
 #[test]
@@ -38,7 +38,7 @@ fn extend_exits_after_paste() {
 
 #[test]
 fn extend_preserved_after_yank() {
-    // Yank must NOT exit Extend — it is non-destructive and the selection stays live.
+    // Yank must NOT exit Extend: it is non-destructive and the selection stays live.
     let mut ed = editor_from("-[hell]>o\n");
     ed.state.input.set_extend(true);
     ed.handle_key(key('y'));
@@ -46,7 +46,7 @@ fn extend_preserved_after_yank() {
 }
 
 /// `toggle-extend` reached from a non-`Base` mode layer (a hook, timer, or
-/// async callback calling `(call! "toggle-extend" bid)` while Insert is open —
+/// async callback calling `(call! "toggle-extend" bid)` while Insert is open,
 /// unreachable via a key, since there's no `e` binding in the Insert
 /// keymap) must not arm Extend on `Base` invisibly. `set_extend` itself
 /// "does not gate on the current mode layer" and always writes `Base`'s
@@ -75,7 +75,7 @@ fn toggle_extend_from_insert_is_a_no_op() {
 /// A sticky popup shown from Normal must close when the user toggles into
 /// Extend. The deleted `on-mode-change` hook (`lib.scm`) covered every mode
 /// transition; `push_mode_layer`'s own `clear_popups()` call replaced it for
-/// every transition that goes through `push_mode_layer` — except
+/// every transition that goes through `push_mode_layer`, except
 /// Normal↔Extend, which never does, since both share the same `Base` mode
 /// layer.
 #[test]
@@ -161,20 +161,20 @@ fn capital_o_groups_newline_and_insert_session_into_one_undo_step() {
 // ── Plain insert session groups all chars into one undo step ──────────────
 
 /// `i` with a non-collapsed selection must collapse to the start of the
-/// selection and enter Insert — it must NOT replace the selected text.
+/// selection and enter Insert; it must NOT replace the selected text.
 #[test]
 fn i_collapses_selection_to_start() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('i'));
 
     assert_eq!(ed.state.mode(), Mode::Insert);
-    // Cursor collapsed to 'h' — nothing deleted.
+    // Cursor collapsed to 'h', nothing deleted.
     assert_eq!(state(&ed), "-[h]>ello\n");
     assert_eq!(ed.doc().text().to_string(), "hello\n");
 }
 
 /// `i` + typing + `Esc` must commit as one undo step, just like `c`. A single
-/// `u` should restore the original buffer — not leave partial edits behind.
+/// `u` should restore the original buffer, not leave partial edits behind.
 #[test]
 fn i_groups_insert_session_into_one_undo_step() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -219,7 +219,7 @@ fn mal_selects_line_including_newline() {
 
 #[test]
 fn mil_on_empty_line_is_noop() {
-    // An empty line has no content — selection should not change.
+    // An empty line has no content, so selection should not change.
     let mut ed = editor_from("foo\n-[\n]>bar\n");
     ed.handle_key(key('m'));
     ed.handle_key(key('i'));
@@ -262,7 +262,7 @@ fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) 
     ed
 }
 
-/// arity-1 (`bid` alone — no arg): the rule supplies only the leading bid,
+/// arity-1 (`bid` alone, no arg): the rule supplies only the leading bid,
 /// never the typed arg. A string-type lambda that checks `(string? x)` never
 /// sees a string, so it never fires the wrapped `call!` and the cursor never
 /// moves, regardless of whether an arg was typed.
@@ -276,7 +276,7 @@ fn typed_arity_rule_supplies_bid_only_at_arity_1() {
     );
 
     let before = state(&ed);
-    // `:echo-cmd move-right<Enter>` — arity-1 rule supplies bid only; the typed
+    // `:echo-cmd move-right<Enter>`: arity-1 rule supplies bid only; the typed
     // arg "move-right" never reaches the lambda.
     ed.handle_key(key(':'));
     for ch in "echo-cmd move-right".chars() {
@@ -304,7 +304,7 @@ fn typed_arity_rule_forwards_string_arg_to_arity_2() {
     );
 
     let before = state(&ed);
-    // `:echo-cmd move-right<Enter>` — arity-2 rule passes "move-right" as StringV.
+    // `:echo-cmd move-right<Enter>`: arity-2 rule passes "move-right" as StringV.
     ed.handle_key(key(':'));
     for ch in "echo-cmd move-right".chars() {
         ed.handle_key(key(ch));
@@ -321,7 +321,7 @@ fn typed_arity_rule_forwards_string_arg_to_arity_2() {
 /// arity-2 + no arg: the rule passes `#f` (Scheme's spelling of "no argument
 /// typed"), not a sentinel string or a fabricated count. A string-type lambda
 /// that checks `(string? x)` gets a boolean, fails the check, and does
-/// nothing — cursor stays put.
+/// nothing; cursor stays put.
 #[test]
 fn typed_arity_rule_passes_false_when_no_arg() {
     let mut ed = setup_typed_arity_test(
@@ -332,7 +332,7 @@ fn typed_arity_rule_passes_false_when_no_arg() {
     );
 
     let before = state(&ed);
-    // `:echo-cmd<Enter>` — no arg → arity-2 rule passes #f; string guard rejects it.
+    // `:echo-cmd<Enter>`: no arg → arity-2 rule passes #f; string guard rejects it.
     ed.handle_key(key(':'));
     for ch in "echo-cmd".chars() {
         ed.handle_key(key(ch));
@@ -347,7 +347,7 @@ fn typed_arity_rule_passes_false_when_no_arg() {
 }
 
 /// arity-3 (`bid arg force`, the most a typed command can receive): both
-/// values reach the lambda — the arg as `StringV`, `!` as `#t`.
+/// values reach the lambda: the arg as `StringV`, `!` as `#t`.
 #[test]
 fn typed_arity_rule_forwards_arg_and_force_to_arity_3() {
     let mut ed = setup_typed_arity_test(
@@ -359,7 +359,7 @@ fn typed_arity_rule_forwards_arg_and_force_to_arity_3() {
     );
 
     let before = state(&ed);
-    // `:echo-cmd! move-right<Enter>` — force=#t only when `!` is appended.
+    // `:echo-cmd! move-right<Enter>`: force=#t only when `!` is appended.
     ed.handle_key(key(':'));
     for ch in "echo-cmd! move-right".chars() {
         ed.handle_key(key(ch));
@@ -375,7 +375,7 @@ fn typed_arity_rule_forwards_arg_and_force_to_arity_3() {
 
 /// arity-4 (more than a typed command can supply): the rule reports an error
 /// and never invokes the command. Cursor stays; error is logged. The command
-/// needs no real lambda — the early return fires before call_steel_cmd.
+/// needs no real lambda; the early return fires before call_steel_cmd.
 #[test]
 fn typed_arity_rule_errors_on_arity_4() {
     use crate::editor::registry::{TypedBody, TypedCommand};
@@ -394,7 +394,7 @@ fn typed_arity_rule_errors_on_arity_4() {
     });
 
     let before = state(&ed);
-    // `:needs-four<Enter>` — arity-4 command, typed dispatch supplies at most 3.
+    // `:needs-four<Enter>`: arity-4 command, typed dispatch supplies at most 3.
     ed.handle_key(key(':'));
     for ch in "needs-four".chars() {
         ed.handle_key(key(ch));
@@ -418,7 +418,7 @@ fn typed_arity_rule_errors_on_arity_4() {
 // ── Extend-trie WaitChar sequence cleanup ─────────────────────────────────────
 
 /// A multi-key wait-char sequence bound in sticky-Extend mode must clear
-/// `pending_keys` (and `pending_ctrl_extend`) once the sequence resolves —
+/// `pending_keys` (and `pending_ctrl_extend`) once the sequence resolves,
 /// mirroring what the normal-trie `WaitChar` arm already does. A prefix key
 /// (`g`) left in `pending_keys` would make the next ordinary keystroke walk
 /// the trie as `[g, <key>]`, silently swallowing it.
@@ -464,7 +464,7 @@ fn extend_trie_wait_char_sequence_clears_pending_keys() {
         "sanity: the sequence armed wait_char"
     );
 
-    // Consume the wait-char argument (any key) — dispatches "find-forward".
+    // Consume the wait-char argument (any key), which dispatches "find-forward".
     ed.handle_key(key('z'));
     assert!(ed.state.wait_char.is_none());
 

@@ -77,7 +77,7 @@ fn file_module_relative_require_resolves_from_module_dir() {
         "(define (lib-helper) \"from-lib\")\n(provide lib-helper)\n",
     )
     .unwrap();
-    // plugin.scm uses a relative require — should resolve against its own dir,
+    // plugin.scm uses a relative require, which should resolve against its own dir,
     // not the process working directory.
     std::fs::write(
         dir.path().join("plugin.scm"),
@@ -87,7 +87,7 @@ fn file_module_relative_require_resolves_from_module_dir() {
 
     let plugin_abs = dir.path().join("plugin.scm").canonicalize().unwrap();
 
-    // Process CWD is the workspace root — NOT the plugin dir.  The require
+    // Process CWD is the workspace root, NOT the plugin dir.  The require
     // must still succeed because Steel resolves relative paths from the
     // requiring module's own path, not from CWD.
     let mut steel = Engine::new();
@@ -110,7 +110,7 @@ fn file_module_relative_require_resolves_from_module_dir() {
 /// a global eval (as the prelude does) must be visible inside a subsequently
 /// `(require)`d module.
 ///
-/// If this test fails the prelude cannot serve plugin modules — only `init.scm`.
+/// If this test fails the prelude cannot serve plugin modules, only `init.scm`.
 /// That would require documenting the limitation and NOT silently changing the
 /// loader (HARD STOP per plan).
 #[test]
@@ -143,7 +143,7 @@ fn global_define_syntax_is_visible_inside_required_module() {
 
     steel
         .compile_and_run_raw_program(format!("(require \"{}\")", abs.display()))
-        .expect("require failed — id-macro! not visible inside the module");
+        .expect("require failed: id-macro! not visible inside the module");
 
     let vals = steel
         .compile_and_run_raw_program("(get-result)".to_owned())
@@ -323,7 +323,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     );
 }
 
-/// An eager plugin whose body raises an error is contained — `eval_init`
+/// An eager plugin whose body raises an error is contained: `eval_init`
 /// still succeeds (so the rest of `init.scm` keeps running), the failure is
 /// reported as an Error pending message, and the plugin is left in `Failed`
 /// state.
@@ -365,7 +365,7 @@ fn eager_plugin_body_error_is_contained() {
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals.
 
-/// `#:commands '("move-right" "my-cmd")` — "move-right" clashes with a built-in →
+/// `#:commands '("move-right" "my-cmd")`: "move-right" clashes with a built-in →
 /// colliding activation entry is dropped, a `Severity::Error` is logged, init continues with
 /// the remaining valid activation entry "my-cmd".
 ///
@@ -445,12 +445,12 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 
 // `manifest_collision_lazy_vs_lazy_logs_error_continues` moved to
 // `hume-editor/src/editor/tests/plugins.rs` as
-// `lazy_stub_collision_lazy_vs_lazy_first_writer_wins` — it needs real
+// `lazy_stub_collision_lazy_vs_lazy_first_writer_wins`; it needs real
 // `CommandRegistry` collision detection (a real `Editor` + `EditorHostImpl`),
 // which `MockHost` (this file's host) deliberately does not reimplement.
 
-/// After a lazy declare, `cmd_owners["bar"]` maps to the plugin id — not to
-/// `"hume"` — even before the plugin body is evaluated.
+/// After a lazy declare, `cmd_owners["bar"]` maps to the plugin id (not to
+/// `"hume"`), even before the plugin body is evaluated.
 #[test]
 fn cmd_owners_pre_seeded_before_activation() {
     let (dir, init_path) = plugin_fixture(
@@ -464,7 +464,7 @@ fn cmd_owners_pre_seeded_before_activation() {
     h.eval_init(&init_path, 10_000, &mut mock, Default::default())
         .expect("init must succeed");
 
-    // Plugin has NOT been activated yet — body was not evaluated.
+    // Plugin has NOT been activated yet; body was not evaluated.
     let owners = h.cmd_owners_for_test();
     let owner = owners.get("bar").map(|s| s.as_str());
     assert!(
@@ -639,7 +639,7 @@ fn declare_then_load_activates_and_logs_soft_error() {
     );
 }
 
-/// `(load-plugin "foo")` then `(declare-plugin "foo" …)` — load runs first,
+/// `(load-plugin "foo")` then `(declare-plugin "foo" …)`: load runs first,
 /// plugin is `Loaded`; the declare is ignored with a soft error.
 ///
 /// That error comes from the load-then-declare guard in `declare_plugin`. Without
@@ -683,11 +683,11 @@ fn load_then_declare_ignored_with_soft_error() {
     // The declare was ignored: no Lazy stub for "my-cmd" should be registered.
     assert!(
         mock.lazy_command_owner("my-cmd").is_none(),
-        "my-cmd must not be registered as a Lazy stub — declare was ignored"
+        "my-cmd must not be registered as a Lazy stub, declare was ignored"
     );
 }
 
-/// `(load-plugin …)` inside an eager plugin body is rejected unconditionally —
+/// `(load-plugin …)` inside an eager plugin body is rejected unconditionally,
 /// even when the dep is present on disk, the gate fires before path
 /// resolution. `pb`'s own activation is contained by the rejection (a body
 /// error like any other), so `eval_init` still succeeds; `pb` itself ends up
@@ -734,7 +734,7 @@ fn load_plugin_in_plugin_body_rejected() {
     );
 }
 
-/// `(declare-plugin …)` inside an eager plugin body is rejected — plugins
+/// `(declare-plugin …)` inside an eager plugin body is rejected: plugins
 /// cannot register other plugins; both registration verbs are top-level
 /// only. `pb`'s own activation is contained by the rejection (a body error
 /// like any other), so `eval_init` still succeeds; `pb` itself ends up
@@ -784,7 +784,7 @@ fn declare_plugin_in_plugin_body_rejected() {
 
 /// `(declare-plugin "foo")` with no activation entries and no `manifest.scm`
 /// on disk is a hard error even in the hume-scripting unit-test harness (no
-/// editor needed) — a plugin directory without a manifest doesn't support the
+/// editor needed); a plugin directory without a manifest doesn't support the
 /// zero-trigger form at all.
 ///
 /// The manifest-presence check in `%begin-manifest-declare!` raises it; with that
@@ -861,7 +861,7 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     std::fs::create_dir_all(&plugin_dir).unwrap();
     std::fs::write(plugin_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
     let init_path = dir.path().join("init.scm");
-    // "move-right" is a built-in — collision filter drops it, leaving zero activation entries.
+    // "move-right" is a built-in, so the collision filter drops it, leaving no activation entries.
     std::fs::write(
         &init_path,
         r#"(declare-plugin "user/tp" #:commands '("move-right"))"#,

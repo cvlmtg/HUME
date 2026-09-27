@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use std::process;
 
-/// HUME — a modal text editor.
+/// HUME: a modal text editor.
 #[derive(Parser)]
 #[command(name = "hume", version = hume_editor::VERSION)]
 struct Cli {
@@ -24,7 +24,7 @@ struct Cli {
     #[arg(long, value_name = "FILE", conflicts_with = "no_config")]
     config: Option<PathBuf>,
 
-    /// Skip `init.scm` — no user config, no plugins. Bundled language
+    /// Skip `init.scm`: no user config, no plugins. Bundled language
     /// identities, grammars, and prelude macros still load.
     #[arg(long, conflicts_with = "config")]
     no_config: bool,
@@ -50,17 +50,17 @@ struct Invocation {
     config: hume_editor::cli::ConfigSource,
 }
 
-// Classify validated args into a run mode plus a config source — the two are
+// Classify validated args into a run mode plus a config source. The two are
 // orthogonal (any ConfigSource is valid with either Mode). clap guarantees
 // `output` is present whenever `keys` is, and vice-versa, via `requires`,
 // and that `config` and `no_config` never appear together, via
 // `conflicts_with`. The
-// constraints clap can't express — exactly one input file in headless mode,
-// `config` naming a real file — are checked here.
+// constraints clap can't express (exactly one input file in headless mode,
+// `config` naming a real file) are checked here.
 fn resolve(cli: Cli) -> Result<Invocation, String> {
     // A missing default `init.scm` is normal and silently skipped (see
     // `Editor::init_scripting`), but a path the user named explicitly is an
-    // assertion — a typo here should fail loudly before the terminal even
+    // assertion: a typo here should fail loudly before the terminal even
     // enters raw mode (or, in headless mode, before any key is replayed),
     // not silently boot unconfigured. `File::open` (not `fs::metadata`, a
     // bare `stat`) proves the path is both present and readable in one
@@ -78,7 +78,7 @@ fn resolve(cli: Cli) -> Result<Invocation, String> {
             return Err(format!("--config: not a file: {}", path.display()));
         }
         // HUME moves its own process cwd at runtime (`:cd`), so a relative
-        // path must be pinned to the startup cwd here — otherwise
+        // path must be pinned to the startup cwd here. Otherwise
         // `:reload-config` would re-resolve it against wherever `:cd` last
         // left the process, miss the file, and silently reset to
         // compiled-in defaults instead of erroring (see `Editor::config_path`).
@@ -314,7 +314,7 @@ mod tests {
         );
     }
 
-    // `resolve` runs every positional file through `cli::parse_file_arg` —
+    // `resolve` runs every positional file through `cli::parse_file_arg`;
     // this pins that wiring at the `resolve` layer, complementing
     // `cli::tests`' coverage of the parser itself.
     #[test]
@@ -338,7 +338,7 @@ mod tests {
 
     // A `--keys`-mode input path is the golf harness's literal single
     // argument, never a `path:line:col` diagnostic pasted onto the command
-    // line — `resolve` must leave it untouched by `cli::parse_file_arg`.
+    // line. `resolve` must leave it untouched by `cli::parse_file_arg`.
     #[test]
     fn resolve_headless_input_path_is_never_split() {
         let cli = make_headless(vec![PathBuf::from("weird:12")]);
@@ -403,7 +403,7 @@ mod tests {
     }
 
     // The `--config` validation/pinning path is shared code, exercised in
-    // full above under normal mode — this pins that headless mode reaches
+    // full above under normal mode. This pins that headless mode reaches
     // the same code, not a bypassed copy.
     #[test]
     fn resolve_headless_config_flag_validates_and_pins() {
@@ -420,7 +420,7 @@ mod tests {
     }
 
     // A relative `--config` path must be pinned to the startup cwd, not left
-    // relative — HUME moves its own process cwd at runtime (`:cd`), so a
+    // relative: HUME moves its own process cwd at runtime (`:cd`), so a
     // relative path re-resolved against a later cwd at `:reload-config` time
     // would silently miss the file it originally pointed at (see
     // `Editor::config_path`'s doc and the `--config` flag's doc comment).
@@ -431,7 +431,7 @@ mod tests {
         std::fs::write(dir.path().join("alt.scm"), "").unwrap();
         // `getcwd()` resolves symlinks in the path (e.g. macOS's
         // `/var` → `/private/var`), so the expected value must go through
-        // the same resolution `resolve` will apply via `current_dir()` —
+        // the same resolution `resolve` will apply via `current_dir()`;
         // comparing against the raw, un-resolved `dir.path()` would spuriously
         // fail there.
         let canonical_dir = dir.path().canonicalize().unwrap();

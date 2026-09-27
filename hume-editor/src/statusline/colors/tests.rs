@@ -53,7 +53,7 @@ fn from_theme_reads_statusline_scope() {
         EditorColors::from_theme(&theme, Some(EditorMode::Normal)).statusline,
         want_base
     );
-    // Insert has its own entry — the whole row picks it up.
+    // Insert has its own entry: the whole row picks it up.
     assert_eq!(
         EditorColors::from_theme(&theme, Some(EditorMode::Insert)).statusline,
         want_insert
@@ -177,12 +177,12 @@ fn separator_falls_back_to_the_active_row_style_not_the_base_scope_when_undefine
     );
     assert_eq!(
         colors.statusline_separator, want_insert,
-        "the separator must inherit the tinted row style, not the base ui.statusline bg — \
+        "the separator must inherit the tinted row style, not the base ui.statusline bg; \
          otherwise it paints an opaque hole of the wrong color in the middle of the row"
     );
 }
 
-/// `statusline.mode-colors=false` passes `None` for the mode — it must read
+/// `statusline.mode-colors=false` passes `None` for the mode. It must read
 /// the base `ui.statusline` scope, not silently substitute `EditorMode::Normal`
 /// (whose own scope can be a distinct accent in an imported theme, e.g.
 /// Helix's old pill idiom). `ui.statusline.normal` is given a different bg
@@ -270,7 +270,7 @@ fn tabline_colors_reads_its_own_scopes() {
 
 #[test]
 fn tabline_active_falls_back_to_the_base_tabline_scope_when_undefined() {
-    // No "ui.tabline.active" entry — an active tab with no themed override
+    // No "ui.tabline.active" entry: an active tab with no themed override
     // must look like every other tab, via the engine's own dot-fallback.
     let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
     styles.insert(
@@ -290,7 +290,7 @@ fn tabline_active_falls_back_to_the_base_tabline_scope_when_undefined() {
 #[test]
 fn tabline_colors_falls_back_to_helix_s_bufferline_scopes_when_untabbed() {
     // A Helix theme (or one ported from Helix) defines `ui.bufferline*` and
-    // never `ui.tabline` — without a fallback, both slots would collapse to
+    // never `ui.tabline`. Without a fallback, both slots would collapse to
     // the bare default scope and the bar would have no ground at all.
     let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
     styles.insert(

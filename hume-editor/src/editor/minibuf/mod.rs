@@ -14,7 +14,7 @@ use super::input_stack::{InputEvent, LayerRef};
 #[derive(Clone)]
 pub(crate) struct MiniBuffer {
     /// The text shown before the input: `:` for commands, `/`/`?` for search,
-    /// or a Steel prompt's `label` (`(prompt! label …)`) — arbitrary length.
+    /// or a Steel prompt's `label` (`(prompt! label …)`), of arbitrary length.
     pub prompt: String,
     /// The text typed so far.
     pub input: String,
@@ -27,11 +27,11 @@ pub(crate) struct MiniBuffer {
 /// Callers match on this to perform the mode-specific follow-up action
 /// (e.g. search confirmation vs. command execution on `Confirm`).
 pub(super) enum MiniBufferEvent {
-    /// Esc or Ctrl-c — caller should cancel/close the mini-buffer.
+    /// Esc or Ctrl-c: caller should cancel/close the mini-buffer.
     Cancel,
-    /// Enter with non-empty input — `String` is the confirmed text.
+    /// Enter with non-empty input: `String` is the confirmed text.
     Confirm(String),
-    /// Enter with empty input — treat as cancel.
+    /// Enter with empty input: treat as cancel.
     ConfirmEmpty,
     /// Input changed (char typed or deleted), input is now non-empty.
     Edited,
@@ -44,11 +44,11 @@ pub(super) enum MiniBufferEvent {
     BackspaceOnEmpty,
     /// Cursor moved left/right; content unchanged.
     CursorMoved,
-    /// Tab (forward) or Shift-Tab (reverse) pressed — caller should cycle completions.
+    /// Tab (forward) or Shift-Tab (reverse) pressed: caller should cycle completions.
     CompleteRequested { reverse: bool },
-    /// Up pressed — caller should recall the previous history entry for this prompt.
+    /// Up pressed: caller should recall the previous history entry for this prompt.
     HistoryPrev,
-    /// Down pressed — caller should recall the next history entry (or restore scratch).
+    /// Down pressed: caller should recall the next history entry (or restore scratch).
     HistoryNext,
     /// Key was not handled (e.g. unrecognised control sequence).
     Ignored,
@@ -56,13 +56,13 @@ pub(super) enum MiniBufferEvent {
 
 impl MiniBuffer {
     /// A fresh minibuffer for `prompt`, with empty input and the cursor at
-    /// its start — the shape every opener but `prompt!` needs.
+    /// its start: the shape every opener but `prompt!` needs.
     pub(in crate::editor) fn new(prompt: impl Into<String>) -> Self {
         Self::with_prefill(prompt, String::new())
     }
 
     /// A minibuffer for `prompt` pre-populated with `input`, cursor parked
-    /// at its end — `(prompt! label prefill …)`'s shape.
+    /// at its end: `(prompt! label prefill …)`'s shape.
     pub(in crate::editor) fn with_prefill(prompt: impl Into<String>, input: String) -> Self {
         let mut mb = Self {
             prompt: prompt.into(),
@@ -73,7 +73,7 @@ impl MiniBuffer {
         mb
     }
 
-    /// Installs `text` as `input` and parks the cursor at its end — the
+    /// Installs `text` as `input` and parks the cursor at its end: the
     /// "just replaced the whole input" invariant shared by `with_prefill`
     /// and history recall ([`recall_history`]).
     pub(in crate::editor) fn set_input(&mut self, text: String) {
@@ -89,7 +89,7 @@ impl MiniBuffer {
     ///
     /// Shared by the edit cursor ([`Self::statusline_cursor_x`], at
     /// `self.cursor`) and the completion-overlay anchor (at a completion
-    /// span's start) — both are "where does this byte offset into `input`
+    /// span's start). Both are "where does this byte offset into `input`
     /// land on screen" under the same prompt.
     pub(in crate::editor) fn cursor_x_at(&self, byte_offset: usize) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
@@ -144,7 +144,7 @@ impl MiniBuffer {
             }
             // Ctrl-w: readline-style delete-word-backward. Skip trailing
             // whitespace first, then remove the word. Never closes the minibuf
-            // on empty (unlike Backspace) — emits `Ignored` when there's
+            // on empty (unlike Backspace). Emits `Ignored` when there's
             // nothing to the left of the cursor.
             KeyCode::Char('w') if key.modifiers.contains(Modifiers::CONTROL) => {
                 let new_cursor = word_boundary_back(&self.input, self.cursor);
@@ -172,7 +172,7 @@ impl MiniBuffer {
             KeyCode::Tab => MiniBufferEvent::CompleteRequested { reverse: false },
             KeyCode::BackTab => MiniBufferEvent::CompleteRequested { reverse: true },
             // Up/Down are handled by the caller (mode-specific history ring).
-            // Do NOT bind Ctrl-n / Ctrl-p here — those are reserved for
+            // Do NOT bind Ctrl-n / Ctrl-p here: those are reserved for
             // future completion-popup navigation.
             KeyCode::Up => MiniBufferEvent::HistoryPrev,
             KeyCode::Down => MiniBufferEvent::HistoryNext,
@@ -180,7 +180,7 @@ impl MiniBuffer {
         }
     }
 
-    /// Insert a whole string at the edit cursor — the terminal-paste
+    /// Insert a whole string at the edit cursor: the terminal-paste
     /// counterpart of the single-char branch in [`handle_key`](Self::handle_key),
     /// returning the same `Edited` event so a paste runs each mode's real
     /// `Edited` follow-up instead of a hand-mirrored copy of it. `Ignored`
@@ -195,11 +195,11 @@ impl MiniBuffer {
     }
 
     /// Replaces `input[span]` with `text` and parks the cursor at the end
-    /// of the inserted text — the one minibuffer mutation a completion-apply
+    /// of the inserted text: the one minibuffer mutation a completion-apply
     /// performs (`EditorState::apply_minibuf_candidate`, `completion/
     /// orchestrate.rs`, whether cycling the popup or landing a sole
     /// candidate silently). `span` is the *token's own* range, not
-    /// `span_start..self.cursor` — replacing up to a mid-token cursor
+    /// `span_start..self.cursor`. Replacing up to a mid-token cursor
     /// instead would leave the token's uncompleted tail duplicated after
     /// the applied candidate (see `MinibufSession`'s doc).
     pub(in crate::editor) fn splice(&mut self, span: std::ops::Range<usize>, text: &str) {
@@ -210,7 +210,7 @@ impl MiniBuffer {
 }
 
 /// Walk back from `cursor` over trailing whitespace, then over one run of
-/// non-whitespace graphemes — the readline Ctrl-w "delete word" boundary.
+/// non-whitespace graphemes: the readline Ctrl-w "delete word" boundary.
 /// Returns the byte offset where the deletion should begin; equals `cursor`
 /// when there is nothing to delete.
 ///
@@ -247,19 +247,19 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
 // ── Shared by every minibuf-backed mode layer ───────────────────────────────
 //
 // `Command`/`Search`/`Sift`/`Prompt` (`input_stack/{command,search,sift,
-// prompt}.rs`) all call these — homed here rather than in any one of those
+// prompt}.rs`) all call these. They are homed here rather than in any one of those
 // files so none of the four has to own a helper the other three also need.
 
 /// Converts one `InputEvent` into a `MiniBufferEvent` for whichever
-/// minibuf-mode layer (`Command`/`Search`/`Sift`/`Prompt`) is dispatching
-/// — the single place a key or a paste becomes an edit to the
+/// minibuf-mode layer (`Command`/`Search`/`Sift`/`Prompt`) is dispatching:
+/// the single place a key or a paste becomes an edit to the
 /// minibuffer, shared by all four so a paste runs the same `Edited`
 /// follow-up a typed character would (see each mode's own event match).
-/// A mouse event has no minibuffer edit to become — it falls through
+/// A mouse event has no minibuffer edit to become: it falls through
 /// (the cursor still moves under an open `:`/`/`/`s` prompt) and
 /// returns `None` either way. `None` also covers
 /// the case where no minibuffer is live (dispatch reached this layer
-/// kind but its payload was already torn down mid-call — matches every
+/// kind but its payload was already torn down mid-call, which matches every
 /// other handler's own liveness discipline).
 pub(in crate::editor) fn minibuf_input(
     ed: &mut Editor,

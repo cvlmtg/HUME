@@ -37,12 +37,12 @@ use hume_treesitter::syntax::Syntax;
 /// stamped with the buffer's `text_gen` at capture time.
 ///
 /// `mii` (`select-last-insertion`) compares `text_gen` against the buffer's
-/// live generation before using `spans` — any intervening mutation that
+/// live generation before using `spans`: any intervening mutation that
 /// actually moves text (an edit, or an undo/redo whose net `ChangeSet` isn't
 /// identity) bumps `text_gen`, invalidating the stash rather than trying to
 /// remap positions through the change. A net-identity undo/redo walk skips
 /// the bump (see `apply_transactions`), but that's still sound here: identity
-/// means every op is a `Retain` — no character moved — so the stashed spans
+/// means every op is a `Retain` (no character moved), so the stashed spans
 /// stay literally correct positions even though `current` moved to a
 /// different revision.
 pub(in crate::editor) struct LastInsert {
@@ -54,7 +54,7 @@ pub(in crate::editor) struct LastInsert {
 
 // ── Buffer ────────────────────────────────────────────────────────────────────
 
-/// What one composed undo/redo walk hands back — see
+/// What one composed undo/redo walk hands back. See
 /// [`Buffer::apply_transactions`]'s doc for each part's contract. Named
 /// once here so `undo_n`/`redo_n`, `doc_ops::apply_doc_history_walk`, and
 /// `commands::edit::history_step` all spell the same shape.
@@ -64,10 +64,10 @@ pub(in crate::editor) type HistoryWalkResult = Option<(SelectionSet, ChangeSet, 
 ///
 /// `Buffer` is the SSOT for everything intrinsic to an open file and shared
 /// across all panes viewing it. It does **not** own:
-/// - selections (per-(pane, buffer) — live on `PaneBufferState`)
-/// - viewport / scroll (per-pane — live on engine `Pane`)
+/// - selections (per-(pane, buffer), live on `PaneBufferState`)
+/// - viewport / scroll (per-pane, live on engine `Pane`)
 /// - per-pane search cursor (live on `PaneBufferState`)
-/// - edit groups / insert sessions (per-(pane, buffer) — live on `PaneBufferState`)
+/// - edit groups / insert sessions (per-(pane, buffer), live on `PaneBufferState`)
 ///
 /// ## Edit API
 ///
@@ -81,16 +81,16 @@ pub(crate) struct Buffer {
     history: History,
     /// The revision at which the buffer was last saved (or first opened).
     /// `None` means the saved state was overwritten by an `undo-levels`
-    /// promotion and no longer exists anywhere in the tree — the buffer is
+    /// promotion and no longer exists anywhere in the tree: the buffer is
     /// dirty until the next save.
     saved_revision: Option<RevisionId>,
     /// Canonical file path (after symlink resolution). `None` for scratch buffers.
     pub(super) path: Option<PathBuf>,
     /// Fully display-ready path string (absolutized, lexically normalized,
-    /// UNC-stripped, `~`-collapsed) — the single form shown to the user
+    /// UNC-stripped, `~`-collapsed), the single form shown to the user
     /// everywhere a buffer path appears. Consumers print it verbatim; the
     /// only allowed runtime-time exception is statusline width-shortening.
-    /// Always `Some` when `path` is `Some` — `set_path` derives it
+    /// Always `Some` when `path` is `Some`: `set_path` derives it
     /// structurally (see `Buffer::set_path`); callers that resolved a
     /// user-typed path overwrite it afterwards with `set_display_path` for
     /// the typed-derived form. `None` for scratch/synthetic buffers.
@@ -100,7 +100,7 @@ pub(crate) struct Buffer {
     pub(in crate::editor) file_meta: Option<FileMeta>,
     /// Active search pattern shared by all panes viewing this buffer.
     /// `None` when no search is active. A present `SearchPattern` is always
-    /// fully-valid — invalid regexes leave this as `None`.
+    /// fully-valid. Invalid regexes leave this as `None`.
     pub(in crate::editor) search_pattern: Option<SearchPattern>,
     /// Cached match list for `search_pattern`. Invalidated by revision change
     /// or pattern change; rebuilt lazily by `update_buffer_matches`.
@@ -115,7 +115,7 @@ pub(crate) struct Buffer {
     /// `set-buffer-language!`, rather than by detection. `:reload-config`'s
     /// reset reads this (before clearing it) to restore the user's own
     /// assertion across the reload instead of letting re-detection silently
-    /// pick something else — see `clear_languages_all`.
+    /// pick something else. See `clear_languages_all`.
     pub(in crate::editor) language_explicit: bool,
     /// Monotonically increasing counter, bumped on every text mutation.
     /// `reparse_stale_buffers` skips a buffer when this equals
@@ -124,8 +124,8 @@ pub(crate) struct Buffer {
     /// The `text_gen` value most recently announced as an `on-text-changed`
     /// event. `Buffer` cannot reach the event queue (it holds no
     /// `EditorState`), so the hook is raised by diffing this against
-    /// `text_gen` at a drain observation point — see
-    /// `BufferStore::take_text_changed` — rather than at `set_text` itself.
+    /// `text_gen` at a drain observation point (see
+    /// `BufferStore::take_text_changed`) rather than at `set_text` itself.
     pub(in crate::editor) announced_text_gen: u64,
     /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
     /// parse layers, generation bookkeeping, and in-flight state, all in one
@@ -134,7 +134,7 @@ pub(crate) struct Buffer {
     pub(in crate::editor) syntax: Option<Syntax>,
     /// When `true`, all forward text mutations are blocked at the `doc_ops`
     /// layer. Entering Insert mode is also refused. Read-only is orthogonal to
-    /// language/syntax — a read-only buffer may still be highlighted.
+    /// language/syntax: a read-only buffer may still be highlighted.
     pub(in crate::editor) read_only: bool,
     /// Display name used for synthetic, path-less view buffers (e.g. `"[messages]"`).
     /// Shown in the statusline and `:ls` instead of `*scratch*`.
@@ -158,14 +158,14 @@ pub(crate) struct Buffer {
     /// call for the fresh scratch buffer a last-buffer close allocates)
     /// until `Editor::detect_pending_languages` fires this buffer's
     /// `OnBufferOpen`. Read by `lifecycle::close_buffer_and_notify`: a still-
-    /// pending buffer (opened and closed before that drain ran — e.g. within
+    /// pending buffer (opened and closed before that drain ran, e.g. within
     /// one Steel eval) announced no open, so it must announce no close
     /// either. The startup buffer, built inline by `Editor::open` (which
-    /// can't call the chokepoint — it's what bootstraps the very
+    /// can't call the chokepoint, since it's what bootstraps the very
     /// `EngineView`/pane-state maps the chokepoint needs), is the one buffer
     /// that defaults to `false`: its close always announces.
     pub(in crate::editor) open_hook_pending: bool,
-    /// The buffer's disk state as of the last check — set by
+    /// The buffer's disk state as of the last check, set by
     /// `Editor::check_buffer_disk_state`, cleared to `InSync` by a reload or
     /// a successful write. Always `InSync` for scratch/synthetic buffers,
     /// which the check skips.
@@ -212,8 +212,8 @@ impl Buffer {
     /// Load a file from disk, returning a ready-to-use `Buffer`.
     ///
     /// Sets `path` and `file_meta` from the resolved filesystem metadata;
-    /// `set_path` derives a canonical-path-based `display_path` alongside it —
-    /// callers that resolved a user-typed path (`resolve_open_path`, save-as,
+    /// `set_path` derives a canonical-path-based `display_path` alongside it.
+    /// Callers that resolved a user-typed path (`resolve_open_path`, save-as,
     /// ...) overwrite it with the typed-derived form afterwards, via
     /// `set_display_path`; this default only surfaces for opens with no typed
     /// path (Steel `open-buffer!`, `:tutor`, LSP goto). `search_pattern` and
@@ -228,7 +228,7 @@ impl Buffer {
         Ok(buf)
     }
 
-    /// Empty buffer bound to a path that doesn't exist on disk yet — `:e` on
+    /// Empty buffer bound to a path that doesn't exist on disk yet: `:e` on
     /// a missing file, matching Vim's `:e newfile` semantics: `:w` creates it
     /// (see `is_new_file`, `write_buffer_by_id`'s `file_meta.is_none()`
     /// branch). `file_meta` stays `None` until that first write; `path` is
@@ -240,27 +240,27 @@ impl Buffer {
         buf
     }
 
-    /// `true` for a buffer bound to a path with no backing file yet — opened
+    /// `true` for a buffer bound to a path with no backing file yet, opened
     /// via [`Self::new_file`], not yet written. `path.is_some()` alone isn't
     /// enough (a normal file has that too); `file_meta` is the SSOT for
-    /// "has this buffer ever touched disk" — see the field doc.
+    /// "has this buffer ever touched disk". See the field doc.
     pub(in crate::editor) fn is_new_file(&self) -> bool {
         self.path.is_some() && self.file_meta.is_none()
     }
 
     /// Load a file from disk, or open an empty [`Self::new_file`] buffer
     /// bound to `path` if it doesn't exist yet (Vim's `:e newfile`
-    /// semantics — `:w` creates it). `cwd` feeds `Editor::resolve_buffer_path`
+    /// semantics: `:w` creates it). `cwd` feeds `Editor::resolve_buffer_path`
     /// on the missing-file branch, so the buffer's identity matches whatever
     /// form the caller resolved `path` to.
     ///
     /// The single decision point for "is a missing path openable", shared by
-    /// every open chokepoint — `Editor::open_or_dedup`,
+    /// every open chokepoint (`Editor::open_or_dedup`,
     /// `lifecycle::open_or_dedup_and_notify` (Steel `open-buffer!`, LSP
-    /// goto/workspace-edit), and `Editor::open`'s first-CLI-arg case — so
+    /// goto/workspace-edit), and `Editor::open`'s first-CLI-arg case), so
     /// they can't diverge on tolerance.
     ///
-    /// A path with no basename (`/`, `..`) still errors — `Buffer::set_path`
+    /// A path with no basename (`/`, `..`) still errors: `Buffer::set_path`
     /// would panic on it in debug.
     pub(in crate::editor) fn from_file_or_new(path: &Path, cwd: &Path) -> io::Result<Self> {
         match Self::from_file(path) {
@@ -298,7 +298,7 @@ impl Buffer {
     ///
     /// Resets history to a clean root and clears search state so the refreshed
     /// buffer is non-dirty and has no stale match data. This is a system
-    /// refresh — it intentionally bypasses the `read_only` guard in `doc_ops`.
+    /// refresh: it intentionally bypasses the `read_only` guard in `doc_ops`.
     pub(in crate::editor) fn set_view_content(&mut self, text: BufferText) {
         let text_len = text.len_chars();
         let undo_levels = self.history.undo_levels();
@@ -318,7 +318,7 @@ impl Buffer {
     /// `true` for in-memory view buffers (e.g. `[messages]`, `[buffers]`).
     ///
     /// Synthetic buffers have no backing file (`path = None`) but carry a
-    /// display label. Scratch buffers are path-less too, but have no label —
+    /// display label. Scratch buffers are path-less too, but have no label;
     /// that distinction is what this predicate captures.
     pub(in crate::editor) fn is_synthetic(&self) -> bool {
         self.path.is_none() && self.label.is_some()
@@ -366,7 +366,7 @@ impl Buffer {
     }
 
     /// The fully display-ready path string, or `None` for scratch/synthetic
-    /// buffers. Print verbatim — no further transforms needed.
+    /// buffers. Print verbatim, no further transforms needed.
     pub(crate) fn display_path(&self) -> Option<&str> {
         self.display_path.as_deref()
     }
@@ -374,7 +374,7 @@ impl Buffer {
     /// First line of buffer content, capped at 64 bytes, stopping at the
     /// line's `\n`.
     /// Returns `None` when the first line is empty. Used for shebang detection.
-    /// Iterates codepoints, not grapheme clusters — safe because shebang lines are ASCII-only.
+    /// Iterates codepoints, not grapheme clusters: safe because shebang lines are ASCII-only.
     pub(in crate::editor) fn first_line(&self) -> Option<String> {
         const CAP: usize = 64;
         let mut out = String::with_capacity(CAP);
@@ -421,7 +421,7 @@ impl Buffer {
     ///
     /// `pre_sels` (stored on the inverse transaction, restored by undo) and
     /// `post_sels` (stored on the forward transaction, restored by redo) are
-    /// both caller-computed — `post_sels` is typically the grapheme-snapped,
+    /// both caller-computed. `post_sels` is typically the grapheme-snapped,
     /// clamped cursor the reload UI wants visible.
     ///
     /// The `ChangeSet` pair is line-diff-derived ([`changesets_from_line_diff`])
@@ -430,12 +430,12 @@ impl Buffer {
     /// the reloaded buffer is `!is_dirty()`.
     ///
     /// Returns the forward `ChangeSet` if the text actually changed
-    /// (`set_text` ran, `text_gen` moved) — `None` for an identical-to-disk
+    /// (`set_text` ran, `text_gen` moved), `None` for an identical-to-disk
     /// no-op. The caller uses this both to decide whether state computed
     /// against the pre-reload content (the engine syntax tree, LSP
     /// diagnostics/decorations, the `didChange` wire message) is still valid
     /// or needs discarding, and to remap jump-list entries through the
-    /// reload — `reload_from_text` is the only place that already knows
+    /// reload: `reload_from_text` is the only place that already knows
     /// which branch ran and already has the CS in hand.
     #[must_use]
     pub(in crate::editor::buffer) fn reload_from_text(
@@ -445,7 +445,7 @@ impl Buffer {
         post_sels: SelectionSet,
     ) -> Option<ChangeSet> {
         // Reloading from disk is, by definition, catching up to whatever is
-        // there now — clear regardless of which branch below runs.
+        // there now, so clear regardless of which branch below runs.
         self.disk_state = disk::DiskState::InSync;
 
         // Build the CS pair from immutable borrows of both texts, before
@@ -456,8 +456,8 @@ impl Buffer {
         // Reload of identical-to-disk content: `self.text` already equals
         // `new_text`, so skip `set_text` entirely rather than bump `text_gen`
         // (and fire `on-text-changed` plus a spurious tree-sitter reparse) for
-        // a no-op. Just re-anchor `saved_revision` — the buffer now matches
-        // disk. `pre_sels`/`post_sels` are dropped — there is nothing to undo to.
+        // a no-op. Just re-anchor `saved_revision`: the buffer now matches
+        // disk. `pre_sels`/`post_sels` are dropped, as there is nothing to undo to.
         if forward.is_identity() {
             self.saved_revision = Some(self.history.current_id());
             return None;
@@ -474,7 +474,7 @@ impl Buffer {
     /// `true` if the buffer has unsaved changes.
     ///
     /// Comparing revision IDs means undoing back to the save point correctly
-    /// reports a clean buffer — a simple `dirty: bool` flag cannot do this.
+    /// reports a clean buffer, which a simple `dirty: bool` flag cannot do.
     /// `saved_revision == None` (saved state evicted by promotion) always
     /// reads dirty.
     ///
@@ -482,8 +482,8 @@ impl Buffer {
     /// history walk that lands on a *different* revision whose text happens
     /// to be byte-identical to the saved one (e.g. undoing an insert and its
     /// own later delete, past the save point) still reads dirty. Making this
-    /// content-truthful would mean hashing the buffer on every dirty query —
-    /// the statusline makes one every frame — for a case that self-corrects
+    /// content-truthful would mean hashing the buffer on every dirty query
+    /// (the statusline makes one every frame) for a case that self-corrects
     /// on the next real edit or save.
     pub(crate) fn is_dirty(&self) -> bool {
         self.saved_revision != Some(self.history.current_id())
@@ -500,7 +500,7 @@ impl Buffer {
     /// `true` if the last disk-state check found the backing file changed or
     /// vanished and the user has not yet acted on it (reloaded or written).
     /// Test-only: `:w`'s write guard stats the file fresh instead of trusting
-    /// this (see `stale_write_block`) — this remains for tests that assert
+    /// this (see `stale_write_block`). This remains for tests that assert
     /// on the reported/warned state itself, not on write behavior.
     #[cfg(test)]
     pub(in crate::editor) fn is_disk_stale(&self) -> bool {
@@ -521,11 +521,11 @@ impl Buffer {
     /// handling: `RevisionId`s are never reused, so `is_dirty()`'s equality
     /// check against a stale `saved_revision` correctly stays `true`
     /// forever. Promotion is the one case that needs explicit handling,
-    /// since the promoted node's state is still reachable — it's now what
+    /// since the promoted node's state is still reachable: it's now what
     /// the root represents. But promotion also *overwrites* the root's
     /// previous state, so a `saved_revision` that pointed at `History::ROOT`
     /// (the buffer was opened, never saved since) no longer names the saved
-    /// state at all — it must become `None`, not silently keep pointing at
+    /// state at all. It must become `None`, not silently keep pointing at
     /// ROOT's new (different) content.
     fn record_revision(
         &mut self,
@@ -553,7 +553,7 @@ impl Buffer {
         sels: SelectionSet,
         cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) -> (SelectionSet, ChangeSet) {
-        // Clone the buffer for the edit — O(log n) via ropey structural sharing.
+        // Clone the buffer for the edit: O(log n) via ropey structural sharing.
         let (new_text, new_sels, cs) = cmd(self.text.clone(), sels.clone());
 
         // An identity `cs` moved no bytes: recording it would litter the undo
@@ -563,7 +563,7 @@ impl Buffer {
             return (new_sels, cs);
         }
 
-        // self.text is still pre-edit here — safe to call invert.
+        // self.text is still pre-edit here, so it's safe to call invert.
         let inverse_cs = cs.invert(&self.text);
         self.record_revision(cs.clone(), inverse_cs, sels, new_sels.clone());
         self.set_text(new_text);
@@ -573,8 +573,8 @@ impl Buffer {
     /// Apply an edit within the current open group, composing its CS into the
     /// group accumulator rather than recording a history revision.
     ///
-    /// Caller must have called `begin_edit_group` and still hold its result —
-    /// there is no `None` case to guard here, since the caller already
+    /// Caller must have called `begin_edit_group` and still hold its result.
+    /// There is no `None` case to guard here, since the caller already
     /// proved a group is open by having an `&mut EditGroup` at all.
     pub(in crate::editor) fn apply_edit_grouped(
         &mut self,
@@ -586,7 +586,7 @@ impl Buffer {
 
         // An identity `cs` moved no bytes: composing it into the group
         // accumulator would still be a no-op, but bumping `text_gen` would
-        // fire `on-text-changed` for one. Leave the accumulator untouched —
+        // fire `on-text-changed` for one. Leave the accumulator untouched:
         // a group whose every edit was identity commits nothing.
         if cs.is_identity() {
             return (new_sels, cs);
@@ -608,8 +608,8 @@ impl Buffer {
     /// Returns the new selections and a propagation CS mapping the current buffer
     /// text → the new text (for `propagate_cs_to_panes`).
     ///
-    /// Caller must have called `begin_edit_group` and still hold its result —
-    /// same contract as [`Buffer::apply_edit_grouped`].
+    /// Caller must have called `begin_edit_group` and still hold its result,
+    /// the same contract as [`Buffer::apply_edit_grouped`].
     pub(in crate::editor) fn apply_edit_regrouped(
         &mut self,
         group: &mut EditGroup,
@@ -627,7 +627,7 @@ impl Buffer {
 
         group.cs = Some(new_cs);
         // `propagation_cs` identity means the buffer's *current* text already
-        // equals `new_text` — re-pasting identical content over itself on a
+        // equals `new_text`: re-pasting identical content over itself on a
         // later cycle. `new_cs` (mapping the original snapshot forward) isn't
         // identity in that case, so `group.cs` above still needed updating;
         // only the mutation against the live buffer is skipped.
@@ -640,8 +640,8 @@ impl Buffer {
     /// Open an edit group. Snapshots the current text and the provided `pre_sels`
     /// so `commit_edit_group` can invert the composed CS and record one revision.
     ///
-    /// Returns a fresh [`EditGroup`] rather than writing through a pointer —
-    /// the caller (`doc_ops::begin_edit_group`) is the one that knows whether
+    /// Returns a fresh [`EditGroup`] rather than writing through a pointer.
+    /// The caller (`doc_ops::begin_edit_group`) is the one that knows whether
     /// a session is already open, since it owns `EditorState::active_session`;
     /// that check belongs there, not here.
     pub(in crate::editor) fn begin_edit_group(&self, pre_sels: SelectionSet) -> EditGroup {
@@ -657,7 +657,7 @@ impl Buffer {
     /// If no edits were applied since `begin_edit_group` (empty group), or the
     /// composed `ChangeSet` cancelled out to the identity transform (e.g. type
     /// a char, then backspace it), no revision is recorded. Takes `group` by
-    /// value — the caller already `.take()`n it from `EditorState::active_session`.
+    /// value: the caller already `.take()`n it from `EditorState::active_session`.
     pub(in crate::editor) fn commit_edit_group(
         &mut self,
         group: EditGroup,
@@ -666,9 +666,9 @@ impl Buffer {
         if let Some(cs) = group.cs {
             // An identity `cs` moved no bytes: recording it would put a no-op
             // revision on the undo stack, and undoing that revision would
-            // still consume a step and move `current` — `undo_n`/`redo_n`
+            // still consume a step and move `current`. `undo_n`/`redo_n`
             // don't inspect the transaction they're walking, only whether a
-            // parent/child link exists — so `u` would consume a step, change
+            // parent/child link exists, so `u` would consume a step, change
             // no text, and print no exhaustion message either. See
             // `apply_transactions`'s doc for why its own identity guard is a
             // different one, protecting a different case.
@@ -680,20 +680,20 @@ impl Buffer {
         }
     }
 
-    /// Apply an ordered Transaction list — from `History::undo_n`/`redo_n`/
-    /// `goto_revision` — as one composed transform: fold every ChangeSet
+    /// Apply an ordered Transaction list (from `History::undo_n`/`redo_n`/
+    /// `goto_revision`) as one composed transform: fold every ChangeSet
     /// together with `ChangeSet::compose_all` (sound because each Transaction
     /// in the list maps the state the previous one produced, see
     /// `History::goto_revision`'s doc) and apply the result once. Returns a
     /// [`HistoryWalkResult`]: the restored selections, the net ChangeSet,
-    /// and how many steps `txns` held — short of the caller's requested
+    /// and how many steps `txns` held: short of the caller's requested
     /// count when the walk hit the root/leaf, so the caller can tell
     /// exhaustion apart from a full walk. `None` when `txns` is empty
-    /// (nothing to do — already at the target).
+    /// (nothing to do, already at the target).
     ///
     /// Always validates the landing selections via `Transaction::apply`
     /// (length + bounds check, `merge_overlapping_in_place`), but skips
-    /// `set_text` when the composed ChangeSet is identity — a walk that
+    /// `set_text` when the composed ChangeSet is identity: a walk that
     /// undoes an insert and its own later delete nets to no text change, so
     /// `text_gen` doesn't move for a mutation that never happened. A
     /// different guard from `apply_edit`/`commit_edit_group`'s, not the same
@@ -711,7 +711,7 @@ impl Buffer {
         );
         let (new_text, new_sels) = txn
             .apply(&self.text)
-            .expect("composed history transaction failed — history is corrupt");
+            .expect("composed history transaction failed: history is corrupt");
         let cs = txn.into_changes();
         if !cs.is_identity() {
             self.set_text(new_text);
@@ -719,7 +719,7 @@ impl Buffer {
         Some((new_sels, cs, steps))
     }
 
-    /// Undo up to `count` steps as one composed transform — the production
+    /// Undo up to `count` steps as one composed transform: the production
     /// path for `5u` and an age-resolved `:earlier`, so a multi-step travel
     /// pays for one `set_text`/`finish_edit` cycle instead of `count` of
     /// them. See [`Self::apply_transactions`] for the return contract.
@@ -729,7 +729,7 @@ impl Buffer {
     }
 
     /// Redo up to `count` steps forward as one composed transform. See
-    /// `undo_n`'s doc — same contract, redo direction.
+    /// `undo_n`'s doc: same contract, redo direction.
     pub(crate) fn redo_n(&mut self, count: usize) -> HistoryWalkResult {
         let txns = self.history.redo_n(count);
         self.apply_transactions(txns)
@@ -745,7 +745,7 @@ impl Buffer {
         self.history.current_id()
     }
 
-    /// Test-only: production does not branch on this — `undo_n`/`redo_n`
+    /// Test-only: production does not branch on this. `undo_n`/`redo_n`
     /// clamp at the root themselves and report `taken < requested` instead
     /// of checking `can_undo` up front.
     #[cfg(test)]
@@ -753,7 +753,7 @@ impl Buffer {
         self.history.can_undo()
     }
 
-    /// Undo steps back to the state as of `age` ago, for `:earlier` — narrow
+    /// Undo steps back to the state as of `age` ago, for `:earlier`: a narrow
     /// delegate so the typed layer never touches `History` itself. See
     /// `History::undo_steps_older_than`'s own doc for the `Result` contract.
     pub(in crate::editor) fn undo_steps_older_than(&self, age: Duration) -> Result<usize, usize> {

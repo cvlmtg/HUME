@@ -1,12 +1,12 @@
-//! What accepting a candidate writes — `CompletionSession::accept`
+//! What accepting a candidate writes: `CompletionSession::accept`
 //! (`completion/session/accept.rs`): the `insertText` fallback over the
 //! source's token, a server `textEdit` decoded against the invocation's
 //! own snapshot, `additionalTextEdits`, undo grouping, the preconditions
 //! that refuse, and every cursor of a multi-cursor session.
 //!
 //! Most tests drive `completion-accept!` from a Steel command dispatched
-//! through `execute_keymap_command` on a raw `push_mode_layer(Insert)` —
-//! see `raw_insert_with_source` — so `accept`'s *own* edit-group opening is
+//! through `execute_keymap_command` on a raw `push_mode_layer(Insert)`
+//! (see `raw_insert_with_source`), so `accept`'s *own* edit-group opening is
 //! what's under test, not `begin_insert_session`'s.
 
 use super::*;
@@ -35,7 +35,7 @@ fn accept_with_no_text_edit_replaces_the_token_with_insert_text() {
     assert_eq!(ed.doc().text().to_string(), "hello cdef\n");
 }
 
-/// A server's `insertText`/`textEdit.newText` isn't guaranteed `\n`-only —
+/// A server's `insertText`/`textEdit.newText` isn't guaranteed `\n`-only:
 /// accept normalizes it the same way `apply-text-edits!` does, since both
 /// converge on the same changeset-building chokepoint.
 #[test]
@@ -52,7 +52,7 @@ fn accept_normalizes_crlf_in_insert_text() {
     assert_eq!(ed.doc().text().to_string(), "hel\nlo cdef\n");
 }
 
-/// With '-' configured as a word char, "foo-ba" is one token — the fallback
+/// With '-' configured as a word char, "foo-ba" is one token. The fallback
 /// replaces it whole, the same way every other word operation would.
 #[test]
 fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
@@ -73,7 +73,7 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
 
 /// The server's range was computed against the document at request time
 /// ("fo"); a char typed after ("r") is inside the token, so the range's end
-/// follows it — `Assoc::After` on the end, mapped through the observed edit.
+/// follows it: `Assoc::After` on the end, mapped through the observed edit.
 #[test]
 fn accept_with_a_text_edit_extends_the_range_over_chars_typed_since() {
     let tmp = safe_tempdir();
@@ -96,7 +96,7 @@ fn accept_with_a_text_edit_extends_the_range_over_chars_typed_since() {
 }
 
 /// A range that doesn't contain the cursor is off-spec (LSP: the completion
-/// range always contains the request position) — accept errors with the
+/// range always contains the request position), so accept errors with the
 /// buffer untouched rather than guessing at the server's intent.
 #[test]
 fn accept_with_an_off_spec_text_edit_range_errors_and_leaves_the_buffer_untouched() {
@@ -186,14 +186,14 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
 }
 
 /// An edit through a path the session never observed (a raw
-/// `apply-text-edits!`) bumps the generation — accept refuses.
+/// `apply-text-edits!`) bumps the generation, so accept refuses.
 #[test]
 fn a_buffer_edit_the_session_never_saw_invalidates_it() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     super::super::lsp_bridge::setup_with(&mut ed, |backend, _sid| {
         // `apply-text-edits!` now only accepts a server-tagged wire edit
-        // (via a real response) — this canned response is what the
+        // (via a real response). This canned response is what the
         // `:stash` dispatch below (run before `finish`, which reads it
         // back) turns into one.
         backend.respond_to(
@@ -213,8 +213,8 @@ fn a_buffer_edit_the_session_never_saw_invalidates_it() {
              (completion-accept! 0)))"#,
     );
     // `raw_insert_with_source` already entered Insert mode with the
-    // completion session open — `run_typed_steel_command`, not
-    // `type_cmd`'s keystroke typing, so `:stash` dispatches as a command
+    // completion session open (`run_typed_steel_command`, not
+    // `type_cmd`'s keystroke typing), so `:stash` dispatches as a command
     // (it's Steel-backed, unlike what `execute_typed` supports) instead of
     // literal text.
     assert!(ed.run_typed_steel_command("stash", None, None, false));
@@ -253,7 +253,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
     );
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
-    // Nothing dismisses a session on a focused-pane change synchronously —
+    // Nothing dismisses a session on a focused-pane change synchronously:
     // `pane_state::ensure` would otherwise fabricate a cursor at char 0 for
     // pane B. A raw `set_for_test`: `switch_focused_pane`'s Normal-mode
     // precondition doesn't hold here on purpose.
@@ -269,8 +269,8 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
 }
 
 /// A *real* Insert entry (`i`, pairing the session with an open edit group)
-/// ends in full — Insert layer, edit group, and the completion session
-/// riding on top of it — the moment `switch_to_buffer_without_jump` swaps
+/// ends in full (Insert layer, edit group, and the completion session
+/// riding on top of it) the moment `switch_to_buffer_without_jump` swaps
 /// the focused pane's buffer out from under it
 /// (`buffer::lifecycle::switch_pane_to_buffer`'s teardown). Nothing survives
 /// for a later `completion-accept!` to act on stale state; it errors on the
@@ -314,12 +314,12 @@ fn accept_after_the_pane_switched_buffers_errors() {
 }
 
 /// A completion accept firing while a *Paste* session (not Insert) is open
-/// on this exact (pane, buffer) — reachable only through a hook, timer, or
-/// async LSP callback bypassing the normal dispatch order, which always
-/// commits a stray paste session before an ordinary keypress runs (`Editor::
-/// dispatch`'s Steel branch unconditionally runs `step_paste_commit` before
-/// a command's own body — including `finish`'s) — must refuse cleanly
-/// instead of panicking. Calls the `CompletionHost::completion_accept`
+/// on this exact (pane, buffer) must refuse cleanly instead of panicking.
+/// That state is reachable only through a hook, timer, or async LSP callback
+/// bypassing the normal dispatch order, which always commits a stray paste
+/// session before an ordinary keypress runs (`Editor::dispatch`'s Steel
+/// branch unconditionally runs `step_paste_commit` before a command's own
+/// body, including `finish`'s). Calls the `CompletionHost::completion_accept`
 /// builtin directly (`live_host!`), the same way a hook's own `call!` or an
 /// async LSP callback reaches it, bypassing `Editor::dispatch` entirely so
 /// the injected session below survives to see it.
@@ -342,7 +342,7 @@ fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
     );
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
-    // `raw_insert_with_source` opens no group at all (see its own doc) — a
+    // `raw_insert_with_source` opens no group at all (see its own doc): a
     // Paste session open here is not reachable through it directly, but is
     // exactly the shape an out-of-band `completion-accept!` could observe.
     let pid = ed.state.focus.id();
@@ -369,7 +369,7 @@ fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
     assert_eq!(
         ed.doc().text().to_string(),
         "abcdef\n",
-        "nothing must have been written — the buffer must be untouched"
+        "nothing must have been written: the buffer must be untouched"
     );
     let msg = result.expect_err("must refuse, not panic, while a foreign session is open");
     assert!(msg.contains("open insert/paste session"), "got {msg:?}");
@@ -377,7 +377,7 @@ fn accept_while_a_paste_session_is_open_here_errors_instead_of_panicking() {
 
 /// A real (non-collapsed) selection: typing over one is a different edit
 /// than completing at it, and `replace_around_cursors` would force-collapse
-/// it — accept refuses instead of silently discarding the selection.
+/// it, so accept refuses instead of silently discarding the selection.
 #[test]
 fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it() {
     let tmp = safe_tempdir();
@@ -456,7 +456,7 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
 }
 
 /// `back`/`forward` retreat a fixed count from the live head, which
-/// `commit_char_edits` already shifted across the additional edit — so the
+/// `commit_char_edits` already shifted across the additional edit, so the
 /// completion's own edit lands on the real token regardless of where the
 /// import moved it to.
 #[test]
@@ -499,7 +499,7 @@ fn accept_with_no_text_edit_never_eats_into_word_chars_an_additional_edit_insert
 }
 
 /// additionalTextEdits' wire range is computed against the request-time
-/// document; a keystroke since shifts everything after it — decoding
+/// document; a keystroke since shifts everything after it. Decoding
 /// against the invocation's snapshot and mapping forward still finds
 /// "extra" exactly.
 #[test]
@@ -553,8 +553,8 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
 }
 
 /// A label-only item (a bare string from `completion-emit!`, no wire
-/// payload at all) still gives the hook something useful — `{"label": …}`
-/// — rather than `null`.
+/// payload at all) still gives the hook something useful (`{"label": …}`)
+/// rather than `null`.
 #[test]
 fn accept_fires_on_completion_accept_with_a_synthesized_label_for_a_plain_item() {
     let tmp = safe_tempdir();
@@ -576,8 +576,8 @@ fn accept_fires_on_completion_accept_with_a_synthesized_label_for_a_plain_item()
 
 // ── Multi-cursor ──────────────────────────────────────────────────────────
 //
-// `c` on two selections leaves two collapsed cursors in one Insert session
-// — these pin that accepting lands the edit at every one of them, not just
+// `c` on two selections leaves two collapsed cursors in one Insert session.
+// These pin that accepting lands the edit at every one of them, not just
 // the primary, and that the session's bookkeeping stays correct regardless
 // of which cursor is primary.
 
@@ -591,12 +591,12 @@ fn accepting_lands_at_every_cursor_not_just_the_primary() {
     assert_eq!(ed.doc().text().to_string(), "std std\n");
 }
 
-/// The `insertText` fallback's span is *not* uniform across cursors — each
+/// The `insertText` fallback's span is *not* uniform across cursors: each
 /// cursor gets its own `word_start_before` scan from its own head, not the
 /// primary's own tracked token re-expressed as a shared `(back, forward)`
 /// distance: "abc" before the second cursor (with '-' a word char, one
 /// contiguous run with its own typed prefix, no separator) is consumed
-/// along with it, since it really is part of that cursor's own word —
+/// along with it, since it really is part of that cursor's own word,
 /// unlike a uniform count, which would only ever eat as many chars as the
 /// *primary*'s own prefix happened to be long, regardless of what actually
 /// precedes each other cursor.
@@ -608,7 +608,7 @@ fn accepting_consumes_each_cursors_own_word_run_not_a_uniform_count() {
     ed.feed_key(key('c'));
     type_chars(&mut ed, "x-");
     // `filterText` "x-st": the token is "x-" now and grows to "x-st" once
-    // "st" lands below — the item must match both to stay ranked.
+    // "st" lands below, and the item must match both to stay ranked.
     run(
         &mut ed,
         tmp.path(),
@@ -638,7 +638,7 @@ fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
     let head = ed.current_selections().primary().head().index();
-    // `newText` distinct from `label`/`insertText` — the server's range
+    // `newText` distinct from `label`/`insertText`: the server's range
     // drove the replacement, not the fallback.
     run(
         &mut ed,
@@ -662,11 +662,11 @@ fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
 
 /// A `textEdit` from a source that never declared `#:resolve` decodes
 /// `character` as a raw char count, not the buffer's attached-server wire
-/// encoding — `completion_source`'s helper registers with no `#:resolve`
+/// encoding. `completion_source`'s helper registers with no `#:resolve`
 /// (defaults `#f`), so this pins the general case every other `textEdit`
 /// test here already exercises without noticing, since none of them put a
 /// multi-UTF-16-unit character earlier on the line to expose the
-/// divergence. "😀" is 1 char but 2 UTF-16 units — a `character` position
+/// divergence. "😀" is 1 char but 2 UTF-16 units: a `character` position
 /// counted in UTF-16 would land one char short of what this source, having
 /// no wire encoding to honor, actually meant.
 #[test]
@@ -674,7 +674,7 @@ fn a_non_resolve_sources_text_edit_decodes_character_as_a_char_count() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[😀foo]>\n");
     ed.feed_key(key('c'));
-    // Cursor now sits right after "😀foo" was deleted, at char 0 — retype
+    // Cursor now sits right after "😀foo" was deleted, at char 0. Retype
     // "😀" so the line matches the fixture the test's own doc describes,
     // then trigger completion for a `textEdit` covering "foo" (chars 1..4).
     type_chars(&mut ed, "\u{1F600}");
@@ -740,7 +740,7 @@ fn multi_cursor_accept_is_one_undo_step_in_insert_mode() {
     assert_eq!(ed.doc().text().to_string(), "foo bar\n");
 }
 
-/// Two cursors placed directly, entirely outside a real Insert session —
+/// Two cursors placed directly, entirely outside a real Insert session:
 /// no edit group is open going in, so `accept` opens its own, and one undo
 /// still reverts both cursors' edits and the additional edit together.
 #[test]
@@ -763,14 +763,14 @@ fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
     assert!(text.starts_with("// header\n"));
 
     // By name rather than `u`: the raw-pushed Insert layer has no session
-    // bookkeeping to tear down, so it is never left — `undo` runs as the
+    // bookkeeping to tear down, so it is never left. `undo` runs as the
     // plain (no open group) command it is.
     ed.execute_keymap_command("undo".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "abcdef ghijkl\n");
 }
 
 /// The header lands between the two cursors: unrelated to either span, but
-/// it shifts the second cursor's absolute position — its span still lands
+/// it shifts the second cursor's absolute position. Its span still lands
 /// on its own (shifted) content, not on text the header pushed its way.
 #[test]
 fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both() {
@@ -780,8 +780,8 @@ fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both(
     type_chars(&mut ed, "xy");
     // Buffer "xy abcxy\n": cursor1 (primary) at char 2. Per-cursor word
     // scanning (this arm has no server `textEdit`) widens cursor2's own
-    // span to [3, 8) — the whole "abcxy" run, not just its own typed "xy"
-    // suffix — since 'a'/'b'/'c' are word chars too. Char 3, right at that
+    // span to [3, 8) (the whole "abcxy" run, not just its own typed "xy"
+    // suffix), since 'a'/'b'/'c' are word chars too. Char 3, right at that
     // span's own start, is the one position strictly between the two spans
     // that overlaps neither: safely before cursor2's span (an insertion at
     // a span's own start shifts it uniformly ahead, per the overlap
@@ -806,7 +806,7 @@ fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both(
 
 /// A cramped cursor's own preceding word must never retreat across a line
 /// boundary into unrelated text on the line above, however long the
-/// *primary* cursor's own word happens to be — the finding this whole
+/// *primary* cursor's own word happens to be. This is the finding this whole
 /// per-cursor-scan design exists for: a uniform count derived from one
 /// cursor's word and blindly applied to another can walk past that
 /// cursor's own line start.
@@ -814,10 +814,10 @@ fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both(
 fn accepting_never_retreats_a_shorter_cursor_across_a_line_boundary() {
     let tmp = safe_tempdir();
     // Primary's own word "ab" (2 chars) is longer than the second cursor's
-    // own word "x" (1 char, on the line below) — a uniform 2-char retreat
+    // own word "x" (1 char, on the line below): a uniform 2-char retreat
     // from the second cursor's head would cross its line's own start and
     // eat the preceding newline plus a char of "ab".
-    // The marker is a placeholder — real selections are set explicitly
+    // The marker is a placeholder. Real selections are set explicitly
     // below (`editor_from` requires at least one).
     let mut ed = editor_from("let a-[b]>\nx\n");
     ed.set_current_selections(SelectionSet::from_vec(
@@ -837,13 +837,13 @@ fn accepting_never_retreats_a_shorter_cursor_across_a_line_boundary() {
     assert_eq!(
         ed.doc().text().to_string(),
         "let std\nstd\n",
-        "each cursor's own word is replaced in place — neither line is \
+        "each cursor's own word is replaced in place: neither line is \
          corrupted or joined with the other"
     );
 }
 
 /// Two cursors from one `c` with the SECOND primary: every keystroke at
-/// cursor 1 shifts cursor 2's head by more than one char — the token must
+/// cursor 1 shifts cursor 2's head by more than one char, so the token must
 /// be remapped through each keystroke so the filter is what was typed at
 /// the primary, not drifted text.
 #[test]

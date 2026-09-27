@@ -1,6 +1,6 @@
 //! `picker-source-spawn!`'s Rust-side half: drives
 //! `PickerSession::attach_source`/`Editor::drain_picker_source`
-//! directly (no Steel involved — see `picker_source_steel.rs` for the
+//! directly (no Steel involved; see `picker_source_steel.rs` for the
 //! end-to-end builtin coverage), so these are unix-only (`sh`/`sleep`).
 
 use super::*;
@@ -37,7 +37,7 @@ fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
 }
 
 /// Spawns `sh -c script` and attaches it to the already-open picker with
-/// `ok_exit_codes` — the spawn-and-attach block every `sh`-based test below
+/// `ok_exit_codes`: the spawn-and-attach block every `sh`-based test below
 /// needs before it can exercise `drain_picker_source`.
 fn attach_sh(ed: &mut Editor, script: &str, ok_exit_codes: Vec<i32>) {
     let args = vec!["-c".to_string(), script.to_string()];
@@ -51,7 +51,7 @@ fn attach_sh(ed: &mut Editor, script: &str, ok_exit_codes: Vec<i32>) {
 
 #[test]
 fn end_to_end_drain_streams_lines_into_the_store() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
@@ -77,7 +77,7 @@ fn end_to_end_drain_streams_lines_into_the_store() {
 
 #[test]
 fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
@@ -103,7 +103,7 @@ fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
 
 #[test]
 fn coalesced_push_reranks_against_the_live_query() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
@@ -126,7 +126,7 @@ fn coalesced_push_reranks_against_the_live_query() {
 
 #[test]
 fn nonzero_exit_reports_a_status_message_with_stderr() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
@@ -148,19 +148,19 @@ fn nonzero_exit_reports_a_status_message_with_stderr() {
 
 #[test]
 fn exit_code_in_the_allowlist_reports_nothing() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
-    // Exit 1 with nothing on stderr — the shape `rg` uses for "no matches".
+    // Exit 1 with nothing on stderr: the shape `rg` uses for "no matches".
     attach_sh(&mut ed, "exit 1", vec![0, 1]);
 
     drain_sources_until(&mut ed, source_detached);
 
     assert!(
         ed.state.status_msg.is_none(),
-        "exit 1 is in the allowlist — must not report anything"
+        "exit 1 is in the allowlist, must not report anything"
     );
     let error_entries = ed
         .state
@@ -173,12 +173,12 @@ fn exit_code_in_the_allowlist_reports_nothing() {
 
 #[test]
 fn exit_code_outside_the_allowlist_still_reports() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
-    // Exit 2 — `rg`'s "bad regex" — must still surface even with `1`
+    // Exit 2 (`rg`'s "bad regex") must still surface even with `1`
     // allowlisted for "no matches".
     attach_sh(&mut ed, "echo boom >&2; exit 2", vec![0, 1]);
 
@@ -190,13 +190,13 @@ fn exit_code_outside_the_allowlist_still_reports() {
 
 #[test]
 fn allowlist_omitting_zero_reports_a_successful_exit() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
 
     // `#:ok-exit-codes` is the complete allowlist, not an addition to
-    // `ExitStatus::success` (see `UiHost::picker_source_spawn`'s doc) — a
+    // `ExitStatus::success` (see `UiHost::picker_source_spawn`'s doc): a
     // list that omits `0` must report even a clean exit. Pinned here as a
     // characterization test so this reads as the documented contract, not
     // as a bug to "fix" later.
@@ -213,7 +213,7 @@ fn allowlist_omitting_zero_reports_a_successful_exit() {
 
 #[test]
 fn close_picker_kills_the_source_child() {
-    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sleep" and "kill" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
@@ -237,7 +237,7 @@ fn close_picker_kills_the_source_child() {
 
 #[test]
 fn replacing_the_session_kills_the_previous_source_child() {
-    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sleep" and "kill" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
@@ -251,7 +251,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
         .unwrap()
         .attach_source(source, vec![0]);
 
-    // A fresh `open_picker` call replaces (and — via `close_picker` — drops)
+    // A fresh `open_picker` call replaces (and, via `close_picker`, drops)
     // whatever session was open, same as a second `picker!` from Steel.
     let replacement = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
     picker::open_picker(&mut ed.state, &ed.view, replacement);
@@ -264,7 +264,7 @@ fn replacing_the_session_kills_the_previous_source_child() {
 
 #[test]
 fn a_second_attach_source_kills_the_first_source_child() {
-    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sleep" and "kill" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
@@ -300,7 +300,7 @@ fn a_second_attach_source_kills_the_first_source_child() {
 
 #[test]
 fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_live_picker(&mut ed);
@@ -333,7 +333,7 @@ fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
 
 #[test]
 fn live_session_second_batch_from_the_same_source_appends() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_live_picker(&mut ed);
@@ -375,7 +375,7 @@ fn live_session_second_batch_from_the_same_source_appends() {
 
 #[test]
 fn filter_session_attach_source_still_appends_not_replaces() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
@@ -399,20 +399,20 @@ fn filter_session_attach_source_still_appends_not_replaces() {
             .collect::<Vec<_>>(),
         vec!["seeded", "fresh"],
         "a non-live (`picker!`) session's attached source must still append \
-         to whatever was already seeded, not replace it — `supersedes_rows` \
+         to whatever was already seeded, not replace it. `supersedes_rows` \
          is only set for a live session"
     );
 }
 
 #[test]
 fn explicit_replace_while_a_source_is_attached_consumes_supersede_so_the_next_batch_appends() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name. See `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_live_picker(&mut ed);
 
     attach_sh(&mut ed, "sleep 0.3; printf 'streamed\\n'", vec![0]);
-    // Nothing has arrived yet (the child is still sleeping) — an explicit
+    // Nothing has arrived yet (the child is still sleeping), so an explicit
     // replace must consume the still-armed `supersedes_rows` flag itself,
     // so the source's own later batch doesn't wholesale-replace this list
     // right back out.

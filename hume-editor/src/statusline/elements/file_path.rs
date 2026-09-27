@@ -90,7 +90,7 @@ fn shorten_path_to_width_with(
         }
     }
 
-    // All dirs abbreviated — still too wide. Truncate the filename with `…`.
+    // All dirs abbreviated, still too wide. Truncate the filename with `…`.
     let prefix = components[..n.saturating_sub(1)].concat();
     // Available columns for the filename (after prefix + ellipsis). The
     // prefix already carries its own trailing separator, if any.

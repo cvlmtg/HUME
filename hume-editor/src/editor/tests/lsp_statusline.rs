@@ -1,7 +1,7 @@
 // Statusline diagnostics element: `StatusElement::Diagnostics` reads the
 // diagnostics store directly (never through Steel) and its loading state
-// from the attached LSP server. These tests cover the *data* flow — counts
-// and activity state landing correctly on the editor — not the rendered
+// from the attached LSP server. These tests cover the *data* flow (counts
+// and activity state landing correctly on the editor), not the rendered
 // glyphs/spacing, which are pinned as inline snapshots in
 // `statusline::tests`.
 
@@ -44,7 +44,7 @@ struct DiagCtx {
 }
 
 /// `publishes`: one or more diagnostic batches for the same file, pushed to
-/// the scripted backend in order *before* the single `drain_lsp()` call —
+/// the scripted backend in order *before* the single `drain_lsp()` call:
 /// multiple publishes in one drain batch coalesce to the last one (same
 /// semantics `lsp_diagnostics.rs`'s
 /// `two_publishes_in_one_drain_batch_coalesce_to_the_last` locks in), which
@@ -68,7 +68,7 @@ fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
     let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
     // A server publishing diagnostics is, in reality, always past its
-    // handshake — `Running` here so the `Diagnostics` element renders
+    // handshake. It's `Running` here so the `Diagnostics` element renders
     // counts rather than the `Starting` loading spinner. `insert_client_for_test`
     // otherwise leaves it at `LspClient::new`'s default `Starting`.
     client.set_state_for_test(ServerState::Running);
@@ -161,7 +161,7 @@ fn configure_statusline_round_trips_diagnostics_element_name() {
     );
 }
 
-/// Tier 2: counts must track a second, corrected publish for the same file —
+/// Tier 2: counts must track a second, corrected publish for the same file,
 /// not just the first snapshot. Both publishes are queued before the single
 /// `drain_lsp()` call (see `setup`'s doc comment).
 #[test]
@@ -178,7 +178,7 @@ fn diagnostic_counts_update_across_a_corrected_publish() {
 // ── Loading spinner (Starting / $/progress) ───────────────────────────────
 
 /// A `$/progress` notification action for `dispatch_lsp_action`, bypassing
-/// the transport — this exercises `handle_progress`'s handling directly, the
+/// the transport. This exercises `handle_progress`'s handling directly, the
 /// same way the other `lsp_*` test files drive typed `ClientAction` variants
 /// without a live backend round-trip.
 fn progress_action(token: &str, value: serde_json::Value) -> ClientAction {
@@ -196,7 +196,7 @@ fn starting_server_displays_a_loading_indicator() {
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-    // `LspClient::new` defaults to `Starting` — exactly like a real server
+    // `LspClient::new` defaults to `Starting`, exactly like a real server
     // between spawn and `initialize` completing. No `drain_lsp()` call here,
     // so the spinner frame stays at its initial 0.
     ed.lsp
@@ -254,7 +254,7 @@ fn progress_begin_report_end_tracks_the_active_task() {
     }
     assert_eq!(ed.lsp.progress_title_for_test(sid), Some("Indexing"));
 
-    // report: percentage arrives; title must persist (merged, not replaced —
+    // report: percentage arrives; title must persist (merged, not replaced:
     // an absent field means "unchanged" per the LSP spec).
     ed.dispatch_lsp_action(
         sid,
@@ -285,7 +285,7 @@ fn progress_begin_report_end_tracks_the_active_task() {
     );
 }
 
-/// A `$/progress` begin missing the (lsp_types-required) `title` — real
+/// A `$/progress` begin missing the (lsp_types-required) `title`. Real
 /// servers treat it as optional in practice. Drives the *real* transport
 /// path (`push_from_server` + `drain_lsp`, not the `progress_action` helper
 /// above, which builds a `ClientAction::Progress` via a strict deserialize
@@ -326,7 +326,7 @@ fn progress_begin_missing_title_still_animates_the_spinner() {
 }
 
 /// A server that crashes mid-index must not leave the spinner animating for
-/// a task it will never finish — `ClientAction::Crashed` clears
+/// a task it will never finish: `ClientAction::Crashed` clears
 /// `ServerEntry.progress`, so `activity()` falls through to `Idle` even
 /// though the entry (unlike `:lsp-stop`'s teardown) stays in `lsp.servers`.
 #[test]
@@ -381,7 +381,7 @@ fn loading_state_keeps_diagnostic_counts_available() {
         "fixture must actually carry a count for this to be a meaningful check"
     );
 
-    // `setup` already leaves the client `Running` (see its doc comment) —
+    // `setup` already leaves the client `Running` (see its doc comment);
     // the server is now (re)loading, e.g. mid `:lsp-restart` reindex.
     c.ed.dispatch_lsp_action(
         sid,

@@ -7,14 +7,14 @@ use crate::editor::registry::{MappableCommand, TypedBody};
 // ── One registry, one dispatcher: lazy-activation dispatch parity ───────────
 
 /// A lazy command's first dispatch leaves identical bookkeeping whether
-/// triggered via keypress-style dispatch or the `:` command line — both are
+/// triggered via keypress-style dispatch or the `:` command line. Both are
 /// an "outer" `Editor::dispatch` call for the same command name, so both
 /// stamp dot-repeat/jump/paste bookkeeping identically.
 ///
 /// Not compared against a `call!`-from-another-command path: `call!`'s
 /// bookkeeping is deliberately outer-name-wins (see `dispatch.rs`'s
-/// `run_steel_command` — "Outer-name-wins: stamp the outer command so `.`
-/// replays it, not any inner command the body dispatched via `call!`") — a
+/// `run_steel_command`: "Outer-name-wins: stamp the outer command so `.`
+/// replays it, not any inner command the body dispatched via `call!`"), so a
 /// command reached via an outer wrapper stamps the WRAPPER's name, not the
 /// inner command's, so a 3-way keypress/`:`/`call!` identity claim would be
 /// asserting behavior the system deliberately does not have.
@@ -23,7 +23,7 @@ use crate::editor::registry::{MappableCommand, TypedBody};
 /// diverged between the two entry points, for example by skipping the
 /// repeatable-action stamp in one, the two snapshots would differ.
 /// A lazy *mappable* command's first dispatch via keypress activates its
-/// plugin and runs the real body — same invariant the typed path exercises
+/// plugin and runs the real body, the same invariant the typed path exercises
 /// in `lazy_typed_command_first_dispatch_via_command_line` below, covering
 /// the other half of `declare-plugin`'s two stub kinds
 /// (`#:commands`/`#:typed-commands`).
@@ -49,7 +49,7 @@ fn lazy_command_first_dispatch_via_keypress() {
 }
 
 /// `:cmd arg` on a lazy *typed* command's very first dispatch must forward
-/// `arg` to the lambda — pins the ordering `Editor::run_typed_steel_command`
+/// `arg` to the lambda. Pins the ordering `Editor::run_typed_steel_command`
 /// depends on: activation (which replaces the typed `Lazy` stub with
 /// `TypedBody::Steel`) must complete before arg marshalling reads the
 /// resolved arity.
@@ -65,7 +65,7 @@ fn lazy_typed_command_first_dispatch_via_command_line() {
     );
     let before = state(&ed);
 
-    // The typed arg "move-right" is a native command name — echo-arg forwards
+    // The typed arg "move-right" is a native command name: echo-arg forwards
     // it straight to `call!`, so a cursor move is observable proof the arg
     // arrived, not just that some command ran.
     type_cmd(&mut ed, ":echo-arg move-right");
@@ -89,7 +89,7 @@ fn lazy_typed_command_first_dispatch_via_command_line() {
     );
 }
 
-/// A failed activation removes EVERY remaining `Lazy` stub of that plugin —
+/// A failed activation removes EVERY remaining `Lazy` stub of that plugin,
 /// not just the one that triggered the activation. Extends
 /// `body_error_removes_stub_and_marks_failed` (single-command case) to a
 /// plugin declaring two commands, only one of which is dispatched.
@@ -97,7 +97,7 @@ fn lazy_typed_command_first_dispatch_via_command_line() {
 /// Before `CommandHost::unregister_lazy_stubs_of` was called from
 /// `finish_lazy_activation`, a sibling stub survived as a dangling `Lazy`
 /// entry pointing at a now-`Failed` plugin until it was itself dispatched
-/// (and only then cleaned up by the per-dispatch loop guard) — a behavior
+/// (and only then cleaned up by the per-dispatch loop guard), a behavior
 /// improvement this test pins.
 ///
 /// Unregistering only the dispatched stub would leave `stub-b` as `Lazy`
@@ -140,12 +140,12 @@ fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_on
     assert!(
         ed.state.config.registry.get_typed("stub-b").is_none(),
         "a sibling stub of the same failed plugin must ALSO be gone \
-         immediately — not left dangling until it is itself dispatched"
+         immediately, not left dangling until it is itself dispatched"
     );
 }
 
 /// `:plugin-status` reports a `Declared` plugin's pending `cmd:` activation
-/// entries sourced from the editor's live `Lazy` stubs — the plumbing
+/// entries sourced from the editor's live `Lazy` stubs: the plumbing
 /// `lazy_status_string`/`format_status` now require since this crate no
 /// longer tracks pending command activations itself.
 ///
@@ -172,7 +172,7 @@ fn plugin_status_shows_pending_command_from_live_registry_stubs() {
     );
 }
 
-/// The typed twin of the test above — a pending `#:typed-commands` entry
+/// The typed twin of the test above: a pending `#:typed-commands` entry
 /// must display as `:cmd:` (`:`-only, never key-bindable), not the bare
 /// `cmd:` a mappable entry gets, so the user knows which reachability a
 /// still-`Declared` plugin's pending name will have.
@@ -208,7 +208,7 @@ const INIT_SCM_EXAMPLE_PATH: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime/init.scm.example");
 
 /// The real, shipped `runtime/init.scm.example` evaluates cleanly end to end
-/// against the real runtime — a removed builtin or a renamed keyword arg
+/// against the real runtime; a removed builtin or a renamed keyword arg
 /// (exactly this commit's kind of change) fails here, not first when a user
 /// copies the example and starts HUME.
 #[test]

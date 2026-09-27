@@ -2,7 +2,7 @@
 //! hands Steel an opaque handle scoping later mutation to the instance that
 //! minted it (`DrawerLayer`, `PickerSession`) and by every completion
 //! `Invocation` (a handle scoping a source's answer to the one call that
-//! asked for it) — a late async callback racing a widget the user already
+//! asked for it): a late async callback racing a widget the user already
 //! closed or replaced, or a source answering a call a later keystroke
 //! superseded, reads as a silent no-op rather than reaching the wrong
 //! instance. A single global counter is a superset of several private

@@ -1,6 +1,6 @@
 // End-to-end Steel coverage for `write-register!` / `read-register`.
 //
-// Distinct from `registers.rs`, which covers the `"<reg>` keymap prefix —
+// Distinct from `registers.rs`, which covers the `"<reg>` keymap prefix:
 // this file covers the two Steel builtins that read/write the same store
 // directly, independent of any yank/delete/paste keypress.
 
@@ -8,7 +8,7 @@ use super::*;
 use hume_ops::register::{BLACK_HOLE_REGISTER, KILL_RING_REGISTER};
 use hume_scripting::ScriptingHost;
 
-/// `(write-register! "3" (list "hi"))` stores exactly the given list — the
+/// `(write-register! "3" (list "hi"))` stores exactly the given list: the
 /// same in-memory slot `"3y`/`"3p` read and write.
 ///
 /// The check reads `ed.state.registers` directly. Going through
@@ -29,7 +29,7 @@ fn write_register_stores_text_for_a_named_register() {
     assert_eq!(reg(&ed, '3'), &["hi"]);
 }
 
-/// Multiple entries — one per selection — round-trip in order.
+/// Multiple entries (one per selection) round-trip in order.
 #[test]
 fn write_register_multi_value_preserves_order() {
     let tmp = safe_tempdir();
@@ -46,7 +46,7 @@ fn write_register_multi_value_preserves_order() {
 }
 
 /// `read-register` on a register written from the Rust side (not through
-/// `write-register!`) returns the same list — proves the builtin reads the
+/// `write-register!`) returns the same list. Proves the builtin reads the
 /// real `RegisterSet`, not a private shadow copy.
 #[test]
 fn read_register_returns_text_written_from_rust() {
@@ -68,7 +68,7 @@ fn read_register_returns_text_written_from_rust() {
 
 /// `(write-register! "k" …)` must behave exactly like `"ky`: it goes through
 /// `capture_to_ring`, which pushes the ring head *and* stamps `paste_stamp`
-/// as one operation — a bare `p` right after must resume from the ring, not
+/// as one operation, so a bare `p` right after must resume from the ring, not
 /// fall through to the clipboard.
 ///
 /// Writing straight to a `'k'` slot in `RegisterSet` without
@@ -161,7 +161,7 @@ fn read_register_unwritten_returns_false() {
     assert!(fired, "an unwritten register must read as #f");
 }
 
-/// A register holding a recorded macro reads as `#f` — indistinguishable
+/// A register holding a recorded macro reads as `#f`, indistinguishable
 /// from empty, since there is no wire format yet for a `Vec<KeyEvent>`. See
 /// `registers.rs`'s (the builtins module) doc comment for the *why*.
 #[test]
@@ -183,7 +183,7 @@ fn read_register_holding_a_macro_returns_false() {
 }
 
 /// The clipboard register round-trips through the in-process virtual
-/// clipboard — real OS clipboard access is neither available nor desired in
+/// clipboard: real OS clipboard access is neither available nor desired in
 /// a unit test.
 #[test]
 fn clipboard_register_round_trips_through_the_mock_clipboard() {
@@ -204,7 +204,7 @@ fn clipboard_register_round_trips_through_the_mock_clipboard() {
     );
 }
 
-/// `write-register!`/`read-register` are `open`-gated — usable directly at
+/// `write-register!`/`read-register` are `open`-gated: usable directly at
 /// `init.scm` top level, unlike `set-register-prefix!` (`cmd`-gated, needs a
 /// command body). `eval_with_real_host` runs `source` as `init.scm`; a
 /// `cmd`-gated builtin here would raise "not available during init
@@ -225,7 +225,7 @@ fn callable_directly_from_init_scm() {
 }
 
 /// Sanity check that `KILL_RING_REGISTER`/`BLACK_HOLE_REGISTER` are the
-/// constants this file's `"k"`/`"b"` literals mean — guards against the
+/// constants this file's `"k"`/`"b"` literals mean. Guards against the
 /// string literals above silently drifting from the real register names if
 /// they're ever renumbered.
 #[test]

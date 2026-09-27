@@ -1,4 +1,4 @@
-//! The selection-menu layer — `(show-menu! items on-select)`'s raw state.
+//! The selection-menu layer: `(show-menu! items on-select)`'s raw state.
 
 use termina::event::KeyCode;
 
@@ -10,7 +10,7 @@ use super::super::{Editor, EditorState};
 use super::placement::{focused_cursor_char, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
 
-/// `(show-menu! items on-select)`'s raw content — held on `EditorState`
+/// `(show-menu! items on-select)`'s raw content, held on `EditorState`
 /// until the next frame's `Editor::sync_menu_view` resolves it into a
 /// positioned `hume_ui::popup::PopupState` with `selected` set. `callback`
 /// fires exactly once (one per selection or dismissal), then the whole
@@ -19,7 +19,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalSc
 /// `rows` is built once at construction, not rebuilt per frame: labels
 /// never change during a menu's lifetime (only `selected` does), so
 /// `sync_menu_view` slices it to the visible window every frame the menu
-/// stays open — measuring is `resolve_menu`'s own job, done fresh each call
+/// stays open. Measuring is `resolve_menu`'s own job, done fresh each call
 /// from that slice alone.
 pub(in crate::editor) struct MenuLayer {
     pub(in crate::editor) rows: Vec<hume_ui::popup::MenuRow>,
@@ -48,23 +48,23 @@ impl Layer for MenuLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
-    // No `setup`/`popup_eviction` override — the trait's own default
+    // No `setup`/`popup_eviction` override: the trait's own default
     // (`PopupEviction::Both`) is exactly right: a `Menu` can land directly
     // above a `Popup` (non-modal, so `is_settled_for` doesn't treat it as
     // the stack having moved), and `push_layer` evicts it on the way in,
     // keeping `PopupLayer`'s "never buried" invariant true. A prior `Menu`
     // on the self-replace path is retired separately (`take_firing_false`,
     // shared with the drawer) before pushing the new one.
-    /// Fires `#f` when `why` is [`Removal::Incidental`] — swept up as
+    /// Fires `#f` when `why` is [`Removal::Incidental`], swept up as
     /// collateral above some other target. No concrete path reaches this
     /// today: a `Menu` only ever opens while the mode layer is `Base`
     /// (`show_menu`'s own `async_opener_stale::<BaseLayer, MenuLayer>`), and
     /// the only two things that can land above one without `is_settled_for`
-    /// reading the stack as moved are a `Popup` (never buried — nothing
+    /// reading the stack as moved are a `Popup` (never buried: nothing
     /// lands above it either, so closing it never reaches below to a `Menu`)
     /// and a `Drawer`, which excises in place on close
     /// ([`RemovalScope::SelfOnly`], below) rather than taking a `Menu` above
-    /// it along — see `close_drawer_leaves_a_menu_open_when_one_sits_above_it`.
+    /// it along; see `close_drawer_leaves_a_menu_open_when_one_sits_above_it`.
     /// Still branches on `why`, matching `DrawerLayer`'s own fix for the same
     /// bug class, rather than leaving "silent unless swept as collateral"
     /// true only by that accident of what happens to land where today.
@@ -75,7 +75,7 @@ impl Layer for MenuLayer {
     /// arms (Enter/Escape/a stray key/a fresh mouse gesture) and
     /// `show_menu`'s self-replace path all take the layer *by value* via
     /// `EditorState::take_layer` instead and fire their own callback
-    /// explicitly — neither ever reaches this at all.
+    /// explicitly, so neither ever reaches this at all.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
         if let Removal::Incidental = why {
             state.queue_steel_call(
@@ -84,7 +84,7 @@ impl Layer for MenuLayer {
             );
         }
     }
-    /// A non-modal `Popup` can land directly above a `Menu` by design —
+    /// A non-modal `Popup` can land directly above a `Menu` by design:
     /// closing the menu must not take it along.
     fn removal_scope(&self) -> RemovalScope {
         RemovalScope::SelfOnly
@@ -99,13 +99,13 @@ impl super::stack::FiresFalseOnReplace for MenuLayer {
 
 impl Editor {
     /// Write the current menu content into the shared `PopupState` Arc so
-    /// `PopupOverlay` can render it during this frame — same geometry rules
+    /// `PopupOverlay` can render it during this frame, with the same geometry rules
     /// as [`Self::sync_popup_view`], but items are shown one-per-line as-is
     /// (no word-wrap: menu entries are short labels, not prose) and
     /// `selected` marks the highlighted row.
     pub(in crate::editor) fn sync_menu_view(&mut self, ctx: &mut RenderContext) {
         if self.state.input.menu().is_none() {
-            // Skip the write-lock when both sides are already None — common
+            // Skip the write-lock when both sides are already None: the common
             // case while no menu is open.
             if self.state.views.menu.read().is_none() {
                 return;
@@ -137,11 +137,11 @@ impl Editor {
     }
 }
 
-/// Named sugar over the generic lookup — the ~350 existing call sites
+/// Named sugar over the generic lookup: the ~350 existing call sites
 /// (`ed.state.input.menu()`) stay as they are, and `stack.rs` stays
 /// agnostic. Read-only: every handler-side mutation now addresses its own
 /// dispatched-to layer via `at_mut::<MenuLayer>(r)` instead, so there is no
-/// `menu_mut()` sibling — this one's only remaining caller is render-sync
+/// `menu_mut()` sibling. This one's only remaining caller is render-sync
 /// (`sync_menu_view`, independent of dispatch), which never needs `&mut`.
 impl super::stack::InputStack {
     pub(in crate::editor) fn menu(&self) -> Option<&MenuLayer> {
@@ -152,7 +152,7 @@ impl super::stack::InputStack {
 /// Handles one key while a selection menu is open. Movement is handled
 /// in place; `Enter`/`Esc`/a stray key all retire the layer and fire the
 /// callback exactly once (one-shot `.take()`-equivalent discipline via
-/// `truncate`) — `queue_steel_call` never invokes it inline, matching
+/// `truncate`): `queue_steel_call` never invokes it inline, matching
 /// every other Rust→Steel callback in this codebase. A stray key both
 /// closes the menu (with a `#f` callback) *and* falls through to normal
 /// dispatch this same call.
@@ -160,7 +160,7 @@ impl super::stack::InputStack {
 /// No mode gate of its own: `show-menu!` only pushes with the mode
 /// layer at `Base` (its own async-staleness check, `host_impl/ui.rs`),
 /// and `push_mode_layer` always pushes a new mode layer *above* whatever
-/// overlay sits on `Base` — so a `Menu` layer is dispatch's top only
+/// overlay sits on `Base`, so a `Menu` layer is dispatch's top only
 /// while the mode layer beneath it is still `Base`.
 ///
 /// A fresh mouse press or wheel notch gets the same treatment as a
@@ -171,7 +171,7 @@ impl super::stack::InputStack {
 pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
-        // A paste is swallowed without closing the menu — same
+        // A paste is swallowed without closing the menu: the same
         // "consumes stray input" treatment the menu gives any other key
         // it doesn't recognize as a choice, minus the `#f` callback
         // that arm fires: a paste was never a choice attempt.
@@ -228,8 +228,8 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
 
 /// Take the menu at `r` off the stack, handing back its model so the
 /// caller can fire the one callback this layer owes
-/// (`.take()`-equivalent one-shot discipline via `EditorState::take_layer`)
-/// — shared by every `menu_input` retirement path (Enter, Escape, a stray
+/// (`.take()`-equivalent one-shot discipline via `EditorState::take_layer`).
+/// Shared by every `menu_input` retirement path (Enter, Escape, a stray
 /// key, a fresh mouse gesture).
 fn take_menu(ed: &mut Editor, r: LayerRef) -> MenuLayer {
     *ed.state.take_layer::<MenuLayer>(&ed.view, r)

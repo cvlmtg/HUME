@@ -151,7 +151,7 @@ fn lsp_stop_with_no_matching_server_stops_nothing() {
 }
 
 /// A queued didChange entry left over from before the stop must
-/// not survive to be flushed against a future server's didOpen baseline —
+/// not survive to be flushed against a future server's didOpen baseline:
 /// it would desync that server's document state on the very first edit.
 #[test]
 fn lsp_stop_clears_the_buffer_s_pending_change_queue() {
@@ -247,8 +247,8 @@ fn lsp_restart_spawns_a_fresh_server_id_and_reattaches_the_buffer() {
 
 /// Without `DiagnosticsStore::remove_server`, a restarted
 /// server's fresh `ServerId` would coexist with the old (frozen, detached)
-/// server's entry for the same buffer — `replace`'s "push if no matching
-/// sid" path — doubling the count instead of replacing it.
+/// server's entry for the same buffer (`replace`'s "push if no matching
+/// sid" path), doubling the count instead of replacing it.
 #[test]
 fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
     let tmp = safe_tempdir();
@@ -311,7 +311,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
         .expect("re-attached after restart");
     assert_ne!(old_sid, new_sid, "restart must yield a fresh ServerId");
 
-    // The fresh server republishes the same diagnostic — this must replace
+    // The fresh server republishes the same diagnostic. This must replace
     // the old, now-detached server's entry, not stack alongside it.
     params["version"] = serde_json::json!(ed.state.buffers.get(bid).text_gen as i32);
     ed.ingest_publish_diagnostics(new_sid, serde_json::from_value(params).unwrap());
@@ -421,7 +421,7 @@ fn show_message_is_reported_at_info_severity() {
     );
 
     // Info severity is never pushed to the persistent log (see
-    // Editor::report) — only shown as the transient status message.
+    // Editor::report); it is only shown as the transient status message.
     assert_eq!(ed.state.status_msg.as_deref(), Some("rust-analyzer: ready"));
 }
 
@@ -468,7 +468,7 @@ fn progress_report_events_are_dropped_without_any_log_line() {
     assert_eq!(
         entries.len(),
         2,
-        "begin and end must log once each; report must never log — got: {entries:?}"
+        "begin and end must log once each; report must never log (got: {entries:?})"
     );
 }
 
@@ -487,21 +487,21 @@ fn lsp_shutdown_all_transitions_every_running_client_to_dead() {
     ed.lsp.insert_client_for_test(client);
 
     // Duration::ZERO means the grace-window loop's `Instant::now() < deadline`
-    // is false on first check — no sleep, no waiting for a real process.
+    // is false on first check: no sleep, no waiting for a real process.
     ed.lsp_shutdown_all(std::time::Duration::ZERO);
 
     let client = ed
         .lsp
         .client_for_test(sid)
-        .expect("the client stays tracked (only its state changes) — lsp_stop is what deregisters");
+        .expect("the client stays tracked (only its state changes): lsp_stop is what deregisters");
     assert_eq!(client.state(), ServerState::Dead);
 }
 
 #[test]
 fn lsp_shutdown_all_on_a_starting_client_skips_the_protocol_but_still_tears_down() {
     // A client that never completed its handshake must not receive
-    // shutdown/exit (nothing but `initialize` is legal before `initialized`)
-    // — but it must still not be left dangling forever; the transport-level
+    // shutdown/exit (nothing but `initialize` is legal before `initialized`),
+    // but it must still not be left dangling forever; the transport-level
     // `backend.shutdown` call covers it regardless of protocol state.
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
@@ -521,7 +521,7 @@ fn lsp_shutdown_all_on_a_starting_client_skips_the_protocol_but_still_tears_down
     assert_eq!(
         client.state(),
         ServerState::Starting,
-        "a Starting client's state must not change — it never got the shutdown/exit messages"
+        "a Starting client's state must not change: it never got the shutdown/exit messages"
     );
 }
 
@@ -532,6 +532,6 @@ fn lsp_shutdown_all_with_no_clients_returns_immediately() {
     ed.lsp_shutdown_all(std::time::Duration::from_secs(5));
     assert!(
         start.elapsed() < std::time::Duration::from_millis(50),
-        "no clients means nothing to wait for — must not block on the grace window"
+        "no clients means nothing to wait for: must not block on the grace window"
     );
 }

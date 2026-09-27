@@ -1,4 +1,4 @@
-// `EditorState::buffer_tag` and `Pane::line_store` lifetime — the scope key
+// `EditorState::buffer_tag` and `Pane::line_store` lifetime: the scope key
 // `hume_engine::display_lines::line_store` uses to decide whether a cached line format
 // still describes the buffer it was built from, and the per-frame rewind that
 // catches what the key cannot see.
@@ -14,7 +14,7 @@ use hume_grid::{Grid, Rect};
 
 /// 50 single-char lines, unwrapped. Built on `Editor::open` (not
 /// `Editor::for_testing`), like `messages.rs`, because only `open`'s startup
-/// path runs the initial pane through `build_pane` — the same constructor
+/// path runs the initial pane through `build_pane`, the same constructor
 /// `:split` uses for a new pane. A `for_testing` pane skips it and carries no
 /// gutter columns, so it would resolve a different `content_width` than a
 /// split-created pane over the identical buffer, an unrelated mismatch that
@@ -35,7 +35,7 @@ fn many_lines_editor() -> Editor {
 }
 
 /// A grouped edit (an open Insert session) bumps `Buffer::text_gen` on every
-/// keystroke but does not record a new revision — `commit_edit_group` is what
+/// keystroke but does not record a new revision: `commit_edit_group` is what
 /// moves `history.current_id()`, and that only runs on session end. A tag built
 /// from the revision id is therefore frozen for the whole session while the
 /// rope underneath it changes.
@@ -58,7 +58,7 @@ fn buffer_tag_changes_within_an_open_insert_session() {
 
 /// `Buffer::set_view_content` (the `:messages`/`:ls` refresh path) rebuilds
 /// `History` from scratch, so `revision_id()` returns to `RevisionId(0)` on
-/// every call — the same value the buffer started at. A tag keyed on the
+/// every call, the same value the buffer started at. A tag keyed on the
 /// revision id alone therefore repeats across two refreshes with different
 /// content. Calls `set_view_content` directly (bypassing `:messages`, whose
 /// handler also touches the decoration store on every call, which would mask
@@ -85,7 +85,7 @@ fn buffer_tag_changes_across_a_set_view_content_refresh() {
 }
 
 /// Two panes viewing the same buffer at the same width resolve a
-/// bit-identical `FormatKey` — `:split` stacks panes, so both keep the full
+/// bit-identical `FormatKey`: `:split` stacks panes, so both keep the full
 /// terminal width (only height changes, and height isn't part of the key).
 /// Nothing in that key names the pane, so a single shared store would serve
 /// one pane's entry for a line to the other and skip querying that pane's
@@ -115,7 +115,7 @@ fn line_store_does_not_leak_between_panes() {
 
     ed.execute_typed("split", None).unwrap();
     // `:split` alone leaves the new pane's viewport at its zero-value
-    // default — a real frame is what sizes it against the layout tree, and
+    // default. A real frame is what sizes it against the layout tree, and
     // an unsized pane B walks a different display-line list from pane A's, which
     // would mask the isolation this test exists to check.
     ed.sync_viewport_dims(80, 24);
@@ -146,7 +146,7 @@ fn line_store_does_not_leak_between_panes() {
 }
 
 /// A `z`-scroll and the frame pipeline share one store, so this pins the
-/// rewind from the *between-frame* entry point — the sibling test below
+/// rewind from the *between-frame* entry point; the sibling test below
 /// drives the render path into the same store. Entries must not survive a
 /// frame: the per-pane inlay-hint/virtual-line mirrors are rebuilt every
 /// frame filtered to that frame's viewport without bumping the decoration
@@ -188,7 +188,7 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
 
     // Away from TARGET before the frame: `prepare_frame`'s own per-pane
     // scroll step (frame.rs's `scroll_into_view`) walks this same store,
-    // following the cursor's *current* line — leaving the cursor on TARGET
+    // following the cursor's *current* line. Leaving the cursor on TARGET
     // would have that pass re-populate the very entry this test wants to
     // find dropped, hiding the rewind it is checking for.
     seek_to_line(&mut ed, 0);
@@ -209,11 +209,11 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
 }
 
 /// An INLINE-kind source whose emission is toggled by a shared flag rather
-/// than driven by a decoration store — standing in for the real inlay-hint
+/// than driven by a decoration store, standing in for the real inlay-hint
 /// mirror, which is rebuilt every frame filtered to the viewport it shows
 /// *without* bumping the decoration generation (see `line_store`'s module
 /// doc). So a hint appearing or disappearing between two frames is a change
-/// `FormatKey` cannot see; only the per-frame rewind catches it — what
+/// `FormatKey` cannot see; only the per-frame rewind catches it, which is what
 /// `line_store`'s module doc calls "a correctness requirement rather than
 /// hygiene". `render_to_buf` allocates a fresh `RenderContext` per call, so
 /// every other render test in this crate starts cold and would stay green
@@ -224,7 +224,7 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
 #[test]
 fn a_rendered_frames_entries_do_not_survive_it() {
     // Line 0 is "abcdef" (6 columns) in a 10-column content width; the
-    // 6-column hint makes 12, wrapping it onto a second row — exactly
+    // 6-column hint makes 12, wrapping it onto a second row, exactly
     // `content_pos_counts_an_inline_hints_extra_wrap_row`'s fixture.
     let text = BufferText::from("abcdef\ny\n");
     let sels = SelectionSet::single(Selection::collapsed(co(7)));
@@ -263,7 +263,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
         cell(&grid, 0, 1),
         "y",
         "the second frame must re-format line 0 without the hint, not read \
-         the first frame's entry — y must move back up to row 1"
+         the first frame's entry: y must move back up to row 1"
     );
 }
 
@@ -272,9 +272,9 @@ fn a_rendered_frames_entries_do_not_survive_it() {
 /// first formatted.
 ///
 /// Both passes reach the engine through their own `DisplayLineMap`, each built from
-/// `EditorState::format_key` on the same pane — the scroll step through
+/// `EditorState::format_key` on the same pane (the scroll step through
 /// `commands::pane_display_lines`, the render pass through `frame.rs`'s
-/// `resolve_pane_settings` — so the two share an entry by construction: one
+/// `resolve_pane_settings`), so the two share an entry by construction: one
 /// composition, called twice, cannot itself disagree with itself. This test
 /// still pins the outcome rather than the mechanism, so a future call site
 /// that builds a `FormatKey` some other way (bypassing `format_key`) still
@@ -301,7 +301,7 @@ fn the_two_frame_passes_format_each_visible_line_once() {
         .add_decoration_source(Box::new(FormatProbe::new(PROBED, Rc::clone(&formats))));
 
     // Cursor two lines below the probed one, so the scroll step's own walk
-    // crosses it on the way — otherwise the render pass would be the only
+    // crosses it on the way. Otherwise the render pass would be the only
     // pass to reach it and one format would prove nothing.
     seek_to_line(&mut ed, PROBED + 2);
 

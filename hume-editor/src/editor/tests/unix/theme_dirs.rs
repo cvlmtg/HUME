@@ -1,10 +1,10 @@
 //! `theme_search_paths` tier ordering: config dir, then data dir, then
-//! runtime dir — each shadowing the next by stem. XDG env vars are
+//! runtime dir, each shadowing the next by stem. XDG env vars are
 //! unix-only (`dirs.rs`'s `config_dir_with`/`data_dir_with`), hence gated
 //! here rather than in the portable `tests/theme_loading.rs`.
 
 // `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
+// vars, always under a `TEST_GLOBALS` claim (a guard struct, or this
 // module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
 // *new* raw call elsewhere in the crate gets caught; these are the sanctioned
 // callers it lists as exempt.
@@ -77,7 +77,7 @@ fn theme_search_paths_orders_config_then_data_then_runtime() {
 }
 
 /// A theme present in both the data dir and the runtime dir must resolve to
-/// the data-dir copy — installed third-party themes shadow bundled ones,
+/// the data-dir copy: installed third-party themes shadow bundled ones,
 /// same as config-dir themes already do.
 #[test]
 fn data_dir_theme_shadows_bundled_theme_of_same_name() {
@@ -113,7 +113,7 @@ fn data_dir_theme_shadows_bundled_theme_of_same_name() {
     );
 }
 
-/// A theme with one malformed key still loads — this is the whole point of
+/// A theme with one malformed key still loads. This is the whole point of
 /// warning instead of failing: the user isn't left on their old theme over
 /// one bad line, and the warning still reaches them.
 #[test]

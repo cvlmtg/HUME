@@ -7,13 +7,13 @@ use hume_scripting::host::{CommandHost, CursorHost};
 
 /// Build a `ScriptingHost`, pre-register every native command name as a Steel
 /// binding (so `(move-right)`-style calls in `src` resolve), eval `src`, and
-/// install the result as `ed.scripting` — the bootstrap this file's Steel
+/// install the result as `ed.scripting`: the bootstrap this file's Steel
 /// dispatch tests repeat before driving a command through
 /// `execute_keymap_command` or `(call! …)`.
 ///
 /// Not a fit for a test that needs `live_host!`'s LSP/timer access instead of
 /// a bare `EditorHostImpl`, or one that inspects `eval_source`'s `Result`
-/// itself rather than treating a failed eval as a test-harness bug — those
+/// itself rather than treating a failed eval as a test-harness bug; those
 /// stay hand-written.
 fn attach_steel(ed: &mut Editor, src: &str) {
     let names: Vec<String> = ed
@@ -35,10 +35,10 @@ fn attach_steel(ed: &mut Editor, src: &str) {
 // ── Unit tests: run_command_sync ──────────────────────────────────────────────
 
 /// `run_command_sync` for a `Motion` command must immediately update the cursor
-/// position — no queue involved.
+/// position, with no queue involved.
 #[test]
 fn run_command_sync_motion_moves_cursor() {
-    // "-[a]>bc\n" — cursor at position 0.
+    // "-[a]>bc\n": cursor at position 0.
     let mut ed = editor_from("-[a]>bc\n");
     assert_eq!(state(&ed), "-[a]>bc\n", "cursor must start at 0");
     let _bid = ed.focused_buffer_id();
@@ -46,7 +46,7 @@ fn run_command_sync_motion_moves_cursor() {
 
     {
         let mut host = live_host!(ed);
-        // move-right is a Motion — must dispatch synchronously.
+        // move-right is a Motion, so it must dispatch synchronously.
         host.run_command_sync("move-right", pane, Some(1), false, None)
             .expect("run_command_sync must not error for move-right");
     }
@@ -59,7 +59,7 @@ fn run_command_sync_motion_moves_cursor() {
 }
 
 /// `run_command_sync` for an `EditorCmd` (the fourth native variant) must apply
-/// its effect immediately — not queue it.
+/// its effect immediately, not queue it.
 #[test]
 fn run_command_sync_editor_cmd_runs_sync() {
     // Buffer "abc\n", selection on 'a'. Delete it via the normal keymap path to
@@ -101,9 +101,9 @@ fn run_command_sync_unknown_name_errors() {
 }
 
 /// `run_command_sync` on a native command that refuses outright (here:
-/// `pane-vsplit` too small to fit — see `multi_pane.rs`'s
+/// `pane-vsplit` too small to fit; see `multi_pane.rs`'s
 /// `vsplit_too_narrow_is_noop_with_warning` for the Rust-level guard this
-/// exercises through the Steel sync path) must return `Ok(false)` — this is
+/// exercises through the Steel sync path) must return `Ok(false)`. This is
 /// the value `stdlib/with-pane-command` reads via `call!` to decide whether
 /// to run its handler.
 #[test]
@@ -194,7 +194,7 @@ fn current_line_number_reads_live_position() {
 /// selection.
 #[test]
 fn run_command_sync_selection_updates_sel() {
-    // "-[a]>bc\n" — cursor at 0, single-char selection covering 'a'.
+    // "-[a]>bc\n": cursor at 0, single-char selection covering 'a'.
     let mut ed = editor_from("-[a]>bc\n");
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
@@ -273,7 +273,7 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 
 // ── Case B integration test ───────────────────────────────────────────────────
 
-/// **Case B** — a Steel function can observe the effect of `(move-down bid)` in
+/// **Case B**: a Steel function can observe the effect of `(move-down bid)` in
 /// the same eval via `(buffer-cursor-line bid)`.
 ///
 /// The discriminating logic:
@@ -285,7 +285,7 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 /// A deferred dispatch would leave the cursor on line 2.
 #[test]
 fn case_b_sync_cursor_read_reflects_motion() {
-    // "-[a]>\nb\nc\n" — cursor on line 1.
+    // "-[a]>\nb\nc\n": cursor on line 1.
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
     attach_steel(
@@ -315,7 +315,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
 /// `(call! "repeat-last-action" bid)` is a sync EditorCmd dispatch: it calls
 /// `run_command_sync("repeat-last-action", bid)`, which runs `cmd_repeat` and sets
 /// `state.pending_repeat`. The replay then fires in `replay_dot` at the
-/// tail of the enclosing `handle_key` call — NOT during the Steel eval.
+/// tail of the enclosing `handle_key` call, NOT during the Steel eval.
 ///
 /// The test drives the key through `feed_key` so the full `handle_key` tail
 /// (including `replay_dot`) executes before we inspect the buffer.
@@ -357,16 +357,16 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
         "setup: last_repeatable_action must be set"
     );
 
-    // Move to "bar" and press F2 — the Steel command fires `(call! "repeat-last-action" bid)`,
+    // Move to "bar" and press F2: the Steel command fires `(call! "repeat-last-action" bid)`,
     // setting pending_repeat during eval; handle_key tail drains it, deleting the
     // selection. "bar" is the first (and only) word on its line, so its leading
     // space is indentation and is never absorbed, and there's no trailing space
-    // either (EOL follows) — `w` picks up bare "bar" (default around-word).
+    // either (EOL follows), so `w` picks up bare "bar" (default around-word).
     ed.feed_key(key('w'));
     ed.feed_key(f2);
 
     // "foo" was deleted by the initial `d` (leaving " bar\n"); "bar" was deleted
-    // by the Steel repeat — leaving the indentation space, " \n".
+    // by the Steel repeat, leaving the indentation space, " \n".
     assert_eq!(
         ed.doc().text().to_string(),
         " \n",
@@ -509,7 +509,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
     );
 
     ed.execute_keymap_command("steel-delete".into(), Some(1), false);
-    // `delete` is repeatable — last_repeatable_action must be set.
+    // `delete` is repeatable, so last_repeatable_action must be set.
     assert!(
         ed.state.last_repeatable_action.is_some(),
         "last_repeatable_action must be set after Steel (call! \"delete\" bid)"
@@ -522,7 +522,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
         Some("delete"),
     );
 
-    // Now press `.` — must replay the delete.
+    // Now press `.`: it must replay the delete.
     ed.feed_key(key('w')); // move to "bar"
     let buf_before = ed.doc().text().to_string();
     ed.feed_key(key('.')); // dot-repeat
@@ -571,7 +571,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
 /// were skipped, the pasted text would survive the undo.
 #[test]
 fn steel_call_paste_then_motion_commits_paste_session() {
-    // Seed the kill ring with "hello" — plain paste-after's bare (no "<reg>
+    // Seed the kill ring with "hello". Plain paste-after's bare (no "<reg>
     // prefix) source is always the kill-ring head, with no stamp consultation.
     let mut ed = editor_from("-[w]>orld\n");
     ed.state.kill_ring.push(vec!["hello".to_owned()]);
@@ -591,7 +591,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
         "paste must have inserted 'hello'; got: {buf_after_paste:?}"
     );
 
-    // Undo — the paste session must be committed so this single undo removes the paste.
+    // Undo: the paste session must be committed so this single undo removes the paste.
     ed.feed_key(key('u'));
     let buf_after_undo = ed.doc().text().to_string();
     assert!(
@@ -601,7 +601,7 @@ fn steel_call_paste_then_motion_commits_paste_session() {
 }
 
 /// **Source order**: a Steel body `(call! my-steel-cmd) (call! "delete" bid)`
-/// must execute the Steel command first, then the delete — not reversed.
+/// must execute the Steel command first, then the delete, not reversed.
 ///
 /// Under the in-Steel dispatch model: `steel-move-right` is applied inline as a Steel
 /// funcall (no Rust queue); `delete` is a native and runs synchronously via
@@ -687,7 +687,7 @@ fn steel_unknown_cmd_errors_and_continues() {
     );
     ed.execute_keymap_command("warn-test".into(), Some(1), false);
 
-    // Both move-rights run inline despite the unknown name — cursor ends at 2.
+    // Both move-rights run inline despite the unknown name, so the cursor ends at 2.
     assert_eq!(
         state(&ed),
         "ab-[c]>\n",
@@ -701,7 +701,7 @@ fn steel_unknown_cmd_errors_and_continues() {
 /// at all.
 ///
 /// Setup: a hook is seeded directly into `pending_work` via `queue_event`.
-/// No scripting host is needed — `settle()` skips hooks with no registered
+/// No scripting host is needed: `settle()` skips hooks with no registered
 /// handlers while still clearing the queue.
 ///
 /// A drain call inside `handle_input` would empty the queue before the
@@ -719,7 +719,7 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     // Give the pane a viewport big enough that a click at row=0,col=0 lands in content.
     ed.view.panes[ed.state.focus.id()].viewport = hume_engine::pane::Viewport::new(80, 24);
 
-    // Seed a pending hook (OnBufferSave — no handler registered, so
+    // Seed a pending hook (OnBufferSave, no handler registered, so
     // settle() skips the Steel call but still removes it from the queue).
     let bid = ed.focused_buffer_id();
     let _pane = focused_pane(&ed);
@@ -727,11 +727,11 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
         .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     assert!(
         !ed.state.config.pending_work.is_empty(),
-        "pending_work must be non-empty before the event — drain has not run yet"
+        "pending_work must be non-empty before the event: drain has not run yet"
     );
 
     // Simulate a left-click at (0, 0). handle_input dispatches it but no
-    // longer drains — the hook must still be queued right after.
+    // longer drains, so the hook must still be queued right after.
     let click = termina::event::MouseEvent {
         kind: termina::event::MouseEventKind::Down(termina::event::MouseButton::Left),
         column: 0,
@@ -741,7 +741,7 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     ed.handle_input(TerminalEvent::Mouse(click));
     assert!(
         !ed.state.config.pending_work.is_empty(),
-        "handle_input must not drain pending_work — that's settle()'s job now"
+        "handle_input must not drain pending_work; that's settle()'s job now"
     );
 
     // The next `settle()` (what `Editor::run`'s loop calls once per
@@ -822,7 +822,7 @@ fn steel_lambda_receives_bid_count_and_extend() {
     );
 }
 
-/// A `(lambda ())` command ignores injection — no arity-mismatch error.
+/// A `(lambda ())` command ignores injection: no arity-mismatch error.
 ///
 /// If injection always passed 2 args regardless of arity, Steel would raise
 /// an arity error and execute_keymap_command would report it; the cursor
@@ -880,7 +880,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
     );
 }
 
-/// A `(lambda (bid))` command receives only the leading bid — no count, no
+/// A `(lambda (bid))` command receives only the leading bid: no count, no
 /// extend. `bid` is the leading slot at every non-zero arity, so arity 1
 /// means "receives bid", never "receives count".
 ///
@@ -943,7 +943,7 @@ fn steel_arity_1_lambda_receives_bid_only() {
 }
 
 /// A `(lambda (bid count))` command receives the leading bid and the keymap
-/// count — no extend.
+/// count, but no extend.
 #[test]
 fn steel_arity_2_lambda_receives_bid_and_count() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
@@ -992,7 +992,7 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
 /// `commands::run`, which runs `delete`'s own `step_clear_extend` with
 /// `clears_extend=true`.  Mode is still `Extend` when the inner pipeline fires,
 /// so it flips to Normal.  The outer Steel dispatch branch deliberately omits
-/// `step_clear_extend` — the inner command's meta drives the transition.
+/// `step_clear_extend`: the inner command's meta drives the transition.
 #[test]
 fn steel_call_delete_in_extend_exits_extend_mode() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -1010,7 +1010,7 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
         Mode::Normal,
         "Steel wrapping (call! \"delete\" bid) must exit Extend via inner command's clears_extend"
     );
-    // Also confirm the delete actually ran — the selection "hell" must be gone.
+    // Also confirm the delete actually ran: the selection "hell" must be gone.
     assert_eq!(
         ed.doc().text().to_string(),
         "o\n",
@@ -1026,17 +1026,17 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
 // dispatching the same native command via the keypress path AND via a Steel
 // `(call! …)` wrapper leaves IDENTICAL `BookkeepingSnapshot` state.
 
-/// **Parity: repeatable edit** — `delete` dispatched via keypress vs via Steel
+/// **Parity: repeatable edit**: `delete` dispatched via keypress vs via Steel
 /// `(call! "delete" bid)` must produce the same `last_repeatable`.
 #[test]
 fn parity_delete_bookkeeping_keypress_vs_steel() {
-    // Path A — keypress.
+    // Path A: keypress.
     let mut ed_key = editor_from("-[f]>oo\n");
     let before_key = snapshot_bookkeeping(&ed_key);
     ed_key.execute_keymap_command("delete".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
-    // Path B — Steel (call! "delete" bid).
+    // Path B: Steel (call! "delete" bid).
     let mut ed_steel = editor_from("-[f]>oo\n");
     attach_steel(
         &mut ed_steel,
@@ -1059,18 +1059,18 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
     );
 }
 
-/// **Parity: explicit jump command** — `goto-last-line` dispatched via keypress vs
+/// **Parity: explicit jump command**: `goto-last-line` dispatched via keypress vs
 /// via Steel `(call! "goto-last-line" bid)` must push the same number of jump entries.
 #[test]
 fn parity_jump_bookkeeping_keypress_vs_steel() {
     let content = "-[l]>ine1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n";
 
-    // Path A — keypress.
+    // Path A: keypress.
     let mut ed_key = editor_from(content);
     ed_key.execute_keymap_command("goto-last-line".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
-    // Path B — Steel (call! "goto-last-line" bid).
+    // Path B: Steel (call! "goto-last-line" bid).
     let mut ed_steel = editor_from(content);
     attach_steel(
         &mut ed_steel,
@@ -1085,12 +1085,12 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
     );
 }
 
-/// **Parity: Steel-branch bookkeeping cluster** — a `#:repeatable` SteelBacked
+/// **Parity: Steel-branch bookkeeping cluster**: a `#:repeatable` SteelBacked
 /// command dispatched through `Editor::dispatch`'s Steel branch must run the
 /// SAME funnel stages as the native `commands::run`.
 ///
 /// The existing parity tests above compare *native-via-keypress* vs
-/// *native-via-inner-`(call!)`* — both go through `commands::run`.
+/// *native-via-inner-`(call!)`*; both go through `commands::run`.
 /// This test exercises the **Steel branch's own AFTER stages** (the hand-composed
 /// sequence in `mod.rs:dispatch`), which the other tests leave untouched.
 ///
@@ -1105,12 +1105,12 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 #[test]
 fn parity_steel_branch_cluster_vs_native() {
     // ── Case 1: repeatable edit — pins the dot-repeat stage ───────────────────
-    // Path A — native repeatable edit.
+    // Path A: native repeatable edit.
     let mut ed_native = editor_from("-[f]>oo\n");
     ed_native.execute_keymap_command("delete".into(), Some(1), false);
     let snap_native = snapshot_bookkeeping(&ed_native);
 
-    // Path B — a `#:repeatable` Steel command whose body calls `delete`.
+    // Path B: a `#:repeatable` Steel command whose body calls `delete`.
     // Goes through the Steel branch of `Editor::dispatch` (outer), which
     // must run `step_stamp_repeatable` in AFTER just as the native path does.
     let mut ed_steel = editor_from("-[f]>oo\n");
@@ -1170,7 +1170,7 @@ fn parity_steel_branch_cluster_vs_native() {
         "pre-condition: paste-after must have opened a paste session"
     );
 
-    // The Steel command must NOT call any native command internally — any inner
+    // The Steel command must NOT call any native command internally. Any inner
     // `(call! …)` would route through `commands::run` which also calls
     // `step_paste_commit`, masking a missing outer commit. A pure Steel no-op
     // (body returns a value without dispatching) isolates the outer BEFORE stage.
@@ -1186,7 +1186,7 @@ fn parity_steel_branch_cluster_vs_native() {
     );
 }
 
-/// **Parity: Extend-exit via inner native dispatch** — `delete` from Extend mode
+/// **Parity: Extend-exit via inner native dispatch**: `delete` from Extend mode
 /// dispatched via keypress vs via a Steel `(call! "delete" bid)` wrapper must both
 /// land in `Mode::Normal`. This is the mode-exit parity test that gives the
 /// `BookkeepingSnapshot.mode` field its teeth.
@@ -1197,13 +1197,13 @@ fn parity_steel_branch_cluster_vs_native() {
 /// paths exit to Normal.
 #[test]
 fn parity_extend_exit_keypress_vs_steel() {
-    // Path A — keypress.
+    // Path A: keypress.
     let mut ed_key = editor_from("-[f]>oo\n");
     ed_key.state.input.set_extend(true);
     ed_key.execute_keymap_command("delete".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
-    // Path B — Steel (call! "delete" bid).
+    // Path B: Steel (call! "delete" bid).
     let mut ed_steel = editor_from("-[f]>oo\n");
     ed_steel.state.input.set_extend(true);
     attach_steel(
@@ -1219,16 +1219,16 @@ fn parity_extend_exit_keypress_vs_steel() {
     );
 }
 
-/// **Parity: typed-run invalidation from Insert mode** — a motion reached
+/// **Parity: typed-run invalidation from Insert mode**: a motion reached
 /// while still in Insert mode must clear a pinned typed run identically via
 /// native dispatch and via a Steel `(call! "move-left" bid)` wrapper.
 /// `step_clear_typed_run` (`commands/pipeline.rs`) is the shared funnel this
-/// pins on: every route into a native command — key press, Steel `call!`, a
-/// hook, `run_command_sync` — clears the run identically, so Esc never goes
+/// pins on: every route into a native command (key press, Steel `call!`, a
+/// hook, `run_command_sync`) clears the run identically, so Esc never goes
 /// on to select across text a motion moved away from.
 #[test]
 fn parity_typed_run_invalidation_keypress_vs_steel() {
-    // Path A — native dispatch while in Insert mode.
+    // Path A: native dispatch while in Insert mode.
     let mut ed_key = editor_from("-[h]>ello\n");
     ed_key.handle_key(key('i'));
     ed_key.handle_key(key('X')); // pins the typed_run
@@ -1239,7 +1239,7 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
         "sanity: native dispatch must clear the pinned typed run"
     );
 
-    // Path B — Steel (call! "move-left" bid) while in Insert mode.
+    // Path B: Steel (call! "move-left" bid) while in Insert mode.
     let mut ed_steel = editor_from("-[h]>ello\n");
     ed_steel.handle_key(key('i'));
     ed_steel.handle_key(key('X'));
@@ -1308,7 +1308,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
 ///
 /// `command_table` is what `%lookup-plugin-proc` queries to decide whether to apply
 /// a command inline in Steel. This test confirms the table is populated after
-/// `eval_source` — the precondition for all in-Steel dispatch tests. With an
+/// `eval_source`, the precondition for all in-Steel dispatch tests. With an
 /// empty table, `%lookup-plugin-proc` would always return `#f`.
 #[test]
 fn command_table_populated_after_define_command() {
@@ -1330,14 +1330,14 @@ fn command_table_populated_after_define_command() {
         table.contains_key("pong"),
         "'pong' must be in command_table after define-command!"
     );
-    // Native command names must NOT appear in command_table — only plugin commands.
+    // Native command names must NOT appear in command_table; only plugin commands.
     assert!(
         !table.contains_key("move-right"),
         "'move-right' (native) must not appear in command_table"
     );
 }
 
-/// **Issue 6 — native `(call!)` at init top-level warns and skips, not aborts**.
+/// **Issue 6: native `(call!)` at init top-level warns and skips, not aborts**.
 ///
 /// A top-level `(call! "move-right")` in init.scm must NOT abort evaluation:
 /// the command is skipped with a `Warning`, and lines that follow it are applied.
@@ -1351,7 +1351,7 @@ fn command_table_populated_after_define_command() {
 /// would make eval return `Err` before the second `(set-option! …)` runs.
 #[test]
 fn native_call_bang_at_init_top_level_warns_and_skips() {
-    // Content is irrelevant — cursor stays at 0.
+    // Content is irrelevant; cursor stays at 0.
     let mut ed = editor_from("-[a]>bc\n");
 
     let names: Vec<String> = ed
@@ -1486,9 +1486,9 @@ fn steel_repeatable_insert_dot_repeat_replays_command_and_typed_text() {
 /// `step_update_recipe` (an `EditorCmd` that is `Untracked`, so it clears).
 #[test]
 fn steel_repeatable_insert_preserves_prior_selection_recipe() {
-    // `x` (select-line) on "foo bar\n" selects the whole line — an in-place
+    // `x` (select-line) on "foo bar\n" selects the whole line, an in-place
     // selection that pushes a recipe step. (Word motions like `w` are
-    // `SelectionTracking::Extends`, not `Establishes` — they don't push
+    // `SelectionTracking::Extends`, not `Establishes`, so they don't push
     // establish steps, so `x` is used here as the recipe-building command.)
     let mut ed = editor_from("-[f]>oo bar\n");
     let f2 = setup_steel_f2(
@@ -1532,7 +1532,7 @@ fn steel_repeatable_insert_preserves_prior_selection_recipe() {
 
 /// A non-repeatable Steel command whose body dispatches
 /// `copy-selection-on-next-line` via `call!` must leave the live
-/// `selection_recipe` composed onto whatever the caller already staged —
+/// `selection_recipe` composed onto whatever the caller already staged,
 /// mirroring vim-keybind's `vim-change-to-eol-or-copy-line` wrapper around
 /// the native `C` binding (`runtime/plugins/core/vim-keybind/plugin.scm`).
 ///
@@ -1572,8 +1572,8 @@ fn steel_wrapper_of_copy_selection_composes_onto_prior_recipe() {
 }
 
 /// A non-repeatable Steel command whose body dispatches NOTHING native at
-/// all must still clear the recipe — the same as any other Untracked
-/// command would — so a prior `x` doesn't leak into a later, unrelated edit.
+/// all must still clear the recipe (the same as any other Untracked
+/// command would), so a prior `x` doesn't leak into a later, unrelated edit.
 ///
 /// A pure-Steel body makes no `step_update_recipe` call, so the
 /// `selection_recipe_writes` guard in `Editor::dispatch`'s Steel branch is
@@ -1604,7 +1604,7 @@ fn steel_body_with_no_native_dispatch_clears_the_recipe() {
 }
 
 /// After `.` replays a Steel insert action, a single `u` must undo the entire
-/// replay as one step — proving `replay_dot`'s edit-group bracketing
+/// replay as one step, proving `replay_dot`'s edit-group bracketing
 /// works correctly for the Steel insert path.
 ///
 /// Mirrors `dot_is_single_undo_step` from dot_repeat.rs but drives insert via Steel.
@@ -1641,14 +1641,14 @@ fn steel_repeatable_insert_dot_repeat_single_undo() {
 }
 
 /// A Steel `#:repeatable` command that calls `(call! "paste-after" bid)`,
-/// replayed via `.`, must actually paste — not panic or silently no-op.
+/// replayed via `.`, must actually paste, not panic or silently no-op.
 ///
 /// `replay_dot` pre-opens an Insert-kind session before every non-
 /// `manages_own_session` command's body runs (every Steel-backed command,
-/// since that flag has no Steel spelling — see `CmdMeta::manages_own_
+/// since that flag has no Steel spelling; see `CmdMeta::manages_own_
 /// session`'s doc). `paste-after` itself is native and declares
 /// `manages_own_session`, but a Steel *wrapper* around it inherits none of
-/// that — its own outer meta is always `manages_own_session: false`, so the
+/// that: its own outer meta is always `manages_own_session: false`, so the
 /// pre-open still runs, and `do_paste` must retarget that still-empty
 /// session to `Paste` instead of colliding with it.
 ///
@@ -1688,7 +1688,7 @@ fn steel_repeatable_paste_dot_repeat_replays_command() {
         assert_eq!(action.command.as_ref(), "steel-paste");
     }
 
-    // `.` replays steel-paste at the current (post-paste) selection —
+    // `.` replays steel-paste at the current (post-paste) selection:
     // pastes "a" again, immediately after the previous one.
     ed.feed_key(key('.'));
     assert_eq!(
@@ -1751,7 +1751,7 @@ fn steel_repeatable_change_via_call_records_insert_inputs() {
 
 /// A 3-param non-variadic lambda can be *registered* (it is valid for `call!`
 /// invocations with explicit args) but must produce a graceful error when
-/// dispatched via keymap injection — which supplies at most 2 args.
+/// dispatched via keymap injection, which supplies at most 2 args.
 ///
 /// Without the `cmd_arity > 2` guard in `execute_keymap_command`, the dispatch
 /// would reach Steel with too few args and the user would see a raw Steel
@@ -1759,7 +1759,7 @@ fn steel_repeatable_change_via_call_records_insert_inputs() {
 #[test]
 fn keymap_dispatch_arity_over_3_reports_error() {
     let mut ed = editor_from("-[a]>b\n");
-    // A 4-param lambda is valid for `call!` use — only keymap dispatch rejects it.
+    // A 4-param lambda is valid for `call!` use; only keymap dispatch rejects it.
     attach_steel(
         &mut ed,
         r#"(define-command! "four-params" "" (lambda (a b c d) (+ a b c d)))"#,
@@ -1778,8 +1778,8 @@ fn keymap_dispatch_arity_over_3_reports_error() {
 
 /// The Steel dispatch path must *consume* `pending_char`, exactly like the
 /// native wait-char consumers do via `.take()`.  A stale `Some(ch)` left
-/// behind would make every later `(pending-char)` call — and every later
-/// repeatable command's `char_arg` stamp — see a garbage character.
+/// behind would make every later `(pending-char)` call (and every later
+/// repeatable command's `char_arg` stamp) see a garbage character.
 #[test]
 fn steel_dispatch_consumes_pending_char() {
     let mut ed = editor_from("-[a]>bcdef\n");
@@ -1830,9 +1830,9 @@ fn steel_dispatch_consumes_pending_char() {
 
     // Extend: `Editor::replay_dot`'s Steel branch must not leak `pending_char`
     // either. It passes `action.char_arg` straight into `run_steel_command`
-    // as an explicit parameter — unlike `Editor::dispatch`'s Steel branch
+    // as an explicit parameter, unlike `Editor::dispatch`'s Steel branch
     // (exercised above), which reads (and `.take()`s) `state.pending_char`
-    // itself — so there is no read of the state field on the replay path to
+    // itself, so there is no read of the state field on the replay path to
     // consume a stray write. If `replay_dot` set `self.state.pending_char =
     // action.char_arg` before dispatching, the final assertion would see
     // `Some('y')`.
@@ -1859,7 +1859,7 @@ fn steel_dispatch_consumes_pending_char() {
 /// here, where two cursors must both appear in start order.
 #[test]
 fn buffer_selections_sorted_multi_cursor() {
-    // "-[ab]>c -[de]>f\n" — text "abc def\n": selection 1 anchor=0 head=1,
+    // "-[ab]>c -[de]>f\n": text "abc def\n": selection 1 anchor=0 head=1,
     // selection 2 anchor=4 head=5 (hand-counted from the annotated buffer).
     let mut ed = editor_from("-[ab]>c -[de]>f\n");
     let _bid = ed.focused_buffer_id();
@@ -1879,7 +1879,7 @@ fn buffer_selections_sorted_multi_cursor() {
 /// never normalize it.
 #[test]
 fn buffer_selections_preserves_backward_direction() {
-    // "<[ab]-c\n" — backward selection: head=0, anchor=1 (hand-counted).
+    // "<[ab]-c\n": backward selection: head=0, anchor=1 (hand-counted).
     let mut ed = editor_from("<[ab]-c\n");
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
@@ -1924,7 +1924,7 @@ fn buffer_selections_primary_flag_follows_primary_index() {
 /// via `char_to_line` or any shared helper.
 #[test]
 fn offset_to_line_maps_offsets() {
-    // "ab\ncd\n" — a=0 b=1 \n=2 c=3 d=4 \n=5 (6 chars).
+    // "ab\ncd\n": a=0 b=1 \n=2 c=3 d=4 \n=5 (6 chars).
     let mut ed = editor_from("-[a]>b\ncd\n");
     let bid = ed.focused_buffer_id();
     let _pane = focused_pane(&ed);
@@ -1945,9 +1945,9 @@ fn offset_to_line_maps_offsets() {
 /// but still succeeds at the exact boundary (`idx == len_chars()`).
 #[test]
 fn offset_to_line_out_of_range_returns_none() {
-    // "ab\ncd\n" — 6 chars, len_chars() == 6. Every buffer ends with a
+    // "ab\ncd\n": 6 chars, len_chars() == 6. Every buffer ends with a
     // structural '\n' (HUME invariant), so ropey counts a trailing virtual
-    // empty line after it: line 1 "ab\n", line 2 "cd\n", line 3 "" — idx 6
+    // empty line after it: line 1 "ab\n", line 2 "cd\n", line 3 "". Idx 6
     // (== len_chars()) sits on that third, empty line.
     let mut ed = editor_from("-[a]>b\ncd\n");
     let bid = ed.focused_buffer_id();
@@ -1966,7 +1966,7 @@ fn offset_to_line_out_of_range_returns_none() {
 }
 
 /// End-to-end: a Steel command reads `(buffer-selections bid)` and compares
-/// it against a literal quoted list — pins the exact
+/// it against a literal quoted list. It pins the exact
 /// ints/bools/list shape that crosses the Steel boundary, not just the
 /// Rust-side tuple data.
 ///

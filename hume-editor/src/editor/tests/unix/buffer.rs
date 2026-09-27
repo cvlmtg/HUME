@@ -96,7 +96,7 @@ fn buffer_exact_basename_ambiguous_errors() {
 
 #[test]
 fn buffer_prefix_unique_switches() {
-    // Use a controlled filename — `tempfile::NamedTempFile` produces random
+    // Use a controlled filename: `tempfile::NamedTempFile` produces random
     // basenames we can't match a prefix against.
     let dir = safe_tempdir();
     let path = dir.path().join("prefixed_file.rs");
@@ -186,7 +186,7 @@ fn buffer_tilde_path_switches() {
 }
 
 /// Regression test: `resolve_buffer_arg`'s ambiguity labels are built from
-/// `display_path`, which `~`-collapses paths under `$HOME` — retyping the
+/// `display_path`, which `~`-collapses paths under `$HOME`. Retyping the
 /// exact label shown must resolve, not error again with "no buffer matching".
 ///
 /// `resolve_buffer_arg`'s absolute-path branch needs its

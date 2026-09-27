@@ -6,11 +6,11 @@ use super::*;
 use hume_scripting::ScriptingHost;
 
 /// Atomic-eval contract, exercised through `call_steel_cmd` (a plain
-/// command dispatch, no nested plugin activation involved — that path has
+/// command dispatch, no nested plugin activation involved; that path has
 /// its own independent rollback via `pop_effect_marks`, already covered by
 /// `hume-scripting`'s `queued_effects_before_failure_are_rolled_back`). A
 /// command body that queues a `register-lsp-server!` effect and then errors
-/// must leave nothing behind in the log — with no nested activation to
+/// must leave nothing behind in the log. With no nested activation to
 /// commit anything, `ScriptingHost::take_eval_effects` has nothing to
 /// salvage on `Err`, so the whole eval's own uncommitted entries are dropped.
 #[test]

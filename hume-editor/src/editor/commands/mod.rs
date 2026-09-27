@@ -2,7 +2,7 @@
 //!
 //! Each function in this module is a command operating on
 //! `&mut EditorState` + `&mut EngineView` (the native `EditorCmd` shape, see
-//! `registry/command.rs`'s `EditorCmdBody` — never `&mut Editor`) — composite operations
+//! `registry/command.rs`'s `EditorCmdBody`; never `&mut Editor`): composite operations
 //! involving mode changes, registers, undo groups, or parameterized motions
 //! (find/till/replace).
 //!
@@ -57,7 +57,7 @@ impl EditorState {
 
     /// Route a kill (`d`/`c`) yank: bare default and `"k` both go to the kill
     /// ring; any other explicit register prefix routes through `write_register`.
-    /// Returns `true` when the yank was captured to the ring (and stamped) —
+    /// Returns `true` when the yank was captured to the ring (and stamped),
     /// `false` for an explicit-register route, which never stamps.
     pub(in crate::editor::commands) fn route_kill(&mut self, yanked: Vec<String>) -> bool {
         match self.take_register_prefix() {
@@ -122,14 +122,14 @@ pub(in crate::editor::commands) fn apply_pane_edit(
 /// Apply a grouped edit (inside an open insert/paste session) to the focused
 /// (pane, buffer) pair. Takes [`FocusedPane`], not [`CommandPane`]: an edit
 /// group only ever exists on the pane the user is looking at (see
-/// `pane_state.rs`'s module doc), so a `Pane`-category body — which may
-/// target a pane other than focus — has no business opening one.
+/// `pane_state.rs`'s module doc), so a `Pane`-category body (which may
+/// target a pane other than focus) has no business opening one.
 ///
 /// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`]; see
 /// [`apply_pane_motion`]. `pub(in crate::editor)`, not `pub(in crate::editor::
 /// commands)`: `replay::apply_cursor_replacement` is a caller outside this
-/// module, and the alternative — spelling out `doc_ops::apply_doc_edit_
-/// grouped`'s own 8 arguments there instead — is exactly the duplication
+/// module, and the alternative (spelling out `doc_ops::apply_doc_edit_
+/// grouped`'s own 8 arguments there instead) is exactly the duplication
 /// this wrapper exists to avoid.
 pub(in crate::editor) fn apply_focused_edit_grouped(
     state: &mut EditorState,
@@ -160,7 +160,7 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
 /// command consumed the `"<reg>` keystrokes, so leaving the prefix armed
 /// would silently redirect the *next* yank/kill into that register. (Insert
 /// session entry clears the prefix itself before ever reaching here, for a
-/// different reason — see `begin_insert_session` — so this is a no-op on
+/// different reason; see `begin_insert_session`), so this is a no-op on
 /// that path, not a second clear of the same kind.)
 pub(in crate::editor::commands) fn refuse_if_read_only(
     state: &mut EditorState,
@@ -214,7 +214,7 @@ pub(super) fn tab_format(doc: &Buffer, settings: &EditorSettings) -> (TabStyle, 
 }
 
 /// `doc`'s effective `word-chars`: buffer override → global default. The one
-/// place this precedence is applied — every word-family dispatch site reads
+/// place this precedence is applied: every word-family dispatch site reads
 /// through this or [`word_chars_owned`] instead of re-resolving the setting
 /// by hand.
 pub(super) fn effective_word_chars<'a>(
@@ -227,7 +227,7 @@ pub(super) fn effective_word_chars<'a>(
 /// [`effective_word_chars`], owned rather than borrowed. For a caller that
 /// holds `&mut EditorState` across the closure that consumes the result
 /// (`apply_focused_edit`/`apply_doc_edit_grouped` and friends all take it by
-/// value) — a borrow into `state.buffers`/`state.settings` can't survive
+/// value): a borrow into `state.buffers`/`state.settings` can't survive
 /// that call.
 pub(super) fn word_chars_owned(doc: &Buffer, settings: &EditorSettings) -> String {
     doc.overrides.word_chars(settings).to_owned()
@@ -237,7 +237,7 @@ pub(super) fn word_chars_owned(doc: &Buffer, settings: &EditorSettings) -> Strin
 /// override → buffer override → global default. `Pane::wrap().mode` is
 /// `Some` only once `:wrap` or `:set pane wrap-mode=…` has pinned this pane
 /// for this buffer; until then it inherits whatever the buffer (or, failing
-/// that, the global) resolves to — the single place this three-way
+/// that, the global) resolves to: the single place this three-way
 /// precedence is applied. Folded into [`FormatKey::wrap_mode`] by
 /// [`EditorState::format_key`](super::EditorState::format_key) alongside
 /// `tab_width`/`whitespace`, which only ever have two levels.
@@ -251,9 +251,9 @@ pub(super) fn effective_wrap_mode(
         .unwrap_or_else(|| doc.overrides.wrap_mode(settings))
 }
 
-/// A [`DisplayLineMap`] over `pane`'s view of `doc` — the display-line list every
+/// A [`DisplayLineMap`] over `pane`'s view of `doc` (the display-line list every
 /// scroll, cursor and movement consumer reads instead of walking display
-/// lines itself — together with the pane's viewport, for the scroll
+/// lines itself), together with the pane's viewport, for the scroll
 /// consumers that write it while reading the map.
 ///
 /// Takes the pane mutably and splits it here: `providers`, `line_store` and
@@ -264,7 +264,7 @@ pub(super) fn effective_wrap_mode(
 /// `state.panes` selections), which is why the pane arrives separately rather
 /// than through `&mut Editor`.
 ///
-/// `key` is resolved by the caller — [`EditorState::format_key`](super::EditorState::format_key) —
+/// `key` is resolved by the caller ([`EditorState::format_key`](super::EditorState::format_key))
 /// *before* this call takes `pane` mutably: everything `key` needs lives on
 /// `pane` itself, but a `&Pane` used to build it cannot coexist with the
 /// `&mut Pane` this function requires. A caller with no viewport to write
@@ -297,8 +297,8 @@ pub(super) fn current_jump_entry(
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
-/// Push `pre` — a [`current_jump_entry`] snapshot taken before some
-/// navigation, however long ago — only if `t`'s buffer or its selections
+/// Push `pre` (a [`current_jump_entry`] snapshot taken before some
+/// navigation, however long ago) only if `t`'s buffer or its selections
 /// have actually changed since. `JumpList::push` truncates forward history
 /// unconditionally, so a caller that pushes unconditionally
 /// (`:42` already on line 42, `goto-definition` invoked on the definition
@@ -376,12 +376,12 @@ pub(super) use typed_misc::*;
 
 // insert_session.rs's remaining items (begin_insert_session, begin_typed_run,
 // ExitCursor, has_blank_line_cursor) are re-exported privately above
-// (visible only within `commands` and its descendants — every other `mod` in
+// (visible only within `commands` and its descendants: every other `mod` in
 // this file, and the registry glob) since nothing outside `commands` calls
 // them. pane.rs and pipeline.rs export nothing else siblings need, so both are
 // re-exported explicitly instead of via glob. The items below ARE called
 // directly by `dispatch.rs`, `replay.rs`, `input_stack/insert.rs`, `host_impl.rs`,
-// `editor/mod.rs`, and the `editor::tests` tree — they need `pub(in editor)`
+// `editor/mod.rs`, and the `editor::tests` tree; they need `pub(in editor)`
 // breadth.
 pub(in crate::editor) use insert_session::{
     arm_autoindent, autoindent_owned, end_insert_session, tear_down_insert,
@@ -389,13 +389,13 @@ pub(in crate::editor) use insert_session::{
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 // `open_pane` itself (the raw, unspliced constructor) is private to
-// `pane.rs` — not re-exported here or anywhere. `open_pane_in_layout` and
+// `pane.rs`, not re-exported here or anywhere. `open_pane_in_layout` and
 // `open_pane_as_new_tab` are the only two ways, anywhere in the crate, to
 // create a pane. `open_pane_as_new_tab` has exactly one caller
 // (`commands::tab::open_tab`, which imports it directly from `pane`, not
 // through this re-export) so it isn't re-exported here at all.
 // `open_pane_in_layout` has no non-test caller outside `pane.rs` itself
-// (which reaches it directly too) — only `editor::tests` calls it through
+// (which reaches it directly too). Only `editor::tests` calls it through
 // this path, so the re-export is test-only to avoid an "unused import"
 // warning on every non-test build.
 #[cfg(test)]

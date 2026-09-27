@@ -77,7 +77,7 @@ fn selection_clamps_at_the_bottom() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    // 3 items (indices 0..=2) — 5 'j' presses must clamp at 2, not wrap.
+    // 3 items (indices 0..=2): 5 'j' presses must clamp at 2, not wrap.
     for _ in 0..5 {
         ed.feed_key(key('j'));
     }
@@ -133,7 +133,7 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
 fn close_menu_drops_the_callback_without_invoking_it() {
     // Driven directly through the host, not `type_cmd`: typing the `:` to
     // invoke a `:close`-style command is itself a "stray key" that would
-    // dismiss the menu (with `#f`) before the command even runs — this
+    // dismiss the menu (with `#f`) before the command even runs. This
     // test wants to isolate `close_menu`'s own behavior from `menu_input`'s
     // stray-key handling.
     use crate::editor::host_impl::EditorHostImpl;
@@ -165,7 +165,7 @@ fn close_menu_drops_the_callback_without_invoking_it() {
 /// silent no-op either: reaching this from the wrong mode is something
 /// worth the user's attention, whether it's a genuine timing issue (a
 /// `codeAction` response landing after the user left Normal) or a plugin
-/// calling it from a mode that was never going to accept it — so it logs a
+/// calling it from a mode that was never going to accept it, so it logs a
 /// `Warning`, naming the mode that refused it.
 #[test]
 fn show_menu_from_insert_warns_instead_of_opening() {
@@ -189,7 +189,7 @@ fn show_menu_from_insert_warns_instead_of_opening() {
     let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
         result.is_ok(),
-        "a mode-layer race must never error — it would abort the whole call batch"
+        "a mode-layer race must never error: it would abort the whole call batch"
     );
     assert!(
         ed.state.input.menu().is_none(),
@@ -229,7 +229,7 @@ fn show_menu_accepted_in_normal_mode() {
 /// Same async-staleness rule as `show_menu_from_insert_…` above, triggered
 /// the other way: the mode layer is still `Base`, but a picker landed on
 /// top of it while the `codeAction` response was in flight. `show-menu!`
-/// must not bury a picker under a menu it never asked for — it drops
+/// must not bury a picker under a menu it never asked for. It drops
 /// silently, same as the mode-changed case.
 #[test]
 fn show_menu_drops_silently_when_a_picker_is_open() {
@@ -256,7 +256,7 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
     let result = host.show_menu(pane, vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
         result.is_ok(),
-        "a stale async response must never error — it would abort the whole call batch"
+        "a stale async response must never error: it would abort the whole call batch"
     );
     assert!(
         ed.state.input.menu().is_none(),
@@ -277,7 +277,7 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
 /// A drawer is non-modal (`DrawerLayer::is_modal() == false`): it's built to
 /// be worked over (a stray key falls through and it stays open), so an open
 /// drawer must not read as "the stack moved" the way a picker does
-/// above — a code-action menu must still open while the user is browsing
+/// above: a code-action menu must still open while the user is browsing
 /// diagnostics in the drawer.
 ///
 /// If `is_stack_settled()` were `top() == mode_layer()`, any overlay,
@@ -314,8 +314,8 @@ fn show_menu_opens_over_an_open_drawer() {
 }
 
 /// A second `show-menu!` response while the first menu is still open (two
-/// `lsp-code-action` responses racing) must replace it — a refresh, not
-/// staleness — firing the outgoing menu's callback with `#f` via ordinary
+/// `lsp-code-action` responses racing) must replace it (a refresh, not
+/// staleness), firing the outgoing menu's callback with `#f` via ordinary
 /// teardown, same shape `show-drawer-list!`'s own self-replace already has.
 ///
 /// Without `show_menu`'s `top`-is-`Menu` exception, the second call would be

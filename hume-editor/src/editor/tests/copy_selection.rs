@@ -1,19 +1,19 @@
-//! `copy-selection-on-next-line`/`-prev-line` (`C`) — duplicate each
+//! `copy-selection-on-next-line`/`-prev-line` (`C`): duplicate each
 //! selection onto the lines above/below it, landing each copy on the
 //! *display* column of the original (`hume-editor::editor::visual_move::
-//! copy_selection_vertically`) rather than a raw char offset — the same
+//! copy_selection_vertically`) rather than a raw char offset: the same
 //! `DisplayLineMap` authority `9j`/`9k` use, and why these tests live here instead
 //! of in `hume-ops`'s pure `(&BufferText, SelectionSet) -> SelectionSet`
 //! suite.
 //!
 //! `WrapMode::None` throughout except the one wrap-interaction case at the
-//! end of the file — these pin the buffer-line column model itself, not its
+//! end of the file; these pin the buffer-line column model itself, not its
 //! interaction with wrapping.
 
 use super::*;
 use pretty_assertions::assert_eq;
 
-/// `editor_from` plus `pin_no_wrap` — `9j`/`9k`-style buffer-line placement,
+/// `editor_from` plus `pin_no_wrap`: `9j`/`9k`-style buffer-line placement,
 /// not a display-line walk.
 fn copy_test_editor(initial: &str) -> Editor {
     let mut ed = editor_from(initial);
@@ -31,7 +31,7 @@ fn run_copy(ed: &mut Editor, down: bool, count: usize) {
 }
 
 /// Build an editor from `initial`, run the copy command, and compare the
-/// resulting buffer+selections against `expected` — the `Editor`-driven
+/// resulting buffer+selections against `expected`, the `Editor`-driven
 /// counterpart of `assert_state!` for a command whose `DisplayLineMap` dependency
 /// keeps it out of `test-fixtures`' pure-fn signature. Used for cases
 /// that don't need to distinguish which selection ends up primary.
@@ -50,7 +50,7 @@ fn assert_copy_state(initial: &str, down: bool, count: usize, expected: &str) {
 
 #[test]
 fn copy_cursor_to_next_line() {
-    // "foo\nbar\n" — cursor at column 1 of line 0 ('o').
+    // "foo\nbar\n": cursor at column 1 of line 0 ('o').
     // Copy should land at column 1 of line 1 ('a').
     let mut ed = copy_test_editor("f-[o]>o\nbar\n");
     run_copy(&mut ed, true, 1);
@@ -76,7 +76,7 @@ fn copy_cursor_to_next_line() {
 
 #[test]
 fn copy_to_next_line_on_last_line_is_noop() {
-    // Cursor on the last real line — nothing to copy to.
+    // Cursor on the last real line: nothing to copy to.
     let mut ed = copy_test_editor("foo\nb-[a]>r\n");
     run_copy(&mut ed, true, 1);
     assert_eq!(ed.current_selections().len(), 1); // no copy added
@@ -85,7 +85,7 @@ fn copy_to_next_line_on_last_line_is_noop() {
 
 #[test]
 fn copy_to_next_line_clamps_to_shorter_target_line() {
-    // "hello\nhi\n" — cursor at column 4 of line 0.
+    // "hello\nhi\n": cursor at column 4 of line 0.
     // Line 1 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
     let mut ed = copy_test_editor("hell-[o]>\nhi\n");
     run_copy(&mut ed, true, 1);
@@ -97,7 +97,7 @@ fn copy_to_next_line_clamps_to_shorter_target_line() {
 
 #[test]
 fn copy_next_backward_selection() {
-    // Backward selection on line 0: anchor=2('o'), head=0('f') — selects "foo" (3 chars).
+    // Backward selection on line 0: anchor=2('o'), head=0('f'), selects "foo" (3 chars).
     // Copy down: both endpoints shift to line 1 preserving column.
     // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
     // anchor col=2 → line 1 col 2 = offset 6 ('r'). head col=0 → offset 4 ('b').
@@ -124,8 +124,8 @@ fn copy_next_multiple_cursors() {
 
 #[test]
 fn copy_next_line_count_3() {
-    // count=3 copies the cursor onto each of the 3 lines below natively —
-    // no external repeat loop needed.
+    // count=3 copies the cursor onto each of the 3 lines below natively,
+    // with no external repeat loop needed.
     assert_copy_state(
         "-[a]>\nb\nc\nd\ne\n",
         true,
@@ -136,7 +136,7 @@ fn copy_next_line_count_3() {
 
 #[test]
 fn copy_next_line_count_exceeds_buffer_clamps() {
-    // Only 2 lines exist below the cursor's line — a count of 10 clamps at
+    // Only 2 lines exist below the cursor's line: a count of 10 clamps at
     // the last real line instead of erroring.
     assert_copy_state("-[a]>\nb\nc\n", true, 10, "-[a]>\n-[b]>\n-[c]>\n");
 }
@@ -176,9 +176,9 @@ fn copy_next_line_count_3_does_not_equal_three_presses() {
     // `copy_next_line_count_exceeds_buffer_clamps`.
     //
     // A press-by-press repeat would clamp col 4 down to col 1 on "hi" (only 2
-    // chars), then carry that clamped col 1 forward onto "world" — landing on
+    // chars), then carry that clamped col 1 forward onto "world", landing on
     // 'o' (offset 10, i.e. `worl-[o]>d`). Re-deriving from the original
-    // instead lands the "world" copy on col 4 directly — 'd'.
+    // instead lands the "world" copy on col 4 directly: 'd'.
     assert_copy_state(
         "hell-[o]>\nhi\nworld\n",
         true,
@@ -208,7 +208,7 @@ fn copy_next_line_count_usize_max_returns_instantly() {
 #[test]
 fn copy_next_line_range_selection() {
     // Forward range selection covering "hello" (0..4). Copy to next line:
-    // anchor=6 ('w'), head=10 ('d') — selecting "world". Both selections exist.
+    // anchor=6 ('w'), head=10 ('d'), selecting "world". Both selections exist.
     assert_copy_state("-[hello]>\nworld\n", true, 1, "-[hello]>\n-[world]>\n");
 }
 
@@ -216,7 +216,7 @@ fn copy_next_line_range_selection() {
 fn copy_next_line_preserves_display_column_across_a_tab() {
     // "\tworld" (tab_width 4): 'o' (char 2) sits at display column 5 (tab
     // expands to 4, 'w' is 1 more). The copy on "abcdefgh" must land on
-    // display column 5 — 'f' (char offset 5) — not char-offset column 2,
+    // display column 5 ('f', char offset 5), not char-offset column 2,
     // which would be 'c'. Same fixture as `visual_move.rs`'s
     // `explicit_count_move_down_preserves_display_column_across_a_tab`.
     let mut ed = copy_test_editor("\tw-[o]>rld\nabcdefgh\n");
@@ -236,7 +236,7 @@ fn copy_next_line_preserves_display_column_across_a_tab() {
 fn copy_next_line_preserves_display_column_across_a_wide_cjk_char() {
     // 漢 (East Asian Wide) is 2 display columns but 1 char, so 'b' (char 1)
     // sits at display column 2. The copy on "abcdefgh" must land on display
-    // column 2 — 'c' (char offset 2) — not char-offset column 1, which
+    // column 2 ('c', char offset 2), not char-offset column 1, which
     // would be 'b'. Same fixture as `visual_move.rs`'s
     // `explicit_count_move_down_preserves_display_column_across_a_wide_cjk_char`.
     let mut ed = copy_test_editor("\u{6F22}-[b]>c\nabcdefgh\n");
@@ -255,12 +255,12 @@ fn copy_next_line_preserves_display_column_across_a_wide_cjk_char() {
 #[test]
 fn copy_next_multi_line_selection_lands_below_itself() {
     // Selection spans lines 0-1 (anchor 'h' at line 0 col 0, head 'w' at
-    // line 1 col 0) — 2 buffer lines. Stepping by 1 line would leave the
+    // line 1 col 0): 2 buffer lines. Stepping by 1 line would leave the
     // copy on lines 1-2, overlapping the original, and
     // `SelectionSet::from_vec`'s merge would fold the two into a single,
     // grown selection instead of duplicating it. Stepping by the
     // selection's own span (2) instead lands the copy on lines 2-3, clear of
-    // the original — two selections, not one.
+    // the original: two selections, not one.
     assert_copy_state(
         "-[hello\nw]>orld\nfoo\nbar\n",
         true,
@@ -273,7 +273,7 @@ fn copy_next_multi_line_selection_lands_below_itself() {
 fn copy_next_line_onto_empty_target_line_lands_on_its_own_newline() {
     // "a\n\nworld\n": line 1 is empty. `DisplayColTarget::NearestContent`'s
     // `admit_eol` fallback is what lands a copy there on the line's own '\n'
-    // instead of failing to find a content cell that doesn't exist — mirrors
+    // instead of failing to find a content cell that doesn't exist, mirroring
     // `9j`'s own `explicit_count_move_down_to_empty_line`.
     assert_copy_state("-[a]>\n\nworld\n", true, 1, "-[a]>\n-[\n]>world\n");
 }
@@ -289,7 +289,7 @@ fn copy_next_line_preserves_display_column_across_a_wrapped_source_line() {
     // measures in the buffer-line domain (`buffer_line_col`/
     // `char_at_buffer_line_col`), which sums across a line's own wrapped
     // display lines rather than reading whichever display line the cursor
-    // happens to sit on — so with the cursor on line 0's second display
+    // happens to sit on, so with the cursor on line 0's second display
     // line (buffer-line col 79), the copy must land on line 1's second
     // display line at the *same* buffer-line col 79 (char 160), not
     // wherever col 79 counted from line 1's own display line 0 would be.
@@ -352,7 +352,7 @@ fn copy_to_prev_line_on_first_line_is_noop() {
 
 #[test]
 fn copy_to_prev_line_clamps_to_shorter_target_line() {
-    // "hi\nhello\n" — cursor at column 4 of line 1 ('o').
+    // "hi\nhello\n": cursor at column 4 of line 1 ('o').
     // Line 0 is "hi\n" (only 2 real chars). Should clamp to last char 'i'.
     let mut ed = copy_test_editor("hi\nhell-[o]>\n");
     run_copy(&mut ed, false, 1);

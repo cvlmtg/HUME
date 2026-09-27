@@ -2,17 +2,17 @@
 // (picker! items on-select #:prompt "…") / (live-picker! on-select #:command …) /
 // (picker-push! token items) / (picker-replace! token items) / (picker-close!).
 // The Rust store/widget/key-handling underneath is covered by
-// `tests/picker.rs`, which builds sessions directly — this file exercises
+// `tests/picker.rs`, which builds sessions directly. This file exercises
 // the builtins themselves end to end through real Steel source, mirroring
 // `lsp_drawer.rs`'s `run`/`arm_*` pattern.
 //
 // The picker is full-modal: once one is open, the `Picker` layer sits above
 // every mode layer and handles every event itself, so a raw `:command`
-// typed via `type_cmd` never reaches the minibuffer — it's swallowed as
+// typed via `type_cmd` never reaches the minibuffer: it's swallowed as
 // picker query input instead. Tests that need to invoke a
 // *second* named command while a picker is already open (pushing into it,
 // closing it, replacing it) go through `execute_keymap_command` instead,
-// bypassing key routing entirely — the same tool `sync_dispatch.rs` uses to
+// bypassing key routing entirely, the same tool `sync_dispatch.rs` uses to
 // invoke a named command directly. This also matches the realistic trigger
 // for those scenarios: a Steel-level call (async callback, a bound
 // command), not a keystroke a full-modal picker would eat.
@@ -165,7 +165,7 @@ fn picker_bang_actions_binds_a_key_to_its_own_proc_not_on_select() {
 #[test]
 fn picker_bang_actions_accepts_the_short_modifier_form() {
     // "c-v" (short) must parse to the same KeyEvent as "ctrl-v" (the form
-    // every combinator and doc in this codebase writes) — pinned here since
+    // every combinator and doc in this codebase writes), pinned here since
     // nothing in-tree exercises the short form otherwise.
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
@@ -264,7 +264,7 @@ fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
     assert_eq!(ed.state.status_msg.clone().unwrap(), "p2");
     assert!(ed.state.input.picker().is_none());
 
-    // Don't stop at the terminal action — keep interacting
+    // Don't stop at the terminal action: keep interacting
     // and confirm ordinary editing resumes with no further callback fire.
     ed.state.status_msg = None;
     ed.feed_key(key('i'));
@@ -415,14 +415,14 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
         "#,
     );
     type_cmd(&mut ed, ":go-a");
-    // Replaces A with B — A's on-select already fired (with #f) and drained
+    // Replaces A with B. A's on-select already fired (with #f) and drained
     // below, same as `opening_a_second_picker_fires_the_first_callback...`.
     call(&mut ed, "go-b");
     ed.settle();
     ed.state.status_msg = None;
 
     // A's stale token must not touch B's picker, even though B is what's
-    // open right now — the bug this token exists to prevent.
+    // open right now: the bug this token exists to prevent.
     call(&mut ed, "close-a");
     assert!(
         ed.state.input.picker().is_some(),
@@ -489,7 +489,7 @@ fn picker_bang_rejects_hash_f_payload() {
 #[test]
 fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     let tmp = safe_tempdir();
-    // Buffer A: cursor (head) at char 499 — far beyond buffer B's length.
+    // Buffer A: cursor (head) at char 499, far beyond buffer B's length.
     let mut ed = editor_from(&format!("{}-[x]>\n", "a".repeat(499)));
 
     let small = tmp.path().join("small.md");
@@ -548,7 +548,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
     std::fs::write(&tall, &content).unwrap();
     let path = steel_path(&tall);
 
-    // on_select switches buffers, then jumps to the last line — both must
+    // on_select switches buffers, then jumps to the last line. Both must
     // land on the NEW buffer within the same prepare_frame the switch runs in.
     run(
         &mut ed,
@@ -572,7 +572,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
 
     // The next prepare_frame drains the callback (switch + goto-last-line on
     // the tall buffer) then must scroll *that* buffer into view before
-    // rendering — not the pane's viewport from before the switch.
+    // rendering, not the pane's viewport from before the switch.
     let _ = ed.render_to_buf(rect);
 
     let pid = ed.state.focus.id();
@@ -688,10 +688,10 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
 fn picker_bang_silently_ignores_an_on_query_change_keyword() {
     // Steel's keyword-arg calling convention doesn't reject a keyword the
     // callee's signature never declares (extra `#:key val` pairs are simply
-    // unused) — so passing #:on-query-change to picker! doesn't raise. What
+    // unused), so passing #:on-query-change to picker! doesn't raise. What
     // must hold is that it's dead: `picker!`'s signature has no
-    // `#:on-query-change` parameter, and never wires the value to anything —
-    // live requery lives on `live-picker!` instead.
+    // `#:on-query-change` parameter, and never wires the value to anything.
+    // Live requery lives on `live-picker!` instead.
     let (mut ed, _tmp) = editor_with(
         r#"(define-typed-command! "go" "" (lambda (pane)
              (picker! pane (list (cons "one" "p1")) (lambda (x) (void))
@@ -707,8 +707,8 @@ fn picker_bang_silently_ignores_an_on_query_change_keyword() {
     ed.feed_key(key('z'));
     assert!(
         pending_calls(&ed).is_empty(),
-        "an extra #:on-query-change argument on picker! must never be wired to anything \
-         — live requery moved to live-picker!"
+        "an extra #:on-query-change argument on picker! must never be wired to anything: \
+         live requery moved to live-picker!"
     );
 }
 
@@ -725,7 +725,7 @@ fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
     ed.state.status_msg = None;
     type_cmd(&mut ed, ":go");
 
-    // No settle() at all — the seed spawn runs synchronously inside
+    // No settle() at all: the seed spawn runs synchronously inside
     // live-picker! itself, before the command that called it even returns.
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -792,7 +792,7 @@ fn live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers() {
 fn live_picker_debounced_respawn_raise_clears_stale_rows_and_unsticks_pending() {
     // `#:command` raising after the debounce (a bad user builder, or
     // `picker-source-spawn!` itself failing to spawn) must not stick the
-    // session in the "requery in flight" state forever — the previous
+    // session in the "requery in flight" state forever. The previous
     // pattern's now-orphaned rows must clear and `is_pending` must settle
     // back to false, the same outcome a successful requery with nothing to
     // show reaches.
@@ -845,7 +845,7 @@ fn live_picker_rapid_keystrokes_collapse_to_one_trailing_builder_call_with_the_l
     ed.feed_key(key('b'));
     ed.feed_key(key('c'));
     // First settle() drains the three queued wrapped-callback calls, each
-    // cancelling the last and re-arming the 0ms debounce timer — leaving one
+    // cancelling the last and re-arming the 0ms debounce timer, leaving one
     // freshly-armed timer that this same settle() pass, having already run
     // its own drain_async_sources before draining pending_work, doesn't yet
     // see as due. A second settle() catches it.
@@ -880,7 +880,7 @@ fn live_picker_backspace_to_empty_cancels_a_pending_nonempty_spawn() {
     ed.feed_key(key_backspace());
     // Two settles, as above: the first drains the two queued wrapped-
     // callback calls (arming, then re-arming, the 0ms timer); the second
-    // lets the surviving timer actually fire — without it, this test would
+    // lets the surviving timer actually fire. Without it, this test would
     // pass even if backspace failed to cancel the "a" timer, since neither
     // would have fired yet either way.
     ed.settle();
@@ -1020,7 +1020,7 @@ fn live_picker_rejects_a_builder_return_that_is_not_an_argv_list() {
         "a builder return that isn't #f or an argv list must raise naming #:command, got {msg:?}"
     );
     // The raise happens after `%live-picker!` has already installed the
-    // session — `live-picker!` never returns a token to bind, but the
+    // session. `live-picker!` never returns a token to bind, but the
     // picker itself is left open (Esc still closes it), not torn down.
     assert!(
         ed.state.input.picker().is_some(),
@@ -1097,7 +1097,7 @@ fn picker_source_stop_bang_matches_the_real_token_and_rejects_a_stale_one() {
 
 // ── Regression: on_select-driven mode change is observed the same pass ────
 
-/// `on_select` fires as a queued `PendingWork::Call`, not inline — if it
+/// `on_select` fires as a queued `PendingWork::Call`, not inline. If it
 /// enters Insert, `detect_mode_change`'s diff (run at the top of every
 /// `drain_pending_work` pass, not just once before the loop) must catch
 /// the change on the very next pass and fire `on-mode-change` within the
@@ -1112,7 +1112,7 @@ fn picker_on_select_entering_insert_fires_on_mode_change_within_the_same_settle(
     type_cmd(&mut ed, ":go");
     assert!(ed.state.input.picker().is_some(), "sanity: picker open");
 
-    ed.feed_key(key_enter()); // accept — queues on_select, does not run it
+    ed.feed_key(key_enter()); // accept: queues on_select, does not run it
 
     let mode_changed_count = |ed: &Editor| {
         ed.state

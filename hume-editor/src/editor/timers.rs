@@ -1,5 +1,5 @@
 //! Nearest-deadline timer registry, integrated with the `AsyncSource` wake
-//! logic. Rust-side machinery only — payload-agnostic on purpose: the wheel
+//! logic. Rust-side machinery only, payload-agnostic on purpose: the wheel
 //! hands back opaque [`TimerId`]s, and a side table adds the `TimerId ->
 //! Steel thunk` mapping that gives them meaning, keeping Steel types out of the
 //! editor core.
@@ -14,18 +14,18 @@ use super::async_source::AsyncSource;
 
 /// Opaque handle to a scheduled timer. The inner `u64` is `pub(in crate::editor)` (not
 /// exposed via a method) so `timer_bridge.rs` can convert to/from the plain
-/// integer Steel's `(after ms thunk)` returns — this module itself stays
+/// integer Steel's `(after ms thunk)` returns. This module itself stays
 /// Steel-agnostic (see the module doc).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub(in crate::editor) struct TimerId(pub(in crate::editor) u64);
 
 /// Min-heap of `(deadline, id)`, plus a lazily-drained cancellation set.
 ///
-/// `cancel` only records the id — no heap search. The entry is skipped (and
+/// `cancel` only records the id, with no heap search. The entry is skipped (and
 /// forgotten) the next time it reaches the heap's head via [`Self::take_due`].
 /// No separate compaction pass is needed: every cancelled id that was ever
 /// pushed eventually surfaces at the head as earlier entries pop, at which
-/// point `take_due` drops it — the cancelled set can only shrink over time,
+/// point `take_due` drops it. The cancelled set can only shrink over time,
 /// never needs a sweep.
 pub(in crate::editor) struct TimerWheel {
     heap: BinaryHeap<Reverse<(Instant, TimerId)>>,
@@ -59,7 +59,7 @@ impl TimerWheel {
 
     /// The nearest still-pending deadline, ignoring cancelled entries.
     ///
-    /// Immutable — a full O(heap size) scan rather than the mutating,
+    /// Immutable: a full O(heap size) scan rather than the mutating,
     /// head-compacting walk `take_due` uses, since `AsyncSource::next_wake`
     /// is queried every event-loop iteration and must not disturb timer state
     /// mid-command.
@@ -89,7 +89,7 @@ impl TimerWheel {
     }
 
     /// Pop cancelled entries sitting at the heap's head, regardless of their
-    /// deadline — once cancelled an entry can never be due, so there is no
+    /// deadline: once cancelled an entry can never be due, so there is no
     /// reason to wait for its deadline to reclaim the slot.
     fn drop_cancelled_head(&mut self) {
         while let Some(Reverse((_, id))) = self.heap.peek() {
@@ -103,7 +103,7 @@ impl TimerWheel {
 }
 
 impl AsyncSource for TimerWheel {
-    // The wheel's own deadline bounds the event-loop's poll timeout — a
+    // The wheel's own deadline bounds the event-loop's poll timeout: a
     // distant timer never forces the 8ms pending-poll cadence. Due-now
     // timers are caught by `take_due` in the async-source drain phase.
     fn next_wake(&self, _now: Instant) -> Option<Instant> {

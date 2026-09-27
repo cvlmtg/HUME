@@ -14,7 +14,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
     }
 
     fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String> {
-        // `settings::ops::apply_buffer`'s `get_mut` panics on a stale id —
+        // `settings::ops::apply_buffer`'s `get_mut` panics on a stale id;
         // validate first so a bad `bid` from Steel becomes an `Err`, not a
         // panic.
         if self.state.buffers.try_get(bid).is_none() {
@@ -29,7 +29,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
     }
 
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
-        // Same `try_get` guard as `set_buffer_option` above — a stale `bid`
+        // Same `try_get` guard as `set_buffer_option` above: a stale `bid`
         // is invalid input, not a request to fall back to the global value.
         let Some(buf) = self.state.buffers.try_get(bid) else {
             return Err(format!("get-buffer-option: invalid buffer id {bid:?}"));
@@ -46,7 +46,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
     ) -> Result<(), String> {
         // Validate here (for a section-labeled error message), then hand the
         // re-serialized wire string to the chokepoint so the write itself goes
-        // through `write_global` like every other setting — see
+        // through `write_global` like every other setting. See
         // `settings::ops::apply_global`'s doc for why a raw field write must
         // not bypass it.
         let cfg = StatusLineConfig {

@@ -29,7 +29,7 @@ fn ctrl_space_invokes_a_registered_source_and_shows_its_answer() {
 }
 
 /// The proc receives the invocation id, the buffer, and the seeded prefix
-/// — `'word` hands over the identifier run before the cursor.
+/// (`'word` hands over the identifier run before the cursor).
 #[test]
 fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
     let tmp = safe_tempdir();
@@ -73,7 +73,7 @@ fn ctrl_space_with_no_buffer_source_registered_reports() {
 
 // ── Token rules: what the filter is seeded from, what accept replaces ─────
 
-/// A prefix already typed before the trigger is filtered on immediately —
+/// A prefix already typed before the trigger is filtered on immediately:
 /// every candidate does not survive until some later keystroke narrows it.
 #[test]
 fn a_word_token_seeds_the_filter_from_the_word_before_the_cursor() {
@@ -102,8 +102,8 @@ fn an_empty_answer_closes_the_session_and_reports_no_completions() {
     assert_eq!(status(&ed), "no completions");
 }
 
-/// While a source is pending the session is open (invisibly, with no rows)
-/// — the answer, not the trigger, decides whether there is anything to
+/// While a source is pending the session is open (invisibly, with no rows):
+/// the answer, not the trigger, decides whether there is anything to
 /// show.
 #[test]
 fn the_session_is_open_but_empty_until_the_source_answers() {
@@ -130,8 +130,8 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
     assert_eq!(labels(&ed), vec!["late"]);
 }
 
-/// An answer for a superseded invocation — the source was called again
-/// (a second trigger) before it answered the first — is dropped, never
+/// An answer for a superseded invocation (the source was called again
+/// (a second trigger) before it answered the first) is dropped, never
 /// merged into the newer call's slot.
 #[test]
 fn an_answer_to_a_superseded_invocation_is_dropped() {
@@ -160,7 +160,7 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
 
 /// A stale answer changes nothing (`session.contribute` returns `Ok(false)`
 /// before touching `filtered`), so the settle path it would otherwise run
-/// must not reset the menu's selection either — only an answer that
+/// must not reset the menu's selection either. Only an answer that
 /// actually re-ranks the list may do that.
 #[test]
 fn a_dropped_stale_answer_does_not_reset_the_selection() {
@@ -182,7 +182,7 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
     assert_eq!(labels(&ed), vec!["foo", "fox"], "sanity");
 
     // Typing narrows the token and, since the last answer was incomplete,
-    // reinvokes the source — the first invocation (`calls`'s oldest id) is
+    // reinvokes the source, so the first invocation (`calls`'s oldest id) is
     // now stale. This re-rank is a real one, so it legitimately resets the
     // selection; the test only asserts on what happens *after*.
     ed.feed_key(key('f'));
@@ -209,7 +209,7 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
 
 /// The positive twin of the test above: a landing answer that *is* a live,
 /// still-latest contribution (not stale, not dropped) resets the selection
-/// to row 0 — the row the user had scrolled to on the narrower ranking has
+/// to row 0: the row the user had scrolled to on the narrower ranking has
 /// no guaranteed meaning against the wider one the new source's items
 /// produce.
 #[test]
@@ -239,7 +239,7 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
     ed.feed_key(key_tab());
     assert_eq!(selected_row(&ed), 1, "sanity: moved off row 0");
 
-    // b's answer is a fresh, still-latest contribution — not stale.
+    // b's answer is a fresh, still-latest contribution, not stale.
     ed.execute_keymap_command("answer-b".into(), None, false);
     assert_eq!(
         labels(&ed),
@@ -254,7 +254,7 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
 }
 
 /// A second answer for the *same* still-latest invocation replaces the
-/// first — a source may stream.
+/// first: a source may stream.
 #[test]
 fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
     let tmp = safe_tempdir();
@@ -301,7 +301,7 @@ fn an_answer_after_the_session_closed_is_dropped() {
 }
 
 /// A malformed item (missing the spec-required `label`) must not take down
-/// the whole batch — the well-formed item next to it still survives.
+/// the whole batch: the well-formed item next to it still survives.
 #[test]
 fn a_malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
     let tmp = safe_tempdir();
@@ -350,7 +350,7 @@ fn counting_source(incomplete: &str) -> String {
 }
 
 /// A source whose latest answer was `isIncomplete` is called again on every
-/// keystroke — the LSP `isIncomplete` flow, with no hook for the plugin to
+/// keystroke: the LSP `isIncomplete` flow, with no hook for the plugin to
 /// subscribe to.
 #[test]
 fn an_incomplete_source_is_reinvoked_on_each_keystroke() {
@@ -365,7 +365,7 @@ fn an_incomplete_source_is_reinvoked_on_each_keystroke() {
     assert_eq!(status(&ed), "3", "one trigger call plus one per keystroke");
 }
 
-/// A complete answer is final — typing re-ranks locally, never re-asks.
+/// A complete answer is final: typing re-ranks locally, never re-asks.
 #[test]
 fn a_complete_source_is_not_reinvoked_on_typing() {
     let tmp = safe_tempdir();
@@ -383,11 +383,11 @@ fn a_complete_source_is_not_reinvoked_on_typing() {
 }
 
 /// A source that raises instead of ever calling `completion-emit!` must not
-/// be retried on every subsequent keystroke — `drop_stalled_invocations`
+/// be retried on every subsequent keystroke. `drop_stalled_invocations`
 /// clears its slot once the failed batch is reported, so it drops out of
 /// `sources_to_reinvoke` until a fresh explicit trigger, instead of erroring
 /// again on every edit. A second, working source registered alongside it
-/// stays open and unaffected — `drop_stalled_invocations` only clears a
+/// stays open and unaffected: `drop_stalled_invocations` only clears a
 /// still-`inflight` slot, never a `shown` one.
 #[test]
 fn a_raising_source_is_not_retried_on_every_keystroke() {
@@ -437,7 +437,7 @@ fn a_raising_source_is_not_retried_on_every_keystroke() {
 
 /// A bare `CompletionItem[]` handle has no `isIncomplete` field of its own,
 /// so an explicit `#:incomplete #t` still applies and the source is
-/// reinvoked on the next keystroke — same as the plain-list `Items` shape.
+/// reinvoked on the next keystroke, same as the plain-list `Items` shape.
 #[test]
 fn a_bare_array_handle_honors_incomplete() {
     let tmp = safe_tempdir();
@@ -462,7 +462,7 @@ fn a_bare_array_handle_honors_incomplete() {
 }
 
 /// A handle that isn't a `textDocument/completion` response shape (here, an
-/// object with no `items`) raises rather than silently completing nothing —
+/// object with no `items`) raises rather than silently completing nothing:
 /// `completion-emit!`'s decode is a caller contract, not a best-effort one.
 #[test]
 fn a_non_completion_handle_raises() {
@@ -511,7 +511,7 @@ fn a_completion_list_handle_rejects_incomplete() {
 }
 
 /// The old answer stays ranked (against the new token text) until the
-/// re-invocation's own answer lands — the menu never blinks empty.
+/// re-invocation's own answer lands, so the menu never blinks empty.
 #[test]
 fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
     let tmp = safe_tempdir();
@@ -577,7 +577,7 @@ fn two_sources(a: &str, b: &str) -> String {
     )
 }
 
-/// Items from two sources rank together by one score — a contiguous-prefix
+/// Items from two sources rank together by one score: a contiguous-prefix
 /// match from the second outranks a scattered match from the first
 /// regardless of arrival order or sortText.
 #[test]
@@ -632,13 +632,13 @@ fn top_carries_the_contributing_source_name() {
 }
 
 /// A trigger char invokes the `Buffer` source registered under its name
-/// (via `completion-set-trigger-chars!`) into the open session — the other
+/// (via `completion-set-trigger-chars!`) into the open session. The other
 /// source's slot survives, shown again once the typed char is backspaced
 /// away.
 #[test]
 fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
     let tmp = safe_tempdir();
-    // A space, not a word char, right before the cursor — both sources'
+    // A space, not a word char, right before the cursor, so both sources'
     // `'word` token starts empty, so neither has a filter yet.
     let mut ed = editor_from("-[ ]>bcdef\n");
     let lang = ed.state.config.languages.intern("rust");
@@ -656,7 +656,7 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
            (register-completion-source! "other"
              (lambda (id bid prefix) (completion-emit! id (list (hash "label" "other"))))
              #:target 'buffer)
-           ;; Same eval as the "dot" registration above — `register-
+           ;; Same eval as the "dot" registration above: `register-
            ;; completion-source!` only queues an `Effect`, applied after
            ;; this whole eval returns, and `completion-set-trigger-chars!`
            ;; is queued too (`Effect::SetCompletionTriggerChars`), so the
@@ -678,7 +678,7 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
     assert_eq!(
         labels(&ed),
         vec!["other"],
-        "\"other\"'s slot survived the trigger — its token is empty again; the dot \
+        "\"other\"'s slot survived the trigger: its token is empty again; the dot \
          source's token (the cursor after \".\") was crossed and dropped"
     );
 }
@@ -699,7 +699,7 @@ fn a_trigger_char_nobody_registered_for_does_nothing() {
 }
 
 /// Ctrl-Space with the menu already up re-invokes every source into the
-/// same session — the layer it re-pushes is what keeps the completion key
+/// same session. The layer it re-pushes is what keeps the completion key
 /// handler's "a bound command dismisses the session" rule from eating it.
 #[test]
 fn ctrl_space_with_the_menu_up_reinvokes_and_keeps_the_session() {
@@ -732,8 +732,8 @@ fn re_registering_a_name_replaces_the_source() {
     assert_eq!(labels(&ed), vec!["new"]);
 }
 
-/// A Steel `'buffer` source registered under `"path"` — the same name the
-/// native `Minibuf` source `:e` completion uses — lands as a second,
+/// A Steel `'buffer` source registered under `"path"` (the same name the
+/// native `Minibuf` source `:e` completion uses) lands as a second,
 /// independent source rather than a collision: `Buffer` and `Minibuf`
 /// sources live in separate namespaces, so registering one never touches
 /// the other, and `:e`'s own path completion is unaffected.
@@ -775,7 +775,7 @@ fn the_same_name_in_both_namespaces_is_two_independent_sources() {
     );
 }
 
-/// A registration inside an init that then fails is never applied — the
+/// A registration inside an init that then fails is never applied: the
 /// `Effect` is dropped with everything else the failed eval queued.
 #[test]
 fn a_registration_in_a_failed_init_is_never_applied() {
@@ -845,7 +845,7 @@ fn reload_config_forgets_a_steel_source() {
 
 // ── Sessions that outlive their buffer ────────────────────────────────────
 
-/// The `:` line's own Tab completion must not be affected by any of this —
+/// The `:` line's own Tab completion must not be affected by any of this:
 /// a `Minibuf` session, never a `Buffer` one, opens for `:e <Tab>`.
 #[test]
 fn minibuffer_tab_completion_opens_a_minibuf_session() {
@@ -886,7 +886,7 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
 
 // ── A Steel typed command's declared completer ──────────────────────────────
 
-/// `define-typed-command! … #:complete "path"` — a Steel `:` command gets
+/// `define-typed-command! … #:complete "path"`: a Steel `:` command gets
 /// the same argument completion a built-in declares.
 #[test]
 fn a_steel_typed_command_can_declare_a_native_completer() {
@@ -908,7 +908,7 @@ fn a_steel_typed_command_can_declare_a_native_completer() {
     );
 }
 
-/// A `'minibuf` Steel source, named by a Steel typed command — the whole
+/// A `'minibuf` Steel source, named by a Steel typed command: the whole
 /// `:` completion path with no native code involved.
 #[test]
 fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
@@ -935,7 +935,7 @@ fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
     assert!(ed.state.input.buffer_completion().is_none());
 }
 
-/// A completer naming a `'buffer` source can't serve the `:` line — the
+/// A completer naming a `'buffer` source can't serve the `:` line: the
 /// name simply doesn't exist in the `Minibuf` namespace `#:complete` looks
 /// in, so this is indistinguishable from any other stale/unregistered
 /// name: Tab does nothing beyond the same Trace line, never a panic or a

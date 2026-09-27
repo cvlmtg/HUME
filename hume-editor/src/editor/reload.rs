@@ -1,4 +1,4 @@
-//! `:reload-config` — reset every piece of config-owned state, drop and
+//! `:reload-config`: reset every piece of config-owned state, drop and
 //! re-init the scripting engine, then replay the buffer-open lifecycle.
 //!
 //! `Editor::init_scripting` is shared with startup and stays in
@@ -23,16 +23,16 @@ use crate::editor::error::CommandError;
 #[derive(Default)]
 pub(crate) struct ReloadSnapshot {
     /// Every buffer open when the reload started. A versioned `BufferId` can
-    /// never silently start naming different content — `close_buffer`'s
+    /// never silently start naming different content (`close_buffer`'s
     /// last-buffer branch allocates a fresh key for its scratch replacement
-    /// rather than reusing the closed one in place — so membership in this
+    /// rather than reusing the closed one in place), so membership in this
     /// set plus current liveness is sufficient identity; no generation stamp
     /// is needed to rule out a same-key content swap.
     pre_reload_bids: rustc_hash::FxHashSet<BufferId>,
     /// `(bid, explicit-language-name)` for every buffer whose language was
     /// an explicit assertion (`:set buffer language=`/`set-buffer-language!`)
     /// rather than detection. `None` means the user explicitly cleared the
-    /// language — that must survive the reload too, not be silently
+    /// language; that must survive the reload too, not be silently
     /// repopulated by re-detection. Consumed (via `take_explicit_languages`)
     /// exactly once, by `init_scripting`'s post-reload sweep.
     explicit_languages: Vec<(BufferId, Option<String>)>,
@@ -41,7 +41,7 @@ pub(crate) struct ReloadSnapshot {
 impl ReloadSnapshot {
     /// `true` when `bid` predates this reload and is still a live buffer.
     /// `false` for a bid the snapshot never saw (a buffer `init.scm` opened
-    /// fresh this reload) or one that has since closed — a versioned
+    /// fresh this reload) or one that has since closed. A versioned
     /// `BufferId` can never alias a different buffer's content, so liveness
     /// alone settles the latter case now.
     pub(super) fn survives(
@@ -61,7 +61,7 @@ impl ReloadSnapshot {
     }
 
     /// Build a snapshot as if every id in `pre_reload_bids` predated the
-    /// reload — mirrors what `reset_config_state` itself captures.
+    /// reload: mirrors what `reset_config_state` itself captures.
     /// Test-only: production always gets a `ReloadSnapshot` from
     /// `reset_config_state`; this exists for `resync_config_state` unit
     /// tests that exercise the replay in isolation, without a full reset.
@@ -79,20 +79,20 @@ impl Editor {
     /// or `init.scm` itself can write, back to the same defaults
     /// `Editor::open` starts with, and return the [`ReloadSnapshot`]
     /// `:reload-config` threads through the rest of the reload. Called
-    /// immediately before dropping the old `ScriptingHost` — this is the
+    /// immediately before dropping the old `ScriptingHost`: this is the
     /// other half of "from scratch": dropping the host wipes the
     /// Steel-VM-side registries (`cmd_owners`, hooks, plugin lifecycle, …),
     /// this wipes everything those builtins wrote *into* the editor.
     ///
     /// Most of what this must reset lives on [`super::ConfigState`], reset by
-    /// *construction* — see its doc for why a field added there can't be
+    /// *construction*; see its doc for why a field added there can't be
     /// forgotten the way a field added directly here still can (enforced by
     /// the exhaustive destructure in `editor_state_fields_are_classified`,
     /// `mod.rs`'s `field_classification` test module).
     ///
     /// Order matters: every Steel value rooted in the outgoing engine
     /// (queued callbacks, open overlay sessions, scheduled thunks) is
-    /// dropped first, before the engine itself goes away — so nothing here
+    /// dropped first, before the engine itself goes away, so nothing here
     /// ever gets invoked against the *new* engine that didn't create it.
     pub(in crate::editor) fn reset_config_state(&mut self) -> ReloadSnapshot {
         // Captured before anything below runs: the set of buffers open *as
@@ -101,13 +101,13 @@ impl Editor {
         let pre_reload_bids = self.state.buffers.iter().map(|(bid, _)| bid).collect();
 
         // A still-open Insert or paste session on the focused pane holds
-        // undo state (`EditorState::active_session`), not a Steel value —
+        // undo state (`EditorState::active_session`), not a Steel value:
         // the "outgoing engine, nothing left to observe the fire" reasoning
         // below doesn't excuse it from proper teardown the way it does the
         // remaining mode layers/overlays. Left open, `input.truncate_to_base()`
         // further down would drop the `Insert` layer without ever ending
         // the session, leaving `active_session` open on a buffer the
-        // reload's own resets are about to invalidate — the next keystroke
+        // reload's own resets are about to invalidate: the next keystroke
         // would panic in `doc_ops::apply_doc_edit_grouped`'s `.expect()`.
         // Must run before `truncate_to_base`, which drops layers without
         // running their teardown.
@@ -122,14 +122,14 @@ impl Editor {
         // itself, and for `Base` a `Sticky` popup's slot) and the five
         // overlay widgets (menu/drawer/picker/confirm/popup) live on
         // `state.input` instead and are dropped by the explicit
-        // `input.truncate_to_base()` call further down — nothing here reads
+        // `input.truncate_to_base()` call further down. Nothing here reads
         // any of them in between, so there's nothing to clear early.
         // `Insert` is not among them: `end_focus_sessions` above
         // already ended it, so `truncate_to_base` only ever finds `Base` or
         // one of the other layers still on the stack. `truncate_layers`'
         // own teardown (`EditorState::tear_down`) never fires a Steel
         // callback, so a `Prompt` session's callback is discarded exactly
-        // like the overlay widgets' — and `truncate_to_base` resets `Base`'s
+        // like the overlay widgets', and `truncate_to_base` resets `Base`'s
         // `extend` flag and `sticky_popup` slot to their defaults in the
         // same call, so neither Extend nor a signature-help popup survives a
         // reload. `PickerSession::source` (if a picker was open) kills any
@@ -139,10 +139,10 @@ impl Editor {
         // regardless, so nothing here needs to touch them directly either.
         // `confirm` has no view/Steel callback of its own (its action is a
         // plain Rust enum, not a rooted `SteelVal`), so it needs even less
-        // than the others — dropping it is the entire teardown. `PopupLayer`
+        // than the others: dropping it is the entire teardown. `PopupLayer`
         // likewise carries no Steel callback.
         self.lsp.reset_config();
-        // Only the Steel `after` thunks — native `ViewportDebounce` timers
+        // Only the Steel `after` thunks. Native `ViewportDebounce` timers
         // keep their wheel entries and their `viewport_debounce` back-index
         // intact, since nothing about them is Steel-VM-specific. Exhaustive
         // match, not `matches!`, so a future `TimerPayload` variant forces a
@@ -165,10 +165,10 @@ impl Editor {
         // Snapshot every buffer's own `:set buffer language=`/
         // `set-buffer-language!` assertion (by name, since the `LanguageId`
         // below is about to dangle) so `init_scripting`'s post-reload
-        // re-detect sweep can restore it — otherwise a buffer whose language
+        // re-detect sweep can restore it. Otherwise a buffer whose language
         // was explicitly asserted rather than detected (e.g. an extensionless
         // file) would silently lose that assertion to whatever plain
-        // detection finds, contradicting "buffers are untouched" — the
+        // detection finds, contradicting "buffers are untouched", the
         // invariant `:reload-config` promises the rest of this function.
         let explicit_languages = self
             .state
@@ -182,7 +182,7 @@ impl Editor {
                 (bid, name)
             })
             .collect();
-        // Every buffer's `LanguageId` is an index into `state.config.languages` —
+        // Every buffer's `LanguageId` is an index into `state.config.languages`:
         // clear it before the registry it indexes into is replaced below, or
         // it dangles. This also makes `init_scripting`'s post-reload
         // re-detect sweep a real `None -> Some` transition again (see
@@ -193,13 +193,13 @@ impl Editor {
         let prior_clock = self.state.config.decorations.clock();
         self.state.config = super::ConfigState::new(self.kitty_enabled, prior_clock);
         // Drops any still-open mode layer or confirm/picker/menu/drawer/popup
-        // overlay without firing its callback — same "outgoing engine,
+        // overlay without firing its callback: same "outgoing engine,
         // nothing left to observe the fire" reasoning as the comment above.
         self.state.input.truncate_to_base();
         // Re-baseline immediately after: the fresh hooks `init_scripting`
         // is about to register must never see a phantom transition for a
         // mode change they didn't observe (e.g. an Insert session the
-        // reload itself just discarded above) — matches `detect_buffer_enter`'s
+        // reload itself just discarded above). Matches `detect_buffer_enter`'s
         // own re-baseline shape for `OnBufferEnter` (`resync_config_state`,
         // further down).
         self.state.last_observed_mode = self.state.mode();
@@ -212,30 +212,30 @@ impl Editor {
     }
 
     /// Replay the buffer-open lifecycle for every buffer that predates this
-    /// reload — called by `:reload-config`, once, after `init_scripting()`
+    /// reload. Called by `:reload-config`, once, after `init_scripting()`
     /// has rebuilt the Steel engine and re-detected each buffer's language.
     ///
     /// `reset_config_state` clears state that is normally repopulated by a
     /// hook fired on a *transition* (a server going from unattached to
-    /// attached, a buffer opening, diagnostics being published) — none of
+    /// attached, a buffer opening, diagnostics being published), none of
     /// which a reload, by itself, causes. Firing those hooks here is the
     /// other half of ":reload-config behaves like closing and reopening
     /// every already-open buffer": running LSP servers and their published
     /// diagnostics survive the reload (`LspState::reset_config` deliberately
     /// keeps `servers` and `diagnostics`), so this re-fires the attach and
     /// diagnostics hooks from that surviving state rather than re-opening
-    /// documents over the wire — a real close+reopen would round-trip
+    /// documents over the wire: a real close+reopen would round-trip
     /// `textDocument/didClose`+`didOpen` to a server we're keeping alive,
     /// and a server that only republishes diagnostics on change would leave
     /// the buffer's diagnostics blank until the next edit.
     ///
-    /// `snapshot` — captured by `reset_config_state` before this reload's
-    /// reset ran — filters every loop below to buffers that (a) predate this
+    /// `snapshot` (captured by `reset_config_state` before this reload's
+    /// reset ran) filters every loop below to buffers that (a) predate this
     /// reload and (b) are still live. Without (a): the ordinary open path
     /// (`detect_pending_languages`, run inside `init_scripting` before this
     /// function is called) already fires hooks once for a genuinely new
     /// buffer, and by the time this function runs its `open_hook_pending` is
-    /// already `false` again, same as every pre-reload buffer — so a buffer
+    /// already `false` again, same as every pre-reload buffer, so a buffer
     /// `init.scm` itself opens while re-running (a session-restore plugin, a
     /// first-run `open-buffer!`) would double-fire without this filter.
     /// Without (b): a bid whose only buffer `init.scm` closed would have its
@@ -243,9 +243,9 @@ impl Editor {
     ///
     /// No `OnBufferClose` counterpart: that hook would have to run against
     /// the outgoing engine, before the reset, tearing down state the reset
-    /// discards anyway — reload is a restart, not a close.
+    /// discards anyway. Reload is a restart, not a close.
     ///
-    /// `OnBufferEnter` also gets replayed, for the focused buffer — see the
+    /// `OnBufferEnter` also gets replayed, for the focused buffer; see the
     /// comment at its call site below for why that isn't a queued event like
     /// the four above it.
     ///
@@ -253,7 +253,7 @@ impl Editor {
     /// these: every `OnLspAttach` runs, then every `OnBufferOpen`, then every
     /// `OnDiagnosticsChanged`/`OnViewportChange`. `pending_work` is FIFO, so
     /// each buffer's *own* hooks still fire in the same relative order a real
-    /// open would use — only the cross-buffer interleaving differs.
+    /// open would use. Only the cross-buffer interleaving differs.
     pub(in crate::editor) fn resync_config_state(&mut self, snapshot: &ReloadSnapshot) {
         let running_attachments: Vec<_> = self
             .lsp
@@ -279,7 +279,7 @@ impl Editor {
 
         // Diagnostics: pull-style hook, re-reads the surviving
         // `LspState::diagnostics` cache rather than needing a payload. Keyed
-        // on the cache itself, not `running_attachments` — a crashed server's
+        // on the cache itself, not `running_attachments`: a crashed server's
         // last-published diagnostics stay in the cache (`reset_config`'s doc)
         // and must still be replayed, or a reload permanently blanks a
         // buffer's diagnostics that only `:lsp-restart` would otherwise
@@ -295,14 +295,14 @@ impl Editor {
 
         // Inlay hints (and anything else `on-viewport-change`-gated, e.g.
         // `core:lsp`'s inlay.scm) are otherwise only repopulated the next
-        // time the pane's viewport genuinely moves — which a reload alone
-        // never causes — so a clean buffer would show no inlay hints until
+        // time the pane's viewport genuinely moves (which a reload alone
+        // never causes), so a clean buffer would show no inlay hints until
         // the user scrolls. Active-tab panes only: a background-tab pane's
         // *size* stays current (`sync_viewport_dims` resizes every tab, not
-        // just the active one), but its *scroll position* doesn't — the
-        // frame's scroll step only runs over `active_pane_ids()` — so firing
+        // just the active one), but its *scroll position* doesn't (the
+        // frame's scroll step only runs over `active_pane_ids()`), so firing
         // here for one would hand a handler a stale scroll range. A hidden
-        // pane's own repopulation happens when its tab is next focused —
+        // pane's own repopulation happens when its tab is next focused:
         // `queue_viewport_change`'s active-tab guard dropped its
         // `last_viewport_key`, so that pane's first visible frame reads as a
         // change.
@@ -313,15 +313,15 @@ impl Editor {
         }
 
         // `OnBufferEnter` has no raise site of its own to call here, unlike
-        // the four events above — `Editor::detect_buffer_enter` raises it as
+        // the four events above: `Editor::detect_buffer_enter` raises it as
         // a diff against `EditorState::last_entered_buffer`, and the focused
         // buffer hasn't changed across a reload, so that diff is otherwise a
         // no-op. Clearing the baseline (not filtered by `snapshot.survives`,
         // unlike every loop above: there is exactly one focused buffer, and
         // it's always "surviving" by definition) makes the very next
-        // `detect_buffer_enter` pass — inside `typed_reload_config`'s own
+        // `detect_buffer_enter` pass (inside `typed_reload_config`'s own
         // `drain_pending_work()` call, after the `OnBufferOpen` batch above
-        // has already activated and re-hooked every plugin — observe the
+        // has already activated and re-hooked every plugin) observe the
         // diff and raise exactly one `OnBufferEnter`, the same one the next
         // real focus change would raise anyway. This is what brings back
         // state a plugin repopulates from that hook (e.g. `core:git-diff`'s
@@ -331,9 +331,9 @@ impl Editor {
         // Accepted side effect: `OnBufferEnter` also has a Rust reaction,
         // `enter_buffer_disk_check` (`buffer/disk.rs`), so a reload now
         // `stat`s the focused buffer and can open the "changed on disk"
-        // confirm. That's consistent with this whole function's contract —
-        // "behaves like closing and reopening every already-open buffer",
-        // where a real reopen would re-read from disk outright — and it's
+        // confirm. That's consistent with this whole function's contract
+        // ("behaves like closing and reopening every already-open buffer",
+        // where a real reopen would re-read from disk outright), and it's
         // the same prompt the next real focus change would raise anyway.
         self.state.last_entered_buffer = None;
     }
@@ -358,14 +358,14 @@ pub(in crate::editor) fn typed_reload_config(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    // Checked before anything is touched — failing here, before
+    // Checked before anything is touched: failing here, before
     // `reset_config_state` wipes languages/keymap/theme/highlighting, means a
     // reload that can't proceed leaves the editor exactly as it was, rather
     // than reset to compiled-in defaults with no way back.
     //
     // `--no-config` refuses outright: it's a session-wide posture the user
     // chose (a clean-debugging run, or a headless script that deliberately
-    // wants no plugins), not a startup-only skip — silently loading the real
+    // wants no plugins), not a startup-only skip. Silently loading the real
     // config on reload would end that posture with no way back either.
     match ed.config_path() {
         ConfigPath::Resolved { .. } => {}
@@ -376,13 +376,13 @@ pub(in crate::editor) fn typed_reload_config(
         }
         ConfigPath::NoConfigDir => {
             return Err(CommandError::new(
-                "reload-config: no config directory — HOME/XDG_CONFIG_HOME (APPDATA on Windows) unset",
+                "reload-config: no config directory: HOME/XDG_CONFIG_HOME (APPDATA on Windows) unset",
             ));
         }
     }
     // Lifetime totals, not `unseen_counts`: the log can evict old entries
     // past `MAX_ENTRIES`, which would otherwise skew a before/after unseen
-    // count in either direction on a long session — see `MessageLog::totals`.
+    // count in either direction on a long session (see `MessageLog::totals`).
     // Warnings count too, not just errors: every failure mode `init_scripting`
     // and the hooks below can hit (no runtime dir, an unknown keymap target,
     // an unregistered restored language, …) reports at `Severity::Warning`,
@@ -400,7 +400,7 @@ pub(in crate::editor) fn typed_reload_config(
     // `drain_pending_work`, not `settle`: `settle` also runs
     // `drain_async_sources` first, which would pull in an unrelated LSP/
     // parse/timer message that happens to arrive at this moment and count it
-    // against this reload's own errors/warnings delta — see `settle`'s doc.
+    // against this reload's own errors/warnings delta; see `settle`'s doc.
     ed.drain_pending_work();
     let (errors_after, warnings_after) = ed.state.message_log.totals();
     if errors_after == errors_before && warnings_after == warnings_before {

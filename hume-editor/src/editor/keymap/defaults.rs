@@ -51,7 +51,7 @@ macro_rules! wait_char {
 /// key!(Left)          // Left arrow, no modifiers
 /// ```
 macro_rules! key {
-    // Ctrl-char — must come first so `Ctrl + 'h'` is not mistakenly parsed
+    // Ctrl-char: must come first so `Ctrl + 'h'` is not mistakenly parsed
     // by a later arm.
     (Ctrl + $ch:literal) => {
         KeyEvent::new(KeyCode::Char($ch), Modifiers::CONTROL)
@@ -122,7 +122,7 @@ fn build_text_object_trie() -> KeyTrie {
             around_trie.bind_leaf(k, cmd!(around_name));
         }
     }
-    // Structural kinds (function/class/argument/comment/unit-test/value) — one
+    // Structural kinds (function/class/argument/comment/unit-test/value): one
     // table shared with `register_structural` (`registry/defaults/
     // structural.rs`), so a kind added there needs no change here. `a`
     // (argument) uses the `inner-argument`/`around-argument` names. See
@@ -132,8 +132,8 @@ fn build_text_object_trie() -> KeyTrie {
         inner_trie.bind_leaf(k, cmd!(obj.inner));
         around_trie.bind_leaf(k, cmd!(obj.around));
     }
-    // `mii` — select the text typed during the last completed insert
-    // session. No `mai` counterpart: an insertion has no "around" — there
+    // `mii`: select the text typed during the last completed insert
+    // session. No `mai` counterpart: an insertion has no "around"; there
     // are no delimiters or adjacent structure to widen into, unlike every
     // other object in `objects` above.
     inner_trie.bind_leaf(key!('i'), cmd!("select-last-insertion"));
@@ -167,7 +167,7 @@ fn build_text_object_trie() -> KeyTrie {
     match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
     match_trie.bind(key!('w'), wait_char!("surround-add"));
     match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
-    // `mm` — select the word under the cursor. Follows
+    // `mm`: select the word under the cursor. Follows
     // `word-selects-whitespace` (see `cmd_select_word`'s `ctx.around`
     // branch), unlike `miw`/`maw` above which are never flag-affected.
     match_trie.bind_leaf(key!('m'), cmd!("select-word"));
@@ -176,7 +176,7 @@ fn build_text_object_trie() -> KeyTrie {
 
 /// Build a standalone trie for the `M` prefix so that `MM` selects the
 /// uppercase WORD without opening the full text-object trie.  This keeps `m`
-/// and `M` as separate roots — `mM` and `Mm` are no-ops.
+/// and `M` as separate roots: `mM` and `Mm` are no-ops.
 fn build_uppercase_match_trie() -> KeyTrie {
     let mut t = KeyTrie::new();
     t.bind_leaf(key!('M'), cmd!("select-uppercase-word"));
@@ -206,8 +206,8 @@ fn build_goto_trie() -> KeyTrie {
     // Structural navigation: lowercase key → next, uppercase → previous.
     // Reuses the same `key` STRUCTURAL_OBJECTS assigns for `m i`/`m a` (see
     // that table's doc comment for why each kind's letter is what it is).
-    // Can't use the `key!` macro here — it needs a literal token, and `key`
-    // is a runtime `char` — so `KeyEvent` is built directly, the same
+    // Can't use the `key!` macro here (it needs a literal token, and `key`
+    // is a runtime `char`), so `KeyEvent` is built directly, the same
     // pattern `build_text_object_trie` uses below. Uppercasing `key` to
     // derive "previous" requires every entry to be lowercase and no two
     // uppercased forms to collide; both are asserted so a future table edit
@@ -215,7 +215,7 @@ fn build_goto_trie() -> KeyTrie {
     for obj in STRUCTURAL_OBJECTS {
         debug_assert!(
             obj.key.is_ascii_lowercase(),
-            "STRUCTURAL_OBJECTS key {:?} must be lowercase — build_goto_trie derives \
+            "STRUCTURAL_OBJECTS key {:?} must be lowercase: build_goto_trie derives \
              the \"previous\" bind by uppercasing it",
             obj.key
         );
@@ -254,7 +254,7 @@ fn build_pane_trie() -> KeyTrie {
     t.bind_leaf(key!('c'), cmd!("pane-close"));
     // A tab is a saved pane layout (see `commands::tab`'s module doc), so
     // cycling tabs lives under the pane-workspace prefix rather than under
-    // `g` — every letter `t`/`T` could take there is already claimed by
+    // `g`: every letter `t`/`T` could take there is already claimed by
     // STRUCTURAL_OBJECTS' `class` navigation (`build_goto_trie`). Uppercase
     // `T` = "previous" mirrors the `g`-trie's own lower/upper convention.
     t.bind_leaf(key!('t'), cmd!("goto-next-tab"));
@@ -267,7 +267,7 @@ fn build_pane_trie() -> KeyTrie {
 // Viewport repositioning; the cursor itself never moves. The three leaves are
 // laid out directionally rather than by Vim's initials: `z k` (up/top),
 // `z z` (centre), `z j` (down/bottom), reusing the j/k axis every motion in
-// the editor already trains. Vim's `zt`/`zb` are deliberately not aliased —
+// the editor already trains. Vim's `zt`/`zb` are deliberately not aliased:
 // `t` and `b` stay free under `z` for plugins (`core:pickers` claims `z b`).
 
 fn build_view_trie() -> KeyTrie {
@@ -285,7 +285,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Basic motion ─────────────────────────────────────────────────────────
     // The keymap stores only the base command name. Extend-variant pairing
-    // lives in the registry — the dispatcher resolves it at execution time.
+    // lives in the registry; the dispatcher resolves it at execution time.
     t.bind_leaf(key!('h'), cmd!("move-left"));
     t.bind_leaf(key!(Left), cmd!("move-left"));
     t.bind_leaf(key!('l'), cmd!("move-right"));
@@ -295,7 +295,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('k'), cmd!("move-up"));
     t.bind_leaf(key!(Up), cmd!("move-up"));
 
-    // Extend mode itself is an `e` toggle, not a held modifier — Ctrl-motion was
+    // Extend mode itself is an `e` toggle, not a held modifier. Ctrl-motion was
     // rejected as the universal extend modifier (fatal legacy-terminal collisions
     // on 10 of 15 motion keys; Ctrl-i/Tab below is one instance), and Alt was
     // rejected because it types accented characters on macOS. Kitty Ctrl-motion
@@ -332,7 +332,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!(Ctrl + 'X'), cmd_extend!("select-line-backward"));
 
     // ── Page scroll ───────────────────────────────────────────────────────────
-    // PageUp/PageDown use view.height as count — handled by EditorCmd, not a
+    // PageUp/PageDown use view.height as count, handled by EditorCmd, not a
     // raw motion count. Extend duality is expressed in the normal way.
     t.bind_leaf(key!(PageDown), cmd!("page-down"));
     t.bind_leaf(key!(PageUp), cmd!("page-up"));
@@ -342,7 +342,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // ── Jump list ────────────────────────────────────────────────────────────
     t.bind_leaf(key!(Ctrl + 'o'), cmd!("jump-backward"));
     // Ctrl-i is traditionally Tab (0x09) on legacy terminals, which cannot
-    // distinguish the two — so this default trie binds both to the same
+    // distinguish the two, so this default trie binds both to the same
     // command. Under the kitty keyboard protocol the two are always distinct
     // key events, and `apply_kitty_defaults` rebinds Tab to `pane-focus-next`
     // once the protocol is confirmed; jump-forward then stays reachable via
@@ -359,7 +359,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // above). A bare key rather than a `g`-prefixed pair: `g` names a
     // destination (first line, definition, next function) while a
     // matching-pair jump names a relationship to wherever the cursor already
-    // is, and it's pressed at motion frequency — worth a single keystroke.
+    // is, and it's pressed at motion frequency: worth a single keystroke.
     // `#` is unbound everywhere.
     t.bind_leaf(key!('#'), cmd!("goto-matching-pair"));
 
@@ -428,7 +428,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // Select text, then Ctrl-/ turns it into the search pattern verbatim (Helix's
     // `search_selection`), so `n`/`N` cycle its other occurrences. Kitty-only:
     // legacy terminals encode Ctrl-/ as the control byte 0x1F, which decodes
-    // as `Ctrl-'7'` — left unbound, so the key silently no-ops there.
+    // as `Ctrl-'7'`, left unbound, so the key silently no-ops there.
     t.bind_leaf(key!(Ctrl + '/'), cmd!("search-selection"));
 
     // ── Pane prefix (Ctrl-p) ─────────────────────────────────────────────────
@@ -455,7 +455,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // `m` → text objects (`mi`/`ma`), surround (`ms`), and `m/` (select-all-matches).
     // `M` mirrors `m` and only contains `MM` (select-uppercase-word): the WORD
     // under the cursor, with the around body swapped in while
-    // `word-selects-whitespace` is on — same gating as `mm`.
+    // `word-selects-whitespace` is on, same gating as `mm`.
     t.bind(key!('m'), KeyTrieNode::Node(build_text_object_trie()));
     t.bind(key!('M'), KeyTrieNode::Node(build_uppercase_match_trie()));
 
@@ -477,7 +477,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 ///
 /// Keys bound here dispatch their command directly (with `extend = false`),
 /// bypassing the normal trie entirely. Keys *not* bound here fall through to
-/// the normal trie with `extend = true` — the extend-variant resolution in
+/// the normal trie with `extend = true`; the extend-variant resolution in
 /// `execute_keymap_command` then applies as usual.
 ///
 /// Empty by default: `Ctrl-e` already flips selections in both Normal and
@@ -531,7 +531,7 @@ impl Keymap {
         // Tab cycles panes. Disambiguating Ctrl-i from Tab (both 0x09 on
         // legacy terminals) is precisely what the kitty protocol exists to
         // do, so once the probe above has confirmed it, jump-forward stays
-        // reachable via Ctrl-i — see the base keymap's jump-list binds.
+        // reachable via Ctrl-i (see the base keymap's jump-list binds).
         self.normal.bind_leaf(key!(Tab), cmd!("pane-focus-next"));
     }
 }

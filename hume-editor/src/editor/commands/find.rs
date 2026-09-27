@@ -14,7 +14,7 @@ use super::{CommandPane, apply_pane_motion};
 
 /// The character and kind stored by the last find/till motion.
 ///
-/// Direction is NOT stored — `repeat-find-forward` and `repeat-find-backward`
+/// Direction is NOT stored: `repeat-find-forward` and `repeat-find-backward`
 /// use absolute direction, so re-searching always means "next on the right" or
 /// "previous on the left" regardless of the original motion's direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

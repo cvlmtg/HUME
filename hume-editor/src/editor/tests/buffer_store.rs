@@ -10,7 +10,7 @@ use hume_editing::text::BufferText;
 use hume_scripting::host::CommandHost;
 
 /// `open_buffer` allocates a new BufferId and tracks MRU, but seeds no
-/// pane's `pane_state` yet — no pane shows the buffer until something
+/// pane's `pane_state` yet. No pane shows the buffer until something
 /// switches to it, and that switch is what seeds it (lazily, on first
 /// visit; see `lifecycle::open_buffer`'s doc).
 #[test]
@@ -47,7 +47,7 @@ fn p6_close_buffer_redirects_to_mru() {
     let bid_beta = ed.open_buffer(doc_beta);
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), bid_beta);
     assert_eq!(ed.focused_buffer_id(), bid_beta);
-    // Close beta — should redirect focused pane back to alpha.
+    // Close beta: should redirect focused pane back to alpha.
     ed.close_buffer(bid_beta);
     assert_eq!(
         ed.focused_buffer_id(),
@@ -61,7 +61,7 @@ fn p6_close_buffer_redirects_to_mru() {
 }
 
 /// `close_buffer` on the last buffer frees its slot and opens a fresh
-/// scratch buffer under a new `BufferId` (Case C) — not a content swap
+/// scratch buffer under a new `BufferId` (Case C), not a content swap
 /// under the closed id, which a captured `bid` could then alias.
 #[test]
 fn p6_close_last_buffer_becomes_scratch() {
@@ -102,7 +102,7 @@ fn p6_bid_captured_before_last_buffer_close_reads_dead_afterward() {
         SelectionSet::default(),
     ));
     let tmp = safe_tempdir();
-    // `bid` is the typed command's own injected leading param — the only
+    // `bid` is the typed command's own injected leading param, the only
     // buffer, so it's the one `close-buffer!` below closes. Reusing that
     // same captured Scheme value afterward is exactly "a bid captured
     // before the close, read after".
@@ -187,7 +187,7 @@ fn p6_bnext_bprev_cycle() {
     assert_eq!(ed.focused_buffer_id(), bid_b, "bprev to b");
 }
 
-/// `goto-next-buffer`/`goto-prev-buffer` cycle through buffers in open-order —
+/// `goto-next-buffer`/`goto-prev-buffer` cycle through buffers in open-order:
 /// the mappable, key-bindable siblings of `:bnext`/`:bprev`.
 #[test]
 fn goto_next_prev_buffer_cycle() {
@@ -432,7 +432,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
 
 /// `reload_buffer_in_place` clamps a char col that exceeds the new line
 /// length to the line's last content character (the vim/helix
-/// stick-to-content convention `place_char_column` uses) — never onto the
+/// stick-to-content convention `place_char_column` uses), never onto the
 /// line's terminating `\n`.
 #[test]
 fn p6_reload_clamps_char_col_to_line_end() {
@@ -472,7 +472,7 @@ fn p6_reload_clamps_char_col_to_line_end() {
 #[test]
 fn p6_reload_snaps_char_col_to_grapheme_boundary() {
     // "caf" + é (U+0065 U+0301, two chars) + "\n" → len_chars=6.
-    // Grapheme boundaries: 0,1,2,3,5,6 — é occupies chars 3..5.
+    // Grapheme boundaries: 0,1,2,3,5,6; é occupies chars 3..5.
     let content = "caf\u{0065}\u{0301}\n";
     let mut ed = Editor::for_testing(Buffer::new(
         BufferText::from(content),
@@ -483,7 +483,7 @@ fn p6_reload_snaps_char_col_to_grapheme_boundary() {
     // Normal motions won't do this; set directly.
     set_cursor(&mut ed, 4);
 
-    // Reload with identical content — col=4 is mid-cluster.
+    // Reload with identical content: col=4 is mid-cluster.
     let replacement = Buffer::new(BufferText::from(content), SelectionSet::default());
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
@@ -542,7 +542,7 @@ fn p6_reload_collapses_multi_selection_to_primary() {
 
 // ── find_by_path — Windows `\\?\` verbatim-prefix normalization ───────────────
 //
-// Stored buffer paths are always `fs::canonicalize` output — `\\?\C:\…` on
+// Stored buffer paths are always `fs::canonicalize` output: `\\?\C:\…` on
 // Windows. Most lookups also canonicalize and match as-is, but the `:b <name>`
 // fallback for a deleted backing file (`typed_buffer.rs`) uses
 // `std::path::absolute`, which never carries the verbatim prefix. Without
@@ -576,7 +576,7 @@ fn find_by_path_matches_verbatim_prefixed_stored_path_against_a_plain_query() {
 #[test]
 fn find_by_path_leaves_verbatim_unc_paths_alone() {
     // `\\?\UNC\…` (verbatim network share) must NOT be treated as equivalent
-    // to a plain `\\server\share\…` form — strip_unc_prefix deliberately
+    // to a plain `\\server\share\…` form; strip_unc_prefix deliberately
     // leaves it untouched, so these two remain distinct buffers.
     let mut ed = Editor::for_testing(Buffer::new(
         BufferText::from("hello\n"),
@@ -600,9 +600,9 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
     );
 }
 
-/// `(buffer-live? bid)` — the non-raising idiom for a timer/debounce/async
+/// `(buffer-live? bid)`: the non-raising idiom for a timer/debounce/async
 /// continuation to check its captured `bid` before acting on it. `#t` for
-/// an open buffer, `#f` for one that closed since — never raises either
+/// an open buffer, `#f` for one that closed since. Never raises either
 /// way, unlike a `LiveBid`-checked builtin.
 #[test]
 fn buffer_live_reflects_open_and_closed_state() {

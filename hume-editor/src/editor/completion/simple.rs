@@ -2,17 +2,17 @@ use super::{CompletionCtx, CompletionItem};
 
 // ── Command name ──────────────────────────────────────────────────────────────
 
-/// The name this source registers under — referenced by the built-in
+/// The name this source registers under, referenced by the built-in
 /// commands that declare it as their argument completer
 /// (`registry/defaults/typed.rs`), so a typo there fails to compile at this
 /// constant rather than silently naming a source that doesn't exist.
 pub(in crate::editor) const COMMAND_SOURCE: &str = "command";
 
-/// Every registered typed command's canonical name — the completed token is
+/// Every registered typed command's canonical name. The completed token is
 /// the command name prefix, filtered generically by the session's own
-/// `MatchKind::String { case_sensitive: false }` (aliases are excluded —
-/// `:` can't dispatch editor commands anyway; see `registry/mod.rs`'s
-/// module doc — and only canonical names are offered, so the popup doesn't
+/// `MatchKind::String { case_sensitive: false }` (aliases are excluded
+/// (`:` can't dispatch editor commands anyway; see `registry/mod.rs`'s
+/// module doc), and only canonical names are offered, so the popup doesn't
 /// get cluttered with shorthand like `w` alongside `write`).
 pub(super) fn complete_command(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
     let mut names: Vec<&str> = ctx.registry.typed_names().collect();
@@ -31,7 +31,7 @@ pub(in crate::editor) const BUFFER_NAME_SOURCE: &str = "buffer-name";
 /// Every open buffer's display name for `:b`.
 ///
 /// Matches on the file basename (or `*scratch*` for unnamed buffers).
-/// The `insert_text` is the full canonical `path`, not `display_path` — it
+/// The `insert_text` is the full canonical `path`, not `display_path`: it
 /// feeds straight back into path resolution, which doesn't `~`-expand, so an
 /// unambiguous target requires the canonical form.
 ///
@@ -61,7 +61,7 @@ pub(super) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionIte
         .map(|(_, buf)| {
             let (base, insert_text) = entry_for(buf);
             let label = if *name_count.get(&base).expect("base was counted above") >= 2 {
-                // Two or more buffers share this basename — show parent dir,
+                // Two or more buffers share this basename: show parent dir,
                 // taken from the display-ready path (already `~`-collapsed).
                 let dir = buf
                     .display_path()
@@ -82,7 +82,7 @@ pub(super) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionIte
 
 pub(in crate::editor) const THEME_SOURCE: &str = "theme";
 
-/// Every installed theme name for `:theme` — the unfiltered universe (see
+/// Every installed theme name for `:theme`: the unfiltered universe (see
 /// [`super::theme_name_candidates`]), narrowed generically by the session's
 /// own `MatchKind::String`.
 pub(super) fn complete_theme(_ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {

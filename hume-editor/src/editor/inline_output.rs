@@ -20,15 +20,15 @@ struct Frame {
     /// Printed in the running banner on first output.
     name: String,
     /// `Editor::tui`'s active handle, captured via `Tui::as_active` at push
-    /// time — `None` means there is no alt-screen to leave for this frame
+    /// time. `None` means there is no alt-screen to leave for this frame
     /// (tests, headless `run_keys`, or an `EditorHostImpl::new` host, which
     /// has no `Tui` to capture at all and never reaches `push` in the first
     /// place; see `arm_inline_output`'s own doc). The stdout gate still
     /// opens (raw writes are safe with no TUI to protect), but
     /// [`InlineOutput::needs_enter`] never fires for it. Captured rather
     /// than re-read later so a caller other than the one that pushed this
-    /// frame — a different `Editor`/`EditorHostImpl`'s current `tui` may
-    /// disagree — still sees what was true when it was armed.
+    /// frame (a different `Editor`/`EditorHostImpl`'s current `tui` may
+    /// disagree) still sees what was true when it was armed.
     tui: Option<ActiveTui>,
     /// `Editor::kitty_enabled` at push time, captured for the same reason as
     /// `tui`: a host completing the entry later (a different
@@ -63,7 +63,7 @@ pub(in crate::editor) struct InlineOutput {
     /// Test-only seam: counts every real [`Self::mark_entered`] this
     /// `Editor`'s lifetime has made, so a test can assert the bracket fired
     /// at least once without capturing real terminal I/O. Unlike `entered`,
-    /// never reset — a session boundary clearing it would defeat the point.
+    /// never reset: a session boundary clearing it would defeat the point.
     #[cfg(test)]
     enters: usize,
 }
@@ -71,8 +71,8 @@ pub(in crate::editor) struct InlineOutput {
 impl InlineOutput {
     /// Push a frame for `name`, currently executing with active handle
     /// `tui` (`Tui::as_active`'s result) and kitty state `kitty`. Marks `ran`
-    /// when `tui` is `Some` — see the module doc. Returns the depth to
-    /// [`Self::truncate`] back to at the matching restore — the frame count
+    /// when `tui` is `Some` (see the module doc). Returns the depth to
+    /// [`Self::truncate`] back to at the matching restore: the frame count
     /// before this push, i.e. this frame's own index.
     pub(in crate::editor) fn push(
         &mut self,
@@ -92,15 +92,15 @@ impl InlineOutput {
         depth
     }
 
-    /// Truncate the frame stack back to `depth` — the Rust side of a
+    /// Truncate the frame stack back to `depth`: the Rust side of a
     /// `call!`-armed nested command's matching `%restore-inline-output!`, or
     /// the unconditional `0` every Steel session's tail passes regardless of
     /// outcome. Drops this call's own frame and any descendant frame a
     /// caught error left unpaired above it, rather than blindly popping the
     /// top: by the time a nested `call!` returns, its own frame is not
     /// necessarily the top any more if something it called (directly or
-    /// transitively) raised and the raise was caught rather than propagated
-    /// — the raiser's frame is then a leak sitting above this call's own,
+    /// transitively) raised and the raise was caught rather than propagated:
+    /// the raiser's frame is then a leak sitting above this call's own,
     /// and a blind pop would remove the leak instead of the frame that's
     /// actually closing. Never touches `entered`/`ran`: those are read at
     /// the Rust boundary right after this runs.
@@ -109,7 +109,7 @@ impl InlineOutput {
     }
 
     /// Whether a declared `#:inline-output` command is anywhere on the
-    /// current call stack — the stdout gate opens whenever this is true,
+    /// current call stack. The stdout gate opens whenever this is true,
     /// with or without a live alt-screen to protect.
     pub(in crate::editor) fn is_open(&self) -> bool {
         !self.frames.is_empty()
@@ -117,7 +117,7 @@ impl InlineOutput {
 
     /// The innermost frame's name, captured active handle, and captured
     /// kitty state if it owns the terminal and the alt-screen hasn't already
-    /// been left this session — `None` otherwise, including once `entered`
+    /// been left this session; `None` otherwise, including once `entered`
     /// is already set, so nesting deeper after the first real print can
     /// never re-enter.
     pub(in crate::editor) fn needs_enter(&self) -> Option<(&str, &ActiveTui, bool)> {
@@ -149,20 +149,20 @@ impl InlineOutput {
         }
     }
 
-    /// Take the terminal state saved by [`Self::mark_entered`], clearing it —
-    /// call once, at the Rust boundary closing the bracket.
+    /// Take the terminal state saved by [`Self::mark_entered`], clearing it.
+    /// Call once, at the Rust boundary closing the bracket.
     pub(in crate::editor) fn take_entered(&mut self) -> Option<Entered> {
         self.entered.take()
     }
 
-    /// Take (and clear) whether any frame this session owned the terminal —
-    /// call once, at the same Rust boundary as [`Self::take_entered`].
+    /// Take (and clear) whether any frame this session owned the terminal.
+    /// Call once, at the same Rust boundary as [`Self::take_entered`].
     pub(in crate::editor) fn take_ran(&mut self) -> bool {
         std::mem::take(&mut self.ran)
     }
 
     /// Test-only seam: how many times the alt-screen has actually been left
-    /// during this `Editor`'s lifetime — lets a test pin an exact count (a
+    /// during this `Editor`'s lifetime. Lets a test pin an exact count (a
     /// re-entry bug shows up as `2`, not "entered"; `0` for "never entered").
     #[cfg(test)]
     pub(in crate::editor) fn enter_count(&self) -> usize {
@@ -198,7 +198,7 @@ mod tests {
     /// The scenario `InlineOutput::truncate`'s own doc names: a `call!`
     /// nested two levels deep raises and the raise is caught above it,
     /// leaving its frame unpaired. The outer `call!`'s own restore must
-    /// still remove both the leaked frame and its own — not just the top
+    /// still remove both the leaked frame and its own, not just the top
     /// one a blind pop would take.
     ///
     /// A single `self.frames.pop()` that ignores `depth` would remove only the
@@ -239,7 +239,7 @@ mod tests {
     }
 
     /// `needs_enter` must return the pushing frame's own captured `kitty`,
-    /// not some ambient default — the whole reason `Frame` captures it
+    /// not some ambient default: the whole reason `Frame` captures it
     /// rather than a caller re-reading `Editor::kitty_enabled` later (a
     /// different, or differently-configured, host may disagree).
     #[test]

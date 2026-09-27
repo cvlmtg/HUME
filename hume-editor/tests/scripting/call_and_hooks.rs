@@ -206,7 +206,7 @@ fn register_hook_no_fire_if_no_handlers() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    // No handlers registered — fire_hook must succeed without dispatching anything.
+    // No handlers registered: fire_hook must succeed without dispatching anything.
     h.fire_hook("on-buffer-open", &[], &mut mock).unwrap();
 
     // Proves no native dispatch occurred (would have been recorded in dispatched_native).
@@ -286,7 +286,7 @@ fn register_hook_unknown_name_errors() {
 
 #[test]
 fn fire_hook_globals_cleared_between_fires() {
-    // Each fire must see exactly its own args — stale values from a prior
+    // Each fire must see exactly its own args; stale values from a prior
     // fire (e.g. Arc references to a closed buffer) must never leak into a
     // subsequent fire with different args.
     let mut h = host();
@@ -310,7 +310,7 @@ fn fire_hook_globals_cleared_between_fires() {
         msgs1
     );
 
-    // Second fire with different args — any stale first-fire arg would give a wrong result.
+    // Second fire with different args: any stale first-fire arg would give a wrong result.
     let new_val2 = "normal".into_steelval().unwrap();
     h.fire_hook("on-mode-change", &[old_val, new_val2], &mut mock)
         .unwrap();

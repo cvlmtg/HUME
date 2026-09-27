@@ -108,7 +108,7 @@ fn path_completer_dirs_only_mode() {
         languages: &langs,
     };
 
-    // dirs_only — files must be excluded.
+    // dirs_only: files must be excluded.
     let (_, dirs) = complete_path_dirs_only("cd m", 4, &ctx);
     let dir_names: Vec<&str> = dirs.iter().map(|c| c.label.as_ref()).collect();
     assert!(
@@ -120,7 +120,7 @@ fn path_completer_dirs_only_mode() {
         "dirs_only must exclude files"
     );
 
-    // Plain complete_path — both dirs and files must appear.
+    // Plain complete_path: both dirs and files must appear.
     let (_, all) = complete_path("e m", 3, &ctx);
     let all_names: Vec<&str> = all.iter().map(|c| c.label.as_ref()).collect();
     assert!(

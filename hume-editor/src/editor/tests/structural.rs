@@ -1,5 +1,5 @@
 // Editor-level tests for tree-sitter structural text objects (`m i f`, `m a
-// c`, …) and structural navigation (`goto-next-<kind>`, `goto-prev-<kind>`) —
+// c`, …) and structural navigation (`goto-next-<kind>`, `goto-prev-<kind>`):
 // the `SelectionBody::Structural` wiring in `commands/structural.rs`,
 // `registry/defaults/structural.rs`, and `keymap/defaults.rs`.
 //
@@ -17,7 +17,7 @@ use test_fixtures::{
     require_fixture_file, require_grammars,
 };
 
-/// Require this file's grammar fixture — see
+/// Require this file's grammar fixture; see
 /// `test_fixtures::require_grammars`/`require_fixture_file`.
 fn require_fixtures() {
     require_grammars(&["rust"]);
@@ -28,13 +28,13 @@ fn require_fixtures() {
 }
 
 /// Build an editor from the marker DSL with the `rust` grammar (plus its
-/// real Helix-maintained `textobjects.scm` — what `:plum-install-grammar`
-/// actually fetches) attached, but the initial parse *not yet* drained —
+/// real Helix-maintained `textobjects.scm`, what `:plum-install-grammar`
+/// actually fetches) attached, but the initial parse *not yet* drained:
 /// the window `ensure_syntax_current`'s no-committed-tree gate covers.
 fn rust_editor_undrained(source: &str) -> Editor {
     require_fixtures();
     let to_path = helix_textobjects_path("rust")
-        .expect("rust helix-textobjects.scm fixture — run scripts/fetch-test-grammars.sh");
+        .expect("rust helix-textobjects.scm fixture: run scripts/fetch-test-grammars.sh");
     let mut ed = editor_from(source);
     let bid = ed.focused_buffer_id();
     attach_fixture_grammar_with(
@@ -53,7 +53,7 @@ fn rust_editor_undrained(source: &str) -> Editor {
 }
 
 /// Build an editor from the marker DSL with the `rust` grammar (plus its
-/// real Helix-maintained `textobjects.scm` — what `:plum-install-grammar`
+/// real Helix-maintained `textobjects.scm`, what `:plum-install-grammar`
 /// actually fetches) attached and the initial parse drained.
 ///
 /// `pub(super)`: `object_jump_align.rs` reuses this for its own
@@ -80,7 +80,7 @@ fn selected_text(ed: &Editor) -> String {
     text_of(ed.doc().text(), ed.current_selections().primary())
 }
 
-/// The text covered by every selection, sorted by position — for
+/// The text covered by every selection, sorted by position, for
 /// multi-cursor assertions.
 fn selection_texts(ed: &Editor) -> Vec<String> {
     let text = ed.doc().text();
@@ -139,8 +139,8 @@ fn around_function_on_an_attributed_function_includes_the_attribute() {
 // ── Extend ───────────────────────────────────────────────────────────────────
 
 /// `e` (toggle sticky Extend) then `m i f` unions the current selection with
-/// the smallest enclosing function; a second `m i f` — selection already
-/// equal to that object — grows outward to the next enclosing one
+/// the smallest enclosing function; a second `m i f` (selection already
+/// equal to that object) grows outward to the next enclosing one
 /// (`apply_text_object_extend`'s past-end retry).
 #[test]
 fn inner_function_extend_unions_then_second_press_grows_outward() {
@@ -180,7 +180,7 @@ fn goto_next_function_selects_the_whole_next_function_head_at_start() {
 }
 
 /// A second press, searching forward from the current selection's end,
-/// cannot re-select the closure nested inside it — the object just
+/// cannot re-select the closure nested inside it: the object just
 /// selected is skipped, as Helix does.
 #[test]
 fn goto_next_function_a_second_press_skips_a_nested_closure() {
@@ -211,7 +211,7 @@ fn goto_prev_function_with_count_two_advances_two_objects_backward() {
 
 /// Backward search from inside a function lands on that function's own
 /// start (Helix's start-keyed backward rule), so the union with the current
-/// (collapsed, already-inside) selection is the whole function — the same
+/// (collapsed, already-inside) selection is the whole function, the same
 /// "target is the anchor's own unit" case `apply_word_select_extend`
 /// selects wholly rather than partially.
 #[test]
@@ -222,7 +222,7 @@ fn goto_prev_function_extend_from_inside_selects_the_whole_enclosing_function() 
 }
 
 /// Extending after a Move-mode result keeps the just-selected function fully
-/// covered while growing onto the next one — the union with the previous
+/// covered while growing onto the next one: the union with the previous
 /// selection, not a plain replacement, since a Move result's own anchor sits
 /// at the object's far edge (see `apply_object_motion`'s doc in `hume-ops`).
 /// No nested closure here (unlike `NAV_SRC`): that case only ever absorbs
@@ -240,7 +240,7 @@ fn goto_next_function_extend_after_move_keeps_both_functions_selected() {
 }
 
 /// `count` 2 from before the first function lands on the second, not the
-/// third — each count step re-searches from the previous step's own end.
+/// third: each count step re-searches from the previous step's own end.
 #[test]
 fn goto_next_function_with_count_two_advances_two_objects() {
     let mut ed = rust_editor(
@@ -269,7 +269,7 @@ fn goto_next_function_records_a_jump_list_entry() {
     assert_eq!(before, state(&ed));
 }
 
-/// Extend mode keeps the anchor pinned to the selection's original anchor —
+/// Extend mode keeps the anchor pinned to the selection's original anchor;
 /// only the head moves to the found object's edge.
 #[test]
 fn goto_next_function_extend_keeps_the_anchor() {
@@ -282,7 +282,7 @@ fn goto_next_function_extend_keeps_the_anchor() {
 }
 
 /// `goto-next-argument` navigates `parameter.inside` (not `.around`, whose
-/// hull includes the trailing comma) — the trimmed span, no comma.
+/// hull includes the trailing comma): the trimmed span, no comma.
 #[test]
 fn goto_next_argument_selects_the_trimmed_argument_with_no_comma() {
     let mut ed = rust_editor("fn call_site() {\n    foo(-[a]>aa, bbb, ccc);\n}\n");
@@ -338,7 +338,7 @@ fn structural_commands_are_no_ops_without_a_grammar() {
 
 /// Before the background worker's first parse lands, `ensure_syntax_current`
 /// no-ops rather than blocking the UI thread on a full synchronous parse of
-/// the whole buffer — the command reads as the same "no grammar" no-op until
+/// the whole buffer. The command reads as the same "no grammar" no-op until
 /// the next `reparse_stale_buffers` installs the worker's result.
 #[test]
 fn structural_command_before_the_first_parse_lands_is_a_no_op() {
@@ -409,7 +409,7 @@ fn structural_command_after_a_failed_parse_reparses_instead_of_reading_stale_lay
     assert_eq!(syn.parsed_gen(), Some(text_gen));
     assert!(
         !syn.is_current(text_gen),
-        "layers must still predate the edit — otherwise this test proves nothing"
+        "layers must still predate the edit, otherwise this test proves nothing"
     );
 
     for ch in "mif".chars() {
@@ -448,7 +448,7 @@ fn dot_repeat_of_around_function_deletes_the_function_under_the_new_cursor() {
 /// A macro that deletes a line inside a function (`x d`) and then selects
 /// and deletes that function's now-current body (`m i f d`), replayed in one
 /// `drain_replay_queue()` batch, must see the post-edit tree for its second
-/// step — not the pre-edit byte ranges the first step invalidated.
+/// step, not the pre-edit byte ranges the first step invalidated.
 ///
 /// Without the `ensure_syntax_current` call in `SelectionBody::Structural`'s
 /// dispatch arm, the `m i f` step would compute its span
@@ -478,7 +478,7 @@ fn macro_replay_reparses_before_each_structural_step() {
 // ── Unified argument (`m i a` / `m a a`) ─────────────────────────────────────
 
 /// A sibling argument's `,` inside a string literal must not fool the
-/// separator scan — the tree span for the whole string-literal argument
+/// separator scan: the tree span for the whole string-literal argument
 /// wins outright.
 #[test]
 fn around_argument_ignores_a_comma_inside_a_sibling_string_literal() {
@@ -501,7 +501,7 @@ fn around_argument_on_the_last_parameter_eats_the_preceding_separator() {
 }
 
 /// A top-level array literal has no `parameter` capture (its elements are
-/// `entry` objects) — `m i a` falls back to the lexical scan.
+/// `entry` objects), so `m i a` falls back to the lexical scan.
 #[test]
 fn inner_argument_in_a_top_level_array_falls_back_to_the_lexical_scan() {
     let mut ed = rust_editor("fn holds_array() {\n    let arr = [-[1]>, 2, 3];\n}\n");
@@ -512,7 +512,7 @@ fn inner_argument_in_a_top_level_array_falls_back_to_the_lexical_scan() {
 }
 
 /// An array literal that IS a call argument is itself the `parameter` (its
-/// elements are not) — the tree span wins over the lexical scan, selecting
+/// elements are not), so the tree span wins over the lexical scan, selecting
 /// the whole array rather than the element under the cursor.
 #[test]
 fn inner_argument_on_an_array_literal_argument_selects_the_whole_array() {
@@ -534,7 +534,7 @@ fn inner_argument_in_a_scratch_buffer_with_no_grammar_still_works() {
 }
 
 /// A grammar attached but with no `textobjects.scm` at all (`QueryPaths`
-/// leaves `textobjects: None`) — `object_spans` finds nothing, so `m i a`
+/// leaves `textobjects: None`): `object_spans` finds nothing, so `m i a`
 /// falls back to the lexical scan exactly as the no-grammar case does, and
 /// `ensure_syntax_current`'s no-textobjects-anywhere gate must not break
 /// that fallback along the way.
@@ -589,7 +589,7 @@ fn goto_next_class_selects_the_whole_next_struct() {
 }
 
 /// `comment.inside` captures a single `line_comment` node with no grouping
-/// quantifier (unlike `comment.around`'s `(line_comment)+`) — `m i c` selects
+/// quantifier (unlike `comment.around`'s `(line_comment)+`), so `m i c` selects
 /// only the line under the cursor, never the whole contiguous block.
 #[test]
 fn inner_comment_selects_only_the_line_at_the_cursor() {
@@ -638,7 +638,7 @@ fn around_unit_test_includes_the_test_attribute() {
 }
 
 /// `test.around`'s `(#eq? @_test_attribute "test")` predicate must actually
-/// filter — a plain function ahead of the real `#[test]` one is skipped.
+/// filter: a plain function ahead of the real `#[test]` one is skipped.
 #[test]
 fn goto_next_unit_test_skips_a_plain_function_and_lands_on_the_test() {
     let mut ed = rust_editor(
@@ -651,10 +651,10 @@ fn goto_next_unit_test_skips_a_plain_function_and_lands_on_the_test() {
     );
 }
 
-/// `entry.inside`/`entry.around` on a struct's `field_declaration` — a
+/// `entry.inside`/`entry.around` on a struct's `field_declaration`: a
 /// different pattern from the array/tuple case below (one match per named
 /// child, each its own inside span; the same enclosing `field_declaration`
-/// as the around span). Command names/key say "value" — see
+/// as the around span). Command names/key say "value"; see
 /// `STRUCTURAL_OBJECTS`'s entry row for why the capture stays `entry`.
 #[test]
 fn inner_value_selects_a_struct_fields_name() {
@@ -674,7 +674,7 @@ fn around_value_selects_the_whole_field_declaration() {
     assert_eq!(selected_text(&ed), "x: i32");
 }
 
-/// `(array_expression (_) @entry.around)` captures each element on its own —
+/// `(array_expression (_) @entry.around)` captures each element on its own:
 /// no grouping, no separator, unlike the `parameter` family.
 #[test]
 fn around_value_on_an_array_element_selects_just_that_element() {
@@ -698,7 +698,7 @@ fn goto_next_value_walks_array_elements() {
 /// *last* test's closing brace (see
 /// `test_around_two_sequential_tests_has_no_spurious_merged_span` in
 /// `hume-treesitter`). `goto-next-test` from before the first test lands on
-/// that merged span — selecting every test at once — instead of just the
+/// that merged span (selecting every test at once) instead of just the
 /// first one. This is the mechanism behind `gu` extending toward the end of
 /// a file like `hume-editing/src/lines/tests.rs`, which has many
 /// `#[test]` fns.

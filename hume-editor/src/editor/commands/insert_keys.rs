@@ -1,10 +1,10 @@
-//! Insert mode's default per-key handling — what a key does when the
+//! Insert mode's default per-key handling: what a key does when the
 //! Insert keymap has no binding for it (or, via the `insert-key!` builtin,
 //! when a bound command wants that same default behaviour anyway). A free
 //! function over `(state, view, fp)` rather than an `impl Editor` method:
 //! two of its callers, `handle_insert`'s (`input_stack/insert.rs`) own
 //! unbound-key fallback and the `EditHost::insert_key` builtin, are on
-//! opposite sides of the `Editor`/`EditorState` split — a
+//! opposite sides of the `Editor`/`EditorState` split: a
 //! Steel builtin only ever holds `&mut EditorState` + `&mut EngineView` (see
 //! `host_impl.rs`'s own doc), never a whole `&mut Editor`. `replay.rs`'s own
 //! replay of an unbound key reuses the same function despite already
@@ -58,7 +58,7 @@ pub(in crate::editor) fn insert_default_key(
                 .overrides
                 .auto_pairs_ref(&state.settings);
             // `OnTriggerChar` only fires when `ch` actually landed in the
-            // buffer — the two skip-close branches below just move the
+            // buffer. The two skip-close branches below just move the
             // cursor past an existing closer, inserting nothing.
             let mut inserted = true;
             if ap_enabled {
@@ -112,7 +112,7 @@ pub(in crate::editor) fn insert_default_key(
                 // The hook above is for any listener (signature help); a
                 // completion source's own trigger chars are looked up
                 // directly against the registry
-                // (`SourceRegistry::buffer_sources_for_trigger`) — no hook
+                // (`SourceRegistry::buffer_sources_for_trigger`), with no hook
                 // round trip, and no dependency on
                 // `register-trigger-chars!`'s separate table (`sources`
                 // above is that table's own answer, used only to fire the
@@ -143,7 +143,7 @@ pub(in crate::editor) fn insert_default_key(
         //
         // `allowed` (vim autoindent parity): only vacate a blank line's
         // whitespace if it's owned by an earlier auto-indent this session
-        // itself made — never on the first Enter that lands on a
+        // itself made, never on the first Enter that lands on a
         // pre-existing blank line, since nothing has armed a record for it
         // yet. `arm_autoindent` after the edit records the *new* line's own
         // copied indent, so the next Enter/Esc on it trims.
@@ -160,7 +160,7 @@ pub(in crate::editor) fn insert_default_key(
         // Backspace needs no special handling to preserve autoindent
         // ownership: deleting *inside* the owned range only shrinks the
         // line's current whitespace, which stays within the recorded
-        // `allowed.end` (see `is_owned_blank_line`'s containment check) —
+        // `allowed.end` (see `is_owned_blank_line`'s containment check),
         // matching `:help autoindent`'s own carve-out naming `<BS>` as the
         // one key that doesn't cancel a pending auto-indent trim.
         KeyCode::Backspace => {
@@ -169,7 +169,7 @@ pub(in crate::editor) fn insert_default_key(
             let tw = overrides.tab_width(&state.settings);
             if should_dedent_backspace(state, view, fp) {
                 // Dedent: snap every cursor in leading whitespace back to
-                // the previous tab stop. All-or-nothing — if any cursor
+                // the previous tab stop. All-or-nothing: if any cursor
                 // isn't in leading ws, the whole batch falls back.
                 apply_insert_edit(state, view, fp, move |b, s| dedent_tab_backward(b, s, tw));
             } else if ap_enabled && is_between_pair(state, view, fp, ap_pairs) {
@@ -193,7 +193,7 @@ pub(in crate::editor) fn insert_default_key(
 /// Applies a grouped edit on `fp`'s (pane, buffer) and, if a completion
 /// session is open on that same buffer, tells it
 /// (`EditorState::completion_observe_edit`: remap every token, re-rank,
-/// re-invoke incomplete sources, dismiss if typed out of) — the chokepoint
+/// re-invoke incomplete sources, dismiss if typed out of): the chokepoint
 /// every keystroke handler above that edits the buffer directly goes
 /// through, so no such call site needs its own record-or-not decision.
 fn apply_insert_edit(
@@ -211,9 +211,9 @@ fn apply_insert_edit(
 }
 
 /// Moves the cursor right past an existing closer instead of inserting a
-/// duplicate — both auto-pair skip-close branches above (`"` typed while
+/// duplicate: both auto-pair skip-close branches above (`"` typed while
 /// sitting on a `"`, `)` typed while sitting on a `)`). A motion, not an
-/// edit — bypasses `apply_insert_edit`, so `completion_observe_edit` never
+/// edit. It bypasses `apply_insert_edit`, so `completion_observe_edit` never
 /// runs and a live session's token would go untracked. Dismiss rather than
 /// reintroduce a keystroke-driven refilter for a motion path that carries
 /// no `ChangeSet` to remap.
@@ -233,7 +233,7 @@ fn skip_over_close(state: &mut EditorState, view: &EngineView, fp: FocusedPane) 
 /// stays consistent.
 ///
 /// "In leading whitespace" means every char in `[line_start, head)` is a
-/// space or tab — so a cursor on the first content char (right after the
+/// space or tab, so a cursor on the first content char (right after the
 /// indent) also qualifies, matching the dedent-to-prev-tab-stop behaviour of
 /// modern editors. The boundary itself comes from the shared
 /// [`leading_whitespace_end`] primitive.

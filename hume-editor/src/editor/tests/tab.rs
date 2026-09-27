@@ -1,7 +1,7 @@
 // Tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev`, their mappable
 // `goto-next-tab`/`goto-prev-tab` siblings (`Ctrl-p t`/`Ctrl-p T`), and the
 // tabline's own visibility setting. See `editor::tab`'s module doc for the
-// model — a tab is a saved window layout, not a per-buffer strip.
+// model: a tab is a saved window layout, not a per-buffer strip.
 
 use super::*;
 use hume_engine::pipeline::LayoutTree;
@@ -30,7 +30,7 @@ fn tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it() {
     assert_eq!(
         ed.view.panes.len(),
         2,
-        "the new tab's pane is a real, separate pane — not a rename of A's"
+        "the new tab's pane is a real, separate pane, not a rename of A's"
     );
     assert!(
         matches!(*ed.view.layout(), LayoutTree::Leaf(id) if id == ed.state.focus.id()),
@@ -52,7 +52,7 @@ fn tabnew_with_no_arg_views_the_same_buffer_as_the_source_pane() {
     );
 }
 
-/// `tab-new` — the mappable sibling of `:tabnew` with no path argument, for
+/// `tab-new`: the mappable sibling of `:tabnew` with no path argument, for
 /// `bind-key!`/`call!` callers that have no typed-command dispatch path.
 /// Same assertions as `tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it`
 /// and `tabnew_with_no_arg_views_the_same_buffer_as_the_source_pane`, since
@@ -115,7 +115,7 @@ fn tabclose_frees_every_pane_the_closed_tab_owns_and_restores_the_previous_tab()
     let tab_a = ed.state.tabs.current();
 
     ed.execute_typed("tabnew", None).unwrap();
-    // A split inside the new tab — tabclose must free both of its panes,
+    // A split inside the new tab: tabclose must free both of its panes,
     // not just the one that was focused.
     ed.execute_typed("split", None).unwrap();
     assert_eq!(ed.view.panes.len(), 3, "A, plus B's two split panes");
@@ -138,13 +138,13 @@ fn tabclose_frees_every_pane_the_closed_tab_owns_and_restores_the_previous_tab()
 
 // ── Per-frame work follows the active tab ──────────────────────────────────────
 
-/// A hidden tab's pane must not get decorated by `prepare_frame` — only
+/// A hidden tab's pane must not get decorated by `prepare_frame`, only
 /// the active tab's own pane, even when both view the same buffer and the
 /// same decoration data.
 #[test]
 fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
     // `editor_from`'s bootstrap pane is built via `Pane::new` directly, with
-    // no `panes.render` entry (see `Editor::for_testing`'s comment) — only
+    // no `panes.render` entry (see `Editor::for_testing`'s comment). Only
     // `open_pane` seeds one, so this test inspects B's decoration state
     // only (B's pane comes from `open_tab` → `open_pane`), not A's.
     let mut ed = editor_from("-[h]>ello\n");
@@ -185,7 +185,7 @@ fn a_hidden_tab_s_pane_keeps_its_decoration_state_until_its_tab_is_focused() {
     );
 }
 
-/// A resize while a tab is hidden must still resync its panes' viewports —
+/// A resize while a tab is hidden must still resync its panes' viewports:
 /// `Editor::sync_viewport_dims` re-partitions every tab's own tree against
 /// the new terminal area on every resize, not just the active one
 /// (`TabStore::inactive_layouts`), so a background pane's geometry never
@@ -204,7 +204,7 @@ fn resizing_while_a_tab_is_hidden_still_resyncs_its_viewport() {
 
     ed.execute_typed("tabprev", None).unwrap();
 
-    // Resize while B is hidden — no switch back, no extra frame.
+    // Resize while B is hidden: no switch back, no extra frame.
     frame(&mut ed, 40, 10);
     assert_ne!(
         ed.view.panes[pid_b].viewport.width, width_before,
@@ -213,7 +213,7 @@ fn resizing_while_a_tab_is_hidden_still_resyncs_its_viewport() {
 }
 
 /// `:q` on a tab's own last pane closes the tab (Vim's placement), not the
-/// editor — `view.panes.len()` is a global pool shared by every tab, so it
+/// editor: `view.panes.len()` is a global pool shared by every tab, so it
 /// stays `> 1` here even though the active tab has just this one pane.
 #[test]
 fn quit_on_a_tab_s_last_pane_closes_the_tab() {
@@ -233,7 +233,7 @@ fn quit_on_a_tab_s_last_pane_closes_the_tab() {
 }
 
 /// `Ctrl-p c` stays pane-scoped: on a tab's own last pane it refuses with a
-/// status message, even with other tabs open — `:q` owns closing the tab.
+/// status message, even with other tabs open. `:q` owns closing the tab.
 #[test]
 fn close_pane_is_refused_on_a_tab_s_last_pane_with_other_tabs_open() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
@@ -282,7 +282,7 @@ fn tabclose_on_the_leftmost_tab_focuses_its_right_neighbour() {
     );
 }
 
-/// The common case: closing a middle tab focuses its *right* neighbour —
+/// The common case: closing a middle tab focuses its *right* neighbour,
 /// Vim's own `:tabclose` default. Left-preference only kicks in for the
 /// rightmost tab (see the test below), which this codebase implements as
 /// its own default rather than opting into Vim 9.1's `'tabclose'=left`.
@@ -386,7 +386,7 @@ fn tabnext_and_tabprev_aliases_work() {
     assert_eq!(ed.state.tabs.current(), tab_b);
 }
 
-/// `Ctrl-p t` / `Ctrl-p T` — the mappable `goto-next-tab`/`goto-prev-tab`
+/// `Ctrl-p t` / `Ctrl-p T`: the mappable `goto-next-tab`/`goto-prev-tab`
 /// siblings of `:tabnext`/`:tabprev`.
 #[test]
 fn ctrl_p_t_and_shift_t_cycle_tabs() {
@@ -412,9 +412,9 @@ fn ctrl_p_t_and_shift_t_cycle_tabs() {
     );
 }
 
-/// `goto-next-tab` dispatched via `call!`/`run_command_sync` — the path a
+/// `goto-next-tab` dispatched via `call!`/`run_command_sync` (the path a
 /// Steel hook or a custom Insert-mode keybinding reaches, not a keypress or
-/// mouse click — must leave the outgoing pane exactly the way
+/// mouse click) must leave the outgoing pane exactly the way
 /// `clicking_another_tab_while_in_insert_...` (`tests/mouse.rs`) proves the
 /// mouse path does: `focus_pane` is the one chokepoint every `focus` write
 /// goes through, so this isn't a per-caller special case.
@@ -439,7 +439,7 @@ fn goto_next_tab_via_call_while_in_insert_exits_insert_and_commits_the_outgoing_
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on that blank,
-    // auto-indented line — the session's own autoindent record now names it,
+    // auto-indented line. The session's own autoindent record now names it,
     // so exiting Insert now will trim it.
     assert_eq!(
         ed.state.buffers.get(bid_a).text().to_string(),
@@ -493,7 +493,7 @@ fn tabline_dynamic_default_hides_with_one_tab_and_shows_with_two() {
 #[test]
 fn tabline_never_stays_hidden_even_with_multiple_tabs() {
     // Steel round-tripping `set-option!` down to this same field is covered
-    // by `settings::tests::set_global_tabline` — this test only needs to
+    // by `settings::tests::set_global_tabline`. This test only needs to
     // confirm the tabline sync itself honors the setting once written.
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.settings.tabline = crate::editor::settings::TablineVisibility::Never;
@@ -503,7 +503,7 @@ fn tabline_never_stays_hidden_even_with_multiple_tabs() {
     assert!(!ed.state.tabline_view.read().visible);
 }
 
-/// A hidden tabline must skip building any `TabEntry` at all — `visible`
+/// A hidden tabline must skip building any `TabEntry` at all. `visible`
 /// controls whether the row paints, but `sync_tabline_view`'s fast path for
 /// the hidden case returns before the per-tab loop runs.
 #[test]
@@ -518,7 +518,7 @@ fn hidden_tabline_populates_no_entries() {
 
 /// Once a narrow terminal has scrolled the tab bar forward to keep the
 /// active (last-opened) tab in view, widening the terminal enough to fit
-/// every tab must retreat the window back to 0 — not leave earlier tabs
+/// every tab must retreat the window back to 0, not leave earlier tabs
 /// hidden behind a scroll position the row no longer needs.
 #[test]
 fn widening_the_terminal_after_scrolling_brings_earlier_tabs_back() {
@@ -528,7 +528,7 @@ fn widening_the_terminal_after_scrolling_brings_earlier_tabs_back() {
     }
     assert_eq!(ed.state.tabs.len(), 6);
 
-    // Narrow enough that only one "*scratch*" tab at a time fits — forces
+    // Narrow enough that only one "*scratch*" tab at a time fits. Forces
     // scroll to advance well past 0 to keep the active (last) tab visible.
     frame(&mut ed, 20, 10);
     assert!(
@@ -570,11 +570,11 @@ fn tabclose_down_to_a_fitting_count_resets_the_scroll_window() {
     assert_eq!(
         ed.state.tabline_view.read().scroll,
         0,
-        "two tabs fit together at this width — the window must reset"
+        "two tabs fit together at this width: the window must reset"
     );
 }
 
-/// Full-frame render with two tabs open — the active one styled distinctly,
+/// Full-frame render with two tabs open: the active one styled distinctly,
 /// a `│` separator between them, and the pane content below unaffected.
 /// `lib.rs`'s tab shows no dirty marker; `*scratch*`'s label comes from the
 /// buffer that both tabs shared before `:tabnew <path>` opened a second one.
@@ -594,7 +594,7 @@ fn two_tabs_render_with_the_active_one_styled_distinctly() {
     let rect = Rect::new(0, 0, 40, 4);
     let full = render_to_styled_string(&mut ed, rect);
     // The statusline (last row) shows the tempdir's own absolute path,
-    // randomized per test run — trimmed so the pinned snapshot covers only
+    // randomized per test run, trimmed so the pinned snapshot covers only
     // the deterministic tabline + pane content this test actually exercises.
     let without_statusline: String = full.lines().take(3).collect::<Vec<_>>().join("\n");
     insta::assert_snapshot!(without_statusline);
@@ -641,7 +641,7 @@ fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on that blank,
-    // auto-indented line — the session's own autoindent record now names it,
+    // auto-indented line. The session's own autoindent record now names it,
     // so leaving Insert now will trim it.
     assert_eq!(
         ed.state.buffers.get(bid_closing).text().to_string(),
@@ -689,7 +689,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
 
     ed.execute_typed("tabprev", None).unwrap();
     assert_eq!(ed.state.tabs.current(), tab_a, "setup: back on A");
-    seed_frame(&mut ed, 40, 10); // same 40x10 geometry throughout — only which
+    seed_frame(&mut ed, 40, 10); // same 40x10 geometry throughout: only which
     // tab is active changes from here on
 
     let mut host = ScriptingHost::new();
@@ -719,7 +719,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
 /// `last_viewport_key`'s key includes the `buffer_id`, so a pane switching
 /// buffers (`:e`, `:b#`) at unchanged geometry must re-arm
 /// `on-viewport-change` for the newly-shown buffer. Single pane, single
-/// tab — this is the
+/// tab. This is the
 /// same-tab twin of `returning_to_a_background_tab_...` above, which covers
 /// the pane-dropped-from-the-active-set cause instead.
 #[test]
@@ -745,7 +745,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
     let bid_b = ed.focused_buffer_id();
 
-    frame(&mut ed, 40, 10); // identical (top_line, height) — only buffer_id differs
+    frame(&mut ed, 40, 10); // identical (top_line, height), only buffer_id differs
 
     ed.drain_async_sources();
     ed.settle();
@@ -762,15 +762,15 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
 /// frozen bounds if the pane's tab went to the background before the timer
 /// came due. `prepare_frame`'s own housekeeping (dropping
 /// `last_viewport_key`, retiring `viewport_debounce` on close) only runs
-/// for a pane no longer in the pool at all — a background-tab pane still is
-/// — and the timer can come due from `settle()`'s drain, which runs
+/// for a pane no longer in the pool at all (a background-tab pane still is),
+/// and the timer can come due from `settle()`'s drain, which runs
 /// *before* that housekeeping even sees the pane leave the active set. The
 /// guard belongs in `queue_viewport_change` itself, the one chokepoint
 /// every fire (this debounce timer, a config reload's resync) goes through.
 #[test]
 fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_background_first() {
     let tmp = safe_tempdir();
-    // A second, distinct file for the new tab — `tabnew` with no argument
+    // A second, distinct file for the new tab: `tabnew` with no argument
     // would instead duplicate A's own pane onto its same buffer, which
     // would still legitimately re-arm and fire for bid_a from the new
     // pane, defeating the point of backgrounding it.
@@ -796,16 +796,16 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     seek_to_line(&mut ed, 4);
     frame(&mut ed, 40, 3);
 
-    // Switch away before that timer is drained — the dispatch alone, no
+    // Switch away before that timer is drained. The dispatch alone, no
     // frame in between, mirrors a tab-switch keypress landing right after
     // the scroll that armed the timer.
     ed.execute_typed("tabnew", Some(other.to_str().unwrap()))
         .unwrap();
 
     // The new tab's own next frame drains the still-pending timer, inside
-    // its `settle()` — which runs before this same frame's own housekeeping
+    // its `settle()`, which runs before this same frame's own housekeeping
     // drops pid_a's `last_viewport_key`. Must not fire on-viewport-change for A.
-    // (It legitimately arms and fires for the new tab's own buffer — that's
+    // (It legitimately arms and fires for the new tab's own buffer, but that's
     // not under test here.)
     frame(&mut ed, 40, 3);
     ed.drain_async_sources();
@@ -819,7 +819,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     );
 
     // Returning to A must still re-fire, at whatever its (unchanged) geometry
-    // now is — the suppression above must not have also skipped this.
+    // now is. The suppression above must not have also skipped this.
     ed.execute_typed("tabprev", None).unwrap();
     frame(&mut ed, 40, 3);
     ed.drain_async_sources();
@@ -843,7 +843,7 @@ fn sync_tabline_view_skips_the_rebuild_when_nothing_changed() {
     ed.execute_typed("tabnew", None).unwrap();
     frame(&mut ed, 40, 10);
 
-    // A value a real rebuild always overwrites — the scroll probe runs
+    // A value a real rebuild always overwrites: the scroll probe runs
     // unconditionally whenever the rebuild itself runs at all.
     let mut forced = ed.state.tabline_view.read().clone();
     forced.scroll = 9999;

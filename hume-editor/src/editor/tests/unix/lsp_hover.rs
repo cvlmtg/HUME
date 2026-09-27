@@ -19,13 +19,13 @@ use hume_scripting::ScriptingHost;
 
 /// Builds an editor with a real opened file attached to a scripted server
 /// whose handshake has fully completed (so `lsp-capabilities` decodes real
-/// data — a shortcut `client.set_state_for_test(Running)` skips that, per
+/// data; a shortcut `client.set_state_for_test(Running)` skips that, per
 /// `lsp_introspect.rs`), then loads the real shipped `core:lsp` plugin.
 /// `lsp-position-params` requires `buf.path()` to be `Some`, so every hover
-/// test needs a real file — a bare `editor_from` buffer won't do.
+/// test needs a real file; a bare `editor_from` buffer won't do.
 ///
 /// `configure` scripts any responses beyond `initialize` (e.g.
-/// `textDocument/hover`) — it must run *before* the backend is boxed into
+/// `textDocument/hover`). It must run *before* the backend is boxed into
 /// `LspState`, since `client_and_backend`/`backend_mut` only expose the
 /// trait object afterward, which can't reach `InlineLspBackend::respond_to`.
 fn setup(
@@ -38,10 +38,10 @@ fn setup(
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let file = file_dir.join("main.rs");
-    // 30 lines — comfortably taller than the default pane height's ⅓-cap
+    // 30 lines: comfortably taller than the default pane height's ⅓-cap
     // (`Pane::new`'s default viewport is 24 rows tall; `(viewport-range bid)`
     // resolves against this immediately, no `prepare_frame` needed), so a
-    // one-line hover response lands well under the popup/drawer threshold —
+    // one-line hover response lands well under the popup/drawer threshold, whereas
     // a tiny 1-2 line fixture would make even trivial hover content overflow
     // to the drawer, which isn't what these tests are checking.
     let filler = (0..29)
@@ -96,10 +96,10 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
 }
 
 fn run_hover(ed: &mut Editor) {
-    // `lsp-hover` is key-bindable, not typed — dispatch it the way `K` would,
+    // `lsp-hover` is key-bindable, not typed, so dispatch it the way `K` would,
     // through the keymap pipeline, not `:`.
     ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
-    // Settle *before* the async response arrives — mirrors the real
+    // Settle *before* the async response arrives. Mirrors the real
     // interactive loop, which drains hooks after every keystroke, well
     // before any network response could land. Draining only at the end
     // would incorrectly replay any hooks queued by dispatch itself after
@@ -142,7 +142,7 @@ fn popup_shows_the_fixture_content() {
 }
 
 /// `contents` as a `MarkedString[]` (the deprecated-but-still-emitted array
-/// shape), mixing a bare string entry with a `{language, value}` entry —
+/// shape), mixing a bare string entry with a `{language, value}` entry:
 /// the one branch of `lsp/marked-string->text`/`lsp/hover-contents->text`
 /// `popup_shows_the_fixture_content`'s single-`MarkupContent` fixture never
 /// reaches.
@@ -251,7 +251,7 @@ fn error_reports_via_the_message_log() {
 fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    // 50 lines — comfortably taller than any popup's visible window (cursor
+    // 50 lines: comfortably taller than any popup's visible window (cursor
     // cap ~⅓ pane, docked cap ~½ terminal), so Ctrl-d/Ctrl-u below exercise a
     // real scroll, not a short popup with nothing to page through.
     let value = (0..50)
@@ -276,7 +276,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     // 50 lines overflows to the docked layout (`popup_lines` only reads the
-    // cursor-anchored view) — assert on the band view instead, mirroring
+    // cursor-anchored view), so assert on the band view instead, mirroring
     // `tall_content_docks_instead_of_using_the_drawer`.
     assert!(
         ed.state
@@ -318,7 +318,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
 
 #[test]
 fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
-    // A hover popup whose content fits on screen has nothing to scroll —
+    // A hover popup whose content fits on screen has nothing to scroll:
     // Ctrl-d/Ctrl-u must not become a silent no-op that also blocks the
     // buffer's own half-page scroll. `scroll_popup` must not consume the key
     // when `max_scroll == 0`.
@@ -355,7 +355,7 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     );
 }
 
-/// `lsp/visible-lines` is `viewport-range`'s exclusive width with no `+ 1` —
+/// `lsp/visible-lines` is `viewport-range`'s exclusive width with no `+ 1`:
 /// `viewport-range` is already end-exclusive, so re-adding the old
 /// inclusive-range `+ 1` workaround would overcount by one line and shift
 /// the ⅓ popup/drawer threshold (`lsp/show-hover`) by one. The default
@@ -411,7 +411,7 @@ fn tall_content_docks_instead_of_using_the_drawer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     // The fixture file is ~30 lines against the default 24-row pane height,
-    // so the popup threshold (⅓ of visible lines) lands around 8 — 20 lines
+    // so the popup threshold (⅓ of visible lines) lands around 8, and 20 lines
     // must overflow to the docked layout regardless of the exact figure.
     let tall = (0..20)
         .map(|i| format!("line{i}"))
@@ -441,7 +441,7 @@ fn tall_content_docks_instead_of_using_the_drawer() {
             ed.state.input.popup().map(|p| &p.layout),
             Some(hume_ui::popup::PopupLayout::Docked)
         ),
-        "tall content must still be a popup — just docked, never the drawer"
+        "tall content must still be a popup, just docked, never the drawer"
     );
     assert!(
         ed.state
@@ -460,7 +460,7 @@ fn tall_content_docks_instead_of_using_the_drawer() {
 
 #[test]
 fn capability_gate_skips_the_request_when_hover_unsupported() {
-    // No response scripted for "textDocument/hover" — if the capability
+    // No response scripted for "textDocument/hover". If the capability
     // gate failed open (called the request thunk anyway), the request
     // would go unanswered and `status_msg` would stay unset, not mention
     // "not supported". That is enough to tell, without inspecting the
@@ -486,7 +486,7 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
 
 #[test]
 fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
-    // A `null` capability field is not the same as advertising support —
+    // A `null` capability field is not the same as advertising support:
     // same check as the missing-key case above, just via an explicit
     // `null` rather than an absent key.
     let tmp = safe_tempdir();
@@ -507,7 +507,7 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
     );
 }
 
-/// The user is free to switch buffers while a hover request is in flight —
+/// The user is free to switch buffers while a hover request is in flight:
 /// an LSP round-trip is async. If the response lands after that, showing
 /// hover text for a symbol the user is no longer looking at would be worse
 /// than showing nothing: `lsp-hover` sends its request with
@@ -535,7 +535,7 @@ fn stale_response_after_a_buffer_switch_shows_no_popup() {
     );
 
     // Sends the request synchronously; deliberately no settle() before the
-    // switch below — settle() unconditionally drains LSP, which would
+    // switch below: settle() unconditionally drains LSP, which would
     // deliver the response (and close the race window) before the switch
     // ever happens.
     ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
@@ -577,15 +577,15 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
 
     ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
 
-    // Bump the buffer's text_gen between send and drain — without
+    // Bump the buffer's text_gen between send and drain. Without
     // #:allow-stale this response would be dropped. No settle() call until
-    // after the edit: settle() unconditionally drains LSP too —
+    // after the edit: settle() unconditionally drains LSP too;
     // draining any earlier would deliver the
     // response (and run lsp-hover's close-on-mode-change dismiss) before
     // the edit ever happens, defeating the "intervening edit" this test
     // means to exercise. The `i`/`X`/Esc mode-change hooks below simply
     // accumulate in `pending_work`, unfired, until the one settle() call at
-    // the end — by which point no popup exists yet for a dismiss to race
+    // the end, by which point no popup exists yet for a dismiss to race
     // against.
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));

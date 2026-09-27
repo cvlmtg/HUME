@@ -7,14 +7,14 @@ use crate::editor::input_stack::PopupLayer;
 use crate::editor::message_log::{MessageLog, Severity};
 
 /// Replace `view.theme` and invalidate everything that caches against its
-/// baked colors — currently just an open popup's per-width/style cache
+/// baked colors: currently just an open popup's per-width/style cache
 /// (`PopupLayer::content`), the one input to that cache besides `text`/
 /// `syntax` (which never change during a popup's lifetime) that can change
 /// out from under it. The single chokepoint for replacing a *live*
 /// `view.theme`, so a future third replacement site can't forget the
 /// invalidation the way a hand-placed `popup.content = None` next to each
 /// write site could. `Editor::open`'s initial construction bypasses this on
-/// purpose — there is no popup yet to invalidate.
+/// purpose; there is no popup yet to invalidate.
 pub(in crate::editor) fn set_theme(
     view: &mut EngineView,
     popup: Option<&mut PopupLayer>,
@@ -76,7 +76,7 @@ pub(in crate::editor) fn load_theme_by_name(
 
 // ── Engine theme builder ──────────────────────────────────────────────────────
 
-// Default theme content — single source of truth is the TOML file.
+// Default theme content: single source of truth is the TOML file.
 // Scope names and palette values live in `runtime/themes/sand.toml`
 // (HUME's signature theme).
 const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml");
@@ -84,11 +84,11 @@ const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml
 /// Parse and return the default engine [`hume_engine::theme::Theme`] from the embedded TOML.
 ///
 /// The content is `runtime/themes/sand.toml`, embedded at compile time via
-/// `include_str!` — editing that file requires a rebuild to take effect.
+/// `include_str!`, so editing that file requires a rebuild to take effect.
 pub(in crate::editor) fn build_default_theme() -> hume_engine::theme::Theme {
     let loaded = hume_engine::theme::loader::parse_theme(DEFAULT_THEME_TOML)
-        .expect("embedded sand.toml must parse — file is compile-time embedded");
-    // Unlike a user's own theme, sand.toml is HUME's shipped content — a
+        .expect("embedded sand.toml must parse: file is compile-time embedded");
+    // Unlike a user's own theme, sand.toml is HUME's shipped content: a
     // warning here is a bug in this repo, not a typo to shrug off, so it's
     // stated as an invariant at the one site that would otherwise drop it
     // silently (`load_theme_by_name` surfaces the same warnings for every
@@ -115,7 +115,7 @@ mod tests {
 
     /// The embedded default theme (`sand.toml`, inlined via `include_str!` at
     /// compile time) must match the *same* file loaded through the production
-    /// runtime loader (`load_theme`, the path `:theme <name>` uses) — not
+    /// runtime loader (`load_theme`, the path `:theme <name>` uses), not
     /// hardcoded hex colors, which drift every time the palette is tuned and
     /// then need manual updates here. This only breaks if the embed points at
     /// the wrong file, the content fails to parse, or the two loaders disagree.
@@ -157,8 +157,8 @@ mod tests {
             );
         }
 
-        // `ui.text` must fold into `theme.default` — the base style every
-        // plain-text cell starts from (see `style::apply_styles`) — so
+        // `ui.text` must fold into `theme.default`, the base style every
+        // plain-text cell starts from (see `style::apply_styles`), so
         // unhighlighted text carries an explicit color the focus-dimming
         // blend can act on instead of escaping it as `None` (the terminal's
         // own default, which the blend has no numeric value to act on).

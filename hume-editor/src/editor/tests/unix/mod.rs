@@ -1,5 +1,5 @@
 //! Tests that cannot run on Windows, gated once at the `mod unix;`
-//! declaration in the parent — files in here need no `#[cfg]` attributes.
+//! declaration in the parent: files in here need no `#[cfg]` attributes.
 //!
 //! Most tests here load Steel plugins from disk: Scheme `require` strings
 //! embed OS paths, and backslashes are not escaped in Steel string literals.
@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 //
 // Every unix test that waits on a spawned child or streaming source (a
 // picker source, a `spawn-async!` job) polls in a bounded loop instead of a
-// single drain call — a background thread's result can land on any frame,
+// single drain call. A background thread's result can land on any frame,
 // so CI scheduling jitter would flake a "drain once and assert" test.
 
 /// Drains async sources and their queued Steel callbacks/events in a bounded
@@ -37,7 +37,7 @@ fn drain_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
 }
 
 /// Same loop as [`drain_until`], but calls `drain_async_sources` directly
-/// instead of `settle()` — for tests that drive the Rust-level registry
+/// instead of `settle()`, for tests that drive the Rust-level registry
 /// directly, with no Steel VM in play, where settling the (empty) work queue
 /// on top would be pointless.
 fn drain_sources_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) {
@@ -52,7 +52,7 @@ fn drain_sources_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) 
     }
 }
 
-/// Waits until the open picker's `total_len()` reaches exactly `n` — the
+/// Waits until the open picker's `total_len()` reaches exactly `n`: the
 /// row-count wait repeated across every `picker-source-spawn!`/
 /// `spawn-async!` picker test. No picker open never satisfies it.
 fn drain_until_picker_total(ed: &mut Editor, n: usize) {
@@ -61,7 +61,7 @@ fn drain_until_picker_total(ed: &mut Editor, n: usize) {
     });
 }
 
-/// Whether the open picker no longer has an attached source — the
+/// Whether the open picker no longer has an attached source: the
 /// respawn/stop/natural-exit convergence point every
 /// `picker-source-spawn!`/`picker-source-stop!` test polls for. A plain
 /// predicate rather than its own `drain_*_until` wrapper since callers pass
@@ -92,19 +92,19 @@ fn process_is_alive(pid: u32) -> bool {
 /// `HUME_RUNTIME` and `TMPDIR`, and restore both on drop.
 ///
 /// The claim is acquired BEFORE the tempdirs are created so that a concurrent
-/// guarded test's TMPDIR does not cause our tempdirs to be nested inside it —
+/// guarded test's TMPDIR does not cause our tempdirs to be nested inside it,
 /// which would make them disappear when that test's guard drops and deletes its
 /// tree.
 struct HumeRuntimeGuard {
     runtime: tempfile::TempDir,
     tmp: tempfile::TempDir,
-    // Last field — released after runtime/tmp dirs are deleted.
+    // Last field: released after runtime/tmp dirs are deleted.
     _lock: ClaimGuard,
 }
 
 impl HumeRuntimeGuard {
     // `set_var` here mutates process-global HUME_RUNTIME/TMPDIR, always under
-    // the `Global::Env` claim taken just above — `clippy.toml`'s
+    // the `Global::Env` claim taken just above. `clippy.toml`'s
     // `disallowed-methods` entry exists so a *new* raw call elsewhere in the
     // crate gets caught; this is a sanctioned caller.
     #[allow(clippy::disallowed_methods)]
@@ -125,7 +125,7 @@ impl HumeRuntimeGuard {
 }
 
 impl Drop for HumeRuntimeGuard {
-    // Sanctioned caller — see `Self::new`.
+    // Sanctioned caller; see `Self::new`.
     #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         // Clear env vars before the TempDir fields delete their directories and
@@ -168,13 +168,13 @@ fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
 struct RealRuntimeGuard {
     _data_tmp: tempfile::TempDir,
     prev_xdg_data_home: Option<String>,
-    // Last field — released after `_data_tmp` is deleted (see
+    // Last field: released after `_data_tmp` is deleted (see
     // `HumeRuntimeGuard`'s doc for why the drop order matters).
     _lock: ClaimGuard,
 }
 
 impl RealRuntimeGuard {
-    // Sanctioned caller — see `HumeRuntimeGuard::new`.
+    // Sanctioned caller; see `HumeRuntimeGuard::new`.
     #[allow(clippy::disallowed_methods)]
     fn new() -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
@@ -194,7 +194,7 @@ impl RealRuntimeGuard {
 }
 
 impl Drop for RealRuntimeGuard {
-    // Sanctioned caller — see `HumeRuntimeGuard::new`.
+    // Sanctioned caller; see `HumeRuntimeGuard::new`.
     #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         unsafe {
@@ -212,12 +212,12 @@ impl Drop for RealRuntimeGuard {
 // `DiagFixture`/`publish_diagnostics_notification` are shared with
 // `lsp_diagnostics_nav.rs` too (via `use super::*`). `setup_diagnostics`
 // itself is only for `lsp_diagnostics_inline.rs` (EOL summary) and
-// `lsp_diagnostic_signs.rs` (gutter signs) — both need `core:lsp` loaded
+// `lsp_diagnostic_signs.rs` (gutter signs): both need `core:lsp` loaded
 // *before* `drain_lsp()`, since both decorations are driven by the queued
 // `on-diagnostics-changed` hook (see its own doc below).
 // `lsp_diagnostics_nav.rs` keeps its own near-identical `setup`: its tests
 // pull `diagnostics-for-buffer` fresh at call time, independent of the hook,
-// so it loads the plugin *after* `drain_lsp()` instead — a genuine ordering
+// so it loads the plugin *after* `drain_lsp()` instead, a genuine ordering
 // difference, not incidental duplication.
 
 use crate::editor::lsp::LspState;
@@ -227,7 +227,7 @@ use hume_lsp::inline::InlineLspBackend;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
 
-/// `<file_dir>/main.rs` holding `"foo\n"` — char 3 is the trailing newline,
+/// `<file_dir>/main.rs` holding `"foo\n"`: char 3 is the trailing newline,
 /// so a collapsed selection there puts Insert mode's cursor right after
 /// "foo", ready to type a trigger char. Shared by the two trigger-char
 /// features (completion, signature help).
@@ -240,8 +240,8 @@ fn write_foo_fixture(file_dir: &Path) -> PathBuf {
 /// A real `core:lsp` plugin (`RealRuntimeGuard`) over a recording backend
 /// that answers `initialize` with `capabilities`, for a feature driven by
 /// server trigger characters (completion, signature help). The client and
-/// its handshake are constructed *after* the plugin loads — unlike
-/// `lsp_actions.rs`'s own setup — so `on-lsp-attach`'s handler, which
+/// its handshake are constructed *after* the plugin loads (unlike
+/// `lsp_actions.rs`'s own setup), so `on-lsp-attach`'s handler, which
 /// registers the trigger chars, is already installed when the `Running`
 /// transition fires it, once, at attach time. `configure` queues the
 /// backend's method responses before anything is sent.
@@ -281,7 +281,7 @@ fn setup_trigger_char_feature(
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     // This harness's `eval_init` never loads `languages.scm` (unlike the
     // real `Editor::init_scripting` startup sequence), so `.rs` extension
-    // detection never ran — set the language explicitly to match the
+    // detection never ran. Set the language explicitly to match the
     // "rust" server key below, which on-lsp-attach's `server-name` arg
     // (the language) must equal for register-trigger-chars! to route here.
     let lang = ed.state.config.languages.intern("rust");
@@ -303,7 +303,7 @@ fn setup_trigger_char_feature(
     (ed, guard, requests)
 }
 
-/// How many requests logged in `requests` were sent for `method` — shared by
+/// How many requests logged in `requests` were sent for `method`, shared by
 /// `lsp_sighelp.rs`, `lsp_inlay_feature.rs`, and `lsp_completion_feature.rs`,
 /// every trigger-char feature's own re-request/debounce assertions.
 fn request_count(requests: &RequestLog, method: &str) -> usize {
@@ -337,7 +337,7 @@ fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_ls
 /// Everything [`setup_diagnostics`] builds and keeps alive for the test's
 /// duration. `_dirs` bundles the two owned `TempDir`s (init-eval dir, the
 /// on-disk file's dir) into one field so every call site names exactly one
-/// keep-alive field, not two — a struct pattern's `..` drops any field it
+/// keep-alive field, not two. A struct pattern's `..` drops any field it
 /// doesn't bind *immediately*, at the `let`, not at the end of the caller's
 /// scope, so `_dirs` must always be bound explicitly (`let DiagSetup { mut
 /// ed, _guard, _dirs, .. } = setup_diagnostics(...)`), never swallowed by
@@ -347,11 +347,11 @@ fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_ls
 /// that needs one doesn't also have to hold a borrow of the whole struct.
 struct DiagSetup {
     ed: Editor,
-    /// The on-disk path `ed` opened — only
+    /// The on-disk path `ed` opened. Only
     /// `lsp_diagnostic_signs.rs`'s reload test writes new content to this
     /// and `:e!`s it; every other caller lets it go unread after setup.
     file: std::path::PathBuf,
-    /// The Steel init-eval directory — some tests `run` a second plugin
+    /// The Steel init-eval directory; some tests `run` a second plugin
     /// sign source after setup and need this again.
     tmp: std::path::PathBuf,
     _guard: RealRuntimeGuard,
@@ -359,7 +359,7 @@ struct DiagSetup {
 }
 
 /// Plugin load happens *before* `drain_lsp()` (unlike `lsp_diagnostics_nav.rs`'s
-/// otherwise-identical `setup`) — both the EOL summary and the gutter signs
+/// otherwise-identical `setup`): both the EOL summary and the gutter signs
 /// are driven by `on-diagnostics-changed`, which is a queued hook
 /// (`queue_event` → `pending_work`, actually invoked by `settle()`): the
 /// handler must be registered by `(load-plugin "core:lsp")` before that
@@ -410,7 +410,7 @@ fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
 /// Points `XDG_CONFIG_HOME`/`HUME_RUNTIME`/`XDG_DATA_HOME` at a config
 /// tempdir (holding a caller-chosen `init.scm`), the real repo `runtime/`
 /// dir, and a data tempdir staged with a real compiled grammar at the exact
-/// paths core's `grammar-output-path`/`grammar-highlights-path` expect — so
+/// paths core's `grammar-output-path`/`grammar-highlights-path` expect, so
 /// `init_scripting`'s unconditional `scheme/grammars.scm` eval (see
 /// `scripting_setup.rs`) registers it against the real source catalog.
 ///
@@ -422,7 +422,7 @@ struct StagedGrammarFixture {
     config_dir: PathBuf,
     _config_tmp: tempfile::TempDir,
     _data_tmp: tempfile::TempDir,
-    // Last field — released after the tempdirs above are deleted (see
+    // Last field: released after the tempdirs above are deleted (see
     // `HumeRuntimeGuard`'s doc for why the drop order matters).
     _lock: ClaimGuard,
 }
@@ -430,9 +430,9 @@ struct StagedGrammarFixture {
 impl StagedGrammarFixture {
     /// `grammar_name`'s compiled fixture library and `highlights.scm` staged
     /// under a fresh `<data>/grammars/`; `init_scm` written to a fresh
-    /// `init.scm`. Caller supplies `grammar_name`'s own fixture files —
+    /// `init.scm`. Caller supplies `grammar_name`'s own fixture files;
     /// callers call `require_grammars` first.
-    // Sanctioned caller — see `HumeRuntimeGuard::new`.
+    // Sanctioned caller; see `HumeRuntimeGuard::new`.
     #[allow(clippy::disallowed_methods)]
     fn new(grammar_name: &str, parser: &Path, highlights: &Path, init_scm: &str) -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
@@ -477,7 +477,7 @@ impl StagedGrammarFixture {
 }
 
 impl Drop for StagedGrammarFixture {
-    // Sanctioned caller — see `HumeRuntimeGuard::new`.
+    // Sanctioned caller; see `HumeRuntimeGuard::new`.
     #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         unsafe {
@@ -488,7 +488,7 @@ impl Drop for StagedGrammarFixture {
     }
 }
 
-/// Runs `git <args>` in `dir`, asserting success — shared by every test
+/// Runs `git <args>` in `dir`, asserting success, shared by every test
 /// fixture that needs a real git repository (`core:pickers`'s git-branch
 /// picker, `core:git-diff`'s ref fetch).
 fn git(dir: &Path, args: &[&str]) {
@@ -500,7 +500,7 @@ fn git(dir: &Path, args: &[&str]) {
     assert!(status.success(), "git {args:?} failed");
 }
 
-/// `git init -q` plus a local commit identity — a fresh sandbox has neither,
+/// `git init -q` plus a local commit identity: a fresh sandbox has neither,
 /// and `git commit` fails without one.
 fn git_init(dir: &Path) {
     git(dir, &["init", "-q"]);
@@ -515,7 +515,7 @@ fn git_init(dir: &Path) {
 // `scripting_theme_install.rs`, `injections_editor.rs`).
 
 /// Canonicalizes `root` (mirrors what `hume_scripting`'s `ScriptDirs::new`
-/// does internally) and returns `<root>/hume` — the actual directory `(data-dir)`
+/// does internally) and returns `<root>/hume`, the actual directory `(data-dir)`
 /// resolves to. macOS temp dirs are symlinks (`/var/folders` ->
 /// `/private/var/folders`); comparing against the raw tempdir path would
 /// mismatch what a registered command's absolute path actually contains.
@@ -529,9 +529,9 @@ fn lock() -> ClaimGuard {
 
 /// Load `init_src` into `ed`, pointing `HUME_RUNTIME` at the repo's real
 /// `runtime/` dir (so the real shipped plugin sources and catalogs are used)
-/// and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global — callers
+/// and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global; callers
 /// must hold a `TEST_GLOBALS.claim(Global::Env)` for the test's duration.
-// Sanctioned caller — see `HumeRuntimeGuard::new`.
+// Sanctioned caller; see `HumeRuntimeGuard::new`.
 #[allow(clippy::disallowed_methods)]
 fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
     let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -556,9 +556,9 @@ fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
     }
 }
 
-/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency —
+/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency:
 /// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file`/
-/// `stdlib/delete-dir`/`stdlib/delete-file` via `call!`) — plugin/grammar/
+/// `stdlib/delete-dir`/`stdlib/delete-file` via `call!`): plugin/grammar/
 /// theme management, no LSP awareness at all (servers.scm lives entirely in
 /// core:lsp now).
 fn load_plum(ed: &mut Editor, data_dir: &Path) {
@@ -570,7 +570,7 @@ fn load_plum(ed: &mut Editor, data_dir: &Path) {
 }
 
 /// Load the real `core:lsp` plugin only (plus its documented `core:stdlib`
-/// dependency) — the entire LSP server lifecycle: install, uninstall,
+/// dependency): the entire LSP server lifecycle: install, uninstall,
 /// listing, and scan-on-load registration.
 fn load_lsp(ed: &mut Editor, data_dir: &Path) {
     load_with_init(
@@ -590,12 +590,12 @@ fn load_lsp(ed: &mut Editor, data_dir: &Path) {
 /// field) is deleted.
 ///
 /// A test that instead pairs a bare `CwdGuard` with a *separately-scoped*
-/// `tempfile::tempdir()` local doesn't get that guarantee — independent
+/// `tempfile::tempdir()` local doesn't get that guarantee: independent
 /// locals in a function body drop in reverse declaration order, so the
 /// tempdir (declared after the guard) drops *first*, deleting the directory
 /// while the process cwd still points inside it. Any concurrently-running
-/// test that calls `std::env::current_dir()` in that window — e.g. Steel's
-/// `Engine::new()`, which falls back to it while compiling `ALL_MODULES` —
+/// test that calls `std::env::current_dir()` in that window (e.g. Steel's
+/// `Engine::new()`, which falls back to it while compiling `ALL_MODULES`)
 /// gets `ENOENT` and panics. `CwdSandbox` closes that window structurally.
 struct CwdSandbox {
     dir: tempfile::TempDir,
@@ -611,7 +611,7 @@ impl CwdSandbox {
         Self { dir, saved, _lock }
     }
 
-    /// Raw tempdir path — build child dirs/files under this.
+    /// Raw tempdir path; build child dirs/files under this.
     fn raw(&self) -> &std::path::Path {
         self.dir.path()
     }

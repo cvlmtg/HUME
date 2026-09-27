@@ -4,14 +4,14 @@
 //! [`EditorState::active_session`] relies on the invariant that at most one
 //! pane is ever mid-Insert, has a paste session open, or holds a dot-repeat
 //! replay's own placeholder. Every session records its own owner `(pane,
-//! buffer)`, so `focus::end_focus_sessions` — run by
-//! every focus change and buffer switch — commits or tears it down by
+//! buffer)`, so `focus::end_focus_sessions` (run by
+//! every focus change and buffer switch) commits or tears it down by
 //! reading that owner directly rather than current focus; ordering relative
 //! to the focus write doesn't matter. Recording the owner as one value also
 //! makes "is there a conflicting session elsewhere" a single field
 //! comparison rather than a scan over every pane, and makes a stale session
 //! left open by a caller that forgot to tear it down impossible to
-//! represent silently — there is exactly one `Option` to get right, not one
+//! represent silently: there is exactly one `Option` to get right, not one
 //! per (pane, buffer) pair. Mirrors the pattern completion sessions already
 //! use (`BufferSession` stores its `pane_id` directly on the session, not
 //! keyed by a per-pane map).
@@ -31,7 +31,7 @@ use crate::editor::error::CommandError;
 /// [`EditSessionKind::Replay`]) a compile-time guarantee rather than a
 /// convention every call site has to honor on its own.
 pub(in crate::editor) struct EditSession {
-    /// The pane that opened this session — always the focused pane, since
+    /// The pane that opened this session, always the focused pane, since
     /// Insert/paste sessions only ever open there.
     pane: PaneId,
     /// The buffer this session is editing.
@@ -39,7 +39,7 @@ pub(in crate::editor) struct EditSession {
     kind: EditSessionKind,
     group: EditGroup,
     /// Armed around an Insert-key binding dispatch, a completion accept, or
-    /// a re-armed picker hand-off — see [`DotCapture`]'s own doc. `None`
+    /// a re-armed picker hand-off; see [`DotCapture`]'s own doc. `None`
     /// outside such a dispatch, and always on a non-`Insert` session (every
     /// armer requires an open Insert session first).
     dot_capture: Option<DotCapture>,
@@ -66,14 +66,14 @@ impl EditSession {
         self.dot_capture.as_mut()
     }
 
-    /// Arms `cap` — called by `Editor::run_dot_captured`, just before the
+    /// Arms `cap`. Called by `Editor::run_dot_captured`, just before the
     /// operation that might go interactive, and again to re-arm a capture
     /// handed off from a resolved picker. Never nests: an Insert-key binding
     /// that itself calls `completion-accept!` shares the *outer* capture
     /// instead (see `EditorState::mark_dot_interactive`'s own doc), so a
-    /// capture is always taken back out — by `Editor::run_dot_captured`
+    /// capture is always taken back out (by `Editor::run_dot_captured`
     /// (finalizing it, or handing it to a picker that opened mid-dispatch),
-    /// or by `tear_down_insert`'s backstop — before the next arm.
+    /// or by `tear_down_insert`'s backstop) before the next arm.
     pub(in crate::editor) fn arm_dot_capture(&mut self, cap: DotCapture) {
         debug_assert!(
             self.dot_capture.is_none(),
@@ -82,7 +82,7 @@ impl EditSession {
         self.dot_capture = Some(cap);
     }
 
-    /// Takes the armed capture, if any — `Editor::run_dot_captured`'s own
+    /// Takes the armed capture, if any: `Editor::run_dot_captured`'s own
     /// finalize/hand-off paths, and `tear_down_insert`'s teardown-time
     /// backstop.
     pub(in crate::editor) fn take_dot_capture(&mut self) -> Option<DotCapture> {
@@ -90,35 +90,35 @@ impl EditSession {
     }
 
     /// Consumes the session, handing its [`EditGroup`] to the caller that's
-    /// about to commit it (`doc_ops::commit_open_session`) — the one place
+    /// about to commit it (`doc_ops::commit_open_session`), the one place
     /// that needs the group by value rather than by reference.
     ///
     /// A live `dot_capture` here would be silently dropped along with the
-    /// rest of the session — `tear_down_insert`'s own backstop is what must
+    /// rest of the session. `tear_down_insert`'s own backstop is what must
     /// take it out first (see that function's own doc), so reaching this
     /// with one still armed is a bug in that ordering, not a normal exit.
     pub(in crate::editor) fn into_group(self) -> EditGroup {
         debug_assert!(
             self.dot_capture.is_none(),
-            "into_group: a capture was still armed — tear_down_insert's backstop should have \
+            "into_group: a capture was still armed; tear_down_insert's backstop should have \
              taken it first"
         );
         self.group
     }
 
-    /// `true` if this is an Insert-kind session on `(pane, buffer)` — the
+    /// `true` if this is an Insert-kind session on `(pane, buffer)`: the
     /// check every caller composing an edit into an *Insert* session (as
     /// opposed to a Paste one, which has its own `group` but a different
     /// commit lifecycle) must make before touching it. A caller that only
     /// checked `pane`/`buffer` and skipped `kind` could silently compose an
     /// Insert-mode edit into an open Paste session's group instead of
-    /// panicking on the mismatch — this is the one place that three-way
+    /// panicking on the mismatch. This is the one place that three-way
     /// check is spelled out, so it can't be forgotten at a new call site.
     pub(in crate::editor) fn is_insert_at(&self, pane: PaneId, buffer: BufferId) -> bool {
         self.owned_by(pane, buffer) && matches!(self.kind, EditSessionKind::Insert)
     }
 
-    /// `true` if this is a Paste-kind session on `(pane, buffer)` — the
+    /// `true` if this is a Paste-kind session on `(pane, buffer)`: the
     /// `is_insert_at` counterpart for the other kind [`EditSessionKind`]
     /// can hold.
     pub(in crate::editor) fn is_paste_at(&self, pane: PaneId, buffer: BufferId) -> bool {
@@ -126,7 +126,7 @@ impl EditSession {
     }
 
     /// `true` if this session belongs to `(pane, buffer)`, regardless of
-    /// kind — the check [`open_or_retarget`] and every generic teardown
+    /// kind: the check [`open_or_retarget`] and every generic teardown
     /// (`focus::end_focus_sessions`'s own remaining-shape handling) needs,
     /// as opposed to `is_insert_at`'s kind-specific one.
     pub(in crate::editor) fn owned_by(&self, pane: PaneId, buffer: BufferId) -> bool {
@@ -134,7 +134,7 @@ impl EditSession {
     }
 
     /// `true` if this is `Editor::replay_dot`'s own still-unclaimed
-    /// placeholder on `(pane, buffer)` — the one kind [`open_or_retarget`]
+    /// placeholder on `(pane, buffer)`, the one kind [`open_or_retarget`]
     /// may retarget in place. See [`EditSessionKind::Replay`]'s own doc for
     /// why a real, empty `Insert`/`Paste` session must not also satisfy
     /// this.
@@ -143,7 +143,7 @@ impl EditSession {
     }
 
     /// `true` if this session would block a fresh [`open_or_retarget`]/
-    /// [`check_can_open`] call at `(pane, buffer)` — anything except the
+    /// [`check_can_open`] call at `(pane, buffer)`: anything except the
     /// still-unclaimed replay placeholder sitting there is a real conflict.
     fn blocks_open(&self, pane: PaneId, buffer: BufferId) -> bool {
         !self.is_replay_at(pane, buffer)
@@ -151,7 +151,7 @@ impl EditSession {
 }
 
 /// `Err` if a session open right now would refuse a fresh
-/// [`open_or_retarget`] call at `(pane, buffer)` — the exact rule that
+/// [`open_or_retarget`] call at `(pane, buffer)`: the exact rule that
 /// function applies, exposed so a caller that needs to know the outcome
 /// *before* mutating anything else (`commands::paste`'s
 /// `do_normal_paste`/`do_smart_paste`, which must not take the live
@@ -177,18 +177,18 @@ pub(in crate::editor) fn check_can_open(
 ///
 /// `Ok` when: no session is open (opens fresh via `mint_group`), or the one
 /// open is on this exact `(pane, buffer)` and is still the Replay
-/// placeholder. Nothing has composed into it — nothing ever can, see that
-/// variant's own doc — so retargeting its `kind` in place costs nothing and
-/// keeps its already-correct `text_snapshot`/`pre_sels` — both captured
+/// placeholder. Nothing has composed into it (nothing ever can, see that
+/// variant's own doc), so retargeting its `kind` in place costs nothing and
+/// keeps its already-correct `text_snapshot`/`pre_sels`, both captured
 /// before *any* dispatch in the current action ran, exactly what a fresh
 /// open right now would capture too, since nothing has touched the buffer
 /// in between. This is what lets a replayed Steel body that pre-opens the
 /// placeholder (`Editor::replay_dot`'s default) and then calls a native
-/// paste command succeed instead of colliding with it — the paste takes
+/// paste command succeed instead of colliding with it: the paste takes
 /// over the still-open placeholder rather than finding it already occupied.
 ///
 /// `Err` otherwise: a real, already-open `Insert` or `Paste` session on
-/// this `(pane, buffer)` — even one that's still empty — or any session on
+/// this `(pane, buffer)` (even one that's still empty) or any session on
 /// a *different* one. All three are genuine conflicts that must never be
 /// silently overwritten (see this module's own doc and
 /// [`EditSessionKind::Replay`]'s own); see [`check_can_open`] for the exact
@@ -216,7 +216,7 @@ pub(in crate::editor) fn open_or_retarget(
     Ok(())
 }
 
-/// Which kind of session [`EditSession`] is — the three shapes HUME's one
+/// Which kind of session [`EditSession`] is: the three shapes HUME's one
 /// session slot can hold.
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum EditSessionKind {
@@ -225,13 +225,13 @@ pub(in crate::editor) enum EditSessionKind {
     /// one undo step.
     Insert,
     /// An open `p`/`P` + `[`/`]` ring-cycle session. `before` is the
-    /// direction the session was opened with (`true` = `P`/paste-before) —
+    /// direction the session was opened with (`true` = `P`/paste-before),
     /// meaningful only while the session is open; read by `[`/`]` so
     /// cycling re-pastes in the same direction as the opening `p`/`P`.
     Paste { before: bool },
     /// `Editor::replay_dot`'s own placeholder, pre-opened before the
     /// replayed body runs, to fold a recipe replay plus the main edit into
-    /// one undo revision. Holds no data of its own — nothing ever composes
+    /// one undo revision. Holds no data of its own: nothing ever composes
     /// into it directly, and no `InsertLayer` or paste-cycle state is
     /// attached while it's this kind. The replayed body resolves it to
     /// `Insert` or `Paste` in place (`open_or_retarget`'s retarget branch)
@@ -239,8 +239,8 @@ pub(in crate::editor) enum EditSessionKind {
     /// `finish_replay_session` to commit directly, as a plain edit.
     ///
     /// The *only* kind [`open_or_retarget`] may retarget away from. A real,
-    /// already-open `Insert` or `Paste` session — even one that's still
-    /// empty — must refuse a conflicting open rather than silently hand its
+    /// already-open `Insert` or `Paste` session, even one that's still
+    /// empty, must refuse a conflicting open rather than silently hand its
     /// group to whatever's asking. This variant exists to close exactly
     /// that bug: before it, "empty" alone stood in for "is this the replay
     /// placeholder," and a real Insert session, in the one keystroke
@@ -250,7 +250,7 @@ pub(in crate::editor) enum EditSessionKind {
 }
 
 /// Armed around an Insert-key binding dispatch, or a completion accept,
-/// that might turn out interactive — one whose outcome depends on input the
+/// that might turn out interactive: one whose outcome depends on input the
 /// user gave while it ran, such as accepting a completion or picking a
 /// picker item.
 ///
@@ -259,14 +259,14 @@ pub(in crate::editor) enum EditSessionKind {
 /// with_dot_capture`; if the dispatch it wraps opens a picker,
 /// `picker::open_picker` takes it off the session and attaches it to the
 /// `PickerSession` instead (so an edit made elsewhere while the picker is
-/// open — a timer, an LSP response — does not land in `edits`, since
+/// open, such as a timer or an LSP response, does not land in `edits`, since
 /// nothing is armed on the `EditSession` to feed); when the picker resolves,
 /// `close_picker_with`/`PickerLayer::tear_down` hand it to the queued
 /// `PendingWork::Call` that will run its `on_select`; `Editor::
 /// run_pending_batch` re-arms it on the (now current) session for just that
 /// call. A picker chain (`on_select` itself opening another picker) simply
 /// repeats the hand-off. Whichever holder currently owns it takes it back
-/// out via `Editor::run_dot_captured` once the operation it wraps returns —
+/// out via `Editor::run_dot_captured` once the operation it wraps returns,
 /// or, if the `EditSession` it was armed on ends first (an accept
 /// immediately followed by `exit-insert` in the same dispatch),
 /// `tear_down_insert`'s own backstop takes it before the session is
@@ -274,19 +274,19 @@ pub(in crate::editor) enum EditSessionKind {
 /// enforcement: nothing may reach it with a capture still attached.
 #[derive(Debug)]
 pub(in crate::editor) struct DotCapture {
-    /// The `(pane, buffer)` this capture was armed on — the target `Editor::
+    /// The `(pane, buffer)` this capture was armed on: the target `Editor::
     /// run_dot_captured` re-arms it on when a hand-off (a picker's `on_select`)
     /// resolves later against whatever session is current by then, which may
     /// no longer be this one.
     pub(in crate::editor) pane: PaneId,
     pub(in crate::editor) buffer: BufferId,
     /// The primary cursor's head in the old-document space `edits[0]`'s own
-    /// `ChangeSet` was computed against — the point `cursor_replacement_at`
+    /// `ChangeSet` was computed against: the point `cursor_replacement_at`
     /// (`replay.rs`) locates the net edit relative to, once `edits` is
     /// composed into one. Refreshed from the *current* cursor whenever
     /// `Editor::run_dot_captured` re-arms a capture whose `edits` is still
-    /// empty — which is exactly the coordinate space the *next* edit
-    /// `apply_doc_edit_grouped` pushes will use — but left alone once
+    /// empty (which is exactly the coordinate space the *next* edit
+    /// `apply_doc_edit_grouped` pushes will use), but left alone once
     /// `edits` holds at least one entry, since every later entry must chain
     /// from that first one's own old-document space for
     /// `ChangeSet::compose_all` to line up. See [`Self::text_gen`] for what
@@ -294,25 +294,25 @@ pub(in crate::editor) struct DotCapture {
     pub(in crate::editor) head_before: CharOffset,
     /// Every `ChangeSet` composed into this session's group
     /// (`doc_ops::apply_doc_edit_grouped`'s own funnel push) while this
-    /// capture was armed, in order — `ChangeSet::compose_all` folds them
+    /// capture was armed, in order. `ChangeSet::compose_all` folds them
     /// into the capture's net transform. Whatever ran between arming and
     /// resolving collapses into *one* edit this way: a binding that accepts
     /// a completion and then runs its own follow-up edit records both
-    /// together, never the accept alone — once any part of a dispatch goes
+    /// together, never the accept alone. Once any part of a dispatch goes
     /// interactive, none of it is safe to re-derive at a new cursor, so the
     /// whole thing is captured as data instead.
     pub(in crate::editor) edits: Vec<ChangeSet>,
     /// The buffer's `text_gen` right after `edits`' own last push (or at arm
-    /// time, if `edits` is still empty) — set alongside every push in
+    /// time, if `edits` is still empty). Set alongside every push in
     /// `apply_doc_edit_grouped`'s funnel, and at construction in
     /// `Editor::with_dot_capture`. `run_dot_captured`'s re-arm compares this
     /// against the buffer's *current* `text_gen`: a match means the buffer
     /// is exactly as this capture left it, so it's safe to refresh
-    /// `head_before` (if `edits` is still empty) or keep composing (if not —
+    /// `head_before` (if `edits` is still empty) or keep composing (if not:
     /// `edits`' last entry's `len_after` still matches the buffer). A
     /// mismatch means a foreign edit (a hook, an LSP response, a timer)
     /// landed on this buffer while the capture sat detached from it (armed
-    /// on a picker instead of this session) — harmless when `edits` was
+    /// on a picker instead of this session). That is harmless when `edits` was
     /// still empty (nothing of this capture's own to break), but breaks the
     /// composition chain outright once `edits` already holds an entry:
     /// `compose_all` would panic on a length mismatch between that entry's
@@ -320,14 +320,14 @@ pub(in crate::editor) struct DotCapture {
     /// detects that case from the mismatch and drops the capture instead of
     /// composing it.
     pub(in crate::editor) text_gen: u64,
-    /// Set by `EditorState::mark_dot_interactive` — `completion-accept!`/
+    /// Set by `EditorState::mark_dot_interactive`: `completion-accept!`/
     /// `completion-trigger` call it directly, `picker!`/`live-picker!`
-    /// indirectly via `picker::open_picker` — whichever fires first. A
+    /// indirectly via `picker::open_picker`, whichever fires first. A
     /// capture that never sees this stay `false` belongs to an ordinary
     /// (non-interactive) binding: its `edits` are discarded at finalize
     /// time in favor of `fallback`.
     pub(in crate::editor) interactive: bool,
-    /// What to record if this capture turns out non-interactive — the
+    /// What to record if this capture turns out non-interactive: the
     /// `Binding` entry `handle_insert`'s Leaf branch would otherwise have
     /// pushed before dispatching, or `None` for a bare Enter-key accept
     /// (`accept_completion_selection`), which has no binding of its own to
@@ -341,7 +341,7 @@ pub(in crate::editor) struct EditGroup {
     /// `commit_edit_group` to invert the composed CS and record a single
     /// history revision.
     pub(in crate::editor) text_snapshot: BufferText,
-    /// Selection state at group open — stored in the history revision so
+    /// Selection state at group open, stored in the history revision so
     /// undo restores the cursor to its pre-insert position.
     pub(in crate::editor) pre_sels: SelectionSet,
     /// Running composition of all forward ChangeSets applied since the group

@@ -124,7 +124,7 @@ fn nowrap_click_past_line_end() {
     let mut v = vp(0, 80, 10);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    // Click at column 99, way past "hi" — lands at '\n' (char 2), the eol marker.
+    // Click at column 99, way past "hi": lands at '\n' (char 2), the eol marker.
     let got = screen_to_char_offset(
         99,
         0,
@@ -233,7 +233,7 @@ fn wrap_click_below_last_line_clamped() {
     let wrap = WrapMode::Soft { width: 40 };
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    // Screen row 99 is past the end — should return something in line 0.
+    // Screen row 99 is past the end: should return something in line 0.
     let got = screen_to_char_offset(
         0,
         99,
@@ -247,10 +247,10 @@ fn wrap_click_below_last_line_clamped() {
 // ── Virtual-line-aware row counting (synthetic provider) ────────────
 
 /// `content_pos` must count a virtual `Before` line anchored to the
-/// cursor's own line as occupying a screen row above it — the cursor
+/// cursor's own line as occupying a screen row above it: the cursor
 /// must land one row lower than it would with zero providers.
 ///
-/// See the `_no_wrap` sibling below — row math is wrap-mode-agnostic.
+/// See the `_no_wrap` sibling below; row math is wrap-mode-agnostic.
 #[test]
 fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let rope = Rope::from_str("a\nb\nc\n");
@@ -270,7 +270,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     assert_eq!(
         with_none,
         Some((0, 1)),
-        "sanity: no provider — cursor at row 1"
+        "sanity: no provider, cursor at row 1"
     );
 
     let providers = providers_with_before_line(1);
@@ -290,13 +290,13 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
 /// `screen_to_char_offset` must account for a virtual line stealing a
 /// screen row from the lines below it: with a virtual-before line
 /// inserted above line 1, screen row 2 is line 1's own content (pushed
-/// down by the virtual line), not line 2's — a virtual-line-unaware
+/// down by the virtual line), not line 2's. A virtual-line-unaware
 /// implementation would misidentify this row as line 2's.
 ///
 /// Also covers a click that lands *on* the virtual line itself (screen
 /// row 1): clamped to line 1's own first content sub-row (precise
 /// anchor-line mapping isn't implemented yet). See the `_no_wrap` sibling
-/// below — row math is wrap-mode-agnostic.
+/// below; row math is wrap-mode-agnostic.
 #[test]
 fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
     let rope = Rope::from_str("a\nb\nc\n");
@@ -359,8 +359,8 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
     );
 }
 
-/// No-wrap mirror of `content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`
-/// — row math is wrap-mode-agnostic (a line occupies exactly one display line
+/// No-wrap mirror of `content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`:
+/// row math is wrap-mode-agnostic (a line occupies exactly one display line
 /// with wrapping off), so the same virtual-line accounting must hold.
 #[test]
 fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
@@ -380,7 +380,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     assert_eq!(
         with_none,
         Some((0, 1)),
-        "sanity: no provider — cursor at row 1"
+        "sanity: no provider, cursor at row 1"
     );
 
     let providers = providers_with_before_line(1);
@@ -461,7 +461,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line_no_wrap() {
 // ── Buffer-edge virtual blocks: Before(0) and After(last_line) ──────────
 
 /// `content_pos` for a cursor on buffer line 0 must count a `Before(0)`
-/// block above it exactly like any other line's `before` block — no
+/// block above it exactly like any other line's `before` block: no
 /// special-casing at the very top of the buffer, in either wrap mode.
 #[test]
 fn content_pos_accounts_for_before_line_0() {
@@ -491,7 +491,7 @@ fn content_pos_accounts_for_before_line_0() {
 }
 
 /// `content_pos` for a cursor on the last real buffer line must not be
-/// thrown off by an `After(last_line)` block anchored to that same line —
+/// thrown off by an `After(last_line)` block anchored to that same line:
 /// the block is *after* the cursor's row, so it must not affect the
 /// cursor's own screen row at all (only rows below it).
 #[test]
@@ -516,33 +516,33 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
         assert_eq!(
             pos,
             Some((0, 1)),
-            "After(1) trails the cursor's own line — no effect on its row ({wrap:?})"
+            "After(1) trails the cursor's own line: no effect on its row ({wrap:?})"
         );
     }
 }
 
 /// `content_pos` must resolve a stale `top_slot` the same way
 /// `pane_render.rs`'s row walk resolves its own start address
-/// (`Viewport::top_at`) before drawing — a write site that never validates
+/// (`Viewport::top_at`) before drawing. A write site that never validates
 /// the offset against the block it addresses (`recall_scroll`, an LSP jump)
 /// can leave it pointing past a line's current block, e.g. after a `Before`
 /// block shrinks.
 ///
 /// Line 0's block is `Before(0)` (1 row) + content (1 row) = 2 rows total,
-/// valid addresses 0..2. `top_slot = 2` is one past the end — stale,
-/// as if the block used to be taller. The cursor sits on line 0's own
+/// valid addresses 0..2. `top_slot = 2` is one past the end (stale,
+/// as if the block used to be taller). The cursor sits on line 0's own
 /// content row (address `(0, 1)`), which the resolved top (`(0, 1)`) resolves
 /// to directly (distance 0); walking forward from the raw, unresolved
 /// address `(0, 2)` immediately steps to line 1 (`next` only checks
 /// `row + 1 < total`, so any row `>= total` jumps a whole line at once) and
-/// permanently overshoots the cursor, since `distance` only walks forward —
+/// permanently overshoots the cursor, since `distance` only walks forward,
 /// yielding `None` instead of the resolved answer.
 #[test]
 fn content_pos_clamps_a_top_slot_past_the_lines_current_block() {
     let rope = Rope::from_str("a\nb\n");
     let mut v = vp(0, 80, 10);
     v.seed_top_for_test(DisplayLinePos::new(hume_rope::line::ContentLine::new(0), 2)); // past line 0's 2-row block (before=1, content=1)
-    let cursor_char = co(0); // 'a' — line 0's own content row, address (0, 1)
+    let cursor_char = co(0); // 'a': line 0's own content row, address (0, 1)
     let providers = providers_with_before_line(0);
     let mut s = PaneLineStore::new();
 
@@ -554,7 +554,7 @@ fn content_pos_clamps_a_top_slot_past_the_lines_current_block() {
     assert_eq!(
         pos,
         Some((0, 0)),
-        "resolved top (0,1) sits exactly on the cursor's row — distance 0"
+        "resolved top (0,1) sits exactly on the cursor's row: distance 0"
     );
     assert_eq!(
         v.top(),
@@ -580,7 +580,7 @@ fn content_pos_zero_height_returns_none() {
     assert_eq!(pos, None);
 }
 
-/// A cursor more rows below the viewport's top than the viewport is tall —
+/// A cursor more rows below the viewport's top than the viewport is tall:
 /// the case `Viewport::reveal` is supposed to prevent, but `content_pos`
 /// must still answer `None` rather than a row past the visible window.
 #[test]
@@ -590,7 +590,7 @@ fn content_pos_cursor_below_viewport_returns_none() {
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let cursor_char =
-        co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(5)).index()); // 'f' — 5 rows below the top
+        co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(5)).index()); // 'f': 5 rows below the top
 
     let pos = content_pos(
         &mut v,
@@ -602,7 +602,7 @@ fn content_pos_cursor_below_viewport_returns_none() {
 
 /// A position left of `horizontal_offset` is off the visible viewport on the
 /// horizontal axis, exactly as a row below the bottom is on the vertical
-/// axis — `content_pos`'s own doc already promises `None` for "outside the
+/// axis. `content_pos`'s own doc already promises `None` for "outside the
 /// visible viewport" on either. The completion-menu anchor
 /// (`input_stack/completion.rs`'s `session.anchor()`) is the one caller this
 /// matters for: it stays fixed at the token's start while the live cursor drives
@@ -614,7 +614,7 @@ fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
     v.seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(5));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let anchor_char = co(2); // display col 2 — left of horizontal_offset 5
+    let anchor_char = co(2); // display col 2, left of horizontal_offset 5
 
     let pos = content_pos(
         &mut v,
@@ -625,7 +625,7 @@ fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
 }
 
 /// `place`'s cursor-only precondition (`cursor_display_col >=
-/// horizontal_offset`) does not hold for every caller — see
+/// horizontal_offset`) does not hold for every caller; see
 /// `cells_since_saturating`'s doc on `DisplayLineCol`. Asserts the saturating
 /// form is actually used: an inverted column must clamp to screen column 0,
 /// not debug-panic.

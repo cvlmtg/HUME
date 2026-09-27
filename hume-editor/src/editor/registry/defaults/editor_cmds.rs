@@ -99,7 +99,7 @@ impl CommandRegistry {
         .reg(self);
         // Bound at `mii`. An `EditorCmd`, not a `Selection`, because it reads
         // buffer state (`Buffer::last_insert`) beyond the current `BufferText` +
-        // `SelectionSet` — no `around` counterpart; see the doc comment on
+        // `SelectionSet`, no `around` counterpart; see the doc comment on
         // `cmd_select_last_insertion` itself.
         ecmd_pane(
             "select-last-insertion",
@@ -333,11 +333,11 @@ impl CommandRegistry {
         // ── Editor commands — repeat ──────────────────────────────────────────
         // Not flagged repeatable: `.` repeating itself would be nonsensical.
         // The handler sets EditorState::pending_repeat; replay_dot does
-        // the actual replay with &mut Editor after handle_key returns — the
+        // the actual replay with &mut Editor after handle_key returns. The
         // handler itself still takes only a native EditorCmd's shape, no &mut Editor.
         //
         // `.defers_paste_commit()`: this dispatch itself must not commit a
-        // paste session left open by a preceding `[`/`]` — replay_dot makes
+        // paste session left open by a preceding `[`/`]`: replay_dot makes
         // that call once it knows which command is being replayed (see its
         // own `defers_paste_commit` builder doc for why).
         ecmd_focused(
@@ -395,7 +395,7 @@ impl CommandRegistry {
         // the buffer's search pattern, a channel `Selection`'s pure
         // `fn(&BufferText, SelectionSet, ...)` signature has no room for.
         // `.establishes_selection()` opts it into the dot-repeat recipe
-        // anyway — its whole-buffer result is safe to replay from any cursor.
+        // anyway: its whole-buffer result is safe to replay from any cursor.
         ecmd_pane(
             "select-all-matches",
             "Turn every search match in the buffer into a selection.",
@@ -454,7 +454,7 @@ impl CommandRegistry {
         // ── Editor commands — tab pages ─────────────────────────────────────────
         // No `.jump()`: switching tabs changes `state.focus` itself (a
         // different pane, possibly in a different tab), same as the
-        // pane-focus commands below — see `commands::tab`'s module doc for
+        // pane-focus commands below; see `commands::tab`'s module doc for
         // why that disqualifies the jump-list recording `.jump()` triggers.
         ecmd_focused(
             "goto-next-tab",

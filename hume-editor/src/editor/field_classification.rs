@@ -1,23 +1,23 @@
 //! Guards that force a compile error when a field is added to
-//! `EditorState`/`Editor` without a reset classification for it — see the
+//! `EditorState`/`Editor` without a reset classification for it; see the
 //! two tests' own doc for how.
 
 // `Editor::reset_config_state` resets `EditorState.config: ConfigState`
-// wholesale (a field added there is reset by construction — see
-// `ConfigState`'s own doc), but every *other* field on `EditorState` — and
+// wholesale (a field added there is reset by construction; see
+// `ConfigState`'s own doc), but every *other* field on `EditorState` (and
 // on `Editor` itself, which `reset_config_state` also reaches directly for
-// `lsp`/`timer_wheel`/`timer_payloads` — needs a human decision: does
+// `lsp`/`timer_wheel`/`timer_payloads`) needs a human decision: does
 // `:reload-config` reset it too (like `settings`, via
 // `settings::ops::reset_globals`), or does it survive untouched (buffers,
 // panes, undo history, registers, …)?
 //
-// The two functions below are never called — each declares a local fn taking
+// The two functions below are never called: each declares a local fn taking
 // the struct by value and exhaustively destructures it with no `..`, so a
 // field added or removed anywhere in `EditorState`/`Editor` is a *compile
 // error* right here (an unknown or unmentioned field name) instead of
 // silently defaulting to "survives", correct for most fields but wrong for
-// one that should have reset. The classification itself — does the reset
-// reach this field, and how — lives in the comment beside each one.
+// one that should have reset. The classification itself (does the reset
+// reach this field, and how) lives in the comment beside each one.
 
 use super::*;
 
@@ -32,11 +32,11 @@ fn editor_state_fields_are_classified() {
             // language + overrides; content, undo history, and
             // everything else survive
             buffers: _,
-            config: _, // exempt — see ConfigState's own doc
+            config: _, // exempt; see ConfigState's own doc
             // config: reset_config_state → input.truncate_to_base() (drops
             // every mode layer's minibuf/completion/prompt-callback payload
-            // along with the six overlay widgets — confirm/picker/menu/
-            // drawer/completion/popup — and resets Base's extend flag and
+            // along with the six overlay widgets, confirm/picker/menu/
+            // drawer/completion/popup, and resets Base's extend flag and
             // sticky-popup slot)
             input: _,
             pending_keys: _,        // preserved
@@ -53,7 +53,7 @@ fn editor_state_fields_are_classified() {
             status_msg: _,          // preserved
             summary_ttl: _,         // preserved
             // accounting: typed_reload_config diffs this before/after
-            // the reset to decide whether to report success —
+            // the reset to decide whether to report success;
             // resetting it would defeat that
             message_log: _,
             // config: settings::ops::reset_globals rebuilds
@@ -115,8 +115,8 @@ fn editor_fields_are_classified() {
     #[allow(dead_code, unused_variables)]
     fn assert_exhaustive(e: Editor) {
         let Editor {
-            state: _, // exempt — see editor_state_fields_are_classified
-            view: _,  // exempt — see this test's own doc
+            state: _, // exempt; see editor_state_fields_are_classified
+            view: _,  // exempt; see this test's own doc
             // preserved: the probe result reset_config_state itself
             // reads to rebuild ConfigState's keymap with the same
             // kitty defaults

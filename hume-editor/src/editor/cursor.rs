@@ -1,7 +1,7 @@
 //! Terminal cursor placement logic.
 //!
 //! The terminal cursor (the blinking bar or block emitted via escape sequences)
-//! is an editor-level concern. The engine knows nothing about it — it only
+//! is an editor-level concern. The engine knows nothing about it: it only
 //! styles the grapheme at each selection head.
 //!
 //! Both directions of the screen ↔ buffer mapping are thin consumers of
@@ -19,21 +19,21 @@ use hume_rope::column::DisplayLineCol;
 // ---------------------------------------------------------------------------
 
 /// Compute the pane-content-relative `(x, row)` of `cursor_char` within the
-/// pane content area (i.e., after the gutter — not a terminal-absolute
+/// pane content area (i.e., after the gutter, not a terminal-absolute
 /// screen cell; callers add the gutter width and pane origin for that).
 ///
 /// Returns `None` if the position is outside the visible viewport. This is a
 /// legitimate steady state, not just a defensive fallback: the cursor can
 /// only occupy content display lines, so a pure view scroll (mouse wheel,
-/// `Ctrl-d`/`Ctrl-u`, `PageDown`/`PageUp`) into a virtual-line block — an
-/// inline diff's ghost lines — can carry the viewport further than the
+/// `Ctrl-d`/`Ctrl-u`, `PageDown`/`PageUp`) into a virtual-line block (an
+/// inline diff's ghost lines) can carry the viewport further than the
 /// cursor can follow, and the cursor-follow gate deliberately skips
 /// re-centering for that case (see `frame.rs`'s `scroll_into_view`). The
 /// terminal caret is simply hidden for as long as this returns `None`; it
 /// reappears once an ordinary cursor motion resyncs the view.
 ///
 /// The returned `x` accounts for `viewport.horizontal_offset` (0 while
-/// wrapping, since wrap mode has no horizontal scroll — see
+/// wrapping, since wrap mode has no horizontal scroll; see
 /// `Viewport::reveal_horizontal`).
 pub(in crate::editor) fn content_pos(
     viewport: &mut Viewport,
@@ -46,19 +46,19 @@ pub(in crate::editor) fn content_pos(
     }
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
     if cursor_display_col < viewport.horizontal_offset() {
-        // Off the visible viewport on the horizontal axis — same contract as
+        // Off the visible viewport on the horizontal axis: same contract as
         // a row below the bottom (checked below via `distance`). Every
         // caller but one is the live cursor, which `Viewport::reveal_horizontal`
         // keeps `>= horizontal_offset`; the exception is the completion-menu
         // anchor (`input_stack/completion.rs`'s `session.anchor()`), fixed at
-        // the token's start while the cursor — and the scroll it drives — moves
+        // the token's start while the cursor (and the scroll it drives) moves
         // on. `place`'s own subtraction saturates rather than relying on this
         // check alone, since `scroll.rs` calls it directly without going
         // through `content_pos` first.
         return None;
     }
     // Resolve the top the same way the render pass does before its
-    // display-line walk (see `Viewport::top_at`'s doc) — walking from an
+    // display-line walk (see `Viewport::top_at`'s doc). Walking from an
     // unresolved address would disagree with the renderer about which
     // display line is on screen.
     let top = viewport.top_at(dlm);
@@ -72,8 +72,8 @@ pub(in crate::editor) fn content_pos(
 /// Turn a resolved document display column and screen row into a
 /// pane-content-relative cell.
 ///
-/// Split out from [`content_pos`] so the scroll step — which necessarily resolves
-/// both while deciding where to scroll — can produce the same answer without
+/// Split out from [`content_pos`] so the scroll step (which necessarily resolves
+/// both while deciding where to scroll) can produce the same answer without
 /// re-walking the display-line list. The two must not drift: this is the only place the
 /// horizontal-offset subtraction and the `u16` narrowing happen.
 pub(in crate::editor) fn place(
@@ -81,23 +81,23 @@ pub(in crate::editor) fn place(
     cursor_display_col: DisplayLineCol,
     screen_row: usize,
 ) -> (u16, u16) {
-    // Saturating, not `cells_since`: `frame.rs::scroll_into_view` — the only
-    // caller that bypasses `content_pos` — always satisfies `cursor_display_col
+    // Saturating, not `cells_since`: `frame.rs::scroll_into_view` (the only
+    // caller that bypasses `content_pos`) always satisfies `cursor_display_col
     // >= horizontal_offset` (it calls `Viewport::reveal_horizontal` just
     // above), but `content_pos`'s own caller can pass a completion session's
-    // fixed anchor column, which falls behind as the cursor — and the
-    // horizontal scroll it drives — moves on. `content_pos` already screens
+    // fixed anchor column, which falls behind as the cursor (and the
+    // horizontal scroll it drives) moves on. `content_pos` already screens
     // that case to `None`; this saturates too so a direct caller can't panic
     // either, without adding a second precondition this function would have
     // to document and enforce itself.
     let content_x = cursor_display_col.cells_since_saturating(viewport.horizontal_offset());
     // `Viewport::reveal_horizontal` keeps the cursor's document column
     // within one viewport width of `horizontal_offset`, so once past that
-    // subtraction it's a small on-screen offset — safe to narrow to the
+    // subtraction it's a small on-screen offset, safe to narrow to the
     // terminal-cell (`u16`) domain this function returns.
     debug_assert!(
         u16::try_from(content_x).is_ok(),
-        "on-screen cursor column {content_x} exceeds a u16 — cursor should be within the viewport"
+        "on-screen cursor column {content_x} exceeds a u16: cursor should be within the viewport"
     );
     (content_x as u16, screen_row as u16)
 }
@@ -106,7 +106,7 @@ pub(in crate::editor) fn place(
 ///
 /// Used to offset the terminal cursor column past line numbers and other
 /// gutter providers. `last_line_idx` is the buffer's last ropey line index
-/// (`hume_rope::lines::last_ropey_line`) — deliberately the phantom trailing line,
+/// (`hume_rope::lines::last_ropey_line`): deliberately the phantom trailing line,
 /// not the last content line, so the gutter is sized one digit wider than
 /// content strictly requires.
 pub(in crate::editor) fn gutter_width<'a>(
@@ -129,7 +129,7 @@ pub(in crate::editor) fn gutter_width<'a>(
 ///
 /// The coordinate space is pane-relative, not terminal-absolute: `(0, 0)` is
 /// the top-left cell of the pane. `MouseEvent.column`/`.row` are
-/// terminal-absolute — callers translate through `Editor::pane_at_screen_pos`
+/// terminal-absolute. Callers translate through `Editor::pane_at_screen_pos`
 /// (`hume-editor/src/editor/mouse.rs`) first, which also decides which pane a
 /// click landed in when more than one is on screen (a `:split`/`:vsplit`).
 pub(in crate::editor) fn screen_to_char_offset(
@@ -144,7 +144,7 @@ pub(in crate::editor) fn screen_to_char_offset(
         return None;
     }
     // Pane-content column past the gutter, plus horizontal scroll (0 while
-    // wrapping — see `Viewport::reveal_horizontal`),
+    // wrapping; see `Viewport::reveal_horizontal`),
     // reconstructed back into a document display column.
     let display_col = viewport
         .horizontal_offset()
@@ -153,7 +153,7 @@ pub(in crate::editor) fn screen_to_char_offset(
     let top = viewport.top_at(dlm);
     let clicked = dlm.advance_saturating(top, content_y as isize);
     // A click asks which cell it hit, so a column past the text resolves to
-    // the display line's last cell rather than its last *content* cell —
+    // the display line's last cell rather than its last *content* cell,
     // landing on the line's `\n`, a real cursor position in HUME's inclusive model.
     Some(dlm.char_at(clicked, display_col, DisplayColTarget::Cell))
 }

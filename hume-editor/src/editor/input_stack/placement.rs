@@ -1,6 +1,6 @@
-//! Screen-placement math shared by the three cursor/token-anchored overlays —
-//! [`super::popup::sync_popup_view`], [`super::menu::sync_menu_view`], and
-//! [`super::completion::sync_completion_menu_view`] — nothing here is
+//! Screen-placement math shared by the three cursor/token-anchored overlays
+//! ([`super::popup::sync_popup_view`], [`super::menu::sync_menu_view`], and
+//! [`super::completion::sync_completion_menu_view`]). Nothing here is
 //! specific to any one of them.
 
 use hume_engine::pipeline::RenderContext;
@@ -8,7 +8,7 @@ use hume_rope::offset::CharOffset;
 
 use super::super::Editor;
 
-/// The focused pane's primary cursor position — the anchor char
+/// The focused pane's primary cursor position: the anchor char
 /// [`super::popup::sync_popup_view`] and [`super::menu::sync_menu_view`]
 /// pass to [`popup_placement`] (unlike the LSP completion menu, which
 /// anchors at the session's token-start char instead, via a
@@ -18,7 +18,7 @@ pub(in crate::editor) fn focused_cursor_char(ed: &Editor) -> CharOffset {
 }
 
 /// Screen anchor (absolute cell) + containing pane + text-column budget for
-/// the focused pane, given an arbitrary buffer char position — shared by
+/// the focused pane, given an arbitrary buffer char position. Shared by
 /// [`super::popup::sync_popup_view`], [`super::menu::sync_menu_view`], and
 /// the LSP completion menu (each passes a different `anchor_char`). `None`
 /// when the pane has no rect yet or `anchor_char` isn't currently visible.
@@ -33,7 +33,7 @@ pub(in crate::editor) fn popup_placement(
     let content_width = pane_rect.width.saturating_sub(gutter_w);
     // The scroll step (`scroll_into_view`) already resolved the focused cursor's
     // screen cell this frame, via the same locate/distance walk
-    // `content_pos` runs below — nothing between the scroll step and this
+    // `content_pos` runs below. Nothing between the scroll step and this
     // overlay sync moves the cursor or the viewport, so the two callers anchored
     // at the live cursor (`sync_popup_view`, `sync_menu_view`) can reuse it instead of
     // re-walking the display-line list (a full per-line format in wrap mode).

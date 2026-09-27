@@ -4,13 +4,13 @@
 //! `:` line's native sources on Tab. One helper set here, one file per
 //! concern:
 //!
-//! - `sources.rs` — registration, invocation, token rules, stale answers,
+//! - `sources.rs`: registration, invocation, token rules, stale answers,
 //!   re-invocation, multi-source ranking.
-//! - `menu_keys.rs` — the Insert-mode menu's key handling and lifetime.
-//! - `accept.rs` — what accepting a candidate writes, single- and
+//! - `menu_keys.rs`: the Insert-mode menu's key handling and lifetime.
+//! - `accept.rs`: what accepting a candidate writes, single- and
 //!   multi-cursor, with and without server edits.
-//! - `minibuf.rs` — the `:` line's Tab completion.
-//! - `render.rs` — the menu's geometry and the two render snapshots.
+//! - `minibuf.rs`: the `:` line's Tab completion.
+//! - `render.rs`: the menu's geometry and the two render snapshots.
 //!
 //! The real-server end-to-end flow (a fake `rust-analyzer` answering
 //! `textDocument/completion`, resolve, `additionalTextEdits`) lives in
@@ -40,7 +40,7 @@ fn labels(ed: &Editor) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The completion popup's selected row index — see `InputStack::
+/// The completion popup's selected row index. See `InputStack::
 /// completion_selected`'s own doc for the `0`-default convention.
 fn selected_row(ed: &Editor) -> usize {
     ed.state.input.completion_selected()
@@ -52,7 +52,7 @@ fn trigger(ed: &mut Editor) {
     ed.settle();
 }
 
-/// `run`s `script`, enters Insert with a real `i`, triggers — the setup
+/// `run`s `script`, enters Insert with a real `i`, triggers: the setup
 /// every Insert-mode test starts from, for a test whose own registration
 /// isn't [`insert_with_source`]'s default single-word-source shape.
 fn insert_with_script(ed: &mut Editor, tmp: &std::path::Path, script: &str) {
@@ -62,14 +62,14 @@ fn insert_with_script(ed: &mut Editor, tmp: &std::path::Path, script: &str) {
 }
 
 /// [`insert_with_script`] over a `'word`-token source answering `items`
-/// (Scheme literals) — the single-source case, and the more common of the
+/// (Scheme literals): the single-source case, and the more common of the
 /// two.
 fn insert_with_source(ed: &mut Editor, tmp: &std::path::Path, items: &str) {
     insert_with_script(ed, tmp, &completion_source("test", items, ""));
 }
 
 /// [`insert_with_source`] on a raw `push_mode_layer(Insert)` rather than a
-/// real `i` keypress — no edit group opened, no selection collapsed — for
+/// real `i` keypress (no edit group opened, no selection collapsed), for
 /// the tests pinning `accept`'s *own* group-opening/collapsed-selection
 /// logic, the path a Steel-triggered accept outside Insert mode takes.
 /// `script` runs beside the source registration (a `define-command!` the

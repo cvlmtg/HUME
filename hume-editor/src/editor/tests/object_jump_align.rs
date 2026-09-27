@@ -1,10 +1,10 @@
-// `object-jump-align` — re-aligning the viewport after a forward object jump
+// `object-jump-align`: re-aligning the viewport after a forward object jump
 // (`}`, `goto-next-<kind>`). See `ObjectJumpAlign`'s own doc
 // (`hume-editor/src/settings.rs`) for why only the forward motions read it.
 
 use super::*;
 
-/// `n` one-line paragraphs, each followed by a blank line — paragraph `i`
+/// `n` one-line paragraphs, each followed by a blank line, so paragraph `i`
 /// starts at buffer line `2 * i`. Unwrapped, so a display line is a buffer
 /// line and `viewport.top().line` is directly comparable to it.
 fn paragraph_editor(n: usize) -> Editor {
@@ -48,10 +48,10 @@ fn goto_next_paragraph_centers_view_by_default() {
 
 #[test]
 fn goto_next_paragraph_centers_view_in_extend_mode() {
-    // `aligns_view` doesn't gate on `MotionMode` — Extend mode re-centers
+    // `aligns_view` doesn't gate on `MotionMode`: Extend mode re-centers
     // too. Unlike Move mode (which lands the head on each found paragraph's
     // *start*), Extend unions each step's span into the growing selection
-    // and lands the head on the *end* of the last one reached — 15 steps
+    // and lands the head on the *end* of the last one reached: 15 steps
     // from paragraph 0 lands one char before paragraph 16 begins, at the
     // end of paragraph 15's own block (its trailing gap included).
     let mut ed = paragraph_editor(20);
@@ -79,8 +79,8 @@ fn goto_next_paragraph_centers_view_in_extend_mode() {
 #[test]
 fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
     // 20 paragraphs (last one's content line is 2*19 = 38); a count of 50
-    // exhausts the forward jumps after the 19th — `apply_object_motion`
-    // breaks out of its loop on the first `None` — landing on the last
+    // exhausts the forward jumps after the 19th (`apply_object_motion`
+    // breaks out of its loop on the first `None`), landing on the last
     // paragraph rather than erroring or overshooting past it.
     let mut ed = paragraph_editor(20);
     ed.execute_keymap_command("goto-next-paragraph".into(), Some(50), false);
@@ -110,7 +110,7 @@ fn goto_prev_paragraph_never_aligns_view() {
 
     ed.handle_key(key('{'));
 
-    // `{` (goto-prev-paragraph) doesn't set `CmdMeta::aligns_view` — no
+    // `{` (goto-prev-paragraph) doesn't set `CmdMeta::aligns_view`, so no
     // synchronous viewport write happens on this keypress (unlike `}`
     // above, which writes it directly without needing a frame).
     assert_eq!(
@@ -123,14 +123,14 @@ fn goto_prev_paragraph_never_aligns_view() {
 #[test]
 fn goto_next_paragraph_at_end_of_buffer_does_not_move_the_viewport() {
     let mut ed = paragraph_editor(20);
-    // Land on the last paragraph (line 38) — this jump centers.
+    // Land on the last paragraph (line 38). This jump centers.
     key_count(&mut ed, 19, '}');
     // Push the viewport somewhere centering would visibly undo, so a missing
     // `moved` guard has something to disagree with.
     ed.execute_keymap_command("top-view-on-cursor".into(), None, false);
     let top_before = ed.viewport().top().line;
 
-    ed.handle_key(key('}')); // no paragraph below — a true no-op
+    ed.handle_key(key('}')); // no paragraph below: a true no-op
 
     assert_eq!(
         ed.viewport().top().line,
@@ -150,7 +150,7 @@ fn object_jump_align_top_setting() {
 
     // target_row = 0 clamps up to scrolloff's own margin inside
     // scroll_cursor_to_display_line, so top settles at cursor_line -
-    // scrolloff immediately — no separate per-frame correction needed.
+    // scrolloff immediately, with no separate per-frame correction needed.
     assert_eq!(
         ed.viewport().top().line,
         hume_rope::line::ContentLine::new(30 - ed.state.settings.scrolloff)
@@ -173,7 +173,7 @@ fn object_jump_align_off_setting_restores_old_behavior() {
 
     key_count(&mut ed, 15, '}');
 
-    // No synchronous viewport write at all — the dispatch pipeline's
+    // No synchronous viewport write at all: the dispatch pipeline's
     // `step_align_view` is a no-op under `Off`.
     assert_eq!(
         ed.viewport().top().line,
@@ -193,7 +193,7 @@ fn object_jump_align_off_setting_restores_old_behavior() {
 #[test]
 fn goto_next_function_centers_view_by_default() {
     // Reuses `structural.rs`'s own `rust` grammar + textobjects.scm fixture
-    // — the same one `goto-next-function`'s own correctness tests use —
+    // (the same one `goto-next-function`'s own correctness tests use)
     // rather than re-deriving fixture-loading logic here.
     let filler: String = "// filler\n".repeat(20);
     let src = format!("-[/]>/ x\n{filler}fn target() {{}}\n");

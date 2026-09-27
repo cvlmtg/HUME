@@ -4,10 +4,10 @@ use hume_editing::selection::StickyDisplayCol;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use pretty_assertions::assert_eq;
 
-/// A `DisplayLine`-tagged latch — what `j`/`k` write while wrapping, which
+/// A `DisplayLine`-tagged latch: what `j`/`k` write while wrapping, which
 /// is how every fixture in this file (except the `WrapMode::None` ones) is
 /// pinned. `wrap_width: Some(76)` matches `visual_test_editor`'s fixed
-/// `WrapMode::Indent { width: 76 }` — an explicit, non-sentinel width, so it
+/// `WrapMode::Indent { width: 76 }`, an explicit, non-sentinel width, so it
 /// stays 76 regardless of the fixture's 80×24 viewport.
 fn sticky_display_line(display_col: u32) -> StickyDisplayCol {
     StickyDisplayCol::DisplayLine {
@@ -16,9 +16,9 @@ fn sticky_display_line(display_col: u32) -> StickyDisplayCol {
     }
 }
 
-/// A `BufferLine`-tagged latch — what `9j`/`9k` write, and what `j`/`k`
-/// write too once wrapping is off (a display line IS the buffer line there
-/// — see `StickyDisplayCol`'s own doc). Carries no `wrap_width` — the
+/// A `BufferLine`-tagged latch: what `9j`/`9k` write, and what `j`/`k`
+/// write too once wrapping is off (a display line IS the buffer line there,
+/// see `StickyDisplayCol`'s own doc). Carries no `wrap_width`: the
 /// `BufferLine` variant has none, unlike `DisplayLine`.
 fn sticky_buffer_line(display_col: u32) -> StickyDisplayCol {
     StickyDisplayCol::BufferLine {
@@ -190,7 +190,7 @@ fn visual_preferred_display_col_reset_on_horizontal_motion() {
             .is_some(),
         "j latches sticky col"
     );
-    ed.handle_key(key('l')); // horizontal motion — Selection::new() clears sticky_display_col
+    ed.handle_key(key('l')); // horizontal motion: Selection::new() clears sticky_display_col
     assert!(
         ed.current_selections()
             .primary()
@@ -201,7 +201,7 @@ fn visual_preferred_display_col_reset_on_horizontal_motion() {
 }
 
 /// WrapMode::None: a no-wrap content display line *is* a buffer line, so bare `j`
-/// lands on the same char a buffer-line hop would (0 → 81 "short") — but it
+/// lands on the same char a buffer-line hop would (0 → 81 "short"), but it
 /// still goes through the sticky *display*-column model (`move_vertical`),
 /// matching page/half-page/wheel scroll in the same mode, so
 /// `sticky_display_col` latches here too.
@@ -224,8 +224,8 @@ fn visual_move_no_wrap_content_display_line_is_a_buffer_line() {
     );
 }
 
-/// count prefix: 2j moves two BUFFER lines (the second hop is a no-op here —
-/// buffer line 2 is the phantom trailing empty line — so it lands on buffer
+/// count prefix: 2j moves two BUFFER lines (the second hop is a no-op here:
+/// buffer line 2 is the phantom trailing empty line, so it lands on buffer
 /// line 1, same char offset a bare `j`,`j` would reach by two visual display lines in
 /// this particular buffer; see `visual_move_down_with_explicit_count_moves_buffer_lines`
 /// for a case where the two paths diverge).
@@ -243,10 +243,10 @@ fn visual_move_down_with_count() {
     );
 }
 
-/// A count prefix means "N buffer lines", not "N display lines" — even while
+/// A count prefix means "N buffer lines", not "N display lines", even while
 /// wrapping is on. `1j` skips straight to the start of buffer line 1, bypassing
 /// the display-line-1 stop that a bare `j` (no count) lands on. The buffer-line
-/// path latches a `BufferLine`-tagged sticky column (Q29b) — distinct from
+/// path latches a `BufferLine`-tagged sticky column (Q29b), distinct from
 /// the `DisplayLine` one bare `j` latches while wrapping, so a following `2j`
 /// reuses it and a following bare `j` re-derives instead of reading it as a
 /// display-line-relative column.
@@ -350,7 +350,7 @@ fn explicit_count_move_up_clamp_at_document_edge() {
 /// `j` at the document's last line must still collapse a non-empty selection
 /// onto its head, exactly as every other `MotionMode::Move` motion does at
 /// its own edge (`hume_ops::apply_motion` collapses unconditionally).
-/// `apply_visual_vertical` only ever backs motions now — the no-collapse
+/// `apply_visual_vertical` only ever backs motions now. The no-collapse
 /// guard a view scroll needs lives in `commands::scroll_view`'s own
 /// per-selection `carry` pass instead, so there is no shared guard here that
 /// could apply too broadly to plain `j`/`k`.
@@ -397,7 +397,7 @@ fn explicit_count_move_down_multi_cursor_merge() {
     use hume_editing::text::BufferText;
 
     // Two cursors on line 0 at different columns (2 and 4), both past line
-    // 1's width (2) — both clamp to its last char and converge there.
+    // 1's width (2): both clamp to its last char and converge there.
     // `SelectionSet::map` must still merge them through the new
     // `move_buffer_line` path, same as it does for every other motion.
     let text = BufferText::from("hello\nab\n");
@@ -418,7 +418,7 @@ fn explicit_count_move_down_multi_cursor_merge() {
 fn explicit_count_move_down_preserves_display_column_across_a_tab() {
     // "\tworld" (tab_width 4): 'o' (char 2) sits at display column 5 (tab
     // expands to 4, 'w' is 1 more). Landing must use display column 5 on the
-    // target line — 'f' (char offset 5 of "abcdefgh") — not char-offset
+    // target line ('f', char offset 5 of "abcdefgh"), not char-offset
     // column 2, which would be 'c'.
     let mut ed = unwrapped_editor("\tworld\nabcdefgh\n", 2); // 'o'
     ed.handle_key(key('1'));
@@ -433,7 +433,7 @@ fn explicit_count_move_down_preserves_display_column_across_a_tab() {
 #[test]
 fn explicit_count_move_down_preserves_display_column_across_a_wide_cjk_char() {
     // 漢 (East Asian Wide) is 2 display columns but 1 char, so 'b' (char 1)
-    // sits at display column 2. Landing must use display column 2 — 'c' —
+    // sits at display column 2. Landing must use display column 2 ('c'),
     // not char-offset column 1, which would be 'b'.
     let mut ed = unwrapped_editor("\u{6F22}bc\nabcdefgh\n", 1); // 'b'
     ed.handle_key(key('1'));
@@ -484,11 +484,11 @@ fn explicit_count_move_up_clamps_to_shorter_line() {
 // ── Sticky display column across a count (Q29b) ───────────────────────────
 //
 // A count-fold must hold its goal column across the whole hop instead of
-// re-deriving it from each intermediate landing — otherwise a short line
+// re-deriving it from each intermediate landing. Otherwise a short line
 // partway through the hop truncates it, same failure the sticky column
 // exists to prevent for repeated bare `j`/`k`. `move_buffer_line` computes
 // `target_line` directly rather than stepping through it, so this holds
-// structurally — the test guards the shortcut from regressing to a per-line
+// structurally. The test guards the shortcut from regressing to a per-line
 // step loop.
 
 #[test]
@@ -499,7 +499,7 @@ fn explicit_count_move_down_holds_display_column_through_a_short_line() {
     assert_eq!(
         ed.current_selections().primary().head(),
         co(12),
-        "lands on line 2's 'd' — landing on 'x' first would truncate the column to 0"
+        "lands on line 2's 'd': landing on 'x' first would truncate the column to 0"
     );
 }
 
@@ -543,7 +543,7 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_l
 
     // A `DisplayLine`-tagged one is a different quantity under wrap (see
     // `StickyDisplayCol`'s own doc) and must be re-derived from `head`
-    // instead — reusing it as a buffer-line column would be a sideways jump.
+    // instead. Reusing it as a buffer-line column would be a sideways jump.
     let ignored = SelectionSet::single(Selection::with_sticky_display_col(
         co(2),
         co(2),
@@ -571,7 +571,7 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
     // Line 0 ("0123456789ABCDE", 15 chars) wraps under a content-width-driven
     // `Soft { width: 0 }`. Line 1 ("FGHIJ") gives `j` somewhere to land after
     // line 0's own wrap display lines are exhausted, so the second press below crosses
-    // out of the resized block entirely — the case a stale sticky column
+    // out of the resized block entirely: the case a stale sticky column
     // would misplace worst.
     let text = BufferText::from("0123456789ABCDE\nFGHIJ\n");
     let sels = SelectionSet::single(Selection::collapsed(co(2))); // '2', display line 0 col 2
@@ -596,7 +596,7 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
     );
 
     // Resize to width 8: line 0 re-flows to display line 0 = "01234567" (chars 0-7),
-    // display line 1 = "89ABCDE" (chars 8-14) — 'C' (char 12) is now display line 1's col 4,
+    // display line 1 = "89ABCDE" (chars 8-14). 'C' (char 12) is now display line 1's col 4,
     // not col 2. A `j` from here must re-derive from head's *current* column
     // (4) rather than reuse the stale latch (2) measured for width 10.
     ed.view.panes[pid].viewport.width = 8;
@@ -689,13 +689,13 @@ fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
     assert_eq!(
         ed.current_selections().primary().head(),
         co(11),
-        "2j reuses the col-4 latch, landing on 'e' — re-deriving from the \
+        "2j reuses the col-4 latch, landing on 'e'; re-deriving from the \
          drifted col-0 landing on 'x' would land on 'a' (char 7) instead"
     );
 }
 
 /// While wrapping, bare `j` onto a continuation display line latches a
-/// `DisplayLine`-variant column — the display line's own, not the buffer line's
+/// `DisplayLine`-variant column: the display line's own, not the buffer line's
 /// (see `StickyDisplayCol`). `2j` must re-derive from `head`'s buffer-line
 /// column instead of misreading that display-line-relative number as one;
 /// this is the trap the naive fix (share the field without tagging it)
@@ -733,7 +733,7 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as
         ed.current_selections().primary().head(),
         co(160),
         "must re-derive from head's buffer-line column (79), landing on \
-         line1's 80th 'b' (char 160) — misreading the display-line latch (40) as a \
+         line1's 80th 'b' (char 160); misreading the display-line latch (40) as a \
          buffer-line column would land on char 121 instead"
     );
 }
@@ -741,14 +741,14 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as
 /// No-wrap `j` (`apply_visual_vertical`'s `ContentDisplayLine`) and a
 /// screen-relative scroll of the same display-line count
 /// (`commands::scroll_view`, what page/half-page/the mouse wheel use) must
-/// land on the *same* character — both resolve through the same
+/// land on the *same* character: both resolve through the same
 /// `DisplayLineMap` display-column authority, just via different call
 /// paths since `commands::scroll_view` carries its cursor with
 /// `hume_engine::display_lines::carry` rather than `apply_visual_vertical`.
 /// Line 0 has a leading tab (tab width 4): 'f' sits at char index 1 but
 /// display column 4. Landing by char column would put both on line 1's char
-/// index 1 ('b'); landing by display column — the model every vertical path
-/// shares — puts both on char index 4 ('e').
+/// index 1 ('b'); landing by display column (the model every vertical path
+/// shares) puts both on char index 4 ('e').
 #[test]
 fn no_wrap_bare_j_and_view_scroll_agree_on_display_column() {
     use crate::editor::commands::scroll_view;
@@ -803,7 +803,7 @@ fn no_wrap_bare_j_and_view_scroll_agree_on_display_column() {
 }
 
 /// Scroll commands (page/half-page) always move by display lines, regardless of
-/// `explicit_count` — the buffer-vs-visual choice is a parameter passed by the
+/// `explicit_count`. The buffer-vs-visual choice is a parameter passed by the
 /// caller (`unit`), not a global-state read inside the shared core. This
 /// guards against `apply_visual_vertical` accidentally reading
 /// `state.explicit_count` itself instead of trusting its parameter.
@@ -851,8 +851,8 @@ fn visual_move_per_selection_sticky_display_col() {
     // A at col 0, B at col 3 (primary).
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::collapsed(co(76)), // A — col 0 on display line 1
-            Selection::collapsed(co(79)), // B — col 3 on display line 1
+            Selection::collapsed(co(76)), // A: col 0 on display line 1
+            Selection::collapsed(co(79)), // B: col 3 on display line 1
         ],
         1, // primary is B
     );
@@ -892,7 +892,7 @@ fn visual_move_per_selection_sticky_display_col() {
 //
 // `DisplayLineMap::buffer_line_col`/`char_at_buffer_line_col` and their `9j`/`9k`
 // wiring must count through the decoration layer, not just buffer text and
-// tab expansion — so vertical motion agrees with `DisplayLineMap` (the display
+// tab expansion, so vertical motion agrees with `DisplayLineMap` (the display
 // authority `j`/`k` and page/wheel scroll already use) whenever an inline
 // decoration (an inlay hint, say) sits on a line a buffer-line move touches.
 
@@ -902,7 +902,7 @@ fn visual_move_per_selection_sticky_display_col() {
 /// it and land 3 columns short.
 #[test]
 fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
-    // line 0: hint "HHH" (3 cols) before "abc" — cursor on 'c' (char 2,
+    // line 0: hint "HHH" (3 cols) before "abc", cursor on 'c' (char 2,
     // display col 5: 3 hint cols + 'a','b'). line 1: hint-free "abcdefgh".
     let text = hume_editing::text::BufferText::from("abc\nabcdefgh\n");
     let sels = hume_editing::selection::SelectionSet::single(
@@ -919,27 +919,27 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
     assert_eq!(
         ed.current_selections().primary().head(),
         co(9),
-        "col 5 (hint-inclusive) of \"abcdefgh\" is 'f' — the rope-only mirror \
+        "col 5 (hint-inclusive) of \"abcdefgh\" is 'f'; the rope-only mirror \
          would have derived col 2 and landed on 'c' (char 6) instead"
     );
 }
 
-/// Bare `j` (wrap on) latches a `DisplayLine`-variant column — already
+/// Bare `j` (wrap on) latches a `DisplayLine`-variant column, already
 /// hint-aware, since `move_vertical` always went through `DisplayLineMap`. A
 /// following `2j` crosses families (`DisplayLine` → `BufferLine`), so it
 /// can't reuse that latch (see `StickyDisplayCol`) and must re-derive from
-/// `head` instead — on a line with a hint before `head`, that re-derivation
+/// `head` instead. On a line with a hint before `head`, that re-derivation
 /// must go through the hint, not around it.
 #[test]
 fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
-    // line 0: "xyz" (plain). line 1: hint "HHH" before "abc" — bare j lands
-    // on 'a' (char 4). line 2: hint-free "abcdefgh" — 2j's target.
+    // line 0: "xyz" (plain). line 1: hint "HHH" before "abc", bare j lands
+    // on 'a' (char 4). line 2: hint-free "abcdefgh", 2j's target.
     let text = hume_editing::text::BufferText::from("xyz\nabc\nabcdefgh\n");
     let sels = hume_editing::selection::SelectionSet::single(
         hume_editing::selection::Selection::collapsed(co(0)),
     );
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    // Wide enough that nothing actually wraps — only `is_wrapping()` matters,
+    // Wide enough that nothing actually wraps: only `is_wrapping()` matters,
     // to force bare `j` to tag `DisplayLine` instead of `BufferLine`.
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 200 }),
@@ -973,7 +973,7 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
         ed.current_selections().primary().head(),
         co(11),
         "re-derives head's line-relative column as 3 (the hint's width) and \
-         lands on 'd' — a rope-only re-derivation would compute column 0 \
+         lands on 'd'; a rope-only re-derivation would compute column 0 \
          (blind to the hint) and land on 'a' (char 8) instead"
     );
 }
@@ -1046,7 +1046,7 @@ fn visual_extend_up_enters_previous_line_last_display_line() {
 //
 // Char map:
 //   75  = '+'
-//   76  = ' '  (leading whitespace of display line 1 — the wrap-breaking space)
+//   76  = ' '  (leading whitespace of display line 1: the wrap-breaking space)
 //   77  = 'r'  (start of "ratatui")
 //   83  = 'i'  (end of "ratatui")
 //   84  = '\n'
@@ -1105,7 +1105,7 @@ fn select_word_nearest_scopes_to_visual_display_line() {
 }
 
 /// Two consecutive `j` + `select-word-nearest-on-line` sequences must advance
-/// the head forward — no oscillation. The pattern this guards against was:
+/// the head forward, with no oscillation. The pattern this guards against was:
 ///   j → head=76 (space); select → head=75 ('+', wrong display line);
 ///   j → head=76 again;   select → head=75 again. (oscillation)
 /// The second select must land strictly past the first.
@@ -1135,7 +1135,7 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
         "second j must advance past {head_after_first_select:?}; got {head_after_second_j:?}"
     );
 
-    // Second select: must land strictly past the first select — never back.
+    // Second select: must land strictly past the first select, never back.
     call_select(&mut ed);
     let head_after_second_select = ed.current_selections().primary().head();
     assert!(
@@ -1145,8 +1145,8 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
 }
 
 /// With the default `word-selects-whitespace = true`, the snapped word's
-/// leading whitespace bookend is absorbed into the selection (matching `mm`)
-/// — even in wrap mode, since the absorbed space (char 76) is buffer-adjacent
+/// leading whitespace bookend is absorbed into the selection (matching `mm`),
+/// even in wrap mode, since the absorbed space (char 76) is buffer-adjacent
 /// to "ratatui", not a crossing into a different word.
 #[test]
 fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
@@ -1169,7 +1169,7 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
 }
 
 /// A word beginning exactly at a wrapped display line's start (no leading space
-/// within that display line — the space is the *previous* display line's trailing char) must
+/// within that display line; the space is the *previous* display line's trailing char) must
 /// not have that space pulled into its around-selection. `expand_word_unit`'s
 /// leading scan must stop at the display-line bound `nearest_word_on_line`
 /// was given instead of walking into the previous display line.
@@ -1197,12 +1197,12 @@ fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
     assert_eq!(
         sel.anchor(),
         co(6),
-        "must not absorb the space at char 5 — it belongs to the previous visual display line"
+        "must not absorb the space at char 5: it belongs to the previous visual display line"
     );
     assert_eq!(sel.head(), co(10), "still selects all of 'wordB'");
 }
 
-/// `mm` (`select-word`) is NOT wrap-aware — unlike
+/// `mm` (`select-word`) is NOT wrap-aware, unlike
 /// `select-word-nearest-on-line` (see
 /// `select_word_nearest_does_not_absorb_previous_display_line_whitespace` above, same
 /// buffer/wrap setup), it has no display-line floor to stop the leading-whitespace
@@ -1210,7 +1210,7 @@ fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
 /// `word_unit_at` with `min_start = 0` rather than through
 /// `nearest_word_on_line`. So on a word that starts a wrapped continuation
 /// display line, `mm` pulls in the previous display line's trailing space while the on-cursor
-/// snap command does not — a real behavioral difference between the two
+/// snap command does not: a real behavioral difference between the two
 /// commands, not a bug in either. This pins the current, deliberate
 /// asymmetry so a future change to either command's wrap-awareness is a
 /// visible, intentional decision rather than a silent regression.
@@ -1235,13 +1235,13 @@ fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line()
     assert_eq!(
         sel.anchor(),
         co(5),
-        "mm DOES absorb the previous display line's space (char 5) — no display-line floor"
+        "mm DOES absorb the previous display line's space (char 5): no display-line floor"
     );
     assert_eq!(sel.head(), co(10), "still selects all of 'wordB'");
 }
 
 /// With `word-selects-whitespace` off, the selection stays a bare inner word
-/// — no whitespace bookend — even in wrap mode.
+/// (no whitespace bookend), even in wrap mode.
 #[test]
 fn select_word_nearest_respects_word_selects_whitespace_off() {
     let mut ed = word_wrap_editor();
@@ -1258,7 +1258,7 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
     assert_eq!(
         sel.anchor(),
         co(77),
-        "inner word only — leading space must not be absorbed"
+        "inner word only: leading space must not be absorbed"
     );
     assert_eq!(sel.head(), co(83), "still snaps to 'ratatui'");
 }
@@ -1266,19 +1266,19 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
 // ── Dispatch-origin count semantics ────────────────────────────────────────
 //
 // `move-down`/`move-up`'s buffer-line-vs-visual-display-line choice comes from
-// `CmdCtx.count: Option<usize>` — `None` means "as if no count was typed".
+// `CmdCtx.count: Option<usize>`, where `None` means "as if no count was typed".
 // The keymap trie leaves / WaitChar arm produce `None` for a bare keypress.
 // Steel can produce the same `None` explicitly: a script passes a count of
 // `0` (the Scheme spelling of "no count"), which `parse_count_extend` decodes
 // to `None` before it ever reaches `CmdCtx`. A no-arg `call!`/typed `:move-down`
-// still defaults to `Some(1)` (buffer line) — the script has to opt into
+// still defaults to `Some(1)` (buffer line): the script has to opt into
 // visual-display-line movement by name (passing `0`), it never happens implicitly.
 
 /// Scripted dispatch (`run_command_sync`, the path behind Steel's `call!`) with
-/// an explicit `Some(count)` moves by buffer line — unlike a bare keyboard `j`,
+/// an explicit `Some(count)` moves by buffer line, unlike a bare keyboard `j`,
 /// which stops at the wrap boundary (see `visual_move_down_within_wrapped_line`,
 /// char 76). A script can pass `None` (Steel count `0`) to get visual-display-line
-/// movement instead — see `steel_call_move_down_zero_count_moves_visual_display_line`.
+/// movement instead; see `steel_call_move_down_zero_count_moves_visual_display_line`.
 #[test]
 fn run_command_sync_some_count_moves_buffer_line() {
     use hume_scripting::host::CommandHost;
@@ -1298,11 +1298,11 @@ fn run_command_sync_some_count_moves_buffer_line() {
 }
 
 /// A Steel command's own internal `(call! "move-down" bid)` always moves by
-/// buffer line regardless of the *outer* key's typed count — the two are
+/// buffer line regardless of the *outer* key's typed count. The two are
 /// dispatched separately, each through its own `run_body` call, so
 /// the inner one can't inherit the outer's explicitness. This also proves
 /// `state.explicit_count` is restored (not left `true`) once the whole
-/// dispatch — outer Steel command plus its nested native call — completes.
+/// dispatch (outer Steel command plus its nested native call) completes.
 #[test]
 fn steel_call_move_down_ignores_outer_keystrokes_count() {
     use crate::editor::host_impl::EditorHostImpl;
@@ -1322,7 +1322,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
     host.register_command_names(&name_refs);
 
     let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    // The body passes no count to `move-down` — if it inherited the outer
+    // The body passes no count to `move-down`. If it inherited the outer
     // key's count-or-lack-thereof, this would move a visual display line instead.
     host.eval_source(
         r#"(define-command! "steel-move-down" ""
@@ -1353,7 +1353,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
 /// `(call! "move-down" bid count extend)` must preserve bare-press visual-display-line
 /// movement: dispatching it with `None` (as a keymap trie leaf would for a
 /// bare keypress) injects `count = 0` into the lambda, which round-trips back
-/// to `None` through `parse_count_extend` — the count-forwarding contract
+/// to `None` through `parse_count_extend`: the count-forwarding contract
 /// documented in `plugins.md`'s "Calling other commands" section.
 ///
 /// If `run_steel_command` injected `ctx.count.unwrap_or(1)` instead of `0`,
@@ -1385,12 +1385,12 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
     );
 }
 
-/// The same wrapper with an explicit count still moves by buffer line —
+/// The same wrapper with an explicit count still moves by buffer line:
 /// forwarding preserves both behaviors, not just the visual-display-line one.
 ///
 /// Buffer: wrapped 80-char line 0, then three short lines "b"/"c"/"d" (chars
 /// 81/83/85). From char 0, 3 buffer lines lands on 'd' (85); 3 *visual* display
-/// lines (display line 1, then "b", then "c") would land on 'c' (83) instead — the two
+/// lines (display line 1, then "b", then "c") would land on 'c' (83) instead. The two
 /// outcomes are distinguishable, so this pins `VerticalMove::BufferLine`,
 /// not just count.
 #[test]
@@ -1431,7 +1431,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
 }
 
 /// `(call! "move-down" bid 0)` from inside a Steel command body moves by visual
-/// display line regardless of the *outer* dispatch's count — a script can ask for
+/// display line regardless of the *outer* dispatch's count: a script can ask for
 /// visual-display-line movement explicitly, not just by forwarding a bare keypress.
 /// Also confirms `explicit_count` is restored afterward (mirrors
 /// `steel_call_move_down_ignores_outer_keystrokes_count`).
@@ -1451,7 +1451,7 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    // Outer count is Some(1) — irrelevant, since the body hardcodes 0.
+    // Outer count is Some(1), irrelevant since the body hardcodes 0.
     ed.execute_keymap_command("steel-vis".into(), Some(1), false);
 
     assert_eq!(
@@ -1467,7 +1467,7 @@ fn steel_call_move_down_zero_count_moves_visual_display_line() {
     );
 }
 
-/// The bare-name wrapper generated by `register_command_names` is variadic —
+/// The bare-name wrapper generated by `register_command_names` is variadic:
 /// `(move-down 0)` (no `call!`, no wrapper lambda) must also decode `0` to
 /// visual-display-line movement. This exercises the generated
 /// `(lambda args (%dispatch-command "move-down" args))` binding directly,

@@ -7,11 +7,11 @@ use hume_decorations::EolTextEntry;
 use hume_engine::pipeline::RenderContext;
 
 /// `update_eol_text_providers` (`decoration_providers.rs`) must hand the full,
-/// untruncated message through to the pane's `InlineInsert` — the per-line
+/// untruncated message through to the pane's `InlineInsert`: the per-line
 /// summary text set via `set-eol-text!` must reach the render provider
 /// byte-for-byte. (`format_buffer_line`'s trailing-insert path then splits
 /// this `InlineInsert` into one cell per grapheme so a terminal flush
-/// doesn't clobber it past the first column — covered directly by
+/// doesn't clobber it past the first column, covered directly by
 /// `format::tests::trailing_insert_emits_one_cell_per_grapheme` in
 /// `hume-engine`, since a rendered-grid snapshot here can't observe that
 /// terminal-flush-time truncation.)
@@ -52,7 +52,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
     );
 }
 
-/// Two entries from the *same* source landing on the same line — the shape a
+/// Two entries from the *same* source landing on the same line: the shape a
 /// remap produces when an edit collapses several originally-distinct lines
 /// into one; `last_writer_per_line` folds them, keeping the last. Pushing
 /// onto a per-line `Vec` in `update_eol_text_providers` would keep both
@@ -102,11 +102,11 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
     );
     assert_eq!(
         inserts[0].text, "second",
-        "the later entry must win — last_writer_per_line folds left-to-right"
+        "the later entry must win: last_writer_per_line folds left-to-right"
     );
 }
 
-/// Two sources tinting the same line — the cross-source
+/// Two sources tinting the same line: the cross-source
 /// tie-break, mirroring the sign pipeline: the alphabetically *first*
 /// source wins.
 #[test]

@@ -6,7 +6,7 @@ use pretty_assertions::assert_eq;
 //
 // Loads the *real* runtime/plugins/core/vim-keybind/plugin.scm (via
 // `include_str!`) into an isolated HUME_RUNTIME dir, then evaluates an
-// init.scm that eagerly loads it — exercising the actual shipped file rather
+// init.scm that eagerly loads it, exercising the actual shipped file rather
 // than a hand-rolled stand-in.
 
 const VIM_KEYBIND_PLUGIN: &str = include_str!(concat!(
@@ -24,7 +24,7 @@ fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile:
 
 /// Like `setup_vim_keybind_editor`, but passes `config_expr` (a Scheme
 /// expression, e.g. `(hash "change-to-eol" 'off)`) as `core:vim-keybind`'s
-/// `#:config` — lets tests exercise `#:config` without hand-rolling the
+/// `#:config`. Lets tests exercise `#:config` without hand-rolling the
 /// plugin-dir setup or the surrounding `load-plugin` boilerplate.
 fn setup_vim_keybind_editor_with_config(
     input: &str,
@@ -65,7 +65,7 @@ fn setup_vim_keybind_editor_with_config(
 //
 // `$`/`^`/`0`/`Ctrl-6` each just `bind-key!` an already-tested native
 // command (see `hume-ops/src/motion/tests/` and
-// `tests/alternate.rs`) to a new key — one test spot-checks that the real
+// `tests/alternate.rs`) to a new key. One test spot-checks that the real
 // plugin file's `bind-key!` lines are wired to the right command names,
 // rather than one near-duplicate test per key.
 
@@ -102,7 +102,7 @@ fn plugin_rebinds_line_and_alternate_motions() {
 
 /// The plugin does not bind bare `G`. `bind-key!` on a single key is a plain
 /// map insert over the trie slot (`keymap/mod.rs`'s `bind`/`bind_leaf`), so
-/// binding bare `G` to anything replaces the whole `G` node — silently
+/// binding bare `G` to anything replaces the whole `G` node, silently
 /// taking `G L`/`G U`/`G C` down with it. This test guards that invariant:
 /// with the real plugin loaded, `G`'s case-transform subtree resolves, and
 /// bare `G` is a no-op (an `Interior` node, not a leaf) rather than jumping
@@ -127,14 +127,14 @@ fn vim_keybind_leaves_the_native_g_prefix_intact() {
             .keymap
             .lookup_command(BindMode::Normal, &[key('G')]),
         None,
-        "bare G must not be a leaf — it's the case/rename prefix, not goto-last-line"
+        "bare G must not be a leaf: it's the case/rename prefix, not goto-last-line"
     );
 }
 
 // ── `o` flip (Extend mode) ──────────────────────────────────────────────────────
 
 /// The plugin's `(bind-key! 'extend "o" "flip-selections")` restores vim
-/// visual-mode `o` — swap anchor and head — in Extend mode. Native HUME
+/// visual-mode `o` (swap anchor and head) in Extend mode. Native HUME
 /// already covers this via `Ctrl-e` (see `tests/commands.rs`'s `ctrl_e_*`
 /// tests); this only checks the plugin's own binding wires up correctly.
 #[test]
@@ -144,7 +144,7 @@ fn o_in_extend_mode_flips_selection() {
 
     ed.handle_key(key('o'));
 
-    // anchor and head are swapped — selection is now backward.
+    // anchor and head are swapped: selection is now backward.
     assert_eq!(state(&ed), "<[hell]-o\n");
     // extend mode is still active (flip doesn't exit it).
     assert_eq!(ed.state.mode(), Mode::Extend);
@@ -157,7 +157,7 @@ fn shift_d_deletes_to_eol() {
     // goto-line-end(extend) turns the single-char selection on 'l' (index 2)
     // into a forward selection covering "llo world" (anchor stays at 2, head
     // moves to the last char before the trailing \n). delete_selection then
-    // removes it and lands the cursor on the structural '\n' left behind —
+    // removes it and lands the cursor on the structural '\n' left behind,
     // same semantics as `delete_selection_multi_char_forward`.
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("he-[l]>lo world\n");
     ed.handle_key(key('D'));
@@ -174,7 +174,7 @@ fn shift_c_changes_to_eol_and_enters_insert() {
 }
 
 /// With a real (multi-char) selection already in place, `C` falls back to the
-/// shadowed `copy-selection-on-next-line` instead of changing text — vim has
+/// shadowed `copy-selection-on-next-line` instead of changing text. Vim has
 /// no bare-cursor gesture to match here, so HUME's multicursor idiom wins.
 /// Mirrors `copy_next_line_range_selection` in
 /// `hume-ops/src/selection_cmd/copy.rs`: a forward selection covering
@@ -187,7 +187,7 @@ fn shift_c_with_selection_copies_to_next_line() {
     assert_eq!(
         ed.doc().text().to_string(),
         "hello\nworld\n",
-        "buffer must be unchanged — C must not edit text when the selection spans more than one char"
+        "buffer must be unchanged: C must not edit text when the selection spans more than one char"
     );
     assert_eq!(state(&ed), "-[hello]>\n-[world]>\n");
     assert_eq!(ed.state.mode(), Mode::Normal);
@@ -204,7 +204,7 @@ fn shift_c_with_count_1_copies_instead_of_changing() {
     assert_eq!(
         ed.doc().text().to_string(),
         "hello\nworld\n",
-        "buffer must be unchanged — a count prefix must not trigger the change-to-eol branch"
+        "buffer must be unchanged: a count prefix must not trigger the change-to-eol branch"
     );
     let heads: Vec<_> = ed
         .current_selections()
@@ -221,7 +221,7 @@ fn shift_c_with_count_1_copies_instead_of_changing() {
 }
 
 /// `3C` on a bare cursor forwards the count to `copy-selection-on-next-line`,
-/// duplicating onto all three lines below — not just gating on "count present
+/// duplicating onto all three lines below, not just gating on "count present
 /// or not".
 #[test]
 fn shift_c_with_count_3_copies_onto_three_lines() {
@@ -250,7 +250,7 @@ fn shift_c_with_count_3_copies_onto_three_lines() {
     assert!(heads.contains(&co(16)), "copy at col 0 of line 3");
 }
 
-/// `:` resolves only typed commands — a plugin-defined editor command like
+/// `:` resolves only typed commands. A plugin-defined editor command like
 /// `vim-change-to-eol-or-copy-line` (bound to a key, `define-command!`, not
 /// `define-typed-command!`) is unreachable from the command line, same as a
 /// native one. See `registry/mod.rs`'s module doc.
@@ -283,12 +283,12 @@ fn vim_change_to_eol_or_copy_line_not_reachable_from_command_line() {
 }
 
 /// A count prefix combined with an already-wide selection still forwards the
-/// count — the wide-selection fallback and the count fallback compose rather
+/// count: the wide-selection fallback and the count fallback compose rather
 /// than one silently overriding the other.
 #[test]
 fn shift_c_with_count_and_selection_copies_with_count() {
     // "hello\nworld\nfoo\n": head col 4 ('o') of "hello" copies to "world"
-    // col 4 ('d', offset 10), then to "foo" — col 4 overshoots "foo"'s 3
+    // col 4 ('d', offset 10), then to "foo". Col 4 overshoots "foo"'s 3
     // chars, clamping to its last char ('o', offset 14).
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[hello]>\nworld\nfoo\n");
     ed.handle_key(key('2'));
@@ -317,7 +317,7 @@ fn shift_c_with_count_and_selection_copies_with_count() {
 }
 
 /// `C` shadows the default `copy-selection-on-next-line` binding while the
-/// plugin is loaded — the multicursor command stays reachable by name.
+/// plugin is loaded. The multicursor command stays reachable by name.
 #[test]
 fn shift_c_shadows_copy_selection_command() {
     let (ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\n");
@@ -347,7 +347,7 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
     assert_eq!(
         ed.doc().text().to_string(),
         "hello\nworld\n",
-        "buffer must be unchanged — C must not edit text when change-to-eol 'off drops the vim override"
+        "buffer must be unchanged: C must not edit text when change-to-eol 'off drops the vim override"
     );
     assert_eq!(ed.state.mode(), Mode::Normal);
 
@@ -368,7 +368,7 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
     assert!(heads.contains(&co(6)), "new cursor lands at col 0 line 1");
 }
 
-/// `#:config "change-to-eol" 'off` only affects `C` — `D` (which shadows
+/// `#:config "change-to-eol" 'off` only affects `C`: `D` (which shadows
 /// nothing) stays bound to its vim behavior.
 #[test]
 fn change_to_eol_off_leaves_d_bound_to_vim_delete() {
@@ -385,7 +385,7 @@ fn change_to_eol_off_leaves_d_bound_to_vim_delete() {
 }
 
 /// `#:config (hash "change-to-eol" 'on)` makes `C` change to end of line
-/// unconditionally, even with a real (multi-char) selection active — unlike
+/// unconditionally, even with a real (multi-char) selection active, unlike
 /// the default `'smart` behavior (see `shift_c_with_selection_copies_to_next_line`),
 /// which falls back to `copy-selection-on-next-line` in that case.
 #[test]
@@ -406,7 +406,7 @@ fn shift_c_with_change_to_eol_on_ignores_selection_width() {
 // ── Dot-repeat ────────────────────────────────────────────────────────────────
 
 /// `D` then `.` on a different line must repeat "delete to end of line" at
-/// the new cursor. `vim-delete-to-eol` carries no `#:repeatable` flag — native
+/// the new cursor. `vim-delete-to-eol` carries no `#:repeatable` flag: native
 /// `delete` is itself repeatable and self-captures the preceding
 /// `goto-line-end` (extend) step via the shared selection-recipe accumulator,
 /// so the composite replays correctly with no cooperation needed from the
@@ -426,7 +426,7 @@ fn shift_d_is_dot_repeatable() {
 
 /// Loading `core:vim-keybind` with the default `'smart` `change-to-eol` but
 /// without `core:stdlib` loaded first must fail to load (contained, not
-/// aborting `eval_init`), naming `core:stdlib` — not silently succeed and
+/// aborting `eval_init`), naming `core:stdlib`, not silently succeed and
 /// leave `C` picking the wrong branch the first time it's pressed.
 #[test]
 fn smart_change_to_eol_without_stdlib_errors_at_load() {
@@ -456,7 +456,7 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
 
 /// `core:vim-keybind`'s `core:stdlib` guard is unconditional (its config
 /// read always calls `stdlib/config-enum`, whatever `change-to-eol` resolves
-/// to) — `'off` fails to load without `core:stdlib` too, naming it. Replaces
+/// to). `'off` fails to load without `core:stdlib` too, naming it. Replaces
 /// the former `change_to_eol_off_does_not_require_stdlib`, which pinned the
 /// opposite contract from when only `'smart` depended on `core:stdlib`.
 #[test]
@@ -490,8 +490,8 @@ fn change_to_eol_off_also_requires_stdlib() {
 }
 
 /// A `change-to-eol` value outside `'on`/`'smart`/`'off` must fail the load
-/// with `stdlib/config-enum`'s message — naming the plugin, the key, and the
-/// offending value — rather than the dispatch `cond`'s old `else` arm (now
+/// with `stdlib/config-enum`'s message (naming the plugin, the key, and the
+/// offending value) rather than the dispatch `cond`'s old `else` arm (now
 /// dead: `config-enum` has already rejected anything not in the allowed set).
 #[test]
 fn change_to_eol_bogus_value_fails_load_with_enum_message() {

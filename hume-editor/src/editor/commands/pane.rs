@@ -13,13 +13,13 @@ use crate::editor::focus::focus_pane;
 use crate::editor::tab::{TabId, install_live, take_live};
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its
-/// id — but leave it outside every tab's layout (see `TabStore`'s own doc:
+/// id, but leave it outside every tab's layout (see `TabStore`'s own doc:
 /// a pane is meant to be reachable from exactly one tab's `LayoutTree` at
 /// all times, active or stashed; this alone doesn't make that true yet).
 ///
 /// Private on purpose: this is the one raw constructor, and the two
-/// functions below it — `open_pane_in_layout` (splice beside an existing
-/// pane) and `open_pane_as_new_tab` (splice as a brand-new tab) — are the
+/// functions below it, `open_pane_in_layout` (splice beside an existing
+/// pane) and `open_pane_as_new_tab` (splice as a brand-new tab), are the
 /// *only* sanctioned ways to reach it, in production or in tests. Nothing
 /// else, anywhere, may call this directly; there is no third legitimate way
 /// to create a pane.
@@ -31,7 +31,7 @@ fn open_pane(
     // Every pane gets the same providers (sign column + gutter + bracket/
     // search/diagnostic/extra highlight + inlay hints + virtual lines +
     // completion overlay + popup overlay + menu overlay + LSP
-    // completion-menu overlay) as the initial pane — see `build_pane`. Each
+    // completion-menu overlay) as the initial pane; see `build_pane`. Each
     // pane's Arcs are freshly allocated here, never shared with any other
     // pane (see `PaneHighlights`/`SignMap`), so per-pane decoration data
     // can never bleed across panes.
@@ -56,11 +56,11 @@ fn open_pane(
 }
 
 /// Create a pane viewing `bid` and splice it into the layout beside
-/// `target`, on `direction`'s axis, in one step — `open_pane` alone only
+/// `target`, on `direction`'s axis, in one step. `open_pane` alone only
 /// does the first half (see its own doc), leaving the new pane outside
 /// every tab's layout until a caller does the second half itself. Returns
 /// the new pane's id, or an error naming `target` if it isn't present in
-/// the layout (an invariant violation) — checked before `open_pane` runs,
+/// the layout (an invariant violation), checked before `open_pane` runs,
 /// so there is never a pane to roll back: no caller can create one with no
 /// layout leaf to begin with.
 pub(in crate::editor) fn open_pane_in_layout(
@@ -85,7 +85,7 @@ pub(in crate::editor) fn open_pane_in_layout(
 /// Create a pane viewing `bid` as the sole content of a brand-new tab
 /// inserted right after the current one, and switch to it. The other shape
 /// of pane creation, alongside `open_pane_in_layout`'s
-/// split-beside-an-existing-pane one — a new tab isn't beside anything, and
+/// split-beside-an-existing-pane one: a new tab isn't beside anything, and
 /// its graft touches `TabStore` (stash the outgoing tab, allocate the new
 /// one), not just `view.layout`, so it can't share that function's body.
 /// `commands::tab::open_tab` is the one caller.
@@ -112,7 +112,7 @@ pub(in crate::editor) fn open_pane_as_new_tab(
 }
 
 /// Remove every per-pane state map entry for a detached pane (`panes`,
-/// per-buffer state, jump list, render handles) — the inverse of
+/// per-buffer state, jump list, render handles): the inverse of
 /// `open_pane`'s seeding. Takes a `DetachedPane` rather than a bare
 /// `PaneId`: the token is proof the pane is already unreachable from every
 /// layout tree (see `DetachedPane`'s own doc), so this can never be called
@@ -130,7 +130,7 @@ pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pa
 /// Close the focused pane: prune it from the layout tree, move focus to the
 /// promoted sibling, and drop all its per-pane state.
 ///
-/// Precondition: the active tab's layout is split — callers check
+/// Precondition: the active tab's layout is split; callers check
 /// `!view.layout().is_single_pane()` before calling. `view.panes.len() > 1` is
 /// NOT the right count: panes are a global pool shared by every tab, so it
 /// stays true whenever any other tab holds a pane, even when the active tab
@@ -158,7 +158,7 @@ const MIN_PANE_HEIGHT: u16 = 3;
 const MIN_PANE_WIDTH: u16 = 10;
 
 /// Whether splitting the focused pane on `direction` would leave every pane
-/// sharing that axis — not just the two new ones — at or above the minimum
+/// sharing that axis (not just the two new ones) at or above the minimum
 /// size, including the 1-cell seam divider drawn between siblings (see
 /// `hume_engine::pipeline::split_rect`).
 ///
@@ -171,7 +171,7 @@ const MIN_PANE_WIDTH: u16 = 10;
 /// Recomputes geometry from `view.last_pane_area` on every call rather than
 /// trusting a cross-frame cache, so a split issued right after a close/split
 /// earlier in the same replay batch always sees current geometry. Before the
-/// first `prepare_frame` there is no real terminal area yet — allow the
+/// first `prepare_frame` there is no real terminal area yet: allow the
 /// split; `prepare_frame` sizes it correctly on the next frame regardless.
 pub(in crate::editor) fn fits_split(
     view: &EngineView,
@@ -197,7 +197,7 @@ pub(in crate::editor) fn fits_split(
 
 /// Split the focused pane so the new pane views `bid`, and move focus to it.
 /// Refuses with [`SPLIT_TOO_SMALL_MSG`] if the focused pane is too small to
-/// fit two panes plus the seam divider (see `fits_split`) — surfaced to
+/// fit two panes plus the seam divider (see `fits_split`), surfaced to
 /// `commands::run` as `state.command_refused`, which is how the Steel
 /// `call!` boolean (see `hume_scripting::host::CommandHost::run_command_sync`)
 /// reports the refusal back to a caller like `stdlib/with-pane-command`.
@@ -221,7 +221,7 @@ pub(in crate::editor) fn split_pane_onto(
     let new_pid = open_pane_in_layout(state, view, old_focused, bid, direction)?;
 
     // A bare split (same buffer as the source pane) inherits its cursor and
-    // scroll position — `open_pane` seeds fresh state at the buffer's initial
+    // scroll position: `open_pane` seeds fresh state at the buffer's initial
     // selection, which would otherwise jump the new pane to the top of the
     // file regardless of where the source pane was scrolled to. `:split
     // <path>` (a different buffer) intentionally starts fresh.
@@ -240,14 +240,14 @@ pub(in crate::editor) fn split_pane_onto(
 
         // A same-buffer split inherits the source pane's jump history so the
         // new pane can Ctrl-o back to positions the user visited before the
-        // split. The two lists diverge from here — later jumps in either pane
+        // split. The two lists diverge from here: later jumps in either pane
         // don't affect the other. Cursor position within the history is
         // preserved too, so a split mid-navigation stays mid-navigation.
         state.panes.jumps[new_pid] = state.panes.jumps[old_focused].clone();
     }
 
     // `open_pane` already seeded every per-pane map for `new_pid`, so
-    // `focus_pane` is complete here — the single pane-focus writer, used
+    // `focus_pane` is complete here: the single pane-focus writer, used
     // for every focus change rather than special-cased per caller.
     focus_pane(state, view, new_pid);
     Ok(())

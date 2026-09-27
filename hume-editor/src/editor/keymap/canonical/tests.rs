@@ -17,7 +17,7 @@ fn canonical_shift_lowercase_char_becomes_uppercase() {
 
 #[test]
 fn canonical_shift_punctuation_is_unchanged() {
-    // Punctuation has no case to normalize — SHIFT+':' stays distinct from
+    // Punctuation has no case to normalize: SHIFT+':' stays distinct from
     // plain ':'. (The lone-SHIFT strip in `handle_normal` handles the
     // partially-compliant-terminal gap for punctuation; that's a separate
     // mechanism from this trie-identity normalization.)
@@ -60,11 +60,11 @@ fn canonical_is_idempotent() {
 fn encoding_is_injective_across_key_code_variants() {
     use termina::event::{MediaKeyCode, ModifierKeyCode};
 
-    // One representative `KeyEvent` per `encode_key_code` tag — including
+    // One representative `KeyEvent` per `encode_key_code` tag, including
     // every `Media`/`Modifier` payload value, since those two tags each
     // cover a whole sub-enum. `encode`'s own doc argues the tag/payload
     // split can't let two DIFFERENT tags collide; what it can't rule out is
-    // a duplicated tag *within* the hand-numbered match — a mistake the
+    // a duplicated tag *within* the hand-numbered match, a mistake the
     // compiler stays silent on. This test is the check that catches it:
     // every value below must produce a distinct `CanonicalKey`.
     let media = [
@@ -145,7 +145,7 @@ fn encoding_is_injective_across_key_code_variants() {
 fn equal_canonical_keys_hash_equally() {
     // Two raw KeyEvents that canonicalization collapses to the same binding
     // identity must also collapse to the same CanonicalKey, and produce
-    // equal hashes — Eq and Hash both read `encode`, so this is exactly the
+    // equal hashes. Eq and Hash both read `encode`, so this is exactly the
     // contract a derived Eq would carry only because `canonical` happens
     // to pin the fields it would otherwise also compare.
     let a = CanonicalKey::from(KeyEvent::new(KeyCode::Char('G'), Modifiers::NONE));

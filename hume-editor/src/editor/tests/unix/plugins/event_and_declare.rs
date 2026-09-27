@@ -1,4 +1,4 @@
-//! Lazy plugin loading — event activations, and load-plugin /
+//! Lazy plugin loading: event activations, and load-plugin /
 //! declare-plugin interaction (editor-level).
 
 use super::*;
@@ -87,7 +87,7 @@ fn event_trigger_idempotent_on_second_fire() {
     };
     let bid = ed.focused_buffer_id();
 
-    ed.queue_buffer_save(bid); // first fire — activates
+    ed.queue_buffer_save(bid); // first fire: activates
     ed.settle();
     assert!(
         ed.scripting
@@ -99,7 +99,7 @@ fn event_trigger_idempotent_on_second_fire() {
     );
 
     let after_first = state(&ed);
-    ed.queue_buffer_save(bid); // second fire — handler runs, no re-activation
+    ed.queue_buffer_save(bid); // second fire: handler runs, no re-activation
     ed.settle();
 
     assert_ne!(
@@ -192,7 +192,7 @@ fn event_trigger_one_to_many_activates_all() {
 }
 
 /// Body error: plugin raises at load time → `Failed`, error reported, activation
-/// entry cleared — no retry on a second fire.
+/// entry cleared, with no retry on a second fire.
 ///
 /// Without the `activation_events` drop in `drop_activations_for`'s failure
 /// path, the same plugin would retry activation on every fire.
@@ -212,7 +212,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     };
     let bid = ed.focused_buffer_id();
 
-    ed.queue_buffer_save(bid); // first fire — activates → body fails
+    ed.queue_buffer_save(bid); // first fire: activates → body fails
     ed.settle();
 
     assert!(
@@ -239,7 +239,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     );
 
     let msg_count = ed.state.message_log.entries().count();
-    ed.queue_buffer_save(bid); // second fire — no retry
+    ed.queue_buffer_save(bid); // second fire: no retry
     ed.settle();
 
     assert!(
@@ -258,7 +258,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
 
 // ── load-plugin / declare-plugin interaction (editor-level) ────────
 
-/// `(declare-plugin "name")` with no activation entries is a hard error — the plugin
+/// `(declare-plugin "name")` with no activation entries is a hard error: the plugin
 /// could never activate at runtime.
 #[test]
 fn declare_plugin_no_triggers_is_hard_error() {
@@ -295,7 +295,7 @@ fn declare_plugin_no_triggers_is_hard_error() {
 #[test]
 fn load_plugin_absent_top_level_silently_skips() {
     let dir = safe_tempdir();
-    // No plugin directory created — plugin is absent on disk.
+    // No plugin directory created: plugin is absent on disk.
     let init_path = dir.path().join("init.scm");
     std::fs::write(&init_path, r#"(load-plugin "user/tp")"#).unwrap();
 
@@ -317,7 +317,7 @@ fn load_plugin_absent_top_level_silently_skips() {
 
 /// A lazy plugin B can call another lazy plugin A's command via `(call! "a-cmd")`.
 /// The inline lazy-miss retry in `%dispatch-command` activates A on the fly and
-/// runs the command — no `(load-plugin)` needed.
+/// runs the command, with no `(load-plugin)` needed.
 ///
 /// Without the lazy-miss retry in `%dispatch-command`, `(call! "a-cmd")` would
 /// fall through to `%call-native!`, which does not know `a-cmd`, so it would log
@@ -327,7 +327,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     use hume_scripting::attribution::PluginId;
 
     let dir = safe_tempdir();
-    // Plugin A — defines "a-cmd" (move-right wrapper).
+    // Plugin A: defines "a-cmd" (move-right wrapper).
     let dir_a = dir.path().join("plugins").join("user").join("tpa");
     std::fs::create_dir_all(&dir_a).unwrap();
     std::fs::write(
@@ -335,7 +335,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
         r#"(define-command! "a-cmd" "doc" (lambda () (call! "move-right" (focused-pane))))"#,
     )
     .unwrap();
-    // Plugin B — command activation entry; b-cmd's body calls "a-cmd" inline
+    // Plugin B: command activation entry; b-cmd's body calls "a-cmd" inline
     // (no load-plugin), reached only once a keypress dispatches b-cmd itself.
     let dir_b = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_b).unwrap();
@@ -416,7 +416,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
 /// Nested inline activation reached from a plugin's own top-level body (not
 /// a command a keypress later dispatches), with both plugins genuinely
 /// multi-file: B's `plugin.scm` `require`s a sibling file, then top-level
-/// `(call! "a-cmd")`s a second, also multi-file, plugin A — re-entering
+/// `(call! "a-cmd")`s a second, also multi-file, plugin A, re-entering
 /// `hm.eval-string` while B's own `require` chain is still on the Steel call
 /// stack. This is the shape `core:git-diff`/`core:lsp`'s own `core:stdlib`
 /// guard exists to protect (both `require` several sibling files before
@@ -433,8 +433,8 @@ fn nested_activation_multi_file_via_real_editor_host() {
 
     let dir = safe_tempdir();
 
-    // Each plugin's top-level body checks its own helper.scm binding twice —
-    // once right after `require`, once after the nested call! — so a stack
+    // Each plugin's top-level body checks its own helper.scm binding twice
+    // (once right after `require`, once after the nested call!), so a stack
     // mis-scoping that corrupts either plugin's module bindings fails loudly
     // as an eval_init error, not silently.
     let dir_a = dir.path().join("plugins").join("user").join("tpa");
@@ -470,7 +470,7 @@ fn nested_activation_multi_file_via_real_editor_host() {
     )
     .unwrap();
 
-    // A is merely declared — its activation must come from B's nested call!,
+    // A is merely declared: its activation must come from B's nested call!,
     // not from its own top-level load. B loads eagerly, running its body
     // (and the nested call! into A) during this eval_init.
     let init_path = dir.path().join("init.scm");
@@ -488,7 +488,7 @@ fn nested_activation_multi_file_via_real_editor_host() {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect("eval_init must succeed — B's top-level call! must inline-activate multi-file A");
+    .expect("eval_init must succeed: B's top-level call! must inline-activate multi-file A");
     ed.scripting = Some(host);
 
     let id_a = PluginId::User {
@@ -504,19 +504,19 @@ fn nested_activation_multi_file_via_real_editor_host() {
             ed.scripting.as_ref().unwrap().plugin_status(&id_a),
             Some(PluginStatus::Loaded)
         ),
-        "A must be Loaded — its multi-file require completed under nested activation"
+        "A must be Loaded: its multi-file require completed under nested activation"
     );
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&id_b),
             Some(PluginStatus::Loaded)
         ),
-        "B must be Loaded — its own multi-file require completed despite nesting a call! mid-body"
+        "B must be Loaded: its own multi-file require completed despite nesting a call! mid-body"
     );
 }
 
 /// A plugin body's `(plugin-config)` read must resolve to its own `#:config`
-/// even after nested-activating a dependency in between — `plugin-config`
+/// even after nested-activating a dependency in between: `plugin-config`
 /// resolves off the top of `plugin_stack`
 /// (`hume-scripting/src/builtins/plugins.rs`), which `%finish-lazy-activation`
 /// pops back to the enclosing plugin once the nested activation completes.
@@ -562,11 +562,11 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect("eval_init must succeed — B must see its own #:config after nested-activating A");
+    .expect("eval_init must succeed: B must see its own #:config after nested-activating A");
 }
 
 /// A lazy plugin activated via the in-Steel `call!` path whose body tries to
-/// shadow a native command must fail cleanly — the native command survives.
+/// shadow a native command must fail cleanly, and the native command survives.
 ///
 /// The in-Steel path matters: `SteelCtx::new_command` carries an empty
 /// `builtin_cmd_names` set, so the Steel-side shadow guard is inert and the
@@ -583,7 +583,7 @@ fn native_command_survives_failed_shadowing_plugin() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        // Eager command whose body triggers the lazy plugin via call! —
+        // Eager command whose body triggers the lazy plugin via call!:
         // the in-Steel activation path (empty builtin_cmd_names).
         r#"(declare-plugin "user/tp" #:commands '("bar"))
            (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
@@ -634,7 +634,7 @@ fn native_command_survives_failed_shadowing_plugin() {
 }
 
 /// A lazy plugin activated via `call!` whose body binds a key and then errors:
-/// the binding must never be applied — a `Failed` plugin leaves no dangling
+/// the binding must never be applied. A `Failed` plugin leaves no dangling
 /// keybinding pointing at a command that (if it was also rolled back, or was
 /// never valid) can no longer be dispatched.
 ///
@@ -683,7 +683,7 @@ fn plugin_keybinding_rolled_back_on_failed_activation() {
 }
 
 /// A lazy plugin activated via `call!` whose body registers a hook and then
-/// errors: the hook must not survive — a `Failed` plugin's hooks must stop
+/// errors: the hook must not survive, since a `Failed` plugin's hooks must stop
 /// firing.
 ///
 /// Without `hooks.remove_owned_by` in `finish_lazy_activation`,

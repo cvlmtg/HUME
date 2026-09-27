@@ -37,13 +37,13 @@ impl Editor {
     /// (`BufferStore::find_by_path`) and, on save, as `FileMeta::resolved_path`.
     ///
     /// Canonicalizing the whole path requires the file to exist. When it
-    /// doesn't, canonicalize the parent instead and re-append the basename —
+    /// doesn't, canonicalize the parent instead and re-append the basename:
     /// this still resolves symlinks in the parent chain (e.g. `/tmp` →
     /// `/private/tmp` on macOS), so a new-file buffer opened via
     /// `/tmp/x.txt` keys identically to one opened via its canonical form,
     /// and to the `FileMeta` `:w` produces once the file is written. Falls
     /// back to the lexically-normalized path only when the parent doesn't
-    /// exist either (nested missing directories) — `open_or_dedup`'s
+    /// exist either (nested missing directories); `open_or_dedup`'s
     /// `NotFound` branch still opens the buffer; only identity across
     /// re-typed forms is imprecise in that case.
     ///
@@ -71,11 +71,11 @@ impl Editor {
     ///
     /// `resolved` is canonical when the file exists, or the best-effort form
     /// [`resolve_buffer_path`] produces when it doesn't (parent canonicalized,
-    /// basename appended lexically) — `find_by_path` compares whichever form
+    /// basename appended lexically). `find_by_path` compares whichever form
     /// was stored, so dedup still works once the file is later created and
     /// reopened via its now-canonicalizable path.
     ///
-    /// Thin wrapper over [`lifecycle::open_or_dedup_and_notify`] — the actual
+    /// Thin wrapper over [`lifecycle::open_or_dedup_and_notify`]; the actual
     /// dedup-and-missing-file logic lives there so Steel's `open-buffer!` and
     /// LSP goto/workspace-edit share it too; this only adds the
     /// `&Editor`-only language detection a genuinely new buffer needs.
@@ -86,7 +86,7 @@ impl Editor {
         let (bid, is_new) =
             lifecycle::open_or_dedup_and_notify(&mut self.view, &mut self.state, resolved)?;
         if is_new {
-            // Steel eval capability only `&mut Editor` has — see
+            // Steel eval capability only `&mut Editor` has; see
             // `open_buffer_and_notify`'s doc for why detection can't live there.
             self.detect_pending_languages();
         }
@@ -96,7 +96,7 @@ impl Editor {
     /// Open an additional file without switching focus; an error is logged
     /// as a warning and yields `None`. A path that doesn't exist opens a
     /// new-file buffer instead of erroring (see `resolve_open_path`) and
-    /// reports Info `[new file]`, matching `:e` — otherwise a mistyped
+    /// reports Info `[new file]`, matching `:e`. Otherwise a mistyped
     /// trailing CLI argument would silently open an empty buffer with no
     /// feedback at all.
     pub(crate) fn open_extra_file(&mut self, path: &std::path::Path) -> Option<BufferId> {
@@ -120,7 +120,7 @@ impl Editor {
     }
 
     /// Resolve a path argument to an open buffer, opening the file if it isn't
-    /// already open — reading it if it exists, or opening an empty
+    /// already open: reading it if it exists, or opening an empty
     /// [`Buffer::new_file`] bound to the path if it doesn't (see
     /// `resolve_buffer_path`). Shared sequence: `expand` →
     /// `absolute_unresolved` + `display_form` (display path) →
@@ -155,17 +155,17 @@ impl Editor {
     }
 
     /// Allocate a new buffer slot (engine + BufferStore) and return the
-    /// allocated `BufferId` — see `lifecycle::open_buffer`'s own doc for why
+    /// allocated `BufferId`; see `lifecycle::open_buffer`'s own doc for why
     /// no pane is seeded yet.
     pub(in crate::editor) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         let bid = lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc);
-        // Steel eval capability only `&mut Editor` has — see
+        // Steel eval capability only `&mut Editor` has; see
         // `open_buffer_and_notify`'s doc for why detection can't live there.
         self.detect_pending_languages();
         bid
     }
 
-    /// Remove buffer `id` — see [`lifecycle::close_buffer`]'s own doc for
+    /// Remove buffer `id`; see [`lifecycle::close_buffer`]'s own doc for
     /// the last-buffer case (a fresh scratch buffer, not `id` reused).
     pub(in crate::editor) fn close_buffer(&mut self, id: BufferId) {
         lifecycle::close_buffer_and_notify(
@@ -177,7 +177,7 @@ impl Editor {
         // Mirrors `open_buffer`'s own call, right above: the last-buffer
         // case queues a fresh scratch buffer for language detection and
         // `OnBufferOpen` (`close_buffer_and_notify`'s `queue_open_announcement`
-        // call) — this is `(close-buffer! id)`'s Steel path's own capability
+        // call): this is `(close-buffer! id)`'s Steel path's own capability
         // (`apply_script_effects` calls this unconditionally at the end of
         // every command dispatch), but a direct `&mut Editor` caller like
         // this one has no such funnel to fall back on.
@@ -188,7 +188,7 @@ impl Editor {
     /// undo tree and the primary cursor line/column across the reload.
     ///
     /// Unlike `set_view_content` (which discards `History` on a full
-    /// `Buffer` swap), this delegates to [`Buffer::reload_from_text`] — see
+    /// `Buffer` swap), this delegates to [`Buffer::reload_from_text`]; see
     /// its doc for the history/undo mechanics.
     ///
     /// Each pane's primary cursor is captured as `(line, char_col)` before the
@@ -220,13 +220,13 @@ impl Editor {
         // End any open Insert/paste session the same way every other
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,
         // `reset_config_state`), before the reload invalidates the text it
-        // was snapshotted against — leaving it open would keep
+        // was snapshotted against. Leaving it open would keep
         // `state.active_session` and the `Insert` mode layer pointing at a
         // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
 
         // Capture (line, char_col) per pane + focused pane's pre_sels.
-        // Every pane showing `id`, active tab or not — a background pane's
+        // Every pane showing `id`, active tab or not: a background pane's
         // cursor needs remapping through this reload's `ChangeSet` too, or
         // it desyncs the moment its tab is refocused.
         let pane_ids: Vec<PaneId> = self
@@ -274,7 +274,7 @@ impl Editor {
         }; // new_text borrow ends here
 
         // `id` is `fp`'s own buffer, so `fp` is in `pane_ids` and thus in
-        // `post_heads`. A miss means an internal invariant broke — fail loud
+        // `post_heads`. A miss means an internal invariant broke, so fail loud
         // rather than silently anchoring undo to char 0.
         let focused_post_head = post_heads
             .iter()
@@ -285,14 +285,14 @@ impl Editor {
 
         // History-preserving reload.
         // Refresh `file_meta` so save-time permission/ownership checks see
-        // the current on-disk metadata — `reload_from_text` only replaces
+        // the current on-disk metadata: `reload_from_text` only replaces
         // the buffer's text, not its `file_meta`, so this must be set
         // explicitly.
         let new_text = new_doc.text().clone();
         let new_file_meta = std::mem::take(&mut new_doc.file_meta);
         drop(new_doc);
 
-        // Captured before the reload mutates `self.text` — `translate_in_place`
+        // Captured before the reload mutates `self.text`: `translate_in_place`
         // needs the pre-reload content to identify which lines the reload
         // touched, same requirement as any other edit's `text_pre`.
         let text_pre = self.state.buffers.get(id).text().clone();
@@ -312,7 +312,7 @@ impl Editor {
         }
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
         // Flush any didChange already queued for this buffer *before* the
-        // whole-document one below — otherwise, under macro replay (an edit
+        // whole-document one below. Otherwise, under macro replay (an edit
         // followed by `:e!` in the same drain window), the server would see
         // the full reloaded text at the new version first and the queued
         // incremental change (computed against the pre-reload text, at an
@@ -320,19 +320,19 @@ impl Editor {
         // recover from, permanently desyncing its copy of the document.
         self.flush_lsp_pending_changes();
         // Everything below discards state computed against the pre-reload
-        // text — diagnostics/decorations char offsets, the engine syntax
+        // text: diagnostics/decorations char offsets, the engine syntax
         // tree, a whole-document didChange at a fresh version. A no-op
         // reload (`mutated == false`) never touched `self.text` or
         // `text_gen`, so that state is still valid against the (unchanged)
-        // current content — skip discarding it rather than throw away
+        // current content, so skip discarding it rather than throw away
         // perfectly good syntax highlighting/diagnostics for nothing.
         if mutated {
             // `reload_from_text` bumped text_gen via set_text but produced no
             // *queued incremental* change the LSP pending-queue mechanism can
-            // consume — send the reload as a whole-document didChange instead.
+            // consume, so send the reload as a whole-document didChange instead.
             self.lsp_did_change_whole_document(id);
             // Diagnostics and LSP-sourced decorations were computed against the
-            // pre-reload text — their char offsets are meaningless (and
+            // pre-reload text; their char offsets are meaningless (and
             // potentially out-of-bounds, e.g. after a shrink) against the new
             // content. The server republishes diagnostics shortly after seeing
             // the didChange above; nothing republishes decorations on its own,
@@ -352,14 +352,14 @@ impl Editor {
             }
         }
         // `detect_and_set_language` handles a genuine language change
-        // (shebang/extension) regardless of `mutated` — re-running setup via
+        // (shebang/extension) regardless of `mutated`, re-running setup via
         // `set_buffer_language` itself.
         self.detect_and_set_language(id);
 
         // Reseed per-pane selections / scroll.
         // Targeted, not `fresh_from_buf`: selections are restored to the clamped
         // post-reload cursor. Any open session was already ended above, before
-        // this reload's own edit — no per-pane group nulling needed here.
+        // this reload's own edit, so no per-pane group nulling needed here.
         for &(pid, head) in &post_heads {
             crate::editor::pane_state::write_cursor(
                 &mut self.state.panes.state,
@@ -370,15 +370,15 @@ impl Editor {
                 head,
             );
         }
-        // Drop stale saved scrolls for the reloaded buffer on every pane —
+        // Drop stale saved scrolls for the reloaded buffer on every pane:
         // `recall_scroll` clamps the top's line to the buffer's current last
         // line, but a saved top slot/`horizontal_offset` for a
         // scroll position that no longer exists is still worth discarding
         // outright rather than recalling a clamped-but-arbitrary spot. The
-        // jump list was already remapped through `reload_cs` above
-        // — same-buffer-id survival alone isn't enough, since the reload can
+        // jump list was already remapped through `reload_cs` above;
+        // same-buffer-id survival alone isn't enough, since the reload can
         // shift or delete the text an entry pointed at.
-        // Every pane, active tab or not — see the comment above.
+        // Every pane, active tab or not; see the comment above.
         for (_, pane) in self.view.panes.every_pane_across_all_tabs_mut() {
             pane.forget_buffer(id);
         }
@@ -397,7 +397,7 @@ impl Editor {
     /// `panes.jumps[fp]`.
     ///
     /// Caller contract: all fallible steps (path resolution, file read, etc.)
-    /// must succeed before calling this — `push()` truncates forward history.
+    /// must succeed before calling this: `push()` truncates forward history.
     pub(in crate::editor) fn switch_to_buffer_with_jump(
         &mut self,
         fp: FocusedPane,
@@ -406,7 +406,7 @@ impl Editor {
         lifecycle::switch_to_buffer_with_jump(&mut self.state, &mut self.view, fp.pid(), target);
     }
 
-    /// Switch `fp` to `target`, or no-op if it already shows it — the
+    /// Switch `fp` to `target`, or no-op if it already shows it: the
     /// `:e`/`:b` entry point. Unlike `switch_to_buffer_with_jump`, safe
     /// to call with a target that might already be the focused buffer: that
     /// primitive's `push()` truncates forward jump history unconditionally,
@@ -414,15 +414,15 @@ impl Editor {
     ///
     /// External-change detection does not run here: every genuine switch
     /// this produces raises `EditorEvent::OnBufferEnter`, observed by
-    /// `Editor::settle`'s diff regardless of caller — interactive or not. A
+    /// `Editor::settle`'s diff regardless of caller, interactive or not. A
     /// no-op call raises nothing, matching Vim's `BufEnter`, which doesn't
     /// re-fire for re-entering the buffer you're already viewing.
     ///
     /// Accepted cost of that parity: `:e`/`:b` re-targeting the
-    /// already-focused buffer runs no disk stat at all — it's genuinely a
+    /// already-focused buffer runs no disk stat at all: it's genuinely a
     /// no-op, not a deferred one. An external change to that file still
     /// surfaces the moment any of terminal `FocusIn`, a genuine buffer-enter
-    /// (switch away and back), or `:checktime` runs — see
+    /// (switch away and back), or `:checktime` runs; see
     /// `Editor::enter_buffer_disk_check`'s doc for the full list of paths
     /// that *do* stat.
     pub(in crate::editor) fn enter_buffer(&mut self, fp: FocusedPane, target: BufferId) {
@@ -437,7 +437,7 @@ impl Editor {
     /// so repeated calls don't accumulate duplicates in `:ls`. Otherwise opens a
     /// fresh read-only buffer. Then switches `fp` to it and positions
     /// the cursor at `cursor_line` (clamped to last content line), or the last
-    /// content line itself when `cursor_line` is `None` — `:messages` wants the
+    /// content line itself when `cursor_line` is `None`: `:messages` wants the
     /// bottom (most recent entry) without needing a sentinel value to name it.
     /// Returns the view buffer's id, e.g. for callers attaching decorations
     /// (`:messages`'s severity highlights) that must target this specific
@@ -454,7 +454,7 @@ impl Editor {
         let text = BufferText::from(content);
         let bid = if let Some(existing) = self.state.buffers.find_by_label(label) {
             self.state.buffers.get_mut(existing).set_view_content(text);
-            // `set_view_content` resets history — a regenerated view buffer
+            // `set_view_content` resets history: a regenerated view buffer
             // (`[messages]`, `[buffers]`) shares nothing but its id with the
             // old content, so every per-pane store keyed to it is stale, not
             // just the jump list.

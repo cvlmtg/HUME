@@ -10,7 +10,7 @@ fn focused_pane(ed: &Editor) -> &hume_engine::pane::Pane {
     &ed.view.panes[ed.state.focus.id()]
 }
 
-/// `pane`'s effective wrap mode, resolved pane → buffer → global — the same
+/// `pane`'s effective wrap mode, resolved pane → buffer → global: the same
 /// path `Editor::focused_wrap_mode` uses, exposed here for panes other than
 /// the focused one.
 fn effective_wrap_mode(ed: &Editor, pid: hume_engine::pipeline::PaneId) -> WrapMode {
@@ -50,7 +50,7 @@ fn typed_set_garbage_scope_on_real_key_errors() {
 }
 
 /// `complete_set` tolerates a stray double space before the key, so
-/// `typed_set` must accept the same input on Enter — otherwise Tab-completing
+/// `typed_set` must accept the same input on Enter. Otherwise Tab-completing
 /// through a double space produces a command line that errors.
 #[test]
 fn typed_set_tolerates_double_space_before_key() {
@@ -82,7 +82,7 @@ fn typed_set_pane_wrap_mode_none_leaves_saved_wrapping() {
     run_set(&mut ed, "pane wrap-mode=none").expect(":set pane wrap-mode=none failed");
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap().mode, Some(WrapMode::None));
-    // saved_wrap_mode must never collapse to a non-wrapping value — it's
+    // saved_wrap_mode must never collapse to a non-wrapping value: it's
     // still the restore target for a future `:wrap` toggle-on.
     assert_eq!(pane.wrap().saved, Some(WrapMode::Word { width: 0 }));
 }
@@ -118,7 +118,7 @@ fn typed_set_pane_ineligible_key_errors() {
 fn typed_set_pane_language_errors() {
     let mut ed = editor_from("-[a]>b\n");
     // `language` is intercepted before pane-scope handling and has no
-    // pane-scoped meaning — must still be a hard error, not a silent no-op.
+    // pane-scoped meaning, so it must still be a hard error, not a silent no-op.
     let result = run_set(&mut ed, "pane language=rust");
     assert!(result.is_err(), "pane-scoped language must error");
 }
@@ -187,7 +187,7 @@ fn set_buffer_wrap_mode_does_not_disturb_a_pinned_pane() {
 }
 
 /// `:set global wrap-mode=…` is retroactive: it reaches a pane created
-/// before the write, as long as that pane has no override of its own —
+/// before the write, as long as that pane has no override of its own,
 /// unlike the pre-buffer-scope behaviour, where global only seeded panes
 /// created after the write.
 #[test]
@@ -203,7 +203,7 @@ fn set_global_wrap_mode_is_retroactive_for_unpinned_panes() {
     );
 }
 
-/// Two panes on the same buffer: one pinned, one not — the case the
+/// Two panes on the same buffer: one pinned, one not. This is the case the
 /// pane-scope layer exists for. A buffer-scoped change reaches the
 /// unpinned pane and skips the pinned one.
 #[test]
@@ -214,7 +214,7 @@ fn set_buffer_wrap_mode_affects_only_the_unpinned_sibling() {
     let pid_b = ed.state.focus.id();
     assert_ne!(pid_a, pid_b);
 
-    // Focus is on B after the split — pin it explicitly. A stays unpinned.
+    // Focus is on B after the split, so pin it explicitly. A stays unpinned.
     run_set(&mut ed, "pane wrap-mode=none").expect("set pane failed");
 
     run_set(&mut ed, "buffer wrap-mode=word").expect("set buffer failed");
@@ -265,10 +265,10 @@ fn wrap_toggle_after_set_pane_word_restores_word() {
 
 /// A pane that was never explicitly configured (no pane pin, and the
 /// buffer/global setting it's inheriting doesn't wrap) falls back to
-/// `Indent` on toggle-on — `:wrap` must always visibly wrap, never silently
+/// `Indent` on toggle-on: `:wrap` must always visibly wrap, never silently
 /// no-op just because there was nothing to restore. `Indent` is the
 /// last-resort fallback here specifically because the global itself is
-/// `none` — there is no configured style to reach for instead.
+/// `none`, so there is no configured style to reach for instead.
 #[test]
 fn wrap_toggle_on_falls_back_to_indent_for_never_configured_pane() {
     let mut ed = editor_from("-[a]>b\n");
@@ -287,8 +287,8 @@ fn wrap_toggle_on_falls_back_to_indent_for_never_configured_pane() {
 }
 
 /// The other half of the fallback: when the global itself is configured to a
-/// wrapping style, toggle-on must reach for *that* — not the hardcoded
-/// `Indent` default — for a pane whose inherited mode doesn't wrap (here, a
+/// wrapping style, toggle-on must reach for *that* (not the hardcoded
+/// `Indent` default) for a pane whose inherited mode doesn't wrap (here, a
 /// buffer override pins `none` while global says `word`).
 #[test]
 fn wrap_toggle_on_falls_back_to_the_configured_global_style_not_indent() {
@@ -315,7 +315,7 @@ fn wrap_toggle_on_falls_back_to_the_configured_global_style_not_indent() {
 }
 
 /// `:wrap` off then on, with no `:set pane` in between, restores
-/// *inheritance* — not a frozen snapshot of whatever the buffer/global
+/// *inheritance*, not a frozen snapshot of whatever the buffer/global
 /// setting happened to resolve to at toggle-off time. The pane keeps
 /// following later buffer-scoped changes.
 ///
@@ -349,7 +349,7 @@ fn wrap_toggle_off_then_on_restores_inheritance_not_a_pin() {
 }
 
 /// The other half: `:wrap` off then on, when the pane *was* explicitly
-/// pinned via `:set pane`, restores that exact pin — not inheritance.
+/// pinned via `:set pane`, restores that exact pin, not inheritance.
 #[test]
 fn wrap_toggle_off_then_on_restores_an_explicit_pane_pin() {
     let mut ed = editor_from("-[a]>b\n");
@@ -366,7 +366,7 @@ fn wrap_toggle_off_then_on_restores_an_explicit_pane_pin() {
 }
 
 /// A wrap-mode change zeroes horizontal scroll (meaningless once wrapped) but
-/// leaves `top_slot` alone — see `pane_state::toggle_wrap`'s doc.
+/// leaves `top_slot` alone. See `pane_state::toggle_wrap`'s doc.
 #[test]
 fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     let mut ed = editor_from("-[a]>b\n");
@@ -393,7 +393,7 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     assert_eq!(
         pane.viewport.top().slot,
         3,
-        "the top's slot is a row address valid in either wrap mode — a mode \
+        "the top's slot is a row address valid in either wrap mode: a mode \
          change must not discard it"
     );
 }
@@ -418,7 +418,7 @@ fn set_pane_wrap_mode_zeroes_horizontal_offset_on_an_effective_change() {
 }
 
 /// The other half: pinning a pane to the mode it already effectively has
-/// (no visible change) must *not* zero horizontal scroll — the offset stays
+/// (no visible change) must *not* zero horizontal scroll: the offset stays
 /// meaningful because the pane never stopped being unwrapped.
 #[test]
 fn set_pane_wrap_mode_leaves_horizontal_offset_when_effective_mode_is_unchanged() {
@@ -437,7 +437,7 @@ fn set_pane_wrap_mode_leaves_horizontal_offset_when_effective_mode_is_unchanged(
 
 /// Turning wrap *off* must not force-reset the top's slot: it addresses a
 /// row inside the top's line's block in either wrap mode. If the new
-/// (no-wrap) block is shorter than the old one, the offset is now stale —
+/// (no-wrap) block is shorter than the old one, the offset is now stale,
 /// but the next `Viewport::top_at` read repairs that, not
 /// `toggle_wrap` itself, so the raw value must survive the `:set`
 /// call untouched.
@@ -463,7 +463,7 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
     );
 
     // No-wrap: line 0's whole block is 1 row (content only, no providers
-    // registered) — the only valid address is row 0, so the next frame's
+    // registered), so the only valid address is row 0, and the next frame's
     // `top_at` read must pull the stale offset down to it.
     ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert_eq!(
@@ -475,7 +475,7 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
 
 /// Changing the wrap style/width while already wrapping (`:set pane
 /// wrap-mode=` to a different variant) must likewise leave `top_slot`
-/// for the next `Viewport::top_at` read to repair, not reset it inline — the
+/// for the next `Viewport::top_at` read to repair, not reset it inline. The
 /// old offset was measured against the previous width and may no longer be a
 /// valid sub-row index once the width changes.
 #[test]
@@ -511,7 +511,7 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
 /// `top_slot` would blow past. Wrap on, scrolled so `top_line`
 /// sits inside a 3-row `Before(0)` block (`top_slot = 1`, one row
 /// already scrolled past, two still showing); `:set wrap-mode=none` must not
-/// jump the viewport back up to the top of that block — the address is
+/// jump the viewport back up to the top of that block: the address is
 /// still valid (a `Before` block occupies the same rows regardless of wrap
 /// mode) and `Viewport::top_at` would find nothing to repair.
 #[test]
@@ -570,7 +570,7 @@ fn split_inherits_source_panes_saved_wrap_mode() {
 /// precedence `effective_wrap_mode` does elsewhere, not a two-rung
 /// pane → global shortcut that skips the buffer rung. Asserting a
 /// `WrapMode::None` result (no width to resolve) catches a dropped buffer
-/// rung directly — unlike assertions that read the resolver's own return
+/// rung directly, unlike assertions that read the resolver's own return
 /// value, which would keep passing even if `frame.rs` stopped calling it.
 #[test]
 fn resolve_pane_settings_honours_the_buffer_rung() {
@@ -589,7 +589,7 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
 // ── Per-(pane, buffer) memory ────────────────────────────────────────────────
 //
 // A pane's wrap pin (`:wrap`/`:set pane`) lives in `Pane::wraps`, keyed by
-// buffer — the same lifetime `saved_scrolls` already gives scroll position.
+// buffer, the same lifetime `saved_scrolls` already gives scroll position.
 // This is what lets a per-filetype `on-language-set` default reach a pane
 // that toggled wrap off in an earlier, unrelated buffer.
 
@@ -602,7 +602,7 @@ fn open_second_buffer(ed: &mut Editor) -> BufferId {
 }
 
 /// `:wrap` off pins the pane for the buffer it was toggled in. Switching to
-/// another buffer in the same pane must not carry that pin along — the new
+/// another buffer in the same pane must not carry that pin along. The new
 /// buffer resolves through its own buffer/global chain, which is exactly
 /// what lets a per-language `on-language-set` default apply there.
 #[test]
@@ -621,7 +621,7 @@ fn wrap_off_pin_does_not_follow_a_buffer_switch() {
     assert_eq!(
         focused_pane(&ed).wrap().mode,
         None,
-        "the new buffer is unpinned — it did not inherit the old buffer's off pin"
+        "the new buffer is unpinned: it did not inherit the old buffer's off pin"
     );
     assert_eq!(
         ed.focused_wrap_mode(),
@@ -630,7 +630,7 @@ fn wrap_off_pin_does_not_follow_a_buffer_switch() {
     );
 }
 
-/// Switching back to the first buffer restores its pin — the pane remembers
+/// Switching back to the first buffer restores its pin: the pane remembers
 /// it, it doesn't just forget it forever on switch-away.
 #[test]
 fn wrap_off_pin_is_restored_on_switching_back() {
@@ -648,7 +648,7 @@ fn wrap_off_pin_is_restored_on_switching_back() {
     );
 }
 
-/// `:set pane wrap-mode=…` pins for the buffer it was set on — it does not
+/// `:set pane wrap-mode=…` pins for the buffer it was set on. It does not
 /// leak into a different buffer shown by the same pane.
 #[test]
 fn set_pane_wrap_mode_pin_does_not_leak_to_another_buffer() {
@@ -663,7 +663,7 @@ fn set_pane_wrap_mode_pin_does_not_leak_to_another_buffer() {
     );
 }
 
-/// Closing a buffer drops the pane's wrap-mode memory for it — the same
+/// Closing a buffer drops the pane's wrap-mode memory for it, the same
 /// cleanup `forget_buffer` already does for `saved_scrolls`.
 #[test]
 fn closing_a_buffer_drops_its_wrap_override() {
@@ -686,7 +686,7 @@ fn closing_a_buffer_drops_its_wrap_override() {
     );
 }
 
-/// A soft-wrapped buffer scrolled off its first line — the one shape the
+/// A soft-wrapped buffer scrolled off its first line: the one shape the
 /// snapshot suite had no coverage of, and the shape the scroll and render
 /// passes must agree on: both walk the same wrapped display lines from the
 /// same viewport top, and the frame's shared line-format cache hands the
@@ -705,7 +705,7 @@ fn wrapped_and_scrolled_frame_pins_the_rendered_display_lines() {
         .collect();
     type_text(&mut ed, &text);
     // Back up into the middle of the buffer so the frame shows several
-    // distinct wrapped lines rather than parking on the last one — the
+    // distinct wrapped lines rather than parking on the last one. The
     // handoff between the two passes has to hold across all of them.
     for _ in 0..4 {
         ed.feed_key(key('k'));

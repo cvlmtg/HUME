@@ -1,4 +1,4 @@
-//! End-to-end proof that `run_keys` (headless `--keys` mode) loads config —
+//! End-to-end proof that `run_keys` (headless `--keys` mode) loads config,
 //! through the public API `hume::run_keys` a real `hume --keys …`
 //! invocation goes through, unlike `editor/tests/unix/reload_config.rs`'s
 //! `init_scripting()`-level coverage of the same wiring.
@@ -17,7 +17,7 @@ fn config_binding_takes_effect_in_headless_replay() {
     // "Z" is unbound by default and, unlike "Q"/"q"/"\"", isn't handled
     // ahead of the keymap trie walk either (see `handle_normal`'s own
     // macro-record/-replay and register-prefix intercepts, run inside the
-    // `Base` layer's handler before it reaches the trie) — this init.scm is
+    // `Base` layer's handler before it reaches the trie), so this init.scm is
     // the only thing that can make it do anything.
     let config = dir.path().join("init.scm");
     std::fs::write(&config, r#"(bind-key! 'normal "Z" "delete-char-forward")"#).unwrap();

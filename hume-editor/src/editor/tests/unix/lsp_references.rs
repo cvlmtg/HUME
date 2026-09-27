@@ -75,7 +75,7 @@ fn setup(
 }
 
 fn run_references(ed: &mut Editor) {
-    // lsp-references is key-bindable, not typed — dispatch through the
+    // lsp-references is key-bindable, not typed, so dispatch through the
     // keymap pipeline, the way its bound key (`z r`) would.
     ed.execute_keymap_command("lsp-references".into(), Some(1), false);
     ed.settle();
@@ -177,10 +177,10 @@ fn null_result_reports_no_references() {
 }
 
 /// The user is free to switch buffers while a `textDocument/references`
-/// request is in flight — same async-round-trip race `lsp-hover`'s own
+/// request is in flight, the same async-round-trip race `lsp-hover`'s own
 /// `#:require-focus` guards against. Unlike single-location goto (a
 /// navigation the user asked for, completed regardless of focus),
-/// references always opens a drawer — cursor-anchored UI that must not
+/// references always opens a drawer: cursor-anchored UI that must not
 /// appear over whatever the user switched to.
 #[test]
 fn stale_response_after_a_buffer_switch_opens_no_drawer() {
@@ -195,7 +195,7 @@ fn stale_response_after_a_buffer_switch_opens_no_drawer() {
     });
 
     // Sends the request synchronously; deliberately no settle() before the
-    // switch below — same technique as `lsp_hover.rs`'s own
+    // switch below, the same technique as `lsp_hover.rs`'s own
     // `stale_response_after_a_buffer_switch_shows_no_popup`.
     ed.execute_keymap_command("lsp-references".into(), Some(1), false);
 

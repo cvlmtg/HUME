@@ -4,15 +4,15 @@
 //
 // Fixture servers, chosen from the real runtime/scheme/lsp-{servers,sources}.scm
 // catalogs (verified at authoring time, re-checked by these tests every run):
-//   rust-analyzer (language "rust") — github, plain .gz, installable
-//   svlangserver (language "systemverilog") — npm, settings contain a real
+//   rust-analyzer (language "rust"): github, plain .gz, installable
+//   svlangserver (language "systemverilog"): npm, settings contain a real
 //     JSON array (systemverilog.includeIndexing)
-//   gopls (language "go") — golang purl kind, a stub source: not installable
-//   ada-language-server (language "ada") — github, but every platform target
+//   gopls (language "go"): golang purl kind, a stub source: not installable
+//   ada-language-server (language "ada"): github, but every platform target
 //     is .tar.gz, so it is never installable in v1 regardless of host OS
-//   pest-language-server (language "pest") — cargo, crates.io semver,
+//   pest-language-server (language "pest"): cargo, crates.io semver,
 //     installable
-//   nil (language "nix") — cargo-git, a Mason git-tag pin, a stub: not
+//   nil (language "nix"): cargo-git, a Mason git-tag pin, a stub: not
 //     installable
 
 use std::path::Path;
@@ -22,7 +22,7 @@ use crate::editor::Severity;
 
 /// Write a receipt + a dummy binary file for `name` directly into
 /// `<data_dir>/servers/<name>/`, matching what `lsp/install-server!` would
-/// produce — for scan-time tests that don't need a real network install.
+/// produce, for scan-time tests that don't need a real network install.
 fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) {
     let dir = canonical_data_dir(data_dir_root).join("servers").join(name);
     std::fs::create_dir_all(&dir).unwrap();
@@ -34,7 +34,7 @@ fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) 
     std::fs::write(dir.join(bin), b"#!/bin/sh\n").unwrap();
 }
 
-/// core:plum's own load must never error — a pure Scheme-syntax/logic smoke
+/// core:plum's own load must never error: a pure Scheme-syntax/logic smoke
 /// test for `plugins.scm`/`grammars.scm` (no LSP catalogs touch this plugin
 /// anymore; that's `lsp_plugin_loads_with_real_lsp_catalogs`'s job below).
 #[test]
@@ -59,8 +59,8 @@ fn plum_plugin_loads_cleanly() {
 }
 
 /// core:lsp's own catalog load (`registration.scm`), which reads the seeded
-/// lsp-servers.scm catalog, and `servers.scm`'s lsp-sources.scm catalog load
-/// — this is the smoke test for both self-contained module loads.
+/// lsp-servers.scm catalog, and `servers.scm`'s lsp-sources.scm catalog load.
+/// This is the smoke test for both self-contained module loads.
 #[test]
 fn lsp_plugin_loads_with_real_lsp_catalogs() {
     let _lock = lock();
@@ -84,7 +84,7 @@ fn lsp_plugin_loads_with_real_lsp_catalogs() {
 
 /// The regression test this whole change exists to pin: loading only
 /// `core:plum` exposes no LSP commands at all (not even `:lsp-install`) and
-/// runs no receipt scan — LSP server install/uninstall/registration is
+/// runs no receipt scan. LSP server install/uninstall/registration is
 /// core:lsp-owned end to end.
 #[test]
 fn plum_alone_does_not_register_installed_servers() {
@@ -149,7 +149,7 @@ fn scan_registers_installed_server_with_absolute_managed_path() {
 
 /// The expected JSON is transcribed by hand from
 /// runtime/scheme/lsp-servers.scm's current text, not derived by calling
-/// `lsp/settings->hash` — this is the settings-conversion correctness
+/// `lsp/settings->hash`: this is the settings-conversion correctness
 /// check, so it must not share logic with the thing it verifies.
 #[test]
 fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_objects() {
@@ -168,7 +168,7 @@ fn settings_conversion_produces_correct_json_shapes_for_arrays_and_nested_object
 
     // The seeded catalog's `config` field is registered under BOTH keywords
     // (`registration.scm` delivers it as init-options and settings, exactly
-    // as Helix delivers the same blob) — assert the conversion lands
+    // as Helix delivers the same blob), so assert the conversion lands
     // correctly in both, not just one.
 
     // svlangserver: (systemverilog (includeIndexing . #("*.{v,vh,sv,svh}" "**/*.{v,vh,sv,svh}")))
@@ -232,7 +232,7 @@ fn interrupted_install_is_warned_and_not_registered() {
         .join("servers")
         .join("rust-analyzer");
     std::fs::create_dir_all(&dir).unwrap();
-    // No receipt.scm written — simulates an install that died mid-flight.
+    // No receipt.scm written: simulates an install that died mid-flight.
     std::fs::write(dir.join("rust-analyzer"), b"").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
@@ -279,7 +279,7 @@ fn install_lock_sentinel_file_is_never_scanned_as_a_server_directory() {
     let data_tmp = safe_tempdir();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
-    // A file, not a directory — sitting directly under servers/, exactly
+    // A file, not a directory, sitting directly under servers/, exactly
     // where acquire-install-lock! puts it and register-installed-servers!
     // scans.
     std::fs::write(servers_dir.join(".install-lock"), b"").unwrap();
@@ -300,8 +300,8 @@ fn stray_non_directory_file_under_servers_dir_is_never_scanned_as_a_server() {
     let data_tmp = safe_tempdir();
     let servers_dir = canonical_data_dir(data_tmp.path()).join("servers");
     std::fs::create_dir_all(&servers_dir).unwrap();
-    // A file, not a directory, with no special-cased name — e.g. a
-    // Finder-dropped .DS_Store. Must be excluded on being a non-directory,
+    // A file, not a directory, with no special-cased name (e.g. a
+    // Finder-dropped .DS_Store). Must be excluded on being a non-directory,
     // not on matching a specific filename.
     std::fs::write(servers_dir.join(".DS_Store"), b"").unwrap();
 
@@ -351,12 +351,12 @@ fn lsp_rescan_servers_command_registers_newly_installed() {
 
 /// A mid-session rescan (`:lsp-rescan-servers`, or the one `:lsp-install`
 /// runs after a successful/up-to-date install) must never clobber a
-/// language the user registered by hand — only languages nothing has
+/// language the user registered by hand. Only languages nothing has
 /// claimed yet get the catalog default. An unconditional re-registration
 /// of every catalog language would silently replace a manual
 /// `register-lsp-server!` override (documented workflow: a local build, a
 /// version the catalog doesn't carry, or a `$PATH` copy the user wants to
-/// take precedence — see user-manual/docs/lsp.md) on the next rescan.
+/// take precedence; see user-manual/docs/lsp.md) on the next rescan.
 #[test]
 fn rescan_does_not_clobber_a_manually_registered_language() {
     let _lock = lock();
@@ -396,10 +396,10 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
 /// eager `(load-plugin "core:lsp")` queues a Register op for it from its own
 /// startup scan, in the very same eval as anything that follows. The user's
 /// own `register-lsp-server!` queued *after* that `load-plugin` line must
-/// win — `register-lsp-server!` is last-wins over queue order. Differs from
+/// win: `register-lsp-server!` is last-wins over queue order. Differs from
 /// `rescan_does_not_clobber_a_manually_registered_language` above: there,
 /// the receipt is fabricated *after* init.scm's eval, so `load-plugin`'s own
-/// scan queues nothing competing for "rust" in that eval — it never
+/// scan queues nothing competing for "rust" in that eval, so it never
 /// exercises this same-eval race at all.
 #[test]
 fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registration() {
@@ -465,15 +465,15 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
 }
 
 /// A lazily-declared core:lsp (`#:languages`) still registers an installed
-/// server once activated — the startup scan runs at activation time, not
-/// only at eager `(load-plugin "core:lsp")` — and the very buffer whose
+/// server once activated (the startup scan runs at activation time, not
+/// only at eager `(load-plugin "core:lsp")`), and the very buffer whose
 /// language-set triggered the activation attaches to that server in the
 /// same call, with no need to wait for a later effects-applying drain.
 ///
 /// `activate_lazy_language_plugins` (called from `set_buffer_language`,
 /// before `lsp_attach_buffer`) evaluates the plugin inline via
 /// `activate_and_register` (mappings/lazy.rs), which applies the activating
-/// body's queued side effects — including any `register-lsp-server!` —
+/// body's queued side effects (including any `register-lsp-server!`)
 /// through `apply_script_effects` before returning.
 ///
 /// The buffer is given a real path (`lsp_attach_buffer` no-ops on a pathless
@@ -536,7 +536,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
 }
 
 /// A `:`-typed command can activate a lazily-declared core:lsp when the
-/// command name is listed in the declaration's `#:commands` manifest —
+/// command name is listed in the declaration's `#:commands` manifest:
 /// dispatch runs `activate_lazy_plugin` before arity marshalling (see
 /// input_stack/command.rs), so `:lsp-install` on a plugin that hasn't
 /// loaded yet still works, no eager `(load-plugin "core:lsp")` required.
@@ -571,7 +571,7 @@ fn lsp_install_stub_kind_names_the_unsupported_kind() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    // gopls's Mason source is purl kind `golang` — a stub, never installable in v1.
+    // gopls's Mason source is purl kind `golang`, a stub, never installable in v1.
     type_cmd(&mut ed, ":lsp-install go");
 
     let log = ed.state.message_log.format_for_display();
@@ -589,7 +589,7 @@ fn lsp_install_cargo_git_stub_kind_names_the_kind() {
     load_lsp(&mut ed, data_tmp.path());
 
     // nil's Mason source pins a git tag (2025-06-13), not a crates.io
-    // version — downgraded to stub kind `cargo-git`, never installable.
+    // version, so it's downgraded to stub kind `cargo-git`, never installable.
     type_cmd(&mut ed, ":lsp-install nix");
 
     let log = ed.state.message_log.format_for_display();
@@ -617,7 +617,7 @@ fn lsp_install_unknown_language_warns() {
 
 /// Tab on `:lsp-install`'s argument completes against the seeded catalog's
 /// own languages, read from the real `runtime/scheme/lsp-servers.scm` (not
-/// a fixture subset) — "rus" matches only "rust" (unlike "ru", which also
+/// a fixture subset): "rus" matches only "rust" (unlike "ru", which also
 /// matches "ruby").
 #[test]
 fn lsp_install_tab_completes_a_seeded_language() {
@@ -657,7 +657,7 @@ fn lsp_install_unsupported_asset_format_fails_loudly() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    // ada-language-server ships only .tar.gz on every platform — unsupported
+    // ada-language-server ships only .tar.gz on every platform, unsupported
     // in v1 (step 2 shipped plain-.gz and .zip unpacking only) regardless of
     // which host OS runs this test.
     type_cmd(&mut ed, ":lsp-install ada");
@@ -670,7 +670,7 @@ fn lsp_install_unsupported_asset_format_fails_loudly() {
 }
 
 /// `lsp/with-install-lock!`'s failure branch (`thunk` raised) must still
-/// release the lock — a failed install must not permanently wedge every
+/// release the lock: a failed install must not permanently wedge every
 /// later `:lsp-install`/`:lsp-uninstall` behind a lock nothing will ever
 /// release.
 #[test]
@@ -681,7 +681,7 @@ fn install_lock_is_released_after_a_failed_install() {
     load_lsp(&mut ed, data_tmp.path());
 
     // Fails inside lsp/install-server! (lsp/install-blocker), i.e. inside
-    // lsp/with-install-lock!'s thunk — exercises the release-on-failure path,
+    // lsp/with-install-lock!'s thunk. Exercises the release-on-failure path,
     // not the release-on-success path every other install test hits.
     type_cmd(&mut ed, ":lsp-install ada");
     let log = ed.state.message_log.format_for_display();
@@ -700,7 +700,7 @@ fn install_lock_is_released_after_a_failed_install() {
         lock_path.display()
     );
 
-    // A second, unrelated install must be able to acquire the lock — proves
+    // A second, unrelated install must be able to acquire the lock. Proves
     // release actually happened, not just that the sentinel file is
     // (coincidentally) absent.
     type_cmd(&mut ed, ":lsp-install ada");
@@ -712,7 +712,7 @@ fn install_lock_is_released_after_a_failed_install() {
 }
 
 /// A live `.install-lock` (as another HUME process mid-install would leave)
-/// must refuse the install loudly, before any network activity — never
+/// must refuse the install loudly, before any network activity, and never
 /// interleave with a concurrent install/uninstall. `acquire-install-lock!`
 /// fails first, so this never actually reaches rust-analyzer's real
 /// download path.
@@ -738,7 +738,7 @@ fn lsp_install_refuses_when_the_cross_process_lock_is_already_held() {
 
 /// Proves the minibuffer's `IntV(1)` no-arg sentinel (see
 /// `command_mode.rs`'s arity marshalling) takes the buffer-language
-/// fallback branch, not the "no argument given" branch — a made-up language
+/// fallback branch, not the "no argument given" branch: a made-up language
 /// name only this test's buffer has makes the distinction unambiguous.
 #[test]
 fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
@@ -781,7 +781,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
          registered nothing"
     );
     // Fabricate the receipt only now, after the load-time scan already ran
-    // against an empty data dir — so the final assertion below can only pass
+    // against an empty data dir, so the final assertion below can only pass
     // if :lsp-install's own up-to-date rescan registers it, not the
     // load-time scan.
     fabricate_server(
@@ -810,7 +810,7 @@ fn lsp_install_up_to_date_registers_a_late_fabricated_receipt() {
 }
 
 /// `declared-plugins` includes `core:*` names. PLUM's own install-list logic
-/// must still exclude them — `:plum-install-plugins`/`:plum-list-plugins` must never treat a
+/// must still exclude them: `:plum-install-plugins`/`:plum-list-plugins` must never treat a
 /// bundled core plugin as something to `git clone`. `:plum-list-plugins`'s trailing
 /// "PLUM missing:" status is the safe way to observe `plum/missing-plugins`'s
 /// output without ever touching the network.
@@ -836,7 +836,7 @@ fn plum_missing_plugins_excludes_declared_core_plugins() {
     );
     assert!(
         !status.contains("core:lsp"),
-        "a bundled core plugin must never appear as 'missing' — PLUM would try to \
+        "a bundled core plugin must never appear as 'missing': PLUM would try to \
          git-clone it: {status}"
     );
 }
@@ -880,7 +880,7 @@ fn lsp_uninstall_removes_registration_and_directory() {
 }
 
 /// Tab on `:lsp-uninstall`'s argument completes against every server with
-/// an install dir on disk — the same set the command itself accepts,
+/// an install dir on disk: the same set the command itself accepts,
 /// including an orphan no longer in the seeded catalog (uninstall's own
 /// `(path-exists? dir)` check, not the catalog, decides what's removable).
 #[test]
@@ -904,7 +904,7 @@ fn lsp_uninstall_tab_completes_an_installed_server() {
     assert_eq!(minibuf_input(&ed), "lsp-uninstall rust-analyzer");
 }
 
-/// The uninstall delete is guarded by the same cross-process lock — a live
+/// The uninstall delete is guarded by the same cross-process lock: a live
 /// `.install-lock` at the moment the deferred `(after 0 ...)` callback fires
 /// must refuse the delete loudly, leaving the directory intact.
 #[test]
@@ -960,8 +960,8 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
         errors.is_empty(),
         "uninstalling an already-absent/never-installed server must succeed silently: {errors:?}"
     );
-    // "nothing to uninstall" is `'info` — display-only (status line), never
-    // written to `:messages` (see message_log.rs's Severity table) — so the
+    // "nothing to uninstall" is `'info`, display-only (status line), never
+    // written to `:messages` (see message_log.rs's Severity table), so the
     // confirmation shows up in `status_msg`, not `message_log`.
     assert_eq!(
         ed.state.status_msg.as_deref(),
@@ -974,7 +974,7 @@ fn lsp_uninstall_of_never_installed_server_is_silent() {
 fn lsp_uninstall_rejects_path_traversal_name() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
-    // A sibling write-sandbox dir `../plugins` would canonicalize into —
+    // A sibling write-sandbox dir `../plugins` would canonicalize into:
     // it must survive untouched.
     let plugins_dir = canonical_data_dir(data_tmp.path()).join("plugins");
     std::fs::create_dir_all(&plugins_dir).unwrap();
@@ -999,7 +999,7 @@ fn lsp_uninstall_rejects_path_traversal_name() {
 }
 
 /// `stdlib/safe-path-segment?` (used by `lsp-uninstall`) must reject `:` and
-/// `"`, not just `.`/`..`/path separators — the drive-relative-root escape
+/// `"`, not just `.`/`..`/path separators: the drive-relative-root escape
 /// `hume_platform::path::is_safe_segment` exists to block.
 #[test]
 fn lsp_uninstall_rejects_colon_and_quote_in_name() {
@@ -1049,7 +1049,7 @@ fn lsp_servers_command_runs_without_error() {
 
     // The trailing `'info` summary lands in `status_msg` (see the
     // `lsp_uninstall_of_never_installed_server_is_silent` comment on
-    // Severity routing) — an empty command body would leave this `None`,
+    // Severity routing). An empty command body would leave this `None`,
     // so this pins that the catalog walk actually ran against real data.
     let status = ed
         .state
@@ -1139,7 +1139,7 @@ fn plum_alone_does_not_expose_lsp_status_stop_restart() {
 // ── Discovery hint ────────────────────────────────────────────────────────────
 //
 // `ed.set_buffer_language` + `ed.settle()` is not a `:`-typed command
-// dispatch — it is the same path a buffer opened via a CLI argument at
+// dispatch: it is the same path a buffer opened via a CLI argument at
 // startup takes. These tests therefore also cover that the hook body's
 // ctx-gated `lsp-registered-for-language?` call is safe outside a typed
 // command's dispatch, not only after one.
@@ -1167,7 +1167,7 @@ fn discovery_hint_fires_once_for_an_installable_unregistered_language() {
         "the hint must name the seeded server: {log}"
     );
 
-    // Revisit the same language later in the session — must not repeat.
+    // Revisit the same language later in the session: must not repeat.
     ed.set_buffer_language(bid, None);
     ed.settle();
     let lang = ed.state.config.languages.intern("rust");
@@ -1189,7 +1189,7 @@ fn discovery_hint_does_not_fire_for_a_blocked_server() {
     load_lsp(&mut ed, data_tmp.path());
 
     let bid = ed.focused_buffer_id();
-    // gopls (golang stub) is never installable — the hint must never
+    // gopls (golang stub) is never installable, so the hint must never
     // suggest a command that would fail.
     let lang = ed.state.config.languages.intern("go");
     ed.set_buffer_language(bid, Some(lang));
@@ -1210,7 +1210,7 @@ fn discovery_hint_does_not_fire_for_npm_kind_when_npm_missing_from_path() {
     load_lsp(&mut ed, data_tmp.path());
 
     // svlangserver (npm-kind, language "systemverilog") must not report
-    // installable unconditionally — reporting installable regardless of npm
+    // installable unconditionally. Reporting installable regardless of npm
     // availability could suggest a :lsp-install that immediately fails
     // `lsp/preflight!`'s own npm-on-$PATH check. Force $PATH to a directory
     // with no npm binary in it.
@@ -1263,7 +1263,7 @@ fn discovery_hint_does_not_fire_for_cargo_kind_when_cargo_missing_from_path() {
     let mut ed = editor_from("-[x]>\n");
     load_lsp(&mut ed, data_tmp.path());
 
-    // Force $PATH to a directory with no cargo binary in it — must not hint
+    // Force $PATH to a directory with no cargo binary in it: must not hint
     // an install that would immediately fail `lsp/preflight!`'s cargo check.
     let empty_path_dir = safe_tempdir();
     {
@@ -1309,16 +1309,16 @@ fn discovery_hint_does_not_fire_when_already_registered() {
 
 // ── cargo installer (fake shim, no network/compile) ─────────────────────────────
 //
-// A real `cargo install` compiles a full crate graph — multi-minute,
-// toolchain+network dependent, a poor fit even for a manual live-e2e gate;
+// A real `cargo install` compiles a full crate graph (multi-minute,
+// toolchain+network dependent), a poor fit even for a manual live-e2e gate;
 // no live e2e exists for cargo- or npm-kind installs at all, so these tests
-// are the entire coverage of HUME's side of the contract — argv, `--root`
-// layout, receipt, registration, and the failure path — against a fake
+// are the entire coverage of HUME's side of the contract (argv, `--root`
+// layout, receipt, registration, and the failure path) against a fake
 // `cargo` executable that does no real work.
 
 /// Write an executable fake `cargo` shim into a fresh tempdir and return that
 /// dir. The shim records its argv (one token per line) to `args_file`, then
-/// — unless `create_binary` is false — locates the `--root <dir>` argument
+/// (unless `create_binary` is false) locates the `--root <dir>` argument
 /// and creates `<dir>/bin/<bin_name>` as an executable file, exactly
 /// mirroring what a real `cargo install --root` would leave behind. It
 /// resets its own `$PATH` first so the `mkdir`/`chmod` it shells out to can
@@ -1427,7 +1427,7 @@ fn lsp_install_cargo_missing_binary_after_install_fails_loudly() {
 
     let args_tmp = safe_tempdir();
     let args_file = args_tmp.path().join("argv.txt");
-    // create_binary: false — shim exits 0 but leaves no bin/ behind, exactly
+    // create_binary: false. Shim exits 0 but leaves no bin/ behind, exactly
     // the failure this installer's own post-check must catch.
     let shim_dir = write_fake_cargo_shim(&args_file, "pest-language-server", false);
 

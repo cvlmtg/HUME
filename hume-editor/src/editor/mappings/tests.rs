@@ -1,6 +1,6 @@
 /// Guard: every jump command has `meta().is_jump == true` in the registry.
 ///
-/// The registry is the single source of truth — there is no separate
+/// The registry is the single source of truth: there is no separate
 /// `JUMP_COMMANDS` list to keep in sync.
 #[test]
 fn jump_and_visual_move_flags_are_correct() {
@@ -67,7 +67,7 @@ fn message_log_summary_ttl() {
     assert!(ed.state.status_msg.is_some());
     assert!(ed.state.message_log.has_unseen());
 
-    // Key 1: status_msg clears, TTL armed — summary visible.
+    // Key 1: status_msg clears, TTL armed, summary visible.
     ed.handle_key(noop);
     assert!(ed.state.status_msg.is_none());
     assert!(
@@ -75,14 +75,14 @@ fn message_log_summary_ttl() {
         "summary should still be visible after key 1"
     );
 
-    // Key 2: TTL ticks 3→2 — summary still visible.
+    // Key 2: TTL ticks 3→2, summary still visible.
     ed.handle_key(noop);
     assert!(
         ed.state.message_log.has_unseen(),
         "summary should still be visible after key 2"
     );
 
-    // Key 3: TTL ticks 2→1 — summary still visible.
+    // Key 3: TTL ticks 2→1, summary still visible.
     ed.handle_key(noop);
     assert!(
         ed.state.message_log.has_unseen(),

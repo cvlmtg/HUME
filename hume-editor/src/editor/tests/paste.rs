@@ -53,7 +53,7 @@ fn digit_register_decoupled_from_kill_ring() {
     // in-memory register '3' is empty (nothing yanked into it).
     assert!(
         reg(&ed, '3').is_empty(),
-        "register '3' is empty — d never writes named registers"
+        "register '3' is empty: d never writes named registers"
     );
 
     // "3p reads in-memory register '3' which is empty → paste is a no-op.
@@ -129,7 +129,7 @@ fn kill_ring_register_paste_seeds_cycle() {
 // ── Explicit register prefix vs the paste stamp ─────────────────────────────
 
 /// An explicit `"Xp` while a fresh paste stamp exists must still paste from
-/// register X — an explicit register prefix never consults the stamp (see
+/// register X: an explicit register prefix never consults the stamp (see
 /// `resolve_smart`), regardless of what a preceding bare/`"k` paste
 /// left behind.
 #[test]
@@ -145,7 +145,7 @@ fn register_prefix_ignores_paste_stamp() {
     ed.handle_key(key('k'));
     ed.feed_key(key('p'));
 
-    // Now try to paste from named register '5' — must ignore the stamp.
+    // Now try to paste from named register '5'. Must ignore the stamp.
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
     ed.feed_key(key('p'));
@@ -171,14 +171,14 @@ fn register_prefix_consumed_by_paste() {
     ed.handle_key(key('k')); // select kill register
     ed.feed_key(key('p')); // paste ring head
 
-    // Now type "5p — explicit register paste.
+    // Now type "5p, an explicit register paste.
     ed.handle_key(key('"'));
     ed.handle_key(key('5'));
     ed.feed_key(key('p')); // should consume the '5' prefix
 
-    // The prefix must be gone — the next 'd' must NOT route to register 5.
+    // The prefix must be gone: the next 'd' must NOT route to register 5.
     ed.feed_key(key('d')); // delete; should push to kill ring, not register 5
-    // Register 5 must still hold "REG5" — if the prefix leaked into 'd', it
+    // Register 5 must still hold "REG5". If the prefix leaked into 'd', it
     // would be overwritten with the deleted char.
     let reg5 = ed
         .state
@@ -189,14 +189,14 @@ fn register_prefix_consumed_by_paste() {
     assert_eq!(
         reg5,
         Some(vec!["REG5".to_string()]),
-        "register 5 must be unchanged after d — prefix leaked if it differs"
+        "register 5 must be unchanged after d, prefix leaked if it differs"
     );
 }
 
 // ── Smart-p: the PasteStamp mechanism ────────────────────────────────────────
 //
 // A bare paste reads the kill ring while `PasteStamp::seq` still matches
-// `BufferStore::edit_seq()` — set by every capture that pushes to the ring
+// `BufferStore::edit_seq()`, set by every capture that pushes to the ring
 // (`d`/`c`/`y`, bare or `"k`-prefixed) and re-stamped by every completed bare
 // paste and ring cycle. Any edit (or undo/redo), anywhere, moves `edit_seq`
 // past the stamp; a plain motion does not, since it never touches the buffer.
@@ -214,7 +214,7 @@ fn smart_p_dp_reads_ring() {
     );
 }
 
-/// `c` <text> Esc then `p` reads the kill ring, not the clipboard — the swap
+/// `c` <text> Esc then `p` reads the kill ring, not the clipboard: the swap
 /// idiom. Every keystroke typed during the session bumps `edit_seq`, which
 /// would otherwise strand the stamp `c`'s own `route_kill` wrote; the
 /// insert session is marked kill-opened (`PaneBufferState::kill_opened_session`)
@@ -232,7 +232,7 @@ fn smart_p_after_change_reads_ring() {
         .registers
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('c')); // change 'a' → ring=["a"], stamp fresh
-    ed.feed_key(key('x')); // type replacement — bumps edit_seq
+    ed.feed_key(key('x')); // type replacement, bumps edit_seq
     ed.feed_key(key_esc()); // exit-insert → refreshes the stamp's seq
     ed.feed_key(key('p')); // smart-p → must read ring head ("a"), not "CLIP"
     let text = ed.doc().text().to_string();
@@ -250,7 +250,7 @@ fn smart_p_after_change_reads_ring() {
 /// explicit-register `"5c` <text> `Esc` must NOT resurrect an existing
 /// stamp. `cmd_change` only sets `kill_opened_session` when `route_kill`
 /// reports it actually captured to the ring (`route_kill` returns `false`
-/// for an explicit register) — without that gate, `end_insert_session`
+/// for an explicit register). Without that gate, `end_insert_session`
 /// would refresh whatever stale stamp happens to exist, making a later bare
 /// `p` wrongly read `"aaa"` again instead of falling to the clipboard.
 ///
@@ -266,13 +266,13 @@ fn explicit_register_change_does_not_resurrect_stale_stamp() {
         .registers
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete "aaa" → ring = ["aaa"], stamp fresh
-    ed.feed_key(key('w')); // motion onto "bbb" — does not touch edit_seq
+    ed.feed_key(key('w')); // motion onto "bbb", does not touch edit_seq
 
     ed.feed_key(key('"'));
     ed.feed_key(key('5'));
     ed.feed_key(key('c')); // "5c → explicit register, no stamp write
-    ed.feed_key(key('y')); // type replacement — bumps edit_seq, staling the "aaa" stamp
-    ed.feed_key(key_esc()); // exit-insert — must NOT refresh the stale stamp
+    ed.feed_key(key('y')); // type replacement, bumps edit_seq, staling the "aaa" stamp
+    ed.feed_key(key_esc()); // exit-insert: must NOT refresh the stale stamp
 
     ed.feed_key(key('p')); // bare smart-p → stamp stale → clipboard
     let text = ed.doc().text().to_string();
@@ -288,7 +288,7 @@ fn explicit_register_change_does_not_resurrect_stale_stamp() {
 
 /// A cursor motion (e.g. an arrow key) *inside* an open kill-opened change
 /// session doesn't stop `end_insert_session` from refreshing the stamp on
-/// exit — `kill_opened_session` is a per-session flag set once by
+/// exit: `kill_opened_session` is a per-session flag set once by
 /// `cmd_change`, not something an in-session motion can reset, so the
 /// session-final `p` still reads the ring, not the clipboard.
 ///
@@ -305,7 +305,7 @@ fn smart_p_after_change_with_insert_motion_still_reads_ring() {
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('c')); // change 'a' → ring=["a"], kill-opened session
     ed.feed_key(key('x')); // type replacement
-    ed.feed_key(key_left()); // arrow-key motion mid-session — bumps edit_seq, does not clear kill_opened_session
+    ed.feed_key(key_left()); // arrow-key motion mid-session: bumps edit_seq, does not clear kill_opened_session
     ed.feed_key(key_esc()); // exit-insert → refreshes the stamp's seq regardless
     ed.feed_key(key('p')); // smart-p → must still read ring head ("a"), not "CLIP"
     let text = ed.doc().text().to_string();
@@ -319,7 +319,7 @@ fn smart_p_after_change_with_insert_motion_still_reads_ring() {
     );
 }
 
-/// `d` then a motion then `p` still reads the ring — motions never touch
+/// `d` then a motion then `p` still reads the ring: motions never touch
 /// `edit_seq`, so they cannot invalidate the stamp; routing is decided by
 /// buffer state alone, never by which commands ran in between.
 #[test]
@@ -331,7 +331,7 @@ fn smart_p_after_motion_still_reads_ring() {
         .registers
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete "ab" → ring = ["ab"], stamp fresh
-    ed.feed_key(key('w')); // motion — does not touch edit_seq
+    ed.feed_key(key('w')); // motion, does not touch edit_seq
     ed.feed_key(key('p')); // bare smart-p → stamp still fresh → ring
     let buf = ed.doc().text().to_string();
     assert!(
@@ -344,7 +344,7 @@ fn smart_p_after_motion_still_reads_ring() {
     );
 }
 
-/// `d` then a real edit (typing) then `p` falls back to the clipboard — an
+/// `d` then a real edit (typing) then `p` falls back to the clipboard: an
 /// edit that isn't itself a capture invalidates the stamp.
 #[test]
 fn smart_p_after_edit_falls_back_to_clipboard() {
@@ -356,7 +356,7 @@ fn smart_p_after_edit_falls_back_to_clipboard() {
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('d')); // delete 'a' → ring = ["a"], stamp fresh
     ed.feed_key(key('i')); // enter insert (not kill-opened)
-    ed.feed_key(key('x')); // type 'x' — an edit, bumps edit_seq
+    ed.feed_key(key('x')); // type 'x': an edit, bumps edit_seq
     ed.feed_key(key_esc());
     ed.feed_key(key('p')); // bare smart-p → stamp stale → clipboard
     let text = ed.doc().text().to_string();
@@ -366,7 +366,7 @@ fn smart_p_after_edit_falls_back_to_clipboard() {
     );
 }
 
-/// `"ky` (kill-ring-only yank) stamps the ring, same as `d`/`c` — every push
+/// `"ky` (kill-ring-only yank) stamps the ring, same as `d`/`c`: every push
 /// onto the ring stamps uniformly (`capture_to_ring`), with no special case
 /// for which command did the pushing.
 #[test]
@@ -382,7 +382,7 @@ fn ky_yank_stamps_the_ring_for_next_paste() {
     ed.handle_key(key('k'));
     ed.feed_key(key('y')); // "ky → ring only, stamps Ring(0)
 
-    ed.feed_key(key('l')); // motion — does not touch edit_seq
+    ed.feed_key(key('l')); // motion, does not touch edit_seq
     ed.feed_key(key('p')); // bare smart-p → stamp still fresh → ring
 
     let buf = ed.doc().text().to_string();
@@ -397,7 +397,7 @@ fn ky_yank_stamps_the_ring_for_next_paste() {
     );
 }
 
-/// Bare `y` writes to both the clipboard and the kill ring — a following bare
+/// Bare `y` writes to both the clipboard and the kill ring, so a following bare
 /// `p` pastes the yanked text (the two sources hold identical content here,
 /// so this only confirms the basic round-trip; see `ky_yank_stamps_the_ring_for_next_paste`
 /// for the case that actually distinguishes the two sources).
@@ -438,7 +438,7 @@ fn xdp_pastes_ring_head_not_clipboard() {
 }
 
 /// The idle replay-queue drain that runs after every `feed_key` must not
-/// disturb the paste stamp — a bare `p` after `x d` still reads the ring
+/// disturb the paste stamp: a bare `p` after `x d` still reads the ring
 /// head. (`feed_key`/`feed_keys` exercise the same per-key ordering as the
 /// real event loop, including this drain, so every test above already
 /// checks this incidentally; this test pins it explicitly.)
@@ -496,7 +496,7 @@ fn yank_then_two_pastes_appends_two_copies() {
     );
 }
 
-/// `d u p`: undo bumps `edit_seq`, invalidating the stamp — a bare `p`
+/// `d u p`: undo bumps `edit_seq`, invalidating the stamp, so a bare `p`
 /// after undoing the capturing delete falls back to the clipboard.
 #[test]
 fn undo_after_delete_invalidates_ring_stamp() {
@@ -539,7 +539,7 @@ fn redo_after_undo_keeps_ring_stamp_stale() {
 }
 
 /// A composed undo whose net `ChangeSet` is identity (insert 'x', delete 'x')
-/// still moves the revision and the selections — `apply_doc_history_walk`
+/// still moves the revision and the selections: `apply_doc_history_walk`
 /// must bump `edit_seq` for it same as any other walk, even though
 /// `finish_edit` skips `set_text` for an identity CS. Without that bump, a
 /// stamp taken right before the walk would stay "fresh" across it, and a
@@ -555,12 +555,12 @@ fn net_identity_undo_still_bumps_edit_seq_and_ends_paste_session() {
         .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
     ed.feed_key(key('i'));
     ed.feed_key(key('x'));
-    ed.feed_key(key_esc()); // rev1: insert 'x' — lands a 1-char selection on it
+    ed.feed_key(key_esc()); // rev1: insert 'x', lands a 1-char selection on it
     ed.feed_key(key('d')); // rev2: delete 'x' → ring = ["x"], stamp fresh
     let before = ed.doc().text().to_string();
 
     ed.feed_key(key('2'));
-    ed.feed_key(key('u')); // one composed walk over rev2+rev1 — nets to identity
+    ed.feed_key(key('u')); // one composed walk over rev2+rev1, nets to identity
     assert_eq!(
         ed.doc().text().to_string(),
         before,
@@ -571,13 +571,13 @@ fn net_identity_undo_still_bumps_edit_seq_and_ends_paste_session() {
     let buf = ed.doc().text().to_string();
     assert!(
         buf.contains("CLIP"),
-        "p after a net-identity undo must read the clipboard — the undo moved \
+        "p after a net-identity undo must read the clipboard: the undo moved \
          the revision and ended the paste session even though no text changed; \
          buf={buf:?}"
     );
 }
 
-/// An edit in a *different* buffer invalidates the stamp too — `edit_seq`
+/// An edit in a *different* buffer invalidates the stamp too: `edit_seq`
 /// (`BufferStore`) is a single global counter, not per-buffer, so a capture
 /// in buffer A followed by any edit in buffer B (before switching back to A)
 /// stales A's stamp exactly as an edit in A itself would.
@@ -599,7 +599,7 @@ fn edit_in_other_buffer_invalidates_ring_stamp() {
         SelectionSet::default(),
     ));
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_b);
-    // `i`/type/`Esc`, not `d`/`c`/`y` — a capturing edit in B would legitimately
+    // `i`/type/`Esc`, not `d`/`c`/`y`. A capturing edit in B would legitimately
     // write a *fresh* stamp pointing at B's own capture, which isn't what this
     // test is isolating: it must be an edit that bumps `edit_seq` without
     // itself re-stamping, so A's now-stale stamp is the only thing in play.
@@ -638,7 +638,7 @@ fn explicit_digit_p_reads_inmemory_not_ring() {
 }
 
 /// An explicit register capture (`"5y`, `"bd`, …) never writes the paste
-/// stamp — only a bare or `"k`-prefixed capture does (see `route_kill` /
+/// stamp. Only a bare or `"k`-prefixed capture does (see `route_kill` /
 /// `EditorState::capture_to_ring`). White-box: checks the field directly.
 #[test]
 fn explicit_register_capture_does_not_write_paste_stamp() {
@@ -664,7 +664,7 @@ fn explicit_register_capture_does_not_write_paste_stamp() {
 }
 
 /// An explicit `"kp` still seeds the `[`/`]` cycle (unchanged behaviour), but
-/// — unlike a bare paste — does not write the paste stamp: the user asked
+/// (unlike a bare paste) does not write the paste stamp: the user asked
 /// for a specific register, not to arm the heuristic for the next bare paste.
 #[test]
 fn explicit_k_prefix_paste_does_not_write_stamp() {
@@ -673,7 +673,7 @@ fn explicit_k_prefix_paste_does_not_write_stamp() {
 
     ed.handle_key(key('"'));
     ed.handle_key(key('k'));
-    ed.feed_key(key('p')); // "kp: explicit — must not write the stamp
+    ed.feed_key(key('p')); // "kp: explicit, must not write the stamp
 
     assert!(
         ed.state.paste_stamp.is_none(),
@@ -683,14 +683,14 @@ fn explicit_k_prefix_paste_does_not_write_stamp() {
 
 // ── Equal-text collapse (repeat vs swap) ───────────────────────────────────────
 //
-// Applies to bare smart pastes only — plain paste and any `"<reg>`-prefixed
+// Applies to bare smart pastes only: plain paste and any `"<reg>`-prefixed
 // paste always replace a non-collapsed selection. When the resolved values
 // match the currently selected text one-to-one, the selections collapse
 // first so the paste appends alongside the existing text; any mismatch
 // (including a value/selection count mismatch) replaces it instead. See
 // `collapse_if_repeat` in `commands/paste.rs`.
 
-/// Pasting different text over a non-collapsed selection replaces it — the
+/// Pasting different text over a non-collapsed selection replaces it: the
 /// baseline the equal-text rule is contrasted against.
 #[test]
 fn paste_over_different_selection_replaces() {
@@ -720,7 +720,7 @@ fn paste_repeat_over_identical_selection_appends() {
 }
 
 /// A backward selection (head < anchor) still collapses to the span's `end`
-/// for `smart-paste-after` — not to `head()`, which on a backward selection
+/// for `smart-paste-after`, not to `head()`, which on a backward selection
 /// is the *left* edge and would land the collapse mid-span.
 #[test]
 fn paste_after_repeat_over_backward_selection_collapses_to_end() {
@@ -750,7 +750,7 @@ fn paste_before_repeat_over_backward_selection_collapses_to_start() {
     );
 }
 
-/// Multi-cursor: every selection's value matches — all-or-nothing, so every
+/// Multi-cursor: every selection's value matches. All-or-nothing, so every
 /// cursor appends.
 #[test]
 fn paste_multi_cursor_all_match_appends_each() {
@@ -772,7 +772,7 @@ fn paste_multi_cursor_all_match_appends_each() {
     );
 }
 
-/// Multi-cursor: one selection's value mismatches — all-or-nothing means the
+/// Multi-cursor: one selection's value mismatches. All-or-nothing means the
 /// whole set replaces, not a mix of append and replace.
 #[test]
 fn paste_multi_cursor_partial_match_replaces_all() {
@@ -797,7 +797,7 @@ fn paste_multi_cursor_partial_match_replaces_all() {
     );
 }
 
-/// A value-count/selection-count mismatch always replaces — equality can't
+/// A value-count/selection-count mismatch always replaces: equality can't
 /// even be evaluated per-selection when the op joins values across the board.
 #[test]
 fn paste_value_count_mismatch_replaces() {
@@ -833,7 +833,7 @@ fn paste_repeat_linewise_entry_over_linewise_selection_appends() {
 }
 
 /// Matching clipboard text over an identical selection duplicates it, rather
-/// than a same-text no-op — the rule is "append", not "skip".
+/// than a same-text no-op. The rule is "append", not "skip".
 #[test]
 fn paste_matching_clipboard_over_identical_selection_duplicates() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -852,7 +852,7 @@ fn paste_matching_clipboard_over_identical_selection_duplicates() {
     );
 }
 
-/// A repeat clipboard paste re-reads the clipboard fresh each time — if it
+/// A repeat clipboard paste re-reads the clipboard fresh each time. If it
 /// changed externally between the two presses, the second replaces the first
 /// rather than appending, since the resolved value no longer matches.
 #[test]
@@ -892,7 +892,7 @@ fn repeat_clipboard_paste_replaces_when_clipboard_changed_externally() {
 }
 
 /// An explicit-register smart paste whose content equals the selected text
-/// still replaces — the equal-text collapse is bare-only, and `"Xp` shares
+/// still replaces: the equal-text collapse is bare-only, and `"Xp` shares
 /// plain paste's replace contract (see `collapse_if_repeat`'s doc).
 #[test]
 fn explicit_register_paste_with_equal_text_replaces() {
@@ -912,7 +912,7 @@ fn explicit_register_paste_with_equal_text_replaces() {
 /// A repeat press after a clipboard paste must repeat the clipboard value or
 /// do nothing: when the re-read fails entirely (no OS clipboard, empty
 /// in-memory mirror), the press warns and no-ops rather than substituting
-/// the ring head — which would not match the selected just-pasted text and
+/// the ring head, which would not match the selected just-pasted text and
 /// so would replace it.
 #[test]
 fn repeat_clipboard_paste_with_dead_clipboard_is_noop() {
@@ -968,7 +968,7 @@ fn paste_ring_older_empty_ring_is_noop() {
     ed.feed_key(key('['));
     assert_eq!(state(&ed), before, "[ on empty ring is a no-op");
     // Capture fresh snapshot so ] is verified against actual post-[ state,
-    // not the original — if [ accidentally mutated state, this catches both.
+    // not the original. If [ accidentally mutated state, this catches both.
     let after_open = state(&ed);
     ed.feed_key(key(']'));
     assert_eq!(state(&ed), after_open, "] on empty ring is a no-op");
@@ -986,7 +986,7 @@ fn paste_ring_cycle_older_then_newer() {
     ed.feed_key(key('x'));
     ed.feed_key(key('d')); // ring = [C\n, B\n, A\n]
 
-    // Open paste session: `p` reads ring head (C\n) — stamp is fresh, nothing
+    // Open paste session: `p` reads ring head (C\n). Stamp is fresh, nothing
     // has been edited since the last delete.
     ed.feed_key(key('p')); // seeds cycle at Some(0) = C\n
 
@@ -1008,7 +1008,7 @@ fn paste_ring_cycle_older_then_newer() {
 }
 
 /// Select a line with `x`, delete with `d`, move with `j`, then paste via
-/// explicit ring head (`"kp`) — the deleted line must appear as its own line *below*
+/// explicit ring head (`"kp`): the deleted line must appear as its own line *below*
 /// the cursor, not embedded inside the current line.
 #[test]
 fn paste_ring_linewise_pastes_below_not_inline() {
@@ -1021,7 +1021,7 @@ fn paste_ring_linewise_pastes_below_not_inline() {
     ed.feed_key(key('k'));
     ed.feed_key(key('p')); // paste ring head (A\n) linewise below C
 
-    // "A\n" must land as its own line below C — not inside C's text.
+    // "A\n" must land as its own line below C, not inside C's text.
     assert_eq!(
         state(&ed),
         "B\nC\n-[A\n]>",
@@ -1029,7 +1029,7 @@ fn paste_ring_linewise_pastes_below_not_inline() {
     );
 }
 
-/// `[`/`]` cycle within a paste session REPLACES the previous paste — never
+/// `[`/`]` cycle within a paste session REPLACES the previous paste, never
 /// accumulates a second copy.
 #[test]
 fn paste_ring_warm_cycle_replaces_not_accumulates() {
@@ -1048,7 +1048,7 @@ fn paste_ring_warm_cycle_replaces_not_accumulates() {
         "p pastes B once"
     );
 
-    // [: cycle older (slot 0 → slot 1 = A\n) — must REPLACE B, not add another.
+    // [: cycle older (slot 0 → slot 1 = A\n). Must REPLACE B, not add another.
     ed.feed_key(key('['));
     let after_older = ed.doc().text().to_string();
     assert_eq!(
@@ -1057,7 +1057,7 @@ fn paste_ring_warm_cycle_replaces_not_accumulates() {
         "[ replaces paste with A"
     );
 
-    // ]: cycle newer (slot 1 → slot 0 = B\n) — must REPLACE A.
+    // ]: cycle newer (slot 1 → slot 0 = B\n). Must REPLACE A.
     ed.feed_key(key(']'));
     let after_newer = ed.doc().text().to_string();
     assert_eq!(
@@ -1069,7 +1069,7 @@ fn paste_ring_warm_cycle_replaces_not_accumulates() {
 }
 
 /// Single-char cycle: `[` within a session pastes the older entry, `]` replaces
-/// it back with the head — collapsed selection is not an obstacle.
+/// it back with the head: collapsed selection is not an obstacle.
 #[test]
 fn paste_ring_warm_cycle_replaces_single_char_paste() {
     let mut ed = editor_from("-[X]>Y\n");
@@ -1094,7 +1094,7 @@ fn paste_ring_warm_cycle_replaces_single_char_paste() {
     ed.feed_key(key(']'));
     let buf = ed.doc().text().to_string();
     assert!(buf.contains('Y'), "] pastes Y (slot 0)");
-    assert!(!buf.contains('X'), "] replaces X — no 'X' remains");
+    assert!(!buf.contains('X'), "] replaces X, no 'X' remains");
 }
 
 /// `P` (paste-before) opens a before-session; `[`/`]` must re-paste BEFORE the
@@ -1144,7 +1144,7 @@ fn paste_before_cycle_stays_above_linewise() {
     ed.state.kill_ring.push(vec!["X\n".to_string()]); // slot 1
     ed.state.kill_ring.push(vec!["Y\n".to_string()]); // ring=[Y\n, X\n]; head=Y\n
 
-    // "kP: linewise paste-before ring head ("Y\n") — inserts above line 0.
+    // "kP: linewise paste-before ring head ("Y\n"), inserts above line 0.
     ed.feed_key(key('"'));
     ed.feed_key(key('k'));
     ed.feed_key(key('P'));
@@ -1165,7 +1165,7 @@ fn paste_before_cycle_stays_above_linewise() {
 
 /// `p [ p` duplicates the currently-cycled entry: `[` re-stamps the stamp to
 /// the cycled slot, so the following bare `p` resolves that same slot fresh
-/// and — matching what's now selected — appends rather than replacing.
+/// and, matching what's now selected, appends rather than replacing.
 #[test]
 fn paste_after_cycle_appends_cycled_entry() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -1224,12 +1224,12 @@ fn consecutive_paste_appends_copies() {
     );
     assert!(
         !buf.contains("CLIP"),
-        "clipboard not used — repeat reads the ring, not the clipboard"
+        "clipboard not used: repeat reads the ring, not the clipboard"
     );
 }
 
 /// Consecutive `p` presses append when the previous paste came from the CLIPBOARD
-/// and the kill ring is empty — the second `p` must not be a no-op.
+/// and the kill ring is empty: the second `p` must not be a no-op.
 #[test]
 fn consecutive_clipboard_paste_appends() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -1239,7 +1239,7 @@ fn consecutive_clipboard_paste_appends() {
     ed.state
         .registers
         .write_text(CLIPBOARD_REGISTER, vec!["xy".to_string()]);
-    // ring is empty — this is the regression case
+    // ring is empty: this is the regression case
 
     ed.feed_key(key('p')); // no stamp → clipboard → inserts "xy" after 'z'; stamp → Clipboard
     ed.feed_key(key('p')); // stamp fresh(Clipboard) → re-reads "xy" → matches selection → append
@@ -1270,7 +1270,7 @@ fn consecutive_paste_repeats_last_not_ring_head() {
     assert_eq!(buf.matches("xy").count(), 2, "clipboard value repeated");
     assert!(
         !buf.contains("ZZ"),
-        "ring head must not appear — repeat re-reads the clipboard, not the ring"
+        "ring head must not appear: repeat re-reads the clipboard, not the ring"
     );
 }
 
@@ -1279,7 +1279,7 @@ fn consecutive_paste_repeats_last_not_ring_head() {
 // `p`/`P` dispatch the smart variants (see the smart-p block above); these
 // commands are reachable by name only (`:`, `call!`, or a plugin keymap).
 // Dispatched the same way `classic-paste`'s Steel wrappers and
-// `async_job_steel.rs`/`dot_repeat.rs` dispatch a command by name — through
+// `async_job_steel.rs`/`dot_repeat.rs` dispatch a command by name: through
 // `execute_keymap_command`, the same pipeline a keymap or `(call! …)` uses
 // (not a direct fn call, and unlike `:`, it doesn't itself dispatch any
 // unrelated command in between two calls).
@@ -1288,7 +1288,7 @@ fn dispatch_command(ed: &mut Editor, name: &str) {
     ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
-/// Bare plain paste reads the kill-ring head, not the clipboard — unlike
+/// Bare plain paste reads the kill-ring head, not the clipboard. Unlike
 /// smart-p, it never falls through to the clipboard when there's no register
 /// prefix, and it never consults the paste stamp to decide.
 #[test]
@@ -1312,7 +1312,7 @@ fn plain_paste_reads_ring_not_clipboard() {
 }
 
 /// `paste-before` (plain) reads the ring head and inserts before the
-/// selection — same source rule as `paste-after`, opposite side. Every
+/// selection: the same source rule as `paste-after`, opposite side. Every
 /// other plain-paste test in this file dispatches `paste-after`; this one
 /// exercises `cmd_paste_before` directly so a bug isolated to the `before`
 /// path (e.g. `do_paste`'s `before` flag) isn't masked by the `after` tests.
@@ -1330,7 +1330,7 @@ fn plain_paste_before_reads_ring_head() {
     );
 }
 
-/// Two consecutive plain pastes replace, never stack — plain paste is dumb
+/// Two consecutive plain pastes replace, never stack: plain paste is dumb
 /// by design: it always replaces a non-collapsed selection, with no
 /// equal-text check at all (that's smart-paste-only; see `collapse_if_repeat`'s
 /// doc). A script driving plain paste never has to inspect the selection
@@ -1351,7 +1351,7 @@ fn plain_paste_does_not_stack() {
     );
 }
 
-/// `[` after a plain paste still cycles — plain paste opens the same session
+/// `[` after a plain paste still cycles: plain paste opens the same session
 /// smart paste does.
 #[test]
 fn plain_paste_opens_ring_cycle_session() {
@@ -1407,7 +1407,7 @@ fn plain_paste_black_hole_is_noop() {
     );
 }
 
-/// `"b` (black hole) on a *smart* paste is a no-op too — `resolve_smart`
+/// `"b` (black hole) on a *smart* paste is a no-op too: `resolve_smart`
 /// routes an explicit register through `resolve_explicit_register`, the same
 /// path plain paste uses, so black-hole shortcuts identically for both.
 /// `plain_paste_black_hole_is_noop` above covers the plain path only.
@@ -1429,8 +1429,8 @@ fn smart_paste_black_hole_is_noop() {
 
 /// A smart paste right after a plain paste appends: a bare
 /// plain paste writes the stamp too (`Ring(0)`), so the immediately
-/// following bare smart paste resolves the same slot fresh and — matching
-/// what's now selected — appends.
+/// following bare smart paste resolves the same slot fresh and, matching
+/// what's now selected, appends.
 #[test]
 fn smart_paste_appends_after_plain_paste() {
     use hume_ops::register::CLIPBOARD_REGISTER;
@@ -1471,7 +1471,7 @@ fn plain_paste_refuses_read_only_buffer() {
 }
 
 /// A paste reaching the focused pane while its Insert session is still open
-/// — a hook or timer `call!`ing `paste-after` mid-typing — must refuse, not
+/// (a hook or timer `call!`ing `paste-after` mid-typing) must refuse, not
 /// open a paste session over the Insert one. Opening it would replace the
 /// Insert group in the editor's single session slot, losing every keystroke
 /// typed so far from undo.
@@ -1512,8 +1512,8 @@ fn paste_during_an_open_insert_session_is_refused_and_leaves_the_session_intact(
 /// Same conflict as the test above, but for the one-keystroke window right
 /// after `i`/`a`/`o`, before anything has been typed: the Insert session is
 /// real and open, but its `EditGroup` is still empty. Emptiness alone must
-/// not be read as "this is replay's own placeholder, safe to retarget" —
-/// see `EditSessionKind::Replay`'s own doc.
+/// not be read as "this is replay's own placeholder, safe to retarget".
+/// See `EditSessionKind::Replay`'s own doc.
 #[test]
 fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_intact() {
     use hume_scripting::host::CommandHost;
@@ -1548,8 +1548,8 @@ fn paste_during_an_empty_open_insert_session_is_refused_and_leaves_the_session_i
 }
 
 /// A direct edit landing while a ring-cycle Paste session is still open on
-/// the same pane — bracketed-paste's own `apply_normal_mode_paste`, which
-/// bypasses the dispatch pipeline (and so never runs `step_paste_commit`) —
+/// the same pane (bracketed-paste's own `apply_normal_mode_paste`, which
+/// bypasses the dispatch pipeline and so never runs `step_paste_commit`)
 /// must not leave that edit invisible to a following `[`. `doc_ops::
 /// apply_doc_edit` commits the open Paste session first, so `[` (which
 /// requires a *still-open* Paste session to do anything at all) finds none
@@ -1568,7 +1568,7 @@ fn direct_edit_during_open_paste_session_commits_it_first() {
 
     // "kp: paste-after ring head ("Y") after 'c' → "cYd\n", with a Paste
     // session left open (native paste always leaves one open, for a
-    // following `[`/`]`) — nothing has dispatched since, so it's still open.
+    // following `[`/`]`). Nothing has dispatched since, so it's still open.
     ed.feed_key(key('"'));
     ed.feed_key(key('k'));
     ed.feed_key(key('p'));
@@ -1590,7 +1590,7 @@ fn direct_edit_during_open_paste_session_commits_it_first() {
     ed.feed_key(key('['));
     assert!(
         ed.doc().text().to_string().contains('Z'),
-        "the direct edit must survive `[` — got {:?}",
+        "the direct edit must survive `[`, got {:?}",
         ed.doc().text().to_string()
     );
 }

@@ -4,7 +4,7 @@
 //!
 //! Consumed by `PickerSession` (`editor/input_stack/picker/session.rs`) and
 //! `SlotSet` (`editor/completion/session/slots.rs`), one instance per
-//! profile — see [`FuzzyProfile`].
+//! profile; see [`FuzzyProfile`].
 
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -27,7 +27,7 @@ pub(in crate::editor) enum FuzzyProfile {
 }
 
 /// A parsed query, reusable across every haystack scored against it in one
-/// re-rank pass. Re-parse on every query edit — parsing is cheap relative to
+/// re-rank pass. Re-parse on every query edit: parsing is cheap relative to
 /// scoring thousands of haystacks per keystroke. Two variants because the
 /// two profiles parse into different nucleo types (see [`FuzzyProfile`]'s
 /// query-parsing point): `Pattern` is itself a sequence of atoms, while
@@ -39,7 +39,7 @@ pub(in crate::editor) enum FuzzyPattern {
 }
 
 /// Owns the reusable scoring engine. One instance per picker/completion
-/// session (parallels `SlotSet::ranked` — caller-owned state reused across
+/// session (parallels `SlotSet::ranked`: caller-owned state reused across
 /// every keystroke, never rebuilt per call).
 pub(in crate::editor) struct FuzzyMatcher {
     matcher: Matcher,
@@ -58,7 +58,7 @@ impl FuzzyMatcher {
         }
     }
 
-    /// Parse `query` under this matcher's profile — smart case (lowercase
+    /// Parse `query` under this matcher's profile: smart case (lowercase
     /// query matches any case; mixed/upper case is case-sensitive) and smart
     /// Unicode normalization either way, differing in whether `query` is a
     /// whitespace-segmented multi-term `Pattern` or one whole-string `Atom`
@@ -85,7 +85,7 @@ impl FuzzyMatcher {
     /// underlying algorithm is subsequence-based, so this is a superset of a
     /// plain subsequence check with much richer ranking).
     ///
-    /// An empty pattern matches every haystack with score `0` — verified
+    /// An empty pattern matches every haystack with score `0`, verified
     /// empirically below since `nucleo-matcher`'s docs don't state it.
     pub(in crate::editor) fn score(
         &mut self,
@@ -138,8 +138,8 @@ mod tests {
         assert_eq!(m.score(&p, "short"), m.score(&p, "a much longer haystack"));
     }
 
-    /// A space in the query is completion's own token boundary, typed past
-    /// — never a term separator the way it is for `Picker` — so it must
+    /// A space in the query is completion's own token boundary, typed past,
+    /// never a term separator the way it is for `Picker`, so it must
     /// score every candidate `None`, not fall through to an effectively
     /// empty pattern that matches everything. `Atom` (`AtomKind::Fuzzy`)
     /// scores the whole string including whitespace, unlike `Pattern::
@@ -211,7 +211,7 @@ mod tests {
 
     /// `^`/`$`/`!`/`'` at a word boundary are fzf-style search-syntax
     /// operators for the Picker profile (`^foo` selects literal-prefix
-    /// matching on "foo"), but literal needle characters for Autocomplete —
+    /// matching on "foo"), but literal needle characters for Autocomplete:
     /// completion's query is raw buffer text, where those characters are
     /// legitimate identifier content (`$var`, `println!`), not syntax.
     #[test]
@@ -234,12 +234,12 @@ mod tests {
     }
 
     /// `prefer_prefix` gives Autocomplete a bonus for matches closer to the
-    /// start of the haystack — nucleo's own doc recommends this only for
+    /// start of the haystack. Nucleo's own doc recommends this only for
     /// "autocompletion usecases where the expectation is that the user is
     /// typing the entire match." Both haystacks hold the same contiguous run
     /// at a non-zero offset with the same single-class filler on both sides
     /// (nucleo also gives a boundary bonus to a match starting exactly at
-    /// index 0 regardless of this setting, so neither haystack starts there —
+    /// index 0 regardless of this setting, so neither haystack starts there;
     /// that would confound the comparison with a bonus this profile isn't
     /// responsible for).
     #[test]
@@ -257,7 +257,7 @@ mod tests {
         );
 
         // Control: Picker leaves `prefer_prefix` off, so the two haystacks
-        // must score identically there — without this, the assertion above
+        // must score identically there. Without this, the assertion above
         // wouldn't actually prove the bonus is profile-gated (it would still
         // pass if `prefer_prefix` were on unconditionally).
         let mut picker = FuzzyMatcher::new(FuzzyProfile::Picker);
@@ -272,7 +272,7 @@ mod tests {
     /// Guardrail regression test: scoring + ranking 100k synthetic paths
     /// against one query, simulating a single re-rank pass (parse once,
     /// score every haystack, sort survivors) under a loose release-mode
-    /// bound. `#[ignore]` by default — run explicitly with
+    /// bound. `#[ignore]` by default; run explicitly with
     /// `cargo test --release -- --ignored` (wall-clock asserts in debug/CI
     /// builds are flaky).
     ///

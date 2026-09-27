@@ -1,8 +1,8 @@
 //! Whether [`Editor::run`](super::Editor::run)'s event loop owns the
 //! terminal, and the handle to drive it when it does.
 //!
-//! One field, not two, because the pair has an illegal combination — active
-//! with no handle — that only prose could rule out if "is the loop running"
+//! One field, not two, because the pair has an illegal combination (active
+//! with no handle) that only prose could rule out if "is the loop running"
 //! and "is there a terminal" were tracked separately. Folded together, the
 //! type rules it out instead. [`ActiveTui`] carries that same guarantee past
 //! this type's own lifetime: a value [`Tui::as_active`] produces stays a
@@ -20,7 +20,7 @@ use hume_platform::terminal::SharedTerm;
 /// at all (it builds a host for callers with no terminal/`OutputHost` need),
 /// so a `&'a Tui` field would need a file-scope `static Tui::Off` to point
 /// at instead. Cloning costs two `Arc` bumps (`SharedTerm` is `Arc` +
-/// `EventReader`, both cheap to clone — see its own doc in
+/// `EventReader`, both cheap to clone; see its own doc in
 /// `hume_platform::terminal`) against that alternative's global state.
 #[derive(Clone)]
 pub(in crate::editor) enum Tui {
@@ -29,7 +29,7 @@ pub(in crate::editor) enum Tui {
     Off,
     /// `Editor::run`'s event loop owns this handle.
     On(SharedTerm),
-    /// Test-only: event-loop semantics with no TTY attached — the shape
+    /// Test-only: event-loop semantics with no TTY attached. The shape
     /// `Editor::run` never actually produces, used by tests that need
     /// [`Self::as_active`] to return `Some` without a real terminal to
     /// drive.
@@ -38,7 +38,7 @@ pub(in crate::editor) enum Tui {
 }
 
 impl Tui {
-    /// The terminal handle, if there is one — makes no claim about whether
+    /// The terminal handle, if there is one. This makes no claim about whether
     /// the event loop is active. Safe to call from code that can legitimately
     /// run with no terminal attached at all (e.g. `resync_mouse_mode`).
     pub(in crate::editor) fn terminal(&self) -> Option<&SharedTerm> {
@@ -50,7 +50,7 @@ impl Tui {
         }
     }
 
-    /// This `Tui`'s active handle, captured by value — `Off` becomes `None`;
+    /// This `Tui`'s active handle, captured by value: `Off` becomes `None`;
     /// `On`/`OnHeadless` clone into the narrower [`ActiveTui`] shape a pushed
     /// `InlineOutput` frame carries forward. See [`ActiveTui`]'s own doc for
     /// why capturing this rather than re-reading `tui` later matters.
@@ -64,7 +64,7 @@ impl Tui {
     }
 }
 
-/// A [`Tui`] known, at the point this was captured, to have been active —
+/// A [`Tui`] known, at the point this was captured, to have been active:
 /// `Tui` minus `Off`. `InlineOutput::Frame` captures one via
 /// [`Tui::as_active`] at push time and `Entered` captures the same value
 /// again at `mark_entered`, so `ensure_inline_output_screen`/
@@ -74,13 +74,13 @@ impl Tui {
 #[derive(Clone)]
 pub(in crate::editor) enum ActiveTui {
     On(SharedTerm),
-    /// Test-only twin of [`Tui::OnHeadless`] — see that variant's doc.
+    /// Test-only twin of [`Tui::OnHeadless`]; see that variant's doc.
     #[cfg(test)]
     Headless,
 }
 
 impl ActiveTui {
-    /// The terminal handle — `None` only for the test-only headless shape.
+    /// The terminal handle; `None` only for the test-only headless shape.
     pub(in crate::editor) fn terminal(&self) -> Option<&SharedTerm> {
         match self {
             ActiveTui::On(term) => Some(term),

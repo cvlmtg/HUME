@@ -41,7 +41,7 @@ fn setup(
     )
 }
 
-/// Like `setup`, but with caller-chosen `initialize` capabilities — needed
+/// Like `setup`, but with caller-chosen `initialize` capabilities, needed
 /// for the resolve tests, which require `codeActionProvider` to be the
 /// CodeActionOptions hash shape (`{"resolveProvider": true}`), not the bare
 /// boolean `setup`'s default uses.
@@ -95,7 +95,7 @@ fn setup_with_capabilities(
 }
 
 fn run_actions(ed: &mut Editor) {
-    // lsp-code-actions is key-bindable, not typed — dispatch through the
+    // lsp-code-actions is key-bindable, not typed: dispatch through the
     // keymap pipeline, the way its bound key (`z a`) would.
     ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false);
     ed.settle();
@@ -141,7 +141,7 @@ fn disabled_action(title: &str) -> serde_json::Value {
     serde_json::json!({"title": title, "disabled": {"reason": "not applicable here"}})
 }
 
-/// A lazily-resolved CodeAction: neither "edit" nor "command", per spec —
+/// A lazily-resolved CodeAction: neither "edit" nor "command", per spec;
 /// the client must send `codeAction/resolve` to get either.
 fn unresolved_action(title: &str) -> serde_json::Value {
     serde_json::json!({"title": title})
@@ -211,7 +211,7 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
         );
         backend.respond_to("workspace/executeCommand", serde_json::Value::Null);
         // Simulate the server's real behavior: after executing the command,
-        // it pushes an unsolicited workspace/applyEdit *request* back — the
+        // it pushes an unsolicited workspace/applyEdit *request* back. That is the
         // full loop this test proves, not just "a request was sent".
         backend.push_from_server(
             sid,
@@ -241,7 +241,7 @@ fn selecting_a_command_action_runs_the_full_server_loop() {
 
 /// `workspace/executeCommand`'s params carry no `textDocument`, so it has
 /// no self-derived buffer id to anchor a staleness check against the way
-/// `textDocument/codeAction` or `textDocument/hover` do — it relies on
+/// `textDocument/codeAction` or `textDocument/hover` do. It relies on
 /// `#:allow-stale #t` (`lsp/exec-command`, `actions.scm`) instead. An edit
 /// between the command being sent and its response draining must not
 /// suppress this error report.
@@ -402,7 +402,7 @@ fn selecting_an_unresolved_action_sends_resolve_then_applies_it() {
 
 /// `codeAction/resolve` requests `#:allow-stale #t`, so an edit landing
 /// between picking the action and the response draining must not silently
-/// drop the resolve — but `apply-workspace-edit!`'s own `#:expect-generation`
+/// drop the resolve, but `apply-workspace-edit!`'s own `#:expect-generation`
 /// must then refuse to apply it, rather than silently doing nothing (the old
 /// request-side drop) or applying against text that has since moved.
 #[test]
@@ -494,7 +494,7 @@ fn selecting_an_unresolved_action_without_resolve_support_reports_it() {
 /// unconditionally on a resolved action. A non-conforming server that
 /// resolves an action still lacking both "edit" and "command" would send
 /// a *second* `codeAction/resolve` request rather than reporting the
-/// action as unsupported — an unbounded round trip for a server that never
+/// action as unsupported: an unbounded round trip for a server that never
 /// produces a resolvable shape. `#:resolved?` bounds this to one attempt.
 #[test]
 fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() {
@@ -510,7 +510,7 @@ fn selecting_an_unresolved_action_whose_resolve_is_still_bare_reports_it_once() 
                 "textDocument/codeAction",
                 serde_json::json!([unresolved_action("Fix the thing")]),
             );
-            // Only one canned response queued (FIFO) — a second resolve
+            // Only one canned response queued (FIFO): a second resolve
             // request sent by an unbounded recursion would go unanswered.
             backend.respond_to("codeAction/resolve", unresolved_action("Fix the thing"));
         },
@@ -578,7 +578,7 @@ fn selecting_an_unresolved_action_whose_resolve_errors_reports_it() {
 }
 
 /// The user is free to switch buffers while a `textDocument/codeAction`
-/// request is in flight — same async-round-trip race `lsp-hover`'s own
+/// request is in flight: the same async-round-trip race `lsp-hover`'s own
 /// `#:require-focus` guards against. A response for a buffer that's no
 /// longer focused must not open a menu over whatever the user switched to.
 #[test]
@@ -594,7 +594,7 @@ fn stale_response_after_a_buffer_switch_opens_no_menu() {
     });
 
     // Sends the request synchronously; deliberately no settle() before the
-    // switch below — settle() unconditionally drains LSP, which would
+    // switch below. settle() unconditionally drains LSP, which would
     // deliver the response (and close the race window) before the switch
     // ever happens. Same technique as `lsp_hover.rs`'s own
     // `stale_response_after_a_buffer_switch_shows_no_popup`.

@@ -32,7 +32,7 @@ fn auto_pairs_skip_close() {
 }
 
 /// Skip-close over a PRE-EXISTING `)` (one this session never inserted) edits
-/// nothing — `run_ends` only advances on a real insertion, so the typed run
+/// nothing: `run_ends` only advances on a real insertion, so the typed run
 /// stops before it: Esc selects just what was typed, not the char the
 /// cursor stepped over. Contrast with `c_auto_pair_includes_trailing_closer`
 /// (`commands.rs`), where the `)` IS included because auto-pairs inserted it
@@ -52,7 +52,7 @@ fn auto_pairs_skip_close_over_pre_existing_closer_excludes_it_from_typed_run() {
 fn auto_pairs_auto_delete() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
-    ed.handle_key(key('(')); // buffer: `(|)hello` — cursor on `)`
+    ed.handle_key(key('(')); // buffer: `(|)hello`, cursor on `)`
     ed.handle_key(key_backspace()); // should delete both `(` and `)`
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
@@ -89,7 +89,7 @@ fn auto_pairs_symmetric_skip_close() {
 fn auto_pairs_no_false_skip() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
-    ed.handle_key(key(')')); // `)` is not already there — insert normally
+    ed.handle_key(key(')')); // `)` is not already there: insert normally
     assert_eq!(state(&ed), ")-[h]>ello\n");
 }
 
@@ -112,7 +112,7 @@ fn auto_pairs_disabled() {
 /// another is not, the whole operation falls back to plain insert for all cursors.
 #[test]
 fn auto_pairs_skip_close_mixed_cursors() {
-    // cursor 1 on `)`, cursor 2 on `b` — not all cursors match skip-close.
+    // cursor 1 on `)`, cursor 2 on `b`: not all cursors match skip-close.
     let mut ed = editor_from("(-[)]>a-[b]>c\n");
     ed.handle_key(key('i'));
     ed.handle_key(key(')')); // fallback: inserts `)` at both positions
@@ -135,7 +135,7 @@ fn auto_pairs_auto_delete_mixed_cursors() {
 // In Normal mode, pair characters are no-ops or run their existing keybind.
 // Wrapping a selection requires the explicit `mw<char>` command.
 
-/// `"` is the register-prefix key — starts the register prefix, not a wrap.
+/// `"` is the register-prefix key: starts the register prefix, not a wrap.
 #[test]
 fn normal_wrap_selection_double_quote_is_register_prefix() {
     let mut ed = editor_from("foo -[bar]> baz\n");
@@ -143,7 +143,7 @@ fn normal_wrap_selection_double_quote_is_register_prefix() {
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }
 
-/// `[` has no leaf binding — pressing it with a selection is a no-op.
+/// `[` has no leaf binding, so pressing it with a selection is a no-op.
 #[test]
 fn normal_mode_bracket_does_not_wrap_selection() {
     let mut ed = editor_from("foo -[bar]> baz\n");
@@ -151,7 +151,7 @@ fn normal_mode_bracket_does_not_wrap_selection() {
     assert_eq!(state(&ed), "foo -[bar]> baz\n");
 }
 
-/// `(` is bound to cycle-primary-backward — runs that, not a wrap.
+/// `(` is bound to cycle-primary-backward: runs that, not a wrap.
 #[test]
 fn normal_wrap_bound_key_not_intercepted() {
     let mut ed = editor_from("foo -[bar]> baz\n");

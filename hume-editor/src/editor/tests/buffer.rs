@@ -88,7 +88,7 @@ fn buffer_long_alias_accepted() {
 fn buffer_bang_force_is_ignored() {
     // `:b` takes a `force` flag for syntactic compatibility with the
     // `<cmd>!` convention, but there is nothing to force on a plain
-    // buffer switch — `:b!` must behave identically to `:b`.
+    // buffer switch: `:b!` must behave identically to `:b`.
     let mut ed = editor_from("-[h]>ello\n");
     let before_id = ed.focused_buffer_id();
     ed.execute_typed("b!", Some("*scratch*")).unwrap();

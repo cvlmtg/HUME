@@ -6,7 +6,7 @@ use crate::editor::commands::open_pane_in_layout;
 use crate::editor::message_log::Severity;
 use hume_scripting::ScriptingHost;
 
-/// `buffer-text` returns the buffer's live, unsaved content — not a stale
+/// `buffer-text` returns the buffer's live, unsaved content, not a stale
 /// on-open snapshot.
 #[test]
 fn buffer_text_returns_live_dirty_content() {
@@ -29,7 +29,7 @@ fn buffer_text_returns_live_dirty_content() {
 }
 
 /// `buffer-lines` excludes the phantom trailing line ropey counts past a
-/// buffer's structural trailing `\n` — the same line the statusline and
+/// buffer's structural trailing `\n`: the same line the statusline and
 /// `:w` never count either.
 #[test]
 fn buffer_lines_excludes_the_phantom_trailing_line() {
@@ -71,8 +71,8 @@ fn buffer_line_count_excludes_the_phantom_trailing_line() {
 }
 
 /// `buffer-line-count` must agree with the slower `(length (buffer-lines
-/// bid))` idiom it replaces — same pattern as `diff-buffer-lines`' agreement
-/// check against `diff-lines`.
+/// bid))` idiom it replaces (same pattern as `diff-buffer-lines`' agreement
+/// check against `diff-lines`).
 #[test]
 fn buffer_line_count_agrees_with_buffer_lines_length() {
     let tmp = safe_tempdir();
@@ -129,7 +129,7 @@ fn buffer_lines_start_only_defaults_end_to_the_line_count() {
 }
 
 /// `buffer-text` always returns `\n` line endings, even for a buffer whose
-/// source used `\r\n` — `BufferText::from`'s CRLF normalization, not a second
+/// source used `\r\n`: `BufferText::from`'s CRLF normalization, not a second
 /// strip pass in the builtin itself.
 #[test]
 fn buffer_text_normalizes_crlf_to_lf() {
@@ -149,7 +149,7 @@ fn buffer_text_normalizes_crlf_to_lf() {
 }
 
 /// An `#:end` past the buffer's line count raises rather than silently
-/// clamping — fail-fast, matching the project's error-handling convention.
+/// clamping: fail-fast, matching the project's error-handling convention.
 #[test]
 fn buffer_lines_out_of_range_end_raises() {
     let tmp = safe_tempdir();
@@ -175,7 +175,7 @@ fn buffer_lines_out_of_range_end_raises() {
     );
 }
 
-/// A `#:start` past `#:end` raises too — the other half of the `start > end
+/// A `#:start` past `#:end` raises too: the other half of the `start > end
 /// || end > line_count` guard.
 #[test]
 fn buffer_lines_start_past_end_raises() {
@@ -205,7 +205,7 @@ fn buffer_lines_start_past_end_raises() {
 /// The user manual's `(viewport-range bid)` + `buffer-lines` recipe
 /// (`user-manual/docs/plugins.md`) must not raise on the common case of a
 /// buffer shorter than the pane, where the viewport's `end` sits at one past
-/// the buffer's last content line — both ranges are 0-based and
+/// the buffer's last content line. Both ranges are 0-based and
 /// end-exclusive, so `#:end` takes `(cdr vr)` directly, no `+ 1` needed.
 ///
 /// If `viewport-range` ended one past the ropey phantom line (two past the
@@ -232,7 +232,7 @@ fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
 }
 
 /// A stale bid raises "invalid buffer id" for both `buffer-text` and
-/// `buffer-lines` — not an empty string/list.
+/// `buffer-lines`, not an empty string/list.
 fn assert_stale_bid_raises(builtin_call: &str, builtin_name: &str) {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\n");
@@ -307,7 +307,7 @@ fn line_to_offset_returns_each_lines_start_char_offset() {
     );
 }
 
-/// `line->offset` counts in chars, not bytes — a line after a multi-byte
+/// `line->offset` counts in chars, not bytes: a line after a multi-byte
 /// character must not be offset by its UTF-8 byte width.
 ///
 /// Line 1 starts at char 2: "é" is 1 char (2 UTF-8 bytes) and the `\n`
@@ -329,7 +329,7 @@ fn line_to_offset_counts_chars_not_bytes() {
     );
 }
 
-/// A `line` at or past the buffer's content line count raises — including
+/// A `line` at or past the buffer's content line count raises, including
 /// the phantom trailing line past the structural `\n`, same convention as
 /// `buffer-lines`' `#:end`.
 #[test]
@@ -399,7 +399,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
 
 /// `initial` must make `(<builtin> bid)` equal `expected`; `why` is the
 /// assertion message on failure. `builtin` is `"selections-linewise?"` or
-/// `"selections-charwise?"` — the two predicates share every fixture below
+/// `"selections-charwise?"`. The two predicates share every fixture below
 /// since together they classify the same three-way verdict (all/none/mixed)
 /// `:lsp-fmt`'s range-format gate needs.
 fn assert_selections_predicate(builtin: &str, initial: &str, expected: bool, why: &str) {
@@ -455,7 +455,7 @@ fn selections_charwise_true_for_a_partial_selection() {
 }
 
 /// A selection spanning two whole lines, start to trailing newline, must be
-/// linewise — the case `lsp-fmt`'s range-format gate (`core:lsp/format.scm`)
+/// linewise: the case `lsp-fmt`'s range-format gate (`core:lsp/format.scm`)
 /// depends on to offer "one or more complete lines", not just one.
 #[test]
 fn selections_linewise_true_for_a_multi_line_whole_line_selection() {
@@ -573,7 +573,7 @@ fn selections_charwise_true_for_a_lone_collapsed_selection_on_a_blank_line() {
 
 /// A buffer's linewise selection must still resolve through
 /// `selections-linewise?` when the buffer is shown only in a *non-focused*
-/// pane — the same pane-resolution policy `symbol-under-cursor` and the
+/// pane, the same pane-resolution policy `symbol-under-cursor` and the
 /// `lsp-*-params` builders share (see `shown_buffer_state`).
 #[test]
 fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
@@ -614,7 +614,7 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
 }
 
 /// `diff-buffer-lines` against a ref must agree with `diff-lines`
-/// called on the ref and a `buffer-text` read — the cheaper, buffer-avoiding
+/// called on the ref and a `buffer-text` read: the cheaper, buffer-avoiding
 /// path and the general-purpose path must produce identical hunks for the
 /// same input.
 #[test]

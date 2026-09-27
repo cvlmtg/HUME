@@ -1,17 +1,17 @@
-//! line_rules.rs — trailing-newline content rules for a/A/c/d and the small single-key selection commands around them.
+//! line_rules.rs: trailing-newline content rules for a/A/c/d and the small single-key selection commands around them.
 
 use super::super::*;
 use pretty_assertions::assert_eq;
 
 // ── `a` / `A` trailing-newline content rule ────────────────────────────────────
 
-/// `a` on an empty line must stay on that line (≡ `i`) — not jump to the next.
+/// `a` on an empty line must stay on that line (≡ `i`), not jump to the next.
 ///
 /// An empty line is just a `\n`; the selection ends on that `\n`. Under the
 /// content rule `a` does not step past a trailing `\n`.
 #[test]
 fn a_on_empty_line_stays_on_same_line() {
-    // Buffer: "foo\n\nbar\n" — the middle line is empty (char index 4 = '\n').
+    // Buffer: "foo\n\nbar\n": the middle line is empty (char index 4 = '\n').
     let mut ed = editor_from("foo\n-[\n]>bar\n");
     ed.handle_key(key('a'));
 
@@ -27,15 +27,15 @@ fn a_after_select_line_stays_on_same_line() {
     // select-line on 'b' → anchor=4 ('b'), head=7 ('\n').
     // `a`: sel.end()=7, char_at(7)='\n' → stay at 7.
     let mut ed = editor_from("foo\n-[b]>ar\nbaz\n");
-    ed.handle_key(key('x')); // select "bar\n" — head on '\n'
+    ed.handle_key(key('x')); // select "bar\n", head on '\n'
     ed.handle_key(key('a'));
 
     assert_eq!(ed.state.mode(), Mode::Insert);
-    // Cursor on the trailing '\n' of the line — same line, not on 'b' of next line.
+    // Cursor on the trailing '\n' of the line: same line, not on 'b' of next line.
     assert_eq!(state(&ed), "foo\nbar-[\n]>baz\n");
 }
 
-/// `A` on an empty line must stay on the `\n` of that line — not step onto
+/// `A` on an empty line must stay on the `\n` of that line, not step onto
 /// the next line. An unconditional `move_right` after `goto_line_end` would
 /// advance past the `\n` on empty lines.
 #[test]
@@ -61,7 +61,7 @@ fn capital_a_on_nonempty_line_is_unchanged() {
 
 // ── `c` trailing-newline content rule ─────────────────────────────────────────
 
-/// `c` on an empty line must not delete anything — the line stays, cursor stays.
+/// `c` on an empty line must not delete anything: the line stays, cursor stays.
 /// Equivalent to pressing `i` on an empty line.
 #[test]
 fn change_on_empty_line_is_noop() {
@@ -79,7 +79,7 @@ fn change_on_empty_line_is_noop() {
 }
 
 /// `c` after `x` (select-line) on an interior line clears the content but keeps
-/// the line — `c` rewrites a line, not deletes it.
+/// the line: `c` rewrites a line, not deletes it.
 #[test]
 fn change_after_select_line_keeps_line() {
     let mut ed = editor_from("foo\n-[b]>ar\nbaz\n");
@@ -115,7 +115,7 @@ fn change_multi_line_collapses_to_one_empty_line() {
     assert_eq!(state(&ed), "foo\n-[\n]>");
 }
 
-/// `c` on a plain (non-`\n`) char still deletes it — regression guard.
+/// `c` on a plain (non-`\n`) char still deletes it (regression guard).
 #[test]
 fn change_on_content_char_still_deletes() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -127,7 +127,7 @@ fn change_on_content_char_still_deletes() {
 }
 
 /// After `c` of a line-selected region, the kill ring must contain only the
-/// line content — no trailing `\n`.
+/// line content, no trailing `\n`.
 #[test]
 fn change_kill_ring_excludes_trailing_newline() {
     let mut ed = editor_from("-[b]>ar\n");
@@ -142,7 +142,7 @@ fn change_kill_ring_excludes_trailing_newline() {
 }
 
 /// `d` after `x` (select-line) still removes the whole line including its `\n`
-/// — regression guard ensuring `d` was not affected by the `c`-only change.
+/// (regression guard ensuring `d` was not affected by the `c`-only change).
 #[test]
 fn d_after_select_line_removes_entire_line() {
     let mut ed = editor_from("foo\n-[b]>ar\nbaz\n");
@@ -256,7 +256,7 @@ fn plain_comma_still_keeps_primary_selection() {
 
 /// The default Extend override trie is empty, so `o` in Extend mode falls
 /// through to the Normal trie (with extend=true) like any other unbound-in-Extend
-/// key — same as `o` in Normal mode, `open-line-below`. The vim-style flip
+/// key, same as `o` in Normal mode, `open-line-below`. The vim-style flip
 /// alias lives only in `core:vim-keybind` (see `tests/vim_keybind.rs`).
 #[test]
 fn o_in_extend_mode_falls_through_to_open_line_below() {
@@ -287,7 +287,7 @@ fn o_in_normal_mode_still_opens_line_below() {
 #[test]
 fn ctrl_e_in_normal_mode_flips_selection() {
     let mut ed = editor_from("-[hell]>o\n");
-    // Normal mode (the default) — no Extend active.
+    // Normal mode (the default): no Extend active.
 
     ed.handle_key(key_ctrl('e'));
 
@@ -314,7 +314,7 @@ fn ctrl_e_in_extend_mode_flips_selection() {
 // ── `;` collapses selection AND clears extend mode ─────────────────────────
 
 /// `;` must (a) collapse every selection to its head and (b) clear the
-/// `extend` flag. The extend side-effect only exists in the mapping — a pure
+/// `extend` flag. The extend side-effect only exists in the mapping; a pure
 /// `cmd_collapse_selection_to_head` test cannot see it.
 #[test]
 fn semicolon_collapses_selection_and_resets_extend() {
@@ -331,7 +331,7 @@ fn semicolon_collapses_selection_and_resets_extend() {
 // ── `Ctrl-;` collapses selection to anchor AND clears extend mode ─────────────
 
 /// `Ctrl-;` must (a) collapse every selection to its anchor and (b) clear the
-/// `extend` flag — the exact mirror of `;` with `head` replaced by `anchor`.
+/// `extend` flag: the exact mirror of `;` with `head` replaced by `anchor`.
 #[test]
 fn ctrl_semicolon_collapses_to_anchor_and_resets_extend() {
     let mut ed = editor_from_kitty("-[hell]>o\n");

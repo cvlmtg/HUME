@@ -2,7 +2,7 @@
 //! to hooks, lazy-plugin activation, and tree-sitter syntax setup.
 //!
 //! The registry itself, grammar attachment, and language detection live in
-//! `hume_treesitter::registry` — this module only owns what's specific to a
+//! `hume_treesitter::registry`; this module only owns what's specific to a
 //! live `Editor` (message log, hooks, plugin activation).
 
 mod parse;
@@ -21,13 +21,13 @@ use super::event::EditorEvent;
 /// interned id.
 ///
 /// The one implementation of `register-grammar!`. Both entry points reach it
-/// — `EditorHostImpl::attach_grammar` for a command-mode call, and
-/// `apply_pending_language_regs` for the init-mode effect — so the
+/// (`EditorHostImpl::attach_grammar` for a command-mode call, and
+/// `apply_pending_language_regs` for the init-mode effect), so the
 /// `QueryPaths` conversion and the user-facing error prefix exist once.
 ///
 /// Free function over `(&mut EditorState, &mut EngineView)` rather than an
 /// `Editor` method because `EditorHostImpl` borrows those two fields
-/// separately and never holds an `Editor` — the same constraint that shapes
+/// separately and never holds an `Editor`, the same constraint that shapes
 /// [`ensure_syntax_current`].
 ///
 /// `Err` is the finished message, prefix included: the command path lifts it
@@ -60,7 +60,7 @@ pub(in crate::editor) fn attach_grammar_from_reg(
 }
 
 impl Editor {
-    /// Set the language identity for buffer `bid`, via plain detection —
+    /// Set the language identity for buffer `bid`, via plain detection:
     /// does not mark `language_explicit` (see `set_buffer_language_explicit`
     /// for the user/script write paths).
     pub(super) fn set_buffer_language(&mut self, bid: BufferId, new_lang: Option<LanguageId>) {
@@ -69,7 +69,7 @@ impl Editor {
 
     /// Set the language identity for buffer `bid` from a user or script
     /// assertion (`:set buffer language=`, Steel's `set-buffer-language!`)
-    /// rather than detection — stamps `language_explicit` so
+    /// rather than detection. Stamps `language_explicit` so
     /// `:reload-config`'s reset can restore the assertion across the reload
     /// instead of letting its post-reload re-detect sweep silently pick
     /// something else (see `clear_languages_all`).
@@ -81,7 +81,7 @@ impl Editor {
         self.set_buffer_language_impl(bid, new_lang, true);
     }
 
-    /// No-op when the value is unchanged (avoids spurious hook fires) — but
+    /// No-op when the value is unchanged (avoids spurious hook fires), but
     /// `language_explicit` is still stamped either way, since it records how
     /// the *current* value arrived, not whether this call changed it.
     /// On change: writes `Buffer.language`, fires `OnLanguageSet` with `(bid, name-or-#f)`.
@@ -103,7 +103,7 @@ impl Editor {
             self.activate_lazy_language_plugins(name);
             // A lazy plugin's own body can call `set-buffer-language!` on
             // this same buffer (applied inline via `apply_script_effects`
-            // before `activate_lazy_language_plugins` returns) — that nested
+            // before `activate_lazy_language_plugins` returns); that nested
             // call already ran this function to completion for the newer
             // value. Ours is stale: bail out rather than fire a second,
             // out-of-order `OnLanguageSet` and re-derive syntax/LSP state
@@ -119,7 +119,7 @@ impl Editor {
         // Wire up (or tear down) tree-sitter highlighting for this buffer.
         self.setup_buffer_syntax(bid);
         // Spawn-or-attach an LSP server for this buffer's (possibly new)
-        // language. Idempotent — `open_buffer`'s detect-then-fire-OnBufferOpen
+        // language. Idempotent: `open_buffer`'s detect-then-fire-OnBufferOpen
         // sequence means this and the open-path hook can both observe the
         // same language-set.
         self.lsp_attach_buffer(bid);
@@ -141,14 +141,14 @@ impl Editor {
 
     /// Detect and set the language for every buffer
     /// `buffer::lifecycle::open_buffer_and_notify` queued onto
-    /// `state.config.pending_language_detection` — the disjoint-borrow open
+    /// `state.config.pending_language_detection`. The disjoint-borrow open
     /// chokepoint can't do this inline (see that function's doc), so every
     /// caller that regains a full `&mut Editor` drains this once: directly
     /// after opening (`Editor::open_buffer`, `apply_edit_request_response`),
     /// or at the tail of `apply_script_effects` for every Steel-eval path.
     ///
     /// Also fires `OnBufferOpen` for each buffer, after its `OnLanguageSet`
-    /// (queued by `detect_and_set_language` above) — `open_buffer_and_notify`
+    /// (queued by `detect_and_set_language` above); `open_buffer_and_notify`
     /// itself doesn't fire it, since both hooks share the FIFO `pending_work`
     /// queue and plugins registering both handlers expect `on-language-set`
     /// to run first.
@@ -156,7 +156,7 @@ impl Editor {
     /// Takes the queue before iterating, not `while let Some(bid) =
     /// queue.pop()`: detecting a language can activate a lazy plugin, whose
     /// body can open more buffers and re-enter this same drain via a nested
-    /// `apply_script_effects` — taking first means that nested call sees (and
+    /// `apply_script_effects`, so taking first means that nested call sees (and
     /// drains) only the buffers *it* queued, and returns to find nothing left
     /// for this call to reprocess.
     pub(super) fn detect_pending_languages(&mut self) {
@@ -164,11 +164,11 @@ impl Editor {
         for bid in pending {
             // The buffer may have been closed by the same batch of work that
             // opened it (e.g. `close-buffer!` in the same eval) before this
-            // drain runs — `close-buffer!` mutates synchronously, unlike this
+            // drain runs, since `close-buffer!` mutates synchronously, unlike this
             // deferred detection. Skip rather than hit `BufferStore::get`'s
             // "unseeded BufferId" panic. Skipping the corresponding
             // `OnBufferClose` for a since-closed, never-opened buffer is
-            // `close_buffer_and_notify`'s job, not this drain's — see its doc.
+            // `close_buffer_and_notify`'s job, not this drain's; see its doc.
             if self
                 .state
                 .buffers
@@ -178,8 +178,8 @@ impl Editor {
                 // A `SetBufferLanguage` effect for this same bid, applied
                 // earlier in this same `apply_script_effects` call (e.g.
                 // `(define b (open-buffer! path)) (set-buffer-language! b
-                // "notes")` in one eval), already stamped `language_explicit`
-                // — detection must not clobber it with whatever plain
+                // "notes")` in one eval), already stamped `language_explicit`,
+                // so detection must not clobber it with whatever plain
                 // detection finds for the path, the same reasoning as
                 // `init_scripting`'s post-reload sweep. `OnBufferOpen` still
                 // fires either way: the buffer was genuinely opened.
@@ -195,8 +195,8 @@ impl Editor {
 
     /// Register languages from a maximal run of consecutive
     /// `Effect::LanguageReg` entries (`Editor::apply_script_effects` groups
-    /// them so a large run — e.g. `languages.scm`'s ~700 `define-language!`
-    /// calls — rebuilds the glob matcher once, not once per entry).
+    /// them so a large run (e.g. `languages.scm`'s ~700 `define-language!`
+    /// calls) rebuilds the glob matcher once, not once per entry).
     /// Fail-soft: glob-set build failures are logged as warnings, editor continues.
     pub(super) fn apply_pending_language_regs(
         &mut self,

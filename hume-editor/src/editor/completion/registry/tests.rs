@@ -48,7 +48,7 @@ fn register_minibuf_under_a_same_name_replaces_in_place() {
 }
 
 /// A name taken in one namespace is simply unrelated to the same name in
-/// the other — `register_buffer`/`register_minibuf` each only ever search
+/// the other: `register_buffer`/`register_minibuf` each only ever search
 /// their own `Vec`, so there is no cross-namespace collision to refuse.
 #[test]
 fn the_same_name_in_both_namespaces_registers_two_independent_sources() {
@@ -115,7 +115,7 @@ fn set_buffer_trigger_chars_empty_clears_the_entry() {
 }
 
 /// A same-name re-registration (`register_buffer` replacing the entry in
-/// place) must not wipe trigger chars set separately —
+/// place) must not wipe trigger chars set separately:
 /// `set_buffer_trigger_chars` and `register_buffer` write different facts
 /// at different times.
 #[test]

@@ -3,7 +3,7 @@
 // `DecorationSource`) from the `decorations.inlay_hints` store.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s bare
-// `Pane::new`) — `InlineDecorationProvider` is only registered by `build_pane`, same
+// `Pane::new`): `InlineDecorationProvider` is only registered by `build_pane`, same
 // reasoning as `lsp_render.rs`. Hints are injected directly via
 // `ed.state.config.decorations.set_inlay_hints` (bypassing `set-inlay-hints!`'s wire
 // position/UTF-16 decoding, already covered by `lsp_decorations.rs`) since
@@ -66,12 +66,12 @@ fn before_hint_renders_immediately_before_its_char() {
 /// scrolls: the scroll step and `content_pos` both build a `DisplayLineMap` off the
 /// same pane provider Arc `update_inlay_hint_providers` writes, so if scroll
 /// ran first it would size line 0's block without the hint (1 row) while
-/// `content_pos` — built fresh right after `prepare_frame` returns, as
-/// production code does for the terminal caret — sees the hint already
+/// `content_pos` (built fresh right after `prepare_frame` returns, as
+/// production code does for the terminal caret) sees the hint already
 /// written (2 rows) and disagrees about which absolute row the cursor is on.
 ///
 /// Wrap width 3, a `before` hint "HHH" splices in right before line 0's only
-/// char ("x") — a mid-line insert, so unlike a trailing/end-of-line insert it
+/// char ("x"). It is a mid-line insert, so unlike a trailing/end-of-line insert it
 /// participates in wrapping. With the hint, line 0 wraps to 2 rows (`HHH` /
 /// `x`), pushing line 2 ("b", the cursor) to absolute row 3. Viewport height
 /// 3 content rows (rect height 4, one row reserved for the statusline),
@@ -130,7 +130,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
 fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
     // "🎉" is 1 char, 4 UTF-8 bytes. An 'after' hint at char index 0 (the
     // emoji itself) must splice in right after its 4 bytes, not after 1
-    // byte — proving the write side converts by rope char-to-byte, not by
+    // byte, proving the write side converts by rope char-to-byte, not by
     // treating `pos` as already a byte count.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
@@ -157,7 +157,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
 #[test]
 fn hint_on_a_wrapped_line_pins_current_render_behavior() {
     // Documents the accepted engine divergence (inline inserts wrap at
-    // render time but are invisible to scroll/cursor row math) — this test
+    // render time but are invisible to scroll/cursor row math). This test
     // only pins whatever `format_buffer_line` currently does, it does not
     // assert correctness of cursor placement on this line.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -239,12 +239,12 @@ fn clearing_the_store_removes_the_hint_next_frame() {
 #[test]
 fn setting_off_does_not_clear_an_unrelated_sources_hints() {
     // The render bridge (`update_inlay_hint_providers`) is not gated on
-    // `lsp.inlay-hints` — that setting belongs to the LSP inlay-hints
+    // `lsp.inlay-hints`: that setting belongs to the LSP inlay-hints
     // plugin, which owns clearing *its own* source
     // (`"lsp-inlay-hints"`) on toggle-off via the `on-option-change` hook
     // (see `runtime/plugins/core/lsp/inlay.scm`, and the real-plugin
     // regression coverage in `tests/unix/lsp_inlay_feature.rs`). This test
-    // has no scripting host attached, so no hook fires — it's checking the
+    // has no scripting host attached, so no hook fires. It's checking the
     // render bridge in isolation: a source with no relation to LSP must
     // render regardless of that setting, on or off.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -299,12 +299,12 @@ fn deleting_a_line_drops_its_inlay_hint_and_undo_does_not_resurrect_it() {
     // The reported bug: an inlay hint anchored mid-line survived `x`
     // (select-line, `\n` included) + `d` (delete), re-anchored to whatever
     // text moved into the deleted line's place, and then `u` (undo)
-    // re-inserted the line and pinned the hint at its very start — see
+    // re-inserted the line and pinned the hint at its very start. See
     // `SourceStore::remap_points`'s doc.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     type_text(&mut ed, "foo\nbar\nbaz");
     let bid = ed.focused_buffer_id();
-    // Buffer is "foo\nbar\nbaz\n" — pos 5 is the 'a' in "bar".
+    // Buffer is "foo\nbar\nbaz\n": pos 5 is the 'a' in "bar".
     ed.state.config.decorations.set_inlay_hints(
         "test".to_string(),
         bid,
@@ -341,7 +341,7 @@ fn deleting_a_line_drops_its_inlay_hint_and_undo_does_not_resurrect_it() {
             .inlay_hints_for_buffer(bid)
             .count(),
         0,
-        "undo restores the line's text, not the hint — nothing snapshots \
+        "undo restores the line's text, not the hint: nothing snapshots \
          decorations across undo, so the dropped hint must stay dropped"
     );
 }

@@ -1,7 +1,7 @@
 // `hume_platform::QUIT_GRACE`'s own doc comment states its budget as
 // `Editor::SHUTDOWN_GRACE` plus `hume_lsp::transport`'s `WRITER_FLUSH_GRACE`
 // per still-live LSP server, kept in step across three crates by comment
-// alone — a chokepoint invariant enforced only by a comment is no invariant
+// alone. A chokepoint invariant enforced only by a comment is no invariant
 // at all. This test ties the three real
 // constants together so a change that breaks the promised relationship
 // fails loudly instead of silently drifting.
@@ -20,7 +20,7 @@ fn quit_grace_covers_shutdown_grace_plus_a_handful_of_lsp_servers() {
          own, before any LSP servers are even in the picture"
     );
 
-    // "A handful" per QUIT_GRACE's own doc comment — pinned to a concrete
+    // "A handful" per QUIT_GRACE's own doc comment, pinned to a concrete
     // number so a shrinking margin fails loudly instead of drifting
     // silently as long as the `>` above still holds.
     const SERVERS_THE_BUDGET_MUST_COVER: u32 = 5;
@@ -29,7 +29,7 @@ fn quit_grace_covers_shutdown_grace_plus_a_handful_of_lsp_servers() {
         margin >= writer_flush_grace * SERVERS_THE_BUDGET_MUST_COVER,
         "QUIT_GRACE's margin over SHUTDOWN_GRACE ({margin:?}) must cover at least \
          {SERVERS_THE_BUDGET_MUST_COVER} live LSP servers' WRITER_FLUSH_GRACE \
-         ({writer_flush_grace:?} each) — got headroom for only {} whole servers",
+         ({writer_flush_grace:?} each); got headroom for only {} whole servers",
         margin.as_millis() / writer_flush_grace.as_millis().max(1)
     );
 }

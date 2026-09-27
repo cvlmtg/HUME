@@ -58,7 +58,7 @@ fn p7_cross_buffer_ctrl_o() {
     let buf1 = ed.focused_buffer_id();
     let line0_state_f1 = state(&ed);
 
-    // Open file2 — switch_to_buffer_with_jump records {file1, line 0} before switching.
+    // Open file2: switch_to_buffer_with_jump records {file1, line 0} before switching.
     ed.execute_typed("e", Some(file2.to_str().unwrap()))
         .unwrap();
     let buf2 = ed.focused_buffer_id();
@@ -78,7 +78,7 @@ fn p7_cross_buffer_ctrl_o() {
 fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
     let mut ed = jump_editor(10);
 
-    // `gg` — records a jump, puts us at line 0.
+    // `gg`: records a jump, puts us at line 0.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
     let at_top = state(&ed);
@@ -88,7 +88,7 @@ fn p7_switch_to_buffer_with_jump_same_buffer_is_noop() {
     let back_at_start = state(&ed);
     assert_ne!(back_at_start, at_top);
 
-    // Switch to the buffer already focused — a no-op.
+    // Switch to the buffer already focused, a no-op.
     let current = ed.focused_buffer_id();
     ed.switch_to_buffer_with_jump(FocusedPane::current(&ed.state), current);
     assert_eq!(
@@ -130,7 +130,7 @@ fn p7_close_buffer_prunes_pane_jumps() {
     let buf2 = ed.focused_buffer_id();
     assert_ne!(buf1, buf2);
 
-    // Close file1 — its jump entries should be pruned from pane_jumps.
+    // Close file1. Its jump entries should be pruned from pane_jumps.
     let pid = ed.state.focus.id();
     ed.close_buffer(buf1);
     // The jump list for this pane must not contain any file1 entries.

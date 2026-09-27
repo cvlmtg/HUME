@@ -33,7 +33,7 @@ fn close_removes_from_mru() {
     let b = make_id(&mut ev);
     store.open(a, make_buf());
     store.open(b, make_buf());
-    // mru = [b, a] (each open seeds at the head — see `open`'s own doc).
+    // mru = [b, a] (each open seeds at the head; see `open`'s own doc).
     // Closing b must drop it from `mru` too, leaving a as the sole entry.
     store.close(b);
     assert_eq!(store.len(), 1);
@@ -83,13 +83,13 @@ fn touch_mru_promotes_to_tail() {
     store.open(a, make_buf());
     store.open(b, make_buf());
     // Each open seeds at the *head* of `mru` (see `open`'s own doc), so
-    // later opens push earlier ones toward the tail: mru = [b, a], with a —
-    // opened first — at the tail. Touch b to make it most recent instead.
+    // later opens push earlier ones toward the tail: mru = [b, a], with a
+    // (opened first) at the tail. Touch b to make it most recent instead.
     store.touch_mru(b);
     assert_eq!(store.second_most_recent(), Some(a));
 }
 
-/// `edit_seq` starts at 0 and only moves via the explicit bump — nothing else
+/// `edit_seq` starts at 0 and only moves via the explicit bump. Nothing else
 /// touches it (see `PasteStamp`, which relies on this for staleness checks).
 #[test]
 fn edit_seq_starts_at_zero_and_bumps_explicitly() {
@@ -102,7 +102,7 @@ fn edit_seq_starts_at_zero_and_bumps_explicitly() {
 }
 
 /// `Buffer::set_view_content` (`:messages`/`:ls` refresh) is a system refresh,
-/// not a user edit — it must not advance `edit_seq`, or a `PasteStamp`
+/// not a user edit: it must not advance `edit_seq`, or a `PasteStamp`
 /// stamped by a capture would go stale just from the user glancing at
 /// `:messages` between a kill and a paste.
 #[test]
@@ -117,12 +117,12 @@ fn view_content_refresh_does_not_bump_edit_seq() {
     assert_eq!(
         store.edit_seq(),
         before,
-        "set_view_content is a system refresh, not a user edit — edit_seq must not move"
+        "set_view_content is a system refresh, not a user edit: edit_seq must not move"
     );
 }
 
 /// `Buffer::reload_from_text` (`:e!`) is likewise a system refresh, not a
-/// user edit — same rationale as `view_content_refresh_does_not_bump_edit_seq`.
+/// user edit, same rationale as `view_content_refresh_does_not_bump_edit_seq`.
 #[test]
 fn reload_from_text_does_not_bump_edit_seq() {
     let (mut store, mut ev) = store_with_engine();
@@ -138,7 +138,7 @@ fn reload_from_text_does_not_bump_edit_seq() {
     assert_eq!(
         store.edit_seq(),
         before,
-        "reload_from_text (:e!) is a system refresh, not a user edit — edit_seq must not move"
+        "reload_from_text (:e!) is a system refresh, not a user edit: edit_seq must not move"
     );
 }
 
@@ -152,7 +152,7 @@ fn take_text_changed_reports_nothing_for_an_untouched_store() {
     assert_eq!(store.take_text_changed(), Vec::new());
 }
 
-/// After a mutation, exactly the touched buffer is reported once — and a
+/// After a mutation, exactly the touched buffer is reported once, and a
 /// second immediate call reports nothing, since the baseline already caught
 /// up.
 ///
@@ -176,7 +176,7 @@ fn take_text_changed_reports_a_touched_buffer_once() {
 }
 
 /// Several mutations to the same buffer between two calls coalesce into one
-/// report — the coalescing contract `on-text-changed` documents.
+/// report: the coalescing contract `on-text-changed` documents.
 #[test]
 fn take_text_changed_coalesces_multiple_mutations_into_one_report() {
     let (mut store, mut ev) = store_with_engine();
@@ -195,7 +195,7 @@ fn take_text_changed_coalesces_multiple_mutations_into_one_report() {
     assert_eq!(store.take_text_changed(), vec![id]);
 }
 
-/// Only a buffer that actually mutated is reported — a sibling buffer left
+/// Only a buffer that actually mutated is reported. A sibling buffer left
 /// untouched must not appear.
 #[test]
 fn take_text_changed_ignores_untouched_siblings() {

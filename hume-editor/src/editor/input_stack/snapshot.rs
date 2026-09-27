@@ -1,11 +1,11 @@
 //! A mode layer's snapshot of one pane's selections, captured on entry and
-//! restored on exit — the shape `SearchLayer` and `SiftLayer` both need for
+//! restored on exit: the shape `SearchLayer` and `SiftLayer` both need for
 //! cancel-restore, factored out so the capture/restore/take rules live in one
 //! place instead of being re-derived in each layer.
 //!
 //! Not `edit_session.rs`: that module's `EditGroup` already has a `pre_sels`
 //! field meaning something unrelated (an undo group's pre-*edit* selections,
-//! not a session's pre-*entry* ones) — two unrelated `pre_sels` in one file
+//! not a session's pre-*entry* ones), and two unrelated `pre_sels` in one file
 //! would be exactly the kind of same-name collision this codebase avoids
 //! elsewhere. This type's reason to exist is the mode-layer session
 //! lifecycle (`capture` on `Layer::setup`, `restore`/`take_restore` on
@@ -20,7 +20,7 @@ use super::super::EditorState;
 use super::super::pane_state::PaneBufferState;
 
 /// `pane`'s selections as they were the moment this session opened, plus the
-/// pane itself — never `state.focus.id()`, which may have moved on since (a
+/// pane itself, never `state.focus.id()`, which may have moved on since (a
 /// mouse click always falls through under these layers, so focus can change
 /// while the session stays open). `None` once a `Confirm` arm has taken it,
 /// so `Layer::tear_down`'s own restore becomes a no-op instead of
@@ -31,7 +31,7 @@ pub(in crate::editor) struct PaneSnapshot {
 }
 
 impl PaneSnapshot {
-    /// A fresh, not-yet-captured snapshot for `pane` — construction only
+    /// A fresh, not-yet-captured snapshot for `pane`: construction only
     /// records *where*; `capture` records *what*, once the layer actually
     /// lands (see `capture`'s own doc for why the two are split).
     pub(in crate::editor) fn new(pane: PaneId) -> Self {
@@ -50,11 +50,11 @@ impl PaneSnapshot {
     /// from `Layer::setup`, not the constructor: `setup` runs after the
     /// outgoing layer's own `tear_down` (see `Layer::setup`'s own doc), so a
     /// re-entrant `/`-search or sift captures the state the outgoing
-    /// session's `tear_down` just restored — the true pre-session
-    /// selections — instead of the mid-session preview a construction-time
+    /// session's `tear_down` just restored (the true pre-session
+    /// selections) instead of the mid-session preview a construction-time
     /// capture would have caught.
     pub(in crate::editor) fn capture(&mut self, state: &EditorState, view: &EngineView) {
-        // `self.pane`'s own selections, not the focused pane's — see this
+        // `self.pane`'s own selections, not the focused pane's; see this
         // type's own doc. The two coincide at every existing call site
         // (`/`-search and sift always open on the pane that's about to be
         // focused), but reading `self.pane` directly is what makes that true
@@ -63,14 +63,14 @@ impl PaneSnapshot {
         self.pre_sels = Some(state.panes.state[self.pane][bid].selections().clone());
     }
 
-    /// The captured selections, still held — for a live preview that needs
+    /// The captured selections, still held, for a live preview that needs
     /// to read them without ending the session (`update_live_search`,
     /// `update_live_sift`).
     pub(in crate::editor) fn selections(&self) -> Option<&SelectionSet> {
         self.pre_sels.as_ref()
     }
 
-    /// Takes the captured selections without writing them anywhere — for a
+    /// Takes the captured selections without writing them anywhere, for a
     /// `Confirm` arm that keeps the session's live-preview result instead of
     /// restoring the pre-session state, but must still empty the snapshot so
     /// the coming `tear_down` finds nothing left to restore.
@@ -79,7 +79,7 @@ impl PaneSnapshot {
     }
 
     /// Writes the captured selections back into `pane` without consuming the
-    /// snapshot — always targets `pane`, not whatever's currently focused.
+    /// snapshot. Always targets `pane`, not whatever's currently focused.
     pub(in crate::editor) fn restore(
         &self,
         pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,

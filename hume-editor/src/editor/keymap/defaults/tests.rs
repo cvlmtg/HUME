@@ -23,7 +23,7 @@ fn no_match() {
 
 #[test]
 fn insert_char_is_no_match() {
-    // Regular characters are NOT in the insert trie — they fall through
+    // Regular characters are NOT in the insert trie; they fall through
     // to the char-insertion handler in the dispatcher.
     let trie = default_insert_keymap();
     assert!(matches!(trie.walk(&[key!('a')]), WalkResult::NoMatch));
@@ -33,7 +33,7 @@ fn insert_char_is_no_match() {
 #[test]
 fn ctrl_bindings_in_normal_keymap() {
     let trie = default_normal_keymap();
-    // Ctrl-c is intentionally unbound in normal mode — quitting must go
+    // Ctrl-c is intentionally unbound in normal mode: quitting must go
     // via :quit or :q to avoid accidental data loss.
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::NoMatch),
@@ -55,7 +55,7 @@ fn ctrl_bindings_in_normal_keymap() {
     // Ctrl-w is deliberately unbound (kitty one-shot extend via strip-CONTROL).
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'w')]), WalkResult::NoMatch),
-        "Ctrl-w must be unbound — pane prefix is Ctrl-p"
+        "Ctrl-w must be unbound: pane prefix is Ctrl-p"
     );
     // Ctrl-p is the pane prefix (Interior node).
     assert!(
@@ -67,11 +67,11 @@ fn ctrl_bindings_in_normal_keymap() {
         matches!(trie.walk(&[key!(Ctrl + '/')]), WalkResult::Leaf(ref cmd) if cmd.name == "search-selection"),
         "Ctrl-/ should map to search-selection"
     );
-    // Legacy terminals encode Ctrl-/ as Ctrl-'7' (control byte 0x1F) — must
+    // Legacy terminals encode Ctrl-/ as Ctrl-'7' (control byte 0x1F), which must
     // stay unbound rather than accidentally aliasing to search-selection.
     assert!(
         matches!(trie.walk(&[key!(Ctrl + '7')]), WalkResult::NoMatch),
-        "Ctrl-7 must be unbound — Ctrl-/ is kitty-only, no legacy alias"
+        "Ctrl-7 must be unbound: Ctrl-/ is kitty-only, no legacy alias"
     );
 }
 
@@ -177,7 +177,7 @@ fn essential_keys_are_bound() {
 fn default_keymap_omits_kitty_only_binds() {
     let km = Keymap::default();
     // Ctrl-; and Ctrl-, must NOT be present in the legacy-accurate default
-    // trie — they are installed by apply_kitty_defaults only when the kitty
+    // trie. They are installed by apply_kitty_defaults only when the kitty
     // probe succeeds.
     assert!(
         matches!(km.normal.walk(&[key!(Ctrl + ';')]), WalkResult::NoMatch),
@@ -200,7 +200,7 @@ fn default_keymap_omits_kitty_only_binds() {
 
 /// `g` holds only goto motions: the line gotos plus the six structural kinds,
 /// reachable as `g <key>`/`g <KEY>` (next/prev). It holds no picker or rename
-/// keys — those live under `z`/`G` (`core:pickers`/`core:lsp`, not native).
+/// keys; those live under `z`/`G` (`core:pickers`/`core:lsp`, not native).
 #[test]
 fn goto_trie_holds_real_gotos_and_structural_navigation() {
     let trie = default_normal_keymap();
@@ -235,14 +235,14 @@ fn goto_trie_holds_real_gotos_and_structural_navigation() {
     for reserved in [key!('b'), key!('m'), key!('r')] {
         assert!(
             matches!(trie.walk(&[key!('g'), reserved]), WalkResult::NoMatch),
-            "g + {:?} must be unbound in the native trie — it's a plugin key",
+            "g + {:?} must be unbound in the native trie: it's a plugin key",
             reserved
         );
     }
 }
 
 /// The native `z` trie: directional viewport keys, `zt`/`zb` freed for
-/// `core:pickers` (not asserted here — that's a plugin bind, not native).
+/// `core:pickers` (not asserted here: that's a plugin bind, not native).
 #[test]
 fn view_trie_is_directional_and_frees_vims_initials() {
     let trie = default_normal_keymap();

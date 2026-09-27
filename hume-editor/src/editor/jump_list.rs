@@ -1,4 +1,4 @@
-//! Jump list — a navigable history of cursor positions before large movements.
+//! Jump list: a navigable history of cursor positions before large movements.
 //!
 //! Records the cursor position (as a full [`SelectionSet`]) before "jump"
 //! commands like `goto-first-line`, `goto-last-line`, `search-next`,
@@ -8,7 +8,7 @@
 //!
 //! Internally this is a [`VecDeque<JumpEntry>`] with a cursor index, capped
 //! at `EditorSettings::jump_list_capacity`. When the user navigates backward
-//! and then makes a new jump, forward history is truncated — matching
+//! and then makes a new jump, forward history is truncated, matching
 //! Vim/Helix semantics.
 
 use std::collections::VecDeque;
@@ -21,23 +21,23 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-/// Default capacity — used in tests to construct jump lists without importing `EditorSettings`.
+/// Default capacity, used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
 pub(in crate::editor::jump_list) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct JumpEntry {
-    /// Buffer this position belongs to — needed for cross-buffer Ctrl-o/I.
+    /// Buffer this position belongs to, needed for cross-buffer Ctrl-o/I.
     pub buffer_id: BufferId,
     /// Full selection state at the moment of the jump.
     pub selections: SelectionSet,
-    /// Line number of the primary selection's head — cached for O(1) dedup.
+    /// Line number of the primary selection's head, cached for O(1) dedup.
     pub primary_line: hume_rope::line::ContentLine,
 }
 
 impl JumpEntry {
-    /// `primary_line`'s one derivation — the primary selection's head, resolved
+    /// `primary_line`'s one derivation: the primary selection's head, resolved
     /// to a line via `text`. Shared by [`Self::new`] (constructing an entry) and
     /// [`JumpList::translate_in_place`] (recomputing it after an edit moved the
     /// head), so the two never drift apart.
@@ -88,7 +88,7 @@ impl JumpEntry {
 /// Navigable history of cursor positions before large movements.
 ///
 /// `cursor` indexes into `entries`. When `cursor == entries.len()`, the user
-/// is "at the present" — no backward navigation is active. Navigating backward
+/// is "at the present": no backward navigation is active. Navigating backward
 /// decrements cursor; navigating forward increments it. A new `push` truncates
 /// any forward history (entries after cursor) before appending.
 #[derive(Debug, Clone)]
@@ -104,7 +104,7 @@ impl JumpList {
     /// Create a new jump list with the given capacity limit.
     ///
     /// `capacity == 0` is a silent black hole (every `push` immediately
-    /// evicts what it just pushed) rather than a documented "unlimited" —
+    /// evicts what it just pushed) rather than a documented "unlimited",
     /// unlike `undo-levels`, where `0` means exactly that. The settings
     /// parser (`usize_nonzero`) already rejects `0` for `jump-list-capacity`
     /// before it can reach here; this just makes the trap loud if that
@@ -119,7 +119,7 @@ impl JumpList {
     }
 
     /// Change the capacity limit. Takes effect on the *next* `push`, not
-    /// immediately — matching Vim's `undolevels` semantics (see
+    /// immediately, matching Vim's `undolevels` semantics (see
     /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap
     /// does not retroactively trim existing entries. No cursor adjustment is
     /// needed here, since no entries are removed by this call.
@@ -129,14 +129,14 @@ impl JumpList {
     }
 
     /// Record a jump. Truncates forward history, deduplicates against the
-    /// last entry by line number, and caps the list at `self.capacity` — a
+    /// last entry by line number, and caps the list at `self.capacity`: a
     /// `while`, not an `if`, so a `set_capacity` shrink of any size converges
     /// to the new cap in this one call rather than one entry per push.
     pub(in crate::editor) fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 
         // Deduplicate against the immediately preceding entry only, by (line,
-        // buffer) — cross-buffer same-line entries are distinct.
+        // buffer); cross-buffer same-line entries are distinct.
         match self
             .entries
             .back_mut()
@@ -228,7 +228,7 @@ impl JumpList {
                 && lpost == post_line
                 && lpre != pre_line
             {
-                // A collision this edit just created — overwrite the older
+                // A collision this edit just created: overwrite the older
                 // entry's slot with this one.
                 write -= 1;
                 removed_before_cursor += usize::from(lread < self.cursor);
@@ -253,12 +253,12 @@ impl JumpList {
         }
 
         // At the present: always save the current position so `jump-forward`
-        // can return to it. No dedup here — unlike `push()`, the "save current"
+        // can return to it. No dedup here. Unlike `push()`, the "save current"
         // path must preserve the exact return point even if it's on the same
         // line as the last recorded jump (e.g., two search matches on one line).
         if self.cursor == self.entries.len() {
             self.entries.push_back(current);
-            // Same cap enforcement as `push()` — this is the list's other
+            // Same cap enforcement as `push()`: this is the list's other
             // append site, and without it a list already at capacity grows
             // to `capacity + 1` here (capacity stops being an invariant of
             // the type). `while`, matching `push`, for the same
@@ -302,8 +302,8 @@ impl JumpList {
 /// Every pane's [`JumpList`], keyed by `PaneId`.
 ///
 /// A newtype rather than a bare `SecondaryMap` so "do X to every pane's jump
-/// list" — remap through an edit, drop a buffer's entries, apply a capacity
-/// change — is one named method instead of a `for jumps in
+/// list" (remap through an edit, drop a buffer's entries, apply a capacity
+/// change) is one named method instead of a `for jumps in
 /// …values_mut() { … }` loop hand-written at each call site.
 #[derive(Debug, Clone, Default)]
 pub(in crate::editor) struct JumpLists(SecondaryMap<PaneId, JumpList>);
@@ -319,7 +319,7 @@ impl JumpLists {
 
     /// Test-only: production seeding always goes through [`Self::insert`]
     /// unconditionally (`commands::pane::open_pane`, `Editor::new`), never
-    /// guarded by a presence check — only the `switch_focused_pane` test
+    /// guarded by a presence check. Only the `switch_focused_pane` test
     /// choke-point lazily seeds a pane it didn't create through the normal
     /// path.
     #[cfg(test)]
@@ -327,18 +327,18 @@ impl JumpLists {
         self.0.contains_key(pid)
     }
 
-    /// Remap every pane's jump-list entries for `buf_id` through `cs` — the
+    /// Remap every pane's jump-list entries for `buf_id` through `cs`: the
     /// per-edit propagation step `doc_ops::finish_edit` and
     /// `reload_buffer_in_place` both call.
     ///
     /// Unlike sibling-pane selection propagation, this does **not** filter by
-    /// which panes currently view `buf_id` — a pane's jump list holds entries
+    /// which panes currently view `buf_id`: a pane's jump list holds entries
     /// for buffers that pane isn't showing right now (that's what makes
     /// cross-buffer Ctrl-o work), so every pane's list must be checked,
     /// including the focused one (its own live cursor isn't a jump-list
     /// entry, so nothing is mapped twice).
     ///
-    /// `edits` must be `cs.edited_old_ranges()` — computed once by the
+    /// `edits` must be `cs.edited_old_ranges()`, computed once by the
     /// caller and shared across every pane's list; see
     /// [`JumpList::translate_in_place`].
     pub(in crate::editor) fn translate(
@@ -354,7 +354,7 @@ impl JumpLists {
         }
     }
 
-    /// Drop every pane's entries for `id` — used when `id`'s content was
+    /// Drop every pane's entries for `id`, used when `id`'s content was
     /// replaced wholesale (a full `Buffer` swap, or `set_view_content`'s
     /// history-resetting in-place replace) rather than edited: there is no
     /// `ChangeSet` to remap through, and same-buffer-id survival alone isn't
@@ -365,7 +365,7 @@ impl JumpLists {
         }
     }
 
-    /// Apply a `jump-list-capacity` change to every pane's list — takes
+    /// Apply a `jump-list-capacity` change to every pane's list. Takes
     /// effect on each list's next `push`, per `JumpList::set_capacity`.
     pub(in crate::editor) fn set_capacity(&mut self, capacity: usize) {
         for jumps in self.0.values_mut() {

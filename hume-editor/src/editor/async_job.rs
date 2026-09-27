@@ -1,5 +1,5 @@
 //! Per-frame drain for in-flight `spawn-async!` jobs. Arrival-driven, like
-//! the picker's spawned line source (`picker_source.rs`) — no `AsyncSource`
+//! the picker's spawned line source (`picker_source.rs`), with no `AsyncSource`
 //! entry, only a drain call from `drain_async_sources` (see
 //! `async_source.rs`'s module doc).
 
@@ -9,10 +9,10 @@ use super::Editor;
 
 /// An in-flight `spawn-async!` job: the process handle plus the Steel
 /// callback to fire once it completes. Held in `ConfigState.async_jobs` so
-/// an abandoned job is killed for free on `:reload-config` — `ConfigState`'s
+/// an abandoned job is killed for free on `:reload-config`: `ConfigState`'s
 /// wholesale rebuild drops the map, and `SpawnedJob::drop` kills the child.
 /// That teardown is mandatory, not incidental: `callback` belongs to the
-/// outgoing Steel engine and must never be invoked after it's gone — the
+/// outgoing Steel engine and must never be invoked after it's gone, the
 /// same hazard `LspState::reset_config_state` documents for its own
 /// callback map.
 pub(in crate::editor) struct PendingJob {
@@ -22,7 +22,7 @@ pub(in crate::editor) struct PendingJob {
 
 impl Editor {
     /// Fires the callback of every job that has completed since the last
-    /// frame — `(stdout stderr exit-code)`, `exit-code` `-1` for a
+    /// frame: `(stdout stderr exit-code)`, `exit-code` `-1` for a
     /// signal-killed child, a status the OS never returned, or a stdout
     /// read that failed or exceeded `JOB_STDOUT_CAP` (`stderr` then names
     /// the failure instead of carrying the child's own diagnostics).
@@ -32,7 +32,7 @@ impl Editor {
     /// callbacks already share, which is what puts a completing job's
     /// callback under the watchdog/step-budget guard for free.
     pub(super) fn drain_async_jobs(&mut self) {
-        // Snapshot ids before polling — `try_take_result` has a side effect
+        // Snapshot ids before polling: `try_take_result` has a side effect
         // (it's `Some` at most once), so it can't be called from inside a
         // borrow of the map that would also need to remove the entry.
         // Mirrors `drain_lsp`'s `let server_ids: Vec<_> = ...collect();`.

@@ -1,8 +1,8 @@
 //! Per-frame preparation: pane-mirror sync, scroll, and render plumbing.
 //!
 //! `sync_viewport_dims` (geometry) → `Editor::settle` (advance state) →
-//! `prepare_frame` (render prep) is the sequence every frame producer —
-//! `Editor::run`'s loop, `render_to_buf` — calls in that order; everything
+//! `prepare_frame` (render prep) is the sequence every frame producer
+//! (`Editor::run`'s loop, `render_to_buf`) calls in that order; everything
 //! else here is a step `prepare_frame` drives or a helper those steps share.
 
 use hume_grid::{Grid, Rect};
@@ -27,7 +27,7 @@ pub(in crate::editor::frame) fn write_pane_mirror(
     use hume_engine::types::Selection as EngineSelection;
     let primary_head = sels.primary().head();
     // Sorted after the mirror is filled rather than through a scratch `Vec` of
-    // references, so the pane's own storage — reused across frames — is the
+    // references, so the pane's own storage (reused across frames) is the
     // only buffer involved.
     pane.selections.clear();
     pane.selections
@@ -46,24 +46,24 @@ pub(in crate::editor::frame) fn write_pane_mirror(
 impl Editor {
     /// Resolve any pane's render settings.
     ///
-    /// `format` is [`EditorState::format_key`](super::EditorState::format_key)
-    /// — the single source of truth for wrap_mode / tab_width / whitespace
+    /// `format` is [`EditorState::format_key`](super::EditorState::format_key),
+    /// the single source of truth for wrap_mode / tab_width / whitespace
     /// across all render paths, so this and the scroll pass
     /// (`commands::pane_display_lines`) resolve a bit-identical key for the same
     /// pane. `mode` is a per-focus fact: only the focused pane owns the real
     /// terminal cursor, so it alone gets the live editor mode; other panes are
     /// forced to `Normal` so they don't take Insert's or Extend's cursor
     /// colours. `cursor_is_block` is the separate per-focus resolution that
-    /// decides whether either selection head is painted at all — always for
+    /// decides whether either selection head is painted at all: always for
     /// an unfocused pane (no real cursor sits there to stand in for one), and
     /// for the focused pane only when its mode's resolved shape is `Block`.
     ///
     /// Split from gutter width ([`Self::pane_gutter_width`]) because every
     /// caller wants one or the other, never reliably both.
     ///
-    /// `pid` must name a live, active-tab pane — every caller reads it from
+    /// `pid` must name a live, active-tab pane. Every caller reads it from
     /// `active_pane_ids()`, which by construction (see `EngineView::layout`'s
-    /// privacy — no whole-tree write can install a leaf the pool doesn't
+    /// privacy: no whole-tree write can install a leaf the pool doesn't
     /// back) can never contain a stale id.
     pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> PaneRenderSettings {
         let pane = &self.view.panes[pid];
@@ -85,7 +85,7 @@ impl Editor {
         }
     }
 
-    /// The gutter width a pane's own providers currently occupy — used to
+    /// The gutter width a pane's own providers currently occupy, used to
     /// offset the terminal cursor column past line numbers and other gutter
     /// providers. See [`Self::resolve_pane_settings`] for why this is split
     /// out rather than returned alongside it.
@@ -149,7 +149,7 @@ impl Editor {
         );
     }
 
-    /// The statusline provider over this editor — the fixture the element
+    /// The statusline provider over this editor: the fixture the element
     /// tests need, since `HumeStatusline`'s fields are assembled from
     /// disjoint borrows that a test holding a whole `&Editor` doesn't have to
     /// bother splitting.
@@ -165,8 +165,8 @@ impl Editor {
 
     /// Render the current frame into a [`Grid`] without a live terminal.
     ///
-    /// Calls `sync_viewport_dims` + `settle` + `prepare_frame` — the same
-    /// three-step sequence `Editor::run`'s loop uses — so pane mirrors are
+    /// Calls `sync_viewport_dims` + `settle` + `prepare_frame` (the same
+    /// three-step sequence `Editor::run`'s loop uses), so pane mirrors are
     /// synced and parse trees are up to date before rendering. Used by
     /// snapshot tests to lock down styled output without a live terminal.
     #[cfg(test)]
@@ -186,7 +186,7 @@ impl Editor {
     /// `queue_viewport_change`'s own liveness check anyway, but there is no
     /// reason to let it sit in the wheel until it fires).
     ///
-    /// A pane's line store needs no entry here — it lives on the pane and
+    /// A pane's line store needs no entry here: it lives on the pane and
     /// dies with it, as do `PaneBufferState::reveal_pending` and
     /// `PaneBufferState::last_layout_key`, which go with the closed pane's
     /// `SecondaryMap` entries.
@@ -214,7 +214,7 @@ impl Editor {
     /// terminal is attached (tests, headless `run_keys`).
     ///
     /// The comparison-and-update itself doesn't require a live terminal, so
-    /// it stays outside the `if let Some(term)` below — this keeps
+    /// it stays outside the `if let Some(term)` below. This keeps
     /// `applied_mouse_mode` in sync with `state.settings` even headless,
     /// which is what makes the change-detection unit-testable without a
     /// real `SharedTerm`.
@@ -233,7 +233,7 @@ impl Editor {
     }
 
     /// Sync every pane's viewport dimensions and the frame's geometry
-    /// snapshot from the terminal size — the one step that needs the raw
+    /// snapshot from the terminal size: the one step that needs the raw
     /// `(width, height)`, so it's split out from `prepare_frame` and called
     /// separately, *before* `Editor::settle()`.
     ///
@@ -242,7 +242,7 @@ impl Editor {
     /// have to be current before that drain runs, not after.
     ///
     /// `prepare_frame`'s bottom-band re-partition calls this a second time, from the stored
-    /// `last_terminal_area`, after re-syncing the bottom-band views — so a
+    /// `last_terminal_area`, after re-syncing the bottom-band views, so a
     /// band-height change `settle()` made (a hook-driven `close-popup!`, a
     /// settle-drained `close-drawer!`) is re-partitioned into `viewport`
     /// before this same frame renders, instead of lagging a frame behind.
@@ -258,7 +258,7 @@ impl Editor {
         };
         let pane_area = self.view.pane_area(terminal_area);
         let reserve_seam = self.state.settings.pane_dividers;
-        // Compared before the write below overwrites them — an inactive
+        // Compared before the write below overwrites them: an inactive
         // tab's tree never changes on its own (splits/closes only ever
         // touch the active one), so its own panes only need re-partitioning
         // when this same partition actually moved, not on every frame this
@@ -266,7 +266,7 @@ impl Editor {
         let geometry_changed =
             self.view.last_pane_area != pane_area || self.view.reserve_seam != reserve_seam;
 
-        // Stored before the write below runs — `resync_viewport_dims` reads
+        // Stored before the write below runs. `resync_viewport_dims` reads
         // these three fields to do the actual per-pane partition and write,
         // the same partition `EngineView::pane_rects`/`pane_rect` recompute
         // from for pane-focus/split commands with no terminal handle between
@@ -278,14 +278,14 @@ impl Editor {
 
         // A resize can move the cursor's own display line relative to the
         // viewport (a shorter pane can push it out of view, a narrower one
-        // can rewrap it) without the selection itself moving at all — both
+        // can rewrap it) without the selection itself moving at all. Both
         // `height` and (through the wrap column) `content_width` are
         // geometry facts `EditorState::layout_key` carries, so `frame.rs`'s
         // scroll step derives the reveal from the pane's new dimensions
         // directly rather than this function raising it.
         self.view.resync_viewport_dims();
         // Keeps every background tab's own panes sized to the current
-        // terminal too — see `TabStore::inactive_layouts`'s own doc.
+        // terminal too; see `TabStore::inactive_layouts`'s own doc.
         if geometry_changed {
             for layout in self.state.tabs.inactive_layouts() {
                 self.view.resync_viewport_dims_for(layout);
@@ -294,16 +294,16 @@ impl Editor {
     }
 
     /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:
-    /// whether the tab bar is shown at all, and — while it is — the tab
+    /// whether the tab bar is shown at all, and (while it is) the tab
     /// count/order, each tab's `(id, pane, buffer, dirty, path)`, and the
     /// bar's own geometry (a resize must still trigger a rebuild even when
     /// the tab list itself is unchanged, since `scroll` depends on width
-    /// too). `buf.path()` is hashed rather than `buf.display_name()` —
+    /// too). `buf.path()` is hashed rather than `buf.display_name()`:
     /// `display_name()` allocates a `String`, defeating the point of a
     /// cheap signature, and the two agree on every rename/attach that
     /// actually changes what's drawn (a buffer's dirty marker is covered
     /// separately by `is_dirty()`). Deliberately excludes anything that
-    /// doesn't change what a rebuild would produce — buffer *content*, for
+    /// doesn't change what a rebuild would produce: buffer *content*, for
     /// instance, since neither the label nor `scroll` reads it.
     fn tabline_signature(&self, visible: bool) -> u64 {
         use std::hash::{Hash, Hasher};
@@ -334,19 +334,19 @@ impl Editor {
     }
 
     /// Re-sync the tab-bar view from `state.tabs` + each tab's focused
-    /// pane's buffer — self-healing every frame, same rationale as
+    /// pane's buffer, self-healing every frame, same rationale as
     /// `EditorState::sync_drawer_view`'s own doc: a direct mutation that
     /// bypasses the normal `:tabnew`/`:tabclose` builtins would otherwise
     /// leave a stale row painting for however long it takes the next frame.
     /// Gated on [`Self::tabline_signature`]: an unchanged signature means
     /// the previous frame's `TablineViewState` is already correct, so the
-    /// rebuild below — one allocating `display_name()` call per tab, plus
-    /// the scroll probe — is skipped on every steady-state frame, which is
+    /// rebuild below (one allocating `display_name()` call per tab, plus
+    /// the scroll probe) is skipped on every steady-state frame, which is
     /// almost all of them.
     ///
     /// Needs both `state` (tab order, settings, buffers) and `view` (which
-    /// buffer a stashed tab's pane was viewing), unlike `sync_drawer_view`
-    /// — that's why this lives on `Editor` rather than on `EditorState`.
+    /// buffer a stashed tab's pane was viewing), unlike `sync_drawer_view`.
+    /// That's why this lives on `Editor` rather than on `EditorState`.
     fn sync_tabline_view(&mut self) {
         let visible = match self.state.settings.tabline {
             crate::editor::settings::TablineVisibility::Always => true,
@@ -362,7 +362,7 @@ impl Editor {
 
         if !visible {
             // The common case (the `dynamic` default with one tab open, i.e.
-            // a normal session): skip every per-tab step below entirely —
+            // a normal session): skip every per-tab step below entirely.
             // `TabEntry::label` is an owned `String`, so building the full
             // `Vec` just to immediately hide it would cost one allocation
             // and a `display_name()` call per tab, every frame, for a row
@@ -396,7 +396,7 @@ impl Editor {
             .collect();
 
         // The smallest `scroll` that still keeps `active_index` inside the
-        // packed window — computed fresh every frame rather than clamped
+        // packed window, computed fresh every frame rather than clamped
         // from last frame's value, which this loop's own result never
         // actually depends on: packing from an earlier `scroll` can only
         // reach the same window end or earlier (an earlier start must first
@@ -406,9 +406,9 @@ impl Editor {
         // `scroll < active_index` even in the degenerate `width == 0` case
         // (startup, before the first real terminal size arrives), where no
         // tab ever fits and the window never grows.
-        // Reads geometry from `tabbar_area`, same as `render`/`tabline_click`
-        // — `tab_extents`' own doc explains why all three must agree. Probes
-        // via `tab_extents_into` rather than `tab_extents` — one reused
+        // Reads geometry from `tabbar_area`, same as `render`/`tabline_click`:
+        // `tab_extents`' own doc explains why all three must agree. Probes
+        // via `tab_extents_into` rather than `tab_extents`: one reused
         // `ranges` buffer across every candidate this loop tries, instead of
         // a fresh allocation per candidate.
         let bar = self.view.tabbar_area(self.view.last_terminal_area);
@@ -578,7 +578,7 @@ impl Editor {
     ///
     /// The engine requires `pane.selections` sorted by `head` (not by `start()` as
     /// `SelectionSet` stores internally); `primary_idx` is re-located by matching
-    /// the primary's head value after the sort.  This is the **single sync point** —
+    /// the primary's head value after the sort.  This is the **single sync point**:
     /// no other code path writes `pane.selections` or `pane.primary_idx`.
     ///
     /// Called once per frame from `prepare_frame`, after the async/Steel
@@ -607,7 +607,7 @@ impl Editor {
     /// How many times `ensure_inline_output_screen` has actually entered the
     /// inline-output terminal bracket (alt-screen toggle + "press any key")
     /// on this `Editor`. Off the event loop this must stay `0` for every
-    /// `#:inline-output #t` command dispatched, output or not — see `tui` on
+    /// `#:inline-output #t` command dispatched, output or not; see `tui` on
     /// `Editor`. Also lets a test pin an exact count through nested `call!`s
     /// (a re-entry bug shows up as `2`, not just "entered").
     #[cfg(test)]
@@ -624,14 +624,14 @@ impl Editor {
 /// Scroll the pane viewport so `cursor_char` stays within the visible area,
 /// and report where the cursor ended up on screen (pane-relative, before the
 /// gutter). `None` for a viewport with no display lines to place it in, or
-/// when the cursor has scrolled out of view (see below) — a legitimate
+/// when the cursor has scrolled out of view (see below): a legitimate
 /// state, not a bug: the cursor can only occupy content display lines, so a
 /// pure view scroll into a virtual-line block can carry the viewport
 /// further than the cursor can follow. The terminal caret is simply hidden
 /// until an ordinary cursor motion resyncs the view.
 ///
 /// Calls both the vertical (`reveal`) and horizontal (`reveal_horizontal`)
-/// verbs in one shot, over a single display-line map — so the two agree on
+/// verbs in one shot, over a single display-line map, so the two agree on
 /// the display-line list by construction, and a line's format is reused
 /// across them. The cursor is resolved exactly once here, for both plus the
 /// terminal-cursor placement: scrolling only ever *writes* the viewport, and
@@ -639,10 +639,10 @@ impl Editor {
 /// `locate` already answered.
 ///
 /// `reveal_pending` is `PaneBufferState::reveal_pending`'s value for this
-/// frame, already taken by the caller — see that field's own doc for why the
+/// frame, already taken by the caller. See that field's own doc for why the
 /// vertical `reveal` correction runs only when it's `true`, falling back to
 /// a plain forward walk from `top` otherwise (resolved via `Viewport::top_at`
-/// either way — `reveal` resolves its own), and what that leaves hidden.
+/// either way, since `reveal` resolves its own), and what that leaves hidden.
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
@@ -652,16 +652,16 @@ fn scroll_into_view(
     reveal_pending: bool,
 ) -> Option<(u16, u16)> {
     // Whatever this pass formats deciding where to scroll, the render pass
-    // finds already done — both work through this pane's one store.
+    // finds already done: both work through this pane's one store.
     let (mut dlm, viewport) = super::commands::pane_display_lines(doc, pane, format_key);
     // A collapsed split has nothing to scroll and nowhere to put a cursor.
     // Checked before `locate`, which would otherwise format the cursor's
-    // line for an answer no one can use — and before `geometry`, which
+    // line for an answer no one can use, and before `geometry`, which
     // returns `None` for exactly this case.
     let geo = viewport.geometry(scrolloff)?;
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
     // Horizontal scroll is its own axis (a fixed margin, no `scrolloff`, no
-    // document-edge special-casing — see `reveal_horizontal`'s own doc) and
+    // document-edge special-casing; see `reveal_horizontal`'s own doc) and
     // has no snap-back to guard against, so it always runs: a
     // same-display-line cursor move (`l` on a long unwrapped line) changes
     // the column without changing `cursor_pos`, and gating this on the same
@@ -679,7 +679,7 @@ fn scroll_into_view(
         // `reveal_horizontal` just guaranteed `cursor_display_col >=
         // horizontal_offset`, so this is `cursor::content_pos` minus the two
         // checks it exists to make for a caller that hasn't already done
-        // them — only its forward walk is left to redo.
+        // them. Only its forward walk is left to redo.
         let top = viewport.top_at(&mut dlm);
         let screen_row = dlm.distance(top, cursor_pos, geo.height - 1)?;
         Some(super::cursor::place(

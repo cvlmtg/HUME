@@ -16,7 +16,7 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// Writes the fixture file up front and returns its `file://` URI — callers
+/// Writes the fixture file up front and returns its `file://` URI. Callers
 /// need the URI *before* `setup` to build their scripted `Location`
 /// response, since `configure` must run before the backend is boxed into
 /// `LspState` (trait-erased afterward, per `lsp_hover.rs`).
@@ -87,13 +87,13 @@ fn setup(
 }
 
 /// `cmd` carries a leading `:` for caller readability (`":lsp-goto-definition"`)
-/// even though every `lsp-goto-*` command is key-bindable, not typed —
+/// even though every `lsp-goto-*` command is key-bindable, not typed:
 /// dispatched here through the keymap pipeline, the way its bound key would.
 fn run_goto(ed: &mut Editor, cmd: &str) {
     let name = cmd.strip_prefix(':').unwrap_or(cmd);
     ed.execute_keymap_command(name.to_owned().into(), Some(1), false);
     // Settle now (mirrors the real interactive loop, which drains after
-    // every keystroke) before the async response arrives — same ordering
+    // every keystroke) before the async response arrives: same ordering
     // fix as lsp_hover.rs.
     ed.settle();
     ed.drain_lsp();
@@ -155,7 +155,7 @@ fn single_location_hashmap_jumps_directly() {
 
 #[test]
 fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
-    // "e\u{0301}" (e + combining acute) is one grapheme cluster, two chars —
+    // "e\u{0301}" (e + combining acute) is one grapheme cluster, two chars,
     // both single UTF-16 code units, so character=1 is a perfectly valid
     // wire position (no surrogate-pair splitting involved) that still lands
     // *inside* the cluster: between its base character and its combining
@@ -241,7 +241,7 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
 }
 
 /// A Windows drive-letter `file://` URI (`file:///C:/...`) must display in
-/// the drawer without a leading `/` before the drive letter —
+/// the drawer without a leading `/` before the drive letter.
 /// `hume_lsp::uri::uri_to_path`'s plain slash strip alone leaves one in
 /// ("/C:/foo"), not a valid Windows path; `uri_to_display_string` is the
 /// sibling that additionally strips it before a drive letter, which is what
@@ -370,7 +370,7 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
 
 /// `goto-location!`'s wire (`Location` hashmap) path opens the target file
 /// via `lsp::edits::resolve_or_open` → `buffer::lifecycle::
-/// open_or_dedup_and_notify` when it isn't already open — which can't detect
+/// open_or_dedup_and_notify` when it isn't already open, which can't detect
 /// language inline (see that function's doc), so it queues the buffer onto
 /// `EditorState.pending_language_detection`, drained at the tail of
 /// `apply_script_effects` once this eval (`run_goto`'s `:lsp-goto-definition`
@@ -421,10 +421,10 @@ fn goto_to_an_unopened_file_detects_its_language() {
 /// A wire `Location`'s server encoding must come from the buffer that sent
 /// the request (`bid`, captured by `lsp/goto-request` before the request
 /// went out), never from whatever is focused when the response callback
-/// happens to run — an LSP round-trip is async, so the user is free to
+/// happens to run. An LSP round-trip is async, so the user is free to
 /// switch buffers while it's in flight.
 ///
-/// `main.rs`'s line 1 is `let π = 1;` — under this test's UTF-8-negotiated
+/// `main.rs`'s line 1 is `let π = 1;`. Under this test's UTF-8-negotiated
 /// server, wire `character: 7` (a byte offset) decodes to char offset 6
 /// (`=`, since `π` occupies 2 bytes but 1 char); under the UTF-16 default
 /// (code-unit offset), the same wire value decodes to char offset 7 (the
@@ -487,17 +487,17 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
     );
     ed.scripting = Some(host);
 
-    // Send the request from `main.rs` (`bid_a`, UTF-8 server) — dispatches
+    // Send the request from `main.rs` (`bid_a`, UTF-8 server). Dispatches
     // synchronously, so the request has already left with `bid_a` captured
     // by the time this returns. Deliberately no `settle()` here:
     // `InlineLspBackend::send` queues the canned response for the *next*
     // drain rather than answering inline, but `settle()` itself drains LSP
-    // (`drain_async_sources` → `drain_lsp`) — calling it now would close the
+    // (`drain_async_sources` → `drain_lsp`): calling it now would close the
     // race window before this test ever opens it.
     ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
 
     // Switch focus to an unrelated, server-less buffer *before* the
-    // response arrives — this is the race window.
+    // response arrives. This is the race window.
     let other = file_dir.path().join("other.rs");
     std::fs::write(&other, "\n").unwrap();
     ed.execute_typed("e", Some(other.to_str().unwrap()))
@@ -533,7 +533,7 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
 }
 
 /// A target whose path genuinely can't be opened (here: it's a directory,
-/// not a file — `Buffer::from_file_or_new` only tolerates `NotFound`) must
+/// not a file; `Buffer::from_file_or_new` only tolerates `NotFound`) must
 /// still error and leave the cursor untouched.
 #[test]
 fn goto_target_is_directory_errors_without_moving_the_cursor() {
@@ -560,7 +560,7 @@ fn goto_target_is_directory_errors_without_moving_the_cursor() {
 }
 
 /// A target whose file doesn't exist yet (but whose path is otherwise valid)
-/// must open a new-file buffer and jump to it — the same `:e newfile.txt`
+/// must open a new-file buffer and jump to it: the same `:e newfile.txt`
 /// tolerance `resolve_or_open` shares with `Editor::resolve_open_path` via
 /// `Buffer::from_file_or_new`, not an error. Covers a server-driven
 /// definition/rename that points at a file it expects the client to create.

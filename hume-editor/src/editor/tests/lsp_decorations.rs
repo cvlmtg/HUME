@@ -12,7 +12,7 @@ use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
 /// Attaches the focused buffer to a `Running` scripted server (UTF-16
-/// encoding, the negotiated default) and gives it a path — several tests
+/// encoding, the negotiated default) and gives it a path: several tests
 /// below compose `lsp-position->offset`, which needs a resolvable server to
 /// convert a wire position, and `inlay_hints_remap_through_an_edit` needs
 /// the path for the remap chokepoint to have somewhere to (not) send a
@@ -30,7 +30,7 @@ fn attach_running_server(ed: &mut Editor) -> ServerId {
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     // `flush_lsp_pending_changes` (and therefore the remap chokepoint)
-    // bails out for a pathless buffer — a real attach always has one.
+    // bails out for a pathless buffer; a real attach always has one.
     ed.state
         .buffers
         .get_mut(bid)
@@ -48,14 +48,14 @@ fn attach_running_server(ed: &mut Editor) -> ServerId {
 #[test]
 fn set_inlay_hints_composes_with_lsp_position_to_offset() {
     let tmp = safe_tempdir();
-    // "🎉" is 1 char, 2 UTF-16 code units, 4 UTF-8 bytes — a wire character
+    // "🎉" is 1 char, 2 UTF-16 code units, 4 UTF-8 bytes: a wire character
     // offset of 2 (the emoji's UTF-16 width) must land on char index 1, the
     // char right after it, not byte/char index 2 or 4. `set-inlay-hints!`
     // does not decode wire positions itself: a plugin composes
     // `lsp-position->offset` before calling the setter.
     //
-    // The position must arrive as a real tagged handle — `lsp-position->
-    // offset` rejects a hand-built (untagged) one outright — so this echoes
+    // The position must arrive as a real tagged handle (`lsp-position->
+    // offset` rejects a hand-built (untagged) one outright), so this echoes
     // it through a scripted `test/echo` request/response round trip rather
     // than reusing `attach_running_server`, which sets up no such response.
     let mut ed = editor_from("-[x]>🎉bcdef\n");
@@ -151,7 +151,7 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
 }
 
 /// A malformed offset (non-integer, or negative) must error loudly at the
-/// `set-inlay-hints!` boundary rather than being silently dropped — silent
+/// `set-inlay-hints!` boundary rather than being silently dropped. Silent
 /// extraction would leave a plugin author's typo producing fewer hints with
 /// no explanation.
 #[test]
@@ -191,14 +191,14 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
 /// An `'after` hint anchored on the buffer's trailing structural `\n` must
 /// error loudly at `set-inlay-hints!`, not store an entry the render bridge
 /// (`update_inlay_hint_providers`) can only resolve onto the unrendered
-/// trailing phantom line — the end-to-end companion to
+/// trailing phantom line: the end-to-end companion to
 /// `host_impl::tests::validate_offset_rejects_after_on_the_trailing_newline`,
 /// exercised here through the actual `set-inlay-hints!` builtin rather than
 /// the bare validation function.
 #[test]
 fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[x]>abcdef\n"); // "xabcdef\n", 8 chars — offset 7 is the trailing '\n'
+    let mut ed = editor_from("-[x]>abcdef\n"); // "xabcdef\n", 8 chars; offset 7 is the trailing '\n'
     attach_running_server(&mut ed);
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
@@ -230,7 +230,7 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
 }
 
 /// An out-of-range char offset must error loudly at `set-extra-highlights!`
-/// rather than storing a span that never renders — the fail-fast contract
+/// rather than storing a span that never renders: the fail-fast contract
 /// every kind's host-boundary conversion holds to.
 #[test]
 fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
@@ -369,7 +369,7 @@ fn inlay_hints_remap_through_an_edit() {
     };
     assert_eq!(hint_pos(&ed), co(3));
 
-    // Insert two chars before the hint's position — the hint must move with
+    // Insert two chars before the hint's position; the hint must move with
     // the text it annotates, not stay pinned to the old char index.
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
@@ -384,7 +384,7 @@ fn inlay_hints_remap_through_an_edit() {
     );
 }
 
-/// Regression: decorations are not LSP-owned — LSP is just their first
+/// Regression: decorations are not LSP-owned. LSP is just their first
 /// client (any plugin can call `set-extra-highlights!`/`set-inlay-hints!`
 /// on any buffer). `record_lsp_edits` must queue a buffer's edits for the
 /// remap chokepoint whether or not an LSP server is attached, or a buffer
@@ -392,7 +392,7 @@ fn inlay_hints_remap_through_an_edit() {
 #[test]
 fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     let tmp = safe_tempdir();
-    // Deliberately no attach_running_server call — this buffer has no LSP
+    // Deliberately no attach_running_server call: this buffer has no LSP
     // server and no path, nothing but the decoration itself.
     let mut ed = editor_from("-[x]>abcdef\n");
     let bid = ed.focused_buffer_id();
@@ -450,7 +450,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
 #[test]
 fn sign_remaps_through_a_line_inserted_above_it() {
     let tmp = safe_tempdir();
-    // "xaaaa\nbbbb\ncccc\n" — the sign below sits on "bbbb\n", line 1.
+    // "xaaaa\nbbbb\ncccc\n": the sign below sits on "bbbb\n", line 1.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
@@ -475,7 +475,7 @@ fn sign_remaps_through_a_line_inserted_above_it() {
         "sanity: sign starts on line 1"
     );
 
-    // Insert a whole new blank line above line 0 — "bbbb" (and the sign on
+    // Insert a whole new blank line above line 0: "bbbb" (and the sign on
     // it) must shift from line 1 to line 2.
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
@@ -558,15 +558,15 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
 }
 
 /// Line-anchored kinds remap with `Assoc::After`, not
-/// `Assoc::Before`. An "open line above" edit — a newline inserted exactly
-/// at the decorated line's line-start offset — must leave the decoration on
+/// `Assoc::Before`. An "open line above" edit (a newline inserted exactly
+/// at the decorated line's line-start offset) must leave the decoration on
 /// the original line's content, now one line further down, not stranded on
 /// the newly inserted blank line.
 #[test]
 fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     let tmp = safe_tempdir();
     // "xaaaa\n" is line 0 (chars 0..6); "bbbb\n" is line 1, starting
-    // exactly at char 6 — the insertion below lands exactly there.
+    // exactly at char 6, and the insertion below lands exactly there.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
@@ -603,7 +603,7 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
         pos,
         co(7),
         "Assoc::After must land the sign just past the inserted newline, at \
-         \"bbbb\"'s new position — Assoc::Before would leave it at 6, on the \
+         \"bbbb\"'s new position; Assoc::Before would leave it at 6, on the \
          new blank line instead"
     );
     assert_eq!(
@@ -693,7 +693,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
 }
 
 /// Every `set-*!` decoration setter must intern its scope name at the call
-/// itself — not lazily, the first time a render bridge happens to resolve
+/// itself, not lazily, the first time a render bridge happens to resolve
 /// it. Asserted with no `prepare_frame` anywhere in this test: if a scope
 /// were still resolved by a render bridge, the registry would not yet know
 /// its name at this point.
@@ -736,7 +736,7 @@ fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
 fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
     let tmp = safe_tempdir();
     // `-[x]>` puts the 1-char cursor marker "x" at the very start, so line 0
-    // is "xaaaa\n" (6 chars) and lines 1-3 are 5 chars each ("bbbb\n" etc.) —
+    // is "xaaaa\n" (6 chars) and lines 1-3 are 5 chars each ("bbbb\n" etc.):
     // line 3 (0-indexed) is in range, its line-start char offset is
     // 6 + 5 + 5 = 16.
     let mut ed = editor_from("-[x]>aaaa\nbbbb\ncccc\ndddd\n");
@@ -889,7 +889,7 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
 }
 
 /// Same drift regression as `sign_remaps_through_a_line_inserted_above_it`,
-/// for line backgrounds — remap coverage applies to every
+/// for line backgrounds: remap coverage applies to every
 /// line-anchored kind (all four implement `PointAnchored`), not just signs.
 #[test]
 fn line_background_remaps_through_a_line_inserted_above_it() {
@@ -923,7 +923,7 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
         "sanity: tint starts on line 1"
     );
 
-    // Insert a whole new blank line above line 0 — "bbbb" (and its tint)
+    // Insert a whole new blank line above line 0: "bbbb" (and its tint)
     // must shift from line 1 to line 2.
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
@@ -1039,8 +1039,8 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
 }
 
 /// An unknown `#:severity` name (e.g. a typo like `'warn` for `'warning`)
-/// must error loudly rather than silently returning nothing that qualifies
-/// — a silent empty result is indistinguishable from "no diagnostics at
+/// must error loudly rather than silently returning nothing that qualifies.
+/// A silent empty result is indistinguishable from "no diagnostics at
 /// that floor".
 #[test]
 fn diagnostics_for_buffer_errors_loudly_on_an_unknown_severity_name() {

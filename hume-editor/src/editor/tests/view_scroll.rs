@@ -4,7 +4,7 @@ use pretty_assertions::assert_eq;
 // ── View-trie scroll (z z / z k / z j) ────────────────────────────────────────
 //
 // `z z` centres the cursor row, `z k` puts it at the top, `z j` puts it at
-// the bottom. Cursor position is unchanged — only the viewport moves.
+// the bottom. Cursor position is unchanged; only the viewport moves.
 //
 // for_testing gives an 80×24 viewport. With 50 single-char lines "a\n" the
 // content is 100 chars and char 2*N is the start of line N.
@@ -72,7 +72,7 @@ fn zk_puts_cursor_at_top() {
     seek_to_line(&mut ed, 25);
     ed.handle_key(key('z'));
     ed.handle_key(key('k'));
-    // target_row = 0 clamps up to scrolloff's own margin (3, default) —
+    // target_row = 0 clamps up to scrolloff's own margin (3, default):
     // scroll_cursor_to_display_line applies that clamp itself, so top_line
     // settles at cursor_line - margin = 25 - 3 = 22, not pinned to the
     // cursor's own line.
@@ -90,7 +90,7 @@ fn zj_puts_cursor_at_bottom() {
     ed.handle_key(key('z'));
     ed.handle_key(key('j'));
     // height=24, scrolloff=3: Viewport::geometry(3).target = 20, and
-    // target_row=23 clamps down to it — top_line = 25 - 20 = 5.
+    // target_row=23 clamps down to it: top_line = 25 - 20 = 5.
     assert_eq!(
         ed.viewport().top().line,
         hume_rope::line::ContentLine::new(5)
@@ -167,7 +167,7 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
     ed.handle_key(key('k'));
 
     // height=4, scrolloff=3: Viewport::geometry(3).margin = min(3, (4-1)/2)
-    // = 1, so target_row=0 clamps up to 1 — one display line of look-ahead
+    // = 1, so target_row=0 clamps up to 1: one display line of look-ahead
     // above the cursor even in this tiny viewport, not pinned to its own row.
     assert_eq!(
         ed.viewport().top().line,
@@ -184,6 +184,6 @@ fn z_alone_does_not_dispatch() {
     seek_to_line(&mut ed, 25);
     let top_before = ed.viewport().top().line;
     ed.handle_key(key('z'));
-    // After the first `z`, the trie is mid-walk — no command has fired yet.
+    // After the first `z`, the trie is mid-walk: no command has fired yet.
     assert_eq!(ed.viewport().top().line, top_before);
 }

@@ -1,5 +1,5 @@
-//! The `Base` layer — the always-present layer at index 0, presenting
-//! Normal/Extend mode — plus [`handle_normal`], the Normal-mode key handler
+//! The `Base` layer (the always-present layer at index 0, presenting
+//! Normal/Extend mode), plus [`handle_normal`], the Normal-mode key handler
 //! `base_input` dispatches into.
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
@@ -17,7 +17,7 @@ use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// The always-present layer at index 0. Never removed. Carries `extend`
-/// (Extend is a flag on `Base`, never its own layer) and `sticky_popup` — the
+/// (Extend is a flag on `Base`, never its own layer) and `sticky_popup`, the
 /// home for a `Sticky` popup shared with `InsertLayer`, see
 /// [`Layer::sticky_popup_slot`]'s doc.
 pub(in crate::editor) struct BaseLayer {
@@ -46,7 +46,7 @@ impl Layer for BaseLayer {
 
 /// The base layer's own policy. `r` is unused: `Base` never falls
 /// through further (there is nothing below it) and never truncates
-/// itself (it is never removed). Only ever runs for Normal/Extend —
+/// itself (it is never removed). Only ever runs for Normal/Extend:
 /// every other mode is its own layer type, routed directly by
 /// `dispatch_at`; [`handle_normal`] still reads `state.mode()` internally
 /// to tell the two apart.
@@ -59,7 +59,7 @@ pub(in crate::editor) fn base_input(ed: &mut Editor, _r: LayerRef, ev: InputEven
 }
 
 /// Bulk-insert `text` at every selection in the focused buffer as one
-/// edit — the `Base` layer's paste policy (Normal and Extend alike).
+/// edit: the `Base` layer's paste policy (Normal and Extend alike).
 fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
     let focused = ed.state.focus.id();
     let buf = ed.focused_buffer_id();
@@ -110,7 +110,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // makes compliant terminals strip it again. WezTerm and other terminals
     // enable DISAMBIGUATE but do not fully honor REPORT_ALTERNATE_KEYS, so
     // shifted punctuation (`:`, `$`, `?`, `{`, …) arrives as Char(x) + SHIFT and
-    // misses its Char(x) + NONE trie binding — silently swallowing `:`, `$`,
+    // misses its Char(x) + NONE trie binding, silently swallowing `:`, `$`,
     // `?` etc. in Normal/Extend mode.
     //
     // For HUME's purposes the shifted-ness is already encoded in the char
@@ -136,10 +136,10 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // ── Consume WaitChar argument ─────────────────────────────────────────
     // If a f/t/F/T/r binding fired on the previous keypress, `wait_char`
     // holds the command name to dispatch. The next character (any key)
-    // becomes the argument — stored in `pending_char` for the command to read.
-    // Enter and Tab are accepted as their literal characters ('\n' / '\t') —
-    // Kakoune parity (e.g. `r<ret>` replaces with a newline, `f<tab>` finds a
-    // tab) — since both have an unambiguous char meaning as a target/argument.
+    // becomes the argument, stored in `pending_char` for the command to read.
+    // Enter and Tab are accepted as their literal characters ('\n' / '\t'),
+    // for Kakoune parity (e.g. `r<ret>` replaces with a newline, `f<tab>` finds a
+    // tab), since both have an unambiguous char meaning as a target/argument.
     if let Some(wc) = ed.state.wait_char.take() {
         let arg = match key.code {
             KeyCode::Char(ch) => Some(ch),
@@ -194,7 +194,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 // the session (which would fire with count N instead of 1).
                 ed.state.count = None;
                 match key.code {
-                    // `QQ` — record into the default register. `Q` is uppercase
+                    // `QQ`: record into the default register. `Q` is uppercase
                     // so is_valid_macro_register won't catch it; handle explicitly.
                     KeyCode::Char('Q') => {
                         ed.state.macro_recording = Some((MACRO_REGISTER, Vec::new()));
@@ -204,19 +204,19 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                         ed.state.macro_recording = Some((reg, Vec::new()));
                         ed.state.skip_macro_record = true;
                     }
-                    // Esc, Ctrl-c, non-Char, or invalid Char — cancel.
+                    // Esc, Ctrl-c, non-Char, or invalid Char: cancel.
                     _ => {}
                 }
                 return;
             }
             MacroPending::Replay => {
                 match key.code {
-                    // `q<reg>` — replay from named register (includes `qq` since
+                    // `q<reg>`: replay from named register (includes `qq` since
                     // `q` is a valid lowercase register name → replays from `q`).
                     KeyCode::Char(ch) if is_valid_macro_register(ch) => {
                         enqueue_macro_replay(ed, ch);
                     }
-                    // Any other key (Esc, non-register, etc.) — cancel silently.
+                    // Any other key (Esc, non-register, etc.): cancel silently.
                     _ => {}
                 }
                 return;
@@ -244,11 +244,11 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // ── Count prefix accumulation ─────────────────────────────────────────
     // Only accumulate when we're at the trie root (no pending sequence)
     // and no modifiers are held (Ctrl-4 is not a count digit).
-    // `0` without an existing count is not a digit — it falls through to the
+    // `0` without an existing count is not a digit: it falls through to the
     // trie (unbound by default; core:vim-keybind binds it to goto-line-start).
     // NOTE: this runs AFTER macro_pending so that `Q1`/`q1` treat `1` as a
     // register name, not as a count digit.
-    // Clamped to MAX_COUNT — see its doc comment for why.
+    // Clamped to MAX_COUNT; see its doc comment for why.
     if ed.state.pending_keys.is_empty() && key.modifiers == Modifiers::NONE {
         match key.code {
             KeyCode::Char(d @ '0'..='9') if d != '0' || ed.state.count.is_some() => {
@@ -265,7 +265,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // `Q` toggles recording; `q` triggers replay. Recording uses uppercase
     // because you do it once; replay uses lowercase because you do it often.
     // Both are suppressed while a replay is in progress to prevent nesting.
-    // `"` triggers the register-prefix — the next char names the target register.
+    // `"` triggers the register-prefix: the next char names the target register.
     if ed.state.pending_keys.is_empty() && key.modifiers == Modifiers::NONE {
         match key.code {
             KeyCode::Char('Q') => {
@@ -303,8 +303,8 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
 
     // ── Stage 1: Extend-trie override ────────────────────────────────────
     //
-    // We walk with [pending_keys..., key] without committing the push yet —
-    // only `Interior` commits the key (so the sequence accumulates correctly
+    // We walk with [pending_keys..., key] without committing the push yet.
+    // Only `Interior` commits the key (so the sequence accumulates correctly
     // across keypresses). On `NoMatch` the key is not yet in `pending_keys`,
     // so the normal-trie path below can push it as usual.
     if ed.state.mode() == EditorMode::Extend
@@ -322,7 +322,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 return;
             }
             WalkResult::Interior => {
-                // Mid-sequence — commit the key and wait for more.
+                // Mid-sequence: commit the key and wait for more.
                 ed.state.pending_keys.push(key);
                 return;
             }
@@ -333,7 +333,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 return;
             }
             WalkResult::NoMatch => {
-                // No extend-trie match — fall through to normal trie.
+                // No extend-trie match: fall through to normal trie.
             }
         }
     }
@@ -345,7 +345,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     //    have a dedicated trie entry, used as-is regardless of kitty mode.
     // 2. Implicit Ctrl-motion (Ctrl-h/j/k/l/w/b, …): no explicit binding.
     //    With kitty enabled, one-shot extend: strip CONTROL, look up the
-    //    bare key, dispatch extend=true. Without kitty, no-op — legacy
+    //    bare key, dispatch extend=true. Without kitty, no-op: legacy
     //    terminals can't reliably distinguish Ctrl-letter from control
     //    codes.
     //
@@ -353,7 +353,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     // strip it and retry only if kitty is enabled.
     //
     // REPORT_ALTERNATE_KEYS (enabled at init) makes the terminal send the
-    // shifted character directly — the decoder swaps in the alternate
+    // shifted character directly. The decoder swaps in the alternate
     // keycode and strips SHIFT, so Ctrl-} arrives as Char('}') with just
     // CONTROL, and stripping CONTROL gives the correct bare key,
     // independent of layout.
@@ -368,7 +368,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
             match ed.state.config.keymap.normal.walk(&[key]) {
                 WalkResult::NoMatch if ed.kitty_enabled => {
                     // Kitty mode: strip CONTROL, re-walk as extend. Only proceed if the
-                    // resolved command is extendable — prevents e.g. Ctrl-u running
+                    // resolved command is extendable. This prevents e.g. Ctrl-u running
                     // "undo" (not a motion) as a one-shot extend.
                     let bare = KeyEvent::new(key.code, Modifiers::NONE);
                     ed.state.pending_keys.push(bare);
@@ -405,7 +405,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
                 WalkResult::NoMatch => return, // Legacy: no-op.
                 // Explicit Ctrl-letter binding. Extend only if the binding
                 // itself declares force_extend (e.g. Ctrl-x → select-line).
-                // Registry's is_extendable() is not consulted here — that
+                // Registry's is_extendable() is not consulted here: that
                 // flag means "compatible with sticky Extend mode", not
                 // "pressing Ctrl means the user asked to extend".
                 // Interior: the Ctrl-key starts a multi-key sequence (e.g.
@@ -434,7 +434,7 @@ fn handle_normal(ed: &mut Editor, key: KeyEvent) {
     //
     // Both inputs are now available: sticky extend from editor mode, and
     // one-shot extend from the Ctrl path (ctrl_extend). Merge them here.
-    // `extend` is passed as a parameter — no mode transition occurs.
+    // `extend` is passed as a parameter; no mode transition occurs.
     let extend = (ed.state.mode() == EditorMode::Extend) || ctrl_extend;
 
     match result {

@@ -32,7 +32,7 @@ impl CommandRegistry {
         );
         // `EditorCmd`, not `edit!`: needs to resolve this buffer's
         // `word-chars` (see `cmd_delete_word_backward`'s doc). No builder
-        // flags set below — `ecmd`'s defaults (not repeatable, no jump, not
+        // flags set below: `ecmd`'s defaults (not repeatable, no jump, not
         // extendable) already match plain `Edit`'s own defaults.
         ecmd_pane(
             "delete-word-backward",

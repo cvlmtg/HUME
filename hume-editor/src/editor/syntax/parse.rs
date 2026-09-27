@@ -11,7 +11,7 @@ impl EditorState {
     /// Whether `bid` is small enough to carry a syntax tree, per
     /// `syntax-highlight-max-bytes`.
     ///
-    /// The single spelling of that comparison. Three paths ask it — attach
+    /// The single spelling of that comparison. Three paths ask it: attach
     /// refusal, the per-frame detach/re-attach sweep, and the on-demand
     /// freshness check below. Asking it inline at each path would let the
     /// copies drift apart (one `>`, another `<=`), so a cap change could
@@ -23,13 +23,13 @@ impl EditorState {
 
 /// Trace-log a broken pending-edit chain. Shared by `reparse_stale_buffers`
 /// (the per-frame path, `&mut Editor`) and [`ensure_syntax_current`] (the
-/// synchronous on-demand path, only `&mut EditorState`) — one message, never
+/// synchronous on-demand path, only `&mut EditorState`): one message, never
 /// a second copy of the string.
 fn report_chain_break(state: &mut EditorState, bid: BufferId, brk: &ChainBreak) {
     state.report(
         Severity::Trace,
         format!(
-            "syntax: pending-edit chain broken for {bid:?} — \
+            "syntax: pending-edit chain broken for {bid:?}: \
              tree_gen={}, text_gen={}, first={:?}, last={:?}; \
              full reparse triggered",
             brk.tree_gen, brk.text_gen, brk.first, brk.last,
@@ -93,8 +93,8 @@ impl Editor {
     /// [`Self::reparse_stale_buffers`] below, and `Editor::run`'s loop
     /// immediately before it dispatches a terminal event. The second exists
     /// because a key already buffered when a parse completes consumes the
-    /// worker's wake — `poll` returns that key rather than the `Ok(false)`
-    /// interrupt that would have sent the loop back to `settle()` — so
+    /// worker's wake: `poll` returns that key rather than the `Ok(false)`
+    /// interrupt that would have sent the loop back to `settle()`, so
     /// without this the dispatch would run `ensure_syntax_current`'s inline
     /// reparse over a tree the worker already built, paying a full parse of
     /// every injected layer for it.
@@ -103,7 +103,7 @@ impl Editor {
     /// it exited are still valid and should land.
     ///
     /// See [`Self::reparse_stale_buffers`]'s doc for the other caller's own
-    /// reason to drain first — the two cover different wake sources (a key
+    /// reason to drain first. The two cover different wake sources (a key
     /// racing a completion vs. a completion with no key pending) and neither
     /// makes the other's call here redundant.
     pub(in crate::editor) fn install_parse_results(&mut self) {
@@ -131,12 +131,12 @@ impl Editor {
     /// event): that one only runs on the `Ok(true)` branch of `poll`, i.e.
     /// when an actual event is about to be read. A parse-worker wake with
     /// *no* event pending takes `poll`'s `Ok(false)` branch straight back to
-    /// `settle()` — this function, via `drain_async_sources`, is the only
+    /// `settle()`. This function, via `drain_async_sources`, is the only
     /// place that result ever gets installed. Skip the drain here and a
     /// buffer whose async parse finishes while the user is idle (a large
     /// file just opened, a slow injected-layer grammar, an LSP edit with no
     /// follow-up keystroke) never highlights until the next actual keypress
-    /// happens to trigger the other call site — or never, if none comes.
+    /// happens to trigger the other call site, or never, if none comes.
     pub(in crate::editor) fn reparse_stale_buffers(&mut self) {
         self.install_parse_results();
 
@@ -147,7 +147,7 @@ impl Editor {
             return;
         }
 
-        // Deduplicated set of every buffer *any* pane is showing — not just
+        // Deduplicated set of every buffer *any* pane is showing, not just
         // the active tab's. Deliberately the full `view.panes` pool, not
         // `Editor::active_pane_ids`: a buffer open in a background tab
         // should keep its grammar attached and stay reparsed, so switching
@@ -189,7 +189,7 @@ impl Editor {
                 continue;
             }
 
-            // frame_tick is a no-op once parsed_gen == text_gen — check that
+            // frame_tick is a no-op once parsed_gen == text_gen, so check that
             // before paying for the text clone and grammar-snapshot Arc bump.
             //
             // Deliberately `parsed_gen`, not `Syntax::is_current`: this asks
@@ -197,7 +197,7 @@ impl Editor {
             // generation whose parse failed has already been attempted. The
             // stronger `is_current` here would re-post it every frame forever.
             // The on-demand path (`ensure_syntax_current`, below) asks the
-            // other question — "are the layers safe to read?" — and must
+            // other question ("are the layers safe to read?") and must
             // use `is_current`.
             if buf
                 .syntax
@@ -294,7 +294,7 @@ impl Editor {
         if !self.parse_worker_disconnect_logged {
             self.state.message_log.push(
                 Severity::Error,
-                "parse worker disconnected — syntax highlighting suspended".to_owned(),
+                "parse worker disconnected: syntax highlighting suspended".to_owned(),
             );
             self.parse_worker_disconnect_logged = true;
         }
@@ -303,7 +303,7 @@ impl Editor {
     /// Called when one or more grammars are attached. Re-runs
     /// `setup_buffer_syntax` on every open buffer whose language is in
     /// `names`, **or** whose currently-attached root grammar has an
-    /// injections query — a newly attached grammar (e.g. rust) may complete
+    /// injections query: a newly attached grammar (e.g. rust) may complete
     /// injection sites in an already-open buffer of a different language
     /// (e.g. markdown fenced code blocks) without that buffer's own language
     /// ever appearing in `names`.

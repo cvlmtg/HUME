@@ -28,7 +28,7 @@ use hume_ops::MotionMode;
 use super::Editor;
 
 /// Whether `kind` is a *fresh* user action rather than the tail of a gesture
-/// that began before the current layer existed — a press or a wheel notch is
+/// that began before the current layer existed: a press or a wheel notch is
 /// the user acting now; a release, a drag, or a pointer move belongs to a
 /// gesture already in flight. A layer that retires on stray input (`Confirm`,
 /// `Menu`) must not retire on the latter: the click that opens the
@@ -43,7 +43,7 @@ pub(super) fn is_fresh_gesture(kind: MouseEventKind) -> bool {
 }
 
 impl Editor {
-    /// The `Base` layer's own mouse policy — routed here by `dispatch_at`
+    /// The `Base` layer's own mouse policy, routed here by `dispatch_at`
     /// once every overlay above it has had a chance to swallow or fall
     /// through the event.
     pub(super) fn base_mouse(&mut self, mouse: MouseEvent) {
@@ -69,7 +69,7 @@ impl Editor {
 
     fn mouse_left_down(&mut self, x: u16, y: u16) {
         // A tabline click is handled separately (and unconditionally, even
-        // when it doesn't land on an actual tab) — it's outside every
+        // when it doesn't land on an actual tab): it's outside every
         // pane's rect, so `pane_at_screen_pos` below would just treat it as
         // a miss anyway, but routing it first avoids relying on that.
         if self.tabline_click(x, y) {
@@ -77,7 +77,7 @@ impl Editor {
         }
 
         // Hit-test before anything else: a miss (statusline, a divider seam
-        // — anything outside a pane's own rect) is a no-op, and a hit's
+        // or anything else outside a pane's own rect) is a no-op, and a hit's
         // pane-relative coordinates are what every step below needs.
         let Some((pid, pane_x, pane_y)) = self.pane_at_screen_pos(x, y) else {
             return;
@@ -85,10 +85,10 @@ impl Editor {
 
         // Click-to-focus: a click in another pane (a `:split`/`:vsplit`)
         // moves focus there, the same `focus_pane` chokepoint
-        // `cmd_pane_focus_*` uses — no jump-list push, matching those.
+        // `cmd_pane_focus_*` uses. No jump-list push, matching those.
         // `focus_pane` exits Insert (if active) BEFORE resolving the click's
         // char offset below, and while the *previously* focused pane is
-        // still current — `end_insert_session` can shrink that pane's
+        // still current: `end_insert_session` can shrink that pane's
         // buffer (the blank-line indent trim), so computing `click_to_char`
         // first would resolve against a buffer length the exit is about to
         // invalidate: the offset could land past the new end, or simply on
@@ -107,9 +107,9 @@ impl Editor {
 
     /// Reset transient input state every click starts fresh from: any
     /// half-typed key sequence (`pending_keys`/`count`) and the status line.
-    /// Shared by `mouse_left_down`'s pane path and `tabline_click` — both
+    /// Shared by `mouse_left_down`'s pane path and `tabline_click`: both
     /// are "the user just clicked somewhere new". Leaves `mouse_drag_anchor`
-    /// alone — `mouse_left_down` sets its own right after calling this, and
+    /// alone: `mouse_left_down` sets its own right after calling this, and
     /// `tabline_click` clears it explicitly, since a tab switch is exactly
     /// the case where a stale anchor would extend a drag against a buffer
     /// that isn't even focused anymore.
@@ -127,7 +127,7 @@ impl Editor {
             return;
         };
 
-        // A drag never moves focus mid-gesture — it extends the selection in
+        // A drag never moves focus mid-gesture. It extends the selection in
         // the pane the click that started it already focused. Hit-test only
         // that pane's own rect, so a drag that leaves it (as a fast mouse
         // move easily can) is ignored rather than resolving against the
@@ -150,7 +150,7 @@ impl Editor {
     // ── Scroll ────────────────────────────────────────────────────────────────
 
     fn mouse_scroll(&mut self, x: u16, y: u16, down: bool) {
-        // Unlike a click, a wheel notch never moves focus — `focus_pane`
+        // Unlike a click, a wheel notch never moves focus: `focus_pane`
         // exits Insert mode, and a stray notch over another pane must not be
         // able to do that. A miss (statusline, tabline, a divider seam) has
         // no pane to prefer over the focused one, so it falls back there
@@ -172,7 +172,7 @@ impl Editor {
     // ── Coordinate conversion ─────────────────────────────────────────────────
 
     /// Handle a click at terminal-absolute `(x, y)` landing in the tab
-    /// bar's row, if it does. Returns `true` when it was — whether or not
+    /// bar's row, if it does. Returns `true` when it was, whether or not
     /// it landed on an actual tab, so a click on the row's blank tail is a
     /// no-op but still doesn't fall through to `pane_at_screen_pos` (which
     /// would just miss anyway, since the tabline sits outside every pane's
@@ -183,8 +183,8 @@ impl Editor {
     /// Hit-tests against `EngineView::tabbar_area` rather than
     /// `last_pane_area.y`: `pane_area`'s degenerate branch (terminal too
     /// small to fit chrome + content) leaves `last_pane_area.y` at the
-    /// terminal's own `y`, which would make every row look like the tab bar
-    /// — `tabbar_area` is the one rect that always reports where the bar
+    /// terminal's own `y`, which would make every row look like the tab bar..
+    /// `tabbar_area` is the one rect that always reports where the bar
     /// itself is, whether or not there's room left for panes.
     fn tabline_click(&mut self, x: u16, y: u16) -> bool {
         let bar = self.view.tabbar_area(self.view.last_terminal_area);
@@ -193,7 +193,7 @@ impl Editor {
         }
         // No separate `guard.visible` check needed: `bar.height` (above) came
         // from `TabBarProvider::height()`, which reads that same flag off
-        // this same shared slot — a nonzero height already means it was
+        // this same shared slot: a nonzero height already means it was
         // `true` moments ago, and nothing mutates the view between then and
         // this read.
         let guard = self.state.tabline_view.read();
@@ -207,7 +207,7 @@ impl Editor {
         if let Some(id) = target {
             // `switch_to_tab` -> `install_live` -> `focus_pane` exits Insert
             // (if active) against the outgoing tab's own pane, still focused
-            // at this point, before moving focus to the new tab's pane — see
+            // at this point, before moving focus to the new tab's pane. See
             // `focus_pane`'s own doc for why that order matters.
             self.clear_pending_input();
             self.state.mouse_drag_anchor = None;
@@ -217,7 +217,7 @@ impl Editor {
     }
 
     /// Which pane `(x, y)` (terminal-absolute) falls in, and its
-    /// position translated into that pane's own rect-relative coordinates —
+    /// position translated into that pane's own rect-relative coordinates,
     /// what `click_to_char` and `screen_to_char_offset` expect. `None` for a
     /// click outside every pane's rect (statusline, tabline, a divider seam).
     fn pane_at_screen_pos(&self, x: u16, y: u16) -> Option<(PaneId, u16, u16)> {
@@ -260,8 +260,8 @@ impl Editor {
 // Coordinate helpers
 // ---------------------------------------------------------------------------
 
-/// Translate terminal-absolute `(x, y)` into `rect`'s own frame — the space
-/// `click_to_char` and `screen_to_char_offset` expect — or `None` when the
+/// Translate terminal-absolute `(x, y)` into `rect`'s own frame (the space
+/// `click_to_char` and `screen_to_char_offset` expect), or `None` when the
 /// position falls outside `rect`. The `contains` guard is what keeps the
 /// `u16` subtraction from underflowing on a position left of/above the rect
 /// origin.
@@ -270,8 +270,8 @@ fn rect_relative(rect: Rect, x: u16, y: u16) -> Option<(u16, u16)> {
         .then(|| (x - rect.x, y - rect.y))
 }
 
-/// Translate a pane-content-relative `(content_x, row)` cell — relative to
-/// the pane's content area, past the `gutter_w`-wide gutter — into an
+/// Translate a pane-content-relative `(content_x, row)` cell (relative to
+/// the pane's content area, past the `gutter_w`-wide gutter) into an
 /// absolute terminal cell. The inverse of [`rect_relative`], for the two
 /// call sites (the popup/menu anchor, the Insert-mode bar cursor) that need
 /// to go the other way: a content-relative position `pane_display_lines`'s cursor

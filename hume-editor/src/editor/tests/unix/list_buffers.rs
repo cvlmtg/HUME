@@ -62,10 +62,10 @@ fn ls_cursor_on_current_line() {
 }
 
 /// `:w /path` on a synthetic buffer writes the file but leaves the buffer
-/// pathless, labeled, and read-only — the buffer itself is unaffected.
+/// pathless, labeled, and read-only; the buffer itself is unaffected.
 ///
 /// Validity: remove the `is_synthetic()` guard from `write_file` and this
-/// test fails — `doc().path()` will be `Some(...)` instead of `None`.
+/// test fails: `doc().path()` will be `Some(...)` instead of `None`.
 #[test]
 fn view_buffer_save_as_stays_synthetic() {
     let tmp = safe_named_tempfile();
@@ -89,7 +89,7 @@ fn view_buffer_save_as_stays_synthetic() {
         "file on disk must match buffer content"
     );
 
-    // Buffer state must be unchanged — still synthetic, still pathless, still RO.
+    // Buffer state must be unchanged: still synthetic, still pathless, still RO.
     assert!(
         ed.doc().path().is_none(),
         "synthetic buffer must stay pathless after :w /path"

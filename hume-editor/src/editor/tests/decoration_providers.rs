@@ -28,9 +28,9 @@ fn highlight_bridge_skips_search_cache_refresh_for_handleless_pane() {
         "sanity: with_search_regex populates the cache"
     );
 
-    // Bump the buffer's revision without going through `sync_search_cache` —
-    // `handle_key` alone, unlike `feed_key`/`step`, never refreshes the
-    // search cache — so the cache above is now stale relative to the live
+    // Bump the buffer's revision without going through `sync_search_cache`
+    // (`handle_key` alone, unlike `feed_key`/`step`, never refreshes the
+    // search cache), so the cache above is now stale relative to the live
     // revision, the same drift `update_buffer_matches`'s doc says a
     // non-focused pane's buffer can carry.
     ed.handle_key(key('i'));
@@ -49,7 +49,7 @@ fn highlight_bridge_skips_search_cache_refresh_for_handleless_pane() {
     assert_eq!(
         ed.state.buffers.get(bid).search_matches.cache,
         stale_cache,
-        "no render entry means no handle to feed — the cache refresh must be \
+        "no render entry means no handle to feed: the cache refresh must be \
          skipped, not just its write"
     );
 }
@@ -85,7 +85,7 @@ fn virtual_line_bridge_skips_sync_stamp_for_handleless_pane() {
 
     assert!(
         !ed.virtual_lines_synced.contains_key(&pid),
-        "no render entry means no handle written — the sync stamp must not \
+        "no render entry means no handle written: the sync stamp must not \
          be recorded either"
     );
 }

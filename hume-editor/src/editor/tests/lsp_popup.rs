@@ -25,7 +25,7 @@ fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
         .map(|s| ((*s.lines).clone(), s.rect.x, s.rect.y))
 }
 
-/// The `Arc` handle itself, not a deref-cloned copy — for `Arc::ptr_eq`
+/// The `Arc` handle itself, not a deref-cloned copy, for `Arc::ptr_eq`
 /// identity checks that pin `PopupLayer::content`'s per-`max_width` cache.
 fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
     ed.state
@@ -123,8 +123,8 @@ fn show_popup_rejects_an_unknown_anchor() {
     );
 }
 
-/// `show-popup! #:kind 'scrollable` must not land above a full-modal picker
-/// — it would own the next Ctrl-u/Ctrl-d without ever being visible
+/// `show-popup! #:kind 'scrollable` must not land above a full-modal picker:
+/// it would own the next Ctrl-u/Ctrl-d without ever being visible
 /// (`register_overlays`' fixed z-order paints the picker on top).
 #[test]
 fn show_popup_scrollable_does_not_land_above_an_open_picker() {
@@ -139,7 +139,7 @@ fn show_popup_scrollable_does_not_land_above_an_open_picker() {
     );
     crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
 
-    // Direct host call, not a real `:` keystroke — the picker is
+    // Direct host call, not a real `:` keystroke: the picker is
     // full-modal and would swallow it before it ever reached Command mode.
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -240,7 +240,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     );
     type_cmd(&mut ed, ":go");
     // A 10-row terminal caps the band at height/2 = 5 rows (3 content rows
-    // after the 2-cell frame) — well under the 30 lines, so scrolling has
+    // after the 2-cell frame), well under the 30 lines, so scrolling has
     // somewhere to go.
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 10);
@@ -318,8 +318,8 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
 #[test]
 fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
     let tmp = safe_tempdir();
-    // `editor_from` (`Editor::for_testing`) never registers `bottom_bands` —
-    // only `Editor::open`'s real startup path does — so a docked popup there
+    // `editor_from` (`Editor::for_testing`) never registers `bottom_bands`
+    // (only `Editor::open`'s real startup path does), so a docked popup there
     // never actually shrinks `pane_area`. This test asserts on that
     // geometry, so it needs the real registration.
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -401,7 +401,7 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
     // `push_mode_layer`'s own `clear_popups()` call closes one just as
     // synchronously). `close-popup!`'s Rust body
     // (`InputStack::clear_popups`) is what a Steel callback drained at
-    // `settle()` — an LSP response, a fired timer — ultimately reaches
+    // `settle()` (an LSP response, a fired timer) ultimately reaches
     // regardless of what queued it, so calling it directly here reproduces
     // the same "popup vanished with no frame in between to notice" case one
     // of those would, without needing to reproduce the whole queuing
@@ -447,7 +447,7 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
 #[test]
 fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
     let tmp = safe_tempdir();
-    // Cursor at column 0, row 0 — plenty of room below in a 25-row terminal.
+    // Cursor at column 0, row 0: plenty of room below in a 25-row terminal.
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(
         &mut ed,
@@ -625,7 +625,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 
 /// `PopupState::lines` is always the full wrap, `Arc`-shared with
 /// `PopupContent`'s own cache regardless of scroll position, with a
-/// `visible` range carrying the window into it — a scrolled popup (unlike
+/// `visible` range carrying the window into it: a scrolled popup (unlike
 /// `wrap_is_cached_per_width_and_invalidated_only_when_width_changes`'s own
 /// fixture, which fits in one screen and never scrolls) still costs only a
 /// refcount bump per frame, not a deep clone of its visible rows.
@@ -736,7 +736,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     assert!(
         scroll_after_up <= max_scroll_before_key,
         "Ctrl-u must clamp a stale model scroll to the current window before \
-         subtracting, not just after — got {scroll_after_up}, current max was \
+         subtracting, not just after; got {scroll_after_up}, current max was \
          {max_scroll_before_key}"
     );
 }
@@ -758,7 +758,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     assert!(popup_view(&ed).is_some(), "sanity: showing");
     let head_before = ed.current_selections().primary().head();
 
-    // 'l' both closes the popup and still moves the cursor right — a stray
+    // 'l' both closes the popup and still moves the cursor right: a stray
     // key on a scrollable popup is dismiss-and-fall-through, not
     // dismiss-and-swallow.
     ed.feed_key(key('l'));
@@ -775,7 +775,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
 
 #[test]
 fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
-    // Regression guard: a plain popup (`#:kind` omitted or `'sticky` —
+    // Regression guard: a plain popup (`#:kind` omitted or `'sticky`:
     // hover/sighelp today, or the diagnostic overlay before its own
     // `'transient` clear) must leave Ctrl-d/Ctrl-u to their ordinary
     // half-page-scroll binding.
@@ -816,7 +816,7 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
 #[test]
 fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
     // Buffer taller than the viewport, so the wheel tick genuinely has
-    // somewhere to scroll — distinguishes "dismissed" from "dismissed and
+    // somewhere to scroll, which distinguishes "dismissed" from "dismissed and
     // the event's own effect was swallowed along with it".
     let tmp = safe_tempdir();
     let mut lines = String::from("-[x]>line0\n");
@@ -936,7 +936,7 @@ fn scrollable_popup_paints_its_scrolled_window() {
     );
     type_cmd(&mut ed, ":go");
     let rect = Rect::new(0, 0, 30, 15);
-    // Render once to resolve `popup_view` geometry before scrolling —
+    // Render once to resolve `popup_view` geometry before scrolling:
     // `scroll_popup` reads the previous frame's resolved height, same as
     // real interactive use (a keystroke always follows at least one paint).
     let _ = render_snapshot::render_to_styled_string(&mut ed, rect);

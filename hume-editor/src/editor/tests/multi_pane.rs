@@ -54,7 +54,7 @@ fn d1_selections_are_pane_owned() {
     );
 }
 
-/// D4a — `Buffer.search_pattern` is shared across all panes on the same buffer;
+/// D4a: `Buffer.search_pattern` is shared across all panes on the same buffer;
 /// each pane has its own `SearchCursor` in `pane_state`.
 #[test]
 fn d4a_search_pattern_is_per_buffer() {
@@ -72,7 +72,7 @@ fn d4a_search_pattern_is_per_buffer() {
     )
     .unwrap();
 
-    // Both panes see Buffer.search_pattern — it's a single field on `doc`.
+    // Both panes see Buffer.search_pattern: it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
     ed.state.panes.state[pid_a][bid].search_cursor = SearchCursor {
         match_count: Some((1, 3)),
@@ -99,7 +99,7 @@ fn d4a_search_pattern_is_per_buffer() {
     assert!(ed.state.panes.state[pid_b][bid].search_cursor.wrapped);
 }
 
-/// D4b — `Selection.sticky_display_col` travels with the selection; resets
+/// D4b: `Selection.sticky_display_col` travels with the selection; resets
 /// when its line is touched by an edit; survives translate_in_place on
 /// untouched lines.
 #[test]
@@ -109,12 +109,12 @@ fn d4b_sticky_display_col_is_per_selection() {
     use hume_editing::text::BufferText;
     use hume_rope::column::BufferLineCol;
 
-    // "abc\ndef\n" — two lines.
+    // "abc\ndef\n": two lines.
     let text = BufferText::from("abc\ndef\n");
 
     // Selection on line 1 (char offset 4 = 'd'), sticky_display_col = 0.
     // Variant is incidental to this test (translate_in_place invalidation
-    // doesn't look at it) — `BufferLine` is as good as `DisplayLine` here.
+    // doesn't look at it); `BufferLine` is as good as `DisplayLine` here.
     let sel = Selection::with_sticky_display_col(
         co(4),
         co(4),
@@ -156,7 +156,7 @@ fn d4b_sticky_display_col_is_per_selection() {
     );
     let mut sels2 = SelectionSet::single(sel2);
 
-    // "Xabc\ndef\n" (after first edit) — "d" is now at char 5 (line 1).
+    // "Xabc\ndef\n" (after first edit): "d" is now at char 5 (line 1).
     // Insert at char 5 (start of "def" in new rope); use the pre-edit BufferText for
     // translate_in_place (text_pre = before-this-edit text).
     let text2 = BufferText::from("Xabc\ndef\n");
@@ -176,7 +176,7 @@ fn d4b_sticky_display_col_is_per_selection() {
     );
 }
 
-/// An Insert session is scoped to the pane that opened it — sequential
+/// An Insert session is scoped to the pane that opened it: sequential
 /// sessions on different panes each produce their own revision.  Two
 /// separate i…Esc sessions each produce one revision.
 #[test]
@@ -252,7 +252,7 @@ fn d5_insert_session_is_pane_buffer_scoped() {
 
 /// Cancelling a search whose stash lives on a pane that is no longer
 /// focused (a mouse click into another pane always falls through under a
-/// minibuf-mode layer — `minibuf_input`'s own `Mouse` arm — so Search stays
+/// minibuf-mode layer, per `minibuf_input`'s own `Mouse` arm, so Search stays
 /// open across the click) must still restore that pane's selection and
 /// clear *that pane's buffer's* search state, not whatever the click just
 /// focused.
@@ -290,7 +290,7 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
     ed.switch_focused_pane(pid_a);
 
     // `/1` on pane A: live preview jumps the cursor to the '1' at char 0
-    // (already there) — use a pattern further in so the preview actually
+    // (already there), so use a pattern further in so the preview actually
     // moves the cursor and arms `search_pattern`.
     ed.feed_key(key('/'));
     ed.feed_key(key('7'));
@@ -314,7 +314,7 @@ fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
     ed.prepare_frame(&mut ctx);
 
     // Click into pane B's half of the split (right half of a 100-wide
-    // horizontal — i.e. left/right — split). Falls through under the
+    // horizontal, i.e. left/right, split). Falls through under the
     // still-open Search layer.
     ed.handle_input(mouse_left_down(70, 0));
     assert_eq!(ed.state.focus.id(), pid_b, "sanity: click moved focus to B");
@@ -422,7 +422,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 
 /// A sibling pane's plain cursor at a rewritten line's column 0 clamps past
 /// the new indent, via the same `ChangeSet` `>` uses to remap the acting
-/// pane's own selections — `translate_in_place` (every command's sibling-pane
+/// pane's own selections. `translate_in_place` (every command's sibling-pane
 /// path) always maps with `Assoc::After`, and `>`'s own remap uses that same
 /// association for anything but a linewise selection's start. Both paths only
 /// agree because the `ChangeSet` puts the new indent's `Insert` op before the
@@ -433,7 +433,7 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
 fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
     use hume_editing::selection::{Selection, SelectionSet};
 
-    // "  foo\n" — two spaces of existing indent.
+    // "  foo\n": two spaces of existing indent.
     let mut ed = editor_from("  -[f]>oo\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
@@ -446,7 +446,7 @@ fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
     )
     .unwrap();
 
-    // Pane B's cursor sits at column 0 — an ordinary cursor that merely
+    // Pane B's cursor sits at column 0, an ordinary cursor that merely
     // happens to be at the line start, not a linewise selection.
     ed.switch_focused_pane(pid_b);
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(0))));
@@ -470,7 +470,7 @@ fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
 fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     use hume_editing::selection::{Selection, SelectionSet};
 
-    // "abcde\n" — 6 chars.
+    // "abcde\n": 6 chars.
     let mut ed = editor_from("-[a]>bcde\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
@@ -523,7 +523,7 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
 fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     use hume_editing::selection::{Selection, SelectionSet};
 
-    // "abcdefghij\n" — cursor on 'a'.
+    // "abcdefghij\n", cursor on 'a'.
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
@@ -553,7 +553,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
         "pane B pane_state selection translated to 4"
     );
 
-    // Simulate the per-frame sync — this is what write the engine mirror.
+    // Simulate the per-frame sync; this is what write the engine mirror.
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Engine mirror for pane B must now reflect the translated position.
@@ -597,7 +597,7 @@ fn ensure_is_idempotent() {
 }
 
 /// ensure()'s trusted-mint contract: a closed pane's `pid` must panic, not
-/// silently seed a ghost `pane_state` entry — see `pane_state::try_ensure`'s
+/// silently seed a ghost `pane_state` entry. See `pane_state::try_ensure`'s
 /// own doc for why liveness is checked against the engine's `PanePool`
 /// rather than inferred from `pane_state` itself.
 #[test]
@@ -693,7 +693,7 @@ fn split_stacks_pane_on_same_buffer() {
     }
 }
 
-/// `:vsplit` places the new pane side by side with the focused one —
+/// `:vsplit` places the new pane side by side with the focused one:
 /// `Direction::Horizontal` in the engine (it divides width).
 #[test]
 fn vsplit_places_pane_side_by_side() {
@@ -911,7 +911,7 @@ fn vsplit_too_narrow_is_noop_with_warning() {
     assert_eq!(
         ed.state.focus.id(),
         pid_a,
-        "focus does not move — split was rejected"
+        "focus does not move: split was rejected"
     );
     assert!(
         matches!(*ed.view.layout(), LayoutTree::Leaf(_)),
@@ -945,7 +945,7 @@ fn split_too_short_is_noop_with_warning() {
     assert_eq!(
         ed.state.focus.id(),
         pid_a,
-        "focus does not move — split was rejected"
+        "focus does not move: split was rejected"
     );
     assert!(
         matches!(*ed.view.layout(), LayoutTree::Leaf(_)),
@@ -999,13 +999,13 @@ fn split_at_minimum_height_still_splits() {
 }
 
 /// `fits_split` must judge the *post-equalize* size a split would produce,
-/// not the pre-split rect of whichever pane is being split — since
+/// not the pre-split rect of whichever pane is being split, since
 /// `equalize` resizes every pane sharing the axis, a stack of several
 /// equal-height panes can still have room for one more even though halving
 /// any single pane's current height would not fit.
 ///
 /// 24 rows -> 23 usable after the statusline. 4 stacked panes (3 splits) at
-/// 3 seams: (23-3)/4 ≈ 5 rows each — well above `MIN_PANE_HEIGHT`(3), so a
+/// 3 seams: (23-3)/4 ≈ 5 rows each, well above `MIN_PANE_HEIGHT`(3), so a
 /// naive "halve this pane's current rect" guard (5 > 2*3 is false) would
 /// wrongly reject a 5th pane; the actual post-equalize height once there are
 /// 5 panes is (23-4)/5 ≈ 3.8 -> 3, which clears the minimum.
@@ -1028,7 +1028,7 @@ fn fifth_pane_split_succeeds_when_post_equalize_size_still_fits() {
     assert_eq!(
         ed.view.panes.len(),
         5,
-        "the split producing a 5th pane must succeed — post-equalize height still fits"
+        "the split producing a 5th pane must succeed: post-equalize height still fits"
     );
     assert_ne!(
         ed.state.status_msg.as_deref(),
@@ -1038,7 +1038,7 @@ fn fifth_pane_split_succeeds_when_post_equalize_size_still_fits() {
 
 /// A zero-height render area (e.g. a terminal reporting height 0 on early
 /// startup) must not panic. `EngineView::render` must guard the statusline
-/// (and tab bar) provider's synthesized `Rect` on `area.height` — an
+/// (and tab bar) provider's synthesized `Rect` on `area.height`. An
 /// unguarded `Rect` claiming a row regardless of `area.height` would send
 /// the provider's `Buffer::set_string` calls out-of-bounds and panic, unlike
 /// the background fill which clamps.
@@ -1051,7 +1051,7 @@ fn zero_height_render_does_not_panic() {
     assert_eq!(render_to_styled_string(&mut ed, rect), "");
 }
 
-/// After `:vsplit`, `render_into` must draw both panes at their own rects —
+/// After `:vsplit`, `render_into` must draw both panes at their own rects,
 /// not just the focused one. Both panes view the same buffer here, so the
 /// same content must appear in both halves of the styled-frame snapshot.
 #[test]
@@ -1088,7 +1088,7 @@ fn insert_block_shape_paints_the_head_in_both_panes() {
 }
 
 /// A theme that gives `ui.window` only a `bg` (the common upstream Helix
-/// shape — Helix's own border code leaves an unset fg as whatever the
+/// shape: Helix's own border code leaves an unset fg as whatever the
 /// terminal already shows) must not leave the seam glyph's foreground
 /// unthemed in HUME: it falls back to `ui.text`'s color, the same base every
 /// other undecorated surface (an ordinary content line, a virtual line)
@@ -1120,7 +1120,7 @@ fn seam_divider_falls_back_to_ui_text_when_window_has_no_fg() {
 
 /// Where a horizontal seam meets a vertical seam, the crossing cell must get
 /// a proper junction glyph (`┬`), not whichever straight glyph drew last.
-/// `:split` stacks A/B, then `:vsplit` on B splits it into B|C — the seam
+/// `:split` stacks A/B, then `:vsplit` on B splits it into B|C; the seam
 /// below A meets the seam between B and C in a T shape.
 #[test]
 fn split_then_vsplit_renders_t_junction_glyph() {
@@ -1137,7 +1137,7 @@ fn split_then_vsplit_renders_t_junction_glyph() {
 
 /// A 2×2 grid of panes (both rows split at the same ratio, so their vertical
 /// seams align in the same column) must render a full cross (`┼`) where the
-/// horizontal and vertical seams meet — not two overlapping straight lines.
+/// horizontal and vertical seams meet, not two overlapping straight lines.
 /// Same grid shape as `quit_in_grid_promotes_correct_sibling`.
 #[test]
 fn grid_of_four_panes_renders_cross_junction_glyph() {
@@ -1151,17 +1151,17 @@ fn grid_of_four_panes_renders_cross_junction_glyph() {
     let pid_b = ed.state.focus.id();
 
     ed.switch_focused_pane(pid_a);
-    ed.execute_typed("vsplit", None).unwrap(); // A/D side by side — top row.
+    ed.execute_typed("vsplit", None).unwrap(); // A/D side by side, top row.
 
     ed.switch_focused_pane(pid_b);
-    ed.execute_typed("vsplit", None).unwrap(); // B/C side by side — bottom row.
+    ed.execute_typed("vsplit", None).unwrap(); // B/C side by side, bottom row.
 
     let rect = Rect::new(0, 0, 20, 8);
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
 /// Entering Insert mode must hide the fake block cursor only in the focused
-/// pane (which real terminal bar cursor overlays) — not in every pane.
+/// pane (which real terminal bar cursor overlays), not in every pane.
 /// `resolve_pane_settings` (frame.rs) forces a block-cursor mode for
 /// unfocused panes regardless of the editor's global mode; this locks that
 /// per-pane behavior at the render level. `:vsplit` moves focus to the new
@@ -1185,7 +1185,7 @@ fn insert_mode_hides_cursor_only_in_focused_pane() {
 
 /// A pane created via `open_pane` (the shared core of `:split`/`:vsplit` and the
 /// keymap-bound `pane-split`/`pane-vsplit`) must get the same gutter column as
-/// the initial pane — not the empty `ProviderSet` `Pane::new` alone would give
+/// the initial pane, not the empty `ProviderSet` `Pane::new` alone would give
 /// it. Uses the real `Editor::open` constructor (not the bare-pane `for_testing`
 /// harness used elsewhere in this file) so the initial pane reflects actual
 /// production setup. It compares the split pane's
@@ -1254,7 +1254,7 @@ fn quit_with_multiple_panes_closes_focused_pane_not_editor() {
     );
 }
 
-/// The multi-pane `:q` branch skips the dirty check entirely — closing a pane
+/// The multi-pane `:q` branch skips the dirty check entirely: closing a pane
 /// never loses edits because the buffer stays open in the buffer list. This
 /// is a deliberate difference from the single-pane path, which still refuses
 /// on unsaved changes (covered by `colon_q_on_dirty_buffer_refuses`).
@@ -1321,7 +1321,7 @@ fn wq_with_multiple_panes_closes_focused_pane_not_editor() {
 
 /// `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced` live on
 /// `Editor` rather than `EditorState.panes`, so `drop_pane_state` can't clear
-/// them directly — `prepare_frame`'s `prune_closed_pane_caches` sweep is the
+/// them directly. `prepare_frame`'s `prune_closed_pane_caches` sweep is the
 /// only place that reclaims a closed pane's entries. Without it these three
 /// maps grow without bound over an editor session's lifetime.
 #[test]
@@ -1372,7 +1372,7 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
 }
 
 /// `virtual_lines_synced`'s cache key must include the pane's buffer, not
-/// just `decorations.generation()` — a generation-only key would keep a pane
+/// just `decorations.generation()`. A generation-only key would keep a pane
 /// mirroring its *previous* buffer's virtual lines after a switch, since
 /// switching a buffer doesn't bump the generation.
 #[test]
@@ -1382,7 +1382,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
     // `editor_from`'s bootstrap pane is built via `Pane::new` directly, with
-    // no `panes.render` entry (see `Editor::for_testing`'s comment) — only
+    // no `panes.render` entry (see `Editor::for_testing`'s comment); only
     // `open_pane` seeds one, so this test opens a second pane rather than
     // using the bootstrap one.
     let pid_a = ed.state.focus.id();
@@ -1430,7 +1430,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     assert!(
         ed.state.panes.render[pid].virtual_lines().is_empty(),
         "after switching to buffer B, the pane must no longer mirror buffer \
-         A's virtual lines — a generation-only sync gate would leave line 0 \
+         A's virtual lines; a generation-only sync gate would leave line 0 \
          populated with A's stale entry"
     );
 }
@@ -1450,12 +1450,12 @@ fn quit_in_grid_promotes_correct_sibling() {
     ed.execute_typed("split", None).unwrap();
     let pid_b = ed.state.focus.id();
 
-    // A/D side by side — top row.
+    // A/D side by side, top row.
     ed.switch_focused_pane(pid_a);
     ed.execute_typed("vsplit", None).unwrap();
     let pid_d = ed.state.focus.id();
 
-    // B/C side by side — bottom row. Grid is now: top (A, D), bottom (B, C).
+    // B/C side by side, bottom row. Grid is now: top (A, D), bottom (B, C).
     ed.switch_focused_pane(pid_b);
     ed.execute_typed("vsplit", None).unwrap();
     let pid_c = ed.state.focus.id();
@@ -1507,7 +1507,7 @@ fn quit_in_grid_promotes_correct_sibling() {
 // ── wrap_mode: pane override → buffer override → global ───────────────────────
 
 /// A same-buffer split (`:split` with no path) inherits the source pane's
-/// live override — not the global default. This lets a `:wrap`-toggled
+/// live override, not the global default. This lets a `:wrap`-toggled
 /// pane pass its mode on to a split of itself.
 #[test]
 fn same_buffer_split_inherits_source_panes_wrap_override() {
@@ -1532,7 +1532,7 @@ fn same_buffer_split_inherits_source_panes_wrap_override() {
 
 /// The other half of the split-inheritance contract: a source pane with *no*
 /// pane-level override (still inheriting from the buffer/global setting)
-/// splits into a pane that is likewise unpinned — not one frozen at
+/// splits into a pane that is likewise unpinned, not one frozen at
 /// whichever mode the source happened to resolve to. The new pane keeps
 /// following later `:set buffer`/`:set global wrap-mode=…` changes, same as
 /// the pane it split from.
@@ -1553,7 +1553,7 @@ fn same_buffer_split_of_an_unpinned_pane_stays_unpinned() {
     );
 }
 
-/// `:wrap` toggles only the focused pane's override — a sibling pane on the
+/// `:wrap` toggles only the focused pane's override; a sibling pane on the
 /// same buffer is untouched. The override lives on `Pane`, not on the
 /// buffer, so two panes viewing the same buffer can wrap independently once
 /// one is pinned.
@@ -1561,7 +1561,7 @@ fn same_buffer_split_of_an_unpinned_pane_stays_unpinned() {
 fn wrap_toggle_affects_only_focused_pane() {
     let mut ed = editor_from("-[h]>ello\n");
     // Global is resolved lazily on every read, so this reaches pid_a's
-    // effective mode retroactively — no pane pin needed for A to start off.
+    // effective mode retroactively; no pane pin needed for A to start off.
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
     let pid_a = ed.state.focus.id();
 
@@ -1573,7 +1573,7 @@ fn wrap_toggle_affects_only_focused_pane() {
         "sanity: both panes view the same buffer"
     );
 
-    // Focus is on B (the new pane) after :split — toggle wrap there.
+    // Focus is on B (the new pane) after :split; toggle wrap there.
     ed.execute_typed("wrap", None).unwrap();
 
     let doc = ed.state.buffers.get(ed.view.panes[pid_a].buffer_id);
@@ -1599,7 +1599,7 @@ fn wrap_toggle_affects_only_focused_pane() {
 
 // ── Geometry regression guards ─────────────────────────────────────────────────
 //
-// `EngineView` must not cache a `pane_rects` snapshot across frames — every
+// `EngineView` must not cache a `pane_rects` snapshot across frames. Every
 // consumer (pane-focus commands, `fits_split`, the bar-cursor lookup) must
 // recompute from the live layout tree plus the terminal area cached by the
 // last `prepare_frame`. A cache would let a close/split earlier in the same
@@ -1607,7 +1607,7 @@ fn wrap_toggle_affects_only_focused_pane() {
 // batch would otherwise still trust.
 
 /// Closing a pane and then focusing the next one, with no `prepare_frame` in
-/// between (exactly what a macro-replay batch does — several commands run
+/// between (exactly what a macro-replay batch does: several commands run
 /// per frame), must land on the surviving pane. A cached rect list would
 /// still list the just-closed pane, handing focus to a dead `PaneId`.
 #[test]
@@ -1626,7 +1626,7 @@ fn close_then_focus_next_without_reframe_lands_on_live_pane() {
     ed.settle();
     ed.prepare_frame(&mut ctx); // establish terminal geometry once
 
-    // Close B, then immediately focus-next — no `prepare_frame` in between.
+    // Close B, then immediately focus-next, no `prepare_frame` in between.
     ed.execute_typed("quit", None).unwrap();
     assert_eq!(ed.view.panes.len(), 1, "sanity: B is closed");
     let fp = FocusedPane::current(&ed.state);
@@ -1657,7 +1657,7 @@ fn split_then_focus_left_without_reframe_reaches_new_pane() {
     ed.settle();
     ed.prepare_frame(&mut ctx); // geometry established with one pane
 
-    // :vsplit puts the new pane on the right and moves focus to it — no
+    // :vsplit puts the new pane on the right and moves focus to it, with no
     // `prepare_frame` in between.
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.state.focus.id();
@@ -1711,7 +1711,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     );
 }
 
-/// A same-buffer split inherits the source pane's `saved_scrolls` — its
+/// A same-buffer split inherits the source pane's `saved_scrolls`: its
 /// memory of where it was in buffers visited *before* the split. Without
 /// this, the new pane would reset such a buffer to the top on first visit
 /// instead of recalling where the source pane last left it.
@@ -1724,7 +1724,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
     let pid_a = ed.state.focus.id();
 
     // A second buffer the source pane visited (and scrolled) before the
-    // split, then switched away from — this is what populates
+    // split, then switched away from. This is what populates
     // `saved_scrolls` in real usage (see `remember_scroll`).
     let bid2 = open_buffer(&mut ed.view, &mut ed.state.buffers, Buffer::scratch(), 0);
     ed.view.panes[pid_a].saved_scrolls.insert(
@@ -1750,7 +1750,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
 }
 
 /// Before the first `prepare_frame`, there is no real terminal geometry to
-/// check a split against — `fits_split` must allow it; the next
+/// check a split against, so `fits_split` must allow it; the next
 /// `prepare_frame` sizes the result correctly regardless.
 #[test]
 fn fits_split_allows_before_first_frame() {
@@ -1770,8 +1770,8 @@ fn fits_split_allows_before_first_frame() {
     ));
 }
 
-/// If the focused pane isn't reachable in the active layout tree — an
-/// invariant violation that should never happen — `split_pane_onto` must
+/// If the focused pane isn't reachable in the active layout tree (an
+/// invariant violation that should never happen), `split_pane_onto` must
 /// refuse before creating anything: `open_pane_in_layout` checks
 /// `contains_leaf` up front, so there is never a speculatively created pane
 /// to roll back, and no window where one exists with no layout leaf (which
@@ -1785,7 +1785,7 @@ fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
     let bid = ed.focused_buffer_id();
 
     // Fabricate the desync directly, but through a genuinely real pane: open
-    // a second tab (a real, properly-attached pane — just attached to *that*
+    // a second tab (a real, properly-attached pane, just attached to *that*
     // tab's own layout, not the active one), then reuse its id as the active
     // tab's `focus`. That reproduces the same condition
     // `contains_leaf` must defend against (a focused pane the active layout
@@ -1844,7 +1844,7 @@ fn dividers_off_pane_rects_tile_with_no_gap() {
 
 /// Visual lock-in companion to `dividers_off_pane_rects_tile_with_no_gap`:
 /// with `pane-dividers` off the two halves render edge-to-edge (no gap
-/// column between them), and the non-focused pane is still visibly dimmed —
+/// column between them), and the non-focused pane is still visibly dimmed:
 /// dimming is the focus cue, independent of the divider glyph.
 #[test]
 fn vsplit_dividers_off_tiles_edge_to_edge_and_still_dims() {
@@ -1876,7 +1876,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
         "source pane has one jump entry after gg"
     );
 
-    // Same-buffer split — new pane inherits the source pane's jump history.
+    // Same-buffer split: new pane inherits the source pane's jump history.
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.state.focus.id();
     assert_ne!(pid_a, pid_b, "focus moved to the new pane");
@@ -1906,7 +1906,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 // ── Per-pane highlight isolation ────────────────────────────────────────────
 //
 // `update_highlight_providers` must not write into globally-shared highlight
-// state read by every pane's `ScopedHighlighter` — each pane owns its own
+// state read by every pane's `ScopedHighlighter`; each pane owns its own
 // highlight buffers (`PaneHighlights`), computed from that pane's own buffer
 // and viewport. Global, focused-buffer-only state would render the focused
 // pane's highlight bytes (bracket/search matches) onto every other pane's
@@ -1914,7 +1914,7 @@ fn split_same_buffer_clones_jump_list_then_diverges() {
 // buffer scrolled elsewhere.
 
 /// A search match that spans a `\n` must produce one highlight span per line
-/// it touches, each clipped to that line's own content — not a single span
+/// it touches, each clipped to that line's own content, not a single span
 /// computed by converting the match's absolute end offset through whichever
 /// line the *start* happened to be on (which gives a corrupt or inverted
 /// span whenever a match crosses a line boundary).
@@ -1951,7 +1951,7 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     ed.prepare_frame(&mut ctx);
 
     // Every span shares the one search-match scope (`ScopedHighlighter`
-    // carries it per-span now, not fixed on the provider) — dropped here
+    // carries it per-span now, not fixed on the provider), dropped here
     // since this test is about span geometry, not scope resolution.
     let matches: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, HighlightTier::SearchMatch)
         .into_iter()

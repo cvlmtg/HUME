@@ -119,7 +119,7 @@ fn ls_scratch_buffer_shows_scratch_name() {
     );
 }
 
-/// A buffer carrying both a label and a path must show the label — matching
+/// A buffer carrying both a label and a path must show the label, matching
 /// `Buffer::display_name()`, which every other surface (`:tabnew`'s tabline,
 /// the statusline) reads through.
 #[test]
@@ -166,7 +166,7 @@ fn view_buffer_arrow_keys_move_cursor_not_select() {
     ed.handle_key(key_up());
 
     let sel = ed.current_selections().primary();
-    // Selection must be collapsed (anchor == head) — not a whole-line span.
+    // Selection must be collapsed (anchor == head), not a whole-line span.
     assert_eq!(
         sel.anchor(),
         sel.head(),
@@ -208,7 +208,7 @@ fn messages_reuses_existing_view_buffer() {
     ed.report(Severity::Warning, "msg2".to_string());
     ed.execute_typed("messages", None).unwrap();
 
-    // Count buffers with the [messages] label — must be exactly 1.
+    // Count buffers with the [messages] label: must be exactly 1.
     let count = ed
         .state
         .buffers
@@ -229,7 +229,7 @@ fn view_buffer_blocks_edits() {
     ed.execute_typed("messages", None).unwrap();
     let content_before = ed.doc().text().to_string();
 
-    // Try to delete the focused character — should be a no-op.
+    // Try to delete the focused character: should be a no-op.
     ed.handle_key(key('x'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -286,7 +286,7 @@ fn ls_does_not_list_itself_on_second_call() {
         ":ls must not list the [buffers] view buffer in its own output; got:\n{out2}"
     );
 
-    // Row count must be stable — one content row for the scratch buffer, one header.
+    // Row count must be stable: one content row for the scratch buffer, one header.
     assert_eq!(
         out1.lines().count(),
         out2.lines().count(),
@@ -294,7 +294,7 @@ fn ls_does_not_list_itself_on_second_call() {
     );
 }
 
-/// `:ls` must not push an entry to the jump list — view buffers are ephemeral.
+/// `:ls` must not push an entry to the jump list: view buffers are ephemeral.
 /// Validity: change switch_to_buffer_without_jump back to switch_to_buffer_with_jump
 /// in open_read_only_view and this test fails (departure buffer gains a jump entry).
 #[test]
@@ -329,7 +329,7 @@ fn read_only_buffer_blocks_undo_and_redo() {
     let after_delete = ed.doc().text().to_string();
 
     // Flip the buffer to read-only (simulates the condition where a view buffer
-    // somehow has undo history — e.g. from a future API path).
+    // somehow has undo history, e.g. from a future API path).
     ed.doc_mut().read_only = true;
 
     // u (undo) must be a no-op, and must report why (refuse_if_read_only).
@@ -366,11 +366,11 @@ fn read_only_buffer_blocks_undo_and_redo() {
 }
 
 /// `apply_doc_history_walk`'s own read-only refusal must be distinguishable
-/// from genuine root/leaf exhaustion — see `HistoryWalk`'s own doc for why.
+/// from genuine root/leaf exhaustion. See `HistoryWalk`'s own doc for why.
 #[test]
 fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
     let mut ed = editor_from("-[h]>ello\n");
-    ed.handle_key(key('d')); // creates one undo step — not exhausted
+    ed.handle_key(key('d')); // creates one undo step, not exhausted
     ed.doc_mut().read_only = true;
 
     let focused = ed.state.focus.id();
@@ -445,7 +445,7 @@ fn view_buffer_blocks_paste() {
 /// ring.
 ///
 /// Validity: drop the `refuse_if_read_only()` guard from `cmd_delete` and this
-/// test fails — the ring head becomes the (refused) delete's yank instead of
+/// test fails: the ring head becomes the (refused) delete's yank instead of
 /// the pre-existing one.
 #[test]
 fn read_only_buffer_blocks_delete_kill() {
@@ -490,7 +490,7 @@ fn read_only_buffer_blocks_delete_kill() {
 /// the kill ring or touch the paste stamp.
 ///
 /// Validity: drop the `refuse_if_read_only()` guard from `cmd_change` and this
-/// test fails — the ring head becomes the (refused) change's yank and the
+/// test fails: the ring head becomes the (refused) change's yank and the
 /// editor drops into Insert mode.
 #[test]
 fn read_only_buffer_blocks_change_kill() {
@@ -538,12 +538,12 @@ fn read_only_buffer_blocks_change_kill() {
 /// populated, and must not leave the `"<reg>` prefix armed for the next
 /// command. `3`, not `a`: `a` is not a valid register name
 /// (`is_valid_register_name` accepts only `0`–`9`, `k`, `c`, `b`), so
-/// `input_stack/base.rs` would already have dropped the prefix on `"a` alone
-/// — a register that never armed can't tell this test whether the refusal
+/// `input_stack/base.rs` would already have dropped the prefix on `"a` alone,
+/// and a register that never armed can't tell this test whether the refusal
 /// itself cleared anything.
 ///
 /// Validity: drop the `state.register_prefix = None` line from
-/// `refuse_if_read_only()` and this test fails — the prefix survives and
+/// `refuse_if_read_only()` and this test fails: the prefix survives and
 /// silently redirects the next yank/kill into register `3`.
 #[test]
 fn read_only_refusal_clears_register_prefix_on_delete() {
@@ -571,7 +571,7 @@ fn read_only_refusal_clears_register_prefix_on_delete() {
 /// `read_only_refusal_clears_register_prefix_on_delete`.
 ///
 /// Validity: drop the `state.register_prefix = None` line from
-/// `refuse_if_read_only()` and this test fails — the prefix survives.
+/// `refuse_if_read_only()` and this test fails: the prefix survives.
 #[test]
 fn read_only_refusal_clears_register_prefix_on_paste() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -593,7 +593,7 @@ fn read_only_refusal_clears_register_prefix_on_paste() {
 /// "Buffer is read-only", not "no file name".
 ///
 /// Validity: remove the `is_read_only()` guard from `write_file` and this
-/// test fails — the status_msg will contain "no file name" instead.
+/// test fails: the status_msg will contain "no file name" instead.
 #[test]
 fn view_buffer_blocks_write() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -610,10 +610,10 @@ fn view_buffer_blocks_write() {
 }
 
 /// `:e!` on a synthetic buffer (path-less, labeled) must error with
-/// "no file name" — there is no source to reload from, force or not.
+/// "no file name": there is no source to reload from, force or not.
 ///
 /// Validity: restore the force-branch that replaces with scratch and this
-/// test fails — the buffer becomes a scratch buffer instead of erroring.
+/// test fails: the buffer becomes a scratch buffer instead of erroring.
 #[test]
 fn synthetic_buffer_e_bang_errors() {
     let mut ed = editor_from("-[h]>ello\n");

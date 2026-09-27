@@ -15,7 +15,7 @@ impl<'a> RegisterHost for EditorHostImpl<'a> {
             // Black hole and macro registers fall out for free:
             // `RegisterSet::read` already returns `None` for the black hole,
             // and `Register::as_text` already returns `None` for
-            // `RegisterContent::Macro`, so both read as `#f` — same as empty.
+            // `RegisterContent::Macro`, so both read as `#f`, same as empty.
             c => {
                 let (values, warn) = register_ops::read_register_text(
                     &self.state.registers,

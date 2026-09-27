@@ -20,7 +20,7 @@ use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// `<repo>/runtime/scheme/` — the runtime catalog directory.
+/// `<repo>/runtime/scheme/`: the runtime catalog directory.
 pub(super) fn runtime_scheme_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -103,7 +103,7 @@ fn attach_then_set_language_attaches_syntax() {
 }
 
 /// `reset_config_state` (via `BufferStore::clear_languages_all`) bypasses
-/// `set_buffer_language` entirely — it writes `buf.language = None` directly,
+/// `set_buffer_language` entirely: it writes `buf.language = None` directly,
 /// which is the bug `clear_language_detaches_syntax_keeps_identity` above
 /// doesn't cover: that test clears through `set_buffer_language`, the normal
 /// path that also tears down `buf.syntax` via `setup_buffer_syntax`. If
@@ -133,7 +133,7 @@ fn reset_config_state_clears_buffer_syntax_not_just_language() {
 
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
-        "buffer syntax must not survive the reset — it holds an \
+        "buffer syntax must not survive the reset: it holds an \
          Arc<GrammarBundle> from the outgoing LanguageRegistry that \
          clear_languages_all replaces"
     );
@@ -160,7 +160,7 @@ fn clear_language_detaches_syntax_keeps_identity() {
         ed.state.buffers.get(bid).syntax.is_none(),
         "syntax attachment (and its committed tree) must be cleared on language=None"
     );
-    // Identity survives detach — grammar is gone, language definition is not.
+    // Identity survives detach: grammar is gone, language definition is not.
     assert!(
         ed.state.config.languages.by_name("json").is_some(),
         "identity must survive grammar detach"
@@ -178,7 +178,7 @@ fn sweep_attaches_syntax_on_matching_language() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    // Set language BEFORE grammar is attached — no syntax yet.
+    // Set language BEFORE grammar is attached: no syntax yet.
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(
@@ -206,12 +206,12 @@ fn sweep_no_op_for_nonmatching_language() {
         .languages
         .register_identity("json", &["json"], &[], &[], None)
         .unwrap();
-    // Set language but don't attach grammar yet — parser stays absent.
+    // Set language but don't attach grammar yet: parser stays absent.
     let lang = ed.state.config.languages.intern("json");
     ed.set_buffer_language(bid, Some(lang));
     assert!(ed.state.buffers.get(bid).syntax.is_none());
 
-    // Sweep for a different language — must leave the json buffer untouched.
+    // Sweep for a different language. Must leave the json buffer untouched.
     let rust_id = ed.state.config.languages.intern("rust");
     ed.sweep_buffers_for_grammars(vec![rust_id]);
     assert!(
@@ -259,7 +259,7 @@ fn reparse_advances_parsed_gen_after_edit() {
         "parsed_gen must equal text_gen after initial setup",
     );
 
-    // Insert a character — bumps text_gen.
+    // Insert a character: bumps text_gen.
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     ed.feed_key(key_esc());
@@ -293,7 +293,7 @@ fn reparse_advances_parsed_gen_after_edit() {
         "reparse must advance parsed_gen to current text_gen",
     );
 
-    // Third call is a no-op — parsed_gen stays at gen1.
+    // Third call is a no-op: parsed_gen stays at gen1.
     ed.reparse_stale_buffers();
     assert_eq!(
         ed.state
@@ -371,10 +371,10 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 // ---------------------------------------------------------------------------
 
 /// Closing the last open buffer (`buffer::lifecycle::
-/// close_buffer`'s `None` branch — frees `bid`'s slot outright and opens a
+/// close_buffer`'s `None` branch, which frees `bid`'s slot outright and opens a
 /// fresh scratch buffer under a new id) must not leak the closed buffer's
 /// syntax attachment (and the committed tree it owns) anywhere the engine
-/// can still reach it — `bid`'s own slot must be gone, and the new scratch
+/// can still reach it: `bid`'s own slot must be gone, and the new scratch
 /// buffer must start with no syntax attached, not inherit the old tree.
 #[test]
 fn closing_the_last_buffer_clears_engine_syntax_state() {
@@ -437,7 +437,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
         "syntax must be set initially"
     );
 
-    // Force detach by setting a 1-byte cap — any non-empty buffer exceeds it.
+    // Force detach by setting a 1-byte cap: any non-empty buffer exceeds it.
     ed.state.settings.syntax_highlight_max_bytes = 1;
     ed.reparse_stale_buffers();
     assert!(
@@ -445,7 +445,7 @@ fn reparse_reattaches_after_shrink_under_cap() {
         "syntax must detach when exceeding cap"
     );
 
-    // Restore a generous cap — next reparse must re-attach.
+    // Restore a generous cap: next reparse must re-attach.
     ed.state.settings.syntax_highlight_max_bytes = usize::MAX;
     ed.reparse_stale_buffers();
     assert!(
@@ -484,7 +484,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 
     // Give the buffer a path so detect_and_set_language keeps returning "json"
     // after reload (pathless buffers re-detect to None, which is a language
-    // *change* — a different code path than the one we're testing here).
+    // *change*, a different code path than the one we're testing here).
     ed.state
         .buffers
         .get_mut(bid)
@@ -516,7 +516,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
         "tree must be installed before reload"
     );
 
-    // Reload with different-length content — language stays "json" (path unchanged).
+    // Reload with different-length content: language stays "json" (path unchanged).
     // `{"x": 1}\n` (original, 9 bytes) → `[1, 2, 3]\n` (replacement, 10 bytes).
     // The byte-length difference makes the tree-alignment check below definitive:
     // a stale tree (not rebuilt) would report end_byte() == 9, not 10.
@@ -555,7 +555,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     // A second reload with byte-identical content: `reload_from_text`'s
     // `forward.is_identity()` branch returns `false` (no mutation) without
     // touching `text_gen`. `reload_buffer_in_place` must not call
-    // `clear_layers` on that no-mutation path — doing so would drop the tree
+    // `clear_layers` on that no-mutation path: doing so would drop the tree
     // just installed above with no `text_gen` bump to trigger a reparse,
     // leaving the buffer unhighlighted until the next real edit.
     let mut identical = Buffer::new(BufferText::from(new_text), SelectionSet::default());
@@ -587,7 +587,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 
 /// The reparse path is two-phase: the first `reparse_stale_buffers` call after an
 /// edit posts the request (the inline backend stashes the result immediately), but
-/// the result is not installed until `drain_done` runs — which happens at the top of
+/// the result is not installed until `drain_done` runs, which happens at the top of
 /// the next `reparse_stale_buffers` call.
 #[test]
 fn parse_worker_result_is_async_then_installed() {
@@ -606,7 +606,7 @@ fn parse_worker_result_is_async_then_installed() {
 
     let gen0 = ed.state.buffers.get(bid).text_gen;
 
-    // Edit — bumps text_gen.
+    // Edit: bumps text_gen.
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     ed.feed_key(key_esc());
@@ -670,7 +670,7 @@ fn grammar_swap_clears_stale_in_flight() {
     ed.set_buffer_language(bid, Some(lang));
     ed.reparse_stale_buffers(); // drain json parse result
 
-    // Attach rust grammar and sweep — this should clear any json in-flight and post fresh.
+    // Attach rust grammar and sweep. This should clear any json in-flight and post fresh.
     let rust_bundle = attach_fixture_grammar(&mut ed, "rust", "tree_sitter_rust");
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
@@ -723,7 +723,7 @@ fn catalog_parsing_extracts_json_pins() {
 
 /// Attach the pre-built Rust grammar fixture and snapshot the styled render output.
 ///
-/// Locks down that token colours actually reach the screen — not just that
+/// Locks down that token colours actually reach the screen, not just that
 /// highlight spans are emitted.  The cursor sits on the trailing `\n` so no
 /// content cell is reverse-video.
 ///

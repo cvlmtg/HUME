@@ -1,4 +1,4 @@
-//! selection_keys.rs — undo/redo boundary messages, register-affecting single-key commands, and `x` select-line.
+//! selection_keys.rs: undo/redo boundary messages, register-affecting single-key commands, and `x` select-line.
 
 use super::super::*;
 use pretty_assertions::assert_eq;
@@ -14,7 +14,7 @@ fn undo_at_root_shows_message() {
     ed.handle_key(key('u'));
     assert!(
         ed.state.status_msg.is_none(),
-        "first undo should succeed — no message"
+        "first undo should succeed with no message"
     );
     ed.handle_key(key('u'));
     assert_eq!(
@@ -53,7 +53,7 @@ fn redo_at_newest_shows_message() {
     ed.handle_key(key_ctrl('r'));
     assert!(
         ed.state.status_msg.is_none(),
-        "first redo should succeed — no message"
+        "first redo should succeed with no message"
     );
     ed.handle_key(key_ctrl('r'));
     assert_eq!(
@@ -100,7 +100,7 @@ fn redo_with_count_shows_message_on_exhaustion() {
 
 /// Deleting a selection must push the deleted text onto the kill ring.
 /// A bug in the mapping that removed the `yank_selections` call before
-/// `delete_selection` would leave the ring empty — invisible to pure tests.
+/// `delete_selection` would leave the ring empty, invisible to pure tests.
 #[test]
 fn d_yanks_selection_into_register_before_deleting() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -118,7 +118,7 @@ fn d_yanks_selection_into_register_before_deleting() {
 
 /// `y` must write to the system clipboard (in-memory mirror) and push to the
 /// kill ring, without changing the buffer or the selection.
-/// This is the only way to test that `y` actually writes the correct storage —
+/// This is the only way to test that `y` actually writes the correct storage;
 /// pure tests of `yank_selections` never touch `Editor.registers` or `kill_ring`.
 #[test]
 fn y_populates_register_without_changing_buffer() {
@@ -177,7 +177,7 @@ fn r_then_esc_cancels_without_side_effects() {
     );
 }
 
-/// Unlike `r`, find/till has extend duality — this exercises that branch
+/// Unlike `r`, find/till has extend duality, and this exercises that branch
 /// being cleanly torn down on Esc.
 #[test]
 fn f_then_esc_cancels_without_side_effects() {
@@ -212,7 +212,7 @@ fn r_then_enter_replaces_with_newline() {
 }
 
 /// Multi-char selection: every grapheme becomes '\n', except a grapheme that
-/// already was '\n' — `replace_selections` never replaces an existing newline,
+/// already was '\n': `replace_selections` never replaces an existing newline,
 /// it is retained as-is (see `replace_multiline_selection_skips_newline` in
 /// `hume-ops/src/edit/tests/replace.rs`). This exercises that rule with the new Enter argument.
 #[test]
@@ -235,7 +235,7 @@ fn r_then_tab_replaces_with_tab() {
 
 /// `f<ret>` is accepted as a wait-char argument (the wait clears, unlike Esc)
 /// but never matches: `find_char_on_line_forward` (hume-ops/src/motion/find.rs)
-/// explicitly excludes '\n' as a structural line boundary, not content — by
+/// explicitly excludes '\n' as a structural line boundary, not content, by
 /// design, not a bug. This documents that "accepted argument" and "found on
 /// line" are separate questions, exactly like `fz` on a line with no 'z'.
 #[test]
@@ -250,7 +250,7 @@ fn f_then_enter_is_accepted_but_never_matches() {
     assert_eq!(
         state(&ed),
         "-[h]>ello\n",
-        "'\\n' is never a match target for find — cursor unchanged"
+        "'\\n' is never a match target for find: cursor unchanged"
     );
 }
 
@@ -293,7 +293,7 @@ fn m_a_unknown_char_falls_through_cleanly() {
 
     ed.handle_key(key('m'));
     ed.handle_key(key('a'));
-    // '~' is not a known text-object char — NoMatch clears pending state.
+    // '~' is not a known text-object char; NoMatch clears pending state.
     ed.handle_key(key('~'));
 
     assert!(

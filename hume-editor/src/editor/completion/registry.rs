@@ -1,9 +1,9 @@
-//! Every completion source the editor knows — the six native minibuffer
+//! Every completion source the editor knows: the six native minibuffer
 //! sources compiled in, plus whatever Steel registered via
 //! `(register-completion-source! …)`. **Two separate namespaces, one per
 //! target**: a `TypedCommand.completer` names an entry in [`SourceRegistry::minibuf`],
 //! an Insert-mode trigger invokes entries in [`SourceRegistry::buffer`]. A
-//! name can be taken in both namespaces at once — `"path"` as a `Buffer`
+//! name can be taken in both namespaces at once: `"path"` as a `Buffer`
 //! source and `"path"` as a `Minibuf` source are two unrelated
 //! registrations, not a collision, because there is no shared id space for
 //! them to collide in. Lives on `ConfigState`, so `:reload-config` rebuilds
@@ -11,12 +11,12 @@
 //! config that registered it.
 //!
 //! A source's *static* facts live here (its name, how its items are scored,
-//! its priority); everything about one particular invocation of it — the
-//! document it saw, the span it answered for, the items — is `session.rs`'s
+//! its priority); everything about one particular invocation of it (the
+//! document it saw, the span it answered for, the items) is `session.rs`'s
 //! [`super::Invocation`]. A session refers back here by id rather than
 //! copying any of this, so a name/priority/match kind has exactly one home.
 //!
-//! Every `Buffer` source is Steel — there is no native one, by design: a
+//! Every `Buffer` source is Steel. There is no native one, by design: a
 //! `Buffer`-target source scans live editor state (the buffer, an LSP
 //! server), which is exactly what the plugin layer exists to reach into.
 
@@ -26,7 +26,7 @@ use steel::rvals::SteelVal;
 
 use super::{CompletionCtx, CompletionItem, MatchKind};
 
-/// A native minibuffer source that enumerates a stable universe — the
+/// A native minibuffer source that enumerates a stable universe: the
 /// session's own matcher narrows it, and the orchestrator supplies the
 /// `'arg` span it never has to compute.
 pub(in crate::editor) type NativeUniverseFn = fn(&CompletionCtx<'_>) -> Vec<CompletionItem>;
@@ -37,7 +37,7 @@ pub(in crate::editor) type NativeUniverseFn = fn(&CompletionCtx<'_>) -> Vec<Comp
 pub(in crate::editor) type NativeDelegatedFn =
     fn(&str, usize, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
 
-/// How a `Minibuf` source produces its answer — the two native shapes each
+/// How a `Minibuf` source produces its answer: the two native shapes each
 /// have a fixed span rule of their own (see [`super::orchestrate::
 /// invoke_minibuf_source`]'s doc): `NativeDelegated` computes its own,
 /// everything else (including every `Steel` minibuf source) gets the
@@ -57,7 +57,7 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// Invoked via `EditorState::queue_steel_call` as `(proc id bid
     /// prefix)`, answered by `(completion-emit! id …)`.
     pub(in crate::editor) proc: SteelVal,
-    /// `#:resolve` — this source's own claim that its items are wire
+    /// `#:resolve`: this source's own claim that its items are wire
     /// `CompletionItem`s from the buffer's attached LSP server, so
     /// `completionItem/resolve` may be sent for an accepted one on its
     /// behalf (`session/accept.rs`'s `maybe_send_resolve`). `false` by
@@ -65,7 +65,7 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// other synthetic-item source) never has a resolve request sent for
     /// its items, however the buffer's own LSP server capabilities read.
     pub(in crate::editor) resolve: bool,
-    /// This source's own trigger characters, per language — set by
+    /// This source's own trigger characters, per language, set by
     /// `(completion-set-trigger-chars! name language chars)`
     /// ([`SourceRegistry::set_buffer_trigger_chars`]), not at registration
     /// time (a server's own trigger characters usually aren't known until
@@ -81,11 +81,11 @@ pub(in crate::editor) struct MinibufSourceEntry {
     pub(in crate::editor) body: MinibufBody,
 }
 
-/// Index into [`SourceRegistry::buffer`] — stable for an entry's whole
+/// Index into [`SourceRegistry::buffer`], stable for an entry's whole
 /// life, since a re-registration under the same name overwrites the slot in
 /// place rather than pushing a new one. Distinct from [`MinibufSourceId`]
 /// so a caller can't hand a buffer-namespace id to a minibuf-namespace
-/// lookup (or the reverse) — the two id spaces don't overlap, and there is
+/// lookup (or the reverse): the two id spaces don't overlap, and there is
 /// no shared "which target" tag left to check at runtime.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) struct BufferSourceId(u32);
@@ -99,7 +99,7 @@ pub(in crate::editor) struct SourceRegistry {
     minibuf: Vec<MinibufSourceEntry>,
 }
 
-/// What a `register_*` call did — the caller's own report depends on which.
+/// What a `register_*` call did. The caller's own report depends on which.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) enum RegisterOutcome {
     Added,
@@ -140,9 +140,9 @@ impl SourceRegistry {
 
     /// Registers (or, under an already-taken name, replaces in place) a
     /// `Buffer` source. Replacing keeps the entry's [`BufferSourceId`]
-    /// stable for any session still referring to it — a plugin swapping in
+    /// stable for any session still referring to it (a plugin swapping in
     /// its own source under a name it already owns is a feature, not a
-    /// collision — and carries the old entry's `trigger_chars` forward:
+    /// collision), and carries the old entry's `trigger_chars` forward:
     /// that routing table is set by a separate call
     /// ([`Self::set_buffer_trigger_chars`]), at a different time than
     /// registration, so a `proc`/`match_kind`/`priority`/`resolve` swap has
@@ -168,13 +168,13 @@ impl SourceRegistry {
     }
 
     /// Sets `name`'s own trigger characters for `language`, replacing that
-    /// exact `(name, language)` pair's previous set — the completion-
+    /// exact `(name, language)` pair's previous set: the completion-
     /// specific counterpart to `register-trigger-chars!`'s shared,
     /// listener-agnostic table (`EditorState.config.trigger_chars`), for
     /// the one reader (`orchestrate.rs`'s `Trigger::Char` arm) that needs a
     /// completion source's own answer, not a hook fire. An empty `chars`
     /// removes the `(name, language)` entry. `Err` when `name` names no
-    /// registered `Buffer` source — a plugin's own typo or stale rename,
+    /// registered `Buffer` source: a plugin's own typo or stale rename,
     /// not something to silently ignore the way the shared table has to
     /// (it also serves non-completion listeners, where an unregistered
     /// name isn't necessarily a mistake).
@@ -196,7 +196,7 @@ impl SourceRegistry {
         Ok(())
     }
 
-    /// [`Self::register_buffer`]'s `Minibuf` counterpart — overriding a
+    /// [`Self::register_buffer`]'s `Minibuf` counterpart. Overriding a
     /// native name (`"path"`, `"command"`, …) is allowed for the same
     /// reason.
     pub(in crate::editor) fn register_minibuf(
@@ -237,17 +237,17 @@ impl SourceRegistry {
         &self.minibuf[id.0 as usize]
     }
 
-    /// Every `Buffer`-target source, in registration order — what an
+    /// Every `Buffer`-target source, in registration order: what an
     /// explicit Insert-mode trigger invokes.
     pub(in crate::editor) fn buffer_sources(&self) -> Vec<BufferSourceId> {
         (0..self.buffer.len() as u32).map(BufferSourceId).collect()
     }
 
     /// Every `Buffer` source whose own `(language, chars)` set
-    /// ([`Self::set_buffer_trigger_chars`]) includes `ch` for `language` —
+    /// ([`Self::set_buffer_trigger_chars`]) includes `ch` for `language`:
     /// what a trigger-char keystroke invokes (`orchestrate.rs`'s
     /// `Trigger::Char`). `[]` with no language (a buffer with no detected
-    /// language never matches anything — a completion source's own trigger
+    /// language never matches anything: a completion source's own trigger
     /// chars are always server-derived, and a server attach implies a
     /// language).
     pub(in crate::editor) fn buffer_sources_for_trigger(

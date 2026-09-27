@@ -2,7 +2,7 @@
 // diagnostics change, composing `lsp-request`, `lsp-capabilities`, debounce,
 // `set-inlay-hints!`, `on-viewport-change`, `on-diagnostics-changed`,
 // and rendering (not tested here, its own pinned snapshots cover that).
-// Named lsp_inlay_feature.rs — lsp_inlay_hints.rs already covers rendering
+// Named lsp_inlay_feature.rs because lsp_inlay_hints.rs already covers rendering
 // of the decoration store directly; this file drives the same store through
 // the real shipped plugin and a real LSP round trip. Loads the real shipped
 // `core:lsp` plugin in place (`RealRuntimeGuard`).
@@ -85,12 +85,12 @@ fn fire_viewport_change(ed: &mut Editor) {
     ed.queue_viewport_change(pid);
 }
 
-/// Two `settle()` rounds after the sleep, not one — `settle()`'s own
+/// Two `settle()` rounds after the sleep, not one: `settle()`'s own
 /// `drain_async_sources` runs once, at its top, before its fixpoint drains
 /// `pending_work`:
 /// - **Round 1** picks up the now-due debounce timer (`drain_due_timers`
 ///   queues the thunk via `queue_steel_call`), and the same call's fixpoint
-///   runs it immediately — sending the wire request. The scripted backend
+///   runs it immediately, sending the wire request. The scripted backend
 ///   auto-queues its response synchronously, but this round's
 ///   `drain_async_sources` already ran, so it isn't seen yet.
 /// - **Round 2**'s `drain_async_sources` is what picks the response up (via
@@ -136,7 +136,7 @@ fn viewport_change_triggers_one_debounced_request() {
 }
 
 /// `lsp/inlay-hint-params` builds its wire `range` straight from
-/// `viewport-range`, already 0-based end-exclusive — no `+ 1` needed.
+/// `viewport-range`, already 0-based end-exclusive, so no `+ 1` needed.
 /// Nothing else in this file inspects the request's `params`, so a stray
 /// `+ 1` (re-adding the pre-exclusive-range LSP-end-conversion) would ask
 /// for one line past the pane's actual viewport with no test failing.
@@ -175,7 +175,7 @@ fn setting_off_sends_no_request() {
     let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
-    // lsp_inlay_hints defaults to false — left untouched.
+    // lsp_inlay_hints defaults to false: left untouched.
 
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
@@ -188,7 +188,7 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());
-    // "let x = 1;\n" — wire {line:0, character:4} is 'x' (char offset 4,
+    // "let x = 1;\n": wire {line:0, character:4} is 'x' (char offset 4,
     // ASCII text, UTF-16 code units == char offsets).
     let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
@@ -267,11 +267,11 @@ fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
 ///
 /// Writes through `settings::ops::apply_global` directly (the exact
 /// production path `:set global`/`set-option!`/`:theme` all funnel
-/// through — see its module doc) rather than `type_cmd(":set global …")`:
+/// through, see its module doc) rather than `type_cmd(":set global …")`:
 /// typing and executing a command line opens and closes the minibuffer,
 /// which resizes the pane and queues its own `on-viewport-change`. That
 /// event independently re-requests hints via its own, already-correct
-/// `get-option` check, which would mask this bug — the hook's own branch,
+/// `get-option` check, which would mask this bug. The hook's own branch,
 /// and nothing else, must be what re-requests them here. No
 /// `fire_viewport_change` for the same reason.
 #[test]
@@ -283,7 +283,7 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
         // Three responses queued: the seeding "true" phase below sends two
         // requests (the direct fire `fire_viewport_change` queues, plus the
         // second, independent one `prepare_frame`'s scroll step arms via
-        // `debounce_viewport_change` — see the comment below), and the
+        // `debounce_viewport_change`; see the comment below), and the
         // final "on" toggle sends a third.
         for _ in 0..3 {
             backend.respond_to(
@@ -296,7 +296,7 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
 
     // Seed a synced viewport and one landed hint. Uses `fire_viewport_change`
     // (unlike the toggles below) purely to establish the viewport
-    // `lsp/refresh-hints` needs — that event's own hint request is
+    // `lsp/refresh-hints` needs. That event's own hint request is
     // legitimate here, since the setting is already correctly on.
     crate::editor::settings::ops::apply_global(
         &mut ed.state,
@@ -310,7 +310,7 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
     // `fire_viewport_change` -> `prepare_frame` also arms
     // `debounce_viewport_change`'s own Rust-side timer (`lsp.viewport-debounce-ms`,
     // 150ms by default) as a side effect of its scroll step seeing the
-    // pane's visible range change for the first time — a *second*,
+    // pane's visible range change for the first time: a *second*,
     // independent `on-viewport-change` fire, on top of the direct one
     // `fire_viewport_change` queues itself. One `settle_after_debounce`
     // round only guarantees the direct fire's request/response round trip
@@ -418,7 +418,7 @@ fn diagnostics_changed_also_refreshes_hints() {
         .lsp_server
         .expect("buffer must be attached");
 
-    // Fire a real viewport-change first — the request count assertions
+    // Fire a real viewport-change first: the request count assertions
     // below need a known baseline (1 request from this fire, not 0 or 2).
     fire_viewport_change(&mut ed);
     settle_after_debounce(&mut ed);
@@ -456,7 +456,7 @@ fn hidden_buffer_skips_diagnostics_triggered_refresh() {
         .expect("buffer must be attached");
     let bid = ed.focused_buffer_id();
 
-    // Switch the (only) pane to a second file — `bid` stays open in the
+    // Switch the (only) pane to a second file. `bid` stays open in the
     // buffer list (and stays attached to `sid`) but is no longer shown in
     // any pane, so `(viewport-range bid)` must be `#f`.
     let other_file = file_dir.path().join("other.rs");
@@ -493,7 +493,7 @@ fn an_empty_response_clears_previously_stored_hints() {
             "textDocument/inlayHint",
             inlay_hint_response(&[(0, 4, serde_json::json!(": i32"))]),
         );
-        // Second refresh (below) gets this canned response — an empty
+        // Second refresh (below) gets this canned response: an empty
         // result must still clear the hint the first response stored.
         backend.respond_to("textDocument/inlayHint", inlay_hint_response(&[]));
     });
@@ -531,7 +531,7 @@ fn an_empty_response_clears_previously_stored_hints() {
 /// Two attached, visible
 /// buffers each get an `on-diagnostics-changed` fire within the same
 /// debounce window. A plain `debounce` shares one pending timer across
-/// every call regardless of args — buffer B's call would cancel buffer A's
+/// every call regardless of args, so buffer B's call would cancel buffer A's
 /// still-pending call, and only B would ever refresh. `debounce-by` keys
 /// per buffer, so both must refresh.
 #[test]
@@ -586,7 +586,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
         .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
         .expect("file_b opened via open_extra_file");
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
-    // Both buffers must be *shown* — `lsp/refresh-hints` skips a hidden bid.
+    // Both buffers must be *shown*: `lsp/refresh-hints` skips a hidden bid.
     let pid_a = ed.state.focus.id();
     open_pane_in_layout(
         &mut ed.state,
@@ -620,7 +620,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    // Both fires land inside the same 200ms debounce window — no settle in
+    // Both fires land inside the same 200ms debounce window, with no settle in
     // between.
     ed.queue_diagnostics_changed(bid_a);
     ed.queue_diagnostics_changed(bid_b);
@@ -644,7 +644,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
 /// buffer B ("python", inlayHintProvider: true) sits in a background pane.
 /// `on-viewport-change` fires per-pane, so a viewport event for the
 /// background pane must resolve capabilities and the request target
-/// against buffer B's own server — never the focused buffer's.
+/// against buffer B's own server, never the focused buffer's.
 #[test]
 fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers() {
     let tmp = safe_tempdir();
@@ -724,7 +724,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
     ed.state.settings.lsp_inlay_hints = true;
 
     // Buffer A (focused, server A, no inlayHintProvider) never changes
-    // focus — the viewport event below is for the background pane only.
+    // focus. The viewport event below is for the background pane only.
     ed.queue_viewport_change(pane_b);
     settle_after_debounce(&mut ed);
 
@@ -741,7 +741,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
 
 /// Reproduces the "hint doesn't come back after undo" bug: a hint dropped by
 /// `remap_points`'s deletion-anchor fix (`hume-decorations`'s `decorations.rs`) must be
-/// re-requested once the deleting edit is undone — `on-text-changed` fires
+/// re-requested once the deleting edit is undone. `on-text-changed` fires
 /// for undo exactly like any other edit (`event.rs`'s doc comment), so
 /// `inlay.scm` hooking it must pick this up without any viewport scroll or
 /// diagnostics republish.
@@ -756,12 +756,12 @@ fn undo_also_refreshes_hints() {
     });
     ed.state.settings.lsp_inlay_hints = true;
 
-    // Insert a character and settle — its own on-text-changed fire is the
+    // Insert a character and settle. Its own on-text-changed fire is the
     // baseline (1). No `fire_viewport_change`/`prepare_frame` call in the
     // mix: that helper arms Rust's own viewport-debounce timer as a side
     // effect (`frame.rs`'s `debounce_viewport_change`), which would cascade
     // into a second, unrelated `on-viewport-change` fire during the next
-    // `settle_after_debounce`'s sleep — noise this test doesn't want.
+    // `settle_after_debounce`'s sleep: noise this test doesn't want.
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
     ed.feed_key(key_esc());
@@ -774,7 +774,7 @@ fn undo_also_refreshes_hints() {
     assert_eq!(
         request_count(&requests, "textDocument/inlayHint"),
         2,
-        "undo must also trigger a refresh via on-text-changed — it bumps \
+        "undo must also trigger a refresh via on-text-changed: it bumps \
          text_gen exactly like the insert above did"
     );
 }

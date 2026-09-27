@@ -2,8 +2,8 @@
 //! display lines or columns the buffer text alone doesn't account for.
 //!
 //! Two of them decorate: one emits whole virtual display lines, the other
-//! inline inserts. Both are deliberately general — parameterised on
-//! everything any caller varies and on nothing else — because the
+//! inline inserts. Both are deliberately general (parameterised on
+//! everything any caller varies and on nothing else) because the
 //! alternative is what this module replaced: eight near-identical `struct
 //! Foo; impl DecorationSource for Foo` blocks whose differences (a text
 //! string, an anchor side, a display-line count) were invisible next to
@@ -18,7 +18,7 @@
 //! [`InlineHint`].
 //!
 //! Lives under `tests/` rather than beside the code it fakes so the `lints/`
-//! harness skips it — `collect_source_rs` excludes `tests/` directories, and a
+//! harness skips it: `collect_source_rs` excludes `tests/` directories, and a
 //! test double has no business being scanned as production code. Reachable
 //! from the sibling `editor::{cursor,scroll,mouse}::tests` subtrees because
 //! `editor::tests` itself is `pub(crate)`.
@@ -34,9 +34,9 @@ use hume_engine::types::ScopeId;
 
 /// What each of a [`VirtualLineBlock`] block's display lines says.
 enum BlockText {
-    /// Every display line carries the same text — for tests that only count them.
+    /// Every display line carries the same text, for tests that only count them.
     Same(&'static str),
-    /// Display lines read "1", "2", … — for tests that assert *which* one of
+    /// Display lines read "1", "2", …, for tests that assert *which* one of
     /// a block landed on a given screen line, which identical text cannot show.
     Ordinal,
 }
@@ -76,7 +76,7 @@ impl VirtualLineBlock {
         }
     }
 
-    /// Count queries — the observable proxy for "did the display-line map
+    /// Count queries: the observable proxy for "did the display-line map
     /// treat this line as already known rather than re-querying it".
     ///
     /// Counts only queries for this double's *own* line. A frame queries every
@@ -129,7 +129,7 @@ impl DecorationSource for VirtualLineBlock {
     }
 }
 
-/// An INLINE source emitting one insert on one line — an inlay hint, say.
+/// An INLINE source emitting one insert on one line, an inlay hint, say.
 pub(in crate::editor) struct InlineHint {
     line: hume_rope::line::ContentLine,
     byte_offset: usize,
@@ -150,7 +150,7 @@ impl InlineHint {
         }
     }
 
-    /// Carry an already-interned scope, the contract real providers follow —
+    /// Carry an already-interned scope, the contract real providers follow,
     /// for a test that asserts on the styling, not just the columns.
     pub(in crate::editor) fn with_scope(mut self, scope: ScopeId) -> Self {
         self.scope = scope;
@@ -223,7 +223,7 @@ impl DecorationSource for FormatProbe {
     }
 }
 
-/// No decoration source registered — every line's block reduces to its content
+/// No decoration source registered: every line's block reduces to its content
 /// rows, which is what a test with virtual-line-unaware expectations needs.
 pub(in crate::editor) fn no_providers() -> ProviderSet {
     ProviderSet::new()

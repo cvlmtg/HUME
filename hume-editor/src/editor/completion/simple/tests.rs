@@ -4,7 +4,7 @@ use super::*;
 // ── complete_command ────────────────────────────────────────────────────
 //
 // `complete_command` is a `MatchKind::String` source: it returns the whole
-// universe of canonical command names, unfiltered — prefix filtering,
+// universe of canonical command names, unfiltered. Prefix filtering,
 // non-ASCII boundary safety, and dropping a fully-typed exact match are all
 // the session's own job (`CompletionSession::rank`'s `MatchKind::String`
 // arm and its `CompletionItem::is_noop_for` check), exercised end-to-end by
@@ -21,7 +21,7 @@ fn command_completer_returns_every_canonical_name() {
     assert!(names.contains(&"write"));
 }
 
-/// `:` Tab completion offers only typed commands — an editor (key-bindable)
+/// `:` Tab completion offers only typed commands: an editor (key-bindable)
 /// command's name must never appear, even though it's a real registered
 /// name. See `registry/mod.rs`'s module doc.
 #[test]
@@ -74,7 +74,7 @@ fn command_completer_excludes_aliases() {
 
 // ── complete_buffer_name ───────────────────────────────────────────────
 //
-// Also a `MatchKind::String` source — same "returns the whole universe"
+// Also a `MatchKind::String` source, with the same "returns the whole universe"
 // contract as `complete_command` above.
 
 #[test]

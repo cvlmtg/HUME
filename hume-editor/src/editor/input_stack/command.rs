@@ -1,4 +1,4 @@
-//! The `Command` layer — the `:`-prompt minibuffer mode.
+//! The `Command` layer: the `:`-prompt minibuffer mode.
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
@@ -34,10 +34,10 @@ impl Layer for CommandLayer {
 
 impl Editor {
     /// Write the open minibuffer completion session into the shared
-    /// `PopupState` Arc — same widget as [`Self::sync_menu_view`]/
+    /// `PopupState` Arc: same widget as [`Self::sync_menu_view`]/
     /// [`Self::sync_completion_menu_view`] (unwrapped rows, selected-row
     /// styling), but anchored at the pane's bottom edge above the
-    /// statusline rather than a buffer cursor. `Minibuf`-target only — a
+    /// statusline rather than a buffer cursor. `Minibuf`-target only; a
     /// `Buffer`-target session renders through
     /// [`Self::sync_completion_menu_view`] instead, into its own slot.
     ///
@@ -46,7 +46,7 @@ impl Editor {
     /// siblings, which need the current frame's scroll result too.
     pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
         let is_open = self.state.input.minibuf_completion().is_some();
-        // Skip the write-lock when both sides are already None — common case
+        // Skip the write-lock when both sides are already None: common case
         // while no popup is open.
         if !is_open && self.state.views.minibuf_completion.read().is_none() {
             return;
@@ -94,7 +94,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     // No completion-dismiss calls in this function, on any arm: a
     // `MinibufCompletionLayer` sits *above* `Command` whenever a popup is open, and
     // `completion_input_minibuf` (`input_stack/completion.rs`) dismisses it
-    // before falling through to whatever runs here — by the time any of
+    // before falling through to whatever runs here. By the time any of
     // these arms sees an event, either no popup was open, or one already
     // was and just closed. One place enforces "any non-Tab key dismisses",
     // not one check repeated at every event site here.
@@ -106,7 +106,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         }
         MiniBufferEvent::Confirm(_) => {
             // Record into history and extract the input before
-            // truncating — the `Command` layer (and the minibuf it
+            // truncating: the `Command` layer (and the minibuf it
             // owns) is gone by the time `execute_command` runs, so the
             // string has to be taken out first, per truncate-before-
             // execute: the body below runs with the mode layer already
@@ -131,7 +131,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         // An edit, cursor move, or Backspace that clears to empty demotes
         // any active history recall back to scratch. EmptiedByBackspace
         // keeps the minibuffer open (showing just the prompt) so a second
-        // Backspace is needed to dismiss — avoids accidental closure when
+        // Backspace is needed to dismiss. Avoids accidental closure when
         // the user deletes a one-char typo.
         MiniBufferEvent::EmptiedByBackspace
         | MiniBufferEvent::Edited
@@ -143,7 +143,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         }
         // Shift-Tab with no open popup is a no-op; once one opens (a
         // `MinibufCompletionLayer` pushed above this one), every subsequent
-        // Tab/Shift-Tab — and the directory-descend-on-Enter check — is
+        // Tab/Shift-Tab (and the directory-descend-on-Enter check) is
         // handled by that layer's own key handler
         // (`completion_input_minibuf`, `input_stack/completion.rs`) before
         // it ever reaches here again.
@@ -162,13 +162,13 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 }
 
 /// Execute a typed command line. `input` is the already-trimmed text
-/// the `Command` layer's minibuf held at Confirm — the layer (and its
+/// the `Command` layer's minibuf held at Confirm. The layer (and its
 /// minibuf) is already gone by the time this runs, per truncate-
 /// before-execute.
 fn execute_command(ed: &mut Editor, input: &str) {
     let (cmd, force, arg) = parse_typed_command(input);
 
-    // Bare line number `:42` — shorthand for `:goto 42`.
+    // Bare line number `:42`: shorthand for `:goto 42`.
     // The parser leaves `cmd = ""` for digit-only input (digits are excluded
     // from the command-name alphabet so `:42` → cmd="" arg=Some("42")).
     if cmd.is_empty()
@@ -185,7 +185,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
     // Expand `%`/`#` tokens in the arg. Gate on the fast-path check so the
     // common case (no expansion) stays allocation-free. Skip expansion for
     // `:b`/`:buffer`: their `#` is the alternate-buffer specifier itself,
-    // not a filename token — expanding it to a path loses pathless
+    // not a filename token; expanding it to a path loses pathless
     // alternates (scratch, [messages], the [buffers] view from :ls).
     let needs_expansion = !matches!(cmd, "b" | "buffer");
     let expanded: Option<String> = match arg {
@@ -202,7 +202,7 @@ fn execute_command(ed: &mut Editor, input: &str) {
         None => None,
     };
 
-    // `:` resolves only typed commands — an editor (key-bindable) command's
+    // `:` resolves only typed commands: an editor (key-bindable) command's
     // name is unreachable here; see `registry/mod.rs`'s module doc.
     match ed.state.config.registry.get_typed(cmd) {
         Some(tc) => match &tc.body {
@@ -233,14 +233,14 @@ fn execute_command(ed: &mut Editor, input: &str) {
 // ── Typed-command helpers ─────────────────────────────────────────────────────
 
 /// The command name's own `[A-Za-z_-]` prefix, one optional trailing `!`
-/// consumed as `force`, and the byte offset one past both — shared by
+/// consumed as `force`, and the byte offset one past both. Shared by
 /// [`parse_typed_command`] (which also needs the trimmed argument past
 /// that point) and `orchestrate.rs`'s `target_command_name` (which only
-/// needs the offset, to test whether the cursor has moved past the name —
+/// needs the offset, to test whether the cursor has moved past the name:
 /// the same name-shape rule this function applies, so completion never
 /// disagrees with what `execute_command` would actually run). Digits are
 /// deliberately excluded from the name (Vim convention) so `:b1` ends the
-/// name at `"b"`, `"1"` becoming the argument — see `:help :command-name`.
+/// name at `"b"`, `"1"` becoming the argument (see `:help :command-name`).
 pub(in crate::editor) fn scan_command_name(input: &str) -> (&str, bool, usize) {
     let name_end = input
         .char_indices()
@@ -251,7 +251,7 @@ pub(in crate::editor) fn scan_command_name(input: &str) -> (&str, bool, usize) {
     (&input[..name_end], force, name_end + usize::from(force))
 }
 
-/// Parse a typed-command string into `(cmd, force, arg)` — everything past
+/// Parse a typed-command string into `(cmd, force, arg)`: everything past
 /// [`scan_command_name`]'s own offset is the argument (whitespace-trimmed).
 /// Matches Vim's ex-parser so `:b#`, `:e!/path`, `:list-buffers`, and
 /// `:w foo.txt` all parse correctly.

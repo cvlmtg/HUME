@@ -11,10 +11,10 @@
 // buffer gets an exact grapheme column; a location whose open buffer's line
 // is out of range degrades to `#f` (a `path:line` row); a target with no
 // open buffer renders its location's own wire `character` verbatim instead
-// of reading the file to measure it — the one sanctioned exception to
+// of reading the file to measure it, the one sanctioned exception to
 // "never render a wire unit directly" (see `location_display_parts`'s doc,
 // `hume-editor/src/editor/lsp/introspect.rs`). A location that can't be
-// decoded at all (missing `range`) aborts the whole batch instead — see
+// decoded at all (missing `range`) aborts the whole batch instead; see
 // `a_malformed_location_aborts_the_batch_instead_of_a_degraded_row` below.
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
@@ -29,12 +29,12 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// `"e\u{0301}\u{1D11E}x"` — 'e' + a combining acute accent (one grapheme
+/// `"e\u{0301}\u{1D11E}x"`: 'e' + a combining acute accent (one grapheme
 /// cluster, two `char`s, two UTF-16 units) then a musical-symbol astral
 /// character (one grapheme cluster, one `char`, a surrogate pair = two
 /// UTF-16 units), then 'x'. Counted by hand, not with any HUME helper:
 /// before 'x', grapheme count = 2, char count = 3, UTF-16 code unit count
-/// = 4 — three different values a wire `character: 4` must resolve to
+/// = 4: three different values a wire `character: 4` must resolve to
 /// display column 3 (grapheme), never 4 (char) or 5 (UTF-16 + 1).
 const FIXTURE_LINE: &str = "e\u{0301}\u{1D11E}x\n";
 
@@ -42,7 +42,7 @@ const FIXTURE_LINE: &str = "e\u{0301}\u{1D11E}x\n";
 /// *same* number as the exact grapheme column: byte offset, UTF-16 code
 /// unit count, char count, and grapheme count all coincide once nothing
 /// non-ASCII precedes the target position. `character: 4` names the space
-/// right before `'x'` — grapheme/char/UTF-16 column 4 alike.
+/// right before `'x'`: grapheme/char/UTF-16 column 4 alike.
 const ASCII_LINE: &str = "let x = 1;\n";
 
 fn write_fixture_file(dir: &Path, name: &str) -> (PathBuf, String) {
@@ -174,7 +174,7 @@ fn setup_refs(
 }
 
 fn run_references(ed: &mut Editor) {
-    // lsp-references is key-bindable, not typed — dispatch through the
+    // lsp-references is key-bindable, not typed, so dispatch through the
     // keymap pipeline, the way its bound key (`z r`) would.
     ed.execute_keymap_command("lsp-references".into(), Some(1), false);
     ed.settle();
@@ -200,11 +200,11 @@ fn loc(uri: &str, line: u64, character: u64) -> serde_json::Value {
 /// The central pin is rows 0 vs 1: the *same* wire location (`character: 4`
 /// on the fixture's non-ASCII line) renders `1:3` from the open buffer
 /// (measured grapheme column) and `1:5` from the unopened one (the raw wire
-/// `character`, 1-based) — the divergence the wire-column exception accepts.
+/// `character`, 1-based): the divergence the wire-column exception accepts.
 /// Rows 7 vs 8 are the mirror case: the same wire location on an all-ASCII
 /// line renders the same number, `1:5`, whether the buffer is open or not,
 /// because a byte offset, a UTF-16 code-unit count, and a grapheme count
-/// coincide once nothing non-ASCII precedes the target — the reason the
+/// coincide once nothing non-ASCII precedes the target, the reason the
 /// exception is tolerable in practice.
 ///
 /// If the unopened branch read the file and called
@@ -248,7 +248,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     });
 
     // A second buffer, open but not focused, so the open-buffer branch has
-    // an all-ASCII line to measure. Refocuses `main.rs` afterward — `:e` on
+    // an all-ASCII line to measure. Refocuses `main.rs` afterward: `:e` on
     // an already-open path dedups onto the existing buffer rather than
     // reopening it, so `main.rs`'s attached LSP server (set below by
     // `setup_refs`) is unaffected and `:lsp-references` still dispatches
@@ -296,7 +296,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     // fixture's one content line plus its structural `\n` make line 1 the
     // buffer's own phantom trailing line, which is a *valid ropey line* but
     // holds no content. Clamping to the ropey domain would resolve it to
-    // grapheme column 0 and render `main.rs:2:1` — a row pointing one line
+    // grapheme column 0 and render `main.rs:2:1`, a row pointing one line
     // past the end of the file, with a column.
     assert!(
         rows[5].ends_with("main.rs:2"),
@@ -307,7 +307,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     // The row's path and its wire column must come from the same URI parse.
     // When Scheme rendered the path by stripping "file://" itself, it had no
     // percent-decoding: the row read "a%20name.rs" while the column beside
-    // it had been read out of "a name.rs" — one row naming a file it did
+    // it had been read out of "a name.rs": one row naming a file it did
     // not measure.
     assert!(
         rows[6].ends_with("a name.rs:1:5"),
@@ -332,7 +332,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
 
 /// A location missing `range` entirely names no destination `goto-location!`
 /// could jump to either, so `lsp-locations->display-parts` must abort the
-/// whole batch rather than render an unselectable row for it — see
+/// whole batch rather than render an unselectable row for it. See
 /// `hume_lsp::location::decode_location`'s doc.
 ///
 /// If `decode_location` tolerated a missing `range` (say, by defaulting to

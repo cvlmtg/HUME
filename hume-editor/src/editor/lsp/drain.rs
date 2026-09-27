@@ -28,12 +28,12 @@ impl Editor {
 
         let events = self.lsp.backend.drain();
         // Coalesce publishDiagnostics within this batch: keep only the last
-        // one per (server, uri) — servers burst-publish and only the newest
+        // one per (server, uri): servers burst-publish and only the newest
         // matters. Ingested after the loop so a later action for the same
         // (server, uri) always wins regardless of arrival order within the
         // batch.
         // clippy's `mutable_key_type` flags `lsp_types::Uri` for the `Cell`s
-        // inside its underlying `fluent_uri::Uri`'s parse-offset cache — but
+        // inside its underlying `fluent_uri::Uri`'s parse-offset cache, but
         // `Uri`'s `Hash`/`PartialEq`/`Eq` are hand-implemented against
         // `.as_str()` only (lsp-types 0.97.0's uri.rs), which those cells
         // never affect. A false positive for this specific type.
@@ -56,7 +56,7 @@ impl Editor {
             }
         }
         // OnDiagnosticsChanged fires once per buffer this batch actually
-        // touched — a FxHashSet dedupes two (server, uri) entries that both
+        // touched: a FxHashSet dedupes two (server, uri) entries that both
         // resolved to the same buffer (multiple roots, same file; not a v1
         // scenario, but cheap to get right).
         let mut touched: FxHashSet<BufferId> = FxHashSet::default();
@@ -72,7 +72,7 @@ impl Editor {
         let now = Instant::now();
 
         // Advance the statusline loading spinner while any server is mid-
-        // handshake or reporting `$/progress` — idle otherwise, so the
+        // handshake or reporting `$/progress`, idle otherwise, so the
         // frame counter doesn't drift while there's nothing to animate.
         if self.lsp.has_animating_server() {
             self.lsp.spinner.maybe_advance(now);
@@ -97,21 +97,21 @@ impl Editor {
     }
 
     /// [`lsp_shutdown_all`](Self::lsp_shutdown_all)'s production grace
-    /// window — the value `hume_editor::run` and `run_keys`' post-loop
+    /// window: the value `hume_editor::run` and `run_keys`' post-loop
     /// teardown actually use; tests pass their own to exercise the zero- and
     /// long-window edges. `hume_platform::QUIT_GRACE` is sized against this
-    /// constant — keep the two in step.
+    /// constant; keep the two in step.
     pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_millis(500);
 
     /// Graceful shutdown on quit: `begin_shutdown` (shutdown request, then
     /// exit notification) for every Running client, then a bounded grace
     /// window draining for their voluntary EOF, before transport-level
     /// teardown (`backend.shutdown`, which reaps any process still alive)
-    /// regardless. Starting clients skip the protocol handshake — nothing
+    /// regardless. Starting clients skip the protocol handshake: nothing
     /// but `initialize` is legal to send before `initialized`, so a plain
     /// transport kill is the only option for them.
     ///
-    /// Events drained during the grace window are otherwise discarded — a
+    /// Events drained during the grace window are otherwise discarded: a
     /// lingering response or stderr line has nowhere useful to go while the
     /// editor is tearing down.
     pub(crate) fn lsp_shutdown_all(&mut self, grace: Duration) {
@@ -163,7 +163,7 @@ impl Editor {
                     self.lsp.backend.send(server_id, msg);
                 }
                 // Fire on-lsp-attach for every buffer already attached to
-                // this server — it was Starting until now, so `lsp_attach_buffer`
+                // this server: it was Starting until now, so `lsp_attach_buffer`
                 // deliberately skipped firing it for them.
                 if let Some(lang) = introspect::server_language(&self.lsp, server_id) {
                     let bids: Vec<BufferId> = self
@@ -188,11 +188,11 @@ impl Editor {
                     ),
                 );
                 // Fail every in-flight request immediately rather than
-                // leaving each to expire on its own deadline — the crash is
+                // leaving each to expire on its own deadline. The crash is
                 // already known, so there's nothing to wait for. Mirrors
                 // `:lsp-stop`'s own teardown (`lsp_stop_one`).
                 if let Some(entry) = self.lsp.servers.get_mut(&server_id) {
-                    // A crashed server can't finish whatever it was loading —
+                    // A crashed server can't finish whatever it was loading:
                     // drop its tracked progress so the statusline spinner
                     // doesn't keep animating for a server that's gone.
                     entry.progress.clear();
@@ -202,7 +202,7 @@ impl Editor {
                 }
             }
             ClientAction::ServerRequest { id, method, params } => {
-                // `workspace/applyEdit` needs `&mut Editor` (the edit engine) —
+                // `workspace/applyEdit` needs `&mut Editor` (the edit engine);
                 // every other request answers from the pure lookup table.
                 let result = if method == lsp_types::request::ApplyWorkspaceEdit::METHOD {
                     self.apply_edit_request_response(&params, server_id)
@@ -217,7 +217,7 @@ impl Editor {
                     .send(server_id, Message::Response { id, result });
             }
             ClientAction::Diagnostics(params) => {
-                // The uncoalesced single-notification path — `drain_lsp`'s
+                // The uncoalesced single-notification path: `drain_lsp`'s
                 // batching loop intercepts and coalesces `Diagnostics`
                 // before dispatch, so this arm only fires for a test or any
                 // future caller that dispatches one directly.
@@ -245,7 +245,7 @@ impl Editor {
                 self.dispatch_server_notification(server_id, &method, params);
             }
             ClientAction::Stderr(line) => {
-                // rust-analyzer logs a lot — Trace keeps :messages usable;
+                // rust-analyzer logs a lot; Trace keeps :messages usable;
                 // never promote stderr to a higher severity.
                 let name = self.lsp_server_name(server_id);
                 self.report(Severity::Trace, format!("{name}: {line}"));
@@ -253,7 +253,7 @@ impl Editor {
         }
     }
 
-    /// Name used to prefix this server's log lines — the registered
+    /// Name used to prefix this server's log lines: the registered
     /// `command` string, or `"lsp"` if the server was never registered
     /// through the normal path (shouldn't happen outside tests).
     pub(super) fn lsp_server_name(&self, server_id: ServerId) -> String {
@@ -265,11 +265,11 @@ impl Editor {
     }
 
     /// `textDocument/publishDiagnostics`, `$/progress`, `window/logMessage`,
-    /// and `window/showMessage` never reach here — `hume-lsp` classifies
+    /// and `window/showMessage` never reach here: `hume-lsp` classifies
     /// them into typed `ClientAction` variants, handled directly in
     /// `dispatch_lsp_action`. Only an unclassified method, or a known
     /// method whose params fail both the strict parse and `hume-lsp`'s
-    /// lenient recovery, arrives here — either goes to a registered Steel
+    /// lenient recovery, arrives here. Either goes to a registered Steel
     /// `on-lsp-notification` handler, or an "unhandled notification" Trace
     /// line if none is registered.
     fn dispatch_server_notification(
@@ -292,7 +292,7 @@ impl Editor {
             return;
         }
         // The registered language is the "server name" the Steel surface deals
-        // in, since that's what `register-lsp-server!` uses — the sole
+        // in, since that's what `register-lsp-server!` uses, the sole
         // server-name-string argument on the LSP builtins surface.
         let server_val = match introspect::server_language(&self.lsp, server_id) {
             Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
@@ -327,7 +327,7 @@ impl Editor {
         meta: RequestMeta,
         outcome: Outcome,
     ) {
-        // A tracked `#:supersede` entry for this id is finished with —
+        // A tracked `#:supersede` entry for this id is finished with:
         // response, timeout, crash-drain, and `:lsp-stop`-drain all arrive
         // here, so this is the one chokepoint that can't miss any of them.
         self.lsp
@@ -336,7 +336,7 @@ impl Editor {
 
         let Some(entry) = self.lsp.callbacks.remove(&(server_id, id)) else {
             // No callback is ever registered for the internal `shutdown`
-            // request (it's fire-and-forget from `begin_shutdown`) — a
+            // request (it's fire-and-forget from `begin_shutdown`): a
             // server-side error on it would otherwise vanish silently.
             if meta.method == lsp_types::request::Shutdown::METHOD
                 && let Outcome::Err(e) = &outcome
@@ -365,30 +365,30 @@ impl Editor {
     }
 
     /// Whether a completed request's callback should actually fire, per its
-    /// `ResponseAnchor` — the one place both of a callback's drop conditions
+    /// `ResponseAnchor`: the one place both of a callback's drop conditions
     /// are checked, so a caller only has to gather the anchor at send time
     /// rather than repeat either check itself. Text-gen first: `#:allow-stale`
     /// is the more targeted opt-out (a single request's own reason for
     /// tolerating staleness), so it decides before focus is even considered.
     ///
     /// Two call points, not one: [`Self::dispatch_completed`] (this file)
-    /// checks it at LSP drain time — the only gate at all for a response
+    /// checks it at LSP drain time, the only gate at all for a response
     /// with no Steel callback to queue (`completionItem/resolve`'s inline
     /// Rust path), and an early drop for a Steel one, before its `(proc,
     /// args)` is even queued. `Editor::run_pending_batch`
     /// (`scripting_setup.rs`) re-checks the same anchor for a queued Steel
-    /// callback right before it actually runs — arbitrary other queued work
+    /// callback right before it actually runs: arbitrary other queued work
     /// (a hook, an earlier callback in the same batch) can execute between
     /// the two checks and change the state the first one saw, so admission
     /// at drain time alone doesn't guarantee admission at run time.
     pub(in crate::editor) fn anchor_admits(&mut self, anchor: &super::ResponseAnchor) -> bool {
         let current_gen = self.state.buffers.try_get(anchor.bid).map(|b| b.text_gen);
         if current_gen != Some(anchor.text_gen) && !anchor.allow_stale {
-            return false; // dropped silently — parse-worker staleness discipline
+            return false; // dropped silently, per parse-worker staleness discipline
         }
         if let Some(pid) = anchor.require_focus {
             // Dropped the same way `async_opener_stale` drops a menu/drawer
-            // open whose stack has moved on — the response is for UI
+            // open whose stack has moved on: the response is for UI
             // anchored to `pid`, and the user has since navigated elsewhere
             // (moved focus to another pane, even one still showing
             // `anchor.bid`, or the pane now shows a different buffer), so
@@ -399,7 +399,7 @@ impl Editor {
             if FocusedPane::resolve(&self.state, &self.view, handle).is_err() {
                 self.report(
                     Severity::Trace,
-                    "lsp-request: the focused pane moved before the response could open — ignored"
+                    "lsp-request: the focused pane moved before the response could open; ignored"
                         .to_string(),
                 );
                 return false;

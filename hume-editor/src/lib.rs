@@ -31,12 +31,12 @@ pub mod testing;
 
 /// Run a key sequence against a file without entering the interactive terminal.
 ///
-/// Opens `input`, feeds every key in `keys` (golf-stream notation — see
+/// Opens `input`, feeds every key in `keys` (golf-stream notation; see
 /// [`hume_scripting::parse_key_stream`]) through the editor's normal dispatch
 /// path, then writes the final buffer content to `output`. No terminal is
-/// initialised. `config` picks what `init_scripting` evaluates — the default
+/// initialised. `config` picks what `init_scripting` evaluates (the default
 /// `init.scm`, a `--config` override, or `ConfigSource::Skip` for
-/// `--no-config` — exactly as it would for [`run`].
+/// `--no-config`), exactly as it would for [`run`].
 ///
 /// Exits cleanly when the key sequence contains `:wq` / `:q` / `<c-c>` (the
 /// editor sets `should_quit`); the buffer is written to `output` regardless.
@@ -49,7 +49,7 @@ pub fn run_keys(
     let parsed =
         hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
 
-    // Headless: no terminal, so nothing to wake — background threads (parse
+    // Headless: no terminal, so nothing to wake: background threads (parse
     // worker, LSP transport) call this harmlessly into the void. The pane
     // viewport defaults to 80×24 (from Pane::new) and is never updated
     // without a terminal, so scores are reproducible.
@@ -66,8 +66,8 @@ pub fn run_keys(
     for key in parsed {
         editor.step(key);
         // `step` only dispatches the key; `settle()` is what drains the
-        // queued work (hooks, LSP/timer callbacks) that dispatch enqueues —
-        // mirrors `Editor::run`'s interactive loop, where the loop settles
+        // queued work (hooks, LSP/timer callbacks) that dispatch enqueues.
+        // This mirrors `Editor::run`'s interactive loop, where the loop settles
         // and the input handler doesn't (see `Editor::settle`'s doc).
         editor.settle();
         if editor.state.should_quit {
@@ -77,13 +77,13 @@ pub fn run_keys(
     // One more pass after the loop: `drain_async_sources` runs once per
     // `settle()` call, outside its fixpoint (see that doc), so a timer a
     // handler armed *during* the last key's own settle only converts to
-    // due work on the next call — with no further key to trigger one, it
+    // due work on the next call. With no further key to trigger one, it
     // would otherwise never fire.
     editor.settle();
 
     let content = editor.doc().text().to_string();
     let written = std::fs::write(&output, content);
-    // Config can now spawn LSP servers (see the `config` param above) —
+    // Config can now spawn LSP servers (see the `config` param above), so
     // give them the same graceful shutdown window `run` gives them, rather
     // than leaving `ServerHandle::drop` to `SIGKILL` them on the way out.
     // Runs before the write result is propagated: an early `?` on `written`
@@ -128,9 +128,9 @@ pub fn run(
     // Set by the terminator thread to the process exit code on termination,
     // polled at the top of `Editor::run`'s loop and re-read below after it
     // returns; shared with `editor.attach_terminate_flag` so both sides
-    // observe the same atomic. `0` means "no termination requested" — never
+    // observe the same atomic. `0` means "no termination requested", never
     // a valid signal-termination exit code. A bare pty hangup with no signal
-    // does not go through this — see `hume_platform::hangup_exit_code`'s doc.
+    // does not go through this; see `hume_platform::hangup_exit_code`'s doc.
     let terminate = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
     let request_quit = {
         let (terminate, wake) = (terminate.clone(), wake.clone());
@@ -156,14 +156,14 @@ pub fn run(
     editor.attach_terminate_flag(terminate.clone());
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
-    // Must run before `init_scripting`, same as `set_kitty_support` above —
+    // Must run before `init_scripting`, same as `set_kitty_support` above:
     // the source is read once resolution starts.
     editor.set_config_source(config);
     editor.init_scripting(&mut Default::default());
     // `first`'s buffer is already open via `Editor::open` above, so its id is
     // read straight off the focused buffer. Open remaining paths after
     // scripting init so OnBufferOpen hooks fire. Queued rather than applied
-    // immediately — `Editor::run`'s event loop applies them once it has a
+    // immediately: `Editor::run`'s event loop applies them once it has a
     // real terminal size to center against (`apply_startup_positions`'s doc).
     if let Some(pos) = first.and_then(|f| f.pos) {
         editor.queue_startup_position(editor.focused_buffer_id(), pos);
@@ -175,7 +175,7 @@ pub fn run(
     }
     // No explicit startup drain: work queued during init (OnBufferOpen,
     // OnLanguageSet, etc.) sits in `pending_work` until `Editor::run`'s loop
-    // reaches its first `settle()` — which now runs before the first
+    // reaches its first `settle()`, which now runs before the first
     // `should_quit` check and the first frame, so nothing is lost by leaving
     // it queued here.
 
@@ -198,7 +198,7 @@ pub fn run(
     // the same moment, so they need no gate; `restore_for_exit` (not a bare
     // `terminal::restore`) is the one function allowed to write the
     // alt-screen-leave/raw-mode-restore/kitty-keyboard-pop sequence that
-    // follows them — it gates on `claim_exit`, the process-wide
+    // follows them. It gates on `claim_exit`, the process-wide
     // single-restorer race with the terminator thread's `force_exit`, so a
     // second thread mid-teardown at the same moment can't interleave a
     // second copy of that sequence into this one's. Calling it first, while
@@ -206,8 +206,8 @@ pub fn run(
     // thread is the one that loses that race and parks here instead of
     // returning: if it does, the terminator thread's `force_exit` has
     // already won the claim ahead of it (the only way this thread's own
-    // claim attempt loses) and goes on to `kill_tracked_children` —
-    // including every attached LSP server — right after, so the graceful
+    // claim attempt loses) and goes on to `kill_tracked_children`,
+    // including every attached LSP server, right after, so the graceful
     // shutdown below would never run regardless.
     let mut restore_err = hume_platform::terminal::set_cursor_shape(
         &shared,
@@ -219,7 +219,7 @@ pub fn run(
         restore_err.get_or_insert(e);
     }
     // Give every running LSP server a chance to exit cleanly (shutdown
-    // request, then exit notification) before the process ends —
+    // request, then exit notification) before the process ends;
     // ServerHandle::drop would otherwise SIGKILL them.
     editor.lsp_shutdown_all(editor::Editor::SHUTDOWN_GRACE);
     // Explicit, not left to the function's own scope-end order: the signal
@@ -231,7 +231,7 @@ pub fn run(
 
     let code = terminate.load(std::sync::atomic::Ordering::Acquire);
     if code != 0 {
-        // Killed by a signal, not by `:q` — exit with the terminator's own
+        // Killed by a signal, not by `:q`: exit with the terminator's own
         // code rather than propagating `restore_err`/`result`: on a genuine
         // terminal hangup (e.g. SIGHUP with the pty already gone) every
         // teardown write fails with `EIO`, and surfacing that as a `?`
@@ -240,13 +240,13 @@ pub fn run(
         std::process::exit(code);
     }
 
-    // Not a signal exit. A bare hangup — the controlling terminal went away
-    // with no signal delivered at all — surfaces here instead: `editor.run`'s
+    // Not a signal exit. A bare hangup (the controlling terminal went away
+    // with no signal delivered at all) surfaces here instead: `editor.run`'s
     // reader returns `UnexpectedEof`/`EIO` once the pty master closes rather
     // than spinning (see `hume_platform::hangup_exit_code`'s doc for exactly
     // which errors this recognizes). Every teardown write above fails the
-    // same way against a dead pty, so `restore_err` — checked first, same as
-    // the signal branch above — needs the same recognition as `result`, or a
+    // same way against a dead pty, so `restore_err` (checked first, same as
+    // the signal branch above) needs the same recognition as `result`, or a
     // hangup here would be misreported as a real teardown failure instead of
     // exiting with the conventional code.
     if let Some(code) = restore_err

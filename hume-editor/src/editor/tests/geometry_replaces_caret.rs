@@ -4,12 +4,12 @@
 //! longer line count must still replace the caret even though the cursor
 //! itself is unmoved between the two frames each test drives. None of these
 //! fixtures move the primary head, so `PaneBufferState::reveal_pending`
-//! alone would stay `false` for every one of them — each instead shows up
+//! alone would stay `false` for every one of them. Each instead shows up
 //! as some field of `EditorState::layout_key(pane)` differing from
 //! `PaneBufferState::last_layout_key`, which `frame.rs`'s scroll step
 //! compares every frame. These tests pin that every layout input the
 //! mechanism is supposed to cover actually reaches it, plus (the last test)
-//! that a revisit with nothing changed does *not* — a parked view stays
+//! that a revisit with nothing changed does *not*: a parked view stays
 //! parked rather than snapping back onto the cursor on every buffer switch.
 
 use super::*;
@@ -62,7 +62,7 @@ fn a_wrap_mode_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     // Through the real production path (`:set pane wrap-mode=…`), not a raw
     // `Pane::set_wrap` poke: `layout_key` reads the pane's live, resolved
     // wrap mode regardless of which path set it, so a poke would exercise
-    // the same derivation either way — this still drives the production
+    // the same derivation either way. This still drives the production
     // path because that's what a real `:wrap`/`:set` change looks like, not
     // because a poke would bypass anything.
     run_set(&mut ed, "pane wrap-mode=soft:0").expect(":set pane wrap-mode=soft:0 failed");
@@ -80,7 +80,7 @@ fn a_wrap_mode_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 /// `update_virtual_line_providers` bumps by adding the block, so `frame.rs`'s
 /// scroll step re-scrolls the viewport to follow the cursor's now-lower
 /// display row rather than trusting `content_pos`'s plain re-lookup against
-/// the unchanged top — which, five rows below the settled scrolloff target
+/// the unchanged top, which, five rows below the settled scrolloff target
 /// in a 10-row viewport, would find the cursor's row past the bottom edge
 /// and answer `None`.
 #[test]
@@ -97,7 +97,7 @@ fn a_virtual_line_block_above_the_cursor_replaces_the_caret_even_when_the_cursor
     );
 
     // A 5-row `Before` block anchored on the cursor's own line pushes its
-    // display row down by 5 — past the 10-row viewport's settled bottom
+    // display row down by 5, past the 10-row viewport's settled bottom
     // margin (scrolloff 3, target row 6) if the viewport doesn't re-scroll
     // to follow it.
     let pos = hume_rope::lines::line_start_char(
@@ -132,11 +132,11 @@ fn a_virtual_line_block_above_the_cursor_replaces_the_caret_even_when_the_cursor
 /// primary head `CharOffset` as the outgoing buffer's, so a head-comparison
 /// alone would see no change. `EditorState::layout_key`'s `buffer_tag` names
 /// the buffer, so switching to a different one always differs from
-/// `PaneBufferState::last_layout_key` — this pane has never viewed the
+/// `PaneBufferState::last_layout_key`: this pane has never viewed the
 /// second buffer before, so that field reads `None` for it, which differs
 /// from anything. `Pane::recall_scroll` resets the viewport's own top to
 /// the document's first line on a pane's first visit to a buffer, so the
-/// matching head — deep in a 60-line buffer here — is left far outside it
+/// matching head (deep in a 60-line buffer here) is left far outside it
 /// unless something re-scrolls to find it.
 #[test]
 fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
@@ -151,7 +151,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
     );
 
     // A second buffer with identical content, so `shared_head` names the
-    // same line in it too, and an initial selection collapsed there — this
+    // same line in it too, and an initial selection collapsed there. This
     // pane has never visited it, so its own primary head numerically
     // matches the outgoing buffer's right from the switch.
     let second_text = BufferText::from(content.as_str());
@@ -171,12 +171,12 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
 
 /// Fixture shared by the inlay-hint and EOL-text wrap tests below: 40 lines,
 /// wrap at a fixed 10-column width (independent of pane/gutter width), line
-/// 19 exactly 9 columns — fits one display row alone, wraps to two once a
+/// 19 exactly 9 columns: it fits one display row alone, wraps to two once a
 /// 2-column decoration pushes it past the width-10 wrap boundary. `scrolloff`
-/// zeroed so the scrolloff *margin* can't itself explain a `None` — a bare
+/// zeroed so the scrolloff *margin* can't itself explain a `None`: a bare
 /// 1-row push must already exceed the viewport's raw height to prove the
 /// caret would otherwise vanish, not just drift out of the margin band.
-/// Cursor seeks to line 20, one line *after* the wrapping line — between the
+/// Cursor seeks to line 20, one line *after* the wrapping line, between the
 /// settled top and the cursor, so the extra row actually falls in the span
 /// `content_pos`'s `top`-to-`cursor` walk crosses.
 fn wrap_earlier_line_fixture() -> (Editor, BufferId, hume_rope::offset::CharOffset) {
@@ -206,7 +206,7 @@ fn wrap_earlier_line_fixture() -> (Editor, BufferId, hume_rope::offset::CharOffs
 
 /// An inlay hint appearing between two frames, with no input in between,
 /// must still replace the caret: a hint that wraps an earlier line (between
-/// the settled top and the cursor) shifts the cursor's own row down by one —
+/// the settled top and the cursor) shifts the cursor's own row down by one:
 /// `EditorState::layout_key`'s `buffer_tag` carries `decorations.generation(bid)`,
 /// the same field virtual-line blocks change, so `frame.rs`'s scroll step
 /// re-scrolls to follow rather than trusting `content_pos`'s plain
@@ -241,7 +241,7 @@ fn an_inlay_hint_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cur
 /// EOL text appearing between two frames, with no input in between, must
 /// still replace the caret: text appended past an earlier line's own content
 /// (between the settled top and the cursor) can wrap it the same way an
-/// inlay hint can — the same `decorations.generation(bid)` field of
+/// inlay hint can: the same `decorations.generation(bid)` field of
 /// `EditorState::layout_key` inlay hints and virtual-line blocks change.
 #[test]
 fn eol_text_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cursor_has_not_moved() {
@@ -273,7 +273,7 @@ fn eol_text_that_wraps_an_earlier_line_replaces_the_caret_even_when_the_cursor_h
 /// A `:set buffer tab-width=` change with the cursor unmoved must still
 /// replace the caret: a tab-indented line between the settled top and the
 /// cursor that fits one display row at the default width can exceed a fixed
-/// wrap boundary once tabs render wider, pushing the cursor's own row down —
+/// wrap boundary once tabs render wider, pushing the cursor's own row down,
 /// the same shape as the inlay-hint/EOL-text cases above, but for a setting
 /// that has no raise site of its own: `tab_width` is part of
 /// `EditorState::layout_key`, so the derived comparison covers it without one.
@@ -283,7 +283,7 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     for i in 0..40 {
         if i == 19 {
             // Tab + 5 chars: 9 display columns at the default tab-width 4
-            // (tab 0->4, then 5 more) — one column of headroom left on the
+            // (tab 0->4, then 5 more): one column of headroom left on the
             // width-10 row for the line's own EOL sentinel cell, so it fits
             // one display row, same margin `wrap_earlier_line_fixture`
             // leaves with its plain 9-column line. 13 columns at tab-width
@@ -319,7 +319,7 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 
 /// A gutter that widens for a 3-digit line count narrows every pane's
 /// `content_width` (gutter subtracted from viewport width) without touching
-/// any per-pane state directly — a gap none of the six original raise sites
+/// any per-pane state directly: a gap none of the six original raise sites
 /// covered, closed for free by `content_width` being part of
 /// `EditorState::layout_key`. The growth is driven through a *second* pane
 /// on the same buffer so pane A's own cursor and selections are never
@@ -330,7 +330,7 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 #[test]
 fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     // `Editor::open` (not `for_testing`, which builds a bare `Pane::new`
-    // with no gutter columns at all) — this test is specifically about the
+    // with no gutter columns at all). This test is specifically about the
     // line-number gutter, so it needs the real pane-construction path that
     // registers one (`pane_state.rs`'s `new_pane`).
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -343,15 +343,15 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let mut content = String::new();
     for i in 0..97 {
         if i == 19 {
-            // 24 columns — one short of `content_width` at the initial
+            // 24 columns, one short of `content_width` at the initial
             // gutter (30-column pane; a 2-digit line-number column plus the
             // default 2-column sign column `hume_decorations::build_providers`
             // also registers, together 5, leaving content_width 25). The
-            // spare column is for the line's own EOL sentinel cell — the
+            // spare column is for the line's own EOL sentinel cell, the
             // same margin `wrap_earlier_line_fixture` leaves with its plain
             // 9-column line against a width-10 row; an exact fit still
             // needs a column for the sentinel, so it wraps on its own. Once
-            // the gutter grows by one digit, content_width drops to 24 — an
+            // the gutter grows by one digit, content_width drops to 24: an
             // exact fit with no spare column, wrapping to two display rows.
             content.push_str(&"x".repeat(24));
             content.push('\n');
@@ -364,7 +364,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     seek_to_line(&mut ed, 20);
 
     // 97 typed lines land the buffer at 98 ropey lines (97 content lines
-    // plus the trailing empty line the last `Enter` leaves) — `last_ropey_line`
+    // plus the trailing empty line the last `Enter` leaves). `last_ropey_line`
     // (the phantom trailing line) is index 98, so the line-number gutter
     // sizes for `digit_count(99)` = 2 digits, width 3; content_width = 30 -
     // 3 (line numbers) - 2 (sign column) = 25.
@@ -395,7 +395,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 
     // 99 ropey lines now: `last_ropey_line` is index 99, so the gutter
     // sizes for `digit_count(100)` = 3 digits, width 4; content_width = 30
-    // - 4 - 2 = 24 — an exact fit with no spare column for line 19's own
+    // - 4 - 2 = 24: an exact fit with no spare column for line 19's own
     // EOL sentinel, wrapping it to two display rows and pushing the
     // cursor's own row past the 10-row viewport.
     assert!(
@@ -409,7 +409,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 /// A `:set global scrolloff=` change with the cursor unmoved must still
 /// re-settle the viewport: `cursor_content_pos.is_some()` can't distinguish
 /// this case (the false branch's own cap is the raw viewport height, not the
-/// scrolloff band — see `frame.rs`'s `scroll_into_view`), so this asserts on
+/// scrolloff band; see `frame.rs`'s `scroll_into_view`), so this asserts on
 /// `top` moving directly.
 #[test]
 fn a_scrolloff_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
@@ -437,7 +437,7 @@ fn a_scrolloff_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 /// leave a genuinely parked view exactly where it was, rather than being
 /// snapped back onto the cursor. `Viewport::seed_top_for_test`
 /// builds the park directly (a test-only escape hatch never reached in
-/// production — see its own doc) instead of via a scroll command: every
+/// production; see its own doc) instead of via a scroll command: every
 /// scroll command carries the cursor along with it (`carry`), so none of
 /// them produce this state on their own outside a genuine EOF/BOF stall.
 #[test]

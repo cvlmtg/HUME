@@ -1,5 +1,5 @@
 //! The store on its own: slots, invocations, spans through edits, ranking
-//! — no editor, no Steel. The orchestration around it is covered by
+//! (no editor, no Steel). The orchestration around it is covered by
 //! `editor/tests/completion/`.
 
 use super::super::item::CompletionItem;
@@ -24,7 +24,7 @@ fn items(labels: &[&str]) -> Vec<CompletionItem> {
 }
 
 /// A registry with one Steel `Buffer` source per `(name, priority)`, all
-/// `MatchKind::Fuzzy` — the proc is never called here.
+/// `MatchKind::Fuzzy`; the proc is never called here.
 fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
     let mut reg = SourceRegistry::with_defaults();
     for (name, priority) in sources {
@@ -67,7 +67,7 @@ fn text(s: &str) -> BufferText {
     BufferText::from(s)
 }
 
-/// A `Buffer` session over `content` — the store never consults the
+/// A `Buffer` session over `content`. The store never consults the
 /// buffer/pane ids except through `still_valid`, unused here, so the null
 /// keys do.
 fn buffer_session(content: &str) -> (BufferSession, BufferText) {
@@ -164,7 +164,7 @@ fn each_slot_ranks_against_its_own_token() {
 }
 
 /// The menu anchors at the leftmost token start among the slots with a
-/// ranked candidate — it moves only when ranking changes which sources
+/// ranked candidate: it moves only when ranking changes which sources
 /// contribute.
 #[test]
 fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
@@ -192,7 +192,7 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
     assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(0)));
 
     // "b" narrows the dir slot out ("./foo.txt" has no 'b') but not the
-    // word slot — the anchor moves to the word token's start.
+    // word slot, so the anchor moves to the word token's start.
     let (cs, text) = edit(&text, 4, 4, "b");
     assert!(session.observe_edit(
         &reg,
@@ -260,8 +260,8 @@ fn equal_priority_duplicates_are_not_deduplicated() {
     );
 }
 
-/// An item carrying edits is never hidden as someone else's duplicate —
-/// accepting it does something a duplicate-looking plain item wouldn't —
+/// An item carrying edits is never hidden as someone else's duplicate
+/// (accepting it does something a duplicate-looking plain item wouldn't),
 /// regardless of which side of the priority comparison it's on: the
 /// lower-priority source's edit-carrying item here survives against a
 /// higher-priority plain duplicate, and the higher-priority source's own
@@ -297,8 +297,8 @@ fn an_item_with_edits_is_never_hidden_as_a_duplicate() {
 
 // ── No-op items ──────────────────────────────────────────────────────────────
 
-/// An item carrying a `text_edit`/`additional_text_edits` — the shape a
-/// server sends for a case-correction or an auto-import — built directly
+/// An item carrying a `text_edit`/`additional_text_edits` (the shape a
+/// server sends for a case-correction or an auto-import), built directly
 /// rather than through `item()`/`CompletionItem::plain`, which leaves both
 /// empty.
 fn item_with_edits(
@@ -366,7 +366,7 @@ fn backspacing_past_the_dropped_word_brings_it_back() {
     assert_eq!(ranked_labels(&session, &reg), vec!["category"], "sanity");
 
     // Backspace: "cat" -> "ca". The item list is unchanged (the source
-    // wasn't re-invoked) — only the live token narrows, so "cat" is no
+    // wasn't re-invoked); only the live token narrows, so "cat" is no
     // longer an exact match and reappears.
     let (cs, text) = edit(&text, 2, 3, "");
     assert!(session.observe_edit(
@@ -399,7 +399,7 @@ fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
     assert_eq!(
         ranked_labels(&session, &reg),
         vec!["cat"],
-        "a textEdit's range may cover more than the typed token — never a no-op by inspection alone"
+        "a textEdit's range may cover more than the typed token, never a no-op by inspection alone"
     );
 }
 
@@ -511,7 +511,7 @@ fn typing_at_the_tokens_end_extends_it() {
 
 /// A non-word char landing exactly at the token's end (an auto-paired `(`,
 /// say) must *not* extend the tracked span the way a continued-typing word
-/// char does above — the token's own definition ("the word before the
+/// char does above: the token's own definition ("the word before the
 /// cursor") never includes one. `head` moving past it then sits outside
 /// `[start, end]`, so the ordinary "cursor left the token" containment
 /// check drops the slot, same as leaving the token any other way.
@@ -539,13 +539,13 @@ fn a_non_word_char_at_the_tokens_end_does_not_extend_it() {
     ));
     assert!(
         !session.has_live_sources(),
-        "the '(' must not have joined the token — the cursor past it is outside \
+        "the '(' must not have joined the token; the cursor past it is outside \
          [start, end], so the slot is dropped like any other token exit"
     );
 }
 
 /// Deleting the token's own first char stays inside it; deleting the char
-/// *before* the token crosses it — the slot's answer is dropped, and the
+/// *before* the token crosses it. The slot's answer is dropped, and the
 /// two are told apart by whether `start` and `start - 1` collapse to the
 /// same live position.
 #[test]
@@ -554,7 +554,7 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
     let (mut session, text) = buffer_session("x fo\n");
     invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 2, 4, &["foo"]);
 
-    // Backspace twice: "o", then "f" — the token's own chars.
+    // Backspace twice: "o", then "f", the token's own chars.
     let (cs, text) = edit(&text, 3, 4, "");
     assert!(session.observe_edit(
         &reg,
@@ -593,8 +593,8 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
     assert!(!session.has_live_sources(), "crossed the token's start");
 }
 
-/// An edit elsewhere in the buffer — a second cursor deleting text far
-/// before the token — shifts the token without crossing it.
+/// An edit elsewhere in the buffer (a second cursor deleting text far
+/// before the token) shifts the token without crossing it.
 #[test]
 fn a_deletion_elsewhere_shifts_the_token_without_dropping_it() {
     let reg = registry(&[("s", 0)]);
@@ -620,7 +620,7 @@ fn a_cursor_outside_the_token_drops_the_slot() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("fo bar\n");
     invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, 2, &["foo"]);
-    // No edit — the cursor just moved (an out-of-band motion).
+    // No edit: the cursor just moved (an out-of-band motion).
     let cs = ChangeSet::identity(text.len_chars());
     assert!(session.observe_edit(
         &reg,
@@ -727,7 +727,7 @@ fn prefix_matches_case_insensitive() {
 }
 
 /// `haystack.get(..prefix.len())` (the case-insensitive branch) must not
-/// panic when `prefix.len()` lands mid-codepoint in a non-ASCII haystack —
+/// panic when `prefix.len()` lands mid-codepoint in a non-ASCII haystack.
 /// "ï" (U+00EF) occupies bytes 2-3 of "naïve-cmd", so a 3-byte prefix lands
 /// inside it; `.get()` returns `None` there instead of panicking.
 #[test]

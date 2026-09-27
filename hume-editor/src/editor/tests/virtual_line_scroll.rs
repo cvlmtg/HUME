@@ -47,7 +47,7 @@ fn editor_with_before_line() -> Editor {
 fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // Cursor on line 0, `Before(0)` block above it, viewport resting at its
     // default (top_line=0, top_slot=0, cursor already comfortably
-    // visible — no auto-scroll needed). `pane_render.rs` and `cursor.rs`
+    // visible, no auto-scroll needed). `pane_render.rs` and `cursor.rs`
     // must agree here: the renderer draws the block at screen row 0
     // regardless of which line it's anchored to, so 'x' (line 0's own
     // content) must land at row 1, not row 0.
@@ -88,10 +88,10 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
 #[test]
 fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     // Wheel scrolling (`Viewport::scroll_by`) must walk through the
-    // 2-display-line block ([V, x]) one display line per notch — never skip
+    // 2-display-line block ([V, x]) one display line per notch, never skip
     // the whole block in a single notch. Viewport height 2 is shorter than
     // the 3-display-line total content (V, x, y), so there's genuinely
-    // something to scroll — up to the point where `max_scroll_top` puts the
+    // something to scroll, up to the point where `max_scroll_top` puts the
     // document's last display line (y) on the bottom row, which the first
     // notch alone already reaches.
     let mut ed = editor_with_before_line();
@@ -118,7 +118,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     assert_eq!(
         ed.viewport().top().slot,
         1,
-        "one notch skips exactly the virtual line, not the whole 2-display-line block — \
+        "one notch skips exactly the virtual line, not the whole 2-display-line block, \
          and already reaches max_scroll_top, since the next display line (y) is the document's last"
     );
 
@@ -126,7 +126,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     assert_eq!(
         ed.viewport().top().line,
         hume_rope::line::ContentLine::new(0),
-        "further scrolling stays clamped — y is already on the bottom row"
+        "further scrolling stays clamped: y is already on the bottom row"
     );
     assert_eq!(ed.viewport().top().slot, 1);
 }
@@ -135,7 +135,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
 //
 // The reported bug: opening a file with `:toggle-inline-diff` on and
 // scrolling with the mouse wheel through a deletion hunk. Reproduced here
-// with a synthetic `After` block instead of the real git-diff plugin —
+// with a synthetic `After` block instead of the real git-diff plugin:
 // same shape, deterministic size.
 //
 // Interleaving `render_to_buf` between notches is the point: it runs the
@@ -143,17 +143,17 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
 // the wheel's own `handle_input` does not run on its own. That pass's
 // vertical cursor-follow correction, `Viewport::reveal`, is gated on
 // `PaneBufferState::reveal_pending`, which stays unset when `carry` can't
-// fully follow a scroll into a virtual block — so the pass must not undo
+// fully follow a scroll into a virtual block, so the pass must not undo
 // the wheel notch just because the cursor couldn't follow it in.
 
 /// 20 content lines, a 4-line `After(8)` block, `mouse-scroll-lines` = 3 (one
 /// short of the block). Cursor starts mid-buffer (line 5), away from the
-/// document's own top edge — `Viewport::reveal`'s `scrolloff` margin
+/// document's own top edge: `Viewport::reveal`'s `scrolloff` margin
 /// otherwise tempers the *first* scroll away from a document boundary
 /// regardless of virtual lines, a separate and expected interaction this
 /// test isn't about. Three notches, each followed by a render, must each
-/// advance the view — the reported bug repeated the same position forever
-/// once the budget landed inside the block — and the cursor must come out
+/// advance the view (the reported bug repeated the same position forever
+/// once the budget landed inside the block), and the cursor must come out
 /// the other side of it.
 #[test]
 fn wheel_passes_a_mid_buffer_ghost_block() {
@@ -174,7 +174,7 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 
     // The reported bug's signature: the viewport stops changing at all, well
     // before the document's own end. Capture the resolved position after
-    // each notch and assert it strictly advances every time — a stall would
+    // each notch and assert it strictly advances every time: a stall would
     // repeat a value; a full-block skip is fine and not what this checks.
     let mut positions = Vec::new();
     for _ in 0..3 {
@@ -185,8 +185,8 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
     }
     assert!(
         positions.windows(2).all(|w| w[0] < w[1]),
-        "each notch must advance the view — a stalled notch (repeating the \
-         previous position) is the reported bug — got {positions:?}"
+        "each notch must advance the view; a stalled notch (repeating the \
+         previous position) is the reported bug. Got {positions:?}"
     );
     assert!(
         ed.doc()
@@ -201,24 +201,24 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 //
 // Reachable by *no* keyboard command: `Ctrl-d`/`PageDown` cap the view at
 // `scrolloff` rows below the last content line (`Viewport::scroll_by`'s own
-// `max_scroll_top` bound). Only a view-led scroll can go further — once the
+// `max_scroll_top` bound). Only a view-led scroll can go further. Once the
 // cursor reaches the document's last content line it can advance no further
 // (`carry`'s overshoot can't escape a document edge), so the selection it
 // returns is unchanged and `PaneBufferState::reveal_pending` is never raised
-// — the cursor-follow gate in `scroll_into_view` stops re-running
+// so the cursor-follow gate in `scroll_into_view` stops re-running
 // `Viewport::reveal`, and the wheel's direct viewport write is free to keep
 // advancing up to `max_scroll_top`.
 //
 // `max_scroll_top` itself leaves `scrolloff` rows of look-ahead past the
-// block's last virtual line, exactly like a real buffer line — matching
+// block's last virtual line, exactly like a real buffer line, matching
 // where `Ctrl-d`/an ordinary cursor motion would independently settle once
 // the cursor reaches the document's end, so a scroll all the way down and
 // the very next unrelated cursor move land on the same top.
 
 /// 10 content lines, a 5-line `After(9)` (last line) block. Repeated wheel
 /// notches must reach the point where the block's last virtual line renders
-/// `scrolloff` (default 3) rows above the bottom of the pane — not pinned to
-/// the bottom row itself — and then stay there.
+/// `scrolloff` (default 3) rows above the bottom of the pane (not pinned to
+/// the bottom row itself) and then stay there.
 #[test]
 fn wheel_reaches_a_trailing_after_last_line_block() {
     let content: String = numbered_lines(10);
@@ -269,8 +269,8 @@ fn wheel_reaches_a_trailing_after_last_line_block() {
 // ── Bottom bound ─────────────────────────────────────────────────────────
 
 /// A plain (no virtual lines) 30-line buffer. Many wheel notches must settle
-/// with the document's own last line `scrolloff` rows above the bottom row —
-/// matching where an ordinary cursor motion would independently place it —
+/// with the document's own last line `scrolloff` rows above the bottom row
+/// (matching where an ordinary cursor motion would independently place it),
 /// never scrolled further, and never pinned to the very bottom row.
 #[test]
 fn wheel_never_scrolls_past_the_documents_last_display_line() {
@@ -291,7 +291,7 @@ fn wheel_never_scrolls_past_the_documents_last_display_line() {
     assert_eq!(
         (ed.viewport().top().line, ed.viewport().top().slot),
         (top_before, slot_before),
-        "the view must have settled after 100 notches — no further scroll past the end"
+        "the view must have settled after 100 notches, with no further scroll past the end"
     );
     // margin = min(3, (24-1)/2) = 3; line 29 lands at row 24-3-1 = 20.
     assert_eq!(
@@ -306,10 +306,10 @@ fn wheel_never_scrolls_past_the_documents_last_display_line() {
     );
 }
 
-/// Screen-relative cursor-follow (`commands::scroll_view` — mouse wheel,
+/// Screen-relative cursor-follow (`commands::scroll_view`: mouse wheel,
 /// page/half-page scroll) must count virtual lines toward its display-line
 /// budget: moving "5 display lines" down through a 3-display-line `After(1)`
-/// block only advances the cursor 2 REAL lines (0 → 1 → 2), not 5 — matching
+/// block only advances the cursor 2 REAL lines (0 → 1 → 2), not 5, matching
 /// where the viewport itself would land, in either wrap mode. Plain `j`/`k`
 /// (`apply_visual_vertical`'s `ContentDisplayLine`, exercised elsewhere) are
 /// unaffected: virtual lines stay free for those.
@@ -360,7 +360,7 @@ fn view_scroll_cursor_follow_counts_virtual_lines_toward_its_budget() {
 
 #[test]
 fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
-    // Line 0 is "abcdef" — 6 columns, which fits the 10-column content width
+    // Line 0 is "abcdef": 6 columns, which fits the 10-column content width
     // on its own. The 6-column hint makes 12, wrapping it onto a second
     // display line:
     //

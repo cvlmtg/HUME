@@ -5,7 +5,7 @@
 // generalization that renders it.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
-// bare `Pane::new`) — `PaneLineBackgrounds` is only registered by
+// bare `Pane::new`): `PaneLineBackgrounds` is only registered by
 // `build_pane`, same reasoning as `lsp_render.rs`.
 
 use super::*;
@@ -13,7 +13,7 @@ use hume_engine::pipeline::RenderContext;
 use hume_grid::{Rect, Rgb};
 
 /// Reuses `ui.cursor.match.search` purely as a scope guaranteed to carry a
-/// distinct, known `bg` in the embedded snapshot theme — the tint mechanism
+/// distinct, known `bg` in the embedded snapshot theme. The tint mechanism
 /// doesn't care what scope a plugin names.
 const TINT_SCOPE: &str = "ui.cursor.match.search";
 
@@ -22,7 +22,7 @@ fn line_background_tints_gutter_content_and_trailing_cells() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::testing::build_snapshot_theme();
-    // Esc lands the cursor on line 2 ("ghi") — line 0 is tinted but not the
+    // Esc lands the cursor on line 2 ("ghi"). Line 0 is tinted but not the
     // cursor's line, so this test isolates the tint from cursorline.
     type_text(&mut ed, "abc\ndef\nghi");
     run(
@@ -80,7 +80,7 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     ed.view.theme = crate::testing::build_snapshot_theme();
     // Line 0 (20 cols, wraps at a narrow width) is tinted; line 1 ("b") is
     // short and holds the cursor after Esc, so cursorline never lands on
-    // the tinted line — this test isolates wrap-row persistence from the
+    // the tinted line. This test isolates wrap-row persistence from the
     // cursorline-precedence case covered separately below.
     type_text(&mut ed, "aaaaaaaaaaaaaaaaaaaa\nb");
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
@@ -107,7 +107,7 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     let scope = ed.view.registry.get(TINT_SCOPE).expect("interned");
     let expected_bg = ed.view.theme.resolve(scope).bg;
 
-    // Column 0 is always inside the gutter, whatever its width — checking
+    // Column 0 is always inside the gutter, whatever its width; checking
     // there avoids depending on exact wrap-column arithmetic.
     assert_eq!(
         buf[(0, 0)].style().bg,
@@ -178,7 +178,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     // A from-scratch theme with no `ui.cursorline` entry at all, rather than
-    // overriding the snapshot theme's baked `ui.cursorline.bg` post hoc —
+    // overriding the snapshot theme's baked `ui.cursorline.bg` post hoc:
     // `Theme::bake` (run by `prepare_frame` whenever a new scope is
     // interned) recomputes every `ui.*` field from the raw map, which would
     // silently undo a direct field override before this test ever renders.
@@ -230,15 +230,15 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
 }
 
 /// `update_line_bg_providers` runs in `prepare_frame`'s post-scroll highlight sync, *after* the
-/// scroll step, and must read that step's viewport — not the snapshot step 3
+/// scroll step, and must read that step's viewport, not the snapshot step 3
 /// takes before scrolling (which the sign/inlay-hint/virtual-line/EOL-text
 /// bridges deliberately do read; see `decoration_providers.rs`'s
 /// `decorated_panes` doc). A ten-line buffer with the cursor on the last
 /// line, `scrolloff` 0, and a viewport four content rows tall forces a real
-/// scroll during this frame — cursor line 9 minus the scroll target's 3 rows
+/// scroll during this frame: cursor line 9 minus the scroll target's 3 rows
 /// of look-ahead (`Viewport::reveal`) lands `top().line` at 6.
 /// Line 8 sits inside that post-scroll viewport (lines 6..11) but well
-/// outside the pre-scroll one (0..5) — reachable only if this bridge reads
+/// outside the pre-scroll one (0..5), reachable only if this bridge reads
 /// the post-scroll snapshot.
 #[test]
 fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {

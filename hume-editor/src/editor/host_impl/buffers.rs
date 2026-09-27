@@ -71,9 +71,9 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Buffer lifecycle ─────────────────────────────────────────────────────
     fn open_buffer(&mut self, path: &Path) -> Result<BufferId, String> {
         // `resolve_buffer_path`, not a hard `canonicalize`: a missing path is
-        // openable here exactly like `:e` on one — see `Buffer::from_file_or_new`.
+        // openable here exactly like `:e` on one; see `Buffer::from_file_or_new`.
         let resolved = crate::editor::Editor::resolve_buffer_path(path, &self.state.cwd);
-        // Language detection is deliberately not done here — see
+        // Language detection is deliberately not done here; see
         // `Effect::DetectBufferLanguage`'s doc; the `open-buffer!` builtin
         // queues it once this returns.
         let (bid, _is_new) = crate::editor::buffer::lifecycle::open_or_dedup_and_notify(
@@ -142,14 +142,14 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     ) -> Result<ExclusiveRange<hume_rope::line::ContentLine>, String> {
         let t = self.command_pane(pane)?;
         // No active-tab restriction: `Editor::sync_viewport_dims` keeps
-        // every tab's panes — not just the active one — sized to the
+        // every tab's panes (not just the active one) sized to the
         // current terminal on every resize (`TabStore::inactive_layouts`),
         // so a background-tab pane's *size* is as trustworthy as an active
         // one's. Its *scroll position* can lag, though: the frame's scroll
         // step only runs over `active_pane_ids()`, so a background pane's
         // scroll stays wherever it last was while still active, until its
         // tab is focused again. "The range of lines this pane would show"
-        // is still well-defined regardless of which tab is on screen — it's
+        // is still well-defined regardless of which tab is on screen; it's
         // just not guaranteed to reflect a scroll that happened elsewhere
         // while this pane was hidden.
         Ok(crate::editor::lsp::introspect::viewport_range(

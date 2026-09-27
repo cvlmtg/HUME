@@ -41,7 +41,7 @@ fn main() {
     // Resolve the real git-dir paths via `--git-path` so the rerun-if-changed
     // directives work correctly in git worktrees and submodules (where `.git`
     // is a file not a directory).  Only emit a path when it actually exists on
-    // disk; an absent logs/HEAD (e.g. reflog disabled in CI) is fine — HEAD
+    // disk; an absent logs/HEAD (e.g. reflog disabled in CI) is fine: HEAD
     // alone is sufficient to detect commit/checkout changes.
     for arg in ["HEAD", "logs/HEAD"] {
         if let Some(resolved) = git_path(workspace, arg) {

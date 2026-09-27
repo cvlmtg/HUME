@@ -91,13 +91,13 @@ impl CommandRegistry {
 
         // ── Word motions ──────────────────────────────────────────────────────
         // All four are `Motion`s (`step_update_recipe` never establishes from
-        // one — see its `is_motion` exclusion), but they are the one case
+        // one; see its `is_motion` exclusion), but they are the one case
         // where that matters in practice: Move mode anchors the selection on
         // a word reached by navigating away from the cursor, so unlike a
         // plain motion's bare-cursor result, this one *looks* replayable and
-        // isn't — replaying it positionally would advance past the intended
+        // isn't: replaying it positionally would advance past the intended
         // word. Each covers the destination word's whitespace bookend in both
-        // modes when the buffer's `word-selects-whitespace` resolves true —
+        // modes when the buffer's `word-selects-whitespace` resolves true;
         // see `WordCtx::around`, read inside `word_select_cmd`.
         super::motion!(
             self,
@@ -131,7 +131,7 @@ impl CommandRegistry {
         // ── Paragraph motions ─────────────────────────────────────────────────
         // Select the whole paragraph plus its trailing blank gap, if it has
         // one, like the structural `goto-next-<kind>` family selects its
-        // object — the `finder` is a lexical scan (`hume_ops::motion::paragraph`)
+        // object. The `finder` is a lexical scan (`hume_ops::motion::paragraph`)
         // rather than a tree-sitter one, so this stays a `Plain` body here
         // instead of moving to `structural.rs`.
         super::motion!(

@@ -4,7 +4,7 @@
 //! EngineView` half (native commands, and the BEFORE/AFTER pipeline stages
 //! shared with Steel-backed commands). This module holds the Steel-backed
 //! path, which additionally needs `self.scripting`, `self.lsp`, and the
-//! timer bridge — fields only reachable through `&mut Editor`.
+//! timer bridge: fields only reachable through `&mut Editor`.
 
 use super::event::EditorEvent;
 use super::registry::MappableCommand;
@@ -16,13 +16,13 @@ use super::{Editor, Severity, commands};
 /// [`Editor::dispatch`].
 #[derive(Debug, Clone)]
 pub(in crate::editor) struct CmdCtx {
-    /// Numeric count prefix. `None` means "no count was typed" — a bare
+    /// Numeric count prefix. `None` means "no count was typed": a bare
     /// keyboard press, which visual-move commands read as one visual line
     /// (`state.explicit_count`, set from this by `run_body`). Producible
     /// by the keymap trie leaves / WaitChar arm, and also by Steel: a script
     /// passes a count of `0` (`parse_count_extend` decodes it to `None`) to ask
     /// for the same "as if no count was typed" behavior. `Some(n)` is every
-    /// other case — an explicit user count, a script's explicit `n`, or a
+    /// other case: an explicit user count, a script's explicit `n`, or a
     /// non-keybind origin's default (insert-mode leaf, no-arg `call!`).
     pub count: Option<usize>,
     /// Whether this command runs in Extend mode.
@@ -39,11 +39,11 @@ impl Editor {
     /// executed via [`Editor::run_steel_command`] (which needs `&mut Editor` for
     /// `self.scripting`).
     ///
-    /// Dot-repeat replay bypasses this for the commands it replays — it
-    /// calls [`commands::run_body`] or `run_steel_command` directly — though
+    /// Dot-repeat replay bypasses this for the commands it replays. It
+    /// calls [`commands::run_body`] or `run_steel_command` directly, though
     /// a replayed Steel body's own `call!`s still reach [`commands::run`].
     pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
-        // Native path — a keypress always acts at the focused pane. `Err`
+        // Native path: a keypress always acts at the focused pane. `Err`
         // hands `cmd` back unbound for a Steel-backed/Lazy command, which
         // the path below dispatches instead.
         let fp = commands::FocusedPane::current(&self.state);
@@ -55,7 +55,7 @@ impl Editor {
             Err(cmd) => cmd,
         };
 
-        // Steel path — composed from shared step functions.
+        // Steel path, composed from shared step functions.
         let meta = cmd.meta();
         let name = cmd.name();
 
@@ -69,10 +69,10 @@ impl Editor {
         // dispatched directly from the keymap. `step_stamp_repeatable` below
         // still reads this snapshot, not the (possibly further-mutated) live
         // value, so a repeatable outer command's stamped recipe reflects
-        // state as of entry — not whatever an inner dispatch built on top of it.
+        // state as of entry, not whatever an inner dispatch built on top of it.
         let pre_recipe = self.state.selection_recipe.clone();
         let pre_writes = self.state.selection_recipe_writes;
-        // Before the body — see `commands::repeat_slot_owned`'s own doc.
+        // Before the body; see `commands::repeat_slot_owned`'s own doc.
         let slot_owned = commands::repeat_slot_owned(&self.state);
 
         // BODY
@@ -83,7 +83,7 @@ impl Editor {
             return;
         }
 
-        // AFTER — re-query to get the resolved command's repeatable flag.
+        // AFTER: re-query to get the resolved command's repeatable flag.
         // A Lazy stub becomes SteelBacked after activation; re-query reflects that.
         let repeatable = self
             .state
@@ -103,9 +103,9 @@ impl Editor {
             );
         }
         // Clear only when this outer command owns the decision: a repeatable
-        // command's recipe was just consumed by the stamp above — matching
+        // command's recipe was just consumed by the stamp above (matching
         // the native `Edit` variant (always `Untracked`, so `step_update_recipe`
-        // clears it too) — and a body that dispatched nothing natively never
+        // clears it too), and a body that dispatched nothing natively never
         // ran `step_update_recipe` to decide for itself, so this non-selection
         // outer command must clear it exactly as any other `Untracked`
         // command would. A body that DID dispatch natively already got the
@@ -117,14 +117,14 @@ impl Editor {
         // Outer Steel commands skip step_record_jump, step_clear_extend, and
         // step_align_view: their meta hardcodes is_jump = clears_extend =
         // aligns_view = false. An inner native (call! …) still fires all three
-        // — it routes through `commands::run` with its own meta.
+        // because it routes through `commands::run` with its own meta.
     }
 
     /// Activate `plugin` (a `Lazy` stub's owner), reporting the standard
     /// warning on failure.
     ///
     /// Shared by [`Self::run_steel_command`] (a mappable `Lazy` stub) and
-    /// [`Self::run_typed_steel_command`] (a typed `TypedBody::Lazy` stub) —
+    /// [`Self::run_typed_steel_command`] (a typed `TypedBody::Lazy` stub):
     /// the two Lazy-stub call sites, one per registry kind.
     fn activate_lazy_and_report(
         &mut self,
@@ -139,7 +139,7 @@ impl Editor {
         }
     }
 
-    /// The registry lost `name`'s entry between resolving it and using it —
+    /// The registry lost `name`'s entry between resolving it and using it:
     /// activation replaced a `Lazy` stub but left nothing usable behind, or
     /// `name` wasn't the expected kind at all. Always `false`, so a caller
     /// returns it directly. Shared by `run_steel_command`'s two lookups
@@ -148,13 +148,13 @@ impl Editor {
     fn report_command_lost(&mut self, name: &str) -> bool {
         self.report(
             Severity::Error,
-            format!("{name}: internal error — command lost after activation"),
+            format!("{name}: internal error: command lost after activation"),
         );
         false
     }
 
     /// Activates the `:` line's current target command's owning plugin, if
-    /// it is still a `TypedBody::Lazy` stub — run before
+    /// it is still a `TypedBody::Lazy` stub. Runs before
     /// `EditorState::trigger_minibuf_completion` at both its call sites, so
     /// a lazily-declared typed command's `#:complete` completer is visible
     /// on the command's very first use. Without this, `register_lazy_typed_
@@ -173,7 +173,7 @@ impl Editor {
     }
 
     /// The `:` line's Tab, end to end: [`Self::activate_minibuf_completion_
-    /// target`] then `EditorState::trigger_minibuf_completion` — one call so
+    /// target`] then `EditorState::trigger_minibuf_completion`, in one call so
     /// the two can't be split at a call site that forgets the first, which
     /// would silently leave a lazily-declared command's `#:complete`
     /// unresolved on its very first use (see `activate_minibuf_completion_
@@ -194,7 +194,7 @@ impl Editor {
         ctx: &CmdCtx,
         char_arg: Option<char>,
     ) -> bool {
-        // Injected into the lambda's `count` param verbatim — `0` is the Scheme
+        // Injected into the lambda's `count` param verbatim: `0` is the Scheme
         // spelling of `None` ("no count was typed"), so a wrapper that forwards
         // this value straight into `(call! "move-down" pane count extend)` round-trips
         // a bare keypress back to visual-line movement (`parse_count_extend`
@@ -203,11 +203,11 @@ impl Editor {
         let extend = ctx.extend;
 
         // Classified by `name` (never a passed-in `MappableCommand`): `name`
-        // is the single source of truth for which command this call runs —
+        // is the single source of truth for which command this call runs:
         // both callers (`dispatch`, `replay_command`) already derive it from
         // their own `cmd`, so re-deriving the entry from that same `name`
         // rules out a caller ever activating one command's plugin while
-        // running another's body. Pure registry metadata — resolved (and its
+        // running another's body. Pure registry metadata, resolved (and its
         // arity/arg-count errors reported) before the `scripting` guard
         // below, so a `:cmd` arity mismatch is reported even in the
         // (test-only) case where a SteelBacked entry exists in the registry
@@ -268,7 +268,7 @@ impl Editor {
     ///
     /// Mirrors [`Self::run_steel_command`] but resolves metadata from
     /// [`super::registry::TypedBody`] rather than `MappableCommand`, and
-    /// marshals `(arg force)` rather than `(count extend)` — the two never
+    /// marshals `(arg force)` rather than `(count extend)`. The two never
     /// share a lookup because the registry keeps the kinds strictly separate
     /// (see `registry/mod.rs`'s module doc). Returns `false` on the same
     /// failure classes as `run_steel_command`.
@@ -301,7 +301,7 @@ impl Editor {
         };
 
         // Scheme-idiomatic absence: an untyped argument is `#f`, not a
-        // sentinel string or a fabricated count — a lambda that only cares
+        // sentinel string or a fabricated count; a lambda that only cares
         // whether an arg was given writes a plain `(if arg …)` guard.
         let arg_val = match &arg {
             Some(s) => steel::rvals::SteelVal::StringV(s.clone().into()),
@@ -329,7 +329,7 @@ impl Editor {
     /// args, bracketing the call for `#:inline-output` commands.
     ///
     /// Shared by [`Self::run_steel_command`] and
-    /// [`Self::run_typed_steel_command`] — the two differ only in how they
+    /// [`Self::run_typed_steel_command`]. The two differ only in how they
     /// resolve `name`'s metadata and marshal `effective_args`; the Steel
     /// invocation, alt-screen bracket, and effect application are one funnel.
     fn call_steel_command_body(
@@ -346,14 +346,14 @@ impl Editor {
         // Alt-screen bracketing for inline-output commands is lazy: entering
         // the alt-screen and printing the running banner happens on the
         // command body's *first actual output* (see
-        // `EditorHostImpl::ensure_inline_output_screen`), not eagerly here —
-        // a body that only logs (`log!`) never flashes an empty screen or
+        // `EditorHostImpl::ensure_inline_output_screen`), not eagerly here,
+        // so a body that only logs (`log!`) never flashes an empty screen or
         // blocks on a keypress nobody needed to answer. Pushing a frame just
         // primes the state SteelCtx reads through `is_inline_output_command`;
         // the same `push` a nested `call!` uses (`EditorHostImpl::
         // arm_inline_output`), so top-level dispatch and `call!` share one
         // arming implementation. A command not declared `#:inline-output`
-        // pushes nothing — `is_inline_output_command` must read closed for it
+        // pushes nothing: `is_inline_output_command` must read closed for it
         // even if its own body later `call!`s into a declared one. Pushed
         // only after the no-scripting-host early return above, since only a
         // host can run the session that drains the frame. Pushing before that
@@ -413,22 +413,22 @@ impl Editor {
     /// (`hume_scripting::host::OutputHost::arm_inline_output`).
     ///
     /// By the time this runs, `InlineOutput`'s frame stack is usually already
-    /// drained — every Steel session's own tail
+    /// drained: every Steel session's own tail
     /// (`hume_scripting::activation::run_steel_session`) does that
     /// unconditionally, including for the top-level dispatch's own frame,
     /// which nothing else ever truncates. Truncated to zero again here
     /// regardless, as the backstop for the one caller
     /// ([`Self::call_steel_command_body`]) that can reach this without ever
-    /// running a session at all — `call_steel_cmd`'s own registry/
+    /// running a session at all: `call_steel_cmd`'s own registry/
     /// `command_table` desync check fails before `run_steel_session` starts.
-    /// `entered`/`ran` survive either drain (see `InlineOutput`'s own doc) —
+    /// `entered`/`ran` survive either drain (see `InlineOutput`'s own doc);
     /// reading them here, once, is this boundary's whole job.
     pub(super) fn close_inline_output_bracket(&mut self) {
         self.state.inline_output.truncate(0);
         let ran = self.state.inline_output.take_ran();
         if let Some(entered) = self.state.inline_output.take_entered() {
             // `entered.tui` is the same `ActiveTui` `ensure_inline_output_screen`
-            // captured on entry — read here, not `self.tui` again, so this
+            // captured on entry. Read here, not `self.tui` again, so this
             // always restores the terminal it actually left. `None` only
             // for the test-only headless shape.
             if let Some(term) = entered.tui.terminal() {
@@ -444,13 +444,13 @@ impl Editor {
             self.state.force_full_redraw = true;
         }
         if ran {
-            // The editor genuinely regained the terminal — same trigger class
+            // The editor genuinely regained the terminal: same trigger class
             // as `TerminalEvent::FocusIn`, so it raises the same event rather
             // than sweeping directly; the reaction is `OnFocusGained`'s Rust
             // handler in `Editor::react_to_event`. That reaction runs inside
             // the next `settle()`, after `message_logged_this_input` has
             // already been set from this same dispatch's own message-log
-            // delta — `can_open_confirm`'s message-shadow clause is scoped to
+            // delta. `can_open_confirm`'s message-shadow clause is scoped to
             // `DiskCheckTrigger::BufferEnter` for exactly this reason, so a
             // warning this command logged itself can't suppress the reload
             // confirm its own subprocess just caused.
@@ -461,7 +461,7 @@ impl Editor {
     /// Reports `Severity::Warning` for a command name that failed to
     /// resolve the way the caller needed. If the registry recognizes `name`
     /// under the *other* kind, names it and explains how it's actually
-    /// reachable instead of `fallback` — a split that resolves only one
+    /// reachable instead of `fallback`: a split that resolves only one
     /// kind would otherwise leave the other kind unexplained at every
     /// single-kind site: [`Self::resolve_mappable`]'s three callers, the
     /// post-init keymap lint (`scripting_setup.rs`), and the `:` dispatcher
@@ -470,7 +470,7 @@ impl Editor {
     /// Stays `Warning`, not `Info`, despite most of those being live-typo
     /// cases that would otherwise fit the transient rule: the post-init
     /// keymap lint caller is a config-time diagnostic the user won't see
-    /// the moment it fires and needs to find later in `:messages` — the
+    /// the moment it fires and needs to find later in `:messages`. The
     /// shared function can't carry two severities, so it keeps the one its
     /// least-ephemeral caller needs.
     pub(in crate::editor) fn report_unknown_command(&mut self, name: &str, fallback: String) {
@@ -485,7 +485,7 @@ impl Editor {
 
     /// Looks up `name` in the command registry, reporting (via
     /// [`Self::report_unknown_command`]) and returning `None` if it isn't
-    /// there — shared by every entry point that resolves a keymap-bound
+    /// there. Shared by every entry point that resolves a keymap-bound
     /// command name just before dispatching or replaying it:
     /// `execute_keymap_command` (`mappings/execute.rs`), `handle_insert`'s
     /// trie-leaf branch (`input_stack/insert.rs`), and `replay.rs`'s replay
@@ -501,11 +501,11 @@ impl Editor {
 
 /// Shared arity guard + argument marshalling behind
 /// [`Editor::run_steel_command`] and [`Editor::run_typed_steel_command`]:
-/// both cap a Steel command lambda at three leading injected params —
-/// `pane` always first, then `first`/`second` — and marshal 0..=3 of them
+/// both cap a Steel command lambda at three leading injected params:
+/// `pane` always first, then `first`/`second`, and marshal 0..=3 of them
 /// based on declared arity. The two callers differ only in what `first`/
 /// `second` are (`count`/`extend` vs `arg`/`force`) and how the overflow
-/// error names them — `injection_desc` supplies that trailing clause
+/// error names them; `injection_desc` supplies that trailing clause
 /// verbatim.
 fn marshal_leading_args(
     cmd_arity: u16,
@@ -555,14 +555,14 @@ mod marshal_leading_args_tests {
         .expect("arity 0..=3 must not error")
     }
 
-    /// Arity 0 stays a no-op injection — a command with no parameters at all
+    /// Arity 0 stays a no-op injection: a command with no parameters at all
     /// (the common case) is unaffected by pane becoming the leading slot.
     #[test]
     fn arity_zero_gets_nothing() {
         assert_eq!(probe(0, false), Vec::<SteelVal>::new());
     }
 
-    /// Arity 1 gets pane alone, not `first` — pane is always the leading slot.
+    /// Arity 1 gets pane alone, not `first`: pane is always the leading slot.
     ///
     /// Injecting `first` here would silently bind the pane to whatever a
     /// `(lambda (arg) …)`-style command names its single parameter.

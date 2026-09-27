@@ -1,9 +1,9 @@
-//! One completion item, decoded leniently from JSON — tolerant of an
+//! One completion item, decoded leniently from JSON: tolerant of an
 //! off-spec shape anywhere but `label` itself, since real-world servers
 //! concentrate their spec drift exactly here (outside the handful of
 //! mature, heavily-used ones). Snippet stripping and the lenient `TextEdit`
-//! decode this relies on live in `hume_lsp::completion_item` — pure
-//! protocol work with no editor dependency — but the item type itself is
+//! decode this relies on live in `hume_lsp::completion_item` (pure
+//! protocol work with no editor dependency), but the item type itself is
 //! HUME's completion-store item: `SlotSet` ranks/filters it and
 //! `to_json`/`menu_row` render it, neither of which is a wire concern.
 //! The wire type is always spelled `lsp_types::CompletionItem`; the bare
@@ -14,14 +14,14 @@ use hume_scripting::json::JsonHandle;
 
 /// One item, decoded from a `textDocument/completion` response element.
 /// `insert_text`/`text_edit` have snippet syntax (`${n:default}`, `$n`)
-/// already stripped when the server declared `insertTextFormat: Snippet` —
+/// already stripped when the server declared `insertTextFormat: Snippet`;
 /// see [`strip_snippet`]. `raw` keeps the pristine, unstripped JSON (Steel's
 /// `on-completion-accept` hook and `completionItem/resolve` both see the
-/// server's original text) — `None` for a non-LSP item with no real wire
+/// server's original text). `None` for a non-LSP item with no real wire
 /// payload ([`Self::plain`]).
 pub(in crate::editor) struct CompletionItem {
     pub(super) label: String,
-    /// Display-only (icon choice) — no v1 reader maps it to a name.
+    /// Display-only (icon choice): no v1 reader maps it to a name.
     pub(super) kind: Option<lsp_types::CompletionItemKind>,
     pub(super) detail: Option<String>,
     pub(super) sort_text: String,
@@ -30,32 +30,32 @@ pub(in crate::editor) struct CompletionItem {
     pub(super) text_edit: Option<lsp_types::TextEdit>,
     pub(super) additional_text_edits: Vec<lsp_types::TextEdit>,
     /// Distinguishes "server sent no `additionalTextEdits` key at all" from
-    /// "server sent an empty array" — an empty array still means "nothing
+    /// "server sent an empty array": an empty array still means "nothing
     /// more to apply *and* don't bother resolving", same as a present-but-
     /// empty list; only the key's absence means resolve might have more to
     /// offer. See `BufferSession::accept`'s resolve gate.
     pub(super) has_additional_text_edits: bool,
-    /// The full response item, unparsed — a child handle sharing the
+    /// The full response item, unparsed: a child handle sharing the
     /// original response's root `Arc`, handed to `on-completion-accept` so
     /// Steel can read `data` or any other field this store doesn't parse,
     /// without Rust needing to grow a reader for every LSP field a feature
     /// might eventually want. Deliberately the *pristine* item (snippet
-    /// syntax included) — Steel/resolve should see exactly what the server
+    /// syntax included). Steel/resolve should see exactly what the server
     /// sent, not this store's stripped/narrowed projection.
     pub(super) raw: Option<JsonHandle>,
 }
 
 impl CompletionItem {
-    /// Builds a non-LSP item — every minibuffer completer's constructor.
+    /// Builds a non-LSP item: every minibuffer completer's constructor.
     /// `filter_text`/`sort_text` are both always `label`: `filter_text`
     /// because what the user sees is what a `MatchKind::String` source
     /// matches against, `sort_text` because it's the only tiebreak key a
-    /// `String` source's items need (alphabetical) — a `MatchKind::Delegated`
+    /// `String` source's items need (alphabetical). A `MatchKind::Delegated`
     /// source's own order is instead preserved by `rank`'s Delegated arm,
     /// which skips the sortText tiebreak key entirely rather than relying on
     /// every Delegated constructor leaving it empty by convention. Every
     /// LSP-only field defaults inert: `kind`/`detail`/`text_edit` absent, no
-    /// `additionalTextEdits`, `raw` absent — nothing here is a wire concern.
+    /// `additionalTextEdits`, `raw` absent. Nothing here is a wire concern.
     pub(super) fn plain(label: String, insert_text: String) -> Self {
         Self {
             filter_text: label.clone(),
@@ -72,16 +72,16 @@ impl CompletionItem {
     }
 
     /// Parses one item, tolerant of an off-spec shape anywhere but `label`
-    /// itself — every other field already defaults sensibly (falling back
+    /// itself: every other field already defaults sensibly (falling back
     /// to `label`, or absent). `None` only when `label` is missing or
     /// non-string; callers skip the item and report a Trace line rather
-    /// than fabricating a placeholder. Reads `v` by reference throughout —
+    /// than fabricating a placeholder. Reads `v` by reference throughout:
     /// `raw` stores `raw_item` (a handle sharing the response's root, not a
     /// clone of `v`), so parsing a whole response costs one JSON walk per
     /// item, no per-item clone.
     ///
     /// A bare JSON string decodes as [`Self::plain`] with that string as
-    /// its own label — the completion-emit! shape a source with nothing
+    /// its own label: the completion-emit! shape a source with nothing
     /// but a label needs (`core:buffer-words`, a word list) uses, without
     /// building `{"label": …}` by hand for every candidate. `raw_item` is
     /// ignored on this path: a label-only item has no real wire payload,
@@ -123,7 +123,7 @@ impl CompletionItem {
             .and_then(hume_lsp::completion_item::text_edit_from_json_lenient);
         let text_edit = text_edit.map(|te| strip_snippet_from_edit(te, is_snippet));
         // A `null` `additionalTextEdits` counts as absent, same as the key
-        // being missing entirely — only a genuine (possibly empty) array
+        // being missing entirely. Only a genuine (possibly empty) array
         // means "the server answered this and there's nothing more to
         // resolve" (see this field's own doc).
         let has_additional_text_edits = v.get("additionalTextEdits").is_some_and(|x| !x.is_null());
@@ -142,7 +142,7 @@ impl CompletionItem {
         })
     }
 
-    /// Whether this item names a directory to descend into — the `:` line's
+    /// Whether this item names a directory to descend into. The `:` line's
     /// Enter handler (`input_stack/completion.rs`) reads this generically
     /// rather than checking which source produced the candidate; any
     /// source's item can opt in the same way `path.rs`'s directory entries
@@ -151,7 +151,7 @@ impl CompletionItem {
         self.kind == Some(lsp_types::CompletionItemKind::FOLDER)
     }
 
-    /// The accept-time replacement text — read from outside this module by
+    /// The accept-time replacement text, read from outside this module by
     /// the `Minibuf`-target accept path (`input_stack/completion.rs`,
     /// `input_stack/command.rs`), which splices it into the minibuffer's
     /// own input directly rather than through `BufferSession::accept`
@@ -161,14 +161,14 @@ impl CompletionItem {
     }
 
     /// Whether accepting this item would change nothing beyond leaving
-    /// `typed` in place — `rank` drops these before scoring, so no source
+    /// `typed` in place. `rank` drops these before scoring, so no source
     /// has to filter its own already-typed token back out by hand.
     ///
     /// An LSP item survives this by construction, not by exemption: HUME
     /// advertises no `completionItem.resolveSupport`
     /// (`hume-lsp/src/client.rs`), so a server must send whatever
     /// `additionalTextEdits` it has *with* the item, not lazily via
-    /// `completionItem/resolve` — an auto-import on an otherwise-typed name
+    /// `completionItem/resolve`: an auto-import on an otherwise-typed name
     /// arrives as a non-empty `additional_text_edits` here, which is a real
     /// edit, not a no-op. A `text_edit` is excluded from this check for the
     /// same reason: its range may cover more than the typed token (a
@@ -178,7 +178,7 @@ impl CompletionItem {
         self.is_plain() && self.insert_text == typed
     }
 
-    /// No `textEdit`, no `additionalTextEdits` — accepting this item does
+    /// No `textEdit`, no `additionalTextEdits`: accepting this item does
     /// nothing beyond inserting `insert_text` at the cursor. Shared by
     /// [`Self::is_noop_for`] and `BufferSession::recompute_dedup`'s
     /// cross-source duplicate check: only a plain item is ever hidden as
@@ -191,8 +191,8 @@ impl CompletionItem {
 
     /// `source` is the contributing source's name. `session.rs` pairs each
     /// item with its source's index into its own source list rather than
-    /// storing the name on `Self`, so the caller — the only one that knows
-    /// it — passes it in for the Steel-visible `"source"` key
+    /// storing the name on `Self`, so the caller (the only one that knows
+    /// it) passes it in for the Steel-visible `"source"` key
     /// `completion-top` surfaces.
     pub(super) fn to_json(&self, source: &str) -> serde_json::Value {
         serde_json::json!({
@@ -204,12 +204,12 @@ impl CompletionItem {
     }
 
     /// This item's menu row: `label` as the main column, `detail` (when
-    /// non-empty) as the right-aligned trailing one — reads both directly
+    /// non-empty) as the right-aligned trailing one. Reads both directly
     /// rather than going through [`Self::to_json`], since the menu never
     /// needs `kind`. Column layout/alignment is `resolve_menu`'s job
     /// (`hume_ui::popup`), not this store's. Called fresh every frame the
     /// menu is open (`SlotSet::rows_in`), but only for the
-    /// handful of rows in the visible window — a `String` clone per row per
+    /// handful of rows in the visible window, and a `String` clone per row per
     /// frame there is cheaper than paying an `Arc<str>` conversion for
     /// every parsed item, most of which are never scrolled into view.
     pub(super) fn menu_row(&self) -> hume_ui::popup::MenuRow {
@@ -220,7 +220,7 @@ impl CompletionItem {
     }
 }
 
-/// Strips snippet syntax from `te.new_text` when `is_snippet` — applies the
+/// Strips snippet syntax from `te.new_text` when `is_snippet`: applies the
 /// same rule [`strip_snippet`] applies to `insert_text` to the item's own
 /// `text_edit`.
 fn strip_snippet_from_edit(te: lsp_types::TextEdit, is_snippet: bool) -> lsp_types::TextEdit {

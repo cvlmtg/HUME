@@ -18,7 +18,7 @@ fn is_binding(i: &InsertInput, name: &str) -> bool {
 #[test]
 fn dot_repeats_delete() {
     // Cursor starts at 'f'. `foo` is already selected; `d` deletes it.
-    // Then from the space at pos 0, `w` selects "bar" — "bar" is the first
+    // Then from the space at pos 0, `w` selects "bar": "bar" is the first
     // (and only) word on its line, so its leading space is indentation and
     // is never absorbed; there's no trailing space either (EOL follows), so
     // the default around-word span is bare. `.` deletes just "bar".
@@ -26,7 +26,7 @@ fn dot_repeats_delete() {
     ed.feed_key(key('d')); // delete "foo" → " bar\n", cursor at 0 (space)
     assert_eq!(ed.doc().text().to_string(), " bar\n");
 
-    ed.feed_key(key('w')); // from space, select "bar" (bare — indent kept)
+    ed.feed_key(key('w')); // from space, select "bar" (bare, indent kept)
     ed.feed_key(key('.')); // repeat delete
     assert_eq!(ed.doc().text().to_string(), " \n");
 }
@@ -45,7 +45,7 @@ fn dot_repeats_change_with_insert() {
 
     // Move to "bar" and repeat. "bar" has no trailing space (EOL follows)
     // but does have a leading one, so `w` picks up " bar" (default
-    // around-word) — the replayed change removes that leading space too.
+    // around-word), so the replayed change removes that leading space too.
     ed.feed_key(key('w')); // select " bar"
     ed.feed_key(key('.')); // repeat: delete " bar", insert "hi"
 
@@ -53,7 +53,7 @@ fn dot_repeats_change_with_insert() {
 }
 
 /// A repeatable command refused by `refuse_if_read_only` must not clobber
-/// `last_repeatable_action` — it changed nothing, so there is nothing new to
+/// `last_repeatable_action`: it changed nothing, so there is nothing new to
 /// repeat.
 ///
 /// `cmd_delete` refuses via `refuse_if_read_only` and returns `Ok(())`
@@ -89,10 +89,10 @@ fn read_only_refusal_does_not_clobber_dot_repeat() {
         "setup: focused buffer must be read-only"
     );
 
-    // Stage a selection, then attempt a repeatable edit — refused, no text
+    // Stage a selection, then attempt a repeatable edit. Refused, no text
     // changes, but the pipeline still runs the AFTER stage unconditionally.
     ed.feed_key(key('x')); // select-line (motion-only; not blocked on read-only)
-    ed.feed_key(key('d')); // delete — refused by refuse_if_read_only
+    ed.feed_key(key('d')); // delete, refused by refuse_if_read_only
 
     assert_eq!(
         ed.state
@@ -106,7 +106,7 @@ fn read_only_refusal_does_not_clobber_dot_repeat() {
     );
 }
 
-/// A replayed `c` also ends with the replacement selected — the anchor
+/// A replayed `c` also ends with the replacement selected: the anchor
 /// capture in `cmd_change` re-fires on replay (gated on the group being
 /// open, which `replay_dot` pre-opens), same as the interactive path.
 #[test]
@@ -129,7 +129,7 @@ fn dot_repeat_c_selects_replayed_replacement() {
 }
 
 /// Pinning for `mii` is unconditional (not gated on `select-inserted-text`),
-/// so a replayed `i` (not just `c`) must re-pin correctly too — `mii` after
+/// so a replayed `i` (not just `c`) must re-pin correctly too: `mii` after
 /// `.` must select the *replayed* insertion, not the original one.
 #[test]
 fn mii_after_dot_repeat_selects_replayed_insertion() {
@@ -141,7 +141,7 @@ fn mii_after_dot_repeat_selects_replayed_insertion() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "abx\n");
 
-    // Reposition onto 'x' directly rather than via `w` — Esc now selects the
+    // Reposition onto 'x' directly rather than via `w`. Esc now selects the
     // typed "ab" itself (`select-inserted-text`), and "ab"/"x" are one word
     // ("abx", no separator), so a word motion from inside "ab" has nowhere
     // to advance to.
@@ -159,7 +159,7 @@ fn mii_after_dot_repeat_selects_replayed_insertion() {
 ///
 /// Second word (`y`), not just a following char (`x`): with `select-inserted-
 /// text` on (default), Esc leaves "ab" selected rather than a bare cursor,
-/// and "ab"/"x" glued together with no separator are one word token — `w`
+/// and "ab"/"x" glued together with no separator are one word token. `w`
 /// from inside that token has nowhere to advance to and would be a no-op,
 /// making `.` replay at the original position and land on the same string
 /// by coincidence. A space-separated second word gives `w` a real target to
@@ -186,7 +186,7 @@ fn dot_repeats_insert_before() {
 
 /// A replayed `a` with an empty typed run (nothing typed before Esc) must
 /// step the cursor back exactly like the interactive path, not silently
-/// stay put — the step-back flag lives on `PaneBufferState`, which a
+/// stay put: the step-back flag lives on `PaneBufferState`, which a
 /// replayed session sets and reads exactly as a live one does.
 #[test]
 fn dot_repeat_replays_a_empty_run_step_back() {
@@ -199,7 +199,7 @@ fn dot_repeat_replays_a_empty_run_step_back() {
         "sanity: interactive a<Esc> round-trips"
     );
 
-    // Reposition onto 'e' and replay — `.` re-enters `a` there.
+    // Reposition onto 'e' and replay: `.` re-enters `a` there.
     set_cursor(&mut ed, 1);
     ed.feed_key(key('.'));
 
@@ -219,7 +219,7 @@ fn dot_repeat_replays_dedent() {
     // 2-space indent + tw=4: Backspace at col 2 snaps to col 0 (deletes both
     // spaces). After the first dedent the cursor sits at col 0 of line 0; `j`
     // would land on col 0 of line 1 (where dedent doesn't apply), so step right
-    // onto the content first — `.` then enters insert there and dedents.
+    // onto the content first. `.` then enters insert there and dedents.
     let mut ed = editor_from("  -[x]>\n  y\n");
 
     ed.feed_key(key('i')); // insert at 'x'
@@ -246,7 +246,7 @@ fn dot_repeats_replace() {
 
     assert_eq!(ed.doc().text().to_string(), "xx cd\n");
 
-    // `w` from the "xx" selection (head at pos 1) selects "cd" — no trailing
+    // `w` from the "xx" selection (head at pos 1) selects "cd": no trailing
     // space (EOL follows), but a leading one, so the default around-word
     // span picks up " cd" instead. `r` replaces every grapheme in the
     // selection, including that space.
@@ -257,7 +257,7 @@ fn dot_repeats_replace() {
 }
 
 /// When `.` is given an explicit count, the stored `last_repeatable_action.count`
-/// must not be corrupted — the explicit count is used for the replay but is NOT
+/// must not be corrupted: the explicit count is used for the replay but is NOT
 /// written back into the stored action.
 ///
 /// The original count must survive so that a subsequent plain `.` can still
@@ -274,7 +274,7 @@ fn explicit_count_on_dot_does_not_corrupt_stored_count() {
     );
 
     ed.feed_key(key('w')); // move to "bar"
-    // Press `3.` — explicit count 3 is used for the replay but must NOT be
+    // Press `3.`: explicit count 3 is used for the replay but must NOT be
     // written back into last_repeatable_action (drain restores the original action).
     ed.feed_key(key('3'));
     ed.feed_key(key('.'));
@@ -284,7 +284,7 @@ fn explicit_count_on_dot_does_not_corrupt_stored_count() {
         !ed.doc().text().to_string().contains("bar"),
         "bar must be deleted by the repeated command"
     );
-    // Stored count must still be 1 — the explicit-count replay must not corrupt it.
+    // Stored count must still be 1: the explicit-count replay must not corrupt it.
     assert_eq!(
         ed.state.last_repeatable_action.as_ref().unwrap().count,
         1,
@@ -306,7 +306,7 @@ fn dot_is_single_undo_step() {
 
     // Move to "bar" and repeat. "bar" has no trailing space (EOL follows)
     // but does have a leading one, so `w` picks up " bar" (default
-    // around-word) — the replayed change removes that leading space too.
+    // around-word), so the replayed change removes that leading space too.
     ed.feed_key(key('w'));
     ed.feed_key(key('.'));
     assert_eq!(ed.doc().text().to_string(), "hihi\n");
@@ -368,7 +368,7 @@ fn dot_repeats_smart_paste_after() {
 }
 
 /// Plain `paste-after` (unbound by default, dispatched by name) is
-/// repeatable too — `.repeatable()` on its registry entry is a separate
+/// repeatable too: `.repeatable()` on its registry entry is a separate
 /// declaration from `smart-paste-after`'s, so a repeat must be verified
 /// independently rather than assumed from the smart variant.
 #[test]
@@ -377,7 +377,7 @@ fn dot_repeats_plain_paste_after() {
 
     ed.state.kill_ring.push(vec!["ab".to_string()]);
     ed.execute_keymap_command("paste-after".into(), Some(1), false);
-    // Plain paste never collapses on repeat — move off the pasted text so
+    // Plain paste never collapses on repeat. Move off the pasted text so
     // the replayed paste lands next to it instead of replacing it.
     ed.feed_key(key('l'));
     ed.feed_key(key('.')); // repeat the plain paste
@@ -486,7 +486,7 @@ fn dot_repeat_navigation_not_in_recipe() {
     ed.feed_key(key('d')); // delete "bbb\n" → "aaa\nccc\nddd\n", cursor on 'c'
     assert_eq!(ed.doc().text().to_string(), "aaa\nccc\nddd\n");
 
-    // Recipe must have exactly one step (x only — j must have been cleared).
+    // Recipe must have exactly one step (x only; j must have been cleared).
     assert_eq!(
         ed.state
             .last_repeatable_action
@@ -552,7 +552,7 @@ fn dot_repeats_change_reselects_line() {
     // Three lines; `c` after select-line removes the content but keeps the `\n`.
     let mut ed = editor_from("-[a]>aa\nbbb\nccc\n");
 
-    ed.feed_key(key('x')); // select "aaa\n" — head on '\n'
+    ed.feed_key(key('x')); // select "aaa\n", head on '\n'
     ed.feed_key(key('c')); // change: delete "aaa" (not '\n') → "\nbbb\nccc\n", cursor at 0
     ed.feed_key(key('z')); // type 'z' → "z\nbbb\nccc\n"
     ed.feed_key(key_esc()); // back to Normal, cursor on 'z'
@@ -617,14 +617,14 @@ fn undo_clears_selection_recipe() {
 /// not reset it to a single `[C]` step.
 ///
 /// `copy-selection-on-next-line` duplicates whatever selection is already
-/// there — it establishes nothing on its own, so recording it as a reset
+/// there: it establishes nothing on its own, so recording it as a reset
 /// (`SelectionTracking::Establishes`) would replay `.` as "duplicate a bare
 /// cursor," silently dropping the `x` that built the real extent (see
 /// `dot_repeat_of_copy_selection_replays_the_whole_recipe` below for the
 /// end-to-end failure this would cause). Registered with
 /// `.composes_selection()` (`SelectionTracking::Composes`) precisely because
-/// it transforms the staged extent instead of establishing one — see
-/// `registry/defaults/selections.rs`.
+/// it transforms the staged extent instead of establishing one (see
+/// `registry/defaults/selections.rs`).
 #[test]
 fn copy_selection_on_next_line_appends_to_the_selection_recipe() {
     let mut ed = editor_from("-[a]>aa\nbbb\n");
@@ -656,20 +656,20 @@ fn copy_selection_on_next_line_appends_to_the_selection_recipe() {
 /// (select-line): `select-line` includes the line's trailing structural
 /// newline in the selection, and `copy-selection-on-next-line`'s
 /// `DisplayColTarget::NearestContent` clamps a display column landing past
-/// content back onto the last content char — so a `select-line` head (which
+/// content back onto the last content char, so a `select-line` head (which
 /// sits ON that newline) does not reproduce the newline in the copy. That's
 /// existing, correct `C` behavior, orthogonal to this test; a word selection
 /// (all content chars, no newline in range) sidesteps it entirely.
 ///
 /// On `"foo\nbar\nfoo\nbar\n"`, `mm` selects "foo" (line
 /// 0), `C` duplicates it onto "bar" (line 1) at the same columns, `d`
-/// deletes both — each line's own newline survives, leaving
+/// deletes both: each line's own newline survives, leaving
 /// `"\n\nfoo\nbar\n"`. Move down two buffer lines to the second "foo\nbar\n"
 /// pair; `.` must replay `mm` + `C` + `d` there too, leaving `"\n\n\n\n"`.
 ///
 /// If `copy-selection-on-next-line` reset the recipe instead of
 /// composing (`SelectionTracking::Establishes` instead of `Composes`), `.`
-/// would replay `[C, d]` from a bare cursor instead of `[mm, C, d]` — `C` on
+/// would replay `[C, d]` from a bare cursor instead of `[mm, C, d]`. `C` on
 /// a collapsed cursor duplicates one cursor onto the next line, and `d`
 /// deletes two *characters*, leaving `"\n\nf\nar\n"`-shaped text instead of
 /// `"\n\n\n\n"`.
@@ -684,7 +684,7 @@ fn dot_repeat_of_copy_selection_replays_the_whole_recipe() {
     assert_eq!(ed.doc().text().to_string(), "\n\nfoo\nbar\n");
 
     ed.feed_key(key('j'));
-    ed.feed_key(key('j')); // down to the second "foo" line — not in the recipe
+    ed.feed_key(key('j')); // down to the second "foo" line, not in the recipe
     ed.feed_key(key('.')); // replay mm, C, d
     assert_eq!(
         ed.doc().text().to_string(),
@@ -714,7 +714,7 @@ fn dot_after_find_is_noop() {
 /// `.` reads what `.` just deleted, not the clipboard.
 ///
 /// This is a deliberate consequence of `PasteStamp` having no dot-repeat
-/// special case at all — `replay_dot` runs the replayed edit through the
+/// special case at all: `replay_dot` runs the replayed edit through the
 /// ordinary `commands::run_body` → `route_kill` → `capture_to_ring`
 /// path, which writes the stamp at the replay's own
 /// `BufferStore::edit_seq()` exactly as a live `d` would: nothing treats a
@@ -738,10 +738,10 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
     ed.feed_key(key('w')); // move to "bar"
     ed.feed_key(key('.')); // repeat; replay_dot deletes "bar" → ring head = ["bar"]
 
-    ed.feed_key(key('p')); // bare p — must read the ring, not the clipboard
+    ed.feed_key(key('p')); // bare p: must read the ring, not the clipboard
     let text = state(&ed);
     // "bar" is independently known from the scenario itself (the `.` replays
-    // a delete on the word we navigated to with `w`) — not read back from
+    // a delete on the word we navigated to with `w`), not read back from
     // `kill_ring.head()`, so a `.` that fails to push to the ring at all
     // can't make this pass by accident.
     assert!(
@@ -769,15 +769,15 @@ fn dot_repeat_of_delete_leaves_ring_fresh_for_paste() {
 #[test]
 fn dot_repeat_word_motion_acts_on_current_selection() {
     let mut ed = editor_from("-[a]>  foo bar baz\n");
-    // This test is about the recipe/replay mechanism, not word-span shape —
-    // pin bare-word selection so the buffer arithmetic in the doc comment
+    // This test is about the recipe/replay mechanism, not word-span shape.
+    // Pin bare-word selection so the buffer arithmetic in the doc comment
     // above holds regardless of word-selects-whitespace's default.
     ed.state.settings.word_selects_whitespace = false;
 
-    ed.feed_key(key('w')); // select "foo" (Move mode — Extends, not Establishes)
+    ed.feed_key(key('w')); // select "foo" (Move mode: Extends, not Establishes)
     ed.feed_key(key('d')); // delete "foo" → "a   bar baz\n"
 
-    // Recipe must be empty — Move-mode `w` must not create an establish step.
+    // Recipe must be empty: Move-mode `w` must not create an establish step.
     assert_eq!(
         ed.state
             .last_repeatable_action
@@ -795,11 +795,11 @@ fn dot_repeat_word_motion_acts_on_current_selection() {
     let text = ed.doc().text().to_string();
     assert!(
         !text.contains("bar"),
-        "`.` must delete 'bar' (current selection), not advance past it — got: {text:?}"
+        "`.` must delete 'bar' (current selection), not advance past it; got: {text:?}"
     );
     assert!(
         text.contains("baz"),
-        "`.` must not advance past 'bar' and delete 'baz' — got: {text:?}"
+        "`.` must not advance past 'bar' and delete 'baz'; got: {text:?}"
     );
 }
 
@@ -869,7 +869,7 @@ fn dot_repeat_of_match_around_deletes_content() {
     );
 }
 
-/// `mi(` (select inner `()`, excluding the delimiters) — same characterization
+/// `mi(` (select inner `()`, excluding the delimiters). Same characterization
 /// note as `dot_repeat_of_match_around_deletes_content` above: on `(foo)` it
 /// already leaves a non-collapsed selection, so this is coverage for
 /// `SelectionTracking::Establishes` rather than a regression test for it.
@@ -928,17 +928,17 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
 }
 
 /// `,` (`keep-primary-selection`) after `m/` must APPEND onto the recipe `m/`
-/// already built, not reset it — it reduces whatever is staged to the
+/// already built, not reset it: it reduces whatever is staged to the
 /// primary selection rather than establishing a fresh extent of its own.
 ///
 /// Buffer "foo bar foo bar foo bar": `m/` selects all three "foo" matches,
 /// `,` keeps only the first (primary), `d` deletes it. `.` must replay
-/// `m/` + `,` + `d` — re-selecting all remaining "foo" matches, keeping the
+/// `m/` + `,` + `d`, re-selecting all remaining "foo" matches, keeping the
 /// (new) primary, and deleting it too.
 ///
 /// If `keep-primary-selection` reset the recipe instead of
 /// composing, `.` would replay `[,, d]` from whatever selection happens to
-/// remain after the first delete — `,` on a single selection is a no-op, so
+/// remain after the first delete. `,` on a single selection is a no-op, so
 /// `d` would just delete that leftover selection instead of re-running the
 /// search-driven `m/`.
 #[test]
@@ -980,7 +980,7 @@ fn dot_repeat_of_keep_primary_selection_composes_onto_the_prior_recipe() {
 }
 
 /// `S` (`split-selection-on-newlines`) after `x` + `Ctrl-x` must APPEND onto
-/// the recipe those steps already built, not reset it — it splits whatever
+/// the recipe those steps already built, not reset it: it splits whatever
 /// multi-line extent is staged into per-line pieces rather than establishing
 /// a fresh extent of its own.
 ///
@@ -988,13 +988,13 @@ fn dot_repeat_of_keep_primary_selection_composes_onto_the_prior_recipe() {
 /// "aaa\nbbb\n", `S` splits into two per-line selections ("aaa" and "bbb\n").
 /// `d` deletes both: the first piece excludes its line's newline (so "aaa"
 /// → "", newline kept), the second piece runs through its own trailing
-/// newline (so "bbb\n" is removed whole) — net effect, one line disappears:
+/// newline (so "bbb\n" is removed whole). Net effect: one line disappears:
 /// "\nccc\nddd\n". `.` must replay `x` + `Ctrl-x` + `S` + `d` on the next two
 /// lines too, removing another: "\n\n".
 ///
 /// If `split-selection-on-newlines` reset the recipe instead of
 /// composing, `.` would replay `[S, d]` from whatever selection happens to
-/// remain — `S` on a single-line (already-collapsed) selection is a no-op,
+/// remain. `S` on a single-line (already-collapsed) selection is a no-op,
 /// so `d` would delete only that leftover selection.
 #[test]
 fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
@@ -1033,7 +1033,7 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
 
 /// `mii` (`select-last-insertion`) is an `EditorCmd` that does not opt into
 /// the dot-repeat recipe via `.establishes_selection()` (unlike
-/// `select-all-matches` — see `editor_cmds.rs`), so unlike `ms(`/`mm` it can never push itself onto
+/// `select-all-matches`; see `editor_cmds.rs`), so unlike `ms(`/`mm` it can never push itself onto
 /// `state.selection_recipe`, and (being non-repeatable) it can never overwrite
 /// `last_repeatable_action` either. Running it between an insert and `.` must
 /// therefore be inert: `.` still replays the original insert verbatim, not
@@ -1042,13 +1042,13 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
 /// `i "ab" Esc` on "x" gives "abx"; `mii` re-selects "ab"
 /// (the just-typed span, unrelated to where `.` will act); replaying the
 /// insert places "ab" again at the selection's start → "ab" + "ab" + "x" =
-/// "ababx". The buffer only grows — no delete ever happens — which is the
+/// "ababx". The buffer only grows (no delete ever happens), which is the
 /// signal that `.` ran the insert and nothing resembling "mii + d".
 ///
 /// If `mii` corrupted `last_repeatable_action` (e.g. by being
 /// misclassified as repeatable) or leaked into its frozen recipe, `.` would
 /// replay some other action (or reselect "ab" again as an operator target)
-/// instead of inserting — the buffer would not end up "ababx".
+/// instead of inserting, and the buffer would not end up "ababx".
 #[test]
 fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     let mut ed = editor_from("-[x]>\n");
@@ -1056,7 +1056,7 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     type_text(&mut ed, "ab"); // insert-before, cursor collapses to start; buffer is "abx"
     assert_eq!(ed.doc().text().to_string(), "abx\n");
 
-    // Move off "ab" first — `select-inserted-text` (default on) already left
+    // Move off "ab" first: `select-inserted-text` (default on) already left
     // it selected, so pressing `mii` right away would be a no-op and the
     // assertion below would hold whether or not `mii` actually did anything.
     set_cursor(&mut ed, 2); // onto 'x'
@@ -1076,7 +1076,7 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
 }
 
 /// `select-word-nearest-on-line` is the wrap-aware `EditorCmd` twin of
-/// `select-word` (`mm`, a `Selection` → `Establishes`) — same in-place
+/// `select-word` (`mm`, a `Selection` → `Establishes`), with the same in-place
 /// establishing semantics, `EditorCmd` only because it needs a `DisplayLineMap`.
 /// Unbound by default, so this drives it directly via `execute_keymap_command`
 /// rather than a keypress. It must be replayable: `.` re-runs the selection
@@ -1084,7 +1084,7 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
 /// happens to remain at the new cursor.
 ///
 /// Buffer "foo bar\n": select-word-nearest-on-line selects "foo " (word plus
-/// trailing whitespace — the `word-selects-whitespace` default), `d` deletes
+/// trailing whitespace, the `word-selects-whitespace` default), `d` deletes
 /// it, leaving "bar\n" with the cursor collapsed to a 1-char selection on
 /// 'b'. `.` must replay select-word-nearest-on-line + d from there too,
 /// re-selecting the whole word "bar" rather than deleting just that 1-char
@@ -1113,7 +1113,7 @@ fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
 }
 
 /// `x m/ d` where `m/`'s pattern matches nothing must record `[select-line,
-/// delete]`, not `[select-all-matches, delete]` — `select-all-matches`
+/// delete]`, not `[select-all-matches, delete]`: `select-all-matches`
 /// errors on no match (`cmd_select_all_matches` returns `Err("no matches")`)
 /// and leaves the selection untouched, so it established no replayable
 /// extent of its own and must not overwrite the `x` step that did.
@@ -1124,7 +1124,7 @@ fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
 /// there too, leaving "bbb\n".
 ///
 /// Without the "selection unchanged" gate, `m/`'s failed run would still
-/// reset the recipe to `[select-all-matches]` — `.` replays that
+/// reset the recipe to `[select-all-matches]`. `.` replays that
 /// (another no-op) then `delete`, which acts on the current 1-char cursor
 /// instead of the whole line, leaving "bb\n" instead of "bbb\n".
 #[test]
@@ -1133,7 +1133,7 @@ fn dot_repeat_of_failed_select_all_matches_preserves_prior_recipe() {
 
     ed.feed_key(key('x')); // select-line: "aaa\n"
     ed.feed_key(key('m'));
-    ed.feed_key(key('/')); // no match — selection untouched, command errors
+    ed.feed_key(key('/')); // no match: selection untouched, command errors
     assert_eq!(
         ed.state.selection_recipe.len(),
         1,
@@ -1154,7 +1154,7 @@ fn dot_repeat_of_failed_select_all_matches_preserves_prior_recipe() {
 }
 
 /// `x ms( d` where `ms(` finds no surrounding pair must record
-/// `[select-line, delete]`, not `[surround-paren, delete]` — `surround-paren`
+/// `[select-line, delete]`, not `[surround-paren, delete]`: `surround-paren`
 /// is infallible and leaves the selection unchanged on no-match (see
 /// `select_surround` in `hume-ops/src/surround.rs`), so like the
 /// `select-all-matches` case above it established no replayable extent and
@@ -1165,7 +1165,7 @@ fn dot_repeat_of_failed_select_all_matches_preserves_prior_recipe() {
 /// "ccc"; `.` must replay `select-line` + `d` there too, leaving "bbb\n".
 ///
 /// Without the "selection unchanged" gate, the no-op `ms(` would still
-/// reset the recipe to `[surround-paren]` — `.` replays that (another
+/// reset the recipe to `[surround-paren]`. `.` replays that (another
 /// no-op, cursor unchanged) then `delete`, which acts on the current 1-char
 /// cursor instead of the whole line, leaving "bb\n" instead of "bbb\n".
 #[test]
@@ -1175,7 +1175,7 @@ fn dot_repeat_of_noop_surround_preserves_prior_recipe() {
     ed.feed_key(key('x')); // select-line: "aaa\n"
     ed.feed_key(key('m'));
     ed.feed_key(key('s'));
-    ed.feed_key(key('(')); // no parens on this line — selection untouched
+    ed.feed_key(key('(')); // no parens on this line: selection untouched
     assert_eq!(
         ed.state.selection_recipe.len(),
         1,
@@ -1282,10 +1282,10 @@ fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
 ///
 /// Buffer is "foo bar\n", initial selection is "foo".
 /// Run `del-sel` (repeatable Steel command that calls delete internally) →
-/// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar" — the
+/// "foo" is deleted, buffer is " bar\n". Press `w` to select "bar", the
 /// first (and only) word on its line, so its leading space is indentation
 /// and is never absorbed, and there's no trailing space either (EOL
-/// follows) — the default around-word span is bare "bar" — then `.` replays
+/// follows), so the default around-word span is bare "bar". Then `.` replays
 /// `del-sel` on that selection, leaving " \n".
 ///
 /// If `meta().repeatable` returned `false` for `SteelBacked`,
@@ -1317,8 +1317,8 @@ fn steel_dot_repeatable_round_trip() {
         "outer Steel command must win the repeat slot over the inner 'delete'"
     );
 
-    // Select "bar" then press `.` — replay must delete the current selection.
-    ed.feed_key(key('w')); // select "bar" (bare — indent kept)
+    // Select "bar" then press `.`: replay must delete the current selection.
+    ed.feed_key(key('w')); // select "bar" (bare, indent kept)
     ed.feed_key(key('.')); // replay "del-sel" → delete "bar"
     assert_eq!(
         ed.doc().text().to_string(),
@@ -1352,7 +1352,7 @@ fn steel_command_is_not_repeatable() {
         "setup: last_repeatable_action must be 'delete' after d"
     );
 
-    // Run the Steel command — it calls (call! "delete" (focused-pane)) internally.
+    // Run the Steel command: it calls (call! "delete" (focused-pane)) internally.
     ed.execute_keymap_command("del-sel".into(), Some(1), false);
 
     // last_repeatable_action must still be "delete", not "del-sel".
@@ -1416,15 +1416,15 @@ fn non_repeatable_steel_does_not_hijack_dot() {
 // ── Insert-key dot-repeat (keymap-bound native commands, `insert-key!`) ──────
 
 /// `Ctrl-w` deletes a word mid-Insert-session, dispatched as an Insert-key
-/// binding — `.` on a different selection must repeat that delete too, not
+/// binding: `.` on a different selection must repeat that delete too, not
 /// just the raw keys typed around it.
 ///
-/// Both edit sites sit right after a `(` — a non-word char, so
+/// Both edit sites sit right after a `(`, a non-word char, so
 /// `delete-word-backward`'s word-boundary scan stops there regardless of
 /// what came before, and the two sites are directly comparable. (Landing
 /// mid-word instead, as `c` on a bare selection with existing text right
 /// before the cursor would, makes the two sites' word-boundary context
-/// differ — the replayed delete would then span back into that
+/// differ, since the replayed delete would then span back into that
 /// pre-existing text too, which is `delete-word-backward` working as
 /// designed, not a replay bug; `set_current_selections` below sidesteps
 /// that entirely by selecting the second target directly, rather than via
@@ -1495,13 +1495,13 @@ fn steel_insert_binding_calling_native_command_is_recorded_for_dot_repeat() {
 }
 
 /// `.` after a Tab binding took its "insert a tab" branch (via
-/// `insert-key!`) repeats exactly one tab — proving the binding itself is
+/// `insert-key!`) repeats exactly one tab, proving the binding itself is
 /// recorded as a `Command`, re-run once on replay (not the `insert-key!`
-/// fallback's raw key — see `InsertInput`'s own doc for why the binding is
+/// fallback's raw key; see `InsertInput`'s own doc for why the binding is
 /// what's recorded), and recorded only once.
 ///
 /// Identical setup and expected result to `tabs.rs`'s
-/// `dot_repeat_replays_tab` (the plain unbound-Tab case) — `tab-or-complete`
+/// `dot_repeat_replays_tab` (the plain unbound-Tab case): `tab-or-complete`
 /// must reproduce that exact behaviour, not a doubled or dropped tab.
 #[test]
 fn dot_repeat_replays_tab_via_insert_key_once() {
@@ -1516,7 +1516,7 @@ fn dot_repeat_replays_tab_via_insert_key_once() {
 
     ed.feed_key(key('i'));
     ed.feed_key(key_tab());
-    ed.feed_key(key_esc()); // Esc selects the typed run — just the tab
+    ed.feed_key(key_esc()); // Esc selects the typed run, just the tab
     assert_eq!(state(&ed), "-[\t]>hello\n");
 
     ed.feed_key(key('l'));
@@ -1542,7 +1542,7 @@ fn dot_repeat_replays_tab_via_insert_key_once() {
 }
 
 /// A binding that leaves Insert and re-enters it keeps recording into the
-/// same repeatable action — `.` must not lose everything typed before the
+/// same repeatable action: `.` must not lose everything typed before the
 /// binding ran, nor what was typed after it.
 #[test]
 fn insert_key_binding_reentering_insert_keeps_earlier_keys() {
@@ -1593,7 +1593,7 @@ fn insert_key_binding_reentering_insert_keeps_earlier_keys() {
 }
 
 /// Records `i`, `a`, a `ctrl-x` binding running `body`, Esc on
-/// `"hello\nworld\n"`, then moves to the start of line 2 — the shared
+/// `"hello\nworld\n"`, then moves to the start of line 2, the shared
 /// setup for the replay-failure tests below.
 fn record_insert_key_binding_then_move(body: &str) -> (Editor, tempfile::TempDir) {
     let tmp = safe_tempdir();
@@ -1618,8 +1618,8 @@ fn record_insert_key_binding_then_move(body: &str) -> (Editor, tempfile::TempDir
 }
 
 /// A recorded `Binding` whose command was unregistered before `.` (a plugin
-/// reload) reports and is skipped — replay continues to the next recorded
-/// entry (`exit-insert`), which is what actually closes the session — and
+/// reload) reports and is skipped. Replay continues to the next recorded
+/// entry (`exit-insert`), which is what actually closes the session, and
 /// the repeatable action itself is left intact.
 #[test]
 fn dot_repeat_reports_an_unregistered_insert_key_binding_and_skips_it() {
@@ -1670,7 +1670,7 @@ fn dot_repeat_skips_an_insert_key_binding_that_fails_on_replay() {
 }
 
 /// An unbound Insert key with no default behaviour (an unbound Ctrl-chord)
-/// does nothing, so it must not be recorded for dot-repeat — only the typed
+/// does nothing, so it must not be recorded for dot-repeat. Only the typed
 /// char that follows it, and the Esc binding, are.
 #[test]
 fn unbound_insert_key_with_no_default_behaviour_is_not_recorded() {
@@ -1697,7 +1697,7 @@ fn unbound_insert_key_with_no_default_behaviour_is_not_recorded() {
 
 /// A Tab binding that takes its "trigger completion" branch marks itself
 /// interactive and writes nothing itself, so its `Binding` placeholder is
-/// dropped rather than recorded — `.` never reopens the popup at all.
+/// dropped rather than recorded: `.` never reopens the popup at all.
 #[test]
 fn tab_or_complete_completion_branch_leaves_no_popup_after_dot_repeat() {
     let tmp = safe_tempdir();
@@ -1732,12 +1732,12 @@ fn tab_or_complete_completion_branch_leaves_no_popup_after_dot_repeat() {
     assert_eq!(ed.doc().text().to_string(), "hello\n");
 }
 
-/// Drives `c`, types "he", opens completion, then presses `accept` — which
-/// must accept "hello", optionally followed by `then` — and leaves Insert.
+/// Drives `c`, types "he", opens completion, then presses `accept`, which
+/// must accept "hello", optionally followed by `then`, and leaves Insert.
 /// Whether `accept` is the popup's own Enter or an Insert-key binding
 /// calling `completion-accept!`, the result is recorded the same way: one
 /// `InsertInput::Result` covering the whole accept, and, for a binding that
-/// edits further after accepting, that follow-up edit too — the two can't
+/// edits further after accepting, that follow-up edit too. The two can't
 /// be split, since neither is safe to re-derive once either has gone
 /// interactive (see `DotCapture`'s own doc). The `completion-trigger`
 /// dispatch (Ctrl-Space) that opened the popup marks itself interactive too
@@ -1820,8 +1820,8 @@ fn dot_repeats_a_completion_accepted_by_an_insert_key_binding() {
 }
 
 /// A binding that accepts and then edits records the whole dispatch as one
-/// net edit — the accepted text and the follow-up edit together, not the
-/// accept alone — and `.` replays that one edit, never the binding itself.
+/// net edit (the accepted text and the follow-up edit together, not the
+/// accept alone), and `.` replays that one edit, never the binding itself.
 #[test]
 fn dot_repeats_an_insert_key_binding_that_accepts_then_edits() {
     assert_accepted_completion_is_dot_repeated(
@@ -1837,8 +1837,8 @@ fn dot_repeats_an_insert_key_binding_that_accepts_then_edits() {
 /// A bound motion inside the session (here the Left arrow) is replayed in
 /// order, so text typed after it lands where it did live.
 ///
-/// `i ab <Left> c` writes "acb" — the `c` lands between
-/// `a` and `b` — so `.` at the next line's start must write "acb" too.
+/// `i ab <Left> c` writes "acb" (the `c` lands between
+/// `a` and `b`), so `.` at the next line's start must write "acb" too.
 #[test]
 fn dot_repeats_an_arrow_key_inside_insert() {
     let mut ed = editor_from("-[h]>ello\nworld\n");
@@ -1859,7 +1859,7 @@ fn dot_repeats_an_arrow_key_inside_insert() {
 }
 
 /// A native command bound directly to an Insert key must not overwrite
-/// `last_repeatable_action` if it's itself repeatable — that slot belongs to
+/// `last_repeatable_action` if it's itself repeatable. That slot belongs to
 /// whichever command opened the Insert session; the key is recorded into
 /// that action's `insert_inputs` instead (proven by
 /// `dot_repeats_ctrl_w_inside_insert`'s same mechanism).
@@ -1893,13 +1893,13 @@ fn native_command_bound_mid_insert_does_not_hijack_last_repeatable_action() {
 }
 
 /// `.` must re-run the Insert-key binding itself, not a frozen native
-/// command name it happened to `call!` — a Steel binding armed with
+/// command name it happened to `call!`: a Steel binding armed with
 /// `set-register-prefix!` before its `call!` must arm that same register
 /// again on replay, at the new site, rather than always writing wherever
 /// the very first run wrote.
 ///
 /// Deleting "a" then "d" with register 3 armed each
-/// time must leave register 3 holding "d" (the most recent capture) — the
+/// time must leave register 3 holding "d" (the most recent capture), the
 /// same as pressing the binding twice by hand, once per site.
 #[test]
 fn insert_key_binding_register_prefix_reruns_on_replay() {
@@ -1934,11 +1934,11 @@ fn insert_key_binding_register_prefix_reruns_on_replay() {
 
 /// A binding that itself leaves Insert mid-body (`exit-insert`) and then
 /// runs a repeatable native command must still leave `last_repeatable_action`
-/// naming the command that *opened* the session — and `.` must reproduce
+/// naming the command that *opened* the session, and `.` must reproduce
 /// both the typed text and the binding's own edit at the new site.
 ///
 /// "Delete a char, type one char, then immediately delete that same char"
-/// nets to exactly the original deletion — so a correct replay leaves the
+/// nets to exactly the original deletion, so a correct replay leaves the
 /// second site exactly as if only the plain delete had run there, with no
 /// typed character surviving.
 #[test]
@@ -1975,25 +1975,25 @@ fn insert_key_binding_exiting_insert_mid_body_stays_off_the_repeat_slot() {
     assert_eq!(
         ed.doc().text().to_string(),
         "yz bc\n",
-        "replay must delete \"a\", type \"q\", then delete \"q\" back out — no leftover \"q\""
+        "replay must delete \"a\", type \"q\", then delete \"q\" back out, no leftover \"q\""
     );
 }
 
 /// A binding that runs a pure motion via `call!` before an `insert-key!`
-/// fallback must have that motion replayed too — otherwise the fallback's
+/// fallback must have that motion replayed too. Otherwise the fallback's
 /// effect lands at the pre-motion cursor instead of where the motion left it.
 ///
 /// `goto-line-end` lands the cursor ON the line's last grapheme (Normal-mode
-/// `$` semantics — a 1-char selection covering that char, not past it), and
+/// `$` semantics: a 1-char selection covering that char, not past it), and
 /// `insert-key!` types before the char under the cursor, so the semicolon
 /// lands one position before each line's final char, not after it. That
 /// placement is `goto-line-end` working as designed, not what this test is
-/// about — what matters is that the *same* placement, relative to the
+/// about. What matters is that the *same* placement, relative to the
 /// motion's own destination, reproduces at the second line on replay.
 ///
 /// Without the motion being replayed, the fallback
-/// would insert right where `insert-at-selection-start` left the cursor —
-/// before "e" — giving "d;ef" instead.
+/// would insert right where `insert-at-selection-start` left the cursor,
+/// before "e", giving "d;ef" instead.
 #[test]
 fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
     let tmp = safe_tempdir();
@@ -2027,13 +2027,13 @@ fn insert_key_binding_motion_via_call_is_replayed_before_the_fallback() {
 // ── Interactive Insert-key bindings: picker ─────────────────────────────────
 
 /// An Insert-key binding that opens a picker is interactive, the same as
-/// one that calls `completion-accept!`: `.` never reopens the picker —
+/// one that calls `completion-accept!`: `.` never reopens the picker:
 /// the pick's own net edit (whatever its `on_select` did, here a native
 /// `delete-word-backward` chosen once a real item is picked) is recorded
 /// as an `InsertInput::Result` and replayed directly.
 ///
 /// A live `i <ctrl-y> <enter>` deletes the word behind
-/// the cursor ("abc ") with nothing typed in between — so `.` at the front
+/// the cursor ("abc ") with nothing typed in between, so `.` at the front
 /// of "xyz" must delete "uvw " the same way, with no picker ever opening
 /// during replay.
 #[test]
@@ -2090,7 +2090,7 @@ fn dot_repeats_a_picker_pick_from_an_insert_key_binding() {
 
 /// While a picker sits open, its own dot-capture has moved off the
 /// `EditSession` onto the `PickerSession` (see `edit_session::DotCapture`'s
-/// own doc) — an edit landing through the shared funnel from anywhere else
+/// own doc). An edit landing through the shared funnel from anywhere else
 /// (a timer, an LSP response) has nothing armed on the session to feed into
 /// anymore, so it must not end up folded into the eventual pick's own
 /// recorded result. Simulates that "anywhere else" edit directly through
@@ -2115,7 +2115,7 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     assert!(ed.state.input.picker().is_some(), "sanity: picker open");
 
     // A foreign edit, far from the cursor, landing on the same buffer while
-    // the picker sits open — standing in for a timer/LSP edit unrelated to
+    // the picker sits open, standing in for a timer/LSP edit unrelated to
     // the pick.
     let fp = FocusedPane::current(&ed.state);
     let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
@@ -2149,7 +2149,7 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     // The foreign `Z` insert shifted the cursor to sit right after it (index
     // 5); delete-word-backward from there treats `Z` as its own word
     // (distinct from "abc"), so a correctly *excluded* foreign edit deletes
-    // just that one char (`back: 1`) — the real word-backward result at the
+    // just that one char (`back: 1`): the real word-backward result at the
     // buffer's actual current state, not some composition with the insert.
     assert!(
         matches!(&inputs[0], InsertInput::Result(r)
@@ -2164,7 +2164,7 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
 /// edit landing on the same buffer while that picker sits open: the
 /// capture's own `edits` already holds the binding's own edit (computed
 /// against the pre-foreign-edit document) by the time the pick's own edit
-/// arrives (computed against the post-foreign-edit document) — `head_before`'s
+/// arrives (computed against the post-foreign-edit document). `head_before`'s
 /// own doc names this as the one combination its refresh-when-empty check
 /// doesn't cover. Composing the two must not panic on the length mismatch;
 /// the pick is reported and dropped instead.
@@ -2193,8 +2193,8 @@ fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edi
         "sanity: the binding's own edit landed before the picker opened"
     );
 
-    // A foreign edit, landing on the same buffer while the picker sits open
-    // — standing in for a timer/LSP edit unrelated to the pick.
+    // A foreign edit, landing on the same buffer while the picker sits open,
+    // standing in for a timer/LSP edit unrelated to the pick.
     let fp = FocusedPane::current(&ed.state);
     let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
     crate::editor::doc_ops::apply_doc_edit_grouped(
@@ -2235,7 +2235,7 @@ fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edi
 
 /// A picker dismissed with Esc records nothing: `on_select` receives `#f`
 /// and does nothing, so the capture's diff is identity and the `Binding`
-/// entry it armed is dropped outright — `.` replays only the keys typed
+/// entry it armed is dropped outright: `.` replays only the keys typed
 /// around it.
 #[test]
 fn dot_repeat_drops_a_dismissed_pickers_binding_entry() {
@@ -2287,7 +2287,7 @@ fn dot_repeat_drops_a_dismissed_pickers_binding_entry() {
 // ── Interactive Insert-key bindings: completion via a session query ────────
 
 /// A binding that consults `completion-top` to decide its own branch: live,
-/// with no completion open, it falls back to a literal tab — a
+/// with no completion open, it falls back to a literal tab, a
 /// non-interactive outcome, so `.` re-runs the binding itself, which
 /// re-checks `completion-top` fresh at the new cursor (also empty there)
 /// and reaches the same fallback.
@@ -2335,7 +2335,7 @@ fn dot_repeat_smart_accept_binding_fallback_branch() {
 }
 
 /// The same `smart-accept` binding's *accept* branch: live, with a
-/// completion open, `completion-top` is non-empty and it accepts instead —
+/// completion open, `completion-top` is non-empty and it accepts instead,
 /// recorded as an `InsertInput::Result`, not a `Binding`, so `.` applies
 /// the accepted text directly rather than re-checking `completion-top`
 /// (which would find no session during replay and wrongly fall back to a
@@ -2424,7 +2424,7 @@ fn dot_repeat_continues_past_a_binding_that_fails_on_replay() {
 
 /// A binding whose branch depends on mutable Steel state takes a
 /// non-interactive path live (recorded as a re-runnable `Binding`) but the
-/// interactive one on replay (the same global flipped by the live run) —
+/// interactive one on replay (the same global flipped by the live run):
 /// `completion-accept!` refuses loudly instead of silently accepting
 /// against a session that was never opened this time.
 #[test]
@@ -2473,7 +2473,7 @@ fn dot_repeat_binding_taking_the_interactive_branch_only_on_replay_errors_loudly
 /// A replayed macro whose own recorded keys leave Insert mode open (its own
 /// Esc rebound to a no-op before replay, so the macro's queue drains while
 /// still in Insert) must not discard the macro's own in-progress action for
-/// the one that was live before `q<reg>` ran — the session the user finishes
+/// the one that was live before `q<reg>` ran. The session the user finishes
 /// by hand belongs to the macro's own entry command, and `.` must repeat all
 /// of it, not the pre-macro action.
 #[test]
@@ -2487,7 +2487,7 @@ fn dot_after_macro_leaves_insert_open_repeats_the_macros_own_session() {
            (bind-key! 'insert "escape" "stay-in-insert")"#,
     );
 
-    ed.feed_key(key('d')); // stamps "delete" — must not survive the macro below
+    ed.feed_key(key('d')); // stamps "delete", must not survive the macro below
     assert_eq!(ed.doc().text().to_string(), "yz\nabc\n");
 
     ed.state
@@ -2522,7 +2522,7 @@ fn dot_after_macro_leaves_insert_open_repeats_the_macros_own_session() {
 }
 
 /// `completion-trigger` refuses loudly under `.`, the same discipline
-/// `completion-accept!`/`picker!` follow — a binding that reaches it during
+/// `completion-accept!`/`picker!` follow: a binding that reaches it during
 /// replay decided differently than it did live, and there is no completion
 /// request to make sense of replaying.
 #[test]
@@ -2563,7 +2563,7 @@ fn dot_repeat_completion_trigger_reached_only_on_replay_errors_loudly() {
 }
 
 /// A `Binding` that leaves Insert and then fails must stop the replay loop
-/// there — the same as one that leaves Insert and succeeds — not keep going
+/// there (the same as one that leaves Insert and succeeds), not keep going
 /// and type the rest of the recorded session's keys outside any Insert
 /// session, in whatever mode is now current.
 #[test]
@@ -2606,7 +2606,7 @@ fn dot_repeat_stops_when_a_binding_leaves_insert_and_then_fails_on_replay() {
 
 /// An accept whose item carries `additionalTextEdits` edits two separate
 /// regions of the buffer in one dispatch (the import, then the cursor's own
-/// replacement) — recording must capture only the cursor's own region, not
+/// replacement): recording must capture only the cursor's own region, not
 /// error out over the extra one.
 #[test]
 fn dot_repeat_of_an_accept_with_additional_text_edits_replays_only_the_cursor_edit() {
@@ -2648,7 +2648,7 @@ fn dot_repeat_of_an_accept_with_additional_text_edits_replays_only_the_cursor_ed
 }
 
 /// A multi-cursor accept composes one `ChangeSet` with an edited region at
-/// every cursor — recording must extract only the primary's own region
+/// every cursor: recording must extract only the primary's own region
 /// instead of erroring over the others.
 #[test]
 fn dot_repeat_of_a_multi_cursor_accept_replays_at_every_cursor() {
@@ -2675,7 +2675,7 @@ fn dot_repeat_of_a_multi_cursor_accept_replays_at_every_cursor() {
 /// Typing, moving the cursor away, typing again, then accepting: the
 /// session's cumulative changeset has two separate insert regions (one per
 /// typed run) by the time the accept lands, but only the accept's own
-/// dispatch — the window `DotCapture` is armed for — feeds its capture.
+/// dispatch (the window `DotCapture` is armed for) feeds its capture.
 #[test]
 fn dot_repeat_of_an_accept_after_typing_moving_and_typing_again() {
     let tmp = safe_tempdir();
@@ -2705,7 +2705,7 @@ fn dot_repeat_of_an_accept_after_typing_moving_and_typing_again() {
 
 /// A binding that calls `completion-accept!` and then `exit-insert` in the
 /// same body tears the Insert session down from inside its own dispatch,
-/// before `handle_insert`'s post-dispatch checkpoint ever runs —
+/// before `handle_insert`'s post-dispatch checkpoint ever runs:
 /// `tear_down_insert`'s own backstop must still finalize the capture, not
 /// lose the accept.
 #[test]
@@ -2750,7 +2750,7 @@ fn dot_repeat_of_a_binding_that_accepts_then_exits_insert_in_one_body() {
 }
 
 /// A `MAX_EVENT_DRAIN` cascade drop that catches the batch holding a
-/// picker's own `on_select` — the capture armed for that picker's Insert-key
+/// picker's own `on_select`: the capture armed for that picker's Insert-key
 /// binding never gets the edit its pick would have produced. It must be
 /// dropped, not left armed forever, so later typing in a fresh session
 /// records normally instead of finalizing against stale state.
@@ -2778,7 +2778,7 @@ fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap
     );
 
     // Pad the same batch past the drain cap (1000, `scripting_setup.rs`'s
-    // `MAX_EVENT_DRAIN`), so the whole thing — on_select included — is
+    // `MAX_EVENT_DRAIN`), so the whole thing, on_select included, is
     // dropped without ever running.
     for _ in 0..1100 {
         ed.state
@@ -2825,12 +2825,12 @@ fn dot_repeat_capture_is_dropped_when_a_picks_on_select_is_lost_to_the_drain_cap
     );
 }
 
-/// `PickerLayer::tear_down`'s own capture hand-off — reached when a picker
+/// `PickerLayer::tear_down`'s own capture hand-off, reached when a picker
 /// is removed by something other than `close_picker`/`close_picker_with`
 /// (every other picker test in this file closes through Enter or Esc,
 /// which route through those). `end_insert_session` (what a reload or a
 /// focus/buffer switch runs) truncates the Insert layer top-first, tearing
-/// down the Picker on top of it via `tear_down` — not `close_picker` — and
+/// down the Picker on top of it via `tear_down` (not `close_picker`) and
 /// then Insert itself. `on_select` must still fire, and firing it after the
 /// session it would have recorded into is already gone must drop the
 /// pending capture silently rather than panicking.
@@ -2855,8 +2855,8 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_drops_its_capture() {
     assert!(ed.state.input.picker().is_some(), "sanity: picker open");
     assert_eq!(ed.doc().text().to_string(), "abc xdef\nuvw xyz\n");
 
-    // Simulate the teardown a reload or a focus/buffer switch runs —
-    // `end_focus_sessions`'s own chokepoint — while the picker still sits
+    // Simulate the teardown a reload or a focus/buffer switch runs
+    // (`end_focus_sessions`'s own chokepoint) while the picker still sits
     // on top of the Insert session.
     crate::editor::commands::end_insert_session(&mut ed.state, &ed.view);
     ed.settle();
@@ -2881,7 +2881,7 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_drops_its_capture() {
         .insert_inputs;
     assert!(
         inputs.is_empty(),
-        "the pending capture resolved against a session that no longer exists — nothing \
+        "the pending capture resolved against a session that no longer exists; nothing \
          can be recorded for it: {inputs:?}"
     );
 }

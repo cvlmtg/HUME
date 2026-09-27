@@ -1,9 +1,9 @@
 // `std::env::set_var`/`remove_var` in setup_editor_with_init_scripting and
 // setup_lang_lint_editor below mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim. `clippy.toml`'s
+// vars, always under a `TEST_GLOBALS` claim. `clippy.toml`'s
 // `disallowed-methods` entry exists so a *new* raw call elsewhere in the
 // crate gets caught; this file is the sanctioned caller it lists as exempt
-// for this test group — the only file in this directory that needs the
+// for this test group: the only file in this directory that needs the
 // allow, since every raw env call lives in one of the two helpers below and
 // no leaf module calls std::env directly.
 #![allow(clippy::disallowed_methods)]
@@ -99,7 +99,7 @@ fn setup_lang_lint_editor(init_body: &str) -> (Editor, Vec<tempfile::TempDir>) {
     let runtime_tmp = safe_tempdir();
     let data_tmp = safe_tempdir();
 
-    // Trivial plugin body — the lint checks activation entry names, not plugin behaviour.
+    // Trivial plugin body: the lint checks activation entry names, not plugin behaviour.
     let plugin_dir = data_tmp
         .path()
         .join("hume")

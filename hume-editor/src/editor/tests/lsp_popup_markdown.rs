@@ -1,5 +1,5 @@
 // Markdown highlighting for the LSP hover popup (`show-popup! #:lang
-// "markdown"`): grammar-optional — highlighted through the real tree-sitter
+// "markdown"`): grammar-optional, highlighted through the real tree-sitter
 // pipeline when a `markdown` grammar is registered, plain text otherwise
 // (both when `#:lang` isn't set, and when it is but no such grammar exists).
 //
@@ -12,7 +12,7 @@ use super::*;
 use hume_engine::pipeline::RenderContext;
 use test_fixtures::require_grammars;
 
-/// Attach the real `markdown` grammar fixture, no injections — these tests
+/// Attach the real `markdown` grammar fixture, no injections. These tests
 /// only check that top-level spans reach the popup, not fenced-code
 /// injection (already covered end-to-end for buffers by `injections_editor.rs`).
 fn register_markdown(ed: &mut Editor) {
@@ -33,7 +33,7 @@ fn styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
         .and_then(|s| s.styled_rows.as_deref().cloned())
 }
 
-/// The docked (`#:anchor 'bottom`) counterpart of [`styled_rows`] — reads
+/// The docked (`#:anchor 'bottom`) counterpart of [`styled_rows`]. Reads
 /// `views.popup_band()`, not `views.popup()` (empty for a docked popup).
 fn band_styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
     ed.state
@@ -81,7 +81,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     assert!(
         runs.len() > 1,
         "a heading line highlighted by a real grammar must not come back as \
-         a single run — that would mean nothing was actually highlighted, \
+         a single run; that would mean nothing was actually highlighted, \
          got {runs:?}"
     );
     let distinct_styles: std::collections::HashSet<_> = runs.iter().map(|(_, s)| *s).collect();
@@ -90,7 +90,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
         "the heading marker and the heading text must carry different \
          styles, got {runs:?}"
     );
-    // Highlighting must never drop or reorder characters — the runs must
+    // Highlighting must never drop or reorder characters: the runs must
     // still concatenate to exactly the source line.
     let flattened: String = runs.iter().map(|(s, _)| s.as_str()).collect();
     assert_eq!(flattened, "# heading");
@@ -121,7 +121,7 @@ fn markdown_popup_paints_per_run_styles() {
 fn docked_popup_highlights_when_the_grammar_is_registered() {
     // Same syntax-build path as the cursor popup (`#:lang` is layout-
     // independent) but resolved into `views.popup_band()`, not
-    // `views.popup()` — the docked layout hover overflow actually uses
+    // `views.popup()`, the docked layout hover overflow actually uses
     // (`#:anchor 'bottom`).
     require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
@@ -167,7 +167,7 @@ fn docked_popup_survives_a_multiline_capture_node() {
     // `&line[start..end]` slice would panic under `z k`. Single-line
     // grammars never produce an over-long span, so this only surfaces
     // through markdown. `styled_row` is shared by
-    // every caller (cursor popup, docked popup) — exercised here through
+    // every caller (cursor popup, docked popup), exercised here through
     // the docked layout, hover's actual long-content path.
     require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
@@ -222,7 +222,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
 
 #[test]
 fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
-    // No grammar registered at all — this test needs no fixture.
+    // No grammar registered at all; this test needs no fixture.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     run(

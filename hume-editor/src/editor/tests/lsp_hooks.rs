@@ -11,7 +11,7 @@ use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
 /// Wires a scripted backend attached to the focused buffer, and returns the
-/// `ServerId` — handshake not yet driven (client is `Starting`).
+/// `ServerId`, handshake not yet driven (client is `Starting`).
 fn wire_starting_server(ed: &mut Editor) -> ServerId {
     let mut backend = InlineLspBackend::new();
     backend.respond_to("initialize", serde_json::json!({"capabilities": {}}));
@@ -66,7 +66,7 @@ fn on_lsp_attach_fires_for_buffers_attached_before_the_handshake_completes() {
     );
 }
 
-/// `on-lsp-detach` — the counterpart to `on-lsp-attach`, giving a
+/// `on-lsp-detach`: the counterpart to `on-lsp-attach`, giving a
 /// plugin its only signal to clear buffer-scoped state derived from a
 /// server that `:lsp-stop`/`:lsp-restart` just tore down.
 #[test]
@@ -111,7 +111,7 @@ fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
 #[test]
 fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     // register-trigger-chars! must work from command context (not just
-    // init/plugin-load) — hover/signature-help register a server's trigger characters from
+    // init/plugin-load): hover/signature-help register a server's trigger characters from
     // inside their on-lsp-attach handler, which runs as plain command
     // context. Like `on_trigger_char_fires_only_for_registered_
     // chars_in_insert_mode_after_insertion`, compare against a parallel
@@ -157,7 +157,7 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
 }
 
 /// `register-trigger-chars!` is keyed `(source, language)`, not
-/// globally per source — a second language attaching under the same source
+/// globally per source: a second language attaching under the same source
 /// must not clobber the first's chars, and a char typed in the wrong
 /// language's buffer must not fire at all.
 #[test]
@@ -213,7 +213,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     ed.scripting = Some(host);
 
     // Both buffers are already attached (lsp_server set above) before either
-    // handshake completes — the BecameRunning sweep fires on-lsp-attach for
+    // handshake completes; the BecameRunning sweep fires on-lsp-attach for
     // both, in whichever order the backend queued their responses.
     for (sid, ev) in ed.lsp.backend_mut().drain() {
         let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);
@@ -251,7 +251,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     ed.feed_key(key_esc());
     ed.settle();
 
-    // Buffer B ("python", registered ","): "." must not fire, "," must —
+    // Buffer B ("python", registered ","): "." must not fire, "," must,
     // proving "python"'s attach registering under the same "test" source
     // didn't clobber "rust"'s "." entry (checked above), and that "rust"'s
     // registration doesn't leak into "python"'s buffer either.
@@ -294,7 +294,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
     let sid = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
         .unwrap();
-    // Two publishes for the same (server, uri) within one drain batch —
+    // Two publishes for the same (server, uri) within one drain batch:
     // `drain_lsp` coalesces to the last one, but the hook must still fire
     // exactly once, not zero (dropped) or twice (one per publish).
     for _ in 0..2 {
@@ -326,7 +326,7 @@ fn on_diagnostics_changed_fires_once_per_drain_batch_not_per_publish() {
     ed.drain_lsp();
     ed.settle();
     // Exactly one fire (one move-right), not zero (dropped) or two (one per
-    // publish) — the two coalesced publishes must yield one hook call.
+    // publish): the two coalesced publishes must yield one hook call.
     assert_eq!(
         state(&ed),
         "a-[b]>cdef\n",
@@ -359,7 +359,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
 
     let pane_id = ed.state.focus.id();
     // Simulate a scroll burst: each call cancels the previous pending timer
-    // and reschedules — three rapid calls must still yield one fire.
+    // and reschedules; three rapid calls must still yield one fire.
     ed.debounce_viewport_change(pane_id);
     ed.debounce_viewport_change(pane_id);
     ed.debounce_viewport_change(pane_id);
@@ -393,7 +393,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     );
     ed.scripting = Some(host);
 
-    // `feed_key` (unlike `handle_input`) doesn't drain hooks itself — the
+    // `feed_key` (unlike `handle_input`) doesn't drain hooks itself; the
     // interactive loop does that separately so tests without a scripting
     // host don't need one. Drain explicitly after each key that could have
     // enqueued one. Compare against a parallel plain editor with no hook to
@@ -461,6 +461,6 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
     assert_eq!(
         state(&ed),
         state(&plain),
-        "no extra move must occur — on-trigger-char never fires outside Insert mode"
+        "no extra move must occur: on-trigger-char never fires outside Insert mode"
     );
 }

@@ -1,6 +1,6 @@
 //! Diagnostics store: `publishDiagnostics` lands here, converted to char
 //! offsets at ingest, coalesced per drain batch, remapped through every
-//! subsequent edit. Bulk never reaches Steel — Steel gets
+//! subsequent edit. Bulk never reaches Steel: Steel gets
 //! a signal + bounded pulls.
 
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use crate::editor::message_log::Severity;
 use hume_decorations::{Positioned, RangeAnchored, SourceStore};
 
 /// Ordered least-to-most-lenient so `severity <= floor` means "at least as
-/// severe as floor" — e.g. `floor = Warning` keeps `Error` and `Warning`,
+/// severe as floor": e.g. `floor = Warning` keeps `Error` and `Warning`,
 /// drops `Info`/`Hint`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DiagSeverity {
@@ -30,7 +30,7 @@ pub enum DiagSeverity {
 }
 
 impl DiagSeverity {
-    /// The wire-format strings `FromStr` accepts — the single source
+    /// The wire-format strings `FromStr` accepts: the single source
     /// `:set global lsp.diagnostics-severity-floor=<Tab>` completion mirrors,
     /// so the two can never drift out of sync (same convention as `TabStyle`).
     pub(in crate::editor) const VALUES: &'static [&'static str] =
@@ -74,7 +74,7 @@ pub(in crate::editor) struct StoredDiag {
     pub(in crate::editor) source: Option<String>,
     /// The original wire-shaped `Diagnostic`, serialized back from the
     /// parsed `lsp_types::Diagnostic` (`textDocument/codeAction` needs to
-    /// echo this back verbatim as `context.diagnostics` — the server's
+    /// echo this back verbatim as `context.diagnostics`: the server's
     /// quickfixes are gated on the client showing the diagnostic it's
     /// fixing, and rebuilding this from `start`/`end`'s char offsets would
     /// mean Steel fabricating wire positions itself, which the
@@ -84,7 +84,7 @@ pub(in crate::editor) struct StoredDiag {
     /// each entry's `"raw"` to Scheme as a `JsonHandle` sharing this same
     /// allocation, instead of cloning the value to build one.
     pub(in crate::editor) raw: Arc<serde_json::Value>,
-    /// The publishing server's negotiated encoding at ingest time — tags
+    /// The publishing server's negotiated encoding at ingest time. Tags
     /// `raw`'s `JsonHandle` (`introspect::diagnostics_for_buffer`) so a
     /// wire position inside it (`context.diagnostics`' own positions, once
     /// a plugin reads them back out) decodes correctly even after the
@@ -110,7 +110,7 @@ impl RangeAnchored for StoredDiag {
 
 /// Wraps the same generic `SourceStore<K, T>` the decoration kinds share
 /// (`hume-decorations`'s `decorations.rs`), keyed by `ServerId` instead of a plugin-chosen
-/// source name — `set`/`remap_ranges`/`remove_buffer` are the shared
+/// source name. `set`/`remap_ranges`/`remove_buffer` are the shared
 /// write/remap machinery; the diagnostics-specific reads (`for_range`'s
 /// severity/range filter, `counts`) stay here since no decoration kind
 /// needs them.
@@ -120,7 +120,7 @@ pub(in crate::editor::lsp) struct DiagnosticsStore {
 }
 
 impl DiagnosticsStore {
-    /// Replaces one server's diagnostics for `bid` (already coalesced —
+    /// Replaces one server's diagnostics for `bid` (already coalesced:
     /// the caller keeps only the last `publishDiagnostics` per (server,
     /// uri) within a drain batch). `SourceStore::set` sorts by `start`
     /// (`StoredDiag`'s `Positioned` impl), so callers need not pre-sort
@@ -134,18 +134,18 @@ impl DiagnosticsStore {
         self.store.set(server, bid, diags);
     }
 
-    /// Remaps every stored range for `bid` through `cs` — must be called
+    /// Remaps every stored range for `bid` through `cs`. Must be called
     /// for every `ChangeSet` applied to an attached buffer, including
     /// undo/redo (same chokepoint as `flush_lsp_pending_changes`,
-    /// consuming the same `Buffer.lsp_pending` entries — same source, both
+    /// consuming the same `Buffer.lsp_pending` entries: same source, both
     /// consumers). A range collapsed to empty by a covering deletion is
-    /// dropped, not kept as a zero-width entry — `SourceStore::remap_ranges`'
-    /// shared policy, the same one `ExtraHighlightEntry` uses.
+    /// dropped, not kept as a zero-width entry (`SourceStore::remap_ranges`'
+    /// shared policy, the same one `ExtraHighlightEntry` uses).
     pub(in crate::editor) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
         self.store.remap_ranges(bid, cs);
     }
 
-    /// Drops every `StoredDiag` published by `server` — called when a
+    /// Drops every `StoredDiag` published by `server`. Called when a
     /// server is stopped (`lsp_stop_one`) so its diagnostics don't survive
     /// the stop (drifting silently, since `remap_through` only runs for
     /// buffers still attached to a server) or duplicate a fresh instance's
@@ -154,18 +154,18 @@ impl DiagnosticsStore {
     /// path). A buffer left with no remaining server entry is dropped
     /// entirely, not kept as an empty `Vec` (`SourceStore::retain_sources`).
     /// Returns the buffers actually touched, so the caller can fire
-    /// `OnDiagnosticsChanged` for exactly those — same "only the buffers
+    /// `OnDiagnosticsChanged` for exactly those: same "only the buffers
     /// this batch touched" discipline as `drain_lsp`'s `publishDiagnostics`
     /// ingest.
     pub(in crate::editor::lsp) fn remove_server(&mut self, server: ServerId) -> Vec<BufferId> {
         self.store.retain_sources(|&sid| sid != server)
     }
 
-    /// Drops every diagnostic for `bid`, across every server — called when
+    /// Drops every diagnostic for `bid`, across every server. Called when
     /// the buffer is closed (a pure memory-leak fix there: `BufferId` is a
     /// versioned slotmap key, so a future slot reuse can never alias with
     /// the closed buffer's stale entry) and on `:e!` reload (where it *is*
-    /// a correctness fix — offsets computed against the pre-reload text
+    /// a correctness fix: offsets computed against the pre-reload text
     /// must not survive against the new content). Returns whether anything
     /// was actually removed, so a reload caller only fires
     /// `OnDiagnosticsChanged` when the display actually changes.
@@ -173,7 +173,7 @@ impl DiagnosticsStore {
         self.store.remove_buffer(bid)
     }
 
-    /// Every buffer with at least one stored diagnostic, from any server —
+    /// Every buffer with at least one stored diagnostic, from any server,
     /// including one whose server has since crashed or stopped: `remove_server`
     /// drops a stopped server's own entries, but a crash leaves them here
     /// deliberately (see `LspState::reset_config`'s doc), so `:reload-config`'s
@@ -203,7 +203,7 @@ impl DiagnosticsStore {
     ///
     /// Each server's own entries are sorted by `start` (`SourceStore::set`),
     /// but with 2+ servers publishing for the same buffer, concatenating
-    /// them in server order would not be globally sorted — callers that
+    /// them in server order would not be globally sorted. Callers that
     /// assume start-ascending order (e.g. `goto-next-diagnostic`'s
     /// nearest-match logic) would jump to whichever server happened to be
     /// iterated first rather than the nearest diagnostic. Collected and
@@ -220,7 +220,7 @@ impl DiagnosticsStore {
         out.into_iter()
     }
 
-    /// [`Self::for_range`] without the cross-server ordering pass — for a
+    /// [`Self::for_range`] without the cross-server ordering pass, for a
     /// caller whose own result doesn't depend on the order it sees these in
     /// (the sign bridge folds them into a per-line winner; the underline
     /// bridge re-sorts what it builds). Lazy, so it never collects at all.
@@ -247,7 +247,7 @@ impl DiagnosticsStore {
 
 fn map_severity(sev: Option<lsp_types::DiagnosticSeverity>) -> DiagSeverity {
     match sev {
-        // Spec: absent severity is left to the client to interpret — Error
+        // Spec: absent severity is left to the client to interpret. Error
         // keeps it maximally visible rather than silently downgrading it.
         None | Some(lsp_types::DiagnosticSeverity::ERROR) => DiagSeverity::Error,
         Some(lsp_types::DiagnosticSeverity::WARNING) => DiagSeverity::Warning,
@@ -257,13 +257,13 @@ fn map_severity(sev: Option<lsp_types::DiagnosticSeverity>) -> DiagSeverity {
     }
 }
 
-/// Widens a zero-length `[pos, pos)` range to one char — HUME diagnostic
+/// Widens a zero-length `[pos, pos)` range to one char: HUME diagnostic
 /// decorations, like selections, are never empty. Widens forward by
 /// default; widens backward instead when `pos` is at end-of-line or
 /// end-of-buffer, so the range never crosses into the next line. Always
 /// succeeds: the buffer invariant (`len_chars() >= 1`, always ending in a
 /// structural `\n`) guarantees at least the newline itself to widen onto,
-/// even on the minimal `"\n"` buffer — matching how a selection can cover
+/// even on the minimal `"\n"` buffer, matching how a selection can cover
 /// that same newline cell.
 fn widen_zero_length(rope: &Rope, pos: CharOffset) -> ExclusiveRange<CharOffset> {
     let len = rope.len_chars();
@@ -279,12 +279,12 @@ fn widen_zero_length(rope: &Rope, pos: CharOffset) -> ExclusiveRange<CharOffset>
 impl Editor {
     /// Ingests one already-coalesced, already-classified `publishDiagnostics`
     /// payload (the caller kept only the last one per (server, uri) within
-    /// this drain batch — a malformed payload never reaches here, since
+    /// this drain batch; a malformed payload never reaches here, since
     /// `hume-lsp` classifies it as a `ServerNotification` fallthrough
     /// instead). Drops silently (one Trace line) when the URI doesn't
-    /// resolve to an open buffer — v1 never opens a buffer just to hold
+    /// resolve to an open buffer: v1 never opens a buffer just to hold
     /// diagnostics. Returns the buffer actually ingested into, so the caller
-    /// can fire `OnDiagnosticsChanged` once per touched buffer — `None` on
+    /// can fire `OnDiagnosticsChanged` once per touched buffer; `None` on
     /// any drop path.
     pub(in crate::editor) fn ingest_publish_diagnostics(
         &mut self,
@@ -320,7 +320,7 @@ impl Editor {
         };
 
         // A publish computed against an older version would convert its
-        // positions against text that has since moved on — the server has
+        // positions against text that has since moved on. The server has
         // already received our newer didChange(s) and will republish
         // against the current version shortly. Drop it rather than store
         // positions that are quietly wrong until then; the existing

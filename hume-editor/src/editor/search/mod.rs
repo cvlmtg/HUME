@@ -4,7 +4,7 @@
 //! - [`SearchPattern`] + [`SearchMatches`] live on `Buffer` (shared by all panes viewing it).
 //! - [`SearchCursor`] lives on [`crate::editor::pane_state::PaneBufferState`] (per-pane).
 //! - The last search pattern string also lives in the `'s'` register
-//!   (`RegisterSet::search_register`), independent of any buffer — it seeds
+//!   (`RegisterSet::search_register`), independent of any buffer. It seeds
 //!   a fresh buffer's compiled pattern the first time `n`/`N` runs there.
 //!
 //! [`SearchState`] retains only the session-level interaction field that is
@@ -23,14 +23,14 @@ use hume_rope::offset::{CharOffset, InclusiveRange};
 
 /// Per-buffer search pattern. Stored on `Buffer`. All panes viewing this buffer share it.
 ///
-/// `Arc<Regex>` makes the clone needed by `update_buffer_matches` a refcount bump —
+/// `Arc<Regex>` makes the clone needed by `update_buffer_matches` a refcount bump:
 /// no deep clone, no take/put-back dance. A present `SearchPattern` is always
 /// fully-valid by construction (invalid regexes are rejected at compile time and
-/// leave `Buffer.search_pattern = None`) — [`SearchPattern::compile`] is the one
+/// leave `Buffer.search_pattern = None`). [`SearchPattern::compile`] is the one
 /// way to build one, so every producer gets this for free.
 pub(in crate::editor) struct SearchPattern {
     pub regex: Arc<regex_cursor::engines::meta::Regex>,
-    /// Raw prompt input, flag prefix included (`"m/bar"`, not `"bar"`) — used
+    /// Raw prompt input, flag prefix included (`"m/bar"`, not `"bar"`), used
     /// as an invalidation key for `SearchMatches`, and as the source of truth
     /// for [`SearchPattern::multi`] rather than a separately-stored field:
     /// keeping it in the key over-invalidates when only `multi` toggles
@@ -41,7 +41,7 @@ pub(in crate::editor) struct SearchPattern {
 
 impl SearchPattern {
     /// Parse `raw`'s leading flags and compile the remaining pattern. `None`
-    /// on an invalid regex — the caller leaves `Buffer.search_pattern`
+    /// on an invalid regex; the caller leaves `Buffer.search_pattern`
     /// untouched (or `None`) rather than storing a half-valid pattern.
     pub(in crate::editor) fn compile(raw: &str) -> Option<Self> {
         let (_flags, regex) = compile_search_input(raw)?;
@@ -51,7 +51,7 @@ impl SearchPattern {
         })
     }
 
-    /// The `m` (multi) flag, read back off the raw input — see
+    /// The `m` (multi) flag, read back off the raw input. See
     /// [`SearchPattern::pattern_str`]'s doc for why this isn't a stored field.
     pub(in crate::editor) fn multi(&self) -> bool {
         hume_ops::search::parse_search_input(&self.pattern_str)
@@ -67,7 +67,7 @@ pub(in crate::editor) struct SearchMatches {
     /// document order.
     pub matches: Vec<InclusiveRange<CharOffset>>,
     /// `(revision, pattern)` when `matches` was last computed. `None` = never computed.
-    /// Stored as a pair so both are always in sync — no half-initialised state.
+    /// Stored as a pair so both are always in sync: no half-initialised state.
     pub cache: Option<(RevisionId, String)>,
 }
 
@@ -87,7 +87,7 @@ pub(crate) struct SearchCursor {
     /// Head position when `match_count` was last computed. `None` = never computed.
     pub cache_head: Option<CharOffset>,
     /// `SearchMatches::cache` key when `match_count` was last computed.
-    /// Stored as a pair so both fields are always in sync — no half-initialised state.
+    /// Stored as a pair so both fields are always in sync: no half-initialised state.
     pub cache_matches: Option<(RevisionId, String)>,
 }
 

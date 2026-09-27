@@ -9,7 +9,7 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::RenderContext;
 
 /// Drive `(set-option! ...)` through the real Steel path
-/// (`EditorHostImpl::set_global_option`) — mirrors the harness in
+/// (`EditorHostImpl::set_global_option`). Mirrors the harness in
 /// `editor/tests/undo_levels.rs`'s `steel_set_option_applies_undo_levels`.
 fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
     let names: Vec<String> = ed
@@ -98,7 +98,7 @@ fn set_option_applies_jump_list_capacity() {
         "lowering the cap must not retroactively trim existing entries"
     );
 
-    // The overshoot (5 -> new cap 2) is more than one entry — the next push
+    // The overshoot (5 -> new cap 2) is more than one entry; the next push
     // must still converge to the cap in this one call.
     ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
         buffer_id: bid,
@@ -118,19 +118,19 @@ fn set_option_applies_jump_list_capacity() {
 
 /// `mouse-enabled`/`mouse-select` are terminal modes applied once at startup
 /// (`hume_platform::terminal::init`, called from `hume-editor/src/lib.rs`
-/// before entering the event loop) — there is no other write side.
+/// before entering the event loop); there is no other write side.
 /// `prepare_frame` calls `resync_mouse_mode` every frame, re-applying the
 /// terminal mode whenever it drifts from `state.settings`, so `:set global
 /// mouse-enabled=false` takes effect without restarting.
 ///
 /// No `SharedTerm` exists in test `Editor`s (`Editor::for_testing`/`open`
 /// both seed `terminal: None`), so this can't assert on emitted escape
-/// bytes — that path is covered by `hume-platform`'s
+/// bytes. That path is covered by `hume-platform`'s
 /// `mouse_enable_without_select_emits_1000_and_1006_only` and friends
 /// (`hume-platform/src/terminal/tests.rs`). This asserts the terminal-mode
 /// tracking state itself (`Editor::applied_mouse_mode`) resyncs to the new
 /// setting on the next `prepare_frame`, which is the part `resync_mouse_mode`
-/// can do headless — the `if let Some(term)` write is a one-line guard
+/// can do headless. The `if let Some(term)` write is a one-line guard
 /// around the same comparison, exercised whenever a real terminal is
 /// attached.
 ///
@@ -152,7 +152,7 @@ fn set_global_mouse_enabled_resyncs_applied_mode_next_frame() {
     assert_eq!(
         ed.applied_mouse_mode,
         (true, false),
-        "the setting write itself must not resync — only prepare_frame does"
+        "the setting write itself must not resync; only prepare_frame does"
     );
 
     let mut ctx = RenderContext::new();
@@ -176,7 +176,7 @@ fn set_option_statusline_mode_colors_gates_whole_row_tint() {
     // cyan in Insert mode with colors off.
     //
     // The fixture theme gives `ui.statusline` and `ui.statusline.normal`
-    // *different* backgrounds — every bundled theme makes them equal, which
+    // *different* backgrounds. Every bundled theme makes them equal, which
     // would let the off-state assertion pass whether the opt-out reads the
     // base scope (correct) or silently substitutes `EditorMode::Normal`
     // (an imported theme with a distinct Normal-mode accent, e.g. Helix's
@@ -234,7 +234,7 @@ fn set_option_statusline_mode_colors_gates_whole_row_tint() {
     ed.feed_key(key('i'));
     assert_eq!(ed.state.mode(), Mode::Insert);
 
-    // Default: statusline.mode-colors is on — the row tints for Insert.
+    // Default: statusline.mode-colors is on: the row tints for Insert.
     let buf = ed.render_to_buf(rect);
     assert_eq!(buf[(0, row)].style().bg, insert_bg);
 
@@ -370,7 +370,7 @@ pub(in crate::editor::tests) struct RealThemeRuntimeGuard {
 }
 
 impl RealThemeRuntimeGuard {
-    // `std::env::set_var` mutates the process-global `HUME_RUNTIME` var —
+    // `std::env::set_var` mutates the process-global `HUME_RUNTIME` var,
     // sound only under the `TEST_GLOBALS.claim(Global::Env)` taken just
     // above, which is what makes this the sanctioned caller `clippy.toml`'s
     // `disallowed-methods` entry lists as exempt.
@@ -378,7 +378,7 @@ impl RealThemeRuntimeGuard {
     pub(in crate::editor::tests) fn new() -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
         let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
-        // SAFETY: not unsafe in the memory-safety sense — Rust 2024 requires
+        // SAFETY: not unsafe in the memory-safety sense. Rust 2024 requires
         // the block because env vars are process-global; the `Global::Env`
         // claim above is what actually makes this test-safe (see
         // `TestGlobals`'s doc at tests/mod.rs).
@@ -416,7 +416,7 @@ fn typed_theme_sets_setting_on_success() {
 
 /// `set-buffer-option!`, called from an `on-language-set` hook with the
 /// hook's own `bid`, writes the target buffer's override and leaves the
-/// global setting untouched — proving the write lands in `BufferOverrides`,
+/// global setting untouched, proving the write lands in `BufferOverrides`,
 /// not `EditorSettings`.
 #[test]
 fn set_buffer_option_from_hook_writes_target_override() {
@@ -463,8 +463,8 @@ fn on_language_set_hook_configures_word_chars() {
     assert_eq!(state(&ed), "foo-bar-[ baz]>\n");
 }
 
-/// `(get-buffer-option bid "word-chars")` round-trips the raw string —
-/// covers the new `option_value!` arm.
+/// `(get-buffer-option bid "word-chars")` round-trips the raw string;
+/// this covers the new `option_value!` arm.
 #[test]
 fn get_buffer_option_round_trips_word_chars() {
     let tmp = safe_tempdir();
@@ -483,7 +483,7 @@ fn get_buffer_option_round_trips_word_chars() {
 /// The feature this scope layer exists for: setting wrap-mode per file type
 /// from an `on-language-set` hook via `set-buffer-option!`. The open pane
 /// (never explicitly `:wrap`'d or `:set pane`'d) picks up the change
-/// immediately — resolution is lazy (pane → buffer → global), not a seed
+/// immediately: resolution is lazy (pane → buffer → global), not a seed
 /// applied only to panes opened afterward.
 ///
 /// A global-only `wrap-mode` would make `set-buffer-option!` error before
@@ -513,8 +513,8 @@ fn set_buffer_option_wrap_mode_from_hook_changes_the_open_pane() {
     );
 }
 
-/// The hook's `bid` argument, not the focused buffer, is the write target —
-/// pins the distinction that `settle` runs with the *focused* buffer as
+/// The hook's `bid` argument, not the focused buffer, is the write target.
+/// Pins the distinction that `settle` runs with the *focused* buffer as
 /// scripting context while the hook's own `bid` may name a background
 /// buffer.
 #[test]
@@ -545,7 +545,7 @@ fn set_buffer_option_targets_hook_bid_not_focused_buffer() {
 
 /// `get-buffer-option`'s explicit `bid` argument, mirrored here at the host
 /// layer (`SettingsHost::get_buffer_option`, same as `set_buffer_option`),
-/// reads the *named* buffer's override — not the focused buffer's — the
+/// reads the *named* buffer's override, not the focused buffer's: the
 /// read-side half of the same hook-bid distinction
 /// `set_buffer_option_targets_hook_bid_not_focused_buffer` pins for writes.
 #[test]
@@ -587,8 +587,8 @@ fn get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer() {
 
 /// `get-buffer-option` on a closed buffer id must error, matching
 /// `set-buffer-option!`'s own `try_get` guard (`EditorHostImpl::set_buffer_option`)
-/// — a stale bid is invalid input, not a request for "whatever the global
-/// default is".
+/// (a stale bid is invalid input, not a request for "whatever the global
+/// default is").
 #[test]
 fn get_buffer_option_closed_bid_errors() {
     use hume_scripting::host::EditorHost;
@@ -643,7 +643,7 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
 }
 
 /// `EditorHostImpl::set_buffer_option` returns `Err` for a stale bid instead
-/// of panicking — `settings::ops::apply`'s `get_mut` panics on an unseeded
+/// of panicking. `settings::ops::apply`'s `get_mut` panics on an unseeded
 /// id, so the host method's own `try_get` guard must run first.
 #[test]
 fn host_set_buffer_option_invalid_bid_errors() {
@@ -692,7 +692,7 @@ fn cursor_shape_insert_only_applies_to_insert_mode() {
 }
 
 /// The focused pane's `cursor_is_block` is exactly "the resolved shape for
-/// the live mode is Block", so flipping the setting flips it — and with it
+/// the live mode is Block", so flipping the setting flips it, and with it
 /// whether `style_display_line` paints either selection head at all. An *unfocused*
 /// pane is always `true` regardless: no real terminal cursor sits there to
 /// stand in for the painted one, so its heads must be drawn either way.
@@ -731,7 +731,7 @@ fn cursor_shape_insert_gates_head_painting_in_the_focused_pane_only() {
 }
 
 /// With `cursor-shape-insert=block` the painted head *is* the cursor, so the
-/// real terminal cursor must be hidden — the same rule the default `bar`
+/// real terminal cursor must be hidden, the same rule the default `bar`
 /// inverts (`insert_mode_hides_cursor_only_in_focused_pane` covers that side).
 /// Asserts on the resolved shape rather than the escape byte: `Editor::run`
 /// maps it to `CursorStyle` with no branch of its own beyond this value.

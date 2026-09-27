@@ -63,7 +63,7 @@ impl Editor {
         let startup_cwd = std::env::current_dir()?;
         let mut doc = match file_path {
             // Missing file, valid basename: `hume newfile.txt` opens an
-            // empty buffer bound to the path instead of exiting — same
+            // empty buffer bound to the path instead of exiting, same
             // `:w`-creates-it semantics as `:e` on a missing file (see
             // `Buffer::from_file_or_new`, `Editor::open_or_dedup`).
             Some(ref path) => Buffer::from_file_or_new(path, &startup_cwd)?,
@@ -85,22 +85,22 @@ impl Editor {
         let mut engine_view = EngineView::new(theme);
 
         // Every overlay view shared between the per-frame write side and the
-        // engine's render side — see `hume_ui::OverlayViews`'s own doc. The
+        // engine's render side; see `hume_ui::OverlayViews`'s own doc. The
         // drawer and the docked popup are chrome (like the tab bar/
-        // statusline), not per-pane — one instance of each, registered
+        // statusline), not per-pane: one instance of each, registered
         // directly on `engine_view.bottom_bands` rather than through
         // `build_pane`. Only one is ever non-empty at a time in practice.
         let views = hume_ui::OverlayViews::default();
         engine_view.bottom_bands = views.bottom_bands();
 
-        // The tab bar: chrome, not per-pane, same as the bands above — one
+        // The tab bar: chrome, not per-pane, same as the bands above. One
         // instance, registered directly on `engine_view.tabbar`.
         let tabline_view = hume_engine::lock::SharedSlot::default();
         engine_view.tabbar = Some(Box::new(crate::tabline::TablineWidget {
             data: tabline_view.clone(),
         }));
 
-        // Insert a buffer — just metadata; the rope is passed at render time.
+        // Insert a buffer: just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(());
 
         let settings = EditorSettings::default();
@@ -111,7 +111,7 @@ impl Editor {
         let (pane, render_handles) = build_pane(&mut engine_view.registry, &views, buffer_id);
         let unattached = engine_view.insert_pane(pane);
         let pane_id = unattached.pane_id();
-        // Discards the placeholder EngineView::new seeded — no real pane
+        // Discards the placeholder EngineView::new seeded: no real pane
         // behind it to leak.
         let _ = engine_view.replace_layout(LayoutTree::leaf(unattached));
 
@@ -177,7 +177,7 @@ impl Editor {
             startup_positions: Vec::new(),
         };
         // This buffer predates the scripting host, so it can't route through
-        // `open_buffer_and_notify` — but it must end up in the state that
+        // `open_buffer_and_notify`, but it must end up in the state that
         // chokepoint leaves a buffer in, or `detect_pending_languages` never
         // announces its open. Safe to queue this early: `queue_event` only
         // enqueues, and `pending_work` isn't drained until the first
@@ -200,7 +200,7 @@ impl Editor {
     /// its config from (`--config` / `--no-config`), instead of the default
     /// `<config_dir>/init.scm`.
     ///
-    /// Must run before `init_scripting`, same as `set_kitty_support` — the
+    /// Must run before `init_scripting`, same as `set_kitty_support`: the
     /// source is read once resolution starts.
     pub(crate) fn set_config_source(&mut self, source: ConfigSource) {
         self.config_source = source;
@@ -217,7 +217,7 @@ impl Editor {
     /// Apply every startup cursor placement queued by
     /// [`Self::queue_startup_position`], then center the focused buffer's
     /// viewport on its cursor the same way `zz`/`goto-location!` do. No jump
-    /// entry is recorded — a startup position is the buffer's origin, not a
+    /// entry is recorded. A startup position is the buffer's origin, not a
     /// jump away from one, so `Ctrl-o` has nothing to return to here (unlike
     /// `:goto` and `goto-location!`, which both do).
     ///
@@ -250,17 +250,17 @@ impl Editor {
         }
     }
 
-    /// Process one key event — dispatch it, sync the search cache, drain any
+    /// Process one key event: dispatch it, sync the search cache, drain any
     /// macro replay, sync again.
     ///
     /// This is the single, non-test path for feeding one keystroke to the editor
     /// from outside the interactive event loop (e.g. headless key-runner). Unlike
-    /// [`Self::handle_input`], `step` does not itself call [`Self::settle`] — the
+    /// [`Self::handle_input`], `step` does not itself call [`Self::settle`]. The
     /// caller (`hume_editor::run_keys`) calls it once per key, mirroring how the
     /// interactive loop settles once per iteration rather than once per input
     /// handler. The one exception is [`Self::drain_replay_queue`], which settles
     /// internally so a macro's buffer-enter diff is observed before its
-    /// `is_replaying` guard drops — see that function's doc. Here we use
+    /// `is_replaying` guard drops (see that function's doc). Here we use
     /// [`Self::handle_key`] directly so the caller doesn't need a scripting host.
     pub(crate) fn step(&mut self, key: KeyEvent) {
         self.handle_key(key);
@@ -271,20 +271,20 @@ impl Editor {
 
     /// Single interactive input boundary: dispatch one terminal event.
     ///
-    /// All interactive input flows through here — key events and mouse events
+    /// All interactive input flows through here: key events and mouse events
     /// alike. This does not drain queued work itself, nor diff focus
     /// itself (see `tests/sync_dispatch.rs`'s
     /// `mouse_click_leaves_hook_queued_until_the_next_settle`, which pins
     /// it): `Editor::run`'s loop calls `settle()` once per
     /// iteration, at the top, and `settle()`'s own fixpoint is where a focus
-    /// change made here — or by a hook handler, or by non-interactive Steel/
-    /// LSP code — is observed and turned into `OnBufferEnter`. New input
+    /// change made here (or by a hook handler, or by non-interactive Steel/
+    /// LSP code) is observed and turned into `OnBufferEnter`. New input
     /// paths should still route through here: it's what marks
     /// `message_logged_this_input` for `settle()`'s disk check to honour
     /// below.
     ///
     /// Sets `message_logged_this_input` whenever this dispatch itself logged
-    /// a new warning or error — a command that fails after moving focus
+    /// a new warning or error: a command that fails after moving focus
     /// (`:qa` landing on the first dirty buffer) must keep its own message on
     /// screen instead of losing it to an unrelated disk-change confirm the
     /// next `settle()` might open. `settle()` clears the flag once that
@@ -297,7 +297,7 @@ impl Editor {
             TerminalEvent::Mouse(m) => self.dispatch_input(InputEvent::Mouse(m)),
             TerminalEvent::Paste(s) => self.handle_terminal_paste(s),
             // Regaining focus is one of the external-file-change check's
-            // trigger points (alongside buffer-enter and `:checktime`) — see
+            // trigger points (alongside buffer-enter and `:checktime`); see
             // `DiskCheckTrigger::Ambient`. `FocusOut` needs no handling:
             // there's nothing to check until focus returns.
             TerminalEvent::FocusIn => self.state.queue_event(EditorEvent::OnFocusGained),
@@ -310,7 +310,7 @@ impl Editor {
     ///
     /// Each iteration:
     /// 1. Sync viewport geometry, settle (drain async sources and the merged
-    ///    work queue to quiescence — see `Editor::settle`'s doc; this keeps
+    ///    work queue to quiescence, see `Editor::settle`'s doc; this keeps
     ///    a queued event from stranding), observe
     ///    `should_quit`, then prepare the frame: sync all editor state to
     ///    the engine pane.
@@ -323,11 +323,11 @@ impl Editor {
     /// `prepare_frame`/draw. `run` itself needs a live terminal and event
     /// reader, so this is verified by this function's own structure below
     /// plus `tests/events.rs`' `:wq`-fires-`OnBufferSave` regression test,
-    /// which covers the drain but not the loop ordering — recorded here
+    /// which covers the drain but not the loop ordering, recorded here
     /// rather than faked with a shape-assertion test.
     pub(crate) fn run(&mut self, term: &SharedTerm, screen: &mut Screen) -> io::Result<()> {
         // Marks that this Editor owns the terminal for the whole of
-        // `run_loop` — dispatch's inline-output bracket (dispatch.rs) reads
+        // `run_loop`: dispatch's inline-output bracket (dispatch.rs) reads
         // it to skip alt-screen toggling and the "press any key" block
         // outside the event loop. A wrapper rather than an inline reset at
         // the end: `run_loop` has several `?`-propagated exits, and this is
@@ -338,22 +338,22 @@ impl Editor {
         result
     }
 
-    /// The loop itself, described by [`Self::run`]'s doc — split out so
+    /// The loop itself, described by [`Self::run`]'s doc, split out so
     /// `run` owns the `Tui::On`/`Tui::Off` bracket around every exit.
     fn run_loop(&mut self, term: &SharedTerm, screen: &mut Screen) -> io::Result<()> {
         let reader = term.event_reader();
-        // Render context lives here — allocated once, reused every frame.
+        // Render context lives here, allocated once, reused every frame.
         // Outside `self` so it can be borrowed mutably alongside the `&mut
         // self` that `prepare_frame`/`render_into` each take.
         let mut ctx = RenderContext::new();
         let mut last_cursor_color_mode: Option<EditorMode> = None;
         loop {
-            // A signal asked us to quit — checked before drawing, since the
+            // A signal asked us to quit. Checked before drawing, since the
             // terminator thread's grace window is already ticking and a
             // frame here would be wasted work. Falls through to the same
             // post-loop teardown as a typed `:q` (`lsp_shutdown_all`, cursor
             // reset). Unlike `should_quit`, this bypasses dirty-buffer
-            // prompts — a signal isn't a `:q`. `0` means "no termination
+            // prompts: a signal isn't a `:q`. `0` means "no termination
             // requested"; never a valid signal-termination exit code.
             if self
                 .state
@@ -381,7 +381,7 @@ impl Editor {
             //
             // `frame.rs`'s `render_to_buf` mirrors this same
             // `sync_viewport_dims` → `settle` → `prepare_frame` sequence for
-            // snapshot tests — a step added to this loop needs the same step
+            // snapshot tests. A step added to this loop needs the same step
             // added there, or every snapshot renders a frame this loop no
             // longer produces.
             let (term_width, term_height) = screen.size()?;
@@ -394,7 +394,7 @@ impl Editor {
             // above so centring reads the real terminal size, not `Pane::new`'s
             // 80x24 placeholder.
             self.apply_startup_positions();
-            // Observed here, downstream of `settle()` — not right after
+            // Observed here, downstream of `settle()`, not right after
             // dispatch. `should_quit` is also checked after dispatch below
             // (`:508`, `continue` rather than `break`), which keeps the loop
             // going for exactly one more iteration so it reaches `settle()`
@@ -414,13 +414,13 @@ impl Editor {
             let cursor_screen = if let Some(mb) = self.state.minibuf() {
                 // Minibuf active (Command / Search / Select): place the terminal
                 // cursor in the statusline at the minibuf edit position. Always a
-                // bar — HUME's prompt modes have no cursor-shape option of their
+                // bar: HUME's prompt modes have no cursor-shape option of their
                 // own, unlike the document's own Insert-mode cursor below.
                 let statusline_row = term_height.saturating_sub(1);
                 Some(Position::new(mb.statusline_cursor_x(), statusline_row))
             } else {
                 // Reads `cursor_shape()` directly rather than through
-                // `resolve_pane_settings` — the focused pane's own
+                // `resolve_pane_settings`: the focused pane's own
                 // `cursor_is_block` is defined as exactly this comparison
                 // (`frame.rs`), and resolving full pane settings
                 // (a `FormatKey` build included) just to throw away
@@ -433,7 +433,7 @@ impl Editor {
                     // Non-block shape (only Insert can be, via
                     // `cursor-shape-insert`): place the terminal cursor at the
                     // document head, where `prepare_frame`'s scroll step already
-                    // resolved it — the display-line map that decided *where to
+                    // resolved it. The display-line map that decided *where to
                     // scroll* had to answer this question anyway, so re-deriving
                     // it here would walk the same display lines a second time.
                     //
@@ -459,7 +459,7 @@ impl Editor {
             // Open the synchronized-output envelope so the terminal defers
             // display until after every byte of this frame has been written.
             // Terminals that don't support DEC 2026 silently ignore the
-            // sequence — hence `let _ =` rather than `?`.
+            // sequence, hence `let _ =` rather than `?`.
             let _ = hume_platform::terminal::begin_synchronized_update(term);
             let grid = screen.frame(term_width, term_height);
             self.render_into(Rect::new(0, 0, term_width, term_height), grid, &mut ctx);
@@ -467,18 +467,18 @@ impl Editor {
 
             // ── 2b. Cursor shape ──────────────────────────────────────────────
             // Emitted *after* the frame so it's the last escape sequence the
-            // terminal sees before we block — the show-cursor sequence closing
+            // terminal sees before we block: the show-cursor sequence closing
             // a frame can otherwise reset the shape on some terminals.
             //
             // Minibuf active forces a bar unconditionally, same as the position
-            // branch above — HUME's prompt modes have no shape option of their
+            // branch above: HUME's prompt modes have no shape option of their
             // own. Otherwise the live mode's resolved shape
             // (`EditorState::cursor_shape`) is the single source both this and
             // `resolve_pane_settings`' `cursor_is_block` read, so the real
             // terminal cursor and the grid's painted heads can never disagree
             // about which shape is in effect.
             //
-            // Re-asserted every frame rather than only on a change — unlike
+            // Re-asserted every frame rather than only on a change, unlike
             // the cursor *colour* below, which is gated on one. That's the
             // point of emitting it here: the show-cursor sequence closing a
             // frame resets the shape on some terminals, so a shape sent once
@@ -513,17 +513,17 @@ impl Editor {
                 last_cursor_color_mode = Some(self.state.mode());
             }
             // Close the synchronized-output envelope: the terminal now atomically
-            // paints the complete frame — clear + cells + cursor shape in one shot.
+            // paints the complete frame: clear + cells + cursor shape in one shot.
             let _ = hume_platform::terminal::end_synchronized_update(term);
 
             // ── 3. Terminal event ─────────────────────────────────────────────
             // Blocks until a matching event is available, a wake from a
-            // background thread (parse worker, LSP transport, SIGWINCH — the
+            // background thread (parse worker, LSP transport, SIGWINCH: the
             // reader's source routes it internally), or the nearest async
-            // source's deadline — whichever comes first. Idle (no deadline)
+            // source's deadline, whichever comes first. Idle (no deadline)
             // blocks indefinitely, so we never burn CPU while the editor is
             // at rest. `Ok(false)` covers both a timeout and a waker
-            // interrupt — either way, loop back to the top: `settle()`
+            // interrupt. Either way, loop back to the top: `settle()`
             // drains every async source regardless of why we woke, and
             // `term.size()` re-reads the viewport (covers SIGWINCH).
             match reader.poll(self.wake_timeout(), |_| true) {
@@ -540,7 +540,7 @@ impl Editor {
             self.install_parse_results();
             match reader.read(|_| true)? {
                 // Release events arrive only with kitty keyboard protocol
-                // (REPORT_EVENT_TYPES flag). Ignore them — we act on Press and
+                // (REPORT_EVENT_TYPES flag). Ignore them; we act on Press and
                 // Repeat (held key). Without kitty all events are Press anyway.
                 TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
                     self.handle_input(TerminalEvent::Key(key));
@@ -565,7 +565,7 @@ impl Editor {
                         match reader.read(|_| true)? {
                             TerminalEvent::WindowResized(_) => continue,
                             // A window manager can resize and refocus in the
-                            // same gesture (snapping a tile, say) — the
+                            // same gesture (snapping a tile, say), and the
                             // `_ => break` catch-all below would otherwise
                             // swallow this without raising `OnFocusGained`.
                             TerminalEvent::FocusIn => {
@@ -592,7 +592,7 @@ impl Editor {
                     }
                 }
                 // Regaining focus raises `OnFocusGained` (see `handle_input`,
-                // which is what actually queues it) — the external-file-change
+                // which is what actually queues it). The external-file-change
                 // sweep is that event's Rust reaction, not a direct call here.
                 TerminalEvent::FocusIn => self.handle_input(TerminalEvent::FocusIn),
                 // CSI/OSC/DCS protocol responses: nothing in the run loop
@@ -602,8 +602,8 @@ impl Editor {
             }
 
             // Not a `break`: this loop's top now owns the one quit-observation
-            // point that runs after `settle()` (see this function's doc) —
-            // breaking here instead would strand a hook a quitting dispatch
+            // point that runs after `settle()` (see this function's doc).
+            // Breaking here instead would strand a hook a quitting dispatch
             // just queued (`:wq`'s `OnBufferSave`). `continue` still skips
             // `drain_replay_queue` below, which is what this check is really
             // for: a macro containing `:q` must not keep replaying past the quit.
@@ -614,11 +614,11 @@ impl Editor {
             // ── 4. Drain macro replay queue ───────────────────────────────────
             // Drain after handling the terminal event so that a key that
             // populates the queue (e.g. the register name after `Q`) causes
-            // replay to run immediately — the results are visible on the very
+            // replay to run immediately: the results are visible on the very
             // next frame rather than requiring an additional keypress.
             // `last_repeatable_action` is saved/restored so replay does not corrupt dot-repeat.
             self.drain_replay_queue();
-            // One cache update covers the entire replay batch — the search
+            // One cache update covers the entire replay batch. The search
             // cache only changes when the buffer revision changes, so calling
             // it per-key would redundantly clone the regex on every iteration.
             self.sync_search_cache();
@@ -626,7 +626,7 @@ impl Editor {
         // Terminal restore and LSP shutdown happen in `hume_editor::run`,
         // after this returns: `restore_for_exit` is the one function allowed
         // to write the unwind escape sequences (it gates on `claim_exit`, the
-        // process-wide single-restorer race with the terminator thread — see
+        // process-wide single-restorer race with the terminator thread; see
         // its doc), so writing them here too would double every escape that
         // isn't idempotent, notably the kitty keyboard-stack pop.
         Ok(())

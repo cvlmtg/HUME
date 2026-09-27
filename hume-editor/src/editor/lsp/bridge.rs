@@ -17,7 +17,7 @@ use crate::editor::message_log::Severity;
 impl Editor {
     /// Sends one queued `(lsp-request …)` call. Called from
     /// `Editor::apply_script_effects` for each `Effect::LspRequest`, in
-    /// emission order — after `flush_lsp_pending_changes` so a request
+    /// emission order, after `flush_lsp_pending_changes` so a request
     /// minted against text just edited doesn't reach the wire ahead of the
     /// `didChange` describing that edit.
     pub(in crate::editor) fn send_one_lsp_request(&mut self, req: PendingLspRequest) {
@@ -31,21 +31,21 @@ impl Editor {
                 }
             };
         // `resolve_server_for_buffer` above already proved `req.bid` live
-        // (its own `try_get` is where a stale bid would have been caught) —
-        // nothing between the two calls can close it, so this is a plain
+        // (its own `try_get` is where a stale bid would have been caught).
+        // Nothing between the two calls can close it, so this is a plain
         // read, not a second liveness check.
         let text_gen = self.state.buffers.get(req.bid).text_gen;
         let timeout_ms = self.state.settings.lsp_request_timeout_ms as u64;
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
 
         // `#:supersede`: cancel the caller's own previous still-pending
-        // request filed under the same `(server, key)`, if any. Silent —
+        // request filed under the same `(server, key)`, if any. Silent:
         // the superseding caller has replaced that request's purpose, so
         // firing its stale callback would deliver a result nobody wants and
         // race the new one; removing the callback (not just cancelling) is
         // what guarantees it never fires even if the response already
         // landed in the client's `completed` queue (in which case `cancel`
-        // itself is a no-op — no spurious `$/cancelRequest` follows a
+        // itself is a no-op: no spurious `$/cancelRequest` follows a
         // response that already arrived).
         if let Some(key) = &req.supersede
             && let Some(old_id) = self.lsp.supersede.remove(&(server_id, key.clone()))
@@ -65,7 +65,7 @@ impl Editor {
         // Cloned (SteelVal is Rc-based, cheap): the send-failure branch
         // below needs its own copy of the callback to fire immediately,
         // since the success-path closure already moved one in. `anchor` is
-        // `Copy` — the closure gets its own copy to carry into the queued
+        // `Copy`, so the closure gets its own copy to carry into the queued
         // `PendingWork::Call` (re-checked at dequeue time, see that variant's
         // doc), `register_callback` below still gets the original.
         let callback_for_send = req.callback.clone();
@@ -98,7 +98,7 @@ impl Editor {
             .register_callback(server_id, id, anchor, lsp_callback);
     }
 
-    /// Fires an `(lsp-request …)` callback immediately with an error —
+    /// Fires an `(lsp-request …)` callback immediately with an error,
     /// used when resolution or the send itself fails before any
     /// request/response pair could ever exist, so the callback would
     /// otherwise never fire at all. Keeps the documented `(err result)`
@@ -139,18 +139,18 @@ impl Editor {
     }
 }
 
-/// `Outcome` → the `(err result)` pair delivered to a Steel callback —
+/// `Outcome` → the `(err result)` pair delivered to a Steel callback:
 /// exactly one of the two is non-`#f`. A successful `value` always crosses
-/// through `to_steel_handle`'s three-way split — a container becomes an
+/// through `to_steel_handle`'s three-way split: a container becomes an
 /// opaque `JsonHandle` (read with
 /// `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively, and
-/// `null` is `Void` — every existing `(void? res)` check (a server
+/// `null` is `Void`, so every existing `(void? res)` check (a server
 /// declining with no completions) stays meaningful. See `JsonHandle`'s own
 /// doc (`hume-scripting/src/json.rs`) for the full rationale.
 ///
 /// Tags a successful `value`'s handle with `server_id`'s *current*
 /// negotiated encoding, read at dispatch time rather than carried from send
-/// time — a `Starting` server (queued, not yet negotiated, when the request
+/// time: a `Starting` server (queued, not yet negotiated, when the request
 /// went out) has negotiated by the time its response drains. `Err`s if the
 /// server is no longer tracked (crashed or stopped between sending and
 /// draining): the caller has no client-side generation to check this

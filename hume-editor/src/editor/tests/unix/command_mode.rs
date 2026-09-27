@@ -2,7 +2,7 @@ use super::super::command_mode::submit;
 use super::*;
 
 /// `:b#` (no space) must switch to the alternate buffer via the minibuf path.
-/// The alternate must be reachable even when it has no file name — the
+/// The alternate must be reachable even when it has no file name: the
 /// `[buffers]` view opened by `:ls` is the canonical pathless case, so the
 /// arg must not be expanded to the alternate's path before `:b` sees it
 /// (that would error with "Alternate buffer has no file name"). Also covers
@@ -30,10 +30,10 @@ fn colon_b_hash_switches_to_alternate() {
         Some(c1.as_path()),
     );
 
-    // :b# returns to f1 (alternate has a path — this already worked).
+    // :b# returns to f1 (alternate has a path; this already worked).
     submit(&mut ed, "b#");
     assert_eq!(ed.doc().path(), Some(c1.as_path()));
-    // The alternate is now the pathless [buffers] view — the bug case.
+    // The alternate is now the pathless [buffers] view: the bug case.
     assert_eq!(
         ed.state.buffers.second_most_recent().map(|id| ed
             .state
@@ -53,7 +53,7 @@ fn colon_b_hash_switches_to_alternate() {
         ":b# must switch to the pathless alternate buffer",
     );
 
-    // Ping-pong back to f1 via the full `:buffer#` alias — same path, must work.
+    // Ping-pong back to f1 via the full `:buffer#` alias: same path, must work.
     submit(&mut ed, "buffer#");
     assert_eq!(
         ed.doc().path(),
@@ -63,7 +63,7 @@ fn colon_b_hash_switches_to_alternate() {
 }
 
 /// `:e! /path` (force + path, no space between `!` and arg) must parse as
-/// force=true with the path as argument — regression guard for the new parser.
+/// force=true with the path as argument (regression guard for the new parser).
 #[test]
 fn colon_edit_bang_path_parses() {
     let f = safe_named_tempfile();
@@ -85,8 +85,8 @@ fn colon_edit_bang_path_parses() {
 }
 
 /// A boundary condition (`:b` on a name that isn't open) is a transient
-/// refusal — shown, never logged. A genuine write failure (missing parent
-/// directory) is a real error — shown *and* logged, same fixture as
+/// refusal: shown, never logged. A genuine write failure (missing parent
+/// directory) is a real error: shown *and* logged, same fixture as
 /// `write_missing_parent_dir_errors_and_leaves_buffer_pending` in
 /// `tests/unix/file_io.rs`. Driven through `submit` (the real `:` minibuffer
 /// dispatch path), not `execute_typed`, which hardcodes `Severity::Error` on

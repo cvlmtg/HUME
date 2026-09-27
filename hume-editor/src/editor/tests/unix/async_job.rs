@@ -1,6 +1,6 @@
 //! `spawn-async!`'s Rust-side half: drives `EditorHostImpl::spawn_async`/
 //! `cancel_async` and `Editor::drain_async_jobs` directly (no Steel
-//! involved — see `async_job_steel.rs` for the end-to-end builtin
+//! involved; see `async_job_steel.rs` for the end-to-end builtin
 //! coverage), so these are unix-only (`sh`/`sleep`).
 
 use super::*;
@@ -18,7 +18,7 @@ fn spawn_async(ed: &mut Editor, cmd: &str, args: Vec<String>, callback: SteelVal
 
 #[test]
 fn end_to_end_drain_delivers_the_full_result_exactly_once() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["-c".to_string(), "printf 'hi'".to_string()];
@@ -49,7 +49,7 @@ fn end_to_end_drain_delivers_the_full_result_exactly_once() {
 
 #[test]
 fn nonzero_exit_and_stderr_reach_the_callback() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["-c".to_string(), "echo boom >&2; exit 3".to_string()];
@@ -72,7 +72,7 @@ fn missing_binary_fires_the_callback_synchronously_with_code_negative_one() {
         SteelVal::BoolV(false),
     );
 
-    // No drain needed — a spawn failure fires its callback immediately,
+    // No drain needed: a spawn failure fires its callback immediately,
     // inside `spawn_async` itself.
     assert!(!ed.state.config.async_jobs.contains_key(&id));
     assert_eq!(pending_calls(&ed).len(), 1);
@@ -90,7 +90,7 @@ fn missing_binary_fires_the_callback_synchronously_with_code_negative_one() {
 
 #[test]
 fn cancel_kills_the_child_and_drops_the_callback_without_firing_it() {
-    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sleep" and "kill" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     let args = vec!["30".to_string()];

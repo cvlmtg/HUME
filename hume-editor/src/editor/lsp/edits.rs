@@ -5,7 +5,7 @@
 //! (no `&mut Editor` needed) so those are callable directly from
 //! `EditorHostImpl`, the same discipline as the decoration setters. The one
 //! exception answers a server-initiated request, which needs the full
-//! `apply_workspace_edit` + `detect_pending_languages` pair — it lives here
+//! `apply_workspace_edit` + `detect_pending_languages` pair. It lives here
 //! rather than in `drain.rs` because it shares the edit-application path
 //! with `apply-workspace-edit!` and belongs next to it.
 
@@ -26,8 +26,8 @@ use crate::editor::pane_state;
 /// buffer exists, is writable, and hasn't moved since the caller computed its
 /// positions against it. One definition so `build_edit_changeset` and
 /// `BufferSession::accept` (which needs the same guard but isn't
-/// building from wire `TextEdit`s) can't drift apart. `pub(in crate::editor)`
-/// — `accept` lives in `editor::completion` now, outside this subtree; see
+/// building from wire `TextEdit`s) can't drift apart. `pub(in crate::editor)`:
+/// `accept` lives in `editor::completion` now, outside this subtree; see
 /// `wire_range_to_chars`'s doc (`lsp/mod.rs`) for why this is the narrowest
 /// visibility that reaches it.
 pub(in crate::editor) fn checked_buffer(
@@ -66,7 +66,7 @@ fn one_of_to_text_edit(
 /// mutation: `apply_workspace_edit`'s "validate all, then apply all" needs
 /// to build every file's changeset before committing any of them.
 ///
-/// `encoding` is the caller's to resolve, not this function's — a workspace
+/// `encoding` is the caller's to resolve, not this function's: a workspace
 /// edit's every file shares the one server that produced the whole edit
 /// (resolved once via `server_encoding`), while `apply-text-edits!` reads
 /// each edit handle's own tagged producing-server encoding
@@ -84,7 +84,7 @@ fn build_edit_changeset(
         return Err("no edits given".to_string());
     }
     let rope = buf.text().rope();
-    // Stable ascending sort by start — two edits at the same position keep
+    // Stable ascending sort by start: two edits at the same position keep
     // `edits`' own array order (per spec, the array's order defines the
     // order same-position edits apply in; a descending sort followed by
     // `.reverse()` would keep ties in *original* order through the sort but
@@ -102,10 +102,10 @@ fn build_edit_changeset(
 
 /// Shared tail for [`build_edit_changeset`] (wire positions, converted to
 /// char offsets above) and the completion-resolve path (already char
-/// offsets, mapped forward through the accept edit) — sort, overlap-check,
+/// offsets, mapped forward through the accept edit): sort, overlap-check,
 /// then walk once to build the `ChangeSet`. `edits` need not arrive sorted;
 /// `new_text` borrows from the caller's own edit list. A server's `new_text`
-/// is under no obligation to use LF, but needs no handling here — the
+/// is under no obligation to use LF, but needs no handling here: the
 /// changeset builder normalizes every insertion.
 fn build_changeset_from_char_edits(
     len_before: CharOffset,
@@ -136,14 +136,14 @@ fn build_changeset_from_char_edits(
 
 /// Applies a pre-built `ChangeSet` to `bid` as one undo step, through the
 /// same chokepoint every native edit command uses
-/// (`doc_ops::apply_doc_edit` — selection propagation, syntax reparse,
+/// (`doc_ops::apply_doc_edit`: selection propagation, syntax reparse,
 /// queued LSP `didChange`, all for free). `bid` need not be the buffer
-/// shown in the focused pane — `pane_state::ensure` seeds a (possibly
+/// shown in the focused pane; `pane_state::ensure` seeds a (possibly
 /// invisible) selection entry for it first, matching how any buffer opened
 /// in the background already gets one. Returns the applied `ChangeSet`
 /// (cloned before the move into `apply_doc_edit`'s closure) so a caller that
-/// needs to map further positions through this exact edit — completion's
-/// resolve path, mapping a *pre*-accept response's positions forward — can
+/// needs to map further positions through this exact edit (completion's
+/// resolve path, mapping a *pre*-accept response's positions forward) can
 /// do so without rebuilding it.
 fn commit_changeset(
     state: &mut EditorState,
@@ -176,7 +176,7 @@ fn commit_changeset(
 }
 
 /// `(apply-text-edits! pane edits #:expect-generation gen)`. `encoding` is
-/// the host layer's own resolve — every entry in `edits` decoded from its
+/// the host layer's own resolve: every entry in `edits` decoded from its
 /// own tagged `JsonHandle`, checked there to all agree. `pid` is the
 /// already-resolved invocation pane (see `commands::CommandPane::resolve`).
 pub(in crate::editor) fn apply_text_edits(
@@ -192,7 +192,7 @@ pub(in crate::editor) fn apply_text_edits(
     Ok(())
 }
 
-/// Same as [`apply_text_edits`] but hands back the applied `ChangeSet` —
+/// Same as [`apply_text_edits`] but hands back the applied `ChangeSet`:
 /// completion's accept path needs it to map a subsequent
 /// `completionItem/resolve` response's positions (computed against the
 /// pre-accept document) forward onto the buffer as it stands after this
@@ -213,7 +213,7 @@ pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
 /// Decodes `edits` (wire positions, computed by the server against the
 /// document as it stood at `rope_at`) into char-offset `(start, end, text)`
 /// triples valid against the document `cs_forward` transforms `rope_at`
-/// into — exact position tracking through every edit `cs_forward` composes,
+/// into: exact position tracking through every edit `cs_forward` composes,
 /// unlike a scalar-delta approximation. Pure: no buffer access, so it can run
 /// before deciding whether the caller's own edit (if any) would overlap the
 /// result.
@@ -224,10 +224,10 @@ pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
 /// `rope_at` is the pre-accept snapshot and `cs_forward` is the accept
 /// edit's own changeset.
 ///
-/// Returns an empty `Vec` (not an error) when `edits` is empty — matches
+/// Returns an empty `Vec` (not an error) when `edits` is empty, matching
 /// `apply-text-edits!`'s convention of erroring on an empty list only when
 /// the caller has no legitimate empty-response case; both callers here do
-/// (no `additionalTextEdits` at all is normal). `pub(in crate::editor)` —
+/// (no `additionalTextEdits` at all is normal). `pub(in crate::editor)`:
 /// both callers now live in `editor::completion`; see `wire_range_to_chars`'s
 /// doc (`lsp/mod.rs`) for why this is the narrowest visibility that reaches
 /// them.
@@ -267,12 +267,12 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
 
 /// Commits pre-computed char-offset edits (from
 /// [`build_edits_from_earlier_document`] or any other char-space source)
-/// against `bid`'s *current* text as one `ChangeSet` — validates
+/// against `bid`'s *current* text as one `ChangeSet`. Validates
 /// overlap/reversed-range across the batch itself (via
 /// [`build_changeset_from_char_edits`]) immediately before mutating.
 /// `Ok(None)` for an empty batch (nothing to commit); `Ok(Some(cs))`
 /// otherwise, so a caller composing this into a larger changeset doesn't need
-/// its own empty-batch branch. `pub(in crate::editor)` — the completion
+/// its own empty-batch branch. `pub(in crate::editor)`: the completion
 /// accept path (`editor::completion`) is a caller; see `wire_range_to_chars`'s
 /// doc (`lsp/mod.rs`) for why this is the narrowest visibility that reaches
 /// it.
@@ -297,14 +297,14 @@ pub(in crate::editor) struct WorkspaceEditSummary {
 }
 
 /// One resolved file entry: its URI, plain `TextEdit`s (annotations
-/// stripped — HUME has no change-annotation UI), and the version to
+/// stripped: HUME has no change-annotation UI), and the version to
 /// gen-check against, if the edit came from a versioned `documentChanges`
 /// entry.
 type EditEntry = (lsp_types::Uri, Vec<lsp_types::TextEdit>, Option<i32>);
 
 /// `documentChanges` takes precedence over `changes` when both are present
 /// (LSP spec). `DocumentChangeOperation::Op` (create/rename/delete file) has
-/// no HUME equivalent — errors rather than silently dropping a file
+/// no HUME equivalent: errors rather than silently dropping a file
 /// operation the caller expected to happen.
 fn collect_edit_entries(we: lsp_types::WorkspaceEdit) -> Result<Vec<EditEntry>, String> {
     if let Some(doc_changes) = we.document_changes {
@@ -348,7 +348,7 @@ fn resolve_or_open(
     path: &std::path::Path,
 ) -> Result<BufferId, String> {
     // `resolve_buffer_path`, not a hard `canonicalize`: a server-driven
-    // rename or workspace edit may target a file that doesn't exist yet —
+    // rename or workspace edit may target a file that doesn't exist yet,
     // openable here exactly like `:e` on a missing path (see
     // `Buffer::from_file_or_new`).
     let resolved = Editor::resolve_buffer_path(path, &state.cwd);
@@ -364,19 +364,19 @@ fn resolve_or_open(
     Ok(bid)
 }
 
-/// `(apply-workspace-edit! edit)` — validates and builds every file's
+/// `(apply-workspace-edit! edit)`: validates and builds every file's
 /// changeset first (opening unopened files as buffers along the way), and
 /// only commits any of them once every file has passed: a bad edit in file
 /// 3 of 5 must leave files 1 and 2 untouched.
 ///
 /// `encoding` is the caller's own resolve (`edit`'s tagged producing-server
-/// encoding) and shared by every file in `we` — one server produced the
+/// encoding) and shared by every file in `we`: one server produced the
 /// whole edit, so every position in it is counted in that server's own
 /// negotiated encoding, regardless of which file (open or not, attached to
 /// a server or not) each position lands in. A per-file lookup would
 /// misdecode a file with no server of its own attached, or one attached to
-/// a different server, and — for a file this call is opening for the first
-/// time — has no attached server to look up at all yet
+/// a different server, and (for a file this call is opening for the first
+/// time) has no attached server to look up at all yet
 /// (`detect_pending_languages` only runs after this returns).
 pub(in crate::editor) fn apply_workspace_edit(
     state: &mut EditorState,
@@ -387,7 +387,7 @@ pub(in crate::editor) fn apply_workspace_edit(
     expect_gen: Option<u64>,
 ) -> Result<WorkspaceEditSummary, String> {
     // Checked against the *requesting* pane's own buffer, not any file the
-    // edit touches — `CommandPane::resolve` already proved `pid` still shows
+    // edit touches. `CommandPane::resolve` already proved `pid` still shows
     // it, so this is "has the buffer this request was made from changed
     // since," the same staleness `apply-text-edits!`'s `#:expect-generation`
     // guards. Per-file staleness (a `documentChanges` entry's own `version`)
@@ -408,13 +408,13 @@ pub(in crate::editor) fn apply_workspace_edit(
     for (uri, edits, version) in entries {
         let path = hume_lsp::uri::uri_to_path(&uri).map_err(|e| format!("bad uri: {e:?}"))?;
         let bid = resolve_or_open(state, view, &path)?;
-        // Each file's changeset is built against `state`'s *current* text —
+        // Each file's changeset is built against `state`'s *current* text:
         // a second entry for the same file would build a changeset that's
         // valid against that same original text, but `commit_changeset`
         // applies entries one at a time against whatever the buffer holds
         // *after* the previous commit. Position-based ops don't necessarily
         // fail to apply against the wrong text (they can silently produce
-        // corrupted content instead of erroring) — so this must be rejected
+        // corrupted content instead of erroring), so this must be rejected
         // before any commit, not left to a downstream length coincidence.
         let display = || {
             state
@@ -427,7 +427,7 @@ pub(in crate::editor) fn apply_workspace_edit(
         // Checked here, ahead of every file's own changeset build, not left
         // to `commit_changeset`'s own check at the bottom of this function:
         // a conflict discovered only at commit time would leave every
-        // earlier file in this same batch already applied — see this
+        // earlier file in this same batch already applied. See this
         // function's own doc for why that's the one thing a multi-file edit
         // must not do.
         crate::editor::doc_ops::check_no_conflicting_session(&state.active_session, pid, bid)
@@ -450,12 +450,12 @@ pub(in crate::editor) fn apply_workspace_edit(
     Ok(WorkspaceEditSummary { buffers_modified })
 }
 
-/// `(goto-location! target)` — either shape:
+/// `(goto-location! target)`, either shape:
 /// - a raw `Location`/`LocationLink` hashmap (wire positions, converted with
-///   `encoding` — the host trait layer's own read of the handle's tagged
+///   `encoding`, the host trait layer's own read of the handle's tagged
 ///   producing-server encoding, resolved before this ever needing a `bid`
 ///   or live `LspState` lookup);
-/// - `(list target line char-col)`, already char-indexed — `target` is a path
+/// - `(list target line char-col)`, already char-indexed: `target` is a path
 ///   string, a `file://` URI string, or a `bid`.
 pub(in crate::editor) enum GotoTarget {
     Wire {
@@ -477,7 +477,7 @@ pub(in crate::editor) enum GotoTarget {
 
 /// Clamps a char-indexed `(line, char_col)` pair to a valid char offset in
 /// `bid`. `line` clamps to the ropey-domain last line here (a scripted
-/// target can address the buffer's own trailing phantom line — `line` is
+/// target can address the buffer's own trailing phantom line; `line` is
 /// minted trusted but unvalidated at the same two `host_impl.rs` sites that
 /// mint `char_col`, so it needs the same clamp `char_col` gets below); the
 /// char_col clamp and grapheme snap are `place_char_column`'s, which lands a
@@ -514,7 +514,7 @@ fn resolve_path_or_uri(
     resolve_or_open(state, view, std::path::Path::new(expanded.as_ref()))
 }
 
-/// Resolves `target` to `(bid, char_pos)` — the one fallible step. Callers
+/// Resolves `target` to `(bid, char_pos)`: the one fallible step. Callers
 /// must push the jump entry only *after* this succeeds (`goto_location`'s
 /// "no jump entry on failure" contract).
 fn resolve_goto_target(
@@ -530,7 +530,7 @@ fn resolve_goto_target(
             let buf = state.buffers.get(bid);
             // Decoded in two steps, not `wire_to_char` directly: a server
             // naming a position between a base character and a combining
-            // mark must still land the cursor on the cluster's own start —
+            // mark must still land the cursor on the cluster's own start.
             // `place_char_column` is what every other goto target already
             // snaps through (`char_indexed_to_char_pos`), so the wire target
             // gets the same grapheme-boundary guarantee instead of landing
@@ -563,7 +563,7 @@ fn resolve_goto_target(
 }
 
 /// Moves `t`'s own pane to `(bid, char_pos)`, recording a jump entry only
-/// if resolution succeeded and it actually lands somewhere else — same
+/// if resolution succeeded and it actually lands somewhere else: same
 /// "commit point" discipline as `:goto` (`typed_misc.rs`) and buffer
 /// switches (`switch_to_buffer_with_jump`).
 pub(in crate::editor) fn goto_location(
@@ -575,7 +575,7 @@ pub(in crate::editor) fn goto_location(
     let (bid, char_pos) = resolve_goto_target(state, view, target)?;
     // Every path above can legitimately return `len_chars()` (e.g. a wire
     // line past EOF, or a char-indexed target on the trailing structural
-    // line, both clamp to that line's start = len_chars()) — but cursors
+    // line, both clamp to that line's start = len_chars()), but cursors
     // must satisfy `head < len_chars()`. Clamp to the last char (the
     // buffer's own trailing `\n`, always present and always its own
     // grapheme boundary, so no snap is needed).
@@ -595,7 +595,7 @@ pub(in crate::editor) fn goto_location(
     );
     crate::editor::commands::record_jump_if_moved(state, view, t, entry);
 
-    // Center by display line, the same way `zz` does — not by buffer line,
+    // Center by display line, the same way `zz` does, not by buffer line,
     // which only agrees with it when nothing wraps.
     crate::editor::commands::view_center(state, view, pid);
 
@@ -608,7 +608,7 @@ impl Editor {
     /// malformed edit still gets a 200 response, just with `applied: false`.
     ///
     /// `server_id` is the requesting server, known by construction (this
-    /// answers a message that arrived *from* it) — its own negotiated
+    /// answers a message that arrived *from* it): its own negotiated
     /// encoding is what every position in `params` is counted in, same as
     /// any other response it sends.
     pub(in crate::editor) fn apply_edit_request_response(
@@ -637,11 +637,11 @@ impl Editor {
                 "failureReason": "lsp server no longer tracked",
             }));
         };
-        // Server-initiated, no Steel invocation pane to resolve — the
+        // Server-initiated, no Steel invocation pane to resolve: the
         // focused pane is the only sensible "current" pane to seed selection
         // state through for a file this edit newly opens.
         let pid = self.state.focus.id();
-        // No request-time buffer to check staleness against — this answers a
+        // No request-time buffer to check staleness against: this answers a
         // server-initiated request, not a Steel round-trip with its own
         // captured generation.
         let result = apply_workspace_edit(&mut self.state, &mut self.view, pid, we, encoding, None);

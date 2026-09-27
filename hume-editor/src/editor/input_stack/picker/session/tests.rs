@@ -1,4 +1,4 @@
-//! [`PickerSession`](super::PickerSession) tests — matches the convention
+//! [`PickerSession`](super::PickerSession) tests, matching the convention
 //! every other large module in `editor/` follows for its own `mod tests`.
 
 use super::*;
@@ -85,7 +85,7 @@ fn pending_flag_set_on_open_and_cleared_by_a_matching_push() {
 
 #[test]
 fn pending_flag_cleared_by_a_matching_push_even_with_an_empty_batch() {
-    // A clean `git status` still means the job finished — pending must
+    // A clean `git status` still means the job finished, so pending must
     // not stay stuck just because there was nothing to add.
     let mut s = open_pending();
     s.push(items(&[]));
@@ -98,7 +98,7 @@ fn seed_with_items_clears_pending() {
     s.seed(items(&["a"]));
     assert!(
         !s.is_pending(),
-        "seeding real items means the list is already populated — no \"still arriving\" marker needed"
+        "seeding real items means the list is already populated, no \"still arriving\" marker needed"
     );
     assert_eq!(window_vec(&s, 10), vec!["a"]);
 }
@@ -109,15 +109,15 @@ fn empty_seed_leaves_pending_intact() {
     s.seed(items(&[]));
     assert!(
         s.is_pending(),
-        "an empty seed is not a batch arrival — `#:pending`'s caller intent must survive it"
+        "an empty seed is not a batch arrival: `#:pending`'s caller intent must survive it"
     );
 }
 
 #[test]
 fn take_source_on_a_sourceless_pending_session_preserves_awaiting() {
     // `picker-source-stop!` racing a session that never had a source
-    // attached (only `#:pending`) must not fabricate a "done" transition
-    // — `take_source` restores `Awaiting` rather than leaving `Complete`
+    // attached (only `#:pending`) must not fabricate a "done" transition:
+    // `take_source` restores `Awaiting` rather than leaving `Complete`
     // behind from its own `mem::replace`.
     let mut s = open_pending();
     assert!(s.take_source().is_none());
@@ -167,7 +167,7 @@ fn query_prefill_is_visible_and_applied_at_construction() {
         },
     );
     assert_eq!(s.query(), "f");
-    // Applied through the same `rerank` a later push would use — a
+    // Applied through the same `rerank` a later push would use: a
     // batch arriving after open is filtered by the prefilled query
     // immediately, not just once a keystroke re-triggers ranking.
     s.push(items(&["foo", "bar"]));
@@ -203,7 +203,7 @@ fn live_session_keeps_insertion_order_regardless_of_query() {
 #[test]
 fn live_session_insert_char_keeps_insertion_order_and_still_resets_the_cursor() {
     // A live session's `rebuild_filtered` always recomputes the same
-    // identity permutation over `items` (see its doc) — this proves the
+    // identity permutation over `items` (see its doc). This proves the
     // recompute is invisible: the ranked order survives untouched, and
     // the cursor reset rides along exactly as it would for a real
     // rebuild.
@@ -223,7 +223,7 @@ fn live_session_query_change_is_pending_until_the_next_batch() {
     // A live requery's stop/debounce/respawn gap has no attached source
     // for most of its span (`picker-source-stop!` takes it immediately),
     // so `is_pending` can't ride `population` alone here the way it does
-    // for a streaming/#:pending session — it must stay true from the
+    // for a streaming/#:pending session: it must stay true from the
     // query edit itself through to the requery's own swap.
     let mut s = open_live();
     assert!(!s.is_pending());
@@ -246,7 +246,7 @@ fn live_session_query_change_is_pending_until_the_next_batch() {
 fn live_session_batch_from_a_stale_source_does_not_end_the_pending_window() {
     // A batch queued from the *outgoing* source can still land (via
     // `push`) after a keystroke has armed the next requery but before
-    // `settle()` gets to the queued `picker-source-stop!` callback —
+    // `settle()` gets to the queued `picker-source-stop!` callback:
     // `drain_async_sources` runs ahead of `drain_pending_work` (see
     // `Editor::settle`'s doc). Only the requery's own swap (`replace`)
     // may end the window; an ordinary append must leave it armed.
@@ -257,7 +257,7 @@ fn live_session_batch_from_a_stale_source_does_not_end_the_pending_window() {
     s.push(items(&["x"]));
     assert!(
         s.is_pending(),
-        "a plain append must not end a live requery's pending window — only \
+        "a plain append must not end a live requery's pending window, only \
              the swap `replace` performs does"
     );
 }
@@ -277,7 +277,7 @@ fn non_live_session_query_change_never_sets_pending() {
 
 #[test]
 fn non_live_session_with_the_same_query_still_filters() {
-    // Same query as above, on a non-live session — confirms the
+    // Same query as above, on a non-live session. This confirms the
     // insertion-order result above comes from live mode, not from the
     // query happening to fail to fuzzy-match anyway.
     let mut s = open();
@@ -288,7 +288,7 @@ fn non_live_session_with_the_same_query_still_filters() {
 
 #[test]
 fn pop_grapheme_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
-    // `pop_grapheme` returns `Option<SteelVal>` — a query-content check
+    // `pop_grapheme` returns `Option<SteelVal>`: a query-content check
     // alone can't tell "returned `None`" apart from "returned the
     // callback", so this pins the return value directly on the one
     // session shape (`PickerMode::Live`) where mistaking those two
@@ -311,7 +311,7 @@ fn equal_scores_tie_break_by_insertion_order() {
     let mut s = open();
     // Two score tiers (lower-scoring "fxxbxx" scattered matches, then
     // higher-scoring "foo/bar" boundary matches), pushed low-score tier
-    // first — so the pre-sort array is not already in the target
+    // first, so the pre-sort array is not already in the target
     // (descending-score) order and the sort must do genuine rearranging
     // work, not just detect an already-sorted/already-reversed run and
     // leave it untouched. Within each equal-score tier, payload order
@@ -347,7 +347,7 @@ fn equal_scores_tie_break_by_insertion_order() {
 
 #[test]
 fn push_keeps_the_selection_on_the_same_item() {
-    // A streaming source pushes once per frame — snapping the selection
+    // A streaming source pushes once per frame. Snapping the selection
     // back to row 0 on every batch would make an actively-scrolled
     // picker unnavigable, so a plain append must keep pointing at the
     // same item instead of resetting.
@@ -365,7 +365,7 @@ fn push_keeps_the_selection_on_the_same_item() {
 
 #[test]
 fn replace_always_resets_selection_and_scroll() {
-    // Unlike `push`, `replace` swaps in an unrelated item list — the old
+    // Unlike `push`, `replace` swaps in an unrelated item list: the old
     // selection's index cannot mean the same thing afterward, so it must
     // always land back on row 0, never a same-index coincidence.
     let mut s = open();
@@ -413,7 +413,7 @@ fn pop_grapheme_removes_full_cluster() {
     assert!(s.query().is_char_boundary(0));
 
     // ZWJ emoji sequence: family emoji built from 4 code points joined
-    // by ZWJ — one pop_grapheme must remove the whole cluster.
+    // by ZWJ: one pop_grapheme must remove the whole cluster.
     for ch in "👨‍👩‍👧‍👦".chars() {
         let _ = s.insert_char(ch);
     }

@@ -13,7 +13,7 @@ fn pane_head(ed: &Editor) -> hume_rope::offset::CharOffset {
     ed.view.panes[ed.state.focus.id()].selections[0].head
 }
 
-/// After `c` (change): the selection is deleted and Insert mode entered — the
+/// After `c` (change): the selection is deleted and Insert mode entered; the
 /// pane must reflect the post-deletion cursor, not the stale pre-deletion
 /// selection.
 #[test]
@@ -39,8 +39,8 @@ fn pane_selections_synced_after_change_command() {
 #[test]
 fn pane_selections_synced_after_insert_typing() {
     let mut ed = editor_from("-[a]>b\n");
-    ed.handle_key(key('c')); // delete "a", enter Insert — cursor at byte 0
-    ed.handle_key(key('x')); // type 'x' — cursor advances past 'x' to byte 1
+    ed.handle_key(key('c')); // delete "a", enter Insert, cursor at byte 0
+    ed.handle_key(key('x')); // type 'x', cursor advances past 'x' to byte 1
 
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
@@ -59,7 +59,7 @@ fn pane_selections_synced_after_exit_insert() {
     let mut ed = editor_from("ab-[c]>\n");
     ed.handle_key(key('i')); // enter Insert at 'c' (byte 2)
     ed.handle_key(key('x')); // type 'x' before 'c' → "abxc\n", cursor at byte 3
-    ed.handle_key(key_esc()); // exit Insert — select-inserted-text selects 'x'
+    ed.handle_key(key_esc()); // exit Insert; select-inserted-text selects 'x'
 
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
@@ -85,11 +85,11 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     let mut ed = editor_from("-[a]>b\n");
 
     // Two cursors: one at "a" (char 0) and one at "b" (char 1).
-    // Primary is index 1 — the "b" cursor, which is LATER in document order.
+    // Primary is index 1: the "b" cursor, which is LATER in document order.
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::collapsed(co(0)), // at "a" — NOT primary
-            Selection::collapsed(co(1)), // at "b" — IS primary
+            Selection::collapsed(co(0)), // at "a", NOT primary
+            Selection::collapsed(co(1)), // at "b", IS primary
         ],
         1,
     );
@@ -123,8 +123,8 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
 /// Reproduction: two selections where their start() order differs from head order:
 ///   A: anchor=10, head=3  → start()=3, head=3   (backward)
 ///   B: anchor=0,  head=8  → start()=0, head=8   (forward)
-/// start() order: [B(0), A(3)]  → heads [8, 3]  — NOT sorted → panic
-/// head  order:   [A(3), B(8)]  → heads [3, 8]  — sorted     → OK
+/// start() order: [B(0), A(3)]  → heads [8, 3], NOT sorted → panic
+/// head  order:   [A(3), B(8)]  → heads [3, 8], sorted     → OK
 #[test]
 fn pane_selections_sorted_by_head_not_start() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -138,12 +138,12 @@ fn pane_selections_sorted_by_head_not_start() {
     // In start() order: [B, A].  In head order: [A, B].
     //
     // These selections overlap (A covers 3..10, B covers 0..8), so we must use
-    // from_vec_unchecked — the whole point of the test is to prove that the
+    // from_vec_unchecked: the whole point of the test is to prove that the
     // engine's iter_head_sorted path handles start()-vs-head-order divergence
     // even when the SelectionSet hasn't been canonicalized by merge.
     let two_sels = SelectionSet::from_vec_unchecked(
         vec![
-            Selection::new(co(10), co(3)), // A — primary
+            Selection::new(co(10), co(3)), // A, primary
             Selection::new(co(0), co(8)),  // B
         ],
         0, // primary is A

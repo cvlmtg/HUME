@@ -1,4 +1,4 @@
-//! The two `:` completion sources that read the runtime's `themes/` dir —
+//! The two `:` completion sources that read the runtime's `themes/` dir:
 //! `:theme <Tab>` (`THEME_SOURCE`, a `String` source offering
 //! `theme_name_candidates`'s whole universe) and `:set global theme=<Tab>`
 //! (`complete_set`'s `Delegated` value phase reaching the same list).
@@ -10,7 +10,7 @@
 
 use super::*;
 
-/// A runtime dir holding two themes (so the popup opens — a single
+/// A runtime dir holding two themes (so the popup opens; a single
 /// candidate completes silently), installed as `HUME_RUNTIME` for the
 /// guard's lifetime. Fields drop in order: the var is cleared, then the dir
 /// is deleted, then the claim is released.
@@ -21,7 +21,7 @@ struct TwoThemesRuntime {
 
 impl TwoThemesRuntime {
     // `set_var` below mutates process-global `HUME_RUNTIME`, always under the
-    // `Global::Env` claim taken first and held for the guard's lifetime —
+    // `Global::Env` claim taken first and held for the guard's lifetime:
     // the sanctioned-caller shape `clippy.toml`'s `disallowed-methods` entry
     // exists to protect.
     #[allow(clippy::disallowed_methods)]
@@ -41,7 +41,7 @@ impl TwoThemesRuntime {
 }
 
 impl Drop for TwoThemesRuntime {
-    // Sanctioned caller — see `Self::new`.
+    // Sanctioned caller: see `Self::new`.
     #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         unsafe { std::env::remove_var("HUME_RUNTIME") }

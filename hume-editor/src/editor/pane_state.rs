@@ -3,12 +3,12 @@
 //! [`PaneBufferState`] holds all per-(pane, buffer) mutable facts: selections,
 //! search cursor, and the in-progress insert session's typed-run/autoindent
 //! bookkeeping. Adding a new per-(pane, buffer) field later requires changing
-//! exactly one struct and one Default impl — not four parallel maps.
+//! exactly one struct and one Default impl, not four parallel maps.
 //!
-//! [`PaneView`] groups the three per-pane maps — `state`, `jumps`, `render` —
+//! [`PaneView`] groups the three per-pane maps (`state`, `jumps`, `render`)
 //! so callers deal with one field on [`super::EditorState`] instead of three.
 //!
-//! The in-progress insert/paste undo group itself is not here — see
+//! The in-progress insert/paste undo group itself is not here; see
 //! [`super::edit_session::EditSession`], `EditorState::active_session`.
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
@@ -24,13 +24,13 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// The span typed since an open insert session's entry command positioned the
-/// cursor — one (anchor, end) pair per selection, index-paired and always the
+/// cursor: one (anchor, end) pair per selection, index-paired and always the
 /// same length (both `Vec`s are seeded together by `begin_typed_run` and
 /// remapped together by `apply_doc_edit_grouped`, which is the only writer
 /// after seeding).
 pub(crate) struct TypedRun {
     /// Start of each selection's typed span, kept in post-edit coordinates
-    /// with `Assoc::Before` — a keystroke exactly at the anchor is typed
+    /// with `Assoc::Before`: a keystroke exactly at the anchor is typed
     /// content, so the anchor must stay left of it.
     pub anchors: Vec<CharOffset>,
     /// Exclusive end of each typed span, kept with `Assoc::After` (opposite
@@ -44,14 +44,14 @@ pub(crate) struct TypedRun {
 /// All per-(pane, buffer) editor state bundled into one struct.
 ///
 /// Stored in `EditorState.panes.state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>`.
-/// Default initialisation is used at every seed site — callers override
+/// Default initialisation is used at every seed site; callers override
 /// `selections` with `buffer.initial_sels()` when seeding for the first time.
 #[derive(Default)]
 pub(crate) struct PaneBufferState {
     /// The focused pane's cursor / selection state for this buffer. Private:
     /// every write goes through [`PaneBufferState::set_selections`] or the
     /// [`PaneBufferState::take_selections`]/[`PaneBufferState::restore_selections`]
-    /// pair, which is what raises [`PaneBufferState::reveal_pending`] — see
+    /// pair, which is what raises [`PaneBufferState::reveal_pending`]; see
     /// that field's own doc.
     selections: SelectionSet,
     /// Per-pane cursor through the buffer's shared match list.
@@ -70,7 +70,7 @@ pub(crate) struct PaneBufferState {
     ///
     /// Read on exit (`hume_ops::edit::owned_blank_indent`) to decide whether
     /// the cursor's current blank line is whitespace *this session itself*
-    /// inserted, rather than pre-existing or hand-typed whitespace — the
+    /// inserted, rather than pre-existing or hand-typed whitespace. The
     /// vacate-on-exit trim must never touch the latter. A positional record
     /// rather than a bool ("is some trim pending") so ownership is re-derived
     /// from the buffer at exit instead of relying on every cursor-motion key
@@ -80,45 +80,45 @@ pub(crate) struct PaneBufferState {
     pub autoindent: Option<Vec<ExclusiveRange<CharOffset>>>,
     /// Set by `begin_typed_run` from its `ExitCursor` parameter for `a`/`A`/
     /// `o`/`O` entry (never for `i`/`I`/`c`). Decides where an *empty* typed
-    /// run's cursor lands on exit — step one grapheme back (so `a<Esc>` is a
+    /// run's cursor lands on exit: step one grapheme back (so `a<Esc>` is a
     /// round trip) rather than staying put. Lives here, beside the typed run
     /// it decides about, so a session `replay_dot` re-enters sets and reads
     /// it exactly as a live one does.
     pub step_back_on_exit: bool,
     /// Whether the open insert session was entered via a ring-capturing kill
-    /// (bare or `"k`-prefixed `c` — an explicit-register change writes no
+    /// (bare or `"k`-prefixed `c`; an explicit-register change writes no
     /// stamp and must not set this). Set only by `cmd_change`; lives here for
     /// the same reason `step_back_on_exit` does. Read by `tear_down_insert`:
     /// every keystroke typed during the session bumps `BufferStore::
     /// edit_seq`, so the `PasteStamp` `cmd_change` wrote (pointing at the
-    /// just-replaced text) goes stale by the time the session closes —
-    /// refreshing its `seq` here is what keeps `c <text> <Esc> p` reading
+    /// just-replaced text) goes stale by the time the session closes,
+    /// and refreshing its `seq` here is what keeps `c <text> <Esc> p` reading
     /// the kill ring instead of the clipboard.
     pub kill_opened_session: bool,
     /// A fact worth re-settling the viewport for happened since the last
-    /// frame handled one — raised at the source, not inferred from state.
+    /// frame handled one, raised at the source, not inferred from state.
     ///
-    /// The selection funnel — [`PaneBufferState::set_selections`]/
-    /// `restore_selections`/`translate_selections_in_place` — is this
+    /// The selection funnel [`PaneBufferState::set_selections`]/
+    /// `restore_selections`/`translate_selections_in_place` is this
     /// field's only writer: set whenever a write actually moves the primary
-    /// head (not on a write that leaves it where it was — a
+    /// head (not on a write that leaves it where it was: a
     /// `commands::scroll_view` that couldn't carry a selection past a
     /// virtual block, say, leaves this `false` for that write). Every
     /// non-selection source (a resize, a wrap-mode change, a buffer switch,
     /// a decoration-generation change) is folded into `frame.rs`'s scroll
     /// step instead, as a comparison against [`PaneBufferState::last_layout_key`]
-    /// — see that field's own doc for why a derived comparison needs no
-    /// raise site per source.
+    /// (see that field's own doc for why a derived comparison needs no
+    /// raise site per source).
     ///
     /// Read and cleared every frame by `frame.rs`'s scroll step, alongside
     /// that comparison: either one being true means the vertical
     /// `Viewport::reveal` correction runs this frame; both false means
     /// `cursor::content_pos` re-derives the caret's current position
-    /// without moving the viewport — the same "hidden caret until an
+    /// without moving the viewport: the same "hidden caret until an
     /// ordinary motion resyncs the view" behavior a scroll that parks a
     /// selection behind a virtual block always could produce.
     pub reveal_pending: bool,
-    /// This pane's [`LayoutKey`] as of the last frame that read one —
+    /// This pane's [`LayoutKey`] as of the last frame that read one:
     /// `frame.rs`'s scroll step's own memo, compared against a fresh
     /// `EditorState::layout_key(pane)` every frame to derive reveals for
     /// every non-selection source at once: a resize, a wrap-mode pin or
@@ -132,7 +132,7 @@ pub(crate) struct PaneBufferState {
     ///
     /// Deliberately not reset on a buffer switch: a pane revisiting a
     /// buffer it showed before, with every layout input still identical to
-    /// what it read last time, finds a matching key and stays quiet —
+    /// what it read last time, finds a matching key and stays quiet,
     /// coherent with the parked-view model this whole mechanism serves
     /// (switching away and back is not itself a change), and the
     /// counterpart to `reveal_pending` needing no reset either (see
@@ -157,7 +157,7 @@ impl PaneBufferState {
     }
 
     /// Take ownership of the current selections, replacing them with the
-    /// default (a single collapsed cursor at char 0) — for a caller that
+    /// default (a single collapsed cursor at char 0), for a caller that
     /// needs to destructively consume them (typically to feed a pure
     /// `(&BufferText, SelectionSet) -> SelectionSet` motion/edit) without a
     /// clone. The default is transient: a panic before
@@ -173,7 +173,7 @@ impl PaneBufferState {
 
     /// Write `new` back after a [`PaneBufferState::take_selections`], raising
     /// [`PaneBufferState::reveal_pending`] iff `new`'s primary head differs
-    /// from `old_head` — the head `take_selections` returned's own value,
+    /// from `old_head`, the head `take_selections` returned's own value,
     /// captured by the caller before transforming it. Comparing against a
     /// caller-supplied `old_head` rather than `self.selections.primary().head()`
     /// is what makes this safe to call after `take_selections` already left
@@ -191,7 +191,7 @@ impl PaneBufferState {
 
     /// In-place remap for a sibling pane's selections after an edit another
     /// pane made to the same buffer, raising [`PaneBufferState::reveal_pending`]
-    /// iff the primary head actually moved — same rule
+    /// iff the primary head actually moved, the same rule
     /// `set_selections`/`restore_selections` apply, since a sibling pane can
     /// be visible in its own split with the shifted position now out of its
     /// own view.
@@ -211,7 +211,7 @@ impl PaneBufferState {
 
 // ── Construction helpers ──────────────────────────────────────────────────────
 
-/// Construct a fresh [`PaneBufferState`] for `buf` — SSOT for the initial-state
+/// Construct a fresh [`PaneBufferState`] for `buf`: SSOT for the initial-state
 /// value. All seed sites must call this rather than building the struct literal
 /// directly, so that adding a new field with a non-default initialiser requires
 /// only one edit here.
@@ -223,13 +223,13 @@ pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
 }
 
 /// Ensure `pane_state[pid][bid]` exists, seeding with [`fresh_from_buf`] if absent.
-/// Idempotent — safe to call even if the entry was already seeded.
+/// Idempotent: safe to call even if the entry was already seeded.
 ///
 /// Panics if `pid` or `bid` is not a live key; that is a caller-contract
 /// violation (the pane or buffer was never opened), not a recoverable error.
 /// Trusted mint for every synchronous caller that already knows `pid` is
 /// live by construction (it was just resolved, split, or opened in the same
-/// call) — see [`try_ensure`] for a caller crossing an async boundary, where
+/// call). See [`try_ensure`] for a caller crossing an async boundary, where
 /// that's no longer guaranteed.
 pub(in crate::editor) fn ensure<'a>(
     pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -241,19 +241,19 @@ pub(in crate::editor) fn ensure<'a>(
     try_ensure(pane_state, buffers, panes, pid, bid).expect("pid must be a live PaneId")
 }
 
-/// [`ensure`]'s validating counterpart — for a caller whose `pid` was
+/// [`ensure`]'s validating counterpart, for a caller whose `pid` was
 /// captured before crossing an async boundary (an LSP response, a queued
 /// Steel callback) and may have since closed. `bid` still panics on a dead
 /// key: every current caller reaches this only once its own generation/
 /// anchor check has already proven the buffer live, so that half of the
-/// contract still holds — only `pid`'s liveness crosses the boundary
+/// contract still holds; only `pid`'s liveness crosses the boundary
 /// unchecked.
 ///
 /// Checked against `panes` (the engine's own [`PanePool`]), not inferred
 /// from `pane_state.entry(pid)`: `SecondaryMap::remove` (`drop_pane_state`)
 /// drops a closed pane's slot back to vacant at version 0, and
 /// `SecondaryMap::entry` returns the same `Vacant` variant for that as it
-/// does for a `pid` that simply never touched this map — the two are
+/// does for a `pid` that simply never touched this map. The two are
 /// indistinguishable from `pane_state` alone unless the slot has since been
 /// reused by a *newer* pane (whose version the closed `pid` no longer
 /// matches). `PanePool` is the actual liveness source of truth; asking it
@@ -270,7 +270,7 @@ pub(in crate::editor) fn try_ensure<'a>(
         return Err(super::commands::TargetError::PaneClosed.to_string());
     }
     // `pid` is confirmed live in `panes` above, and every `PaneId` in
-    // existence is minted from that same slotmap — so `pane_state` (a
+    // existence is minted from that same slotmap, so `pane_state` (a
     // `SecondaryMap` over the same keyspace) can never hold a *newer*
     // version at this index than the one `pid` already carries. `entry`
     // therefore cannot return `None` here.
@@ -289,7 +289,7 @@ pub(in crate::editor) fn try_ensure<'a>(
 /// placement outside the focused-buffer fast path (`set_current_selections`)
 /// reduces to: [`park_cursor_at`] is its line/grapheme-column convenience for
 /// a caller with no char position yet, and `goto_location`
-/// (`editor/lsp/edits.rs`) — whose target is already char-indexed — calls
+/// (`editor/lsp/edits.rs`), whose target is already char-indexed, calls
 /// this directly.
 pub(in crate::editor) fn write_cursor(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -305,7 +305,7 @@ pub(in crate::editor) fn write_cursor(
 
 /// Collapse `pane_state[pid][bid]`'s selection onto a 0-based
 /// `(line, grapheme_col)`, clamping the line to the buffer's last content
-/// line. Shared by every caller that parks a cursor at a line/column pair —
+/// line. Shared by every caller that parks a cursor at a line/column pair:
 /// a read-only view's opening position and a CLI startup position both
 /// reduce to this.
 pub(in crate::editor) fn park_cursor_at(
@@ -372,7 +372,7 @@ pub(in crate::editor) fn build_pane(
     hume_decorations::PaneDecorationHandles,
 ) {
     // Interns the engine's own `DEFAULT_GUTTER_SCOPE` constant rather than
-    // repeating the "ui.linenr" literal here — the two must resolve to the
+    // repeating the "ui.linenr" literal here: the two must resolve to the
     // same scope: `compose_gutter`'s own fallback
     // (`EngineView::default_gutter_scope`) interns that same constant, and a
     // blank sign slot / line-number cell rendering under a different
@@ -400,10 +400,10 @@ pub(in crate::editor) fn build_pane(
 
 impl super::EditorState {
     /// `bid`'s state *as seen in the focused pane*, or `None` when `bid` is
-    /// unseeded there — a stale id, or `bid` not open in the focused pane.
+    /// unseeded there: a stale id, or `bid` not open in the focused pane.
     /// `bid` is caller-supplied, so this always looks the pane state up by
     /// the explicit id rather than assuming it matches the focused buffer.
-    /// Strictly focused-pane callers only — a caller with an explicit
+    /// Strictly focused-pane callers only. A caller with an explicit
     /// [`crate::editor::commands::CommandPane`] (not necessarily focused)
     /// reads `state.panes.state[t.pid()][t.bid(view)]` directly instead.
     pub(in crate::editor) fn focused_buffer_state(
@@ -420,12 +420,12 @@ impl super::EditorState {
     /// means a pane and its state map disagree.
     ///
     /// The one lookup behind every "the cursor/search state right now" reader
-    /// — `commands::current_selections`, the statusline's own accessors —
+    /// (`commands::current_selections`, the statusline's own accessors),
     /// which would otherwise each index `panes.state[..][..]` and each panic
     /// with slotmap's own message instead of naming what actually broke.
     pub(crate) fn focused_buffer_state_or_panic(&self, bid: BufferId) -> &PaneBufferState {
         self.focused_buffer_state(bid).expect(
-            "focused pane has no seeded state for the buffer it is showing — \
+            "focused pane has no seeded state for the buffer it is showing: \
              pane.buffer_id and panes.state are out of sync",
         )
     }
@@ -435,7 +435,7 @@ impl super::EditorState {
     /// `bid`), then the rest of the active tab (`view.active_pane_ids`'s own
     /// leaf order), then every other tab
     /// (`view.panes.every_pane_across_all_tabs`'s order). Explicit
-    /// enumeration, not a single-pane guess — a caller wanting just one
+    /// enumeration, not a single-pane guess. A caller wanting just one
     /// picks via `.first()` at its own call site. Pane counts are small, so
     /// the final dedup is a linear `out.contains` rather than a `HashSet`.
     pub(in crate::editor) fn buffer_panes(&self, view: &EngineView, bid: BufferId) -> Vec<PaneId> {
@@ -480,25 +480,25 @@ impl Editor {
     }
 
     /// Pin `fp`'s wrap mode to `mode`, for the buffer it
-    /// currently views — the write path behind `:set pane wrap-mode=…`.
+    /// currently views: the write path behind `:set pane wrap-mode=…`.
     ///
     /// Always writes an explicit override, even `WrapMode::None` (an
     /// explicit "don't wrap" pin): `:set pane` is itself an explicit pane
     /// action, so from here on this pane stops following `:set buffer`/
     /// `:set global wrap-mode=…` *for this buffer* until `:wrap` or another
-    /// `:set pane` changes it again — there is no command that clears the
+    /// `:set pane` changes it again. There is no command that clears the
     /// pin back to inheriting. The pin lives in `Pane::wraps`, keyed by
     /// buffer (see `WrapOverride`), so it does not follow the pane to a
     /// buffer it switches to next; switching back to this buffer restores it.
     ///
     /// `WrapOverride::saved` (the `:wrap` toggle-on restore target) is synced
-    /// to this pin only when `mode` itself wraps — pinning *off* deliberately
+    /// to this pin only when `mode` itself wraps. Pinning *off* deliberately
     /// leaves it alone, so whatever `saved` already pointed at (a prior
     /// wrapping pin, or "was inheriting") survives as the toggle-on target
     /// instead of being erased by this pin.
     ///
     /// Zeroes horizontal scroll (meaningless once wrapped) on any actual
-    /// change to the pane's *effective* mode — see `toggle_wrap`'s doc for
+    /// change to the pane's *effective* mode. See `toggle_wrap`'s doc for
     /// the full rationale, shared by both functions.
     pub(in crate::editor) fn set_wrap_override(
         &mut self,

@@ -82,7 +82,7 @@ fn mw_wraps_symmetric_quote() {
 
 #[test]
 fn mw_wraps_unknown_char_symmetric() {
-    // `*` is not a configured pair — wraps symmetrically open == close == `*`.
+    // `*` is not a configured pair, so it wraps symmetrically open == close == `*`.
     let mut ed = editor_from("-[bar]>\n");
     ed.handle_key(key('m'));
     ed.handle_key(key('w'));

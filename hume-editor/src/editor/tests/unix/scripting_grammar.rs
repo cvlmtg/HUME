@@ -1,5 +1,5 @@
 // `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
+// vars, always under a `TEST_GLOBALS` claim (a guard struct, or this
 // module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
 // *new* raw call elsewhere in the crate gets caught; these are the sanctioned
 // callers it lists as exempt.
@@ -29,7 +29,7 @@ use hume_scripting::ScriptingHost;
 use hume_treesitter::registry::GrammarBundle;
 use test_fixtures::require_grammars;
 
-/// Blobless-clone `url` at `rev` into `dest`, test-fixture-only — mirrors the
+/// Blobless-clone `url` at `rev` into `dest`, test-fixture-only. Mirrors the
 /// two-step shape `plum/install-grammar` now runs via `run-inline-output!`
 /// (the removed `hume_platform::process::git_clone_rev`'s Rust
 /// implementation collapsed clone+checkout into one call; full-trust plugin
@@ -54,7 +54,7 @@ fn git_clone_rev_for_test(
         .status()
 }
 
-/// Fetch `url` to `dest` via curl, test-fixture-only — mirrors
+/// Fetch `url` to `dest` via curl, test-fixture-only. Mirrors
 /// `plum/fetch-raw-query`'s `run-inline-output!` call (the removed
 /// `hume_platform::process::curl_fetch` builtin's shape).
 fn curl_fetch_for_test(
@@ -87,7 +87,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     let (parser, hl) = grammar_fixture("json");
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
-    // `register-grammar!` is defined in prelude.scm — prepend the real prelude
+    // `register-grammar!` is defined in prelude.scm: prepend the real prelude
     // source so it's in scope, since this test evals `init_path` directly
     // rather than through the full `init_scripting` path.
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
@@ -134,7 +134,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
 /// Write `register_grammar_call` (a full `(register-grammar! ...)` form) into
 /// a fresh init.scm, prefixed with the real prelude so the macro is in
 /// scope, eval it, apply its queued effect (init-mode `register-grammar!`
-/// only queues an `Effect::LanguageReg` — this is what `init_scripting`
+/// only queues an `Effect::LanguageReg`; this is what `init_scripting`
 /// would do next), and return the resulting `json` grammar bundle. Shared by
 /// `register_grammar_textobjects_only_populates_textobjects_not_injections`
 /// and `register_grammar_injections_only_populates_injections`, which differ
@@ -170,8 +170,8 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
 }
 
 /// A `register-grammar!` call omitting `#:injections` and passing a real
-/// path for `#:textobjects` — the motivating shape: a language with
-/// structural objects but nothing embedded — populates the bundle's
+/// path for `#:textobjects` (the motivating shape: a language with
+/// structural objects but nothing embedded) populates the bundle's
 /// `textobjects` and leaves `injections` `None`.
 ///
 /// If the Steel wrapper dropped or swapped the `#:injections`/
@@ -204,7 +204,7 @@ fn register_grammar_textobjects_only_populates_textobjects_not_injections() {
 }
 
 /// `#:injections` alone still populates `injections` when `textobjects`
-/// isn't supplied at all — the sibling half of
+/// isn't supplied at all: the sibling half of
 /// `register_grammar_textobjects_only_populates_textobjects_not_injections`.
 #[test]
 fn register_grammar_injections_only_populates_injections() {
@@ -235,13 +235,13 @@ fn register_grammar_injections_only_populates_injections() {
     );
 }
 
-/// Two `register-grammar!` calls with *differently-shaped* keyword usage —
-/// one omitting both `#:injections`/`#:textobjects` entirely, the other
-/// passing only `#:injections` — compiled as one program (one `init.scm`).
+/// Two `register-grammar!` calls with *differently-shaped* keyword usage
+/// (one omitting both `#:injections`/`#:textobjects` entirely, the other
+/// passing only `#:injections`) compiled as one program (one `init.scm`).
 /// Steel 0.8.2 miscompiled differently-shaped keyword calls to the same
 /// `#:kw`-sugared function within one compiled unit, and this is the
 /// real-code shape closest to that trigger; `init_scripting` compiles each file
-/// separately, so the risk — if any remains — is scoped to calls within a
+/// separately, so the risk (if any remains) is scoped to calls within a
 /// single file, exactly what this test constructs.
 ///
 /// A miscompile here would make `eval_init` return `Err` with a
@@ -280,7 +280,7 @@ fn register_grammar_two_differently_shaped_keyword_calls_in_one_file_compiles() 
 /// directly (like core's `register-installed-grammars!` in
 /// `runtime/scheme/grammars.scm`) succeeds without error and populates the
 /// pending language regs.  A `(call! "unknown-cmd")` in
-/// the same init logs a warning but does not abort — unknown commands are
+/// the same init logs a warning but does not abort: unknown commands are
 /// soft failures during init (buffer access unavailable; command not native).
 ///
 /// If passive load crashed, `eval_init` would return `Err`.  If the
@@ -303,7 +303,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     std::fs::copy(&hl, &hl_dest).unwrap();
 
     let init_path = tmp.path().join("init.scm");
-    // `register-grammar!` is defined in prelude.scm — prepend the real prelude
+    // `register-grammar!` is defined in prelude.scm: prepend the real prelude
     // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
@@ -361,7 +361,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
 }
 
 /// Tab on `:plum-install-grammar`'s argument completes against the real
-/// declared catalog (`runtime/scheme/grammar-sources.scm`), not a fixture —
+/// declared catalog (`runtime/scheme/grammar-sources.scm`), not a fixture:
 /// no network, no install, so it needs neither `require_grammars` nor the
 /// e2e tests' own PATH/tree-sitter setup below. "ag" is unique to "agda"
 /// among every declared name (checked at authoring time; re-verified by
@@ -390,14 +390,14 @@ fn plum_install_grammar_tab_completes_a_declared_name() {
 #[test]
 fn install_real_json_grammar_e2e() {
     // git/curl/tree-sitter are all spawned by unqualified name below, so this
-    // test is a `PATH` reader for its whole duration —
+    // test is a `PATH` reader for its whole duration.
     // `scripting_lsp_install.rs` narrows process `PATH` to an empty or
     // shim-only dir in several tests, and a spawn landing inside that window
     // resolves to nothing (see `Global::Env`'s doc).
     let _lock = TEST_GLOBALS.claim(Global::Env);
 
     // Read the JSON grammar's url + pinned rev straight from the runtime catalog
-    // (single source of truth — no hardcoded pins to drift out of sync).
+    // (single source of truth, no hardcoded pins to drift out of sync).
     let (url, rev) = grammar_source("json");
     let (url, rev) = (url.as_str(), rev.as_str());
 
@@ -440,10 +440,10 @@ fn install_real_json_grammar_e2e() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     let init_path = tmp.path().join("init.scm");
-    // `register-grammar!` is defined in prelude.scm — prepend the real prelude
+    // `register-grammar!` is defined in prelude.scm: prepend the real prelude
     // source so it's in scope (see `register_grammar_command_mode_attaches_and_sweeps`).
     // Command name must not contain digits: parse_typed_command stops the name
-    // scan at the first non-[A-Za-z_-] char (Vim convention — digits are args).
+    // scan at the first non-[A-Za-z_-] char (Vim convention: digits are args).
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
         r#"(define-typed-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
@@ -500,7 +500,7 @@ fn install_real_json_grammar_e2e() {
 // ---------------------------------------------------------------------------
 
 /// Helper: write a temp-runtime `scheme/prelude.scm` (copied verbatim from the
-/// real runtime — it's self-contained and defines the `define-language!`
+/// real runtime; it's self-contained and defines the `define-language!`
 /// macro) plus a caller-supplied `scheme/languages.scm`, point
 /// `HUME_RUNTIME`/`XDG_CONFIG_HOME`/`XDG_DATA_HOME` at temp dirs, give the
 /// editor's buffer a path so extension-based detection fires, and run
@@ -652,7 +652,7 @@ fn tsx_bundled_language_id_is_typescriptreact() {
 /// Locks the startup invariant the `run()` reorder (`hume-editor/src/lib.rs`)
 /// leans on: by the time `init_scripting` returns, the initial (already-open)
 /// buffer's language has been detected from its path and its tree-sitter
-/// parse has been posted to the background worker — so the run loop's first
+/// parse has been posted to the background worker, so the run loop's first
 /// frame is highlighted at most one poll later, never long after a b/w flash.
 ///
 /// The detection + parse-post happens via the end-of-init
@@ -688,7 +688,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
             .unwrap()
             .layers()
             .is_none(),
-        "tree must not be installed yet — only posted; drained on the next \
+        "tree must not be installed yet, only posted; drained on the next \
          reparse_stale_buffers call (matches the run loop's first iteration)"
     );
 
@@ -727,7 +727,7 @@ fn initial_buffer_parse_is_in_flight_by_end_of_init_scripting() {
 
 /// `runtime/scheme/grammars.scm` registers already-compiled grammars
 /// unconditionally at startup, so highlighting for an installed grammar must
-/// not depend on `core:plum` being declared in `init.scm` at all — PLUM is
+/// not depend on `core:plum` being declared in `init.scm` at all. PLUM is
 /// only needed to *install* a grammar in the first place.
 ///
 /// Stages a real compiled JSON grammar at the exact paths core's
@@ -776,7 +776,7 @@ fn grammar_registration_survives_plum_absence() {
         "buffer must be highlighted without core:plum declared"
     );
 
-    // Sanity: PLUM's own commands really are unavailable — this run never
+    // Sanity: PLUM's own commands really are unavailable. This run never
     // loaded the plugin, so the registration above cannot be credited to it.
     type_cmd(&mut ed, ":plum-install-grammar");
     let warns: Vec<String> = ed
@@ -799,7 +799,7 @@ fn grammar_registration_survives_plum_absence() {
 /// `grammars.scm` attaches every already-compiled grammar before `init.scm`
 /// runs (`scripting_setup.rs`: prelude → languages → grammars → init.scm).
 /// `languages.scm`'s own header documents overriding an entry by redefining
-/// it in `init.scm` — this exercises exactly that documented pattern for an
+/// it in `init.scm`. This exercises exactly that documented pattern for an
 /// already-grammared language and asserts highlighting survives it.
 ///
 /// If `register_identity_no_rebuild` dropped an attached grammar
@@ -923,7 +923,7 @@ fn init_errors_with_catalog(
 /// `<data>/grammars/` directory there is nothing to register, so a catalog
 /// that cannot even be read must never be touched.
 ///
-/// Uses a syntactically broken catalog as the tripwire — if anything forces it,
+/// Uses a syntactically broken catalog as the tripwire: if anything forces it,
 /// `grammars.scm` raises and `init_scripting` logs an error. The second half
 /// (a compiled file present ⇒ the same broken catalog now *does* raise) proves
 /// the tripwire works, so the first half cannot pass vacuously.
@@ -937,7 +937,7 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
         "no <data>/grammars/ ⇒ the catalog must never be read: {errors:?}"
     );
 
-    // A bare sources/ subdirectory yields no grammar names either — still no read.
+    // A bare sources/ subdirectory yields no grammar names either, so still no read.
     let (errors, ..) = init_errors_with_catalog(broken, |data| {
         std::fs::create_dir_all(data.join("grammars").join("sources")).unwrap();
     });
@@ -1001,8 +1001,8 @@ fn orphan_compiled_grammar_is_skipped_not_registered() {
 
 /// A grammar the catalog still knows about, with a compiled library on disk
 /// but no `highlights.scm` (e.g. the user cleared `<data>/grammars/sources/`
-/// to reclaim disk), must warn — naming the grammar so `:plum-install-grammar
-/// <name>` is the obvious next step — instead of being dropped as silently as
+/// to reclaim disk), must warn (naming the grammar so `:plum-install-grammar
+/// <name>` is the obvious next step) instead of being dropped as silently as
 /// a genuine orphan. Distinguishes the two cases `register-installed-grammars!`
 /// must tell apart: unknown-to-catalog (expected-silent) vs. known-but-broken
 /// (repairable, must be surfaced).
@@ -1045,12 +1045,12 @@ fn known_grammar_missing_highlights_warns_and_is_not_registered() {
 /// A file matching another platform's shared-library extension (e.g. a `.so`
 /// left behind after a macOS setup migrated from Linux) is not part of this
 /// platform's installed set, so `installed-grammars` must never yield its name
-/// at all — `register-grammar!` must not even be attempted for it.
+/// at all: `register-grammar!` must not even be attempted for it.
 ///
 /// `has_grammar` alone can't tell them apart: `grammar-output-path` always
 /// re-derives the *platform's* extension regardless of which file the walk
 /// matched, so an attempt on this entry is doomed to fail on a missing path
-/// either way — attempted-and-failed and never-attempted both leave `json`
+/// either way: attempted-and-failed and never-attempted both leave `json`
 /// unregistered. What differs is whether the attempt happens: a failed init-time
 /// attach logs a `Warning` (`editor/syntax/mod.rs`), so an attempt leaves a
 /// trace in the message log that a skip does not.
@@ -1102,7 +1102,7 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
 /// `installed-grammars` must sort by stem, not by full filename: `"b-x.<ext>"
 /// < "b.<ext>"` (`-` sorts before `.`), so sorting before stripping the
 /// extension would put `b-x` ahead of `b`. Neither name is catalog-known, so
-/// `register-installed-grammars!` skips both silently — only the list order
+/// `register-installed-grammars!` skips both silently. Only the list order
 /// is under test.
 #[test]
 fn installed_grammars_sorts_by_stem_not_filename() {

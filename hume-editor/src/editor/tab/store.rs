@@ -1,12 +1,12 @@
 //! Per-editor tab store: the display order and stashed window layout of
 //! every open tab page.
 //!
-//! A "tab" here is Vim's sense — a saved window layout (its own
+//! A "tab" here is Vim's sense: a saved window layout (its own
 //! [`LayoutTree`] + its own focused pane), not a per-buffer strip. Panes are
 //! never shared across tabs, but all live in the single global pool
-//! (`EngineView::panes`) regardless of which tab is active — only which
+//! (`EngineView::panes`) regardless of which tab is active. Only which
 //! panes a tab's `LayoutTree` *reaches* differs.
-//! **Never mutate `stash`/`order`/`current` directly outside this file** —
+//! **Never mutate `stash`/`order`/`current` directly outside this file**:
 //! go through `TabStore`'s own methods, mirroring `BufferStore`'s own
 //! module-doc convention.
 
@@ -15,10 +15,10 @@ use slotmap::{SlotMap, new_key_type};
 use hume_engine::pipeline::{LayoutTree, PaneId};
 
 new_key_type! {
-    /// Opaque handle to a tab. Minted only in `hume-editor` — the engine has
+    /// Opaque handle to a tab. Minted only in `hume-editor`: the engine has
     /// no notion of tabs, only of the one `LayoutTree` currently active.
     /// `pub(crate)`, wider than the rest of this module: `crate::tabline`
-    /// (a sibling of `editor`, matching where `crate::statusline` lives —
+    /// (a sibling of `editor`, matching where `crate::statusline` lives;
     /// see that module's own doc) holds and displays `TabId`s built by
     /// `crate::editor::frame::sync_tabline_view`, so the type must be
     /// visible on both sides of that boundary.
@@ -27,7 +27,7 @@ new_key_type! {
 
 /// One inactive tab's saved window layout. The *active* tab's equivalent
 /// data lives directly in `EngineView::layout` /
-/// `EditorState::focus` — never duplicated here while a tab is
+/// `EditorState::focus`, never duplicated here while a tab is
 /// active (see [`TabStore`]'s doc for why: reading `stash[current]` would
 /// return a stale snapshot, not the live tree).
 struct TabState {
@@ -37,7 +37,7 @@ struct TabState {
 
 /// Display/cycle order and stashed layout for every open tab.
 ///
-/// `stash` holds one entry per id in `order`, including `current` — but the
+/// `stash` holds one entry per id in `order`, including `current`, but the
 /// entry for `current` is stale (superseded by the live `EngineView::layout`)
 /// until the next switch overwrites it. Every method below either writes
 /// that entry immediately before changing `current` (so it's never stale
@@ -51,7 +51,7 @@ pub(in crate::editor) struct TabStore {
 
 impl TabStore {
     /// Seed a single-tab store wrapping `initial_pane`'s own
-    /// `LayoutTree::Leaf` — mirrors how `EngineView::new` seeds its own
+    /// `LayoutTree::Leaf`, mirroring how `EngineView::new` seeds its own
     /// `layout` field with the same leaf. That leaf lives in
     /// `EngineView::layout` itself once the caller makes it live; this only
     /// allocates the first `TabId` to name it.
@@ -75,7 +75,7 @@ impl TabStore {
         self.current
     }
 
-    /// Display/cycle order — every tab, including the active one.
+    /// Display/cycle order: every tab, including the active one.
     pub(in crate::editor) fn order(&self) -> &[TabId] {
         &self.order
     }
@@ -85,7 +85,7 @@ impl TabStore {
     }
 
     /// The `PaneId` a tab last focused. For `id == current()` this is the
-    /// stale entry (see the struct doc) — callers wanting the *live*
+    /// stale entry (see the struct doc). Callers wanting the *live*
     /// focused pane of the active tab must read `EditorState::focus`
     /// instead. Panics on an unknown id (a `tab` module bug, not a
     /// user-reachable state).
@@ -93,12 +93,12 @@ impl TabStore {
         self.stash[id].focused_pane_id
     }
 
-    /// Every *inactive* tab's own `LayoutTree` — `stash[current]` is
+    /// Every *inactive* tab's own `LayoutTree`. `stash[current]` is
     /// excluded (see this struct's own doc: it's stale while `current` is
     /// live). `Editor::sync_viewport_dims` (`frame.rs`) re-partitions each
     /// of these against the terminal on every resize, so a background-tab
     /// pane's viewport dims stay current the same way the active tab's own
-    /// already do — the active tab's geometry is resynced separately, from
+    /// already do. The active tab's geometry is resynced separately, from
     /// `EngineView::layout` itself.
     pub(in crate::editor) fn inactive_layouts(&self) -> impl Iterator<Item = &LayoutTree> {
         self.stash
@@ -112,13 +112,13 @@ impl TabStore {
     /// `BufferStore::next`, which takes one and so has a real "unknown id"
     /// case to handle with an `unwrap_or` fallback): `TabStore` reads its
     /// own `current` field, so a missing position would mean `order` and
-    /// `current` had already gone out of sync — exactly the corruption
+    /// `current` had already gone out of sync: exactly the corruption
     /// `open_after_current`'s own insert below would otherwise mask instead
     /// of failing loudly.
     ///
     /// `pub(in crate::editor)` rather than private: `Editor::sync_tabline_view`
     /// (`frame.rs`) needs the same index and is the one caller outside this
-    /// module — it reads it from here rather than re-deriving it from
+    /// module. It reads it from here rather than re-deriving it from
     /// `order()`/`current()` separately, which would let the tabline's own
     /// copy silently drift from this one's panic message the moment either
     /// changes.
@@ -129,7 +129,7 @@ impl TabStore {
             .expect("current tab is always present in order")
     }
 
-    /// Snapshot `current`'s live layout/focus into its stash slot — the
+    /// Snapshot `current`'s live layout/focus into its stash slot: the
     /// shared first half of every op that displaces the live tab.
     fn stash_current(&mut self, layout: LayoutTree, focused_pane_id: PaneId) {
         self.stash[self.current] = TabState {
@@ -143,7 +143,7 @@ impl TabStore {
     ///
     /// A clone of the stash entry rather than a `mem::replace`-out: the
     /// entry stays valid for the *next* switch away from `id` (see the
-    /// struct doc — `stash[current]` is defined-stale, never removed, until
+    /// struct doc: `stash[current]` is defined-stale, never removed, until
     /// the next switch away overwrites it), and the tree is small enough (a
     /// handful of panes at most) that cloning it is simpler than threading
     /// a placeholder through every caller that would otherwise need one.
@@ -156,7 +156,7 @@ impl TabStore {
     /// stash slot, make `target` current, and return `target`'s stashed
     /// layout/focus for the caller to write into `EngineView::layout` /
     /// `EditorState::focus`. `outgoing_layout` is the live tree
-    /// being displaced — the caller reads it out of `EngineView::layout`
+    /// being displaced. The caller reads it out of `EngineView::layout`
     /// before calling, since `TabStore` never borrows `EngineView`.
     pub(in crate::editor) fn switch(
         &mut self,
@@ -191,7 +191,7 @@ impl TabStore {
         id
     }
 
-    /// The tab that should gain focus once `current` closes — its right
+    /// The tab that should gain focus once `current` closes: its right
     /// neighbour, or its left one when `current` is already the rightmost
     /// tab (Vim's own `:tabclose` placement: adjacent, never a wrap to the
     /// far end). Only meaningful with more than one tab open; panics
@@ -210,7 +210,7 @@ impl TabStore {
     /// Remove `current` from the store (`order` + `stash`), promote
     /// `survivor` as the new current, and return its stashed layout/focus
     /// for the caller to write into `EngineView`/`EditorState`. Panics if
-    /// `current` is the only tab — callers check `len() > 1` first.
+    /// `current` is the only tab; callers check `len() > 1` first.
     pub(in crate::editor) fn close_current(&mut self, survivor: TabId) -> (LayoutTree, PaneId) {
         assert!(
             self.order.len() > 1,

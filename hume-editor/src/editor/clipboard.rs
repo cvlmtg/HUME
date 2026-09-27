@@ -1,10 +1,10 @@
 /// Thin wrapper around `arboard::Clipboard` for the system clipboard register.
 ///
-/// `arboard::Clipboard` is not `Send + Sync` — must stay on the single-threaded
+/// `arboard::Clipboard` is not `Send + Sync`, so it must stay on the single-threaded
 /// `Editor`. Initialisation failures (headless CI, SSH without X11 forwarding)
 /// yield `handle = None`; subsequent calls return `Err(String)`, triggering the
 /// in-memory fallback in the caller. `read()` returns the OS clipboard's raw
-/// text — nothing normalizes line endings here; `register_ops::read_register_text`
+/// text. Nothing normalizes line endings here; `register_ops::read_register_text`
 /// normalizes on the way from this raw accessor into register values, so a
 /// Steel `(read-register "c")` sees LF like every other register.
 ///
@@ -64,7 +64,7 @@ impl SystemClipboard {
     /// Create a clipboard instance whose handle is already dropped.
     ///
     /// All read/write calls return `Err`, hitting the in-memory fallback.
-    /// The virtual mock is inactive — `force_unavailable()` on an already-inactive
+    /// The virtual mock is inactive; `force_unavailable()` on an already-inactive
     /// instance is also a no-op.
     /// The inert baseline in `EditorState::default()`, so proptest never reaches
     /// the real NSPasteboard (which throws uncatchable ObjC exceptions in test

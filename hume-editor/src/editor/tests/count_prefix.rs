@@ -1,4 +1,4 @@
-// Numeric count-prefix accumulation (`3w`, `12j`, …) — see
+// Numeric count-prefix accumulation (`3w`, `12j`, …); see
 // `handle_normal`'s (`input_stack/base.rs`) "Count prefix accumulation" block.
 use super::*;
 
@@ -16,7 +16,7 @@ fn zero_is_a_digit_only_inside_a_count() {
     ed.handle_key(key('0'));
     assert_eq!(
         ed.state.count, None,
-        "a bare 0 is not a count digit — falls through to the trie"
+        "a bare 0 is not a count digit; it falls through to the trie"
     );
 
     ed.handle_key(key('1'));

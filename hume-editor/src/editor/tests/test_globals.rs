@@ -1,8 +1,8 @@
 //! Regression tests for `TestGlobals`, the reentrant lock guarding the
 //! suite's process globals. It replaced two plain `std::sync::Mutex`es that
-//! self-deadlocked twice — once, and again in
+//! self-deadlocked twice (once, and again in
 //! `bad_config_value_fails_plugin_load_with_prefixed_error`
-//! (`unix/git_diff_plugin.rs`) — with no panic and no assertion failure, just
+//! (`unix/git_diff_plugin.rs`)) with no panic and no assertion failure, just
 //! the test runner's generic "running for over 60s" notice on a process-wide
 //! lock that then starved every other concurrently-running test too.
 //!
@@ -32,8 +32,8 @@ fn claiming_the_same_global_twice_on_one_thread_panics_instead_of_hanging() {
 #[test]
 fn claiming_a_different_global_while_holding_one_succeeds() {
     let _env = TEST_GLOBALS.claim(Global::Env);
-    // Different resource — legitimate nesting (e.g. `CwdSandbox` constructed
-    // inside a live `HumeRuntimeGuard` in `unix/pickers_plugin.rs`) — must
+    // Different resource: legitimate nesting (e.g. `CwdSandbox` constructed
+    // inside a live `HumeRuntimeGuard` in `unix/pickers_plugin.rs`) must
     // neither panic nor hang.
     let _cwd = TEST_GLOBALS.claim(Global::Cwd);
 }

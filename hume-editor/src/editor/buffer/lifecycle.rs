@@ -2,7 +2,7 @@
 //!
 //! Free functions (not `impl Editor` methods) so the same logic can be
 //! called by both the `Editor` methods (which take `&mut self`) and the
-//! Steel builtins — both hold a whole `EditorState`/`EngineView` pair (the
+//! Steel builtins. Both hold a whole `EditorState`/`EngineView` pair (the
 //! host through `SteelCtx`), just never the same `Editor` these live on, so
 //! they take `state`/`ev` directly instead of `&mut self`.
 //!
@@ -24,11 +24,11 @@ use crate::editor::pane_state::{self, PaneBufferState};
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
 
 /// Allocate a new buffer slot (engine + BufferStore) and return the
-/// allocated `BufferId`. No pane shows it yet — whichever pane first
+/// allocated `BufferId`. No pane shows it yet; whichever pane first
 /// switches to it seeds its own `pane_state` entry lazily, via
 /// `switch_pane_to_buffer`/`write_cursor`'s own `pane_state::ensure` calls.
 ///
-/// `undo_levels` seeds `doc`'s `undo-levels` cap — the current global
+/// `undo_levels` seeds `doc`'s `undo-levels` cap: the current global
 /// setting, since new buffers always start out tracking it.
 pub(in crate::editor) fn open_buffer(
     ev: &mut EngineView,
@@ -42,14 +42,14 @@ pub(in crate::editor) fn open_buffer(
     bid
 }
 
-/// Marks `bid` `open_hook_pending` and queues it for language detection —
+/// Marks `bid` `open_hook_pending` and queues it for language detection:
 /// every fresh `BufferId` must go through this exactly once, or
 /// `Editor::detect_pending_languages` never announces its `OnBufferOpen`
 /// (see that function's doc). Deliberately does **not** run detection
 /// inline: that needs `set_buffer_language`, which can activate lazy
-/// language plugins via `self.scripting` — a full `&mut Editor`/Steel-eval
+/// language plugins via `self.scripting`, a full `&mut Editor`/Steel-eval
 /// capability neither of this function's callers hold. Also leaves
-/// `open_hook_pending` set until that drain fires its `OnBufferOpen` — read
+/// `open_hook_pending` set until that drain fires its `OnBufferOpen`, read
 /// by [`close_buffer_and_notify`] so a buffer closed before the drain runs
 /// announces neither hook, rather than an `OnBufferClose` with no matching
 /// open.
@@ -65,7 +65,7 @@ pub(in crate::editor) fn queue_open_announcement(state: &mut EditorState, bid: B
     state.config.pending_language_detection.push(bid);
 }
 
-/// [`open_buffer`] plus [`queue_open_announcement`] — see the latter for why
+/// [`open_buffer`] plus [`queue_open_announcement`]. See the latter for why
 /// detection doesn't run inline. `Editor::detect_pending_languages` fires
 /// `OnBufferOpen` once detection (and `OnLanguageSet`) for `bid` has run, so
 /// plugins observing both hooks see `OnLanguageSet` first.
@@ -81,10 +81,10 @@ pub(in crate::editor::buffer) fn open_buffer_and_notify(
 
 /// Dedup-open a file path: if already open returns `(existing_id, false)`,
 /// otherwise reads the file (or opens an empty new-file buffer if it doesn't
-/// exist yet — see `Buffer::from_file_or_new`) and allocates via
+/// exist yet; see `Buffer::from_file_or_new`) and allocates via
 /// [`open_buffer_and_notify`] (which seeds the `undo-levels` cap from
 /// `state.settings`), returning `(new_id, true)`. Dedup-opening an
-/// already-open path enqueues no hook and detects no language — matching
+/// already-open path enqueues no hook and detects no language, matching
 /// `Editor::open_buffer`'s "every call is a genuinely new buffer" contract.
 /// The caller is responsible for any other post-open work (pane switching).
 pub(in crate::editor) fn open_or_dedup_and_notify(
@@ -131,12 +131,12 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     }
     ev.panes[pid].recall_scroll(target, state.buffers.get(target).text().last_content_line());
     // Seeds `pane_state[pid][target]` on this pane's first visit to
-    // `target` — required regardless of reveal, since `frame.rs`'s scroll
+    // `target`. Required regardless of reveal, since `frame.rs`'s scroll
     // step indexes it directly. A different buffer's cursor/viewport pairing
     // always needs re-settling, whether or not the recalled selection's head
     // happens to equal the outgoing one: `EditorState::layout_key`'s
     // `buffer_tag` names the buffer, so a switch to a different one always
-    // differs from `PaneBufferState::last_layout_key` — the very first read
+    // differs from `PaneBufferState::last_layout_key`: the very first read
     // for a `(pane, buffer)` pair is `None`, which differs from anything.
     pane_state::ensure(
         &mut state.panes.state,
@@ -148,7 +148,7 @@ pub(in crate::editor) fn switch_pane_to_buffer(
 }
 
 /// Redirect the focused pane to `target`, pushing the outgoing position onto
-/// `pane_jumps[focused_pane_id]` — unless `target` is the buffer already
+/// `pane_jumps[focused_pane_id]`, unless `target` is the buffer already
 /// focused, which would be a no-op switch (e.g. `:tutor` run a second time
 /// while already viewing it): `push` truncates forward history
 /// unconditionally, so recording a jump to nowhere would corrupt it for
@@ -156,7 +156,7 @@ pub(in crate::editor) fn switch_pane_to_buffer(
 /// explicitly), but not all do, so the guard lives here instead of being
 /// re-derived at each one.
 ///
-/// Caller contract: all fallible steps must succeed before calling this —
+/// Caller contract: all fallible steps must succeed before calling this:
 /// `push` truncates forward history.
 pub(in crate::editor) fn switch_to_buffer_with_jump(
     state: &mut EditorState,
@@ -180,17 +180,17 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 }
 
 /// Remove buffer `id`. Every pane showing it (active tab or not) redirects
-/// to the MRU replacement buffer — or, when `id` was the only buffer, to a
-/// freshly allocated scratch buffer (via [`open_buffer`], seeded with
+/// to the MRU replacement buffer (or, when `id` was the only buffer, to a
+/// freshly allocated scratch buffer via [`open_buffer`], seeded with
 /// `undo_levels`, the current global `undo-levels` setting), the same way
 /// any other buffer open would be. `id`'s own slot is always freed: a
 /// versioned key is never reused for different content, so a captured `id`
-/// can never silently start naming the replacement — a same-slot in-place
+/// can never silently start naming the replacement; a same-slot in-place
 /// replace would leave that failure mode open for any `LivePane` builtin
 /// whose bid outlived the close.
 ///
 /// Returns, only when the last-buffer branch fired, the freshly allocated
-/// scratch buffer's id — for [`close_buffer_and_notify`] to announce with
+/// scratch buffer's id, for [`close_buffer_and_notify`] to announce with
 /// [`queue_open_announcement`] exactly like any other open.
 pub(in crate::editor) fn close_buffer(
     state: &mut EditorState,
@@ -210,7 +210,7 @@ pub(in crate::editor) fn close_buffer(
         }
     };
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
-    // Every pane showing `id` must redirect, active tab or not — in the
+    // Every pane showing `id` must redirect, active tab or not. In the
     // last-buffer case this is *every* pane, since `id` was the only buffer
     // any of them could have been showing.
     let panes_to_redirect: Vec<PaneId> = ev
@@ -230,21 +230,21 @@ pub(in crate::editor) fn close_buffer(
 
 /// [`close_buffer`] plus the pre-close LSP sync and post-close cleanup
 /// `Editor::close_buffer` performs: `didClose` notification, diagnostics
-/// clear, decoration clear, and the `OnBufferClose` hook enqueue — the
+/// clear, decoration clear, and the `OnBufferClose` hook enqueue: the
 /// disjoint-borrow (`view`/`state`/`lsp`) chokepoint shared by `Editor::
 /// close_buffer` and `EditorHostImpl::close_buffer` (`(close-buffer! …)`).
 ///
 /// Unlike buffer open, none of this needs Steel eval (`didClose` is pure
-/// protocol, diagnostics/decorations are plain state), so — unlike
-/// `open_buffer_and_notify` — this runs identically from both callers, no
+/// protocol, diagnostics/decorations are plain state), so, unlike
+/// `open_buffer_and_notify`, this runs identically from both callers, no
 /// deferred effect needed. `lsp` is `Option` to mirror `EditorHostImpl.lsp`'s
 /// own `Option<&mut LspState>` shape: when `None`, the LSP side effects are
 /// skipped rather than panicking, though in practice this is never observed
-/// — `close-buffer!` is command-gated, and command dispatch always supplies
+/// because `close-buffer!` is command-gated, and command dispatch always supplies
 /// `Some`.
 ///
 /// `OnBufferClose` is queued only when `id`'s `OnBufferOpen` already fired
-/// (`!open_hook_pending`) — hooks announce as a pair or not at all. A buffer
+/// (`!open_hook_pending`): hooks announce as a pair or not at all. A buffer
 /// opened and closed before `Editor::detect_pending_languages`'s drain ran
 /// (e.g. within one Steel eval) never announced its open, so it must not
 /// announce a close either.
@@ -255,17 +255,17 @@ pub(in crate::editor) fn close_buffer_and_notify(
     id: BufferId,
 ) {
     if let Some(lsp) = lsp {
-        // Must run before the slot is freed below — needs the buffer's path
+        // Must run before the slot is freed below: needs the buffer's path
         // and lsp_server to build the didClose notification.
         crate::editor::lsp::sync::lsp_did_close(state, lsp, id);
-        // Purely a leak fix — `id` is a versioned slotmap key, so a future
-        // reused slot can never alias with these stale entries — but there
+        // Purely a leak fix. `id` is a versioned slotmap key, so a future
+        // reused slot can never alias with these stale entries, but there
         // is no other chokepoint that ever frees them.
         lsp.remove_buffer_diagnostics(id);
     }
     state.config.decorations.remove_buffer(id);
     state.config.statusline_text.remove(&id);
-    // A reload confirm naming `id` would otherwise outlive its subject — the
+    // A reload confirm naming `id` would otherwise outlive its subject; the
     // slot is always freed below, whether or not another buffer existed to
     // replace it. `reload_buffer_from_disk` would bail on `try_get` and the
     // user's `r` would do nothing. Retire the question rather than leave one
@@ -279,7 +279,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     let opened = close_buffer(state, ev, id);
     // The last-buffer branch fired: a fresh scratch buffer was allocated in
     // `id`'s place and must announce its own `OnBufferOpen` like any other
-    // open — it is a genuinely new `BufferId`, not `id` reused.
+    // open: it is a genuinely new `BufferId`, not `id` reused.
     if let Some(bid) = opened {
         queue_open_announcement(state, bid);
     }
@@ -290,20 +290,20 @@ pub(in crate::editor) fn close_buffer_and_notify(
 }
 
 /// Reseed every per-pane store keyed to `id` after its content was reset
-/// wholesale — `set_view_content`'s history-resetting in-place replace
-/// (`Editor::open_read_only_view`) — as opposed to an edit, which has a
+/// wholesale (`set_view_content`'s history-resetting in-place replace
+/// (`Editor::open_read_only_view`)), as opposed to an edit, which has a
 /// `ChangeSet` to remap positions through instead of discarding them.
 ///
 /// Resets `pane_state` (selections, search cursor, scroll) to
 /// [`pane_state::fresh_from_buf`] for every pane currently viewing `id`,
 /// drops `id`'s entries from every pane's jump list (cross-buffer, so not
-/// limited to viewers), and — via `Pane::forget_buffer` — drops every pane's
-/// saved scroll *and* wrap-mode pin for `id` (also not limited to viewers —
+/// limited to viewers), and, via `Pane::forget_buffer`, drops every pane's
+/// saved scroll *and* wrap-mode pin for `id` (also not limited to viewers:
 /// a background pane's *saved* scroll or pin for `id` is just as stale as a
 /// live one's; a regenerated view buffer starts unpinned again, same as a
 /// freshly opened one would).
 ///
-/// Does *not* touch `EditorState::active_session` — a session belongs to
+/// Does *not* touch `EditorState::active_session`: a session belongs to
 /// the editor, not `PaneBufferState`, so it's outside this function's
 /// reach. Not a gap in practice: every caller resets a read-only view
 /// buffer (`:messages`, `:ls`), which never accepts the Insert/paste
@@ -315,7 +315,7 @@ pub(in crate::editor::buffer) fn reseed_panes_after_content_reset(
     pane_jumps: &mut JumpLists,
     id: BufferId,
 ) {
-    // Drop every pane's cached state for `id`, not just current viewers' —
+    // Drop every pane's cached state for `id`, not just current viewers':
     // a pane that viewed `id` and switched away still holds a `pane_state`
     // entry for it, and that entry is exactly as stale as a live viewer's
     // (see this function's own doc). Leaving it in place would surface the
@@ -335,7 +335,7 @@ pub(in crate::editor::buffer) fn reseed_panes_after_content_reset(
         .collect();
     for pid in pane_ids {
         // Current viewers need their entry seeded immediately, not lazily on
-        // next switch — a live viewer is rendered this frame.
+        // next switch: a live viewer is rendered this frame.
         pane_state[pid].insert(id, pane_state::fresh_from_buf(buffers.get(id)));
     }
     pane_jumps.prune_buffer(id);

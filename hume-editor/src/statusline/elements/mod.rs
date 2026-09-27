@@ -9,7 +9,7 @@ use crate::statusline::colors::EditorColors;
 /// lets `format` be unit-tested against a synthetic `Data` value with no
 /// editor fixture at all. `render` is the single call dispatch sites use.
 ///
-/// `FilePath` and `Custom` don't implement this trait — `FilePath`'s content
+/// `FilePath` and `Custom` don't implement this trait. `FilePath`'s content
 /// isn't read from the editor at all, but injected by `render_statusline`'s
 /// two-pass sizing pass (see `file_path.rs`); `Custom` needs its own `name`
 /// alongside the provider, which `read`'s single-argument signature has no

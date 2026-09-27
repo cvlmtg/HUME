@@ -9,7 +9,7 @@ fn goto_first_line_records_jump() {
     let mut ed = jump_editor(10);
     let before = state(&ed);
 
-    // `gg` — goto first line.
+    // `gg`: goto first line.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
     assert_eq!(
@@ -81,13 +81,13 @@ fn small_motion_does_not_record_jump() {
     let mut ed = jump_editor(10);
     let before = state(&ed);
 
-    // Move down 2 lines — below the threshold.
+    // Move down 2 lines, below the threshold.
     ed.handle_key(key('2'));
     ed.handle_key(key('j'));
     let after = state(&ed);
     assert_ne!(after, before);
 
-    // jump-backward should NOT go back — nothing was recorded.
+    // jump-backward should NOT go back: nothing was recorded.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), after);
 }
@@ -98,7 +98,7 @@ fn large_motion_records_jump() {
     let mut ed = jump_editor(0);
     let before = state(&ed);
 
-    // Move down 10 lines — exceeds the threshold of 5.
+    // Move down 10 lines, exceeding the threshold of 5.
     // Type "10j" as separate key presses.
     ed.handle_key(key('1'));
     ed.handle_key(key('0'));
@@ -144,15 +144,15 @@ fn search_confirm_records_jump() {
 /// jump-list history.
 #[test]
 fn search_confirm_noop_does_not_clobber_forward_history() {
-    // Selection already spans the whole (only) match — exactly the shape
-    // `search_sel` itself builds — so confirming search truly changes
+    // Selection already spans the whole (only) match, exactly the shape
+    // `search_sel` itself builds, so confirming search truly changes
     // nothing, not just "landed near where it started".
     let text = BufferText::from("foo\n");
     let sels = SelectionSet::single(hume_editing::selection::Selection::new(co(0), co(2)));
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
 
-    // `%` — jump-flagged, moves elsewhere, records a jump.
+    // `%`: jump-flagged, moves elsewhere, records a jump.
     ed.handle_key(key('%'));
     let after_percent = state(&ed);
 
@@ -161,7 +161,7 @@ fn search_confirm_noop_does_not_clobber_forward_history() {
     let back_at_start = state(&ed);
     assert_ne!(back_at_start, after_percent);
 
-    // Search for "foo" — the buffer's only occurrence, already selected —
+    // Search for "foo" (the buffer's only occurrence, already selected):
     // wraps around and lands right back on the same span.
     ed.handle_key(key('/'));
     for ch in "foo".chars() {
@@ -194,11 +194,11 @@ fn search_cancel_does_not_record_jump() {
     for ch in "line 15".chars() {
         ed.handle_key(key(ch));
     }
-    // Cancel — restores position.
+    // Cancel: restores position.
     ed.handle_key(key_esc());
     assert_eq!(state(&ed), before);
 
-    // jump-backward should NOT go anywhere — nothing recorded.
+    // jump-backward should NOT go anywhere: nothing recorded.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
 }
@@ -240,7 +240,7 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     let mut ed = Editor::for_testing(doc);
     ed.kitty_enabled = true;
 
-    // Search "editor" — lands on first match.
+    // Search "editor": lands on first match.
     ed.handle_key(key('/'));
     for ch in "editor".chars() {
         ed.handle_key(key(ch));
@@ -248,7 +248,7 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     ed.handle_key(key_enter());
     let first_match = state(&ed);
 
-    // `n` — lands on second "editor" on the SAME line.
+    // `n`: lands on second "editor" on the SAME line.
     ed.handle_key(key('n'));
     let second_match = state(&ed);
     assert_ne!(first_match, second_match);
@@ -271,8 +271,8 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
 }
 
 /// `%` (select-all) records a jump so Ctrl-o returns to the pre-`%` position.
-/// `select-all` needs a jump flag on its `Selection` command registration —
-/// without it, the dispatch path never captures a pre-command snapshot and
+/// `select-all` needs a jump flag on its `Selection` command registration.
+/// Without it, the dispatch path never captures a pre-command snapshot and
 /// Ctrl-o lands at whatever stale entry was already in the list.
 #[test]
 fn select_all_records_jump() {
@@ -280,7 +280,7 @@ fn select_all_records_jump() {
     let mut ed = jump_editor(5);
     let before = state(&ed);
 
-    // `%` — select entire buffer; cursor moves to the last character (line 19).
+    // `%`: select entire buffer; cursor moves to the last character (line 19).
     ed.handle_key(key('%'));
     let after_select_all = state(&ed);
     assert_ne!(after_select_all, before, "% must move the cursor");
@@ -303,7 +303,7 @@ fn select_all_records_jump() {
 }
 
 /// `%` (select-all) from the buffer's own last char must still record a
-/// jump — the head doesn't move (it was already `%`'s own landing spot), so
+/// jump. The head doesn't move (it was already `%`'s own landing spot), so
 /// a `moved` check that compares heads alone sees no movement and drops the
 /// entry, even though the anchor moved and the selection is now different.
 #[test]
@@ -319,7 +319,7 @@ fn select_all_from_last_char_still_records_jump() {
     assert_eq!(
         after.head(),
         last,
-        "head shouldn't move — already on the last char"
+        "head shouldn't move: already on the last char"
     );
     assert_eq!(
         after.anchor(),
@@ -342,7 +342,7 @@ fn select_all_from_last_char_still_records_jump() {
 fn goto_matching_pair_noop_does_not_clobber_forward_history() {
     let mut ed = jump_editor(10);
 
-    // `gg` — records a jump, puts us at line 0.
+    // `gg`: records a jump, puts us at line 0.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
     let at_top = state(&ed);
@@ -352,7 +352,7 @@ fn goto_matching_pair_noop_does_not_clobber_forward_history() {
     let back_at_start = state(&ed);
     assert_ne!(back_at_start, at_top);
 
-    // `#` on an ordinary character (not a bracket or tag) — a no-op.
+    // `#` on an ordinary character (not a bracket or tag) is a no-op.
     ed.handle_key(key('#'));
     assert_eq!(state(&ed), back_at_start, "# must not move on plain text");
 
@@ -365,7 +365,7 @@ fn goto_matching_pair_noop_does_not_clobber_forward_history() {
     );
 }
 
-/// `}` (goto-next-paragraph) records a jump even for a one-line hop —
+/// `}` (goto-next-paragraph) records a jump even for a one-line hop:
 /// unlike a plain motion, it's registered `jump: true`, the same as the
 /// structural `goto-next-<kind>` family, since it now selects a whole
 /// object exactly like they do.
@@ -381,13 +381,13 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
     assert_ne!(state(&ed), before);
 
     // jump-backward should restore the pre-jump position, even though the
-    // hop crossed only one line — well under the jump-line-threshold a
+    // hop crossed only one line, well under the jump-line-threshold a
     // plain motion is gated by.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
 }
 
-/// `{` (goto-prev-paragraph) records a jump even for a one-line hop — same
+/// `{` (goto-prev-paragraph) records a jump even for a one-line hop: the same
 /// `jump: true` registration as `}`, checked separately since the two are
 /// driven by distinct start-finding code (`next_paragraph_start` vs
 /// `prev_paragraph_start`).
@@ -403,14 +403,14 @@ fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
     assert_ne!(state(&ed), before);
 
     // jump-backward should restore the pre-jump position, even though the
-    // hop crossed only one line — well under the jump-line-threshold a
+    // hop crossed only one line, well under the jump-line-threshold a
     // plain motion is gated by.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
 }
 
 /// A no-op `}` (no paragraph below) must not truncate forward jump-list
-/// history — same failure mode as
+/// history, the same failure mode as
 /// `goto_matching_pair_noop_does_not_clobber_forward_history` above.
 /// Asserting the pre/post state is unchanged (as the previous version of
 /// this test did) can't catch a wrongly-pushed entry: a no-op's own jump
@@ -421,7 +421,7 @@ fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
 fn goto_next_paragraph_noop_does_not_clobber_forward_history() {
     let mut ed = jump_editor(10); // single paragraph, nothing below to select
 
-    // `gg` — records a jump, puts us at line 0.
+    // `gg`: records a jump, puts us at line 0.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
     let at_top = state(&ed);
@@ -431,12 +431,12 @@ fn goto_next_paragraph_noop_does_not_clobber_forward_history() {
     let back_at_start = state(&ed);
     assert_ne!(back_at_start, at_top);
 
-    // `}` — the whole buffer is one paragraph, nothing below — a no-op.
+    // `}`: the whole buffer is one paragraph, nothing below, so a no-op.
     ed.handle_key(key('}'));
     assert_eq!(
         state(&ed),
         back_at_start,
-        "}} must not move — nothing below"
+        "}} must not move: nothing below"
     );
 
     // Forward history (the jump to line 0) must still be there.
@@ -456,7 +456,7 @@ fn goto_next_paragraph_noop_does_not_clobber_forward_history() {
 fn goto_prev_paragraph_noop_does_not_clobber_forward_history() {
     let mut ed = jump_editor(10); // single paragraph, nothing above to select
 
-    // `gg` — records a jump, puts us at line 0.
+    // `gg`: records a jump, puts us at line 0.
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
     let at_top = state(&ed);
@@ -466,12 +466,12 @@ fn goto_prev_paragraph_noop_does_not_clobber_forward_history() {
     let back_at_start = state(&ed);
     assert_ne!(back_at_start, at_top);
 
-    // `{` — the whole buffer is one paragraph, nothing above — a no-op.
+    // `{`: the whole buffer is one paragraph, nothing above, so a no-op.
     ed.handle_key(key('{'));
     assert_eq!(
         state(&ed),
         back_at_start,
-        "{{ must not move — nothing above"
+        "{{ must not move: nothing above"
     );
 
     // Forward history (the jump to line 0) must still be there.
@@ -488,7 +488,7 @@ fn goto_prev_paragraph_noop_does_not_clobber_forward_history() {
 fn search_n_ctrl_o_ctrl_i_different_lines() {
     let mut ed = jump_editor(0);
 
-    // Search "line 1" — matches lines 1, 10, 11, 12, ...
+    // Search "line 1": matches lines 1, 10, 11, 12, ...
     ed.handle_key(key('/'));
     for ch in "line 1".chars() {
         ed.handle_key(key(ch));
@@ -516,14 +516,14 @@ fn search_n_ctrl_o_ctrl_i_different_lines() {
 // edit's `ChangeSet`, same chokepoint sibling panes' selections go through.
 // Every test below locates its expected landing spot independently (via
 // `str::find` on the post-edit text), never by re-deriving the offset the
-// code under test itself computed — a stale-but-in-range offset and a
+// code under test itself computed: a stale-but-in-range offset and a
 // correctly remapped one can otherwise look identical if the assertion
 // secretly reuses the same arithmetic.
 
 /// Assert the focused cursor sits exactly at the start of `marker` within
 /// `text`. `text` is passed in rather than read from `ed`, since several
-/// callers already hold an independently-known expected buffer content —
-/// reading it back from the editor here would make half of that comparison
+/// callers already hold an independently-known expected buffer content.
+/// Reading it back from the editor here would make half of that comparison
 /// tautological.
 fn assert_cursor_at_marker(ed: &Editor, text: &str, marker: &str, msg: &str) {
     let target = text.find(marker).expect("marker line present");
@@ -535,7 +535,7 @@ fn assert_cursor_at_marker(ed: &Editor, text: &str, marker: &str, msg: &str) {
 }
 
 /// Inserting a line above a recorded jump entry must not leave `Ctrl-o`
-/// landing on the entry's stale (now-wrong) line — it must follow the text.
+/// landing on the entry's stale (now-wrong) line. It must follow the text.
 #[test]
 fn insert_above_jump_entry_lands_on_marker_text() {
     let mut ed = jump_editor(10);
@@ -544,7 +544,7 @@ fn insert_above_jump_entry_lands_on_marker_text() {
     ed.handle_key(key('g'));
     ed.handle_key(key('g'));
 
-    // Open a blank line above line 0 — every original line shifts down by one.
+    // Open a blank line above line 0: every original line shifts down by one.
     ed.handle_key(key('O'));
     ed.handle_key(key_esc());
 
@@ -568,7 +568,7 @@ fn delete_above_jump_entry_lands_on_marker_text() {
     ed.handle_key(key('g'));
     ed.handle_key(key('g')); // records a jump entry at line 10, lands at line 0
 
-    // Delete line 0 entirely — every remaining line shifts up by one.
+    // Delete line 0 entirely: every remaining line shifts up by one.
     ed.handle_key(key('x')); // select-line
     ed.handle_key(key('d')); // delete selection
 
@@ -583,7 +583,7 @@ fn delete_above_jump_entry_lands_on_marker_text() {
     );
 }
 
-/// Undoing an edit must remap jump entries back too — the inverse
+/// Undoing an edit must remap jump entries back too: the inverse
 /// `ChangeSet` goes through the same `finish_edit` chokepoint as any edit.
 #[test]
 fn undo_after_edit_remaps_jump_entry_back() {
@@ -607,7 +607,7 @@ fn undo_after_edit_remaps_jump_entry_back() {
     );
 }
 
-/// Redoing an edit must remap jump entries forward again too — `redo`
+/// Redoing an edit must remap jump entries forward again too: `redo`
 /// replays the edit's own forward `ChangeSet` through the same `finish_edit`
 /// chokepoint as any other edit, a separate call site from `undo`'s.
 #[test]
@@ -635,7 +635,7 @@ fn redo_after_undo_remaps_jump_entry_forward_again() {
 }
 
 /// An edit made from one pane must remap jump entries in every pane viewing
-/// the buffer, not just the pane that performed the edit — jump lists are
+/// the buffer, not just the pane that performed the edit. Jump lists are
 /// per-pane, but the edit chokepoint doesn't know or care which pane a given
 /// list belongs to.
 #[test]
@@ -655,7 +655,7 @@ fn edit_remaps_jump_entries_in_every_pane_viewing_the_buffer() {
         "split clones the source pane's jump list"
     );
 
-    // Edit from pane B — inserts a blank line above line 0.
+    // Edit from pane B: inserts a blank line above line 0.
     ed.handle_key(key('O'));
     ed.handle_key(key_esc());
 
@@ -672,7 +672,7 @@ fn edit_remaps_jump_entries_in_every_pane_viewing_the_buffer() {
 }
 
 /// A jump entry for a buffer that wasn't edited must not move when a
-/// different buffer is edited — the jump list is cross-buffer, so a remap
+/// different buffer is edited. The jump list is cross-buffer, so a remap
 /// triggered by buffer B's edit must skip buffer A's entries entirely.
 #[test]
 fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
@@ -701,13 +701,13 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
     ed.handle_key(key('g'));
     let file1_text = ed.doc().text().to_string();
 
-    // `:e file2` records a second entry — (file1, line 0), the switch-away
-    // point — then focuses file2.
+    // `:e file2` records a second entry, (file1, line 0), the switch-away
+    // point, then focuses file2.
     ed.execute_typed("e", Some(file2.to_str().unwrap()))
         .unwrap();
     assert_ne!(ed.focused_buffer_id(), buf1, "focus moved to file2");
 
-    // Edit file2 — must have zero effect on file1's entries.
+    // Edit file2: must have zero effect on file1's entries.
     ed.handle_key(key('O'));
     ed.handle_key(key_esc());
     ed.handle_key(key('O'));
@@ -728,7 +728,7 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
 }
 
 /// `:e!` reloads through a line-diff `ChangeSet` (`Buffer::reload_from_text`)
-/// that bypasses the ordinary edit chokepoint — jump entries must still be
+/// that bypasses the ordinary edit chokepoint. Jump entries must still be
 /// remapped through it, not just entries produced by in-editor edits.
 #[test]
 fn reload_remaps_jump_entries_through_line_diff() {
@@ -768,7 +768,7 @@ fn reload_remaps_jump_entries_through_line_diff() {
 }
 
 /// A view buffer refreshed via `open_read_only_view` (e.g. re-running
-/// `:messages`) resets its history — there is no `ChangeSet` to remap jump
+/// `:messages`) resets its history: there is no `ChangeSet` to remap jump
 /// entries through, so they must be dropped outright rather than left
 /// pointing at arbitrary text in the regenerated content.
 #[test]
@@ -791,7 +791,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
         "goto-last-line should have recorded an entry for the view buffer"
     );
 
-    // Re-open the same label — refreshes content in place via `set_view_content`.
+    // Re-open the same label: refreshes content in place via `set_view_content`.
     ed.open_read_only_view(
         FocusedPane::current(&ed.state),
         "[jump-list-test]",
@@ -806,7 +806,7 @@ fn view_buffer_refresh_drops_its_jump_entries() {
 }
 
 /// A view buffer refresh must reseed every pane viewing it, not just the
-/// focused one — otherwise a sibling pane keeps a selection computed against
+/// focused one. Otherwise a sibling pane keeps a selection computed against
 /// content that no longer exists, potentially pointing past the new
 /// content's end.
 #[test]
@@ -854,7 +854,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
 }
 
 /// A view-buffer refresh must also reseed a pane that *used to* view it but
-/// switched to a different buffer before the refresh — not just panes
+/// switched to a different buffer before the refresh, not just panes
 /// viewing it at refresh time. Otherwise switching that pane back finds a
 /// selection computed against content the refresh already discarded,
 /// potentially pointing past the new content's end.
@@ -885,7 +885,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
         "cursor actually moved off the initial position"
     );
 
-    // Pane A switches away to a different buffer — it is no longer a viewer
+    // Pane A switches away to a different buffer: it is no longer a viewer
     // of the view buffer when it gets refreshed below.
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid_scratch);
 
@@ -899,7 +899,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
         Some(hume_rope::line::ContentLine::new(0)),
     );
 
-    // Pane A switches back to the view buffer — its cached selection for
+    // Pane A switches back to the view buffer. Its cached selection for
     // `bid` must have been reseeded by the refresh, not left stale.
     ed.switch_focused_pane(pid_a);
     ed.switch_to_buffer_without_jump(FocusedPane::current(&ed.state), bid);

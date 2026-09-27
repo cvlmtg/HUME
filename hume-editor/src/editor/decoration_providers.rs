@@ -14,22 +14,22 @@ use hume_rope::column::ByteCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// One pane's identity plus its on-screen slice, as of the moment
-/// [`Editor::decorated_panes`] was called — every render bridge below reads
+/// [`Editor::decorated_panes`] was called. Every render bridge below reads
 /// `lines`/`chars` instead of asking the viewport directly, so a bridge can
 /// only ever see the viewport its group was handed (see `decorated_panes`'s
 /// doc for why that matters across the scroll step).
 pub(super) struct DecoratedPane {
     pub(super) pid: PaneId,
     pub(super) bid: BufferId,
-    /// Line range, end-exclusive — used by line-indexed stores (gutter
+    /// Line range, end-exclusive, used by line-indexed stores (gutter
     /// signs, EOL text, line backgrounds) instead of `chars`. Ropey-domain,
     /// matching how it's built below (clamped to `ropey_line_count`); every
     /// consumer compares a `ContentLine` against it, converted up via
     /// `RopeyLine::from` rather than the two domains being compared through
-    /// `.index()` — over-permissive by exactly the phantom trailing line,
+    /// `.index()`, which is over-permissive by exactly the phantom trailing line,
     /// which no consumer can produce a `ContentLine` for in the first place.
     pub(super) lines: ExclusiveRange<hume_rope::line::RopeyLine>,
-    /// Char range of `bid`'s content currently visible in `pid` — shared by
+    /// Char range of `bid`'s content currently visible in `pid`, shared by
     /// every per-frame write side that pulls a bounded slice from a
     /// Rust-side store (diagnostics, decorations) instead of the whole
     /// buffer.
@@ -37,15 +37,15 @@ pub(super) struct DecoratedPane {
 }
 
 impl Editor {
-    /// Snapshot of every pane's identity and visible slice — the entry point
+    /// Snapshot of every pane's identity and visible slice: the entry point
     /// every render bridge below starts with, so its loop body can freely
     /// mutate `self.state` (e.g. `update_highlight_providers` refreshing a
     /// buffer's search-match cache) without conflicting with a live borrow
     /// of `self.view.panes`, and so a bridge's `lines`/`chars` can never
     /// drift from what every other bridge in the same call sees.
     ///
-    /// `prepare_frame` calls this **twice** — once before the scroll step,
-    /// once after — rather than sharing one snapshot across both groups: the
+    /// `prepare_frame` calls this **twice** (once before the scroll step,
+    /// once after) rather than sharing one snapshot across both groups: the
     /// sign/inlay-hint/virtual-line/EOL-text bridges deliberately read the
     /// *previous* frame's viewport (their output decides display-line counts/columns
     /// the scroll step's `DisplayLineMap` resolves against, so it must already be
@@ -55,14 +55,14 @@ impl Editor {
     /// of the six bridges has to individually get right.
     ///
     /// `lines`/`chars` are a one-row *superset* of the viewport (its end plus
-    /// one more row) — cheap over-fetch beats a wrap-aware exact bound for a
+    /// one more row): cheap over-fetch beats a wrap-aware exact bound for a
     /// bulk store slice. Both are end-exclusive; `lsp::introspect::pane_visible_range`
     /// is also end-exclusive, so the two conventions differ only in that
-    /// one-row slack, not in inclusive-vs-exclusive — they still don't share
+    /// one-row slack, not in inclusive-vs-exclusive. They still don't share
     /// an implementation, since one clamps to `content_lines` and the other
     /// to the ropey-domain line count.
     ///
-    /// Scoped to `active` (the active tab's panes — see
+    /// Scoped to `active` (the active tab's panes; see
     /// `EngineView::active_pane_ids`) rather than the whole pool: a
     /// background tab's pane isn't decorated, mirrored, or scrolled while
     /// hidden, so it has no "current frame" viewport for this to snapshot.
@@ -97,7 +97,7 @@ impl Editor {
     ///
     /// Called once per frame, after scroll is resolved and before `term.draw`.
     /// Bracket matching is suppressed in Insert mode. Each pane's search
-    /// highlights are computed from **that pane's own buffer and viewport** —
+    /// highlights are computed from **that pane's own buffer and viewport**:
     /// panes never share highlight data (see [`hume_decorations::PaneDecorationHandles`]),
     /// so a pane viewing a different buffer, or the same buffer scrolled
     /// elsewhere, never inherits another pane's matches.
@@ -111,18 +111,18 @@ impl Editor {
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
             // No render entry: this pane has no `ScopedHighlighter`/`SignSource`
-            // providers to feed — skip the computation, not just the write.
+            // providers to feed, so skip the computation, not just the write.
             if !self.state.panes.render.contains_key(pid) {
                 continue;
             }
-            // Hidden in Insert mode — matches aren't actionable while typing and
+            // Hidden in Insert mode: matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
             if in_insert {
                 self.state.panes.render[pid].set_search(Vec::new());
                 continue;
             }
 
-            // Keep this buffer's match cache current regardless of focus — a
+            // Keep this buffer's match cache current regardless of focus: a
             // non-focused pane's buffer may carry its own active search
             // pattern that the focused-pane-only `sync_search_cache` never
             // refreshes. No-op when the cache already matches this revision.
@@ -194,7 +194,7 @@ impl Editor {
         {
             let floor = self.state.settings.lsp_diagnostics_severity_floor;
             // Editing-area scope per diagnostic severity, in `DiagSeverity`
-            // discriminant order (`[error, warning, info, hint]`) — indexed
+            // discriminant order (`[error, warning, info, hint]`), indexed
             // below by `d.severity as usize`. The gutter counterpart (the
             // bare `error`/`warning`/`info`/`hint` name) is interned by
             // `core:lsp`'s `set-signs!` call, at the Steel boundary in
@@ -248,11 +248,11 @@ impl Editor {
                         }
                         let start = e.start.max(visible.start);
                         let end = e.end.min(visible.end);
-                        // No severity concept for plugin-supplied spans —
+                        // No severity concept for plugin-supplied spans:
                         // uniform priority; overlap ties resolve by push
                         // order, which `extra_highlights_for_buffer`
                         // (`SourceStore::for_buffer`) yields ascending by
-                        // source name — the alphabetically-first source wins,
+                        // source name, so the alphabetically-first source wins,
                         // deterministic across sessions rather than whichever
                         // source happened to call `set-extra-highlights!` first.
                         push_priority_highlight_lines(
@@ -273,9 +273,9 @@ impl Editor {
     }
 
     /// Write per-frame gutter sign data (`set-signs!`, all sources
-    /// pre-merged at write time — diagnostics included, via `core:lsp`'s own
+    /// pre-merged at write time, diagnostics included via `core:lsp`'s own
     /// `"lsp-diagnostics"` source) to every pane's own decoration handle,
-    /// read by that pane's `SharedSignSource`. Stays visible in Insert mode —
+    /// read by that pane's `SharedSignSource`. Stays visible in Insert mode, for the
     /// same reasoning as [`Self::update_highlight_providers`]'s diagnostics
     /// section. Called from `prepare_frame` before scrolling, against the
     /// pre-scroll snapshot (see [`Self::decorated_panes`]), because the sign column's
@@ -300,20 +300,20 @@ impl Editor {
                 .signcolumn(&self.state.settings);
 
             // A registered source's slot is its rank in this buffer's
-            // registry (`DecorationStores::sign_sources`) — fixed the moment
+            // registry (`DecorationStores::sign_sources`): fixed the moment
             // it registers for `bid`, independent of what's actually placed
             // this frame. `slots_for` never walks a single sign.
             let slots = signcolumn.slots_for(self.state.config.decorations.sign_source_count(bid));
 
             // Plugin signs store their line's line-start char offset
             // (`SignEntry::pos`, remapped through edits like every other
-            // decoration kind) — this is what turns it back into a line.
+            // decoration kind); this is what turns it back into a line.
             let text = self.state.buffers.get(bid).text();
 
             // `signs_in_range` pre-filters by char range so this pass never
             // touches a sign the viewport can't show, and already resolves
             // each entry's source to its registered slot
-            // (`DecorationStores::signs_in_range`) — this loop places, it
+            // (`DecorationStores::signs_in_range`). This loop places, it
             // never looks a source up. `visible_line_anchored` still does
             // the precise per-line check (a char range can straddle a line
             // the viewport itself excludes).
@@ -333,7 +333,7 @@ impl Editor {
                 let slot = slot as u8;
                 let entries = by_line.entry(line).or_default();
                 // Two *different* sources can never contend for one slot
-                // now — a slot is a source's fixed registry rank. This
+                // now: a slot is a source's fixed registry rank. This
                 // guards only a same-source duplicate on one line (a source
                 // bug: nothing stops one `set-signs!` call from listing two
                 // entries for the same line): `Err` is the insertion point,
@@ -354,7 +354,7 @@ impl Editor {
             // Compute sign column width from the buffer's `signcolumn` setting:
             // `always` keeps it visible at the resolved width (`slots + 1`);
             // `auto` collapses to zero when no signs are visible in the current
-            // viewport (`by_line` above only holds visible-line entries — a
+            // viewport (`by_line` above only holds visible-line entries; a
             // sign elsewhere in the buffer, scrolled out of view, does not
             // keep the column open).
             let has_signs = !by_line.is_empty();
@@ -373,12 +373,12 @@ impl Editor {
     /// handle. Not gated on `lsp.inlay-hints` here: the store is per-source
     /// (`set-inlay-hints!` takes a `source` arg precisely so unrelated
     /// plugins can coexist), and `lsp.inlay-hints` is the LSP inlay-hints
-    /// plugin's own setting — it owns clearing *its* source on toggle-off,
+    /// plugin's own setting. It owns clearing *its* source on toggle-off,
     /// via the `on-option-change` hook (`inlay.scm`), rather than this
     /// bridge wiping every source wholesale on a setting it doesn't own. An
     /// inlay hint appearing or changing shape can shift a line's wrap
     /// column, moving the cursor's own display line without the selection
-    /// itself moving — `EditorState::layout_key`'s `buffer_tag` carries
+    /// itself moving. `EditorState::layout_key`'s `buffer_tag` carries
     /// `decorations.generation(bid)`, so `frame.rs`'s scroll step derives
     /// the reveal from that rather than this function raising it.
     pub(super) fn update_inlay_hint_providers(&mut self, panes: &[DecoratedPane]) {
@@ -408,7 +408,7 @@ impl Editor {
                 // `before`: byte offset of the char at `pos` itself, so the
                 // hint text is spliced in immediately before it. `after`:
                 // the next char boundary, so it's spliced in immediately
-                // after — `char_to_line_byte` resolves a trailing `\n`'s
+                // after. `char_to_line_byte` resolves a trailing `\n`'s
                 // own position to the *same* line (ropey's line boundaries
                 // include their `\n`), so a hint at end-of-line-content
                 // never bleeds onto the following line.
@@ -435,7 +435,7 @@ impl Editor {
     /// Sync per-pane EOL-text decorations from the `decorations.eol_text`
     /// store to each pane's second inline-decoration handle
     /// (`PaneDecorationHandles::set_eol_text`). Unconditional per-frame
-    /// rebuild, same as `update_inlay_hint_providers` — cheap enough that,
+    /// rebuild, same as `update_inlay_hint_providers`, cheap enough that,
     /// unlike `virtual_lines`, it doesn't need a dirty-tracking generation
     /// gate to skip needless work; filtered to the viewport before any
     /// per-entry clone or scope resolution runs, same as the sign/line-bg
@@ -443,10 +443,10 @@ impl Editor {
     /// line, not per EOL line in the whole buffer. Both write into a pane's
     /// inline-decoration providers, which `DisplayLineMap::ensure_formatted`
     /// reads, so this feeds wrap display-line counts and columns exactly
-    /// like inlay hints do — called from `prepare_frame`'s pre-scroll decoration sync, against
+    /// like inlay hints do. Called from `prepare_frame`'s pre-scroll decoration sync, against
     /// the pre-scroll snapshot (see [`Self::decorated_panes`]). EOL text
     /// appearing can push a line onto a further wrapped display line,
-    /// moving the cursor's own row without the selection itself moving —
+    /// moving the cursor's own row without the selection itself moving.
     /// `EditorState::layout_key`'s `buffer_tag` carries
     /// `decorations.generation(bid)`, so `frame.rs`'s scroll step derives
     /// the reveal from that rather than this function raising it.
@@ -472,7 +472,7 @@ impl Editor {
                 .map(|(source, line, e)| {
                     // End-of-line placement: the line's own trailing '\n'
                     // char resolves to a byte offset within `line` (never
-                    // the next line — see `char_to_line_byte`'s doc comment
+                    // the next line; see `char_to_line_byte`'s doc comment
                     // on the same pattern used for inlay hints' `'after`
                     // anchor).
                     let line_newline = line_break_char(text, line);
@@ -500,10 +500,10 @@ impl Editor {
 
     /// Sync per-pane virtual-line decorations from the
     /// `decorations.virtual_lines` store to each pane's virtual-line
-    /// decoration handle — a `DisplayLineMap::block` provider, so this feeds
+    /// decoration handle, a `DisplayLineMap::block` provider, so this feeds
     /// row *counts* the same way inlay hints/EOL text feed wrap columns.
     /// Unlike those two, this only rebuilds when `decorations.generation(bid)`
-    /// changed since the pane's last sync, or the pane's buffer changed — a
+    /// changed since the pane's last sync, or the pane's buffer changed: a
     /// whole-buffer rebuild (not viewport-filtered, since `DisplayLineMap::block`
     /// needs every anchor regardless of scroll position) with a
     /// `text`/`segments` clone per entry is costlier to redo unconditionally
@@ -511,19 +511,19 @@ impl Editor {
     /// stamp is per-buffer (not a single store-wide counter): an edit only
     /// bumps the buffer it edited, so typing in one buffer does not force
     /// every pane on every *other* buffer to resync too. Called from
-    /// `prepare_frame`'s pre-scroll decoration sync — unlike the rest of that sync, has no
+    /// `prepare_frame`'s pre-scroll decoration sync. Unlike the rest of that sync, it has no
     /// viewport dependency (so which [`Self::decorated_panes`] snapshot it
     /// reads is immaterial) and takes only `pid`/`bid` from it. Two sources
     /// anchored to the same line stack rather than collapse (unlike the
-    /// four line-anchored kinds `last_writer_per_line` folds) —
+    /// four line-anchored kinds `last_writer_per_line` folds):
     /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
     /// ascending by name, and `DisplayLineMap::block`'s anchor sort is stable, so
     /// they render in alphabetical-by-source order, not registration order.
     ///
     /// Each entry becomes `Before(line)` or `After(line)` per its `before`
-    /// flag. `entry.scope` — already resolved to the `ui.virtual` fallback
+    /// flag. `entry.scope`, already resolved to the `ui.virtual` fallback
     /// at the `set-virtual-lines!` boundary when the Steel call passed none
-    /// (`host_impl.rs`) — becomes `VirtualLine::base_scope`: the engine
+    /// (`host_impl.rs`), becomes `VirtualLine::base_scope`: the engine
     /// falls back to it for bytes `segments` doesn't cover, and reads its
     /// `bg` to fill the row past the last grapheme (see
     /// `segment_virtual_line`/`pane_render.rs`'s virtual-display-line `row_bg`).
@@ -535,7 +535,7 @@ impl Editor {
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            // No render entry: nothing to sync into, and no stamp to write —
+            // No render entry: nothing to sync into, and no stamp to write:
             // a stamp here would claim data reached a handle that doesn't
             // exist, suppressing the real sync once one is added later.
             if !self.state.panes.render.contains_key(pid) {
@@ -580,7 +580,7 @@ impl Editor {
             self.virtual_lines_synced.insert(pid, (bid, current_gen));
             // A virtual-line block appearing or changing shape above the
             // cursor can move its own display line relative to the
-            // viewport without the selection itself moving —
+            // viewport without the selection itself moving.
             // `EditorState::layout_key`'s `buffer_tag` carries
             // `decorations.generation(bid)`, so `frame.rs`'s scroll step
             // derives the reveal from that rather than this function
@@ -590,11 +590,11 @@ impl Editor {
 
     /// Write per-frame line-background data to every pane's own
     /// line-background decoration handle, read by that pane's
-    /// `PaneLineBackgrounds` provider. Rebuilds unconditionally each frame —
+    /// `PaneLineBackgrounds` provider. Rebuilds unconditionally each frame:
     /// unlike `virtual_lines`, the payload is filtered to the viewport
     /// before any per-entry clone or scope resolution runs (mirrors
     /// `update_sign_providers`), so the per-frame cost is one `ScopeId` per
-    /// *visible* tinted line, not per tinted line in the whole buffer —
+    /// *visible* tinted line, not per tinted line in the whole buffer,
     /// cheap enough that a dedicated generation-gated sync buys nothing.
     pub(super) fn update_line_bg_providers(&mut self, panes: &[DecoratedPane]) {
         for p in panes {
@@ -632,8 +632,8 @@ impl Editor {
 /// Folds per-source, line-anchored decoration entries into one winner per
 /// line: within one source, a later entry beats an earlier
 /// one that a remap collapsed onto the same line (ties resolve by store
-/// order — `SourceStore::set` sorts by position, so "later" means originally
-/// further along the buffer); across sources, tie-break by source name —
+/// order: `SourceStore::set` sorts by position, so "later" means originally
+/// further along the buffer); across sources, tie-break by source name:
 /// the alphabetically first source wins, same convention `SourceStore::set`
 /// itself keeps sources ascending by name. Signs use a different mechanism:
 /// each registered source has its own fixed gutter slot, so two sign
@@ -655,14 +655,14 @@ fn last_writer_per_line<T>(
 
 /// Resolves a stored line-anchored decoration's position to its current
 /// line, or `None` if a remap drifted it onto the buffer's trailing phantom
-/// line — always empty (every buffer ends with a structural `\n`,
+/// line, always empty (every buffer ends with a structural `\n`,
 /// `text.last_ropey_line()`), the same line `host_impl.rs`'s
 /// `line_start_offset` refuses to hand out a position on in the first place.
 /// A fresh `set-*!` call can never produce this; a `remap_points` result can,
 /// when an edit deletes everything after the entry's anchor up to
 /// end-of-buffer. The entry disappears rather than getting relocated onto
 /// whatever line precedes it (four callers: signs, EOL text, virtual lines,
-/// line backgrounds — all four line-anchored decoration kinds).
+/// line backgrounds: all four line-anchored decoration kinds).
 fn resolve_decoration_line(
     text: &hume_editing::text::BufferText,
     pos: CharOffset,
@@ -671,7 +671,7 @@ fn resolve_decoration_line(
 }
 
 /// Filters `entries`' `(tag, entry)` pairs to `visible_lines`, resolving
-/// each entry's anchor position (via `pos_of`) to its current line — shared
+/// each entry's anchor position (via `pos_of`) to its current line, shared
 /// by every per-line-anchored render bridge (signs, EOL text, line
 /// backgrounds), whose bodies are otherwise identical up to this filter
 /// step: resolve line → drop if scrolled out of view or drifted onto the
@@ -700,7 +700,7 @@ fn visible_line_anchored<'a, K, E: 'a>(
 }
 
 /// Push one `(line, byte_start, byte_end, scope)` quadruple per line `range`
-/// touches, all sharing `scope` — search matches are the one caller, always
+/// touches, all sharing `scope`. Search matches are the one caller, always
 /// one fixed scope per call. See [`line_segments`].
 fn push_match_highlight_lines(
     text: &hume_editing::text::BufferText,
@@ -722,7 +722,7 @@ fn push_match_highlight_lines(
 /// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per
 /// line `range` touches. See [`line_segments`]; `priority` and `scope` are
 /// carried through unchanged for [`flatten_priority_overlaps`] to resolve
-/// same-line overlaps from (lower `priority` wins — see that function).
+/// same-line overlaps from (lower `priority` wins; see that function).
 fn push_priority_highlight_lines(
     text: &hume_editing::text::BufferText,
     range: ExclusiveRange<CharOffset>,
@@ -745,23 +745,23 @@ fn push_priority_highlight_lines(
 /// Flattens overlapping same-line `(start, end, priority, scope)` spans
 /// (already split per-line by [`push_priority_highlight_lines`]) into the
 /// sorted, non-overlapping sequence the engine's `Decoration::Highlight`
-/// contract requires — a single source's own output must not overlap itself
+/// contract requires: a single source's own output must not overlap itself
 /// (cross-tier layering, e.g. diagnostics vs. search matches, is
 /// handled automatically by the engine's per-tier `HighlightStack`; this
 /// only resolves overlaps *within* one tier, e.g. two diagnostics on the
 /// same line). One line's worth of spans at a time through
-/// [`hume_engine::interval_sweep::flatten_overlapping_spans`] — the same
+/// [`hume_engine::interval_sweep::flatten_overlapping_spans`], the same
 /// event-sweep `hume-treesitter/src/highlight.rs` uses for nested injection
 /// layers, generic over both crates now instead of a second hand-rolled
 /// copy. `Reverse<priority>` makes "lower priority number wins" read as
 /// "highest rank wins" with no inversion arithmetic;
-/// `TieBreak::FirstPushed` matches this function's original contract —
+/// `TieBreak::FirstPushed` matches this function's original contract:
 /// same-priority ties keep whichever span was pushed to `raw` first, pinned
 /// by `overlapping_extra_highlights_from_two_sources_resolve_alphabetically`
 /// (`raw`'s push order comes from `SourceStore::for_buffer`'s ascending
 /// source-name order). `raw` need not be pre-sorted.
 ///
-/// Takes `raw` by value and returns the flattened spans — the caller assigns
+/// Takes `raw` by value and returns the flattened spans; the caller assigns
 /// the result straight into its target `Vec` (a brief write-lock for the
 /// assignment alone) instead of holding a write guard across the whole
 /// sweep.

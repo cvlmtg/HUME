@@ -31,7 +31,7 @@ fn find_repeat_backward() {
     ed.handle_key(key('f'));
     ed.handle_key(key('a'));
     ed.handle_key(key('='));
-    // Now repeat backward — should land on first 'a'.
+    // Now repeat backward: should land on first 'a'.
     ed.handle_key(key('-'));
     assert_eq!(state(&ed), "hello -[a]> world a end\n");
 }
@@ -66,7 +66,7 @@ fn find_forward_extend_mode() {
     assert_eq!(state(&ed), "-[hello a]> world\n");
 }
 
-/// `=` after `ta` (exclusive) repeats with the same exclusive kind — stops
+/// `=` after `ta` (exclusive) repeats with the same exclusive kind: stops
 /// one grapheme before the next occurrence, not on it.
 #[test]
 fn find_repeat_exclusive_kind_preserved() {

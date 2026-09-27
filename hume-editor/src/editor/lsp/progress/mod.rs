@@ -8,7 +8,7 @@ use hume_lsp::backend::ServerId;
 
 use crate::editor::{Editor, Severity};
 
-/// How often the loading spinner advances a frame — independent of how
+/// How often the loading spinner advances a frame, independent of how
 /// often `drain_lsp` itself runs (`next_wake` may wake faster than this
 /// while a handshake or `$/progress` task is active).
 pub(super) const SPINNER_INTERVAL: Duration = Duration::from_millis(100);
@@ -16,7 +16,7 @@ pub(super) const SPINNER_INTERVAL: Duration = Duration::from_millis(100);
 /// Monotonic animation-frame counter for the statusline spinner
 /// (`elements/diagnostics.rs`'s loading state). `frame` is a plain `usize`
 /// so the render side (`format`) stays a deterministic, clock-free function
-/// of its inputs — only this clock needs a real `Instant`.
+/// of its inputs; only this clock needs a real `Instant`.
 #[derive(Default)]
 pub(super) struct SpinnerClock {
     pub(super) frame: usize,
@@ -38,12 +38,12 @@ impl SpinnerClock {
 }
 
 /// One active work-done-progress task, built from a `begin` notification and
-/// updated in place by `report`s. `percentage` is optional per the LSP spec —
+/// updated in place by `report`s. `percentage` is optional per the LSP spec:
 /// a `report` omitting it leaves it unchanged, so it's merged rather than the
 /// task being replaced wholesale.
 #[derive(Debug, Clone)]
 pub(super) struct ProgressTask {
-    // Not read in production — the statusline only shows the spinner +
+    // Not read in production: the statusline only shows the spinner +
     // percentage (`introspect::LspActivity::Progress` carries no title).
     // Kept so the `$/progress` begin/report merge machine has something to
     // assert against in tests, via `LspState::progress_title_for_test`.
@@ -67,7 +67,7 @@ impl Editor {
             lsp_types::NumberOrString::Number(n) => n.to_string(),
             lsp_types::NumberOrString::String(s) => s,
         };
-        // `ProgressParamsValue` has exactly one variant — irrefutable.
+        // `ProgressParamsValue` has exactly one variant, so this is irrefutable.
         let lsp_types::ProgressParamsValue::WorkDone(progress) = params.value;
         match progress {
             lsp_types::WorkDoneProgress::Begin(begin) => {
@@ -88,9 +88,9 @@ impl Editor {
                     return;
                 };
                 let Some((_, task)) = entry.progress.iter_mut().find(|(t, _)| *t == token) else {
-                    return; // report for an unknown token — nothing to merge into
+                    return; // report for an unknown token: nothing to merge into
                 };
-                // An absent percentage means "unchanged" per the LSP spec — merge, don't overwrite.
+                // An absent percentage means "unchanged" per the LSP spec: merge, don't overwrite.
                 if let Some(percentage) = report.percentage {
                     task.percentage = Some(percentage);
                 }

@@ -1,6 +1,6 @@
-//! The `Prompt` layer — a Steel `(prompt! …)` session's own minibuffer mode.
+//! The `Prompt` layer: a Steel `(prompt! …)` session's own minibuffer mode.
 //! Distinct from `Command` despite sharing the `:` look: no history, no
-//! completion, no directory-descend special case — exactly one
+//! completion, no directory-descend special case. Exactly one
 //! `(callback text-or-#f)` call fires, on Confirm or on any cancel path.
 
 use hume_engine::pipeline::EngineView;
@@ -25,14 +25,14 @@ impl Layer for PromptLayer {
         // crate.
         Some(EditorMode::Command)
     }
-    /// Fires the callback with `#f` unconditionally, ignoring `why` —
+    /// Fires the callback with `#f` unconditionally, ignoring `why`,
     /// unlike every other minibuf-mode layer's `tear_down`, which never
     /// fires a Steel callback (the file header's "exactly one call fires"
     /// contract otherwise has no arm to rely on when this layer is removed
     /// incidentally: buried under a `Confirm`/`Picker` that a
     /// `close-*!`/Rust-internal retirement then truncates through). Unlike
     /// `PickerLayer::tear_down` (see its own doc), this one *is* also
-    /// reached with `why == Removal::Explicit` — `push_mode_layer` replaces
+    /// reached with `why == Removal::Explicit`: `push_mode_layer` replaces
     /// the current mode layer outright when a `:`/`/`/sift/`i` key (or the
     /// Steel/hook/timer path behind any of those commands) lands while a
     /// `prompt!` session is open, naming this layer as `truncate_layers`'s
@@ -63,7 +63,7 @@ pub(in crate::editor) fn prompt_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 }
 
 /// Routes a `Prompt` layer's key for a Steel `(prompt! …)` session
-/// rather than a `:` command line — no history, no completion, no
+/// rather than a `:` command line: no history, no completion, no
 /// directory-descend special case. Exactly one `(callback text-or-#f)`
 /// call fires, on Confirm or on any of the cancel paths.
 fn handle_steel_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
@@ -73,7 +73,7 @@ fn handle_steel_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
         | MiniBufferEvent::BackspaceOnEmpty => finish_steel_prompt(ed, r, None),
         MiniBufferEvent::Confirm(text) => finish_steel_prompt(ed, r, Some(text)),
         // Plain editing (char typed/deleted, cursor moved) is already
-        // applied by `MiniBuffer::handle_key` — nothing further to do.
+        // applied by `MiniBuffer::handle_key`; nothing further to do.
         // Tab/Up/Down are no-ops here (no completion, no history for a
         // one-shot prompt).
         MiniBufferEvent::Edited
@@ -86,7 +86,7 @@ fn handle_steel_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
     }
 }
 
-/// Queues exactly one `(callback text-or-#f)` call — takes the `Prompt`
+/// Queues exactly one `(callback text-or-#f)` call. Takes the `Prompt`
 /// layer *by value* via `EditorState::take_layer`, which skips its own
 /// `tear_down` (unlike `truncate_layers`), so this doesn't double-fire
 /// against `PromptLayer::tear_down`'s own `#f` fire for the incidental

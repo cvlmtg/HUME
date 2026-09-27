@@ -8,7 +8,7 @@ use crate::editor::error::CommandError;
 use crate::editor::settings::WRAP_MODE_KEY;
 use crate::editor::settings::ops as settings_ops;
 
-/// Shared by every stale-write refusal — `write_buffer_by_id`'s no-arg `:w`
+/// Shared by every stale-write refusal: `write_buffer_by_id`'s no-arg `:w`
 /// path and `write_file`'s save-as-in-disguise path (see `targets_own_file`
 /// below) both report exactly this, so `typed_write_all` can tell a stale
 /// refusal apart from any other write failure by comparing against it.
@@ -17,13 +17,13 @@ const STALE_WRITE_MSG: &str = "file has changed on disk (add ! to override)";
 /// `Some(msg)` when a non-forced write to `meta`'s file must be refused.
 /// Stats the file fresh right now rather than trusting the buffer's cached
 /// disk state, which only reflects whatever some earlier trigger (terminal
-/// focus, buffer-enter, `:checktime`) happened to notice — nothing runs a
+/// focus, buffer-enter, `:checktime`) happened to notice. Nothing runs a
 /// check at write time otherwise, so a change made without any of those
 /// firing would otherwise go undetected and get silently overwritten.
 ///
 /// A vanished file is *not* blocked: `write_file_atomic` simply recreates
 /// it, which is recovering the user's own work, not clobbering someone
-/// else's — the same reasoning that lets `disk_change_for` treat any other
+/// else's: the same reasoning that lets `disk_change_for` treat any other
 /// stat error as nothing-to-act-on-now.
 fn stale_write_block(meta: &FileMeta) -> Option<&'static str> {
     match hume_platform::io::read_signature(meta.resolved_path()) {
@@ -42,7 +42,7 @@ pub(in crate::editor) fn typed_quit(
 ) -> Result<(), CommandError> {
     // The active tab has more than one pane: `:q` closes the focused pane, not
     // the tab or the editor. The buffer stays open (no edits lost), so no dirty
-    // check — that guard belongs to the steps below, which actually close
+    // check. That guard belongs to the steps below, which actually close
     // something the user can't get back without saving.
     if !ed.view.layout().is_single_pane() {
         super::close_focused_pane(&mut ed.state, &mut ed.view, fp);
@@ -51,8 +51,8 @@ pub(in crate::editor) fn typed_quit(
 
     // The active tab is down to its last pane, but other tabs remain open:
     // `:q` closes the tab (Vim's `:q` on a window closes it; the last window
-    // of a tab closes the tab, not the editor). Same no-dirty-check reasoning
-    // — the buffer stays open in whichever other tab(s) show it, or in the
+    // of a tab closes the tab, not the editor). Same no-dirty-check reasoning:
+    // the buffer stays open in whichever other tab(s) show it, or in the
     // buffer list if none do.
     if ed.state.tabs.len() > 1 {
         super::close_tab(&mut ed.state, &mut ed.view);
@@ -68,7 +68,7 @@ pub(in crate::editor) fn typed_quit(
 
     // Stay only for a buffer worth returning to: a real editable file, or any
     // buffer with unsaved edits (rescues a scratch the user has typed into).
-    // Empty scratch buffers and read-only views (e.g. [messages]) are disposable —
+    // Empty scratch buffers and read-only views (e.g. [messages]) are disposable:
     // :q exits rather than parking on them.
     let any_other_real = ed
         .state
@@ -101,7 +101,7 @@ pub(in crate::editor) fn typed_quit_all(
             .map(|(id, _)| id);
 
         if let Some(dirty_id) = dirty_id {
-            // Jump to it only when the focused buffer is clean — if the user is
+            // Jump to it only when the focused buffer is clean. If the user is
             // already sitting on an unsaved buffer, stay there so a save + :qa
             // cycle walks through dirty buffers one at a time.
             if !super::doc(&ed.state, &ed.view, fp.pane()).is_dirty() {
@@ -114,7 +114,7 @@ pub(in crate::editor) fn typed_quit_all(
             // (lifecycle.rs) keys off `message_log.totals()` moving, and
             // `can_open_confirm` (buffer/disk.rs) reads that flag to refuse a
             // disk-change reload confirm from popping over this exact message
-            // right after :qa's focus-move names the dirty buffer — a
+            // right after :qa's focus-move names the dirty buffer; a
             // transient report wouldn't move totals() and would let the
             // confirm steal the next keystroke.
             return Err(CommandError::new(format!(
@@ -183,7 +183,7 @@ pub(in crate::editor) fn typed_set(
         return Err(CommandError::transient(USAGE));
     };
     // Tolerate stray extra whitespace before the key, matching
-    // `complete_set`'s tolerance — otherwise Tab can complete
+    // `complete_set`'s tolerance. Otherwise Tab can complete
     // through a double space into a command line that errors on Enter.
     let rest = rest.trim_start();
     let Some((key, value)) = rest.split_once('=') else {
@@ -193,7 +193,7 @@ pub(in crate::editor) fn typed_set(
 
     // `language` has no global default and no generic storage (it lives on
     // `Buffer.language`, not `EditorSettings`/`BufferOverrides`), so it has no
-    // `scope:` entry in `settings::setting_scopes` — checked here first and
+    // `scope:` entry in `settings::setting_scopes`. Checked here first and
     // unconditionally, or it would fall through to "unknown setting" below.
     if key == LANGUAGE_KEY {
         return match scope_str {
@@ -213,13 +213,13 @@ pub(in crate::editor) fn typed_set(
                 Ok(())
             }
             _ => Err(CommandError::transient(
-                "'language' is per-buffer — use ':set buffer language=<name>'",
+                "'language' is per-buffer: use ':set buffer language=<name>'",
             )),
         };
     }
 
     // Every other setting declares its valid `:set` scopes on its
-    // `define_settings!` line — one data-driven check instead of per-scope
+    // `define_settings!` line: one data-driven check instead of per-scope
     // special-casing.
     let scopes = crate::editor::settings::setting_scopes(key);
     if scopes.is_empty() {
@@ -229,11 +229,11 @@ pub(in crate::editor) fn typed_set(
     // Parse the scope token *after* confirming the key is real, so an
     // invalid scope on a real key reports "wrong scope for this key" (naming
     // the key's actual valid scopes) rather than a generic "unknown scope"
-    // message — the user typed a real key, so that's the more useful error.
+    // message: the user typed a real key, so that's the more useful error.
     let parsed_scope = scope_str.parse::<Scope>().ok();
     if !parsed_scope.is_some_and(|s| scopes.contains(&s)) {
         return Err(CommandError::transient(format!(
-            "'{key}' cannot be set with :set {scope_str} — valid scopes: {}",
+            "'{key}' cannot be set with :set {scope_str} (valid scopes: {})",
             scopes
                 .iter()
                 .map(|s| s.as_str())
@@ -250,10 +250,10 @@ pub(in crate::editor) fn typed_set(
             settings_ops::apply_buffer(&mut ed.state, bid, key, value).map_err(CommandError::new)
         }
         Scope::Pane => {
-            // Only pane-scoped setting today — `scopes.contains(&scope)` above
+            // Only pane-scoped setting today: `scopes.contains(&scope)` above
             // already proved `key == "wrap-mode"` (it's the only line whose
             // `scope:` list contains `Scope::Pane`). A future pane-scoped
-            // setting gets its own `if key == "..."` arm here — and
+            // setting gets its own `if key == "..."` arm here, and
             // `every_pane_scoped_key_has_a_typed_set_arm`
             // (`settings/tests.rs`) fails immediately if one is added
             // without a matching arm.
@@ -285,7 +285,7 @@ fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, hume_rope::line::Con
 /// Post-write side effects for a buffer that just had its own content
 /// written to its own file: mark it saved, report the result, and sync LSP.
 /// Shared by the no-arg `:w` path and the save-as path (when the source
-/// buffer is a normal writable buffer, i.e. save-as, not export — see
+/// buffer is a normal writable buffer, i.e. save-as, not export; see
 /// `write_file`'s save-as branch).
 fn mark_written_and_synced(
     ed: &mut Editor,
@@ -296,7 +296,7 @@ fn mark_written_and_synced(
     ed.state.buffers.get_mut(bid).mark_saved();
     ed.report(write_severity(retried), write_msg(line_count, retried));
     ed.queue_buffer_save(bid);
-    // Flush any didChange already queued for this buffer first — a
+    // Flush any didChange already queued for this buffer first: a
     // save-triggered server action (e.g. lint-on-save) must see a
     // document state at least as current as the file just written,
     // not one edit behind (didSave itself carries no text).
@@ -304,7 +304,7 @@ fn mark_written_and_synced(
     ed.lsp_did_save(bid);
 }
 
-/// Write a specific buffer to its file path. No save-as — only writes to the
+/// Write a specific buffer to its file path. No save-as: only writes to the
 /// buffer's own path. Used by `:wa` and the no-arg path of `:w`.
 ///
 /// `file_meta` (not `path`) is the SSOT for "has this buffer ever touched
@@ -339,7 +339,7 @@ fn write_buffer_by_id(
         let write_result = match hume_platform::io::read_file_meta(&path) {
             Ok(_) if !force => return Err(CommandError::transient(STALE_WRITE_MSG)),
             // Forced: write through `write_file_atomic`, not
-            // `write_file_new` — the file now exists, so its
+            // `write_file_new`: the file now exists, so its
             // permissions/ownership/symlink target should be preserved
             // like any other overwrite, not replaced with new-file defaults.
             Ok(mut meta) => hume_platform::io::write_file_atomic(&content, &mut meta, force)
@@ -350,7 +350,7 @@ fn write_buffer_by_id(
             Ok((meta, retried)) => {
                 // Re-key: `path` was `resolve_buffer_path`'s best-effort form
                 // (parent canonicalized, or fully lexical when even the
-                // parent didn't exist yet) — `meta.resolved_path()` is the
+                // parent didn't exist yet). `meta.resolved_path()` is the
                 // fully resolved post-write truth, which can differ, and
                 // must become the buffer's identity so `find_by_path` dedup
                 // keeps working. `display_path` is preserved across the
@@ -389,7 +389,7 @@ fn write_buffer_by_id(
 /// so that subsequent `:w` (no argument) targets the same path. For a
 /// read-only or synthetic buffer (e.g. `[messages]`), `arg` is instead an
 /// **export**: the content is written to the new path, but the source
-/// buffer's path/`file_meta`/dirty state are left untouched — it did not
+/// buffer's path/`file_meta`/dirty state are left untouched: it did not
 /// become the file at `path`.
 ///
 /// If `arg` is `None`, writes to the current file. Errors with
@@ -433,17 +433,17 @@ fn write_file(
         let result = match hume_platform::io::read_file_meta(&path) {
             Ok(mut meta) => {
                 // The stale-write guard only applies when `path` resolves to
-                // the buffer's own current file — i.e. this `:w <path>` is
+                // the buffer's own current file, i.e. this `:w <path>` is
                 // really a plain `:w` in disguise. A genuine save-as targets
                 // a path this buffer never read from, so there's no staleness
                 // to guard against. `meta` was just freshly stat'd above by
                 // `read_file_meta`, so comparing its signature against the
                 // buffer's own baseline is already a stat-at-write-time
-                // check — no cached flag, no second syscall needed.
+                // check: no cached flag, no second syscall needed.
                 let own = ed.state.buffers.get(bid);
                 let targets_own_file = own.path() == Some(meta.resolved_path());
                 // A new-file buffer (`file_meta: None`) has no baseline at
-                // all — if this write targets its own path and a file now
+                // all. If this write targets its own path and a file now
                 // exists there, that content was never read by this buffer,
                 // so it counts as "differs" the same as a genuine signature
                 // mismatch would.
@@ -462,7 +462,7 @@ fn write_file(
         match result {
             Ok((meta, retried)) => {
                 // A read-only or synthetic (e.g. [messages]) buffer can't
-                // legitimately become the file at `path` — :w <path> on one
+                // legitimately become the file at `path`. :w <path> on one
                 // of these is an export, not a save-as: dump the content,
                 // leave the source buffer's identity and dirty state alone.
                 let doc = ed.state.buffers.get_mut(bid);
@@ -503,7 +503,7 @@ pub(in crate::editor) fn typed_write_all(
         //
         // `path().is_some()`, not `file_meta.is_some()`: a new-file buffer
         // (`:e` on a missing path, not yet written) has a path but no
-        // `file_meta` — `write_buffer_by_id`'s create branch handles it, so
+        // `file_meta`. `write_buffer_by_id`'s create branch handles it, so
         // excluding it here would make `:wa` silently skip a buffer it's
         // fully capable of writing. Only genuinely pathless buffers (scratch,
         // synthetic views) are excluded.
@@ -515,12 +515,12 @@ pub(in crate::editor) fn typed_write_all(
         return Ok(());
     }
 
-    // A buffer whose file changed on disk is skipped, not aborted — one
+    // A buffer whose file changed on disk is skipped, not aborted: one
     // stale buffer among several dirty ones shouldn't block saving the rest.
     // `force` (`:wa!`) writes through every one of them instead, same as a
     // per-buffer `:w!`. `write_buffer_by_id` is the single chokepoint for the
     // stale check (no separate pre-check here, which would stat every buffer
-    // twice) — a stale refusal is recognized by its message and downgraded to
+    // twice). A stale refusal is recognized by its message and downgraded to
     // a skip; any other write error still aborts the batch.
     let mut count = 0;
     let mut skipped: Vec<String> = Vec::new();

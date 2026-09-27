@@ -120,10 +120,10 @@ fn load_plugin_malformed_name_errors() {
     assert!(!err.is_empty(), "expected error for malformed plugin name");
 }
 
-/// `(declared-plugins)` must include `core:*` names — PLUM's
+/// `(declared-plugins)` must include `core:*` names. PLUM's
 /// never-install-core filter lives in Steel (`plum/missing-plugins`), not in
 /// this builtin. No runtime dir is set, so the declare's own disk-resolution
-/// logs an absent-core error and no-ops the activation — but `declared_plugins`
+/// logs an absent-core error and no-ops the activation, but `declared_plugins`
 /// is recorded unconditionally before that check runs (see `declare_plugin`),
 /// which is exactly the persistence this test locks in.
 #[test]
@@ -349,7 +349,7 @@ fn interrupt_flag_reset_after_eval() {
 fn command_plugin_unknown_returns_hume() {
     let h = host();
 
-    // "move-right" is a Rust built-in — not in cmd_owners.
+    // "move-right" is a Rust built-in, not in cmd_owners.
     assert!(!h.cmd_owners_for_test().contains_key("move-right"));
 }
 

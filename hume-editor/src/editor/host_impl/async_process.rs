@@ -28,11 +28,11 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
                     .async_jobs
                     .insert(id, crate::editor::async_job::PendingJob { job, callback });
             }
-            // Spawn failed before a job/callback contract could exist — fire
+            // Spawn failed before a job/callback contract could exist: fire
             // the callback right here rather than leaving it unfired, with
             // the same "no output, -1 exit code" shape a signal-killed
             // child produces (the sentinel `%run-inline-output!` already
-            // uses — a real exit code can never be -1, it's u8-wide).
+            // uses; a real exit code can never be -1, it's u8-wide).
             Err(e) => {
                 self.state.queue_steel_call(
                     callback,
@@ -44,7 +44,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
                 );
                 // The `Ok` arm needs no wake: the job thread wakes the loop
                 // itself on completion. This callback has no background
-                // thread behind it — `settle()`'s fixpoint does pick it up
+                // thread behind it. `settle()`'s fixpoint does pick it up
                 // within the same `settle()` call even when `spawn-async!`
                 // was itself invoked from a queued Steel callback, but this
                 // wake is kept anyway: cheap, harmless if the loop is already
@@ -58,7 +58,7 @@ impl<'a> AsyncProcessHost for EditorHostImpl<'a> {
 
     fn cancel_async(&mut self, id: u64) {
         // Dropping the entry drops its `SpawnedJob` (kills + reaps the
-        // child) and its callback `SteelVal` without ever calling it — a
+        // child) and its callback `SteelVal` without ever calling it: a
         // no-op if `id` already completed, was already cancelled, or never
         // existed (a spawn failure that already fired its callback above).
         self.state.config.async_jobs.remove(&id);

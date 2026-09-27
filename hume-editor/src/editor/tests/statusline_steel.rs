@@ -45,7 +45,7 @@ fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
 
-    // Focus moved to the second buffer, which never had anything pushed —
+    // Focus moved to the second buffer, which never had anything pushed:
     // the first buffer's "hello" must not leak across the switch.
     assert_eq!(custom_text(&ed, "greeting"), "");
 }
@@ -100,7 +100,7 @@ fn empty_text_clears_a_previously_pushed_value() {
 
     assert_eq!(custom_text(&ed, "greeting"), "");
 
-    // A clear leaves no tombstone behind — pushing again under the same
+    // A clear leaves no tombstone behind: pushing again under the same
     // name and buffer must show the new value, not be shadowed by a stale
     // empty entry.
     type_cmd(&mut ed, ":arm");
@@ -140,7 +140,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
 }
 
 /// A name `StatusElement::from_str` would reject (here: containing `,`) must
-/// also be rejected on the push side — otherwise it stores an entry no
+/// also be rejected on the push side. Otherwise it stores an entry no
 /// `"steel:<name>"` placement can ever render, with no error anywhere. See
 /// `StatusElement::custom`'s doc.
 #[test]

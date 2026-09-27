@@ -64,7 +64,7 @@ fn publish_diagnostics_notification_versioned(
 fn ingest_converts_utf16_positions_across_an_emoji() {
     let tmp = safe_tempdir();
     let file = std::fs::canonicalize(tmp.path()).unwrap().join("main.rs");
-    // "😀 error here\n" — the emoji is 1 Rust char but 2 UTF-16 code units,
+    // "😀 error here\n": the emoji is 1 Rust char but 2 UTF-16 code units,
     // so a naive char-count read of the wire position would land one
     // character early.
     std::fs::write(&file, "😀 error here\n").unwrap();
@@ -115,7 +115,7 @@ fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
     let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&file).unwrap();
     // First publish: two errors. Second (same uri, same batch): one warning.
-    // Only the second must survive — servers burst-publish and only the
+    // Only the second must survive: servers burst-publish and only the
     // newest matters.
     backend.push_from_server(
         sid,
@@ -143,7 +143,7 @@ fn publish_for_an_unopened_file_is_dropped_without_spam() {
     let file = std::fs::canonicalize(tmp.path())
         .unwrap()
         .join("never_opened.rs");
-    // Never written to disk / never opened — no buffer will ever match it.
+    // Never written to disk / never opened: no buffer will ever match it.
 
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
@@ -181,7 +181,7 @@ fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
     let mut ed = editor_from("-[w]>ord\n");
     let mut backend = InlineLspBackend::new();
     let sid = backend.start("x", &[], Path::new("."), &[]).unwrap();
-    // `uri` and `diagnostics` both wrong-shaped — fails to parse as
+    // `uri` and `diagnostics` both wrong-shaped, so it fails to parse as
     // `PublishDiagnosticsParams`, so `hume-lsp` classifies it as a
     // `ServerNotification` fallthrough instead of `Diagnostics`.
     backend.push_from_server(
@@ -261,8 +261,8 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
     );
 
     // A later publish computed against a version we've already moved past
-    // (the server hasn't caught up with our own edits yet) must be dropped
-    // — not applied on top of, and not clearing, what's already stored.
+    // (the server hasn't caught up with our own edits yet) must be dropped,
+    // not applied on top of, and not clearing, what's already stored.
     let stale = params_of(publish_diagnostics_notification_versioned(
         uri.as_str(),
         &[((0, 4), (0, 7), 2), ((0, 8), (0, 13), 2)],
@@ -291,7 +291,7 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
 // ── Minor — stores pruned on buffer close ───────────────────────────────────
 
 /// A `BufferId` is a versioned slotmap key, so a future reused slot can
-/// never alias with a closed buffer's stale entries — this is a memory-leak
+/// never alias with a closed buffer's stale entries. This is a memory-leak
 /// fix, not a correctness one, but nothing else ever freed these.
 #[test]
 fn close_buffer_prunes_stored_diagnostics_and_decorations() {
@@ -356,8 +356,8 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
 }
 
 /// The Steel `(close-buffer! bid)` entry point must apply the exact same
-/// cleanup as `Editor::close_buffer` above — both go through the shared
-/// `buffer::lifecycle::close_buffer_and_notify` chokepoint — plus fire
+/// cleanup as `Editor::close_buffer` above (both go through the shared
+/// `buffer::lifecycle::close_buffer_and_notify` chokepoint), plus fire
 /// `OnBufferClose`, which the direct-Rust-call test above never exercises.
 ///
 /// If `EditorHostImpl::close_buffer` called the bare `lifecycle::close_buffer`,
@@ -410,7 +410,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     );
 
     // `define-command!` must register into the editor's real `CommandRegistry`
-    // for `:go` to dispatch below — a `MockHost` eval (fine for `register-hook!`,
+    // for `:go` to dispatch below; a `MockHost` eval (fine for `register-hook!`,
     // which only touches `ScriptingHost`'s own state) leaves it unregistered.
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -423,7 +423,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     ed.scripting = Some(host);
 
     // `bid` is the focused buffer here (opened via `:e` above), and `:go`
-    // now receives it as its own leading parameter — no path/id embedded
+    // now receives it as its own leading parameter, no path/id embedded
     // in the Steel source.
     type_cmd(&mut ed, ":go");
     // Hooks queued during dispatch fire on an explicit drain, not automatically
@@ -501,11 +501,11 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
 }
 
 /// `lsp_stop_one` must drain `buf.lsp_pending` through the decoration remap
-/// chokepoint (`flush_lsp_pending_changes` — `lsp_pending` is its only
+/// chokepoint (`flush_lsp_pending_changes`; `lsp_pending` is its only
 /// carrier) before it nulls `buf.lsp_server` and clears `buf.lsp_pending`.
 /// Otherwise any edit queued since the last frame's flush is discarded
 /// unremapped, leaving a plugin's sign anchored at its pre-edit position
-/// permanently — a detached buffer is not queued for the remap at all, so
+/// permanently. A detached buffer is not queued for the remap at all, so
 /// it never resyncs later either.
 #[test]
 fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
@@ -537,7 +537,7 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
         }],
     );
 
-    // Insert a new first line — shifts "cc" one line down, to a line-start
+    // Insert a new first line, shifting "cc" one line down, to a line-start
     // char offset of 8. Deliberately no `ed.settle()`/`drain_lsp()` here:
     // the edit's ChangeSet sits unflushed in `buf.lsp_pending` until
     // `lsp_stop` runs, exactly the race this regression covers.
@@ -567,7 +567,7 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
 
 /// Regression: on the minimal 1-char "\n" buffer, `widen_zero_length` has no
 /// char to widen a zero-width diagnostic onto in either direction under the
-/// general forward/backward rule — it must widen onto the structural
+/// general forward/backward rule: it must widen onto the structural
 /// newline itself (matching how a selection can cover that same cell) and
 /// be stored and counted, not silently dropped from `:lsp-status`.
 #[test]

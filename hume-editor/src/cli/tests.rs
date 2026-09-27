@@ -1,7 +1,7 @@
 use super::*;
 use crate::editor::tests::safe_tempdir;
 
-// `tmp.path().join(name)` below is guaranteed absent from disk — `tmp` is a
+// `tmp.path().join(name)` below is guaranteed absent from disk: `tmp` is a
 // freshly created, otherwise empty tempdir.
 
 #[test]
@@ -70,11 +70,11 @@ fn non_digit_suffix_is_a_literal_path() {
 #[test]
 fn bare_colon_number_with_no_path_is_literal() {
     let tmp = safe_tempdir();
-    // `tmp.path().join(":12")` is `/tmp/…/:12` — rsplit_once(':') leaves a
+    // `tmp.path().join(":12")` is `/tmp/…/:12`: rsplit_once(':') leaves a
     // remainder ending in the path separator (`/tmp/…/`), which
     // `split_trailing_number`'s `rest.ends_with(is_separator)` check rejects
     // as naming no file. A relative `":12"` (remainder truly empty, not just
-    // separator-terminated) exercises the check's other arm — see
+    // separator-terminated) exercises the check's other arm; see
     // `relative_bare_colon_number_is_literal` below.
     let arg = tmp.path().join(":12");
     let parsed = parse_file_arg(&arg).unwrap();
@@ -86,7 +86,7 @@ fn bare_colon_number_with_no_path_is_literal() {
 fn relative_bare_colon_number_is_literal() {
     // A *relative* ":12" (no directory component at all, unlike
     // `tmp.path().join(":12")` above) is the shape that actually leaves
-    // `split_trailing_number`'s `rsplit_once(':')` remainder empty —
+    // `split_trailing_number`'s `rsplit_once(':')` remainder empty,
     // exercising `rest.is_empty()` rather than `rest.ends_with(is_separator)`.
     let arg = PathBuf::from(":12");
     let parsed = parse_file_arg(&arg).unwrap();
@@ -111,12 +111,12 @@ fn column_zero_is_rejected() {
     let tmp = safe_tempdir();
     let arg = tmp.path().join("foo.rs:12:0");
     let err = parse_file_arg(&arg).unwrap_err();
-    // A valid line paired with a bad column must not blame the line — the
+    // A valid line paired with a bad column must not blame the line: the
     // two 1-based contracts get distinct error text.
     assert!(err.contains(GRAPHEME_COL_NUMBERS_START_AT_1), "got: {err}");
     assert!(
         !err.contains(LINE_NUMBERS_START_AT_1),
-        "line was valid — must not be blamed, got: {err}"
+        "line was valid, must not be blamed, got: {err}"
     );
     assert!(
         err.contains(&arg.display().to_string()),
@@ -142,7 +142,7 @@ fn a_real_file_named_with_a_colon_opens_literally() {
 #[test]
 fn a_broken_symlink_named_with_a_colon_opens_literally() {
     // `symlink_metadata` (not `.exists()`, which follows symlinks and would
-    // report this one absent) is the deliberate disambiguation probe here —
+    // report this one absent) is the deliberate disambiguation probe here:
     // a dangling symlink still names a path the user chose on disk, so it
     // must win over splitting the same as a real file does.
     let tmp = safe_tempdir();
@@ -152,7 +152,7 @@ fn a_broken_symlink_named_with_a_colon_opens_literally() {
     assert_eq!(parsed.path, path);
     assert_eq!(
         parsed.pos, None,
-        "a broken symlink still counts as the user's chosen path — must never be split"
+        "a broken symlink still counts as the user's chosen path: must never be split"
     );
 }
 

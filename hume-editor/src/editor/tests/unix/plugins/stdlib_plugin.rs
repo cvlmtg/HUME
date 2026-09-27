@@ -1,4 +1,4 @@
-//! core:stdlib — real shipped plugin.
+//! core:stdlib: real shipped plugin.
 
 use super::*;
 use hume_scripting::PluginStatus;
@@ -44,17 +44,17 @@ fn core_stdlib_plugin_loads_eagerly() {
 
 /// The `core:stdlib` selection-query commands must compute the expected
 /// results on literal selection-list arguments via `call!`, and pass `#f`
-/// straight through untouched — the same cross-plugin surface
+/// straight through untouched: the same cross-plugin surface
 /// `core:vim-keybind` uses for its conditional `C` binding.
 ///
 /// Each assertion compares against a hand-written literal tuple, independent
 /// of the implementation. If any command computes the wrong result, its `unless`
-/// fires `(error ...)`, which propagates as an `Err` — caught by the assert
+/// fires `(error ...)`, which propagates as an `Err`, caught by the assert
 /// below, failing the test with the offending assertion name.
 ///
 /// `stdlib`'s per-triple accessors (`selection-anchor`/`-head`/`-primary?`,
 /// `primary-selection`) are `call!`-reachable public commands, same as the
-/// three list-level predicates — a plugin holding a single selection triple
+/// three list-level predicates. A plugin holding a single selection triple
 /// (not a list) needs them directly rather than picking it apart with raw
 /// `car`/`cadr`/`caddr`.
 #[test]
@@ -109,8 +109,8 @@ fn core_stdlib_selection_commands() {
     );
 }
 
-/// `stdlib/safe-path-segment?` — the merged `core:plum`/`core:lsp`
-/// path-segment predicate — must reject every unsafe input (empty, `.`,
+/// `stdlib/safe-path-segment?` (the merged `core:plum`/`core:lsp`
+/// path-segment predicate) must reject every unsafe input (empty, `.`,
 /// `..`, a path separator, `:`, `"`, NUL) and accept ordinary names.
 /// Each literal input/expected pair is hand-picked, not
 /// derived from the implementation, mirroring `hume-platform/src/path/tests.rs`'s
@@ -148,16 +148,16 @@ fn core_stdlib_safe_path_segment_command() {
     );
 }
 
-/// The `core:stdlib` config-validation commands — `stdlib/config-boolean`,
+/// The `core:stdlib` config-validation commands (`stdlib/config-boolean`,
 /// `stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`,
-/// `stdlib/config-list` — must resolve a present key, fall back to the given
+/// `stdlib/config-list`) must resolve a present key, fall back to the given
 /// default when the key is absent, and raise an error naming both the given
 /// plugin and the offending key when the resolved value fails its
 /// type/membership/range check.
 ///
 /// Each wrong-type/wrong-value case is wrapped in `with-handler`, which
 /// checks the caught error's message via `string-contains?`/`to-string` and,
-/// if it doesn't name what's expected, raises a *new* `(error ...)` — never
+/// if it doesn't name what's expected, raises a *new* `(error ...)`, never
 /// `(raise-error err)` on the caught value itself, which corrupts the VM's
 /// continuation stack when a native-builtin error crosses a second
 /// with-handler (see `hume-scripting/src/tests/unix.rs`).
@@ -292,7 +292,7 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
 }
 
 /// `stdlib/write-file` must replace a file's entire content, not just
-/// overwrite its leading bytes — writing a shorter string over a longer
+/// overwrite its leading bytes: writing a shorter string over a longer
 /// existing file must not leave the old tail behind.
 ///
 /// The file is read back with `std::fs::read_to_string`
@@ -371,10 +371,10 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
 /// available.
 ///
 /// `bid` only exists as a dispatched command's own injected leading
-/// parameter — an `Init` session eval has no dispatch to inject it from — so
+/// parameter (an `Init` session eval has no dispatch to inject it from), so
 /// unlike the other `stdlib` command tests this defines a throwaway probe
 /// command and dispatches it via `:`, the same shape `run_probe`
-/// (`tests/mod.rs`) uses — rather than `eval_source`'s bare init-mode
+/// (`tests/mod.rs`) uses, rather than `eval_source`'s bare init-mode
 /// assertions.
 ///
 /// The buffer's language is set via `set-buffer-language!`
@@ -417,7 +417,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
         errors.is_empty(),
         "resolve-lang-arg assertions must all pass: {errors:?}"
     );
-    // Boundary condition, not a failure — Severity::Info, statusline only:
+    // Boundary condition, not a failure: Severity::Info, statusline only:
     // the third `resolve-lang-arg` call (after `set-buffer-language!`)
     // succeeds silently, so nothing overwrites the message from the middle
     // (no-fallback) call.
@@ -432,7 +432,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
 }
 
 /// `stdlib/split-words` must tokenize using the *given* buffer's own
-/// `word-chars` — pulled via `get-buffer-option` internally, not a value the
+/// `word-chars`, pulled via `get-buffer-option` internally, not a value the
 /// caller fetches and passes itself (the SSOT concern a bare `split-words`
 /// call site would otherwise have to manage by hand). Each expected token
 /// list is hand-written from the literal input.
@@ -479,11 +479,11 @@ fn core_stdlib_split_words_uses_the_buffers_own_word_chars() {
 
 /// `stdlib/git-repo?` and `stdlib/git-toplevel` must both report true/the real
 /// root from inside a work tree, even when the editor's cwd is a
-/// subdirectory of it — the case that actually exercises `--show-toplevel`
+/// subdirectory of it, the case that actually exercises `--show-toplevel`
 /// rather than just echoing cwd back.
 ///
 /// The expected root is `sandbox.path()`, the tempdir's
-/// own canonicalized path, asserted literally — never re-derived through
+/// own canonicalized path, asserted literally, never re-derived through
 /// either command under test.
 #[test]
 fn core_stdlib_git_probes_inside_a_work_tree() {
@@ -517,7 +517,7 @@ fn core_stdlib_git_probes_inside_a_work_tree() {
 /// Outside any git work tree, both probes must return `#f` rather than
 /// raising or reporting a stale/wrong root. `stdlib/git-repo?` is a
 /// registered command, so its not-a-repo branch is reachable via `call!`
-/// here — unlike `core:pickers`' own `picker-files`, which has no such seam
+/// here, unlike `core:pickers`' own `picker-files`, which has no such seam
 /// (see `pickers_plugin.rs`'s module doc comment).
 #[test]
 fn core_stdlib_git_probes_outside_a_work_tree() {

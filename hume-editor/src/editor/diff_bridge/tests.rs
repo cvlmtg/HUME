@@ -103,7 +103,7 @@ fn line_hunks_treats_non_lf_unicode_breaks_as_content() {
 }
 
 /// A bare `\r` (old Mac): `BufferText::from` normalizes it to `\n` before
-/// `line_hunks` even tokenizes, same as `\r\n` — pinned here so the diff
+/// `line_hunks` even tokenizes, same as `\r\n`. Pinned here so the diff
 /// payload stays clean even if that normalization were ever removed from
 /// one side and not the other.
 #[test]

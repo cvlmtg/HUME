@@ -32,7 +32,7 @@ fn set_completer_scope_prefix_filters() {
 
 #[test]
 fn set_completer_scope_includes_an_exact_match() {
-    // `complete_set` only prefix-filters — an exact match is dropped
+    // `complete_set` only prefix-filters: an exact match is dropped
     // later, by `CompletionSession::rank`'s no-op check, not here.
     let result = set_result("set global");
     assert_eq!(names_of(&result), vec!["global"]);
@@ -141,7 +141,7 @@ fn set_completer_value_signcolumn() {
 
 #[test]
 fn set_completer_value_whitespace_newline() {
-    // Newline has no "trailing" axis — only none/all.
+    // Newline has no "trailing" axis, only none/all.
     let result = set_result("set buffer whitespace-newline=");
     assert_eq!(names_of(&result), vec!["all", "none"]);
 }
@@ -168,7 +168,7 @@ fn set_completer_value_numeric_no_candidates() {
 
 #[test]
 fn set_completer_value_static_enum_rejects_ineligible_scope() {
-    // tab-style is global/buffer-scoped, not pane-scoped — completion
+    // tab-style is global/buffer-scoped, not pane-scoped, so completion
     // must not offer values for a scope the key doesn't accept, matching
     // the error `typed_set` would give on Enter.
     let result = set_result("set pane tab-style=");
@@ -185,7 +185,7 @@ fn set_completer_value_static_bool_rejects_unknown_scope() {
 fn set_completer_value_span_start_stops_at_equals_not_internal_space() {
     // A value can legitimately contain spaces (e.g. a theme filename stem
     // like "my theme"). The replacement span must start right after '=',
-    // not after the last internal space — otherwise completion would
+    // not after the last internal space. Otherwise completion would
     // replace only the tail after the space and duplicate the rest
     // (e.g. "set global theme=my my theme").
     let result = set_result("set global theme=my theme");
@@ -280,7 +280,7 @@ fn set_completer_value_language_prefix_filters() {
 
 #[test]
 fn set_completer_value_language_includes_an_exact_match() {
-    // See `set_completer_scope_includes_an_exact_match`'s doc — a fully-
+    // See `set_completer_scope_includes_an_exact_match`'s doc: a fully-
     // typed language name is prefix-filtered in, dropped later by rank.
     let (reg, store, dir) = make_ctx_parts();
     let mut langs = LanguageRegistry::new();

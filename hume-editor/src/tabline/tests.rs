@@ -16,12 +16,12 @@ fn every_tab_fits_and_reserves_no_arrow_column() {
 
     assert_eq!(extents.ranges, vec![(0, 3), (4, 8)]);
     assert!(!extents.indicator_left);
-    assert!(!extents.clipped_tail, "everything fit — no arrow needed");
+    assert!(!extents.clipped_tail, "everything fit, no arrow needed");
 }
 
 #[test]
 fn overflow_reserves_one_column_so_the_arrow_never_lands_on_a_tab() {
-    // Same two tabs, but one column too narrow for both — tab_extents must
+    // Same two tabs, but one column too narrow for both: tab_extents must
     // shrink to the tab(s) that fit in `width - 1`, not `width`, so the `›`
     // painted at the row's last column never falls inside a packed extent.
     let tabs = [entry("a"), entry("bb")];
@@ -45,7 +45,7 @@ fn overflow_reserves_one_column_so_the_arrow_never_lands_on_a_tab() {
 #[test]
 fn a_tab_wider_than_the_whole_row_still_packs_one_clamped_extent() {
     // A single tab whose padded label alone is wider than the row must not
-    // leave the bar empty — it packs anyway, clamped to the available width.
+    // leave the bar empty. It packs anyway, clamped to the available width.
     let tabs = [entry("a very long generated buffer name.rs")];
 
     let extents = tab_extents(&tabs, 0, 0, 10);

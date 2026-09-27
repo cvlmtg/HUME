@@ -15,11 +15,11 @@ use hume_editing::tab_style::TabStyle;
 pub(in crate::editor) const SET_SOURCE: &str = "set";
 
 /// Prefix-filter `items` and wrap each into a `CompletionItem`, sorted
-/// alphabetically — a `Delegated` source's own order is what the session's
+/// alphabetically. A `Delegated` source's own order is what the session's
 /// rank key preserves (see `MatchKind::Delegated`'s doc), so the order is
 /// established right here rather than left to a tiebreak. A fully-typed
 /// value is filtered out later, by `SlotSet::rank_with`'s own no-op
-/// check — not here.
+/// check, not here.
 fn prefix_completions<'a>(
     items: impl Iterator<Item = &'a str>,
     prefix: &str,
@@ -34,10 +34,10 @@ fn prefix_completions<'a>(
 
 /// Static value candidates for enum/bool keys. Returns `None` for keys whose
 /// values are dynamic (`language`, `theme`) or free-form (numbers,
-/// `statusline`) — those are handled in [`complete_set`].
+/// `statusline`); those are handled in [`complete_set`].
 fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
-    // Bool keys are derived from `define_settings!`'s `parser: bool` — not
-    // hand-listed — so a new bool setting gets value completion for free.
+    // Bool keys are derived from `define_settings!`'s `parser: bool` (not
+    // hand-listed), so a new bool setting gets value completion for free.
     if crate::editor::settings::is_bool_setting(key) {
         return Some(&["true", "false"]);
     }
@@ -62,7 +62,7 @@ fn complete_set_scope(prefix: &str) -> Vec<CompletionItem> {
 }
 
 /// Completes the key. Surfaces every declared key whose scopes
-/// include `scope`; `language` is the one key with no macro entry — valid
+/// include `scope`; `language` is the one key with no macro entry, valid
 /// only for buffer, so it's chained in when the scope matches. An unparseable
 /// `scope` token (mid-typing garbage) yields no candidates, same as any real
 /// key that doesn't accept it.
@@ -81,8 +81,8 @@ fn complete_set_key(scope: &str, rest: &str) -> Vec<CompletionItem> {
 /// Completes the value. Static enum/bool lists come from
 /// [`static_value_candidates`]; `language` and `theme` are dynamic.
 ///
-/// Every key checks its scope before offering values — the same gate
-/// `typed_set` enforces at execution time — so e.g. `:set pane tab-style=`
+/// Every key checks its scope before offering values (the same gate
+/// `typed_set` enforces at execution time), so e.g. `:set pane tab-style=`
 /// (tab-style isn't pane-scoped) never dangles a completion that would error
 /// on Enter.
 fn complete_set_value(
@@ -91,7 +91,7 @@ fn complete_set_value(
     value_prefix: &str,
     ctx: &CompletionCtx<'_>,
 ) -> Vec<CompletionItem> {
-    // `language` has no `setting_scopes` entry by design (see settings.rs) —
+    // `language` has no `setting_scopes` entry by design (see settings.rs):
     // valid only for buffer scope, checked directly instead of through the
     // generic gate below. An unparseable `scope` token falls through both
     // branches to the same empty result as a real key rejecting that scope.
@@ -119,17 +119,17 @@ fn complete_set_value(
 /// Completes `:set <scope> <key>=<value>` arguments. `Delegated`: the
 /// candidate universe genuinely changes shape at each phase boundary
 /// (scope/key/value), so this takes the live input directly rather than
-/// enumerating a stable universe for the session to filter — same
+/// enumerating a stable universe for the session to filter: same
 /// invocation contract as `complete_path`.
 ///
 /// Three phases, selected by cursor position within the argument:
-/// - **scope** (no space yet) — offers `global`/`buffer`/`pane`.
-/// - **key** (space present, no `=` yet) — offers every setting key whose
+/// - **scope** (no space yet): offers `global`/`buffer`/`pane`.
+/// - **key** (space present, no `=` yet): offers every setting key whose
 ///   declared scopes include the chosen scope, plus `language` for `buffer`.
-/// - **value** (`=` present) — offers the valid value set for enum/bool keys,
+/// - **value** (`=` present): offers the valid value set for enum/bool keys,
 ///   registered language names for `language`, installed theme names for
 ///   `theme`. Numeric/free-form keys (e.g. `scrolloff`, `statusline`) get no
-///   candidates — the user types them and `write_global`/`write_buffer`
+///   candidates: the user types them and `write_global`/`write_buffer`
 ///   validates.
 ///
 /// Value lists are completion *hints* mirrored from each setting's parser;
@@ -141,7 +141,7 @@ pub(super) fn complete_set(
     ctx: &CompletionCtx<'_>,
 ) -> (Range<usize>, Vec<CompletionItem>) {
     // Argument region begins after the command word ("set "). `arg_start ==
-    // 0` means `arg_prefix` found no space yet — still typing "set" itself,
+    // 0` means `arg_prefix` found no space yet, still typing "set" itself,
     // not its argument. Unreachable via `resolve_minibuf_source` (which
     // only invokes this completer once the cursor is past the command
     // name, which requires a space), kept for callers that hand this
@@ -155,11 +155,11 @@ pub(super) fn complete_set(
 
     match arg.split_once(' ') {
         None => {
-            // Scope token: bounded by whitespace only — no '=' can occur
+            // Scope token: bounded by whitespace only. No '=' can occur
             // yet, so the last space before the cursor is always correct,
             // robust to stray extra whitespace. `'='` is an extra stop on
-            // the forward side purely for symmetry with the key phase below
-            // — a scope name never contains one, so it never fires here.
+            // the forward side purely for symmetry with the key phase below.
+            // A scope name never contains one, so it never fires here.
             let span = arg_span(input, cursor, ' ', &[' ', '=']);
             let candidates = complete_set_scope(arg);
             (span, candidates)
@@ -169,8 +169,8 @@ pub(super) fn complete_set(
             match rest.split_once('=') {
                 None => {
                     // Key token: same start reasoning as the scope case.
-                    // The forward scan must also stop at `'='` — not just
-                    // whitespace — or completing `:set global th|eme=x`
+                    // The forward scan must also stop at `'='` (not just
+                    // whitespace), or completing `:set global th|eme=x`
                     // would swallow the `=x` into the replaced span instead
                     // of leaving it after the completed key.
                     let span = arg_span(input, cursor, ' ', &[' ', '=']);
@@ -179,7 +179,7 @@ pub(super) fn complete_set(
                 }
                 Some((key, value)) => {
                     // Value token: bounded by '=' on the start, whitespace
-                    // only on the end — a value can legitimately contain an
+                    // only on the end: a value can legitimately contain an
                     // internal '=' or spaces (e.g. a `statusline` format
                     // string), so only whitespace ends it.
                     let span = arg_span(input, cursor, '=', &[' ']);

@@ -1,6 +1,6 @@
 //! Terminal bracketed-paste handling (`Event::Paste`).
 //!
-//! Named `handle_terminal_paste` — not `handle_paste` — to stay clearly
+//! Named `handle_terminal_paste` (not `handle_paste`) to stay clearly
 //! distinct from the register/kill-ring `p`/`P` "paste" commands in
 //! `editor::commands::paste`, which are an unrelated feature.
 
@@ -16,7 +16,7 @@ impl Editor {
     /// Handle a whole pasted string arriving as one terminal event.
     ///
     /// Normalizes and empty-checks at the terminal boundary, then hands off
-    /// to the same stack walk keys use — each layer states its own paste
+    /// to the same stack walk keys use: each layer states its own paste
     /// policy. See `Editor::apply_insert_mode_paste`
     /// (`input_stack/insert.rs`) for the Insert-mode path, shared with
     /// dot-repeat replay.
@@ -30,7 +30,7 @@ impl Editor {
         // convention.
         //
         // `text` is already owned, and the common case (no bare CR) returns
-        // `Cow::Borrowed` — reuse `text` itself rather than re-copying it via
+        // `Cow::Borrowed`, so reuse `text` itself rather than re-copying it via
         // `into_owned()`, which would memcpy the whole paste a second time.
         let text = match normalize_line_endings(&text) {
             Cow::Borrowed(_) => text,
@@ -40,7 +40,7 @@ impl Editor {
             return;
         }
         // Mirrors `handle_key`'s status-message dismissal, minus the
-        // summary-TTL bookkeeping — a paste is a real input event but not a
+        // summary-TTL bookkeeping: a paste is a real input event but not a
         // keystroke the TTL countdown should tick against. Unconditional now
         // that dispatch itself decides whether the paste does anything (a
         // swallow, e.g. under Confirm, still dismissed the previous message

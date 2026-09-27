@@ -56,7 +56,7 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
     };
     let revision = buf.revision_id();
 
-    // Compare by reference — no clone on the hot cache-hit path.
+    // Compare by reference: no clone on the hot cache-hit path.
     if buf
         .search_matches
         .cache
@@ -70,13 +70,13 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
     // so we can write to search_matches.
     let regex = Arc::clone(&sp.regex);
     let pattern_str = sp.pattern_str.clone();
-    // sp last used above — NLL ends the buf.search_pattern borrow here.
+    // sp last used above; NLL ends the buf.search_pattern borrow here.
 
     let matches = {
         let text = buf.text();
         find_all_matches(text, &regex)
     };
-    // text borrow ended — buf.search_matches can now be written.
+    // text borrow ended, so buf.search_matches can now be written.
 
     buf.search_matches.matches = matches;
     buf.search_matches.cache = Some((revision, pattern_str));
@@ -85,7 +85,7 @@ pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: B
 /// Recompute `pane_state[pid][bid].search_cursor.match_count` if stale.
 ///
 /// Takes `buffers: &BufferStore` and `pane_state: &mut ...` as separate
-/// parameters — the match-list reference and the cursor write are disjoint,
+/// parameters: the match-list reference and the cursor write are disjoint,
 /// so no intermediate owned variable is needed.
 pub(in crate::editor::search::ops) fn update_pane_cursor(
     buffers: &BufferStore,
@@ -104,7 +104,7 @@ pub(in crate::editor::search::ops) fn update_pane_cursor(
         return;
     }
     let count = search_match_info(&sm.matches, head);
-    // sm borrows from buffers; cursor borrows from pane_state — disjoint params.
+    // sm borrows from buffers; cursor borrows from pane_state: disjoint params.
     let cursor = &mut pane_state[pid][bid].search_cursor;
     cursor.match_count = Some(count);
     cursor.cache_head = Some(head);

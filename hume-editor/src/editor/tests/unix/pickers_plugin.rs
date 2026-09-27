@@ -8,14 +8,14 @@ use hume_scripting::ScriptingHost;
 //
 // Loads the *real* runtime/plugins/core/pickers/plugin.scm (via
 // `include_str!`) into an isolated HUME_RUNTIME dir, then evaluates an
-// init.scm that eagerly loads it — exercising the actual shipped file.
+// init.scm that eagerly loads it, exercising the actual shipped file.
 //
 // Coverage note: the git-repo detection branch is proven only via full
-// integration in a real git repo (`files_picker_...` below) — `picker-files`
+// integration in a real git repo (`files_picker_...` below): `picker-files`
 // itself dispatches straight to `pickers/files-picker-with` with
 // `stdlib/git-repo?`'s live result, so there's no seam here to force the `#t`
 // case hermetically. `stdlib/git-repo?`'s own `#f` case (not a repo) *is*
-// covered hermetically, in `core:stdlib`'s own tests (`plugins.rs`) — it's a
+// covered hermetically, in `core:stdlib`'s own tests (`plugins.rs`); it's a
 // registered command there, unlike this file's local `fd`-detection probe
 // (`pickers/fd-binary`). The two non-git branches (fd found / fd absent) are
 // covered hermetically below via the `pickers/files-picker-with` internal
@@ -33,7 +33,7 @@ fn call(ed: &mut Editor, name: &str) {
 
 /// Load the real `core:pickers` plugin, plus `extra_source` appended to the
 /// same init.scm (evaluated after the plugin, so `call!`-dispatchable
-/// commands the plugin registered are reachable by name — see the module
+/// commands the plugin registered are reachable by name (see the module
 /// doc comment on why plain, non-command helpers are not used this way).
 fn setup(guard: &HumeRuntimeGuard, tmp: &Path, input: &str, extra_source: &str) -> Editor {
     setup_with_config(guard, tmp, input, None, extra_source)
@@ -50,7 +50,7 @@ fn setup_with_config(
 ) -> Editor {
     write_core_plugin(guard, "pickers", PICKERS_PLUGIN);
     // core:pickers' config validation depends on core:stdlib (see
-    // plugin.scm's header) — stage and load it first, same as core:git-diff.
+    // plugin.scm's header); stage and load it first, same as core:git-diff.
     write_core_plugin(guard, "stdlib", STDLIB_PLUGIN);
     let mut ed = editor_from(input);
     let mut host = ScriptingHost::new();
@@ -90,7 +90,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     let rows: Vec<&str> = picker.window(10).collect();
     assert!(
         rows.contains(&"cached.txt"),
-        "only `git ls-files --cached` can list a file deleted from disk — \
+        "only `git ls-files --cached` can list a file deleted from disk; \
          proves the git branch (not fd) ran; got {rows:?}"
     );
 
@@ -112,7 +112,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
 /// End-to-end proof that `#:actions (call! "stdlib/buffer-actions" ...)`
 /// reaches a real picker through the full Steel round-trip (`picker!` →
 /// `%picker!` → `picker_actions` decode → `PickerSession::action_for` →
-/// `close_picker_with`) — the Rust-level unit tests in `tests/picker.rs`
+/// `close_picker_with`). The Rust-level unit tests in `tests/picker.rs`
 /// cover the dispatch mechanism itself with a synthetic session; this proves
 /// `core:pickers`' actual shipped wiring, `stdlib/with-tab`'s `(call!
 /// "tab-new")`, and the action handlers all compose.
@@ -167,7 +167,7 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
     );
 }
 
-/// A query matching nothing leaves the picker's payload false —
+/// A query matching nothing leaves the picker's payload false:
 /// `stdlib/with-tab`'s payload guard must skip `(call! "tab-new" (focused-pane))` for that
 /// case, not open a stray tab and then no-op the file open.
 #[test]
@@ -203,8 +203,8 @@ fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
     );
 }
 
-/// A pane too small to split must abort the whole action — no split, and no
-/// file opened in the pane that stayed put — matching the typed `:vsplit
+/// A pane too small to split must abort the whole action (no split, and no
+/// file opened in the pane that stayed put), matching the typed `:vsplit
 /// [path]` command's own guard, which checks before opening its path
 /// argument rather than after.
 #[test]
@@ -454,7 +454,7 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
 
 // `PickerSession::seed` only clears `pending`
 // when the seed is non-empty. `git status` hasn't run yet when this picker
-// opens, so `picker!` seeds it with an empty list — if `seed` cleared
+// opens, so `picker!` seeds it with an empty list. If `seed` cleared
 // `pending` unconditionally, this session would read as "already populated"
 // from frame one, and `is_pending()` would be `#f` before `git status` has
 // returned anything.
@@ -505,7 +505,7 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
 
     let tmp = safe_tempdir();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    // :pwd is a subdirectory, not the repo root — git prints the entry as
+    // :pwd is a subdirectory, not the repo root: git prints the entry as
     // "root.txt" (repo-root-relative); accept must not open it relative to
     // :pwd (which has no such file).
     ed.set_cwd(&sandbox.path().join("sub")).unwrap();
@@ -581,7 +581,7 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
 
     let tmp = safe_tempdir();
     let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
-    // :pwd *is* the repo root here — the subdirectory case is covered by
+    // :pwd *is* the repo root here. The subdirectory case is covered by
     // `git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory`
     // above; this test isolates `path-join`'s handling of a multi-segment
     // relative path instead.
@@ -699,7 +699,7 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
 
 /// Loading `core:pickers` without `core:stdlib` declared or loaded first
 /// must fail to load (contained, not aborting `eval_init`), naming
-/// `core:stdlib` — `core:pickers`'s `(declared-plugins)` guard rejects it
+/// `core:stdlib`: `core:pickers`'s `(declared-plugins)` guard rejects it
 /// before its `pickers/untracked` config read ever reaches `call!`.
 #[test]
 fn missing_stdlib_errors_at_load() {
@@ -742,7 +742,7 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     // total_len() stays 0 whether the async `git status` callback has run
-    // yet or not, so it can't be the drain predicate here — wait for the
+    // yet or not, so it can't be the drain predicate here. Wait for the
     // job to leave the registry instead, so the assertion below proves the
     // callback actually ran and produced zero rows, not just that nothing
     // has happened yet.
@@ -779,10 +779,10 @@ fn git_modified_picker_not_a_repo_names_git() {
 #[test]
 fn git_modified_picker_git_status_failure_does_not_say_clean() {
     let guard = HumeRuntimeGuard::new();
-    // Not a repo — no `git init`. The seam's `root` argument is only used by
+    // Not a repo, no `git init`. The seam's `root` argument is only used by
     // `on-select`'s `path-join`, never to select `git status`'s cwd, so a
     // truthy-but-bogus root bypasses the not-a-repo check while `git status`
-    // itself still runs (and fails) against this non-repo cwd — the failure
+    // itself still runs (and fails) against this non-repo cwd: the failure
     // branch `pickers/open-git-picker!` must not fold into "clean".
     let sandbox = CwdSandbox::new();
     let tmp = safe_tempdir();
@@ -844,7 +844,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
     );
     assert!(
         ed.state.status_msg.is_none(),
-        "cancelling must not raise — a `job-id` still `#f` when `on-select` \
+        "cancelling must not raise: a `job-id` still `#f` when `on-select` \
          fires would surface as a status message here"
     );
     assert_eq!(

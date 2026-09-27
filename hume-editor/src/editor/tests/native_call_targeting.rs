@@ -1,5 +1,5 @@
 //! `EditorHostImpl::run_command_sync` resolving `pane` against a native
-//! command's own target requirement — the feature
+//! command's own target requirement: the feature
 //! `commands::BoundCommand::resolve`/`commands::run` implement. `events.rs`'s
 //! `on_buffer_save_native_call_*` tests cover the same feature through a
 //! Steel hook end to end; these drive `run_command_sync` directly via
@@ -27,7 +27,7 @@ fn split_two_buffers(ed: &mut Editor, b: &str) -> (PaneId, BufferId, PaneId, Buf
     )
     .expect("split onto B must succeed");
     // `open_pane_in_layout` itself does not move focus (unlike
-    // `split_pane_onto`/`:vsplit` in production) — pin it back to A
+    // `split_pane_onto`/`:vsplit` in production), so pin it back to A
     // explicitly so every caller's premise holds regardless.
     ed.state.focus.set_for_test(pid_a);
     (pid_a, bid_a, pid_b, bid_b)
@@ -122,8 +122,8 @@ fn focused_pane_category_errors_on_a_non_focused_pane() {
 // ── Two categories only: every native command needs a pane ────────────────
 
 /// Commands that read only their buffer or touch only focus-bound state.
-/// Each still acts through a pane — `clear-search`'s search cursor lives on
-/// the pane — and every one that moves or reads focus-bound state is
+/// Each still acts through a pane (`clear-search`'s search cursor lives on
+/// the pane), and every one that moves or reads focus-bound state is
 /// `FocusedPane`-category.
 const FORMERLY_PANELESS: [&str; 6] = [
     "clear-search",
@@ -134,7 +134,7 @@ const FORMERLY_PANELESS: [&str; 6] = [
     "goto-prev-tab",
 ];
 
-/// The subset of [`FORMERLY_PANELESS`] that acts on focus — every one of
+/// The subset of [`FORMERLY_PANELESS`] that acts on focus: every one of
 /// them except `clear-search` (its search cursor lives on the pane, not on
 /// focus). Derived by filtering rather than a second hand-written list, so
 /// the two can't drift apart.
@@ -213,7 +213,7 @@ fn clear_search_acts_on_its_panes_buffer_even_when_remote() {
     );
     assert!(
         ed.state.buffers.get(bid_a).search_pattern.is_some(),
-        "A's pattern must survive — clear-search only touches its own buffer"
+        "A's pattern must survive: clear-search only touches its own buffer"
     );
 }
 
@@ -375,7 +375,7 @@ fn mock_host_records_a_non_focused_pane_unchanged() {
 
     let ran = mock
         .run_command_sync("delete", pane, Some(1), false, None)
-        .expect("MockHost must accept any pane — it has no pane model to resolve against");
+        .expect("MockHost must accept any pane: it has no pane model to resolve against");
     assert!(ran);
     assert_eq!(mock.dispatched_native.len(), 1);
     assert_eq!(mock.dispatched_native[0].1, pane);
@@ -395,7 +395,7 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
     let pid_a = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
 
-    // Split onto the *same* buffer, then refocus A — `pane-vsplit` focuses
+    // Split onto the *same* buffer, then refocus A. `pane-vsplit` focuses
     // the new pane, so B (the split) is left unfocused here.
     live_host!(ed)
         .run_command_sync(
@@ -436,7 +436,7 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
     );
 
     // A's own session must still be intact: keep typing, then exit and undo
-    // — no panic composing the next keystroke into the still-open group.
+    // (no panic composing the next keystroke into the still-open group).
     ed.feed_key(key('Y'));
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "XYaaaa\n");
     ed.feed_key(key_esc());
@@ -450,7 +450,7 @@ fn remote_edit_is_refused_while_another_pane_has_an_open_insert_session() {
 
 /// Same exclusivity check, `undo`/`redo` side: `apply_doc_history_walk`'s
 /// old `debug_assert!` only checked the *target* pane's own `edit_group`
-/// and only fired in debug builds — a remote `undo` targeting a different
+/// and only fired in debug builds, so a remote `undo` targeting a different
 /// pane than the one with an open insert session passed it silently.
 #[test]
 fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
@@ -499,7 +499,7 @@ fn remote_undo_is_refused_while_another_pane_has_an_open_insert_session() {
 /// Regression: `pane_state::ensure`'s `.expect("pid must be a live PaneId")`
 /// panicked when a `PaneId` captured before an async round-trip (an LSP
 /// response, a queued Steel callback) closed and its slot was reused by a
-/// newer pane before the response landed — the completion
+/// newer pane before the response landed. The completion
 /// `completionItem/resolve` callback is the one production caller that
 /// captures its pane this way. `try_ensure` is the validating counterpart
 /// every one of `commit_changeset`'s callers now goes through instead.
@@ -539,7 +539,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
         "setup: closing A must move focus off it"
     );
 
-    // Open a new pane from B — slotmap reuses A's freed index (LIFO free
+    // Open a new pane from B: slotmap reuses A's freed index (LIFO free
     // list), so the new pane's id shares A's index with a newer version.
     ed.state.focus.set_for_test(pid_b);
     live_host!(ed)
@@ -554,7 +554,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
     let pid_c = ed.state.focus.id();
     assert_ne!(pid_a, pid_c, "setup: C must be a distinct pane from A");
     // Touch C's own pane_state so its slot in the *secondary* map records
-    // the newer version too — otherwise `pid_a`'s stale version would read
+    // the newer version too. Otherwise `pid_a`'s stale version would read
     // back the same as the vacant-and-never-reused case covered by
     // `try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused` below.
     crate::editor::pane_state::ensure(
@@ -581,7 +581,7 @@ fn try_ensure_errors_instead_of_panicking_once_the_pane_s_slot_is_reused() {
 
 /// Unlike the reused-slot case above, a closed pane whose slot has *not*
 /// been reused leaves `SecondaryMap::entry` unable to tell "closed" from
-/// "never seeded" — `remove` drops the slot back to `Vacant` at version 0,
+/// "never seeded": `remove` drops the slot back to `Vacant` at version 0,
 /// and `entry` returns `Some(Vacant)` for that, same as a pid that simply
 /// never touched this map. `try_ensure` must not trust that read, or it
 /// would silently resurrect a ghost `pane_state[dead_pid]` entry instead of

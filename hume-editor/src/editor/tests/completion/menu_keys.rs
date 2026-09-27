@@ -13,13 +13,13 @@ use termina::event::{KeyCode, Modifiers};
 // ── Interaction with the two popup homes ─────────────────────────────────────
 //
 // `show_popup` is called directly through `EditorHostImpl` rather than a
-// typed `:` command — `:` while already in Insert inserts a literal colon
+// typed `:` command: `:` while already in Insert inserts a literal colon
 // instead of entering Command mode, and both real callers (hover,
 // signature help) reach `show_popup` the same way, via an async LSP
 // response landing outside the keymap dispatcher.
 
 /// A completion session opening while a `Scrollable` popup (hover, or the
-/// `gn`/`gp` diagnostic overlay) is up must retire the popup first —
+/// `gn`/`gp` diagnostic overlay) is up must retire the popup first:
 /// a completion layer's `LayerOnly` eviction clears the pushed-layer popup
 /// home before landing, keeping `PopupLayer`'s "never buried" invariant.
 #[test]
@@ -52,7 +52,7 @@ fn completion_over_a_live_scrollable_popup_clears_it() {
 }
 
 /// A `Sticky` popup (LSP signature help) sits in the mode layer's own slot
-/// and must survive a completion session opening alongside it — a naive
+/// and must survive a completion session opening alongside it. A naive
 /// `clear_popups` (both homes) would kill it.
 #[test]
 fn completion_over_a_sticky_popup_leaves_it_open() {
@@ -80,7 +80,7 @@ fn completion_over_a_sticky_popup_leaves_it_open() {
 /// The reverse order: a `Popup` (hover, arriving async after a trigger char
 /// opened the menu, say) lands *above* an already-open completion session.
 /// `dismiss_completion`/`take_buffer_completion` reach the session by its
-/// own `LayerRef` (`ref_of`) rather than a pop-if-top rule — this pins that
+/// own `LayerRef` (`ref_of`) rather than a pop-if-top rule. This pins that
 /// a popup landing above it doesn't strand it: `EditorState::dismiss_
 /// completion`'s own doc (`mod.rs`) is explicit that "a `Completion` layer
 /// can sit under a `Popup`, and a pop-if-top rule would leave a stale
@@ -122,7 +122,7 @@ fn a_popup_landing_above_a_live_session_does_not_strand_it() {
 }
 
 /// A background dismiss (`dismiss_completion`, e.g. the session going spent)
-/// must not take a popup stacked above it down too — a completion layer's
+/// must not take a popup stacked above it down too: a completion layer's
 /// `removal_scope` is `SelfOnly` for exactly the same coexistence
 /// `popup_eviction`'s `LayerOnly` override already declares. The default
 /// `Stack` scope would otherwise have `retire::<BufferCompletionLayer>` reach for
@@ -156,7 +156,7 @@ fn dismissing_the_session_leaves_a_popup_above_it_open() {
     );
     assert!(
         ed.state.input.popup().is_some(),
-        "the popup above it must survive — it's stacked over the session by \
+        "the popup above it must survive: it's stacked over the session by \
          coincidence, not by dependency on it staying open"
     );
 }
@@ -172,7 +172,7 @@ fn typing_narrows_the_ranked_items() {
     assert_eq!(labels(&ed), vec!["grape"]);
 }
 
-/// Typing resets the selection to row 0 — the previous index has no
+/// Typing resets the selection to row 0: the previous index has no
 /// guaranteed meaning against the new order.
 #[test]
 fn typing_resets_the_selection_to_row_zero() {
@@ -308,7 +308,7 @@ fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
 }
 
 /// With the cursor exactly at the token's start, Backspace deletes the char
-/// *before* the token — crossing it, not narrowing it.
+/// *before* the token, crossing it, not narrowing it.
 #[test]
 fn backspace_past_the_token_start_dismisses_the_session() {
     let mut ed = editor_from("-[\n]>");
@@ -370,7 +370,7 @@ fn backspace_on_the_tokens_first_char_keeps_the_session() {
     ed.feed_key(key_backspace());
     assert!(
         ed.state.input.buffer_completion().is_some(),
-        "at the buffer's start there is nothing before the token to cross — a \
+        "at the buffer's start there is nothing before the token to cross; a \
          Backspace that deletes nothing leaves the session as it was"
     );
 }
@@ -417,7 +417,7 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
 
 /// The `Completion` layer sits above `Insert`, so a mode change from outside
 /// key dispatch (simulated by truncating the mode layer directly) removes it
-/// in the same top-first `truncate_layers` call — synchronously.
+/// in the same top-first `truncate_layers` call, synchronously.
 #[test]
 fn mode_change_outside_key_dispatch_dismisses_the_session_synchronously() {
     let mut ed = editor_from("-[\n]>");
@@ -435,7 +435,7 @@ fn mode_change_outside_key_dispatch_dismisses_the_session_synchronously() {
 // ── Bound keys dismiss (motions, edit commands) ─────────────────────────────
 
 /// A motion resolves through the insert trie, not `apply_insert_edit`, so
-/// the session can't track it — it dismisses outright rather than leaving a
+/// the session can't track it. It dismisses outright rather than leaving a
 /// stale token a later Enter would accept against.
 #[test]
 fn left_arrow_dismisses_the_session_immediately() {
@@ -485,7 +485,7 @@ fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_token() {
 }
 
 /// Auto-pair skip-close (typing `)`/`"` when the cursor already sits on the
-/// closer) moves the cursor with a motion, not an edit — same as the arrow
+/// closer) moves the cursor with a motion, not an edit. Same as the arrow
 /// keys above, it can't keep a live session's token tracked, so it
 /// dismisses rather than leave a stale menu an Enter would fail to accept
 /// against (`completion-accept!: insertText token does not contain the
@@ -529,7 +529,7 @@ fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
 // ── Out-of-band buffer changes are caught at settle ─────────────────────────
 
 /// A `:e!` reload bypasses `observe_edit` entirely and leaves every token
-/// pointing at a document that no longer exists — `dismiss_invalid_
+/// pointing at a document that no longer exists. `dismiss_invalid_
 /// completion` catches the generation mismatch at the next settle, and the
 /// render fail-safe covers a frame drawn before it.
 #[test]
@@ -563,7 +563,7 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
 }
 
 /// A Steel edit that bypasses `observe_edit` (a raw `apply-text-edits!`)
-/// with the same length as before still bumps the generation — caught at
+/// with the same length as before still bumps the generation, caught at
 /// settle, with no keystroke's length check needed first.
 #[test]
 fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
@@ -571,7 +571,7 @@ fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
     let mut ed = editor_from("-[a]>bcdef\n");
     super::super::lsp_bridge::setup_with(&mut ed, |backend, _sid| {
         // `apply-text-edits!` now only accepts a server-tagged wire edit
-        // (via a real response) — this canned response is what `:stash`
+        // (via a real response); this canned response is what `:stash`
         // (dispatched below, before Insert mode) turns into one.
         backend.respond_to(
             "test/textEdits",

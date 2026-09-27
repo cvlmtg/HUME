@@ -5,19 +5,19 @@ use hume_grid::Rect;
 // ── OnModeChange: Insert → Normal ─────────────────────────────────────────────
 
 /// `cmd_exit_insert` (Esc) must fire `OnModeChange` for the Insert→Normal
-/// transition — `end_insert_session` truncates the `Insert` layer, and
+/// transition: `end_insert_session` truncates the `Insert` layer, and
 /// `detect_mode_change`'s observation-point diff at the next `settle()` is
 /// what turns that into the fired hook, not any write at the truncate site
 /// itself.
 ///
 /// The test installs an `on-mode-change` handler that logs a message, so a
 /// new log entry shows the hook fired. Deliberately not a cursor motion
-/// (as the sibling mouse-click test below uses) — with `select-inserted-text`
+/// (as the sibling mouse-click test below uses): with `select-inserted-text`
 /// on, the entry hook's own `move-right` would land inside the pinned typed
 /// run and get folded into the Esc-time auto-select, then cancelled out by
 /// the exit hook's own `move-right`, so `state()` would spuriously come back
 /// unchanged. `handle_input` does not drain itself (that lives in
-/// `Editor::run`'s loop, see `Editor::settle`'s doc) — an explicit `settle()`
+/// `Editor::run`'s loop, see `Editor::settle`'s doc). An explicit `settle()`
 /// after dispatch is what fires the queued hook.
 #[test]
 fn exit_insert_via_esc_fires_on_mode_change() {
@@ -67,15 +67,15 @@ fn exit_insert_via_esc_fires_on_mode_change() {
 
 /// A left mouse click while in Insert mode must fire `OnModeChange` exactly
 /// once for the Insert→Normal transition. The click path calls
-/// `end_insert_session`, which truncates the `Insert` layer on its own —
+/// `end_insert_session`, which truncates the `Insert` layer on its own.
 /// `detect_mode_change`'s diff only ever compares the final mode against
 /// the last-observed baseline once per drain pass, so nothing here can
 /// double-fire the hook regardless of how many mode-layer operations ran
 /// synchronously before the first `settle()`. `handle_input` does not
-/// drain itself — the `settle()` below is what
+/// drain itself: the `settle()` below is what
 /// fires the queued hook. The click itself also repositions the cursor, so
 /// the `state()` diff alone doesn't distinguish "hook fired" from "click
-/// moved the cursor" — the mode assertion just above it is the load-bearing
+/// moved the cursor". The mode assertion just above it is the load-bearing
 /// check for the hook actually having run at all.
 #[test]
 fn mouse_click_in_insert_fires_on_mode_change() {
@@ -86,7 +86,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     let mut ed = editor_from("-[a]>b\n");
     ed.view.panes[ed.state.focus.id()].viewport = hume_engine::pane::Viewport::new(80, 24);
     // The click below is hit-tested against pane rects, which only
-    // `prepare_frame` normally populates — set it directly, matching the
+    // `prepare_frame` normally populates. Set it directly, matching the
     // viewport size above, since this test exercises hook dispatch, not a
     // full frame.
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
@@ -106,7 +106,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
 
     let before = state(&ed);
 
-    // Left-click at (col=1, row=0) — lands in content, triggers exit-insert.
+    // Left-click at (col=1, row=0): lands in content, triggers exit-insert.
     let click = termina::event::MouseEvent {
         kind: termina::event::MouseEventKind::Down(termina::event::MouseButton::Left),
         column: 1,
@@ -171,15 +171,15 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
     );
 }
 
-/// An *amplifying* handler feedback loop — one that enqueues more hooks than
-/// it received — doubles the pending batch every pass (1, 2, 4, 8, …). A cap
+/// An *amplifying* handler feedback loop (one that enqueues more hooks than
+/// it received) doubles the pending batch every pass (1, 2, 4, 8, …). A cap
 /// on pass *count* lets total work explode geometrically (2^100 evals at the
 /// old 100-pass limit, never finishing); the cap must instead bound total
 /// hooks processed so this terminates quickly regardless of growth shape.
 ///
 /// Each handler invocation sets the buffer's language to `"a"` then `"b"`;
 /// since the two calls always differ, both are genuine changes and both
-/// re-enqueue `OnLanguageSet` — independent of what the previous invocation
+/// re-enqueue `OnLanguageSet`, independent of what the previous invocation
 /// left behind.
 #[test]
 fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
@@ -228,7 +228,7 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
 /// `init_scripting` + `open_extra_file`
 /// enqueue `OnBufferOpen`/`OnLanguageSet` hooks before the terminal is even
 /// initialized, and the *first* iteration of `Editor::run`'s loop is what
-/// fires them, via its own `settle()` call — the same one that fires
+/// fires them, via its own `settle()` call: the same one that fires
 /// everything else. This test pins the underlying property `settle()` relies
 /// on: `queue_event` alone never fires a handler.
 #[test]
@@ -257,7 +257,7 @@ fn queued_hooks_require_explicit_settle() {
     // Hook is enqueued but has not fired yet.
     assert!(
         !ed.state.config.pending_work.is_empty(),
-        "pending_work must be queued after queue_event — settle() not called yet"
+        "pending_work must be queued after queue_event: settle() not called yet"
     );
 
     let before = state(&ed);
@@ -317,7 +317,7 @@ fn on_buffer_open_queued_after_on_language_set() {
     doc.set_path(Some(std::path::PathBuf::from("/tmp/foo.rs")));
     ed.open_buffer(doc);
 
-    // Inspect the queue before draining — settle() would empty it.
+    // Inspect the queue before draining: settle() would empty it.
     let hook_order: Vec<&str> = ed
         .state
         .config
@@ -339,7 +339,7 @@ fn on_buffer_open_queued_after_on_language_set() {
 
 /// The startup buffer (`Editor::open`'s `file_path` argument) predates the
 /// scripting host, so it can't route through `open_buffer_and_notify` like
-/// every other buffer — but it must still announce `on-buffer-open`, after
+/// every other buffer, but it must still announce `on-buffer-open`, after
 /// `on-language-set`, once `detect_pending_languages` runs.
 ///
 /// Asserting the full two-element order (not just "did it fire") also
@@ -383,7 +383,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
         .expect("rebuild ok");
 
     // Stands in for what `apply_script_effects`'s tail does during
-    // `init_scripting` (`scripting_setup.rs:105`) — inspecting the queue
+    // `init_scripting` (`scripting_setup.rs:105`), inspecting the queue
     // before `settle()` drains it, same as the sibling test above.
     ed.detect_pending_languages();
 
@@ -406,7 +406,7 @@ fn startup_buffer_announces_on_buffer_open_after_on_language_set() {
 }
 
 /// `OnBufferClose` must never fire for the startup buffer unless its
-/// `OnBufferOpen` was already announced — the pairing invariant
+/// `OnBufferOpen` was already announced: the pairing invariant
 /// `close_buffer_and_notify` documents and
 /// `unix::scripting_effects::buffer_opened_and_closed_in_one_eval_fires_neither_hook`
 /// already asserts for a buffer opened mid-eval. The startup buffer never
@@ -426,7 +426,7 @@ fn startup_buffer_close_before_any_drain_fires_no_on_buffer_close() {
         "sanity: the startup buffer's open hasn't been announced yet"
     );
 
-    // Closed before any `detect_pending_languages` drain — no scripting host
+    // Closed before any `detect_pending_languages` drain: no scripting host
     // is even attached yet, matching a real early-exit (e.g. `:q` before the
     // first frame).
     ed.close_buffer(bid);
@@ -499,7 +499,7 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     ed.handle_key(key_esc());
 
     // The non-focused pane's engine selections must have been synced by
-    // propagate_cs_to_panes — not left empty or stale.
+    // propagate_cs_to_panes, not left empty or stale.
     let engine_pane = &ed.view.panes[second_pane];
     assert!(
         !engine_pane.selections.is_empty(),
@@ -510,8 +510,8 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
 // ── settle() and the pending-work queue ───────────────────────────────────────
 
 /// **Async events fire with no input.** An event raised from async
-/// work — here, `queue_diagnostics_changed`, the same call `drain_lsp` makes
-/// when a `publishDiagnostics` batch lands — must fire once `settle()` runs,
+/// work (here, `queue_diagnostics_changed`, the same call `drain_lsp` makes
+/// when a `publishDiagnostics` batch lands) must fire once `settle()` runs,
 /// even with **no input dispatched at all**. `Editor::run`'s poll loops back
 /// on `Ok(false)` without dispatching anything, so this is the path a
 /// diagnostics batch takes while the user sits idle (or an `(after 0 …)`
@@ -537,7 +537,7 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
 
-    // The async producer's raise call — mirrors what `drain_lsp` does when a
+    // The async producer's raise call, mirroring what `drain_lsp` does when a
     // `publishDiagnostics` batch lands. No key, mouse, or paste event
     // anywhere in this test.
     ed.queue_diagnostics_changed(bid);
@@ -556,7 +556,7 @@ fn event_raised_from_async_work_fires_on_settle_with_no_input() {
 /// synchronously right after it, still before `settle()` starts; two
 /// zero-delay timers each queue a further *call*, but only once `settle()`'s
 /// own `drain_async_sources` runs. They must fire in exactly the order they
-/// entered the merged queue — `Call, Event, Call, Call` — not "every call
+/// entered the merged queue (`Call, Event, Call, Call`), not "every call
 /// before every event" or vice versa: either inversion would still put the
 /// two timer calls after the leading call/event pair, so a naive by-kind
 /// grouping (`["call-0","call-a","call-b","event"]` or
@@ -586,10 +586,10 @@ fn fifo_order_preserved_across_call_and_event_items() {
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Command);
 
     // Confirming the prompt queues its callback as a `Call` synchronously,
-    // inside this very `feed_key` — before settle() runs at all.
+    // inside this very `feed_key`, before settle() runs at all.
     ed.feed_key(key_enter());
 
-    // Queued synchronously too, right after the call above — both are at
+    // Queued synchronously too, right after the call above. Both are at
     // the front of pending_work by the time the two timers convert to
     // queued calls inside settle()'s own drain.
     let bid = ed.focused_buffer_id();
@@ -614,7 +614,7 @@ fn fifo_order_preserved_across_call_and_event_items() {
 /// **Fixpoint within one `settle()` call.** A handler that itself queues
 /// another event (`on-language-set`'s handler calling `set-buffer-language!`
 /// exactly once, not repeatedly) must see that second event drained in the
-/// *same* `settle()` call — not deferred to the next frame or keystroke.
+/// *same* `settle()` call, not deferred to the next frame or keystroke.
 /// Bounded counterpart to the cascade-cap tests below: exactly two fires,
 /// not a runaway loop.
 ///
@@ -713,12 +713,12 @@ fn prepare_frame_alone_does_not_drain_pending_work() {
 
 /// **Paneless case**: `on-buffer-save`'s own
 /// payload is a *buffer*-level handle (see `EditorEvent::steel_args`'s
-/// doc) — it never carries a pane, even for a
+/// doc): it never carries a pane, even for a
 /// buffer that happens to be shown somewhere, so a hook that wants to reach
 /// a `Pane`-category native command must resolve one explicitly via
 /// `(buffer-panes bid)` rather than handing the hook's own `bid` straight to
 /// `call!`. B here is open but shown in no pane at all, so `(buffer-panes
-/// bid)` is empty and the hook's own `error` fires — `delete` never runs on
+/// bid)` is empty and the hook's own `error` fires. `delete` never runs on
 /// the wrong buffer.
 ///
 /// Two buffers, one `on-buffer-save` hook queued per buffer (mirroring what
@@ -741,7 +741,7 @@ fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
         BufferText::from("bbb\n"),
         SelectionSet::default(),
     ));
-    // `open_buffer` does not move focus, nor show the buffer in any pane —
+    // `open_buffer` does not move focus, nor show the buffer in any pane:
     // A stays focused, B is paneless.
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
 
@@ -769,7 +769,7 @@ fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
     assert_eq!(
         ed.state.buffers.get(bid_b).text().to_string(),
         "bbb\n",
-        "B (paneless) must be untouched — its hook run errored instead \
+        "B (paneless) must be untouched: its hook run errored instead \
          of silently deleting from A"
     );
     let log = ed.state.message_log.format_for_display();
@@ -780,7 +780,7 @@ fn on_buffer_save_native_call_on_a_paneless_bid_errors() {
 }
 
 /// **Remote-pane case**: the mirror of the
-/// paneless test above — B is shown in a non-focused split, so
+/// paneless test above: B is shown in a non-focused split, so
 /// `(buffer-panes bid)` names its own pane and the resulting `call!`
 /// succeeds, editing B while leaving A (and focus) untouched. A native
 /// `call!` requires only that some pane shows its target buffer, and the
@@ -812,7 +812,7 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
     .expect("split onto B must succeed");
     // The split moves focus onto the new pane in production
     // (`split_pane_onto`/`:vsplit`), but `open_pane_in_layout` itself does
-    // not — restore focus to A explicitly so this test's premise (A stays
+    // not. Restore focus to A explicitly so this test's premise (A stays
     // focused, B lives in a background split) holds regardless.
     ed.state.focus.set_for_test(pid_a);
     assert_eq!(ed.focused_buffer_id(), bid_a, "setup: A stays focused");
@@ -841,7 +841,7 @@ fn on_buffer_save_native_call_on_a_split_bid_edits_that_pane() {
         ed.state.buffers.get(bid_b).text().to_string(),
         "bb\n",
         "B (shown in a non-focused split) must also have its own hook's \
-         delete applied — a native call! does not require focus"
+         delete applied: a native call! does not require focus"
     );
     assert_eq!(
         ed.state.focus.id(),
@@ -893,12 +893,12 @@ fn wq_fires_on_buffer_save_before_quitting() {
 }
 
 /// **Headless path.** `Editor::step` dispatches a key but does not itself
-/// settle — `hume_editor::run_keys`' loop calls `settle()` once per key,
+/// settle: `hume_editor::run_keys`' loop calls `settle()` once per key,
 /// separately (see `Editor::step`'s doc for why dispatch and settle stay two
 /// calls). Pins that split: `on-mode-change` must not have fired yet right
 /// after `step()`, and only fires once `settle()` runs, mirroring exactly
 /// what `run_keys` does after every `step()`. `OnModeChange` itself isn't
-/// even queued until then — `detect_mode_change`'s diff runs inside
+/// even queued until then: `detect_mode_change`'s diff runs inside
 /// `drain_pending_work`'s loop, which only `settle()` calls, so there
 /// is no "queued but undrained" state to observe in between the way there
 /// is for `OnBufferEnter`, so the test checks the hook's own side effect.
@@ -920,7 +920,7 @@ fn headless_step_then_settle_fires_a_queued_hook() {
     let before = state(&ed);
 
     // Entering Insert changes `mode()`, but `step` dispatches the key
-    // without settling — nothing observes the change until `settle()`'s
+    // without settling. Nothing observes the change until `settle()`'s
     // own `detect_mode_change` diff runs.
     ed.step(key('i'));
     assert_eq!(
@@ -931,7 +931,7 @@ fn headless_step_then_settle_fires_a_queued_hook() {
     assert_eq!(
         state(&ed),
         before,
-        "step() must not settle — the on-mode-change hook must not have fired yet"
+        "step() must not settle: the on-mode-change hook must not have fired yet"
     );
 
     // Mirrors what run_keys' loop does after every step().
@@ -947,7 +947,7 @@ fn headless_step_then_settle_fires_a_queued_hook() {
 
 /// `last_entered_buffer` starts `None`, so the very first `settle()` a fresh
 /// `Editor` ever runs must observe a diff against it and fire
-/// `on-buffer-enter` for the startup buffer — matching Vim's `BufEnter`
+/// `on-buffer-enter` for the startup buffer, matching Vim's `BufEnter`
 /// firing once on open.
 ///
 /// Seeded with the startup buffer, the diff would find nothing new and the
@@ -985,7 +985,7 @@ fn startup_buffer_fires_on_buffer_enter_on_the_first_settle() {
 }
 
 /// A `settle()` with no focus change since the last one must not raise a
-/// fresh `OnBufferEnter` — an unconditional fire would mean a `stat` (via
+/// fresh `OnBufferEnter`. An unconditional fire would mean a `stat` (via
 /// its Rust reaction) and a Steel call on every idle frame.
 ///
 /// The `last_entered_buffer` comparison in `Editor::detect_buffer_enter` is
@@ -1027,7 +1027,7 @@ fn settle_with_no_focus_change_raises_no_further_on_buffer_enter() {
 /// Two switches queued back to back with no `settle()` between them (the
 /// shape of a hook or async callback chaining a further switch mid-drain, or
 /// several Steel effects landing in one batch) must coalesce into a single
-/// `OnBufferEnter`, for the *final* buffer — not one per intermediate write.
+/// `OnBufferEnter`, for the *final* buffer, not one per intermediate write.
 /// The diff is taken against `last_entered_buffer`, not against every raw
 /// write to `state.focus`/`pane.buffer_id`.
 #[test]
@@ -1082,8 +1082,8 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
 /// real focus change like pane-focus cycling) *and* `pane.buffer_id` (like a
 /// buffer switch) before any `settle()` runs must
 /// still coalesce into a single `OnBufferEnter` for wherever focus ends up
-/// — `focused_buffer_id()` is one join evaluated once per pass, not two
-/// independent things to diff separately.
+/// (`focused_buffer_id()` is one join evaluated once per pass, not two
+/// independent things to diff separately).
 #[test]
 fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
     use crate::editor::buffer::Buffer;
@@ -1146,7 +1146,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
 }
 
 /// A handler that itself calls `switch-to-buffer!` re-triggers the diff on
-/// the *next pass of the same `settle()` call* — not a frame later. Needs
+/// the *next pass of the same `settle()` call*, not a frame later. Needs
 /// the real host (`switch-to-buffer!`/`open-buffer!` are gated to
 /// `Command`/`PluginActivation` mode, unavailable to `MockHost`); both are
 /// legal from inside a fired hook, which runs under `Command` mode
@@ -1203,7 +1203,7 @@ fn handler_driven_switch_produces_a_second_on_buffer_enter_in_the_same_settle_ca
 }
 
 /// `on-focus-gained` fires with no args, from `handle_input(FocusIn)` +
-/// `settle()` — nothing routes through `OnBufferEnter`'s per-buffer
+/// `settle()`. Nothing routes through `OnBufferEnter`'s per-buffer
 /// mechanism, since regaining terminal focus may be relevant to every open
 /// buffer, not just the focused one.
 ///
@@ -1240,9 +1240,9 @@ fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
     );
 }
 
-/// `on-option-change` fires `(key value)` after `apply_global` — the single
+/// `on-option-change` fires `(key value)` after `apply_global` (the single
 /// write path `:set global`, `set-option!`, and `:theme` all funnel through
-/// (`settings/ops.rs`) — succeeds. Exercised via `:set global` here;
+/// in `settings/ops.rs`) succeeds. Exercised via `:set global` here;
 /// `tests/unix/lsp_inlay_feature.rs`'s
 /// `setting_off_via_set_command_clears_hints_through_the_plugin_hook` covers
 /// the same raise reached through the real shipped plugin's own handler.
@@ -1325,7 +1325,7 @@ fn typing_one_character_fires_on_text_changed_once() {
 }
 
 /// Several mutations to the same buffer before a single `settle()` coalesce
-/// into one `on-text-changed` — the contract `on-text-changed`'s doc states
+/// into one `on-text-changed`: the contract `on-text-changed`'s doc states
 /// and `BufferStore::take_text_changed` implements.
 #[test]
 fn several_edits_before_one_settle_coalesce_into_one_event() {
@@ -1343,7 +1343,7 @@ fn several_edits_before_one_settle_coalesce_into_one_event() {
     ed.scripting = Some(host);
     ed.settle();
 
-    // Three keystrokes, no settle() between them — `feed_key` only steps the
+    // Three keystrokes, no settle() between them: `feed_key` only steps the
     // keymap, it never drains `pending_work` on its own.
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
@@ -1399,12 +1399,12 @@ fn undo_fires_but_a_no_op_undo_at_root_does_not() {
     ed.settle();
     assert_eq!(fire_count(&ed), 1, "the edit itself must fire once");
 
-    // `u` (undo) restores the pre-edit text — a real mutation, must fire.
+    // `u` (undo) restores the pre-edit text: a real mutation, must fire.
     ed.feed_key(key('u'));
     ed.settle();
     assert_eq!(fire_count(&ed), 2, "undoing the edit must fire again");
 
-    // History is now at its root — a second `u` is a no-op, must not fire.
+    // History is now at its root, so a second `u` is a no-op, must not fire.
     ed.feed_key(key('u'));
     ed.settle();
     assert_eq!(
@@ -1414,7 +1414,7 @@ fn undo_fires_but_a_no_op_undo_at_root_does_not() {
     );
 }
 
-/// `:e!` reload (`Editor::reload_buffer_in_place`) fires `on-text-changed` —
+/// `:e!` reload (`Editor::reload_buffer_in_place`) fires `on-text-changed`:
 /// the case a raise site at `doc_ops::finish_edit` would have missed, since
 /// reload never goes through `doc_ops` (see `BufferStore::edit_seq`'s doc).
 #[test]
@@ -1503,7 +1503,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     );
 }
 
-/// Opening a buffer fires `on-buffer-open`, not `on-text-changed` — a fresh
+/// Opening a buffer fires `on-buffer-open`, not `on-text-changed`. A fresh
 /// buffer's `text_gen` starts at 0 and `announced_text_gen` is seeded to
 /// match, so there is no diff to observe.
 #[test]
@@ -1543,24 +1543,24 @@ fn opening_a_buffer_fires_on_buffer_open_not_on_text_changed() {
     );
 }
 
-/// A handler that itself edits on `on-text-changed` is a feedback loop —
+/// A handler that itself edits on `on-text-changed` is a feedback loop that
 /// must be cut off by the same drain cap the other cascade tests exercise,
 /// not livelock the editor. Detection runs *inside* `drain_pending_work`'s
 /// fixpoint specifically so this cap can catch it (see the call site's doc).
 ///
 /// The handler alternates `make-text-uppercase`/`make-text-lowercase` on the
-/// selected letter — whichever direction the selection is in, at least one
+/// selected letter: whichever direction the selection is in, at least one
 /// of the two always changes the character (a lowercase letter capitalizes;
 /// an uppercase one lowercases), so every invocation bumps `text_gen` and
 /// re-triggers `on-text-changed`, guaranteeing the loop never runs dry on
 /// its own.
 #[test]
 fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
-    // Selection starts on the letter `a` and never moves — `make-text-*`
-    // transforms case in place — so the alternation below never runs dry.
+    // Selection starts on the letter `a` and never moves (`make-text-*`
+    // transforms case in place), so the alternation below never runs dry.
     // `define-command!`'s effect (registering "kick") only takes hold once
     // applied, so this uses `eval_with_real_host` rather than
-    // `eval_source`+`MockHost` — the latter never calls
+    // `eval_source`+`MockHost`: the latter never calls
     // `apply_script_effects`, so a defined command would never actually
     // reach `ed.state.config.commands`.
     let tmp = safe_tempdir();
@@ -1597,7 +1597,7 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
 }
 
 /// Closing the last buffer frees its slot and opens a fresh scratch buffer
-/// under a brand new `BufferId` (`close_buffer`'s last-buffer branch) — a
+/// under a brand new `BufferId` (`close_buffer`'s last-buffer branch): a
 /// close+open pair, not a content swap under a surviving id. `on-text-
 /// changed` must never fire for it (no surviving buffer's content changed);
 /// the new scratch buffer instead announces its own `on-buffer-open`, like
@@ -1645,7 +1645,7 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
         .count();
     assert_eq!(
         changed_fires, 0,
-        "no surviving buffer changed content — on-text-changed must not fire"
+        "no surviving buffer changed content: on-text-changed must not fire"
     );
     let opened_fires = ed
         .state
@@ -1662,7 +1662,7 @@ fn last_buffer_close_opens_a_fresh_scratch_buffer_not_a_content_swap() {
 /// Opening a read-only view (`:messages`/`:ls`) for the first time is silent
 /// (fresh `Buffer`, baseline matches); refreshing an existing one via the
 /// same label reuses the buffer and calls `set_view_content`, which must
-/// fire `on-text-changed` — the documented trigger `store/tests.rs`'s
+/// fire `on-text-changed`: the documented trigger `store/tests.rs`'s
 /// coverage never exercised end-to-end (it calls `set_view_content`
 /// directly, bypassing `open_read_only_view`'s reuse path).
 ///
@@ -1720,7 +1720,7 @@ fn read_only_view_refresh_fires_on_text_changed() {
     );
 }
 
-/// An identity edit (a command whose `ChangeSet` is the identity transform —
+/// An identity edit (a command whose `ChangeSet` is the identity transform,
 /// every op a `Retain`) must not bump `text_gen`: `Buffer::apply_edit` skips
 /// `set_text` entirely for one, so it must not fire `on-text-changed` either.
 /// Also asserts `doc_ops::finish_edit`'s matching guard: `edit_seq` (the
@@ -1845,10 +1845,10 @@ fn identity_edit_records_no_undo_revision() {
 
 /// An insert session whose composed edits cancel out to the identity
 /// transform (type a character, then backspace it, all inside one insert
-/// session) must record no undo revision at all — `commit_edit_group`'s
+/// session) must record no undo revision at all: `commit_edit_group`'s
 /// identity guard. `text_gen` still moves during the session itself (each
 /// keystroke is individually a real, non-identity `set_text`, so
-/// `on-text-changed` correctly fires once for it, coalesced) — the guard's
+/// `on-text-changed` correctly fires once for it, coalesced). The guard's
 /// job is narrower: making sure nothing lands on the undo stack for `u` to
 /// later replay as a *second*, phantom mutation.
 ///
@@ -1883,7 +1883,7 @@ fn insert_then_backspace_records_no_revision() {
             .count()
     };
 
-    // Type 'z', then backspace it, all within one insert session — the
+    // Type 'z', then backspace it, all within one insert session. The
     // composed ChangeSet cancels to identity (the same cancellation
     // `changeset/tests.rs`'s `compose_insert_then_delete` pins).
     ed.feed_key(key('i'));
@@ -1908,18 +1908,18 @@ fn insert_then_backspace_records_no_revision() {
     assert_eq!(
         fire_count(&ed),
         1,
-        "the session's own keystrokes are real intermediate mutations — must fire once, coalesced"
+        "the session's own keystrokes are real intermediate mutations: must fire once, coalesced"
     );
 
     // `u` must be a silent no-op (nothing was ever recorded for it to undo),
-    // not replay a phantom identity revision — and must therefore not fire a
+    // not replay a phantom identity revision, and must therefore not fire a
     // second on-text-changed.
     ed.feed_key(key('u'));
     ed.settle();
     assert_eq!(
         ed.doc().text().to_string(),
         original,
-        "undo must leave the text untouched — there is nothing to undo"
+        "undo must leave the text untouched: there is nothing to undo"
     );
     assert_eq!(
         fire_count(&ed),
@@ -2004,13 +2004,13 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
     ed.scripting = Some(host);
     ed.settle(); // drain startup on-buffer-open/on-buffer-enter
 
-    // Real edit on B — bumps text_gen, not yet observed by a drain pass.
+    // Real edit on B: bumps text_gen, not yet observed by a drain pass.
     ed.feed_key(key('i'));
     ed.feed_key(key('z'));
     ed.feed_key(key_esc());
 
     // Schedule the close, due immediately, and convert it to a queued Call
-    // — but don't drain it yet.
+    // but don't drain it yet.
     type_cmd(&mut ed, ":start");
     ed.drain_async_sources();
     assert!(
@@ -2046,7 +2046,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
 
 /// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
 /// cycling and a mouse click into another pane both move focus with no
-/// write to `pane.buffer_id` at all — `state.focus` is the only field
+/// write to `pane.buffer_id` at all: `state.focus` is the only field
 /// that changes. Counting fires (not just checking a confirm opened, which
 /// a duplicate fire would still satisfy) pins that `settle()`'s diff raises
 /// exactly one event per action, not once per write site it happens to
@@ -2075,7 +2075,7 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     );
     ed.scripting = Some(host);
 
-    // Settle the setup switches above, and establish pane geometry once —
+    // Settle the setup switches above, and establish pane geometry once:
     // `mouse_left_down` needs real pane rects, and rects don't depend on
     // which pane is focused, so one `prepare_frame` call covers both
     // actions below.
@@ -2104,7 +2104,7 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
         "pane-focus cycling must raise exactly one OnBufferEnter"
     );
 
-    // Now A (left) is focused. Click into the right pane (B) — the same
+    // Now A (left) is focused. Click into the right pane (B), the same
     // `focus_pane` chokepoint, via `handle_input`'s mouse arm instead of the
     // keymap.
     let before = count(&ed);
@@ -2120,7 +2120,7 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
 /// `run_pending_batch` must skip *any* buffer-scoped
 /// event whose buffer has died since it was queued, not just
 /// `OnTextChanged`. Queues `OnDiagnosticsChanged` for `bid`, then closes
-/// `bid` before the batch drains — reproducing "something else that ran
+/// `bid` before the batch drains, reproducing "something else that ran
 /// first closed the buffer this event was about", the same race an
 /// intervening timer thunk or async callback in the same batch would cause.
 ///
@@ -2150,7 +2150,7 @@ fn buffer_scoped_event_is_skipped_once_its_buffer_has_closed() {
     ed.scripting = Some(host);
 
     ed.queue_diagnostics_changed(bid);
-    // Reproduces "something else in the same batch closed bid first" —
+    // Reproduces "something else in the same batch closed bid first":
     // here, a direct close between queueing and the drain, rather than a
     // timer thunk queued ahead of the event; the observable failure mode
     // (the batch reaches a dead bid) is identical either way.
@@ -2208,7 +2208,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
     ed.scripting = Some(host);
 
     ed.queue_viewport_change(pid_b);
-    // Reproduces "something else in the same batch closed the pane first" —
+    // Reproduces "something else in the same batch closed the pane first":
     // a direct close here, rather than an earlier-queued timer's own
     // pane-close; the observable failure (the batch reaches a dead pane) is
     // identical either way. The buffer stays open in A throughout.
@@ -2236,7 +2236,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
 }
 
 /// Two handlers registered for the same event, in a
-/// batch where the first raises, must both run — a plugin bug in one
+/// batch where the first raises, must both run. A plugin bug in one
 /// handler must not silently drop every handler registered after it for
 /// the same event.
 ///

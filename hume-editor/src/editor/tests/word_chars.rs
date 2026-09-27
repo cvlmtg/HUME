@@ -74,7 +74,7 @@ fn star_anchors_hyphenated_word_on_both_sides() {
 #[test]
 fn star_omits_leading_anchor_for_leading_hyphen() {
     // "--foo": the run's leading edge is '-', not a built-in word char, so
-    // rust-regex's own `\b` can never match there — no leading anchor.
+    // rust-regex's own `\b` can never match there, so no leading anchor.
     let mut ed = editor_from("-[-]>-foo bar\n");
     ed.state.settings.word_chars = "-".into();
     ed.feed_key(key('*'));
@@ -116,7 +116,7 @@ fn select_word_nearest_on_line_follows_word_chars() {
 }
 
 /// The test above already exercises the wrap branch of
-/// `cmd_visual_select_word_nearest_on_line` — wrap is on by default
+/// `cmd_visual_select_word_nearest_on_line`: wrap is on by default
 /// (`wrap-mode = indent`, width 0). What it doesn't reach is a buffer line
 /// that actually splits into two visual sub-rows, where the wrap-aware path
 /// hands `nearest_word_on_line` a `line_start` bounded to the cursor's own

@@ -1,4 +1,4 @@
-// Lazy-plugin machinery tests that need no Steel plugin files on disk —
+// Lazy-plugin machinery tests that need no Steel plugin files on disk:
 // they drive `CommandHost`/the dispatch pipeline directly, so they run on
 // every platform. The plugin-loading end-to-end tests (Scheme require
 // strings embed OS paths) live in `unix/plugins.rs`.
@@ -43,12 +43,12 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
 }
 
 /// Keypress dispatch of a `SteelBacked` command whose `command_table` entry
-/// is missing must fail loudly, naming the desync — never silently no-op or
+/// is missing must fail loudly, naming the desync, never silently no-op or
 /// fall back to `%dispatch-command`'s own miss handling (that dispatcher is
 /// reserved for `call!`/bare-name calls originating inside the VM).
 ///
 /// This state (registry entry present, no `command_table` entry) cannot
-/// arise from `define-command!` in production — it simulates a desync
+/// arise from `define-command!` in production; it simulates a desync
 /// directly to pin `call_steel_cmd`'s fail-fast guard.
 ///
 /// A fallback to `%dispatch-command` on a `command_table` miss would report
@@ -68,7 +68,7 @@ fn keypress_dispatch_command_table_desync_reports_error() {
             inline_output: false,
             repeatable: false,
         });
-    // A fresh scripting host's command_table has no entry for "ghost-cmd" —
+    // A fresh scripting host's command_table has no entry for "ghost-cmd":
     // it never went through define-command!, simulating a registry/table desync.
     ed.scripting = Some(ScriptingHost::new());
 

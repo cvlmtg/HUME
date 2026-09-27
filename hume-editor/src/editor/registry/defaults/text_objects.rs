@@ -54,7 +54,7 @@ impl CommandRegistry {
         // `EditorCmd`, not `selection!`: needs a `DisplayLineMap` for wrap-aware
         // nearest-word placement (see `visual_move.rs::cmd_visual_select_word_nearest_on_line`).
         // `.establishes_selection()`: same in-place establishing semantics
-        // as `select-word` (`mm`, a plain `Selection`) — replayable on its
+        // as `select-word` (`mm`, a plain `Selection`), replayable on its
         // own from a fresh cursor.
         ecmd_pane(
             "select-word-nearest-on-line",
@@ -89,7 +89,7 @@ impl CommandRegistry {
         // `mm`/`MM`: select the word/WORD under the cursor. Unlike
         // `inner-word`/`around-word` (`miw`/`maw`, never flag-affected), these
         // cover the destination word's whitespace bookend when
-        // `word-selects-whitespace` resolves true — see `WordCtx::around`,
+        // `word-selects-whitespace` resolves true. See `WordCtx::around`,
         // read inside `cmd_select_word`/`cmd_select_uppercase_word`.
         super::selection!(
             self,

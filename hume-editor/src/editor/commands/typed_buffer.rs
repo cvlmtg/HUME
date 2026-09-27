@@ -9,18 +9,18 @@ use crate::editor::error::CommandError;
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
 
-/// `:e [path]` — open a file in the current window.
+/// `:e [path]`: open a file in the current window.
 ///
 /// - No `path`: reload current file from disk (`:e!` discards unsaved changes).
 ///   On a new-file buffer (`:e` on a path that doesn't exist yet, not written
-///   since) this is a no-op — there is nothing on disk to reload from.
+///   since) this is a no-op: there is nothing on disk to reload from.
 /// - `path` given and already open: switch to the existing buffer.
 /// - `path` given and not open: read from disk, open a new buffer, switch to it.
 ///   A `path` that doesn't exist on disk opens an empty buffer bound to it
-///   instead of erroring — `:w` creates the file (Vim's `:e newfile` semantics).
+///   instead of erroring: `:w` creates the file (Vim's `:e newfile` semantics).
 ///
 /// Dedup uses `find_by_path` (canonical path comparison, or best-effort for a
-/// not-yet-existing path — see `Editor::resolve_buffer_path`). `force` (`!`
+/// not-yet-existing path; see `Editor::resolve_buffer_path`). `force` (`!`
 /// suffix) only takes effect in the no-arg reload branch: it discards unsaved
 /// changes and re-reads the file from disk. When a path is given, `force` is
 /// unused.
@@ -62,13 +62,13 @@ pub(in crate::editor) fn typed_edit(
     } else {
         // Reload current file. The history-preserving reload keeps the existing
         // Buffer (only its text + file_meta are swapped), so `path` and
-        // `display_path` are retained as-is — no need to re-seed them onto the
+        // `display_path` are retained as-is, with no need to re-seed them onto the
         // freshly read doc.
         let doc = super::doc(&ed.state, &ed.view, fp.pane());
         let Some(path) = doc.path().map(Path::to_path_buf) else {
             return Err(CommandError::transient("no file name"));
         };
-        // Nothing on disk to reload from yet — a reload here would just be a
+        // Nothing on disk to reload from yet: a reload here would just be a
         // no-op, so short-circuit before the dirty check rather than making
         // the user add `!` to force a reload that would discard edits for no
         // reason. Checked before the dirty gate deliberately.
@@ -94,13 +94,13 @@ pub(in crate::editor) fn typed_edit(
     }
 }
 
-/// `:checktime` — check every open buffer against its backing file, right
+/// `:checktime`: check every open buffer against its backing file, right
 /// now, without waiting for the next automatic trigger (terminal focus,
 /// buffer-enter, return from an inline shell command). Silent when nothing
 /// changed; otherwise reports/prompts like any other trigger, with one
 /// exception: a buffer whose change the user already declined (`[k]eep`)
-/// still gets a warning here — a direct "check now" request must never come
-/// back silent just because an earlier prompt was dismissed — see
+/// still gets a warning here: a direct "check now" request must never come
+/// back silent just because an earlier prompt was dismissed. See
 /// `DiskCheckTrigger::Explicit`. `force` has no effect: force accepting a
 /// reload is what the confirm's `[r]eload` choice (or `:e!`) is for.
 pub(in crate::editor) fn typed_checktime(
@@ -113,7 +113,7 @@ pub(in crate::editor) fn typed_checktime(
     Ok(())
 }
 
-/// `:cd [path]` — change the working directory.
+/// `:cd [path]`: change the working directory.
 ///
 /// - No arg: change to `$HOME`.
 /// - `path` given: `~` / env-var expansion applied first; relative paths
@@ -142,7 +142,7 @@ pub(in crate::editor) fn typed_cd(
     Ok(())
 }
 
-/// `:pwd` / `:print-working-directory` — display the current working directory.
+/// `:pwd` / `:print-working-directory`: display the current working directory.
 pub(in crate::editor) fn typed_pwd(
     ed: &mut Editor,
     _fp: FocusedPane,
@@ -156,7 +156,7 @@ pub(in crate::editor) fn typed_pwd(
     Ok(())
 }
 
-/// `:bd` — delete (close) the focused buffer.
+/// `:bd`: delete (close) the focused buffer.
 ///
 /// If the buffer is dirty and `force` is false, returns an error.
 /// If it is the only buffer, it is replaced with a scratch buffer.
@@ -176,16 +176,16 @@ pub(in crate::editor) fn typed_buffer_delete(
     Ok(())
 }
 
-/// `:b` / `:buffer` — switch to an open buffer by name, prefix, index, or full path.
+/// `:b` / `:buffer`: switch to an open buffer by name, prefix, index, or full path.
 ///
 /// Accepts four argument forms (tried in order):
 /// 1. Numeric 1-based index matching `:ls` output.
-/// 2. Absolute path (after `~`/env-var expansion) — resolved via canonicalize
+/// 2. Absolute path (after `~`/env-var expansion), resolved via canonicalize
 ///    then looked up in the store.
 /// 3. Exact display-name match (basename or `*scratch*`).
 /// 4. Unique basename prefix.
 ///
-/// The `force` flag is accepted syntactically but has no effect — there is
+/// The `force` flag is accepted syntactically but has no effect: there is
 /// nothing to force on a plain buffer switch.
 pub(in crate::editor) fn typed_buffer(
     ed: &mut Editor,
@@ -213,7 +213,7 @@ pub(in crate::editor) fn typed_buffer(
 /// `resolve_buffer_path`'s fully-lexical fallback at that time (see its
 /// doc); once the directory appears, re-resolving the same typed string
 /// canonicalizes further and no longer matches the stored key. Skipped when
-/// the two forms already agree — the common case needs no second lookup.
+/// the two forms already agree, since the common case needs no second lookup.
 fn find_buffer_by_path_arg(ed: &Editor, arg: &str) -> Option<BufferId> {
     let arg_path = std::path::Path::new(arg);
     let resolved = Editor::resolve_buffer_path(arg_path, &ed.state.cwd);
@@ -242,7 +242,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
             .unwrap_or_else(|| Buffer::SCRATCH_BUFFER_NAME.to_owned())
     };
 
-    // 0. `#` — the alternate buffer (Vim's `<C-^>` equivalent). Resolved by
+    // 0. `#`: the alternate buffer (Vim's `<C-^>` equivalent). Resolved by
     //    ID, not by path, so pathless buffers (scratch, [messages], the
     //    [buffers] view from :ls) remain reachable as the alternate.
     if arg == "#" {
@@ -267,9 +267,9 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
             .ok_or_else(|| CommandError::transient(format!("no buffer at index {n}")));
     }
 
-    // 2. Absolute path — match an open buffer by canonical OR lexical path.
+    // 2. Absolute path: match an open buffer by canonical OR lexical path.
     //    Lexical fallback keeps buffers reachable after their file is deleted.
-    //    `~`/env-var expansion first, matching :e's handling (typed_edit) —
+    //    `~`/env-var expansion first, matching :e's handling (typed_edit):
     //    an ambiguity message's label can be a `~`-collapsed display_path, so
     //    retyping it verbatim must resolve the same way :e would.
     let expanded = hume_platform::path::expand(arg);
@@ -329,7 +329,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
 
 /// Take one open-order buffer step for `:bnext`/`:bprev`, recording by hand
 /// the jump the mappable `goto-next-buffer`/`goto-prev-buffer` siblings get
-/// from their `.jump()` meta — the `:` dispatcher reads no `CmdMeta`.
+/// from their `.jump()` meta: the `:` dispatcher reads no `CmdMeta`.
 fn typed_buffer_step(
     ed: &mut Editor,
     fp: FocusedPane,
@@ -342,7 +342,7 @@ fn typed_buffer_step(
     Ok(())
 }
 
-/// `:bnext` / `:bn` — switch to the next buffer in open-order.
+/// `:bnext` / `:bn`: switch to the next buffer in open-order.
 pub(in crate::editor) fn typed_bnext(
     ed: &mut Editor,
     fp: FocusedPane,
@@ -352,7 +352,7 @@ pub(in crate::editor) fn typed_bnext(
     typed_buffer_step(ed, fp, BufferStep::Next)
 }
 
-/// `:bprev` / `:bp` — switch to the previous buffer in open-order.
+/// `:bprev` / `:bp`: switch to the previous buffer in open-order.
 pub(in crate::editor) fn typed_bprev(
     ed: &mut Editor,
     fp: FocusedPane,

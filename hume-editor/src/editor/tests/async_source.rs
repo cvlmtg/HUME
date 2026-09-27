@@ -1,6 +1,6 @@
 // Generalized event-loop wake (`wake_timeout`) and the timer wheel's
 // integration with it as a real AsyncSource. Response/completion arrival is
-// not a poll cadence this module tracks — background threads wake the
+// not a poll cadence this module tracks: background threads wake the
 // event loop's wait primitive directly via `termina::PlatformWaker`, so
 // `wake_timeout` reports real deadlines only: the timer wheel's own
 // schedule, and the LSP source's earliest pending-request deadline / spinner
@@ -13,7 +13,7 @@ use hume_treesitter::parse_worker::{ParseBackend, ParseDone, ParseRequest};
 
 /// A `ParseBackend` double that never completes a request, without spinning
 /// a real thread. The parse worker does not contribute an `AsyncSource` (see
-/// `in_flight_parse_no_longer_forces_a_wake` below) — `ParseBackend` has no
+/// `in_flight_parse_no_longer_forces_a_wake` below); `ParseBackend` has no
 /// in-flight query at all (that state lives on `Syntax` now), so this double
 /// exists purely to prove `wake_timeout` stays unaffected by a backend that
 /// never drains anything, arrival being wake-driven instead.
@@ -32,8 +32,8 @@ impl ParseBackend for AlwaysPendingBackend {
 #[test]
 fn wake_timeout_is_none_when_idle() {
     // The test harness's InlineParseBackend never reports in-flight work and
-    // a freshly-constructed editor's timer wheel has nothing scheduled —
-    // idle across every source must stay a blocking wait.
+    // a freshly-constructed editor's timer wheel has nothing scheduled,
+    // so idle across every source must stay a blocking wait.
     let ed = editor_from("-[w]>ord\n");
     assert_eq!(ed.wake_timeout(), None);
 }
@@ -41,8 +41,8 @@ fn wake_timeout_is_none_when_idle() {
 #[test]
 fn in_flight_parse_no_longer_forces_a_wake() {
     // The parse worker must not contribute an `AsyncSource` regardless of
-    // backend state — parse completion wakes the loop through the platform
-    // waker, not a deadline — so this must stay `None` even against a
+    // backend state (parse completion wakes the loop through the platform
+    // waker, not a deadline), so this must stay `None` even against a
     // backend that never drains anything.
     let mut ed = editor_from("-[w]>ord\n");
     ed.parse_worker = Box::new(AlwaysPendingBackend);
@@ -53,7 +53,7 @@ fn in_flight_parse_no_longer_forces_a_wake() {
 fn wake_timeout_bounded_by_nearer_timer_deadline() {
     // The generalized wake predicate deferred this case ("Some(<timeout>)
     // when a nearer deadline exists") until a second real AsyncSource
-    // existed — the timer wheel is that source.
+    // existed; the timer wheel is that source.
     let mut ed = editor_from("-[w]>ord\n");
     ed.timer_wheel.schedule(Duration::from_millis(2));
 
@@ -67,7 +67,7 @@ fn wake_timeout_bounded_by_nearer_timer_deadline() {
 #[test]
 fn wake_timeout_distant_timer_bounds_without_busy_polling() {
     // A far-future deadline must be honored almost exactly, not collapsed to
-    // some artificially short cadence — there is no "pending" poll source
+    // some artificially short cadence. There is no "pending" poll source
     // left to do that collapsing (arrival is wake-driven now), but this
     // still pins that a distant timer isn't somehow shortened.
     let mut ed = editor_from("-[w]>ord\n");
@@ -139,7 +139,7 @@ mod next_wake_covers_client_state {
     use std::path::{Path, PathBuf};
 
     /// The spinner's own cadence (`SPINNER_INTERVAL` in `lsp/mod.rs`, which
-    /// is private to that module) — duplicated here as a literal rather than
+    /// is private to that module), duplicated here as a literal rather than
     /// widening that constant's visibility just for test comparisons.
     const SPINNER_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -172,7 +172,7 @@ mod next_wake_covers_client_state {
 
     #[test]
     fn starting_client_with_pending_initialize_keeps_spinner_cadence() {
-        // The in-flight `initialize` request itself carries a 30s deadline —
+        // The in-flight `initialize` request itself carries a 30s deadline,
         // far longer than the spinner cadence. The spinner arm must still
         // win so the handshake animation doesn't freeze for 30 seconds.
         let (mut ed, sid) = wired_editor();
@@ -220,7 +220,7 @@ mod next_wake_covers_client_state {
     #[test]
     fn earliest_deadline_wins_across_multiple_servers() {
         // `next_wake` aggregates `earliest_deadline()` across every server
-        // with `.min()` — a far deadline on one server must never hide a
+        // with `.min()`: a far deadline on one server must never hide a
         // near one on another.
         let mut ed = editor_from("-[w]>ord\n");
         let mut backend = InlineLspBackend::new();
@@ -265,7 +265,7 @@ mod next_wake_covers_client_state {
     #[test]
     fn running_idle_client_blocks_fully() {
         // Pins the heartbeat's deletion: a Running client with nothing
-        // pending and no progress must not force any wake at all — arrival
+        // pending and no progress must not force any wake at all. Arrival
         // is wake-driven now, so idle-Running is genuinely idle.
         let (mut ed, sid) = wired_editor();
         let mut client = LspClient::new(sid, PathBuf::from("."));

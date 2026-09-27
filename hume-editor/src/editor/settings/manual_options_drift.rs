@@ -2,7 +2,7 @@
 //!
 //! `user-manual/docs/configuration.md`'s "Global options"/"Buffer options"
 //! tables are a hand-maintained mirror of `settings::all_setting_keys()`
-//! (plus `"language"`, documented but excluded from that list by design —
+//! (plus `"language"`, documented but excluded from that list by design;
 //! see `settings.rs`'s module doc). Nothing else keeps the two in sync;
 //! `user_manual_option_tables_match_all_setting_keys` scans both tables for
 //! every backtick-quoted first-column key and diffs the set against the
@@ -14,7 +14,7 @@
 //! Lives here rather than in `arch-lints` (the workspace's other
 //! architectural lints, `absent_decode`/`init_example`/etc.): those scan
 //! source text as strings and never link against the crates they check, but
-//! this lint calls `all_setting_keys`/`setting_scopes`/`Scope` directly —
+//! this lint calls `all_setting_keys`/`setting_scopes`/`Scope` directly, while
 //! `arch-lints` has zero dependencies by design (see its own module doc),
 //! never constructing an `Editor` or linking against `hume-editor` at all;
 //! moving this lint there would mean adding that dependency, destroying the
@@ -22,7 +22,7 @@
 //! has a natural home next to the settings it inspects.
 
 /// The text between the first occurrence of `heading` and the next
-/// top-level (`\n## `) heading — used to scope a key scan to just one
+/// top-level (`\n## `) heading, used to scope a key scan to just one
 /// section of a markdown doc, not the whole file.
 fn section_after<'a>(text: &'a str, heading: &str) -> &'a str {
     let start = text
@@ -54,7 +54,7 @@ fn first_cell_keys(section: &str) -> std::collections::BTreeSet<String> {
 #[test]
 fn user_manual_option_tables_match_all_setting_keys() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR not set — run via `cargo test`");
+        .expect("CARGO_MANIFEST_DIR not set: run via `cargo test`");
     let manual_path = std::path::Path::new(&manifest).join("../user-manual/docs/configuration.md");
     let text = std::fs::read_to_string(&manual_path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", manual_path.display()));
@@ -77,7 +77,7 @@ fn user_manual_option_tables_match_all_setting_keys() {
     let stale_in_docs: Vec<_> = documented.difference(&code_keys).collect();
 
     // A key present in *some* table isn't necessarily under the *right*
-    // one — a name-set diff alone can't catch a row filed under the
+    // one: a name-set diff alone can't catch a row filed under the
     // wrong heading. Cross-check each documented key's own table
     // against its declared scope.
     use super::Scope;

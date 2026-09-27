@@ -8,7 +8,7 @@ impl Editor {
     /// report the error), leaving messages unflushed.  Called by both the
     /// command-stub path and the event-/language-activation path.
     ///
-    /// Applying effects here — rather than leaving them for some later drain —
+    /// Applying effects here, rather than leaving them for some later drain,
     /// is what lets a lazily-activated plugin's own `register-lsp-server!` (or
     /// `set-buffer-language!`, grammar sweep, ...) take effect before this call
     /// returns, so the buffer that triggered activation isn't skipped.
@@ -77,7 +77,7 @@ impl Editor {
         }
         self.activate_and_trace(plugin, &format!("by command '{name}'"));
         self.flush_script_messages();
-        // Loop guard: if name is still a Lazy stub (mappable or typed — body
+        // Loop guard: if name is still a Lazy stub (mappable or typed, since the body
         // never defined it) or gone, remove it and signal failure so the
         // caller does not re-enter. `lazy_owner` covers both stub kinds so
         // this check works whether `name` was declared via `#:commands` or

@@ -5,7 +5,7 @@
 // plumbing.
 //
 // Every test here goes through `Editor::open(None, std::sync::Arc::new(|| {}))` (not `editor_from`'s
-// bare `Pane::new`) — `PaneVirtualLines` is only registered by `build_pane`,
+// bare `Pane::new`): `PaneVirtualLines` is only registered by `build_pane`,
 // same reasoning as `lsp_render.rs`.
 
 use super::*;
@@ -13,7 +13,7 @@ use hume_engine::pipeline::RenderContext;
 use hume_grid::{Rect, Rgb};
 
 /// The synced `VirtualLine`s filed under `line` on the focused pane, after a
-/// `prepare_frame` — the same read `clearing_the_store_removes_the_virtual_line_next_frame`
+/// `prepare_frame`, the same read `clearing_the_store_removes_the_virtual_line_next_frame`
 /// does, generalized to inspect segments rather than just presence.
 fn virtual_lines_at(ed: &Editor, line: usize) -> Vec<hume_engine::providers::VirtualLine> {
     let pid = ed.state.focus.id();
@@ -55,11 +55,11 @@ fn virtual_line_renders_after_its_anchor_line() {
 
 #[test]
 fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
-    // Snapshot proof (not a numeric row assertion — `cursor::content_pos`'s
+    // Snapshot proof (not a numeric row assertion: `cursor::content_pos`'s
     // internals aren't reachable from this integration-style test module):
     // with a virtual line inserted after line 0, moving the cursor onto
     // line 1 ('bbb') must still show "bbb" directly below the virtual
-    // line's own row — the row-counting fix must correctly push line
+    // line's own row; the row-counting fix must correctly push line
     // 1's content down by the one stolen row, never overlap or skip it.
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -169,7 +169,7 @@ fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
     assert_eq!(
         lines[0].segments,
         vec![(bc(2), bc(4), kw)],
-        "'segments passes through sparse — the engine, not the editor, fills gaps from base_scope"
+        "'segments passes through sparse; the engine, not the editor, fills gaps from base_scope"
     );
     assert_eq!(
         lines[0].base_scope,
@@ -203,7 +203,7 @@ fn no_segments_yields_an_empty_segment_list() {
     assert_eq!(
         lines[0].segments,
         Vec::new(),
-        "no 'segments — the whole row falls back to base_scope, nothing to name as a segment"
+        "no 'segments: the whole row falls back to base_scope, nothing to name as a segment"
     );
     assert_eq!(lines[0].base_scope, Some(base));
 }
@@ -237,13 +237,13 @@ fn no_scope_falls_back_to_ui_virtual_as_the_base_scope() {
     assert_eq!(
         lines[0].base_scope,
         Some(ui_virtual),
-        "no 'scope must still populate base_scope (with ui.virtual) — never leave it None, \
+        "no 'scope must still populate base_scope (with ui.virtual), never leave it None, \
          or a theme that gives ui.virtual a bg would tint this row's text but not its \
          gutter/trailing cells"
     );
 }
 
-/// A theme where `ui.virtual` itself carries a `bg` — none of the bundled
+/// A theme where `ui.virtual` itself carries a `bg`. None of the bundled
 /// themes do, but a custom one might, and a scope-less virtual line's row
 /// fill must track it exactly like an explicit `'scope` would.
 fn theme_with_tinted_ui_virtual() -> hume_engine::theme::Theme {
@@ -281,14 +281,14 @@ fn generic_virtual_line_with_no_scope_tints_the_full_row_when_ui_virtual_has_a_b
     assert_eq!(
         buf[(20, 0)].style().bg,
         virtual_bg,
-        "a cell past the virtual line's own text — the row fill, not just the \
+        "a cell past the virtual line's own text: the row fill, not just the \
          per-grapheme style, must carry ui.virtual's bg"
     );
     assert_eq!(buf[(39, 0)].style().bg, virtual_bg, "window border");
 }
 
 /// Reuses `ui.cursor.match.search` purely as a scope guaranteed to carry a
-/// distinct, known `bg` in the embedded snapshot theme — same convention as
+/// distinct, known `bg` in the embedded snapshot theme, the same convention as
 /// `lsp_line_backgrounds.rs`'s `TINT_SCOPE`.
 const TINT_SCOPE: &str = "ui.cursor.match.search";
 
@@ -321,7 +321,7 @@ fn virtual_line_background_tints_gutter_content_and_trailing_cells() {
 
     // Row 0 is the virtual line (anchored `'before` line 0); row 1 is the
     // real "hello" content line. Column 20 sits well past the 1-char virtual
-    // text but short of the right edge — exactly where the bug this test
+    // text but short of the right edge, exactly where the bug this test
     // guards against left the row untinted.
     assert_eq!(buf[(0, 0)].style().bg, expected_bg, "gutter cell");
     assert_eq!(
@@ -368,7 +368,7 @@ fn virtual_line_with_empty_text_still_renders_its_background_bar() {
     let expected_bg = ed.view.theme.resolve(scope).bg;
 
     // No text means no graphemes at all (`segment_virtual_line` emits one
-    // grapheme per cluster) — the row-fill is the only thing that can paint
+    // grapheme per cluster), so the row-fill is the only thing that can paint
     // this row, so its presence here proves the fill runs independently of
     // content.
     assert_eq!(buf[(0, 0)].style().bg, expected_bg, "gutter cell");
@@ -468,7 +468,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
 
 /// Two sources anchored to the same line must render in alphabetical
 /// source-name order, not the order they happened to call
-/// `set-virtual-lines!` in — `SourceStore::set` keeps a buffer's sources
+/// `set-virtual-lines!` in. `SourceStore::set` keeps a buffer's sources
 /// sorted ascending by name for exactly this: virtual lines have no
 /// per-line collapse (unlike signs/EOL text/line backgrounds), so
 /// whichever order the store iterates in *is* the render order. Setting

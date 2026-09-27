@@ -1,7 +1,7 @@
 // Fuzzy-picker panel: input handling (`Editor::picker_input`), the open
 // chokepoint (`picker::open_picker`), and the per-frame write side
 // (`sync_picker_view`). Sessions are still constructed directly rather than
-// through the `picker!` Steel builtin — see `tests/picker_steel.rs` for
+// through the `picker!` Steel builtin; see `tests/picker_steel.rs` for
 // end-to-end coverage of the Steel surface itself.
 
 use super::*;
@@ -373,7 +373,7 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
         "opening a picker must clear a live completion session"
     );
 
-    // Still in Insert mode (picker is chrome, not a mode) — but the `Picker`
+    // Still in Insert mode (picker is chrome, not a mode), but the `Picker`
     // layer sits above `Insert` on the stack, so a printable edits the query.
     assert_eq!(ed.state.mode(), Mode::Insert);
     ed.feed_key(key('o'));
@@ -386,11 +386,11 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 }
 
 /// `close_picker` closing a picker with an `Insert` session stacked above it
-/// (a Steel timer entering Insert while the picker owns the keyboard —
+/// (a Steel timer entering Insert while the picker owns the keyboard;
 /// there's no key path for this, since the picker is full-modal) must run
 /// `Insert`'s own teardown on the way out (commit the edit group, clear
 /// `active_session`) via `EditorState::take_layer`, and must still fire the
-/// picker's own `on_select` with `#f` exactly once — not twice, and not
+/// picker's own `on_select` with `#f` exactly once: not twice, and not
 /// silently dropped by `Insert`'s teardown running first.
 ///
 /// Acting only on the last removed layer (the picker) would skip `Insert`'s
@@ -414,7 +414,7 @@ fn close_picker_tears_down_an_insert_session_stacked_above_it() {
     );
     assert!(ed.state.active_session.is_some(), "sanity: session open");
     // Insert is `top()` now, so this reaches its own key handler, same as
-    // ordinary typing — not the picker's query.
+    // ordinary typing, not the picker's query.
     ed.handle_key(key('X'));
     assert_eq!(ed.doc().text().to_string(), "Xabc\n");
 
@@ -518,7 +518,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
     );
     assert!(
         session.is_pending(),
-        "a rejected feed must not clear pending — the real batch hasn't arrived yet"
+        "a rejected feed must not clear pending: the real batch hasn't arrived yet"
     );
 }
 
@@ -671,7 +671,7 @@ fn shrinking_terminal_self_heals_scroll() {
 
 // ── Full-frame render snapshots ─────────────────────────────────────────────
 //
-// Uses `Editor::open` (the real constructor, going through `build_pane`) —
+// Uses `Editor::open` (the real constructor, going through `build_pane`):
 // unlike `editor_from`'s minimal harness, this registers `PickerOverlay` so
 // the panel actually paints.
 

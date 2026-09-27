@@ -65,10 +65,10 @@ fn set_buffer_language_no_op_when_unchanged() {
     // No scripting host: if set_buffer_language fires the hook anyway, it would
     // panic because scripting is None. This test verifies no-op short-circuit.
     let bid = ed.focused_buffer_id();
-    // Start with no language — setting to None must not panic.
+    // Start with no language: setting to None must not panic.
     ed.set_buffer_language(bid, None);
     assert!(ed.state.buffers.get(bid).language.is_none());
-    // Now set a language and repeat — second set must short-circuit without panic.
+    // Now set a language and repeat: second set must short-circuit without panic.
     ed.scripting = Some(ScriptingHost::new());
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
@@ -104,7 +104,7 @@ fn detect_and_set_language_no_match_leaves_none() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
-    // Buffer has no path — no detection possible.
+    // Buffer has no path, so no detection possible.
     assert!(ed.state.buffers.get(bid).path().is_none());
     ed.detect_and_set_language(bid);
     assert!(ed.state.buffers.get(bid).language.is_none());
@@ -116,7 +116,7 @@ fn detect_and_set_language_no_match_leaves_none() {
 /// eval *just* made (the `SetBufferLanguage` effect applies first, earlier
 /// in the same effect log). Detection would pick "rust" from the
 /// `.rs` extension; the explicit `set-buffer-language!` call asks for
-/// "notes" — the explicit call must win.
+/// "notes"; the explicit call must win.
 #[test]
 fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
     let tmp = safe_tempdir();
@@ -216,7 +216,7 @@ fn typed_set_language_unknown_warns_but_sets() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
-    // "unknown-lang" is not registered — should warn but still set.
+    // "unknown-lang" is not registered: should warn but still set.
     let result = run_set(&mut ed, "buffer language=unknown-lang");
     assert!(
         result.is_ok(),
@@ -259,7 +259,7 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     let after_first = state(&ed);
-    // Set same value again — should be a no-op; hook must not fire.
+    // Set same value again: should be a no-op; hook must not fire.
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
     assert_eq!(
@@ -273,7 +273,7 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
 /// bid)` in one eval must not panic. The `Effect::SetBufferLanguage` this
 /// queues only applies after the eval returns (`apply_script_effects`
 /// drains the effect vec after the whole body ran), so by the time it
-/// applies, `bid` — closed by the same body — is already gone; the effect
+/// applies, `bid` (closed by the same body) is already gone; the effect
 /// arm must check liveness itself rather than let `set_buffer_language_
 /// explicit`'s panicking `get_mut` hit an unseeded slot.
 ///

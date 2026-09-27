@@ -1,4 +1,4 @@
-//! The `:` line's Tab completion — `trigger_minibuf_completion`
+//! The `:` line's Tab completion: `trigger_minibuf_completion`
 //! (`completion/orchestrate.rs`) and `completion_input_minibuf`
 //! (`input_stack/completion.rs`): the native sources, the eager single-
 //! match policy, cycling, directory descent, and what dismisses.
@@ -51,7 +51,7 @@ fn tab_no_match_is_noop() {
 
 // Expected values for the three tests below: "w" matches exactly three
 // canonical command names, alphabetically (tied score, sortText-ascending
-// tiebreak — `complete_command`'s own sort_text is the name itself):
+// tiebreak, since `complete_command`'s own sort_text is the name itself):
 // write, write-all, write-quit. `complete_command` omits aliases and the
 // exact-prefix match, so this candidate set is stable against new commands
 // (see `render.rs`'s own use of the same fact).
@@ -175,7 +175,7 @@ fn tab_mid_token_replaces_the_whole_path_not_just_up_to_the_cursor() {
         &mut ed,
         &format!("e {}/hello.txt extra", dir.path().display()),
     );
-    // Cursor back to just after "hel" — mid-token, "lo.txt extra" ahead.
+    // Cursor back to just after "hel": mid-token, "lo.txt extra" ahead.
     for _ in 0.."lo.txt extra".len() {
         ed.handle_key(key_left());
     }
@@ -201,7 +201,7 @@ fn tab_mid_command_name_replaces_the_whole_name() {
 fn tab_mid_set_key_does_not_swallow_the_equals_value() {
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, "set global theme=x");
-    // Cursor back to just after "th" — a space-only forward scan for the
+    // Cursor back to just after "th". A space-only forward scan for the
     // span's end would swallow the trailing "=x".
     for _ in 0.."eme=x".len() {
         ed.handle_key(key_left());
@@ -289,13 +289,13 @@ fn enter_on_directory_candidate_restarts_completion_inside_it() {
 }
 
 /// A non-path source's candidate that happens to end in `/` (a namespaced
-/// tag, say) must not be treated as a directory to descend into — only an
+/// tag, say) must not be treated as a directory to descend into. Only an
 /// item whose own `kind` is `CompletionItemKind::FOLDER` licenses that, and
 /// this source's items carry no `kind` at all. Enter runs the command line
 /// as normal instead of restarting completion. Two candidates
 /// (not one) so the popup stays open after Tab instead of the `:` line's
 /// own single-match eager-apply-and-dismiss closing it before Enter is
-/// even reachable — `enter_on_directory_candidate_restarts_completion_
+/// even reachable. `enter_on_directory_candidate_restarts_completion_
 /// inside_it`'s own multi-candidate directory hits the same shape.
 #[test]
 fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
@@ -338,7 +338,7 @@ fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
 }
 
 /// `arg_span` (a Steel `'minibuf` source's own token) must be the argument
-/// the cursor is *in*, not everything after the command name — a
+/// the cursor is *in*, not everything after the command name: a
 /// multi-argument typed command's second argument must not drag the first
 /// one along into the span/filter. `"bexyz"` only
 /// `starts_with` `"be"` (the second argument alone), never `"alpha be"`
@@ -398,7 +398,7 @@ fn tab_on_buffer_arg_completes_buffer_names() {
 
 /// `:b1<Tab>` (the alias `b`, an argument starting with a digit, no space)
 /// must complete `1` as `:buffer`'s own argument, not as a command name
-/// still being typed — `scan_command_name`'s letter-only name rule (shared
+/// still being typed. `scan_command_name`'s letter-only name rule (shared
 /// with `parse_typed_command`, what `execute_command` itself uses) ends
 /// the name at `b`, matching what Enter would actually run.
 #[test]
@@ -414,7 +414,7 @@ fn tab_mid_alias_with_no_space_completes_the_declared_arg_not_the_command_name()
 
     command_line(&mut ed, "b1");
     ed.handle_key(key_tab());
-    // A sole candidate applies silently (the `:` line's eager policy) —
+    // A sole candidate applies silently (the `:` line's eager policy):
     // the buffer-name completer's own full-path insert_text lands in place
     // of "1" if (and only if) it's the source that actually answered.
     assert!(
@@ -449,8 +449,8 @@ fn tab_on_set_g_silently_completes_global() {
 
 // ── A Buffer-only builtin reaching a Minibuf session ───────────────────────
 
-/// `completion-accept!` while the `:` popup is open — a plugin or async
-/// callback firing at the wrong moment — must get an `Err`, not a panic.
+/// `completion-accept!` while the `:` popup is open (a plugin or async
+/// callback firing at the wrong moment) must get an `Err`, not a panic.
 #[test]
 fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
     let tmp = safe_tempdir();
@@ -470,7 +470,7 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
         "got {:?}",
         status(&ed)
     );
-    // The error must be checked *before* the session is torn down — a
+    // The error must be checked *before* the session is torn down: a
     // rejected `completion-accept!` must leave the popup exactly as it
     // was, not destroy it on the way to discovering it was the wrong call.
     assert!(
@@ -481,12 +481,12 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
     assert_eq!(
         selected_row(&ed),
         1,
-        "the popup must still be usable — a follow-up Tab still cycles"
+        "the popup must still be usable: a follow-up Tab still cycles"
     );
 }
 
 /// A `Minibuf` source that raises instead of ever calling `completion-emit!`
-/// must not leave the popup stuck pending forever — `drop_stalled_
+/// must not leave the popup stuck pending forever. `drop_stalled_
 /// invocations` clears the slot once the failed call batch is reported, so
 /// `settle_minibuf_session` runs its ordinary "nothing landed" policy
 /// (dismiss) instead of `is_pending()` staying `true` with no source left
@@ -523,8 +523,8 @@ fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
 
 /// A `Minibuf` source may answer more than once for the same invocation
 /// (the async streaming case `docs/COMPLETION-PICKER.md` documents): once
-/// with a wide answer, again later — via a separate command here, standing
-/// in for a real async callback — with a narrower one. Between the two, the
+/// with a wide answer, again later (via a separate command here, standing
+/// in for a real async callback) with a narrower one. Between the two, the
 /// user Tabs the selection off row 0. `settle_minibuf_session`'s own
 /// re-rank must reset that selection the same way `rerank_open_session`
 /// does for a `Buffer` session, or the splice on the second answer reads a

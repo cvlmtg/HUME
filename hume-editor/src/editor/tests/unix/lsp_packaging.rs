@@ -26,7 +26,7 @@ const DECLARE_LSP: &str = r#"(load-plugin "core:stdlib")
   #:typed-commands '("diagnostics"))"#;
 
 /// Same manifest as `DECLARE_LSP` but keyed on `on-buffer-save` instead of
-/// `on-lsp-attach` — used to prove a positive activation result isn't a
+/// `on-lsp-attach`, used to prove a positive activation result isn't a
 /// confound of `setup_declared`'s staging (see
 /// `attach_event_does_not_activate_a_plugin_declared_for_a_different_event`).
 const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
@@ -40,17 +40,17 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
 
 /// Mirrors `lsp_hover.rs`'s `setup`, but declares `core:lsp` lazily
 /// (`declare_src`, normally `DECLARE_LSP`) instead of `(load-plugin
-/// "core:lsp")` — `declare-plugin` registers the `Lazy` stub directly via
+/// "core:lsp")`: `declare-plugin` registers the `Lazy` stub directly via
 /// `CommandHost::register_lazy_command` as `eval_with_real_host` runs, so a
 /// `:`-command dispatch can trigger activation with no separate
-/// stub-registration step — combined with the real-runtime staging every
+/// stub-registration step, combined with the real-runtime staging every
 /// other F-card test uses.
 ///
 /// The handshake below (draining the backend's `initialize` response and
 /// dispatching `BecameRunning`) fires `on-lsp-attach` *before* `ed.scripting`
 /// is even assigned. That's fine: `queue_event` only pushes onto
 /// `state.config.pending_work`, which lives on `Editor::state` independent of
-/// `scripting` — the queued hook survives host installation and is still
+/// `scripting`, so the queued hook survives host installation and is still
 /// there for a later `ed.settle()` to process against the real host.
 fn setup_declared(
     file_dir: &Path,
@@ -62,7 +62,7 @@ fn setup_declared(
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let file = file_dir.join("main.rs");
-    // 30 lines — comfortably taller than the default pane height's ⅓-cap
+    // 30 lines: comfortably taller than the default pane height's ⅓-cap
     // (see lsp_hover.rs's `setup` for the full rationale): a 1-2 line
     // fixture makes even trivial hover content overflow to the drawer once
     // `(viewport-range bid)` resolves against real (if pre-`prepare_frame`
@@ -115,7 +115,7 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
         .map(|s| (*s.lines).clone())
 }
 
-/// Declaring `core:lsp` (not loading it) leaves it `Declared` — nothing has
+/// Declaring `core:lsp` (not loading it) leaves it `Declared`: nothing has
 /// run its body yet.
 #[test]
 fn declared_but_undispatched_plugin_is_declared_not_loaded() {
@@ -157,9 +157,9 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 
     // Activation runs synchronously inside the command dispatch that hits
     // the lazy stub (`activate_lazy_plugin`, called from the same dispatch
-    // path before re-querying and running the now-real command) — the same
+    // path before re-querying and running the now-real command), and the same
     // drain sequence `lsp_hover.rs`'s `run_hover` uses for an eagerly-loaded
-    // plugin is enough here too. lsp-hover is key-bindable, not typed —
+    // plugin is enough here too. lsp-hover is key-bindable, not typed, so
     // dispatch through the keymap pipeline, the way `K` would.
     ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
     ed.settle();
@@ -181,7 +181,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     );
 }
 
-/// The `on-lsp-attach` event alone — with no `:`-command ever dispatched —
+/// The `on-lsp-attach` event alone, with no `:`-command ever dispatched,
 /// activates the declared `core:lsp` plugin. Unlike the command-dispatch test
 /// above, nothing here touches a lazy command stub, so the only thing that
 /// can flip `Declared` to `Loaded` is `settle`'s
@@ -190,7 +190,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 ///
 /// `attach_event_does_not_activate_a_plugin_declared_for_a_different_event`
 /// runs the identical attach sequence against a manifest declared on
-/// `on-buffer-save` instead, and confirms it stays `Declared` — ruling out
+/// `on-buffer-save` instead, and confirms it stays `Declared`, ruling out
 /// some other confound in `setup_declared`'s staging (e.g. `load-plugin
 /// "core:stdlib"` in the same source, or the handshake itself) as the cause
 /// of this test's `Loaded` result.
@@ -209,7 +209,7 @@ fn attach_event_alone_activates_the_declared_plugin() {
     assert_eq!(
         ed.scripting.as_ref().unwrap().plugin_status(&id),
         Some(hume_scripting::PluginStatus::Declared),
-        "must still be Declared going into the drain — only the queued \
+        "must still be Declared going into the drain: only the queued \
          on-lsp-attach hook can flip it here"
     );
 
@@ -249,7 +249,7 @@ fn attach_event_does_not_activate_a_plugin_declared_for_a_different_event() {
 }
 
 /// Every default `core:lsp` binding dispatches to its named command without
-/// error, even fully unattached (no LSP server on the buffer at all) — each
+/// error, even fully unattached (no LSP server on the buffer at all); each
 /// command's own capability guard degrades to an `'info` log line in that
 /// case, never `'error`. Exercises the bindings themselves (does `G R`
 /// actually reach `lsp-rename`?); each feature's own test file exercises
@@ -288,7 +288,7 @@ fn every_default_lsp_binding_dispatches_without_error() {
     );
     ed.scripting = Some(host);
 
-    // Each entry is the key sequence to press — one key for `K`, two for
+    // Each entry is the key sequence to press: one key for `K`, two for
     // every `g`/`z`/`G`-prefixed bind.
     let bindings: &[&[char]] = &[
         &['g', 'd'],
@@ -341,10 +341,10 @@ fn every_default_lsp_binding_dispatches_without_error() {
 
 /// Loading `core:lsp` without `core:stdlib` declared or loaded first must
 /// fail to load (contained, not aborting `eval_init`), naming `core:stdlib`
-/// — `core:lsp`'s `(declared-plugins)` guard rejects a `core:stdlib` that
+/// (`core:lsp`'s `(declared-plugins)` guard rejects a `core:stdlib` that
 /// was never declared or loaded at all, before
 /// `lsp/register-installed-servers!` ever reaches its load-time
-/// `stdlib/list-subdirs` call.
+/// `stdlib/list-subdirs` call).
 #[test]
 fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeGuard::new();

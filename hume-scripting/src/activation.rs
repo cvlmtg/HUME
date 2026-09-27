@@ -190,7 +190,7 @@ pub(crate) fn run_steel_call<'a>(
     .map_err(|e| e.message)
 }
 
-// ── ScriptingHost: activation impl ───────────────────────────────────────────
+// ── ScriptingHost — activation impl ──────────────────────────────────────────
 
 impl ScriptingHost {
     /// Core eval machinery used by [`ScriptingHost::eval_init`].

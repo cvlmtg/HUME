@@ -1,12 +1,12 @@
-// core:git-diff — end-to-end plugin tests.
+// core:git-diff: end-to-end plugin tests.
 //
 // Loads the real, multi-file `runtime/plugins/core/git-diff/plugin.scm`
 // against the repo's actual `runtime/` tree (`RealRuntimeGuard`, the same
 // approach `lsp_hover.rs`/`lsp_packaging.rs` use for `core:lsp`, another
-// multi-file plugin) — a real `git` subprocess does the fetching, and
+// multi-file plugin). A real `git` subprocess does the fetching, and
 // assertions read the Rust-side decoration stores the plugin's setter calls
 // land in, never the plugin's own Steel-internal state (there is no clean
-// seam to reach that from Rust — see `plugin-architecture.md`'s module
+// seam to reach that from Rust; see `plugin-architecture.md`'s module
 // isolation rule).
 //
 // Every expected sign/line/span below is derived by
@@ -25,7 +25,7 @@ use hume_scripting::ScriptingHost;
 
 const SOURCE: &str = "git-diff";
 
-/// Writes `content` to `<dir>/<name>` and commits it — the working tree is
+/// Writes `content` to `<dir>/<name>` and commits it. The working tree is
 /// left holding `content` (git commit never touches the tree), so a test
 /// that wants a dirty (uncommitted) buffer writes over it again afterward.
 fn commit_file(dir: &Path, name: &str, content: &str, msg: &str) {
@@ -35,14 +35,14 @@ fn commit_file(dir: &Path, name: &str, content: &str, msg: &str) {
 }
 
 /// Fresh repo, `<dir>/<name>` holding `content`, committed then checked out
-/// onto `branch` — collapses the repeated "init, commit, checkout -b" fixture
+/// onto `branch`. Collapses the repeated "init, commit, checkout -b" fixture
 /// setup across the branch-tracking tests below. The returned `TempDir` must
 /// stay alive (its `Drop` removes the repo) for as long as `path` is used.
 fn commit_and_checkout(name: &str, content: &str, branch: &str) -> (tempfile::TempDir, PathBuf) {
     let repo = safe_tempdir();
     git_init(repo.path());
     commit_file(repo.path(), name, content, "v1");
-    // Explicit branch name — never rely on the ambient git version's
+    // Explicit branch name: never rely on the ambient git version's
     // configured default branch name (`main` vs `master`).
     git(repo.path(), &["checkout", "-q", "-b", branch]);
     let path = repo.path().join(name);
@@ -50,7 +50,7 @@ fn commit_and_checkout(name: &str, content: &str, branch: &str) -> (tempfile::Te
 }
 
 /// Loads the real `core:git-diff` plugin eagerly against the repo's actual
-/// `runtime/` tree. `guard` must outlive every assertion — its `HUME_RUNTIME`
+/// `runtime/` tree. `guard` must outlive every assertion: its `HUME_RUNTIME`
 /// env var is what makes `git-diff`'s `manifest.scm`/`*.scm` siblings
 /// resolvable at all.
 fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
@@ -62,7 +62,7 @@ fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
         None => "(load-plugin \"core:git-diff\")".to_string(),
     };
     // core:git-diff's config validation depends on core:stdlib (see
-    // plugin.scm's header) — load it first, same as the shipped init.scm.example.
+    // plugin.scm's header); load it first, same as the shipped init.scm.example.
     let load = format!("(load-plugin \"core:stdlib\")\n{load_git_diff}");
     eval_with_real_host(&mut ed, &mut host, &load, tmp);
     ed.scripting = Some(host);
@@ -70,7 +70,7 @@ fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
 }
 
 /// Same as `setup`, but also places `"steel:git-branch"` in the statusline
-/// config — `branch.scm`'s fetch is gated on the element being placed (see
+/// config: `branch.scm`'s fetch is gated on the element being placed (see
 /// README's "Branch tracking"), so every branch-tracking test below needs
 /// this; the ~20 other call sites in this file want the fetch to stay off
 /// and call `setup` directly.
@@ -95,14 +95,14 @@ fn open(ed: &mut Editor, path: &Path) -> BufferId {
 }
 
 /// Waits out a just-queued hook's 150ms `debounce-by` timer plus the
-/// subsequent async `git show` round trip — for a bounded negative wait
+/// subsequent async `git show` round trip, for a bounded negative wait
 /// (asserting nothing/something-specific happened) where no store mutation
 /// exists to `drain_until` on.
 ///
 /// The leading `settle()` matters as much as the sleep: a hook queued by
 /// `execute_typed`/`feed_key` (`on-buffer-open`, `on-text-changed`,
-/// `on-buffer-save`, …) only *runs* — and so only *starts* its debounce
-/// timer — once something drains `pending_work`. Sleeping first and
+/// `on-buffer-save`, …) only *runs* (and so only *starts* its debounce
+/// timer) once something drains `pending_work`. Sleeping first and
 /// settling once after, with no settle before the sleep, lets the timer's
 /// own 150ms elapse before it has even been scheduled, so the wait
 /// accomplishes nothing and the assertion after it passes vacuously.
@@ -113,7 +113,7 @@ fn wait_for_refresh(ed: &mut Editor) {
 }
 
 /// `signs_for(SOURCE, bid)`, remapped from char-offset `pos` back to a line
-/// number and sorted by line — the shape a fixture's hand-derived
+/// number and sorted by line: the shape a fixture's hand-derived
 /// expectation can be written against directly.
 fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
     let text = ed.state.buffers.get(bid).text();
@@ -166,7 +166,7 @@ type VLine = (
 
 /// `virtual_lines_for(SOURCE, bid)`, remapped to `(line, before, text,
 /// scope, segments)` and sorted. `scope`/segment scopes resolve back to
-/// names via the registry — `SOURCE`'s entries always carry an explicit
+/// names via the registry. `SOURCE`'s entries always carry an explicit
 /// scope, so this never actually reads the `ui.virtual` fallback, but the
 /// `Option` return shape is kept so a fixture asserting `None` would still
 /// be meaningful if one is ever added.
@@ -202,7 +202,7 @@ fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
 }
 
 /// `extra_highlights_for(SOURCE, bid)`, paired with the live buffer
-/// substring each span covers — lets a test assert "this span covers the
+/// substring each span covers. Lets a test assert "this span covers the
 /// changed word" without predicting `diff-words`' exact tokenization.
 fn highlights(
     ed: &Editor,
@@ -235,7 +235,7 @@ fn highlights(
 #[test]
 fn signs_pure_addition_marks_one_plus_per_line() {
     // `setup()` (claims `Global::Env`) runs before any `git`/`git_init` spawn
-    // below — those are unqualified-name subprocess spawns that read `PATH`,
+    // below: those are unqualified-name subprocess spawns that read `PATH`,
     // so they must run under the same claim as any other `PATH` reader (see
     // `Global::Env`'s doc in `tests/mod.rs`).
     let tmp = safe_tempdir();
@@ -371,7 +371,7 @@ fn signs_deletion_at_end_of_file_marks_last_content_line() {
         signs(&ed, bid),
         vec![(1, "▁".to_string(), "diff.minus".to_string())],
         "deleting the last line ('c') must mark line 1 ('b') without an \
-         out-of-range set-signs! call — new-start (2) equals the buffer's \
+         out-of-range set-signs! call: new-start (2) equals the buffer's \
          content line count"
     );
 
@@ -468,7 +468,7 @@ fn inline_tab_indented_deletion_keeps_a_literal_tab_that_still_renders_at_the_ri
             Vec::new(),
         )],
         "set-virtual-lines! now accepts a literal tab in 'text and no longer \
-         expands it — the engine expands it at render time instead, the \
+         expands it; the engine expands it at render time instead, the \
          same as a real buffer line's tab"
     );
     assert_eq!(
@@ -517,11 +517,11 @@ fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
             Some("diff.minus.line".to_string()),
             Vec::new(),
         )],
-        "the stored text is the line verbatim — no plugin-side expansion"
+        "the stored text is the line verbatim, no plugin-side expansion"
     );
 
     // 漢 occupies columns 0-1, so the tab (tab_width 4) advances from
-    // column 2 to column 4 — not column 3, which a char-counting (not
+    // column 2 to column 4, not column 3, which a char-counting (not
     // column-counting) expansion would have produced.
     let snap = render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
     insta::assert_snapshot!(snap);
@@ -560,7 +560,7 @@ fn inline_pure_deletion_over_four_lines_renders_every_ghost_line() {
     // Real-world regression: on steel-core 0.8.2, a pure-deletion hunk of
     // more than 4 lines showed its gutter mark but no ghost lines, because
     // `append` silently dropped every element past the 4th when its first
-    // argument was the literal empty list — `render.scm`'s unpaired lines
+    // argument was the literal empty list. `render.scm`'s unpaired lines
     // hit exactly that shape (`paired` is always `'()` for a pure
     // deletion). Fixed upstream as of steel-core 0.8.3; kept as end-to-end
     // coverage of the render path, not as a workaround's own pin.
@@ -644,12 +644,12 @@ fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     commit_file(repo.path(), "f.txt", "one\nCHANGED\nthree\n", "v2");
-    // Working tree now matches HEAD (v2) exactly — the default-ref diff is
+    // Working tree now matches HEAD (v2) exactly: the default-ref diff is
     // empty, isolating the effect of the explicit-ref toggle below.
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
-    // Let the buffer-open-triggered default-ref (HEAD) refresh finish first
-    // — otherwise its debounced fetch, captured with the pre-toggle ref,
+    // Let the buffer-open-triggered default-ref (HEAD) refresh finish first.
+    // Otherwise its debounced fetch, captured with the pre-toggle ref,
     // can complete after the explicit-ref toggle below and overwrite its
     // freshly fetched HEAD~1 blob with HEAD's (empty-diff) one.
     wait_for_refresh(&mut ed);
@@ -676,7 +676,7 @@ fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
     assert_eq!(
         signs(&ed, bid),
         vec![(1, "~".to_string(), "diff.delta".to_string())],
-        "signs stayed enabled the whole time — setting the ref from the \
+        "signs stayed enabled the whole time; setting the ref from the \
          inline command must re-render it too, not just inline"
     );
 
@@ -700,14 +700,14 @@ fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
             .collect::<Vec<_>>(),
         vec![(0, false, "two".to_string())],
         "a bare re-toggle must keep the last explicit ref (HEAD~1), not \
-         reset to the config default — HEAD would show no diff at all here"
+         reset to the config default. HEAD would show no diff at all here"
     );
 }
 
 // ── Ref completion ────────────────────────────────────────────────────────────
 
 /// Tab on `:toggle-git-signs`'/`:toggle-inline-diff`'s shared ref argument
-/// completes against the focused buffer's own repo — branches and tags
+/// completes against the focused buffer's own repo: branches and tags
 /// alike, fetched async (`git for-each-ref`), same shape as the branch-
 /// tracking statusline element (branch.scm).
 #[test]
@@ -727,7 +727,7 @@ fn toggle_git_signs_tab_completes_a_ref() {
     drain_until(&mut ed, |ed| minibuf_input(ed) == "toggle-git-signs v1.2.3");
 }
 
-/// The `:toggle-inline-diff` twin — same source, named by
+/// The `:toggle-inline-diff` twin: same source, named by
 /// `#:complete` on both commands.
 #[test]
 fn toggle_inline_diff_tab_completes_a_ref() {
@@ -748,7 +748,7 @@ fn toggle_inline_diff_tab_completes_a_ref() {
 }
 
 /// No path (an unsaved scratch buffer) answers empty rather than spawning
-/// `git` at all or erroring — Tab is simply a no-op.
+/// `git` at all or erroring. Tab is simply a no-op.
 #[test]
 fn ref_completion_with_no_buffer_path_is_a_silent_no_op() {
     let tmp = safe_tempdir();
@@ -775,11 +775,11 @@ fn untracked_file_shows_no_diff_and_logs_nothing() {
     std::fs::write(repo.path().join("new.txt"), "hello\nworld\n").unwrap();
     let bid = open(&mut ed, &repo.path().join("new.txt"));
     // Opening any file itself reports an Info status ("Opened new.txt"),
-    // which also lands in status_msg — capture it so the assertion below
+    // which also lands in status_msg. Capture it so the assertion below
     // isolates the plugin's own (silent) behavior from that unrelated message.
     let status_after_open = ed.state.status_msg.clone();
 
-    // No positive signal exists for "the fetch ran and found nothing" —
+    // No positive signal exists for "the fetch ran and found nothing":
     // wait past the 150ms debounce plus a real `git show` round trip,
     // mirroring `lsp_sighelp.rs`'s bounded-sleep idiom for a background
     // subprocess with no observable completion event to poll on.
@@ -791,21 +791,21 @@ fn untracked_file_shows_no_diff_and_logs_nothing() {
     );
     assert_eq!(
         ed.state.status_msg, status_after_open,
-        "an untracked file's failed fetch is the silent 'trace branch — it \
+        "an untracked file's failed fetch is the silent 'trace branch; it \
          must not overwrite the status line with a warning/error of its own"
     );
     assert_eq!(
         ed.state.config.decorations.sign_source_count(bid),
         0,
         "a buffer git-diff never renders a sign for must never reserve a \
-         gutter slot for it — the whole point of per-buffer registration"
+         gutter slot for it: the whole point of per-buffer registration"
     );
 }
 
 /// Two buffers in the same session: one tracked-and-dirty (registers its
 /// sign source the moment it has a hunk to show), one entirely outside a
 /// repo (never registers at all). Registration must be scoped to the buffer
-/// that actually needed it — the untracked buffer's gutter must stay
+/// that actually needed it: the untracked buffer's gutter must stay
 /// slot-free regardless of what the tracked buffer did.
 #[test]
 fn sign_source_registration_is_scoped_to_the_buffer_that_needs_it() {
@@ -878,7 +878,7 @@ fn buffer_save_invalidates_cached_ref_and_refetches() {
     git_init(repo.path());
     commit_file(repo.path(), "f.txt", "one\ntwo\nthree\n", "v1");
     commit_file(repo.path(), "f.txt", "one\nCHANGED\nthree\n", "v2");
-    // Dirty the working tree back to v1 — buffer opens differing from HEAD (v2).
+    // Dirty the working tree back to v1: buffer opens differing from HEAD (v2).
     std::fs::write(repo.path().join("f.txt"), "one\ntwo\nthree\n").unwrap();
     let bid = open(&mut ed, &repo.path().join("f.txt"));
 
@@ -895,13 +895,13 @@ fn buffer_save_invalidates_cached_ref_and_refetches() {
         "sanity: initial fetch cached HEAD (v2)'s blob"
     );
 
-    // HEAD moves while the buffer stays open (an external commit) — the
+    // HEAD moves while the buffer stays open (an external commit). The
     // plugin has no way to know, so its cached ref-text blob goes stale.
     commit_file(repo.path(), "f.txt", "one\nFINAL\nthree\n", "v3");
 
-    // Insert then undo — a small, in-place edit (unlike a full `:e!`
+    // Insert then undo, a small, in-place edit (unlike a full `:e!`
     // reload, which replaces the whole buffer and would disturb every
-    // decoration's remapped anchor regardless of the plugin's own logic) —
+    // decoration's remapped anchor regardless of the plugin's own logic),
     // fires on-text-changed with the buffer's content unchanged, isolating
     // its effect from on-buffer-save's.
     ed.feed_key(key('i'));
@@ -912,18 +912,18 @@ fn buffer_save_invalidates_cached_ref_and_refetches() {
     assert_eq!(
         vlines(&ed, bid)[0].2,
         "CHANGED",
-        "on-text-changed alone must not invalidate the cached ref blob — \
+        "on-text-changed alone must not invalidate the cached ref blob, \
          still diffing against the stale v2 cache, not the real v3 HEAD"
     );
 
     // Forced: the external v3 commit above changed f.txt's on-disk mtime
     // under this buffer, and a plain `:w` would otherwise refuse with
-    // "file has changed on disk" — a real, separate protection this test
+    // "file has changed on disk", a real, separate protection this test
     // isn't exercising.
     ed.execute_typed("w!", None).unwrap();
     ed.settle(); // runs on-buffer-save, clearing the cached ref-text
     // Unlike the local-diff check above, this refetch needs a real
-    // subprocess round trip (ref-text is now #f) — `drain_until`, not a
+    // subprocess round trip (ref-text is now #f): `drain_until`, not a
     // fixed sleep+settle, since the timer firing and the process completing
     // are two separate async stages that don't land in the same settle().
     drain_until(&mut ed, |ed| {
@@ -950,7 +950,7 @@ fn buffer_close_after_open_leaves_no_stray_error() {
     open(&mut ed, &repo.path().join("f.txt"));
 
     // Let on-buffer-open run (starting its debounce timer), then close just
-    // past the 150ms debounce — the background `git show` is plausibly still
+    // past the 150ms debounce. The background `git show` is plausibly still
     // in flight at that point. on-buffer-close's cancel-fetch!/remove-buffer!
     // must leave no callback able to misfire against this now-closed buffer.
     ed.settle();
@@ -1014,8 +1014,8 @@ fn git_branch_element_switches_with_the_focused_buffer() {
     open(&mut ed, &path_b);
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(beta)");
 
-    // `:e` on an already-open path re-focuses it rather than duplicating —
-    // proves on-buffer-enter re-fetches on every focus change, not just
+    // `:e` on an already-open path re-focuses it rather than duplicating.
+    // Proves on-buffer-enter re-fetches on every focus change, not just
     // the first.
     open(&mut ed, &path_a);
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(alpha)");
@@ -1031,15 +1031,15 @@ fn git_branch_element_refreshes_on_save() {
     open(&mut ed, &path);
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(orig)");
 
-    // HEAD moves without any focus change — the plugin has no way to know
+    // HEAD moves without any focus change; the plugin has no way to know
     // until the next hook fire. Same commit, so the working tree (and the
-    // file's on-disk mtime) is untouched — a plain `:w` isn't blocked by
+    // file's on-disk mtime) is untouched: a plain `:w` isn't blocked by
     // the "file changed on disk" guard.
     git(repo.path(), &["checkout", "-q", "-b", "moved"]);
     ed.execute_typed("w", None).unwrap();
 
     // The `drain_until` alone proves `on-buffer-save` re-checks the branch,
-    // not just `on-buffer-enter` — it cannot have gone stale-"orig" and then
+    // not just `on-buffer-enter`: it cannot have gone stale-"orig" and then
     // happened to match "moved" by coincidence.
     drain_until(&mut ed, |ed| custom_text(ed, "git-branch") == "(moved)");
 }
@@ -1054,7 +1054,7 @@ fn closing_the_buffer_during_a_branch_fetch_leaves_no_stray_error() {
     open(&mut ed, &path);
 
     // Let on-buffer-enter run (starting its debounce timer), then close
-    // just past the 150ms debounce — the debounced refresh-branch! and the
+    // just past the 150ms debounce: the debounced refresh-branch! and the
     // background `git rev-parse` callback are both plausibly still pending.
     // `buffer-path`/`set-statusline-text!` both hard-error on a stale bid,
     // so neither may fire against this now-closed one without first
@@ -1080,14 +1080,14 @@ fn closing_the_buffer_during_a_branch_fetch_leaves_no_stray_error() {
 
 #[test]
 fn git_branch_element_never_fetches_while_unplaced() {
-    // Plain `setup()` — `"steel:git-branch"` is never placed here.
+    // Plain `setup()`: `"steel:git-branch"` is never placed here.
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path(), None);
 
     let (_repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
     let bid = open(&mut ed, &path);
     // `wait_for_refresh` alone (400ms) isn't enough headroom for a negative
-    // assertion — a real fetch's debounce-plus-round-trip can still be
+    // assertion: a real fetch's debounce-plus-round-trip can still be
     // in flight at that point. Match `drain_until`'s own 2s deadline so this
     // reliably fails if the gate below is ever lost, rather than passing
     // vacuously because the assertion ran before a real fetch would finish.
@@ -1095,7 +1095,7 @@ fn git_branch_element_never_fetches_while_unplaced() {
     std::thread::sleep(Duration::from_millis(1600));
     ed.settle();
 
-    // No entry at all for `bid` — not merely an empty string, which would
+    // No entry at all for `bid`, not merely an empty string, which would
     // also be produced by a fetch that ran and failed. Distinguishes "no
     // fetch ran" from "a fetch ran and found nothing".
     assert!(
@@ -1107,7 +1107,7 @@ fn git_branch_element_never_fetches_while_unplaced() {
 
 #[test]
 fn git_branch_element_activates_when_placed_after_open() {
-    // Plain `setup()` — the buffer opens and settles before the element is
+    // Plain `setup()`: the buffer opens and settles before the element is
     // ever placed, so the initial `on-buffer-enter` fetch must have been
     // skipped (see the sibling `_never_fetches_while_unplaced` test).
     let tmp = safe_tempdir();
@@ -1185,7 +1185,7 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     .expect("a failed plugin load must be contained, not abort eval_init");
 
     // eval_init queues log messages on the host (ctx.log) rather than
-    // writing ed.state.message_log directly — only Editor::init_scripting's
+    // writing ed.state.message_log directly. Only Editor::init_scripting's
     // tail code flushes that queue, which this test bypasses by calling
     // eval_init directly, so check the host's queue itself.
     assert!(
@@ -1213,7 +1213,7 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
 
 /// Loading `core:git-diff` without `core:stdlib` declared or loaded first
 /// must fail to load (contained, not aborting `eval_init`), naming
-/// `core:stdlib` — `core:git-diff`'s `(declared-plugins)` guard rejects it
+/// `core:stdlib`: `core:git-diff`'s `(declared-plugins)` guard rejects it
 /// before any of its config reads ever reach `call!`.
 #[test]
 fn missing_stdlib_errors_at_load() {

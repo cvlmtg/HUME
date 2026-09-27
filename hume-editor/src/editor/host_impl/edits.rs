@@ -22,7 +22,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let t = self.command_pane(pane)?;
         // Each entry decoded its own encoding from its own JsonHandle (it
         // may have come from a different response than its batch-mates,
-        // e.g. two `additionalTextEdits` merged by a plugin) — a batch that
+        // e.g. two `additionalTextEdits` merged by a plugin), since a batch that
         // disagrees has no single encoding to convert wire positions with.
         let mut encoding = None;
         let mut typed_edits = Vec::with_capacity(edits.len());
@@ -37,7 +37,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
                 _ => {}
             }
             typed_edits.push(lsp_types::TextEdit {
-                // Untrusted plugin input, not an internal invariant — a
+                // Untrusted plugin input, not an internal invariant: a
                 // position that doesn't fit `u32` is a malformed edit,
                 // reported as an error, never a panic.
                 range: hume_lsp::position::to_lsp_range(edit.range).ok_or_else(|| {
@@ -70,7 +70,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let t = self.command_pane(pane)?;
         // Deserializes from the `&Value` reference (serde_json implements
         // `Deserializer` for `&Value` as well as `Value`) rather than
-        // `serde_json::from_value`, which needs ownership — the caller's
+        // `serde_json::from_value`, which needs ownership; the caller's
         // `JsonHandle`/hashmap argument is read here, never consumed.
         let we: lsp_types::WorkspaceEdit = serde::Deserialize::deserialize(edit)
             .map_err(|e: serde_json::Error| format!("malformed WorkspaceEdit: {e}"))?;
@@ -139,7 +139,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             return Err("insert-key!: only in Insert mode".to_string());
         }
         // `in_insert_key_dispatch` (see its own doc) is exactly "an Insert
-        // key's own keymap binding is dispatching right now" — the one
+        // key's own keymap binding is dispatching right now", the one
         // context `.` can replay this call in (by re-running that same
         // binding, per `handle_insert`'s own doc), so this must refuse
         // anywhere else (a hook, a timer): the buffer edit would otherwise
@@ -148,8 +148,8 @@ impl<'a> EditHost for EditorHostImpl<'a> {
             return Err("insert-key!: only from a command bound to an Insert-mode key".to_string());
         }
         // Not recorded here: `.` replays the *binding* that called this
-        // (recorded once, at the keymap dispatch that's invoking it —
-        // `handle_insert`'s own doc), which re-runs this same call on
+        // (recorded once, at the keymap dispatch that's invoking it;
+        // see `handle_insert`'s own doc), which re-runs this same call on
         // replay. Recording it a second time here would double it.
         if !commands::insert_default_key(self.state, self.view, fp, key) {
             return Err(format!(

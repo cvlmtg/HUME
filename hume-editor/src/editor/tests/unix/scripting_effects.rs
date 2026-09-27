@@ -21,13 +21,13 @@ fn write_efx_plugin(
 }
 
 /// One eval (a lazy plugin's activation body) emits, in this exact order:
-/// `register-lsp-server!` → `set-buffer-language!` → `define-language!` —
+/// `register-lsp-server!` → `set-buffer-language!` → `define-language!`,
 /// deliberately not grouped by kind (language regs, then LSP ops, then
 /// buffer-language sets). The returned log must reflect the exact push
 /// order (proving builtins share one `Vec<Effect>`, not per-kind queues
 /// that `apply_script_effects` would have to regroup), and applying that
 /// log must still land all three: language identity registered, LSP server
-/// config recorded, buffer's language field set — none of which depends on
+/// config recorded, buffer's language field set. None of which depends on
 /// `define-language!` having run first, so a per-kind grouping scheme could
 /// silently get away with reordering these.
 ///
@@ -41,7 +41,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
     let init_path = write_efx_plugin(
         dir.path(),
         // `%define-language!` (the raw builtin), not the `define-language!`
-        // macro — that macro lives in `runtime/scheme/prelude.scm`, not
+        // macro; that macro lives in `runtime/scheme/prelude.scm`, not
         // loaded by this test's bare `ScriptingHost::new()`.
         r#"(register-lsp-server! "widget" #:command "widget-lsp" #:root-markers '())
            (set-buffer-language! (car (buffers)) "widget")
@@ -54,7 +54,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    // declare-plugin queues no effects — nothing to apply from this eval.
+    // declare-plugin queues no effects: nothing to apply from this eval.
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -123,8 +123,8 @@ fn effect_log_preserves_emission_order_across_kinds() {
 /// `ScriptingHost` directly: `:outer-fail` `call!`s a lazy command owned by
 /// plugin `user/efx`. The plugin activates inline mid-body, committing
 /// `Loaded` and queuing `register-lsp-server!` for "widget", then the outer
-/// command errors. The editor must still apply the plugin's committed effect
-/// — otherwise `user/efx` is permanently `Loaded` with its LSP server never
+/// command errors. The editor must still apply the plugin's committed effect.
+/// Otherwise `user/efx` is permanently `Loaded` with its LSP server never
 /// registered, since activation is one-shot. The outer command's own effects
 /// (queued before and after the nested activation) must not apply.
 ///
@@ -182,7 +182,7 @@ fn failed_command_delivers_committed_activation_effects() {
     assert_eq!(
         ed.scripting.as_ref().unwrap().plugin_status(&plugin_id),
         Some(PluginStatus::Loaded),
-        "user/efx must be Loaded — its activation succeeded before outer-fail's own failure"
+        "user/efx must be Loaded: its activation succeeded before outer-fail's own failure"
     );
 
     let log = ed.state.message_log.format_for_display();
@@ -245,15 +245,15 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     assert_eq!(
         host.plugin_status(&plugin_id),
         Some(PluginStatus::Loaded),
-        "user/efx must be Loaded — load-plugin's activation succeeded before the top-level error"
+        "user/efx must be Loaded: load-plugin's activation succeeded before the top-level error"
     );
 }
 
 // ── open-buffer! detects language via pending_language_detection ───────────
 
-/// `(open-buffer! path)` can't run language detection inline — the host it
+/// `(open-buffer! path)` can't run language detection inline: the host it
 /// executes against has no Steel-eval capability for lazy-plugin activation
-/// (see `buffer::lifecycle::open_buffer_and_notify`'s doc) — so the open
+/// (see `buffer::lifecycle::open_buffer_and_notify`'s doc), so the open
 /// chokepoint queues the buffer id onto `EditorState.pending_language_
 /// detection` instead, drained once the eval returns. This is the full
 /// pipeline: `:go` → `call_steel_cmd` → `open-buffer!` opens (queuing the
@@ -314,7 +314,7 @@ fn steel_open_buffer_detects_language() {
 /// `(open-buffer! path)` on a path that doesn't exist yet must open an empty
 /// new-file buffer, the same tolerance `:e` has (`host_impl::open_buffer`
 /// shares `Editor::resolve_buffer_path` / `Buffer::from_file_or_new` with
-/// `:e` for exactly this reason) — not error out the way a hard
+/// `:e` for exactly this reason), not error out the way a hard
 /// `std::fs::canonicalize` would.
 #[test]
 fn steel_open_buffer_missing_path_opens_new_file() {
@@ -346,7 +346,7 @@ fn steel_open_buffer_missing_path_opens_new_file() {
             .message_log
             .entries()
             .any(|e| e.text.contains("open-buffer!")),
-        "must not error for a missing path — it opens instead"
+        "must not error for a missing path; it opens instead"
     );
     let canonical_dir = dir.path().canonicalize().unwrap();
     let bid = ed
@@ -361,11 +361,11 @@ fn steel_open_buffer_missing_path_opens_new_file() {
 
 /// `(open-buffer! path)` queues `bid` onto `pending_language_detection`
 /// rather than firing `OnBufferOpen` inline (see
-/// `steel_open_buffer_detects_language` above) — the fire happens only once
+/// `steel_open_buffer_detects_language` above): the fire happens only once
 /// `apply_script_effects`'s tail drain runs, after this eval returns. If the
 /// same eval closes `bid` first via `(close-buffer!)`, the drain finds the
 /// slot gone and skips it: `OnBufferOpen` never fires. `OnBufferClose` must
-/// not fire either in that case — a buffer that never announced its open
+/// not fire either in that case: a buffer that never announced its open
 /// must not announce a close, or a plugin sees a close for an id it never
 /// heard opened.
 ///

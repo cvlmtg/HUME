@@ -96,7 +96,7 @@ pub(super) enum BufferStep {
     Prev,
 }
 
-/// The one place an open-order buffer step is taken — shared by the mappable
+/// The one place an open-order buffer step is taken, shared by the mappable
 /// `goto-next-buffer`/`goto-prev-buffer` and their typed `:bnext`/`:bprev`
 /// spellings (`typed_buffer::typed_buffer_step`).
 ///
@@ -104,7 +104,7 @@ pub(super) enum BufferStep {
 /// `cmd_goto_alternate_buffer` above: the mappable half carries `.jump()`, so
 /// `step_record_jump` already snapshots the outgoing position; the typed half
 /// has no `CmdMeta` to read and pushes its own entry instead. Needs no
-/// same-buffer guard — with one buffer open `next`/`prev` return it
+/// same-buffer guard: with one buffer open `next`/`prev` return it
 /// unchanged and the switch is inert, and both jump-recording paths gate on
 /// the cursor having actually moved.
 pub(super) fn goto_buffer_in_order(
@@ -121,7 +121,7 @@ pub(super) fn goto_buffer_in_order(
     switch_pane_to_buffer(state, view, t.pid(), target);
 }
 
-/// `goto-next-buffer` — switch to the next buffer in open-order.
+/// `goto-next-buffer`: switch to the next buffer in open-order.
 pub(in crate::editor) fn cmd_goto_next_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -133,7 +133,7 @@ pub(in crate::editor) fn cmd_goto_next_buffer(
     Ok(())
 }
 
-/// `goto-prev-buffer` — switch to the previous buffer in open-order.
+/// `goto-prev-buffer`: switch to the previous buffer in open-order.
 pub(in crate::editor) fn cmd_goto_prev_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -159,7 +159,7 @@ enum Dir {
 /// the layout tree and the terminal area cached by `prepare_frame` (see
 /// `EngineView::pane_rects`). Silent no-op (`Ok`) when no pane lies in that
 /// direction. Focus switch routes through `focus_pane`, which ends the
-/// outgoing pane's Insert session first — `open_pane` already seeded
+/// outgoing pane's Insert session first. `open_pane` already seeded
 /// per-pane maps for every existing pane, so nothing else needs seeding here.
 fn focus_in_direction(
     state: &mut EditorState,
@@ -177,7 +177,7 @@ fn focus_in_direction(
     // Nearest by primary-axis gap among panes that overlap on the perpendicular
     // axis (excludes purely-diagonal neighbours); tie-break on perpendicular
     // center distance. Pack gap into the high 16 bits and perp into the low 16
-    // bits so a single `min_by_key` orders by gap then perp — both are u16 so
+    // bits so a single `min_by_key` orders by gap then perp. Both are u16 so
     // neither can contaminate the other.
     let target = rects
         .iter()
@@ -273,7 +273,7 @@ pub(in crate::editor) fn cmd_pane_focus_down(
 
 // ── Pane split (keymap-bound, no path argument) ─────────────────────────────
 
-/// `Ctrl-p s` — split the focused pane, stacking the new pane below it, onto
+/// `Ctrl-p s`: split the focused pane, stacking the new pane below it, onto
 /// the same buffer. Keymap-bound sibling of the typed `:split` (which also
 /// accepts an optional path argument); shares its core via `split_pane_onto`.
 pub(in crate::editor) fn cmd_split_pane(
@@ -287,7 +287,7 @@ pub(in crate::editor) fn cmd_split_pane(
     super::split_pane_onto(state, view, fp, bid, Direction::Vertical)
 }
 
-/// `Ctrl-p v` — split the focused pane side by side, onto the same buffer.
+/// `Ctrl-p v`: split the focused pane side by side, onto the same buffer.
 /// Keymap-bound sibling of the typed `:vsplit`.
 pub(in crate::editor) fn cmd_vsplit_pane(
     state: &mut EditorState,
@@ -300,9 +300,9 @@ pub(in crate::editor) fn cmd_vsplit_pane(
     super::split_pane_onto(state, view, fp, bid, Direction::Horizontal)
 }
 
-/// `Ctrl-p c` — close the focused pane, collapsing the split onto its sibling.
+/// `Ctrl-p c`: close the focused pane, collapsing the split onto its sibling.
 /// Refuses when it's the tab's only pane (`:q` owns closing the tab in that
-/// case — see `typed_quit`).
+/// case; see `typed_quit`).
 pub(in crate::editor) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,

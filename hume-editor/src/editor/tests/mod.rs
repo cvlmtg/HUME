@@ -47,7 +47,7 @@ fn editor_from_kitty(input: &str) -> Editor {
 
 /// `ed`'s focused pane, as the `PaneHandle` a `%call-native!`/builtin call
 /// site (`run_command_sync`, a direct builtin call) now takes in place of a
-/// bare `BufferId` — the test-harness counterpart of what dispatch injects
+/// bare `BufferId`: the test-harness counterpart of what dispatch injects
 /// for a real keypress.
 fn focused_pane(ed: &Editor) -> hume_scripting::PaneHandle {
     hume_scripting::PaneHandle::with_pane(ed.focused_buffer_id(), ed.state.focus.id())
@@ -74,28 +74,28 @@ fn unwrapped_editor(content: &str, head: usize) -> Editor {
     ed
 }
 
-/// `n` lines, each holding its own 0-based index — a buffer whose scroll
+/// `n` lines, each holding its own 0-based index: a buffer whose scroll
 /// tests need to reach a distant line by number without caring what the line
 /// contains.
 fn numbered_lines(n: usize) -> String {
     (0..n).map(|i| format!("{i}\n")).collect()
 }
 
-/// Test-only shorthand for a char offset literal — every test in this tree
+/// Test-only shorthand for a char offset literal. Every test in this tree
 /// constructs positions from bare integers, so this is the one place that
 /// wraps them into `CharOffset` rather than every call site doing it inline.
 pub(crate) fn co(n: usize) -> hume_rope::offset::CharOffset {
     hume_rope::offset::CharOffset::new(n)
 }
 
-/// See [`co`] — the same convenience, for a line-relative byte offset.
+/// See [`co`]: the same convenience, for a line-relative byte offset.
 pub(in crate::editor) fn bc(n: usize) -> hume_rope::column::ByteCol {
     hume_rope::column::ByteCol::new(n)
 }
 
 /// `editor_from`'s sibling for `statusline::tests`, which needs a
 /// language-tagged buffer but has no reason to reach `Buffer::language` or
-/// `Editor::doc_mut`'s unrestricted `&mut Buffer` directly — those stay
+/// `Editor::doc_mut`'s unrestricted `&mut Buffer` directly. Those stay
 /// `pub(in crate::editor)`, and this narrow, purpose-built fixture is the
 /// only thing `statusline::tests` imports across the subtree boundary.
 pub(crate) fn editor_with_language(content: &str, lang_name: &str) -> Editor {
@@ -135,7 +135,7 @@ pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor 
 /// (some assert on the undrained state, some register an identity first), so
 /// folding them in here would flatten distinctions the tests are making.
 ///
-/// Callers are responsible for `require_grammars` — a missing fixture must
+/// Callers are responsible for `require_grammars`: a missing fixture must
 /// panic naming the fix, which is that helper's job, not this one's.
 fn attach_fixture_grammar(ed: &mut Editor, name: &str, symbol: &str) -> Arc<GrammarBundle> {
     let highlights = test_fixtures::grammar_query_path(name);
@@ -170,7 +170,7 @@ fn state(ed: &Editor) -> String {
 }
 
 /// Every queued `PendingWork::Call` in `pending_work`, in FIFO order,
-/// ignoring any interleaved `Event` items — for tests that assert on
+/// ignoring any interleaved `Event` items, for tests that assert on
 /// specific queued callbacks (an `lsp-request`/timer/prompt/menu/drawer/
 /// picker callback).
 fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals::SteelVal>)> {
@@ -185,7 +185,7 @@ fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals
         .collect()
 }
 
-/// `StatusElement::Custom(name)`'s rendered text for the focused buffer —
+/// `StatusElement::Custom(name)`'s rendered text for the focused buffer:
 /// the render side of `(set-statusline-text! name bid text)`. Shared by
 /// `statusline_steel.rs`, `unix/git_diff_plugin.rs`, and `unix/reload_config.rs`.
 fn custom_text(ed: &Editor, name: &str) -> String {
@@ -199,7 +199,7 @@ fn custom_text(ed: &Editor, name: &str) -> String {
     text.into_owned()
 }
 
-/// The open drawer's rows — every drawer assertion reads through this
+/// The open drawer's rows. Every drawer assertion reads through this
 /// instead of reaching into `views.drawer` by hand. Shared by
 /// `lsp_drawer.rs`, `unix/lsp_diagnostics_nav.rs`, `unix/lsp_goto.rs`,
 /// `unix/lsp_references.rs`, and `unix/column_display_agreement.rs`.
@@ -221,11 +221,11 @@ fn status(ed: &Editor) -> String {
 }
 
 /// Extracts and parses the `params` payload back out of a scripted
-/// `publishDiagnostics` notification `Message` — for tests that call
+/// `publishDiagnostics` notification `Message`, for tests that call
 /// `ingest_publish_diagnostics`/`dispatch_lsp_action` directly rather than
 /// through `drain_lsp`'s batch loop (needed to exercise two separate ingest
-/// calls in sequence — batch coalescing would otherwise collapse two
-/// same-drain publishes into one before ingest ever saw the first — or to
+/// calls in sequence (batch coalescing would otherwise collapse two
+/// same-drain publishes into one before ingest ever saw the first), or to
 /// republish outside the initial drain).
 fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsParams {
     match msg {
@@ -237,10 +237,10 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
 }
 
 /// Opens a drawer with `items` through `EditorHostImpl`'s `UiHost` impl
-/// directly (bypassing Steel) — for tests exercising the host seam's own
+/// directly (bypassing Steel), for tests exercising the host seam's own
 /// token contract (`lsp_prompt.rs`, `lsp_drawer.rs`'s mismatched-token
 /// tests). Returns the live token; panics if `show-drawer-list!` refused the
-/// items or the stack read the request as stale — neither is under test at
+/// items or the stack read the request as stale. Neither is under test at
 /// any of this helper's callers.
 fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
     use crate::editor::host_impl::EditorHostImpl;
@@ -257,8 +257,8 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
         .expect("show-drawer-list! must open, not read as stale")
 }
 
-/// A Steel completion source named `name` that answers `items` — Scheme
-/// item literals, e.g. `(list (hash "label" "foo"))` — synchronously,
+/// A Steel completion source named `name` that answers `items` (Scheme
+/// item literals, e.g. `(list (hash "label" "foo"))`) synchronously,
 /// registered with `#:target 'buffer` plus `extra` keywords. The one shape
 /// every completion test's script starts from, so the registration syntax
 /// is spelled once.
@@ -280,7 +280,7 @@ fn completion_labels(labels: &[&str]) -> String {
 }
 
 /// Registers one source answering `labels` and triggers it (Ctrl-Space,
-/// then settle so the queued Steel call answers) — for a test that just
+/// then settle so the queued Steel call answers), for a test that just
 /// needs a live Insert-mode session on the focused buffer. The editor must
 /// already be in Insert mode; installs a fresh scripting host.
 fn open_completion_session(ed: &mut Editor, labels: &[&str]) {
@@ -294,7 +294,7 @@ fn open_completion_session(ed: &mut Editor, labels: &[&str]) {
     ed.settle();
 }
 
-/// Feed `text`'s chars one by one through `feed_key` — for typing inside
+/// Feed `text`'s chars one by one through `feed_key`, for typing inside
 /// an already-open Insert or minibuffer session, unlike [`type_text`],
 /// which enters and leaves Insert itself.
 fn type_chars(ed: &mut Editor, text: &str) {
@@ -367,7 +367,7 @@ fn mouse_left_down(x: u16, y: u16) -> TerminalEvent {
     })
 }
 
-/// A wheel-scroll event at terminal-absolute `(x, y)` — `Editor::mouse_scroll`
+/// A wheel-scroll event at terminal-absolute `(x, y)`. `Editor::mouse_scroll`
 /// hit-tests these against `pane_at_screen_pos` (`editor/mouse.rs`) to pick
 /// which pane to scroll. `down` picks the direction, matching
 /// `Editor::mouse_scroll`'s own `down: bool`.
@@ -384,7 +384,7 @@ fn mouse_wheel_at(x: u16, y: u16, down: bool) -> TerminalEvent {
     })
 }
 
-/// [`mouse_wheel_at`] at `(0, 0)` — every single-pane test's harness never
+/// [`mouse_wheel_at`] at `(0, 0)`: every single-pane test's harness never
 /// populates `last_pane_area`, so `(0, 0)` misses every pane rect and takes
 /// `mouse_scroll`'s focused-pane fallback, same as before hit-testing existed.
 fn mouse_wheel(down: bool) -> TerminalEvent {
@@ -434,7 +434,7 @@ fn type_text(ed: &mut Editor, text: &str) {
     ed.feed_key(key_esc());
 }
 
-/// The gutter sign map synced onto pane `pid` — the read side every
+/// The gutter sign map synced onto pane `pid`: the read side every
 /// `set-signs!`/`register-sign-source!` test (portable `lsp_signs.rs` and
 /// unix-only `lsp_diagnostic_signs.rs` alike) asserts against.
 fn pane_signs(
@@ -448,7 +448,7 @@ fn pane_signs(
 }
 
 /// The highlight spans synced onto pane `pid`'s given tier (bracket, search,
-/// diagnostics, or extra) — the read side every highlight test asserts
+/// diagnostics, or extra): the read side every highlight test asserts
 /// against.
 fn pane_highlights(
     ed: &Editor,
@@ -473,13 +473,13 @@ fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
         .width(hume_rope::line::RopeyLine::new(0))
 }
 
-/// Runs the write-side pipeline (`prepare_frame`) at a given terminal size —
+/// Runs the write-side pipeline (`prepare_frame`) at a given terminal size,
 /// needed before any test that depends on `panel_geometry`/`last_pane_area`
 /// (paging, scroll clamping, the synced view), or on a decoration store
 /// write reaching its pane-side `Arc` (signs, highlights, virtual lines):
 /// `settle` runs any queued hook (e.g. `on-diagnostics-changed`) that writes
 /// the store, `prepare_frame` is what syncs it into the pane's own view.
-/// Returns the `RenderContext` `prepare_frame` filled — most callers drop it,
+/// Returns the `RenderContext` `prepare_frame` filled. Most callers drop it,
 /// but a test that needs `cursor_content_pos` back reads it off the result
 /// instead of re-driving the same three calls by hand.
 fn frame(ed: &mut Editor, width: u16, height: u16) -> hume_engine::pipeline::RenderContext {
@@ -490,19 +490,19 @@ fn frame(ed: &mut Editor, width: u16, height: u16) -> hume_engine::pipeline::Ren
     ctx
 }
 
-/// `frame` at a fixed 80x25 default — every sign test's own frame-drive
+/// `frame` at a fixed 80x25 default: every sign test's own frame-drive
 /// step.
 fn render(ed: &mut Editor) {
     frame(ed, 80, 25);
 }
 
-/// A `frame` that leaves no viewport-debounce timer pending afterward — for
+/// A `frame` that leaves no viewport-debounce timer pending afterward, for
 /// a test that seeds baseline state, then registers a real
 /// `on-viewport-change` hook and does something slow (`eval_with_real_host`
 /// builds a whole Steel VM from disk) before observing the *next* viewport
 /// change. Plain `frame` leaves a real timer armed (`lsp_viewport_debounce_ms`,
 /// default 150ms); if enough wall-clock time passes before the next drain, it
-/// fires for real, reading the pane's *current* — by then transitioned —
+/// fires for real, reading the pane's *current* (by then transitioned)
 /// state per `timer_bridge.rs`'s documented fire-site contract, and
 /// double-counts whatever the test goes on to observe. Zeroing the debounce
 /// and fully settling (not just draining: an unprocessed-but-queued event
@@ -510,7 +510,7 @@ fn render(ed: &mut Editor) {
 /// frame's timer while nothing is registered to observe it, regardless of
 /// how slow the caller's next step is.
 ///
-/// The zeroed debounce is a permanent pin, not a save/restore — every caller
+/// The zeroed debounce is a permanent pin, not a save/restore: every caller
 /// wants immediate-fire semantics for the rest of its body too.
 fn seed_frame(ed: &mut Editor, width: u16, height: u16) {
     ed.state.settings.lsp_viewport_debounce_ms = 0;
@@ -541,7 +541,7 @@ fn seek_to_line(ed: &mut Editor, line: usize) {
     set_cursor(ed, head);
 }
 
-/// `name`'s already-interned `ScopeId` — panics if a setter hasn't interned
+/// `name`'s already-interned `ScopeId`. Panics if a setter hasn't interned
 /// it yet, so a test asserting against the wrong scope name fails loudly
 /// here rather than passing on a coincidental default.
 fn scope(ed: &Editor, name: &str) -> ScopeId {
@@ -551,7 +551,7 @@ fn scope(ed: &Editor, name: &str) -> ScopeId {
         .unwrap_or_else(|| panic!("scope '{name}' must already be interned"))
 }
 
-/// Inverse of `scope` — the name a `ScopeId` a decoration entry carries was
+/// Inverse of `scope`: the name a `ScopeId` a decoration entry carries was
 /// interned under.
 fn scope_name(ed: &Editor, id: ScopeId) -> &str {
     ed.view.registry.name_of(id)
@@ -578,8 +578,8 @@ fn jump_editor(cursor_line: usize) -> Editor {
 
 /// Write `file_content` to a temp file, return an editor pointing at it.
 ///
-/// `set_path` derives `display_path` from `path` (see `Buffer::set_path`) —
-/// this fixture doesn't call a resolve-typed-path helper, so the two stay
+/// `set_path` derives `display_path` from `path` (see `Buffer::set_path`).
+/// This fixture doesn't call a resolve-typed-path helper, so the two stay
 /// paired on the raw (non-canonical) tempfile path, same as `path()` itself.
 fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(file_content);
@@ -591,7 +591,7 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
 }
 
 /// Build a live `EditorHostImpl` borrowing `$ed`'s state/view, for direct
-/// command dispatch — bypasses the keymap entirely. Calls `EditorHostImpl::
+/// command dispatch, bypassing the keymap entirely. Calls `EditorHostImpl::
 /// full`, the same constructor production dispatch uses, so the host has the
 /// same shape as in production.
 macro_rules! live_host {
@@ -607,19 +607,19 @@ macro_rules! live_host {
         )
     }};
 }
-// Used via `live_host!()` through submodules' `use super::*;` — the
+// Used via `live_host!()` through submodules' `use super::*;`. The
 // unused_imports lint doesn't track macro re-exports used only that way.
 #[allow(unused_imports)]
 pub(in crate::editor) use live_host;
 
 /// Split the focused pane so B (a sibling on the same buffer) survives, then
-/// close the original pane A while it's focused — leaving A's slot vacant
+/// close the original pane A while it's focused, leaving A's slot vacant
 /// with no new pane reusing it. Returns `(pid_a, bid)`, the closed pane's own
 /// id (now stale) and the buffer both panes viewed.
 ///
 /// Shared setup for `pane_state`'s trusted-mint (`ensure`) and
 /// liveness-checked (`try_ensure`) tests against a closed pane whose slot was
-/// never reused — as opposed to the reused-slot case, which needs its own,
+/// never reused, as opposed to the reused-slot case, which needs its own,
 /// different setup.
 pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, BufferId) {
     use hume_scripting::PaneHandle;
@@ -658,7 +658,7 @@ pub(super) fn close_pane_leaving_slot_vacant(ed: &mut Editor) -> (PaneId, Buffer
 }
 
 /// [`live_host!`]'s twin for the three init/activation call sites
-/// (`EditorHostImpl::init`, no LSP/timer access) — the test-harness mirror
+/// (`EditorHostImpl::init`, no LSP/timer access): the test-harness mirror
 /// of `init_scripting`'s own construction, so a test driving `eval_init`
 /// directly gets the same `tui`/`kitty_enabled` shape production init does.
 macro_rules! init_host {
@@ -691,7 +691,7 @@ impl std::fmt::Debug for Editor {
 impl Editor {
     /// Construct a minimal `Editor` for renderer unit tests.
     ///
-    /// Only `doc` and `view` are meaningful — all other fields are set to
+    /// Only `doc` and `view` are meaningful. All other fields are set to
     /// sensible defaults (Normal mode, default colors, no file path, etc.).
     /// Use the builder methods below to override specific fields.
     pub(crate) fn for_testing(doc: Buffer) -> Self {
@@ -699,7 +699,7 @@ impl Editor {
         let theme = crate::editor::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
         // Unlike `bottom_bands` (which needs real Steel-callback wiring
-        // `for_testing` deliberately skips — see `tests/lsp_popup.rs`), the
+        // `for_testing` deliberately skips, see `tests/lsp_popup.rs`), the
         // tab bar's view state is a plain struct with no such dependency,
         // so it's cheap to register here too: a test rendering multiple
         // tabs (`editor_from` + `execute_typed("tabnew", ...)`) needs
@@ -716,7 +716,7 @@ impl Editor {
         let pane = Pane::new(buffer_id);
         let unattached = engine_view.insert_pane(pane);
         let pane_id = unattached.pane_id();
-        // Discards the placeholder EngineView::new seeded — no real pane
+        // Discards the placeholder EngineView::new seeded: no real pane
         // behind it to leak.
         let _ = engine_view.replace_layout(LayoutTree::leaf(unattached));
 
@@ -743,7 +743,7 @@ impl Editor {
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
                     // No render entry: this pane is built via `Pane::new`
                     // directly (not `build_pane`), so it has no `ScopedHighlighter`/
-                    // `SignSource` providers to feed — the write sides skip panes
+                    // `SignSource` providers to feed. The write sides skip panes
                     // with no entry.
                     PaneView {
                         state: pane_buf_state,
@@ -795,7 +795,7 @@ impl Editor {
     /// Switch focus to `target`, seeding its per-pane maps if not yet present.
     ///
     /// Precondition: editor must be in Normal mode. Test-only shortcut, not
-    /// `focus_pane` — this writes `focus` directly for tests that only need
+    /// `focus_pane`. This writes `focus` directly for tests that only need
     /// `mode()` to read Normal at the call site, skipping the production
     /// focus-change side effects (`focus_pane`'s own Insert-exit handling).
     pub(in crate::editor) fn switch_focused_pane(&mut self, target: PaneId) {
@@ -857,7 +857,7 @@ impl Editor {
                     }
                     result
                 }
-                // No Steel-typed-command test needs this helper yet — extend
+                // No Steel-typed-command test needs this helper yet. Extend
                 // it (mirroring Editor::run_typed_steel_command) when one does.
                 super::registry::TypedBody::Steel { .. } | super::registry::TypedBody::Lazy(_) => {
                     panic!(
@@ -875,7 +875,7 @@ impl Editor {
 // ── process-global test lock ─────────────────────────────────────────────────
 //
 // test-global-safe: definitions below are the sanctioned owners of process
-// globals (cwd, HUME_RUNTIME, TMPDIR, XDG_*, HOME, PATH) — every other mutator
+// globals (cwd, HUME_RUNTIME, TMPDIR, XDG_*, HOME, PATH). Every other mutator
 // in the test tree routes through them.
 
 /// The two process globals the suite serializes access to. A `Cell<bool>` per
@@ -884,7 +884,7 @@ impl Editor {
 #[derive(Clone, Copy, Debug)]
 enum Global {
     /// `HUME_RUNTIME`, `TMPDIR`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `HOME`,
-    /// `PATH` — every env var a guard in this tree redirects. Also claimed by
+    /// `PATH`: every env var a guard in this tree redirects. Also claimed by
     /// a test with no guard of its own that spawns a subprocess by
     /// unqualified name (`Command::new("tree-sitter")`, `Command::new("sh")`,
     /// …): the OS resolves that name against process `PATH` at the spawn
@@ -916,7 +916,7 @@ impl Claims {
     }
 }
 
-/// Exclusive claim on one [`Global`] for a guard's lifetime — released when
+/// Exclusive claim on one [`Global`] for a guard's lifetime, released when
 /// this drops. Never construct directly; go through [`TestGlobals::claim`].
 struct ClaimGuard {
     what: Global,
@@ -931,18 +931,18 @@ impl Drop for ClaimGuard {
 
 /// The single lock guarding every process global the suite mutates. Reentrant
 /// (`parking_lot::ReentrantMutex`, not `std::sync::Mutex`): a helper that
-/// re-acquires it on a thread that already holds it — e.g. `safe_tempdir()`
-/// called from inside a live `HumeRuntimeGuard` — blocks only on *other*
+/// re-acquires it on a thread that already holds it (e.g. `safe_tempdir()`
+/// called from inside a live `HumeRuntimeGuard`) blocks only on *other*
 /// threads, never on itself. A non-reentrant mutex here hung the suite twice
 /// (once, and again in the `git_diff_plugin.rs` fix that prompted this
-/// type) with no panic, no assertion failure — just a silent "running for
+/// type) with no panic, no assertion failure, just a silent "running for
 /// over 60s" from the test runner, on a process-wide lock that then starved
 /// every other concurrently-running test too.
 ///
 /// One lock, not one per `Global`: guards nest in both directions (a
 /// `CwdSandbox` opened inside a live `HumeRuntimeGuard` in
 /// `unix/pickers_plugin.rs`, and a `CwdSandbox`-like guard that itself claims
-/// `Env` while already holding `Cwd`) — two independently-ordered locks
+/// `Env` while already holding `Cwd`): two independently-ordered locks
 /// deadlock ABBA the moment both nesting directions exist. Reentrancy makes
 /// that moot: nesting is fine as long as it never claims the *same* `Global`
 /// twice, which [`claim`](Self::claim) enforces.
@@ -969,7 +969,7 @@ impl TestGlobals {
         let flag = lock.flag(what);
         assert!(
             !flag.get(),
-            "test already holds a {what:?} claim on this thread — a nested guard \
+            "test already holds a {what:?} claim on this thread: a nested guard \
              for the same resource would clear it out from under the outer guard \
              on drop; scope the outer guard tighter instead of nesting"
         );
@@ -988,23 +988,23 @@ impl TestGlobals {
 
 static TEST_GLOBALS: TestGlobals = TestGlobals::new();
 
-/// Creates a tempdir while holding [`TEST_GLOBALS`] — guarantees no
+/// Creates a tempdir while holding [`TEST_GLOBALS`]. Guarantees no
 /// concurrent `HumeRuntimeGuard` is mid-`TMPDIR`-redirect at creation time,
 /// so this directory can't land inside (and later be deleted along with)
 /// that guard's tree. Only the creation instant needs the lock: once a
 /// `TempDir` exists at its own stable path, a *later* guard's redirect
-/// can't retroactively engulf it — `TMPDIR` only affects tempdir calls made
+/// can't retroactively engulf it: `TMPDIR` only affects tempdir calls made
 /// while it's set. Any test that creates its own tempdirs outside a
 /// `HumeRuntimeGuard`/`RealRuntimeGuard` (which already protect everything
 /// created during their lifetime) should use this instead of a bare
 /// `tempfile::tempdir()`. Safe to call from inside a held guard on the same
-/// thread — [`TestGlobals::enter`] is reentrant.
+/// thread: [`TestGlobals::enter`] is reentrant.
 pub(crate) fn safe_tempdir() -> tempfile::TempDir {
     let _lock = TEST_GLOBALS.enter();
     tempfile::tempdir().expect("tempdir")
 }
 
-/// [`safe_tempdir`]'s twin for a single named file — for a test that keeps
+/// [`safe_tempdir`]'s twin for a single named file, for a test that keeps
 /// the `NamedTempFile` itself alive (e.g. to reopen or persist it), rather
 /// than [`temp_file`]'s write-content-and-hand-back-a-path shape.
 fn safe_named_tempfile() -> tempfile::NamedTempFile {
@@ -1013,7 +1013,7 @@ fn safe_named_tempfile() -> tempfile::NamedTempFile {
 }
 
 /// Quotes `path` as a Steel string literal, for building `.scm` source by
-/// `format!` interpolation (`open-buffer!`, `picker!`, …) — every such test
+/// `format!` interpolation (`open-buffer!`, `picker!`, …). Every such test
 /// needs a real filesystem path to survive round-tripping through the Steel
 /// reader, and on Windows `path` contains `\`, which is not embeddable
 /// unescaped (`\U` etc. are invalid Steel string escapes). Panics on a path
@@ -1024,7 +1024,7 @@ pub(crate) fn steel_path(path: &std::path::Path) -> String {
 }
 
 /// Write `source` as `<tmp>/init.scm`, evaluate it against the real
-/// `EditorHostImpl`, and apply the effects it queued — the harness mirror of
+/// `EditorHostImpl`, and apply the effects it queued: the harness mirror of
 /// `Editor::init_scripting`'s eval/apply pair.
 ///
 /// Applying is not optional: effects an eval queues (`bind-key!`,
@@ -1046,7 +1046,7 @@ fn eval_with_real_host(
     ed.apply_script_effects(effects);
 }
 
-/// `eval_with_real_host` + installing the host on `ed` — the eval-and-install
+/// `eval_with_real_host` + installing the host on `ed`: the eval-and-install
 /// core `run` and `run_probe` both need, factored out so a probe body
 /// (layered onto a caller-supplied host) and a plain command definition
 /// (always a fresh host) don't duplicate it.
@@ -1061,7 +1061,7 @@ fn install_source(
 }
 
 /// Evaluates `source` against a fresh `ScriptingHost` and installs it on
-/// `ed` — for a test that only needs a command/plugin defined, not a probe
+/// `ed`, for a test that only needs a command/plugin defined, not a probe
 /// wrapped around one.
 fn run(ed: &mut Editor, tmp: &std::path::Path, source: &str) {
     install_source(ed, hume_scripting::ScriptingHost::new(), source, tmp);
@@ -1087,7 +1087,7 @@ fn run_probe(
 
 /// [`run_probe`]'s "log a value" sibling: defines a `:check` command that
 /// logs `expr`'s value via `log! 'info`, dispatches it, and returns the
-/// resulting status message — for a test that wants one Scheme
+/// resulting status message, for a test that wants one Scheme
 /// expression's value read back, not a boolean signal. `expr` may
 /// reference `bid`, the buffer the check command was dispatched against.
 fn log_probe(ed: &mut Editor, tmp: &std::path::Path, expr: &str) -> String {
@@ -1114,7 +1114,7 @@ fn temp_file(content: &str) -> (std::path::PathBuf, tempfile::TempPath) {
 
 /// Build a fresh file-backed `Buffer` from `content`, written to a temp file.
 /// `set_path` derives `display_path` from the raw tempfile path (see
-/// `Buffer::set_path`) — the same default `Buffer::from_file` produces.
+/// `Buffer::set_path`): the same default `Buffer::from_file` produces.
 fn file_buffer(content: &str) -> (Buffer, tempfile::TempPath) {
     let (path, tmp_path) = temp_file(content);
     let (_, meta) = hume_platform::io::read_file(&path).unwrap();
@@ -1148,14 +1148,14 @@ impl Drop for CwdGuard {
 }
 
 /// Saves one env var's value on construction, restores it (or removes it, if
-/// it was unset before) on drop — generalizes the hand-written save/restore
+/// it was unset before) on drop. Generalizes the hand-written save/restore
 /// already duplicated in `RealRuntimeGuard` (`XDG_DATA_HOME`) and
 /// `NoConfigDirGuard` (`HOME`/`XDG_CONFIG_HOME`) to any single var, for sites
 /// that mutate just one (e.g. `PATH` in `scripting_lsp_install.rs`) rather
 /// than owning a whole guard.
 ///
 /// Caller must already hold a `Global::Env` claim for at least this guard's
-/// lifetime — this only owns the save/restore, not the exclusivity, the same
+/// lifetime. This only owns the save/restore, not the exclusivity, the same
 /// contract `load_plum`/`load_lsp` (`unix/injections_editor.rs`) document for
 /// their own env mutation.
 struct EnvVarGuard {
@@ -1165,7 +1165,7 @@ struct EnvVarGuard {
 
 impl EnvVarGuard {
     // `set_var` here mutates a process-global env var, always under a
-    // `Global::Env` claim held by the caller (see this struct's doc) —
+    // `Global::Env` claim held by the caller (see this struct's doc).
     // `clippy.toml`'s `disallowed-methods` entry exists so a *new* raw call
     // elsewhere in the crate gets caught; this is a sanctioned caller.
     #[allow(clippy::disallowed_methods)]
@@ -1177,7 +1177,7 @@ impl EnvVarGuard {
         EnvVarGuard { key, prev }
     }
 
-    /// Captures `key`'s current value without touching it — for a caller
+    /// Captures `key`'s current value without touching it, for a caller
     /// that mutates the var itself (e.g. `remove_var`, to test the "unset"
     /// case) and just wants the restore-on-drop half.
     fn capture(key: &'static str) -> Self {
@@ -1189,7 +1189,7 @@ impl EnvVarGuard {
 }
 
 impl Drop for EnvVarGuard {
-    // Sanctioned caller — see `Self::set`.
+    // Sanctioned caller: see `Self::set`.
     #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         unsafe {
@@ -1204,10 +1204,10 @@ impl Drop for EnvVarGuard {
 // ── Event-loop faithful helpers ───────────────────────────────────────────────
 
 impl Editor {
-    /// Feed one key through `Editor::step` — dispatch it, refresh the search
+    /// Feed one key through `Editor::step`: dispatch it, refresh the search
     /// cache, drain any macro-replay keys it enqueued, then refresh again.
     /// Prefer this over `handle_key` in tests whose correctness depends on
-    /// the per-key ordering — e.g. smart-paste tests, where the idle replay
+    /// the per-key ordering, e.g. smart-paste tests, where the idle replay
     /// drain runs between two keys and must not disturb the `PasteStamp`
     /// freshness check. `feed_paste` below is the paste-event sibling;
     /// `feed_event` is the one that also runs `settle()`.
@@ -1221,9 +1221,9 @@ impl Editor {
         }
     }
 
-    /// Feed one key through `handle_input`, the interactive input boundary —
-    /// unlike `feed_key`/`step`, which deliberately bypass it (see
-    /// `Editor::handle_input`'s doc) — then `settle()`, mirroring
+    /// Feed one key through `handle_input`, the interactive input boundary
+    /// (unlike `feed_key`/`step`, which deliberately bypass it; see
+    /// `Editor::handle_input`'s doc), then `settle()`, mirroring
     /// `Editor::run`'s loop (dispatch at the bottom of one iteration, settle
     /// at the top of the next). Needed by tests covering the buffer-enter
     /// disk check on focus change: that check is `OnBufferEnter`'s Rust
@@ -1235,7 +1235,7 @@ impl Editor {
     }
 
     /// Feed a whole pasted string through `handle_input`, the same terminal
-    /// boundary a real bracketed paste arrives at — no `settle()`, mirroring
+    /// boundary a real bracketed paste arrives at. No `settle()`, mirroring
     /// `feed_key`/`step`'s own choice not to settle after every input.
     fn feed_paste(&mut self, text: &str) {
         self.handle_input(TerminalEvent::Paste(text.to_string()));
@@ -1249,23 +1249,23 @@ impl Editor {
 ///
 /// Scope: six of the seven effects that `commands::run` is exclusively
 /// responsible for. Register routing (caller-armed) and handle_key-tail concerns
-/// (replay_dot, hooks, search-cache) are intentionally excluded — the former is
+/// (replay_dot, hooks, search-cache) are intentionally excluded: the former is
 /// seeding-dependent, the latter has dedicated tests.
 ///
-/// Deliberate exclusion — `selection_recipe`: an inner `call!` dispatch inside
+/// Deliberate exclusion, `selection_recipe`: an inner `call!` dispatch inside
 /// a Steel body sets it via its own `step_update_recipe` decision, and the
 /// Steel `dispatch` branch only overrides that when the body dispatched
-/// nothing natively at all or the outer command is repeatable — divergence
+/// nothing natively at all or the outer command is repeatable. Divergence
 /// from the native path is intentional per command, not a parity bug, so it
 /// legitimately diverges and cannot be a parity field.
 ///
-/// Deliberate exclusion — the seventh effect, `step_align_view`'s viewport
+/// Deliberate exclusion, the seventh effect: `step_align_view`'s viewport
 /// write: parity holds trivially (`aligns_view` is hardcoded `false` for
 /// `SteelBacked`/`Lazy`, so the Steel branch never runs it at all), and this
 /// snapshot has no viewport field to compare it against.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
-    /// `ed.state.last_repeatable_action` — (command, count, char_arg) if set.
+    /// `ed.state.last_repeatable_action`: (command, count, char_arg) if set.
     /// `insert_inputs` is excluded: it is always empty at dispatch time and
     /// only filled by the Insert session's own later inputs.
     pub last_repeatable: Option<(String, usize, Option<char>)>,
@@ -1273,11 +1273,11 @@ pub(super) struct BookkeepingSnapshot {
     pub jump_len: usize,
     /// Whether `EditorState::active_session` is open with a Paste kind.
     pub paste_session_open: bool,
-    /// `ed.state.mode()` — derived from the input stack; `step_clear_extend`
+    /// `ed.state.mode()`, derived from the input stack. `step_clear_extend`
     /// clears `Base`'s Extend flag for selection-consuming edits.
     pub mode: Mode,
     /// Whether any (pane, buffer) pair has a pinned Insert-mode typed run
-    /// (`typed_run.is_some()`) — cleared by `step_clear_typed_run` for any
+    /// (`typed_run.is_some()`), cleared by `step_clear_typed_run` for any
     /// cursor-motion command reached while still in Insert mode, regardless
     /// of route (keypress, Steel `call!`, `run_command_sync`).
     pub typed_run_open: bool,

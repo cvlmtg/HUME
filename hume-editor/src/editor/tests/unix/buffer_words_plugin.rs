@@ -1,9 +1,9 @@
-//! `core:buffer-words` — end-to-end plugin tests. Loads the real, shipped
+//! `core:buffer-words`: end-to-end plugin tests. Loads the real, shipped
 //! `runtime/plugins/core/buffer-words/plugin.scm` (`HumeRuntimeGuard` +
 //! `write_core_plugin`, the pattern `pickers_plugin.rs` documents), except
 //! the last test, which needs the multi-file `core:lsp` too and so uses
 //! `RealRuntimeGuard` instead (`git_diff_plugin.rs`'s reason for the same
-//! choice — see its module doc).
+//! choice, see its module doc).
 //!
 //! Every expected word set below is written
 //! by hand from the fixture's own text, never produced by the plugin's own
@@ -22,7 +22,7 @@ const BUFFER_WORDS_PLUGIN: &str = include_str!(concat!(
 ));
 
 /// Stages the real `core:buffer-words` (and its `core:stdlib` dependency)
-/// into `guard`'s isolated runtime and loads them — no buffer is open yet:
+/// into `guard`'s isolated runtime and loads them. No buffer is open yet:
 /// every test opens its own fixture afterward, via [`open`], so
 /// `on-buffer-open` fires with the plugin's hook already registered
 /// (`Editor::open`'s own startup buffer opens *before* any plugin loads,
@@ -49,7 +49,7 @@ fn open(ed: &mut Editor, path: &Path) -> BufferId {
     ed.focused_buffer_id()
 }
 
-/// The ranked labels the open completion session would show, top 20 — a
+/// The ranked labels the open completion session would show, top 20: a
 /// local copy of `tests/completion/mod.rs`'s `labels`, since that one is
 /// private to a sibling module tree.
 fn labels(ed: &Editor) -> Vec<String> {
@@ -71,7 +71,7 @@ fn trigger(ed: &mut Editor) {
     ed.settle();
 }
 
-/// Types `text` char by char without entering or leaving Insert mode —
+/// Types `text` char by char without entering or leaving Insert mode,
 /// unlike `tests/mod.rs`'s `type_text`, which brackets its typing with its
 /// own `i`/Escape and so always ends back in Normal mode. Every test here
 /// needs to stay in Insert for `trigger`'s Ctrl-Space (gated on Insert mode)
@@ -109,7 +109,7 @@ fn wait_for_word(ed: &mut Editor, target: &str) {
 /// left in place), leaving the editor in Insert mode. `on-text-changed`
 /// hands the hook only a buffer id, so this is how a test anchors the
 /// background walk's next restart at a specific line: `:goto` alone moves
-/// the cursor but fires no reindex on its own — only an actual edit does.
+/// the cursor but fires no reindex on its own; only an actual edit does.
 fn goto_line_and_edit(ed: &mut Editor, line: usize, ch: char) {
     type_cmd(ed, &format!(":{line}"));
     ed.feed_key(key('i'));
@@ -151,7 +151,7 @@ fn ctrl_space_offers_identifiers_from_the_buffer() {
 }
 
 /// A word far from the cursor, on a buffer with many more lines than one
-/// tick's `"lines"` budget, is still found — the actual case a background
+/// tick's `"lines"` budget, is still found: the actual case a background
 /// walk exists for. A whole-buffer read would also find this word, so the
 /// test mainly checks `bw/walk!`'s per-tick fetch arithmetic: an off-by-one
 /// in `fwd-hi`/`bwd-lo` would skip the line this fixture puts the target
@@ -191,7 +191,7 @@ fn the_partially_typed_token_is_not_offered_back() {
     // proving anything. "helloworld"
     // also starts with the live prefix "hello" (so Rust's own re-ranking
     // doesn't filter it out the way it would something unrelated), but
-    // isn't *equal* to it — pinning that the exclusion is specifically
+    // isn't *equal* to it, pinning that the exclusion is specifically
     // "equals the prefix", not an accident of the prefix filter itself.
     assert!(got.contains(&"helloworld".to_string()), "{got:?}");
 }
@@ -222,7 +222,7 @@ fn backspace_widens_the_candidate_list_again() {
     // word in the buffer, and the exact-token exclusion now correctly tracks
     // the live token as it's re-invoked (see
     // `the_exact_token_exclusion_tracks_further_typing`), so a live token
-    // that exactly equals "cat" would exclude it — accepting it right then
+    // that exactly equals "cat" would exclude it, and accepting it right then
     // really would be a no-op. "ca" isn't a whole word, so both survive.
     ed.feed_key(key_backspace());
     ed.feed_key(key_backspace());
@@ -245,7 +245,7 @@ fn an_edit_refreshes_the_index() {
     ed.feed_key(key('i'));
     // A trailing space keeps "newword" out of the live token, so it isn't
     // excluded as the in-progress prefix (see `the_partially_typed_token_…`
-    // above) — this test is about the refresh, not the exclusion.
+    // above). This test is about the refresh, not the exclusion.
     let typed = "newword ";
     type_in_insert(&mut ed, typed);
     wait_for_word(&mut ed, "newword");
@@ -257,14 +257,14 @@ fn an_edit_refreshes_the_index() {
 }
 
 /// A background walk finishing while the menu is already open must not
-/// reset the user's navigation *twice* under one still-live invocation —
+/// reset the user's navigation *twice* under one still-live invocation:
 /// `bw/push-finished-answer!` clears `"live-id"` once used, so a *second*
 /// walk completing with no fresh trigger in between is a no-op instead of
 /// re-emitting under the same id and resetting the selection again. The
 /// global `word-chars` option change is the trigger: `'on-option-change`
 /// reindexes every open buffer without touching this buffer's own text or
 /// cursor, so it can't also disturb the session through
-/// `completion_observe_edit`'s own token tracking — the one thing under
+/// `completion_observe_edit`'s own token tracking. The one thing under
 /// test here is `bw/push-finished-answer!` itself.
 #[test]
 fn a_second_background_finish_does_not_reset_the_menu_selection() {
@@ -285,7 +285,7 @@ fn a_second_background_finish_does_not_reset_the_menu_selection() {
     );
 
     // A fresh reindex now legitimately re-emits under the trigger's still-
-    // live id and resets the selection once — expected, not the bug under
+    // live id and resets the selection once: expected, not the bug under
     // test. `reindex_and_wait` drives one full cycle.
     reindex_via_option_change(&mut ed);
     assert_eq!(
@@ -311,7 +311,7 @@ fn a_second_background_finish_does_not_reset_the_menu_selection() {
 }
 
 /// Fires `'on-option-change` for `"word-chars"` (reindexing every open
-/// buffer without touching this buffer's own text or cursor — see this
+/// buffer without touching this buffer's own text or cursor; see this
 /// file's own test doc for why that matters) and waits, bounded, for the
 /// walk it restarts to finish.
 fn reindex_via_option_change(ed: &mut Editor) {
@@ -340,7 +340,7 @@ fn reindex_via_option_change(ed: &mut Editor) {
 
 /// A walk cancelled mid-way through a large buffer must not leave its
 /// partial `"building"` set to survive into the fresh walk that replaces
-/// it — `bw/reindex!` clears `"building"` in the same install that bumps
+/// it: `bw/reindex!` clears `"building"` in the same install that bumps
 /// `"gen"`, so a word removed by the edit that triggered the reindex can't
 /// resurface from a stale partial scan the old (cancelled) walk already
 /// folded it into.
@@ -350,7 +350,7 @@ fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() 
     let guard = HumeRuntimeGuard::new();
     // A small per-tick budget over many lines: the first tick (anchored at
     // line 0, where "targetword" lives) picks the word up almost
-    // immediately, while the walk as a whole takes many further ticks —
+    // immediately, while the walk as a whole takes many further ticks,
     // wide enough a window to land the edit below before it finishes.
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
     let file_dir = safe_tempdir();
@@ -366,7 +366,7 @@ fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() 
     std::thread::sleep(Duration::from_millis(80));
     ed.settle();
 
-    // Delete "targetword" from line 1 — the edit `on-text-changed`'s
+    // Delete "targetword" from line 1: the edit `on-text-changed`'s
     // debounced `bw/reindex!` restarts the walk over.
     type_cmd(&mut ed, ":1");
     ed.feed_key(key('d'));
@@ -419,8 +419,8 @@ fn word_chars_extends_what_counts_as_a_word() {
     let mut ed = setup(&guard, tmp.path(), None);
     // Set the *global* default before opening the fixture, rather than a
     // buffer-scoped override after: the buffer this plugin cares about
-    // doesn't exist yet, and setting it first means the very first index —
-    // built synchronously by `on-buffer-open` — already sees it, with no
+    // doesn't exist yet, and setting it first means the very first index
+    // (built synchronously by `on-buffer-open`) already sees it, with no
     // need to force a second reindex.
     type_cmd(&mut ed, ":set global word-chars=-");
     let file_dir = safe_tempdir();
@@ -434,7 +434,7 @@ fn word_chars_extends_what_counts_as_a_word() {
     // Negative control: without this, "foo-bar" being present would just as
     // well be explained by "foo" and "bar" each separately matching the
     // (empty) prefix and Rust's own re-ranking coincidentally listing
-    // "foo-bar" too — it wouldn't prove the tokenizer actually joined them
+    // "foo-bar" too, so it wouldn't prove the tokenizer actually joined them
     // into one word. Since "foo-bar" is the *only* text in the buffer, "foo"
     // and "bar" can only appear as their own labels if the scan split on
     // `-` instead of treating it as a word char.
@@ -480,7 +480,7 @@ fn a_curly_apostrophe_splits_the_word_around_it() {
 }
 
 /// A combining-mark accent must stay attached
-/// to its word, not read as a boundary — `café` spelled as `e` + U+0301
+/// to its word, not read as a boundary: `café` spelled as `e` + U+0301
 /// (combining acute), not the precomposed codepoint, is the case that
 /// actually exercises grapheme-cluster handling rather than a single-char
 /// classification.
@@ -526,7 +526,7 @@ fn an_invalid_match_config_fails_the_load() {
     .expect("a failed plugin load must be contained, not abort eval_init");
 
     // eval_init queues log messages on the host (ctx.log) rather than
-    // writing ed.state.message_log directly — only Editor::init_scripting's
+    // writing ed.state.message_log directly. Only Editor::init_scripting's
     // tail code flushes that queue, which this test bypasses by calling
     // eval_init directly, so check the host's queue itself.
     assert!(
@@ -554,7 +554,7 @@ fn an_invalid_match_config_fails_the_load() {
 
 /// Closing a buffer mid-walk must cancel its timer chain rather than leave
 /// an orphaned continuation running against a since-replaced (or absent)
-/// entry — there's no clean seam to assert the entry is actually gone from
+/// entry. There's no clean seam to assert the entry is actually gone from
 /// Steel state, so this observes the property that matters from Rust: the
 /// orphaned continuation, if the cancel didn't happen, would eventually
 /// fire and either panic or write into whatever the same buffer id's entry
@@ -578,13 +578,13 @@ fn closing_a_buffer_drops_its_index() {
 }
 
 /// A word past the point where the forward scan exhausts the buffer must
-/// still be found by the backward scan — the common case once the cursor
+/// still be found by the backward scan: the common case once the cursor
 /// is near the end.
 ///
 /// `a_word_many_lines_past_the_cursor_is_offered` doesn't exercise this: it
 /// anchors at line 0, where the forward side never empties out. This test
-/// anchors at the buffer's *last* line instead — the forward side exhausts
-/// on tick 1 — and places the target word inside one of the backward
+/// anchors at the buffer's *last* line instead (the forward side exhausts
+/// on tick 1) and places the target word inside one of the backward
 /// ticks' own windows (`"lines" 10`), at a fixed, predictable offset.
 #[test]
 fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
@@ -594,8 +594,8 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("f.txt");
     // 60 lines, 1-based. Line 57 sits inside the backward window
-    // (47..57) a tick fetches once the walk has stepped back to anchor 59
-    // — offset 5 into that 10-line window, past the 4-element survivor cap
+    // (47..57) a tick fetches once the walk has stepped back to anchor 59:
+    // offset 5 into that 10-line window, past the 4-element survivor cap
     // the bug leaves behind.
     let mut lines: Vec<String> = (1..=60)
         .map(|n| {
@@ -615,7 +615,7 @@ fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
 }
 
 /// Closing the *last* open buffer frees its slot and opens a fresh scratch
-/// buffer under a brand new `BufferId` — a genuine open, so `bw/reindex!`
+/// buffer under a brand new `BufferId`: a genuine open, so `bw/reindex!`
 /// picks it up via the plugin's own `on-buffer-open` handler like any other
 /// freshly opened buffer (see README.md's "Cursor-outward, line-windowed
 /// indexing").
@@ -629,8 +629,8 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
     std::fs::write(&path, "alpha\n").unwrap();
     let bid = open(&mut ed, &path);
     // `Editor::open` always seeds a startup scratch buffer alongside `bid`
-    // (`Editor::open`'s own doc), so `bid` isn't the *only* open buffer yet
-    // — closing it now would just switch focus to that scratch, not hit
+    // (`Editor::open`'s own doc), so `bid` isn't the *only* open buffer yet.
+    // Closing it now would just switch focus to that scratch, not hit
     // the last-buffer path. Switch to it and close it first, so `bid` really
     // is the last buffer standing when it's closed next.
     type_cmd(&mut ed, ":bprev");
@@ -661,12 +661,12 @@ fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() 
 /// fresh `bw/reindex!` has installed a new entry generation): that needs
 /// `drain_due_timers` to pop the walk's own pending tick and a fresh
 /// debounce timer in the *same* batch, in that order, which isn't something
-/// a black-box, wall-clock-driven test can force deterministically — the
+/// a black-box, wall-clock-driven test can force deterministically: the
 /// walk's own tick is always due far sooner (16ms) than a fresh debounce
 /// (150ms), so in ordinary settle-driven tests the walk tick always drains
 /// first. What this test does check, deterministically: restarting the walk
-/// twice in quick succession — once while the first walk is still mid-
-/// flight — doesn't lose coverage at either end. That's the property the
+/// twice in quick succession (once while the first walk is still mid-
+/// flight) doesn't lose coverage at either end. That's the property the
 /// `"gen"` guard and the building-set-survives-a-restart change
 /// (README.md's "Cursor-outward, line-windowed indexing") exist to protect.
 #[test]
@@ -688,7 +688,7 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
     open(&mut ed, &path);
     goto_line_and_edit(&mut ed, 200, 'z');
     // Long enough for the debounce to fire and the walk to make real
-    // progress outward from line 200 — not long enough to finish (400
+    // progress outward from line 200, but not long enough to finish (400
     // lines at "lines" 5 is ~80 ticks).
     std::thread::sleep(Duration::from_millis(200));
     ed.settle();
@@ -704,8 +704,8 @@ fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
 
 /// `bw/reindex!` clamps the backward window's upper bound against the
 /// buffer's *live* line count on every tick, the same way the forward
-/// window's is already clamped — see README.md's "Cursor-outward,
-/// line-windowed indexing". Without it, a walk started on a large buffer
+/// window's is already clamped (see README.md's "Cursor-outward,
+/// line-windowed indexing"). Without it, a walk started on a large buffer
 /// whose backward anchor is still well above 0 raises once the buffer
 /// shrinks out from under it (`:e!` onto a shorter file, a big delete, an
 /// LSP `applyEdit`) instead of adapting: `buffer-lines` raises on an
@@ -780,7 +780,7 @@ fn the_exact_token_exclusion_tracks_further_typing() {
 /// freeze that partial answer: once the walk finishes, it pushes its own
 /// completed word list straight to the still-open invocation
 /// (`bw/push-finished-answer!`, README.md's "Pushing a finished index to
-/// an open menu") — no further keystroke, no fresh `Ctrl-Space`, required.
+/// an open menu"), with no further keystroke and no fresh `Ctrl-Space` required.
 #[test]
 fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     let tmp = safe_tempdir();
@@ -799,7 +799,7 @@ fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     ed.settle();
     assert!(!labels(&ed).contains(&"late_word".to_string()));
 
-    // No further keystroke — the walk's own push is what has to surface
+    // No further keystroke: the walk's own push is what has to surface
     // `late_word`, once it finishes on its own timer chain.
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
@@ -816,7 +816,7 @@ fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
 }
 
 /// A *global* `word-chars` change reindexes every open buffer
-/// (`on-option-change`, README.md's "`word-chars` invalidation") — unlike
+/// (`on-option-change`, README.md's "`word-chars` invalidation"), unlike
 /// `word_chars_extends_what_counts_as_a_word` above, which sets the option
 /// before the buffer is even opened (so the very first index already sees
 /// it), this sets it on an *already-indexed* buffer with no intervening
@@ -852,11 +852,11 @@ fn a_global_word_chars_change_reindexes_an_already_open_buffer() {
 
 /// The plan's reason for existing: `core:buffer-words` and `core:lsp`
 /// sharing one buffer, exercising multi-source ranking (`#:priority`) with
-/// two real, independently-motivated sources — nothing else in the
+/// two real, independently-motivated sources. Nothing else in the
 /// codebase does this today. `RealRuntimeGuard` rather than
 /// `HumeRuntimeGuard`: `core:lsp` is multi-file (see `git_diff_plugin.rs`'s
 /// module doc for the same reasoning), and it picks up this plugin's own
-/// real, just-shipped `runtime/plugins/core/buffer-words/plugin.scm` too —
+/// real, just-shipped `runtime/plugins/core/buffer-words/plugin.scm` too,
 /// no separate staging needed.
 #[test]
 fn buffer_words_and_lsp_rank_together_lsp_first() {
@@ -934,11 +934,11 @@ fn buffer_words_and_lsp_rank_together_lsp_first() {
     assert!(request_count(&requests, "textDocument/completion") >= 1);
 }
 
-/// `core:buffer-words` never passes `#:resolve #t` — accepting one of its
+/// `core:buffer-words` never passes `#:resolve #t`, so accepting one of its
 /// items must send no `completionItem/resolve` request, even in a buffer
 /// whose attached server advertises `resolveProvider`. Before the
 /// `#:resolve` gate, `accept`'s only condition was "no additionalTextEdits
-/// and the buffer has a server with resolveProvider" — true of any item in
+/// and the buffer has a server with resolveProvider", true of any item in
 /// this buffer, buffer-words' own `{"label": …}` items included, so the
 /// server would have been sent an item it never produced.
 #[test]
@@ -979,7 +979,7 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("main.rs");
     // Mixed-case identifier, not `bw/case-twin`-eligible (an inner capital
-    // means its tail isn't already all-lowercase) — this test's exact-list
+    // means its tail isn't already all-lowercase). This test's exact-list
     // assertion needs buffer-words to answer with exactly one item.
     std::fs::write(&path, "bufferWord\n").unwrap();
     let bid = open(&mut ed, &path);
@@ -1021,7 +1021,7 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
 }
 
 /// The same identifier from `core:lsp` and `core:buffer-words` must show
-/// once, not twice — `core:lsp`'s own plain (no textEdit, no
+/// once, not twice: `core:lsp`'s own plain (no textEdit, no
 /// additionalTextEdits) item is a duplicate of buffer-words' own, and
 /// `core:lsp`'s higher `#:priority` decides which one survives.
 #[test]
@@ -1060,7 +1060,7 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
 
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("main.rs");
-    // Mixed-case identifier, not `bw/case-twin`-eligible — see the sibling
+    // Mixed-case identifier, not `bw/case-twin`-eligible: see the sibling
     // test above's identical comment; this test needs LSP's and
     // buffer-words' items to carry the exact same one label for the dedup
     // check below to mean anything.
@@ -1109,12 +1109,12 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
 
 /// Once anything is typed, `core:lsp`'s `'fuzzy` match (a real score above
 /// `0`) always outranks `core:buffer-words`' own `'string` match (tied at
-/// `0`) — not merely "can", the way an earlier draft of this doc described
+/// `0`), not merely "can", the way an earlier draft of this doc described
 /// it. This is policy (`MatchKind::String`'s own doc,
 /// `hume-editor/src/editor/completion/session.rs`), not a gap: in an
 /// LSP-attached buffer, LSP should win once the user narrows by typing.
 /// `#:priority` only ever decides a *tied* score, which this typed-prefix
-/// case never reaches — different labels here (unlike the dedup test
+/// case never reaches. Different labels here (unlike the dedup test
 /// above) so nothing gets hidden as a duplicate and this pins ranking
 /// alone.
 #[test]
@@ -1171,8 +1171,8 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
     }
     ed.settle();
 
-    // Second (blank) line, so buffer-words' own index — built from the
-    // whole buffer, "buffer_word_target" included — has a real candidate
+    // Second (blank) line, so buffer-words' own index (built from the
+    // whole buffer, "buffer_word_target" included) has a real candidate
     // to offer for the "buf" typed here, distinct from the typed text
     // itself (which `is_noop_for` would otherwise drop as an exact match).
     ed.feed_key(key_down());
@@ -1198,9 +1198,9 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
     );
 }
 
-/// A capitalized word (Titlecase — first letter up, rest down) also indexes
+/// A capitalized word (Titlecase: first letter up, rest down) also indexes
 /// as its all-lowercase twin, so typing it mid-sentence (never capitalized
-/// there) still finds it — see `plugin.scm`'s `bw/case-twin`. Covers a
+/// there) still finds it. See `plugin.scm`'s `bw/case-twin`. Covers a
 /// non-ASCII first letter too: `Élan`'s twin is `élan`, not merely `Apply`'s
 /// ASCII `apply`.
 #[test]
@@ -1229,8 +1229,8 @@ fn a_capitalized_word_is_offered_lowercase_after_a_lowercase_prefix() {
 }
 
 /// The reverse of the above: an all-lowercase word's Titlecase twin is
-/// offered after an uppercase-led prefix, and only the twin — not the
-/// as-written lowercase form — since that wouldn't match the case-sensitive
+/// offered after an uppercase-led prefix, and only the twin (not the
+/// as-written lowercase form), since that wouldn't match the case-sensitive
 /// prefix gate at all.
 #[test]
 fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
@@ -1250,7 +1250,7 @@ fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
 }
 
 /// A word with an inner capital (`HashMap`, `iPhone`) or in ALL-CAPS
-/// (`MAX_LEN`) gets no twin at all — `bw/case-twin` only flips a *plain*
+/// (`MAX_LEN`) gets no twin at all: `bw/case-twin` only flips a *plain*
 /// word's first letter, never one whose tail already carries case
 /// information that flipping the head would destroy.
 #[test]

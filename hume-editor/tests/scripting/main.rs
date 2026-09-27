@@ -1,5 +1,5 @@
 //! Scripting-crate integration tests, split by builtin area. A sibling
-//! crate root of `tests/unix/main.rs`'s own split — this file plays the
+//! crate root of `tests/unix/main.rs`'s own split. This file plays the
 //! `main.rs` role: Cargo auto-discovers `tests/*.rs` and `tests/*/main.rs`
 //! as integration-test targets, so the split keeps the binary name
 //! `scripting` by living at `tests/scripting/main.rs` instead of renaming.

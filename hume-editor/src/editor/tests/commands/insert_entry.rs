@@ -1,4 +1,4 @@
-//! insert_entry.rs — `o`/`O` open-line variants and every insert-entry point's cursor/step-back behavior.
+//! insert_entry.rs: `o`/`O` open-line variants and every insert-entry point's cursor/step-back behavior.
 
 use super::super::*;
 use pretty_assertions::assert_eq;
@@ -6,7 +6,7 @@ use pretty_assertions::assert_eq;
 // ── `o` / `O` open-line variants ──────────────────────────────────────────
 
 /// `o` must insert a blank line *below* the current line, position the cursor
-/// on it, and enter Insert mode — all as a single composed operation.
+/// on it, and enter Insert mode, all as a single composed operation.
 #[test]
 fn o_opens_line_below_and_enters_insert() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -19,12 +19,12 @@ fn o_opens_line_below_and_enters_insert() {
 }
 
 /// `o` + typed text + Enter + Esc must select just the typed text, not the
-/// newline Enter inserted — a trailing `\n` is a line terminator, not typed
+/// newline Enter inserted: a trailing `\n` is a line terminator, not typed
 /// content (see `PaneBufferState::run_ends`'s doc). Verified by yanking the
 /// auto-selected span and checking the register text doesn't end in `\n`:
 /// `is_register_linewise` (`hume-ops/src/register.rs`) reads exactly that,
 /// and a register ending in `\n` is what makes a later `p` paste as a new
-/// line instead of inline — same root cause that flips `:format-source`
+/// line instead of inline, the same root cause that flips `:format-source`
 /// between whole-document and single-range formatting (`is_selection_linewise`,
 /// `hume-editing/src/selection/single.rs`).
 #[test]
@@ -58,7 +58,7 @@ fn o_on_empty_line_places_cursor_on_new_blank_line() {
 }
 
 /// `o` on an indented line carries that line's leading whitespace onto the
-/// new line — the same auto-indent rule Enter uses (`insert_newline_indent`).
+/// new line, the same auto-indent rule Enter uses (`insert_newline_indent`).
 #[test]
 fn o_carries_indent_from_current_line() {
     let mut ed = editor_from("\t-[f]>oo\n");
@@ -70,7 +70,7 @@ fn o_carries_indent_from_current_line() {
 }
 
 /// `o` then a bare Esc must leave a truly empty line, not one with trailing
-/// whitespace — vim autoindent parity via the session's autoindent ownership
+/// whitespace: vim autoindent parity via the session's autoindent ownership
 /// record, same as Enter's own Esc-trim.
 #[test]
 fn o_then_esc_trims_unused_indent() {
@@ -115,14 +115,14 @@ fn o_then_down_onto_pre_existing_blank_line_then_esc_preserves_it() {
 }
 
 /// A `Delete` keypress that deletes nothing (cursor already at the buffer's
-/// structural end) must not cancel the pending autoindent trim — the old
+/// structural end) must not cancel the pending autoindent trim. The old
 /// bool-flag design cleared unconditionally on every `Delete`, regardless of
 /// whether it changed the buffer.
 #[test]
 fn o_then_noop_delete_then_esc_still_trims_indent() {
     let mut ed = editor_from("\t-[f]>oo\n");
     ed.handle_key(key('o'));
-    ed.handle_key(key_delete()); // cursor is on the buffer's last char — no-op
+    ed.handle_key(key_delete()); // cursor is on the buffer's last char: no-op
     ed.handle_key(key_esc());
 
     assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n");
@@ -130,7 +130,7 @@ fn o_then_noop_delete_then_esc_still_trims_indent() {
 
 /// `o`, typing a char, then Backspacing it back off, then Esc: the session's
 /// own indent is still exactly what's left on the line, so it's the
-/// session's to vacate — matching vim's own `<BS>` carve-out (`:help
+/// session's to vacate, matching vim's own `<BS>` carve-out (`:help
 /// autoindent`). The positional record trims the indent away like any other
 /// bare Esc, so the cursor does not strand mid-indent.
 #[test]
@@ -158,7 +158,7 @@ fn capital_o_opens_line_above_and_enters_insert() {
 }
 
 /// `O` on an indented line carries that line's leading whitespace onto the
-/// new line above it — the line above (unindented) stays untouched.
+/// new line above it; the line above (unindented) stays untouched.
 #[test]
 fn capital_o_carries_indent_from_current_line() {
     let mut ed = editor_from("    foo\n    -[b]>ar\n");
@@ -170,7 +170,7 @@ fn capital_o_carries_indent_from_current_line() {
 }
 
 /// `O` then a bare Esc must leave a truly empty line, not one with trailing
-/// whitespace — same vim autoindent parity `o`'s own Esc-trim test covers.
+/// whitespace, the same vim autoindent parity `o`'s own Esc-trim test covers.
 /// `O` had zero coverage of this before: every prior `O` test used an
 /// unindented buffer, so its own `arm_autoindent` call never had anything to
 /// trim.
@@ -199,7 +199,7 @@ fn a_enters_insert_after_selection_end() {
 }
 
 /// `A` must jump to the end of the line and then step one right (onto the
-/// newline), then enter Insert mode — "append at end of line".
+/// newline), then enter Insert mode ("append at end of line").
 #[test]
 fn capital_a_enters_insert_after_end_of_line() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -232,7 +232,7 @@ fn i_on_wide_selection_collapses_to_start() {
 }
 
 /// `a` on a multi-char selection collapses to one past the selection end and
-/// enters Insert mode — the cursor lands after the last selected character.
+/// enters Insert mode: the cursor lands after the last selected character.
 #[test]
 fn a_on_wide_selection_collapses_after_end() {
     // Forward selection: anchor=0 (h), head=3 (l) → end=3, one past = 4.
@@ -252,7 +252,7 @@ fn a_on_wide_selection_collapses_after_end() {
 /// `select-inserted-text` off: with the default on, a single typed char's
 /// auto-selected span (`-[X]>`) renders identically to a stepped-back
 /// collapsed cursor on that same char, so the assertion would hold even if
-/// `step_back_on_exit` were broken — this test is specifically about the
+/// `step_back_on_exit` were broken. This test is specifically about the
 /// step-back mechanism, so it isolates that path.
 #[test]
 fn a_esc_steps_cursor_back_to_last_typed_char() {
@@ -272,7 +272,7 @@ fn a_esc_steps_cursor_back_to_last_typed_char() {
 /// After Esc the cursor must sit on the last appended character (on the same
 /// line), so that a second `a` re-enters Insert at the end of that line.
 ///
-/// `select-inserted-text` off — see `a_esc_steps_cursor_back_to_last_typed_char`'s
+/// `select-inserted-text` off; see `a_esc_steps_cursor_back_to_last_typed_char`'s
 /// doc for why isolating the step-back path (not just typing one char)
 /// matters here.
 #[test]
@@ -293,7 +293,7 @@ fn a_esc_at_end_of_line_does_not_advance_to_next_line() {
     assert_eq!(state(&ed), "helloX-[\n]>world\n");
 }
 
-/// `i` never sets `step_back_on_exit` — with `select-inserted-text` on, its
+/// `i` never sets `step_back_on_exit`: with `select-inserted-text` on, its
 /// typed run is simply selected on Esc.
 #[test]
 fn i_esc_selects_the_typed_run() {
@@ -308,7 +308,7 @@ fn i_esc_selects_the_typed_run() {
 }
 
 /// With `select-inserted-text` off, `i` never steps the cursor back on Esc
-/// either (only `a`/`A`/`o`/`O`'s empty-run fallback does) — it leaves the
+/// either (only `a`/`A`/`o`/`O`'s empty-run fallback does). It leaves the
 /// cursor exactly where typing left it.
 #[test]
 fn i_esc_does_not_step_cursor_back_setting_off() {
@@ -319,7 +319,7 @@ fn i_esc_does_not_step_cursor_back_setting_off() {
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
 
-    // No step-back: cursor stays one past 'X', on 'h' — not stepped back
+    // No step-back: cursor stays one past 'X', on 'h', not stepped back
     // onto 'X' itself the way `a`/`A`/`o`/`O` would.
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "X-[h]>ello\n");
@@ -352,7 +352,7 @@ fn capital_a_esc_selects_the_typed_run() {
 }
 
 /// `a` + immediate Esc (nothing typed): the empty-run fallback steps the
-/// cursor back one grapheme — the only case `step_back_on_exit` still governs.
+/// cursor back one grapheme, the only case `step_back_on_exit` still governs.
 #[test]
 fn a_esc_with_nothing_typed_steps_back() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -389,12 +389,12 @@ fn i_multi_cursor_selects_each_typed_run() {
 
 // ── `o` / `O` step-back on Esc ───────────────────────────────────────────────
 
-/// After `o` + typing + Esc the typed run is selected — not just a cursor on
+/// After `o` + typing + Esc the typed run is selected, not just a cursor on
 /// the last character, and not on the trailing `\n` of the new line.
 ///
 /// Regression: without `mark_insert_step_back`'s empty-run fallback, `o` +
 /// immediate `Esc` (nothing typed) would select the *next* line's `\n`
-/// rather than staying on the just-created blank one — see
+/// rather than staying on the just-created blank one; see
 /// `o_esc_on_empty_line_does_not_step_to_previous_line` for that case.
 #[test]
 fn o_esc_selects_the_typed_run() {
@@ -471,7 +471,7 @@ fn o_esc_on_empty_line_does_not_step_to_previous_line() {
     ed.handle_key(key_esc());
 
     // New blank line inserted; cursor on its '\n' (head == line_start so no
-    // step-back occurs — the empty-line guard in end_insert_session applies).
+    // step-back occurs; the empty-line guard in end_insert_session applies).
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "hello\n-[\n]>world\n");
 }
@@ -487,7 +487,7 @@ fn o_esc_on_empty_line_does_not_step_to_previous_line() {
 /// Both land on 3 → merge → single cursor on \n.
 ///
 /// Regression: without `map` merging after the transform, this leaves two
-/// identical collapsed selections — a `SelectionSet` invariant violation.
+/// identical collapsed selections, a `SelectionSet` invariant violation.
 #[test]
 fn a_multi_cursor_clamp_collision_merges_to_one() {
     let mut ed = editor_from("ab-[c]>-[\n]>");
@@ -499,7 +499,7 @@ fn a_multi_cursor_clamp_collision_merges_to_one() {
 
 /// `a Esc` on two cursors where one is on a `\n` and the other on a content char:
 /// the `\n`-cursor stays put (on the `\n`) and the content-char cursor advances
-/// one grapheme. No collision — they end up on distinct lines after step-back.
+/// one grapheme. No collision: they end up on distinct lines after step-back.
 #[test]
 fn a_esc_newline_cursor_stays_on_its_line() {
     // "ab\ncd\n": a=0 b=1 \n=2 c=3 d=4 \n=5.

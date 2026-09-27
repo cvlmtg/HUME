@@ -10,7 +10,7 @@ const EXPECTED_COMMAND_COUNT: usize = 196;
 /// commands (plus the `m i`/`m a` key) each kind ships. Nothing in the type
 /// system ties the two together: a variant added to `ObjectKind` but not to
 /// the table still compiles, still collects spans, and silently ships zero
-/// commands and zero keybindings — a quieter failure than the out-of-bounds
+/// commands and zero keybindings, a quieter failure than the out-of-bounds
 /// panic `object_enum!`'s own generated `ALL` exists to prevent.
 ///
 /// A missing row makes this fail with the orphaned kind's name, where
@@ -43,7 +43,7 @@ fn registry_has_expected_count() {
     assert_eq!(
         reg.len(),
         EXPECTED_COMMAND_COUNT,
-        "registered command count mismatch — did you add a command without registering it?"
+        "registered command count mismatch: did you add a command without registering it?"
     );
 }
 
@@ -301,7 +301,7 @@ fn is_extendable_lazy_stub_true() {
 
 #[test]
 fn all_names_are_unique() {
-    // HashMap insertion silently overwrites duplicates — verify the final
+    // HashMap insertion silently overwrites duplicates, so verify the final
     // count matches the number of distinct registered names.
     let reg = CommandRegistry::with_defaults();
     let unique: std::collections::HashSet<&str> = reg.names().collect();
@@ -348,7 +348,7 @@ fn runtime_register_and_lookup() {
 #[test]
 fn mappable_commands_not_shadowed_by_typed() {
     // Mappable commands like clear-search and select-all-matches must remain
-    // accessible as mappable so keybinds continue to work — and, since `:`
+    // accessible as mappable so keybinds continue to work, and, since `:`
     // resolves only typed commands, neither is reachable from the command
     // line at all (see registry/mod.rs's module doc).
     let reg = CommandRegistry::with_defaults();
@@ -395,7 +395,7 @@ fn runtime_register_typed_and_lookup() {
 #[test]
 fn steel_backed_names_filters_by_variant() {
     let mut reg = CommandRegistry::with_defaults();
-    // Defaults contain no SteelBacked commands — every built-in is
+    // Defaults contain no SteelBacked commands: every built-in is
     // Motion / Selection / Edit / EditorCmd / Typed.
     assert!(reg.steel_backed_names().is_empty());
 
@@ -416,7 +416,7 @@ fn steel_backed_names_filters_by_variant() {
         inline_output: false,
         repeatable: false,
     });
-    // An EditorCmd with a name that could be mistaken for a Steel proc —
+    // An EditorCmd with a name that could be mistaken for a Steel proc:
     // the helper must still filter it out by variant, not by name shape.
     fn noop(
         _state: &mut crate::editor::EditorState,
@@ -450,7 +450,7 @@ fn steel_backed_names_filters_by_variant() {
 }
 
 /// `unregister` removes dynamic (`SteelBacked`/`Lazy`) entries but refuses
-/// native commands — a failed-plugin rollback must never be able to delete
+/// native commands: a failed-plugin rollback must never be able to delete
 /// a built-in for the rest of the session.
 #[test]
 fn unregister_removes_dynamic_but_not_native() {
@@ -474,7 +474,7 @@ fn unregister_removes_dynamic_but_not_native() {
 
     reg.unregister("steel-cmd");
     reg.unregister("lazy-cmd");
-    reg.unregister("move-left"); // native — must be a no-op
+    reg.unregister("move-left"); // native, must be a no-op
 
     assert!(reg.get_mappable("steel-cmd").is_none());
     assert!(reg.get_mappable("lazy-cmd").is_none());
@@ -529,7 +529,7 @@ fn selection_tracking_matches_expected_commands() {
     let reg = CommandRegistry::with_defaults();
 
     // `Composes`: transforms or reduces whatever extent is already staged
-    // rather than establishing one of its own — see `SelectionTracking::Composes`.
+    // rather than establishing one of its own. See `SelectionTracking::Composes`.
     for name in &[
         "collapse-selection",
         "flip-selections",
@@ -579,7 +579,7 @@ fn selection_tracking_matches_expected_commands() {
         );
     }
 
-    // `Extends`: every `Motion` — a Move-mode result is a bare cursor (or,
+    // `Extends`: every `Motion`. A Move-mode result is a bare cursor (or,
     // for the word motions, a selection reached by navigating away from the
     // cursor), so it never establishes a step of its own.
     for name in &["move-left", "select-next-word", "goto-next-function"] {
@@ -609,7 +609,7 @@ fn selection_tracking_matches_expected_commands() {
 }
 
 /// A command cannot be both repeatable (an edit that modifies the buffer)
-/// and a selection-builder (a pure cursor movement) — `step_stamp_repeatable`
+/// and a selection-builder (a pure cursor movement): `step_stamp_repeatable`
 /// and `step_update_recipe` (`commands/pipeline.rs`) both fire off the same
 /// AFTER stage and would conflict. This property is fixed at registration
 /// time, so it is checked once here for every registered command rather than

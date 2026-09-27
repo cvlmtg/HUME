@@ -13,7 +13,7 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
 
     fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
         // Reads the frame's own captured `tui`/`kitty`, not `self.tui`/
-        // `self.kitty_enabled` — this must work correctly even on a host
+        // `self.kitty_enabled`: this must work correctly even on a host
         // with no inline-output authority (`EditorHostImpl::new`) completing
         // a bracket a *different*, real host armed; see `ActiveTui`'s own
         // doc.
@@ -37,7 +37,7 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
     }
 
     fn arm_inline_output(&mut self, name: &str) -> Option<usize> {
-        // No inline-output authority at all (`EditorHostImpl::new`) — checked
+        // No inline-output authority at all (`EditorHostImpl::new`), checked
         // first so a `declared` match never pushes a frame this host has no
         // standing to decide the captured device for. Computed as
         // `ActiveTui` up front (rather than keeping a `&Tui` borrow of
@@ -45,7 +45,7 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         // below aren't fighting it for `self`.
         let active_tui = self.tui.as_ref()?.as_active();
         // Mappable only: `%dispatch-command` (`call!`'s expansion) reaches
-        // `command_table`/`get_mappable`, never `typed_command_table` — a
+        // `command_table`/`get_mappable`, never `typed_command_table`: a
         // typed command is not `call!`-reachable, so matching one here would
         // arm for a path that can't actually happen.
         let declared = matches!(

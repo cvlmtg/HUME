@@ -12,7 +12,7 @@ use test_fixtures::{
     require_grammars,
 };
 
-/// Attach the fixture grammar `name` (source name == attach identity — true
+/// Attach the fixture grammar `name` (source name == attach identity, true
 /// for every real PLUM install; there is no renaming split in production).
 /// `injections` selects between the real Helix-maintained injections.scm
 /// (what PLUM actually installs) and none.
@@ -31,7 +31,7 @@ fn attach(ed: &mut Editor, name: &str, symbol: &str, injections: bool) {
     );
 }
 
-/// Require this file's grammar fixtures — see
+/// Require this file's grammar fixtures; see
 /// `test_fixtures::require_grammars`/`require_fixture_file`.
 fn require_fixtures() {
     require_grammars(&["markdown", "markdown.inline", "rust"]);
@@ -40,14 +40,14 @@ fn require_fixtures() {
 }
 
 /// Build an editor with markdown (+ the real Helix-maintained
-/// `injections.scm` — what `:plum-install-grammar` actually fetches, not
+/// `injections.scm`, what `:plum-install-grammar` actually fetches, not
 /// the grammar's own bundled query), the `markdown.inline` grammar (the
-/// name Helix's injections.scm resolves `(inline)` to — same name as the
+/// name Helix's injections.scm resolves `(inline)` to, same name as the
 /// fixture directory, no renaming needed), and rust, then attach markdown as
 /// the buffer's language and drain the initial parse.
 ///
 /// Builds the buffer directly (cursor at 0 via `SelectionSet::default()`)
-/// rather than through the `editor_from` marker DSL — this file's tests
+/// rather than through the `editor_from` marker DSL: this file's tests
 /// mostly care about byte-offset edits at position 0, not cursor placement.
 fn markdown_editor(source: &str) -> (Editor, hume_engine::pipeline::BufferId) {
     let buf = crate::editor::buffer::Buffer::new(
@@ -127,7 +127,7 @@ fn markdown_buffer_installs_root_plus_injected_layers() {
     // At least one injected layer must be the markdown_inline layer for the
     // "**bold**"/"*italic*" text (markdown_inline's own root node kind is
     // also literally "inline"). This specifically exercises the outer
-    // `(inline)` node's children-exclusion path in `content_ranges` — its
+    // `(inline)` node's children-exclusion path in `content_ranges`: its
     // children (`strong_emphasis`, `emphasis`) are all *named*, so a bug
     // that excludes named children too (not just unnamed/punctuation ones)
     // yields empty ranges here and silently drops this whole layer, even
@@ -171,7 +171,7 @@ fn bake_pending_edits_refreshes_injected_layer_ranges() {
         "expected at least one injected layer for the fenced code block"
     );
 
-    // Insert 5 bytes at the very start of the buffer — every injected
+    // Insert 5 bytes at the very start of the buffer: every injected
     // layer's ranges (all strictly after byte 0) must shift by +5.
     ed.feed_key(key('i'));
     for ch in "XXXXX".chars() {
@@ -180,7 +180,7 @@ fn bake_pending_edits_refreshes_injected_layer_ranges() {
     ed.feed_key(key_esc());
 
     // One reparse_stale_buffers call bakes pending edits (including the
-    // range refresh) but does not yet install the queued precise reparse —
+    // range refresh) but does not yet install the queued precise reparse,
     // exactly the frame this test is about (see incremental_parse.rs's
     // `bake_aligns_committed_tree_before_precise_install`).
     ed.reparse_stale_buffers();
@@ -230,7 +230,7 @@ fn stale_gen_discards_whole_layer_set() {
 
     // Construct a genuinely stale result: edit, let one reparse call post the
     // request (InlineParseBackend executes it and queues the result without
-    // draining it), then edit *again* before the next drain — the queued
+    // draining it), then edit *again* before the next drain. The queued
     // result now describes a superseded generation and must be discarded
     // whole (root + every injected layer), not partially applied.
     ed.feed_key(key('i'));
@@ -254,7 +254,7 @@ fn stale_gen_discards_whole_layer_set() {
     assert_eq!(
         syn.parsed_gen(),
         Some(gen0),
-        "stale result must be discarded whole — parsed_gen must stay at the \
+        "stale result must be discarded whole: parsed_gen must stay at the \
          initial install, not advance to the stale request's generation"
     );
 

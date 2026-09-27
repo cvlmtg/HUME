@@ -1,5 +1,5 @@
-//! Vertical commands that need a `DisplayLineMap` — unavailable in the pure
-//! `(&BufferText, SelectionSet) -> SelectionSet` motion signature — so they
+//! Vertical commands that need a `DisplayLineMap` (unavailable in the pure
+//! `(&BufferText, SelectionSet) -> SelectionSet` motion signature), so they
 //! live here instead of `hume-ops`'s `motion`/`selection_cmd` modules.
 //!
 //! Two families: `j`/`k` movement, which under soft-wrap moves by one display
@@ -36,7 +36,7 @@ use crate::editor::error::CommandError;
 /// never swallow a `j`/`k` keystroke.
 ///
 /// The mouse wheel and page/half-page scroll carry their cursor through
-/// `hume_engine::display_lines::carry` instead — a different question (track
+/// `hume_engine::display_lines::carry` instead: a different question (track
 /// the view's own display-line delta 1:1, virtual lines included) with a
 /// different contract (park rather than land, when nothing fits), so it lives
 /// in the engine next to `Viewport::scroll_by` rather than as a second mode
@@ -55,7 +55,7 @@ fn move_vertical(
 
     while remaining > 0 {
         let Some(next) = (if down { dlm.next(pos) } else { dlm.prev(pos) }) else {
-            break; // document start/end — clamp to the last content display line reached
+            break; // document start/end: clamp to the last content display line reached
         };
         pos = next;
         if dlm.slot(pos).is_content() {
@@ -83,7 +83,7 @@ fn move_vertical(
 ///
 /// Distinct from `move_vertical`: a numeric-prefixed vertical move (`9j`) is a
 /// direct line-index jump matching relative-line-number gutters, not a
-/// display-line walk — virtual and wrap display lines are both irrelevant to it.
+/// display-line walk. Virtual and wrap display lines are both irrelevant to it.
 fn move_buffer_line(
     dlm: &mut DisplayLineMap<'_>,
     text: &BufferText,
@@ -95,7 +95,7 @@ fn move_buffer_line(
     let line = text.char_to_line(head);
     let target_line = if down {
         // On the last content line, line + count would be the phantom
-        // trailing line (the structural \n) — clamp there is nothing past it.
+        // trailing line (the structural \n); clamp, there is nothing past it.
         line.advance(count).min(text.last_content_line())
     } else {
         line.retreat_saturating(count)
@@ -112,17 +112,17 @@ fn move_buffer_line(
 
 /// How `apply_visual_vertical`'s `count` should be interpreted.
 pub(super) enum VerticalMove {
-    /// `count` buffer lines — `j`/`k` with an explicit numeric prefix
+    /// `count` buffer lines: `j`/`k` with an explicit numeric prefix
     /// (matches relative-line-number gutters even while wrapping).
     BufferLine,
-    /// `count` real content display lines; virtual display lines are free —
-    /// plain `j`/`k` with no explicit count.
+    /// `count` real content display lines; virtual display lines are free.
+    /// Plain `j`/`k` with no explicit count.
     ContentDisplayLine,
 }
 
 /// Shared core for the `j`/`k`-family visual-line movement `EditorCmd`s.
 /// Screen-relative scroll (page/half-page, mouse wheel) carries its cursor
-/// through `commands::scroll_view`'s own pass instead — a view command, not
+/// through `commands::scroll_view`'s own pass instead: a view command, not
 /// a motion, so it does not share this function (see `move_vertical`'s doc).
 pub(super) fn apply_visual_vertical(
     state: &mut EditorState,
@@ -133,9 +133,9 @@ pub(super) fn apply_visual_vertical(
     mode: MotionMode,
     unit: VerticalMove,
 ) {
-    // Every unit now resolves its column through `DisplayLineMap` —
-    // `ContentDisplayLine` via `move_vertical`'s display-line walk,
-    // `BufferLine` (`9j`/`9k`) via `move_buffer_line`'s direct line jump — so
+    // Every unit now resolves its column through `DisplayLineMap`
+    // (`ContentDisplayLine` via `move_vertical`'s display-line walk,
+    // `BufferLine` (`9j`/`9k`) via `move_buffer_line`'s direct line jump), so
     // both latch a column from the same authority. `StickyDisplayCol`'s two
     // variants still distinguish what the column is measured *from*: a
     // wrapped `DisplayLine` latch is display-line-relative and a
@@ -144,7 +144,7 @@ pub(super) fn apply_visual_vertical(
     let is_buffer_line = matches!(unit, VerticalMove::BufferLine);
 
     let buf_id = view.panes[pid].buffer_id;
-    // Whether this call's own latches are `BufferLine`-family — always true
+    // Whether this call's own latches are `BufferLine`-family: always true
     // for `VerticalMove::BufferLine`, and also true with wrapping off
     // (display-line-relative and buffer-line-relative coincide there, so
     // standardizing on `BufferLine` lets a counted `9j` and a plain `j`
@@ -171,8 +171,8 @@ pub(super) fn apply_visual_vertical(
             // Pass 1: resolve each selection's sticky display column. A
             // latch matching this call's own family (`BufferLine` when
             // `treat_as_line`, `DisplayLine` at the current wrap width
-            // otherwise) is reused as-is; any other latch — the other
-            // family, or a `DisplayLine` latch from a stale wrap geometry —
+            // otherwise) is reused as-is; any other latch (the other
+            // family, or a `DisplayLine` latch from a stale wrap geometry)
             // is re-derived instead, the same as no latch at all.
             let current_wrap_width = dlm.resolved_wrap_width();
             target_display_cols.extend(sels.iter_sorted().map(
@@ -212,7 +212,7 @@ pub(super) fn apply_visual_vertical(
                     // No-wrap (`treat_as_line` without `is_buffer_line`):
                     // display-line-relative and buffer-line-relative columns
                     // coincide, and pass 1 resolved this latch via
-                    // `buffer_line_col` in exactly that case —
+                    // `buffer_line_col` in exactly that case:
                     // `as_display_line_unwrapped` is the sound
                     // reinterpretation `move_vertical` needs.
                     StickyDisplayCol::BufferLine { display_col } => move_vertical(
@@ -272,7 +272,7 @@ fn copy_selection_vertically(
     // Line indices below are bare `isize`, deliberately: `direction` (+1/-1)
     // has to multiply uniformly into `anchor_line`/`head_line`/`outer_line`
     // regardless of copy direction, and `ContentLine::down`/`up` split that
-    // one signed step into a per-direction branch at every use instead —
+    // one signed step into a per-direction branch at every use instead.
     // `available`'s own division is exactly the same shape one line down.
     // Every value here stays `<= last_content_line()` by construction (each
     // is a real selection's line, or that line shifted by a `steps` already
@@ -291,14 +291,14 @@ fn copy_selection_vertically(
         };
         let span = (anchor_line - head_line).unsigned_abs() as isize + 1;
 
-        // Both endpoints' display columns are loop-invariant — the original
-        // selection never changes across copies — so compute them once
+        // Both endpoints' display columns are loop-invariant (the original
+        // selection never changes across copies), so compute them once
         // instead of re-deriving on every iteration.
         let anchor_display_col = dlm.buffer_line_col(sel.anchor());
         let head_display_col = dlm.buffer_line_col(sel.head());
 
         // How many whole `span`-line steps fit between the selection and the
-        // buffer's edge in `direction`, floor-divided — the last step that
+        // buffer's edge in `direction`, floor-divided: the last step that
         // still lands fully on real content. Kept in `usize` throughout: a
         // `count` of `usize::MAX` must clamp here without ever appearing in
         // an `isize` computation, which `available.min(count)` guarantees.
@@ -341,7 +341,7 @@ fn copy_selection_vertically(
 ///
 /// Builds the `DisplayLineMap` [`copy_selection_vertically`] needs before entering
 /// `apply_doc_motion`. One `DisplayLineMap` line-format per selection per target
-/// line — for a lone cursor this is the same per-line cost `9j`/`9k` already
+/// line. For a lone cursor this is the same per-line cost `9j`/`9k` already
 /// pay for the same reason (a rope-only column can't see tabs or the
 /// decoration layer); with `count` copies of several selections the cost
 /// multiplies, since `DisplayLineMap` caches only the one line it last formatted.
@@ -369,7 +369,7 @@ fn copy_selection_on_line(
 // Public commands
 // ---------------------------------------------------------------------------
 
-/// Shared body of [`cmd_visual_move_down`]/[`cmd_visual_move_up`] — the two
+/// Shared body of [`cmd_visual_move_down`]/[`cmd_visual_move_up`]: the two
 /// differ only in `down`, so they delegate here rather than each carrying
 /// their own copy of the count-unit decision.
 fn visual_move_vertical(
@@ -380,8 +380,8 @@ fn visual_move_vertical(
     down: bool,
     mode: MotionMode,
 ) {
-    // A count typed by the user (e.g. `9j`) means "9 buffer lines" — matching
-    // relative-line-number gutters — even when soft-wrap is on.
+    // A count typed by the user (e.g. `9j`) means "9 buffer lines" (matching
+    // relative-line-number gutters) even when soft-wrap is on.
     let unit = if state.explicit_count {
         VerticalMove::BufferLine
     } else {
@@ -439,10 +439,10 @@ pub(super) fn cmd_copy_selection_on_prev_line(
 /// Wrap-aware variant of `select-word-nearest-on-line`.
 ///
 /// When wrap is active, scopes the nearest-word search to the selection
-/// anchor's current display line rather than the full buffer line — matching
+/// anchor's current display line rather than the full buffer line, matching
 /// `cmd_select_word_nearest_on_line`'s own use of `sel.anchor()`. This
 /// prevents the search from finding words that live on an adjacent display
-/// line when the anchor lands on leading whitespace near a wrap boundary —
+/// line when the anchor lands on leading whitespace near a wrap boundary:
 /// the failure mode that causes `j`/`k` bindings to oscillate in place.
 ///
 /// Falls back to `cmd_select_word_nearest_on_line` (buffer-line bounds) when
@@ -459,7 +459,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     let around = doc.overrides.word_selects_whitespace(&state.settings);
     // Owned, not borrowed: the no-wrap branch below calls
     // `apply_pane_motion(state, ...)`, which takes `&mut EditorState` as
-    // one opaque argument — a live borrow into `state.buffers`/`state.settings`
+    // one opaque argument. A live borrow into `state.buffers`/`state.settings`
     // (what a borrowed `chars` would be) can't survive across that call.
     let word_chars = word_chars_owned(doc, &state.settings);
     let chars = WordChars::new(&word_chars);

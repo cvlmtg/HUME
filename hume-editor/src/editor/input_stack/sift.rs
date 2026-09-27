@@ -1,4 +1,4 @@
-//! The `Sift` layer — the `s`-prompt (sift-within) minibuffer mode.
+//! The `Sift` layer: the `s`-prompt (sift-within) minibuffer mode.
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
@@ -12,7 +12,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct SiftLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
-    /// This session's pane and its pre-entry selection snapshot — same
+    /// This session's pane and its pre-entry selection snapshot: same
     /// reasoning as `SearchLayer::snap`: a mouse click always falls through
     /// under this layer, so focus can move to a different pane while Sift
     /// stays open. See [`PaneSnapshot`]'s own doc for the capture/restore
@@ -27,16 +27,16 @@ impl Layer for SiftLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Sift)
     }
-    /// Captures the snapshot here rather than at construction — see
+    /// Captures the snapshot here rather than at construction; see
     /// `SearchLayer::setup`'s doc for why the ordering matters.
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         self.snap.capture(state, view);
     }
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
         self.snap.take_restore(&mut state.panes.state, view);
-        // Sift has no history ring of its own — `begin_session_all`
+        // Sift has no history ring of its own (`begin_session_all`
         // only touches the command/search rings, so this is a no-op
-        // for Sift — but every other minibuf-backed mode's teardown
+        // for Sift), but every other minibuf-backed mode's teardown
         // calls it unconditionally, and Sift stays uniform with
         // them rather than being special-cased as the one mode that
         // skips it.
@@ -69,7 +69,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             if let Some(sift) = ed.state.input.at_mut::<SiftLayer>(r) {
                 sift.snap.take_selections();
             }
-            // Do NOT write to the search register or clear search state —
+            // Do NOT write to the search register or clear search state:
             // sift-within is a selection op, not a search. The previous
             // search pattern and its highlights should be preserved so that
             // n/N continues to navigate the original search.
@@ -80,7 +80,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             restore_sift_snapshot(ed, r);
         }
         MiniBufferEvent::Edited => update_live_sift(ed, r),
-        // Up/Down are reserved for minibuffer history — no-op in sift-within.
+        // Up/Down are reserved for minibuffer history: no-op in sift-within.
         MiniBufferEvent::CursorMoved
         | MiniBufferEvent::Ignored
         | MiniBufferEvent::CompleteRequested { .. }
@@ -92,7 +92,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 /// Recompile the regex and replace selections with matches within the
 /// original selections. Called on every keystroke in Sift mode.
 ///
-/// Shares `parse_search_input`'s flag grammar with the search prompt — `v`
+/// Shares `parse_search_input`'s flag grammar with the search prompt: `v`
 /// (verbatim) literalizes the pattern the same way it does in search. `m`
 /// (multi) parses but is inert here: sift already operates on every selection.
 fn update_live_sift(ed: &mut Editor, r: LayerRef) {
@@ -102,7 +102,7 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
     };
 
     let Some((_, regex)) = compile_search_input(&pattern) else {
-        // Invalid regex in progress — restore originals.
+        // Invalid regex in progress: restore originals.
         restore_sift_snapshot(ed, r);
         return;
     };
@@ -123,8 +123,8 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
 
 // ── Snapshot restore helpers ────────────────────────────────────────────────
 
-/// Restore selections from the sift-mode snapshot without consuming it —
-/// always targets the session's own originating pane, not whatever's
+/// Restore selections from the sift-mode snapshot without consuming it.
+/// Always targets the session's own originating pane, not whatever's
 /// currently focused (see [`PaneSnapshot`]'s own doc).
 fn restore_sift_snapshot(ed: &mut Editor, r: LayerRef) {
     let Some(sift) = ed.state.input.at::<SiftLayer>(r) else {

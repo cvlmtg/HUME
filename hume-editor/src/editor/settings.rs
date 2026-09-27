@@ -31,7 +31,7 @@ use hume_ops::auto_pairs::Pair;
 
 // ── settings_enum! ────────────────────────────────────────────────────────────
 
-/// `"a"`, `"a or b"`, `"a, b, or c"` — how [`settings_enum`]'s parse error
+/// `"a"`, `"a or b"`, `"a, b, or c"`: how [`settings_enum`]'s parse error
 /// lists the values it would have accepted.
 fn or_list(values: &[&str]) -> String {
     match values {
@@ -47,8 +47,8 @@ fn or_list(values: &[&str]) -> String {
 /// from, a case-insensitive `FromStr` whose error names every accepted value,
 /// and the `Display` that writes the same names back.
 ///
-/// Hand-writing these meant four copies of one variant list per enum — the
-/// const, the parse arms, the error message's prose, the display arms — and
+/// Hand-writing these meant four copies of one variant list per enum (the
+/// const, the parse arms, the error message's prose, the display arms) and
 /// four places for a new variant to be half-added. A variant missing from
 /// `VALUES` alone still parses and prints, so it fails silently: it just stops
 /// being completable. Only the enum declaration stays hand-written, so each
@@ -56,7 +56,7 @@ fn or_list(values: &[&str]) -> String {
 macro_rules! settings_enum {
     ($ty:ty, $key:literal, [$($variant:ident => $name:literal),+ $(,)?]) => {
         impl $ty {
-            /// The wire-format strings [`FromStr`] accepts — the single source
+            /// The wire-format strings [`FromStr`] accepts: the single source
             /// `:set <key>=<Tab>` completion mirrors, so the two can never
             /// drift out of sync.
             pub const VALUES: &'static [&'static str] = &[$($name),+];
@@ -129,7 +129,7 @@ impl FromStr for SignColumnMode {
 ///
 /// Wire format: `"always"`, `"always:N"`, `"auto"`, `"auto:N"` where N is the
 /// number of sign slots (1–127). Bare `"always"`/`"auto"` (`pinned_slots:
-/// None`) auto-sizes the column to the buffer's registered sign sources —
+/// None`) auto-sizes the column to the buffer's registered sign sources,
 /// one slot per source, regardless of whether it has placed a sign anywhere
 /// in the buffer (see `DecorationStores::sign_source_count`, the sole place
 /// `slots_for`'s `None` branch reads); `":N"` pins the count instead,
@@ -160,12 +160,12 @@ impl SignColumnConfig {
     /// otherwise pin explicitly.
     pub const MAX_SLOTS: u8 = 127;
 
-    /// Resolves the configured slot count against `source_count` — the
+    /// Resolves the configured slot count against `source_count`, the
     /// number of registered sign sources. An explicit `:N` pins the count
-    /// regardless of `source_count`; auto-size clamps to `[1, MAX_SLOTS]` —
+    /// regardless of `source_count`; auto-size clamps to `[1, MAX_SLOTS]`,
     /// never below 1, so the column stays visible under `always` even with
     /// zero registered sources. Returns a bare slot count, not a gutter
-    /// width — `Editor::update_sign_providers` (its only caller) needs the
+    /// width: `Editor::update_sign_providers` (its only caller) needs the
     /// bare count to bound the per-line `Vec<Sign>` it builds, and leaves the
     /// `+1` padding-column conversion to `SignColumn::width_for_slots`,
     /// applied later at the point the resolved width is actually synced to
@@ -176,7 +176,7 @@ impl SignColumnConfig {
     }
 
     /// Completion hints only, not an exhaustive enum like `TabStyle::VALUES`
-    /// — `:N` accepts 1–127, which can't be listed in full. `:1`/`:2` are
+    /// because `:N` accepts 1–127, which can't be listed in full. `:1`/`:2` are
     /// illustrative of the pinned-vs-auto-size distinction, not a reflection
     /// of `MAX_SLOTS`; raising that cap doesn't require extending this list.
     pub const VALUES: &'static [&'static str] =
@@ -224,23 +224,23 @@ impl FromStr for SignColumnConfig {
 /// Exists because those motions land the selection head at the *start* of
 /// the object just found (`hume_ops::motion::object::apply_object_motion`'s
 /// `Selection::new(end, start)`, deliberately, so a following `w` walks into
-/// the object's body) — and the body then extends *below* that head. A
+/// the object's body), and the body then extends *below* that head. A
 /// forward jump scrolls downward, so the default per-frame scroll parks the
 /// head at `scrolloff` rows from the *bottom*, hiding the very body the
 /// head-first convention was chosen to show. The backward motions (`{`)
 /// don't have this problem: their head lands at the object's start too, but
 /// an upward scroll parks it at `scrolloff` rows from the *top*, so the body
 /// below it is already on screen. Hence only the forward motions read this
-/// setting — see `CmdMeta::aligns_view` in `editor::registry::command`.
+/// setting; see `CmdMeta::aligns_view` in `editor::registry::command`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ObjectJumpAlign {
-    /// Pin the head at the viewport's top row — subject to `scrolloff` on
+    /// Pin the head at the viewport's top row, subject to `scrolloff` on
     /// the next frame, exactly like `z k`.
     Top,
     /// Center the head in the viewport, like `z z`.
     #[default]
     Center,
-    /// No extra alignment — the pre-existing per-frame `scrolloff` scroll is
+    /// No extra alignment: the pre-existing per-frame `scrolloff` scroll is
     /// all that runs.
     Off,
 }
@@ -251,10 +251,10 @@ settings_enum!(ObjectJumpAlign, "object-jump-align", [
     Off => "off",
 ]);
 
-/// The real terminal cursor's shape in Insert mode — Helix's
+/// The real terminal cursor's shape in Insert mode: Helix's
 /// `editor.cursor-shape.insert`, minus the `hidden` variant Helix offers
 /// mainly for IME positioning. Applies to every selection head, not just the
-/// primary (HUME's own departure from Helix) — see the Tier 1/0 comment in
+/// primary (HUME's own departure from Helix). See the Tier 1/0 comment in
 /// `hume_engine::style::style_display_line` for why and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorShape {
@@ -286,7 +286,7 @@ pub enum TablineVisibility {
     Always,
     /// Never shown, regardless of how many tabs are open.
     Never,
-    /// Shown only once more than one tab is open — HUME's default.
+    /// Shown only once more than one tab is open. HUME's default.
     #[default]
     Dynamic,
 }
@@ -302,7 +302,7 @@ settings_enum!(TablineVisibility, "tabline", [
 /// `Global` applies to editor-wide defaults (written to [`EditorSettings`] via
 /// [`write_global`]). `Buffer` overrides a setting for the active buffer only
 /// (written to [`BufferOverrides`] via [`write_buffer`]). `Pane` has no
-/// generic storage at all — the sole pane-scoped key (`wrap-mode`) writes
+/// generic storage at all: the sole pane-scoped key (`wrap-mode`) writes
 /// straight to the live `Pane` in `typed_file::typed_set`, a third, narrower
 /// rung *on top of* `Buffer`/`Global` rather than a bypass of them: a pane
 /// with no pane-level override still resolves through the buffer/global
@@ -320,7 +320,7 @@ impl Scope {
     pub(in crate::editor) const ALL: &'static [Scope] =
         &[Scope::Global, Scope::Buffer, Scope::Pane];
 
-    /// The wire-format string for this scope — the single source `Display`
+    /// The wire-format string for this scope: the single source `Display`
     /// delegates to and completion/error messages format with, so the two
     /// can never drift out of sync.
     pub(in crate::editor) const fn as_str(self) -> &'static str {
@@ -353,12 +353,12 @@ impl FromStr for Scope {
 
 /// The `:set`/completion key for a buffer's language identity. Not a
 /// `define_settings!` entry (see the module doc's "Adding a setting"
-/// section for why) — this constant is the single source `typed_set` and
+/// section for why). This constant is the single source `typed_set` and
 /// `completion::set` compare against, so the two special cases can't drift
 /// on the literal.
 pub(in crate::editor) const LANGUAGE_KEY: &str = "language";
 
-/// The `:set`/completion key for the active theme — declared as a
+/// The `:set`/completion key for the active theme, declared as a
 /// `define_settings!` entry (below), but also matched directly at a few
 /// non-macro call sites (`typed_theme`, completion, `resync_derived_state`'s
 /// theme-reload branch), so this constant keeps those literals from drifting
@@ -424,7 +424,7 @@ macro_rules! parse_setting {
 
 /// Dispatch from a parser-kind token to the `get-option`-facing
 /// [`hume_scripting::host::OptionValue`] shape. Mirrors [`parse_setting!`]'s
-/// kind table so every setting stays readable the moment it's declared —
+/// kind table so every setting stays readable the moment it's declared:
 /// `bool` fields round-trip as `Bool`, integer-ish fields (`usize`,
 /// `usize_nonzero`, `tab_width`) as `Int`, everything else (`from_str`,
 /// `string`) via `Display`/`ToString` as `Str`. `from_str` types must
@@ -463,7 +463,7 @@ macro_rules! option_value {
 /// Dispatch from a parser-kind token to a `BufferOverrides` accessor.
 ///
 /// Every buffer setting but `word-chars` is `Copy`, so cloning it to resolve
-/// buffer-override-or-global is free — the default arm does that. `word_chars`
+/// buffer-override-or-global is free, and the default arm does that. `word_chars`
 /// is the one `String`-typed buffer setting; borrowing instead of cloning is
 /// what lets [`hume_editing::word::WordChars`] stay borrowed-and-`Copy` per
 /// its own doc, rather than every caller paying a heap clone per keystroke.
@@ -540,7 +540,7 @@ macro_rules! define_settings {
         }
     ) => {
 
-        /// Global editor settings — the authoritative defaults for all
+        /// Global editor settings: the authoritative defaults for all
         /// configurable editor behaviour.
         ///
         /// The [`Default`] impl is the single source of truth for these
@@ -555,8 +555,8 @@ macro_rules! define_settings {
             /// hand-written `"statusline"` arm is its only legal writer, so
             /// keeping the field itself private (rather than merely
             /// `pub(crate)`) makes a raw assignment from anywhere else in
-            /// this crate — a raw assignment from anywhere else is a compile
-            /// error instead of a bug. Read through [`EditorSettings::statusline`].
+            /// this crate (a raw assignment from anywhere else is a compile
+            /// error instead of a bug). Read through [`EditorSettings::statusline`].
             statusline: StatusLineConfig,
         }
 
@@ -574,7 +574,7 @@ macro_rules! define_settings {
 
         impl EditorSettings {
             /// Read the resolved statusline config. There is no write
-            /// counterpart on this type — see the field's own doc.
+            /// counterpart on this type; see the field's own doc.
             pub fn statusline(&self) -> &StatusLineConfig {
                 &self.statusline
             }
@@ -598,11 +598,11 @@ macro_rules! define_settings {
 
         // ── write_global / write_buffer ───────────────────────────────────────
 
-        /// Write a global setting's raw value — no derived-state resync.
+        /// Write a global setting's raw value, with no derived-state resync.
         ///
         /// Returns `Err(message)` on unknown key or invalid value.
         ///
-        /// This is the raw field write only — some settings have derived
+        /// This is the raw field write only. Some settings have derived
         /// state that must be resynced after a successful write (declared
         /// via `resync: true` above). Production code must go through
         /// [`ops::apply_global`], which wraps this and runs those effects;
@@ -613,7 +613,7 @@ macro_rules! define_settings {
         /// `settings::tests` is the only other reach. `testing::MockHost`
         /// needs the raw write too (it has no `EditorState`/`EngineView` to
         /// resync effects against) but lives outside this module, so it goes
-        /// through `ops::write_global_for_test` — a `#[cfg(test)]`-gated
+        /// through `ops::write_global_for_test`, a `#[cfg(test)]`-gated
         /// `pub(crate)` pass-through that does not exist in a production
         /// build, not a widening of this function's own visibility.
         pub(in crate::editor::settings) fn write_global(
@@ -625,7 +625,7 @@ macro_rules! define_settings {
                 $( $gkey => { settings.$gname = parse_setting!(value, key, $gparser)?; } )*
                 $( $bkey => { settings.$bname = parse_setting!(value, key, $bparser)?; } )*
                 $( $skey => { settings.$sglobal.$ssub = parse_setting!(value, key, $sparser)?; } )*
-                // Statusline config — global-only; three sections separated by `|`,
+                // Statusline config, global-only; three sections separated by `|`,
                 // each a comma-separated list of StatusElement names (may be empty).
                 "statusline" => { settings.statusline = parse_statusline(value)?; }
                 _ => return Err(format!("unknown setting '{key}'")),
@@ -633,7 +633,7 @@ macro_rules! define_settings {
             Ok(())
         }
 
-        /// Write a buffer-scoped setting's raw override — no derived-state
+        /// Write a buffer-scoped setting's raw override, with no derived-state
         /// resync (no buffer-scoped key has one today; see [`write_global`]'s
         /// doc for the mechanism global-only keys use).
         ///
@@ -641,7 +641,7 @@ macro_rules! define_settings {
         /// invalid value.
         ///
         /// `pub(in crate::editor::settings)`: [`ops::apply_buffer`] is the
-        /// only caller — `testing::MockHost` models no buffers, so it has no
+        /// only caller. `testing::MockHost` models no buffers, so it has no
         /// per-buffer override to write and needs no forwarding shim here
         /// (contrast [`write_global`]'s `write_global_for_test`).
         pub(in crate::editor::settings) fn write_buffer(key: &str, value: &str, overrides: &mut BufferOverrides) -> Result<(), String> {
@@ -649,11 +649,11 @@ macro_rules! define_settings {
                 $( $bkey => { overrides.$bname = Some(parse_setting!(value, key, $bparser)?); } )*
                 $( $skey => { overrides.$sfield = Some(parse_setting!(value, key, $sparser)?); } )*
                 "statusline" => {
-                    return Err("'statusline' is a global-only setting — use :set global statusline=…".to_string());
+                    return Err("'statusline' is a global-only setting; use :set global statusline=…".to_string());
                 }
                 $( $gkey => {
                     return Err(format!(
-                        "'{key}' is a global-only setting — use :set global {key}=…"
+                        "'{key}' is a global-only setting; use :set global {key}=…"
                     ));
                 } )*
                 _ => return Err(format!("unknown setting '{key}'")),
@@ -665,7 +665,7 @@ macro_rules! define_settings {
         /// doesn't declare `resync: true` above. The sole source both
         /// `editor::settings::ops::resync_derived_state` (which key to
         /// resync) and `reset_globals` (which keys need resyncing at all)
-        /// go through — see [`ResyncKey`]'s own doc for the compile-time
+        /// go through. See [`ResyncKey`]'s own doc for the compile-time
         /// property this buys.
         pub(in crate::editor) fn resync_key(key: &str) -> Option<ResyncKey> {
             match key {
@@ -678,11 +678,11 @@ macro_rules! define_settings {
 
         /// The effective value of `key`: `overrides`' value if `Some` and
         /// the key is buffer-scoped, else the global default. Backs
-        /// `(get-option key)` (`overrides` always `None` — global only) and
+        /// `(get-option key)` (`overrides` always `None`: global only) and
         /// `(get-buffer-option bid key)` (`overrides` from `bid`'s stored
-        /// `BufferOverrides`). `None` for a key with no generic storage —
-        /// covers only `"language"` today, which has no getter (it lives on
-        /// the buffer's language identity — use `(buffer-language bid)`
+        /// `BufferOverrides`). `None` for a key with no generic storage.
+        /// This covers only `"language"` today, which has no getter (it lives on
+        /// the buffer's language identity; use `(buffer-language bid)`
         /// instead).
         pub fn setting_value(
             key: &str,
@@ -716,7 +716,7 @@ macro_rules! define_settings {
 
         /// The `Scope`s a setting accepts, as declared by its `scope: [...]`
         /// list in the `define_settings!` invocation below. Empty for any
-        /// key not declared there — notably `"language"`, which has no
+        /// key not declared there, notably `"language"`, which has no
         /// generic storage and is handled entirely by `typed_set`'s own
         /// special case, never through this table.
         pub(in crate::editor) fn setting_scopes(key: &str) -> &'static [Scope] {
@@ -729,7 +729,7 @@ macro_rules! define_settings {
             }
         }
 
-        /// Every setting key with a `:set` wire format — the union of the
+        /// Every setting key with a `:set` wire format: the union of the
         /// `global`/`buffer`/`subfield` macro entries and the `manual_keys`
         /// entries (`statusline`). Notably **excludes** `"language"`, which
         /// has no macro entry and is surfaced only when the completer knows
@@ -740,7 +740,7 @@ macro_rules! define_settings {
             &[$($gkey,)* $($bkey,)* $($skey,)* $($mkey,)*]
         }
 
-        /// `true` if `key`'s value is parsed with `parser: bool` — i.e. its
+        /// `true` if `key`'s value is parsed with `parser: bool`, i.e. its
         /// only valid values are `"true"`/`"false"`. Derived from the same
         /// per-key `parser: kind;` declaration used to dispatch parsing in
         /// `write_global`/`write_buffer`, so a new bool setting is picked up
@@ -779,7 +779,7 @@ define_settings! {
         "mouse-select" => mouse_select: bool = false,
             scope: [Scope::Global],
             parser: bool;
-        // Resizes every open pane's live jump list cap — like undo-levels
+        // Resizes every open pane's live jump list cap. Like undo-levels
         // below, takes effect on the next push, not retroactively. See
         // `editor::settings::ops::resync_derived_state` and `JumpList::set_capacity`.
         "jump-list-capacity" => jump_list_capacity: usize = 100,
@@ -789,7 +789,7 @@ define_settings! {
         "jump-line-threshold" => jump_line_threshold: usize = 5,
             scope: [Scope::Global],
             parser: usize;
-        // Resizes the command/search prompt-history ring cap — like
+        // Resizes the command/search prompt-history ring cap. Like
         // undo-levels below, takes effect on the next push, not
         // retroactively. See `editor::settings::ops::resync_derived_state`
         // and `History::set_capacity`.
@@ -798,8 +798,8 @@ define_settings! {
             parser: usize_nonzero,
             resync: true;
         // 0 is a valid, meaningful value here (unlimited), unlike
-        // history-capacity above — hence plain `usize`, not `usize_nonzero`.
-        // Resizes the undo-tree cap on every open buffer — takes effect on
+        // history-capacity above, hence plain `usize`, not `usize_nonzero`.
+        // Resizes the undo-tree cap on every open buffer. Takes effect on
         // the next edit, not retroactively (Vim's `undolevels` semantics).
         // See `editor::settings::ops::resync_derived_state`.
         "undo-levels" => undo_levels: usize = 0,
@@ -818,18 +818,18 @@ define_settings! {
         "pane-dividers" => pane_dividers: bool = true,
             scope: [Scope::Global],
             parser: bool;
-        // Read fresh by the statusline provider each frame — no resync needed.
+        // Read fresh by the statusline provider each frame; no resync needed.
         "statusline.mode-colors" => statusline_mode_colors: bool = true,
             scope: [Scope::Global],
             parser: bool;
         // Resolved into `TablineViewState.visible` by `sync_tabline_view`
-        // every frame — the provider itself reads that snapshot, not this
+        // every frame. The provider itself reads that snapshot, not this
         // setting directly.
         "tabline" => tabline: TablineVisibility = TablineVisibility::default(),
             scope: [Scope::Global],
             parser: from_str;
         // Loads and applies the named theme immediately, rolling back to the
-        // previous value on failure — see
+        // previous value on failure. See
         // `editor::settings::ops::resync_derived_state`.
         "theme" => theme: String = String::new(),
             scope: [Scope::Global],
@@ -838,7 +838,7 @@ define_settings! {
         "syntax-highlight-max-bytes" => syntax_highlight_max_bytes: usize = 1_048_576,
             scope: [Scope::Global],
             parser: usize_nonzero;
-        // rust-analyzer's first requests during indexing are slow — 10s
+        // rust-analyzer's first requests during indexing are slow; 10s
         // gives real-world servers room before the request is dropped as
         // TimedOut.
         "lsp.request-timeout-ms" => lsp_request_timeout_ms: usize = 10_000,
@@ -848,7 +848,7 @@ define_settings! {
         // hundreds of cursors would burst hundreds of requests at the
         // server; past this many `:lsp-fmt` warns and formats nothing,
         // rather than silently narrowing to one selection. Doesn't bound a
-        // server advertising `rangesSupport` — every range there rides one
+        // server advertising `rangesSupport`: every range there rides one
         // `rangesFormatting` request, so there's nothing to burst.
         "lsp.format-max-ranges" => lsp_format_max_ranges: usize = 16,
             scope: [Scope::Global],
@@ -858,12 +858,12 @@ define_settings! {
         "lsp.viewport-debounce-ms" => lsp_viewport_debounce_ms: usize = 150,
             scope: [Scope::Global],
             parser: usize_nonzero;
-        // Hint = most lenient — every severity renders. Gates the diagnostic
+        // Hint = most lenient: every severity renders. Gates the diagnostic
         // underline/extra-highlight and gutter-sign render write sides.
         "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,
             scope: [Scope::Global],
             parser: from_str;
-        // Gates the inlay-hint render write side — off means the
+        // Gates the inlay-hint render write side. Off means the
         // `inlay_hints` store is untouched but nothing renders.
         "lsp.inlay-hints" => lsp_inlay_hints: bool = false,
             scope: [Scope::Global],
@@ -872,12 +872,12 @@ define_settings! {
     buffer {
         // A buffer-overridable setting like any other (e.g. from an
         // `on-language-set` hook, for a per-filetype default), plus a third,
-        // narrower rung: `scope` below additionally allows `Scope::Pane` —
+        // narrower rung: `scope` below additionally allows `Scope::Pane`:
         // `:set pane wrap-mode=…` (see `typed_file::typed_set`) writes
         // straight to the live `Pane`'s override, a separate path from
         // `write_global`/`write_buffer`, since wrap is also a view property
         // (two panes on the same buffer may wrap differently once one is
-        // pinned — see `commands::effective_wrap_mode`, the pane → buffer →
+        // pinned; see `commands::effective_wrap_mode`, the pane → buffer →
         // global resolver every render/motion path reads through).
         "wrap-mode" => wrap_mode: WrapMode = hume_engine::pane::DEFAULT_WRAP_STYLE,
             scope: [Scope::Global, Scope::Buffer, Scope::Pane],
@@ -898,8 +898,8 @@ define_settings! {
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         // Leaving Insert mode selects whatever text the session just typed
-        // (empty run: falls back to the entry command's own exit position) —
-        // see `begin_typed_run` and `end_insert_session`'s pinned-anchor
+        // (empty run: falls back to the entry command's own exit position).
+        // See `begin_typed_run` and `end_insert_session`'s pinned-anchor
         // finalization. Applies to every way of entering Insert mode:
         // `i`/`a`/`I`/`A`/`o`/`O`/`c`.
         "select-inserted-text" => select_inserted_text: bool = true,
@@ -907,25 +907,25 @@ define_settings! {
             parser: bool;
         // Word motions (`w`/`W`/`b`/`B`) and `mm`/`MM` cover the destination
         // word's whitespace bookend (leading, or trailing for the first
-        // word of a line) — see `word_select_cmd`'s `ctx.around` read and
+        // word of a line). See `word_select_cmd`'s `ctx.around` read and
         // `run_body`'s `SelectionBody::Word` arm, which resolves it.
         "word-selects-whitespace" => word_selects_whitespace: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         // Extra characters this buffer counts as part of a word, on top of
         // the built-in alphanumeric-plus-`_` rule (Vim's `iskeyword`, minus
-        // the range syntax) — e.g. `-` makes `foo-bar` one word in CSS.
+        // the range syntax), e.g. `-` makes `foo-bar` one word in CSS.
         // Affects `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`,
         // Ctrl-w, `*`, `(symbol-under-cursor)`, symmetric auto-pair
         // suppression, and the LSP completion fallback replace span (no
         // server `textEdit`); the classifier itself is
-        // `hume_editing::word::WordChars`. Does NOT affect `W`/`B`/`MM` —
+        // `hume_editing::word::WordChars`. Does NOT affect `W`/`B`/`MM`:
         // they already merge punctuation into `Word` before comparing, so
         // widening `Word` further is a no-op for them. No global default per
-        // language ships — set this per-language from an `on-language-set`
+        // language ships; set this per-language from an `on-language-set`
         // hook (see `configuration.md`). Whitespace (any `char::is_whitespace`
         // char, not just the five `classify_char` calls blank) is rejected
-        // at write time — promoting one to `Word` would leave a word run
+        // at write time, since promoting one to `Word` would leave a word run
         // with no terminator (see `WordChars::validate`).
         "word-chars" => word_chars: String = String::new(),
             scope: [Scope::Global, Scope::Buffer],
@@ -933,12 +933,12 @@ define_settings! {
         "signcolumn" => signcolumn: SignColumnConfig = SignColumnConfig::default(),
             scope: [Scope::Global, Scope::Buffer],
             parser: from_str;
-        // Read fresh by `check_buffer_disk_state` at each trigger — no
+        // Read fresh by `check_buffer_disk_state` at each trigger; no
         // resync needed. `true`: an external change to the focused buffer
         // opens a reload confirm. `false`: detection still runs and warns,
         // but reload stays manual via `:e!`/`:checktime`. Independent of
         // `:w`'s write guard, which stats the file itself at write time
-        // regardless of this setting — see `stale_write_block`.
+        // regardless of this setting. See `stale_write_block`.
         "autoread" => autoread: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
@@ -968,7 +968,7 @@ define_settings! {
             parser: show_newline;
     }
     manual_keys {
-        // Parsed via parse_statusline, not FromStr — global-only.
+        // Parsed via parse_statusline, not FromStr: global-only.
         "statusline" => [Scope::Global];
     }
 }
@@ -1000,7 +1000,7 @@ fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
 }
 
 /// Render a `StatusLineConfig` back to the `"left|center|right"` wire format
-/// [`parse_statusline`] accepts — the inverse, used by `(get-option
+/// [`parse_statusline`] accepts: the inverse, used by `(get-option
 /// "statusline")` and by `configure-statusline!`'s re-serialization before
 /// handing the value to the `write_global` chokepoint.
 pub(crate) fn format_statusline(cfg: &StatusLineConfig) -> String {
@@ -1019,7 +1019,7 @@ pub(crate) fn format_statusline(cfg: &StatusLineConfig) -> String {
     )
 }
 
-/// The wire-format strings [`parse_show_newline`] accepts — the single
+/// The wire-format strings [`parse_show_newline`] accepts: the single
 /// source `:set buffer whitespace-newline=<Tab>` completion mirrors (see
 /// `editor::completion::set::static_value_candidates`), so the two can never
 /// drift out of sync. Mirrors the `WhitespaceRender::VALUES` pattern
@@ -1028,7 +1028,7 @@ pub(in crate::editor) const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
 
 /// Parse the `whitespace-newline` wire format. Unlike `space`/`tab`, a
 /// newline is inherently always at end-of-line, so there's no meaningful
-/// "trailing" distinction — only `none`/`all`.
+/// "trailing" distinction, only `none`/`all`.
 fn parse_show_newline(s: &str) -> Result<bool, String> {
     match s.to_ascii_lowercase().as_str() {
         "none" => Ok(false),
@@ -1040,7 +1040,7 @@ fn parse_show_newline(s: &str) -> Result<bool, String> {
 }
 
 /// Render a `whitespace-newline` value back to the wire format
-/// [`parse_show_newline`] accepts — the inverse, used by
+/// [`parse_show_newline`] accepts: the inverse, used by
 /// `(get-buffer-option bid "whitespace-newline")`.
 fn format_show_newline(value: bool) -> &'static str {
     if value { "all" } else { "none" }
@@ -1068,7 +1068,7 @@ impl BufferOverrides {
     /// Effective auto-pairs config for this buffer: `(enabled, &pairs)`.
     ///
     /// The pair list itself is a fixed constant (`hume_ops::auto_pairs::DEFAULT_PAIRS`)
-    /// — only `auto-pairs-enabled` is an actual per-buffer setting.
+    /// and only `auto-pairs-enabled` is an actual per-buffer setting.
     pub(in crate::editor) fn auto_pairs_ref(
         &self,
         global: &EditorSettings,
@@ -1117,7 +1117,7 @@ fn parse_tab_width(value: &str) -> Result<u8, String> {
 }
 
 /// `parser: string` (`Ok(value.to_owned())`, unconditionally) is not usable
-/// here — a `word-chars` value must reject whitespace/newline (see
+/// here: a `word-chars` value must reject whitespace/newline (see
 /// `WordChars::validate`), so it gets its own parser kind instead of the
 /// generic unvalidated string one.
 fn parse_word_chars(value: &str) -> Result<String, String> {
@@ -1125,14 +1125,14 @@ fn parse_word_chars(value: &str) -> Result<String, String> {
     Ok(value.to_owned())
 }
 
-/// Applying a setting change — the single production path
+/// Applying a setting change: the single production path
 /// ([`ops::apply_global`]/[`ops::apply_buffer`]). A child of this module,
 /// not a sibling, so [`write_global`]/[`write_buffer`] above narrow to
 /// `pub(in crate::editor::settings)`: the chokepoint this crate's write path
 /// funnels through is reachable from exactly `settings::ops` and
 /// `settings::tests`, not from every one of the ~110 other files under
-/// `crate::editor`. The module path itself is `pub(crate)` — wider than that
-/// — only so `testing::mock_host` (outside `crate::editor` entirely) can
+/// `crate::editor`. The module path itself is `pub(crate)`, wider than that,
+/// only so `testing::mock_host` (outside `crate::editor` entirely) can
 /// name `ops::write_global_for_test`; every other item in `ops` keeps its
 /// own narrower per-item visibility regardless of the path being nameable.
 pub(crate) mod ops;

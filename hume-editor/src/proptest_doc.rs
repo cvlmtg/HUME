@@ -119,7 +119,7 @@ mod tests {
         }
 
         // SelectionSet invariant 4: no overlapping or adjacent selections.
-        // Adjacent means one ends where the next begins — both are merged.
+        // Adjacent means one ends where the next begins; both are merged.
         let mut prev_end: Option<hume_rope::offset::CharOffset> = None;
         for sel in sels.iter_sorted() {
             if let Some(pe) = prev_end {
@@ -319,7 +319,7 @@ mod tests {
     /// `SelectionSet` (buffer unchanged).
     ///
     /// Word-family ops use `WordCtx::bare`/`WordCtx::around` (no configured
-    /// `word-chars`) — there is no per-buffer settings layer here to resolve
+    /// `word-chars`): there is no per-buffer settings layer here to resolve
     /// a real one from, and none of these proptests exercise `word-chars`
     /// itself (that is covered by `hume-editor/src/editor/tests/word_chars.rs`).
     fn apply_pure_op(
@@ -405,7 +405,7 @@ mod tests {
             for (op, mode) in &ops {
                 let new_sels = apply_pure_op(&cur_text, cur_sels, op, *mode);
                 assert_invariants(&cur_text, &new_sels);
-                // cur_text is unchanged — pure ops never modify the buffer
+                // cur_text is unchanged: pure ops never modify the buffer
                 cur_sels = new_sels;
             }
         }
@@ -467,7 +467,7 @@ mod tests {
         #[test]
         fn prop_full_undo_restores_initial(
             (text, sels) in arb_initial_state(30),
-            // Only plain edits — no undo/redo — so undo count == edit count.
+            // Only plain edits (no undo/redo), so undo count == edit count.
             ops in proptest::collection::vec(
                 prop_oneof![
                     prop_oneof![

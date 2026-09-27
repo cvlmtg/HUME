@@ -1,4 +1,4 @@
-//! Unix-only scripting integration tests, gated once at the crate level —
+//! Unix-only scripting integration tests, gated once at the crate level:
 //! `cargo test` compiles this to an empty crate on Windows.
 //!
 //! A sibling of `tests/scripting.rs` rather than a `tests/scripting/unix.rs`

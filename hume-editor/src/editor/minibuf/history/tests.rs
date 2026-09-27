@@ -93,7 +93,7 @@ fn capacity_evicts_oldest() {
 fn prev_on_empty_history_returns_none() {
     let mut h = h(10);
     assert_eq!(h.prev("x"), None);
-    // Scratch should NOT have been set — there was nothing to navigate to.
+    // Scratch should NOT have been set: there was nothing to navigate to.
     assert!(h.scratch.is_none());
 }
 
@@ -149,7 +149,7 @@ fn prev_filters_by_typed_prefix() {
     h.push("pwd".into());
     // "pl" skips "pwd" (no match) and lands on "plum-install-grammar".
     assert_eq!(h.prev("pl"), Some("plum-install-grammar".into()));
-    // No older entry starts with "pl" — position unchanged, returns None.
+    // No older entry starts with "pl", so position unchanged, returns None.
     assert_eq!(h.prev("pl"), None);
     assert_eq!(h.cursor, Some(1));
 }
@@ -207,7 +207,7 @@ fn set_capacity_defers_trim_to_next_push() {
     h.push("c".into());
     assert_eq!(h.entries.len(), 3);
 
-    // Shrink: existing entries are untouched — Vim-style deferred trim.
+    // Shrink: existing entries are untouched (Vim-style deferred trim).
     h.set_capacity(2);
     assert_eq!(h.capacity, 2);
     assert_eq!(
@@ -224,7 +224,7 @@ fn set_capacity_defers_trim_to_next_push() {
 }
 
 /// A shrink immediately followed by a raise, with no push in between, must
-/// not lose entries in the transient window — `:reload-config` resets
+/// not lose entries in the transient window: `:reload-config` resets
 /// `history-capacity` to its compiled-in default before `init.scm`
 /// re-raises it, and an eager trim would have discarded everything past the
 /// default before the raise had a chance to take effect.
@@ -236,15 +236,15 @@ fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
     }
     assert_eq!(h.entries.len(), 20);
 
-    // The reset: shrink to a smaller default. Deferred — no trim yet.
+    // The reset: shrink to a smaller default. Deferred: no trim yet.
     h.set_capacity(5);
     assert_eq!(
         h.entries.len(),
         20,
-        "shrinking must not eagerly trim — nothing has pushed since"
+        "shrinking must not eagerly trim: nothing has pushed since"
     );
 
-    // init.scm re-raising the setting. Still no push — nothing to converge.
+    // init.scm re-raising the setting. Still no push, so nothing to converge.
     // An eager trim on the shrink above would already have dropped every
     // entry past 5, and raising the cap here could not bring them back.
     h.set_capacity(20);
@@ -273,7 +273,7 @@ fn set_capacity_shrink_converges_on_a_duplicate_push() {
 
     h.set_capacity(2);
 
-    // Consecutive duplicate of the last entry — hits the dedup branch, not
+    // Consecutive duplicate of the last entry: hits the dedup branch, not
     // the plain append.
     h.push("c".into());
     assert_eq!(

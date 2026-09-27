@@ -64,7 +64,7 @@ fn truncation_on_new_push() {
     jl.backward(entry(30, 15)).unwrap();
     jl.backward(entry(0, 0)).unwrap();
 
-    // New jump from here — forward history (lines 10, 15) is discarded.
+    // New jump from here: forward history (lines 10, 15) is discarded.
     jl.push(entry(50, 25));
 
     assert!(jl.forward().is_none());
@@ -95,7 +95,7 @@ fn capacity_cap() {
         oldest = e.primary_line;
     }
     // `backward`'s own "save current position" append enforces the same cap
-    // as `push` — it evicts one more entry (line 1) to make room for the
+    // as `push`: it evicts one more entry (line 1) to make room for the
     // saved position, so the true oldest survivor is line 2, not line 1.
     assert_eq!(oldest, hume_rope::line::ContentLine::new(2));
 }
@@ -113,14 +113,14 @@ fn set_capacity_defers_trim_to_next_push() {
     jl.set_capacity(2);
     assert_eq!(jl.len(), 5, "lowering the cap must not retroactively trim");
 
-    // The overshoot (5 -> new cap 2) is more than one entry — a single push
+    // The overshoot (5 -> new cap 2) is more than one entry. A single push
     // must still converge to the cap in this one call, proving push's trim
     // loop is a `while`, not an `if`.
     jl.push(entry(50, 5));
     assert_eq!(jl.len(), 2);
 
     // `backward`'s own "save current position" append enforces the same cap
-    // as `push` — with capacity 2 already full (line 4, line 5), saving the
+    // as `push`: with capacity 2 already full (line 4, line 5), saving the
     // current position evicts line 4 to make room, so only one step back is
     // reachable. Without that trim the list would briefly hold 3 entries
     // and line 4 would still be reachable as a second step.
@@ -133,7 +133,7 @@ fn set_capacity_defers_trim_to_next_push() {
     assert!(
         jl.backward(entry(0, 0)).is_none(),
         "capacity 2 holds only the newest push and the saved current position \
-         — line 4 must have been evicted to make room, not line 5"
+         (line 4 must have been evicted to make room, not line 5)"
     );
 }
 
@@ -150,7 +150,7 @@ fn set_capacity_shrink_converges_on_a_deduplicated_push() {
 
     jl.set_capacity(2);
 
-    // Same line AND buffer as the last push (line 4) — hits the dedup
+    // Same line AND buffer as the last push (line 4): hits the dedup
     // branch, not the plain append.
     jl.push(entry(50, 4));
     assert_eq!(
@@ -183,7 +183,7 @@ fn set_capacity_raising_it_does_not_drop_entries() {
 }
 
 /// A shrink immediately followed by a raise, with no push in between, must
-/// not lose entries in the transient window — `:reload-config` resets
+/// not lose entries in the transient window: `:reload-config` resets
 /// `jump-list-capacity` to its compiled-in default before `init.scm`
 /// re-raises it, and an eager trim would have discarded everything past the
 /// default before the raise had a chance to take effect. Drives the shrink
@@ -198,15 +198,15 @@ fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
     }
     assert_eq!(jl.len(), OVER_DEFAULT);
 
-    // The reset: shrink to the compiled-in default. Deferred — no trim yet.
+    // The reset: shrink to the compiled-in default. Deferred, no trim yet.
     jl.set_capacity(DEFAULT_JUMP_LIST_CAPACITY);
     assert_eq!(
         jl.len(),
         OVER_DEFAULT,
-        "shrinking must not eagerly trim — nothing has pushed since"
+        "shrinking must not eagerly trim: nothing has pushed since"
     );
 
-    // init.scm re-raising the setting. Still no push — nothing to converge.
+    // init.scm re-raising the setting. Still no push, nothing to converge.
     // An eager trim in the first `set_capacity` call above would already
     // have dropped every entry past 100, and raising the cap here could not
     // bring them back. `len()` would then stay at 100.
@@ -223,7 +223,7 @@ fn shrink_then_raise_with_no_push_between_resurrects_every_entry() {
 fn deduplication() {
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry(0, 5));
-    jl.push(entry(3, 5)); // same line — replaces
+    jl.push(entry(3, 5)); // same line, replaces
     assert_eq!(jl.len(), 1);
 
     jl.push(entry(20, 10));
@@ -251,7 +251,7 @@ fn backward_after_returning_to_present() {
     jl.forward().unwrap();
 
     // Now backward again. Since cursor is at the last entry (the saved
-    // "present"), not past it, the new current position is NOT saved —
+    // "present"), not past it, the new current position is NOT saved,
     // matching Vim/Helix: the present is only captured when first entering
     // the jump list from a fresh editing state.
     let e = jl.backward(entry(80, 20)).unwrap();
@@ -357,7 +357,7 @@ fn prune_buffer_saturating_sub_at_zero_cursor() {
     assert_eq!(jl.len(), 1);
     assert_eq!(
         jl.cursor, 0,
-        "cursor stays at 0 — saturating_sub prevents underflow"
+        "cursor stays at 0: saturating_sub prevents underflow"
     );
 }
 
@@ -379,7 +379,7 @@ fn prune_buffer_all_entries_removed_resets_cursor() {
 
 // ── translate_in_place ────────────────────────────────────────────────────
 
-/// Count newlines before `pos` in `text` — independent of `BufferText`'s own
+/// Count newlines before `pos` in `text`, independent of `BufferText`'s own
 /// `char_to_line`, which is what `translate_in_place` uses internally to
 /// recompute `primary_line`.
 fn line_of(text: &str, pos: usize) -> usize {
@@ -395,7 +395,7 @@ fn translate_in_place_shifts_offset_and_primary_line() {
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_for(7, 1, bid)); // head=7 sits inside "bbbb" on line 1
 
-    // Insert "XX" at position 0 — shifts everything after it by 2.
+    // Insert "XX" at position 0: shifts everything after it by 2.
     let mut b = ChangeSetBuilder::new(co(14));
     b.insert("XX");
     b.retain_rest();
@@ -419,7 +419,7 @@ fn translate_in_place_shifts_offset_and_primary_line() {
 }
 
 /// An entry tagged with a different buffer is untouched by a remap targeting
-/// another buffer — the jump list is cross-buffer, so a call must only ever
+/// another buffer. The jump list is cross-buffer, so a call must only ever
 /// touch entries for the buffer that was actually edited.
 #[test]
 fn translate_in_place_skips_entries_for_other_buffers() {
@@ -441,17 +441,17 @@ fn translate_in_place_skips_entries_for_other_buffers() {
     assert_eq!(
         e.selections.primary().head(),
         co(2),
-        "untouched — different buffer"
+        "untouched: different buffer"
     );
     assert_eq!(
         e.primary_line,
         hume_rope::line::ContentLine::new(0),
-        "untouched — different buffer"
+        "untouched: different buffer"
     );
 }
 
 /// A deletion that fully covers an entry's position collapses it to the
-/// deletion point rather than dropping it — same semantics `SelectionSet`
+/// deletion point rather than dropping it: same semantics `SelectionSet`
 /// already gives sibling panes' cursors.
 #[test]
 fn translate_in_place_collapses_entry_inside_a_full_deletion() {
@@ -488,7 +488,7 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
     assert_eq!(jl.len(), 2);
     assert_eq!(jl.cursor, 2, "at the present before the remap");
 
-    // Delete "aaaa\nbbbb\n" (positions 0..10) — both entries fall inside it
+    // Delete "aaaa\nbbbb\n" (positions 0..10): both entries fall inside it
     // and collapse onto the same post-edit point.
     let mut b = ChangeSetBuilder::new(co(14));
     b.delete(10);
@@ -511,7 +511,7 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
     );
 }
 
-/// `backward()` deliberately appends the save-current entry without dedup —
+/// `backward()` deliberately appends the save-current entry without dedup:
 /// two Ctrl-o stops that legitimately share a line (e.g. two search matches
 /// on one line) must both survive a later edit that merely shifts lines
 /// uniformly. The merge pass must tell that pre-existing pair apart from one
@@ -532,7 +532,7 @@ fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
         "backward saved a same-line duplicate, undeduped"
     );
 
-    // Insert a line above both — a uniform shift, not a collision: both
+    // Insert a line above both. A uniform shift, not a collision: both
     // entries move from line 0 to line 1 together.
     let mut b = ChangeSetBuilder::new(co(14));
     b.insert("XXXX\n");
@@ -552,7 +552,7 @@ fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
 
 /// The `removed_before_cursor` cursor adjustment fires when a merge happens
 /// mid-navigation (cursor not at the present) and the merged pair's kept
-/// entry sits at an original index the cursor has already passed — the case
+/// entry sits at an original index the cursor has already passed: the case
 /// none of the tests above exercise, since they all remap from "at the
 /// present" (`cursor == entries.len()`).
 #[test]
@@ -572,7 +572,7 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     // unrelated fourth entry to this scenario.
     jl.cursor = 2;
 
-    // Delete "aaaa\nbbbb\n" (0..10) — A and B both fall inside it and
+    // Delete "aaaa\nbbbb\n" (0..10): A and B both fall inside it and
     // collapse onto the same post-edit point; C, past the deletion, merely
     // shifts and lands on a different line.
     let mut b = ChangeSetBuilder::new(co(19));
@@ -591,11 +591,11 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     );
     assert_eq!(
         jl.cursor, 1,
-        "cursor shifts down by one merged-away entry that sat before it — A/B's \
+        "cursor shifts down by one merged-away entry that sat before it; A/B's \
          kept entry (original index 1) was behind the cursor's original index 2"
     );
 
-    // Oldest-to-newest: the merged A/B entry, then C — `backward` then
+    // Oldest-to-newest: the merged A/B entry, then C. `backward` then
     // `forward` walks both without disturbing which one the cursor lands on.
     let kept_ab = jl.backward(entry_for(99, 99, bid)).unwrap();
     assert_eq!(kept_ab.selections.primary().head(), co(0));

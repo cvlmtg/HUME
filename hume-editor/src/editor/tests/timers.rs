@@ -107,7 +107,7 @@ fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
 /// The bug `debounce-by` exists to fix: `debounce` shares one pending timer
 /// across every call regardless of args, so a call keyed `"b"` cancels a
 /// still-pending call keyed `"a"` (this is exactly `lsp/refresh-hints`'
-/// production shape — two attached buffers, each firing `on-diagnostics-
+/// production shape: two attached buffers, each firing `on-diagnostics-
 /// changed` independently, sharing one `debounce`-wrapped handler).
 #[test]
 fn debounce_shares_one_pending_timer_across_all_keys() {
@@ -136,7 +136,7 @@ fn debounce_shares_one_pending_timer_across_all_keys() {
 }
 
 /// `debounce-by`'s fix: two independently-keyed calls in the same burst both
-/// fire — neither key's pending timer cancels the other's.
+/// fire; neither key's pending timer cancels the other's.
 #[test]
 fn debounce_by_keys_pending_timers_independently() {
     let tmp = safe_tempdir();
@@ -186,7 +186,7 @@ fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
     ed.scripting = Some(host);
 
     // First drain cycle: the erroring thunk is the only one queued, so its
-    // error can't swallow anything else — isolates the "reported, not
+    // error can't swallow anything else. Isolates the "reported, not
     // panicking" assertion from the "first error aborts the rest of this
     // batch" semantics (same `run_steel_calls`).
     type_cmd(&mut ed, ":boom");
@@ -200,7 +200,7 @@ fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
     );
 
     // Second, separate drain cycle: a fresh timer still schedules and fires
-    // normally — the wheel/thunk table weren't left in a broken state.
+    // normally; the wheel/thunk table weren't left in a broken state.
     type_cmd(&mut ed, ":start");
     ed.drain_async_sources();
     ed.settle();

@@ -2,7 +2,7 @@
 // slug validation, install/update sync, list, and remove.
 //
 // `:plum-install-theme`'s own `git clone` step hardcodes a
-// `https://github.com/...` URL, so it is not reachable offline — only its
+// `https://github.com/...` URL, so it is not reachable offline; only its
 // validation-failure path is covered here (`install_theme_rejects_unsafe_slugs`).
 // Everything after a clone (`plum/sync-theme-files!`, the update/list/remove
 // commands) is covered against a real *local* git origin: `git clone`/`git
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use super::*;
 use crate::editor::Severity;
 
-/// A theme file whose content no test asserts on — only its presence,
+/// A theme file whose content no test asserts on: only its presence,
 /// absence, or filename matters.
 const THEME_TOML: &str = "\"ui.cursor.primary\" = { fg = \"#111111\" }";
 
@@ -69,7 +69,7 @@ fn commit_all(dir: &Path, message: &str) {
     git(dir, &["commit", "--quiet", "-m", message]);
 }
 
-/// `git init` at `dir`, write `files`, and commit them — a local origin a
+/// `git init` at `dir`, write `files`, and commit them: a local origin a
 /// test can `git clone`/`git pull` from with no network access.
 fn init_theme_origin(dir: &Path, files: &[(&str, &str)]) {
     std::fs::create_dir_all(dir).unwrap();
@@ -79,7 +79,7 @@ fn init_theme_origin(dir: &Path, files: &[(&str, &str)]) {
 }
 
 /// Clone `origin` into `<data_dir>/themes/sources/<slug>` and copy its
-/// `themes/*.toml` flat into `<data_dir>/themes/` — the on-disk state
+/// `themes/*.toml` flat into `<data_dir>/themes/`: the on-disk state
 /// `:plum-install-theme` itself would have produced, fabricated directly so
 /// these tests don't depend on a live `github.com`.
 fn fabricate_installed_theme_repo(data_dir_root: &Path, slug: &str, origin: &Path) {
@@ -105,7 +105,7 @@ fn fabricate_installed_theme_repo(data_dir_root: &Path, slug: &str, origin: &Pat
 }
 
 /// A local origin holding `files`, cloned into the data dir as the installed
-/// repo `acme/theme.hume` — the on-disk state every post-clone test starts
+/// repo `acme/theme.hume`, the on-disk state every post-clone test starts
 /// from. Both tempdirs must outlive the test (the clone in `data_tmp` points
 /// back at `origin_tmp` for `git pull`).
 fn installed_fixture(files: &[(&str, &str)]) -> (tempfile::TempDir, tempfile::TempDir, PathBuf) {
@@ -119,7 +119,7 @@ fn installed_fixture(files: &[(&str, &str)]) -> (tempfile::TempDir, tempfile::Te
 
 // ── Slug validation ────────────────────────────────────────────────────────────
 
-/// A malformed "user/repo" slug is a typo — reported at Info severity
+/// A malformed "user/repo" slug is a typo, reported at Info severity
 /// (statusline only), matching `plum/resolve-grammar-arg`'s routing for a
 /// bad grammar argument. A slug whose segments aren't safe path components
 /// reaches `path-join`/`git clone`, so it stays loud in `:messages`. Neither
@@ -227,7 +227,7 @@ fn sync_errors_when_repo_has_no_themes_dir() {
 
     // The per-item error is `log! 'error` (message_log). plum/batch-run's
     // "N updated — M failed" summary is `log! 'info`, logged *before* the
-    // per-item errors — Error severity also overwrites status_msg, so the
+    // per-item errors. Error severity also overwrites status_msg, so the
     // summary text is overwritten by the error that follows it and isn't
     // independently observable here; the untouched `kept.toml` below is the
     // behavioral proof the failed repo didn't count as updated.
@@ -245,7 +245,7 @@ fn sync_errors_when_repo_has_no_themes_dir() {
 }
 
 /// Two repos shipping the same theme stem shadow each other in
-/// `<data>/themes/` with no separate state file to notice — `plum/
+/// `<data>/themes/` with no separate state file to notice; `plum/
 /// sync-theme-files!` must at least warn instead of overwriting silently.
 #[test]
 fn update_themes_warns_on_shadowed_theme_name() {
@@ -369,7 +369,7 @@ fn remove_theme_tab_completes_an_installed_slug() {
 
 /// A repo that loses its `themes/` directory upstream (a failed
 /// `:plum-update-themes` sync, per `sync_errors_when_repo_has_no_themes_dir`
-/// above) must still be removable — discovery keys on the clone existing,
+/// above) must still be removable: discovery keys on the clone existing,
 /// not on it still holding a `themes/` directory.
 #[test]
 fn remove_theme_survives_a_failed_sync() {
@@ -402,7 +402,7 @@ fn remove_theme_survives_a_failed_sync() {
 
 /// `core:plum` now `call!`s into `core:stdlib` for path-segment validation
 /// (`plum/parse-slug`, `plum/fetch-raw-query`) as well as the filesystem
-/// helpers it already used — loading it without `core:stdlib` declared first
+/// helpers it already used. Loading it without `core:stdlib` declared first
 /// must fail loudly at load time, the same guard `core:lsp` has always had
 /// (`lsp/plugin.scm`), rather than leaving every `call!` site to discover
 /// the missing dependency one at a time.

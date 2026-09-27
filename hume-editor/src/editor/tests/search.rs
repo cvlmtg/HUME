@@ -42,7 +42,7 @@ fn search_esc_restores_position() {
 }
 
 /// Re-entering search (`search-backward` reached, e.g. via a hook or timer's
-/// `(call! "search-backward" bid)`, while a `/` session is still open — there's
+/// `(call! "search-backward" bid)`, while a `/` session is still open; there's
 /// no key path for this, since `?` typed into an open `/` prompt is just a
 /// literal character) must replace the session rather than no-op, and must
 /// stash the *true* pre-search state, not the mid-`/`-session preview
@@ -93,7 +93,7 @@ fn search_backward_reentry_while_forward_search_open_replaces_and_restashes() {
 /// document order.
 #[test]
 fn search_n_repeats_forward() {
-    // "ab ab ab\n" — three "ab" matches at (0,1), (3,4), (6,7).
+    // "ab ab ab\n": three "ab" matches at (0,1), (3,4), (6,7).
     let mut ed = editor_from("-[a]>b ab ab\n");
 
     ed.handle_key(key('/'));
@@ -146,7 +146,7 @@ fn search_backward_n_goes_forward() {
     assert_eq!(state(&ed), "ab ab -[ab]>\n");
 }
 
-/// `?` searches backward — the confirmed match is the last occurrence before
+/// `?` searches backward: the confirmed match is the last occurrence before
 /// the pre-search cursor position.
 #[test]
 fn search_backward_confirms() {
@@ -184,7 +184,7 @@ fn search_no_match_behaviour() {
     // n: "no match" status message.
     ed.handle_key(key('n'));
     assert_eq!(ed.state.status_msg.as_deref(), Some("no match"));
-    // "no match" is a boundary condition, not a failure — it must not reach
+    // "no match" is a boundary condition, not a failure. It must not reach
     // `:messages` or raise the unread-message statusline nudge.
     assert_eq!(ed.state.message_log.totals(), (0, 0));
     assert!(!ed.state.message_log.has_unseen());
@@ -208,7 +208,7 @@ fn extend_search_next_extends_selection() {
 
     // n in extend mode: anchor stays at 0, head jumps to next match.
     ed.state.input.set_extend(true);
-    // Only one "world" — wraps back to the same match.
+    // Only one "world": wraps back to the same match.
     ed.handle_key(key('n'));
     // Selection should still cover from anchor=0 to the match end.
     assert_eq!(state(&ed), "-[hello world]>\n");
@@ -245,7 +245,7 @@ fn esc_in_normal_clears_search() {
     );
 }
 
-/// `clear-search`, dispatched as a key command (it's not typed — `Esc` is
+/// `clear-search`, dispatched as a key command (it's not typed; `Esc` is
 /// its usual trigger), clears the active search regex and its cached state.
 #[test]
 fn clear_search_command_clears_search() {
@@ -353,7 +353,7 @@ fn sift_within_empty_confirm_cancels() {
     assert_eq!(state(&ed), original);
 }
 
-/// `s` does not overwrite the search register — it is a selection op, not a search.
+/// `s` does not overwrite the search register: it is a selection op, not a search.
 /// A prior search pattern must survive a sift-within so that n/N still works.
 #[test]
 fn sift_within_does_not_overwrite_search_register() {
@@ -370,7 +370,7 @@ fn sift_within_does_not_overwrite_search_register() {
     assert_eq!(ed.state.registers.search_register(), Some("cd"));
 }
 
-/// `s` does not set the search regex — highlights would be misleading
+/// `s` does not set the search regex: highlights would be misleading
 /// because they appear outside the selection scope.
 #[test]
 fn sift_within_does_not_set_search_regex() {
@@ -388,13 +388,13 @@ fn sift_within_no_matches_keeps_originals() {
     let original = state(&ed);
     ed.handle_key(key('s'));
     ed.handle_key(key('z'));
-    // No match for "z" in "hello" — should still show original selections.
+    // No match for "z" in "hello": should still show original selections.
     assert_eq!(state(&ed), original);
 }
 
 // ── sift-within with multiple cursors ───────────────────────────────────────
 
-/// Two pre-existing selections each containing matches — `s` produces one
+/// Two pre-existing selections each containing matches: `s` produces one
 /// result selection per match, across all original selections.
 ///
 /// "aa bb aa\n" with two selections: [aa ] and [aa] at start/end.
@@ -408,7 +408,7 @@ fn sift_within_multiple_selections_finds_matches_in_each() {
     // Replace with two selections: "aa " (0..2) and "aa" (6..7).
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(2)), // "aa " — primary
+            Selection::new(co(0), co(2)), // "aa ", primary
             Selection::new(co(6), co(7)), // "aa"
         ],
         0,
@@ -433,7 +433,7 @@ fn sift_within_multiple_selections_finds_matches_in_each() {
 }
 
 /// When one selection has matches and another does not, only the matching
-/// selection produces results — the non-matching one is dropped.
+/// selection produces results. The non-matching one is dropped.
 #[test]
 fn sift_within_drops_selections_with_no_match() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -442,8 +442,8 @@ fn sift_within_drops_selections_with_no_match() {
     let mut ed = editor_from("-[aa bb cc]>\n");
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(1)), // "aa" — primary, has match
-            Selection::new(co(6), co(7)), // "cc" — no "aa" here
+            Selection::new(co(0), co(1)), // "aa": primary, has match
+            Selection::new(co(6), co(7)), // "cc": no "aa" here
         ],
         0,
     );
@@ -497,7 +497,7 @@ fn sift_within_multiple_selections_no_match_restores_all() {
 #[test]
 fn sift_within_primary_tracks_original_primary() {
     use hume_editing::selection::{Selection, SelectionSet};
-    // "aa bb aa\n" — two selections, primary is the SECOND one (6..7).
+    // "aa bb aa\n": two selections, primary is the SECOND one (6..7).
     let mut ed = editor_from("-[aa bb aa]>\n");
     let two_sels = SelectionSet::from_vec(
         vec![
@@ -529,13 +529,13 @@ fn sift_within_primary_tracks_original_primary() {
 fn sift_within_esc_restores_multiple_selections() {
     use hume_editing::selection::{Selection, SelectionSet};
     // Use wider original selections ("aa bb" and "aa") so the live-preview
-    // of "aa" visibly shrinks them — confirming the snapshot is correct.
+    // of "aa" visibly shrinks them, confirming the snapshot is correct.
     // "aa bb aa\n"
     //  012345678
     let mut ed = editor_from("-[aa bb aa]>\n");
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(4)), // "aa bb" — wider than any "aa" match
+            Selection::new(co(0), co(4)), // "aa bb", wider than any "aa" match
             Selection::new(co(6), co(7)), // "aa"
         ],
         0,
@@ -562,10 +562,10 @@ fn sift_within_esc_restores_multiple_selections() {
 // ── Search / sift-within independence ──────────────────────────────────────
 
 /// After `/foo` + confirm, `s` + `bar` + confirm, pressing `n` must jump to the
-/// next "foo" — not "bar". This is the critical end-to-end independence test.
+/// next "foo", not "bar". This is the critical end-to-end independence test.
 #[test]
 fn search_n_after_sift_within_uses_original_search() {
-    // "xx ab cd ab cd\n" — cursor starts before all matches.
+    // "xx ab cd ab cd\n": cursor starts before all matches.
     let mut ed = editor_from("-[x]>x ab cd ab cd\n");
 
     // Search for "ab", confirm → lands on first "ab".
@@ -660,7 +660,7 @@ fn search_regex_survives_sift_within_cancel() {
     );
 }
 
-/// `s` + confirm with no prior search — pressing `n` afterward should be a
+/// `s` + confirm with no prior search: pressing `n` afterward should be a
 /// no-op (no crash, no match, selection unchanged).
 #[test]
 fn search_n_after_sift_within_with_no_prior_search() {
@@ -676,7 +676,7 @@ fn search_n_after_sift_within_with_no_prior_search() {
 
     let before = state(&ed);
     ed.handle_key(key('n'));
-    // With no search pattern, `n` is a no-op — selection unchanged.
+    // With no search pattern, `n` is a no-op: selection unchanged.
     assert_eq!(state(&ed), before);
 }
 
@@ -684,7 +684,7 @@ fn search_n_after_sift_within_with_no_prior_search() {
 /// the pattern, so `.` matches only a literal dot within the selection.
 #[test]
 fn sift_within_verbatim_flag_matches_literal_dot() {
-    // "a.b axb\n" selected whole — non-verbatim "." would additionally match
+    // "a.b axb\n" selected whole: non-verbatim "." would additionally match
     // the "x" in "axb".
     let mut ed = editor_from("-[a.b axb]>\n");
     ed.handle_key(key('s'));
@@ -701,11 +701,11 @@ fn sift_within_verbatim_flag_matches_literal_dot() {
     );
 }
 
-/// `m` (multi) parses at the sift prompt but is inert — sift already
+/// `m` (multi) parses at the sift prompt but is inert: sift already
 /// operates on every selection, so it changes nothing.
 #[test]
 fn sift_within_multi_flag_is_inert() {
-    // "aa bb aa\n" — same setup as
+    // "aa bb aa\n": same setup as
     // `sift_within_multiple_selections_finds_matches_in_each`, but with the
     // (meaningless here) `m` flag prefixed onto the pattern.
     use hume_editing::selection::{Selection, SelectionSet};
@@ -738,11 +738,11 @@ fn sift_within_multi_flag_is_inert() {
 // ── n merges overlapping selections ──────────────────────────────────────────
 
 /// When `n` moves the primary to a position already covered by a secondary
-/// selection, the two must merge — no duplicate/overlapping selections.
+/// selection, the two must merge: no duplicate/overlapping selections.
 #[test]
 fn search_n_merges_with_overlapping_secondary() {
     use hume_editing::selection::{Selection, SelectionSet};
-    // "ab cd ab\n" — set up two selections already on the "ab" matches,
+    // "ab cd ab\n": set up two selections already on the "ab" matches,
     // then confirm a search for "ab" and press `n` so the primary lands
     // on the second "ab", which is also the secondary.
     let mut ed = editor_from("-[ab cd ab]>\n");
@@ -757,8 +757,8 @@ fn search_n_merges_with_overlapping_secondary() {
     // Add a secondary selection manually on the second "ab" (chars 6..7).
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(1)), // first "ab" — primary
-            Selection::new(co(6), co(7)), // second "ab" — secondary
+            Selection::new(co(0), co(1)), // first "ab", primary
+            Selection::new(co(6), co(7)), // second "ab", secondary
         ],
         0,
     );
@@ -786,11 +786,11 @@ fn search_n_merges_with_overlapping_secondary() {
 
 // ── Multi-selection (`m`) and verbatim (`v`) flags ─────────────────────────────
 
-/// `/m/bar` — every selection independently moves to its own next "bar",
+/// `/m/bar`: every selection independently moves to its own next "bar",
 /// not just the primary.
 ///
 /// "aaa bar bbb bar ccc bar\n" with collapsed selections on the first char of
-/// each "aaa"/"bbb"/"ccc" run — each has exactly one "bar" ahead of it before
+/// each "aaa"/"bbb"/"ccc" run. Each has exactly one "bar" ahead of it before
 /// the next run's cursor, so the three results are distinguishable.
 #[test]
 fn multi_flag_moves_every_selection_to_its_own_next_match() {
@@ -798,7 +798,7 @@ fn multi_flag_moves_every_selection_to_its_own_next_match() {
     let mut ed = editor_from("-[a]>aa bar bbb bar ccc bar\n");
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(0)),   // "aaa" — primary
+            Selection::new(co(0), co(0)),   // "aaa", primary
             Selection::new(co(8), co(8)),   // "bbb"
             Selection::new(co(16), co(16)), // "ccc"
         ],
@@ -827,16 +827,16 @@ fn multi_flag_moves_every_selection_to_its_own_next_match() {
 }
 
 /// Without `m`, a search (and a follow-up `n`) moves only the primary
-/// selection — secondaries keep their exact prior anchor and head.
+/// selection. Secondaries keep their exact prior anchor and head.
 #[test]
 fn no_flags_search_and_n_move_only_primary() {
     use hume_editing::selection::{Selection, SelectionSet};
     let mut ed = editor_from("-[a]>aa bar bbb bar ccc bar\n");
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(0)),   // "aaa" — primary
-            Selection::new(co(8), co(8)),   // "bbb" — untouched
-            Selection::new(co(16), co(16)), // "ccc" — untouched
+            Selection::new(co(0), co(0)),   // "aaa", primary
+            Selection::new(co(8), co(8)),   // "bbb", untouched
+            Selection::new(co(16), co(16)), // "ccc", untouched
         ],
         0,
     );
@@ -855,7 +855,7 @@ fn no_flags_search_and_n_move_only_primary() {
     assert_eq!(sorted[1].start(), co(8), "secondary untouched");
     assert_eq!(sorted[2].start(), co(16), "secondary untouched");
 
-    // A follow-up `n` (no `m` flag stored) still moves only the primary —
+    // A follow-up `n` (no `m` flag stored) still moves only the primary;
     // read it back via `.primary()`, since moving past a secondary's
     // position changes document-order (`iter_sorted`) placement.
     ed.handle_key(key('n'));
@@ -879,7 +879,7 @@ fn no_flags_search_and_n_move_only_primary() {
     );
 }
 
-/// `n` after a multi search keeps moving every selection — the `m` flag is
+/// `n` after a multi search keeps moving every selection: the `m` flag is
 /// stored with the pattern and inherited by repeat, not a one-shot effect.
 #[test]
 fn multi_flag_persists_across_n() {
@@ -901,7 +901,7 @@ fn multi_flag_persists_across_n() {
 
     ed.handle_key(key('n'));
     // Each selection independently steps to the buffer's next "bar",
-    // wrapping where needed — the cyclic permutation of the same three
+    // wrapping where needed: the cyclic permutation of the same three
     // matches, still three distinct selections.
     assert_eq!(ed.current_selections().len(), 3);
     let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
@@ -916,16 +916,16 @@ fn multi_flag_persists_across_n() {
     );
 }
 
-/// `N` after a multi search moves every selection backward independently —
+/// `N` after a multi search moves every selection backward independently;
 /// direction is not a one-shot property of the confirm keystroke either.
 #[test]
 fn multi_flag_backward_capital_n() {
     use hume_editing::selection::{Selection, SelectionSet};
-    // "bar aaa bar bbb bar\n" — three "bar" matches at (0,2), (8,10), (16,18).
+    // "bar aaa bar bbb bar\n": three "bar" matches at (0,2), (8,10), (16,18).
     let mut ed = editor_from("-[b]>ar aaa bar bbb bar\n");
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(6), co(6)),   // inside "aaa" — primary
+            Selection::new(co(6), co(6)),   // inside "aaa", primary
             Selection::new(co(14), co(14)), // inside "bbb"
         ],
         0,
@@ -966,11 +966,11 @@ fn multi_flag_backward_capital_n() {
 #[test]
 fn multi_flag_count_prefix_on_n() {
     use hume_editing::selection::{Selection, SelectionSet};
-    // "x bar y bar z bar w bar\n" — four "bar" matches: (2,4),(8,10),(14,16),(20,22).
+    // "x bar y bar z bar w bar\n": four "bar" matches: (2,4),(8,10),(14,16),(20,22).
     let mut ed = editor_from("-[x]> bar y bar z bar w bar\n");
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(0)), // before the buffer's first "bar" — primary
+            Selection::new(co(0), co(0)), // before the buffer's first "bar", primary
             Selection::new(co(6), co(6)), // on "y", before the second "bar"
         ],
         0,
@@ -1029,7 +1029,7 @@ fn multi_flag_no_selection_matches_reports_transient() {
 }
 
 /// A pattern typed with a leading `/` (e.g. a path) is not read as an empty
-/// flag run — the flag run must be non-empty, so `/usr` is the literal
+/// flag run: the flag run must be non-empty, so `/usr` is the literal
 /// pattern "/usr", not flags "" + pattern "usr".
 #[test]
 fn leading_slash_is_part_of_the_pattern() {
@@ -1044,7 +1044,7 @@ fn leading_slash_is_part_of_the_pattern() {
 }
 
 /// A pattern that reads as flags (a flag letter run followed by `/`) has no
-/// literal spelling of its own — `v/` reaches it instead: `v/m/s` matches
+/// literal spelling of its own. `v/` reaches it instead: `v/m/s` matches
 /// the literal text "m/s", the same text a bare `m/s` would instead read as
 /// the multi flag plus pattern "s".
 #[test]
@@ -1060,7 +1060,7 @@ fn verbatim_flag_reaches_a_pattern_that_looks_like_flags() {
 }
 
 /// `mv` combines multi and verbatim: `.` must match only a literal dot (not
-/// any character), and every selection moves independently — selections that
+/// any character), and every selection moves independently. Selections that
 /// converge on the same literal match merge into one.
 ///
 /// "axrs a.rs\n": without `verbatim`, the pattern `.rs` would match "xrs" as
@@ -1072,7 +1072,7 @@ fn multi_verbatim_flags_combine_and_converging_selections_merge() {
     let mut ed = editor_from("-[a]>xrs a.rs\n");
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(0)), // "axrs" — primary
+            Selection::new(co(0), co(0)), // "axrs", primary
             Selection::new(co(5), co(5)), // "a.rs"
         ],
         0,
@@ -1102,8 +1102,8 @@ fn multi_extend_extends_each_selection_from_its_own_anchor() {
     let mut ed = editor_from("-[a]>a foo bb foo\n");
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(co(0), co(1)), // "aa" — anchor 0, primary
-            Selection::new(co(7), co(8)), // "bb" — anchor 7
+            Selection::new(co(0), co(1)), // "aa": anchor 0, primary
+            Selection::new(co(7), co(8)), // "bb": anchor 7
         ],
         0,
     );
@@ -1161,14 +1161,14 @@ fn search_up_recalls_previous_forward_pattern() {
 
 #[test]
 fn search_history_is_separate_from_command_history() {
-    // Submit a command, then open search — command history must not bleed in.
+    // Submit a command, then open search. Command history must not bleed in.
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key(':'));
     for ch in "messages".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    // Open forward search and press Up — history should be empty.
+    // Open forward search and press Up: history should be empty.
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
     assert_eq!(ed.state.minibuf().unwrap().input, "");
@@ -1199,7 +1199,7 @@ fn search_recall_updates_live_preview() {
     search_forward(&mut ed, "hello");
     // Cursor should now be on "hello". Move to start so we can observe the jump.
     assert_eq!(state(&ed), "-[hello]> world\n");
-    // Open search, type a one-char prefix of the stored pattern — live search
+    // Open search, type a one-char prefix of the stored pattern. Live search
     // matches on the partial pattern, then Up recalls the full stored entry
     // (it starts with "h") and re-runs the live preview off the recall.
     ed.handle_key(key('/'));
@@ -1262,7 +1262,7 @@ fn search_edit_after_recall_demotes_to_scratch() {
     ed.handle_key(key_up());
     assert_eq!(ed.state.minibuf().unwrap().input, "hello");
 
-    // Edit the recalled entry — demotes nav state so the next Up re-stashes
+    // Edit the recalled entry: demotes nav state so the next Up re-stashes
     // the current (now-edited) text as fresh scratch.
     ed.handle_key(key('x')); // input is now "hellox"
     assert_eq!(ed.state.minibuf().unwrap().input, "hellox");
@@ -1287,7 +1287,7 @@ fn search_edit_after_recall_demotes_to_scratch() {
 fn search_backspace_on_empty_dismisses() {
     let mut ed = editor_from("-[h]>ello world\n");
 
-    // /f → Backspace: EmptiedByBackspace — input empty, but stay in Search.
+    // /f → Backspace: EmptiedByBackspace (input empty, but stay in Search).
     ed.handle_key(key('/'));
     ed.handle_key(key('f'));
     ed.handle_key(key_backspace());
@@ -1299,7 +1299,7 @@ fn search_backspace_on_empty_dismisses() {
     assert!(ed.state.minibuf().is_some());
     assert_eq!(state(&ed), "-[h]>ello world\n"); // snapshot restored
 
-    // Second Backspace: BackspaceOnEmpty — dismiss.
+    // Second Backspace: BackspaceOnEmpty, dismiss.
     ed.handle_key(key_backspace());
     assert_eq!(
         ed.state.mode(),

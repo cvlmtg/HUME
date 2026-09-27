@@ -62,7 +62,7 @@ fn strips_snippet_text_edit_new_text() {
 fn a_string_kind_is_dropped_not_faked_as_a_default() {
     // A server sending a human-readable kind string instead of the LSP
     // numeric enum: `CompletionItemKind` is a transparent i32 newtype, so
-    // this can't be made sense of — dropped, not defaulted.
+    // this can't be made sense of: dropped, not defaulted.
     let v = serde_json::json!({"label": "foo", "kind": "Function"});
     let item = from_json(v).expect("label present");
     assert_eq!(&*item.label, "foo");
@@ -114,7 +114,7 @@ fn a_bare_string_decodes_as_a_plain_item_with_that_label() {
     assert_eq!(item.kind, None);
     assert!(
         item.raw.is_none(),
-        "no wire payload to keep — nothing parsed it from JSON"
+        "no wire payload to keep: nothing parsed it from JSON"
     );
 }
 
@@ -123,7 +123,7 @@ fn missing_label_is_rejected() {
     let v = serde_json::json!({"kind": 1});
     assert!(
         from_json(v).is_none(),
-        "no label recoverable — item must be dropped"
+        "no label recoverable: item must be dropped"
     );
 }
 
@@ -136,7 +136,7 @@ fn non_string_label_is_rejected() {
 // ── additionalTextEdits presence ─────────────────────────────────────────────
 //
 // `has_additional_text_edits` distinguishes "the server answered this key"
-// from "the key is absent" — only the latter licenses `completionItem/
+// from "the key is absent". Only the latter licenses `completionItem/
 // resolve` (see the field's own doc). A JSON `null` must count as absent,
 // the same as the key being missing entirely, not as "present."
 

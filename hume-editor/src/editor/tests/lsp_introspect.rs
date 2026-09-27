@@ -42,7 +42,7 @@ fn attach_running_server(ed: &mut Editor, initialize_result: serde_json::Value) 
     sid
 }
 
-/// [`attach_running_server`] plus one canned response for `"test/echo"` —
+/// [`attach_running_server`] plus one canned response for `"test/echo"`:
 /// the setup every `lsp-position->offset`/`lsp-range->offsets` test below
 /// needs to hand the builtin a position that carries a real producing-server
 /// tag, since an untagged (hand-built) hash is rejected outright.
@@ -76,8 +76,8 @@ fn attach_running_server_with_echo(
 
 /// [`run_probe`]'s async-response sibling: dispatches a `test/echo` request
 /// (queued by [`attach_running_server_with_echo`]'s canned response) and
-/// evaluates `assertion` — a Scheme expression referencing `bid` and `res`
-/// (the echoed, now-tagged value) — once it lands, moving the cursor iff it
+/// evaluates `assertion` (a Scheme expression referencing `bid` and `res`
+/// (the echoed, now-tagged value)) once it lands, moving the cursor iff it
 /// holds.
 fn run_tagged_probe(ed: &mut Editor, tmp: &std::path::Path, assertion: &str) -> bool {
     run(
@@ -118,7 +118,7 @@ fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
 }
 
 /// `lsp-capabilities` must read the server's raw wire JSON, not a
-/// re-serialization of a typed `lsp_types::ServerCapabilities` decode — that
+/// re-serialization of a typed `lsp_types::ServerCapabilities` decode: that
 /// round-trip silently drops any field the pinned crate version doesn't
 /// model. `documentRangeFormattingProvider.rangesSupport` (LSP 3.18) is
 /// exactly such a field: `lsp_types` 0.97 has no representation for it at
@@ -152,7 +152,7 @@ fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
 fn lsp_capabilities_is_false_before_running() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    // Client wired but handshake never driven — stays Starting.
+    // Client wired but handshake never driven; stays Starting.
     let mut backend = InlineLspBackend::new();
     let sid = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
@@ -369,14 +369,14 @@ fn lsp_primary_range_params_reflects_the_primary_selection() {
 
 /// A run of linewise selections that touch end-to-end (the next one starts
 /// exactly where the previous one ends) coalesces into a single wire range
-/// — an LSP range is naturally contiguous, so splitting a touching run
-/// would buy nothing. See `lsp_linewise_ranges_params_splits_on_a_gap` for
+/// (an LSP range is naturally contiguous, so splitting a touching run
+/// would buy nothing). See `lsp_linewise_ranges_params_splits_on_a_gap` for
 /// the case where two selections don't touch.
 #[test]
 fn lsp_linewise_ranges_params_coalesces_touching_selections() {
     let tmp = safe_tempdir();
     // "line1\nline2\nline3\n": selection 1 covers line0 whole (0..=5),
-    // selection 2 covers line1 whole (6..=11) — they touch, so the hull is
+    // selection 2 covers line1 whole (6..=11); they touch, so the hull is
     // one range [0, 12).
     let mut ed = editor_from("-[line1\n]>-[line2\n]>line3\n");
     ed.doc_mut()
@@ -405,7 +405,7 @@ fn lsp_linewise_ranges_params_coalesces_touching_selections() {
 }
 
 /// A gap between two linewise selections can't be expressed as one LSP
-/// range without also covering the untouched line in between — it stays two
+/// range without also covering the untouched line in between, so it stays two
 /// ranges instead (see `disjoint_full_line_selections_send_two_range_
 /// formatting_requests` in `tests/unix/lsp_format.rs` for the command-level
 /// consequence).
@@ -413,7 +413,7 @@ fn lsp_linewise_ranges_params_coalesces_touching_selections() {
 fn lsp_linewise_ranges_params_splits_on_a_gap() {
     let tmp = safe_tempdir();
     // "line1\nline2\nline3\n": selection 1 covers line0 (0..=5), selection 2
-    // covers line2 (12..=17) — line1 sits untouched between them.
+    // covers line2 (12..=17); line1 sits untouched between them.
     let mut ed = editor_from("-[line1\n]>line2\n-[line3\n]>");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-linewise-ranges-gap.rs")));
@@ -433,7 +433,7 @@ fn lsp_linewise_ranges_params_splits_on_a_gap() {
 
 /// A selection collapsed onto an empty line reads as linewise by
 /// `is_selection_linewise`'s definition, but is ambiguous (see
-/// `linewise_classification`), not a deliberate selection — it must not
+/// `linewise_classification`), not a deliberate selection. It must not
 /// bridge two real linewise selections it happens to touch on both sides
 /// into one coalesced range that silently reformats the blank line's
 /// neighbors together.
@@ -462,7 +462,7 @@ fn lsp_linewise_ranges_params_does_not_bridge_across_a_collapsed_blank_line_sele
     );
 }
 
-/// A lone collapsed selection on an empty line is the sole selection —
+/// A lone collapsed selection on an empty line is the sole selection:
 /// ambiguous, not linewise, so it contributes no range (distinct from
 /// `lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise`, whose
 /// selection is a genuine, unambiguous partial-line one).
@@ -488,7 +488,7 @@ fn lsp_linewise_ranges_params_is_empty_for_a_lone_collapsed_blank_line_selection
     );
 }
 
-/// A non-linewise selection is skipped, not an error — only the linewise
+/// A non-linewise selection is skipped, not an error: only the linewise
 /// one among a mixed set shows up in `ranges`. `:lsp-fmt` itself treats a
 /// mixed set as ambiguous and warns instead of formatting (see
 /// `mixed_linewise_and_sub_line_selections_warn_and_format_nothing` in
@@ -519,7 +519,7 @@ fn lsp_linewise_ranges_params_skips_non_linewise_selections() {
     assert!(fired, "only the linewise selection must appear in ranges");
 }
 
-/// No linewise selection at all still resolves (`textDocument` present) —
+/// No linewise selection at all still resolves (`textDocument` present):
 /// `ranges` is simply empty, distinct from the no-server/no-path `#f`.
 #[test]
 fn lsp_linewise_ranges_params_is_empty_when_nothing_is_linewise() {
@@ -554,7 +554,7 @@ fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
 
     let tmp = safe_tempdir();
     // "caf" + é (U+0065 U+0301, two chars) + "\n". Grapheme boundaries:
-    // 0,1,2,3,5,6 — é occupies chars 3..5. Selection anchor=0, head=3
+    // 0,1,2,3,5,6; é occupies chars 3..5. Selection anchor=0, head=3
     // (inclusive) covers "caf" plus é's first char only.
     let content = "caf\u{0065}\u{0301}\n";
     let mut ed = Editor::for_testing(Buffer::new(
@@ -588,7 +588,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     let mut host = ScriptingHost::new();
     // Captures the hook's own `(first . end)` payload so the assertion
     // compares two independently-reached values, not the builtin against
-    // itself — both paths share `introspect::pane_visible_range`, so this
+    // itself. Both paths share `introspect::pane_visible_range`, so this
     // pins that they stay in sync, not just that the builtin returns
     // *something*.
     eval_with_real_host(
@@ -620,7 +620,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
 }
 
 /// `viewport-range`'s `end` names one past the buffer's last *content* line,
-/// never ropey's phantom line past the structural trailing `\n` — the bug
+/// never ropey's phantom line past the structural trailing `\n`: the bug
 /// that made the manual's documented recipe (`user-manual/docs/plugins.md`)
 /// overshoot `buffer-lines`' bounds check whenever the viewport reaches EOF.
 ///
@@ -667,7 +667,7 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
     );
 }
 
-/// `(viewport-range pane)` needs a pane, not just a buffer — kind-B fail-fast
+/// `(viewport-range pane)` needs a pane, not just a buffer: kind-B fail-fast
 /// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
 /// own return shape) raises.
 #[test]
@@ -676,7 +676,7 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
     let mut ed = editor_from("-[a]>bcdef\n");
 
     // `open_extra_file` opens a second buffer into the buffer list without
-    // switching any pane to show it — it stays paneless.
+    // switching any pane to show it, so it stays paneless.
     let extra = tmp.path().join("hidden.rs");
     std::fs::write(&extra, "fn hidden() {}\n").unwrap();
     ed.open_extra_file(&extra);
@@ -696,7 +696,7 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
         &mut ed,
         &mut host,
         // Only two buffers exist, so "the one that isn't the focused
-        // buffer" unambiguously picks out the hidden one — relies on
+        // buffer" unambiguously picks out the hidden one; this relies on
         // `equal?`/hash (`equality_hint`) for pane comparison across
         // independently decoded `(buffers)` entries.
         r#"(define-typed-command! "probe" "" (lambda (bid)
@@ -718,10 +718,10 @@ fn viewport_range_raises_for_a_paneless_buffer_handle() {
     );
 }
 
-/// A buffer shown only in a *background* tab's pane — not paneless, unlike
-/// the sibling test above — still resolves: `CommandPane::resolve`
+/// A buffer shown only in a *background* tab's pane (not paneless, unlike
+/// the sibling test above) still resolves: `CommandPane::resolve`
 /// only checks that the pane is live and shows the buffer, not which tab
-/// it's on. The returned range is trustworthy, not stale — a background
+/// it's on. The returned range is trustworthy, not stale: a background
 /// tab's panes are kept resynced to the terminal on every resize, same as
 /// the active tab's own (see
 /// `editor::tests::tab::resizing_while_a_tab_is_hidden_still_resyncs_its_viewport`).
@@ -757,10 +757,10 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
     );
 }
 
-/// The Steel-facing `(viewport-range pane)` builtin itself — not just the
+/// The Steel-facing `(viewport-range pane)` builtin itself, not just the
 /// Rust `introspect::viewport_range` function the sibling test above calls
 /// directly, one layer under `host_impl`'s own (now-removed) active-tab
-/// guard — must resolve a background-tab pane too.
+/// guard, must resolve a background-tab pane too.
 #[test]
 fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
     let tmp = safe_tempdir();
@@ -802,7 +802,7 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
     );
 }
 
-/// `lsp-position-params` needs a pane, not just a buffer — kind-B fail-fast
+/// `lsp-position-params` needs a pane, not just a buffer: kind-B fail-fast
 /// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
 /// own return shape) raises, even when the buffer is attached to a running
 /// server and still has a seeded (now stale) pane state.
@@ -847,10 +847,10 @@ fn lsp_position_params_raises_for_a_paneless_buffer_handle() {
     );
 }
 
-/// A buffer shown in a *non-focused* pane still resolves — this is the
+/// A buffer shown in a *non-focused* pane still resolves. This is the
 /// inlay-hints-in-a-split path (`inlay.scm`'s refresh fires from
 /// `on-viewport-change`, which fires for any pane, not just the focused
-/// one) — but only once the caller names that pane explicitly via
+/// one), but only once the caller names that pane explicitly via
 /// `(buffer-panes hidden)`; a bare buffer handle (`(buffers)`'s own shape)
 /// does not resolve on its own (see the sibling `_raises_` test above).
 #[test]
@@ -947,7 +947,7 @@ fn lsp_position_params_is_false_for_an_unattached_buffer() {
 #[test]
 fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
     let tmp = safe_tempdir();
-    // "🎉" is 1 char, 2 UTF-16 code units — wire character 2 (the emoji's
+    // "🎉" is 1 char, 2 UTF-16 code units: wire character 2 (the emoji's
     // full UTF-16 width) must land on char index 1, the char right after it.
     let mut ed = editor_from("-[x]>🎉rest\n");
     ed.doc_mut()
@@ -972,7 +972,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf16_encoding() {
 #[test]
 fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
     let tmp = safe_tempdir();
-    // "🎉" is 4 UTF-8 bytes — wire character 4 must land on char index 1.
+    // "🎉" is 4 UTF-8 bytes: wire character 4 must land on char index 1.
     let mut ed = editor_from("-[x]>🎉rest\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-position-to-offset-utf8.rs")));
@@ -994,7 +994,7 @@ fn lsp_position_to_offset_uses_the_responses_tagged_utf8_encoding() {
 }
 
 /// `lsp-position->offset` reads the position's own tagged producing-server
-/// encoding — an untagged (hand-built) hash must error, not silently
+/// encoding: an untagged (hand-built) hash must error, not silently
 /// resolve via `bid`'s currently attached server.
 ///
 /// Without `JsonHandle::position_encoding`'s `Err`, this would silently
@@ -1022,7 +1022,7 @@ fn lsp_position_to_offset_untagged_handle_errors() {
 
 /// The tagged counterpart of the test above: a *tagged* position
 /// decodes correctly even when `bid` currently has no server attached at
-/// all — the encoding travels with the response, not with `bid`'s live
+/// all: the encoding travels with the response, not with `bid`'s live
 /// attachment. The request is dispatched (and its response tagged) while
 /// the server is still attached; `bid`'s attachment is cleared directly
 /// before the response is drained, so only the tag remains by the time
@@ -1052,7 +1052,7 @@ fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
     let before = state(&ed);
     let bid = ed.focused_buffer_id();
     type_cmd(&mut ed, ":probe");
-    // The request is already in flight — detaching now proves the later
+    // The request is already in flight; detaching now proves the later
     // decode reads the response's own tag, not bid's live attachment.
     ed.state.buffers.get_mut(bid).lsp_server = None;
     ed.drain_lsp();
@@ -1068,9 +1068,9 @@ fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
 #[test]
 fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_line() {
     let tmp = safe_tempdir();
-    // "-[x]>abc\n" is "xabc\n" — one content line; a wire `line` past it
+    // "-[x]>abc\n" is "xabc\n": one content line; a wire `line` past it
     // clamps (inside `wire_to_char`) onto the buffer's trailing phantom line
-    // rather than erroring — servers send past-end positions routinely. Every
+    // rather than erroring, since servers send past-end positions routinely. Every
     // point-anchored decoration setter (`set-inlay-hints!`) rejects that
     // offset outright, so `lsp-position->offset` must refuse here too,
     // rather than handing back a value only useful for failing one step
@@ -1099,8 +1099,8 @@ fn lsp_position_to_offset_is_false_when_it_would_land_on_the_trailing_phantom_li
 fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
     let tmp = safe_tempdir();
     // "🎉" occupies char 0 (2 UTF-16 code units); 'b' is char 1, wire
-    // character 2. A wire range [0, 2) must convert to char offsets (0 . 1)
-    // — covering just the emoji, half-open.
+    // character 2. A wire range [0, 2) must convert to char offsets (0 . 1),
+    // covering just the emoji, half-open.
     let mut ed = editor_from("-[x]>🎉bcdef\n");
     ed.doc_mut()
         .set_path(Some(tmp.path().join("fake-lsp-range-to-offsets.rs")));
@@ -1131,8 +1131,8 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
     // sits at the buffer's char length (`set-extra-highlights!`'s
     // `validate_range` accepts that boundary), so `lsp-range->offsets` must
     // keep the clamping behavior `lsp-position->offset` deliberately
-    // refuses — a past-end wire `line` for `end` is not an error here.
-    // "-[x]>abc\n" is "xabc\n" (the marked 'x' is real buffer content) — 5
+    // refuses: a past-end wire `line` for `end` is not an error here.
+    // "-[x]>abc\n" is "xabc\n" (the marked 'x' is real buffer content), 5
     // chars.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abc\n");
@@ -1184,7 +1184,7 @@ fn lsp_range_to_offsets_untagged_handle_errors() {
 }
 
 /// `lsp-locations->display-parts` reads each location's own tagged
-/// producing-server encoding — an untagged (hand-built) handle must error,
+/// producing-server encoding: an untagged (hand-built) handle must error,
 /// not silently resolve to the UTF-16 default.
 ///
 /// A guessed UTF-16 fallback in `JsonHandle::position_encoding` would return

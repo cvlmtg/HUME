@@ -1,11 +1,11 @@
-// `Editor::reset_config_state` — the full-reset contract `:reload-config`
+// `Editor::reset_config_state`: the full-reset contract `:reload-config`
 // relies on. Each test writes one config-owned surface via the real
 // `EditorHostImpl` (`eval_with_real_host`, same eval path `init_scripting`
 // uses), confirms the write landed, calls `reset_config_state` directly,
 // then asserts the surface is back to its compiled-in default. Every
 // assertion is written so it fails if `reset_config_state` did nothing.
 //
-// `Editor::resync_config_state` — the repopulation half, exercised in the
+// `Editor::resync_config_state`: the repopulation half, exercised in the
 // `-- Resync --` section below: it repopulates state `reset_config_state`
 // clears that is normally repopulated by a hook fired on a transition
 // (server attach, buffer open, diagnostics published) which a bare reload
@@ -31,7 +31,7 @@ use hume_lsp::inline::InlineLspBackend;
 
 // ── Keymap ───────────────────────────────────────────────────────────────────
 
-/// A `bind-key!` override must revert to the compiled-in default binding —
+/// A `bind-key!` override must revert to the compiled-in default binding,
 /// not stay overridden, not end up unbound. Compared against a fresh
 /// `Keymap::default()` rather than a hardcoded
 /// expectation for 'Q', which has no default binding at all.
@@ -70,7 +70,7 @@ fn reset_reverts_bind_key_to_default() {
 }
 
 /// `unbind-key!` on a key with a compiled-in default (`x` → `select-line`)
-/// must also revert — the default trie is rebuilt wholesale, not patched.
+/// must also revert. The default trie is rebuilt wholesale, not patched.
 #[test]
 fn reset_reverts_unbind_key_to_default() {
     let tmp = safe_tempdir();
@@ -112,7 +112,7 @@ fn reset_reverts_bind_wait_char_to_default() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>b\n");
 
-    // Sanity: 'g' 'W' is not a WaitChar node in the compiled-in default —
+    // Sanity: 'g' 'W' is not a WaitChar node in the compiled-in default;
     // otherwise the final assertion below would pass even if reset did nothing.
     assert!(
         !matches!(
@@ -151,7 +151,7 @@ fn reset_reverts_bind_wait_char_to_default() {
 }
 
 /// Kitty-only default binds (installed by `apply_kitty_defaults`, outside
-/// `Keymap::default()`) must be reinstalled after a config override —
+/// `Keymap::default()`) must be reinstalled after a config override:
 /// `reset_config_state` must not just rebuild the plain default trie and
 /// stop there.
 #[test]
@@ -193,7 +193,7 @@ fn reset_reinstalls_kitty_defaults_after_a_config_override() {
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 /// `set-option!` (as `init.scm` or `:set global` would call it) must revert
-/// to `EditorSettings::default()` — not the previous session's value.
+/// to `EditorSettings::default()`, not the previous session's value.
 #[test]
 fn reset_reverts_set_option_to_compiled_in_default() {
     let tmp = safe_tempdir();
@@ -221,7 +221,7 @@ fn reset_reverts_set_option_to_compiled_in_default() {
     );
 }
 
-/// A runtime `:set global` change — never written by any `init.scm` — is
+/// A runtime `:set global` change (never written by any `init.scm`) is
 /// discarded too: "from scratch" resets *every* global, not just the ones a
 /// script wrote this session.
 #[test]
@@ -242,7 +242,7 @@ fn reset_reverts_runtime_set_command_too() {
     );
 }
 
-/// `configure-statusline!` reverts to `StatusLineConfig::default()` — same
+/// `configure-statusline!` reverts to `StatusLineConfig::default()`: same
 /// global-setting reset path as `scrolloff`, just a richer value.
 #[test]
 fn reset_reverts_statusline_config_to_default() {
@@ -271,7 +271,7 @@ fn reset_reverts_statusline_config_to_default() {
     assert_eq!(ed.state.settings.statusline().right, default.right);
 }
 
-/// The loaded theme reverts to the compiled-in default (`sand.toml`) — not
+/// The loaded theme reverts to the compiled-in default (`sand.toml`), not
 /// via `resync_derived_state`'s ordinary "theme" arm (which deliberately
 /// no-ops when `settings.theme` is empty, the reset value), but via the
 /// explicit `view.theme = build_default_theme()` write `reset_globals` makes.
@@ -314,7 +314,7 @@ fn reset_reverts_theme_to_compiled_in_default() {
 // ── Buffers ──────────────────────────────────────────────────────────────────
 
 /// A `set-buffer-option!` override (e.g. from an `on-language-set` hook)
-/// must not survive a reset — `BufferOverrides` goes back to "inherit from
+/// must not survive a reset: `BufferOverrides` goes back to "inherit from
 /// global" for every open buffer.
 #[test]
 fn reset_clears_buffer_overrides() {
@@ -346,7 +346,7 @@ fn reset_clears_buffer_overrides() {
     );
 }
 
-/// `Buffer.language` is a `LanguageId` — an index into `state.config.languages`,
+/// `Buffer.language` is a `LanguageId`, an index into `state.config.languages`,
 /// which the reset replaces with a fresh, empty registry right after this
 /// clear. Left alone, the old index would dangle (and, worse, silently
 /// alias whatever the new registry happens to intern at the same slot);
@@ -369,7 +369,7 @@ fn reset_clears_stale_buffer_language_ids() {
     assert_eq!(
         ed.state.buffers.get(bid).language,
         None,
-        "buffer language must not survive the reset — it would dangle once \
+        "buffer language must not survive the reset: it would dangle once \
          state.config.languages is replaced, and its survival is what keeps \
          set_buffer_language's unchanged-value guard from firing OnLanguageSet again"
     );
@@ -377,10 +377,10 @@ fn reset_clears_stale_buffer_language_ids() {
 
 // ── LSP ──────────────────────────────────────────────────────────────────────
 
-/// `register-lsp-server!` clears from `lsp.configs` on reset — a language a
+/// `register-lsp-server!` clears from `lsp.configs` on reset. A language a
 /// plugin registered but the new `init.scm` no longer does must not keep its
 /// stale config lying around (`lsp.servers`, the running processes
-/// themselves, are untouched — see `LspState::reset_config`'s doc).
+/// themselves, are untouched; see `LspState::reset_config`'s doc).
 #[test]
 fn reset_clears_lsp_server_configs() {
     let tmp = safe_tempdir();
@@ -408,7 +408,7 @@ fn reset_clears_lsp_server_configs() {
 // ── Decorations ──────────────────────────────────────────────────────────────
 
 /// Plugin-set decorations (signs, inlay hints, virtual lines, extra
-/// highlights, inline diagnostics) don't linger past a reset — the plugin
+/// highlights, inline diagnostics) don't linger past a reset: the plugin
 /// that set them may not even be loaded by the new config.
 #[test]
 fn reset_clears_plugin_decorations() {
@@ -445,7 +445,7 @@ fn reset_clears_plugin_decorations() {
     assert_eq!(
         ed.state.config.decorations.sign_slot(bid, "linter"),
         None,
-        "the sign SOURCE registration must not linger past a reset either — \
+        "the sign SOURCE registration must not linger past a reset either: \
          the new config re-registers whatever it needs"
     );
 }
@@ -453,7 +453,7 @@ fn reset_clears_plugin_decorations() {
 // ── Timers ───────────────────────────────────────────────────────────────────
 
 /// A scheduled `(after ms thunk)` must not fire against the *new* engine
-/// after a reset — its `SteelVal` thunk is rooted in the outgoing one.
+/// after a reset: its `SteelVal` thunk is rooted in the outgoing one.
 #[test]
 fn reset_cancels_pending_steel_timers() {
     let tmp = safe_tempdir();
@@ -523,13 +523,13 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     assert!(
         ed.state.views.drawer.read().is_none(),
         "the drawer view must self-heal on the very next frame after a \
-         reset clears the model, not stay stale (and uncloseable — key \
+         reset clears the model, not stay stale (and uncloseable, since key \
          routing gates on state.input.drawer().is_some()) forever"
     );
 }
 
 /// Regression test: an abandoned `Prompt` layer (minibuf + callback) must
-/// not survive a reload — `reset_config_state`'s `input.truncate_to_base()`
+/// not survive a reload: `reset_config_state`'s `input.truncate_to_base()`
 /// call is what drops it, discarding the callback the same way every other
 /// overlay widget's teardown does. Left open, its half-typed answer would
 /// be misread as an ordinary `:` command on the very next Enter.
@@ -587,12 +587,12 @@ fn reset_tears_down_an_open_prompt_session_completely() {
     );
 }
 
-/// `truncate_to_base` resets `Base`'s `extend` flag — Extend must not
+/// `truncate_to_base` resets `Base`'s `extend` flag: Extend must not
 /// survive a reload.
 /// Also pins the `last_observed_mode` re-baseline (`reset_config_state`,
 /// right after `truncate_to_base`): the *old*, still-attached hook must
 /// never see a phantom `Extend→Normal` transition it didn't itself observe
-/// happening — checked by settling with the pre-reload host still in place
+/// happening. Checked by settling with the pre-reload host still in place
 /// (`reset_config_state` alone doesn't touch `ed.scripting`; only
 /// `typed_reload_config`'s caller does) and confirming its hook never fires.
 #[test]
@@ -631,7 +631,7 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
         "reset_config_state must clear Extend, not let it survive the reload"
     );
 
-    // The pre-reload host (and its hook) is still attached — if
+    // The pre-reload host (and its hook) is still attached. If
     // `last_observed_mode` weren't re-baselined here, this settle() would
     // wrongly queue and fire `on-mode-change` against it for a transition
     // it never watched happen.
@@ -644,12 +644,12 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
     );
 }
 
-/// An open picker session must be gone after a reset, and — unlike `Esc`/
-/// `picker-close!` — its `on_select` callback must never fire: it belongs to
+/// An open picker session must be gone after a reset, and, unlike `Esc`/
+/// `picker-close!`, its `on_select` callback must never fire: it belongs to
 /// the outgoing engine, which is seconds from being dropped (see
 /// `picker::close_picker`'s doc for why `reset_config_state` deliberately
 /// bypasses that chokepoint). Checked via `pending_work` staying empty, not
-/// just `picker.is_none()` — the latter alone can't tell "dropped
+/// just `picker.is_none()`: the latter alone can't tell "dropped
 /// silently" apart from "closed normally", since `close_picker` also clears
 /// the field.
 #[test]
@@ -684,7 +684,7 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
 
 // ── Dynamic commands ─────────────────────────────────────────────────────────
 
-/// A `define-command!`-registered command is gone after a reset —
+/// A `define-command!`-registered command is gone after a reset:
 /// `ConfigState::new`'s `CommandRegistry::with_defaults()` rebuild is total,
 /// not incremental. Leaving it in `registry.names()` would make the
 /// reloaded `init.scm`'s re-`(define-command! …)` trip the
@@ -719,8 +719,8 @@ fn reset_clears_dynamic_commands() {
 //
 // `reset_config_state` clears state a hook normally repopulates on a
 // transition (server attach, buffer open, diagnostics published) that a bare
-// reload never causes. These tests exercise `resync_config_state` directly —
-// the replay that fires those hooks — rather than the full reset+rebuild
+// reload never causes. These tests exercise `resync_config_state` directly
+// (the replay that fires those hooks) rather than the full reset+rebuild
 // dance, since the hook hand-off is the part under test.
 
 /// Wires a scripted server attached to the focused buffer under `language`,
@@ -752,7 +752,7 @@ fn complete_handshake(ed: &mut Editor, sid: ServerId) {
     assert_eq!(sid2, sid);
 }
 
-/// A `Running` server's attachment must re-fire `OnLspAttach` on resync —
+/// A `Running` server's attachment must re-fire `OnLspAttach` on resync:
 /// this is what makes `register-trigger-chars!` (called from `core:lsp`'s
 /// `on-lsp-attach` handler) take effect again after a reload, without any
 /// LSP wire traffic: the server was never detached.
@@ -764,7 +764,7 @@ fn resync_refires_lsp_attach_for_a_running_server() {
     complete_handshake(&mut ed, sid);
     // `complete_handshake`'s `BecameRunning` arm already queued an
     // `OnLspAttach` for this attachment, with no scripting host yet to
-    // handle it — drop it, mirroring what `reset_config_state`'s wholesale
+    // handle it. Drop it, mirroring what `reset_config_state`'s wholesale
     // `ConfigState` rebuild does to any work queued before a reload, so
     // only `resync_config_state`'s own fire is under test below.
     ed.state.config.pending_work.clear();
@@ -791,15 +791,15 @@ fn resync_refires_lsp_attach_for_a_running_server() {
     );
 }
 
-/// A `Starting` server's attachment must NOT re-fire here — it fires its own
+/// A `Starting` server's attachment must NOT re-fire here: it fires its own
 /// `OnLspAttach` once `BecameRunning` runs (`dispatch_lsp_action`), and
 /// firing it again from resync would double it.
 ///
 /// Drained with `drain_pending_work()`, never `settle()`: `settle()` also
 /// runs `drain_async_sources` first, which would drive the mock backend's
-/// pre-queued `initialize` response to completion for real — this test
+/// pre-queued `initialize` response to completion for real. This test
 /// deliberately never does that (unlike `complete_handshake`, which the
-/// "refires for a Running server" test above calls) — firing `OnLspAttach`
+/// "refires for a Running server" test above calls), firing `OnLspAttach`
 /// via the legitimate `BecameRunning` path and confounding "resync fired it"
 /// with "the handshake genuinely completed here." `drain_pending_work()`
 /// drains only `resync_config_state`'s own queued hooks, leaving the
@@ -832,7 +832,7 @@ fn resync_does_not_refire_attach_for_a_starting_server() {
     );
 }
 
-/// Every already-open buffer gets `OnBufferOpen` re-fired on resync — the
+/// Every already-open buffer gets `OnBufferOpen` re-fired on resync: the
 /// same replay that covers a plugin's decorations set from that hook
 /// (signs, virtual lines) which `reset_config_state`'s fresh `ConfigState`
 /// (a new, empty `DecorationStores`) wipes and nothing else would bring
@@ -867,7 +867,7 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     ed.scripting = Some(host);
 
     // Counts fires via a per-buffer `tab-width` override, incremented once
-    // per `on-buffer-open` call for that buffer — a plain "did state change"
+    // per `on-buffer-open` call for that buffer: a plain "did state change"
     // check can't distinguish "every open buffer fired once" from "only one
     // of them fired" (the bug a `.take(1)` mutation to the resync loop would
     // leave undetected with a single-buffer fixture).
@@ -887,22 +887,22 @@ fn resync_refires_buffer_open_for_every_open_buffer() {
     );
 }
 
-/// A buffer opened during this reload's `init_scripting()` call — e.g. by a
+/// A buffer opened during this reload's `init_scripting()` call (e.g. by a
 /// lazy language plugin's activation body, the one context besides a plain
 /// command where `open-buffer!` is actually callable (`init.scm`'s own
 /// top-level is `EvalMode::Init`, which the builtin rejects; opening the
 /// buffer directly here mirrors what that activation call does once it
 /// reaches `EditorHostImpl::open_buffer`, without fighting the eval-mode
-/// gate to get there) — must NOT get `OnBufferOpen` re-fired by resync. It
+/// gate to get there)) must NOT get `OnBufferOpen` re-fired by resync. It
 /// already got one fire from the ordinary open path
-/// (`detect_pending_languages`, run by `apply_script_effects`'s tail — here,
-/// called directly to mirror that same tail call — before
+/// (`detect_pending_languages`, run by `apply_script_effects`'s tail, here
+/// called directly to mirror that same tail call, before
 /// `resync_config_state` is ever invoked). Only a buffer that predates the
 /// reload (excluded here by never appearing in `snapshot`, taken before the
 /// new buffer opens) should be re-fired.
 ///
 /// Counts fires via a per-buffer `tab-width` override, incremented once per
-/// `on-buffer-open` call for that buffer — a plain "did state change" check
+/// `on-buffer-open` call for that buffer: a plain "did state change" check
 /// (as `resync_refires_buffer_open_for_every_open_buffer` above uses) can't
 /// distinguish "fired once" from "fired twice", which is exactly the
 /// distinction this test needs.
@@ -912,7 +912,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     let mut ed = editor_from("-[a]>b\n");
     let old_bid = ed.focused_buffer_id();
 
-    // Snapshotted before the new buffer opens — mirrors `reset_config_state`
+    // Snapshotted before the new buffer opens, mirroring `reset_config_state`
     // capturing its `ReloadSnapshot` before `init_scripting` runs.
     let snapshot = ReloadSnapshot::for_test(ed.state.buffers.iter().map(|(id, _)| id));
 
@@ -936,7 +936,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
     )
     .unwrap();
     assert!(is_new, "sanity: this must be a genuinely new buffer");
-    // Mirrors `apply_script_effects`'s own tail call — the ordinary open
+    // Mirrors `apply_script_effects`'s own tail call: the ordinary open
     // path's `OnBufferOpen` fire, enqueued (not yet executed: `queue_event`
     // only pushes onto `pending_work`) here rather than via a real eval.
     ed.detect_pending_languages();
@@ -970,7 +970,7 @@ fn resync_does_not_refire_buffer_open_for_a_buffer_opened_by_this_reload() {
 
 /// `on-diagnostics-changed` re-fires from the surviving `LspState::diagnostics`
 /// cache (`LspState::reset_config` deliberately never touches it), not from
-/// a fresh wire publish — exactly the reported symptom: decorations empty
+/// a fresh wire publish. Exactly the reported symptom: decorations empty
 /// after a reload while the underlying diagnostics data is still there.
 #[test]
 fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
@@ -1042,7 +1042,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
 }
 
 /// `on-diagnostics-changed` must still re-fire from the surviving cache when
-/// the server that published it has since crashed — `running_attached_buffers`
+/// the server that published it has since crashed. `running_attached_buffers`
 /// excludes `Crashed` servers by design (it drives `OnLspAttach`, which must
 /// not fire for a dead server), but `LspState::reset_config` never clears
 /// `diagnostics` for a crash either, so the buffer's last-known diagnostics
@@ -1084,7 +1084,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
 
     // Crash the server via the same path a real transport failure takes
     // (`LspClient::on_event` transitions its internal state to `Crashed` and
-    // returns the action) — `dispatch_lsp_action`'s `Crashed` arm clears its
+    // returns the action). `dispatch_lsp_action`'s `Crashed` arm clears its
     // progress/pending requests but deliberately never touches `diagnostics`
     // or `buf.lsp_server`.
     let actions =
@@ -1142,15 +1142,15 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
 }
 
 /// Every pane showing a surviving buffer gets `OnViewportChange` re-fired on
-/// resync — the replay that brings back inlay hints and anything else
+/// resync: the replay that brings back inlay hints and anything else
 /// `on-viewport-change`-gated without the user having to scroll. Two panes on
 /// two different buffers, both counted via a per-buffer `tab-width` bump
-/// (same technique as `resync_refires_buffer_open_for_every_open_buffer` —
+/// (same technique as `resync_refires_buffer_open_for_every_open_buffer`:
 /// a plain "did state change" check can't distinguish "each pane fired once"
 /// from "only one pane fired, or one fired twice for the wrong buffer").
 /// The exact `(first, end)` bounds this hook reports are covered separately
 /// by `viewport_range_matches_the_on_viewport_change_hooks_own_computation`
-/// (`lsp_introspect.rs`) — this test is about the resync replay's fan-out
+/// (`lsp_introspect.rs`); this test is about the resync replay's fan-out
 /// across panes, not `pane_visible_range`'s own math.
 #[test]
 fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
@@ -1208,7 +1208,7 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
 
 /// A pane whose buffer is absent from the snapshot (mirrors a buffer opened
 /// during this same reload, per `resync_does_not_refire_buffer_open_for_a_
-/// buffer_opened_by_this_reload`) must not get `OnViewportChange` re-fired —
+/// buffer_opened_by_this_reload`) must not get `OnViewportChange` re-fired:
 /// there's no pre-reload state to restore for it, and its own open path
 /// already covers whatever it needs.
 #[test]
@@ -1248,7 +1248,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     );
     ed.scripting = Some(host);
 
-    // Snapshot covers only `first_bid` — `second_bid` is treated as opened
+    // Snapshot covers only `first_bid`; `second_bid` is treated as opened
     // during this same reload.
     let snapshot = ReloadSnapshot::for_test([first_bid]);
     ed.resync_config_state(&snapshot);
@@ -1267,7 +1267,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     );
 }
 
-/// `OnBufferEnter` re-fires for the focused buffer on resync — the replay
+/// `OnBufferEnter` re-fires for the focused buffer on resync: the replay
 /// that brings back state a plugin repopulates from that hook (e.g.
 /// `core:git-diff`'s `steel:git-branch` statusline element), which
 /// `reset_config_state`'s fresh `ConfigState` wipes (`statusline_text`) and
@@ -1276,12 +1276,12 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
 /// the focused buffer hasn't changed.
 ///
 /// `ed.settle()` runs first so that diff's baseline is actually set to the
-/// focused buffer — `editor_from` starts it `None`, which would make this
+/// focused buffer: `editor_from` starts it `None`, which would make this
 /// test pass trivially (baseline still `None`, diff still fires) even
 /// without `resync_config_state` clearing it itself.
 ///
 /// Counts fires via a per-buffer `tab-width` override, same technique as
-/// `resync_refires_buffer_open_for_every_open_buffer` — proves the hook
+/// `resync_refires_buffer_open_for_every_open_buffer`, which proves the hook
 /// actually re-fired, not just that some other diff coincidentally matched.
 #[test]
 fn resync_refires_buffer_enter_for_the_focused_buffer() {

@@ -1,5 +1,5 @@
 // `spawn-async!`/`cancel-async!` end-to-end through real Steel source with a
-// real spawned child (`sh`/`sleep`) — unix-only. See `async_job_steel.rs`
+// real spawned child (`sh`/`sleep`), unix-only. See `async_job_steel.rs`
 // (portable, at the crate's `tests/` root) for the argument-validation
 // coverage that never actually spawns anything, and `unix/async_job.rs` for
 // the Rust-only registry/drain coverage that skips Steel entirely.
@@ -16,7 +16,7 @@ fn call(ed: &mut Editor, name: &str) {
 
 #[test]
 fn happy_path_delivers_stdout_stderr_and_exit_code() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
@@ -39,7 +39,7 @@ fn happy_path_delivers_stdout_stderr_and_exit_code() {
 
 #[test]
 fn nonzero_exit_and_stderr_reach_the_callback() {
-    // Spawns "sh" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sh" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
@@ -76,7 +76,7 @@ fn missing_binary_fires_the_callback_with_code_negative_one() {
     );
     call(&mut ed, "go");
     // A spawn failure fires its callback synchronously, inside
-    // `spawn-async!` itself — no `drain_async_sources` needed, only the
+    // `spawn-async!` itself: no `drain_async_sources` needed, only the
     // queued-call drain.
     ed.settle();
 
@@ -99,7 +99,7 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
     );
     call(&mut ed, "go");
     // Same "fires synchronously inside spawn-async!" shape as the missing-
-    // binary case above — no `drain_async_sources` needed.
+    // binary case above: no `drain_async_sources` needed.
     ed.settle();
 
     assert_eq!(
@@ -140,7 +140,7 @@ fn spawn_failure_wakes_the_event_loop() {
 
 #[test]
 fn cancel_async_prevents_the_callback_and_kills_the_child() {
-    // Spawns "sleep" and "kill" by unqualified name — see `Global::Env`'s doc.
+    // Spawns "sleep" and "kill" by unqualified name; see `Global::Env`'s doc.
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");

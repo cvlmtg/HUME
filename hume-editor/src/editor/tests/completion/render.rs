@@ -10,13 +10,13 @@ use hume_grid::Rect;
 // ── Pane-fit clamp: the menu renders clamped, never vanishes ────────────────
 //
 // `PopupOverlay`'s defensive bounds check silently drops the *entire* popup
-// whenever the box doesn't fit — so the write side must clamp first.
+// whenever the box doesn't fit, so the write side must clamp first.
 
 #[test]
 fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
-    // MAX_MENU_ROWS is 10 — 12 items would size an unclamped box to 12
+    // MAX_MENU_ROWS is 10: 12 items would size an unclamped box to 12
     // rows (+2 frame), taller than the short pane below.
     let labels: Vec<String> = (0..12).map(|i| format!("item{i}")).collect();
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
@@ -99,7 +99,7 @@ fn minibuf_completion_popup_renders_above_the_statusline() {
 // `popup_placement` takes a fast path when its anchor is the focused
 // cursor: it reuses `ctx.cursor_content_pos` from `scroll_into_view` instead
 // of re-walking the display-line list. Pins that the reused cell agrees
-// with a full, independent walk — in wrap mode, where a wrong cache would
+// with a full, independent walk, in wrap mode, where a wrong cache would
 // show up as a silently-misplaced popup, not a panic.
 
 #[test]
@@ -114,7 +114,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     ed.feed_key(key('i'));
     type_chars(&mut ed, "abcdefghijklmnopqrstuvwxyz0123456789");
     // A non-word char right before triggering: the word token is empty,
-    // exactly at the cursor — the fast path this test pins is only taken
+    // exactly at the cursor. The fast path this test pins is only taken
     // when the anchor and the cursor agree. Still many display lines into
     // the wrapped text.
     ed.feed_key(key(';'));

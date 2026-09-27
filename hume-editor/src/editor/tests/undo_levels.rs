@@ -65,7 +65,7 @@ fn new_buffer_inherits_undo_levels() {
 fn steel_set_option_applies_undo_levels() {
     // set-option! routes through EditorHostImpl::set_global_option ->
     // settings::ops::apply_global, which resyncs every open buffer's cap
-    // inline — no separate pickup step needed after eval returns.
+    // inline, no separate pickup step needed after eval returns.
     // A raw write_global call in set_global_option that skipped
     // settings::ops::apply_global would never deliver the cap to the buffer.
     let mut ed = editor_from("-[h]>ello\n");

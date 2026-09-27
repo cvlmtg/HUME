@@ -5,7 +5,7 @@ use super::*;
 /// Load every bundled theme through the same loader path production code
 /// uses. No `bake()`: every check below reads scopes via `resolve_by_name`,
 /// which walks the raw dot-notation map directly (same as
-/// `EditorColors::from_theme` at render time) — baking only feeds the
+/// `EditorColors::from_theme` at render time). Baking only feeds the
 /// ID-based `resolve()` fast path, which none of these tests exercise.
 fn load_bundled_themes() -> Vec<(String, hume_engine::theme::Theme)> {
     use std::path::PathBuf;
@@ -37,8 +37,8 @@ fn load_bundled_themes() -> Vec<(String, hume_engine::theme::Theme)> {
         .map(|name| {
             let loaded = hume_engine::theme::loader::load_theme(&name, &paths)
                 .unwrap_or_else(|e| panic!("bundled theme '{name}' failed to load: {e}"));
-            // A bundled theme is HUME's own content, not a third-party import
-            // — a warning here means a bug we shipped, not something a user
+            // A bundled theme is HUME's own content, not a third-party import:
+            // a warning here means a bug we shipped, not something a user
             // needs to see. Stronger than "it loads": without this, a
             // malformed key would still pass every check below it, just
             // with an empty style standing in for the one it broke.
@@ -70,7 +70,7 @@ fn bundled_themes_load_and_resolve() {
 /// `raw_contains`, not `resolve_by_name`: after the `ui.selection.search` →
 /// `ui.cursor.match.search` rename, a theme that dropped the key would
 /// silently resolve through the dot-notation fallback onto `ui.cursor.match`
-/// instead — a `resolve_by_name` check can't tell "has its own colour" from
+/// instead. A `resolve_by_name` check can't tell "has its own colour" from
 /// "fell back to the bracket-match colour", only `raw_contains` can.
 #[test]
 fn bundled_themes_define_their_own_search_match_scope() {
@@ -84,7 +84,7 @@ fn bundled_themes_define_their_own_search_match_scope() {
 
 /// Every bundled theme must give the four diagnostic *gutter* scopes
 /// (Helix's own `error`/`warning`/`info`/`hint` naming for this surface) a
-/// colour and, crucially, no underline — that decoration belongs to the
+/// colour and, crucially, no underline: that decoration belongs to the
 /// editing-area counterpart (`diagnostic.error` etc.), not to a sign-column
 /// glyph. Drift-tolerant: asserts presence and absence-of-decoration, never
 /// a hex value.
@@ -104,7 +104,7 @@ fn bundled_theme_gutter_diagnostic_scopes_have_no_underline() {
             assert_eq!(
                 style.underline,
                 hume_engine::types::UnderlineStyle::None,
-                "bundled theme '{name}': gutter scope '{scope}' must not underline — \
+                "bundled theme '{name}': gutter scope '{scope}' must not underline: \
                  that decoration belongs to the editing-area 'diagnostic.{scope}' scope"
             );
         }
@@ -136,7 +136,7 @@ fn bundled_theme_diff_line_tints_are_pairwise_distinct() {
             for j in (i + 1)..scopes.len() {
                 assert_ne!(
                     bgs[i], bgs[j],
-                    "bundled theme '{name}': '{}' and '{}' share the row tint {:?} — \
+                    "bundled theme '{name}': '{}' and '{}' share the row tint {:?}: \
                      added, deleted and changed rows must not look alike",
                     scopes[i], scopes[j], bgs[i]
                 );
@@ -146,7 +146,7 @@ fn bundled_theme_diff_line_tints_are_pairwise_distinct() {
 }
 
 /// A mode scope that differs from the base row style must differ in its
-/// `bg` — the whole-row tint (`EditorColors::from_theme`, `hume-editor/src/statusline/colors.rs`) reads
+/// `bg`: the whole-row tint (`EditorColors::from_theme`, `hume-editor/src/statusline/colors.rs`) reads
 /// a single style per mode and paints it across the entire statusline, so a
 /// scope that overrides only `fg` renders as illegible accent-on-base-bg text
 /// rather than a tinted row. `ui.statusline.normal` is exempt: it equals the
@@ -154,7 +154,7 @@ fn bundled_theme_diff_line_tints_are_pairwise_distinct() {
 ///
 /// Overlaps with `bundled_theme_mode_scopes_are_pairwise_distinct` below for
 /// every scope but `normal` (which isn't checked here, and isn't in that
-/// test's own `mode_scopes` comparison base either) — kept separate because
+/// test's own `mode_scopes` comparison base either), kept separate because
 /// this one anchors each scope directly against `ui.statusline`, rather than
 /// against another mode scope.
 #[test]
@@ -174,7 +174,7 @@ fn bundled_theme_mode_scopes_tint_the_whole_row() {
             if mode_style != base {
                 assert_ne!(
                     mode_style.bg, base.bg,
-                    "bundled theme '{name}': '{scope}' differs from 'ui.statusline' only in fg — \
+                    "bundled theme '{name}': '{scope}' differs from 'ui.statusline' only in fg: \
                      the whole row tints with this style, so a bg-less override paints accent \
                      text on the untinted base background"
                 );
@@ -186,7 +186,7 @@ fn bundled_theme_mode_scopes_tint_the_whole_row() {
 /// Every one of the six `ui.statusline.<mode>` scopes must resolve to a
 /// distinct `bg` in every bundled theme. Since the whole-row tint makes row
 /// color the primary mode signal, two modes sharing a background are
-/// pixel-identical apart from a three-character label — easy for a
+/// pixel-identical apart from a three-character label, easy for a
 /// per-theme retune to miss without a check across every mode pair.
 #[test]
 fn bundled_theme_mode_scopes_are_pairwise_distinct() {
@@ -209,7 +209,7 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
             for j in (i + 1)..mode_scopes.len() {
                 assert_ne!(
                     bgs[i], bgs[j],
-                    "bundled theme '{name}': '{}' and '{}' share the same row bg {:?} — \
+                    "bundled theme '{name}': '{}' and '{}' share the same row bg {:?}: \
                      two modes would be indistinguishable",
                     mode_scopes[i], mode_scopes[j], bgs[i]
                 );
@@ -218,11 +218,11 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
     }
 }
 
-/// `:theme-debug`'s cursor rows must name a real rung chain — the bundled
+/// `:theme-debug`'s cursor rows must name a real rung chain. The bundled
 /// `gruvbox` theme sets `ui.cursor.normal` directly, so that row's chain must
 /// say so, not print a placeholder word. Pinned to `gruvbox` rather than `sand`:
 /// gruvbox mirrors an established upstream Helix theme and isn't expected to
-/// change, where `sand` is HUME's own theme and still gets retuned — a
+/// change, where `sand` is HUME's own theme and still gets retuned: a
 /// fixture that happens to rely on one of its rungs would drift out from
 /// under this test with no relation to what it actually checks. There is
 /// deliberately no assertion that a theme's cursor colors differ across
@@ -232,7 +232,7 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
 fn theme_debug_cursor_rows_show_a_real_chain_not_a_placeholder() {
     let mut ed = editor_from("-[a]>b\n");
     // `load_theme_by_name` resolves through the real XDG theme dirs, which
-    // this unit test has no fixture for — load straight from the repo's
+    // this unit test has no fixture for, so load straight from the repo's
     // `runtime/themes`, the same path `load_bundled_themes` above uses.
     let themes_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
     ed.view.theme = hume_engine::theme::loader::load_theme("gruvbox", &[themes_dir])

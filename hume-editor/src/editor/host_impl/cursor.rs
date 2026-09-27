@@ -11,7 +11,7 @@ use hume_scripting::host::CursorHost;
 
 impl<'a> EditorHostImpl<'a> {
     /// `t`'s buffer and selections, as tracked in `t`'s own pane. Shared by
-    /// every `CursorHost` method — `t` is already resolved (see
+    /// every `CursorHost` method: `t` is already resolved (see
     /// `commands::CommandPane::resolve`), so this never fails; a resolved
     /// `CommandPane`'s own buffer is always seeded (every pane creation or
     /// buffer switch seeds its `PaneBufferState`).
@@ -30,13 +30,13 @@ impl<'a> EditorHostImpl<'a> {
     }
 
     /// `true` if every *unambiguous* selection in `t`'s pane satisfies `pred`
-    /// (see `hume_editing::selection::linewise_classification`) — a selection
+    /// (see `hume_editing::selection::linewise_classification`); a selection
     /// collapsed on an empty line carries no vote either way and is skipped.
     /// A set where every selection is ambiguous votes `pred(false)`: it reads as
     /// charwise, the default a bare collapsed cursor already gets. Deriving that
     /// from `pred` rather than taking it separately is what keeps the "exactly
     /// one of these, or neither (mixed)" contract callers rely on true by
-    /// construction — `Iterator::all` alone would agree `true` with both
+    /// construction, since `Iterator::all` alone would agree `true` with both
     /// polarities over an empty sequence.
     fn all_unambiguous_selections(&self, t: CommandPane, pred: impl Fn(bool) -> bool) -> bool {
         let (buf, sels) = self.buffer_and_selections(t);
@@ -76,8 +76,8 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
 
     fn offset_to_line(&self, bid: hume_engine::pipeline::BufferId, idx: usize) -> Option<usize> {
         let text = self.buffer(bid)?.text();
-        // `CharOffset::checked` accepts `idx == len_chars()` (only `>` rejects)
-        // — the one Steel line-index builtin that admits the buffer's own
+        // `CharOffset::checked` accepts `idx == len_chars()` (only `>` rejects):
+        // the one Steel line-index builtin that admits the buffer's own
         // trailing phantom line, so this goes through the ropey domain rather
         // than `char_to_line`'s content-only contract.
         let offset = CharOffset::checked(text.rope(), idx)?;

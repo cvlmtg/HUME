@@ -1,8 +1,8 @@
-//! The completion overlay — [`BufferCompletionLayer`] pushed above `Insert`,
+//! The completion overlay: [`BufferCompletionLayer`] pushed above `Insert`,
 //! [`MinibufCompletionLayer`] pushed above `Command`. Two concrete layer
 //! types, not one: `completion/session.rs`'s module doc explains why a
-//! `Buffer`/`Minibuf` session are different types rather than one enum —
-//! the same split carries into their layers, so `dispatch_at`
+//! `Buffer`/`Minibuf` session are different types rather than one enum,
+//! and the same split carries into their layers, so `dispatch_at`
 //! (`mappings/mod.rs`) routes by ordinary generic layer lookup
 //! (`find`/`at`/`ref_of`) rather than a runtime target check. What the two
 //! layers' `Layer` impls share (`mode`, `popup_eviction`, `removal_scope`)
@@ -23,7 +23,7 @@ use super::stack::{
 };
 
 /// An open Insert-mode completion session, pushed above whichever base
-/// layer opened it — an overlay, not a mode layer (`mode()` returns `None`;
+/// layer opened it: an overlay, not a mode layer (`mode()` returns `None`;
 /// `InputStack::mode_layer()` skips it, reading the mode from the layer
 /// beneath).
 pub(in crate::editor) struct BufferCompletionLayer {
@@ -43,18 +43,18 @@ impl Layer for BufferCompletionLayer {
         None
     }
     /// A `Completion` menu can land directly above a `Popup` (hover, the
-    /// `gn`/`gp` diagnostic overlay — both non-modal, so `is_settled_for`
-    /// doesn't treat one as the stack having moved) — `push_layer` evicts
+    /// `gn`/`gp` diagnostic overlay; both non-modal, so `is_settled_for`
+    /// doesn't treat one as the stack having moved). `push_layer` evicts
     /// it on the way in, keeping `PopupLayer`'s "never buried" invariant
     /// true. `LayerOnly`, not the default `Both`: a completion session must
     /// coexist with a `Sticky` signature-help popup sitting in the same
-    /// mode layer's slot — evicting `Both` here would silently kill sighelp
+    /// mode layer's slot; evicting `Both` here would silently kill sighelp
     /// on every completion open.
     fn popup_eviction(&self) -> PopupEviction {
         PopupEviction::LayerOnly
     }
     /// A non-modal `Popup` (hover, `gn`/`gp`, a `Sticky` signature-help
-    /// popup) can land directly above a completion layer by design — see
+    /// popup) can land directly above a completion layer by design. See
     /// this type's own doc and `popup_eviction`'s `LayerOnly` override just
     /// above, which exists for the same coexistence. The default `Stack`
     /// scope would otherwise take that popup down along with the session on
@@ -87,17 +87,17 @@ impl Layer for MinibufCompletionLayer {
 
 impl Editor {
     /// Write the Insert-mode completion menu into the shared `PopupState`
-    /// Arc — same widget as [`Self::sync_menu_view`] (unwrapped rows,
+    /// Arc: same widget as [`Self::sync_menu_view`] (unwrapped rows,
     /// selected-row styling), but anchored at the leftmost contributing
     /// token's start rather than the live cursor (which drifts as the user
-    /// types further into the token). `Buffer`-target only — a
+    /// types further into the token). `Buffer`-target only; a
     /// `Minibuf`-target session renders through
     /// [`Editor::sync_minibuf_completion_view`] instead, into its own slot.
     ///
     /// Called every frame from `prepare_frame`'s overlay sync, same as
     /// [`Self::sync_popup_view`]/[`Self::sync_menu_view`] and for the same
     /// reason: it needs `EngineView::pane_rect`, which reads
-    /// `last_pane_area` — only current after step 9 runs.
+    /// `last_pane_area`, only current after step 9 runs.
     pub(in crate::editor) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
         let buffer_session_open = self.state.input.buffer_completion().is_some();
         if !buffer_session_open && self.state.views.completion_menu.read().is_none() {
@@ -105,7 +105,7 @@ impl Editor {
         }
 
         // A token start is mapped forward through every edit `observe_edit`
-        // was told about — but an edit that bypasses it entirely (an LSP
+        // was told about, but an edit that bypasses it entirely (an LSP
         // applyEdit, a file reload) or a pane switch can still leave it
         // pointing past the focused buffer's current end, or at a buffer
         // that isn't even the one on screen, in the narrow window before
@@ -144,7 +144,7 @@ impl Editor {
     }
 }
 
-/// Named sugar over the generic lookup — the existing call sites
+/// Named sugar over the generic lookup: the existing call sites
 /// (`ed.state.input.buffer_completion()`) stay as they are, and `stack.rs`
 /// stays agnostic.
 impl super::stack::InputStack {
@@ -180,7 +180,7 @@ impl super::stack::InputStack {
 
 /// Handles one key while an Insert-mode completion session is open.
 /// Tab/Down/BackTab/Up/Enter/Esc are claimed only while the session has
-/// at least one visible match — a session narrowed to empty (continued
+/// at least one visible match. A session narrowed to empty (continued
 /// typing, or a source still pending) shows no menu, so nothing here
 /// should intercept a key: Esc must leave Insert in one press and Enter
 /// must insert a newline, exactly as if no session were open. Every
@@ -189,20 +189,20 @@ impl super::stack::InputStack {
 /// chokepoint keeping every token in sync) dismisses the session
 /// outright; anything else falls through, and `apply_insert_edit` itself
 /// resyncs the session against the buffer's new state once the edit
-/// lands — there is no post-step here to do it a second way.
+/// lands; there is no post-step here to do it a second way.
 fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
         // A paste bypasses per-char refiltering the same way an
         // Insert-mode paste bypasses trigger-char hooks (see
-        // `Editor::apply_insert_mode_paste`'s doc) — dismiss the stale
+        // `Editor::apply_insert_mode_paste`'s doc), so dismiss the stale
         // session, then let `Insert` insert the text.
         InputEvent::Paste(text) => {
             ed.state.dismiss_completion(&ed.view);
             ed.fall_through(r, InputEvent::Paste(text));
             return;
         }
-        // A mouse event has no token position to refilter against — it
+        // A mouse event has no token position to refilter against, so it
         // falls straight through to `Insert`, which either moves the
         // cursor within the buffer (no post-step to run: unlike a key,
         // there's nothing here to re-check the session's tokens against)
@@ -241,17 +241,17 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     }
     // Every key bound in the Insert keymap resolves to a cursor motion
     // or an edit command, neither of which can keep the session's
-    // tokens correctly tracked — walked before delegating, since the
+    // tokens correctly tracked. Walked before delegating, since the
     // command itself may reload the keymap.
     let is_command = matches!(
         ed.state.config.keymap.insert.walk(&[key]),
         WalkResult::Leaf(_)
     );
     ed.fall_through(r, InputEvent::Key(key));
-    // The callee may have taken this layer with it — `apply_insert_edit`
+    // The callee may have taken this layer with it (`apply_insert_edit`
     // dismissing on a stale `ChangeSet`, a `completion-trigger` re-pushing
     // the session as a fresh layer, or Insert itself exiting and tearing
-    // this layer down as part of the same truncate. `r`'s id check catches
+    // this layer down as part of the same truncate). `r`'s id check catches
     // all three: skip rather than write through a stale ref.
     if !ed.state.input.is_live(r) {
         return;
@@ -261,17 +261,17 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     }
 }
 
-/// Handles one key while a minibuffer completion session is open — always
+/// Handles one key while a minibuffer completion session is open. Always
 /// cycle-and-apply: Tab/Shift-Tab move the selection *and* immediately
 /// splice the newly-selected candidate into the minibuffer
 /// (there is no separate accept step, unlike the Buffer-target's Enter);
 /// every other key dismisses the popup first, then falls through
-/// unchanged — the minibuffer's own always-eager-apply UX.
+/// unchanged: the minibuffer's own always-eager-apply UX.
 fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
         // Neither a paste nor a mouse click has a meaningful "cycle" or
-        // "accept" reading here — dismiss and let the minibuffer's own
+        // "accept" reading here, so dismiss and let the minibuffer's own
         // handler see it, same discipline as the Buffer-target's own
         // paste/mouse arms above.
         InputEvent::Paste(text) => {
@@ -303,7 +303,7 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             // dismiss this session and restart completion for the
             // directory's children, rather than falling through to
             // `Command`'s own Confirm handling. Gated on the item's own
-            // declared kind, not its source's identity or its text — any
+            // declared kind, not its source's identity or its text: any
             // `'minibuf` source's item can opt in this way, and an
             // unrelated candidate that merely ends in `/` (a URL, a
             // namespaced tag) is never mistaken for one.
@@ -337,7 +337,7 @@ fn move_buffer_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool)
     }
 }
 
-/// [`move_buffer_completion_selection`]'s `Minibuf` counterpart — a no-op
+/// [`move_buffer_completion_selection`]'s `Minibuf` counterpart, a no-op
 /// on an empty session, reachable here since this key handler has no
 /// non-empty guard the way `completion_input_buffer`'s does.
 fn move_minibuf_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
@@ -347,15 +347,15 @@ fn move_minibuf_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool
 }
 
 /// Accepts the currently-selected completion item through the same
-/// gen-checked edit path as `completion-accept!` — the session ends
+/// gen-checked edit path as `completion-accept!`. The session ends
 /// either way (success or failure), matching `EditorHostImpl`'s own
-/// `completion_accept`. `Buffer`-target only — a `Minibuf`-target session
+/// `completion_accept`. `Buffer`-target only; a `Minibuf`-target session
 /// has no separate accept step (see `completion_input_minibuf`'s doc).
 ///
 /// Wrapped in the same [`Editor::with_dot_capture`] `handle_insert` uses
 /// around a bound key's own dispatch: this Enter keypress is outside any
 /// Insert-key binding, so there's no `Binding` entry to fall back to
-/// (`fallback: None`) — `accept` itself always calls `EditorState::
+/// (`fallback: None`); `accept` itself always calls `EditorState::
 /// mark_dot_interactive` once it gets far enough to commit, so a completion
 /// accept is either interactive (recorded as its own net edit) or nothing
 /// (an early `Err`, reported below, records no entry at all).

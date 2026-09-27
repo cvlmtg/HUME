@@ -1,4 +1,4 @@
-//! Lazy plugin loading — language/filetype activations, and
+//! Lazy plugin loading: language/filetype activations, and
 //! load-time activation reporting.
 
 use super::*;
@@ -88,7 +88,7 @@ fn language_trigger_idempotent_on_round_trip() {
     let bid = ed.focused_buffer_id();
 
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang)); // first set — activates
+    ed.set_buffer_language(bid, Some(lang)); // first set: activates
     ed.settle();
     assert!(
         ed.scripting
@@ -104,7 +104,7 @@ fn language_trigger_idempotent_on_round_trip() {
     ed.set_buffer_language(bid, Some(lang)); // round-trip out
     ed.settle();
     let lang = ed.state.config.languages.intern("rust");
-    ed.set_buffer_language(bid, Some(lang)); // round-trip back — handler runs, no re-activation
+    ed.set_buffer_language(bid, Some(lang)); // round-trip back: handler runs, no re-activation
     ed.settle();
 
     assert_ne!(
@@ -239,7 +239,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     );
 }
 
-/// `#:languages '("*")` activates on ANY language set, not just an exact match —
+/// `#:languages '("*")` activates on ANY language set, not just an exact match:
 /// the wildcard a manifest.scm uses because it can't enumerate every language a
 /// user might want it for.
 ///

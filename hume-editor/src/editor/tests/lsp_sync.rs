@@ -64,7 +64,7 @@ fn attached_editor(tmp: &tempfile::TempDir) -> (Editor, BufferId, NotificationLo
 
 /// Same attach as `attached_editor`, but against a server that answers
 /// `initialize` with `initialize_result` instead of the default scripted
-/// (INCREMENTAL) handshake — for tests that need to control
+/// (INCREMENTAL) handshake, for tests that need to control
 /// `textDocumentSync` specifically.
 fn attached_editor_with_handshake(
     tmp: &tempfile::TempDir,
@@ -103,7 +103,7 @@ fn attached_editor_with_handshake(
 /// Replays a recorded `(method, params)` stream against a plain `String`
 /// mirror. `didOpen` seeds the mirror and the version; `didChange` applies
 /// each `contentChanges` entry (ranged via the hume-lsp mirror, or whole-
-/// document when `range` is absent — the `:e!`/`reload` case).
+/// document when `range` is absent: the `:e!`/`reload` case).
 fn replay(log: &[(String, serde_json::Value)]) -> (String, Option<i64>) {
     let mut mirror = String::new();
     let mut version = None;
@@ -145,7 +145,7 @@ fn did_changes(log: &[(String, serde_json::Value)]) -> Vec<(String, serde_json::
 }
 
 /// Replays `log` against the independent string mirror and asserts it
-/// reproduces the buffer's real text and the real `text_gen` — the invariant
+/// reproduces the buffer's real text and the real `text_gen`: the invariant
 /// every LSP-sync test in this file ultimately checks. `context` names the
 /// scenario in the assertion message (e.g. "a 3-step composed undo").
 fn assert_mirror_matches(
@@ -175,7 +175,7 @@ fn did_open_carries_full_text_and_language_id() {
 
     let log = log.borrow();
     // `initialized` (handshake completion) plus the one didOpen it flushed
-    // — nothing else queued yet.
+    // (nothing else queued yet).
     assert_eq!(
         log.len(),
         2,
@@ -188,7 +188,7 @@ fn did_open_carries_full_text_and_language_id() {
 }
 
 /// `didOpen`'s `languageId` is the language's registered `lsp_language_id`
-/// override, not HUME's own language name — the actual bug this test guards:
+/// override, not HUME's own language name. The actual bug this test guards:
 /// a bare `typescript-language-server` rejects `"tsx"` and logs "Invalid
 /// languageId", correcting it to `"typescriptreact"` itself. The expected
 /// string here is a hardcoded literal, never derived from `name_of` /
@@ -230,7 +230,7 @@ fn did_open_carries_the_lsp_language_id_override_not_the_hume_name() {
 }
 
 /// `lsp_did_open` must queue behind the handshake, never write to
-/// the wire before `initialize` completes — the spec forbids anything else
+/// the wire before `initialize` completes: the spec forbids anything else
 /// arriving first. Before the drain that carries the initialize response,
 /// nothing has been sent at all; after it, the log is exactly
 /// `initialized` then `didOpen`, in that order.
@@ -283,7 +283,7 @@ fn no_notifications_for_a_buffer_without_a_server() {
     let mut ed = editor_from("-[w]>ord\n");
     ed.lsp = LspState::from_backend_for_test(Box::new(backend));
 
-    // No register-lsp-server! call at all — a scratch buffer must never attach.
+    // No register-lsp-server! call at all: a scratch buffer must never attach.
     ed.step(key('i'));
     ed.step(key('X'));
     ed.step(key_esc());
@@ -370,7 +370,7 @@ fn did_save_and_did_close_each_fire_once() {
     assert_eq!(methods, vec!["didSave", "didClose"]);
 }
 
-/// Regression: `:e!` under macro replay — an edit queued but not yet
+/// Regression: `:e!` under macro replay, with an edit queued but not yet
 /// drained (`drain_replay_queue` loops `handle_input` with no `drain_lsp`
 /// between keys), immediately followed by a reload in the same window.
 /// The still-queued incremental `didChange` (computed against the pre-reload
@@ -424,7 +424,7 @@ fn reload_flushes_pending_change_before_the_whole_document_didchange() {
 }
 
 /// A byte-identical `:e!` reload (the file on disk hasn't actually changed)
-/// must send no `didChange` at all — `reload_from_text`'s identity branch
+/// must send no `didChange` at all: `reload_from_text`'s identity branch
 /// never bumps `text_gen`, so there is no new version to announce, and
 /// `reload_buffer_in_place` must not fall back to sending one at the
 /// buffer's unchanged version (which would be a version regression from the
@@ -451,8 +451,8 @@ fn identical_reload_sends_no_didchange() {
     );
 }
 
-/// Regression: same root shape as the reload ordering test above, for `:w`
-/// — an edit queued but not yet drained, immediately followed by a save in
+/// Regression: same root shape as the reload ordering test above, for `:w`.
+/// An edit queued but not yet drained, immediately followed by a save in
 /// the same window. `didSave` carries no text, so a server doing
 /// save-triggered work (e.g. lint-on-save) must see the didChange
 /// describing the just-saved content first, or it runs against a document
@@ -480,7 +480,7 @@ fn save_flushes_pending_change_before_did_save() {
 }
 
 /// A server declaring `textDocumentSync: FULL` (as `steel-language-server` does) must
-/// never receive a ranged `didChange` — per spec it ignores `range` and
+/// never receive a ranged `didChange`. Per spec it ignores `range` and
 /// treats each event's `text` as the whole new document, so a ranged insert
 /// becomes the entire file, and every diagnostic position it computes next
 /// is against that garbage. Every queued entry in one flush must collapse
@@ -497,7 +497,7 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
     ed.feed_key(key('d')); // delete a char
     ed.feed_key(key('i'));
     ed.feed_key(key('Z'));
-    ed.feed_key(key_esc()); // insert a char — two queued entries, one flush
+    ed.feed_key(key_esc()); // insert a char: two queued entries, one flush
     ed.drain_lsp();
 
     let did_changes = did_changes(&log.borrow());
@@ -526,7 +526,7 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
 /// The INCREMENTAL-sync sibling of `full_sync_server_gets_one_whole_document_
 /// didchange_per_flush`: an insert session queues one `LspPendingChange` per
 /// keystroke, and each queued entry must reach the wire as its own
-/// `didChange` — replaying the whole sequence must still reproduce the
+/// `didChange`. Replaying the whole sequence must still reproduce the
 /// buffer exactly, checked against the independent string mirror.
 #[test]
 fn insert_session_sends_one_didchange_per_keystroke() {
@@ -559,7 +559,7 @@ fn insert_session_sends_one_didchange_per_keystroke() {
 }
 
 /// A server declaring `textDocumentSync: NONE` must receive no `didChange`
-/// at all — but the diagnostics store must still remap through the edit, so
+/// at all, but the diagnostics store must still remap through the edit, so
 /// positions from an earlier publish don't silently go stale just because
 /// there was nowhere to announce the edit.
 #[test]
@@ -598,7 +598,7 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
     );
 
     // `apply-text-edits!` now only accepts a server-tagged wire edit (via a
-    // real response) — this canned response is what the `:stash` dispatch
+    // real response); this canned response is what the `:stash` dispatch
     // below turns into one.
     backend.respond_to(
         "test/textEdits",
@@ -624,7 +624,7 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
         "diagnostic must ingest at its wire position"
     );
 
-    // Insert one char before the diagnostic — it must shift by one.
+    // Insert one char before the diagnostic: it must shift by one.
     run(
         &mut ed,
         tmp.path(),
@@ -656,7 +656,7 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
 }
 
 /// #:init-options registered through the real Steel path must reach the
-/// spawned server's `initialize` request as `initializationOptions` —
+/// spawned server's `initialize` request as `initializationOptions`:
 /// end-to-end proof that `LspServerConfig.init_options` isn't dead weight.
 #[test]
 fn register_lsp_server_init_options_reach_the_initialize_request() {

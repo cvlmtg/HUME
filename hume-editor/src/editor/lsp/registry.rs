@@ -8,13 +8,13 @@ use hume_engine::pipeline::BufferId;
 use crate::editor::event::EditorEvent;
 use crate::editor::{Editor, Severity};
 
-/// A `register-lsp-server!`-registered language name — the key
+/// A `register-lsp-server!`-registered language name: the key
 /// `LspState.configs` and every attached `ServerEntry.language` use today.
 /// Registration identity is language, one-to-one with a running server: a
 /// future multi-server-per-language design would key `LspState.servers` by
 /// a distinct registration name instead, with a
 /// `LanguageName -> [registration name]` map alongside
-/// it — this alias exists so that future re-key finds every language-keyed
+/// it. This alias exists so that future re-key finds every language-keyed
 /// signature by type, not by re-reading every `String` in this module.
 pub(in crate::editor::lsp) type LanguageName = String;
 
@@ -32,14 +32,14 @@ pub(in crate::editor::lsp) struct LspServerConfig {
     /// and resolved per-item to answer `workspace/configuration` pull
     /// requests (`Editor::dispatch_lsp_action`'s `ServerRequest` arm).
     pub(in crate::editor) settings: Option<serde_json::Value>,
-    /// `#:env` — applied additively to the spawned process's inherited
+    /// `#:env`: applied additively to the spawned process's inherited
     /// environment (`lsp_attach_buffer`'s spawn branch, via
     /// `LspBackend::start`).
     pub(in crate::editor) env: Vec<(String, String)>,
 }
 
 /// Walks up from `file`'s directory to the first ancestor containing any of
-/// `markers` (a file or a directory — `.git` included); falls back to `cwd`
+/// `markers` (a file or a directory, `.git` included); falls back to `cwd`
 /// if none match. `Path::ancestors()` yields `file`'s parent first, then
 /// each successively shorter prefix up to (and including) the filesystem
 /// root, so the nearest marker wins.
@@ -59,7 +59,7 @@ pub(in crate::editor::lsp::registry) fn resolve_root(
 
 impl Editor {
     /// Applies one queued op. Called by `Editor::apply_script_effects` for
-    /// each `Effect::LspServerOp`, in emission order — the one apply path
+    /// each `Effect::LspServerOp`, in emission order. The one apply path
     /// for LSP server registration/unregistration regardless of which eval
     /// queued it.
     pub(in crate::editor) fn apply_lsp_server_op(
@@ -73,7 +73,7 @@ impl Editor {
             hume_scripting::PendingLspServerOp::Unregister { language } => {
                 // Idempotent by construction: removing an absent key and
                 // stopping a language with no running clients are both
-                // no-ops — `:lsp-uninstall` of an orphan or never-spawned
+                // no-ops: `:lsp-uninstall` of an orphan or never-spawned
                 // server must succeed silently.
                 self.lsp.configs.remove(&language);
                 self.lsp_stop(&hume_scripting::LspServerTarget::Language(language));
@@ -102,8 +102,8 @@ impl Editor {
             }
             hume_scripting::PendingLspServerOp::ShowStatus => {
                 let content = self.lsp_status_text();
-                // Applied from the effect log after the eval that queued it —
-                // the pane focused now is where the status view opens.
+                // Applied from the effect log after the eval that queued it,
+                // so the pane focused now is where the status view opens.
                 let fp = crate::editor::commands::FocusedPane::current(&self.state);
                 self.open_read_only_view(
                     fp,
@@ -120,17 +120,17 @@ impl Editor {
     /// rejecting the second call. Deliberate, not a missing guard: a user's
     /// `init.scm` loads after every plugin's own registration, and its
     /// `register-lsp-server!` call for a language a plugin already
-    /// registered must override that plugin's default — a hard error here
+    /// registered must override that plugin's default; a hard error here
     /// would make user config unable to win over plugin defaults at all.
     /// Running clients on the *old* config are left alone until their next
-    /// spawn — a caller that needs a fresh spawn right away (e.g.
+    /// spawn. A caller that needs a fresh spawn right away (e.g.
     /// reinstalling a server) unregisters explicitly first, which this does
     /// not do on its own.
     ///
     /// After inserting, sweeps already-open buffers of this language that
     /// aren't yet attached (`lsp_attach_buffer` is idempotent), so
     /// registration always implies "this language's open buffers get an
-    /// LSP client" — callers never need a separate attach step.
+    /// LSP client", so callers never need a separate attach step.
     ///
     /// `init_options`/`settings` arrive already decoded to JSON by
     /// `hume_scripting::json::steel_to_json` at the Steel boundary.
@@ -183,7 +183,7 @@ impl Editor {
     pub(in crate::editor) fn lsp_attach_buffer(&mut self, bid: BufferId) {
         let buf = self.state.buffers.get(bid);
         if buf.lsp_server.is_some() {
-            return; // already attached — idempotent re-entry
+            return; // already attached: idempotent re-entry
         }
         let Some(path) = buf.path().map(Path::to_path_buf) else {
             return;
@@ -199,7 +199,7 @@ impl Editor {
         let root = resolve_root(&path, &config.root_markers, &self.state.cwd);
 
         // Scan for an existing *viable* server under this (language, root)
-        // pair — `LspState.servers` is the single source of truth, so
+        // pair. `LspState.servers` is the single source of truth, so
         // there's no separate index that could disagree with it. A Crashed
         // entry is excluded: nothing removes it from `servers` on its own
         // (only `:lsp-stop`/`:lsp-restart` do), so without this check every
@@ -217,13 +217,13 @@ impl Editor {
             entry.language.as_deref() == Some(language.as_str())
                 && entry.client.root() == root.as_path()
         }) {
-            // The only match for this (language, root) is Crashed — refuse
+            // The only match for this (language, root) is Crashed, so refuse
             // to silently attach to it; the buffer stays unattached until
             // an explicit `:lsp-restart`, which re-attaches every buffer
             // that was on the stopped server through this same path.
             self.report(
                 Severity::Error,
-                format!("lsp: {language} server crashed — :lsp-restart {language}"),
+                format!("lsp: {language} server crashed (:lsp-restart {language})"),
             );
             return;
         } else {
@@ -260,7 +260,7 @@ impl Editor {
 
         self.state.buffers.get_mut(bid).lsp_server = Some(server_id);
         self.lsp_did_open(bid);
-        // A brand-new server is still Starting — its BecameRunning arm
+        // A brand-new server is still Starting; its BecameRunning arm
         // fires the attach hook for every buffer attached by then,
         // including this one. Only fire here for the "attach to an
         // already-Running server" case (second+ buffer under the same key).
@@ -276,7 +276,7 @@ impl Editor {
 
     /// Resolves `:lsp-stop`/`(lsp-stop! target)` (and `:lsp-restart`/
     /// `(lsp-restart! target)`)'s target set: every server registered for a
-    /// `Language`, or `Buffer(bid)`'s own attached server (if any — `bid`
+    /// `Language`, or `Buffer(bid)`'s own attached server (if any: `bid`
     /// may have since detached, so this is not a panic-on-miss `get`).
     fn lsp_targets(
         &self,
@@ -301,17 +301,17 @@ impl Editor {
     }
 
     /// Graceful shutdown + full deregistration of one running server:
-    /// `begin_shutdown` (shutdown request, then exit — `ServerHandle::drop`
+    /// `begin_shutdown` (shutdown request, then exit; `ServerHandle::drop`
     /// reaps the process regardless), drop its `ServerEntry` and diagnostics,
     /// and clear `lsp_server` on every buffer that pointed at it so a later
     /// attach attempt (open or restart) doesn't see it as already attached.
     /// Every request still in flight on this client is dispatched as
-    /// `TimedOut` before the client itself is dropped — otherwise a
+    /// `TimedOut` before the client itself is dropped; otherwise a
     /// registered callback (and its `CallbackEntry`) would be orphaned
     /// along with the removed client, never firing and never freed. Fires
     /// `OnDiagnosticsChanged` for every buffer whose stored diagnostics
     /// were actually cleared, and `OnLspDetach` for every buffer that was
-    /// attached — the latter is a plugin's only signal to drop its own
+    /// attached. The latter is a plugin's only signal to drop its own
     /// buffer-scoped state derived from this server (e.g. inlay hints),
     /// which nothing here owns well enough to clear on its behalf.
     fn lsp_stop_one(&mut self, server_id: hume_lsp::backend::ServerId) {
@@ -344,28 +344,28 @@ impl Editor {
             .collect();
         // Remaps decorations/diagnostics through every buffer's queued
         // `lsp_pending` edits (this server's buffers among them) before
-        // detaching — those entries are the only carrier for the
+        // detaching: those entries are the only carrier for the
         // decoration remap (`flush_lsp_pending_changes`'s own doc), so
         // dropping them unremapped below would leave a plugin's
         // signs/virtual-lines/line-backgrounds anchored at stale,
         // pre-edit positions permanently, not just until the next attach.
         // Safe to call this early: `self.lsp.servers.remove(&server_id)`
         // above already dropped this server's entry, so the didChange
-        // half of the flush finds no client to send to and skips it —
-        // only the remap runs for these buffers.
+        // half of the flush finds no client to send to and skips it,
+        // so only the remap runs for these buffers.
         self.flush_lsp_pending_changes();
         for &bid in &bids {
             let buf = self.state.buffers.get_mut(bid);
             buf.lsp_server = None;
             // Any edits queued for the now-detached server must not survive
-            // to a future attach — flushed against a new server's didOpen
+            // to a future attach: flushed against a new server's didOpen
             // baseline, they'd desync its document state immediately. The
             // flush above already drains `lsp_pending` to empty; this is
             // belt-and-suspenders against a future edit racing in between.
             buf.lsp_pending.clear();
         }
         // An open completion session's items are a snapshot already fetched
-        // from the server, not a live subscription — but leaving it open
+        // from the server, not a live subscription, but leaving it open
         // would keep showing (and let the user accept) suggestions from a
         // server that's no longer running for this buffer.
         if self
@@ -401,7 +401,7 @@ impl Editor {
     }
 
     /// `(lsp-restart! target)`. Stops each target server, then re-attaches
-    /// every buffer that was on it through `lsp_attach_buffer` — the exact
+    /// every buffer that was on it through `lsp_attach_buffer`, the exact
     /// registration spawn path, not a duplicate. Returns the number of servers
     /// restarted.
     pub(in crate::editor) fn lsp_restart(

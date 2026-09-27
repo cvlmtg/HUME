@@ -1,11 +1,11 @@
-//! Lazy plugin loading — editor-level tests.
+//! Lazy plugin loading: editor-level tests.
 
 use super::*;
 use crate::editor::event::EditorEvent;
 use crate::editor::registry::{MappableCommand, TypedBody};
 use hume_scripting::PluginStatus;
 
-/// After `eval_init`, a `Lazy` stub is present for the declared command name —
+/// After `eval_init`, a `Lazy` stub is present for the declared command name:
 /// `declare-plugin` registers it directly via `CommandHost::register_lazy_command`
 /// as the manifest is processed, with no separate post-init pass.
 #[test]
@@ -57,7 +57,7 @@ fn first_dispatch_activates_plugin_and_runs() {
     );
 }
 
-/// `register_lazy_typed_command` hardcodes `completer: None` on the stub —
+/// `register_lazy_typed_command` hardcodes `completer: None` on the stub;
 /// `#:complete` only reaches the registry once the plugin body actually
 /// runs `define-typed-command!`. Tab on the command's *first* use must
 /// still resolve it: `trigger_minibuf_completion`'s `Editor`-level callers
@@ -90,7 +90,7 @@ fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
 }
 
 /// `call!` can never reach a typed command (`typed_command_table` is a
-/// separate table from `command_table` — see its own doc), so a typed-only
+/// separate table from `command_table`; see its own doc), so a typed-only
 /// lazy stub must not be activatable through `call!`: activating a plugin
 /// for a lookup that will miss again right after is a permanent side effect
 /// for a call that could never succeed.
@@ -160,7 +160,7 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 
 /// A lazy plugin body that queues a `register-lsp-server!` and then errors
 /// before defining its activation command: the queued registration must not
-/// survive the failed activation — it must not be picked up by
+/// survive the failed activation: it must not be picked up by
 /// `apply_script_effects`'s own inline application, nor leak into some later
 /// unrelated drain.
 ///
@@ -183,7 +183,7 @@ fn failed_activation_does_not_leave_a_queued_lsp_registration() {
 }
 
 /// A lazy plugin body that calls `%define-language!` (the builtin behind
-/// `define-language!`) is applied in the very same activation call —
+/// `define-language!`) is applied in the very same activation call:
 /// `apply_script_effects` drains `pending_language_regs` at runtime, not
 /// only at the `eval_init` boundary.
 #[test]
@@ -307,7 +307,7 @@ fn body_error_removes_stub_and_marks_failed() {
 fn lazy_cmd_arg_passed_on_first_call() {
     use hume_scripting::attribution::PluginId;
 
-    // The plugin defines a `(bid x)`-arity "bar" that does nothing visible —
+    // The plugin defines a `(bid x)`-arity "bar" that does nothing visible;
     // we just verify that after activation the command is SteelBacked (i.e.
     // arg was accepted, no arity error), and the plugin is Loaded.
     let (mut ed, _dir) = setup_lazy_editor(
@@ -315,7 +315,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
         r#"(define-typed-command! "bar" "doc" (lambda (bid x) (+ 1 0)))"#,
     );
 
-    // Dispatch ":bar hello" — would fail at arity check if arg were dropped.
+    // Dispatch ":bar hello": would fail at arity check if arg were dropped.
     type_cmd(&mut ed, ":bar hello");
 
     let id = PluginId::User {
@@ -339,7 +339,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
 }
 
 /// A key bound to a lazy command name activates the plugin on first press,
-/// exercising the `execute_keymap_command` Lazy arm — the path the
+/// exercising the `execute_keymap_command` Lazy arm, the path the
 /// implementation claims keys use "for free".
 #[test]
 fn key_press_activates_lazy_plugin_via_keymap() {
@@ -391,7 +391,7 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 #[test]
 fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let dir = safe_tempdir();
-    // Eager plugin — loaded inline (no activation entries), defines "foo".
+    // Eager plugin: loaded inline (no activation entries), defines "foo".
     let eager_dir = dir.path().join("plugins").join("user").join("eager");
     std::fs::create_dir_all(&eager_dir).unwrap();
     std::fs::write(
@@ -399,7 +399,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
         r#"(define-command! "foo" "doc" (lambda () (+ 1 0)))"#,
     )
     .unwrap();
-    // Lazy plugin — declares "foo" as its sole activation command, which
+    // Lazy plugin: declares "foo" as its sole activation command, which
     // conflicts with the eager plugin.  The declare hard-errors at init time.
     let lazy_dir = dir.path().join("plugins").join("user").join("lz");
     std::fs::create_dir_all(&lazy_dir).unwrap();
@@ -447,13 +447,13 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     );
 }
 
-/// Two plugins both declare `#:commands '("bar")` — the collision is caught
+/// Two plugins both declare `#:commands '("bar")`: the collision is caught
 /// at `declare-plugin` time against the editor's live registry: the second
 /// plugin's "bar" entry is dropped (logged as an Error, first-writer-wins),
 /// and both plugins remain `Declared` (neither is stuck or hard-errored).
 ///
 /// Runs against a real `Editor` + `EditorHostImpl`, not a hand-rolled
-/// `MockHost` — collision detection is `CommandRegistry`'s decision, and a
+/// `MockHost`: collision detection is `CommandRegistry`'s decision, and a
 /// `MockHost` copy of the same rules would risk silently drifting from the
 /// real behavior it's meant to prove.
 ///
@@ -497,7 +497,7 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
 
     // Error logged for pb's duplicate "bar" entry. `eval_init` queues log
     // messages on the host (`ctx.log`) rather than writing `ed.state.
-    // message_log` directly — only `Editor::init_scripting`'s tail code
+    // message_log` directly; only `Editor::init_scripting`'s tail code
     // flushes that queue, which this test bypasses by calling `eval_init`
     // directly, so check the host's queue itself.
     assert!(
@@ -528,7 +528,7 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
         ),
         "bar's Lazy stub must be owned by pa (first-writer-wins)"
     );
-    // Both plugins are Declared — pb stays declared even though its "bar" entry was dropped.
+    // Both plugins are Declared: pb stays declared even though its "bar" entry was dropped.
     assert!(
         matches!(
             ed.scripting.as_ref().unwrap().plugin_status(&pa_id),

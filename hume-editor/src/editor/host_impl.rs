@@ -1,4 +1,4 @@
-//! [`EditorHostImpl`] — the production implementation of the scripting crate's
+//! [`EditorHostImpl`]: the production implementation of the scripting crate's
 //! [`EditorHost`] trait.
 //!
 //! Holds disjoint borrows of `EditorState` and `EngineView`, which enables the
@@ -11,7 +11,7 @@
 //!   during `init_scripting`; init-only builtins set settings.
 //!
 //! Every capability trait impl lives one-per-file below, one module per
-//! `EditorHost` accessor — isomorphic with `hume_scripting::host`'s own
+//! `EditorHost` accessor, isomorphic with `hume_scripting::host`'s own
 //! per-capability split, since these traits and their impls are what this
 //! type exists to pair up.
 
@@ -49,7 +49,7 @@ pub(in crate::editor) struct EditorHostImpl<'a> {
     state: &'a mut EditorState,
     view: &'a mut EngineView,
     /// `Some` only at the three call sites that can reach an introspection
-    /// builtin (command dispatch, hook fire, queued-call drain) — `None`
+    /// builtin (command dispatch, hook fire, queued-call drain), `None`
     /// everywhere else (init evals, which `require_cmd_ctx!` already blocks
     /// LSP builtins from anyway), so those sites don't need to thread it in.
     /// `&mut` (not `&`) because most `LspHost`/`CompletionHost` methods
@@ -58,24 +58,24 @@ pub(in crate::editor) struct EditorHostImpl<'a> {
     /// resolve` round trip).
     lsp: Option<&'a mut LspState>,
     /// Same `Some`-at-three-sites shape as `lsp`, for the `(after …)` /
-    /// `(cancel-timer! …)` — these mutate (schedule/cancel), so `&LspState`'s
+    /// `(cancel-timer! …)`. These mutate (schedule/cancel), so `&LspState`'s
     /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
     /// `&mut` pieces this needs.
     timers: Option<TimerHandle<'a>>,
     /// This host's inline-output authority: `None` for [`Self::new`]'s
-    /// callers, which have no business touching the bracket at all — not
+    /// callers, which have no business touching the bracket at all, not
     /// `Some(Tui::Off)`, which means something different (a `full`/`init`
     /// host legitimately running outside `Editor::run`'s loop, still
     /// expected to drive the frame stack's state machine correctly). `Some`
     /// is a clone of `Editor::tui`, not a borrow; see [`Tui`]'s own doc for
     /// why. Read only by `arm_inline_output`, to decide what a *new* frame
-    /// captures — [`OutputHost::ensure_inline_output_screen`] never reads
+    /// captures. [`OutputHost::ensure_inline_output_screen`] never reads
     /// this field; it reads the already-armed frame's own captured
     /// [`super::tui::ActiveTui`] instead (see that type's doc), so it works
     /// correctly even on a host built after the frame it's completing was
     /// pushed by a different one.
     tui: Option<Tui>,
-    /// Whether the kitty keyboard protocol is active — read by
+    /// Whether the kitty keyboard protocol is active, read by
     /// `arm_inline_output`, alongside `tui`, to decide what a *new* frame
     /// captures. Like `tui`, [`OutputHost::ensure_inline_output_screen`]
     /// never reads this field directly; it reads the already-armed frame's
@@ -87,13 +87,13 @@ impl<'a> EditorHostImpl<'a> {
     /// Constructor for the three init/activation call sites: `init_scripting`
     /// (init.scm + runtime scheme evals), `typed_reload_config`'s re-eval,
     /// and `Editor::activate_and_register`'s runtime lazy-plugin activation
-    /// (`mappings/lazy.rs`). Unlike `full`, has no LSP/timer access —
+    /// (`mappings/lazy.rs`). Unlike `full`, has no LSP/timer access:
     /// none of these three eval kinds reach an LSP or timer builtin
     /// (`require_cmd_ctx!` blocks command-mode builtins during init; lazy
     /// activation's body may itself later call a real command via `call!`,
     /// which re-enters through `full`, not this path).
     ///
-    /// Takes `tui`/`kitty_enabled` explicitly rather than hardcoding them —
+    /// Takes `tui`/`kitty_enabled` explicitly rather than hardcoding them:
     /// unlike init.scm's own two evals (never a live alt-screen), runtime
     /// lazy activation can run with `Editor::run` already owning the
     /// terminal, so a hardcoded `Tui::Off` here would silently let a
@@ -108,20 +108,20 @@ impl<'a> EditorHostImpl<'a> {
     }
 
     /// Convenience constructor for callers with no terminal/`OutputHost`
-    /// needs — general-purpose in shape (a Rust-side helper reaching for an
+    /// needs, general-purpose in shape (a Rust-side helper reaching for an
     /// unrelated capability such as `DecorationHost` via `EditorHostImpl`
     /// would use it too), though today every caller is the test suite,
     /// driving a host through some other trait directly (bypassing the
     /// declare/activate plugin ceremony `init`/`full` sit behind). `tui:
     /// None` gives this host no inline-output authority, so it can be built
-    /// at any point — including inside a live `Editor::run` loop — with no
+    /// at any point (including inside a live `Editor::run` loop) with no
     /// risk of it entering or mis-reading a bracket armed by whichever host
     /// actually owns the current dispatch.
     pub(in crate::editor) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
         Self::with_tui(state, view, None, false)
     }
 
-    /// Shared body for [`Self::init`] and [`Self::new`] — the only
+    /// Shared body for [`Self::init`] and [`Self::new`]. The only
     /// difference between them is whether this host has inline-output
     /// authority at all (see the `tui` field's own doc).
     fn with_tui(
@@ -143,7 +143,7 @@ impl<'a> EditorHostImpl<'a> {
     /// Constructor for the three call sites that thread every capability:
     /// command dispatch, hook fire, and queued-call drain. Takes the fields
     /// already split out (rather than `&mut Editor`) because each call site
-    /// holds a simultaneous disjoint borrow of `self.scripting` — passing
+    /// holds a simultaneous disjoint borrow of `self.scripting`; passing
     /// `self` as a whole would conflict with that borrow.
     pub(in crate::editor) fn full(
         state: &'a mut EditorState,
@@ -175,7 +175,7 @@ impl<'a> EditorHostImpl<'a> {
         self.state.buffers.try_get(id)
     }
 
-    /// Resolve `pane` to a [`CommandPane`](crate::editor::commands::CommandPane) — the shared tail every
+    /// Resolve `pane` to a [`CommandPane`](crate::editor::commands::CommandPane), the shared tail every
     /// `CursorHost`/`EditHost`/`BufferHost` method with a `PaneHandle`
     /// argument reduces to, as an error `Display`ed at the Steel boundary.
     pub(super) fn command_pane(
@@ -202,7 +202,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
         Some(self)
     }
     // `Some(self)` unconditionally, even though `self.lsp` is itself an
-    // `Option` — every method below already self-guards on `self.lsp.as_deref()`,
+    // `Option`: every method below already self-guards on `self.lsp.as_deref()`,
     // and a conditional accessor here would change what "no attached server"
     // vs. "no LSP state at all" reports at the Steel boundary.
     fn lsp(&mut self) -> Option<&mut dyn LspHost> {
@@ -212,7 +212,7 @@ impl<'a> EditorHost for EditorHostImpl<'a> {
     fn timers(&mut self) -> Option<&mut dyn TimerHost> {
         Some(self)
     }
-    // The job registry lives on `self.state.config` — always reachable, no
+    // The job registry lives on `self.state.config`, always reachable, no
     // `Option`-wrapped upstream field to gate on (unlike `timers`/`lsp`).
     fn async_process(&mut self) -> Option<&mut dyn AsyncProcessHost> {
         Some(self)

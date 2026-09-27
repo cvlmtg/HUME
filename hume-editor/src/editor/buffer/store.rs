@@ -2,7 +2,7 @@
 //!
 //! `BufferStore` holds the authoritative `Buffer` structs keyed by `BufferId`.
 //! IDs are allocated by the engine's `SlotMap<BufferId, ()>`; this
-//! store mirrors that slotmap. **Never insert/remove through only one side** —
+//! store mirrors that slotmap. **Never insert/remove through only one side**:
 //! always go through the `Editor::open_buffer` / `Editor::close_buffer` choke-points.
 
 use std::path::Path;
@@ -26,13 +26,13 @@ pub(crate) struct BufferStore {
     /// focus chokepoints, [`crate::editor::focus::focus_pane`] and
     /// [`crate::editor::buffer::lifecycle::switch_pane_to_buffer`] (focused
     /// switch only), plus `cmd_goto_alternate_buffer`'s (`commands/jump.rs`)
-    /// own explicit touches for a remote-pane dispatch — see that
+    /// own explicit touches for a remote-pane dispatch; see that
     /// function's doc for why it can't rely on the two chokepoints alone.
     /// Always holds the same entries as `order`, just in a different order.
     mru: Vec<BufferId>,
     /// Monotonic counter bumped once per user edit/undo/redo, in any open
-    /// buffer — the `doc_ops` five-function chokepoint is the sole writer.
-    /// Unlike `Buffer::text_gen` (per-buffer, bumped by system refreshes too —
+    /// buffer. The `doc_ops` five-function chokepoint is the sole writer.
+    /// Unlike `Buffer::text_gen` (per-buffer, bumped by system refreshes too:
     /// `set_view_content`, `reload_from_text`), this is deliberately global
     /// and edit-only: `PasteStamp` stamps it so a paste can tell "did
     /// anything change, anywhere" without caring which buffer, and a
@@ -51,7 +51,7 @@ impl BufferStore {
         }
     }
 
-    /// Current edit sequence — see the field doc.
+    /// Current edit sequence; see the field doc.
     pub(in crate::editor) fn edit_seq(&self) -> u64 {
         self.edit_seq
     }
@@ -66,14 +66,14 @@ impl BufferStore {
     /// Register a new buffer slot. Called from `Editor::open_buffer` after the
     /// engine slot is allocated.
     ///
-    /// Seeds `mru` too, ahead of any focus it may never receive — a buffer
+    /// Seeds `mru` too, ahead of any focus it may never receive: a buffer
     /// opened in a background pane and never focused still needs a valid
     /// `close_buffer` replacement target (`mru_excluding`), and an absent
     /// entry there would wrongly fall into the "last buffer" scratch-replace
     /// branch instead. Seeded at the *head*, not via `touch_mru` (which
     /// would put it at the tail): the tail is "most recently viewed," and a
-    /// background open — a workspace edit opening files it never shows, a
-    /// plugin priming a buffer — has never been viewed at all. `second_most_
+    /// background open (a workspace edit opening files it never shows, a
+    /// plugin priming a buffer) has never been viewed at all. `second_most_
     /// recent`/`mru_excluding` (`Ctrl-6`, `:b#`, `close`'s replacement
     /// target) would otherwise treat it as the most-recent "other" buffer,
     /// ahead of whatever the user actually last looked at.
@@ -87,7 +87,7 @@ impl BufferStore {
     ///
     /// Returns the first `BufferId` whose `buffer.path()` matches `path` once
     /// both sides are stripped of a Windows `\\?\` verbatim prefix (a no-op
-    /// off Windows) — most callers reach here via `fs::canonicalize`
+    /// off Windows). Most callers reach here via `fs::canonicalize`
     /// (`\\?\C:\…` on Windows) and match as-is, but the `:b <name>` fallback
     /// for a deleted backing file uses `std::path::absolute` (no prefix),
     /// which would otherwise dedup-miss against an already-open buffer.
@@ -112,7 +112,7 @@ impl BufferStore {
             .find_map(|(id, buf)| buf.label.as_deref().filter(|l| *l == label).map(|_| id))
     }
 
-    /// Infallible getter. Panics if `id` was never seeded — that is a caller bug.
+    /// Infallible getter. Panics if `id` was never seeded: that is a caller bug.
     pub(crate) fn get(&self, id: BufferId) -> &Buffer {
         self.buffers
             .get(id)
@@ -126,12 +126,12 @@ impl BufferStore {
             .expect("BufferStore: unseeded BufferId")
     }
 
-    /// Non-panicking getter — `None` for stale / unknown IDs.
+    /// Non-panicking getter: `None` for stale / unknown IDs.
     pub(in crate::editor) fn try_get(&self, id: BufferId) -> Option<&Buffer> {
         self.buffers.get(id)
     }
 
-    /// Non-panicking mutable getter — `None` for stale / unknown IDs.
+    /// Non-panicking mutable getter: `None` for stale / unknown IDs.
     pub(in crate::editor) fn try_get_mut(&mut self, id: BufferId) -> Option<&mut Buffer> {
         self.buffers.get_mut(id)
     }
@@ -143,16 +143,16 @@ impl BufferStore {
             .filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
     }
 
-    /// Every open buffer whose `text_gen` has moved since the last call —
+    /// Every open buffer whose `text_gen` has moved since the last call:
     /// the observation-point source for `on-text-changed`
     /// (`EditorEvent::OnTextChanged`'s doc has the full contract: what bumps
     /// `text_gen`, what coalesces, what never fires). Advances each touched
     /// buffer's `announced_text_gen` to match as it goes, so a buffer
-    /// reported once stays quiet until it mutates again — a burst of edits
+    /// reported once stays quiet until it mutates again, so a burst of edits
     /// between two calls coalesces into one entry. Walks `order` (open-order)
     /// for deterministic event ordering.
     ///
-    /// Unlike `edit_seq` (global and edit-only by design — a `:messages`
+    /// Unlike `edit_seq` (global and edit-only by design: a `:messages`
     /// refresh or `:e!` must not look like an edit to paste-stamping, see its
     /// doc), this is per-buffer and fires for every text replacement
     /// `set_text` performs.
@@ -174,7 +174,7 @@ impl BufferStore {
     /// Apply the `undo-levels` cap to every open buffer's history.
     ///
     /// Called from the `:set global` side-effect path and from the
-    /// post-init.scm settings pickup — there is no per-buffer scope for
+    /// post-init.scm settings pickup. There is no per-buffer scope for
     /// this setting, so every buffer always tracks the same cap.
     pub(in crate::editor) fn set_undo_levels_all(&mut self, levels: usize) {
         for buf in self.buffers.values_mut() {
@@ -183,7 +183,7 @@ impl BufferStore {
     }
 
     /// Clear every open buffer's setting overrides back to "inherit from
-    /// global" — called by `:reload-config`'s reset so a `set-buffer-option!`
+    /// global", called by `:reload-config`'s reset so a `set-buffer-option!`
     /// from the previous `init.scm` (e.g. one fired from an `OnLanguageSet`
     /// hook) doesn't outlive the config that set it.
     pub(in crate::editor) fn clear_overrides_all(&mut self) {
@@ -192,7 +192,7 @@ impl BufferStore {
         }
     }
 
-    /// Clear every open buffer's language identity and syntax attachment —
+    /// Clear every open buffer's language identity and syntax attachment,
     /// called by `:reload-config`'s reset immediately before `state.config.languages`
     /// is replaced with a fresh `LanguageRegistry`. `reset_config_state` reads
     /// `language_explicit` on every buffer *before* calling this, so a
@@ -213,7 +213,7 @@ impl BufferStore {
     /// `setup_buffer_syntax` (reached through `set_buffer_language`) tears it
     /// down, but when a buffer's language doesn't re-detect after the reload
     /// (`None -> None`), `set_buffer_language`'s unchanged-value guard never
-    /// runs `setup_buffer_syntax` at all — leaving the buffer highlighted
+    /// runs `setup_buffer_syntax` at all, leaving the buffer highlighted
     /// from a grammar registry that no longer exists unless this clears it
     /// directly.
     pub(in crate::editor) fn clear_languages_all(&mut self) {
@@ -231,12 +231,12 @@ impl BufferStore {
         self.mru.retain(|&x| x != id);
     }
 
-    /// Move `id` to the tail of the MRU list — "most recently viewed."
+    /// Move `id` to the tail of the MRU list: "most recently viewed."
     /// Called from the two focus chokepoints, [`crate::editor::focus::
     /// focus_pane`] and [`crate::editor::buffer::lifecycle::
     /// switch_pane_to_buffer`] (focused switch only), and from
     /// `cmd_goto_alternate_buffer` (`commands/jump.rs`), which touches the
-    /// outgoing buffer and the target explicitly around its own switch —
+    /// outgoing buffer and the target explicitly around its own switch;
     /// see that function's own doc for why a remote-pane dispatch can't
     /// rely on the two chokepoints alone.
     pub(in crate::editor) fn touch_mru(&mut self, id: BufferId) {
@@ -249,7 +249,7 @@ impl BufferStore {
         self.mru.iter().rev().find(|&&x| x != id).copied()
     }
 
-    /// The buffer just before the most-recently-viewed one — `Ctrl-6`'s own
+    /// The buffer just before the most-recently-viewed one: `Ctrl-6`'s own
     /// "alternate buffer," one single global history shared by every pane
     /// rather than a per-pane notion: `mru`'s tail is always "whatever was
     /// last viewed, however it was viewed" (a keypress on the focused pane,
@@ -257,7 +257,7 @@ impl BufferStore {
     /// right before it is always "the previous one," regardless of which
     /// pane is asking. `None` when fewer than two buffers are open (`mru`
     /// is seeded at open, so this needs no buffer to have actually been
-    /// *viewed* — see `open`'s own doc). Distinct from `mru_excluding`: that
+    /// *viewed*; see `open`'s own doc). Distinct from `mru_excluding`: that
     /// skips *by value*, useful
     /// when the caller already knows which specific buffer to exclude
     /// (`close`'s own replacement target); this is a pure positional read,

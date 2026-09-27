@@ -22,10 +22,10 @@ use super::{Editor, EditorState, Mode, commands, doc_ops};
 /// One input an Insert session received, replayed by `replay_dot`.
 ///
 /// `.` replays an Insert session by re-executing what arrived at the
-/// Insert seam, in order — never by inferring, after a dispatch, what it
-/// turned out to do. The one exception is an *interactive* input — one
+/// Insert seam, in order, never by inferring, after a dispatch, what it
+/// turned out to do. The one exception is an *interactive* input: one
 /// whose outcome depends on input the user gave while it ran (accepting a
-/// completion, picking a picker item) — which is recorded as its own net
+/// completion, picking a picker item). It is recorded as its own net
 /// edit and replayed by applying that edit, never by re-running whatever
 /// produced it: re-running would re-open the popup/picker instead of
 /// reproducing the pick (see [`Result`](InsertInput::Result)'s own doc).
@@ -40,13 +40,13 @@ pub(crate) enum InsertInput {
     Paste(String),
     /// A key bound in the Insert keymap that turned out non-interactive,
     /// re-run on replay via [`Editor::replay_command`], so it decides again
-    /// at the new cursor — its own `call!`s, register prefix, and `#:extend`
+    /// at the new cursor, its own `call!`s, register prefix, and `#:extend`
     /// included.
     Binding { name: Cow<'static, str> },
     /// The net edit an interactive input produced at the cursor: the
     /// completion popup's own Enter, an Insert-key binding that called
     /// `completion-accept!`, or one that opened a picker whose pick (or
-    /// dismissal) resolved later, via `on_select` — see [`DotCapture`]'s
+    /// dismissal) resolved later, via `on_select`; see [`DotCapture`]'s
     /// own doc for that last case. Replayed by applying the edit directly;
     /// the input that produced it is never re-run, since a re-run would
     /// have nothing to hand back the same pick from.
@@ -57,7 +57,7 @@ pub(crate) enum InsertInput {
 /// behind and `forward` ahead of the head, replaced by `text`. The primary
 /// cursor's own counts, applied uniformly at every cursor on replay.
 /// Anything document-absolute (a completion's `additionalTextEdits`, a
-/// picker pick's edit landing away from the cursor) is excluded — it has no
+/// picker pick's edit landing away from the cursor) is excluded: it has no
 /// meaning at a different cursor, the same reasoning that excludes
 /// `additionalTextEdits` from a completion's own recorded replacement.
 #[derive(Debug, Clone)]
@@ -82,14 +82,14 @@ pub(crate) struct SelectionStep {
     pub count: usize,
     /// `true` if this step ran in Extend mode (grew the existing selection).
     /// A recipe's first step can be `true`: `C` (a `Composes` step) run in
-    /// Extend mode against an empty recipe is itself the whole recipe — see
+    /// Extend mode against an empty recipe is itself the whole recipe; see
     /// `RepeatableAction::selection_recipe`'s doc for the `C`-from-a-bare-cursor case.
     pub extend: bool,
 }
 
 /// A recorded editing action that can be replayed by `.`.
 ///
-/// Stores the recipe to re-execute a command rather than the raw changeset —
+/// Stores the recipe to re-execute a command rather than the raw changeset:
 /// changesets are position-dependent and can't be replayed at a different cursor.
 #[derive(Debug, Clone)]
 pub(crate) struct RepeatableAction {
@@ -111,11 +111,11 @@ pub(crate) struct RepeatableAction {
     /// Selection-building recipe to replay BEFORE the edit.
     ///
     /// Invariant: `[]` (edit acted on pre-existing selection, or after a
-    /// Move-mode motion — `.` deletes the current selection as-is), or a
-    /// sequence of `Establishes`/`Composes` steps — see `SelectionTracking`
+    /// Move-mode motion: `.` deletes the current selection as-is), or a
+    /// sequence of `Establishes`/`Composes` steps; see `SelectionTracking`
     /// for what each records. A leading `Composes` step is legal: `C` from a
     /// bare cursor (no prior establish) duplicates that cursor onto the
-    /// adjacent line and is itself the first (and only) recipe entry —
+    /// adjacent line and is itself the first (and only) recipe entry, and
     /// replaying it reproduces exactly what the user did. Rebuilt from
     /// `EditorState::selection_recipe` each time a repeatable command is
     /// recorded.
@@ -134,7 +134,7 @@ pub(crate) struct RepeatableAction {
 /// for the actual replay.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PendingRepeat {
-    /// Effective replay count — explicit-count override already applied.
+    /// Effective replay count, with the explicit-count override already applied.
     pub(super) count: usize,
 }
 
@@ -146,9 +146,9 @@ pub(crate) struct PendingRepeat {
 /// next keypress is consumed as the register name (or cancelled on Esc).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MacroPending {
-    /// `Q` was pressed — waiting for a register name to start recording.
+    /// `Q` was pressed: waiting for a register name to start recording.
     Record,
-    /// `q` was pressed — waiting for a register name to start replay.
+    /// `q` was pressed: waiting for a register name to start replay.
     Replay,
 }
 
@@ -169,12 +169,12 @@ impl EditorState {
     }
 
     /// Marks the Insert-key dispatch or completion-accept currently in
-    /// progress as interactive — called by `completion-accept!`/
+    /// progress as interactive. Called by `completion-accept!`/
     /// `completion-trigger` directly, `picker!`/`live-picker!` indirectly
     /// via `picker::open_picker`, whichever fires first, so a binding
     /// becomes interactive by calling one of them rather than by declaring
     /// it (see `InsertInput::Result`'s own doc). No-op if no capture is
-    /// armed — a stray call from outside an armed dispatch (a hook, a
+    /// armed: a stray call from outside an armed dispatch (a hook, a
     /// timer) is harmless, since nothing else reads it.
     pub(in crate::editor) fn mark_dot_interactive(&mut self) {
         if let Some(cap) = self
@@ -188,16 +188,16 @@ impl EditorState {
 
     /// The one refusal every interactive builtin (`completion-accept!`,
     /// `picker!`/`live-picker!`, `completion-trigger`) opens with: reached
-    /// during `.`, an interactive input is never re-run — its net edit was
+    /// during `.`, an interactive input is never re-run: its net edit was
     /// already recorded as an `InsertInput::Result` and replayed directly
     /// (see that variant's own doc). Reaching this call during replay means
-    /// the binding decided differently than it did live — erroring loudly
+    /// the binding decided differently than it did live, and erroring loudly
     /// beats silently re-opening a popup/picker, or accepting against a
     /// session that was never opened this time.
     pub(in crate::editor) fn refuse_during_dot(&self, what: &str) -> Result<(), String> {
         if self.dot_replay {
             return Err(format!(
-                "{what}: reached during `.` — the recorded input took a different branch \
+                "{what}: reached during `.`, but the recorded input took a different branch \
                  this time"
             ));
         }
@@ -205,14 +205,14 @@ impl EditorState {
     }
 
     /// Applies a recorded interactive result `r` at `fp`'s cursors, as one
-    /// edit composed into the open Insert group — the replay-side
+    /// edit composed into the open Insert group: the replay-side
     /// counterpart of `BufferSession::accept`'s own cursor edit. Dismisses
     /// any completion session afterwards: one a replayed key opened is
     /// stale once the replacement lands, the same as a live accept
     /// consuming its session.
     ///
     /// `Err` without an open Insert session on `(pid, bid)`, or with a real
-    /// (non-collapsed) selection there — the same guard the live accept
+    /// (non-collapsed) selection there, the same guard the live accept
     /// enforces (`completion-accept!`'s own doc): `replace_around_cursors`
     /// force-collapses any selection it touches, silently discarding it,
     /// exactly what this guard exists to refuse instead.
@@ -246,10 +246,10 @@ impl EditorState {
     /// `exit-insert` in the same dispatch). Interactive: composes `cap`'s
     /// recorded edits into one net transform via [`ChangeSet::compose_all`]
     /// and extracts the region under `cap.head_before` via
-    /// [`cursor_replacement_at`], recording it as a `Result` — or nothing at
+    /// [`cursor_replacement_at`], recording it as a `Result`, or nothing at
     /// all if the composed edit didn't touch the cursor (an Esc-dismissed
     /// picker whose `on_select` received `#f` and did nothing). Not
-    /// interactive: records `cap.fallback` instead — the `Binding` entry an
+    /// interactive: records `cap.fallback` instead: the `Binding` entry an
     /// ordinary Insert-key dispatch stands for, or nothing for a bare
     /// completion-popup Enter, which has no binding of its own.
     pub(in crate::editor) fn finalize_dot_capture(&mut self, cap: DotCapture) {
@@ -270,30 +270,30 @@ impl Editor {
     // ── Doc-edit wrappers ─────────────────────────────────────────────────────
 
     /// Close out whatever `replay_dot` left open on the focused (pane,
-    /// buffer), for either its success or its failure path — the two need
+    /// buffer), for either its success or its failure path. The two need
     /// the identical decision, so it lives here once.
     ///
     /// A body that entered real Insert mode closes through
     /// `end_insert_session` (pops the `InsertLayer`, which
-    /// `tear_down_insert` needs present to run its own bookkeeping — typed
+    /// `tear_down_insert` needs present to run its own bookkeeping: typed
     /// run, autoindent trim). A body that called native paste retargeted
     /// the pre-opened placeholder to `Paste` (`edit_session::
-    /// open_or_retarget`, via `do_paste`) — that must stay open for a
+    /// open_or_retarget`, via `do_paste`), which must stay open for a
     /// following `[`/`]`, the same as a live `p` keypress leaves it, so
     /// it's left alone here. Anything else (a plain edit-only body that
     /// never claimed the placeholder) is still `Replay`-kind, and commits
-    /// directly through `doc_ops::commit_open_session` — kind-agnostic,
+    /// directly through `doc_ops::commit_open_session`, kind-agnostic,
     /// since Insert and Paste are both already handled above.
     ///
     /// Read dynamically from the session's own kind rather than
-    /// `meta.manages_own_session` — that flag only describes what the
+    /// `meta.manages_own_session`: that flag only describes what the
     /// *outer* replayed command declares, and a Steel-backed outer command's
     /// meta can never set it (see `CmdMeta::manages_own_session`'s doc), so
     /// a Steel wrapper whose body dispatches native paste needs the same
     /// "leave it open" outcome without ever being able to say so statically.
     ///
     /// No-op if nothing is open at all: the body's own dispatch may already
-    /// have closed the pane or buffer the pre-opened placeholder lived on —
+    /// have closed the pane or buffer the pre-opened placeholder lived on:
     /// `focus::end_focus_sessions`, which every focus/buffer-switch path
     /// runs first, already commits a still-live session of any kind before
     /// that happens, so by the time control returns here there is genuinely
@@ -321,11 +321,11 @@ impl Editor {
     }
 
     /// Run `cmd` (already resolved from the registry) as one replayed step, native
-    /// or Steel/Lazy alike — the main edit body and each `InsertInput::
+    /// or Steel/Lazy alike. The main edit body and each `InsertInput::
     /// Binding` entry share this rather than each re-deriving the
     /// native-vs-Steel branch. Returns `false` on the same failure classes
     /// as `run_steel_command` (a Steel body can fail on replay even though
-    /// the original run didn't — different buffer state, no match at the
+    /// the original run didn't: different buffer state, no match at the
     /// new cursor); a native command has no failure mode here, so this
     /// dispatches it and always returns `true`.
     fn replay_command(
@@ -363,8 +363,8 @@ impl Editor {
     /// Replay a dot-repeat action directly, bypassing dispatch bookkeeping.
     ///
     /// Holds `last_repeatable_action` for the whole replay and restores it
-    /// afterwards so `.` chains — which is also what keeps the replay from
-    /// recording into it (see [`EditorState::record_insert_input`]) — and
+    /// afterwards so `.` chains, which is also what keeps the replay from
+    /// recording into it (see [`EditorState::record_insert_input`]). It also
     /// sets [`EditorState::dot_replay`] for the same extent, restoring its
     /// previous value on every exit path.
     pub(in crate::editor) fn replay_dot(&mut self, count: usize) {
@@ -403,7 +403,7 @@ impl Editor {
 
         // Commit (or defer) any paste session left open by the keypress that
         // set up `.` itself, using the REPLAYED command's own meta rather
-        // than `repeat-last-action`'s (which always defers — see its
+        // than `repeat-last-action`'s (which always defers; see its
         // registration). A session can only still be open here if the
         // command being replayed is itself a ring-cycle command: every other
         // dispatch commits unconditionally before running, so by the time
@@ -412,24 +412,24 @@ impl Editor {
         // the session to `repeat-last-action`'s own dispatch.
         commands::step_paste_commit(&mut self.state, meta.defers_paste_commit);
 
-        // Pre-open a Replay-kind placeholder — the wrapper that folds a
+        // Pre-open a Replay-kind placeholder, the wrapper that folds a
         // recipe replay + the main edit into one undo revision. Its own kind
         // (rather than reusing Insert directly) keeps it distinct from a
         // real, already-open Insert session: only a
         // Replay-kind placeholder is eligible for `open_or_retarget`'s
-        // retarget branch (see `EditSessionKind::Replay`'s own doc) — a real
+        // retarget branch (see `EditSessionKind::Replay`'s own doc); a real
         // empty Insert session must still refuse a conflicting open, not
         // silently hand its group to whatever this pre-open is used for.
         // Skipped for a `manages_own_session` command (the paste family): it
         // opens or continues `active_session` itself (`do_paste`/
         // `do_paste_cycle`), which would collide with a placeholder
-        // pre-opened here — see `CmdMeta::manages_own_session`'s own doc. A
+        // pre-opened here; see `CmdMeta::manages_own_session`'s own doc. A
         // Steel body that itself calls a native paste command still
         // succeeds despite this pre-open: `do_paste`'s own opener retargets
         // this still-open placeholder to `Paste` in place rather than
         // colliding with it (see `edit_session::open_or_retarget`).
         //
-        // `Err` here means a real session (of any kind) is already open —
+        // `Err` here means a real session (of any kind) is already open,
         // not expected given `step_paste_commit` just ran above, but if it
         // ever happens, defer rather than stealing or corrupting that
         // session.
@@ -450,8 +450,8 @@ impl Editor {
         }
 
         // Rebuild the selection extent the edit originally acted on. No
-        // recipe-step command reads `pending_char` — every `wait_char!`-bound
-        // command is `Untracked` and so can never reach the recipe — so
+        // recipe-step command reads `pending_char`: every `wait_char!`-bound
+        // command is `Untracked` and so can never reach the recipe. So
         // unlike the edit body below, no step here needs it set.
         for step in &action.selection_recipe {
             // A recipe step is only ever pushed for a `selection_tracking !=
@@ -489,7 +489,7 @@ impl Editor {
         };
         if !self.replay_command(edit_cmd, fp, &ctx, action.char_arg) {
             // Close whatever the group opened above became so it can't
-            // leak — same decision the success path below makes (see
+            // leak, the same decision the success path below makes (see
             // `finish_replay_session`'s own doc). commit drops an empty
             // group (clean noop) and records a partial one (a failure
             // mid-edit stays undoable).
@@ -502,7 +502,7 @@ impl Editor {
         // that no longer applies, is reported and skipped rather than
         // stopping the loop: the live session kept going past it too, so
         // replay does the same. Any `Binding` that leaves Insert genuinely
-        // stops it, whether or not it also succeeded — a body that calls
+        // stops it, whether or not it also succeeded: a body that calls
         // `exit-insert` and then errors has still left, and nothing recorded
         // after it can apply outside the session it was typed into; `break`,
         // not `return`, so `finish_replay_session` below still runs.
@@ -521,7 +521,7 @@ impl Editor {
                     // A command name loses its keymap binding only if the
                     // binding itself is removed between the original
                     // keypress and this replay (`unbind-key!`, a plugin
-                    // reload) — unlike the selection-recipe/edit-body
+                    // reload). Unlike the selection-recipe/edit-body
                     // lookups above, this name was never guaranteed to
                     // stay registered, so a miss reports rather than
                     // panicking.
@@ -534,7 +534,7 @@ impl Editor {
                     // that calls `insert-key!` still finds it in flight. An
                     // interactive builtin the body calls this time (it
                     // decided differently than it did live) refuses loudly
-                    // instead — see `EditorState::dot_replay`'s own doc.
+                    // instead; see `EditorState::dot_replay`'s own doc.
                     self.with_insert_key_dispatch(|ed| {
                         ed.replay_command(
                             cmd,
@@ -545,7 +545,7 @@ impl Editor {
                     });
                     // Checked regardless of success: a body that calls
                     // `exit-insert` and then fails (an error raised after
-                    // that call already ran) still left Insert — nothing
+                    // that call already ran) still left Insert, so nothing
                     // recorded after it belongs to a session that's gone,
                     // whether the binding that closed it also succeeded or
                     // not.
@@ -559,7 +559,7 @@ impl Editor {
     }
 
     /// Builds a fresh [`edit_session::DotCapture`] at the focused cursor and
-    /// runs `f` with it armed — `handle_insert`'s Leaf branch and
+    /// runs `f` with it armed. `handle_insert`'s Leaf branch and
     /// `accept_completion_selection` are the only callers, each wrapping the
     /// one operation that might go interactive. `fallback` is what to record
     /// if `f` turns out *not* interactive (see [`DotCapture::fallback`]'s
@@ -589,12 +589,12 @@ impl Editor {
     }
 
     /// Arms `cap` on its own `(pane, buffer)`'s Insert session, runs `f`,
-    /// then takes the capture back and finalizes it — unless `f` itself
+    /// then takes the capture back and finalizes it, unless `f` itself
     /// already took it (`picker::open_picker`, called from inside `f` when
     /// the dispatch it wraps opens a picker), in which case it's now the new
     /// `PickerSession`'s to resolve later, and there is nothing left here to
     /// finalize. No-op arming if the target session is already gone by the
-    /// time this runs — the one caller that can reach that is
+    /// time this runs. The one caller that can reach that is
     /// `Editor::run_pending_batch`, replaying a picker's `on_select` against
     /// whatever session is current now, which may have since closed; `f`
     /// (the callback itself) still runs regardless, just with nothing
@@ -617,7 +617,7 @@ impl Editor {
                 // happened to this buffer since it was last detached (a
                 // foreign edit landing while a picker it was handed to sat
                 // open) is exactly what `head_before`/`text_gen` must now
-                // measure from — the *current* cursor and generation, not
+                // measure from: the *current* cursor and generation, not
                 // whichever ones this capture was last armed with. See
                 // `DotCapture::head_before`'s own doc for why a non-empty
                 // `edits` must NOT be refreshed the same way.
@@ -633,7 +633,7 @@ impl Editor {
                 // A foreign edit landed on this buffer while `cap` sat
                 // detached (armed on a picker instead of this session), and
                 // `cap.edits` already holds an entry chained from the
-                // pre-foreign-edit document — composing the next edit onto
+                // pre-foreign-edit document, and composing the next edit onto
                 // it would panic in `ChangeSet::compose`'s length assert
                 // (see `DotCapture::text_gen`'s own doc). Report and drop
                 // the whole capture instead of arming it: nothing here is
@@ -660,7 +660,7 @@ impl Editor {
     /// settling after each one.
     ///
     /// Sets `is_replaying` for the duration so that `Q`/`q` intercepts inside
-    /// replayed keys cannot start nested recording or replay sessions — including
+    /// replayed keys cannot start nested recording or replay sessions, including
     /// when the last key in the macro is `Q` (where `replay_queue.is_empty()`
     /// would already be `true` and would fail to suppress it).
     ///
@@ -673,7 +673,7 @@ impl Editor {
     /// the same as it would if those keys were typed by hand. `is_replaying`
     /// stays `true` across every one of these settles, so `can_open_confirm`'s
     /// `!is_replaying` guard still blocks a confirm the macro would have no
-    /// queued key left to answer — see that guard's "Macro replay" doc
+    /// queued key left to answer; see that guard's "Macro replay" doc
     /// paragraph. The deferred prompt still arrives on the next real
     /// buffer-enter.
     ///
@@ -682,7 +682,7 @@ impl Editor {
     /// triggering dispatch (e.g. the register char after `@`, which
     /// populated `replay_queue` in the first place) may itself have logged a
     /// message moments before this function was even called, and each
-    /// settle() call clears the flag at its own end — losing
+    /// settle() call clears the flag at its own end, losing
     /// `report_disk_state`'s shadowing guard for that earlier message if a
     /// stale-buffer warning fires from a later key's settle.
     pub(in crate::editor) fn drain_replay_queue(&mut self) {
@@ -703,7 +703,7 @@ impl Editor {
         self.state.is_replaying = false;
         // If the macro left Insert open, its own entry command's action is
         // still recording (a `record_insert_input` call for every key typed
-        // since) — restoring `saved_action` over it would both discard that
+        // since), so restoring `saved_action` over it would both discard that
         // action, mid-session, and hand the still-live Insert session's
         // input to whatever the macro replaced instead (see
         // `record_insert_input`'s own doc: "the session's action" is
@@ -718,11 +718,11 @@ impl Editor {
 }
 
 /// Extracts the edited region of `delta` that contains `head` (a position
-/// in `delta`'s *old* document), as a cursor-relative replacement — `None`
+/// in `delta`'s *old* document), as a cursor-relative replacement, or `None`
 /// if `delta` is identity, or every edited region lands away from `head`.
-/// `delta` can hold more than one region — a completion's own
+/// `delta` can hold more than one region (a completion's own
 /// `additionalTextEdits`, or a second cursor's own edit under a
-/// multi-cursor accept — and any region other than the one at `head` is
+/// multi-cursor accept), and any region other than the one at `head` is
 /// simply skipped: it's document-absolute, or belongs to a different
 /// cursor, the same reasoning [`CursorReplacement`]'s own doc gives for
 /// excluding `additionalTextEdits` from the replacement it records.
@@ -787,7 +787,7 @@ mod cursor_replacement_tests {
     #[test]
     fn insert_then_delete_region_containing_head() {
         // "abcd" → "aXd": the *other* op order a replacement can take
-        // (`invert`/`compose`/`indent` all emit insert-then-delete) —
+        // (`invert`/`compose`/`indent` all emit insert-then-delete):
         // insert "X" at old position 1, then delete "bc" (old 1..3). A head
         // inside the deleted span (2) must still report the replacement
         // text, not an empty one.
@@ -813,8 +813,8 @@ mod cursor_replacement_tests {
 
     /// The shape a completion's `additionalTextEdits` produces alongside its
     /// own cursor edit: two edited regions in one delta. Only the one at
-    /// `head` is extracted; the other — document-absolute, or a different
-    /// cursor's own edit under a multi-cursor accept — is skipped.
+    /// `head` is extracted; the other (document-absolute, or a different
+    /// cursor's own edit under a multi-cursor accept) is skipped.
     #[test]
     fn picks_the_region_at_head_and_skips_the_other() {
         let mut b = ChangeSetBuilder::new(co(6));

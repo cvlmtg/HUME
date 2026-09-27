@@ -1,5 +1,5 @@
 // Diagnostics navigation: `goto-next-diagnostic`,
-// `goto-prev-diagnostic`, `:diagnostics` drawer. No LSP request — reads the
+// `goto-prev-diagnostic`, `:diagnostics` drawer. No LSP request: reads the
 // diagnostics store via `diagnostics-for-buffer`. Depends on `core:stdlib`
 // (`stdlib/cursor-char-index`), loaded alongside `core:lsp` via
 // `RealRuntimeGuard` (both resolve from the real on-disk runtime/ dir).
@@ -16,7 +16,7 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// Everything `setup` builds and keeps alive for the test's duration — a
+/// Everything `setup` builds and keeps alive for the test's duration: a
 /// struct, not a tuple, so the next field added doesn't churn every call
 /// site (the same reason `super::DiagSetup` is a struct). `_guard` must
 /// stay explicitly bound (it holds the env lock); `sid` is `Copy`, so a
@@ -27,7 +27,7 @@ struct NavSetup {
     sid: hume_lsp::backend::ServerId,
 }
 
-/// Builds the `publishDiagnostics` notification for `file` — shared by
+/// Builds the `publishDiagnostics` notification for `file`, shared by
 /// `setup` (pushed at the backend, drained via `drain_lsp`) and `republish`
 /// (dispatched straight through the production single-shot path), so the
 /// two can't drift on params shape.
@@ -36,7 +36,7 @@ fn publish_msg(file: &Path, diags: &[DiagFixture]) -> hume_lsp::codec::Message {
     publish_diagnostics_notification(uri.as_str(), diags)
 }
 
-/// Fixture buffer: "aa\nbb\ncc\ndd\n" — char offsets: line0 'aa' = 0..2,
+/// Fixture buffer: "aa\nbb\ncc\ndd\n". Char offsets: line0 'aa' = 0..2,
 /// line1 'bb' = 3..5, line2 'cc' = 6..8, line3 'dd' = 9..11. Diagnostic A
 /// covers 'bb' (char start 3); diagnostic B covers 'dd' (char start 9) —
 /// leaves line0 genuinely "before A" and line2 genuinely "between A and B".
@@ -78,7 +78,7 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> NavSetup {
 /// Republishes diagnostics for `file` through the production single-shot
 /// path (`dispatch_lsp_action`, the same ingest + `queue_diagnostics_changed`
 /// pair `drain_lsp`'s batch loop runs) and settles, so the queued
-/// `on-diagnostics-changed` hook — including the drawer's own refresh —
+/// `on-diagnostics-changed` hook (including the drawer's own refresh)
 /// has run by the time this returns.
 fn republish(
     ed: &mut Editor,
@@ -91,8 +91,8 @@ fn republish(
     ed.settle();
 }
 
-/// Dispatches `goto-next-diagnostic`/`goto-prev-diagnostic` — key-bindable,
-/// not typed — through the keymap pipeline, the way their bound keys
+/// Dispatches `goto-next-diagnostic`/`goto-prev-diagnostic` (key-bindable,
+/// not typed) through the keymap pipeline, the way their bound keys
 /// (`g n`/`g p`) would. `:diagnostics` (typed) dispatches via `type_cmd`
 /// directly at its one call site instead.
 fn run(ed: &mut Editor, cmd: &str) {
@@ -346,7 +346,7 @@ fn drawer_refreshes_rows_when_a_diagnostic_is_fixed() {
 
 /// Three rows, middle one selected, first one fixed: the selection must
 /// follow the surviving diagnostic by identity (message + severity), not by
-/// index — a plain index clamp would land on B here instead of C.
+/// index. A plain index clamp would land on B here instead of C.
 #[test]
 fn drawer_keeps_selection_on_the_surviving_diagnostic() {
     let tmp = safe_tempdir();
@@ -376,7 +376,7 @@ fn drawer_keeps_selection_on_the_surviving_diagnostic() {
 }
 
 /// The selected diagnostic itself fixed: the selection moves to the item now
-/// at that position — the next one — rather than tracking a stale index.
+/// at that position (the next one) rather than tracking a stale index.
 #[test]
 fn drawer_moves_selection_to_next_when_the_selected_diagnostic_is_fixed() {
     let tmp = safe_tempdir();
@@ -400,7 +400,7 @@ fn drawer_moves_selection_to_next_when_the_selected_diagnostic_is_fixed() {
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
         1,
-        "C is gone — selection must sit on B, the next item: {rows:?}"
+        "C is gone: selection must sit on B, the next item: {rows:?}"
     );
     assert!(rows[1].contains("problem B"), "row 1 must be B: {rows:?}");
 }
@@ -435,7 +435,7 @@ fn drawer_closes_when_all_diagnostics_are_fixed() {
 }
 
 /// Raising `lsp.diagnostics-severity-floor` must refresh the open drawer,
-/// not just future opens and the decorations — the drawer snapshots
+/// not just future opens and the decorations: the drawer snapshots
 /// `diagnostics-for-buffer` (which defaults to the floor) at open time.
 #[test]
 fn drawer_refreshes_rows_when_the_severity_floor_changes() {
@@ -460,14 +460,14 @@ fn drawer_refreshes_rows_when_the_severity_floor_changes() {
 }
 
 /// A refresh that shrinks the row list must also pull a stale, deep `scroll`
-/// back into range — `lsp/refresh-diagnostics-drawer` goes through
+/// back into range. `lsp/refresh-diagnostics-drawer` goes through
 /// `update-drawer-list!` -> `EditorState::set_drawer_items`, which clamps
 /// `selected` but leaves `scroll` alone; `EditorState::
 /// clamp_drawer_scroll_to_terminal`, run every frame from `prepare_frame`,
 /// is what pulls it back into range, so this drives one frame after the
 /// refresh before reading `scroll` back. Shrinks 3 diagnostics down to 2,
 /// rather than 2 down to 1, so the surviving selection lands at a *nonzero*
-/// new index — a selection of `0` would already zero the scroll through the
+/// new index; a selection of `0` would already zero the scroll through the
 /// ordinary "selected < scroll" arm regardless of the `len` cap this test
 /// targets.
 ///
@@ -485,11 +485,11 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
     let file = file_dir.path().join("main.rs");
     let NavSetup { mut ed, _guard, .. } = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
 
-    // Populate `last_terminal_area` before opening the drawer — the scroll
+    // Populate `last_terminal_area` before opening the drawer: the scroll
     // clamp reads it to agree with what the engine will next paint (same
     // setup `lsp_drawer.rs`'s own scroll tests use). 40x10 gives a 5-row
     // band, so both survivors (2 rows) fit inside `visible_rows` once B (the
-    // one below-floor diagnostic) is filtered out — the shape that requires
+    // one below-floor diagnostic) is filtered out, the shape that requires
     // the `len` cap rather than the ordinary in-window formula.
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(40, 10);
@@ -504,7 +504,7 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
         "sanity: all three rows listed, ascending by line (A, C, B)"
     );
 
-    // Select the last row (B, the only warning — dropped by the floor
+    // Select the last row (B, the only warning, dropped by the floor
     // change below) and set a scroll deep enough that, once B is gone,
     // "the item at B's old position" (`lsp/diag-refresh-index`'s no-survivor
     // fallback) lands on row 1 (C) rather than row 0.
@@ -521,7 +521,7 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
     type_cmd(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
     ed.settle();
     // `scroll` is clamped at frame time (`clamp_drawer_scroll_to_terminal`),
-    // not by the refresh itself — a frame must run before reading it back.
+    // not by the refresh itself: a frame must run before reading it back.
     ed.prepare_frame(&mut ctx);
 
     let rows = drawer_rows(&ed);
@@ -602,6 +602,6 @@ fn foreign_replace_kills_refresh_tracking() {
     assert_eq!(
         drawer_rows(&ed),
         vec!["foreign".to_string()],
-        "tracking died with the replace — our publish must not refresh foreign rows"
+        "tracking died with the replace: our publish must not refresh foreign rows"
     );
 }

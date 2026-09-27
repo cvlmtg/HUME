@@ -16,7 +16,7 @@ impl CommandRegistry {
         // The eight below are `composes`, not the macro's default
         // `Establishes`: each transforms or reduces whatever extent is
         // already staged rather than building a fresh one replayable on its
-        // own from a bare cursor — see `SelectionTracking::Composes`.
+        // own from a bare cursor; see `SelectionTracking::Composes`.
         // `select-all` is not among them: whole-buffer and
         // position-independent, it genuinely establishes.
         super::selection!(
@@ -86,10 +86,10 @@ impl CommandRegistry {
         // the display-column placement of each copy needs a `DisplayLineMap`, which
         // that signature has no channel for. See
         // `visual_move.rs::copy_selection_vertically`. `.extendable()`
-        // restores the extendability `Selection` carries implicitly — without
+        // restores the extendability `Selection` carries implicitly. Without
         // it, a one-shot Ctrl-key extend of this command is silently dropped
-        // (see the Ctrl-key guard in `input_stack/base.rs`). `.composes_selection()`
-        // — see `SelectionTracking::Composes`. The recorded step's `extend`
+        // (see the Ctrl-key guard in `input_stack/base.rs`). `.composes_selection()`:
+        // see `SelectionTracking::Composes`. The recorded step's `extend`
         // flag is inert on replay (`cmd_copy_selection_on_next_line` ignores
         // `MotionMode`), but is still recorded faithfully for the recipe's
         // own bookkeeping.

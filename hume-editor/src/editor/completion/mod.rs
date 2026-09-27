@@ -1,16 +1,16 @@
-//! Completion — both of the editor's completion targets (Insert mode and
+//! Completion: both of the editor's completion targets (Insert mode and
 //! the `:` command line), on one model:
 //!
-//! - `registry.rs` — every *source*, native or Steel-registered, keyed by
+//! - `registry.rs`: every *source*, native or Steel-registered, keyed by
 //!   name: what it targets, how its items score.
-//! - `session.rs` — the one open *session*: each participating source's
+//! - `session.rs`: the one open *session*: each participating source's
 //!   latest invocation (the document it saw, the span it answered for, its
 //!   items), ranked per keystroke against each source's own token;
 //!   `session/accept.rs` applies the accepted item as a buffer edit.
-//! - `orchestrate.rs` — the one *driver*: triggers, invokes sources, lands
+//! - `orchestrate.rs`: the one *driver*: triggers, invokes sources, lands
 //!   answers, reacts to edits, applies the `:` line's eager policy.
-//! - `item.rs` — the item type both targets share; `simple.rs`/`path.rs`/
-//!   `set.rs` — the native minibuffer sources.
+//! - `item.rs`: the item type both targets share; `simple.rs`/`path.rs`/
+//!   `set.rs`: the native minibuffer sources.
 
 use std::path::Path;
 
@@ -42,7 +42,7 @@ pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOU
 ///
 /// Bundles read-only references to the editor state that completers need
 /// (command registry, buffer list, working directory) without exposing a full
-/// `&Editor`.  This makes unit-testing completers straightforward — no Editor
+/// `&Editor`.  This makes unit-testing completers straightforward: no Editor
 /// construction required.
 pub(in crate::editor) struct CompletionCtx<'a> {
     pub registry: &'a CommandRegistry,
@@ -62,7 +62,7 @@ pub(in crate::editor) struct CompletionCtx<'a> {
 /// If there is no space (command-only input), returns `(0, input[..cursor])`.
 /// Correct only for a *single*-argument command, where "everything after
 /// the command name" genuinely is the one argument (`path.rs`'s own
-/// `:e`/`:w`/`:cd` callers) — a multi-argument command's own argument span
+/// `:e`/`:w`/`:cd` callers). A multi-argument command's own argument span
 /// is [`arg_span`], which finds the *last* stop char before the cursor
 /// instead.
 pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
@@ -74,14 +74,14 @@ pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str)
 }
 
 /// Forward counterpart of [`arg_prefix`]'s backward scan: the byte offset,
-/// at or after `cursor`, of the first char in `stops` — or `input.len()` if
+/// at or after `cursor`, of the first char in `stops`, or `input.len()` if
 /// none appears before the end. The token a completion *replaces* extends
 /// past the cursor to wherever it actually ends (`arg_prefix` alone only
 /// ever looks at `input[..cursor]`), so a candidate applied with the cursor
 /// mid-token doesn't duplicate the token's own tail (`:e src/ma|in.rs` +
 /// Tab must not produce `src/main.rsin.rs`).
 ///
-/// `stops` names the token's own separator alphabet — a `:set` key stops at
+/// `stops` names the token's own separator alphabet: a `:set` key stops at
 /// `'='` too (so completing `:set global th|eme=x` doesn't swallow the
 /// `=x`), where a path or command-name token stops at whitespace alone.
 pub(in crate::editor) fn token_end_at(input: &str, cursor: usize, stops: &[char]) -> usize {
@@ -94,7 +94,7 @@ pub(in crate::editor) fn token_end_at(input: &str, cursor: usize, stops: &[char]
 /// The `[start, end)` span of the token at `cursor`: `start` is one past
 /// the last `back_stop` at or before `cursor` (0 if none), `end` is
 /// [`token_end_at`]'s forward scan for the first of `fwd_stops`. `back_stop`
-/// is a single char, not a slice like `fwd_stops` — every caller's forward
+/// is a single char, not a slice like `fwd_stops`: every caller's forward
 /// and backward separator alphabets already differ (a `:set` key stops
 /// backward at `' '` but forward at `[' ', '=']`, so a completed key's span
 /// doesn't swallow a following `=value`; a `:set` value stops backward at
@@ -117,13 +117,13 @@ pub(in crate::editor) fn arg_span(
 }
 
 /// Every installed theme's name (file stem), directory-scanned across
-/// `theme_search_paths()` once each — a stem in an earlier search path
+/// `theme_search_paths()` once each; a stem in an earlier search path
 /// shadows a same-named one in a later path. Shared by `:theme`
-/// ([`simple::complete_theme`], a `String`-kind source's full universe —
+/// ([`simple::complete_theme`], a `String`-kind source's full universe,
 /// no prefix filtering here, since that source's own token-vs-item scoring
 /// happens later, at rank time) and `:set global theme=`'s value phase
 /// ([`set::complete_set_value`], `Delegated`, filtered by the typed prefix
-/// through [`set::prefix_completions`]) — the one place both need to agree
+/// through [`set::prefix_completions`]): the one place both need to agree
 /// on which theme names exist and which one wins under a shared stem.
 fn theme_name_candidates() -> Vec<String> {
     let mut seen: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
@@ -196,7 +196,7 @@ mod testing {
         }
     }
 
-    /// Shared empty registry for tests that don't register languages — avoids
+    /// Shared empty registry for tests that don't register languages. It avoids
     /// re-allocating one per `ctx()` call and sidesteps the borrow-lifetime
     /// issue of constructing it inline.
     pub(in crate::editor::completion) fn empty_langs() -> &'static LanguageRegistry {

@@ -15,8 +15,8 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// Writes "fn main() {\n    helper();\n}\n" and returns its (path, uri) —
-/// cursor lands inside "helper" on line 1 (0-indexed), matching the search
+/// Writes "fn main() {\n    helper();\n}\n" and returns its (path, uri).
+/// The cursor lands inside "helper" on line 1 (0-indexed), matching the search
 /// each test does before invoking `lsp-rename`.
 fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
@@ -91,7 +91,7 @@ fn setup(
 }
 
 fn run_rename(ed: &mut Editor) {
-    // lsp-rename is key-bindable, not typed — dispatch through the keymap
+    // lsp-rename is key-bindable, not typed: dispatch through the keymap
     // pipeline, the way its bound key (`G R`) would.
     ed.execute_keymap_command("lsp-rename".into(), Some(1), false);
     ed.settle();
@@ -119,7 +119,7 @@ fn cancel_sends_no_rename_request() {
     let file_dir = safe_tempdir();
     let (file, uri) = write_fixture_file(file_dir.path());
     // Script a response that WOULD apply visibly if the request were sent
-    // despite the cancel — proves the guard, not just "nothing crashed".
+    // despite the cancel. This proves the guard, not just "nothing crashed".
     let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/rename",
@@ -201,7 +201,7 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
     });
 
     run_rename(&mut ed);
-    // Accept the "helper" prefill as-is (typing nothing, just Enter) — the
+    // Accept the "helper" prefill as-is (typing nothing, just Enter). The
     // exact new name doesn't matter, only that it's non-empty so `when
     // new-name` fires.
     ed.feed_key(key_enter());
@@ -223,7 +223,7 @@ fn multi_file_workspace_edit_applies_and_logs_the_summary() {
 
 /// `textDocument/rename`'s request carries `#:allow-stale #t`, so an
 /// edit landing between confirming the new name and the response draining
-/// must not silently drop the rename — but `apply-workspace-edit!`'s own
+/// must not silently drop the rename, but `apply-workspace-edit!`'s own
 /// `#:expect-generation` must then refuse to apply it, rather than silently
 /// doing nothing or applying against text that has since moved.
 #[test]
@@ -276,7 +276,7 @@ fn rename_reports_a_stale_buffer_after_an_intervening_edit() {
 /// `apply-workspace-edit!` (the Steel builtin `%apply-workspace-edit!` wraps)
 /// opens unopened files via `lsp::edits::resolve_or_open` →
 /// `buffer::lifecycle::open_or_dedup_and_notify`, which can't detect language
-/// inline (see that function's doc) — it queues the buffer onto
+/// inline (see that function's doc). It queues the buffer onto
 /// `EditorState.pending_language_detection`, drained at the tail of
 /// `apply_script_effects` once this eval (reached via `settle`'s `Call` arm,
 /// the rename response callback) returns.

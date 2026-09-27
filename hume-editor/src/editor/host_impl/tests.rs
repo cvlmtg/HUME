@@ -15,7 +15,7 @@ fn close_buffer_errs_when_id_unknown() {
         hume_editing::selection::SelectionSet::default(),
     ));
     let mut host = init_host!(ed);
-    // BufferId::default() is a zeroed key — not present in any live store.
+    // BufferId::default() is a zeroed key, not present in any live store.
     let err = host.close_buffer(BufferId::default()).unwrap_err();
     assert!(!err.is_empty(), "expected an error message");
 }
@@ -68,7 +68,7 @@ fn seg(start: usize, end: usize, scope: &str) -> (usize, usize, String) {
 
 #[test]
 fn virtual_line_segments_to_bytes_sorts_by_start() {
-    // ASCII text, so char and byte offsets coincide — isolates the sorting
+    // ASCII text, so char and byte offsets coincide. This isolates the sorting
     // behavior from the conversion.
     let out = virtual_line_segments_to_bytes("abcdef", vec![seg(4, 6, "b"), seg(0, 2, "a")])
         .expect("valid segments");
@@ -103,7 +103,7 @@ fn virtual_line_segments_to_bytes_rejects_overlap() {
 fn virtual_line_segments_to_bytes_rejects_segment_splitting_a_grapheme_cluster() {
     // "e" (1 byte) + combining acute accent U+0301 (2 bytes) is 2 chars but
     // one grapheme cluster spanning bytes 0..3. Char offset 1 falls between
-    // the two chars but not on the cluster boundary — the engine
+    // the two chars but not on the cluster boundary. The engine
     // (`display_lines.rs`'s `segment_virtual_line`) resolves scope once per cluster at
     // its start byte, so a segment edge here would silently mis-apply
     // instead of erroring under a mere char-boundary check.
@@ -125,7 +125,7 @@ fn line_start_offset_accepts_the_last_content_line() {
 
 #[test]
 fn line_start_offset_rejects_the_trailing_phantom_line() {
-    // Same fixture: line 3 is the empty line the trailing '\n' produces —
+    // Same fixture: line 3 is the empty line the trailing '\n' produces.
     // `DisplayLineMap::last_line()` (hume-engine/src/display_lines.rs) agrees line 2 is the
     // last renderable line, so line 3 has no row to decorate.
     let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
@@ -135,7 +135,7 @@ fn line_start_offset_rejects_the_trailing_phantom_line() {
 
 #[test]
 fn validate_offset_accepts_the_last_real_char() {
-    // "abc\n" — char offsets 0..=3 are real chars (the last being '\n'
+    // "abc\n": char offsets 0..=3 are real chars (the last being '\n'
     // itself); char offset 4 is one past the end. 'before' anchoring, so
     // the 'after'-only phantom-line check doesn't apply.
     let text = hume_editing::text::BufferText::from("abc\n");
@@ -155,7 +155,7 @@ fn validate_offset_rejects_one_past_the_end() {
 
 #[test]
 fn validate_offset_accepts_after_on_the_last_real_content_char() {
-    // "abc\n" — an 'after hint on 'c' (offset 2) anchors at offset 3 (the
+    // "abc\n": an 'after hint on 'c' (offset 2) anchors at offset 3 (the
     // trailing '\n'), still on the last content line. Must not be confused
     // with the phantom-line case below.
     let text = hume_editing::text::BufferText::from("abc\n");
@@ -164,9 +164,9 @@ fn validate_offset_accepts_after_on_the_last_real_content_char() {
 
 #[test]
 fn validate_offset_rejects_after_on_the_trailing_newline() {
-    // "abc\n" — an 'after hint anchored on the trailing '\n' itself (offset
+    // "abc\n": an 'after hint anchored on the trailing '\n' itself (offset
     // 3) would render at offset 4, the start of the buffer's trailing
-    // phantom line — a position `DisplayLineMap::last_line()` never lays out, so
+    // phantom line, a position `DisplayLineMap::last_line()` never lays out, so
     // the hint would be silently accepted and then silently never render
     // (the same failure class `line_start_offset` already rejects for the
     // line-anchored kinds, reachable here through a char offset instead).
@@ -178,7 +178,7 @@ fn validate_offset_rejects_after_on_the_trailing_newline() {
 #[test]
 fn virtual_line_segments_to_bytes_converts_multibyte_char_offsets() {
     // "é" (2 bytes) + "→" (3 bytes) + "x" (1 byte), each its own grapheme
-    // cluster. Char range (0, 2) covers "é→" — independently computed byte
+    // cluster. Char range (0, 2) covers "é→". Independently computed byte
     // width: 2 + 3 = 5, so the expected byte range is (0, 5), not (0, 2).
     let out = virtual_line_segments_to_bytes("é→x", vec![seg(0, 2, "prefix")])
         .expect("valid multi-byte segment");

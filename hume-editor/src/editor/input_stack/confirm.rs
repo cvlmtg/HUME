@@ -1,4 +1,4 @@
-//! The disk-change confirm layer — a reusable native yes/no confirmation
+//! The disk-change confirm layer: a reusable native yes/no confirmation
 //! overlay, rendered in the statusline row. See [`ConfirmLayer`]'s own doc
 //! for why it's Rust-native rather than a Steel-facing primitive like the
 //! other overlay layers.
@@ -23,7 +23,7 @@ pub(in crate::editor) struct ConfirmChoice {
 ///
 /// A plain enum, not a boxed closure: the handler is one `match` arm, and it
 /// can't accidentally capture stale editor state. Add a variant per new
-/// confirm use — see [`ConfirmLayer`]'s doc.
+/// confirm use; see [`ConfirmLayer`]'s doc.
 pub(in crate::editor) enum ConfirmAction {
     /// Reload this buffer from disk, discarding any in-editor edits.
     /// Undoable: `reload_buffer_in_place` records the reload as a single
@@ -38,9 +38,9 @@ pub(in crate::editor) enum ConfirmAction {
 /// primitive with a `SteelVal` callback), a confirm is Rust-native: its
 /// action is a plain enum matched inline, with no closure capturing `&mut
 /// Editor` and no round-trip through the scripting VM. It exists for
-/// editor-internal yes/no questions — disk-change reload is the first one.
+/// editor-internal yes/no questions; disk-change reload is the first one.
 ///
-/// `choices[0]` is the accept choice — pressing its key runs `action`.
+/// `choices[0]` is the accept choice: pressing its key runs `action`.
 /// Every other listed choice dismisses without running `action`, doing
 /// whatever else its own key implies (`decline_disk_change` for "keep").
 /// There is currently never more than one non-accept outcome, so this
@@ -49,7 +49,7 @@ pub(in crate::editor) enum ConfirmAction {
 /// dismisses without answering but is left to fall through to normal
 /// dispatch ([`confirm_input`]) rather than being swallowed. No separate
 /// view type: [`ConfirmLayer::render_line`] is painted directly by
-/// `hume-editor`'s statusline — `pub(crate)`, not `pub(in crate::editor)`
+/// `hume-editor`'s statusline, so `pub(crate)`, not `pub(in crate::editor)`
 /// like every other type in this module, since the statusline lives at
 /// `crate::statusline`, a sibling of `crate::editor` rather than a
 /// descendant of it.
@@ -60,7 +60,7 @@ pub(crate) struct ConfirmLayer {
 }
 
 impl ConfirmLayer {
-    /// Whether answering this confirm would act on `id` — i.e. whether `id`
+    /// Whether answering this confirm would act on `id`, i.e. whether `id`
     /// disappearing leaves the question unanswerable. Read by
     /// `buffer::lifecycle::close_buffer_and_notify`, which retires such a
     /// confirm rather than leaving one on screen whose only possible outcome
@@ -94,7 +94,7 @@ impl Layer for ConfirmLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
-    // No `setup`/`popup_eviction` override — the trait's own default
+    // No `setup`/`popup_eviction` override: the trait's own default
     // (`PopupEviction::Both`, evicted automatically by `push_layer`) is
     // exactly right here: `can_open_confirm` (`buffer/disk.rs`) deliberately
     // does *not* gate on a popup being open (a `Scrollable` one owns no keys
@@ -103,7 +103,7 @@ impl Layer for ConfirmLayer {
     // other opener that can land above one.
 }
 
-/// Named sugar over the generic lookup — the ~350 existing call sites
+/// Named sugar over the generic lookup: the ~350 existing call sites
 /// (`ed.state.input.confirm()`) stay as they are, and `stack.rs` stays agnostic.
 impl super::stack::InputStack {
     pub(in crate::editor) fn confirm(&self) -> Option<&ConfirmLayer> {
@@ -112,21 +112,21 @@ impl super::stack::InputStack {
 }
 
 impl EditorState {
-    /// The confirm that owns the statusline row right now — `crate::statusline`'s
+    /// The confirm that owns the statusline row right now, `crate::statusline`'s
     /// reader, and *not* the same query as `InputStack::confirm()`: a confirm
-    /// can be buried (a timer's `prompt!` lands above it — `push_mode_layer`
+    /// can be buried (a timer's `prompt!` lands above it; `push_mode_layer`
     /// only truncates the outgoing *mode* layer, never an overlay sitting on
     /// top of `Base`), in which case it's still on the stack and still the
     /// right target for `buffer::disk`/`buffer::lifecycle`'s retire-on-close
     /// checks (`InputStack::confirm()`, used there), but it no longer owns
-    /// the keyboard or this row — a buried confirm painted here would show
+    /// the keyboard or this row. A buried confirm painted here would show
     /// the wrong prompt while the minibuffer above it reads the keys.
     /// `Some` only when the confirm is `top()`.
     ///
     /// A plain wrapper rather than exposing `input` itself at `pub(crate)`:
     /// `InputStack`'s own API stays `pub(in crate::editor)` (see its own
     /// doc for why), and the statusline is a sibling of `crate::editor`,
-    /// not a descendant of it, so it needs a seam drawn somewhere — this is
+    /// not a descendant of it, so it needs a seam drawn somewhere, and this is
     /// the narrowest one, mirroring `ConfirmLayer`'s own `pub(crate)`
     /// carve-out for the same reader. `EditorState::minibuf` (`mod.rs`) is
     /// the same carve-out for the field that was `pub(crate)` directly on
@@ -136,11 +136,11 @@ impl EditorState {
     }
 
     /// Retires the open confirm (if any) when `stale` says it no longer
-    /// belongs — the shared body of `buffer::disk::enter_buffer_disk_check`
+    /// belongs: the shared body of `buffer::disk::enter_buffer_disk_check`
     /// (stale because focus moved off the buffer it targets) and
     /// `buffer::lifecycle::close_buffer_and_notify` (stale because its
     /// target buffer is being freed). Uses `excise_layer`, not
-    /// `truncate_layers`: nothing guarantees the confirm is still `top()` —
+    /// `truncate_layers`: nothing guarantees the confirm is still `top()`:
     /// a `Prompt`/`Picker` opened above it since (which `push_mode_layer`'s
     /// own truncation never reaches, as an overlay on `Base` isn't a mode
     /// layer) has nothing to do with the question this confirm was
@@ -178,7 +178,7 @@ pub(in crate::editor) fn confirm_input(ed: &mut Editor, r: LayerRef, ev: InputEv
     let key = match ev {
         InputEvent::Key(key) => key,
         // A paste is not one of the choice keys and is never a stray
-        // keystroke meant for whatever lies underneath — swallowed
+        // keystroke meant for whatever lies underneath. Swallowed
         // outright, the confirm left open, matching this layer's
         // full-modal choice-key policy for anything else unmatched.
         InputEvent::Paste(_) => return,

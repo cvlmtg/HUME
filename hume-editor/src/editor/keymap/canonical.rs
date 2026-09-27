@@ -1,7 +1,7 @@
 //! Canonical binding identity for key events.
 //!
 //! `CanonicalKey`'s field is private to this file (not just to `keymap`), so
-//! `From<KeyEvent>` — which always canonicalizes — is the only way anywhere
+//! `From<KeyEvent>` (which always canonicalizes) is the only way anywhere
 //! in the crate to construct one. That makes "every `CanonicalKey` is
 //! canonical" a compiler-enforced invariant rather than a convention each new
 //! consumer (the trie, `PickerSession::actions`, …) has to uphold by hand.
@@ -11,7 +11,7 @@ use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
 /// `KeyEvent`'s `PartialEq`/`Hash` impls perform no case normalization, so
 /// binding lookups normalize uppercase char ⇔ `SHIFT` explicitly at this
 /// boundary. Also scrubs fields that never participate in binding identity:
-/// `kind` (a kitty autorepeat is a `Repeat` event, not `Press` — held keys
+/// `kind` (a kitty autorepeat is a `Repeat` event, not `Press`; held keys
 /// must keep matching the same binding under `REPORT_EVENT_TYPES`), protocol
 /// `state`, and the Caps/Num Lock modifier bits.
 fn canonical(mut key: KeyEvent) -> KeyEvent {
@@ -74,7 +74,7 @@ fn encode_key_code(code: KeyCode) -> (u8, u32) {
 /// `encoding_is_injective_across_key_code_variants` test, since nothing about
 /// a hand-numbered match arm list is compiler-checked), and `modifiers.bits()`
 /// fits in the low 8 bits the tag/payload shift leaves for it (checked by the
-/// `const` assertion below) — termina 0.4.0's `Modifiers` is a `u8` bitflags
+/// `const` assertion below). Termina 0.4.0's `Modifiers` is a `u8` bitflags
 /// using every bit, so this is exact, not a margin.
 fn encode(key: &KeyEvent) -> u64 {
     let (tag, payload) = encode_key_code(key.code);
@@ -83,18 +83,18 @@ fn encode(key: &KeyEvent) -> u64 {
 
 // A version bump widening `Modifiers` for a new modifier bit would spill
 // `bits()` past the 8 bits `encode` reserves for it into the payload shift,
-// silently making `Ctrl-Alt-<char>` (say) collide with some other key —
+// silently making `Ctrl-Alt-<char>` (say) collide with some other key,
 // caught here at compile time instead of via a runtime collision.
 const _: () = assert!(Modifiers::all().bits() as u64 <= 0xFF);
 
 /// [`encode`]'s output, wrapped so `Eq`/`Hash` agreement is a derive instead
 /// of two hand-written impls that agree only by construction. Case-normalized
-/// via [`canonical`] on the only path into one (`From<KeyEvent>`) — termina's
+/// via [`canonical`] on the only path into one (`From<KeyEvent>`): termina's
 /// `KeyEvent` has no case-normalized equality of its own, which binding
 /// lookup needs, so this type is the sole place a raw `KeyEvent` becomes a
-/// binding identity. The wrapped `u64` is never read back — every consumer
+/// binding identity. The wrapped `u64` is never read back (every consumer
 /// (`KeyTrie`'s map, `PickerSession::actions`) only ever compares or hashes
-/// one — so nothing is lost by not keeping the original `KeyEvent` around.
+/// one), so nothing is lost by not keeping the original `KeyEvent` around.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::editor) struct CanonicalKey(u64);
 

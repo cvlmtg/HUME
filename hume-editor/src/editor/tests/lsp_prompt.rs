@@ -102,9 +102,9 @@ fn second_prompt_while_one_is_open_errors() {
 }
 
 /// A `Prompt` buried under a `Drawer` (`show-drawer-list!` opens first,
-/// landing below — it isn't a mode layer, so `prompt!`'s `push_mode_layer`
+/// landing below; it isn't a mode layer, so `prompt!`'s `push_mode_layer`
 /// never truncates it; `prompt!` then lands above it) must stay open and
-/// unfired when `close-drawer!` closes the drawer beneath it — the prompt is
+/// unfired when `close-drawer!` closes the drawer beneath it. The prompt is
 /// unrelated to the drawer, not depending on it, the same as an `Insert`
 /// session or a code-action `Menu` above a drawer (see
 /// `lsp_drawer.rs`'s `close_drawer_closes_a_drawer_buried_under_insert_
@@ -139,16 +139,16 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
     assert!(ed.state.input.drawer().is_none());
     assert!(
         ed.state.minibuf().is_some(),
-        "the prompt must stay open — it is unrelated to the drawer beneath it, not collateral"
+        "the prompt must stay open: it is unrelated to the drawer beneath it, not collateral"
     );
     assert!(
         ed.state.config.pending_work.is_empty(),
-        "the prompt's callback must not fire — it has not been answered"
+        "the prompt's callback must not fire: it has not been answered"
     );
 }
 
 /// `EditorState::minibuf()` (the statusline row / hardware cursor's own
-/// reader) must not resolve a `Prompt` buried under a `Picker` — the picker
+/// reader) must not resolve a `Prompt` buried under a `Picker`: the picker
 /// owns the keyboard and paints over everything else, so painting a dead
 /// prompt row underneath it would show state nothing can act on.
 ///
@@ -219,7 +219,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
     );
 }
 
-/// `push_mode_layer` truncates the outgoing mode layer before pushing —
+/// `push_mode_layer` truncates the outgoing mode layer before pushing:
 /// entering `Prompt` from `Insert` (a queued `(after 0 …)` thunk firing
 /// while the user is mid-insert) must end the insert session cleanly
 /// (edit group committed, `active_session` cleared) rather than leaving it
@@ -264,8 +264,8 @@ fn prompt_from_insert_ends_the_insert_session_cleanly() {
 
 /// Same truncate-then-push as the Insert case above, for `Search`: a
 /// `Prompt` landing mid-search (before the pattern is confirmed) must run
-/// `Search`'s own teardown — restoring the pre-search selection and
-/// clearing the live pattern — exactly as `Esc` would, leaving nothing
+/// `Search`'s own teardown (restoring the pre-search selection and
+/// clearing the live pattern) exactly as `Esc` would, leaving nothing
 /// stale behind once `Prompt` takes over.
 #[test]
 fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
@@ -308,7 +308,7 @@ fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
 }
 
 /// `exit-insert` reached from outside Insert (a queued `(after 0 …)` thunk,
-/// same as a hook or async LSP callback would) must be a no-op — it has no
+/// same as a hook or async LSP callback would) must be a no-op: it has no
 /// `Insert` layer to end, so it must not cancel an unrelated `Prompt`
 /// session that happens to be the current mode layer. `cmd_exit_insert` is
 /// a registered mappable command reachable via `(call! "exit-insert" bid)` from
@@ -393,7 +393,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("foo -[b]>ar baz\n");
 
-    // Open a second buffer in a second pane, then focus that pane — `bid`
+    // Open a second buffer in a second pane, then focus that pane. `bid`
     // stays open (with its "bar" cursor) in the now-unfocused first pane.
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
@@ -423,7 +423,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
     );
 }
 
-/// `symbol-under-cursor` needs a pane, not just a buffer — kind-B fail-fast
+/// `symbol-under-cursor` needs a pane, not just a buffer: kind-B fail-fast
 /// (see `commands::CommandPane::resolve`'s doc): a pane-less handle (`(buffers)`'s
 /// own return shape) raises.
 #[test]
@@ -432,8 +432,8 @@ fn symbol_under_cursor_raises_once_no_pane_shows_the_buffer() {
     let mut ed = editor_from("foo -[b]>ar baz\n");
 
     // Redirect the sole pane to a different buffer. `bid`'s PaneBufferState
-    // stays seeded (stale) in that pane's map — `pane_state::ensure` never
-    // removes an entry — but the pane's live `buffer_id` no longer points
+    // stays seeded (stale) in that pane's map (`pane_state::ensure` never
+    // removes an entry), but the pane's live `buffer_id` no longer points
     // at it, so no pane currently shows it.
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();

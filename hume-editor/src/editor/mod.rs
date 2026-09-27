@@ -94,13 +94,13 @@ use self::tui::Tui;
 
 /// Every field a `config`/`open`/`cmd`-kind Steel builtin, `set-option!`, or
 /// `init.scm` itself can write and that must go back to its compiled-in
-/// default on `:reload-config` — the keymap, the registry of dynamic/lazy
+/// default on `:reload-config`: the keymap, the registry of dynamic/lazy
 /// commands, language identities, decorations, trigger chars, and the
 /// cursor-anchored/docked popup, plus every deferred-call queue rooted in
 /// the outgoing Steel engine. Every editing-mode layer (Insert/Command/
 /// Search/Sift/Prompt, each carrying its own minibuf and any Steel-rooted
 /// payload) and the menu, drawer, picker, and disk-change confirm overlays
-/// live on `EditorState.input` instead (an `InputStack`) — `Editor::
+/// live on `EditorState.input` instead (an `InputStack`), and `Editor::
 /// reset_config_state` resets them with its own explicit
 /// `input.truncate_to_base()` call rather than by this struct's wholesale
 /// rebuild.
@@ -111,7 +111,7 @@ use self::tui::Tui;
 /// hand-maintained list of field clears: a field added here is reset the
 /// moment it's added, with no second place to remember. Fields that must
 /// survive a reload (buffers, panes, undo history, registers, running LSP
-/// servers, …) stay on `EditorState` itself — that's the explicit,
+/// servers, …) stay on `EditorState` itself: that's the explicit,
 /// reviewable "preserved across reload" set.
 pub(crate) struct ConfigState {
     /// The trie-based keymap for each mode.
@@ -119,14 +119,14 @@ pub(crate) struct ConfigState {
     /// Registry of all mappable commands (motions, selections, edits), plus
     /// every `%define-command!`/`%declare-plugin!` dynamic and lazy entry.
     pub(in crate::editor) registry: CommandRegistry,
-    /// Every completion source, native or Steel-registered, keyed by name —
+    /// Every completion source, native or Steel-registered, keyed by name.
     /// `TypedCommand.completer` names a `Minibuf` entry here, an Insert-mode
     /// trigger invokes the `Buffer` ones. See `completion/registry.rs`'s
     /// module doc.
     pub(in crate::editor) completion_sources: completion::SourceRegistry,
     /// Registry of configured language identities.
     pub(crate) languages: LanguageRegistry,
-    /// Chars that fire `OnTriggerChar` in Insert mode — the shared,
+    /// Chars that fire `OnTriggerChar` in Insert mode: the shared,
     /// listener-agnostic table set by `(register-trigger-chars! source
     /// language chars)`, keyed by `(source, language)`: a call only ever
     /// replaces its own `(source, language)` entry, so two languages
@@ -136,32 +136,32 @@ pub(crate) struct ConfigState {
     /// `on-lsp-detach`'s clear-on-detach usage). Distinct from a `Buffer`
     /// completion source's own trigger chars (`SourceRegistry`'s
     /// `BufferSourceEntry::trigger_chars`, set by
-    /// `completion-set-trigger-chars!`) — *that* table, not this one,
+    /// `completion-set-trigger-chars!`). *That* table, not this one,
     /// decides which completion sources a keystroke invokes
     /// (`EditorState::trigger_buffer_completion`'s `Trigger::Char` arm).
     pub(in crate::editor) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
-    /// lines, EOL text, extra highlights, line backgrounds) — the render
+    /// lines, EOL text, extra highlights, line backgrounds). The render
     /// providers read these.
     pub(in crate::editor) decorations: hume_decorations::DecorationStores,
     /// Text pushed by `(set-statusline-text! source bid text)`, wholesale
     /// per `(bid, source)`, same replace semantics as `decorations`. Nested
     /// rather than flat like `trigger_chars` above: the render side needs a
     /// borrowed `(bid, &str)` lookup every frame, and a `HashMap` keyed on
-    /// `(BufferId, Box<str>)` has no borrowed-key form — flat would force an
+    /// `(BufferId, Box<str>)` has no borrowed-key form, so flat would force an
     /// allocation per element per frame just to look one up.
     ///
     /// Cleared per-buffer at `close_buffer_and_notify`, alongside
-    /// `decorations.remove_buffer` — but deliberately *not* at the other
+    /// `decorations.remove_buffer`, but deliberately *not* at the other
     /// `decorations.remove_buffer` call site, `:e!`'s reload path: that one
     /// clears decorations because their char offsets are invalidated by the
     /// reload, and pushed statusline text carries no offsets to invalidate.
     pub(crate) statusline_text:
         rustc_hash::FxHashMap<BufferId, rustc_hash::FxHashMap<Box<str>, Box<str>>>,
-    /// Deferred Steel work — events enqueued during command dispatch
+    /// Deferred Steel work: events enqueued during command dispatch
     /// (`EditorState::queue_event`) and specific-closure completions
     /// (`EditorState::queue_steel_call`: an `lsp-request` callback, a timer
-    /// thunk, a prompt callback) — drained in FIFO order by `Editor::settle`.
+    /// thunk, a prompt callback), drained in FIFO order by `Editor::settle`.
     /// One queue, not two: see `event::PendingWork`'s doc for why a shared
     /// queue matters. No work item is ever evaluated inline during command
     /// execution or a completion callback.
@@ -170,7 +170,7 @@ pub(crate) struct ConfigState {
     /// `Editor::detect_pending_languages`. Detection needs `self.scripting`
     /// (lazy-plugin activation), which the disjoint-borrow buffer-open
     /// chokepoints (`buffer::lifecycle::open_buffer_and_notify` and callers
-    /// with only `&mut EditorState`/`&mut EngineView`) never hold — so they
+    /// with only `&mut EditorState`/`&mut EngineView`) never hold, so they
     /// queue the buffer id here instead of detecting inline. Every caller
     /// with a full `&mut Editor` drains this explicitly after opening
     /// buffers; every Steel-eval path drains it at the tail of
@@ -179,9 +179,9 @@ pub(crate) struct ConfigState {
     /// In-flight `spawn-async!` jobs, keyed by the id `spawn-async!`
     /// returned to Steel. Drained by `Editor::drain_async_jobs`; dropping
     /// this map (a `:reload-config` wholesale rebuild) kills every
-    /// in-flight child for free — see `async_job::PendingJob`'s doc.
+    /// in-flight child for free; see `async_job::PendingJob`'s doc.
     pub(in crate::editor) async_jobs: rustc_hash::FxHashMap<u64, async_job::PendingJob>,
-    /// Monotonic counter minting the next `spawn-async!` job id — mirrors
+    /// Monotonic counter minting the next `spawn-async!` job id. Mirrors
     /// the picker's `token`/timer's `TimerId` shape, but lives here (rather
     /// than reusing either) since a job id is neither.
     pub(in crate::editor) next_async_job_id: u64,
@@ -189,14 +189,14 @@ pub(crate) struct ConfigState {
 
 impl ConfigState {
     /// Build the config state every session, and every `:reload-config`,
-    /// starts from — the compiled-in keymap (plus the kitty-only default
+    /// starts from: the compiled-in keymap (plus the kitty-only default
     /// binds when the terminal supports the protocol, matching
     /// [`Editor::set_kitty_support`]) and the compiled-in command registry,
     /// with every other field at its empty/`None` default.
     ///
     /// `prior_clock` is `0` at session start (nothing to carry forward) and
     /// the outgoing `ConfigState.decorations`'s own shared clock on
-    /// `:reload-config` — see [`hume_decorations::DecorationStores::reset`]'s
+    /// `:reload-config`. See [`hume_decorations::DecorationStores::reset`]'s
     /// doc for why this can't just be `Default::default()` like every other
     /// field here.
     pub(super) fn new(kitty_enabled: bool, prior_clock: u64) -> Self {
@@ -234,25 +234,25 @@ pub(in crate::editor) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
 // ── EditorState ───────────────────────────────────────────────────────────────
 //
 // All command-mutable editor data. Separated from `Editor` so the Steel VM
-// (`scripting.steel`) and editor data are sibling borrows that never alias —
+// (`scripting.steel`) and editor data are sibling borrows that never alias,
 // enabling EditorCmd to dispatch synchronously from within a Steel eval.
 
 pub(crate) struct EditorState {
     /// All open buffers. SSOT for buffer content, history, and file metadata.
     pub(crate) buffers: BufferStore,
-    /// Config-owned state reset wholesale by `:reload-config` — see
+    /// Config-owned state reset wholesale by `:reload-config`. See
     /// [`ConfigState`]'s doc for exactly what that means and why it's a
     /// separate struct.
     pub(crate) config: ConfigState,
     /// The stack of active input-handling layers above the base editing
     /// surface: `Base` (carrying the sticky Extend flag and a `Sticky`
     /// popup's slot) or one of the four other editing-mode layers
-    /// (Insert — which carries the slot too — /Command/Search/Sift/Prompt),
+    /// (Insert, which carries the slot too, or Command/Search/Sift/Prompt),
     /// plus whatever overlay widgets (disk-change confirm, fuzzy picker,
     /// selection menu, bottom drawer, an open LSP completion session, a
     /// `Scrollable` popup) are pushed above that.
     ///
-    /// Not reset by `ConfigState`'s wholesale rebuild — `Base` must survive
+    /// Not reset by `ConfigState`'s wholesale rebuild: `Base` must survive
     /// a `:reload-config`, and a still-open mode layer or overlay's Steel
     /// callback must be dropped, not fired, the same as everything
     /// `ConfigState::new` resets by construction. `Editor::
@@ -268,47 +268,47 @@ pub(crate) struct EditorState {
     /// Character argument for the current parameterized command (find/till/replace).
     pub(super) pending_char: Option<char>,
     pub(super) registers: RegisterSet,
-    /// Kill ring — bounded history of yanked / deleted text.
+    /// Kill ring: bounded history of yanked / deleted text.
     pub(super) kill_ring: KillRing,
     /// Wrapper around the OS clipboard (`arboard`).
     pub(super) clipboard: clipboard::SystemClipboard,
     /// State machine for the two-keystroke `"<reg>` register-prefix sequence.
     pub(super) register_prefix: Option<register_ops::RegisterPrefix>,
-    /// Which source a bare paste reads next, and until when — see
+    /// Which source a bare paste reads next, and until when. See
     /// [`commands::PasteStamp`].
     pub(super) paste_stamp: Option<commands::PasteStamp>,
     pub(super) should_quit: bool,
     /// Set by the platform terminator thread to the process exit code when a
-    /// signal asks the editor to quit — `0` means "no termination requested"
+    /// signal asks the editor to quit. `0` means "no termination requested"
     /// (never a valid signal-termination exit code). Polled at the top of the
     /// run loop and re-read by `hume_editor::run` after it returns, so both
     /// sides use the same code without a second channel. `should_quit` stays
     /// the single-threaded, in-editor quit path (dirty-buffer prompts, `:q`
-    /// semantics) — a signal bypasses all of that.
+    /// semantics); a signal bypasses all of that.
     pub(super) terminate_exit_code: Arc<AtomicI32>,
     /// Transient one-line message shown in the statusline after an action.
     pub(crate) status_msg: Option<String>,
     /// Keystrokes the message-log summary stays visible before auto-dismissing.
     /// Armed when `status_msg` clears with unseen entries; ticked down in
     /// `handle_key`, but only while no minibuf-mode layer is on the stack
-    /// (`input.minibuf().is_none()`) — a long `:` command shouldn't burn the
+    /// (`input.minibuf().is_none()`), since a long `:` command shouldn't burn the
     /// budget invisibly while it's being typed.
     pub(in crate::editor) summary_ttl: u8,
     /// Persistent log of warnings, errors, and trace entries.
     pub(crate) message_log: MessageLog,
-    /// All editor settings — global defaults and per-buffer-overridable values.
+    /// All editor settings: global defaults and per-buffer-overridable values.
     pub(crate) settings: EditorSettings,
     /// The character and kind from the last find/till motion.
     pub(super) last_find: Option<commands::FindChar>,
     pub(super) search: SearchState,
-    /// The single pane focused in the current editing session — the
+    /// The single pane focused in the current editing session, i.e. the
     /// *active tab's* focused pane. Every other open tab's own focused pane
     /// is stashed on `tabs` instead (see its module doc). `pub(in
     /// crate::editor)` on the field itself only gets a reader `Focus::id()`
-    /// — see `focus`'s module doc for why the `PaneId` inside stays
-    /// unreachable to a raw write from anywhere but `focus::focus_pane`.
+    /// (see `focus`'s module doc for why the `PaneId` inside stays
+    /// unreachable to a raw write from anywhere but `focus::focus_pane`).
     pub(in crate::editor) focus: focus::Focus,
-    /// Every open tab's display order and stashed window layout — see
+    /// Every open tab's display order and stashed window layout. See
     /// `tab::store`'s module doc for the model (the active tab's layout
     /// lives in `EngineView::layout`, not here).
     pub(in crate::editor) tabs: tab::TabStore,
@@ -319,18 +319,18 @@ pub(crate) struct EditorState {
     /// Set by the inline-output dispatch arm to trigger a full repaint.
     pub(in crate::editor) force_full_redraw: bool,
     /// State of the `#:inline-output` bracket for the Steel command(s)
-    /// currently on the call stack — pushed/truncated by `OutputHost::
+    /// currently on the call stack. Pushed/truncated by `OutputHost::
     /// arm_inline_output`/`truncate_inline_output`, read and driven by
     /// `EditorHostImpl::ensure_inline_output_screen`/`is_inline_output_command`
     /// so `SteelCtx` (and the gated print shims) know it's safe to write to
     /// the real stdout, and so the screen is only entered lazily, on the
     /// first byte of actual output. See [`InlineOutput`].
     pub(in crate::editor) inline_output: InlineOutput,
-    /// Reusable sticky-column buffer for vertical motion — shared by both
+    /// Reusable sticky-column buffer for vertical motion, shared by both
     /// units `apply_visual_vertical` handles (row-domain `j`/`k` and
     /// buffer-line `9j`/`9k`). Screen-relative scroll (page/half-page, mouse
     /// wheel) carries its cursor through `commands::scroll_view` + `carry`
-    /// instead — a view command, not a motion, so it does not go through
+    /// instead: a view command, not a motion, so it does not go through
     /// `apply_visual_vertical` at all (see `move_vertical`'s doc).
     pub(super) visual_move_target_display_cols: Vec<hume_editing::selection::StickyDisplayCol>,
     /// The last repeatable editing action, available for replay via `.`.
@@ -339,7 +339,7 @@ pub(crate) struct EditorState {
     ///
     /// Tracks how the current selection was built: Motion/Selection commands
     /// append or reset this buffer; a repeatable edit snapshots it into
-    /// `RepeatableAction::selection_recipe` and clears it — the native path
+    /// `RepeatableAction::selection_recipe` and clears it, the native path
     /// (`step_snapshot_recipe`) via `mem::take`, the Steel path
     /// (`Editor::dispatch`) via `.clone()` followed by an explicit clear, so
     /// an inner `call!` dispatch still sees the pre-body value to compose
@@ -351,8 +351,8 @@ pub(crate) struct EditorState {
     ///
     /// `Editor::dispatch`'s Steel branch reads this before and after running
     /// a command's body: unchanged means the body dispatched no native
-    /// command at all (a pure-Steel body), so `selection_recipe` — left
-    /// untouched from before the body ran — must still be cleared, the same
+    /// command at all (a pure-Steel body), so `selection_recipe` (left
+    /// untouched from before the body ran) must still be cleared, the same
     /// as any other non-selection command would. Changed means an inner
     /// `call!` already ran `step_update_recipe` with its own correct
     /// decision, which the Steel branch must not override. A plain
@@ -362,13 +362,13 @@ pub(crate) struct EditorState {
     pub(super) selection_recipe_writes: u64,
     /// Set by `refuse_if_read_only` (and by a native `EditorCmd` body
     /// returning `Err`) to tell `commands::run`'s AFTER stage the
-    /// command's body did not do its job — a read-only refusal, or an error
+    /// command's body did not do its job: a read-only refusal, or an error
     /// mid-body. A repeatable command in that state must not stamp
     /// `last_repeatable_action`: there is nothing new to repeat, and doing so
     /// would silently discard whatever real action was recorded before (see
     /// `commands/pipeline.rs`'s `step_stamp_repeatable` call site).
     /// `commands::run` resets this to `false` at its own BEFORE stage
-    /// and is the only reader, immediately after BODY in that same call — the
+    /// and is the only reader, immediately after BODY in that same call. The
     /// Steel dispatch path (`Editor::dispatch`) never reads or resets it
     /// directly, but any native `call!` it makes goes through
     /// `commands::run` too, so a stale value from an earlier dispatch
@@ -379,26 +379,26 @@ pub(crate) struct EditorState {
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
-    /// `true` for `replay_dot`'s whole extent, `false` otherwise — read by
+    /// `true` for `replay_dot`'s whole extent, `false` otherwise. Read by
     /// [`EditorState::refuse_during_dot`], which every interactive
     /// builtin (`completion-accept!`/`picker!`/`live-picker!`/
     /// `completion-trigger`) opens with, to refuse loudly if a replayed
     /// binding reaches one of them: reaching an interactive builtin during
     /// `.` means the binding decided differently than it did live (it was
-    /// non-interactive then, or `.` wouldn't be re-running it at all — see
+    /// non-interactive then, or `.` wouldn't be re-running it at all; see
     /// [`replay::InsertInput::Result`]'s own doc), and there is no recorded
     /// pick to hand back.
     pub(super) dot_replay: bool,
     /// `true` from the moment `handle_insert` matches a trie leaf until
-    /// that dispatch returns — dispatch never yields before then, all the
+    /// that dispatch returns. Dispatch never yields before then, all the
     /// way through a Steel `call!` (`Editor::dispatch` → `run_steel_command`
     /// → `%call-native!` → `run_command_sync`), so this is never observed
     /// stale. `false` outside that window, including while a hook queued
     /// during the same keypress drains later in `settle`. Set via
     /// `Editor::with_insert_key_dispatch`. Read by `commands::
-    /// repeat_slot_owned` and `insert-key!` — see each one's own doc for why.
+    /// repeat_slot_owned` and `insert-key!`; see each one's own doc for why.
     pub(super) in_insert_key_dispatch: bool,
-    /// The editor's one live Insert or paste undo group, if any — see
+    /// The editor's one live Insert or paste undo group, if any. See
     /// [`edit_session::EditSession`]'s own doc, including its own
     /// `dot_capture` field.
     pub(in crate::editor) active_session: Option<edit_session::EditSession>,
@@ -421,20 +421,20 @@ pub(crate) struct EditorState {
     pub(super) is_replaying: bool,
     /// Set by `Editor::handle_input` right after dispatch whenever that
     /// input logged a new warning or error, cleared by `Editor::settle` once
-    /// its drain (including the buffer-enter disk check) has run — the
+    /// its drain (including the buffer-enter disk check) has run. The
     /// window spans "input dispatched" to "its consequences settled", not
     /// one call. Read only by `can_open_confirm`, so a command's own failure
     /// message (`:qa` naming the first dirty buffer) can't be silently
     /// replaced by an unrelated disk-change confirm opened by the focus move
     /// that triggered it. Always `false` outside that window.
     pub(super) message_logged_this_input: bool,
-    /// The buffer that owned focus as of the last `Editor::settle()` pass —
+    /// The buffer that owned focus as of the last `Editor::settle()` pass.
     /// `None` only before the first `settle()` ever runs, so the startup
     /// buffer legitimately raises `OnBufferEnter` (matching Vim's
     /// `BufEnter`). The single observation baseline for the focus diff; see
     /// `Editor::detect_buffer_enter`.
     pub(super) last_entered_buffer: Option<BufferId>,
-    /// The mode observed as of the last `drain_pending_work` pass — the
+    /// The mode observed as of the last `drain_pending_work` pass: the
     /// baseline `Editor::detect_mode_change` diffs `mode()` against to raise
     /// `OnModeChange`, the same observation-point shape `last_entered_buffer`
     /// uses for `OnBufferEnter`. Re-baselined by `reset_config_state` right
@@ -447,7 +447,7 @@ pub(crate) struct EditorState {
     pub(super) cwd: PathBuf,
     /// Every overlay view shared between the per-frame write side (each
     /// layer's own `sync_*_view`, `input_stack/{command,popup,menu,
-    /// completion,drawer,picker}.rs`) and the engine's render side —
+    /// completion,drawer,picker}.rs`) and the engine's render side:
     /// minibuf-completion, popup (cursor + docked), menu, completion menu,
     /// drawer, picker. One
     /// `hume_ui::OverlayViews` instead of seven hand-allocated `Arc`s, each
@@ -456,14 +456,14 @@ pub(crate) struct EditorState {
     pub(in crate::editor) views: hume_ui::OverlayViews,
     /// Shared tab-bar view: written every frame by `Editor::prepare_frame`
     /// (`sync_tabline_view`), read by `TablineWidget`. Not part of
-    /// `hume_ui::OverlayViews` above — `TablineViewState` holds a `TabId`,
+    /// `hume_ui::OverlayViews` above: `TablineViewState` holds a `TabId`,
     /// an `editor`-crate type `hume-ui` cannot depend on (see
     /// `crate::tabline`'s own module doc).
     pub(in crate::editor) tabline_view:
         hume_engine::lock::SharedSlot<crate::tabline::TablineViewState>,
     /// Cross-thread waker clone (see `Editor::open`'s `wake` param), reachable
-    /// here so `EditorHostImpl` — which only ever holds a disjoint `&mut
-    /// EditorState` borrow, never a whole `&mut Editor` — can hand it to a
+    /// here so `EditorHostImpl` (which only ever holds a disjoint `&mut
+    /// EditorState` borrow, never a whole `&mut Editor`) can hand it to a
     /// spawned picker source (`picker-source-spawn!`) so its reader thread
     /// can wake the event loop. A no-op `Arc` in tests/headless.
     pub(super) wake: Arc<dyn Fn() + Send + Sync>,
@@ -471,14 +471,14 @@ pub(crate) struct EditorState {
 
 /// The trivial-field baseline both `EditorState` constructors build on.
 ///
-/// Not a usable editor on its own — no buffers, no panes, a null
+/// Not a usable editor on its own: no buffers, no panes, a null
 /// `focus`, a clipboard with no handle, and a no-op waker. It exists
 /// so the fields that are identical at both construction sites (`Editor::open`
 /// and `Editor::for_testing`) are written once. Every field whose real value
 /// differs between those two sites is set here to its inert (test) form and
 /// named explicitly by `Editor::open`, so no production value is inherited by
 /// accident. A field added later whose production value must differ from its
-/// baseline needs the same treatment — the compiler will not ask for it.
+/// baseline needs the same treatment; the compiler will not ask for it.
 impl Default for EditorState {
     fn default() -> Self {
         let settings = EditorSettings::default();
@@ -507,7 +507,7 @@ impl Default for EditorState {
             last_find: None,
             search: SearchState::default(),
             focus: focus::Focus::default(),
-            // Placeholder, like `focus` above — every real caller
+            // Placeholder, like `focus` above: every real caller
             // (`Editor::open`, `for_testing`) overrides both together with a
             // real seeded pane, never relies on this default.
             tabs: tab::TabStore::new(PaneId::default()).0,
@@ -568,7 +568,7 @@ pub(in crate::editor) struct LayoutKey {
 
 impl LayoutKey {
     /// The subset of `self` a `DisplayLineMap` needs, as one
-    /// `hume_engine::display_lines::line_store::FormatKey` — see
+    /// `hume_engine::display_lines::line_store::FormatKey`. See
     /// [`EditorState::format_key`]'s own doc for which fields and why. A
     /// caller that has already resolved a `LayoutKey` (`frame.rs`'s scroll
     /// step, which needs both) derives its `FormatKey` from here instead of
@@ -594,29 +594,29 @@ impl EditorState {
     }
 
     /// The minibuf that owns the statusline row and the hardware cursor
-    /// right now — `crate::statusline`'s reader and `Editor::run`'s cursor
+    /// right now: `crate::statusline`'s reader and `Editor::run`'s cursor
     /// placement. Not the same query as `InputStack::minibuf()`: a
     /// minibuf-mode layer can be buried under a picker or menu (neither is a
     /// mode layer, so `mode()` doesn't change, but `top()` does), in which
-    /// case it no longer owns the keyboard or this row — painting/placing
+    /// case it no longer owns the keyboard or this row, and painting/placing
     /// the cursor against it here would show a dead prompt while whatever's
     /// on top reads the keys. `Some` only when the minibuf-owning layer is
-    /// `top()` — see [`Self::confirm`] (`input_stack/confirm.rs`) for the
+    /// `top()`. See [`Self::confirm`] (`input_stack/confirm.rs`) for the
     /// identical carve-out and why this wrapper exists instead of exposing
     /// `input` itself.
     pub(crate) fn minibuf(&self) -> Option<&MiniBuffer> {
         self.input.top_minibuf()
     }
 
-    /// The document-mode cursor shape for the live mode — how the document's
+    /// The document-mode cursor shape for the live mode: how the document's
     /// selection heads are painted, and (outside a prompt) the real terminal
     /// cursor's shape.
     ///
     /// Only Insert is configurable (`cursor-shape-insert`): a terminal has one
     /// hardware cursor, so HUME offers no shape choice for Normal/Extend
     /// (always `Block`, matching Helix's own default), and Command/Search/
-    /// Sift also resolve to `Block` here — their document heads render like
-    /// Normal mode while a prompt is open — but their *real* terminal cursor
+    /// Sift also resolve to `Block` here (their document heads render like
+    /// Normal mode while a prompt is open), but their *real* terminal cursor
     /// never reflects this value: it lives in the minibuf, placed by a
     /// separate branch in `Editor::run`'s `cursor_screen` that is
     /// unconditionally a bar regardless of what this method returns. This is
@@ -636,7 +636,7 @@ impl EditorState {
     /// built from. `format_key` and `layout_key` each resolve this on
     /// `pane`'s current state, and their sharing that pane's line store
     /// (`format_key`) or its reveal signal (`layout_key`) depends entirely
-    /// on every caller resolving a bit-identical value — one function
+    /// on every caller resolving a bit-identical value. One function
     /// rather than several independently-maintained call sites is what
     /// makes that true by construction instead of by convention.
     pub(in crate::editor) fn layout_key(&self, pane: &hume_engine::pane::Pane) -> LayoutKey {
@@ -644,9 +644,9 @@ impl EditorState {
         LayoutKey {
             buffer_tag: [
                 // Not `{:?}`-formatted: this is a value to compare, not one
-                // to show, and `as_ffi` folds the key's index and version —
-                // the two things that distinguish a reused slot from the
-                // buffer that held it before — into exactly that.
+                // to show, and `as_ffi` folds the key's index and version
+                // (the two things that distinguish a reused slot from the
+                // buffer that held it before) into exactly that.
                 slotmap::Key::data(&pane.buffer_id).as_ffi(),
                 doc.text_gen,
                 self.config.decorations.generation(pane.buffer_id),
@@ -662,20 +662,20 @@ impl EditorState {
 
     /// Every input `pane`'s line formats depend on, as one
     /// `hume_engine::display_lines::line_store::FormatKey`: [`Self::layout_key`]'s
-    /// `buffer_tag`, wrap mode, tab width and whitespace config — the
+    /// `buffer_tag`, wrap mode, tab width and whitespace config: the
     /// subset of [`LayoutKey`] the line store's scope actually needs.
     /// `content_width` reaches formatting only through `wrap_mode`'s own
     /// resolved width (see `hume_engine::display_lines::line_store::FormatKey`'s
-    /// own doc), and `height`/`scrolloff` don't reach formatting at all —
+    /// own doc), and `height`/`scrolloff` don't reach formatting at all:
     /// neither names a line's shape, only where the viewport settles
-    /// against one already formatted — so none of the three earns a place
+    /// against one already formatted, so none of the three earns a place
     /// in this narrower key.
     ///
     /// The single composition every `DisplayLineMap` in this crate is built from.
     /// The frame's scroll pass (`commands::pane_display_lines`) and its render
     /// pass (`frame.rs`'s `resolve_pane_settings`) each call this on `pane`'s
     /// current state, and their sharing that pane's line store depends
-    /// entirely on the two resolving a bit-identical key — one function
+    /// entirely on the two resolving a bit-identical key. One function
     /// rather than two independently-maintained call sites is what makes
     /// that true by construction instead of by convention.
     pub(in crate::editor) fn format_key(
@@ -687,17 +687,17 @@ impl EditorState {
 
     // ── Quit ──────────────────────────────────────────────────────────────────
 
-    /// Unconditional quit-the-whole-editor. Used by `:qa!`'s force path —
+    /// Unconditional quit-the-whole-editor. Used by `:qa!`'s force path:
     /// "quit all, no confirmation".
     pub(in crate::editor) fn request_quit(&mut self) {
         self.should_quit = true;
     }
 
-    /// Every source registered for `(ch, language)` — `OnTriggerChar`'s fire
+    /// Every source registered for `(ch, language)`. `OnTriggerChar`'s fire
     /// site (input_stack/insert.rs) fires once per entry, so two sources
     /// registering the same char for the same language each get their own
     /// hook fire. A buffer with no language (`language: None`) never
-    /// matches anything — trigger chars are always server-derived, and a
+    /// matches anything: trigger chars are always server-derived, and a
     /// server attach implies a language.
     pub(in crate::editor) fn trigger_sources_for(
         &self,
@@ -748,7 +748,7 @@ impl EditorState {
     }
 
     /// Retires whichever completion layer is open, wherever it is on the
-    /// stack — a completion layer can sit under a `Popup`, and a
+    /// stack: a completion layer can sit under a `Popup`, and a
     /// pop-if-top rule would leave a stale session behind one. At most one
     /// of the two is ever actually open; `retire` no-ops on the other. A
     /// no-op when no session is open at all.
@@ -758,11 +758,11 @@ impl EditorState {
     }
 
     /// [`Self::dismiss_completion`]'s variant for the two accept paths,
-    /// which need the session *by value* rather than merely retired —
+    /// which need the session *by value* rather than merely retired.
     /// [`Self::take_layer`] handles the truncate-and-pull-out; this clears
     /// the menu view directly rather than through the layer's own
     /// `tear_down` (`take_layer` never runs it, only whatever was pushed
-    /// above it). `Buffer`-target only — both accept paths only ever act on
+    /// above it). `Buffer`-target only: both accept paths only ever act on
     /// one. `None` when no `Buffer` session is open.
     pub(in crate::editor) fn take_buffer_completion(
         &mut self,
@@ -774,7 +774,7 @@ impl EditorState {
         Some(completion.session)
     }
 
-    /// Enqueue `event` to fire after the current command returns — the
+    /// Enqueue `event` to fire after the current command returns. This is the
     /// single raise path every event goes through, reached as
     /// `self.state.queue_event(…)` from `Editor` methods and directly, like
     /// `settings::ops::apply_global`, from free functions that only hold
@@ -785,14 +785,14 @@ impl EditorState {
             .push_back(event::PendingWork::Event(event));
     }
 
-    /// Queue `(proc, args)` for evaluation at the next drain boundary —
+    /// Queue `(proc, args)` for evaluation at the next drain boundary,
     /// never called inline (LSP dispatch, timer fire, and minibuffer key
     /// handling all detect their completion from inside a borrow that can't
     /// re-enter Steel). Shared delivery mechanism for the `lsp-request`
     /// callback, timer thunks, and the prompt/menu/drawer/picker callbacks.
     /// Lives on `EditorState` (not `Editor`) so `picker::close_picker` and
-    /// `EditorHostImpl`'s spawn-failure arm — which only hold `&mut
-    /// EditorState` — can reach it too, the same reason `queue_event` lives
+    /// `EditorHostImpl`'s spawn-failure arm (which only hold `&mut
+    /// EditorState`) can reach it too, the same reason `queue_event` lives
     /// here.
     pub(in crate::editor) fn queue_steel_call(
         &mut self,
@@ -804,7 +804,7 @@ impl EditorState {
 
     /// [`Self::queue_steel_call`]'s counterpart for a call carrying a
     /// dot-capture handed off from a picker (see
-    /// [`edit_session::DotCapture`]'s own doc) — `picker::close_picker_with`/
+    /// [`edit_session::DotCapture`]'s own doc). `picker::close_picker_with`/
     /// `PickerLayer::tear_down` are the only callers that ever pass `Some`.
     pub(in crate::editor) fn queue_steel_call_with_capture(
         &mut self,
@@ -825,7 +825,7 @@ impl EditorState {
     /// [`Self::queue_steel_call`]'s counterpart for an `lsp-request`
     /// callback: carries the `ResponseAnchor` already checked once at LSP
     /// drain time, so `Editor::run_pending_batch` can re-check it at
-    /// dequeue — see `PendingWork::Call`'s own doc for why the drain-time
+    /// dequeue. See `PendingWork::Call`'s own doc for why the drain-time
     /// check alone isn't enough. Never carries a dot-capture: an LSP
     /// response is never a picker's own resolution.
     pub(in crate::editor) fn queue_steel_call_anchored(
@@ -855,9 +855,9 @@ pub(crate) struct Editor {
     pub(in crate::editor) kitty_enabled: bool,
     /// The embedded Steel scripting host.
     pub(super) scripting: Option<hume_scripting::ScriptingHost>,
-    /// Where this session's config comes from — `--config FILE`,
+    /// Where this session's config comes from: `--config FILE`,
     /// `--no-config`, or the default `<config_dir>/init.scm`. Set once via
-    /// `set_config_source`, before the first `init_scripting` call —
+    /// `set_config_source`, before the first `init_scripting` call. It
     /// outlives startup so a reload re-runs the same source the session
     /// booted from (and `:reload-config` refuses to run at all under
     /// `ConfigSource::Skip`, see `typed_reload_config`).
@@ -872,19 +872,19 @@ pub(crate) struct Editor {
     /// `after`/`debounce` builtins.
     timer_wheel: timers::TimerWheel,
     /// `TimerId -> {Steel thunk, or native action}`, keeping `timers.rs`
-    /// itself payload-agnostic. Entry removed on fire or cancel — never
+    /// itself payload-agnostic. Entry removed on fire or cancel, never
     /// leaked.
     timer_payloads: rustc_hash::FxHashMap<timers::TimerId, timer_bridge::TimerPayload>,
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
-    /// any — looked up to cancel-and-replace on the next change.
+    /// any, looked up to cancel-and-replace on the next change.
     viewport_debounce: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
     /// `(buffer_id, top_line, top_slot, height)` as of the last frame this
-    /// pane was *visible*, per pane — `prepare_frame`'s scroll step compares
+    /// pane was *visible*, per pane. `prepare_frame`'s scroll step compares
     /// against this to detect a real viewport change worth debouncing, rather
     /// than firing every frame regardless. The buffer id is part of the key
     /// for the same reason `virtual_lines_synced` below carries one: a pane
-    /// switching buffers at unchanged `(top_line, top_slot, height)` — `:b#`,
-    /// a tab switch back onto identical geometry — must still count as a
+    /// switching buffers at unchanged `(top_line, top_slot, height)` (`:b#`,
+    /// a tab switch back onto identical geometry) must still count as a
     /// change, or the newly-shown buffer's viewport-driven consumers (LSP
     /// inlay hints) never re-fire. `top_slot` is in the key, not just
     /// `top_line`, so a view-led scroll landing entirely within one line's
@@ -898,31 +898,31 @@ pub(crate) struct Editor {
         (BufferId, hume_rope::line::ContentLine, usize, u16),
     >,
     /// Hash of everything `sync_tabline_view`'s rebuild depends on, as of
-    /// the last frame it actually ran the rebuild — `None` before the first
+    /// the last frame it actually ran the rebuild. `None` before the first
     /// frame. An unchanged hash means the previous frame's
     /// `TablineViewState` is still correct, so the per-tab label rebuild
     /// (one allocating `display_name()` call per tab) and the scroll probe
-    /// can both be skipped entirely on every steady-state frame — the vast
+    /// can both be skipped entirely on every steady-state frame, the vast
     /// majority, since nothing about the tab bar changes on a typical
     /// keystroke. See `Editor::tabline_signature`'s own doc for what it
     /// covers.
     last_tabline_signature: Option<u64>,
     /// `(buffer_id, decorations.generation(buffer_id))` as of each
-    /// pane's last mirror into its `PaneVirtualLines` Arc — `prepare_frame`
+    /// pane's last mirror into its `PaneVirtualLines` Arc. `prepare_frame`
     /// compares against this to skip the rebuild on frames where neither
     /// that buffer's stamp nor the pane's buffer changed, since this runs in
     /// scroll/cursor math too, not just render. The buffer id is part of the
     /// key so a pane switching buffers always rebuilds, even onto a buffer
-    /// whose stamp happens to match the old one — otherwise it would keep
+    /// whose stamp happens to match the old one; otherwise it would keep
     /// mirroring the previous buffer's virtual lines.
     virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
     /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,
     /// Whether [`Editor::run`]'s event loop owns the terminal, and the
-    /// handle to drive it when it does — see [`Tui`]'s own module doc for
+    /// handle to drive it when it does. See [`Tui`]'s own module doc for
     /// why these are one field. Tests and headless `run_keys` dispatch
-    /// commands directly and never enter `run`, so this stays `Off` there —
+    /// commands directly and never enter `run`, so this stays `Off` there:
     /// dispatch reads it to skip the inline-output terminal bracket
     /// (alt-screen toggle + "press any key to return" block) when there is
     /// no TUI to suspend and no interactive user to press a key.
@@ -931,13 +931,13 @@ pub(crate) struct Editor {
     /// mouse tracking mode. `prepare_frame` compares this against the live
     /// `state.settings` values every frame and re-applies the terminal mode
     /// when they differ, so `:set global mouse-enabled=…`/`mouse-select=…`
-    /// take effect immediately instead of only at the next restart — see
+    /// take effect immediately instead of only at the next restart. See
     /// `hume_platform::terminal::set_mouse_mode`.
     applied_mouse_mode: (bool, bool),
     /// Startup cursor placements queued by `queue_startup_position` (one per
     /// CLI `path:line[:col]` argument) before `run`'s event loop starts.
     /// Applied and drained by `apply_startup_positions`, once, right after
-    /// the loop's own first `settle()` — early enough that `OnBufferOpen`/
+    /// the loop's own first `settle()`: early enough that `OnBufferOpen`/
     /// `OnLanguageSet` hooks still get to run first, late enough that the
     /// loop's first `sync_viewport_dims` has already replaced `Pane::new`'s
     /// 80x24 placeholder with the real terminal size centring needs.
@@ -959,7 +959,7 @@ impl Editor {
 
     /// Mutable reference to the focused buffer.
     ///
-    /// Uses a split borrow — `buffers` and other fields on `Editor` are
+    /// Uses a split borrow: `buffers` and other fields on `Editor` are
     /// disjoint, so you can hold this reference while reading e.g. `self.state.settings`.
     /// Do NOT keep this reference live across a call that also borrows `self`.
     #[cfg(test)]

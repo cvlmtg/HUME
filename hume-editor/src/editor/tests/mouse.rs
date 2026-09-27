@@ -19,7 +19,7 @@ fn mouse_drag(x: u16, y: u16) -> TerminalEvent {
     })
 }
 
-/// A left-button-release mouse event — the tail of a gesture that began
+/// A left-button-release mouse event: the tail of a gesture that began
 /// before whatever's on top of the stack right now, unlike `mouse_left_down`
 /// (used by the layer-gating tests below to distinguish a fresh press from a
 /// release the layer must not treat as stray input).
@@ -50,7 +50,7 @@ fn open_test_picker(ed: &mut Editor, items: &[&str]) {
     picker::open_picker(&mut ed.state, &ed.view, session);
 }
 
-/// `tab`'s start column in the synced tabline view — computed the same way
+/// `tab`'s start column in the synced tabline view, computed the same way
 /// `tabline_click` resolves one, without hardcoding a column.
 fn tab_start_x(ed: &Editor, tab: crate::editor::tab::TabId) -> u16 {
     let guard = ed.state.tabline_view.read();
@@ -63,7 +63,7 @@ fn tab_start_x(ed: &Editor, tab: crate::editor::tab::TabId) -> u16 {
 }
 
 /// Regression: `end_insert_session` can mutate the buffer (the blank-line
-/// indent trim) — a mouse click that exits Insert mode
+/// indent trim), so a mouse click that exits Insert mode
 /// must recompute its char offset AFTER that mutation, not before, or a
 /// stale offset can land past the shrunk buffer's end.
 #[test]
@@ -71,14 +71,14 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     // "  x\ncd\n": enter Insert with the cursor on line 0's own trailing '\n'.
     let mut ed = editor_from("  x-[\n]>cd\n");
     // The click below is hit-tested against pane rects, which only
-    // `prepare_frame` normally populates — set it directly, matching
+    // `prepare_frame` normally populates, so set it directly, matching
     // `Pane::new`'s default 80×24 viewport, since this test exercises the
     // click/mode-transition path, not a full frame.
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on *that* line's
-    // trailing '\n' — a blank, auto-indented line (buffer is now
+    // trailing '\n', a blank, auto-indented line (buffer is now
     // "  x\n  \ncd\n", cursor at char 6). The session's own autoindent record
     // now names it, so exiting Insert now will trim that "  ".
     assert_eq!(state(&ed), "  x\n  -[\n]>cd\n");
@@ -89,7 +89,7 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
 
     assert_eq!(ed.state.mode(), Mode::Normal);
     // The blank line's "  " is trimmed on exit (buffer shrinks to
-    // "  x\n\ncd\n"), and the click must land on 'd' in the *new* buffer —
+    // "  x\n\ncd\n"), and the click must land on 'd' in the *new* buffer,
     // not at the stale pre-trim offset, which would land 2 chars past 'd'
     // and out of bounds, since the buffer is now 2 chars shorter than it was
     // when the click coordinates were captured.
@@ -115,7 +115,7 @@ fn drag_extends_selection_from_click_anchor() {
 
 /// A drag whose coordinates fall inside a *different* pane's rect (a fast
 /// mouse move during a `:vsplit` drag easily crosses the seam) must be
-/// ignored, not translated as if it were still in the originating pane —
+/// ignored, not translated as if it were still in the originating pane:
 /// `rect_relative`'s `x - rect.x`/`y - rect.y` would otherwise underflow when
 /// the drag lands left of/above the originating pane's own rect origin.
 #[test]
@@ -136,7 +136,7 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     assert_eq!(ed.state.focus.id(), pid_b);
     let head_after_click = ed.current_selections().primary().head();
 
-    // Drag to col 0 — inside pane A's rect (x ∈ [0, 49)), left of pane B's
+    // Drag to col 0, inside pane A's rect (x ∈ [0, 49)), left of pane B's
     // own rect.x (50). Without `rect_relative`'s `contains` guard, `x - rect.x`
     // underflows a u16 subtraction.
     ed.handle_input(mouse_drag(0, 0));
@@ -151,7 +151,7 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
 // ── Scroll wheel ─────────────────────────────────────────────────────────
 
 /// The scroll wheel moves the viewport AND every cursor together, by the
-/// same `mouse_scroll_lines` amount — not just the viewport: `carry`'s own
+/// same `mouse_scroll_lines` amount, not just the viewport: `carry`'s own
 /// walk is what lands each head inside the new viewport, so
 /// `PaneBufferState::reveal_pending` stays unset and `Viewport::reveal`
 /// never runs to snap the viewport back on the next frame.
@@ -164,7 +164,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     let mut ed = editor_from(&lines);
 
     // Scroll the viewport down to line 10, then place the cursor 5 rows into
-    // it (line 15) — in-band for the default scrolloff (margin 3, target
+    // it (line 15), in-band for the default scrolloff (margin 3, target
     // 20), not pinned to the top itself: `carry`'s band clamp would
     // otherwise treat a cursor sitting exactly at `top` (row 0, below
     // margin) as needing correction, masking whether the cursor actually
@@ -201,7 +201,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
 }
 
 /// At the top of the document with the cursor already on line 0, neither the
-/// viewport nor the cursor has anywhere to go — `move_vertical` (like every
+/// viewport nor the cursor has anywhere to go: `move_vertical` (like every
 /// `j`/`k`/motion) already leaves a document-start cursor untouched, the same
 /// as `commands::scroll_view`'s other callers (`Ctrl-u`, `PageUp`).
 #[test]
@@ -218,10 +218,10 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     assert_eq!(ed.current_selections().primary().head(), co(0));
 }
 
-/// `scroll_view` — shared with `Ctrl-d`/`Ctrl-u`/`PageDown`/`PageUp` — always
+/// `scroll_view` (shared with `Ctrl-d`/`Ctrl-u`/`PageDown`/`PageUp`) always
 /// carries the cursor, even when the viewport itself has nowhere to go
 /// because the whole document already fits on screen. The cursor stops
-/// exactly `mouse_scroll_lines` (1) below the top, on "b" (row 1) — short of
+/// exactly `mouse_scroll_lines` (1) below the top, on "b" (row 1), short of
 /// the default scrolloff margin (3), but `top` is already at the document's
 /// own first line with no room to retreat any further to honor it, so
 /// `carry`'s band clamp leaves the landing alone rather than pushing it
@@ -237,7 +237,7 @@ fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() 
     assert_eq!(
         ed.view.panes[pid].viewport.top().line,
         hume_rope::line::ContentLine::new(0),
-        "nothing to scroll — the 3-line document already fits"
+        "nothing to scroll: the 3-line document already fits"
     );
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -250,7 +250,7 @@ fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() 
 /// A wheel notch that provably cannot move anything must still not touch
 /// selections it has no reason to touch: `apply_visual_vertical` must not
 /// rebuild the selection set with `MotionMode::Move` when `head` itself
-/// doesn't move, since that collapses `anchor` onto `head` regardless — a
+/// doesn't move, since that collapses `anchor` onto `head` regardless: a
 /// one-line document has nowhere for `move_vertical` to go in either
 /// direction.
 #[test]
@@ -267,11 +267,11 @@ fn a_wheel_notch_that_can_move_nothing_keeps_the_selection() {
     assert_eq!(ed.current_selections().primary().head(), co(2));
 }
 
-/// A collapsed split (0 rows) has no bottom row to bound a scroll against —
+/// A collapsed split (0 rows) has no bottom row to bound a scroll against:
 /// `Viewport::geometry`'s own zero-height guard, not `Viewport::scroll_by`'s
 /// downward clamp, is what has to stop this. `mouse_wheel`'s `(0, 0)` never
 /// hits a real pane rect here (`last_pane_area` is never populated), so
-/// `mouse_scroll` takes its focused-pane fallback — the collapsed pane is
+/// `mouse_scroll` takes its focused-pane fallback. The collapsed pane is
 /// reachable that way with several stacked splits in a short terminal, same
 /// as it would be by scrolling directly over it.
 #[test]
@@ -296,15 +296,15 @@ fn a_wheel_notch_in_a_zero_height_pane_leaves_the_viewport_alone() {
 
 /// After `:vsplit`, a click must resolve against the pane *under the
 /// pointer*, not the currently focused one, and its coordinates must be
-/// translated into that pane's own rect (subtracting the rect's origin) —
+/// translated into that pane's own rect (subtracting the rect's origin),
 /// not used as if they were already pane-relative.
 ///
 /// Terminal width 100, one real buffer line: `:vsplit` (1-column seam,
 /// `split_rect`'s `0.5` ratio) gives pane A `x ∈ [0, 49)`, pane B
-/// `x ∈ [50, 100)` — the same halves `vsplit_sizes_both_panes_from_layout`
+/// `x ∈ [50, 100)`, the same halves `vsplit_sizes_both_panes_from_layout`
 /// (`multi_pane.rs`) pins.
 ///
-/// Gutter width differs *by pane*, not just by test — worth spelling out
+/// Gutter width differs *by pane*, not just by test. Worth spelling out
 /// since it's easy to assume otherwise: pane A is the original
 /// `editor_from`/`Pane::new` pane, which registers no gutter columns at all
 /// (gutter width 0); pane B is `:vsplit`'s freshly-opened pane, built through
@@ -369,7 +369,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
         "pane A's selection from the first click must survive untouched"
     );
 
-    // Click the statusline (row 24 — usable pane height is 24 after the
+    // Click the statusline (row 24: usable pane height is 24 after the
     // statusline reservation, so row 24 is outside every pane's rect).
     ed.handle_input(mouse_left_down(10, 24));
     assert_eq!(
@@ -390,7 +390,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
 }
 
 /// A wheel notch over an *unfocused* pane scrolls that pane, not the focused
-/// one — the same hit-test `mouse_left_down` already does — and does so
+/// one (the same hit-test `mouse_left_down` already does), and does so
 /// without moving focus there (unlike a click, a wheel notch shouldn't be
 /// able to exit Insert mode in the focused pane by accident).
 ///
@@ -412,9 +412,9 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
     ed.prepare_frame(&mut ctx);
 
     // Scroll pane A's viewport to line 10 and park its own cursor 5 rows
-    // into it (line 15, in-band for the default scrolloff — see
-    // `scroll_up_moves_viewport_and_cursor_together`'s doc for why not row 0)
-    // — the same setup that test uses, reproduced per-pane since both panes
+    // into it (line 15, in-band for the default scrolloff; see
+    // `scroll_up_moves_viewport_and_cursor_together`'s doc for why not row 0):
+    // the same setup that test uses, reproduced per-pane since both panes
     // view the same buffer but keep independent viewports/selections.
     ed.view.panes[pid_a].viewport.seed_top_for_test(
         hume_engine::display_lines::DisplayLinePos::new(hume_rope::line::ContentLine::new(10), 0),
@@ -433,7 +433,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         .primary()
         .head();
 
-    // Wheel at screen col 7 (inside pane A's rect, gutter width 0 — see
+    // Wheel at screen col 7 (inside pane A's rect, gutter width 0; see
     // `vsplit_click_...`'s doc for why pane A has no gutter).
     ed.handle_input(mouse_wheel_at(7, 0, false));
 
@@ -475,8 +475,8 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
 }
 
 /// A wheel notch landing outside every pane's rect (the statusline row here)
-/// has no pointed-at pane to scroll, unlike a click — which is a no-op off-
-/// pane — so it falls back to scrolling the *focused* pane.
+/// has no pointed-at pane to scroll, unlike a click (which is a no-op off-
+/// pane), so it falls back to scrolling the *focused* pane.
 #[test]
 fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
     let mut ed = unwrapped_editor(&numbered_lines(30), 0);
@@ -502,7 +502,7 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
         .set_selections(SelectionSet::single(Selection::collapsed(head_b)));
 
     // Row 24 is the statusline (usable pane height is 24 after its
-    // reservation) — outside every pane's rect, same row
+    // reservation), outside every pane's rect, same row
     // `vsplit_click_focuses_and_resolves_against_the_clicked_pane` uses.
     ed.handle_input(mouse_wheel_at(10, 24, false));
 
@@ -520,10 +520,10 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
 ///
 /// Terminal height 25 (24 usable after the statusline): `:split` (1-row
 /// seam, ratio 0.5) gives pane A (top) `y ∈ [0, 11)`, pane B (bottom)
-/// `y ∈ [12, 24)` — the same halves `split_sizes_both_panes_stacked`
+/// `y ∈ [12, 24)`, the same halves `split_sizes_both_panes_stacked`
 /// (`multi_pane.rs`) pins. Pane B is `:split`'s freshly-opened pane (via
 /// `build_pane`), so its gutter is 4 (line-number digit_count(5) + 1 = 2,
-/// sign column default width 2 — see the `:vsplit` test above for why this
+/// sign column default width 2; see the `:vsplit` test above for why this
 /// differs from the source pane).
 #[test]
 fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
@@ -539,7 +539,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
 
     // Absolute row 15 = pane B's rect.y(12) + relative row 3 → buffer line 3
     // ("DDDD"). Column 6 = gutter(4) + content col 2 → 'D' (any content col
-    // 0..3 lands on 'D' — the whole line is the same character).
+    // 0..3 lands on 'D': the whole line is the same character).
     ed.handle_input(mouse_left_down(6, 15));
 
     let sel = ed.state.panes.state[pid_b][bid].selections().primary();
@@ -554,8 +554,8 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
 
 // ── Tabline click ────────────────────────────────────────────────────────────
 
-/// A click on the tab bar switches to the tab it lands on, and — unlike a
-/// click that misses every pane's rect (the statusline case above) — never
+/// A click on the tab bar switches to the tab it lands on, and, unlike a
+/// click that misses every pane's rect (the statusline case above), never
 /// falls through to `pane_at_screen_pos`.
 #[test]
 fn click_on_a_tab_switches_to_it() {
@@ -572,7 +572,7 @@ fn click_on_a_tab_switches_to_it() {
         "setup: the tabline must have reserved row 0"
     );
 
-    // Row 0, column 0 — inside the padded label of the first tab (tab A,
+    // Row 0, column 0, inside the padded label of the first tab (tab A,
     // scroll starts at 0 with no overflow indicator at this width).
     ed.handle_input(mouse_left_down(0, 0));
 
@@ -580,7 +580,7 @@ fn click_on_a_tab_switches_to_it() {
     assert_eq!(ed.state.focus.id(), pid_a);
 }
 
-/// A click past every tab's extent (the row's blank tail) is a no-op —
+/// A click past every tab's extent (the row's blank tail) is a no-op:
 /// it must not fall through to pane hit-testing either, since the tabline
 /// row sits outside every pane's rect regardless.
 #[test]
@@ -602,7 +602,7 @@ fn click_on_the_tabline_s_blank_tail_is_a_noop() {
 
 /// A terminal too short to fit the tab bar plus the statusline (a single
 /// row) pushes both `pane_area` and `tabbar_area` into their degenerate
-/// branches — the statusline unconditionally owns that one row (`render`'s
+/// branches: the statusline unconditionally owns that one row (`render`'s
 /// own `sl_y = area.bottom() - 1`), so the tab bar must yield it rather than
 /// have both chrome rows paint on top of each other, and a click there must
 /// hit the statusline, not switch tabs.
@@ -615,7 +615,7 @@ fn a_one_row_terminal_leaves_the_tabbar_no_room_and_a_click_there_does_not_switc
     let tab_b = ed.state.tabs.current();
 
     // chrome_height = 1 (tab bar) + 1 (statusline) = 2, not less than a
-    // 1-row terminal — degenerate.
+    // 1-row terminal, so degenerate.
     frame(&mut ed, 40, 1);
     assert_eq!(
         ed.view.last_pane_area.height, 0,
@@ -668,7 +668,7 @@ fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pa
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on that blank,
-    // auto-indented line — the session's own autoindent record now names it,
+    // auto-indented line; the session's own autoindent record now names it,
     // so exiting Insert now will trim it.
     assert_eq!(
         ed.state.buffers.get(bid_a).text().to_string(),
@@ -701,7 +701,7 @@ fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pa
 
 /// A click on another tab's label must commit an open paste session on the
 /// outgoing pane, same as every keyboard-dispatched focus switch does via
-/// `step_paste_commit` — `tabline_click` reaches `switch_to_tab` directly,
+/// `step_paste_commit`. `tabline_click` reaches `switch_to_tab` directly,
 /// bypassing dispatch entirely, so `focus_pane` is the only remaining place
 /// that can close the gap. Left uncommitted, `commit_paste_session`'s own
 /// debug assert fires on the very next dispatched command.
@@ -720,7 +720,7 @@ fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
     frame(&mut ed, 40, 10);
 
     ed.feed_key(key('d')); // delete "hello" → ring head = ["hello"]
-    ed.feed_key(key('p')); // paste it back — opens a paste session on A
+    ed.feed_key(key('p')); // paste it back, opens a paste session on A
 
     assert!(
         ed.state.active_session.as_ref().is_some_and(|s| matches!(
@@ -750,7 +750,7 @@ fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
 }
 
 /// A drag right after a tab click must not extend a selection from the
-/// anchor the previous tab's click left behind — that anchor belongs to a
+/// anchor the previous tab's click left behind: that anchor belongs to a
 /// buffer that isn't even focused anymore.
 #[test]
 fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
@@ -764,7 +764,7 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
     frame(&mut ed, 40, 10);
 
     // A pane click on A's own content first, to seed a drag anchor the way
-    // any ordinary click would — then a tab click to B, then a drag. The
+    // any ordinary click would, then a tab click to B, then a drag. The
     // drag must not resolve against the first click's now-stale anchor.
     // Column 0: A is `editor_from`'s original pane, which registers no
     // gutter columns (see `vsplit_click_focuses_and_resolves_against_the_clicked_pane`'s
@@ -781,7 +781,7 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
     );
 
     ed.handle_input(mouse_drag(1, 1));
-    // With no anchor, the drag is a no-op — the selection must stay
+    // With no anchor, the drag is a no-op: the selection must stay
     // whatever the tab switch left it at, not extend from A's old anchor.
     assert!(ed.state.mouse_drag_anchor.is_none());
 }
@@ -790,7 +790,7 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
 //
 // Before the input-layer stack, every mouse event bypassed layer routing
 // entirely and ran straight through to `Base`'s own click/wheel/tabline
-// behavior, regardless of what overlay sat on top — a click under a picker
+// behavior, regardless of what overlay sat on top: a click under a picker
 // moved the cursor in the buffer underneath it, a wheel notch scrolled
 // through a confirm prompt, a tabline click switched tabs under a
 // full-modal picker. These tests pin each layer's own mouse policy.
@@ -853,7 +853,7 @@ fn tabline_click_with_picker_open_does_not_switch_tabs() {
     assert!(ed.state.input.picker().is_some());
 }
 
-/// A press with the disk-change confirm open is stray input — it dismisses
+/// A press with the disk-change confirm open is stray input: it dismisses
 /// the confirm without answering (`disk_state` stays `Changed`, matching
 /// `Esc`'s own effect on a modifier-free key it doesn't recognize) and, like
 /// a stray key, still performs its own action underneath.
@@ -874,7 +874,7 @@ fn click_with_confirm_open_dismisses_it_without_answering() {
     );
     assert!(
         matches!(ed.state.buffers.get(bid).disk_state, DiskState::Changed(_)),
-        "declining wasn't recorded — the click never answered the prompt"
+        "declining wasn't recorded; the click never answered the prompt"
     );
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -885,7 +885,7 @@ fn click_with_confirm_open_dismisses_it_without_answering() {
 
 /// The release half of the click that *opens* the confirm (click-to-focus
 /// → `OnBufferEnter` → the disk check at the next `settle()`) must not
-/// dismiss it — only a fresh press or wheel notch counts as stray input.
+/// dismiss it. Only a fresh press or wheel notch counts as stray input.
 /// Without this split the confirm would be unreachable by its most common
 /// trigger: the press that focuses the other pane arrives before the
 /// confirm exists, and the matching release lands one loop iteration after
@@ -907,7 +907,7 @@ fn mouse_release_with_confirm_open_leaves_it_open() {
     );
 }
 
-/// A press with the selection menu open is stray input — same "cancel with
+/// A press with the selection menu open is stray input, same "cancel with
 /// `#f`, then fall through" treatment a stray key gets from `menu_input`.
 #[test]
 fn click_with_menu_open_cancels_it_and_falls_through() {
@@ -935,7 +935,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
     );
 }
 
-/// A click under the bottom drawer falls through untouched — same
+/// A click under the bottom drawer falls through untouched, same
 /// Helix-style "browse while editing" treatment `drawer_input` gives any key
 /// it doesn't bind (Ctrl-d/Ctrl-u/Enter/Esc). Mouse dispatch bypasses every
 /// overlay outright, so this pins that behavior.
@@ -955,7 +955,7 @@ fn click_under_drawer_falls_through_leaving_it_open() {
     assert!(pending_calls(&ed).is_empty());
 }
 
-/// A wheel notch under the drawer scrolls the pane, same as under nothing —
+/// A wheel notch under the drawer scrolls the pane, same as under nothing:
 /// characterization, like the click test above.
 #[test]
 fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {

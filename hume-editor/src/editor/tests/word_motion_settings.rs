@@ -52,8 +52,8 @@ fn b_default_selects_leading_space() {
 /// words, not get stuck re-selecting the same one. Backward motions search
 /// from `start()` rather than `head()`: after a first-word-of-line landing
 /// (the final press here, onto "one"), the around-expansion absorbs
-/// trailing whitespace and leaves head on that space — just outside the
-/// word's own bounds — which would defeat `select_prev_word`'s "am I still
+/// trailing whitespace and leaves head on that space (just outside the
+/// word's own bounds), which would defeat `select_prev_word`'s "am I still
 /// on the word I just found" check and re-return the same word. See
 /// apply_word_select's `backward` parameter in hume-ops/src/motion/word.rs.
 #[test]
@@ -100,7 +100,7 @@ fn mm_with_setting_off_matches_inner_word() {
 fn mm_default_on_whitespace_extends_to_adjacent_word() {
     // word_unit_at's on-whitespace rule: cursor on the space snaps to the
     // following word, whose normal unit re-absorbs that space as its leading
-    // run — same as pressing maw there.
+    // run, same as pressing maw there.
     let mut ed = editor_from("foo-[ ]>bar\n");
     ed.feed_keys([key('m'), key('m')]);
     assert_eq!(state(&ed), "foo-[ bar]>\n");
@@ -124,7 +124,7 @@ fn MM_with_setting_off_matches_inner_uppercase_word() {
 }
 
 /// Direct side-by-side comparison, mirroring `mm_mid_line_matches_maw` but
-/// for the uppercase pair — the lowercase tests above only check `MM`
+/// for the uppercase pair. The lowercase tests above only check `MM`
 /// against a hardcoded literal, never `MM` against a typed `m A W` on the
 /// same input.
 #[test]
@@ -139,7 +139,7 @@ fn MM_mid_line_matches_maW() {
     assert_eq!(state(&ed2), "foo.bar-[ baz.qux]> quux\n");
 }
 
-/// Same, with the setting off — `MM` against a typed `m i W`.
+/// Same, with the setting off: `MM` against a typed `m i W`.
 #[test]
 #[allow(non_snake_case)]
 fn MM_with_setting_off_matches_miW() {
@@ -154,7 +154,7 @@ fn MM_with_setting_off_matches_miW() {
     assert_eq!(state(&ed2), "foo.bar -[baz.qux]> quux\n");
 }
 
-/// Every equivalence test above runs in Move mode only — `mm`/`MM` read
+/// Every equivalence test above runs in Move mode only. `mm`/`MM` read
 /// `WordCtx.around` (resolved fresh by `run_body`'s `SelectionBody::Word`
 /// arm) regardless of `MotionMode`, so this checks the pairing also holds
 /// once an existing selection is being *grown* (Extend), not just replaced.
@@ -219,7 +219,7 @@ fn maw_unaffected_by_setting() {
 
 /// `select-word` (`mm`) is a Selection command (`SelectionTracking::Establishes`),
 /// so it pushes an establish step onto the dot-repeat recipe (unlike the word
-/// motions, which are `Extends`) — replay re-runs it via `run_body`,
+/// motions, which are `Extends`), and replay re-runs it via `run_body`,
 /// which must re-resolve
 /// `word-selects-whitespace` fresh each time rather than baking in whatever
 /// was true at the original keypress.

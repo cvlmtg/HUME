@@ -375,13 +375,13 @@ fn undo_n_zero_count_is_noop() {
 }
 
 /// Undoing an insert and its own later backspace in one composed walk nets
-/// to no text change — `text_gen` must not move, matching `apply_edit`'s own
+/// to no text change: `text_gen` must not move, matching `apply_edit`'s own
 /// identity guard for a single edit.
 #[test]
 fn undo_n_net_identity_walk_does_not_bump_text_gen() {
     let mut d = doc("-[h]>ello\n");
     d.apply_edit(|b, s| insert_char(b, s, 'x')); // "x-[h]>ello\n"
-    d.apply_edit(delete_char_backward); // removes the 'x' — back to "-[h]>ello\n"
+    d.apply_edit(delete_char_backward); // removes the 'x', back to "-[h]>ello\n"
     let before_gen = d.buf.text_gen;
     let steps = d.undo_n(2);
     assert_eq!(steps, 2);
@@ -673,7 +673,7 @@ fn promotion_remaps_saved_revision_to_root() {
 fn promotion_overwriting_root_invalidates_saved_revision() {
     // The buffer is opened and never saved since (saved_revision == ROOT).
     // A promotion overwrites ROOT's content with a later revision's, so the
-    // saved id must stop reading as clean even though it's still `ROOT` —
+    // saved id must stop reading as clean even though it's still `ROOT`:
     // ROOT no longer represents the state it was saved at. The buffer's
     // text ('xhello') differs from the saved state ('hello'), so undoing
     // back to the new root must still read dirty.
@@ -853,7 +853,7 @@ fn text_gen_bumped_by_redo() {
 fn text_gen_not_bumped_when_undo_at_root() {
     let mut d = doc("-[h]>ello\n");
     let before = d.buf.text_gen;
-    d.undo(); // nothing to undo — no-op
+    d.undo(); // nothing to undo, no-op
     assert_eq!(d.buf.text_gen, before, "no-op undo must not bump gen");
 }
 
@@ -911,7 +911,7 @@ fn reload_from_text_then_edit_branches_off_old_tree() {
     assert_ne!(reload_rev, after_first_edit);
 
     // Undo the reload (back to the first-edit revision), then make a new
-    // edit — it becomes a sibling of the reload.
+    // edit. It becomes a sibling of the reload.
     d.undo();
     assert_eq!(d.buf.history.current_id(), after_first_edit);
     d.apply_edit(|b, s| insert_char(b, s, '2'));

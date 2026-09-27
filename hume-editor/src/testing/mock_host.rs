@@ -24,7 +24,7 @@ use hume_scripting::host::{
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, count, extend,
-/// register)` — see [`MockHost::dispatched_native`]'s own doc.
+/// register)`; see [`MockHost::dispatched_native`]'s own doc.
 pub type DispatchedNativeCall = (String, PaneHandle, Option<usize>, bool, Option<char>);
 
 pub struct MockHost {
@@ -42,12 +42,12 @@ pub struct MockHost {
     /// Record of every `run_command_sync` call. `count` is `None`
     /// when the Steel side passed `0` ("no count typed"). Unlike
     /// `EditorHostImpl`, this mock has no pane model to resolve `pane`
-    /// against, so every call is recorded regardless of `pane` — see
+    /// against, so every call is recorded regardless of `pane`. See
     /// `run_command_sync`'s own doc.
     pub dispatched_native: Vec<DispatchedNativeCall>,
     /// Lazy activation stubs registered via `register_lazy_command`.
     pub lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::PluginId>,
-    /// Buffer ids `buffer_exists` answers `true` for — empty by default, so
+    /// Buffer ids `buffer_exists` answers `true` for. Empty by default, so
     /// every id (including `focused_pane()`'s own `BufferId::default()`)
     /// is "stale" from an explicit-`pane` builtin's point of view unless a
     /// test opts one in. A test whose scenario needs a buffer to read as
@@ -71,7 +71,7 @@ impl MockHost {
     }
 
     /// Whether `name` is already claimed by a defined (non-Lazy) command,
-    /// mappable or typed — the two vectors are one namespace in the real
+    /// mappable or typed: the two vectors are one namespace in the real
     /// registry. Shared by `register_command`/`register_typed_command`.
     fn is_registered(&self, name: &str) -> bool {
         self.registered_cmds.iter().any(|d| d.name == name)
@@ -191,7 +191,7 @@ impl BufferHost for MockHost {
 impl SettingsHost for MockHost {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
         // MockHost models no editor state to resync derived state against
-        // (no history rings, no buffers, no view) — write_global is the
+        // (no history rings, no buffers, no view). write_global is the
         // effect-free raw writer, and it's the only one that fits here.
         hume::editor::settings::ops::write_global_for_test(key, value, &mut self.settings)
     }
@@ -201,7 +201,7 @@ impl SettingsHost for MockHost {
         _value: &str,
         _bid: BufferId,
     ) -> Result<(), String> {
-        // MockHost models no buffers — no per-buffer override to write to.
+        // MockHost models no buffers, so no per-buffer override to write to.
         Err("MockHost: set_buffer_option not available".into())
     }
     fn get_global_option(&self, key: &str) -> Result<OptionValue, String> {
@@ -210,7 +210,7 @@ impl SettingsHost for MockHost {
     }
     fn get_buffer_option(&self, key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         // MockHost models no buffers, so there is no per-buffer override to
-        // resolve — every key reads its global value.
+        // resolve: every key reads its global value.
         hume::editor::settings::setting_value(key, &self.settings, None)
             .ok_or_else(|| format!("get-buffer-option: unknown setting '{key}'"))
     }
@@ -222,7 +222,7 @@ impl SettingsHost for MockHost {
     ) -> Result<(), String> {
         // `EditorSettings.statusline` is private outside `settings.rs`, so
         // this re-serializes to the wire format and writes through
-        // `write_global` — the same path `EditorHostImpl::configure_statusline`
+        // `write_global`, the same path `EditorHostImpl::configure_statusline`
         // (`host_impl.rs`) uses, rather than a second, mock-only writer.
         use hume::statusline::{StatusLineConfig, parse_statusline_section};
         let cfg = StatusLineConfig {
@@ -241,18 +241,18 @@ impl SettingsHost for MockHost {
 impl LanguageHost for MockHost {
     // Checks the same bad-path failure mode `attach_grammar_errs_for_bad_path`
     // (host_impl.rs) pins on the real host, without doing real tree-sitter
-    // grammar/query compilation — that's expensive and this lightweight mock
+    // grammar/query compilation: that's expensive and this lightweight mock
     // has no reason to perform it. A path that exists but doesn't actually
     // parse as a valid grammar/query still succeeds here; no test needs that
     // finer-grained failure through `MockHost` today.
     //
     // Error prefixes mirror `RegisterError`'s `Display` (`hume-treesitter`'s
     // `registry.rs`: `"grammar load failed: ..."` / `"highlights.scm read
-    // failed: ..."`) rather than inventing separate wording — a caller that
+    // failed: ..."`) rather than inventing separate wording. A caller that
     // only ever sees `MockHost`'s errors should still learn the real vocabulary.
     // The detail past the prefix is this mock's own (the path), not a
     // reproduction of the OS-specific `io::Error`/dlopen text the real host
-    // would show — that text is platform- and locale-dependent and not worth
+    // would show: that text is platform- and locale-dependent and not worth
     // faking byte-for-byte for an existence check.
     fn attach_grammar(&mut self, reg: &hume_scripting::GrammarReg) -> Result<(), String> {
         if !reg.grammar_path.exists() {
@@ -295,7 +295,7 @@ impl CommandHost for MockHost {
     ) -> Result<bool, String> {
         // Unlike `EditorHostImpl::run_command_sync`, this mock has no pane
         // model at all, so it can't resolve `pane` against a command's own
-        // target requirement the way the real host does — it accepts and
+        // target requirement the way the real host does. It accepts and
         // records any `pane` unconditionally. Resolution (whether `pane`
         // names a live pane, the focused pane, or is out of reach) is the
         // real host's job; a test that needs to assert on a resolution
@@ -311,7 +311,7 @@ impl CommandHost for MockHost {
         // typed conflict (the real host's `Some(_) => Err` branch); a name
         // only in `lazy_cmds` is a `Lazy` stub, which the real
         // `CommandRegistry::register` allows overwriting (`Some(Lazy) | None
-        // => Ok`) — so clear it here too.
+        // => Ok`), so clear it here too.
         if self.is_registered(&def.name) {
             return Err(format!(
                 "define-command!: '{}' conflicts with existing command",
@@ -326,7 +326,7 @@ impl CommandHost for MockHost {
         &mut self,
         def: hume_scripting::SteelTypedCmdDef,
     ) -> Result<(), String> {
-        // Mirrors `register_command` above — mappable and typed names share
+        // Mirrors `register_command` above: mappable and typed names share
         // one namespace in the real registry, so the collision check covers
         // both vectors (see `is_registered`).
         if self.is_registered(&def.name) {
@@ -348,7 +348,7 @@ impl CommandHost for MockHost {
         name: &str,
         plugin: &hume_scripting::attribution::PluginId,
     ) -> Result<(), String> {
-        // Deliberately permissive, like `register_command` above — collision
+        // Deliberately permissive, like `register_command` above. Collision
         // detection is `CommandRegistry`'s decision; testing it here would be
         // a second copy of the same rules that can silently drift from the
         // real behavior it's meant to prove. Tests that need real collision
@@ -369,7 +369,7 @@ impl CommandHost for MockHost {
         self.lazy_cmds.get(name).cloned()
     }
     // `lazy_cmds` tracks no kind, so this mock can't tell a typed-only stub
-    // from a mappable one — same answer as `lazy_command_owner`. A test
+    // from a mappable one, same answer as `lazy_command_owner`. A test
     // needing the real mappable-only distinction (`call!` on a typed-only
     // lazy name) uses a real `Editor` + `EditorHostImpl` instead, per this
     // struct's own doc.

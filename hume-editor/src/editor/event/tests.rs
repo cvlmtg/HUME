@@ -4,7 +4,7 @@ use steel::rvals::SteelVal;
 
 use super::*;
 
-/// One sample per variant — a `const` slice is impossible because variants
+/// One sample per variant. A `const` slice is impossible because variants
 /// carry `String`/`serde_json::Value` payloads. Field values are distinctive (not defaults) so the shape tests
 /// below can tell fields apart if `steel_args` ever swaps two of them.
 fn all_variants() -> Vec<EditorEvent> {
@@ -55,7 +55,7 @@ fn all_variants() -> Vec<EditorEvent> {
     ]
 }
 
-/// A distinctive, non-default `PaneId` for the pane-carrying variants — a
+/// A distinctive, non-default `PaneId` for the pane-carrying variants: a
 /// fresh slotmap allocation, not `PaneId::default()`, so a test comparing
 /// against `PaneHandle::buffer_only`'s `None` pane can't pass by accident.
 fn sample_pane_id() -> PaneId {
@@ -100,7 +100,7 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
 // `steel_args` match arm makes the matching row fail.
 
 /// `SteelPane` doesn't expose its inner `PaneHandle` outside
-/// `hume-scripting` — compare the wrapped `SteelVal` for equality against a
+/// `hume-scripting`, so compare the wrapped `SteelVal` for equality against a
 /// freshly wrapped `expected` instead of unwrapping.
 fn assert_steel_pane(args: &[SteelVal], idx: usize, expected: PaneHandle) {
     assert_eq!(
@@ -132,7 +132,7 @@ fn buffer_only_events_carry_one_pane_less_handle_arg() {
     }
 }
 
-/// `OnBufferEnter` carries a pane too — always `Some`, since a buffer only
+/// `OnBufferEnter` carries a pane too, always `Some`, since a buffer only
 /// "enters" by way of some pane showing it (unlike the buffer-only events
 /// above, which have no pane of their own to name).
 #[test]
@@ -151,7 +151,7 @@ fn on_focus_gained_carries_no_args() {
     assert_eq!(
         EditorEvent::OnFocusGained.steel_args().len(),
         0,
-        "on-focus-gained is payload-free — it sweeps every buffer, not one"
+        "on-focus-gained is payload-free: it sweeps every buffer, not one"
     );
 }
 
@@ -230,7 +230,7 @@ fn on_viewport_change_carries_pane_and_both_line_bounds() {
     assert!(matches!(args[2], SteelVal::IntV(42)));
 }
 
-/// `char` renders as a 1-char Steel *string*, not a Steel char — pins the
+/// `char` renders as a 1-char Steel *string*, not a Steel char. Pins the
 /// documented `on-trigger-char` contract.
 #[test]
 fn on_trigger_char_sends_char_as_a_one_char_string() {
@@ -276,7 +276,7 @@ fn on_option_change_carries_key_and_value_no_buffer_id() {
         value: "true".to_string(),
     };
     let args = event.steel_args();
-    assert_eq!(args.len(), 2, "payload is (key value) — no buffer id");
+    assert_eq!(args.len(), 2, "payload is (key value), no buffer id");
     assert_eq!(steel_string(&args, 0), "lsp.inlay-hints");
     assert_eq!(steel_string(&args, 1), "true");
 }

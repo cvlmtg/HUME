@@ -7,12 +7,12 @@ use super::{CompletionCtx, CompletionItem, arg_prefix, token_end_at};
 
 /// The name this source registers under for file/directory completion
 /// (`:e`/`:w`); `PATH_DIRS_ONLY_SOURCE` is the directory-only variant
-/// (`:cd`) — two names, not one name plus a hidden config, since the
+/// (`:cd`): two names, not one name plus a hidden config, since the
 /// registry's native-fn entries carry no parameters of their own.
 pub(in crate::editor) const PATH_SOURCE: &str = "path";
 pub(in crate::editor) const PATH_DIRS_ONLY_SOURCE: &str = "path-dirs-only";
 
-/// Completes filesystem paths for `:e`/`:w` — files and directories alike.
+/// Completes filesystem paths for `:e`/`:w`: files and directories alike.
 /// `Delegated`: the candidate universe (a directory's own listing) depends
 /// entirely on the live input, so this takes it directly rather than
 /// enumerating a stable universe for the session to filter.
@@ -24,7 +24,7 @@ pub(super) fn complete_path(
     complete_path_with_expand(input, cursor, ctx, false, hume_platform::path::expand)
 }
 
-/// `:cd`'s variant — non-directory entries are filtered out.
+/// `:cd`'s variant: non-directory entries are filtered out.
 pub(super) fn complete_path_dirs_only(
     input: &str,
     cursor: usize,
@@ -77,7 +77,7 @@ where
     let include_hidden = file_prefix.starts_with('.');
 
     // On error (dir doesn't exist or no permission), return no
-    // candidates — not a hard error.
+    // candidates, not a hard error.
     let rd = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
         Err(_) => return (arg_start..arg_end, Vec::new()),
@@ -104,7 +104,7 @@ where
             let mut item = CompletionItem::plain(label, insert_text);
             // The `:` line's Enter handler reads this to decide whether the
             // selected candidate is a directory to descend into, rather
-            // than naming this source explicitly — any source's item can
+            // than naming this source explicitly; any source's item can
             // opt in the same way.
             if is_dir {
                 item.kind = Some(lsp_types::CompletionItemKind::FOLDER);

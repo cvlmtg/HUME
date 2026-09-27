@@ -1,6 +1,6 @@
 use super::*;
 
-/// A throwaway `BufferId` — its value is irrelevant to `render_line`, which
+/// A throwaway `BufferId`: its value is irrelevant to `render_line`, which
 /// never reads `action`.
 fn dummy_bid() -> BufferId {
     let mut sm: slotmap::SlotMap<BufferId, ()> = slotmap::SlotMap::with_key();

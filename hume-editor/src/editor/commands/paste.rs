@@ -1,13 +1,13 @@
 //! Register/kill-ring paste: `p`/`P`, smart paste, and `[`/`]` ring cycling.
 //!
 //! Distinct from terminal bracketed-paste (`Event::Paste`,
-//! `mappings/bracketed_paste.rs`) — an unrelated feature that happens to
+//! `mappings/bracketed_paste.rs`), an unrelated feature that happens to
 //! share the word "paste".
 //!
 //! This module owns opening/closing the `EditSessionKind::Paste` variant of
 //! `EditorState::active_session` (`do_paste`, `commit_paste_session`) via
-//! `edit_session::open_or_retarget` — the same primitive
-//! `doc_ops::begin_edit_group` uses for the `Insert` variant — rather than
+//! `edit_session::open_or_retarget` (the same primitive
+//! `doc_ops::begin_edit_group` uses for the `Insert` variant) rather than
 //! `doc_ops::begin_edit_group`/`commit_edit_group` themselves, which are
 //! typed to `Insert` alone: a paste session's own `before` direction has
 //! nowhere to live in those. `PaneBufferState::kill_opened_session`
@@ -29,19 +29,19 @@ use crate::editor::edit_session::{self, EditSessionKind};
 use crate::editor::error::CommandError;
 
 /// Which source a bare paste (no `"<reg>` prefix) reads, valid only while
-/// [`crate::editor::buffer::store::BufferStore::edit_seq`] is still `seq` — the moment any
+/// [`crate::editor::buffer::store::BufferStore::edit_seq`] is still `seq`. The moment any
 /// buffer is edited (or undone/redone), the stamped `seq` falls behind and a
 /// bare `smart-paste-*` falls through to the clipboard instead.
 ///
 /// Written by every capture that pushes onto the kill ring (`d`/`c`/`y`, bare
-/// or `"k`-prefixed — see `EditorState::capture_to_ring`) and by every
+/// or `"k`-prefixed; see `EditorState::capture_to_ring`) and by every
 /// completed bare paste (plain or smart) and ring cycle (`[`/`]`), each
 /// re-stamping with the *post*-edit `seq` and whatever source it actually
 /// used. The re-stamp on completion is load-bearing, not cosmetic: a paste is
 /// itself an edit, so without it the stamp a capture wrote would go stale on
 /// the very first paste that reads it, and `d p p p` would paste the kill
 /// once and the clipboard twice. An explicit register read (`"5p`, `"cp`, …)
-/// does not stamp — it is a plain edit as far as this mechanism is concerned.
+/// does not stamp: it is a plain edit as far as this mechanism is concerned.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PasteStamp {
     pub(in crate::editor) seq: u64,
@@ -63,7 +63,7 @@ pub(in crate::editor) enum PasteSource {
 impl EditorState {
     /// Push a bare or `"k`-prefixed capture onto the kill ring and record it
     /// as the freshest capture, for a following bare paste to read. Push and
-    /// stamp are one operation — a ring push without the stamp silently
+    /// stamp are one operation: a ring push without the stamp silently
     /// breaks smart-paste routing, so no call site gets to do them
     /// separately. Never used for an explicit named register, which bare
     /// paste never reads. See [`PasteStamp`]'s doc for the full mechanism.
@@ -86,7 +86,7 @@ impl EditorState {
     /// before undo, motions, or the next `p`/`P`.
     ///
     /// Reads the session's own recorded pane/buffer (`EditSession::pane`/
-    /// `buffer`), not live focus or `&EngineView` — a paste session only
+    /// `buffer`), not live focus or `&EngineView`. A paste session only
     /// ever opens on the focused pane (`do_paste`), but focus can move again
     /// before this runs, and the session's own record is what stays correct
     /// regardless. Thin wrapper around [`doc_ops::commit_paste_group`], the
@@ -138,25 +138,25 @@ fn collapse_if_repeat(
 /// A resolved paste, ready for [`do_paste`] to execute.
 struct ResolvedPaste {
     values: Vec<String>,
-    /// Where the values came from — drives the two things that depend on it
+    /// Where the values came from. Drives the two things that depend on it
     /// after the fact: seeding `[`/`]`'s cycle position (`Ring` seeds it) and,
     /// for a bare paste only, stamping [`PasteStamp`] (see `do_paste`).
     /// `None` = an explicit named/digit register, which does neither.
     from: Option<PasteSource>,
-    /// No `"<reg>` prefix was given — only a bare paste stamps [`PasteStamp`].
+    /// No `"<reg>` prefix was given; only a bare paste stamps [`PasteStamp`].
     bare: bool,
 }
 
 /// Core paste implementation, shared by the plain and smart variants: applies
 /// `resolved` at `sels`, opens the paste/ring-cycle session, and stamps
 /// [`PasteStamp`]/seeds the ring cycle for bare pastes. Carries no knowledge
-/// of where `resolved` came from or of the repeat-vs-swap rule — callers
+/// of where `resolved` came from or of the repeat-vs-swap rule. Callers
 /// resolve the source and (for smart paste) collapse `sels` before calling in.
 ///
 /// `before`: true for `P` (paste before), false for `p` (paste after).
 ///
 /// `Err` when a real, already-open `Insert`/`Paste` session blocks this
-/// (pane, buffer) — reachable only through a `call!` (a hook or timer
+/// (pane, buffer), reachable only through a `call!` (a hook or timer
 /// firing mid-typing) or an Insert-mode binding, since `step_paste_commit`
 /// closes a prior *paste* session before every ordinary dispatch. A
 /// dot-repeat replay's own pre-opened `Replay`-kind placeholder (the common
@@ -194,7 +194,7 @@ fn do_paste(
         |b, s| paste_fn(b, s, &values),
     );
 
-    // An explicit register prefix opts out of the stamp entirely — see
+    // An explicit register prefix opts out of the stamp entirely; see
     // PasteStamp's doc for why.
     if bare && let Some(source) = from {
         state.paste_stamp = Some(PasteStamp {
@@ -215,7 +215,7 @@ fn do_paste(
 }
 
 /// Resolve values for a fresh paste against an explicit `"<reg>` prefix.
-/// Shared by plain and smart paste — an explicit register bypasses the
+/// Shared by plain and smart paste: an explicit register bypasses the
 /// smart-paste heuristic entirely, so both variants resolve it identically.
 /// Returns `None` for a no-op paste: black-hole or an empty register.
 fn resolve_explicit_register(state: &mut EditorState, reg: char) -> Option<ResolvedPaste> {
@@ -246,7 +246,7 @@ fn resolve_explicit_register(state: &mut EditorState, reg: char) -> Option<Resol
 fn resolve_plain(state: &mut EditorState) -> Option<ResolvedPaste> {
     match state.take_register_prefix() {
         // Bare source is always the kill-ring head, with no clipboard
-        // fallback and no stamp consultation — but `do_paste` still writes
+        // fallback and no stamp consultation, but `do_paste` still writes
         // the stamp for it, so an immediately following bare *smart* paste
         // (no capture in between) continues from the same ring slot instead
         // of jumping to the clipboard just because a paste is itself an edit.
@@ -272,7 +272,7 @@ fn resolve_smart(state: &mut EditorState) -> Option<ResolvedPaste> {
 /// while it is still fresh (`PasteStamp::seq == BufferStore::edit_seq()`),
 /// the clipboard otherwise. When the clipboard yields nothing, a *fresh*
 /// paste falls back to the ring head silently, but a *repeat* (fresh
-/// `Clipboard` stamp) refuses to substitute — see the `None` arm below.
+/// `Clipboard` stamp) refuses to substitute; see the `None` arm below.
 fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
     let fresh_source = state
         .paste_stamp
@@ -287,7 +287,7 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
             bare: true,
         });
     }
-    // Stale/no stamp, or a fresh stamp pointing at the clipboard (re-read —
+    // Stale/no stamp, or a fresh stamp pointing at the clipboard (re-read:
     // the OS clipboard may have changed externally since).
     let (cow, warn) = register_ops::read_register_text(
         &state.registers,
@@ -318,7 +318,7 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
             }
             // A fresh paste with no readable clipboard falls back to the
             // ring head silently. Only emit the warning when the fallback
-            // also fails — otherwise the user sees a warning alongside a
+            // also fails. Otherwise the user sees a warning alongside a
             // successful paste.
             if let Some(head) = state.kill_ring.head() {
                 return Some(ResolvedPaste {
@@ -336,7 +336,7 @@ fn resolve_smart_bare(state: &mut EditorState) -> Option<ResolvedPaste> {
 }
 
 /// Plain paste: resolve from the register (kill-ring head when bare, honoring
-/// `"<reg>` otherwise), then hand off to [`do_paste`] unconditionally —
+/// `"<reg>` otherwise), then hand off to [`do_paste`] unconditionally, which
 /// always replaces a non-collapsed selection. See [`collapse_if_repeat`]'s
 /// doc for why smart paste alone needs the extra step.
 fn do_normal_paste(
@@ -361,9 +361,9 @@ fn do_normal_paste(
 }
 
 /// Smart paste: resolve from the stamp-driven source (ring while nothing has
-/// been edited since the last capture, clipboard otherwise — see
+/// been edited since the last capture, clipboard otherwise; see
 /// [`PasteStamp`]), apply the repeat-vs-swap collapse rule to the
-/// selections (bare paste only — see [`collapse_if_repeat`]), then hand off
+/// selections (bare paste only; see [`collapse_if_repeat`]), then hand off
 /// to [`do_paste`].
 fn do_smart_paste(
     state: &mut EditorState,
@@ -472,7 +472,7 @@ fn do_paste_cycle(
             buf,
             |b, s| paste_fn(b, s, &values),
         );
-        // Cycling always lands on a ring slot — reflect it in the stamp so a
+        // Cycling always lands on a ring slot, so reflect it in the stamp so a
         // following bare paste (of either variant) continues from here.
         if let Some(slot) = state.kill_ring.cycle_position() {
             state.paste_stamp = Some(PasteStamp {

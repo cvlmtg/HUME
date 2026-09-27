@@ -1,5 +1,5 @@
 //! An open Insert or paste session on the focused pane must be torn down
-//! before that pane's buffer changes — or its content is replaced — out from
+//! before that pane's buffer changes (or its content is replaced) out from
 //! under it: `focus::end_focus_sessions`, called from
 //! `buffer::lifecycle::switch_pane_to_buffer` (gated to the focused pane and
 //! a genuine buffer change), `Editor::reset_config_state`, and
@@ -52,7 +52,7 @@ fn switch_to_buffer_ends_insert_session_on_focused_pane() {
     );
     assert_eq!(ed.focused_buffer_id(), new_bid);
 
-    // A follow-up insert session in the new buffer must apply cleanly — no
+    // A follow-up insert session in the new buffer must apply cleanly: no
     // stale `active_session` left over to panic `commit_edit_group`'s `.expect()`.
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Z");
@@ -94,7 +94,7 @@ fn goto_location_to_another_buffer_ends_insert_session_on_focused_pane() {
 }
 
 /// `goto-location!` landing back in the buffer already focused must leave a
-/// still-open Insert session alone — the buffer never actually changes, so
+/// still-open Insert session alone. The buffer never actually changes, so
 /// the open `active_session` is still valid.
 #[test]
 fn goto_location_within_the_focused_buffer_leaves_insert_session_open() {
@@ -219,7 +219,7 @@ fn reload_config_ends_insert_session_on_focused_pane() {
         "reload must not leave a stale open session behind"
     );
 
-    // A follow-up insert session must work cleanly — no stale group left to
+    // A follow-up insert session must work cleanly: no stale group left to
     // panic `commit_edit_group`'s `.expect()` on the next Esc.
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Z");
@@ -231,7 +231,7 @@ fn reload_config_ends_insert_session_on_focused_pane() {
 
 /// `reload_buffer_in_place` (the `:e`/`:e!` no-arg reload path) must end an
 /// open Insert session the same way every other buffer-invalidating path
-/// does, not drop its group directly — otherwise `state.active_session` and
+/// does, not drop its group directly. Otherwise `state.active_session` and
 /// the `Insert` mode layer survive pointing at a session whose group just
 /// vanished, and the next Esc panics in `Buffer::commit_edit_group`'s
 /// `.expect()`.
@@ -259,7 +259,7 @@ fn reload_buffer_in_place_ends_insert_session_on_focused_pane() {
         "reload must not leave a stale open session behind"
     );
 
-    // A follow-up insert session must work cleanly — no stale group left to
+    // A follow-up insert session must work cleanly: no stale group left to
     // panic `commit_edit_group`'s `.expect()` on the next Esc.
     ed.feed_key(key('i'));
     type_chars(&mut ed, "Z");
@@ -298,7 +298,7 @@ fn switch_to_buffer_commits_open_paste_session_on_focused_pane() {
         "the switch must commit the open paste session on the old buffer, not leave it dangling"
     );
 
-    // A follow-up paste must land cleanly on the new buffer — no stale
+    // A follow-up paste must land cleanly on the new buffer: no stale
     // session left over from the old one to conflict with it.
     ed.feed_key(key('p'));
     assert_ne!(
@@ -330,7 +330,7 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
         Direction::Horizontal,
     )
     .expect("split must succeed");
-    // `open_pane_in_layout` does not move focus itself — pin it back to A
+    // `open_pane_in_layout` does not move focus itself; pin it back to A
     // explicitly so the premise below holds regardless.
     ed.state.focus.set_for_test(pid_a);
     let bid_c = ed.open_buffer(Buffer::new(
@@ -342,7 +342,7 @@ fn switch_to_buffer_on_a_non_focused_pane_leaves_focused_insert_session_open() {
     type_chars(&mut ed, "Q");
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open on A");
 
-    // A hook or remote call redirects B, the *non-focused* pane — must not
+    // A hook or remote call redirects B, the *non-focused* pane: must not
     // touch A's own open Insert session.
     let pane_b = PaneHandle::with_pane(bid_b, pid_b);
     live_host!(ed)
@@ -424,7 +424,7 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
     assert_eq!(
         ed.selections_for(pid_a, bid).map(|s| s.primary()),
         Some(hume_editing::selection::Selection::new(co(3), co(3))),
-        "A — the session's own pane — must select what was typed on exit"
+        "A (the session's own pane) must select what was typed on exit"
     );
 
     let buf = ed.state.buffers.get_mut(bid);

@@ -25,7 +25,7 @@ fn is_group_open_at(state: &EditorState, view: &EngineView, fp: FocusedPane) -> 
 }
 
 /// `true` if any current selection is a collapsed cursor sitting on a blank
-/// line whose whitespace this session itself auto-inserted — the condition
+/// line whose whitespace this session itself auto-inserted: the condition
 /// under which [`clear_blank_line_indent`] would actually change the buffer.
 /// Checked before calling it so the common case (exiting Insert mode away
 /// from a blank line, or a blank line whose indent isn't this session's own)
@@ -46,8 +46,8 @@ fn has_blank_line_cursor(
     })
 }
 
-/// The live session's per-selection autoindent ownership record — see
-/// `PaneBufferState::autoindent`'s doc — or empty if none was armed, or its
+/// The live session's per-selection autoindent ownership record (see
+/// `PaneBufferState::autoindent`'s doc), or empty if none was armed, or its
 /// length no longer matches the live selection count (a mid-session merge;
 /// same rule [`end_insert_session`] applies to `typed_run` via `valid_run`).
 /// An out-of-bounds index into the returned vec (via `.get(i)`) then reads as
@@ -55,8 +55,8 @@ fn has_blank_line_cursor(
 ///
 /// Owned rather than borrowed: every caller (`tear_down_insert` here,
 /// `input_stack/insert.rs`'s Enter handler) needs it cloned out of
-/// `PaneBufferState` before running the edit whose `ChangeSet` will remap —
-/// or, for Enter, replace — that same record.
+/// `PaneBufferState` before running the edit whose `ChangeSet` will remap
+/// (or, for Enter, replace) that same record.
 pub(in crate::editor) fn autoindent_owned(
     pbs: &PaneBufferState,
 ) -> Vec<ExclusiveRange<CharOffset>> {
@@ -66,13 +66,13 @@ pub(in crate::editor) fn autoindent_owned(
     }
 }
 
-/// Record each current selection's freshly auto-inserted indent — `[line_start,
-/// head)` on the post-edit buffer — as this session's own, so a later Enter
+/// Record each current selection's freshly auto-inserted indent (`[line_start,
+/// head)` on the post-edit buffer) as this session's own, so a later Enter
 /// or exit knows that whitespace is its own to vacate (see
 /// `PaneBufferState::autoindent`'s doc). Called once, right after the
 /// structural newline + indent lands, by every entry point that copies one
 /// (`o`, `O`, Enter). No-op if no edit group is open (read-only refusal),
-/// same guard as [`begin_typed_run`] — a refused `o`/`O` leaves no record
+/// same guard as [`begin_typed_run`]: a refused `o`/`O` leaves no record
 /// behind for a later, unrelated session to inherit.
 pub(in crate::editor) fn arm_autoindent(
     state: &mut EditorState,
@@ -95,7 +95,7 @@ pub(in crate::editor) fn arm_autoindent(
     fp.pane().state_mut(&mut state.panes.state, view).autoindent = Some(ranges);
 }
 
-/// Where an *empty* typed run's cursor lands on exit — see
+/// Where an *empty* typed run's cursor lands on exit. See
 /// `PaneBufferState::step_back_on_exit`'s doc. Passed to [`begin_typed_run`]
 /// so every entry command arms it in the same call that pins the run,
 /// instead of a separate step that could be forgotten or reordered.
@@ -107,7 +107,7 @@ pub(super) enum ExitCursor {
 }
 
 /// Pin each current selection's head as an insertion anchor, and arm where
-/// the cursor lands if nothing ends up typed — the whole lifecycle of a
+/// the cursor lands if nothing ends up typed: the whole lifecycle of a
 /// session's "typed run".
 ///
 /// `mii` (`select-last-insertion`) recovers the span regardless of the
@@ -115,17 +115,17 @@ pub(super) enum ExitCursor {
 /// itself to decide whether to auto-select on exit.
 ///
 /// No-op if no edit group is open (read-only buffer, where
-/// `begin_insert_session` already refused to enter Insert) — `exit` is
+/// `begin_insert_session` already refused to enter Insert), and `exit` is
 /// correctly not armed either in that case. Call after the cursor has been
-/// positioned at the insertion point — for `o`/`O`, after the structural
-/// newline has been inserted — so the anchor marks the start of typed text
+/// positioned at the insertion point (for `o`/`O`, after the structural
+/// newline has been inserted), so the anchor marks the start of typed text
 /// only, never the newline or the pre-edit selection.
 ///
 /// `apply_doc_edit_grouped` (doc_ops.rs) maps the pinned run through every
 /// subsequent grouped edit; a cursor-motion command during the session
 /// clears it (`step_clear_typed_run`, `commands/pipeline.rs`); a fresh
 /// `begin_edit_group` clears it (and resets `step_back_on_exit`) too, so a
-/// later session never inherits a stale run or a stale step-back flag — the
+/// later session never inherits a stale run or a stale step-back flag: the
 /// entry command dispatched from inside an already-open session (a Steel
 /// `call!`, an Insert-mode keybinding) would otherwise inherit whatever the
 /// previous entry armed.
@@ -143,7 +143,7 @@ pub(super) fn begin_typed_run(
         .map(|s| s.head())
         .collect();
     let pbs = fp.pane().state_mut(&mut state.panes.state, view);
-    // `ends` starts equal to `anchors` — an empty run — and is pushed
+    // `ends` starts equal to `anchors` (an empty run) and is pushed
     // forward only by actual insertions (see `TypedRun::ends`'s own doc).
     pbs.typed_run = Some(TypedRun {
         ends: heads.clone(),
@@ -158,13 +158,13 @@ pub(super) fn begin_typed_run(
 /// pending `"<reg>` prefix: `i`/`a`/`o` aren't operators, so a register spec
 /// typed just before one names nothing to write into (unlike `d`/`c`/`p`,
 /// which `refuse_if_read_only` clears it for on the assumption the command
-/// consumed it) — cleared unconditionally so a read-only refusal and a
+/// consumed it). It's cleared unconditionally so a read-only refusal and a
 /// normal session agree, matching Vim, where the spec applies only to the
 /// operator immediately after `"`.
 ///
 /// `cmd_change` (`c`) is the one caller for which this would be wrong: it's
 /// itself a genuine register-consuming operator that delegates its mode
-/// switch here before its own `state.route_kill` reads the prefix — see
+/// switch here before its own `state.route_kill` reads the prefix. See
 /// [`begin_insert_session_preserving_register`], which it calls instead.
 pub(super) fn begin_insert_session(
     state: &mut EditorState,
@@ -175,7 +175,7 @@ pub(super) fn begin_insert_session(
     begin_insert_session_preserving_register(state, view, fp)
 }
 
-/// [`begin_insert_session`] without clearing `register_prefix` first — for a
+/// [`begin_insert_session`] without clearing `register_prefix` first, for a
 /// caller that is itself about to consume it. Do not call this for a plain
 /// `i`/`a`/`o` entry; use [`begin_insert_session`], which clears the prefix
 /// as those commands require.
@@ -190,7 +190,7 @@ pub(super) fn begin_insert_session_preserving_register(
     let (pid, bid) = (fp.pid(), fp.bid(view));
     // Already open here means this entry runs inside a live Insert session
     // (a binding re-entering Insert), whose group it joins. Otherwise open
-    // one — or, under `replay_dot`, retarget its `Replay`-kind placeholder to
+    // one or, under `replay_dot`, retarget its `Replay`-kind placeholder to
     // `Insert` in place (`doc_ops::begin_edit_group`'s own
     // `open_or_retarget` delegation), so the replayed session folds into the
     // same undo revision as the rest of the replay.
@@ -216,7 +216,7 @@ pub(super) fn begin_insert_session_preserving_register(
 
 /// Exit Insert mode: truncates the `Insert` layer, running
 /// [`tear_down_insert`] via `EditorState::tear_down`. A no-op if no `Insert`
-/// layer is open — `cmd_exit_insert` is a registered mappable command, so
+/// layer is open: `cmd_exit_insert` is a registered mappable command, so
 /// `(call! "exit-insert" pane)` can reach here from any mode (a hook, a timer, an
 /// async LSP callback), not only from a key path that already proved
 /// `Insert` is current. Truncating `state.input.mode_layer()` unconditionally
@@ -233,7 +233,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
 }
 
 /// The bookkeeping that runs when the `Insert` layer leaves the stack, for
-/// any reason (Esc, Ctrl-c, a mouse click, a Steel-triggered mode change) —
+/// any reason (Esc, Ctrl-c, a mouse click, a Steel-triggered mode change),
 /// called from `EditorState::tear_down`'s `Insert` arm, never directly.
 /// Finalises the undo and typed-run state; does not itself touch the stack (the
 /// truncate that got here already removed the layer).
@@ -253,7 +253,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         .map(|s| (s.pane(), s.buffer()))
         .expect("an Insert layer on the stack always has its session open");
     // Backstop for a capture whose dispatch never reached its own
-    // checkpoint (`Editor::run_dot_captured`) before the session ended — an
+    // checkpoint (`Editor::run_dot_captured`) before the session ended: an
     // Insert-key binding that calls `completion-accept!` and then
     // `exit-insert` in the same body tears the session down from inside
     // that same dispatch, before `with_dot_capture`'s own post-dispatch
@@ -261,7 +261,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // edit below, which must not itself be swept into a capture's own net
     // edit: it's session-teardown bookkeeping, not part of whatever the
     // capture was recorded for. Finalized unconditionally, interactive or
-    // not — `finalize_dot_capture` records the right thing either way, and
+    // not: `finalize_dot_capture` records the right thing either way, and
     // with no placeholder pre-pushed before dispatch, this is the only
     // place a non-interactive binding's own entry gets recorded at all when
     // it tears its own session down mid-body.
@@ -273,7 +273,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         state.finalize_dot_capture(cap);
     }
     // An open completion session lives in its own `Completion` layer, pushed
-    // above `Insert` — the top-first `truncate_layers` call that reaches
+    // above `Insert`: the top-first `truncate_layers` call that reaches
     // this function always removes `Completion` (running its own `tear_down`
     // arm) before it removes `Insert`, regardless of which of Insert's many
     // exit paths (Esc/Enter inside the session's own handler, Ctrl-c, a
@@ -281,11 +281,11 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     // completion-related belongs in this function.
     // Vim autoindent parity: trim a blank auto-indented line's whitespace
     // before committing, so leaving Insert mode on one behaves like Enter
-    // does in `insert_newline_indent`. Joins the still-open session group —
+    // does in `insert_newline_indent`. Joins the still-open session group,
     // not a separate undo step. `allowed` re-derives ownership from the
     // buffer (via `autoindent_owned`) rather than trusting a flag, and
-    // `has_blank_line_cursor` also skips the edit in the common case —
-    // cursor not on a line this session owns — rather than running an
+    // `has_blank_line_cursor` also skips the edit in the common case
+    // (cursor not on a line this session owns) rather than running an
     // identity one on every Insert-mode exit.
     let pbs = &state.panes.state[pid][bid];
     let allowed = autoindent_owned(pbs);
@@ -306,10 +306,10 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         &state.panes.state,
         &mut state.active_session,
     );
-    // Every insert entry pins one typed run via `begin_typed_run` —
+    // Every insert entry pins one typed run via `begin_typed_run`, so
     // reconstruct each selection's typed span here via `typed_span`. A count
     // mismatch (selections merged mid-session, e.g. via Backspace) drops the
-    // run entirely — `spans` stays `None`, so this session contributes
+    // run entirely: `spans` stays `None`, so this session contributes
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
     let (typed_run, step_back, kill_opened, sel_count) = {
@@ -322,7 +322,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
         )
     };
     // `cmd_change` stamped `PasteStamp` right after the deletion, but every
-    // keystroke since has bumped `edit_seq` — refresh the stamp to the
+    // keystroke since has bumped `edit_seq`. Refresh the stamp to the
     // session's final `seq` (source unchanged) so `c <text> <Esc> p` still
     // reads the ring. See `PaneBufferState::kill_opened_session`'s doc.
     if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
@@ -339,7 +339,7 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     });
 
     // Stash whatever was actually typed for `mii`, regardless of entry
-    // command — independent of `select-inserted-text` below, which only
+    // command, independent of `select-inserted-text` below, which only
     // decides whether Esc *also* selects it immediately.
     if let Some(spans) = &spans {
         let stashed: Vec<InclusiveRange<CharOffset>> = spans.iter().flatten().copied().collect();
@@ -376,9 +376,9 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     }
 }
 
-/// The selected typed span `(anchor, end]` — inclusive of `end` — for one
+/// The selected typed span `(anchor, end]` (inclusive of `end`) for one
 /// selection, or `None` if nothing typed survives. Walks back from `run_end`
-/// (not the live cursor head — see `TypedRun::ends`'s doc for why) over any
+/// (not the live cursor head; see `TypedRun::ends`'s doc for why) over any
 /// trailing `\n` graphemes, which are line terminators, not typed content,
 /// to the grapheme immediately before whatever's left. Walking off the start
 /// of the run (nothing typed, or only newlines were) yields `None`, never a
@@ -396,8 +396,8 @@ fn typed_span(
         let prev = hume_editing::grapheme::prev_grapheme_boundary(text, cursor);
         // A typed combining mark can merge with a PRE-EXISTING base char
         // into one grapheme cluster, so the boundary before `cursor` can
-        // land behind `anchor` in a single step rather than landing on it —
-        // the loop guard above only catches `cursor <= anchor`, not a jump
+        // land behind `anchor` in a single step rather than landing on it.
+        // The loop guard above only catches `cursor <= anchor`, not a jump
         // past it. Nothing wholly inside the run is left to select.
         if prev < anchor {
             return None;
@@ -409,7 +409,7 @@ fn typed_span(
     }
 }
 
-/// Where a selection's cursor lands when its typed run is empty — the entry
+/// Where a selection's cursor lands when its typed run is empty: the entry
 /// command's own exit position. `a`/`A`/`o`/`O` step one grapheme back so
 /// `a<Esc>` is a round trip; the line-start guard keeps that from crossing
 /// onto the previous line. `i`/`I`/`c` never set `step_back`, so `head` is

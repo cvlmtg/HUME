@@ -1,4 +1,4 @@
-//! The `Search` layer — the `/`/`?`-prompt minibuffer mode.
+//! The `Search` layer: the `/`/`?`-prompt minibuffer mode.
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
@@ -15,7 +15,7 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct SearchLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
-    /// This session's pane and its pre-entry selection snapshot — restore
+    /// This session's pane and its pre-entry selection snapshot. Restore
     /// and clear always target `snap`'s own pane, never `state.focus.id()`,
     /// which may have moved on since: a mouse click always falls through
     /// under this layer (`minibuf_input`'s `Mouse` arm), so focus (and
@@ -41,7 +41,7 @@ impl Layer for SearchLayer {
     /// doc), so a re-entrant `/`-search (`push_mode_layer` replaces rather
     /// than no-ops on same-kind re-entry for every mode layer but `Insert`)
     /// captures the state the outgoing session's `tear_down` just restored
-    /// — the true pre-search selections — instead of the mid-search preview
+    /// (the true pre-search selections) instead of the mid-search preview
     /// a construction-time capture would have caught.
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         self.snap.capture(state, view);
@@ -86,7 +86,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // Record the pre-search position in the jump list before
             // discarding it, unless the match confirmed is the position
             // search started from (record_jump_if_moved). The `Confirm`
-            // arm does its own accept work — taking the stash — before
+            // arm does its own accept work (taking the stash) before
             // truncating; teardown's `Search` arm restores it on every
             // *other* removal, so it's already gone here and would be a
             // no-op if left to teardown.
@@ -102,13 +102,13 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 commands::record_jump_if_moved(&mut ed.state, &ed.view, t, entry);
             }
             // search_pattern stays alive on the buffer for immediate n/N
-            // without recompile — the stash is already taken above, so
+            // without recompile. The stash is already taken above, so
             // teardown's `Search` arm (gated on the same stash) won't
             // clear it.
             ed.state.truncate_layers(&ed.view, r);
         }
         MiniBufferEvent::EmptiedByBackspace => {
-            // First Backspace cleared the last character — restore position but
+            // First Backspace cleared the last character: restore position but
             // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
             restore_search_snapshot(ed, r);
             let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
@@ -118,9 +118,9 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
         }
         MiniBufferEvent::BackspaceOnEmpty => {
-            // Input already empty — user pressed Backspace a second time to
+            // Input already empty: user pressed Backspace a second time to
             // dismiss. Teardown restores the snapshot, clears the search, and
-            // begins a fresh history session — the same as this arm's own
+            // begins a fresh history session, the same as this arm's own
             // body used to.
             ed.state.truncate_layers(&ed.view, r);
         }
@@ -143,9 +143,9 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     }
 }
 
-/// Recalls the previous/next entry from whichever ring `dir` names — shared
+/// Recalls the previous/next entry from whichever ring `dir` names (shared
 /// by the `HistoryPrev`/`HistoryNext` arms above, which differ only in
-/// `dir` — then refreshes the live preview against the recalled pattern.
+/// `dir`), then refreshes the live preview against the recalled pattern.
 fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
     let Some(prompt) = ed.state.input.minibuf().map(|m| m.prompt.clone()) else {
         return;
@@ -158,7 +158,7 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 }
 
 /// Recompile the regex from the current mini-buffer input, warm the match
-/// cache, and jump to the first match from the pre-search position — every
+/// cache, and jump to the first match from the pre-search position: every
 /// selection independently when the input's `m` flag is set, the primary
 /// alone otherwise. Both are [`MatchScan::advance`]/[`MatchScan::advance_all`]
 /// with the `AtSelection` seed; `search_jump` (`commands/search.rs`) is the
@@ -171,7 +171,7 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 ///
 /// Warms the match cache ([`search::ops::update_buffer_matches`]) before
 /// scanning so every selection's hop binary-searches it instead of running
-/// its own full-buffer regex scan — the per-frame highlight rebuild would
+/// its own full-buffer regex scan. The per-frame highlight rebuild would
 /// warm the same cache moments later anyway, so this spends that scan once
 /// per keystroke instead of once per selection.
 fn update_live_search(ed: &mut Editor, r: LayerRef) {
@@ -181,7 +181,7 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
     };
 
     let Some(sp) = SearchPattern::compile(&pattern) else {
-        // Invalid regex in progress — clear pattern so highlights disappear.
+        // Invalid regex in progress: clear pattern so highlights disappear.
         let bid = ed.focused_buffer_id();
         search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
         return;
@@ -234,14 +234,14 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
         }
     };
     if !matched {
-        // No match — restore position to pre-search.
+        // No match: restore position to pre-search.
         restore_search_snapshot(ed, r);
     }
 }
 
 // ── Snapshot restore helpers ────────────────────────────────────────────────
 
-/// Restore selections from the search-mode snapshot without consuming it —
+/// Restore selections from the search-mode snapshot without consuming it,
 /// always targets the session's own originating pane, not whatever's
 /// currently focused (see [`PaneSnapshot`]'s own doc).
 fn restore_search_snapshot(ed: &mut Editor, r: LayerRef) {

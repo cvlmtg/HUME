@@ -49,7 +49,7 @@ fn set_option_unknown_key_errors() {
 
 // ── get-option ────────────────────────────────────────────────────────────
 
-/// `eval_source` runs top-level code as an init eval — `get-option` is
+/// `eval_source` runs top-level code as an init eval. `get-option` is
 /// registered `open` (no eval-mode gate), so it must be callable from
 /// `init.scm` too, not just from command bodies (unlike `focused-pane`
 /// or other genuinely command-mode-only reads).
@@ -100,7 +100,7 @@ fn get_option_reads_back_tab_style_as_string() {
 #[test]
 fn get_option_reads_back_whitespace_newline_as_string_and_round_trips() {
     // The plugin save/restore pattern from the bug report: read the value,
-    // then feed it straight back into set-option! — must not error.
+    // then feed it straight back into set-option!. It must not error.
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -169,7 +169,7 @@ fn get_option_unknown_key_errors() {
 
 /// `(get-buffer-option bid key)` reads back a value the same as `get-option`
 /// (MockHost ignores `bid`, so this proves the call reaches the host at
-/// all, not bid-specific routing — that's covered at the host layer by
+/// all, not bid-specific routing; that's covered at the host layer by
 /// `get_buffer_option_explicit_bid_reads_hook_target_not_focused_buffer` in
 /// `hume-editor/src/editor/tests/settings_effects.rs`).
 ///

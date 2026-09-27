@@ -2,10 +2,10 @@ use super::*;
 
 /// Core's `register-installed-grammars!` (`runtime/scheme/grammars.scm`)
 /// already ran before PLUM ever loaded (`init_scripting` evaluates it
-/// unconditionally) — walked the empty `<data>/grammars/`, found nothing,
+/// unconditionally), walked the empty `<data>/grammars/`, found nothing,
 /// and never touched the catalog at all. This test then loads `core:plum`
 /// itself, checking its `grammars.scm` (the install pipeline) compiles
-/// cleanly and its bindings resolve against those same core bindings — a
+/// cleanly and its bindings resolve against those same core bindings: a
 /// pure Scheme-syntax/logic smoke test, not an installation test.
 #[test]
 fn plum_plugin_loads_with_real_grammar_catalog() {
@@ -30,7 +30,7 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
 
 /// `:plum-list-plugins` exercises `plugins.scm`'s `plum/installed-plugins` (built on
 /// `core:stdlib`'s `stdlib/list-subdirs`, a Steel `read-dir`-backed helper)
-/// against a real (empty) data dir — no network. Pins that plugin discovery
+/// against a real (empty) data dir, no network. Pins that plugin discovery
 /// via Steel's stdlib process/fs helpers (see `user-manual/docs/plugins.md`'s
 /// "Filesystem and processes") works for loading and basic discovery.
 #[test]
@@ -93,7 +93,7 @@ fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
     );
 }
 
-/// Run `git` with `args` in `dir`, asserting success — test-setup helper
+/// Run `git` with `args` in `dir`, asserting success. Test-setup helper
 /// only (builds local origin/clone fixtures), not itself under test.
 fn git_ok(dir: &std::path::Path, args: &[&str]) {
     let status = std::process::Command::new("git")
@@ -105,13 +105,13 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
 }
 
 /// `:plum-update-plugins` exercises `plum/clone-github!`'s sibling,
-/// `run-inline-output!`'s `git pull`, against a REAL local git repo — no
+/// `run-inline-output!`'s `git pull`, against a REAL local git repo, no
 /// network. A local "origin" gets a second commit after the "installed"
 /// clone is made, then `:plum-update-plugins` must actually run `git pull`
 /// and fast-forward the clone to match, having actually entered the
 /// inline-output terminal bracket to do it (the command is `#:inline-output`,
 /// so `Tui::OnHeadless` is required for `inline_output_enter_count` to move
-/// at all — see that method's own doc).
+/// at all; see that method's own doc).
 #[test]
 fn plum_update_runs_real_git_pull_against_local_origin() {
     let _lock = lock();
@@ -174,7 +174,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
 }
 
 /// `:plum-cleanup-plugins` exercises `plum/delete-dir` against a real
-/// on-disk orphan plugin — no network. Nothing in `init.scm` declares it, so
+/// on-disk orphan plugin, no network. Nothing in `init.scm` declares it, so
 /// it's an orphan by definition; `:plum-cleanup-plugins` must remove its directory.
 #[test]
 fn plum_cleanup_removes_orphan_plugin_directory() {
@@ -210,7 +210,7 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
 /// `:plum-install-grammar` with no argument and no buffer language must
 /// report core:stdlib's shared "no language given" message
 /// (`stdlib/resolve-lang-arg`) in the statusline. A `(equal? name "")` guard
-/// is dead here — `name` is `#f`, not `""` — so it must not be relied on to
+/// is dead here (`name` is `#f`, not `""`), so it must not be relied on to
 /// catch this; letting a `#f` name fall through produces an opaque
 /// install-failure message instead.
 #[test]
@@ -223,7 +223,7 @@ fn plum_install_grammar_no_arg_no_language_warns() {
 
     type_cmd(&mut ed, ":plum-install-grammar");
 
-    // Boundary condition, not a failure — Severity::Info, statusline only,
+    // Boundary condition, not a failure: Severity::Info, statusline only,
     // never `:messages` (see Severity's routing table).
     assert!(
         ed.state
@@ -235,7 +235,7 @@ fn plum_install_grammar_no_arg_no_language_warns() {
     );
 }
 
-/// `:plum-install-grammar nosuchlang` — a name absent from the catalog
+/// `:plum-install-grammar nosuchlang`: a name absent from the catalog
 /// reports the unknown-grammar message instead of failing deep inside the
 /// install pipeline with an opaque hash-lookup error. This validation runs
 /// before the stale-source `delete-dir` purge in `plum/install-grammar`, so
@@ -286,7 +286,7 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
     );
 }
 
-/// `plum-install-grammar` is declared `#:inline-output #t` — dispatch must
+/// `plum-install-grammar` is declared `#:inline-output #t`, so dispatch must
 /// only bracket it with the real terminal (alt-screen exit + "press any key
 /// to return" block) when `Editor::run` owns the terminal. Off the event
 /// loop (this test, like every other in this file, dispatches directly and
@@ -298,7 +298,7 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
 ///
 /// This particular command errors out via `log!` only (no `displayln`), so
 /// under the lazy-entry design it never even reaches
-/// `ensure_inline_output_screen` — see
+/// `ensure_inline_output_screen`. See
 /// `inline_output_command_with_real_output_still_skips_bracket_off_event_loop`
 /// below for the case that does.
 #[test]
@@ -325,7 +325,7 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
 }
 
 /// `lsp-servers` is `#:inline-output #t` and *does* print via `displayln`
-/// (one line per seeded server) — off the event loop that must still reach
+/// (one line per seeded server). Off the event loop that must still reach
 /// `EditorHostImpl::ensure_inline_output_screen`'s no-terminal early return
 /// rather than the real terminal: printing must succeed without ever
 /// entering the alt-screen.
@@ -360,7 +360,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 
 /// Regression test: a grammar's source dir left non-empty by a prior failed
 /// install (clone succeeded, compile didn't) must not break
-/// `:plum-install-grammar` on the very next attempt — `plum/install-grammar`
+/// `:plum-install-grammar` on the very next attempt: `plum/install-grammar`
 /// purges any existing source dir before re-cloning, so retrying "just works"
 /// on the first try instead of requiring a second attempt to clear the
 /// leftover directory as a side effect of the first attempt's own failure.
@@ -376,11 +376,11 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
     let _lock = lock();
 
     let data_tmp = safe_tempdir();
-    // `load_plum` points XDG_DATA_HOME at data_tmp — the real data dir is
+    // `load_plum` points XDG_DATA_HOME at data_tmp, so the real data dir is
     // XDG_DATA_HOME/hume (see dirs.rs's ScriptDirs::new).
     let data_dir = data_tmp.path().join("hume");
     // Seed a stale, non-empty source dir exactly like a prior clone-succeeded/
-    // compile-failed install would leave behind — git-clone-rev refuses to
+    // compile-failed install would leave behind. git-clone-rev refuses to
     // clone into this without the pre-clean fix.
     let src_dir = data_dir.join("grammars/sources/json");
     std::fs::create_dir_all(&src_dir).unwrap();
@@ -411,7 +411,7 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 }
 
 /// `tsx`'s `highlights.scm` declares `; inherits: ecma,_typescript,_jsx`
-/// instead of writing out its own patterns — `plum/install-grammar` must
+/// instead of writing out its own patterns, so `plum/install-grammar` must
 /// resolve that chain (`plum/resolve-query` in `grammars.scm`) so the file
 /// written to disk has real capture patterns, not a dangling directive.
 ///
@@ -439,7 +439,7 @@ fn plum_install_grammar_resolves_helix_inherits_chain() {
     load_plum(&mut ed, data_tmp.path());
     // Real bootstrap loads runtime/scheme/languages.scm (which declares tsx's
     // identity) before any plugin runs; `load_plum` only loads `core:plum`,
-    // so register the identity here to match that ordering — `register-grammar!`
+    // so register the identity here to match that ordering: `register-grammar!`
     // attaches onto an existing identity, it doesn't create one.
     ed.state
         .config

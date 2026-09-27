@@ -127,7 +127,7 @@ fn macro_recording_element_named_register() {
 // ── Whole-row mode coloring ───────────────────────────────────────────────
 //
 // `EditorColors::default()` uses a reversed style for every mode, which can't
-// distinguish one mode's style from another — these tests need a theme with a
+// distinguish one mode's style from another. These tests need a theme with a
 // distinct color per mode scope instead.
 
 fn make_mode_theme() -> hume_engine::theme::Theme {
@@ -171,7 +171,7 @@ fn mode_element_uses_row_style_not_a_per_mode_pill() {
     // pinned via inline snapshot rather than a hardcoded assertion.
     //
     // The expected fg comes straight from make_mode_theme's
-    // per-scope color table, not from colors.statusline — asserting against
+    // per-scope color table, not from colors.statusline: asserting against
     // colors.statusline itself would pass even if from_theme resolved the wrong
     // scope entirely.
     use hume_engine::types::EditorMode;
@@ -202,7 +202,7 @@ fn mode_element_uses_row_style_not_a_per_mode_pill() {
 
 #[test]
 fn macro_recording_uses_row_style() {
-    // The recording label must match whatever the row is currently tinted —
+    // The recording label must match whatever the row is currently tinted,
     // not a fixed accent of its own. Expected colors come from the theme's
     // scope table, for the same reason as in
     // mode_element_uses_row_style_not_a_per_mode_pill above.
@@ -291,20 +291,20 @@ fn position_element_three_digit_line_and_col() {
 }
 
 /// Cross-surface column-agreement fixture, shared (by construction, not by
-/// import — this crate has no path to the LSP-dependent
+/// import, since this crate has no path to the LSP-dependent
 /// `tests/unix/column_display_agreement.rs`) with that file's diagnostics/
 /// goto-references assertions: the line `"e\u{0301}\u{1D11E}x"` puts three
 /// different "column" units at three different values for the same
 /// position (before 'x'). Each count is taken from the string itself, not
 /// from any HUME helper:
-/// - grapheme: 2 — `"e\u{0301}"` (e + combining acute, one cluster) then
+/// - grapheme: 2. `"e\u{0301}"` (e + combining acute, one cluster) then
 ///   `"\u{1D11E}"` (one astral-plane cluster) = 2 clusters before 'x'.
-/// - char: 3 — those same two clusters are 2 + 1 = 3 Rust `char`s.
-/// - UTF-16 code unit: 4 — the combining mark is 1 unit (2 so far), the
+/// - char: 3. Those same two clusters are 2 + 1 = 3 Rust `char`s.
+/// - UTF-16 code unit: 4. The combining mark is 1 unit (2 so far), the
 ///   astral char needs a surrogate pair (2 more = 4).
 ///
 /// The statusline must show the grapheme count (displayed 3), not either of
-/// the other two — this is the fixture proving `:diagnostics` and the LSP
+/// the other two. This is the fixture proving `:diagnostics` and the LSP
 /// goto/references drawer, which historically showed the char count and the
 /// UTF-16 count respectively, now agree with it.
 #[test]
@@ -409,7 +409,7 @@ fn readonly_element_renders_ro_label() {
 //
 // `format` is deterministic (`Data` carries the spinner frame as a plain
 // `usize`, no clock involved), so these exercise it directly with synthetic
-// `Data` rather than through a full `Editor` fixture — see the
+// `Data` rather than through a full `Editor` fixture. See the
 // `StatuslineElement` trait's doc comment. These are the appearance tests
 // (exact glyphs/spacing pinned via inline snapshots); data flow driven by a
 // live LSP server (the `Starting` → `Progress` → `Idle` transitions, and the
@@ -479,7 +479,7 @@ fn diagnostics_element_omits_zero_error_half() {
 }
 
 /// A `$/progress` task in flight must not hide diagnostic counts already
-/// known for the buffer — the spinner and the counts render together.
+/// known for the buffer: the spinner and the counts render together.
 #[test]
 fn diagnostics_element_progress_and_counts_render_together() {
     let colors = crate::statusline::colors::EditorColors::default();
@@ -509,7 +509,7 @@ fn center_x_does_not_overflow_when_wider_than_the_gap() {
     // `render_statusline` computes `center_x` via `Rect::centered` on a
     // `gap`-wide span; when `center_w` exceeds it, `centered` clamps its own
     // width to `gap` rather than the caller's, so this must not panic and
-    // must never place `center_x` before `left_end` — the same safety
+    // must never place `center_x` before `left_end`, the same safety
     // `center_fits`'s separate `center_w <= gap` check relies on rather than
     // trusting this arithmetic to reject an oversized `center_w` itself.
     let left_end: u16 = 5;
@@ -523,7 +523,7 @@ fn center_x_does_not_overflow_when_wider_than_the_gap() {
 
 #[test]
 fn shorten_path_fits_unchanged() {
-    // Path that already fits — returned verbatim.
+    // Path that already fits: returned verbatim.
     let path = "~/dev/foo.txt";
     let result = shorten_path_to_width(path, 50);
     assert_eq!(result, path);
@@ -557,7 +557,7 @@ fn shorten_path_abbreviates_multiple_dirs() {
 
 #[test]
 fn shorten_path_abbreviation_stops_early_when_it_fits() {
-    // Should abbreviate minimally — stop as soon as it fits.
+    // Should abbreviate minimally: stop as soon as it fits.
     // "~/foo/bar/baz.txt" = 17.  At budget 16: first dir abbreviated →
     // "~/f/bar/baz.txt" = 15 ≤ 16 → done (second dir NOT abbreviated).
     let path = "~/foo/bar/baz.txt";
@@ -585,7 +585,7 @@ fn shorten_path_zero_budget_returns_empty() {
 
 #[test]
 fn shorten_path_no_dirs_abbreviates_only_filename() {
-    // Flat filename with no directory component — only ellipsis can help.
+    // Flat filename with no directory component, so only ellipsis can help.
     // "readme.txt" = 10. At budget 6: need to truncate. "readm" (5) + "…" (1) = 6.
     let result = shorten_path_to_width("readme.txt", 6);
     assert_eq!(result, "readm…");
@@ -636,7 +636,7 @@ fn shorten_path_actually_abbreviates_when_too_wide() {
 }
 
 // `shorten_path_to_width_with`'s own separator-injection tests are co-located
-// with it in `elements::file_path::tests` — it has no caller outside that
+// with it in `elements::file_path::tests`: it has no caller outside that
 // file, unlike `shorten_path_to_width` above (called from `render_statusline`
 // in this module, hence tested here).
 
@@ -650,7 +650,7 @@ fn shorten_path_actually_abbreviates_when_too_wide() {
 
 #[test]
 fn statusline_display_path_scratch_buffer_shows_scratch_name() {
-    // test_editor()'s Buffer::new has no path and no label — the scratch case.
+    // test_editor()'s Buffer::new has no path and no label: the scratch case.
     let ed = test_editor();
     assert_eq!(statusline_display_path(&ed.statusline()), "*scratch*");
 }
@@ -665,7 +665,7 @@ fn statusline_display_path_synthetic_buffer_shows_label() {
 fn statusline_display_path_real_file_still_shows_path() {
     // The label fallback must not shadow a real path.
     //
-    // Expectation is hand-built, not `display_form(path)` — that would be
+    // Expectation is hand-built, not `display_form(path)`, since that would be
     // circular with `Buffer::set_path`, which derives `display_path` by
     // calling the very same function. `/some/absolute/path/file.rs` has no
     // `$HOME` prefix and no Windows verbatim prefix, so `display_form` is a

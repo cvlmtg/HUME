@@ -29,7 +29,7 @@ fn empty_paste_is_a_noop_in_normal_mode() {
 fn newline_only_paste_flattens_to_empty_and_is_a_noop_in_command_mode() {
     // Distinct from the top-level empty-text guard: "\n\n" survives
     // `normalize_line_endings` (it's non-empty), but `flatten_single_line`
-    // trims all of it away — `MiniBuffer::insert_str` then returns `Ignored`
+    // trims all of it away, so `MiniBuffer::insert_str` then returns `Ignored`
     // rather than `Edited`, the same result an unbound key would produce.
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
@@ -101,7 +101,7 @@ fn insert_mode_paste_with_embedded_newline() {
 #[test]
 fn insert_mode_paste_with_embedded_escape_sequence_inserts_literally() {
     // `handle_terminal_paste` receives the payload already stripped of the
-    // bracketed-paste markers — an embedded control/escape sequence in that
+    // bracketed-paste markers: an embedded control/escape sequence in that
     // payload is just more text to insert, not something to interpret.
     let mut ed = editor_from("-[\n]>");
     ed.feed_key(key('i'));
@@ -126,7 +126,7 @@ fn normal_mode_paste_replaces_selection_in_one_undo_step() {
 #[test]
 fn extend_mode_paste_replaces_selection() {
     // `base_input`'s `Paste` arm doesn't distinguish Normal from Extend
-    // (both run through the same `Base` layer) — set Extend directly.
+    // (both run through the same `Base` layer), so set Extend directly.
     let mut ed = editor_from("-[hell]>o\n");
     ed.state.input.set_extend(true);
     ed.feed_paste("xyz");
@@ -136,9 +136,9 @@ fn extend_mode_paste_replaces_selection() {
 #[test]
 fn normal_mode_paste_replaces_every_selection_in_a_multi_cursor_selection() {
     // `insert_str` (the closure `apply_doc_edit` invokes) iterates the whole
-    // SelectionSet, same as any other command — a paste replacing multiple
+    // SelectionSet, same as any other command: a paste replacing multiple
     // selections at once is no exception. Two-char selections here (not
-    // bare 1-char cursors) so this exercises replace, not insert-before —
+    // bare 1-char cursors) so this exercises replace, not insert-before;
     // see `insert_str_replaces_forward_selection` vs. `insert_str_two_cursors`
     // in `hume-ops/src/edit/tests/insert.rs` for why that distinction matters.
     let mut ed = editor_from("-[ab]>cd-[ef]>gh\n");
@@ -178,7 +178,7 @@ fn sift_mode_paste_triggers_live_sift() {
     assert_eq!(ed.state.mode(), Mode::Sift);
     ed.feed_paste("ab");
     // Live sift-within already narrowed to the two "ab" matches within the
-    // original selection — the paste ran through the same `Edited` arm a
+    // original selection: the paste ran through the same `Edited` arm a
     // typed pattern would.
     assert_eq!(ed.current_selections().len(), 2);
     assert_eq!(ed.state.minibuf().unwrap().input, "ab");
@@ -233,7 +233,7 @@ fn picker_paste_lands_flattened_in_the_query_and_fires_one_query_change() {
 
 #[test]
 fn picker_paste_into_a_non_live_session_queues_no_callback() {
-    // A `picker!` (`PickerMode::Filter`) session has no `on_query_change` —
+    // A `picker!` (`PickerMode::Filter`) session has no `on_query_change`:
     // the query still updates and reranks, but nothing is queued to fire.
     let mut ed = editor_from("-[h]>ello\n");
     open_filter_test_picker(&mut ed, &["foo", "bar"]);
@@ -258,7 +258,7 @@ fn confirm_paste_is_swallowed_and_the_confirm_stays_open() {
     assert!(ed.state.input.confirm().is_some(), "the confirm stays open");
     assert!(
         matches!(ed.state.buffers.get(bid).disk_state, DiskState::Changed(_)),
-        "declining wasn't recorded — the paste never answered the prompt"
+        "declining wasn't recorded: the paste never answered the prompt"
     );
 }
 
@@ -304,7 +304,7 @@ fn dot_repeat_replays_a_paste() {
     ed.feed_key(key_esc()); // buffer: "hi bar\n"
     assert_eq!(ed.doc().text().to_string(), "hi bar\n");
 
-    ed.feed_key(key('w')); // select " bar" (leading space, no trailing — EOL)
+    ed.feed_key(key('w')); // select " bar" (leading space, no trailing: EOL)
     ed.feed_key(key('.')); // repeat: delete " bar", paste "hi"
     assert_eq!(ed.doc().text().to_string(), "hihi\n");
 }

@@ -3,13 +3,13 @@
 //! live document, runs it (a native source inline, a Steel one via the
 //! deferred-call queue), lands answers, reacts to edits, and decides when a
 //! session has nothing left to show. Everything here is `impl EditorState`
-//! (not `Editor`), since every input it needs — the input stack, the source
-//! registry, the buffers, the Steel call queue — lives there, so it is
+//! (not `Editor`), since every input it needs (the input stack, the source
+//! registry, the buffers, the Steel call queue) lives there, so it is
 //! reachable from `EditorHostImpl` (`completion-emit!`) and from the key
 //! handlers alike, and never from inside a Steel eval's own borrow.
 //!
 //! Steel sources are only ever *queued* (`queue_steel_call`), never called
-//! inline — same as the picker's live source and every other Rust→Steel
+//! inline, same as the picker's live source and every other Rust→Steel
 //! callback. A trigger is user-intent frequency, so the per-keystroke work
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
@@ -29,14 +29,14 @@ use crate::editor::registry::CommandRegistry;
 use crate::editor::settings::EditorSettings;
 use crate::editor::{EditorState, Severity};
 
-/// What set an Insert-mode trigger in motion — and so which sources it
+/// What set an Insert-mode trigger in motion, and so which sources it
 /// invokes.
 pub(in crate::editor) enum Trigger {
     /// Ctrl-Space / the `completion-trigger` command: every `Buffer` source.
     Explicit,
     /// A char landed in Insert mode: every `Buffer` source registered for
     /// `(ch, language)` via `(completion-set-trigger-chars! …)`
-    /// (`SourceRegistry::buffer_sources_for_trigger` is the join) — its own
+    /// (`SourceRegistry::buffer_sources_for_trigger` is the join), with its own
     /// table, separate from `register-trigger-chars!`'s shared one, which
     /// only ever feeds the generic `on-trigger-char` hook. `language` is
     /// owned, not borrowed from the caller's own `&str` (`LanguageRegistry::
@@ -47,16 +47,16 @@ pub(in crate::editor) enum Trigger {
 }
 
 /// A Steel proc plus its args, minted while a session is borrowed and
-/// queued once it isn't — `queue_steel_call` needs the whole `EditorState`.
+/// queued once it isn't: `queue_steel_call` needs the whole `EditorState`.
 type SteelCall = (SteelVal, Vec<SteelVal>);
 
 impl EditorState {
     // ── Buffer target ────────────────────────────────────────────────────────
 
     /// Opens (or re-invokes into) the Insert-mode completion session on the
-    /// focused buffer. A session already open on this buffer survives —
+    /// focused buffer. A session already open on this buffer survives:
     /// its sources are called again, superseding their earlier answers
-    /// once the new ones land, so the menu never blinks empty — but is
+    /// once the new ones land, so the menu never blinks empty. It is
     /// re-pushed as a *fresh* layer: `completion_input_buffer` dismisses
     /// the layer it dispatched a bound command through once that command
     /// returns, and a trigger is exactly such a command.
@@ -132,7 +132,7 @@ impl EditorState {
         self.push_layer(view, BufferCompletionLayer { session });
     }
 
-    /// Records an Insert-mode edit that landed on `bid` — called from the
+    /// Records an Insert-mode edit that landed on `bid`. Called from the
     /// one chokepoint every keystroke edit goes through
     /// (`Editor::apply_insert_edit`). Re-ranks against the tokens' new
     /// text, dismisses a session the cursor has typed out of, and calls
@@ -151,7 +151,7 @@ impl EditorState {
         else {
             return;
         };
-        // Computed before `session` borrows `self.input` mutably — needed
+        // Computed before `session` borrows `self.input` mutably, needed
         // only to classify a newly-included end-of-token slice
         // (`Invocation::observe`'s own doc).
         let buf = self.buffers.get(bid);
@@ -185,7 +185,7 @@ impl EditorState {
             head,
         );
         self.queue_steel_calls(calls);
-        // Typed out of every token, and nothing on its way: silent — the
+        // Typed out of every token, and nothing on its way: silent, since the
         // user left, nothing "failed".
         self.settle_buffer_completion(view, false);
     }
@@ -193,7 +193,7 @@ impl EditorState {
     // ── Minibuffer target ────────────────────────────────────────────────────
 
     /// The `:` line's current target command name, if the minibuf is open
-    /// on a `:` prompt and the cursor sits past it (in its argument) —
+    /// on a `:` prompt and the cursor sits past it (in its argument).
     /// `Editor::activate_minibuf_completion_target` reads this before
     /// calling [`Self::trigger_minibuf_completion`], to activate a still-
     /// `TypedBody::Lazy` owner (see that method's own doc) before the
@@ -210,7 +210,7 @@ impl EditorState {
     /// The first Tab on the `:` line: resolves the one source the input
     /// shape names (the command name itself, or the command's declared
     /// argument completer), runs it, and applies the `:` line's own
-    /// eager policy — a sole candidate lands silently with no popup, two or
+    /// eager policy: a sole candidate lands silently with no popup, two or
     /// more open the popup with the first already applied.
     pub(in crate::editor) fn trigger_minibuf_completion(&mut self, view: &EngineView) {
         let Some(mb) = self.input.minibuf() else {
@@ -225,7 +225,7 @@ impl EditorState {
             return;
         };
         let Some(id) = self.config.completion_sources.minibuf_id_of(&name) else {
-            // `TypedCommand.completer` naming no registered source — a stale
+            // `TypedCommand.completer` naming no registered source, a stale
             // name after a rename. Silent to the user, same as `:bd`
             // declaring no completer at all; loud enough to find in the log.
             self.report(
@@ -261,9 +261,9 @@ impl EditorState {
     /// → the popup never shows; one candidate → applied silently, popup
     /// gone; two or more → the first is applied and the popup stays for
     /// Tab to cycle. Runs at open (native sources answer inline) and again
-    /// when a pending Steel source's answer lands — including a second
+    /// when a pending Steel source's answer lands, including a second
     /// answer to a still-streaming source, so the re-rank (which resets the
-    /// selection itself — `SlotSet::rank_with`'s own contract) always runs
+    /// selection itself, per `SlotSet::rank_with`'s own contract) always runs
     /// first: the previous selection index has no guaranteed meaning
     /// against the new order, and may point past a narrower list's end
     /// entirely.
@@ -286,7 +286,7 @@ impl EditorState {
     }
 
     /// Splices the selected candidate of the `Minibuf` session at `r` into
-    /// the `:` line, over its own source's token — restoring the input the
+    /// the `:` line, over its own source's token, restoring the input the
     /// sources saw first, so cycling from one candidate to the next never
     /// has to know what the previous one left behind.
     pub(in crate::editor) fn apply_minibuf_candidate(&mut self, r: LayerRef) {
@@ -307,10 +307,10 @@ impl EditorState {
 
     // ── Answers ──────────────────────────────────────────────────────────────
 
-    /// A source's answer to invocation `id` — `completion-emit!`. `false`
+    /// A source's answer to invocation `id`: `completion-emit!`. `false`
     /// when no open session has that invocation as a slot's latest call
     /// (superseded, replaced, or dismissed since: expected-normal for a late
-    /// async source) — the session is untouched, so it is settled only on
+    /// async source). The session is untouched, so it is settled only on
     /// `true`: a dropped answer changed nothing, and settling anyway would
     /// still reset the menu's selection out from under a user who has since
     /// Tabbed to a row an unrelated, superseded call has no bearing on.
@@ -329,7 +329,7 @@ impl EditorState {
             let landed = session.contribute(&self.config.completion_sources, id, items, incomplete);
             if landed {
                 // Silent for a trigger-char session the user never
-                // explicitly asked for completion on — same discipline as
+                // explicitly asked for completion on, same discipline as
                 // the `Explicit`-only report at this file's own
                 // `trigger_buffer_completion` (`ids.is_empty()`'s `if let
                 // Trigger::Explicit = trigger` guard).
@@ -354,7 +354,7 @@ impl EditorState {
     /// Recovery for a Steel call batch that failed (see
     /// `Editor::run_call_batch`'s own call site): drops every completion
     /// invocation still `Pending`, since nothing will ever call
-    /// `completion-emit!` for it now — see `SlotSet::drop_stalled`'s own
+    /// `completion-emit!` for it now; see `SlotSet::drop_stalled`'s own
     /// doc for why this is always safe. A no-op with no completion session
     /// open, or when nothing was actually pending.
     pub(in crate::editor) fn settle_completion_after_call_failure(&mut self, view: &EngineView) {
@@ -377,11 +377,11 @@ impl EditorState {
     }
 
     /// Re-ranks the open `Buffer` session and dismisses it if it's now
-    /// spent — every path that lands new information into it (`contribute`,
+    /// spent. Every path that lands new information into it (`contribute`,
     /// `completion_observe_edit`, a failed call batch) ends here.
     /// `report_empty`: report "no completions" if the session dismisses as
     /// spent and was ever explicitly triggered. Only `contribute` wants
-    /// this — a raw edit narrowing to nothing, or a call-batch failure,
+    /// this: a raw edit narrowing to nothing, or a call-batch failure,
     /// isn't the user "asking and getting nothing".
     fn settle_buffer_completion(&mut self, view: &EngineView, report_empty: bool) {
         let explicit = self
@@ -413,7 +413,7 @@ impl EditorState {
         }
     }
 
-    /// Queues every `(proc, args)` pair `invoke_buffer_sources` returned —
+    /// Queues every `(proc, args)` pair `invoke_buffer_sources` returned:
     /// the drain repeated at both its call sites (a fresh/reused trigger,
     /// and a post-edit re-invocation).
     fn queue_steel_calls(&mut self, calls: Vec<SteelCall>) {
@@ -424,7 +424,7 @@ impl EditorState {
 }
 
 /// Mints one invocation per source in `ids` into `session` and returns the
-/// Steel calls to queue — every `Buffer` source is Steel, by design (see
+/// Steel calls to queue. Every `Buffer` source is Steel, by design (see
 /// `registry.rs`'s module doc). Takes the fields it needs rather than
 /// `&mut EditorState` so a caller can hand it a session still borrowed
 /// from the input stack.
@@ -440,7 +440,7 @@ fn invoke_buffer_sources(
     let buf = buffers.get(bid);
     let text = buf.text();
     // Every source shares one token: the word before the cursor. Computed
-    // once here rather than per source in the loop below — neither
+    // once here rather than per source in the loop below: neither
     // `effective_word_chars` nor the `word_start_before` scan depends on
     // which source is being invoked.
     let chars = crate::editor::commands::effective_word_chars(buf, settings);
@@ -467,14 +467,14 @@ fn invoke_buffer_sources(
 /// Mints an invocation of `id` into `session` and runs it: a native source
 /// answers inline, a Steel one returns the call to queue.
 ///
-/// `NativeDelegated`'s own span comes from calling its function first — the
+/// `NativeDelegated`'s own span comes from calling its function first: the
 /// only body variant whose span isn't the generic `'arg` one, since its
 /// candidate universe *is* the live input and the two are computed
 /// together. Every other body gets the whitespace-delimited argument span
 /// computed here, upfront, the same way a `Buffer` source's span is always
 /// the word before the cursor (`invoke_buffer_sources`).
 /// `floor` is the byte offset the `'arg` span's backward scan must not
-/// cross — 0 while still completing the command name itself, or the
+/// cross: 0 while still completing the command name itself, or the
 /// command name's own end once `resolve_minibuf_source` has resolved past
 /// it. Without this, `arg_span`'s "last space before the cursor" rule has
 /// nothing to anchor on for a no-space argument (`:b1`, the alias `b`
@@ -522,10 +522,10 @@ fn invoke_minibuf_source(
 }
 
 /// The `:` line's own command name and the byte offset one past it (and
-/// its optional trailing `!`) — `None` if the cursor hasn't moved past the
+/// its optional trailing `!`). `None` if the cursor hasn't moved past the
 /// name yet, still typing it. Shared by [`resolve_minibuf_source`] (which
 /// also uses the offset as [`invoke_minibuf_source`]'s own argument-span
-/// floor) and [`EditorState::minibuf_target_command`] — the one place both
+/// floor) and [`EditorState::minibuf_target_command`], the one place both
 /// need to agree on what "past the command name" means, using the same
 /// name-shape rule `execute_command` itself uses
 /// (`input_stack::command::scan_command_name`), so completion never picks
@@ -536,9 +536,9 @@ fn target_command_name(input: &str, cursor: usize) -> Option<(&str, usize)> {
 }
 
 /// Resolves which registered source applies to the current `(input,
-/// cursor)` shape — the command name itself while the cursor is within it
+/// cursor)` shape (the command name itself while the cursor is within it
 /// (no space yet, or moved left past the space), else the resolved
-/// command's declared argument completer — and the byte offset
+/// command's declared argument completer) and the byte offset
 /// [`invoke_minibuf_source`]'s own argument span must not cross: `0` for
 /// the command-name case (the whole prefix typed so far is the token), the
 /// name's own end for the argument case.

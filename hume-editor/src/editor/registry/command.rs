@@ -12,7 +12,7 @@ use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 // ── Native command target shape ──────────────────────────────────────────────
 
 /// Function pointer for an [`EditorCmdBody::Pane`] handler: acts through `t`,
-/// a pane proven live and showing its buffer — not necessarily the focused
+/// a pane proven live and showing its buffer, not necessarily the focused
 /// pane.
 pub(in crate::editor) type PaneCmdFn = fn(
     &mut super::super::EditorState,
@@ -23,7 +23,7 @@ pub(in crate::editor) type PaneCmdFn = fn(
 ) -> Result<(), CommandError>;
 
 /// Function pointer for an [`EditorCmdBody::FocusedPane`] handler: acts on
-/// `bid` through the *focused* pane, proven by construction — see
+/// `bid` through the *focused* pane, proven by construction; see
 /// [`FocusedPane`]'s own doc for what that licenses.
 pub(in crate::editor) type FocusedCmdFn = fn(
     &mut super::super::EditorState,
@@ -60,14 +60,14 @@ pub(in crate::editor) enum EditorCmdBody {
 /// [`CmdMeta::selection_tracking`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) enum SelectionTracking {
-    /// Not a selection builder — clears the recipe.
+    /// Not a selection builder: clears the recipe.
     Untracked,
-    /// A motion's Move-mode result is a bare cursor — nothing to replay, so
+    /// A motion's Move-mode result is a bare cursor, with nothing to replay, so
     /// the recipe clears. Extend-mode steps still append: extending grows an
     /// existing selection by a relative amount and is safe to replay. Every
     /// `Motion` variant carries this, including the word motions
     /// (`select-next-word` et al.), whose Move-mode result *looks*
-    /// replayable (it lands on a selected word) but isn't — replaying it
+    /// replayable (it lands on a selected word) but isn't: replaying it
     /// would advance past the intended word instead of rebuilding it.
     Extends,
     /// Establishes an extent that is replayable on its own from a fresh
@@ -84,13 +84,13 @@ pub(in crate::editor) enum SelectionTracking {
 
 /// Declarative metadata extracted from a MappableCommand variant.
 ///
-/// Drives the dispatch pipeline — the pipeline reads this instead of matching
+/// Drives the dispatch pipeline: the pipeline reads this instead of matching
 /// on variant type or checking string sets.
 ///
 /// Each field is one independent behavioral aspect read by exactly one dispatch
 /// stage. This is a flat set of orthogonal flags; there is no category enum.
 /// Adding a new behavior = add one field here + one `step_*` function that reads
-/// it — no existing fields or call sites are affected.
+/// it. No existing fields or call sites are affected.
 ///
 /// The one derived reading is [`CmdMeta::moves_cursor`], a disjunction of the
 /// three motion flags that two dispatch stages both need. It adds no state and
@@ -99,7 +99,7 @@ pub(in crate::editor) enum SelectionTracking {
 /// `Copy` and name-free on purpose: the variant→property mapping lives in
 /// `MappableCommand::meta()` and nowhere else, so `meta()` must be cheap enough
 /// that no caller is ever tempted to re-`match` the variant for a single bit
-/// (which would fork the SSOT). The command name is owned data — it is read
+/// (which would fork the SSOT). The command name is owned data: it is read
 /// separately via [`MappableCommand::name`] and cloned once per dispatch by the
 /// pipeline, not carried in here.
 #[derive(Debug, Clone, Copy)]
@@ -108,10 +108,10 @@ pub(in crate::editor) struct CmdMeta {
     ///
     /// Always `Extends` for Motion variants. `Selection` and `EditorCmd`
     /// each carry a `selection_tracking` field of their own (per-command
-    /// opt-in) — see [`MappableCommand::Selection`]/[`MappableCommand::EditorCmd`].
+    /// opt-in); see [`MappableCommand::Selection`]/[`MappableCommand::EditorCmd`].
     /// `EditorCmd` additionally covers the rare case where a command needs
     /// `EditorState`/`EngineView` access to build a replayable selection
-    /// extent — `select-all-matches` (`m/`) reads the buffer's search
+    /// extent: `select-all-matches` (`m/`) reads the buffer's search
     /// pattern, which the pure `Selection` body signature has no channel
     /// for. The recipe accumulates the sequence of selection-building steps
     /// so dot-repeat can re-establish the selection before replaying an
@@ -123,26 +123,26 @@ pub(in crate::editor) struct CmdMeta {
     /// Feeds `step_capture_pre_jump`: motions, jump-flagged commands, and
     /// visual-line commands all snapshot their pre-body cursor position so the
     /// jump list can record a threshold-exceeding move. Selection commands are
-    /// excluded — staging a text-object is not deliberate navigation.
+    /// excluded: staging a text-object is not deliberate navigation.
     pub is_motion: bool,
     /// Whether this command defers the paste-session commit.
     ///
     /// `true` only for ring-cycle commands (`[` / `]`). Ring cycles must NOT
-    /// commit the paste session — they fold into one undo step with the original
+    /// commit the paste session; they fold into one undo step with the original
     /// paste.
     pub defers_paste_commit: bool,
     /// Whether this command always records a jump-list entry before executing,
     /// regardless of how far the cursor moves (goto / search / page-scroll /
     /// `select-all`).
     ///
-    /// Single source of truth for jump-command classification — there is no
+    /// Single source of truth for jump-command classification: there is no
     /// parallel `JUMP_COMMANDS` list, and the dispatch pipeline reads this rather
     /// than matching on the command variant.
     pub is_jump: bool,
     /// Whether this command is a visual-line motion (`move-down`/`move-up`).
     /// Read only by `step_capture_pre_jump`, alongside `is_jump`/`is_motion`,
     /// to decide whether to snapshot the pre-move selection for the jump
-    /// list — it does not gate the sticky display column, which a
+    /// list. It does not gate the sticky display column, which a
     /// `Selection` carries and clears by construction regardless of this
     /// flag (see `Selection::sticky_display_col`).
     pub is_visual_move: bool,
@@ -171,19 +171,19 @@ pub(in crate::editor) struct CmdMeta {
     /// itself, instead of relying on an external wrapper to group its edit.
     ///
     /// `true` only for the paste family (`paste-after`/`-before`,
-    /// `smart-paste-after`/`-before`, `paste-ring-older`/`-newer` — see
+    /// `smart-paste-after`/`-before`, `paste-ring-older`/`-newer`; see
     /// `commands::paste`'s `do_paste`/`do_paste_cycle`). `Editor::replay_dot`
     /// reads this to decide whether it may safely pre-open a session before
     /// dispatching the replayed command: pre-opening one for a command in
     /// this set would collide with the session that command is about to
-    /// open or continue itself — `paste-ring-older`/`-newer` in particular
+    /// open or continue itself: `paste-ring-older`/`-newer` in particular
     /// need an *already-open* Paste session to find, not a fresh Replay
     /// placeholder.
     /// Every other command relies on `replay_dot`'s wrapper to fold a
     /// multi-step recipe replay plus the main edit into one undo revision.
     ///
     /// Governs only the pre-open decision, not whether `replay_dot`
-    /// commits afterward — a Steel-backed command can never set this flag
+    /// commits afterward. A Steel-backed command can never set this flag
     /// (see the `SteelBacked`/`Lazy` constructors below, always `false`),
     /// yet its body can still dispatch native paste, which retargets a
     /// pre-opened session to `Paste` in place
@@ -196,7 +196,7 @@ pub(in crate::editor) struct CmdMeta {
 }
 
 impl CmdMeta {
-    /// Returns `true` if this command moved the cursor rather than editing —
+    /// Returns `true` if this command moved the cursor rather than editing:
     /// the disjunction of `is_motion`, `is_jump`, and `is_visual_move`.
     ///
     /// Two pipeline steps want exactly this set and nothing else:
@@ -208,7 +208,7 @@ impl CmdMeta {
     /// **Blind spot**: [`MappableCommand::meta`] hardcodes all three flags
     /// `false` for `SteelBacked` and `Lazy`, since a Steel command has no way to
     /// declare its own motion semantics. A user-bound Steel motion therefore
-    /// answers `false` here — the jump list won't record it, and a pinned typed
+    /// answers `false` here: the jump list won't record it, and a pinned typed
     /// run survives it. Both callers accept that rather than guess.
     pub(in crate::editor) fn moves_cursor(&self) -> bool {
         self.is_motion || self.is_jump || self.is_visual_move
@@ -224,13 +224,13 @@ pub(in crate::editor) type EditFn =
 /// Body shape for `Motion`/`Selection`'s `fun` field.
 ///
 /// Every native motion/selection command takes `(&BufferText, SelectionSet,
-/// usize, MotionMode)` — except the word family (`w`/`W`/`b`/`B`, `mm`/`MM`,
+/// usize, MotionMode)`, except the word family (`w`/`W`/`b`/`B`, `mm`/`MM`,
 /// `miw`/`maw`), which additionally needs this buffer's configured
 /// `word-chars` and effective `word-selects-whitespace`, resolved from
 /// settings the same way `tab_width`/`TabStyle` are for `align_selections`/
 /// `insert_tab`. Rather than widening every command's signature for the large
 /// majority of registrations that would ignore the extra data, only the word
-/// family — the four `w`/`W`/`b`/`B` motions and six word-tagged selections —
+/// family (the four `w`/`W`/`b`/`B` motions and six word-tagged selections)
 /// gets a second body shape here in the registry. The four motions
 /// specifically stay `Motion` rather than joining `select-word-nearest-on-line`
 /// as an `EditorCmd` (which also resolves settings, via a `DisplayLineMap`) because
@@ -255,13 +255,13 @@ pub(in crate::editor) enum StructuralBody {
     /// each cursor. Extend mode grows outward through
     /// `apply_text_object_extend`'s past-end retry, so an object that shares
     /// its end with its parent (a nested `def` closing where its class
-    /// closes) cannot grow to that parent — the same limit the bracket
+    /// closes) cannot grow to that parent, the same limit the bracket
     /// objects have, accepted rather than special-cased.
     Select { kind: ObjectKind, span: ObjectSpan },
     /// `goto-next-<k>` / `goto-prev-<k>`.
     Goto { kind: ObjectKind, dir: Direction },
     /// `m i a` / `m a a`: `parameter.inside` with the lexical scan as
-    /// fallback — one structure-aware argument family rather than a
+    /// fallback: one structure-aware argument family rather than a
     /// separate `parameter` object.
     Argument { around: bool },
 }
@@ -272,14 +272,14 @@ pub(in crate::editor) enum StructuralBody {
 /// `MappableCommand` values at dispatch time.
 ///
 /// `pub(in crate::editor)`, not `pub(crate)`: ordinary minimum-reach
-/// visibility hygiene — every usage site already lives under `crate::editor`,
+/// visibility hygiene, since every usage site already lives under `crate::editor`,
 /// same as [`StructuralBody::apply`]. It is not what stops a second dispatch
 /// path: enum variants inherit their enum's visibility and cannot be narrowed
 /// individually, so this alone would not stop any file under `crate::editor`
 /// from destructuring a native variant's `fun` and calling it directly,
 /// skipping `commands::run`'s bookkeeping (jump list, dot-repeat,
 /// paste session). Every native variant's `fun` is wrapped in
-/// [`NativeBody`](crate::editor::commands::NativeBody) instead — its private
+/// [`NativeBody`](crate::editor::commands::NativeBody) instead: its private
 /// field, readable only from `commands::pipeline::run_body`, is what
 /// actually closes that off.
 #[derive(Clone)]
@@ -287,12 +287,12 @@ pub(in crate::editor) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
     /// `fun` is a [`SelectionBody`] wrapped in
-    /// [`NativeBody`](crate::editor::commands::NativeBody) — `Plain(fn(&BufferText,
+    /// [`NativeBody`](crate::editor::commands::NativeBody): `Plain(fn(&BufferText,
     /// SelectionSet, usize, MotionMode) -> SelectionSet)` for almost every
     /// motion, `Word` for the word family.
     ///
     /// Motions are always extendable. The `mode` parameter selects Move or Extend
-    /// semantics at dispatch time — no separate extend-variant functions needed.
+    /// semantics at dispatch time, with no separate extend-variant functions needed.
     Motion {
         name: Cow<'static, str>,
         // Pending command-palette / :help integration.
@@ -308,7 +308,7 @@ pub(in crate::editor) enum MappableCommand {
     },
     /// Selection or text-object operation (accepts count).
     ///
-    /// `fun` is a [`SelectionBody`] — see [`MappableCommand::Motion`]'s doc.
+    /// `fun` is a [`SelectionBody`]; see [`MappableCommand::Motion`]'s doc.
     ///
     /// All selection commands receive `MotionMode`. Non-extendable ones accept
     /// `_mode` and ignore it; extendable text objects branch on it. The `usize`
@@ -327,14 +327,14 @@ pub(in crate::editor) enum MappableCommand {
         /// selection commands (`select-line`, `ms(`, `select-all`: each
         /// replayable on its own from a fresh cursor); `Composes` for the
         /// handful that transform or reduce whatever is already staged
-        /// instead — see `registry/defaults/selections.rs` for the full list.
+        /// instead; see `registry/defaults/selections.rs` for the full list.
         selection_tracking: SelectionTracking,
     },
     /// BufferText-modifying edit with no extra arguments.
     ///
     /// Signature: `fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet)`
     ///
-    /// Edits are never extendable — they don't carry `MotionMode`.
+    /// Edits are never extendable: they don't carry `MotionMode`.
     Edit {
         name: Cow<'static, str>,
         // Pending command-palette / :help integration.
@@ -352,7 +352,7 @@ pub(in crate::editor) enum MappableCommand {
     /// Covers composite operations: mode changes, register access, undo group
     /// management, and parameterized motions (find/till/replace). Returns
     /// `Err` for a user-facing failure, reported at that `CommandError`'s own
-    /// severity — `CommandError::transient` for a boundary condition (e.g.
+    /// severity: `CommandError::transient` for a boundary condition (e.g.
     /// "no match"), `CommandError::new` for a real failure (I/O errors).
     /// Silent no-ops return `Ok(())`. Stored and dispatched as a function
     /// pointer exactly like the other variants.
@@ -384,7 +384,7 @@ pub(in crate::editor) enum MappableCommand {
         /// See [`CmdMeta::clears_extend`] for the full rationale.
         clears_extend: bool,
         /// How this command opts into the dot-repeat selection recipe.
-        /// `Untracked` unless a specific registration opts in — see
+        /// `Untracked` unless a specific registration opts in; see
         /// [`CmdMeta::selection_tracking`] and each opt-in site's own comment
         /// in `registry/defaults/`.
         selection_tracking: SelectionTracking,
@@ -418,7 +418,7 @@ pub(in crate::editor) enum MappableCommand {
         /// `true` if pressing `.` should replay this command.
         ///
         /// Opt in via `#:repeatable #t` in `(define-command! …)`.
-        /// Never `true` when `inline_output` is `true` — enforced at definition time.
+        /// Never `true` when `inline_output` is `true`, enforced at definition time.
         repeatable: bool,
     },
     /// A placeholder for a lazy plugin command that has not yet been loaded.
@@ -437,9 +437,9 @@ impl MappableCommand {
     /// The command's registered name.
     ///
     /// Returns the stored `Cow` (not `&str`) so the dispatch pipeline can clone
-    /// it preserving `Cow::Borrowed` — a `&'static str` name (every built-in)
+    /// it preserving `Cow::Borrowed`: a `&'static str` name (every built-in)
     /// clones with no heap allocation; only `Cow::Owned` Steel names allocate.
-    /// Pure field extraction — distinct from [`MappableCommand::meta`], which is
+    /// Pure field extraction, distinct from [`MappableCommand::meta`], which is
     /// the single source of truth for derived bookkeeping properties.
     pub(in crate::editor) fn name(&self) -> &Cow<'static, str> {
         match self {
@@ -468,7 +468,7 @@ impl MappableCommand {
     /// Declarative metadata for the dispatch pipeline.
     ///
     /// This is the single source of truth for bookkeeping properties. The
-    /// pipeline reads `CmdMeta` — it never matches on variant or checks
+    /// pipeline reads `CmdMeta`; it never matches on variant or checks
     /// string sets to decide what bookkeeping to run.
     pub(in crate::editor) fn meta(&self) -> CmdMeta {
         match self {
@@ -582,7 +582,7 @@ impl MappableCommand {
     ///
     /// Motion and Selection are always extendable. Edit is never extendable.
     /// EditorCmd has an explicit flag set at registration time.
-    /// Steel commands (SteelBacked and Lazy stubs) are always extendable —
+    /// Steel commands (SteelBacked and Lazy stubs) are always extendable:
     /// the resolved lambda receives `extend` as its second arg.
     pub(in crate::editor) fn is_extendable(&self) -> bool {
         match self {
@@ -604,7 +604,7 @@ impl MappableCommand {
 ///
 /// The signature differs from mappable commands: it receives an optional
 /// string argument (e.g. the path for `:w foo.txt`) and a force flag (whether
-/// `!` was appended), rather than a numeric count — see [`TypedBody`].
+/// `!` was appended), rather than a numeric count; see [`TypedBody`].
 pub(in crate::editor) struct TypedCommand {
     /// Canonical name, e.g. `"write"`. Used as the registry key.
     pub name: Cow<'static, str>,
@@ -617,14 +617,14 @@ pub(in crate::editor) struct TypedCommand {
     /// `&'static [&'static str]` covers all built-in commands. Steel-registered
     /// typed commands pass `&[]` and register aliases separately if needed.
     pub aliases: &'static [&'static str],
-    /// How this command executes — see [`TypedBody`].
+    /// How this command executes: see [`TypedBody`].
     pub body: TypedBody,
     /// Names this command's `:` argument-completion source in
     /// `completion::SourceRegistry`, if it declares one. A name, not a
     /// closed enum: `completion/orchestrate.rs`'s `resolve_minibuf_source`
     /// looks it up at completion time instead of matching on it, which is
-    /// what lets a Steel typed command's `#:complete` name a source — native
-    /// or Steel-registered — the same way. `Cow`, like `name`: `Borrowed`
+    /// what lets a Steel typed command's `#:complete` name a source (native
+    /// or Steel-registered) the same way. `Cow`, like `name`: `Borrowed`
     /// for a built-in's `&'static str` constant, `Owned` for the runtime
     /// string `define-typed-command!` hands over.
     ///
@@ -638,16 +638,16 @@ pub(in crate::editor) struct TypedCommand {
 
 /// How a [`TypedCommand`] executes when dispatched from `:`.
 ///
-/// Three shapes, mirroring [`MappableCommand`]'s native/Steel/Lazy split —
+/// Three shapes, mirroring [`MappableCommand`]'s native/Steel/Lazy split,
 /// but a typed command is never Steel-dispatchable *itself* the way
 /// `MappableCommand::SteelBacked` is (there is no `(write)` bare binding);
 /// `Steel`/`Lazy` here mean the command's *body* is a Steel lambda invoked
 /// only from the `:` line, defined via `(define-typed-command! …)`.
 pub(in crate::editor) enum TypedBody {
     /// A command implemented in Rust. Receives the editor, the pane focused
-    /// when the `:` line was confirmed — captured once at invocation, the
+    /// when the `:` line was confirmed (captured once at invocation, the
     /// same rule a mappable command's target follows, so a body never reads
-    /// focus again after its own work may have moved it — an optional
+    /// focus again after its own work may have moved it), an optional
     /// argument (e.g. a file path), and whether `!` was appended.
     ///
     /// Kept as `&mut Editor` rather than a native `EditorCmd`'s `(&mut
@@ -665,7 +665,7 @@ pub(in crate::editor) enum TypedBody {
     ),
     /// A command implemented as a Steel lambda, registered by
     /// `(define-typed-command! …)`. The lambda receives `(arg force)`,
-    /// `(arg)`, or `()` based on its declared arity — see
+    /// `(arg)`, or `()` based on its declared arity; see
     /// `Editor::run_typed_steel_command` in `dispatch.rs`.
     Steel {
         /// Number of required positional parameters (0, 1, or 2).
@@ -677,6 +677,6 @@ pub(in crate::editor) enum TypedBody {
         inline_output: bool,
     },
     /// A placeholder for a lazy plugin's typed command that has not yet been
-    /// loaded. Mirrors [`MappableCommand::Lazy`] — see its doc.
+    /// loaded. Mirrors [`MappableCommand::Lazy`]; see its doc.
     Lazy(hume_scripting::attribution::PluginId),
 }

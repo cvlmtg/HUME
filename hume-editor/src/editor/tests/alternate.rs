@@ -16,7 +16,7 @@ fn alternate_buffer_none_with_single_buffer() {
 
 /// Worked example from `cmd_goto_alternate_buffer`'s own doc: a remote call
 /// on a non-focused pane B must use the *global* history (`mru`'s own last
-/// two entries), not B's own buffer — and a second remote call on B must
+/// two entries), not B's own buffer, and a second remote call on B must
 /// toggle back, since B's own touches are now part of that same history.
 #[test]
 fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on_repeat() {
@@ -42,7 +42,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     // `open` seeds `mru` at open time regardless of whether a pane ever
     // shows the buffer; re-touch bar then foo directly (bypassing real
     // focus events, which this test doesn't need) so `mru` ends at
-    // `[baz, bar, foo]` — foo most recent, bar the one before it.
+    // `[baz, bar, foo]`: foo most recent, bar the one before it.
     ed.state.buffers.touch_mru(bar_bid);
     ed.state.buffers.touch_mru(foo_bid);
     assert_eq!(
@@ -76,7 +76,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
     );
 
     // First remote call: B (baz) → bar, the buffer excluded by the *focused*
-    // pane's history — not baz, B's own buffer.
+    // pane's history, not baz, B's own buffer.
     let ran = live_host!(ed)
         .run_command_sync(
             "goto-alternate-buffer",
@@ -97,7 +97,7 @@ fn goto_alternate_buffer_on_a_remote_pane_uses_the_global_history_and_toggles_on
         "A must be untouched by a remote dispatch on B"
     );
 
-    // Second remote call, B now on bar: must toggle back to baz — B's own
+    // Second remote call, B now on bar: must toggle back to baz. B's own
     // outgoing touch from the first call is now part of the same history.
     let ran = live_host!(ed)
         .run_command_sync(

@@ -1,5 +1,5 @@
 // The bracket-match highlight (`ui.cursor.match`) resolves against the whole
-// primary selection, nearest the head — see `hume_ops::pair::matching_bracket`.
+// primary selection, nearest the head. See `hume_ops::pair::matching_bracket`.
 
 use super::*;
 use hume_editing::selection::Selection;
@@ -8,7 +8,7 @@ use hume_engine::providers::HighlightTier;
 /// A `w`-motion-style selection ends on the whitespace following a bracket,
 /// head on the space rather than the bracket itself. The highlight must
 /// still resolve the bracket nearest the head within the selection, matching
-/// what `#` would jump to — not go dark just because the head itself isn't
+/// what `#` would jump to, not go dark just because the head itself isn't
 /// on a bracket.
 #[test]
 fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
@@ -16,7 +16,7 @@ fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
     type_text(&mut ed, "(x) y");
 
     let pid = ed.state.focus.id();
-    // "(x) y\n": '(' 0, 'x' 1, ')' 2, ' ' 3, 'y' 4, '\n' 5 — selection covers
+    // "(x) y\n": '(' 0, 'x' 1, ')' 2, ' ' 3, 'y' 4, '\n' 5. Selection covers
     // ") " with the head on the space (3), same shape as a `w` landing.
     ed.set_current_selections(SelectionSet::single(Selection::new(co(2), co(3))));
 

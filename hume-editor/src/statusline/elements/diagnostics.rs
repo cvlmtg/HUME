@@ -17,12 +17,12 @@ pub(in crate::statusline) struct DiagnosticsElement;
 
 impl StatuslineElement for DiagnosticsElement {
     /// The focused buffer's LSP loading state, its `(errors, warnings)`
-    /// counts, and the current spinner animation frame — rendered together
+    /// counts, and the current spinner animation frame, rendered together
     /// (spinner prefix + counts suffix) so a background progress task never
     /// hides the counts the user already has.
     ///
     /// Diagnostic counts are read directly from the diagnostics store in
-    /// Rust — the statusline renders every frame, so this never goes
+    /// Rust: the statusline renders every frame, so this never goes
     /// through Steel's `(diagnostic-counts …)` builtin (that one is for
     /// plugins, not the render path).
     type Data = (LspActivity, usize, usize, usize);
@@ -43,7 +43,7 @@ impl StatuslineElement for DiagnosticsElement {
         colors: &EditorColors,
     ) -> (Cow<'static, str>, ResolvedStyle) {
         let spinner = SPINNER[frame % SPINNER.len()];
-        // `Starting` and a percentage-less `Progress` render identically —
+        // `Starting` and a percentage-less `Progress` render identically:
         // neither has anything more specific to show than "a server task is
         // running".
         let spinner_prefix = match activity {

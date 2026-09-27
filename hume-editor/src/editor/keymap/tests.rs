@@ -44,7 +44,7 @@ fn bind_sequence_shadows_existing_leaf() {
             force_extend: false,
         },
     );
-    // Now bind `gg` — should convert `g` from Leaf to Node.
+    // Now bind `gg`; should convert `g` from Leaf to Node.
     trie.bind_sequence(
         &[key!('g'), key!('g')],
         KeymapCommand {
@@ -102,8 +102,8 @@ fn remove_sequence_nonexistent_is_noop() {
             force_extend: false,
         },
     );
-    trie.remove_sequence(&[key!('q')]); // q not bound — no-op
-    trie.remove_sequence(&[key!('z'), key!('z')]); // path doesn't exist — no-op
+    trie.remove_sequence(&[key!('q')]); // q not bound: no-op
+    trie.remove_sequence(&[key!('z'), key!('z')]); // path doesn't exist: no-op
     // `z` leaf is untouched.
     assert!(matches!(trie.walk(&[key!('z')]), WalkResult::Leaf(ref c) if c.name == "my-cmd"));
 }

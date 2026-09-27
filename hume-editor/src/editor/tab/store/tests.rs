@@ -3,12 +3,12 @@ use hume_engine::pane::Pane;
 use hume_engine::pipeline::EngineView;
 use hume_engine::theme::Theme;
 
-/// Mint a real `PaneId` via a scratch `EngineView` — `PaneId` is opaque
+/// Mint a real `PaneId` via a scratch `EngineView`. `PaneId` is opaque
 /// (slotmap key), so a test needs a real slot to hand `TabStore` a valid
 /// one, mirroring `BufferStore`'s own `make_id` test helper.
 fn make_pane(ev: &mut EngineView) -> PaneId {
     let bid = ev.buffers.insert(());
-    // Deliberately never spliced into any tree — a scratch id for this
+    // Deliberately never spliced into any tree: a scratch id for this
     // module's own tests, not a real pane.
     ev.insert_pane(Pane::new(bid)).pane_id()
 }
@@ -56,7 +56,7 @@ fn switch_round_trips_layout_and_focus_across_three_tabs() {
     assert_eq!(focus, p1);
     assert_eq!(store.current(), t1);
 
-    // t3's own state must have been stashed correctly by that switch — jump
+    // t3's own state must have been stashed correctly by that switch. Jump
     // straight to it from t1 and confirm it comes back unchanged.
     let (layout, focus) = store.switch(LayoutTree::Leaf(p1), p1, t3);
     assert_eq!(layout, LayoutTree::Leaf(p3));
@@ -72,7 +72,7 @@ fn switch_round_trips_layout_and_focus_across_three_tabs() {
 
 #[test]
 fn switch_to_current_tab_is_reachable_but_a_noop_for_the_store() {
-    // TabStore::switch itself has no early-return — that's `tab::switch_to_tab`'s
+    // TabStore::switch itself has no early-return; that's `tab::switch_to_tab`'s
     // job (the chokepoint callers actually use). Called directly here it
     // still behaves correctly: stashing then immediately re-loading the
     // same tab is idempotent.
@@ -149,7 +149,7 @@ fn adjacent_prefers_the_left_neighbour() {
     let t2 = store.open_after_current(LayoutTree::Leaf(p1), p1, LayoutTree::Leaf(p2), p2);
     let t3 = store.open_after_current(LayoutTree::Leaf(p2), p2, LayoutTree::Leaf(p3), p3);
     assert_eq!(store.order(), &[t1, t2, t3]);
-    // current() == t3 here — its left neighbour is t2.
+    // current() == t3 here, so its left neighbour is t2.
 
     assert_eq!(store.adjacent(), t2);
 }

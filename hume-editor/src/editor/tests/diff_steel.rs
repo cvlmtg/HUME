@@ -25,13 +25,13 @@ fn diff_lines_returns_zero_based_hunk_tuples() {
     assert!(fired, "diff-lines must return the expected hunk shape");
 }
 
-/// `diff-buffer-lines` diffs `ref-text` (old) against the live buffer (new)
-/// — this pins the argument order: `old-lines` is the ref's line,
+/// `diff-buffer-lines` diffs `ref-text` (old) against the live buffer (new).
+/// This pins the argument order: `old-lines` is the ref's line,
 /// `new-lines` is the buffer's.
 ///
 /// Swapping ref and buffer inside `DiffHost::diff_buffer_lines` would invert
 /// the hunk's old/new sides and stop the probe from firing. Also stands in
-/// for the doc's `diff-buffer-lines` ≡ `diff-lines` equivalence check —
+/// for the doc's `diff-buffer-lines` ≡ `diff-lines` equivalence check,
 /// since both route through the same `diff_bridge::line_hunks`, this single
 /// assertion (same texts fed both ways) is structurally guaranteed rather
 /// than needing a matrix.
@@ -54,13 +54,13 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
 }
 
 /// `diff-buffer-lines` on a stale bid raises "invalid buffer id", not a
-/// silent "no differences" — `bid`'s liveness is checked at argument-resolve
+/// silent "no differences": `bid`'s liveness is checked at argument-resolve
 /// time (`args::LiveBid`'s `BuiltinArg::resolve`, in the `builtins!`-
-/// registered closure), before `diff_buffer_lines`'s body — and thus
-/// `DiffHost::diff_buffer_lines` itself — ever runs. Errors raised inside a
+/// registered closure), before `diff_buffer_lines`'s body (and thus
+/// `DiffHost::diff_buffer_lines` itself) ever runs. Errors raised inside a
 /// `define-command!` body surface as a `Severity::Error` message-log entry
 /// prefixed `"steel call error: "` (`scripting_setup.rs`'s `run_call_batch`
-/// → `apply_script_result`), not as a Rust panic or a silent no-op — hence
+/// → `apply_script_result`), not as a Rust panic or a silent no-op. Hence
 /// checking the log instead of a `run_probe` boolean.
 ///
 /// If `diff-buffer-lines`'s `builtins!` table entry took `args::BidArg`
@@ -106,7 +106,7 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
 /// boundary. Any change to field order, offset base, or the dotted-pair
 /// outer shape stops the probe from firing. Offsets
 /// worked out by hand from `split_word_bounds()`'s tokenization of "foo bar"
-/// (`"foo"`, `" "`, `"bar"`/`"baz"` — offsets `0,3,4,7`).
+/// (`"foo"`, `" "`, `"bar"`/`"baz"`: offsets `0,3,4,7`).
 #[test]
 fn diff_words_returns_a_hunks_and_deadline_hit_pair() {
     let tmp = safe_tempdir();

@@ -91,14 +91,14 @@ mod tests {
                 Just('p'), Just('r'), Just('s'), Just('u'), Just('w'),
                 Just('x'), Just('y'), Just('z'),
             ].prop_map(FuzzKey::Char),
-            // Punctuation / symbols — exercises text objects, search patterns
+            // Punctuation / symbols: exercises text objects, search patterns
             2 => prop_oneof![
                 Just('('), Just(')'), Just('['), Just(']'),
                 Just('{'), Just('}'), Just('"'), Just('\''),
                 Just(' '), Just('.'), Just('/'), Just('?'),
                 Just('*'), Just('%'), Just(':'),
             ].prop_map(FuzzKey::Char),
-            // Digits — numeric prefixes (e.g. `3w`, `5j`)
+            // Digits: numeric prefixes (e.g. `3w`, `5j`)
             1 => prop_oneof![
                 Just('1'), Just('2'), Just('3'), Just('4'), Just('5'),
             ].prop_map(FuzzKey::Char),
@@ -118,7 +118,7 @@ mod tests {
     /// A small set of realistic starting documents for the fuzzer.
     ///
     /// Using fixed documents (rather than fully random ones) gives the fuzzer
-    /// a stable base — the interesting behaviour is in the key sequences.
+    /// a stable base; the interesting behaviour is in the key sequences.
     fn arb_initial_editor() -> impl Strategy<Value = Editor> {
         prop_oneof![
             Just("-[h]>ello world\n"),
@@ -165,7 +165,7 @@ mod tests {
                 ed.handle_input(TerminalEvent::Key(key.to_key_event()));
                 ed.settle();
             }
-            // Check invariants only at the end for speed — panics during the
+            // Check invariants only at the end for speed. Panics during the
             // loop are still caught by proptest as failures.
             assert_editor_invariants(&ed);
         }

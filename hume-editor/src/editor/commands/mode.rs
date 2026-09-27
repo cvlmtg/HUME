@@ -76,17 +76,17 @@ pub(in crate::editor) fn cmd_insert_at_line_end(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     apply_pane_motion(state, view, fp.pane(), |b, s| {
-        // Move to line content-end, then step right onto the \n slot — unless the
+        // Move to line content-end, then step right onto the \n slot, unless the
         // line is empty, in which case line-end is already the \n and stepping past
         // it would land on the next line.
         let max = b.last_char();
         let at_end = cmd_goto_line_end(b, s, 1, MotionMode::Move);
         at_end.map(|sel| {
             let pos = if sel.ends_on_newline(b) {
-                // Empty line — cursor is on the \n; inserting here equals `i`.
+                // Empty line: cursor is on the \n; inserting here equals `i`.
                 sel.head()
             } else {
-                // Non-empty line — advance one grapheme onto the trailing \n slot.
+                // Non-empty line: advance one grapheme onto the trailing \n slot.
                 next_grapheme_boundary(b, sel.head()).min(max)
             };
             Selection::collapsed(pos)
@@ -118,12 +118,12 @@ pub(in crate::editor) fn cmd_insert_at_selection_start(
 /// For a collapsed cursor this is identical to `a`.
 ///
 /// `ExitCursor::StepBack` arms a step-back that applies when there is no
-/// typed span to fall back on instead — see `PaneBufferState::step_back_on_exit`'s
+/// typed span to fall back on instead; see `PaneBufferState::step_back_on_exit`'s
 /// doc for the full rule. Clamps to `len_chars() - 1` so `a` on the
 /// buffer-final `\n` stays in bounds.
 ///
 /// If the selection ends on a `\n` (e.g. after `select-line` / `x`, or on an empty
-/// line), the cursor stays on that `\n` slot rather than stepping past it — `a` on
+/// line), the cursor stays on that `\n` slot rather than stepping past it; `a` on
 /// an empty line is identical to `i`.
 pub(in crate::editor) fn cmd_insert_at_selection_end(
     state: &mut EditorState,
@@ -137,7 +137,7 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
         let max = b.last_char();
         sels.map(|sel| {
             let pos = if sel.ends_on_newline(b) {
-                sel.end() // selection ends on '\n' — insert before it, not past it
+                sel.end() // selection ends on '\n': insert before it, not past it
             } else {
                 next_grapheme_boundary(b, sel.end())
             };
@@ -153,7 +153,7 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
 /// insert mode.
 ///
 /// `begin_insert_session` opens the edit group so the structural `\n` and
-/// everything typed before Esc form one undo step — the same pattern as
+/// everything typed before Esc form one undo step, the same pattern as
 /// `cmd_change`. Indent is copied verbatim from the current line, same
 /// fallback rule as Enter (`insert_newline_indent`'s own doc); no ownership
 /// record yet at this call, so a pre-existing blank line's whitespace isn't
@@ -172,7 +172,7 @@ pub(in crate::editor) fn cmd_open_line_below(
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
     apply_focused_edit_grouped(state, view, fp, |b, s| insert_newline_indent(b, s, &[]));
-    // Pin after the structural newline, not before — the anchor must mark
+    // Pin after the structural newline, not before: the anchor must mark
     // the start of typed content, not the blank line's own `\n`.
     begin_typed_run(state, view, fp, ExitCursor::StepBack);
     arm_autoindent(state, view, fp);
@@ -181,7 +181,7 @@ pub(in crate::editor) fn cmd_open_line_below(
 
 /// Open a new line above the cursor, carrying over its indent, and enter
 /// insert mode. See `cmd_open_line_below`'s doc for the indent/autoindent
-/// rationale — identical here.
+/// rationale; identical here.
 pub(in crate::editor) fn cmd_open_line_above(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -195,7 +195,7 @@ pub(in crate::editor) fn cmd_open_line_above(
     });
     apply_focused_edit_grouped(state, view, fp, open_line_above);
     // Pin after the indent + the structural newline `open_line_above` leaves
-    // the cursor on — same reasoning as `cmd_open_line_below`.
+    // the cursor on, same reasoning as `cmd_open_line_below`.
     begin_typed_run(state, view, fp, ExitCursor::StepBack);
     arm_autoindent(state, view, fp);
     Ok(())
@@ -229,14 +229,14 @@ pub(in crate::editor) fn cmd_exit_insert(
     Ok(())
 }
 
-/// `completion-trigger` — Ctrl-Space in Insert mode: invoke every
+/// `completion-trigger` (Ctrl-Space in Insert mode): invoke every
 /// registered completion source at the cursor. A native command rather
 /// than a plugin's, since the orchestration is the editor's own; the
 /// sources it invokes are whatever plugins registered.
 ///
 /// Marks the dispatch interactive (see `EditorState::mark_dot_interactive`'s
 /// own doc): opening the popup writes nothing itself, so a `.` that reached
-/// this point would just reopen it — dropped instead, same discipline
+/// this point would just reopen it, so it is dropped instead, same discipline
 /// `completion-accept!`/`picker!` follow for the edit that eventually
 /// resolves it. Refuses loudly under `.`, same as those two, rather than
 /// firing a fresh completion request on every repeat.
@@ -257,12 +257,12 @@ pub(in crate::editor) fn cmd_completion_trigger(
 
 // ── Extend mode ───────────────────────────────────────────────────────────────
 
-/// No-op unless the mode layer is `Base` — `EditorMode::Extend` is only ever
+/// No-op unless the mode layer is `Base`: `EditorMode::Extend` is only ever
 /// reported by `BaseLayer::mode()` (`input_stack/base.rs`), so
 /// `state.mode() != EditorMode::Extend` reads `true` from *any* other mode
 /// (Insert, a minibuf mode). `set_extend` itself "does not gate on the
-/// current mode layer" (its own doc) — it always writes `Base`'s flag
-/// directly — so without this guard, toggling from Insert would arm Extend
+/// current mode layer" (its own doc): it always writes `Base`'s flag
+/// directly. So without this guard, toggling from Insert would arm Extend
 /// on `Base` invisibly, with nothing to clear it before the next Esc lands
 /// there.
 pub(in crate::editor) fn cmd_toggle_extend(
@@ -310,7 +310,7 @@ pub(in crate::editor) fn cmd_collapse_to_head_and_exit_extend(
 
 /// Collapse each selection to its anchor and exit extend mode.
 ///
-/// Mirror of [`cmd_collapse_to_head_and_exit_extend`] — the cursor lands on the
+/// Mirror of [`cmd_collapse_to_head_and_exit_extend`]: the cursor lands on the
 /// stationary (anchor) end. For a forward word selection this puts the cursor
 /// on the first character of the word. Only reachable via the kitty keyboard
 /// protocol (`Ctrl-;`); harmless no-op on legacy terminals.
@@ -337,7 +337,7 @@ pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
 /// This is narrower than Vim's `3.`: the selection recipe (`replay_dot`'s
 /// `for step in &action.selection_recipe` loop) always replays with each
 /// step's own recorded `step.count`, never the override, and no built-in
-/// repeatable command body reads its `count` parameter today — every one
+/// repeatable command body reads its `count` parameter today; every one
 /// takes `_count: usize`. So for every native command, `3.` and `.` produce
 /// identical results; the override is currently observable only by a Steel
 /// `#:repeatable` command that reads its `count` lambda argument.
@@ -355,7 +355,7 @@ pub(in crate::editor) fn cmd_repeat(
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    // Peek without taking — replay_dot owns the take so it can
+    // Peek without taking: replay_dot owns the take so it can
     // restore the action after replay.
     let Some(orig_count) = state.last_repeatable_action.as_ref().map(|a| a.count) else {
         return Ok(());

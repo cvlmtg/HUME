@@ -1,4 +1,4 @@
-//! Minibuffer history — bounded, in-memory recall for `:`, `/`, and `?` prompts.
+//! Minibuffer history: bounded, in-memory recall for `:`, `/`, and `?` prompts.
 //!
 //! Each prompt gets its own [`History`] ring (oldest-first [`VecDeque`]) with
 //! per-session navigation state (cursor + scratch). The three rings are grouped
@@ -42,7 +42,7 @@ pub(in crate::editor) struct History {
     /// `Some(i)` = `entries[i]` is currently shown in the minibuffer.
     cursor: Option<usize>,
     /// The text that was in the minibuffer when the user first pressed Up this
-    /// session — restored by Down past the newest entry. Also doubles as the
+    /// session, restored by Down past the newest entry. Also doubles as the
     /// fixed prefix that `prev`/`next` filter the walk by for the rest of the
     /// session, so navigation only visits entries matching what was typed.
     scratch: Option<String>,
@@ -50,7 +50,7 @@ pub(in crate::editor) struct History {
 
 impl History {
     /// `capacity == 0` is a silent black hole (every `push` immediately
-    /// evicts what it just pushed) rather than a documented "unlimited" —
+    /// evicts what it just pushed) rather than a documented "unlimited",
     /// unlike `undo-levels`, where `0` means exactly that. The settings
     /// parser (`usize_nonzero`) already rejects `0` for `history-capacity`
     /// before it can reach here; this just makes the trap loud if that
@@ -66,7 +66,7 @@ impl History {
     }
 
     /// Record a submitted entry. Skips empty strings and consecutive
-    /// duplicates. Always resets nav state — a confirm ends the session.
+    /// duplicates. Always resets nav state: a confirm ends the session.
     /// Caps the ring at `self.capacity` with a `while`, not an `if`, so a
     /// `set_capacity` shrink of any size converges to the new cap in this
     /// one call rather than one entry per push.
@@ -82,11 +82,11 @@ impl History {
     }
 
     /// Update the capacity limit. Takes effect on the *next* `push`, not
-    /// immediately — matching Vim's `undolevels` semantics (see
+    /// immediately, matching Vim's `undolevels` semantics (see
     /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap
     /// does not retroactively trim existing entries. Called when
     /// `history-capacity` is changed at runtime. No `cursor`/`scratch`
-    /// adjustment needed here, since no entries are removed by this call —
+    /// adjustment needed here, since no entries are removed by this call:
     /// a mid-navigation `cursor` stays valid until `push`'s own `while` trim
     /// runs on the next confirm.
     pub(in crate::editor) fn set_capacity(&mut self, new_cap: usize) {
@@ -132,7 +132,7 @@ impl History {
                 Some(self.entries[idx].clone())
             }
             None => {
-                // Past newest match — restore scratch and exit navigation mode.
+                // Past newest match: restore scratch and exit navigation mode.
                 let scratch = self.scratch.take().unwrap_or_default();
                 self.cursor = None;
                 Some(scratch)
@@ -213,7 +213,7 @@ impl HistoryStore {
         self.search_b.begin_session();
     }
 
-    /// Update the capacity of every ring — see `History::set_capacity` for
+    /// Update the capacity of every ring; see `History::set_capacity` for
     /// why this doesn't trim. Called when the `history-capacity` setting
     /// changes at runtime.
     pub(in crate::editor) fn set_capacity(&mut self, new_cap: usize) {

@@ -7,7 +7,7 @@ use crate::editor::registry::{
 
 // Builder for EditorCmd registration. Each method sets one field (a bool,
 // except the two `selection_tracking` setters below); .reg(registry)
-// terminates the chain. Adding a new flag costs one method — existing call
+// terminates the chain. Adding a new flag costs one method; existing call
 // sites are unaffected.
 pub(super) struct EditorCmdBuilder {
     name: &'static str,
@@ -44,7 +44,7 @@ impl EditorCmdBuilder {
     /// next. Two distinct callers need this: the ring-cycle commands (`[`/`]`)
     /// use it so a chain of cycles folds into one undo step with the
     /// original paste; `repeat-last-action` uses it so a replayed ring-cycle
-    /// command (`.` after `[`/`]`) still finds the session open — its own
+    /// command (`.` after `[`/`]`) still finds the session open: its own
     /// (non-deferring) dispatch would otherwise close it before the replay
     /// even runs. `Editor::replay_dot` makes the real commit/defer decision
     /// itself, from the REPLAYED command's own meta, once that command is
@@ -54,7 +54,7 @@ impl EditorCmdBuilder {
         self
     }
     /// Mark this command as one that opens or continues
-    /// `EditorState::active_session` itself — see
+    /// `EditorState::active_session` itself. See
     /// [`crate::editor::registry::CmdMeta::manages_own_session`] for the
     /// full rationale. Every paste-family registration in this file needs
     /// it; nothing else does.
@@ -72,14 +72,14 @@ impl EditorCmdBuilder {
     /// Opt this command into the dot-repeat selection recipe as an
     /// establishing step. Use only for a command that builds a replayable
     /// selection extent on its own but can't be a pure `Selection` variant
-    /// (needs `EditorState`/`EngineView` access) — see
+    /// (needs `EditorState`/`EngineView` access); see
     /// [`crate::editor::registry::CmdMeta::selection_tracking`].
     pub(super) fn establishes_selection(mut self) -> Self {
         self.selection_tracking = SelectionTracking::Establishes;
         self
     }
     /// Opt this command into the dot-repeat selection recipe as a composing
-    /// step — see [`SelectionTracking::Composes`].
+    /// step. See [`SelectionTracking::Composes`].
     pub(super) fn composes_selection(mut self) -> Self {
         self.selection_tracking = SelectionTracking::Composes;
         self
@@ -117,14 +117,14 @@ fn ecmd_builder(name: &'static str, doc: &'static str, fun: EditorCmdBody) -> Ed
     }
 }
 
-// Two constructors, one per `EditorCmdBody` variant — a call site names its
+// Two constructors, one per `EditorCmdBody` variant: a call site names its
 // command's shape by which one it calls, and the compiler rejects a
 // function pointer of the wrong shape (see `EditorCmdBody`'s own doc). No
 // bare `ecmd` that takes a pre-built `EditorCmdBody`: that would let a
 // registration build the enum value without ever naming its shape at the
 // call site, the one thing this two-way split exists to force.
 
-/// A command needing any pane showing the target buffer — not necessarily
+/// A command needing any pane showing the target buffer, not necessarily
 /// the focused one. See [`crate::editor::registry::EditorCmdBody::Pane`].
 pub(super) fn ecmd_pane(name: &'static str, doc: &'static str, fun: PaneCmdFn) -> EditorCmdBuilder {
     ecmd_builder(name, doc, EditorCmdBody::Pane(fun))

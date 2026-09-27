@@ -61,7 +61,7 @@ fn dot_repeat_replays_tab() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i')); // insert at 'h'
     ed.handle_key(key_tab()); // insert \t
-    ed.handle_key(key_esc()); // back to normal — Esc selects the typed \t
+    ed.handle_key(key_esc()); // back to normal; Esc selects the typed \t
     // Move right twice (off the selected \t, onto 'h', onto 'e'), then
     // dot-repeat: should insert another \t before 'e'.
     ed.handle_key(key('l'));
@@ -139,7 +139,7 @@ fn i_esc_on_pre_existing_blank_line_does_not_trim() {
 }
 
 /// Typing whitespace by hand onto an empty line, then `Esc`: vim keeps
-/// hand-typed whitespace — only auto-inserted indent is vacated. Esc also
+/// hand-typed whitespace; only auto-inserted indent is vacated. Esc also
 /// selects the two typed spaces (`select-inserted-text`).
 #[test]
 fn i_type_spaces_esc_does_not_trim_hand_typed_whitespace() {
@@ -153,7 +153,7 @@ fn i_type_spaces_esc_does_not_trim_hand_typed_whitespace() {
 
 /// Contrast with the two tests above: when Enter itself creates the blank,
 /// indented line (copying "  " from the line above), an immediate `Esc`
-/// with nothing typed DOES vacate that indent — the session's own auto-indent,
+/// with nothing typed DOES vacate that indent: the session's own auto-indent,
 /// not pre-existing or hand-typed content.
 #[test]
 fn enter_esc_trims_auto_inserted_blank_line() {
@@ -163,7 +163,7 @@ fn enter_esc_trims_auto_inserted_blank_line() {
     assert_eq!(state(&ed), "  x\n  -[\n]>");
     ed.handle_key(key_esc());
     // The typed run is just the inserted "\n" (the copied indent it carried
-    // was trimmed above) — a trailing newline is a line terminator, not
+    // was trimmed above). A trailing newline is a line terminator, not
     // typed content, so it trims out of the span too, leaving an empty run.
     // `i` never sets `step_back_on_exit`, so the cursor stays exactly where
     // it is: collapsed on the new blank line's own trailing '\n', not
@@ -186,16 +186,16 @@ fn dot_repeat_replays_enter_esc_trim() {
     ed.feed_key(key_enter()); // auto-indent creates a blank "  " line, cursor on its '\n'
     // Trimmed to "  x\n\n  y\n"; the empty run falls back to the entry
     // command's own exit position (`i` never sets `step_back_on_exit`), so
-    // Esc leaves the cursor collapsed on the new blank line's own '\n' — see
+    // Esc leaves the cursor collapsed on the new blank line's own '\n'; see
     // `enter_esc_trims_auto_inserted_blank_line`.
     ed.feed_key(key_esc());
     assert_eq!(state(&ed), "  x\n-[\n]>  y\n");
 
     // Navigate to line 2's own trailing '\n' with plain motions (not a
-    // selection-establishing command) — dot-repeat replays the ORIGINAL
+    // selection-establishing command): dot-repeat replays the ORIGINAL
     // entry command ('i') at whatever selection exists when '.' is pressed.
     // `j` from the blank line (column 0, its only column) lands on column 0
-    // of "  y" — its own leading space, not 'y' — so three `l` are needed to
+    // of "  y" (its own leading space, not 'y'), so three `l` are needed to
     // reach the trailing '\n' (indent, indent, 'y').
     ed.feed_key(key('j'));
     ed.feed_key(key('l'));
@@ -253,7 +253,7 @@ fn backspace_dedents_soft_tab_indent() {
 
 #[test]
 fn backspace_in_content_falls_back_to_plain() {
-    // "    x\n" cursor on '\n' (end of line) — chars before cursor include
+    // "    x\n" cursor on '\n' (end of line): chars before cursor include
     // 'x', so not all-whitespace → plain backspace deletes 'x'.
     let mut ed = editor_from("    x-[\n]>");
     ed.handle_key(key('i'));
@@ -263,7 +263,7 @@ fn backspace_in_content_falls_back_to_plain() {
 
 #[test]
 fn backspace_on_first_content_char_dedents() {
-    // "    x" cursor on 'x' (first content char) — all chars before it are ws,
+    // "    x" cursor on 'x' (first content char): all chars before it are ws,
     // so dedent applies (matches modern editor behaviour).
     let mut ed = editor_from("    -[x]>\n");
     ed.handle_key(key('i'));
@@ -273,7 +273,7 @@ fn backspace_on_first_content_char_dedents() {
 
 #[test]
 fn backspace_at_char_col_zero_plain_delete() {
-    // "foo" cursor on 'f' (char col 0) — no leading ws → plain backspace is a
+    // "foo" cursor on 'f' (char col 0): no leading ws → plain backspace is a
     // no-op at buffer start (nothing to delete to the left).
     let mut ed = editor_from("-[f]>oo\n");
     ed.handle_key(key('i'));

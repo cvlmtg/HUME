@@ -91,7 +91,7 @@ fn path_completer_multi_segment() {
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let ctx = ctx(&reg, &store, dir.path());
 
-    // Completing "sub/f" — should find "sub/file.rs".
+    // Completing "sub/f": should find "sub/file.rs".
     let input = "e sub/f";
     let (_, candidates) = complete_path(input, input.len(), &ctx);
     assert_eq!(candidates.len(), 1);

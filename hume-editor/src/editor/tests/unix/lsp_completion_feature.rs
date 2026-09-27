@@ -59,8 +59,8 @@ fn trigger_char_fires_the_completion_request() {
     assert_eq!(request_count(&requests, "textDocument/completion"), 1);
 }
 
-/// A trigger char is unsolicited — the user typed `.`, not "please
-/// complete" — so a server answering with nothing must not flash a status
+/// A trigger char is unsolicited (the user typed `.`, not "please
+/// complete"), so a server answering with nothing must not flash a status
 /// message on every keystroke that happens not to have anything to offer.
 /// Contrast [`ctrl_space_with_no_completions_reports_it`]: an explicit
 /// Ctrl-Space with the same empty answer does report.
@@ -91,7 +91,7 @@ fn trigger_char_with_no_completions_is_silent() {
 }
 
 /// [`trigger_char_with_no_completions_is_silent`]'s contrast: the same
-/// empty answer to an explicit Ctrl-Space does report — the user asked.
+/// empty answer to an explicit Ctrl-Space does report: the user asked.
 #[test]
 fn ctrl_space_with_no_completions_reports_it() {
     let tmp = safe_tempdir();
@@ -208,7 +208,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     // Blank line 0 (the auto-import destination) + "foo" on line 1 (the
-    // completion site) — non-overlapping, matching the real-world shape:
+    // completion site), non-overlapping, matching the real-world shape:
     // an import lands above the cursor's line, not at the exact same spot.
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "\nfoo\n").unwrap();
@@ -239,7 +239,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
     settle(&mut ed);
 
     // Enter is the real acceptance key (insert.rs's completion-menu
-    // intercept) — accepts the currently-selected (default: index 0) item.
+    // intercept) and accepts the currently-selected (default: index 0) item.
     ed.feed_key(key_enter());
     settle(&mut ed);
 
@@ -250,7 +250,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
          (line 0, above it) must both land"
     );
 
-    ed.feed_key(key_esc()); // no menu left open — a plain Insert-mode exit
+    ed.feed_key(key_esc()); // no menu left open: a plain Insert-mode exit
     ed.handle_key(key('u'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -317,10 +317,10 @@ fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_grou
 fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    // "foo.b XXX\n" — main edit replaces ".b" (chars 3..5) with ".bar",
+    // "foo.b XXX\n": the main edit replaces ".b" (chars 3..5) with ".bar",
     // shifting everything after it on the line by +2 UTF-16 units. The
     // additionalTextEdits entry (chars 6..9, "XXX") is on the same line,
-    // entirely after the main edit's end — its position is stale unless
+    // entirely after the main edit's end, so its position is stale unless
     // shifted by that same delta.
     let file = file_dir.path().join("main.rs");
     std::fs::write(&file, "foo.b XXX\n").unwrap();
@@ -345,7 +345,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
             );
         },
     );
-    // Char 5 is right after "foo.b" — matches the server's textEdit end
+    // Char 5 is right after "foo.b", matching the server's textEdit end
     // exactly, so accept() never extends the range past what's specified.
     set_cursor(&mut ed, 5);
 
@@ -365,11 +365,11 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
 }
 
 /// Same shape as `additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it`,
-/// but with an astral-plane character (🎉, a UTF-16 surrogate pair — 2 wire
+/// but with an astral-plane character (🎉, a UTF-16 surrogate pair: 2 wire
 /// units, 1 char) before both edits on the line. The atomic-batch path
 /// (`build_edit_changeset`) converts each edit's own wire position to a char
-/// offset independently via `wire_to_char` — no UTF-16-delta arithmetic
-/// between edits at all — so this proves that conversion is correct with an
+/// offset independently via `wire_to_char` (no UTF-16-delta arithmetic
+/// between edits at all), so this proves that conversion is correct with an
 /// astral prefix on the line, not just plain ASCII.
 #[test]
 fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
@@ -400,7 +400,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
             );
         },
     );
-    // Char 6: right after "🎉foo.b" (1 + 5 = 6) — matches the server's
+    // Char 6: right after "🎉foo.b" (1 + 5 = 6), matching the server's
     // textEdit end exactly.
     set_cursor(&mut ed, 6);
 
@@ -420,8 +420,8 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
 }
 
 /// The resolve-path counterpart to
-/// `additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it`
-/// — same fixture and expected result, but the additionalTextEdits arrive
+/// `additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it`:
+/// same fixture and expected result, but the additionalTextEdits arrive
 /// via `completionItem/resolve` instead of inline on the completion
 /// response, exercising `edits::build_edits_from_earlier_document`'s
 /// `ChangeSet::map_ranges` position tracking instead of the inline atomic
@@ -469,7 +469,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
     // `key_enter()` runs accept synchronously (main edit lands, resolve
     // request sent); the single `settle()` below drains the scripted
     // backend's already-queued response and runs the (plain Rust, not
-    // Steel-queued) resolve callback inline — no second drain round needed,
+    // Steel-queued) resolve callback inline, so no second drain round needed,
     // unlike a Steel `lsp-request` callback which only queues on response.
     ed.feed_key(key_enter());
     settle(&mut ed);
@@ -478,7 +478,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
         ed.doc().text().to_string(),
         "foo.bar YYY\n",
         "a resolved additionalTextEdit on the same line as the main edit must land at \
-         the exact position, mapped through the accept ChangeSet — not approximated \
+         the exact position, mapped through the accept ChangeSet, not approximated \
          by a UTF-16 delta"
     );
 }
@@ -521,7 +521,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     // `key_enter()`'s keybinding dispatch runs `accept_completion_selection`
-    // synchronously — the main edit lands and the resolve request is *sent*
+    // synchronously: the main edit lands and the resolve request is *sent*
     // in this call, but its scripted response isn't drained until the next
     // `drain_lsp`. Typing `X` right here, before any drain, bumps text_gen
     // past what the resolve request's `ResponseAnchor` was armed with.
@@ -533,13 +533,13 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     assert_eq!(
         ed.doc().text().to_string(),
         "\nbarXfoo\n",
-        "a resolve response landing after further typing must be dropped — no \
+        "a resolve response landing after further typing must be dropped: no \
          \"use std::bar;\" must appear, and the typed X must survive untouched"
     );
 }
 
 /// `:lsp-stop` sweeps every pending request via `LspClient::drain_pending`
-/// (the same generic teardown every in-flight `lsp-request` gets) — a
+/// (the same generic teardown every in-flight `lsp-request` gets): a
 /// resolve request in flight at stop time must not apply anything once its
 /// swept `Outcome::TimedOut` reaches the callback, and must not panic.
 #[test]
@@ -557,7 +557,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
                 "textDocument/completion",
                 serde_json::json!([{"label": "bar", "insertText": "bar"}]),
             );
-            // Deliberately no scripted reply for completionItem/resolve —
+            // Deliberately no scripted reply for completionItem/resolve:
             // :lsp-stop must sweep it before any reply would matter.
         },
     );
@@ -715,7 +715,7 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
     );
 }
 
-/// The `"lsp"` source answered `isIncomplete` — the framework calls it again
+/// The `"lsp"` source answered `isIncomplete`: the framework calls it again
 /// on the next keystroke, and it re-requests.
 #[test]
 fn an_incomplete_answer_is_re_requested_on_typing() {
@@ -787,7 +787,7 @@ fn a_complete_answer_is_not_re_requested_on_typing() {
 
 /// Detach must be a true no-op, not a per-keystroke request or log: the
 /// `"lsp"` source's trigger-char registration is set once at attach, so
-/// `on-lsp-detach` must clear it — a trigger char left registered past
+/// `on-lsp-detach` must clear it. A trigger char left registered past
 /// `:lsp-stop` would still invoke the source on every matching keystroke.
 #[test]
 fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
@@ -821,7 +821,7 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 }
 
 /// An open completion session's `items` are a snapshot already fetched from
-/// the server, not a live subscription — but leaving it open after the
+/// the server, not a live subscription, but leaving it open after the
 /// server stops would keep showing (and let the user accept) suggestions
 /// from a server that's no longer running for this buffer.
 #[test]

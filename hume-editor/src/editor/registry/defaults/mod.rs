@@ -10,15 +10,15 @@ mod surround;
 mod text_objects;
 mod typed;
 
-// Local macros to cut down on struct-literal boilerplate — shared by every
+// Local macros to cut down on struct-literal boilerplate, shared by every
 // family registrar below (invoked as `super::motion!(self, ...)` etc.). Each
 // invoking file needs its own `use std::borrow::Cow;` and `MappableCommand`
-// import — macro_rules resolves plain paths written in the macro body against
+// import: macro_rules resolves plain paths written in the macro body against
 // the *invocation* site, not this definition site. The registry is taken as
 // an explicit `$reg` argument rather than a bare `self` for the same reason:
 // a literal `self` in the macro body has no receiver to bind to here.
 macro_rules! motion {
-    // Forward object-jump family (`}`, `goto-next-<kind>`) — see
+    // Forward object-jump family (`}`, `goto-next-<kind>`); see
     // `CmdMeta::aligns_view`'s doc for why only this direction opts in.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump, aligns_view) => {
         $reg.register(MappableCommand::Motion {
@@ -38,7 +38,7 @@ macro_rules! motion {
             aligns_view: false,
         })
     };
-    // Word-family motions (`w`/`W`/`b`/`B`) — see [`SelectionBody::Word`].
+    // Word-family motions (`w`/`W`/`b`/`B`); see [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
@@ -78,7 +78,7 @@ macro_rules! selection {
         })
     };
     // Transforms whatever extent is already staged instead of establishing
-    // one — see `SelectionTracking::Composes`.
+    // one; see `SelectionTracking::Composes`.
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, composes) => {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
@@ -88,7 +88,7 @@ macro_rules! selection {
             selection_tracking: SelectionTracking::Composes,
         })
     };
-    // Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`) — see
+    // Word-family selections/text objects (`mm`/`MM`, `miw`/`maw`); see
     // [`SelectionBody::Word`].
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, word) => {
         $reg.register(MappableCommand::Selection {
@@ -119,7 +119,7 @@ macro_rules! edit {
     };
 }
 // macro_rules items need an explicit `use` to be path-addressable
-// (`super::motion!`) from a child module — bare declaration only gives
+// (`super::motion!`) from a child module; bare declaration only gives
 // textual scope within this module itself.
 pub(super) use edit;
 pub(super) use motion;

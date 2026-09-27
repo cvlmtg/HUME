@@ -31,7 +31,7 @@ fn shorten_path_mixed_seps_preserved() {
 
 #[test]
 fn shorten_path_windows_seps_ellipsis_on_very_narrow() {
-    // Mirrors shorten_path_ellipsis_on_very_narrow but with '\' separators —
+    // Mirrors shorten_path_ellipsis_on_very_narrow but with '\' separators:
     // the ellipsis branch must keep the '\'-prefix, not drop separators.
     let path = r"~\foo\bar\baz.txt";
     let result = shorten_path_to_width_with(path, 10, windows_like_sep);
@@ -41,7 +41,7 @@ fn shorten_path_windows_seps_ellipsis_on_very_narrow() {
 #[test]
 fn shorten_path_unix_sep_ignores_backslash() {
     // With a Unix-style predicate, '\' is an ordinary filename character, not
-    // a separator — it must never be split on, only ever truncated as part of
+    // a separator. It must never be split on, only ever truncated as part of
     // the filename content.
     let path = r"~/foo\bar.txt"; // 13 cols
     let result = shorten_path_to_width_with(path, 8, unix_like_sep);

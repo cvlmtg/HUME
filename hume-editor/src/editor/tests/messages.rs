@@ -1,4 +1,4 @@
-// `:messages` severity highlighting — the `format_with_spans` → extra-highlights
+// `:messages` severity highlighting: the `format_with_spans` → extra-highlights
 // store → `ScopedHighlighter` Extra tier wiring added alongside the message
 // log's existing `[severity]` prefix formatting.
 //
@@ -13,7 +13,7 @@ use hume_grid::Rect;
 /// Regression test for the reported crash: `:messages` interns its severity
 /// scope names synchronously during command dispatch, then the very next
 /// frame both writes their spans AND renders them. `render_to_buf`'s internal
-/// `prepare_frame` is the ONLY frame here — no warm-up frame — which is
+/// `prepare_frame` is the ONLY frame here (no warm-up frame), which is
 /// exactly the shape that panicked in `hume-engine/src/theme/mod.rs`'s
 /// `Theme::resolve` before `prepare_frame` gained its end-of-frame
 /// `bake_if_stale`.
@@ -170,7 +170,7 @@ fn repeat_messages_replaces_stale_spans_not_appends() {
     );
 
     // set_view_content (the repeat-call path) replaces the rope without a
-    // ChangeSet, so remap_through can't carry these spans forward — the
+    // ChangeSet, so remap_through can't carry these spans forward. The
     // command handler must recompute and overwrite them wholesale.
     ed.state
         .message_log
