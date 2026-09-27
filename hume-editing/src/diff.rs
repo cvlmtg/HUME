@@ -1,29 +1,13 @@
 //! BufferText diffing.
 //!
-//! Two composable entry points:
+//! - [`diff_lines`]: line-level histogram diff, falling back to Myers when
+//!   histogram misses its deadline (histogram's anchor search can blow up on
+//!   huge files or very long lines). [`LineHunk`] ranges are line indices.
+//! - [`diff_words`]: word-level Myers diff, meant for refining a replaced
+//!   line. [`WordHunk`] ranges are char offsets.
 //!
-//! - [`diff_lines`] — line-level diff. Uses the **histogram** algorithm by
-//!   default and falls back to **Myers** if the histogram pass cannot finish
-//!   within a deadline. Deadlines keep diffing responsive on large files or
-//!   files with very long lines (e.g. minified code), where histogram's
-//!   anchor search can blow up. Myers handles those inputs more gracefully
-//!   because of its divide-and-conquer "middle snake" recursion.
-//! - [`diff_words`] — word-level diff using **Myers**. Intended as an optional
-//!   refinement pass on top of a line-level diff (e.g. to highlight the exact
-//!   words that changed inside a replaced line), or for any other use case
-//!   where a caller wants a fine-grained comparison of two short strings.
-//!
-//! `similar` is an implementation detail of this module — the public types
-//! (`LineHunk`, `WordHunk`, …) are owned by `hume-editing` so that consumers
-//! (engine, UI, scripting) never depend on the diff backend directly. This
-//! mirrors how `unicode-segmentation` is hidden behind `grapheme.rs`.
-//!
-//! ## Position units
-//!
-//! - [`LineHunk`] ranges are **line indices** into the caller-supplied `old`/
-//!   `new` slices.
-//! - [`WordHunk`] ranges are **char offsets** into the caller-supplied
-//!   `&str` inputs (consistent with `text::BufferText`'s char-offset invariant).
+//! `similar` stays an implementation detail: consumers depend only on the
+//! hunk types defined here.
 
 use std::hash::Hash;
 use std::ops::Range;

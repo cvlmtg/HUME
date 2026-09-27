@@ -28,30 +28,14 @@ pub enum Operation {
 
 /// Sticky-side preference when mapping a position through an insertion.
 ///
-/// When an old-document position coincides exactly with an insertion point,
-/// `Assoc` resolves the ambiguity: does the mapped position land *before*
-/// or *after* the new text?
+/// When an old position coincides with an insertion point, `Before` keeps it
+/// before the new text and `After` moves it past. Inserting `"XY"` at offset 3
+/// maps 3 to 3 (`Before`) or 5 (`After`).
 ///
-/// ```text
-/// Old doc:  h e l | l o          (cursor at offset 3, marked with |)
-///                 ↓
-/// Insert "XY" at 3
-///                 ↓
-/// New doc:  h e l X Y l o
-///           Before → 3  (cursor stays glued to what was left of it)
-///           After  → 5  (cursor moves past the inserted text)
-/// ```
-///
-/// `Assoc` is primarily for re-anchoring positions that were not produced by
-/// the edit itself (e.g. external bookmarks or LSP diagnostic ranges) via
-/// [`PosMapCursor`]. Most edit operations compute result positions directly
-/// from the builder instead, and undo/redo restores selections from the
-/// stored inverse transaction — neither needs position mapping. The one
-/// exception is `>`/`<` (`hume-ops/src/edit/indent.rs`): it deliberately
-/// orders each rewritten line's ops `Insert` before `Delete` so a selection
-/// endpoint sitting at the line start resolves through `PosMapCursor` by
-/// `Assoc` — `Before` for a linewise selection's start, `After` everywhere
-/// else — rather than through a hand-kept before/after position table.
+/// Mostly used to re-anchor positions the edit did not produce (bookmarks,
+/// LSP ranges) via [`PosMapCursor`]. `>`/`<` (`hume-ops/src/edit/indent.rs`)
+/// also relies on it, ordering each line's `Insert` before its `Delete` so a
+/// selection endpoint at the line start resolves by `Assoc`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Assoc {
     /// Stay before inserted text ("sticky left").

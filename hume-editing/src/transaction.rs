@@ -3,31 +3,15 @@ use crate::error::TransactionError;
 use crate::selection::SelectionSet;
 use crate::text::BufferText;
 
-/// A `Transaction` bundles a text change with the resulting selection state.
+/// A text change bundled with the resulting selection state: the unit of
+/// editing and of undo. `selection` is always the post-apply selection, for
+/// forward and inverse transactions alike.
 ///
-/// This is the unit of editing: every user action (insert, delete, motion
-/// that modifies text) produces a `Transaction`. `selection` is always the
-/// **post-apply** selection — where cursors land *after* applying `changes`
-/// — for both forward and inverse Transactions.
-///
-/// ## Undo pattern
-///
-/// Build **two** Transactions from the same `ChangeSet`, inverting before
-/// applying since `invert` reads the original rope to reconstruct deleted
-/// text:
-///
-/// ```text
-/// let inv_cs = cs.invert(&old_text);          // must happen BEFORE apply
-/// let new_text = cs.apply(&old_text);          // borrows old_text; original intact
-///
-/// let forward = Transaction::new(cs,     post_edit_sels);  // for redo
-/// let inverse = Transaction::new(inv_cs, pre_edit_sels);   // push to undo stack
-/// ```
-///
-/// The inverse's `selection` is the pre-edit selection, since that's where
-/// cursors land after applying it — the history manager stores `inverse`
-/// and applying it later restores text and cursor state in one step.
-///
+/// For undo, build two transactions from one `ChangeSet`: `forward` from
+/// `cs` with the post-edit selections, and `inverse` from
+/// `cs.invert(&old_text)` (which needs the original text to recover deleted
+/// chars) with the pre-edit selections, so applying `inverse` restores text
+/// and cursors in one step.
 #[derive(Debug, Clone)]
 pub struct Transaction {
     changes: ChangeSet,

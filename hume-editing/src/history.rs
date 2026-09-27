@@ -55,32 +55,15 @@ struct Revision {
 
 /// Tree-structured undo/redo history.
 ///
-/// ## Structure
+/// Revisions live in an arena keyed by monotonically assigned IDs that are
+/// never reused. The root (id 0) is the initial document state with identity
+/// changesets; `current` is the revision matching the buffer and selections.
+/// All ordering comes from the `parent`/`children` links, never from map
+/// iteration order.
 ///
-/// Revisions live in an arena (`FxHashMap<RevisionId, Revision>`), keyed by
-/// stable, monotonically-assigned IDs that are never reused. The root (id 0)
-/// is the initial document state, with identity changesets. `current` tracks
-/// the active revision — the one matching the document's current buffer and
-/// selections. All ordering (newest child, ancestor chains) comes from the
-/// `children`/`parent` links, never from map iteration order.
-///
-/// ## Branching
-///
-/// Undoing to state A then making a new edit C preserves the old redo path
-/// (B) as a sibling of C — no edit is discarded by undoing/redoing:
-///
-/// ```text
-///  root
-///   └─ A        (first edit)
-///       ├─ B    (second edit, later undone)
-///       └─ C    (new edit after undoing to A — C is now the redo target)
-/// ```
-///
-/// ## What History does NOT own
-///
-/// Buffers. The caller holds the current buffer; History stores only
-/// Transactions (changeset + selections), keeping it a pure data structure
-/// with no buffer dependency.
+/// Editing after an undo adds a sibling branch, so no redo path is discarded;
+/// the newest child is the redo target. History stores only transactions,
+/// never buffers: the caller owns the current buffer.
 pub struct History {
     /// Arena of all revisions, keyed by stable `RevisionId`.
     revisions: FxHashMap<RevisionId, Revision>,
