@@ -1,12 +1,12 @@
 # Modes
 
-One keyboard, several meanings. Because `d` only deletes when you're in the mode where `d` means delete, HUME can put a whole editor's worth of commands on plain letters — no modifier gymnastics.
+One keyboard, several meanings. Because `d` only deletes when you're in the mode where `d` means delete, HUME can put a whole editor's worth of commands on plain letters, with no modifier gymnastics.
 
 The active mode is shown on the right of the status bar. `Esc` always takes you back to Normal.
 
 ## Normal mode
 
-Normal mode is the default. You land here at startup and return here with `Esc`. In Normal mode, keys are commands — they move the cursor, modify text, or switch to another mode. Nothing you type appears in the buffer.
+Normal mode is the default. You land here at startup and return here with `Esc`. In Normal mode, keys are commands: they move the cursor, modify text, or switch to another mode. Nothing you type appears in the buffer.
 
 **Enter from:** any mode via `Esc`
 
@@ -52,25 +52,25 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 
 | Prefix | Keys | Purpose |
 |--------|------|---------|
-| Goto | `g` + key | Jump to a position in the buffer, or to the next/previous instance of a structural kind — see [Default Keys](default-keys.md) |
-| `G` | `G` + key | Case transforms, and other non-goto commands Vim puts under `g` — see [Default Keys](default-keys.md) |
-| Match | `m` + key | Select text objects and surrounding delimiters — see [Selections](selections.md) |
-| Match WORD | `M M` | Select the WORD under the cursor — see [Selections](selections.md) |
-| View | `z` + key | Scroll the view to a position, or open a fuzzy picker — see [Moving Around](moving-around.md) and [Fuzzy Finder](pickers.md) |
-| Pane | `Ctrl-p` + key | Move focus between panes — see [Default Keys](default-keys.md) |
-| Register | `"` + char | Target a specific register for yank, paste, or delete — see [Copy & Paste](copy-and-paste.md#register-prefix) |
+| Goto | `g` + key | Jump to a position in the buffer, or to the next/previous instance of a structural kind. See [Default Keys](default-keys.md) |
+| `G` | `G` + key | Case transforms, and other non-goto commands Vim puts under `g`. See [Default Keys](default-keys.md) |
+| Match | `m` + key | Select text objects and surrounding delimiters. See [Selections](selections.md) |
+| Match WORD | `M M` | Select the WORD under the cursor. See [Selections](selections.md) |
+| View | `z` + key | Scroll the view to a position, or open a fuzzy picker. See [Moving Around](moving-around.md) and [Fuzzy Finder](pickers.md) |
+| Pane | `Ctrl-p` + key | Move focus between panes. See [Default Keys](default-keys.md) |
+| Register | `"` + char | Target a specific register for yank, paste, or delete. See [Copy & Paste](copy-and-paste.md#register-prefix) |
 
 ### Keys that take a character
 
 | Keys | Purpose |
 |------|---------|
-| `f`, `F`, `t`, `T` + char | Jump to a character on the current line — see [Moving Around](moving-around.md) |
-| `r` + char | Replace the selected characters with the typed character — see [Editing](editing.md) |
-| `m w` + char | Wrap the selection in that character — see [Selections](selections.md) |
+| `f`, `F`, `t`, `T` + char | Jump to a character on the current line. See [Moving Around](moving-around.md) |
+| `r` + char | Replace the selected characters with the typed character. See [Editing](editing.md) |
+| `m w` + char | Wrap the selection in that character. See [Selections](selections.md) |
 
 ### Count prefix
 
 | Prefix | Purpose |
 |--------|---------|
-| `1`–`9` then `[0-9]*` | Repeat the next command a number of times — see [Editing](editing.md) |
+| `1`–`9` then `[0-9]*` | Repeat the next command a number of times. See [Editing](editing.md) |
 

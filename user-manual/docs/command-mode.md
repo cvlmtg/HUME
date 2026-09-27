@@ -4,8 +4,8 @@ Command mode is where HUME reaches commands that aren't bound to a key. Press `:
 
 Every command in this manual is one of two kinds, and each is reachable only its own way:
 
-- **Typed commands** — everything on this page. Reached only from the command mode prompt, take a text argument and an optional `!`.
-- **Editor commands** — everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key or a plugin (including your `init.scm`), never from the command mode prompt.
+- **Typed commands**: everything on this page. Reached only from the command mode prompt, take a text argument and an optional `!`.
+- **Editor commands**: everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key or a plugin (including your `init.scm`), never from the command mode prompt.
 
 ::: info
 Navigate buffers with `:bprev`/`:bnext` from the command mode prompt. Doing this often enough to want a keybind? Use the editor commands `goto-prev-buffer`/`goto-next-buffer` in `init.scm` instead:
@@ -16,7 +16,7 @@ Navigate buffers with `:bprev`/`:bnext` from the command mode prompt. Doing this
 ```
 :::
 
-Most typed commands have a short alias — both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments.
+Most typed commands have a short alias. Both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments.
 
 For running HUME from a shell instead, see [Command-line Flags](cli.md).
 
@@ -45,7 +45,7 @@ Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), 
 | `:e!` | Reload, discarding unsaved changes |
 | `:checktime` | Check every open buffer against its file on disk right now, instead of waiting for the next automatic check (switching back to HUME, switching to the buffer) |
 
-In arguments, `%` expands to the current file's path and `#` to the alternate file's. Both only work as a whole argument — `:w %.bak` won't expand. `:b` is the exception: it resolves `#` itself, which is why `:b #` works for buffers with no file on disk.
+In arguments, `%` expands to the current file's path and `#` to the alternate file's. Both only work as a whole argument: `:w %.bak` won't expand. `:b` is the exception: it resolves `#` itself, which is why `:b #` works for buffers with no file on disk.
 
 See [Files & Buffers](files-and-buffers.md#external-changes) for what happens when a file changes on disk.
 
@@ -60,7 +60,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
 | `:bd!` | Close the buffer, discarding unsaved changes |
 
-`:b#` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key — `core:vim-keybind` binds it to `Ctrl-6` for you.
+`:b#` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key, and `core:vim-keybind` binds it to `Ctrl-6` for you.
 
 ## Panes
 
@@ -69,11 +69,11 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:sp`, `:split` | Split the focused pane, stacking the new pane below |
 | `:vsp`, `:vsplit` | Split the focused pane side by side |
 
-Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl-p` prefix (`Ctrl-p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`/`t`/`T`) — see the [Default Keys](default-keys.md).
+Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl-p` prefix (`Ctrl-p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`/`t`/`T`). See the [Default Keys](default-keys.md).
 
 ## Tabs
 
-A tab is a saved window layout — its own set of panes and splits — not a per-buffer strip.
+A tab is a saved window layout (its own set of panes and splits), not a per-buffer strip.
 
 | Command | Effect |
 |---------|--------|
@@ -82,7 +82,7 @@ A tab is a saved window layout — its own set of panes and splits — not a per
 | `:tabnext`, `:tabn` | Switch to the next tab in display order |
 | `:tabprev`, `:tabp` | Switch to the previous tab in display order |
 
-Cycling is also bound to `Ctrl-p t`/`Ctrl-p T` — see the [Default Keys](default-keys.md). By default the tab bar only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this — see [Configuration](configuration.md)).
+Cycling is also bound to `Ctrl-p t`/`Ctrl-p T`. See the [Default Keys](default-keys.md). By default the tab bar only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this; see [Configuration](configuration.md)).
 
 ## Editing
 
@@ -95,16 +95,16 @@ Cycling is also bound to `Ctrl-p t`/`Ctrl-p T` — see the [Default Keys](defaul
 | `:later [n\|5m]` | Step forward again after `:earlier`, same argument forms |
 
 `:sort` groups your selections into runs of adjacent rows and sorts each run
-independently, keyed by whatever text you selected on that row — not
+independently, keyed by whatever text you selected on that row, not
 necessarily the whole line. Select whole lines (`%` selects the whole buffer)
 to sort a file; select a single column across a block of lines to sort by
 that column instead. A run sorts numerically only if *every* row's key looks
-like a number — one row with non-numeric text drops the whole run back to
+like a number: one row with non-numeric text drops the whole run back to
 plain text order. Two selections on the same row combine into one key rather
 than being treated as separate rows, so sorting several items *within* one
 line isn't what `:sort` does.
 
-A single selection that spans several rows keeps its place in the buffer —
+A single selection that spans several rows keeps its place in the buffer:
 the rows underneath it reorder, but the selection itself still covers the
 same stretch of text afterward.
 
@@ -141,7 +141,7 @@ See [Configuration](configuration.md) for every option.
 |---------|--------|
 | `:theme <name>` | Load a theme; with no argument, show the current one |
 | `:theme-debug` | Show the resolved styles for the main UI scopes |
-| `:wrap`, `:toggle-soft-wrap` | Toggle line wrapping in this pane — see [wrap styles](configuration.md#text-wrap) |
+| `:wrap`, `:toggle-soft-wrap` | Toggle line wrapping in this pane. See [wrap styles](configuration.md#text-wrap) |
 | `:mes`, `:messages` | Show the message log in a read-only buffer |
 
 ## Navigation
@@ -161,8 +161,8 @@ See [Configuration](configuration.md) for every option.
 | `:ver`, `:version` | Show the editor version |
 | `:tutor` | Open the interactive tutorial |
 
-Plugins add commands of their own once you load them. The `:plum-*` commands (installing plugins and grammars) come from `core:plum`, and `:lsp-*`, `:diagnostics`, and `:format-source` from `core:lsp` — neither plugin is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
+Plugins add commands of their own once you load them. The `:plum-*` commands (installing plugins and grammars) come from `core:plum`, and `:lsp-*`, `:diagnostics`, and `:format-source` from `core:lsp`. Neither plugin is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).
 
 ## Finding a command
 
-There is no listing command. Open the command mode prompt with `:` and press `Tab` — completion shows every registered typed name and alias, including stubs for plugins that haven't loaded yet. It never shows editor commands — those aren't reachable from the command mode prompt at all; see [Builtin Commands](builtin-commands.md) for the full list.
+There is no listing command. Open the command mode prompt with `:` and press `Tab`: completion shows every registered typed name and alias, including stubs for plugins that haven't loaded yet. It never shows editor commands, since those aren't reachable from the command mode prompt at all; see [Builtin Commands](builtin-commands.md) for the full list.

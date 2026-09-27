@@ -1,6 +1,6 @@
 # Configuration
 
-Options, key bindings, the statusline, plugins, and language servers are all configured in one language, in one file. There's no separate config format to learn — `init.scm` is a Scheme program, so anything you can compute you can configure.
+Options, key bindings, the statusline, plugins, and language servers are all configured in one language, in one file. There's no separate config format to learn: `init.scm` is a Scheme program, so anything you can compute you can configure.
 
 HUME can be configured two ways: the `:set` command for runtime changes during a session, or an `init.scm` file for persistent configuration loaded at startup.
 
@@ -9,17 +9,17 @@ HUME reads persistent configuration from:
 - **macOS / Linux:** `$XDG_CONFIG_HOME/hume/init.scm` (defaults to `~/.config/hume/init.scm`)
 - **Windows:** `%APPDATA%\hume\init.scm`
 
-Pass `--config <FILE>` (see [Command-line Flags](cli.md)) to load a different file instead — themes and the data directory still resolve from the standard directories above. `:reload-config` re-runs whichever file the session started from.
+Pass `--config <FILE>` (see [Command-line Flags](cli.md)) to load a different file instead. Themes and the data directory still resolve from the standard directories above. `:reload-config` re-runs whichever file the session started from.
 
-If the file does not exist, HUME starts with defaults — except an explicit `--config` path, which is a startup (and reload) error if missing: unlike the default `init.scm`, an explicitly named file is expected to be there, so `:reload-config` reports an error rather than silently resetting to defaults if it's gone by the time you reload. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied — so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
+If the file does not exist, HUME starts with defaults, except an explicit `--config` path, which is a startup (and reload) error if missing: unlike the default `init.scm`, an explicitly named file is expected to be there, so `:reload-config` reports an error rather than silently resetting to defaults if it's gone by the time you reload. If it fails partway through, the error is reported in `:messages` and everything up to that point stays applied, so a broken line late in the file leaves you half-configured rather than back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
 
-A plugin that fails to load is handled more gracefully than a broken line of plain configuration: HUME reports the error, naming the plugin and pointing at the exact file and line the problem is in, and then keeps going with the rest of `init.scm` — a broken third-party plugin near the top of your file no longer takes everything after it down with it. See [Plugins](plugins.md) for how to recover.
+A plugin that fails to load is handled more gracefully than a broken line of plain configuration: HUME reports the error, naming the plugin and pointing at the exact file and line the problem is in, and then keeps going with the rest of `init.scm`, so a broken third-party plugin near the top of your file no longer takes everything after it down with it. See [Plugins](plugins.md) for how to recover.
 
-`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again — so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/`:theme` change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane` override, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded — detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
+`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default first, then the file runs again, so removing a line from `init.scm` and reloading does undo what it did. Any `:set global`/`:set buffer`/`:theme` change you made during the session is discarded too, not just what `init.scm` set, with two exceptions: a pane-scoped `:set pane` override, which stays as you left it (panes are editing state, not config), and an explicit `:set buffer language=<name>`, which is restored after the reload rather than discarded: detection can't reconstruct it on its own (that's exactly why you had to set it explicitly), so losing it on every reload would be more surprising than keeping it. If the file fails partway through this time, you're left with defaults plus whatever ran before the error, same as at startup.
 
-Buffers stay open and language servers stay attached across a reload — it behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
+Buffers stay open and language servers stay attached across a reload: it behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
 
-A reference config ships as `init.scm.example` inside the runtime directory — `share/hume/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout (see [File locations](#file-locations) for the general rule); copy it to the path above if you want a starting point, or see [Example init.scm](#example-init-scm) below.
+A reference config ships as `init.scm.example` inside the runtime directory (`share/hume/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout; see [File locations](#file-locations) for the general rule). Copy it to the path above if you want a starting point, or see [Example init.scm](#example-init-scm) below.
 
 ## Setting options
 
@@ -35,9 +35,9 @@ The `:set` command takes a scope and a `key=value` pair. The scope is required:
 :set pane <option>=<value>       override for the current pane only (view-scoped settings)
 ```
 
-For a buffer option (the [Buffer options](#buffer-options) table below), `:set global` takes effect immediately in every buffer that has no override of its own — not just newly opened ones. `wrap-mode` additionally accepts `:set pane`, which pins one pane's wrap style above both the buffer and global setting (see [Text wrap](#text-wrap)).
+For a buffer option (the [Buffer options](#buffer-options) table below), `:set global` takes effect immediately in every buffer that has no override of its own, not just newly opened ones. `wrap-mode` additionally accepts `:set pane`, which pins one pane's wrap style above both the buffer and global setting (see [Text wrap](#text-wrap)).
 
-Changes apply to the current session and are not persisted — for persistent configuration, use `init.scm` (below).
+Changes apply to the current session and are not persisted. For persistent configuration, use `init.scm` (below).
 
 ### From `init.scm`
 
@@ -45,7 +45,7 @@ Changes apply to the current session and are not persisted — for persistent co
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value is a string, boolean, or integer. Callable from `init.scm`, a plugin body, or a command/hook body — anywhere Scheme code runs.
+Sets the global default. The value is a string, boolean, or integer. Callable from `init.scm`, a plugin body, or a command/hook body: anywhere Scheme code runs.
 
 ```scheme
 (set-option! "line-number-style" "absolute")
@@ -93,8 +93,8 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `jump-list-capacity` | integer ≥ 1 | `100` | Max jump list entries |
 | `jump-line-threshold` | integer | `5` | Line distance to record a jump |
 | `history-capacity` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?` prompt history |
-| `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Once the limit is reached, the oldest states — including whole abandoned branches — are dropped as new edits are made |
-| `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max evaluation time (ms) for `init.scm` and each plugin activation. Setting it *from* `init.scm` has no effect on that same run — the budget is read before each file/plugin evaluation starts, so a change only takes effect for evaluations after it, i.e. the next plugin activation or the next session |
+| `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Once the limit is reached, the oldest states (including whole abandoned branches) are dropped as new edits are made |
+| `steel-init-budget-ms` | integer ≥ 1 | `10000` | Max evaluation time (ms) for `init.scm` and each plugin activation. Setting it *from* `init.scm` has no effect on that same run: the budget is read before each file/plugin evaluation starts, so a change only takes effect for evaluations after it, i.e. the next plugin activation or the next session |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max Steel command evaluation time (ms) |
 | `popup-border` | bool | `#t` | Show popup borders |
 | `syntax-highlight-max-bytes` | integer ≥ 1 | `1048576` | Max bytes for syntax highlighting |
@@ -103,7 +103,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `statusline.mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the theme's base `ui.statusline` color in every mode |
 | `tabline` | `always`/`never`/`dynamic` | `dynamic` | When to show the tab bar: always, never, or only once more than one tab is open |
 
-The `lsp.*` options below configure `core:lsp` — see [Language Servers](lsp.md) for setup, commands, and how they're used.
+The `lsp.*` options below configure `core:lsp`. See [Language Servers](lsp.md) for setup, commands, and how they're used.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -115,13 +115,13 @@ The `lsp.*` options below configure `core:lsp` — see [Language Servers](lsp.md
 
 ## Buffer options
 
-These options have a global default that every buffer without its own override resolves to — including buffers already open when you change it, not just ones opened afterward — and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! pane "option" value)` — see [Plugins](plugins.md) for setting per-language overrides from the `on-language-set` hook.
+These options have a global default that every buffer without its own override resolves to (including buffers already open when you change it, not just ones opened afterward) and a per-buffer override that takes precedence when present. Set the global default with `:set global <option>=<value>` or `(set-option! "option" value)`; override the current buffer with `:set buffer <option>=<value>`, or from a script with `(set-buffer-option! pane "option" value)`. See [Plugins](plugins.md) for setting per-language overrides from the `on-language-set` hook.
 
-`language` is an exception, it has no global default — it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
+`language` is an exception, it has no global default: it is auto-detected per buffer and can only be set with `:set buffer language=<name>`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping. `N` is the wrap column (`0` or omitted = pane content width). Also accepts `:set pane wrap-mode=<value>` to pin one pane above the buffer/global setting — see [Text wrap](#text-wrap) |
+| `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping. `N` is the wrap column (`0` or omitted = pane content width). Also accepts `:set pane wrap-mode=<value>` to pin one pane above the buffer/global setting; see [Text wrap](#text-wrap) |
 | `tab-width` | integer, 1–255 | `4` | Spaces per indent level |
 | `indent-guides` | bool | `#t` | Draw vertical guides at each indentation level |
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
@@ -129,33 +129,33 @@ These options have a global default that every buffer without its own override r
 | `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
 | `select-inserted-text` | bool | `#t` | Leaving Insert mode keeps the text you typed selected, instead of leaving a plain cursor |
 | `word-selects-whitespace` | bool | `#t` | `w`/`W`/`b`/`B` and `mm`/`MM` cover the whitespace before the destination word (trailing instead, for the first word of a line); `#f` selects the bare word instead |
-| `word-chars` | string | `""` | Extra characters counted as part of a word by `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`, `Ctrl-w`, and `*` — e.g. `-` makes `foo-bar` one word instead of three. Also affects quote auto-pairing (`'`, `"`, `` ` `` — not bracket pairs), the identifier under the cursor used by plugin commands (e.g. rename), and where a completion without a server-supplied replace range starts. Does not affect `W`/`B`/`MM`, which already treat punctuation as part of a WORD. No global default ships; set it per language from an `on-language-set` hook (see below). Whitespace and newline characters are rejected |
-| `signcolumn` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` sizes the column to one column per registered sign source — a source claims its column the moment the plugin registers it, so the width doesn't change as individual signs come and go; `:N` pins it to exactly N columns (1–127) instead, hiding whichever lower-priority sources don't fit. `auto` additionally collapses to zero width when no signs are visible |
-| `autoread` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns — reload manually with `:e!` |
+| `word-chars` | string | `""` | Extra characters counted as part of a word by `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`, `Ctrl-w`, and `*`, e.g. `-` makes `foo-bar` one word instead of three. Also affects quote auto-pairing (`'`, `"`, `` ` ``, not bracket pairs), the identifier under the cursor used by plugin commands (e.g. rename), and where a completion without a server-supplied replace range starts. Does not affect `W`/`B`/`MM`, which already treat punctuation as part of a WORD. No global default ships; set it per language from an `on-language-set` hook (see below). Whitespace and newline characters are rejected |
+| `signcolumn` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` sizes the column to one column per registered sign source: a source claims its column the moment the plugin registers it, so the width doesn't change as individual signs come and go; `:N` pins it to exactly N columns (1–127) instead, hiding whichever lower-priority sources don't fit. `auto` additionally collapses to zero width when no signs are visible |
+| `autoread` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns; reload manually with `:e!` |
 | `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
 | `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
 | `language` | string | *(auto-detected)* | Language for syntax highlighting |
 
-Characters the terminal cannot be shown — control characters, and invisible ones such as a zero-width space or a bidirectional override — are always displayed as their codepoint (`<200b>`), styled with the theme's `ui.virtual.invisible` scope, whatever the options above are set to. They are not whitespace you can choose to hide: left invisible they misalign the rest of the line, and an unseen bidirectional override can make code read differently from how it runs.
+Characters the terminal cannot be shown (control characters, and invisible ones such as a zero-width space or a bidirectional override) are always displayed as their codepoint (`<200b>`), styled with the theme's `ui.virtual.invisible` scope, whatever the options above are set to. They are not whitespace you can choose to hide: left invisible they misalign the rest of the line, and an unseen bidirectional override can make code read differently from how it runs.
 
 ## Text wrap
 
-Text wrap is controlled by three layers — a global default, a per-buffer override, and a per-pane pin — plus a per-pane toggle command.
+Text wrap is controlled by three layers: a global default, a per-buffer override, and a per-pane pin, plus a per-pane toggle command.
 
-- `wrap-mode` is a **buffer option** (see [Buffer options](#buffer-options)): set a global default with `:set global wrap-mode=<value>` or `set-option!`, or override one buffer with `:set buffer wrap-mode=<value>` or `(set-buffer-option! pane "wrap-mode" value)`. To wrap by file type — markdown but not source code, say — set it per language from an `on-language-set` hook (see [Plugins](plugins.md)).
-- `:set pane wrap-mode=<value>` pins the style for the pane you're currently in and the buffer it's currently showing, live, above both the buffer and global setting, without affecting other panes on the same buffer. Switching that pane to a different buffer resolves the new buffer's own setting instead; switching back returns the pin. There's no command to clear a pin back to following the buffer/global setting — pin it to a different value, or close the buffer, to move on from it.
-- `:wrap` (alias of `:toggle-soft-wrap`) **toggles** wrapping on or off for the current pane and buffer. Turning it off pins the pane to no wrap; turning it back on restores whatever it was doing before — the buffer/global setting, if the pane wasn't pinned, or the exact style you pinned it to with `:set pane wrap-mode=…`. If that restores a setting that doesn't actually wrap, it pins the configured global style instead (or `indent`, if the global itself is `none`) — `:wrap` always visibly wraps.
+- `wrap-mode` is a **buffer option** (see [Buffer options](#buffer-options)): set a global default with `:set global wrap-mode=<value>` or `set-option!`, or override one buffer with `:set buffer wrap-mode=<value>` or `(set-buffer-option! pane "wrap-mode" value)`. To wrap by file type (markdown but not source code, say), set it per language from an `on-language-set` hook (see [Plugins](plugins.md)).
+- `:set pane wrap-mode=<value>` pins the style for the pane you're currently in and the buffer it's currently showing, live, above both the buffer and global setting, without affecting other panes on the same buffer. Switching that pane to a different buffer resolves the new buffer's own setting instead; switching back returns the pin. There's no command to clear a pin back to following the buffer/global setting. Pin it to a different value, or close the buffer, to move on from it.
+- `:wrap` (alias of `:toggle-soft-wrap`) **toggles** wrapping on or off for the current pane and buffer. Turning it off pins the pane to no wrap; turning it back on restores whatever it was doing before: the buffer/global setting, if the pane wasn't pinned, or the exact style you pinned it to with `:set pane wrap-mode=…`. If that restores a setting that doesn't actually wrap, it pins the configured global style instead (or `indent`, if the global itself is `none`), so `:wrap` always visibly wraps.
 
-Two panes showing the same buffer can still wrap independently once one of them is pinned with `:set pane` or `:wrap` — that's what the per-pane layer is for.
+Two panes showing the same buffer can still wrap independently once one of them is pinned with `:set pane` or `:wrap`; that's what the per-pane layer is for.
 
 Accepted values:
 
-- `none` — no wrapping; long lines scroll horizontally.
-- `soft` — break at the pane width, splitting at any character (may split a word in the middle).
-- `word` — break at the pane width but prefer whitespace, so words aren't split.
-- `indent` — like `word`, but wrapped continuation lines are indented to match the line's leading whitespace, so nested code stays visually nested (this is the default).
-- `:N` suffix — wrap at column `N` instead of the pane's content width (e.g. `word:80`). `0` or omitted means content width.
+- `none`: no wrapping; long lines scroll horizontally.
+- `soft`: break at the pane width, splitting at any character (may split a word in the middle).
+- `word`: break at the pane width but prefer whitespace, so words aren't split.
+- `indent`: like `word`, but wrapped continuation lines are indented to match the line's leading whitespace, so nested code stays visually nested (this is the default).
+- `:N` suffix: wrap at column `N` instead of the pane's content width (e.g. `word:80`). `0` or omitted means content width.
 
 ## Themes
 
@@ -165,11 +165,11 @@ Accepted values:
 
 To see which themes are available, type `:theme ` and press `Tab`.
 
-Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory — hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](#file-locations)); a config-dir theme of the same name wins.
+Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory, hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](#file-locations)); a config-dir theme of the same name wins.
 
-HUME reads the Helix theme format and aims to support Helix themes as they are written. It is not there in every detail yet, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`) — HUME treats the two as equivalent, though Helix itself reads only the flat form, so a section-header theme won't travel back.
+HUME reads the Helix theme format and aims to support Helix themes as they are written. It is not there in every detail yet, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`). HUME treats the two as equivalent, though Helix itself reads only the flat form, so a section-header theme won't travel back.
 
-A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on) — these resolve to fixed colors from the standard terminal palette rather than to whatever your own terminal happens to have those colors set to, so a theme looks the same everywhere and unfocused-pane dimming has an actual color to blend toward. A color value outside these three forms leaves that one entry unstyled rather than failing the whole load, and `:messages` names it.
+A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on). These resolve to fixed colors from the standard terminal palette rather than to whatever your own terminal happens to have those colors set to, so a theme looks the same everywhere and unfocused-pane dimming has an actual color to blend toward. A color value outside these three forms leaves that one entry unstyled rather than failing the whole load, and `:messages` names it.
 
 One thing a Helix theme can contain isn't supported, but it doesn't stop the rest of the theme from loading either: the top-level `rainbow` array. HUME has no rainbow-bracket highlighting, so it has nothing to drive. The theme still loads, and the entry is reported in `:messages` like any other one HUME couldn't use.
 
@@ -177,19 +177,19 @@ A theme fails to load outright only when the problem is with the document rather
 
 ### Installing themes
 
-To install a third-party theme repository, run `:plum-install-theme <user/repo>` (see [Core Plugins → core:plum](core-plugins.md#core-plum)) — for example:
+To install a third-party theme repository, run `:plum-install-theme <user/repo>` (see [Core Plugins → core:plum](core-plugins.md#core-plum)), for example:
 
 ```
 :plum-install-theme cvlmtg/everforest.hume
 ```
 
 ::: info
-[cvlmtg/everforest.hume](https://github.com/cvlmtg/everforest.hume) is Everforest, ported from Helix — a green-based, low-contrast color scheme designed to feel warm and comfortable on the eyes, inspired by forest colors in fall.
+[cvlmtg/everforest.hume](https://github.com/cvlmtg/everforest.hume) is Everforest, ported from Helix: a green-based, low-contrast color scheme designed to feel warm and comfortable on the eyes, inspired by forest colors in fall.
 :::
 
 `:theme <Tab>` picks it up right away, no restart needed.
 
-A theme editor is available online — a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
+A theme editor is available online: a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
 
 ### Theme scopes
 
@@ -202,34 +202,34 @@ code carries over as-is.
 
 These have no Helix equivalent:
 
-- `ui.cursor.match.search` — coloring every visible search match, falling back to
+- `ui.cursor.match.search`: coloring every visible search match, falling back to
   `ui.cursor.match` when unset
-- `ui.popup.scroll` — scrollbar thumb on a scrolled hover popup (Helix only themes a
+- `ui.popup.scroll`: scrollbar thumb on a scrolled hover popup (Helix only themes a
   scrollbar for `ui.menu`)
-- `ui.window.focused` — seam divider segments adjacent to the focused pane, falling back
+- `ui.window.focused`: seam divider segments adjacent to the focused pane, falling back
   to `ui.window`
-- `ui.drawer` — background of the bottom drawer (`show-drawer-list!`), a generic pick-list
+- `ui.drawer`: background of the bottom drawer (`show-drawer-list!`), a generic pick-list
   panel Helix doesn't have
-- `ui.tabline` / `ui.tabline.active` — the tab bar's row and its active tab. `.active` left
+- `ui.tabline` / `ui.tabline.active`: the tab bar's row and its active tab. `.active` left
   unset falls back to the base `ui.tabline` style, unlike the statusline separator below
-- `ui.statusline.search` / `.command` / `.sift` — one more mode-tinted statusline scope
+- `ui.statusline.search` / `.command` / `.sift`: one more mode-tinted statusline scope
   per HUME mode Helix doesn't have, alongside Helix's own
   `ui.statusline.normal`/`.insert`/`.select` (`.select` colors **Extend**, HUME's name for
-  what Helix calls Select mode; `.sift` colors HUME's own Sift mode — the `s` regex prompt)
-- `ui.virtual.invisible` — the `<200b>`-style stand-in for a character the terminal must
+  what Helix calls Select mode; `.sift` colors HUME's own Sift mode, the `s` regex prompt)
+- `ui.virtual.invisible`: the `<200b>`-style stand-in for a character the terminal must
   not be shown as itself (see the note under Buffer options above)
-- `diff.plus.line` / `diff.minus.line` / `diff.delta.line` — the whole-line background tint
+- `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint
   `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also
   colors the ghost text of a deleted line, since nothing is left in the buffer to color).
-  Falls back to nothing if left undefined — an unmodified Helix theme colors the gutter
+  Falls back to nothing if left undefined. An unmodified Helix theme colors the gutter
   marker (below) but paints no line tint, which is the deliberate trade-off rather than a bug
-- `diff.plus.word` / `diff.minus.word` — word-level highlight inside a changed line
+- `diff.plus.word` / `diff.minus.word`: word-level highlight inside a changed line
   (`core:git-diff`'s inline diff), inside the line-level `.line` tint above
 - `diagnostic.error.message` / `.warning.message` / `.info.message` / `.hint.message` and
-  their `.message-text` counterparts — the `:messages` log's severity badge and body text,
+  their `.message-text` counterparts: the `:messages` log's severity badge and body text,
   a HUME-only feature
 - `error.diagnostic.inline` / `warning.diagnostic.inline` / `info.diagnostic.inline` /
-  `hint.diagnostic.inline` — the diagnostic summary shown at the end of an offending line.
+  `hint.diagnostic.inline`: the diagnostic summary shown at the end of an offending line.
   Separate from `diagnostic.error` and friends, which style the squiggle under the code
   itself, so the summary doesn't pick up that scope's underline. Each falls back to the
   matching `error`/`warning`/`info`/`hint` gutter color when unset
@@ -260,17 +260,17 @@ scopes are the natural way to theme it, so leaving them in a theme costs nothing
 doesn't present the same way or styles from another scope. They may never apply, so the
 listed alternative is where to put the color instead:
 
-- `ui.picker.header`, `ui.picker.header.column`, `ui.picker.header.column.active` — HUME's
+- `ui.picker.header`, `ui.picker.header.column`, `ui.picker.header.column.active`: HUME's
   picker has no column headers to style
-- `ui.gutter`, `ui.gutter.selected` — the gutter takes no background of its own; style it
+- `ui.gutter`, `ui.gutter.selected`: the gutter takes no background of its own; style it
   with `ui.linenr` and `ui.linenr.selected`
-- `ui.statusline.inactive`, `ui.text.inactive` — HUME tints the whole statusline row by
+- `ui.statusline.inactive`, `ui.text.inactive`: HUME tints the whole statusline row by
   mode rather than dimming an unfocused one, and dims an unfocused pane wholesale instead
   of theming an inactive state
-- `ui.cursorline.secondary` — only the primary selection's line is tinted, via
+- `ui.cursorline.secondary`: only the primary selection's line is tinted, via
   `ui.cursorline.primary`
-- `ui.background.separator` — HUME's prompt line has no separator rule beneath it
-- `ui.bufferline.background` — the tab bar's ground comes from `ui.tabline` (or
+- `ui.background.separator`: HUME's prompt line has no separator rule beneath it
+- `ui.bufferline.background`: the tab bar's ground comes from `ui.tabline` (or
   `ui.bufferline`, see below), not a separate background layer
 
 #### Scopes HUME reads differently
@@ -282,14 +282,14 @@ element uses.
 
 `ui.statusline.separator` divides the statusline's segments. HUME tints the whole
 statusline row by mode, so leaving this scope undefined takes the row's own current color
-rather than the untinted `ui.statusline` — otherwise the separator would show through a
+rather than the untinted `ui.statusline`; otherwise the separator would show through a
 mode-tinted row as a stripe of the wrong color. Set it explicitly and that wins, in every
 mode.
 
 HUME's tab bar is a saved window layout per tab (Vim's tab pages), not a per-buffer strip,
 so it's styled with its own `ui.tabline` / `ui.tabline.active` scopes rather than Helix's
-`ui.bufferline` / `ui.bufferline.active`. A theme that sets only the latter — every Helix
-theme, since `ui.tabline` is HUME's own addition — still renders correctly: `ui.tabline`
+`ui.bufferline` / `ui.bufferline.active`. A theme that sets only the latter (every Helix
+theme, since `ui.tabline` is HUME's own addition) still renders correctly: `ui.tabline`
 falls back to `ui.bufferline` when unset, and `ui.tabline.active` to `ui.bufferline.active`,
 so the bar picks up a ported theme's colors without it needing to name HUME's scopes at all.
 
@@ -301,11 +301,11 @@ so the bar picks up a ported theme's colors without it needing to name HUME's sc
 (unbind-key! 'normal "ctrl-j")
 ```
 
-`bind-key!` takes an editor command's name — the same names in [Builtin Commands](builtin-commands.md) — never a typed command; there's no way to bind one of those to a key.
+`bind-key!` takes an editor command's name (the same names in [Builtin Commands](builtin-commands.md)), never a typed command; there's no way to bind one of those to a key.
 
-`bind-key!` — binds a key in the given mode (`'normal`, `'insert`, `'extend`).
-`unbind-key!` — removes a binding.
-`bind-key-extend!` — binds a key so it always extends the selection, as the one-shot `Ctrl-` motions do.
+`bind-key!`: binds a key in the given mode (`'normal`, `'insert`, `'extend`).
+`unbind-key!`: removes a binding.
+`bind-key-extend!`: binds a key so it always extends the selection, as the one-shot `Ctrl-` motions do.
 
 To set several bindings at once, use the plural forms:
 
@@ -321,13 +321,13 @@ To set several bindings at once, use the plural forms:
 (unbind-keys! 'normal "ctrl-j" "ctrl-k")
 ```
 
-`bind-keys!` batches `bind-key!`, `bind-keys-extend!` batches `bind-key-extend!`, and `unbind-keys!` batches `unbind-key!` — each takes one or more `(key cmd)` pairs (or, for `unbind-keys!`, one or more bare keys) instead of a single one.
+`bind-keys!` batches `bind-key!`, `bind-keys-extend!` batches `bind-key-extend!`, and `unbind-keys!` batches `unbind-key!`. Each takes one or more `(key cmd)` pairs (or, for `unbind-keys!`, one or more bare keys) instead of a single one.
 
 ### Falling back to a key's normal Insert-mode behaviour
 
 Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [Plugin API](plugin-api.md#editing-navigation), which also has a worked example) lets a command decide, per keypress, whether to override the key or fall back to what it would otherwise do.
 
-`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect — so a binding decides again at the new cursor, taking whichever branch fits there. The one exception is a branch that asks you for input while it runs: opening the completion popup, accepting a completion, or opening a picker are never re-run — `.` writes what they produced instead, and reports an error for that keypress if the binding would take that branch again on replay. A branch with no such step, like one that saves the file, runs again in full — including that side effect.
+`.` repeats an Insert-mode key's binding by re-running it, not by replaying a fixed effect, so a binding decides again at the new cursor, taking whichever branch fits there. The one exception is a branch that asks you for input while it runs: opening the completion popup, accepting a completion, or opening a picker are never re-run: `.` writes what they produced instead, and reports an error for that keypress if the binding would take that branch again on replay. A branch with no such step, like one that saves the file, runs again in full, including that side effect.
 
 ### Binding a key that waits for a character
 
@@ -337,7 +337,7 @@ Some commands need a character typed right after the key (find/till motions, sur
 (bind-wait-char! 'normal "m s" "surround-add")
 ```
 
-Inside the target command, read the captured character with `(pending-char)` — see [Plugins](plugins.md) for the full command-writing API, including the related `(request-wait-char! cmd-name)`, which waits for a character from inside an already-running command rather than from a key binding.
+Inside the target command, read the captured character with `(pending-char)`; see [Plugins](plugins.md) for the full command-writing API, including the related `(request-wait-char! cmd-name)`, which waits for a character from inside an already-running command rather than from a key binding.
 
 ### Key-string grammar
 
@@ -352,7 +352,7 @@ A key string is a **whitespace-separated** list of tokens. Each token is `[modif
 Multi-key sequences are space-separated: `"g e"`, `"m i w"`, `"ctrl-p h"`. Examples: `"ctrl-j"`, `"shift-tab"` (becomes `BackTab`), `"ctrl-shift-left"`, `"g e"`.
 
 ::: tip Binding the backslash key
-In Scheme string literals `\` is the escape character, so to bind the `\` key write it escaped — `"\\"`, not `"\"`:
+In Scheme string literals `\` is the escape character, so to bind the `\` key write it escaped: `"\\"`, not `"\"`:
 
 ```scheme
 (bind-key! 'normal "\\" "my-command")
@@ -380,7 +380,7 @@ Available elements:
 | `"FileName"` | Current buffer filename (basename) |
 | `"FilePath"` | Full path of current buffer |
 | `"Cwd"` | Working directory |
-| `"Position"` | Line and column position — column counts graphemes (`h`/`l` presses), matching `:diagnostics` and goto/references lists |
+| `"Position"` | Line and column position; column counts graphemes (`h`/`l` presses), matching `:diagnostics` and goto/references lists |
 | `"KittyProtocol"` | Kitty keyboard protocol indicator |
 | `"DirtyIndicator"` | `[+]` when buffer has unsaved changes |
 | `"LineEnding"` | Line ending type (LF/CRLF) |
@@ -415,9 +415,9 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
 (register-hook! 'on-buffer-enter refresh-line-count!)
 ```
 
-`core:git-diff` ships a `"steel:git-branch"` element using this same mechanism — see [Core Plugins → core:git-diff](core-plugins.md#core-git-diff) — just add it to your own `configure-statusline!` call.
+`core:git-diff` ships a `"steel:git-branch"` element using this same mechanism (see [Core Plugins → core:git-diff](core-plugins.md#core-git-diff)); just add it to your own `configure-statusline!` call.
 
-`set-statusline-text!` takes the element name, a buffer id, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's — switching to a buffer with nothing pushed yet shows nothing, same as any other element with no content. Placing the element and pushing its text are independent — either can happen first, and neither errors if the other hasn't happened yet.
+`set-statusline-text!` takes the element name, a buffer id, and the text to show; an empty string clears it. Each buffer keeps its own value per name, and a placed element shows only the focused buffer's: switching to a buffer with nothing pushed yet shows nothing, same as any other element with no content. Placing the element and pushing its text are independent: either can happen first, and neither errors if the other hasn't happened yet.
 
 ## Language detection
 
@@ -425,7 +425,7 @@ HUME detects file languages from extension, glob pattern, or shebang line. See [
 
 ## Example init.scm
 
-A complete starting config — copy it to `~/.config/hume/init.scm` and edit:
+A complete starting config. Copy it to `~/.config/hume/init.scm` and edit:
 
 ```scheme
 ;; Bundled plugins
@@ -435,7 +435,7 @@ A complete starting config — copy it to `~/.config/hume/init.scm` and edit:
 (declare-plugin "core:plum")          ; plugin/grammar manager
 ```
 
-Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!` and friends) and its built-in language definitions — so those are always available to you.
+Before your `init.scm` runs, HUME loads its own prelude (which defines `bind-keys!`, `define-language!` and friends) and its built-in language definitions, so those are always available to you.
 
 ## File locations
 
@@ -447,19 +447,19 @@ HUME resolves its directories per OS:
 | Data dir (plugin clones, tree-sitter grammars, installed `themes/`) | `$XDG_DATA_HOME/hume/` (default `~/.local/share/hume/`) | `%LOCALAPPDATA%\hume\` (fallback `%APPDATA%\hume\`) |
 | Runtime dir (bundled `runtime/`: `tutor.rst`, `themes/`, `scheme/`, `init.scm.example`, core plugins) | see below | see below |
 
-`--config <FILE>` overrides only which file HUME evaluates as `init.scm` — user `themes/` and the data dir still resolve from the config dir above regardless.
+`--config <FILE>` overrides only which file HUME evaluates as `init.scm`; user `themes/` and the data dir still resolve from the config dir above regardless.
 
 HUME looks for its runtime directory in this order, taking the first that exists:
 
 1. `$HUME_RUNTIME`, if set
-2. `../share/hume/` relative to the binary (macOS and Linux only — this is the layout you get from the release archive)
+2. `../share/hume/` relative to the binary (macOS and Linux only; this is the layout you get from the release archive)
 3. `runtime/` next to the binary (the Windows archive layout)
 4. `runtime/` in the current working directory (handy when running from a source checkout)
 
 Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars), `data/themes/` (installed third-party themes).
 
 ::: warning Plugins are trusted code
-Plugins run with the same privileges as HUME itself — they can read and write any file your user account can, and run other programs. There is no sandbox. Install third-party plugins only from sources you trust.
+Plugins run with the same privileges as HUME itself: they can read and write any file your user account can, and run other programs. There is no sandbox. Install third-party plugins only from sources you trust.
 :::
 
 ::: info

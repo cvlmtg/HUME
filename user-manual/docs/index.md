@@ -8,14 +8,14 @@ Zero friction, maximum output. **HUME** is built on a simple premise: the common
 
 **HUME** is a modal text editor for the terminal. It follows the select-then-act model: you first select what you want to change, then tell the editor what to do with it.
 
-This manual covers everything you need to use HUME effectively — from first launch to advanced configuration. No prior experience with modal editors is required.
+This manual covers everything you need to use HUME effectively, from first launch to advanced configuration. No prior experience with modal editors is required.
 
 *NOTE*: **HUME** is still in its early phases, so some features are still missing and there might be some rough edges.
 
 ## Why try it
 - **Less typing for what you do most**. Selections come first, so acting on text is short and direct.
 - **Usable immediately, yours to shape**. Sensible defaults on day one; customize everything in a single language when you're ready.
-- **Bundled, one line away**. Fuzzy pickers, language servers, live git diff, and 300+ language definitions ship with the editor — each is one line of config from being on.
+- **Bundled, one line away**. Fuzzy pickers, language servers, live git diff, and 300+ language definitions ship with the editor, and each is one line of config from being on.
 - **Paste that does the obvious thing**. `p` reaches for what you most likely meant.
 - **Comfortable with real text**. Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
 

@@ -1,6 +1,6 @@
 # Standard Library
 
-`core:stdlib` is a toolkit of small helpers for plugin authors — filesystem, subprocess, selection, and config-validation commands that any plugin might need, so writing one doesn't mean re-deriving them. Every command here is reached through `call!`, never as a plain Scheme function.
+`core:stdlib` is a toolkit of small helpers for plugin authors: filesystem, subprocess, selection, and config-validation commands that any plugin might need, so writing one doesn't mean re-deriving them. Every command here is reached through `call!`, never as a plain Scheme function.
 
 ## Setup
 
@@ -22,7 +22,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 | `(call! "stdlib/selection-head" sel)` | Head char offset of the selection triple `sel`, or `#f` |
 | `(call! "stdlib/selection-primary?" sel)` | `#t` if the selection triple `sel` is the primary selection, or `#f` |
 
-`sels` is whatever `(buffer-selections pane)` returns — a list of opaque `(anchor head primary?)` triples, char offsets rather than grapheme ordinals. Go through these accessors instead of `car`/`cadr`/`caddr`; all seven pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(offset->line pane idx)` converts an offset to a line number when you need one.
+`sels` is whatever `(buffer-selections pane)` returns: a list of opaque `(anchor head primary?)` triples, char offsets rather than grapheme ordinals. Go through these accessors instead of `car`/`cadr`/`caddr`; all seven pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(offset->line pane idx)` converts an offset to a line number when you need one.
 
 ## Filesystem
 
@@ -35,7 +35,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 | `(call! "stdlib/list-subdirs" dir)` | Sorted basenames of `dir`'s subdirectories |
 | `(call! "stdlib/safe-path-segment?" name)` | `#t` iff `name` is safe to use as a single path component |
 
-`delete-dir` and `delete-file` are idempotent, unlike the Steel scripting engine's own `delete-directory!`/`delete-file!` — a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`. `safe-path-segment?` rejects an empty name, `.`/`..`, and anything containing a path separator, `:`, `"`, or a NUL — use it before joining a user-typed or downloaded name onto a path.
+`delete-dir` and `delete-file` are idempotent, unlike the Steel scripting engine's own `delete-directory!`/`delete-file!`: a missing target is not an error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree, like `.DS_Store`. `safe-path-segment?` rejects an empty name, `.`/`..`, and anything containing a path separator, `:`, `"`, or a NUL. Use it before joining a user-typed or downloaded name onto a path.
 
 ## Subprocesses
 
@@ -43,7 +43,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 |------|--------|
 | `(call! "stdlib/run" cmd args cwd)` | Spawn `cmd`/`args` (in `cwd`, or the inherited directory if `#f`); blocks until exit |
 
-Returns `(stdout stderr exit-code)`. `exit-code` is `#f`, with the failure reason in `stderr`'s place, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing — see [Filesystem and processes](plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
+Returns `(stdout stderr exit-code)`. `exit-code` is `#f`, with the failure reason in `stderr`'s place, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
 
 ## Git
 
@@ -60,7 +60,7 @@ Both answer for HUME's own working directory (`:pwd`), not necessarily the curre
 |------|--------|
 | `(call! "stdlib/resolve-lang-arg" pane cmd arg)` | A typed language-name argument, else `pane`'s buffer's language, else `#f` after a warning naming `cmd` |
 
-Use this for a `:` command that takes an optional language name — `arg` is whatever the user typed after the command, or `#f` if they typed nothing. Falling back to the invoking buffer's language covers the common case of acting on the language of the buffer the command was invoked for; when neither is available, it logs a warning naming `cmd` and returns `#f` so your command can bail out cleanly.
+Use this for a `:` command that takes an optional language name: `arg` is whatever the user typed after the command, or `#f` if they typed nothing. Falling back to the invoking buffer's language covers the common case of acting on the language of the buffer the command was invoked for; when neither is available, it logs a warning naming `cmd` and returns `#f` so your command can bail out cleanly.
 
 ## Word tokenization
 
@@ -68,7 +68,7 @@ Use this for a `:` command that takes an optional language name — `arg` is wha
 |------|--------|
 | `(call! "stdlib/split-words" pane str)` | Every word in `str`, tokenized using `pane`'s buffer's own `word-chars` setting |
 
-Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-buffer-option pane "word-chars"))` — use it whenever `str` is that buffer's own content (typically one of its lines) and you want that buffer's own notion of a word. Tokenizing many of a buffer's lines in a loop? Fetch `(get-buffer-option pane "word-chars")` once and call `(split-words line word-chars)` per line instead, rather than re-deriving the same setting every time. Call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from that buffer's setting.
+Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-buffer-option pane "word-chars"))`. Use it whenever `str` is that buffer's own content (typically one of its lines) and you want that buffer's own notion of a word. Tokenizing many of a buffer's lines in a loop? Fetch `(get-buffer-option pane "word-chars")` once and call `(split-words line word-chars)` per line instead, rather than re-deriving the same setting every time. Call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from that buffer's setting.
 
 ## Plugin configuration
 
@@ -89,6 +89,6 @@ Same classification `w`/`b` motions and text objects use, so a word here is exac
 | `(call! "stdlib/with-vsplit" handler)` | Wraps `handler`: splits the focused pane side by side, then calls `handler` with the picker's payload |
 | `(call! "stdlib/with-split" handler)` | Wraps `handler`: splits the focused pane stacked, then calls `handler` with the picker's payload |
 
-`handler` is the same one-argument procedure a picker already passes as `on-select` — see [Custom pickers](plugins.md#custom-pickers)'s `#:actions`. `buffer-actions` is the one plugin authors reach for; `with-tab`/`with-vsplit`/`with-split` are its building blocks, for composing a custom `#:actions` list with different keys or a subset of the four.
+`handler` is the same one-argument procedure a picker already passes as `on-select` (see [Custom pickers](plugins.md#custom-pickers)'s `#:actions`). `buffer-actions` is the one plugin authors reach for; `with-tab`/`with-vsplit`/`with-split` are its building blocks, for composing a custom `#:actions` list with different keys or a subset of the four.
 
 `cfg` is whatever `(plugin-config)` returns. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time pointing at exactly what to fix. See [Configuring a plugin](plugins.md#configuring-a-plugin) for the full picture of reading `#:config`.

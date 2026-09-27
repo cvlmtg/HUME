@@ -1,6 +1,6 @@
 # Selections
 
-Selections are central to how HUME works. Every editing command acts on the current selection — there is no cursor-without-selection. Even a single-character "cursor position" is a one-character selection.
+Selections are central to how HUME works. Every editing command acts on the current selection. There is no cursor-without-selection. Even a single-character "cursor position" is a one-character selection.
 
 ## How selections work
 
@@ -10,17 +10,17 @@ A selection has two ends: the **anchor** and the **head**. The head is the movin
 
 ### Extend mode
 
-Press `e` to enter Extend mode. In Extend mode, every motion grows the selection instead of moving it — and moving back toward where you started shrinks it again, since only the moving end travels while the anchor stays put. Press `e` again or `Esc` to return to Normal. The status bar shows `EXT` while Extend mode is active.
+Press `e` to enter Extend mode. In Extend mode, every motion grows the selection instead of moving it, and moving back toward where you started shrinks it again, since only the moving end travels while the anchor stays put. Press `e` again or `Esc` to return to Normal. The status bar shows `EXT` while Extend mode is active.
 
 You can also do a one-shot extend without entering Extend mode: under the kitty keyboard protocol, `Ctrl-h`/`Ctrl-j`/`Ctrl-k`/`Ctrl-l`/`Ctrl-w`/`Ctrl-b` run the corresponding motion with extend on for that single keypress. `Ctrl-x` extends the line selection downward on any terminal; its backward twin `Ctrl-Shift-x` needs kitty, since older terminals can't tell the two apart.
 
-The same one-shot extend applies to search: `Ctrl-n` (kitty only) jumps the head to the next search match while the anchor stays put, growing the selection to cover everything from where you started through the new match — without entering Extend mode. `Ctrl-Shift-n` does the same backward, extending to the previous match.
+The same one-shot extend applies to search: `Ctrl-n` (kitty only) jumps the head to the next search match while the anchor stays put, growing the selection to cover everything from where you started through the new match, without entering Extend mode. `Ctrl-Shift-n` does the same backward, extending to the previous match.
 
 ::: tip Extending to a brand-new search
 Extend mode also works with a fresh `/` or `?` search, not just `Ctrl-n`/`Ctrl-Shift-n` stepping through an existing one. Enter Extend mode with `e`, then start a search: the anchor stays where you were, and the head jumps to the first match as you type and again on every `n`/`N` afterward.
 :::
 
-`w`/`b` and `x`/`X` additionally shrink in whole units: pressing the opposite key shrinks the selection back down one word or one line at a time, rather than one character at a time. The word or line where you started stays fully selected no matter which way you shrink or grow from there — crossing back past your starting point flips the selection's direction instead of cutting it off partway.
+`w`/`b` and `x`/`X` additionally shrink in whole units: pressing the opposite key shrinks the selection back down one word or one line at a time, rather than one character at a time. The word or line where you started stays fully selected no matter which way you shrink or grow from there. Crossing back past your starting point flips the selection's direction instead of cutting it off partway.
 
 <div class="key-demo">
 <strong>Word selected with <code>w</code>, then <code>e</code> to enter Extend mode</strong><br>
@@ -36,11 +36,11 @@ Lorem<span class="sel">&nbsp;ipsum dolor si<span class="head">t</span></span><br
 Lorem<span class="sel">&nbsp;ipsum dolo<span class="head">r</span></span> sit
 </div>
 
-The anchor stays pinned on `Lorem`'s trailing whitespace throughout — `w` grows the head forward one word at a time, `b` shrinks it back the same way.
+The anchor stays pinned on `Lorem`'s trailing whitespace throughout: `w` grows the head forward one word at a time, `b` shrinks it back the same way.
 
 ### Text objects
 
-Text objects select structured regions in one step. They use the `m` prefix — `m i` for inner content, `m a` for around (including delimiters, or one adjacent whitespace run for words):
+Text objects select structured regions in one step. They use the `m` prefix: `m i` for inner content, `m a` for around (including delimiters, or one adjacent whitespace run for words):
 
 | Sequence | Selects |
 |----------|---------|
@@ -66,24 +66,24 @@ Closing brackets work as well as opening ones: `m i )` is the same as `m i (`, a
 
 `m i a` / `m a a` and the last five rows above (`f`, `t`, `c`, `u`, `v`) are structure-aware: for a
 language whose grammar ships a `textobjects.scm` (PLUM installs one alongside highlights where the
-upstream grammar has one), they select the actual function, class, comment, unit test, or value node —
+upstream grammar has one), they select the actual function, class, comment, unit test, or value node,
 falling back to a lexical scan for `m i a` / `m a a` wherever the grammar doesn't cover the cursor
 (a syntax error, a buffer with no grammar at all). Without a grammar, `f`/`t`/`c`/`u`/`v` are a
 silent no-op. Because the argument object is now structure-aware, a nested list, tuple, or struct
-literal passed as a call argument is itself the argument — use `m i v` / `m a v` for its members.
+literal passed as a call argument is itself the argument. Use `m i v` / `m a v` for its members.
 
 Each of `f`/`t`/`a`/`c`/`u`/`v` also jumps to the next/previous instance of its kind under the
-`g` prefix (lowercase forward, uppercase backward, e.g. `g f`/`g F`) — see
+`g` prefix (lowercase forward, uppercase backward, e.g. `g f`/`g F`). See
 [Moving Around](moving-around.md#structural-navigation).
 
 Two shortcuts select the word under the cursor directly:
 
 | Key | Effect |
 |-----|--------|
-| `m m` | Word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b`; disable `word-selects-whitespace` for `m i w` instead — see [Configuration](configuration.md)) |
+| `m m` | Word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b`; disable `word-selects-whitespace` for `m i w` instead; see [Configuration](configuration.md)) |
 | `M M` | WORD under the cursor (same as `m a W` by default) |
 
-`m i` selects just the structure's content; `m a` includes what surrounds it — one adjacent whitespace run for words, the delimiters themselves for brackets:
+`m i` selects just the structure's content; `m a` includes what surrounds it: one adjacent whitespace run for words, the delimiters themselves for brackets:
 
 <div class="key-demo">
 <strong>Cursor mid-word, press <code>m</code> <code>i</code> <code>w</code></strong><br>
@@ -97,14 +97,14 @@ call(<span class="sel">one, tw<span class="head">o</span></span>)<br>
 call<span class="sel">(one, two<span class="head">)</span></span>
 </div>
 
-`m i i` selects the text you most recently typed before leaving Insert mode — however you entered it (`i`, `a`, `o`, `O`, `A`, `I`, `c`). Type something, press `Esc`, then `m i i` to act on what you just wrote. It stops working as soon as you make another change to the buffer (including undo/redo). There is no `m a i` — an insertion has no delimiters or surrounding structure to select "around".
+`m i i` selects the text you most recently typed before leaving Insert mode, however you entered it (`i`, `a`, `o`, `O`, `A`, `I`, `c`). Type something, press `Esc`, then `m i i` to act on what you just wrote. It stops working as soon as you make another change to the buffer (including undo/redo). There is no `m a i`: an insertion has no delimiters or surrounding structure to select "around".
 
 ## Select all
 
 | Key | Effect |
 |-----|--------|
 | `%` | Select entire buffer |
-| `m /` | Turn every search match in the buffer into a selection — see [Moving Around](moving-around.md#search-navigation) |
+| `m /` | Turn every search match in the buffer into a selection. See [Moving Around](moving-around.md#search-navigation) |
 
 ## Flipping and collapsing the selection
 
@@ -116,13 +116,13 @@ call<span class="sel">(one, two<span class="head">)</span></span>
 
 ## Multiple selections
 
-HUME supports multiple simultaneous selections. Each selection behaves independently — editing commands act on all of them at once.
+HUME supports multiple simultaneous selections. Each selection behaves independently: editing commands act on all of them at once.
 
 | Action | Key | Effect |
 |--------|-----|--------|
 | Sift within selection | `s` | Enter a regex pattern; each selection is narrowed to its sub-matches |
 | Split on newlines | `S` | Split multi-line selections into one selection per line |
-| Copy to next line | `C` | Duplicate each selection to the same character column on the line below, adding a multi-cursor. No text is copied — the new selections cover the same column range on the next line. A count prefix (e.g. `3C`) copies onto that many lines below in one step; repeating `C` also stacks cursors line by line for column-style editing. HUME has no rectangular/visual-block selection primitive. |
+| Copy to next line | `C` | Duplicate each selection to the same character column on the line below, adding a multi-cursor. No text is copied: the new selections cover the same column range on the next line. A count prefix (e.g. `3C`) copies onto that many lines below in one step; repeating `C` also stacks cursors line by line for column-style editing. HUME has no rectangular/visual-block selection primitive. |
 | Trim whitespace | `_` | Remove leading/trailing whitespace from all selections |
 | Keep primary | `,` | Remove all selections except the primary |
 | Remove primary | `Ctrl-,` | Remove the primary selection, promote next (kitty only) |
@@ -137,4 +137,4 @@ Press `s` to enter Sift mode. Type a regex pattern and press `Enter`. Each exist
 2. Press `s` and type `\w+` to select each word individually
 3. Press `d` to delete all words at once
 
-`s` requires at least one non-collapsed selection — on a bare single-character cursor it is a silent no-op. See [Regex syntax](moving-around.md#regex-syntax) for the pattern flavor and case-sensitivity rules.
+`s` requires at least one non-collapsed selection. On a bare single-character cursor it is a silent no-op. See [Regex syntax](moving-around.md#regex-syntax) for the pattern flavor and case-sensitivity rules.

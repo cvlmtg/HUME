@@ -4,7 +4,7 @@ Plugins are written in Scheme, the same language as your config, so the line bet
 
 The first half of this page covers using plugins other people wrote; [Writing a plugin](#writing-a-plugin) covers making your own.
 
-Plugins are installed and updated by **PLUM**, a bundled plugin — see [Core Plugins](core-plugins.md#core-plum) to enable it.
+Plugins are installed and updated by **PLUM**, a bundled plugin. See [Core Plugins](core-plugins.md#core-plum) to enable it.
 
 ## Installing a plugin
 
@@ -19,7 +19,7 @@ Add a `declare-plugin` or `load-plugin` call to your [`init.scm`](configuration.
 [cvlmtg/grep.hume](https://github.com/cvlmtg/grep.hume) adds one `g /` keybind to open a picker with a live `rg` (or `grep`) search behind it, re-running the search as you type.
 :::
 
-`core:stdlib` is grep.hume's own dependency, not something every plugin needs — check each
+`core:stdlib` is grep.hume's own dependency, not something every plugin needs; check each
 plugin's docs for what it requires. Then run `:plum-install-plugins` to clone it from GitHub. PLUM never installs anything on its own, so nothing is fetched behind your back at startup; once the plugin is on disk, its commands and key bindings are available from the next launch.
 
 See [How plugins are loaded](#how-plugins-are-loaded) for the difference between the two verbs.
@@ -51,9 +51,9 @@ Reloads `init.scm` from scratch. Useful after editing your config without restar
 
 ## Recovering from a failed plugin
 
-A plugin that fails to load doesn't stop the rest of `init.scm` — every plugin after it still loads, and every plugin declared or loaded before it is unaffected. Check `:messages` for the error; it names the plugin and points at the file and line the problem is in. `:plugin-status` shows it as failed alongside everything else.
+A plugin that fails to load doesn't stop the rest of `init.scm`: every plugin after it still loads, and every plugin declared or loaded before it is unaffected. Check `:messages` for the error; it names the plugin and points at the file and line the problem is in. `:plugin-status` shows it as failed alongside everything else.
 
-If the failing plugin came from a git repository (rather than one you're editing yourself), it may already have a fix upstream: run `:plum-update-plugins` to pull the latest version of every installed plugin, then `:reload-config` to try again. This works even for a plugin that failed on the very first line of your config — loading it never depends on anything declared or loaded after it.
+If the failing plugin came from a git repository (rather than one you're editing yourself), it may already have a fix upstream: run `:plum-update-plugins` to pull the latest version of every installed plugin, then `:reload-config` to try again. This works even for a plugin that failed on the very first line of your config, since loading it never depends on anything declared or loaded after it.
 
 ## How plugins are loaded
 
@@ -61,30 +61,30 @@ There are two ways to bring a plugin into the editor from `init.scm`:
 
 | Verb | Timing |
 |------|--------|
-| `(declare-plugin "name" #:commands ...)` | **Lazy** — body deferred until first use |
-| `(load-plugin "name")` | **Eager** — body runs during startup |
+| `(declare-plugin "name" #:commands ...)` | **Lazy**: body deferred until first use |
+| `(load-plugin "name")` | **Eager**: body runs during startup |
 
 **Lazy plugins** (`declare-plugin`) record a *manifest* of what the plugin offers, but don't evaluate the body until the first activation entry is exercised. This keeps startup fast, and is the recommended default: a language-server or formatting plugin whose commands you might never call costs nothing until you do.
 
-**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for a plugin whose only way of being triggered is one of the things its own body sets up — a key binding it adds or overrides, an option, a hook — since nothing else could ever wake it.
+**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for a plugin whose only way of being triggered is one of the things its own body sets up (a key binding it adds or overrides, an option, a hook), since nothing else could ever wake it.
 
 A lazy plugin needs at least one activation entry, or it could never activate. Declare them yourself:
 
-- **`#:commands`** — editor-command names the plugin provides (defined with `define-command!`). HUME creates placeholder stubs so the names are key-bindable and reachable from `call!` immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works this way — pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
+- **`#:commands`**: editor-command names the plugin provides (defined with `define-command!`). HUME creates placeholder stubs so the names are key-bindable and reachable from `call!` immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works this way: pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
 
   ```scheme
   (declare-plugin "cvlmtg/grep.hume" #:commands '("picker-grep"))
   (bind-key! 'normal "space g" "picker-grep")
   ; pressing <space>g the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
-- **`#:typed-commands`** — typed-command names the plugin provides (defined with `define-typed-command!`). Same stub-then-activate behavior as `#:commands`, but the stub appears in `:` Tab completion and is reachable only from `:`, never from a key or `call!`:
+- **`#:typed-commands`**: typed-command names the plugin provides (defined with `define-typed-command!`). Same stub-then-activate behavior as `#:commands`, but the stub appears in `:` Tab completion and is reachable only from `:`, never from a key or `call!`:
 
   ```scheme
   (declare-plugin "cvlmtg/grep.hume" #:typed-commands '("picker-grep"))
   ; typing :picker-grep the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
-- **`#:events`** — lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
-- **`#:languages`** — buffer language names that trigger loading.
+- **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
+- **`#:languages`**: buffer language names that trigger loading.
 
 ...or, if the plugin ships its own defaults, leave all four off:
 
@@ -92,11 +92,11 @@ A lazy plugin needs at least one activation entry, or it could never activate. D
 (declare-plugin "cvlmtg/grep.hume")
 ```
 
-A bare `declare-plugin` with no activation entries asks the plugin for its own defaults instead of erroring — see [Default activation](#default-activation) if you're writing a plugin and want to support this.
+A bare `declare-plugin` with no activation entries asks the plugin for its own defaults instead of erroring. See [Default activation](#default-activation) if you're writing a plugin and want to support this.
 
 ## Writing a plugin
 
-A plugin is a directory containing a `plugin.scm` — that file is the entry point HUME loads. For a plugin installed by PLUM, the directory is named after its GitHub owner and repo. The simplest `plugin.scm`:
+A plugin is a directory containing a `plugin.scm`; that file is the entry point HUME loads. For a plugin installed by PLUM, the directory is named after its GitHub owner and repo. The simplest `plugin.scm`:
 
 ```scheme
 (define-typed-command! "hello"
@@ -123,13 +123,13 @@ Two verbs, matching the two kinds of command described in [Command mode](command
     ...))
 ```
 
-`define-command!` registers an editor command — bind it to a key, or dispatch it with `call!`; it's never reachable from the command mode prompt. `define-typed-command!` registers a typed command — reachable only as `:typed-command-name`; it's never bindable to a key and never reachable through `call!`. Both take the same first two arguments: a name and a one-line description of what the command does.
+`define-command!` registers an editor command: bind it to a key, or dispatch it with `call!`; it's never reachable from the command mode prompt. `define-typed-command!` registers a typed command, reachable only as `:typed-command-name`; it's never bindable to a key and never reachable through `call!`. Both take the same first two arguments: a name and a one-line description of what the command does.
 
-An editor command's lambda receives the leading arguments its declared arity asks for — `()`, `(pane)`, `(pane count)`, or `(pane count extend)` — `pane` is the pane the command was invoked through, `count` is what a key press's count prefix injects (`0` means "no count typed"), `extend` whether Extend mode is active. A typed command's lambda instead receives `()`, `(pane)`, `(pane arg)`, or `(pane arg force)` — `arg` is the text typed after the command name (a string, or `#f` if none was typed), `force` whether `!` was appended. `pane` is always the leading parameter, before whichever of the others the command also declares — a command that only touches selections and doesn't care about `count`/`extend` still declares just `(pane)`, not `(pane count extend)`.
+An editor command's lambda receives the leading arguments its declared arity asks for: `()`, `(pane)`, `(pane count)`, or `(pane count extend)`. `pane` is the pane the command was invoked through, `count` is what a key press's count prefix injects (`0` means "no count typed"), `extend` whether Extend mode is active. A typed command's lambda instead receives `()`, `(pane)`, `(pane arg)`, or `(pane arg force)`. `arg` is the text typed after the command name (a string, or `#f` if none was typed), `force` whether `!` was appended. `pane` is always the leading parameter, before whichever of the others the command also declares: a command that only touches selections and doesn't care about `count`/`extend` still declares just `(pane)`, not `(pane count extend)`.
 
-For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword — accepted by both verbs. The alt-screen opens on the command's first real output — not eagerly at the start — so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it. This applies no matter how the command is reached — a key binding, `:`, or `call!` from another command's body, a hook, or a timer — and a command `call!`'d from inside another `#:inline-output` command shares its already-open screen and single keypress prompt rather than opening a second one.
+For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword, accepted by both verbs. The alt-screen opens on the command's first real output (not eagerly at the start), so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it. This applies no matter how the command is reached (a key binding, `:`, or `call!` from another command's body, a hook, or a timer), and a command `call!`'d from inside another `#:inline-output` command shares its already-open screen and single keypress prompt rather than opening a second one.
 
-Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available — there's no separate "shell builtin" layer. The one exception: inside an `#:inline-output` command, spawn subprocesses whose output should reach the terminal via `run-inline-output!` rather than a raw `spawn-process`/`command` call — it isolates the child into its own process group so a Ctrl-c meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen:
+Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available; there's no separate "shell builtin" layer. The one exception: inside an `#:inline-output` command, spawn subprocesses whose output should reach the terminal via `run-inline-output!` rather than a raw `spawn-process`/`command` call. It isolates the child into its own process group so a Ctrl-c meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen:
 
 ```scheme
 (define-command! "fetch-config"
@@ -141,7 +141,7 @@ Plugins run with the same privileges as HUME itself, so any Scheme process/files
   #:inline-output #t)
 ```
 
-For editor commands that should support dot-repeat (`.`), add `#:repeatable #t` — `define-typed-command!` has no `#:repeatable` keyword, since dot-repeat has no meaning for a `:` command. `#:repeatable` and `#:inline-output` are mutually exclusive:
+For editor commands that should support dot-repeat (`.`), add `#:repeatable #t`. `define-typed-command!` has no `#:repeatable` keyword, since dot-repeat has no meaning for a `:` command. `#:repeatable` and `#:inline-output` are mutually exclusive:
 
 ```scheme
 (define-command! "delete-and-repeat"
@@ -163,21 +163,21 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
     (call! "collapse-selection" pane)))
 ```
 
-`call!` dispatches any editor command — built-in and Scheme-defined alike — activating the target plugin on demand.
+`call!` dispatches any editor command, built-in and Scheme-defined alike, activating the target plugin on demand.
 
-A built-in command has no lambda parameter list of its own to receive one, so `call!` requires a pane as its first *argument* instead — always the pane the command should act through: `(call! "delete-selection" pane)`, `(call! "move-right" pane 5)`. Most built-ins act through whatever pane the value names, not necessarily the one you're focused on — as long as that pane still exists and still shows the buffer the value names; a few (entering insert mode, an open prompt, extend mode, pane focus/split/close, tabs, …) still require it to be the pane you're actually focused on — see [Builtin Commands](builtin-commands.md) for the full breakdown. A Scheme-defined command receives `pane` as its own first parameter already (see above), so `call!` passes whatever arguments that command declares — including `pane` itself, if the caller wants to forward the one it's acting through.
+A built-in command has no lambda parameter list of its own to receive one, so `call!` requires a pane as its first *argument* instead: always the pane the command should act through: `(call! "delete-selection" pane)`, `(call! "move-right" pane 5)`. Most built-ins act through whatever pane the value names, not necessarily the one you're focused on, as long as that pane still exists and still shows the buffer the value names; a few (entering insert mode, an open prompt, extend mode, pane focus/split/close, tabs, …) still require it to be the pane you're actually focused on (see [Builtin Commands](builtin-commands.md) for the full breakdown). A Scheme-defined command receives `pane` as its own first parameter already (see above), so `call!` passes whatever arguments that command declares, including `pane` itself, if the caller wants to forward the one it's acting through.
 
-For a built-in command, `call!` returns `#f` when the command refused (a too-small split, the last pane, …) or the name didn't resolve, and `#t` otherwise — not a guarantee anything changed, just that nothing was refused; it errors if `pane` doesn't resolve for that command (see above). A Scheme-defined command returns whatever its own body returns.
+For a built-in command, `call!` returns `#f` when the command refused (a too-small split, the last pane, …) or the name didn't resolve, and `#t` otherwise. That's not a guarantee anything changed, just that nothing was refused; it errors if `pane` doesn't resolve for that command (see above). A Scheme-defined command returns whatever its own body returns.
 
 ::: warning `call!` can't run typed commands
-Typed commands like `write`, `quit`, or `edit` are not reachable through `call!` — only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
+Typed commands like `write`, `quit`, or `edit` are not reachable through `call!`: only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
 :::
 
-When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
+When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed". This is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
 
 ### Reading selections
 
-`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of opaque `(anchor head primary?)` triples — char offsets, not grapheme ordinals. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. Don't index into the tuple directly; go through `core:stdlib`'s helpers instead, which is what they're for:
+`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of opaque `(anchor head primary?)` triples: char offsets, not grapheme ordinals. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. Don't index into the tuple directly; go through `core:stdlib`'s helpers instead, which is what they're for:
 
 ```scheme
 (define-command! "example" "" (lambda (pane)
@@ -186,7 +186,7 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
   (call! "stdlib/cursor-char-index" (buffer-selections pane))))
 ```
 
-Those three read the whole list. To work with a single triple — the primary selection, say — use these accessors instead of `car`/`cadr`/`caddr`:
+Those three read the whole list. To work with a single triple (the primary selection, say), use these accessors instead of `car`/`cadr`/`caddr`:
 
 ```scheme
 (call! "stdlib/primary-selection" (buffer-selections pane))
@@ -195,24 +195,24 @@ Those three read the whole list. To work with a single triple — the primary se
 (call! "stdlib/selection-primary?" primary)
 ```
 
-`(offset->line pane idx)` converts a char offset to a line number when you need one — it's a separate call rather than a field on every selection, since deriving it needs rope access a plain tuple doesn't have.
+`(offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since deriving it needs rope access a plain tuple doesn't have.
 
 See [Plugin API → Standard Library](plugin-api.md#selections) for the full list of selection helpers.
 
 ### Depending on another plugin
 
 ::: warning
-`call!` with an unknown command name logs an error and no-ops instead of aborting the command body — a missing plugin dependency shows up as an error in `:messages`, not as a crash, so check dependencies up front rather than relying on the error to be noticed.
+`call!` with an unknown command name logs an error and no-ops instead of aborting the command body: a missing plugin dependency shows up as an error in `:messages`, not as a crash, so check dependencies up front rather than relying on the error to be noticed.
 :::
 
-If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it — whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`:
+If your plugin calls another plugin's commands via `call!`, check that the other plugin is available before you rely on it. Whether that call sits at your plugin's own top level or inside a command a key press later fires makes no difference: `call!` activates a lazily-declared dependency on demand either way, so the usual check is `(declared-plugins)`:
 
 ```scheme
 (unless (member "core:stdlib" (declared-plugins))
   (error "my-plugin: requires core:stdlib — declare or load it before my-plugin"))
 ```
 
-This is enough as long as the command you're calling is one of the dependency's own activation entries — its `manifest.scm` defaults, or an explicit `#:commands`/`#:events`/`#:languages` list that includes it. If whoever declared the dependency wrote a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin genuinely is declared — just not for the command you need. When you don't control how a dependency gets declared and want a stronger guarantee, check `(loaded-plugins)` instead: it only lists plugins that have actually finished activating, so a missed-activation `#f` on the specific command name never happens — the trade-off is that this forces the dependency to be loaded eagerly, not just declared.
+This is enough as long as the command you're calling is one of the dependency's own activation entries: its `manifest.scm` defaults, or an explicit `#:commands`/`#:events`/`#:languages` list that includes it. If whoever declared the dependency wrote a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin genuinely is declared, just not for the command you need. When you don't control how a dependency gets declared and want a stronger guarantee, check `(loaded-plugins)` instead: it only lists plugins that have actually finished activating, so a missed-activation `#f` on the specific command name never happens. The trade-off is that this forces the dependency to be loaded eagerly, not just declared.
 
 ```scheme
 (unless (member "core:stdlib" (loaded-plugins))
@@ -237,7 +237,7 @@ HUME shows nothing while it waits, so make it obvious from context that a charac
 
 ### Register prefix
 
-To make subsequent `(call! …)` invocations in a command body target a specific register, call `set-register-prefix!` with a single-character register name (`0`–`9`, `k`, `c`, `b` — see [Register prefix](copy-and-paste.md#register-prefix) for what each one holds):
+To make subsequent `(call! …)` invocations in a command body target a specific register, call `set-register-prefix!` with a single-character register name (`0`–`9`, `k`, `c`, `b`; see [Register prefix](copy-and-paste.md#register-prefix) for what each one holds):
 
 ```scheme
 (define-command! "paste-kill-ring-after"
@@ -249,7 +249,7 @@ To make subsequent `(call! …)` invocations in a command body target a specific
 
 The prefix persists for the rest of the command body.
 
-Target the black hole register (`"b"`) to discard a selection without touching the kill ring or clipboard — useful when a command needs to throw text away as a side effect of its own logic:
+Target the black hole register (`"b"`) to discard a selection without touching the kill ring or clipboard, useful when a command needs to throw text away as a side effect of its own logic:
 
 ```scheme
 (define-command! "delete-without-clobbering"
@@ -261,7 +261,7 @@ Target the black hole register (`"b"`) to discard a selection without touching t
 
 ### Hooks
 
-Plugins react to editor lifecycle events by registering a hook handler with `register-hook!`. It must be called at the top level or inside a plugin body — not from a command body:
+Plugins react to editor lifecycle events by registering a hook handler with `register-hook!`. It must be called at the top level or inside a plugin body, not from a command body:
 
 ```scheme
 (register-hook! 'on-buffer-save
@@ -269,7 +269,7 @@ Plugins react to editor lifecycle events by registering a hook handler with `reg
     (log! 'info (string-append "saved " (buffer-name pane)))))
 ```
 
-Available hooks and their lambda signatures. Every `pane` argument below is the same opaque value a command's own leading parameter is (see [Defining commands](#defining-commands)) — pass it straight into any builtin that takes one. For a hook about a buffer with no pane of its own (most of them), that value carries no particular pane; for `on-buffer-enter`, `on-viewport-change`, `on-trigger-char`, and `on-completion-accept`, it names the exact pane the event happened in:
+Available hooks and their lambda signatures. Every `pane` argument below is the same opaque value a command's own leading parameter is (see [Defining commands](#defining-commands)); pass it straight into any builtin that takes one. For a hook about a buffer with no pane of its own (most of them), that value carries no particular pane; for `on-buffer-enter`, `on-viewport-change`, `on-trigger-char`, and `on-completion-accept`, it names the exact pane the event happened in:
 
 | Hook | Fires when | Lambda args |
 |------|------------|-------------|
@@ -278,26 +278,26 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-buffer-save` | A buffer is saved | `(pane)` |
 | `on-buffer-enter` | The focused buffer changes | `(pane)` |
 | `on-focus-gained` | The terminal regains focus | `()` |
-| `on-mode-change` | The editor mode changes | `(old new)` — mode strings |
-| `on-language-set` | A buffer's language is detected or changed | `(pane lang)` — `lang` is a string or `#f` |
-| `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(pane)` — pull details with `diagnostics-for-buffer` |
+| `on-mode-change` | The editor mode changes | `(old new)`: mode strings |
+| `on-language-set` | A buffer's language is detected or changed | `(pane lang)`: `lang` is a string or `#f` |
+| `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(pane)`: pull details with `diagnostics-for-buffer` |
 | `on-lsp-attach` | A language server attaches to a buffer | `(pane server-name)` |
 | `on-lsp-detach` | A language server detaches from a buffer | `(pane server-name)` |
-| `on-viewport-change` | The visible region of a pane changes | `(pane first-line end-line)` — 0-based, end-exclusive |
+| `on-viewport-change` | The visible region of a pane changes | `(pane first-line end-line)`: 0-based, end-exclusive |
 | `on-trigger-char` | A registered trigger character is typed | `(pane char source)` |
 | `on-completion-accept` | A completion entry is accepted | `(pane item)` |
-| `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)` — both strings |
+| `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: both strings |
 | `on-text-changed` | A buffer's text changes | `(pane)` |
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
 
-`on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:ls`, `:plugin-status`) alike — those buffers have no file, so a handler that looks up a path must handle it being absent. It coalesces multiple mutations made by a single command (a multi-cursor edit, a macro, a paste) into one fire, but each keystroke while typing is its own command and so fires on its own — pair it with `debounce` if you want to react only after typing settles rather than on every character.
+`on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:ls`, `:plugin-status`) alike. Those buffers have no file, so a handler that looks up a path must handle it being absent. It coalesces multiple mutations made by a single command (a multi-cursor edit, a macro, a paste) into one fire, but each keystroke while typing is its own command and so fires on its own. Pair it with `debounce` if you want to react only after typing settles rather than on every character.
 
-For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry — a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
+For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry: a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
 
-`set-option!` works from a hook or command handler too, not just at the top level of your plugin — it changes the *global* default, so use it there when that's really what you want.
+`set-option!` works from a hook or command handler too, not just at the top level of your plugin. It changes the *global* default, so use it there when that's really what you want.
 
-For a per-buffer override, `(set-buffer-option! pane "option" value)` sets an option just on `pane`'s buffer, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the value the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, see [Reading options from Scheme](#reading-options-from-scheme) below.
+For a per-buffer override, `(set-buffer-option! pane "option" value)` sets an option just on `pane`'s buffer, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the value the hook itself hands you rather than assuming the buffer you're editing: a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, see [Reading options from Scheme](#reading-options-from-scheme) below.
 
 A few more examples:
 
@@ -320,7 +320,7 @@ A few more examples:
 (get-buffer-option pane "option-name")
 ```
 
-`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value: its own override if one is set, else the global default — pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name; `language` has no getter — read it with `(buffer-language pane)` instead. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only — a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
+`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value: its own override if one is set, else the global default. Pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name; `language` has no getter; read it with `(buffer-language pane)` instead. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only: a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
 
 ```scheme
 (get-option "tab-width")           ; the global default tab-width
@@ -337,7 +337,7 @@ If most users would activate your plugin the same way, give them a one-liner: pu
   #:commands '("my-cmd" "my-other-cmd"))
 ```
 
-A user who writes `(declare-plugin "username/repo-name")` with no `#:commands`/`#:typed-commands`/`#:events`/`#:languages` gets your manifest's entries instead of an error. Passing any activation entry explicitly skips your manifest entirely — the user's list is authoritative, not merged with yours. A plugin with no `manifest.scm` can't be declared this way; users who want to use it lazily must list its activation entries themselves (or you can add one).
+A user who writes `(declare-plugin "username/repo-name")` with no `#:commands`/`#:typed-commands`/`#:events`/`#:languages` gets your manifest's entries instead of an error. Passing any activation entry explicitly skips your manifest entirely: the user's list is authoritative, not merged with yours. A plugin with no `manifest.scm` can't be declared this way; users who want to use it lazily must list its activation entries themselves (or you can add one).
 
 If your plugin reacts to a language but can't predict which ones a given user cares about, `#:languages '("*")` matches any buffer with a detected language:
 
@@ -348,20 +348,20 @@ If your plugin reacts to a language but can't predict which ones a given user ca
   #:commands '("my-cmd"))
 ```
 
-`#:config` behaves the same as elsewhere: if the user passes `#:config` to their zero-argument `declare-plugin`, that value wins over anything your manifest passes — read it back the usual way with `(plugin-config)`.
+`#:config` behaves the same as elsewhere: if the user passes `#:config` to their zero-argument `declare-plugin`, that value wins over anything your manifest passes; read it back the usual way with `(plugin-config)`.
 
-Keep `manifest.scm` to just the `declare-plugin` call — it runs whenever a user's bare `declare-plugin` resolves it, which is not a signal that your plugin is about to load.
+Keep `manifest.scm` to just the `declare-plugin` call. It runs whenever a user's bare `declare-plugin` resolves it, which is not a signal that your plugin is about to load.
 
 ### Configuring a plugin
 
-A plugin can read the `#:config` value its user passed to `load-plugin` or `declare-plugin` with `(plugin-config)`. It returns whatever was passed — typically a hash — or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
+A plugin can read the `#:config` value its user passed to `load-plugin` or `declare-plugin` with `(plugin-config)`. It returns whatever was passed (typically a hash) or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
 
 ```scheme
 (unless (call! "stdlib/config-boolean" "my-plugin" (plugin-config) "disable-binding" #f)
   (bind-key! 'normal "C" "my-command"))
 ```
 
-`stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`, and `stdlib/config-list` cover the other common config shapes — see [Plugin API → Standard Library](plugin-api.md#plugin-configuration) for their signatures. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first — see "Depending on another plugin" above.
+`stdlib/config-string`, `stdlib/config-enum`, `stdlib/config-integer`, and `stdlib/config-list` cover the other common config shapes; see [Plugin API → Standard Library](plugin-api.md#plugin-configuration) for their signatures. Since this call happens in your plugin's own body, at load time, check `(declared-plugins)` for `"core:stdlib"` first (see "Depending on another plugin" above).
 
 Document the keys your plugin understands so users know what to pass.
 
@@ -369,9 +369,9 @@ The two verbs treat `#:config` differently: with `declare-plugin` the first decl
 
 ### Filesystem and processes
 
-Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem — use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access, and `command`/`spawn-process`/`wait` for running external tools.
+Plugins are trusted code: they can read and write any file, and spawn any process, just like any other Scheme program. There's no separate sandboxed subset of the filesystem. Use Scheme's own functions directly (`open-input-file`, `create-directory!`, `delete-file!`, `read-dir`, `path-exists?`, and so on) for file access, and `command`/`spawn-process`/`wait` for running external tools.
 
-Before hand-rolling one of these, check [Plugin API → Standard Library](plugin-api.md#standard-library) — its filesystem, subprocess, and git commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, a blocking subprocess run with a uniform success/failure return shape, git work-tree detection and repo-root resolution).
+Before hand-rolling one of these, check [Plugin API → Standard Library](plugin-api.md#standard-library): its filesystem, subprocess, and git commands cover the shapes plugins need most often (idempotent delete, sorted subdirectory listing, a blocking subprocess run with a uniform success/failure return shape, git work-tree detection and repo-root resolution).
 
 A few extra functions cover things Scheme has no way to know on its own:
 
@@ -380,11 +380,11 @@ A few extra functions cover things Scheme has no way to know on its own:
 | `(data-dir)` | HUME's data directory, or `#f` if unavailable |
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(path-join seg…)` | Join path segments with the OS-native separator |
-| `(json-parse str)` | Decode a JSON string — an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively — errors on malformed input |
+| `(json-parse str)` | Decode a JSON string: an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively; errors on malformed input |
 
-`run-inline-output!` also takes a `#:cwd` keyword to set the working directory, and raises an error if the command exits non-zero — wrap it in a handler if a failure is expected.
+`run-inline-output!` also takes a `#:cwd` keyword to set the working directory, and raises an error if the command exits non-zero; wrap it in a handler if a failure is expected.
 
-`command`/`spawn-process`/`wait` all block the whole editor until the command finishes — fine for something instant (`git rev-parse`), but not for anything that might take a moment while the user keeps typing. For that, run it in the background instead:
+`command`/`spawn-process`/`wait` all block the whole editor until the command finishes. That's fine for something instant (`git rev-parse`), but not for anything that might take a moment while the user keeps typing. For that, run it in the background instead:
 
 ```scheme
 (spawn-async! "git" (list "show" (string-append ref ":" path)) repo-root
@@ -395,17 +395,17 @@ A few extra functions cover things Scheme has no way to know on its own:
 ```
 
 `spawn-async!` starts `cmd` with `args` (in `cwd`, or `#f` for HUME's own working
-directory) and returns immediately — nothing blocks. `callback` is called exactly once,
+directory) and returns immediately; nothing blocks. `callback` is called exactly once,
 later, once the command has finished: `stdout` and `stderr` are its complete output as
 strings, `exit-code` is its exit code (`-1` if it was killed by a signal, or if the
-command couldn't even be started — a missing binary, say). A command that fails to
+command couldn't even be started, like a missing binary). A command that fails to
 start or exits non-zero still calls `callback` rather than raising an error, so there's
 only one place to handle the outcome. `spawn-async!` returns an id; call
-`(cancel-async! id)` to kill the command and discard its callback before it fires —
+`(cancel-async! id)` to kill the command and discard its callback before it fires,
 useful when a debounced action (a hook firing on every keystroke, say) ends up
 superseded by a newer one before the older command has finished.
 
-Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere — that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
+Only install or overwrite files under `(data-dir)` unless you have a specific reason to go elsewhere: that's where HUME expects a plugin's own data (installed grammars, downloaded servers, plugin state) to live.
 
 ### Reading buffer text
 
@@ -413,14 +413,14 @@ Only install or overwrite files under `(data-dir)` unless you have a specific re
 (buffer-text pane)
 ```
 
-Returns a buffer's full live content as a string — including any unsaved edits, not what's on disk. The string always ends with a trailing newline. Line endings in the returned string are always `\n`, even for a file saved with `\r\n`.
+Returns a buffer's full live content as a string, including any unsaved edits, not what's on disk. The string always ends with a trailing newline. Line endings in the returned string are always `\n`, even for a file saved with `\r\n`.
 
 ```scheme
 (buffer-lines pane)
 (buffer-lines pane #:start start #:end end)
 ```
 
-Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines pane #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range pane)` to read only what's currently on screen — it returns the same 0-based, end-exclusive range shape, so its pair passes straight through as `#:start`/`#:end`:
+Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines pane #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range pane)` to read only what's currently on screen: it returns the same 0-based, end-exclusive range shape, so its pair passes straight through as `#:start`/`#:end`:
 
 ```scheme
 (let ((vr (viewport-range pane)))
@@ -433,57 +433,57 @@ If you're about to diff a buffer's content against another text, reach for `(dif
 (buffer-line-count pane)
 ```
 
-Returns the buffer's content line count as an integer, same count `buffer-lines` returns lines for. If all you need is the count, reach for this instead of `(length (buffer-lines pane))` — that idiom builds and throws away a full list of line strings just to measure it.
+Returns the buffer's content line count as an integer, same count `buffer-lines` returns lines for. If all you need is the count, reach for this instead of `(length (buffer-lines pane))`. That idiom builds and throws away a full list of line strings just to measure it.
 
 ```scheme
 (line->offset pane line)
 ```
 
-Returns the 0-based char offset where content line `line` (0-based) starts — the conversion decoration builtins that take char offsets (like `set-extra-highlights!`) need when all you have is a line number, e.g. from a diff hunk. Raises if `line` is at or past the buffer's content line count.
+Returns the 0-based char offset where content line `line` (0-based) starts: the conversion decoration builtins that take char offsets (like `set-extra-highlights!`) need when all you have is a line number, e.g. from a diff hunk. Raises if `line` is at or past the buffer's content line count.
 
 ### Comparing text
 
-Two functions compute a line-level diff — useful for anything that shows what changed between two versions of a file, like a git-status indicator:
+Two functions compute a line-level diff, useful for anything that shows what changed between two versions of a file, like a git-status indicator:
 
 ```scheme
 (diff-lines old-text new-text)
 ```
 
-Splits both `old-text` and `new-text` into lines the same way HUME treats file content — every line ending becomes LF, and a missing trailing newline doesn't count as a change — then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
+Splits both `old-text` and `new-text` into lines the same way HUME treats file content (every line ending becomes LF, and a missing trailing newline doesn't count as a change), then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
 
 ```scheme
 (old-start old-count new-start new-count old-lines new-lines)
 ```
 
-`old-start`/`new-start` are 0-based line numbers, `old-count`/`new-count` are how many lines the hunk covers on each side, and `old-lines`/`new-lines` are the line contents themselves (no trailing newline). A pure insertion has `old-count` `0`; a pure deletion has `new-count` `0` — either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
+`old-start`/`new-start` are 0-based line numbers, `old-count`/`new-count` are how many lines the hunk covers on each side, and `old-lines`/`new-lines` are the line contents themselves (no trailing newline). A pure insertion has `old-count` `0`; a pure deletion has `new-count` `0`. Either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
 
 ```scheme
 (diff-buffer-lines pane ref-text)
 ```
 
-Same result, but compares `ref-text` against the current, unsaved content of the buffer named by `pane` — the buffer never has to be pulled through a builtin as one big string first. This is the one to use in a hook that fires on every keystroke.
+Same result, but compares `ref-text` against the current, unsaved content of the buffer named by `pane`; the buffer never has to be pulled through a builtin as one big string first. This is the one to use in a hook that fires on every keystroke.
 
-For a finer-grained comparison inside a single changed line — highlighting exactly which words differ rather than the whole line:
+For a finer-grained comparison inside a single changed line, highlighting exactly which words differ rather than the whole line:
 
 ```scheme
 (diff-words old-text new-text)
 ```
 
-Returns `(hunks . too-long?)`. `hunks` is a list of `(old-start old-end new-start new-end old-text new-text)` tuples — 0-based character positions into `old-text`/`new-text`, with `old-text`/`new-text` on each hunk holding the actual changed words. A pure insertion has an empty `old-text` and `old-start` equal to `old-end`; a pure deletion mirrors that on the new side. `too-long?` is `#t` when the two texts were too large to compare word-by-word in time — treat that as a signal to fall back to highlighting the whole line instead of individual words.
+Returns `(hunks . too-long?)`. `hunks` is a list of `(old-start old-end new-start new-end old-text new-text)` tuples: 0-based character positions into `old-text`/`new-text`, with `old-text`/`new-text` on each hunk holding the actual changed words. A pure insertion has an empty `old-text` and `old-start` equal to `old-end`; a pure deletion mirrors that on the new side. `too-long?` is `#t` when the two texts were too large to compare word-by-word in time. Treat that as a signal to fall back to highlighting the whole line instead of individual words.
 
 ### Custom pickers
 
 The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widget any
-plugin can drive — `core:pickers`' own file and buffer finders are built from nothing
+plugin can drive: `core:pickers`' own file and buffer finders are built from nothing
 but this API.
 
 ```scheme
 (picker! pane items on-select #:prompt "buffers: ")
 ```
 
-`pane` must still be the one you're looking at when the picker opens — pass through whatever pane value the enclosing command or hook was itself given, or `(focused-pane)` if there's none in scope.
+`pane` must still be the one you're looking at when the picker opens. Pass through whatever pane value the enclosing command or hook was itself given, or `(focused-pane)` if there's none in scope.
 
-`items` is a list of `(display . payload)` pairs — `display` is the string shown and
+`items` is a list of `(display . payload)` pairs: `display` is the string shown and
 matched against, `payload` is anything you like (a path, a buffer id, a hashmap); HUME
 never looks inside it. `on-select` fires exactly once: with the chosen item's `payload`
 if the user presses `Enter`, or `#f` if they press `Esc`, call `picker-close!`, or open a
@@ -493,11 +493,11 @@ If you close the picker from an asynchronous callback (a `spawn-async!` result
 arriving after the user has moved on, say), pass `picker!`'s return value as
 `picker-close!`'s `#:token`: the close then becomes a no-op if the picker has
 since been closed or replaced, rather than tearing down whatever different
-picker the user has open by then. Called with no token — the usual case, from
-a key binding — `picker-close!` closes whatever picker is currently open.
+picker the user has open by then. Called with no token (the usual case, from
+a key binding), `picker-close!` closes whatever picker is currently open.
 
-For a handful of items — buffers, a plugin's own static list, the output of a quick
-synchronous command — build the whole list up front and pass it to `picker!` directly.
+For a handful of items (buffers, a plugin's own static list, the output of a quick
+synchronous command), build the whole list up front and pass it to `picker!` directly.
 For anything enumeration-scale (file lists, grep-style output), open the picker empty
 and stream an external command's output straight into it instead:
 
@@ -508,9 +508,9 @@ and stream an external command's output straight into it instead:
 
 `picker-source-spawn!` runs `cmd` with `args` directly (no shell), splitting its stdout
 into lines (or NUL-delimited fields with `#:nul #t`) and appending each one to the picker
-as its own `(line . line)` item — display and payload are the same raw line, except that
+as its own `(line . line)` item: display and payload are the same raw line, except that
 a NUL *inside* a line (a command using NUL as an in-line field separator rather than a
-record delimiter — `rg --vimgrep --null`, say) shows as `:` in the display; the payload
+record delimiter, such as `rg --vimgrep --null`) shows as `:` in the display; the payload
 keeps it, so parsing inside `on-select` still sees the real separator. Nothing about the
 command's output passes through Scheme itself, so this stays fast even for tens of
 thousands of results; do any parsing of the selected line inside `on-select`, not up
@@ -521,14 +521,14 @@ asynchronously (an LSP request, a timer) rather than through a spawned command.
 
 `picker-source-spawn!` already shows the user something is still loading. A picker
 populated by `picker-push!` from a `spawn-async!` callback has no such signal of its
-own, so pass `#:pending #t` to `picker!` when opening empty this way — it marks the
+own, so pass `#:pending #t` to `picker!` when opening empty this way. It marks the
 panel as "results still arriving" until the first `picker-push!`/`picker-replace!`
 call lands.
 
 A row too wide for the panel is clipped to fit, marked with `…` at the dropped end.
-`#:truncate` picks which end: `'head` (default) drops the front and keeps the tail —
+`#:truncate` picks which end: `'head` (default) drops the front and keeps the tail,
 right for a file path, whose distinguishing part (the basename) sits at the end. `'tail`
-drops the back and keeps the head instead — right for a row whose distinguishing part
+drops the back and keeps the head instead, right for a row whose distinguishing part
 sits at the *front*, like a grep match's `path:line:col:` prefix ahead of the line
 preview, where a head-cut would swallow the path and show only preview text.
 
@@ -542,19 +542,19 @@ accept it:
 
 `stdlib/buffer-actions` (from `core:stdlib`) is a ready-made `#:actions` list that binds
 `Ctrl-o` to `on-select` itself (a synonym for `Enter`), and `Ctrl-t`/`Ctrl-v`/`Ctrl-s` to
-opening the selection in a new tab, a side-by-side split, or a stacked split respectively —
-see `core:pickers`' own file, buffer, and modified-files pickers for the pattern in use, and
+opening the selection in a new tab, a side-by-side split, or a stacked split respectively.
+See `core:pickers`' own file, buffer, and modified-files pickers for the pattern in use, and
 `core:stdlib`'s reference for `with-tab`/`with-vsplit`/`with-split`, the three combinators it
 composes.
 
 Writing `#:actions` by hand instead: it's a list of `(key-spec . proc)` pairs, each `proc`
 taking the same one payload argument `on-select` does. `key-spec` is a single key written
-the same way `bind-key!` writes one — `"ctrl-v"`, `"alt-o"`, `"f5"` — never a multi-key
+the same way `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`), never a multi-key
 sequence like `"z f"`. An `#:actions` entry can never override a key the picker already uses
-for itself — typing to filter, `Backspace`, the movement keys, `Enter`, `Esc` — so pick a key
+for itself (typing to filter, `Backspace`, the movement keys, `Enter`, `Esc`), so pick a key
 outside that set (a `Ctrl`/`Alt` combination other than the movement ones, or a function key).
 
-A nonzero exit from a spawned source is normally reported as an error — but for a
+A nonzero exit from a spawned source is normally reported as an error, but for a
 command where some exit codes are a normal outcome rather than a failure (`rg`
 exits `1` for "no matches"), pass `#:ok-exit-codes`. The list is complete, not
 additive: it replaces the usual "zero is success" rule outright, so include `0`
@@ -568,13 +568,13 @@ nothing:
 ```
 
 A picker whose query should drive the *source* itself, instead of just filtering an
-already-fetched list, uses a different constructor — see [Live requery](#live-requery-live-grep)
+already-fetched list, uses a different constructor; see [Live requery](#live-requery-live-grep)
 below.
 
 ### Live requery (live grep)
 
 A picker whose query should re-run an external command with the new pattern on every
-keystroke — a live grep, say — uses `live-picker!` instead of `picker!`:
+keystroke (a live grep, say) uses `live-picker!` instead of `picker!`:
 
 ```scheme
 (define (grep/open! pane seed)
@@ -589,25 +589,25 @@ keystroke — a live grep, say — uses `live-picker!` instead of `picker!`:
 
 `grep/parse` above is left to the reader. `#:truncate 'tail` here (see `#:truncate` under
 [Custom pickers](#custom-pickers) above, which `live-picker!` accepts the same way) keeps
-the path and clips the line preview instead — `rg --vimgrep`'s rows are
+the path and clips the line preview instead: `rg --vimgrep`'s rows are
 `path:line:col:preview`, so the default head-cut would clip the path itself. `#:actions`
 (also under Custom pickers above) is accepted the same way too, for opening a match in a
 new tab or split instead of just the current pane.
 
-[grep.hume](https://github.com/cvlmtg/grep.hume) is this same idea, finished — `grep/parse`
+[grep.hume](https://github.com/cvlmtg/grep.hume) is this same idea, finished, with `grep/parse`
 included.
 
-`live-picker!` opens empty — there's no `items` argument, and no `#:pending` either: a
+`live-picker!` opens empty: there's no `items` argument, and no `#:pending` either: a
 live picker is always populated by its own requery, never by a caller pushing items
 directly. `#:command` is a function from the current query to either a full argv list
-(the same `cmd args...` shape `picker-source-spawn!` takes) or `#f` — HUME calls it on
+(the same `cmd args...` shape `picker-source-spawn!` takes) or `#f`. HUME calls it on
 every keystroke and, when it returns a real argv, spawns it exactly the way
 `picker-source-spawn!` would (`#:cwd`/`#:nul`/`#:ok-exit-codes` all apply the same way).
 Returning `#f` for an empty query, as above, is how you tell the picker "show nothing"
-rather than search for an empty pattern — that clear itself waits out the debounce
+rather than search for an empty pattern. That clear itself waits out the debounce
 window too, same as a real search, since `#:command` only runs once the respawn fires.
 
-Every keystroke stops whatever search is still running, immediately — but its rows stay
+Every keystroke stops whatever search is still running, immediately, but its rows stay
 on screen, marked as refreshing, until the new search's own results arrive; there's no
 blank flash in between. `#:debounce-ms` (default `150`) delays only the new search
 itself, not the stop: type fast and the respawn waits until you pause for the window,
@@ -616,22 +616,22 @@ match nothing clears the list once the search finishes, rather than leaving stal
 up. `rg` needs an explicit path argument (`"."` above):
 with no path and no terminal attached to its input, it searches its (empty) stdin instead
 of the working directory and finds nothing. `#:ok-exit-codes` works exactly as it does for
-`picker-source-spawn!` — a complete allowlist, not additive, so include `0` yourself; `rg`
+`picker-source-spawn!`: a complete allowlist, not additive, so include `0` yourself; `rg`
 needs `'(0 1)` since it exits `1` for "no matches".
 
-A non-empty `#:query` (the `seed` argument above, say — resuming a search from wherever
+A non-empty `#:query` (the `seed` argument above, say, resuming a search from wherever
 the last one left off) spawns immediately when the picker opens, before `live-picker!`
 even returns, not on the next keystroke. An empty (or omitted) `#:query` spawns nothing
 until the user types.
 
-A live picker's rows always show in whatever order the source produced them — its own
+A live picker's rows always show in whatever order the source produced them; its own
 local fuzzy filter is off, since the query already selects what the source returns.
 
-`live-picker!` returns a token exactly like `picker!` does — reach for
+`live-picker!` returns a token exactly like `picker!` does. Reach for
 `picker-push!`/`picker-replace!`/`picker-source-spawn!`/`picker-source-stop!`/`picker-close!`
 directly, against that token, only if you need to drive a live picker's population or
 timing yourself instead of `#:command`/`#:debounce-ms`.
 
 ## Bundled core plugins
 
-HUME ships several built-in plugins — see [Core Plugins](core-plugins.md) for the full list and what each does.
+HUME ships several built-in plugins; see [Core Plugins](core-plugins.md) for the full list and what each does.

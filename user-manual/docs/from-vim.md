@@ -10,7 +10,7 @@ In HUME, the order is reversed: you **select first, then act**. `w` selects the 
 
 - Motions always change the selection before anything else
 - Operators (`d`, `c`, `y`, …) act on whatever is currently selected
-- The selection is always visible — there is no invisible "cursor as a point"
+- The selection is always visible: there is no invisible "cursor as a point"
 
 <div class="key-demo">
 <strong>Cursor on the first character, press <code>w</code></strong><br>
@@ -19,7 +19,7 @@ Lorem<span class="sel">&nbsp;ipsu<span class="head">m</span></span> dolor sit<br
 Lorem<span class="head">&nbsp;</span>dolor sit
 </div>
 
-You see the selection `w` built — word plus its leading whitespace — before `d` ever runs, instead of composing `dw` blind and finding out what it did after the fact.
+You see the selection `w` built (word plus its leading whitespace) before `d` ever runs, instead of composing `dw` blind and finding out what it did after the fact.
 
 ## Mode map
 
@@ -29,14 +29,14 @@ You see the selection `w` built — word plus its leading whitespace — before 
 | Insert | Insert |
 | Visual | Extend mode (`e`) or any motion that grows or shrinks the selection |
 | Visual Line | Extend mode + line motions |
-| Visual Block | HUME has no rectangular selection. Use `C` to spawn column-aligned multi-cursors (one per line below), then edit — this approximates column editing without a true visual block. |
+| Visual Block | HUME has no rectangular selection. Use `C` to spawn column-aligned multi-cursors (one per line below), then edit. This approximates column editing without a true visual block. |
 | Command&nbsp;line | Command line (`:`) |
 
 ## Key differences
 
 ### Extend mode vs Visual mode
 
-Vim's Visual mode is entered once and stays until you act. HUME's Extend mode is similar — press `e` to enter it, and every motion extends the selection until you act or press `Esc`. Motions run backward too: moving back toward where you started shrinks the selection, much like shrinking a Visual selection by moving back in Vim.
+Vim's Visual mode is entered once and stays until you act. HUME's Extend mode is similar: press `e` to enter it, and every motion extends the selection until you act or press `Esc`. Motions run backward too: moving back toward where you started shrinks the selection, much like shrinking a Visual selection by moving back in Vim.
 
 ### Muscle-memory traps
 
@@ -44,30 +44,30 @@ These keys exist in both editors and do different things. They are the ones most
 
 | Key | In Vim | In HUME | Vim's behaviour instead |
 |-----|--------|---------|-------------------------|
-| `x` | Delete character | Select the current line | `d` — the cursor is already a one-character selection |
+| `x` | Delete character | Select the current line | `d`: the cursor is already a one-character selection |
 | `s` | Substitute character | Filter each selection by a regex | `c` |
 | `e` | Move to end of word | Toggle Extend mode | `m m` selects the word under the cursor |
 | `%` | Jump to matching bracket | Select the whole buffer | `#` jumps to the matching bracket or tag; `m s` + delimiter selects the surrounding pair |
 | `#` | Search word under cursor backward | Jump to the matching bracket or tag | `*` searches the word under the cursor forward; HUME has no backward variant |
 | `;` | Repeat last `f`/`t` | Collapse the selection | `=` |
 | `,` | Repeat last `f`/`t` backward | Keep only the primary selection | `-` |
-| `m` | Set a mark | Text-object prefix | — HUME has no marks; `Ctrl-o` / `Ctrl-i` walk the jump list |
+| `m` | Set a mark | Text-object prefix | *(none)*: HUME has no marks; `Ctrl-o` / `Ctrl-i` walk the jump list |
 | `[`&nbsp;/&nbsp;`]` | Bracket-motion prefix | Cycle the kill ring after a paste | — |
 | `S` | Change whole line | Split selections on newlines | `x` then `c` |
 | `C` | Change to end of line | Copy the selection to the line below | `ctrl-g l c`, or `C` with `core:vim-keybind` |
 | `D` | Delete to end of line | *(unbound)* | `ctrl-g l d`, or `D` with `core:vim-keybind` |
-| `U` | Undo the whole line | Redo | — `Ctrl-r` also redoes |
-| `G` | Go to last line | Case/rename prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`) | `g e` — unaffected, and `core:vim-keybind` does not restore `G` |
-| `K` | Look up keyword (external `keywordprg`, e.g. `man`) | Show hover docs for the symbol under the cursor (with `core:lsp`) | — closest HUME gets; no external program |
+| `U` | Undo the whole line | Redo | *(none)*: `Ctrl-r` also redoes |
+| `G` | Go to last line | Case/rename prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`) | `g e`, unaffected, and `core:vim-keybind` does not restore `G` |
+| `K` | Look up keyword (external `keywordprg`, e.g. `man`) | Show hover docs for the symbol under the cursor (with `core:lsp`) | *(none)*: this is the closest HUME gets; no external program |
 | `gt`&nbsp;/&nbsp;`gT` | Next / previous tab | Next / previous class or type | `Ctrl-p t` / `Ctrl-p T` |
 
 `f`, `F`, `t`, `T` behave as they do in Vim, and `{` / `}` are still paragraph motions. Only the *repeat* keys moved: use `=` and `-`, because `;` and `,` are taken.
 
-`>` and `<` indent/unindent directly, select-then-act style — no operator-pending step and no doubled key, so `>` alone does what Vim's `>>` does. A count still works (`3>`), and unlike a bare `>>`/`<<`, HUME re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount.
+`>` and `<` indent/unindent directly, select-then-act style: no operator-pending step and no doubled key, so `>` alone does what Vim's `>>` does. A count still works (`3>`), and unlike a bare `>>`/`<<`, HUME re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount.
 
 ### Text objects
 
-Vim's `iw` / `aw` family lives behind the `m` prefix, and — as everywhere else — you select first and act second. `diw` becomes `m i w` then `d`.
+Vim's `iw` / `aw` family lives behind the `m` prefix, and, as everywhere else, you select first and act second. `diw` becomes `m i w` then `d`.
 
 | Vim | HUME |
 |-----|------|
@@ -76,13 +76,13 @@ Vim's `iw` / `aw` family lives behind the `m` prefix, and — as everywhere else
 | `ci"` | `m i "` then `c` |
 | `da(` | `m a (` then `d` |
 | `dap` | `m a p` then `d` |
-| `dat` | — no tag or sentence objects |
+| `dat` | *(none)*: no tag or sentence objects |
 
-The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), line (`l`), and paragraph (`p`) — each with an `i` (inner) and `a` (around) form. One extra has no Vim equivalent: `m i i` selects the text you typed during your last insert.
+The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), line (`l`), and paragraph (`p`), each with an `i` (inner) and `a` (around) form. One extra has no Vim equivalent: `m i i` selects the text you typed during your last insert.
 
-For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value) — vanilla Vim has nothing like these without a plugin. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that jumps to the next/previous one as a selection, on the same letter under `g` (lowercase forward, uppercase backward — e.g. `g f`/`g F`).
+For a language with a tree-sitter grammar that ships a textobjects query, HUME also adds `m i f`/`m a f` (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test), and `m i v`/`m a v` (array/tuple/struct value). Vanilla Vim has nothing like these without a plugin. Each pairs with a `goto-next-<kind>`/`goto-prev-<kind>` command that jumps to the next/previous one as a selection, on the same letter under `g` (lowercase forward, uppercase backward, e.g. `g f`/`g F`).
 
-Vim's `iskeyword` is `word-chars` — a buffer option listing extra characters that count as part of a word (see [Configuration](configuration.md)). HUME doesn't parse Vim's range syntax (`48-57`, `@`, `192-255`); list the characters directly, e.g. `-` for CSS.
+Vim's `iskeyword` is `word-chars`, a buffer option listing extra characters that count as part of a word (see [Configuration](configuration.md)). HUME doesn't parse Vim's range syntax (`48-57`, `@`, `192-255`); list the characters directly, e.g. `-` for CSS.
 
 ### Search and replace
 
@@ -102,25 +102,25 @@ That replaces Vim's `:%s/old/new/g`. To scope it to a region instead of the file
 `m /` is the other route: search with `/pattern` first, then `m /` turns every match in the buffer into a selection.
 
 ::: warning
-`s` needs something wider than a cursor to filter — on a bare one-character selection it does nothing at all. Press `%` or select a region first.
+`s` needs something wider than a cursor to filter. On a bare one-character selection it does nothing at all. Press `%` or select a region first.
 :::
 
 Vim's confirm-each-match flag (`:%s/…/gc`) has no equivalent, but you see every match selected before you commit to changing it.
 
 ### Registers
 
-HUME replaces Vim's letter registers (`a`–`z`) with a small set of mnemonic single-character names and digit registers `"0`–`"9`. The default paste (`p`) is smart: it reads from the kill ring while nothing has been edited since your last `d`/`c`/`y`, and from the system clipboard once something has. After `y` this still pastes the text you just yanked, because `y` writes the clipboard as well as the kill ring. Yanking to an explicit non-default register instead (`"0y`) leaves both untouched — `p` behaves exactly as it would have without the `"0y` — so use `"0p` to paste from the named register.
+HUME replaces Vim's letter registers (`a`–`z`) with a small set of mnemonic single-character names and digit registers `"0`–`"9`. The default paste (`p`) is smart: it reads from the kill ring while nothing has been edited since your last `d`/`c`/`y`, and from the system clipboard once something has. After `y` this still pastes the text you just yanked, because `y` writes the clipboard as well as the kill ring. Yanking to an explicit non-default register instead (`"0y`) leaves both untouched (`p` behaves exactly as it would have without the `"0y`), so use `"0p` to paste from the named register.
 
 | Name | HUME function | Vim equivalent |
 |------|---------------|----------------|
-| `"0`–`"9` | Numbered storage — text *or* macros, last write wins | `"0`–`"9` |
+| `"0`–`"9` | Numbered storage: text *or* macros, last write wins | `"0`–`"9` |
 | `"k` | Kill-ring head (most recent yank/delete) | — |
 | `"c` | System clipboard | `"+` |
-| `"b` | Black hole — writes discarded | `"_` |
+| `"b` | Black hole: writes discarded | `"_` |
 
 Two more registers exist but can't be typed after `"`: the search register (the last pattern, vim's `"/`), written by `/`, `?` and `*`; and the macro register `q`, written by `Q` recording. You reach both through the commands that use them, not through the `"` prefix.
 
-`[` and `]` only do something immediately after a paste — they swap the pasted text for an older or newer kill-ring entry. Pressed at any other time they do nothing.
+`[` and `]` only do something immediately after a paste: they swap the pasted text for an older or newer kill-ring entry. Pressed at any other time they do nothing.
 
 ::: warning
 Letter registers `a`–`z` other than the special names above do not exist. All yanks and deletes go to the kill ring (`k`) and digit registers (`0`–`9`).
@@ -136,13 +136,13 @@ Macros work similarly but with different key triggers:
 |-----|------|
 | `qa` … `q` | `Q<reg>` … `Q` |
 | `@a` | `q<reg>` |
-| `@@` | — (use `q<reg>` again or `qq` for the default register) |
+| `@@` | *(none)* (use `q<reg>` again or `qq` for the default register) |
 
 In Vim, `q` starts and stops recording, then `@` plays. In HUME, recording is started and stopped with `Q`; playback uses `q`. Valid macro registers are `q` and `0`–`9` (the default register is `q`: record with `QQ`, play with `qq`). There is no equivalent to Vim's `@@` (repeat last played register).
 
 ### Dot-repeat
 
-Vim's `.` repeats the last change. HUME's `.` works the same way — it repeats the last editing command or insert session.
+Vim's `.` repeats the last change. HUME's `.` works the same way: it repeats the last editing command or insert session.
 
 ### Count prefix
 
@@ -156,7 +156,7 @@ Vim uses `[count]` before commands (e.g. `3dw`). HUME also supports count prefix
 
 ### Line motion
 
-HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g s` (first non-blank), `g e` (last line). The vim keys `0` / `$` / `^` are not bound by default — load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in your [`init.scm`](configuration.md) to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl-6` (see below). `G` is bound, but not to Vim's meaning — see the muscle-memory traps table above — and `core:vim-keybind` does not restore it; `g e` reaches the last line either way.
+HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g s` (first non-blank), `g e` (last line). The vim keys `0` / `$` / `^` are not bound by default. Load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in your [`init.scm`](configuration.md) to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl-6` (see below). `G` is bound, but not to Vim's meaning (see the muscle-memory traps table above), and `core:vim-keybind` does not restore it; `g e` reaches the last line either way.
 
 | Vim | HUME (native) | HUME (`core:vim-keybind`) |
 |-----|----------------|---------------------------|
@@ -167,9 +167,9 @@ HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g 
 
 ### Tabs
 
-Tab pages carry over as-is: `:tabnew`, `:tabclose`, `:tabnext`, `:tabprev` (and Vim's own abbreviations `:tabe`, `:tabc`, `:tabn`, `:tabp`) spell and behave the same, including Vim's placement rules — `:tabnew` opens right after the current tab, `:tabclose` lands on the neighbor to the right (or the left, if there is none). The tab bar appears once a second tab is open; `tabline` is HUME's `showtabline`, with `dynamic` / `always` / `never` standing in for `1` / `2` / `0`.
+Tab pages carry over as-is: `:tabnew`, `:tabclose`, `:tabnext`, `:tabprev` (and Vim's own abbreviations `:tabe`, `:tabc`, `:tabn`, `:tabp`) spell and behave the same, including Vim's placement rules: `:tabnew` opens right after the current tab, `:tabclose` lands on the neighbor to the right (or the left, if there is none). The tab bar appears once a second tab is open; `tabline` is HUME's `showtabline`, with `dynamic` / `always` / `never` standing in for `1` / `2` / `0`.
 
-The keys moved, though: `gt` / `gT` are not bound — `g` is HUME's goto prefix, and `g t` / `g T` already jump between classes/types (see the muscle-memory table above). Cycle tabs with `Ctrl-p t` / `Ctrl-p T` instead, under the same `Ctrl-p` prefix that stands in for Vim's `Ctrl-w`. The bindable spellings are `goto-next-tab` / `goto-prev-tab`.
+The keys moved, though: `gt` / `gT` are not bound: `g` is HUME's goto prefix, and `g t` / `g T` already jump between classes/types (see the muscle-memory table above). Cycle tabs with `Ctrl-p t` / `Ctrl-p T` instead, under the same `Ctrl-p` prefix that stands in for Vim's `Ctrl-w`. The bindable spellings are `goto-next-tab` / `goto-prev-tab`.
 
 Not present at the moment: `:tabonly`, `:tabmove`, `:tabfirst` / `:tablast`, `:tabs`, `{count}gt` to jump straight to tab *N*, and the `:tab` command modifier (`:tab split`).
 
@@ -195,5 +195,5 @@ Most `:` commands work as expected:
 | `Ctrl-w` window prefix | `Ctrl-p` pane prefix |
 | `Ctrl-^` | `:b #`, or `Ctrl-6` with `core:vim-keybind` loaded (kitty only) |
 | `Ctrl-o` / `Ctrl-i` | `Ctrl-o` / `Ctrl-i` |
-| `:set` | `:set`, with different syntax — `:set global\|buffer\|pane key=value` |
-| `:help` | — `:tutor` opens the tutorial, `:messages` shows the message log |
+| `:set` | `:set`, with different syntax: `:set global\|buffer\|pane key=value` |
+| `:help` | *(none)*: `:tutor` opens the tutorial, `:messages` shows the message log |

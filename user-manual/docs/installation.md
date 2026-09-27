@@ -1,6 +1,6 @@
 # Installation
 
-HUME is a single binary with no runtime dependencies. Download it, run it, and you have an editor — syntax highlighting and language servers are added later, on demand, only for the languages you actually use.
+HUME is a single binary with no runtime dependencies. Download it, run it, and you have an editor. Syntax highlighting and language servers are added later, on demand, only for the languages you actually use.
 
 ## Download
 
@@ -64,7 +64,7 @@ cp -R hume-*/bin hume-*/share /usr/local/
 
 Extract the `.zip`, then run `hume.exe` from inside the extracted folder, or add that folder to your `PATH`.
 
-Keep the whole extracted folder intact: HUME finds its runtime files (themes, plugins, language definitions) relative to the binary's location — `../share/hume/` next to `bin/hume` on macOS/Linux, `runtime/` next to `hume.exe` on Windows. Moving just the binary out on its own leaves it without them.
+Keep the whole extracted folder intact: HUME finds its runtime files (themes, plugins, language definitions) relative to the binary's location: `../share/hume/` next to `bin/hume` on macOS/Linux, `runtime/` next to `hume.exe` on Windows. Moving just the binary out on its own leaves it without them.
 
 ### Check it works
 
@@ -76,7 +76,7 @@ prints something like `hume x.y.z-f460770`. The same string is available inside 
 
 ## Building from source
 
-**Prerequisites:** a Rust toolchain — install one from [rustup.rs](https://rustup.rs/).
+**Prerequisites:** a Rust toolchain. Install one from [rustup.rs](https://rustup.rs/).
 
 ```sh
 git clone https://github.com/cvlmtg/HUME
@@ -85,7 +85,7 @@ cargo build --release
 ./target/release/hume
 ```
 
-Run it from the repository root, as above — HUME picks up the `runtime/` directory sitting there.
+Run it from the repository root, as above. HUME picks up the `runtime/` directory sitting there.
 
 ::: warning `cargo install` needs one extra step
 `cargo install --git https://github.com/cvlmtg/HUME` installs the binary but **not** the runtime files, so themes, plugins, `:tutor`, and syntax highlighting won't work. Point HUME at a copy of the `runtime/` directory to fix it:
@@ -101,8 +101,8 @@ HUME highlights code with tree-sitter, and installs grammars on demand rather th
 
 ## Terminal compatibility
 
-HUME targets modern terminals and degrades quietly rather than refusing to start — there is no capability check at launch. You'll get the best results from a terminal that supports:
+HUME targets modern terminals and degrades quietly rather than refusing to start. There is no capability check at launch. You'll get the best results from a terminal that supports:
 
 - **24-bit true color.** Colors are always emitted as RGB. Terminals without true color will show approximate or wrong colors, but HUME still runs.
 - **Synchronized output.** Sent once per frame to avoid tearing; terminals that don't recognise it ignore it harmlessly.
-- **The kitty keyboard protocol.** Detected automatically on WezTerm, kitty, ghostty, and foot. It unlocks a handful of extra key combinations — everything else works without it, and the manual marks those keys "kitty only".
+- **The kitty keyboard protocol.** Detected automatically on WezTerm, kitty, ghostty, and foot. It unlocks a handful of extra key combinations. Everything else works without it, and the manual marks those keys "kitty only".

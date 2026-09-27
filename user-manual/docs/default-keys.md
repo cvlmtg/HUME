@@ -1,9 +1,9 @@
 # Default Keys
 
-Every default key, by mode. Use your browser's search — or the search box above — to find one fast.
+Every default key, by mode. Use your browser's search (or the search box above) to find one fast.
 
 ::: info
-Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at startup on supported terminals — see [Terminal compatibility](installation.md#terminal-compatibility). Legacy terminal encodings cannot transmit those key combinations, so the bindings are unavailable there.
+Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at startup on supported terminals. See [Terminal compatibility](installation.md#terminal-compatibility). Legacy terminal encodings cannot transmit those key combinations, so the bindings are unavailable there.
 :::
 
 ## Normal mode
@@ -16,7 +16,7 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 | `l` / `→` | `move-right` | Move right one grapheme |
 | `j` / `↓` | `move-down` | Move down one visual line |
 | `k` / `↑` | `move-up` | Move up one visual line |
-| `w` | `select-next-word` | Select next word (plus one adjacent whitespace run by default — see `word-selects-whitespace`) |
+| `w` | `select-next-word` | Select next word (plus one adjacent whitespace run by default; see `word-selects-whitespace`) |
 | `b` | `select-prev-word` | Select previous word (plus one adjacent whitespace run by default) |
 | `W` / `B` | `select-next-uppercase-word` / `select-prev-uppercase-word` | WORD variants of `w` / `b` |
 | `Home` | `goto-line-start` | Start of line (idiomatic form is `g h`) |
@@ -37,8 +37,8 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 |-----|---------|--------|
 | `f` + char | `find-forward` | Find char forward (inclusive) |
 | `F` + char | `find-backward` | Find char backward (inclusive) |
-| `t` + char | `till-forward` | Find char forward (exclusive — stops before) |
-| `T` + char | `till-backward` | Find char backward (exclusive — stops after) |
+| `t` + char | `till-forward` | Find char forward (exclusive: stops before) |
+| `T` + char | `till-backward` | Find char backward (exclusive: stops after) |
 | `=` | `repeat-find-forward` | Repeat last find forward |
 | `-` | `repeat-find-backward` | Repeat last find backward |
 
@@ -86,7 +86,7 @@ Text objects (use the `m` prefix):
 | `m i u` / `m a u` | `inner-test` / `around-test` | Inner / around unit test |
 | `m i v` / `m a v` | `inner-value` / `around-value` | Inner / around array/tuple/struct value |
 | `m i i` | `select-last-insertion` | Select the text typed during the last insert |
-| `m m` | `select-word` | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b` — see `word-selects-whitespace`) |
+| `m m` | `select-word` | Select the word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b`; see `word-selects-whitespace`) |
 | `M M` | `select-uppercase-word` | WORD variant of `m m` |
 | `m s` + char | `surround-paren` (and other `surround-*` delimiters) | Select surrounding delimiter pair |
 | `m w` + char | `surround-add` | Wrap each selection with a delimiter pair |
@@ -99,7 +99,7 @@ Text objects (use the `m` prefix):
 | `d` | `delete` | Delete selection (to kill ring) |
 | `c` | `change` | Change (delete + Insert mode) |
 | `y` | `yank` | Yank (clipboard + kill ring) |
-| `p` | `smart-paste-after` | Smart-paste after — see [Copy & Paste](copy-and-paste.md) |
+| `p` | `smart-paste-after` | Smart-paste after. See [Copy & Paste](copy-and-paste.md) |
 | `P` | `smart-paste-before` | Smart-paste before |
 | `[` / `]` | `paste-ring-older` / `paste-ring-newer` | Cycle kill ring older / newer and re-paste (only after a `p`/`P`) |
 | `r` + char | `replace` | Replace every selected character (line endings are left alone). `Enter`/`Tab` count as the character, replacing with a newline/tab |
@@ -145,7 +145,7 @@ Text objects (use the `m` prefix):
 | `q <0-9>` | — | Replay a numbered register |
 | `<count> q q` | — | Replay `q` `<count>` times |
 
-Numbered registers are shared between macros and yanked text — last write wins. Recording is ignored in read-only buffers and during replay.
+Numbered registers are shared between macros and yanked text: last write wins. Recording is ignored in read-only buffers and during replay.
 
 See [Register prefix](copy-and-paste.md#register-prefix) for the full register list.
 
@@ -158,7 +158,7 @@ See [Register prefix](copy-and-paste.md#register-prefix) for the full register l
 
 ## Goto prefix (`g`)
 
-Press `g` then a second key. Every one names a destination — a place in the buffer, or (for
+Press `g` then a second key. Every one names a destination: a place in the buffer, or (for
 the structural pairs) the next/previous instance of a kind, selected as a whole:
 
 | Key | Command | Action |
@@ -175,11 +175,11 @@ the structural pairs) the next/previous instance of a kind, selected as a whole:
 | `g u` / `g U` | `goto-next-test` / `goto-prev-test` | Next/previous unit test |
 | `g v` / `g V` | `goto-next-value` / `goto-prev-value` | Next/previous array/tuple/struct value |
 
-The structural pairs need a grammar with a `textobjects.scm` — see [Moving Around](moving-around.md#structural-navigation).
+The structural pairs need a grammar with a `textobjects.scm`. See [Moving Around](moving-around.md#structural-navigation).
 
 ## `G` prefix
 
-Press `G` then a second key. Not a "case prefix" — `G` holds the commands Vim files under
+Press `G` then a second key. Not a "case prefix": `G` holds the commands Vim files under
 `g` that aren't gotos (`G L`/`G U`/`G C` are Vim's `gu`/`gU`/`g~`):
 
 | Key | Command | Action |
@@ -189,8 +189,8 @@ Press `G` then a second key. Not a "case prefix" — `G` holds the commands Vim 
 | `G C` | `make-text-capitalized` | Capitalize each word in the selection |
 
 `G U`/`G C` differ from `g U`/`g C` (previous unit test / previous comment) only in the prefix's
-case — worth knowing before it's muscle memory. `core:lsp` adds a fourth key here, `G R` for
-`lsp-rename` — see [Language Servers](lsp.md).
+case, worth knowing before it's muscle memory. `core:lsp` adds a fourth key here, `G R` for
+`lsp-rename` (see [Language Servers](lsp.md)).
 
 ## View prefix (`z`)
 
@@ -203,7 +203,7 @@ Press `z` then a second key:
 | `z j` | `bottom-view-on-cursor` | Scroll cursor to bottom of screen |
 
 `k` is up and `j` is down, the same axis the motion keys use. `core:pickers` and `core:lsp`
-add more keys under `z` — see [Fuzzy Finder](pickers.md) and [Language Servers](lsp.md).
+add more keys under `z`. See [Fuzzy Finder](pickers.md) and [Language Servers](lsp.md).
 
 ## Pane prefix (`Ctrl-p`)
 
@@ -235,12 +235,12 @@ Press `Ctrl-p` then a second key:
 | `Delete` | — | Delete character under cursor |
 | `Enter` | — | Insert newline, copying leading whitespace from current line (auto-pairs aware) |
 | `Ctrl-w` | `delete-word-backward` | Delete word before cursor |
-| `Ctrl-Space` | `completion-trigger` | Show completions at the cursor, from every registered completion source (a language server's, say — see [Language servers](lsp.md)) |
+| `Ctrl-Space` | `completion-trigger` | Show completions at the cursor, from every registered completion source (a language server's, say; see [Language servers](lsp.md)) |
 | Any other character | — | Insert character (auto-pairs aware) |
 
 Insert mode handles auto-pair insertion: typing `(`, `[`, `{`, `"`, `'`, or `` ` `` inserts the matching close character. Backspace inside an empty pair deletes both characters.
 
-Rebinding one of these keys replaces its behaviour outright — a plugin command can fall back to it with `insert-key!` (see [Editing & navigation](plugin-api.md#editing-navigation)), letting a binding decide per keypress whether to override the key or leave it as-is.
+Rebinding one of these keys replaces its behaviour outright. A plugin command can fall back to it with `insert-key!` (see [Editing & navigation](plugin-api.md#editing-navigation)), letting a binding decide per keypress whether to override the key or leave it as-is.
 
 ## Extend mode
 

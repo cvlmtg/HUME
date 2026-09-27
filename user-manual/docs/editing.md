@@ -1,6 +1,6 @@
 # Editing
 
-Say what you mean, then say what to do with it. Because the selection always comes first, you can see exactly what an edit will touch before it happens — and the same handful of action keys work on a character, a word, a block, or forty places at once.
+Say what you mean, then say what to do with it. Because the selection always comes first, you can see exactly what an edit will touch before it happens, and the same handful of action keys work on a character, a word, a block, or forty places at once.
 
 ## Inserting text
 
@@ -15,18 +15,18 @@ Say what you mean, then say what to do with it. Because the selection always com
 
 Press `Esc` or `Ctrl-c` to return to Normal mode. `Ctrl-w` deletes the word before the cursor while you type.
 
-Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor — so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor, so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
 
-Because of this, `i` re-enters Insert mode *before* the current selection — so typing something, pressing `Esc`, then pressing `i` again continues before what you just typed, not after it. Use `a` to continue typing after it instead.
+Because of this, `i` re-enters Insert mode *before* the current selection, so typing something, pressing `Esc`, then pressing `i` again continues before what you just typed, not after it. Use `a` to continue typing after it instead.
 
-Whichever way you entered Insert mode, `m i i` recovers what you last typed after `Esc` — see [Text objects](selections.md#text-objects).
+Whichever way you entered Insert mode, `m i i` recovers what you last typed after `Esc`. See [Text objects](selections.md#text-objects).
 
 ## Deleting and changing text
 
 | Key | Effect |
 |-----|--------|
 | `d` | Delete selection (pushed onto the kill ring) |
-| `c` | Delete selection content and enter Insert mode (one undo group). A trailing newline is kept — `c` on a line rewrites its content without removing the line itself. |
+| `c` | Delete selection content and enter Insert mode (one undo group). A trailing newline is kept: `c` on a line rewrites its content without removing the line itself. |
 
 Use `x` to select the current line first if you want a line-wise delete (`x` then `d`).
 
@@ -61,17 +61,17 @@ Line endings inside the selection are left alone, so replacing across several li
 
 `J` replaces each line break with a single space and drops the next line's indentation, so joining wrapped code or prose doesn't leave a gap in the middle. When the next line is empty or only whitespace, the lines are joined with no space at all. Joining several lines at once leaves one cursor on each inserted space, ready to act on.
 
-`&` lines up your selections using the primary selection's line as the starting point. Spaces are inserted at the left edge of each selection to reach that column, and if some other line needs more room, the column widens for everybody — which means the primary selection can shift right too. Multi-line selections are left alone. Where a selection sits too far right already, the run of spaces or tabs immediately to its left is squeezed down (never below one).
+`&` lines up your selections using the primary selection's line as the starting point. Spaces are inserted at the left edge of each selection to reach that column, and if some other line needs more room, the column widens for everybody, which means the primary selection can shift right too. Multi-line selections are left alone. Where a selection sits too far right already, the run of spaces or tabs immediately to its left is squeezed down (never below one).
 
 You can align to the left or the right depending on which end of the selection is the anchor; `Ctrl-e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
 
-`>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Configuration](configuration.md)) — a prefix count shifts by that many levels at once (`3>`). A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from — so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `tab-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
+`>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Configuration](configuration.md)). A prefix count shifts by that many levels at once (`3>`). A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `tab-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
 
 ## Undo and redo
 
 | Key | Effect |
 |-----|--------|
-| `u` | Undo (accepts a count — `5u` undoes five steps) |
+| `u` | Undo (accepts a count: `5u` undoes five steps) |
 | `U` / `Ctrl-r` | Redo |
 
 Undo history is a tree rather than a straight line, so redoing after new edits follows the most recent branch. The history lives in memory only and starts fresh each time you open a file.
@@ -82,7 +82,7 @@ Undo history is a tree rather than a straight line, so redoing after new edits f
 |-----|--------|
 | `.` | Repeat the last editing command |
 
-Dot-repeat replays the most recent insert session or editing command — delete, change, paste and so on, but not `y`. Inside a replayed insert session, each keystroke re-runs at the new cursor. The one exception is anything where you made a choice while it ran — accepting a completion, picking from a picker — which isn't asked again; `.` just writes the same text it produced last time. See [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-keys-normal-insert-mode-behaviour) for how this plays out with custom Insert-mode bindings.
+Dot-repeat replays the most recent insert session or editing command: delete, change, paste and so on, but not `y`. Inside a replayed insert session, each keystroke re-runs at the new cursor. The one exception is anything where you made a choice while it ran (accepting a completion, picking from a picker), which isn't asked again; `.` just writes the same text it produced last time. See [Falling back to a key's normal Insert-mode behaviour](configuration.md#falling-back-to-a-keys-normal-insert-mode-behaviour) for how this plays out with custom Insert-mode bindings.
 
 ## Macros
 
@@ -97,7 +97,7 @@ Macros record and replay sequences of keys and are stored in registers. Register
 | `q <0-9>` | Replay a numbered register |
 | `<count> q q` | Replay register `q` `<count>` times |
 
-Recording is ignored in read-only buffers, and while a macro is already recording or replaying — so a macro can't record itself or nest.
+Recording is ignored in read-only buffers, and while a macro is already recording or replaying, so a macro can't record itself or nest.
 
 ## Numeric count
 
@@ -110,11 +110,11 @@ Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0
 | `12w` | Move forward 12 words |
 | `10j` | Move down 10 lines |
 
-`0` on its own does nothing by default — `g h` goes to the start of the line. If you want vim's `0`, the `core:vim-keybind` plugin binds it (see [Core Plugins](core-plugins.md#core-vim-keybind)).
+`0` on its own does nothing by default: `g h` goes to the start of the line. If you want vim's `0`, the `core:vim-keybind` plugin binds it (see [Core Plugins](core-plugins.md#core-vim-keybind)).
 
 ## Surround
 
-HUME's surround commands select or wrap delimiter pairs using the `m` prefix — see [Selections](selections.md) for the full list of `m i`/`m a` text objects.
+HUME's surround commands select or wrap delimiter pairs using the `m` prefix. See [Selections](selections.md) for the full list of `m i`/`m a` text objects.
 
 | Key | Effect |
 |-----|--------|
