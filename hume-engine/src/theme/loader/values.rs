@@ -7,7 +7,7 @@ use rustc_hash::FxHashMap;
 use crate::theme::error::ThemeError;
 use crate::types::{Modifiers, UnderlineStyle};
 
-/// `field` is passed straight to [`ThemeError::BadColor`] — `None` for a
+/// `field` is passed straight to [`ThemeError::BadColor`]: `None` for a
 /// scope's own `fg`/`bg`/shorthand, `Some` for the nested `underline.color`,
 /// whose failure `key` alone can't distinguish from those.
 pub(super) fn resolve_color(
@@ -18,7 +18,7 @@ pub(super) fn resolve_color(
 ) -> Result<Rgb, ThemeError> {
     // Palette reference takes priority. A palette entry that was itself
     // malformed (`Some(None)`, already warned when `[palette]` was parsed)
-    // must not fall through to an ANSI/hex guess at the same name — that
+    // must not fall through to an ANSI/hex guess at the same name. That
     // would silently recolor every referencing scope instead of cascading
     // the warning.
     match palette.get(s) {
@@ -32,7 +32,7 @@ pub(super) fn resolve_color(
         }
         None => {}
     }
-    // Built-in ANSI name — a theme's own palette entry of the same name
+    // Built-in ANSI name. A theme's own palette entry of the same name
     // (checked above) overrides it, matching how Helix's `ThemePalette::new`
     // merges a theme's palette over its default name map.
     if let Some(&(_, color)) = ANSI_COLORS.iter().find(|(name, _)| *name == s) {
@@ -58,11 +58,11 @@ pub(super) fn resolve_color(
 /// colour on every terminal, rather than tracking a user's own palette
 /// customization the way the *terminal's* rendering of `red` would.
 ///
-/// Values are the xterm default palette — verified against Helix's own
+/// Values are the xterm default palette, verified against Helix's own
 /// `Color` → backend conversions (`helix-view/src/graphics.rs`), which agree
 /// on every index across both its crossterm and termina impls. Note the
 /// index order: `gray` is 8 (bright black) and `light-gray` is 7 (the
-/// non-bright palette's *white* slot) — Helix's mapping, not a typo here.
+/// non-bright palette's *white* slot). That's Helix's mapping, not a typo here.
 pub(super) const ANSI_COLORS: [(&str, Rgb); 16] = [
     ("black", Rgb(0x00, 0x00, 0x00)),
     ("red", Rgb(0xcd, 0x00, 0x00)),
@@ -111,7 +111,7 @@ pub(super) fn parse_hex_color(s: &str) -> Result<Rgb, ()> {
 
 /// `parse_modifier`'s vocabulary as a table rather than a `match`, so
 /// `hume-engine/src/theme/loader/vocabulary.rs` can enumerate it for
-/// `tools/theme-editor/src/lib/vocabulary.generated.js` — a `match`'s arms
+/// `tools/theme-editor/src/lib/vocabulary.generated.js`, since a `match`'s arms
 /// aren't a value anything can iterate. `crossed_out` maps to
 /// `Modifiers::STRIKETHROUGH`: the TOML word is Helix's own spelling, the
 /// flag is HUME's.
@@ -127,7 +127,7 @@ pub(super) const MODIFIER_NAMES: [(&str, Modifiers); 8] = [
 ];
 
 /// The one `modifiers = [...]` literal the loader accepts outside
-/// [`MODIFIER_NAMES`] — intercepted in `parse_style_table` (`loader.rs`)
+/// [`MODIFIER_NAMES`], intercepted in `parse_style_table` (`loader.rs`)
 /// before `parse_modifier` ever sees it, and routed to the dedicated
 /// underline field instead of the modifier bitset. Named so it can join
 /// [`MODIFIER_NAMES`] in the generated vocabulary rather than being a bare
@@ -146,7 +146,7 @@ pub(super) fn parse_modifier(key: &str, s: &str) -> Result<Modifiers, ThemeError
         })
 }
 
-/// `parse_underline`'s vocabulary as a table — same reason as
+/// `parse_underline`'s vocabulary as a table, for the same reason as
 /// [`MODIFIER_NAMES`].
 pub(super) const UNDERLINE_NAMES: [(&str, UnderlineStyle); 5] = [
     ("line", UnderlineStyle::Solid),

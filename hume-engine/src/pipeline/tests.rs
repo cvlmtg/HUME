@@ -33,7 +33,7 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
 ///
 /// The line store is built per call and so is always cold. These tests assert
 /// on drawn cells, and a store shared between them would make one test's
-/// output depend on which ran first — the sharing itself is covered in
+/// output depend on which ran first. The sharing itself is covered in
 /// `display_lines::tests`, against the store directly.
 fn render_test_pane(
     pane: &mut Pane,
@@ -149,7 +149,7 @@ fn virtual_display_line_resolves_grapheme_scope_and_falls_back_to_virtual_text()
 }
 
 /// Emits one `Before(0)` display line whose four graphemes each carry a distinct
-/// scope, with `segments` built in the *reverse* of byte order — the engine
+/// scope, with `segments` built in the *reverse* of byte order. The engine
 /// contract (`VirtualLine::segments` doc) promises `DisplayLineMap::block` sorts
 /// this at intake, and `segment_virtual_line`'s cursor scan requires that:
 /// without the sort, a monotonic cursor started against descending-start
@@ -192,7 +192,7 @@ fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
         Rgb(255, 255, 0),
         Rgb(255, 0, 255),
     ];
-    // Built in a loop, so `theme_with`'s array form doesn't fit — but the
+    // Built in a loop, so `theme_with`'s array form doesn't fit, but the
     // per-entry `fg` helper still applies.
     let mut styles_map = HashMap::new();
     for (name, color) in scope_names.iter().zip(colors) {
@@ -232,7 +232,7 @@ fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
 // ── top_skip vs virtual lines ─────────────────────────────────────────
 
 /// Emits one virtual line anchored to a fixed line index, only when that
-/// line is in the visible range — smoke-tests the whole virtual-line path
+/// line is in the visible range. Smoke-tests the whole virtual-line path
 /// (`ProviderSet::add_decoration_source` → `render_pane`).
 struct FixedVirtualLineSource {
     anchor: VirtualLineAnchor,
@@ -258,7 +258,7 @@ impl DecorationSource for FixedVirtualLineSource {
     }
 }
 
-/// Build a pane viewing a rope whose line 0 is "aaaabbbbcccc" — under
+/// Build a pane viewing a rope whose line 0 is "aaaabbbbcccc". Under
 /// `WrapMode::Soft { width: 4 }` this wraps into exactly 3 display lines:
 /// "aaaa", "bbbb", "cccc" (each grapheme is 1 column, so Soft splits at the
 /// exact column with no backtracking). `top_slot` controls how many of
@@ -293,7 +293,7 @@ fn cell_symbol(buf: &Grid, x: u16, y: u16) -> String {
 
 #[test]
 fn before_virtual_line_skipped_one_display_line_at_a_time() {
-    // Line 0's block under Before(0) is [V, aaaa, bbbb, cccc, <eol>] — 5
+    // Line 0's block under Before(0) is [V, aaaa, bbbb, cccc, <eol>], 5
     // display lines: "aaaabbbbcccc" wraps into three content display lines
     // at width 4, and "cccc" exactly fills the last one, so the trailing
     // '\n's own sentinel wraps onto a display line of its own. `top_slot`
@@ -338,7 +338,7 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
     );
 
     // Offset 5 is past the end of a 5-display-line block: not an address in
-    // the document, so it clamps to the block's last display line — the same
+    // the document, so it clamps to the block's last display line: the same
     // address `Viewport::top_at` resolves to, which is the point (production
     // never reaches this case directly, since the render pass resolves the
     // top itself every frame). Skipping display lines by the raw offset
@@ -369,10 +369,10 @@ fn before_virtual_line_renders_when_not_skipped() {
 #[test]
 fn after_virtual_line_renders_below_skipped_display_lines() {
     // top_slot=1 skips wrap display line 0. The After(0) virtual line sits
-    // below all of line 0's wrap display lines — two more content display
-    // lines plus the trailing '\n's own wrapped sentinel display line — none
+    // below all of line 0's wrap display lines (two more content display
+    // lines plus the trailing '\n's own wrapped sentinel display line), none
     // of which are skipped (the budget is exhausted by wrap display line 0
-    // alone) — it must still render, after wrap display lines 1, 2, and the
+    // alone). It must still render, after wrap display lines 1, 2, and the
     // sentinel.
     let buf =
         render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::After(ContentLine::new(0)));
@@ -390,8 +390,8 @@ fn after_virtual_line_renders_below_skipped_display_lines() {
     );
 }
 
-/// Emits `self.0` distinct `Before(0)` virtual display lines, texted "1".."9"
-/// — a virtual block taller than a small viewport, to prove every display
+/// Emits `self.0` distinct `Before(0)` virtual display lines, texted "1".."9":
+/// a virtual block taller than a small viewport, to prove every display
 /// line in it is individually reachable by scrolling, not just the display
 /// lines nearest the edge.
 struct MultiBeforeLine(usize);
@@ -444,7 +444,7 @@ fn render_pane_with_n_before_lines(top_slot: u16, n: usize, height: u16) -> Grid
 
 #[test]
 fn virtual_before_block_taller_than_viewport_exposes_every_display_line() {
-    // Line 0's block is [1, 2, 3, x] — 4 display lines — in a viewport only
+    // Line 0's block is [1, 2, 3, x] (4 display lines) in a viewport only
     // 2 rows tall, so the block can never be shown in full. Every display
     // line must still be individually reachable: walking `top_slot` through
     // the block one unit at a time surfaces each display line at the top of
@@ -463,7 +463,7 @@ fn virtual_before_block_taller_than_viewport_exposes_every_display_line() {
 
 // ── Provider id stamping ─────────────────────────────────────────────
 
-/// Reports a deliberately wrong `provider_id` — the pipeline must not
+/// Reports a deliberately wrong `provider_id`; the pipeline must not
 /// trust it.
 struct SpoofingVirtualLineSource {
     anchor: VirtualLineAnchor,
@@ -480,7 +480,7 @@ impl DecorationSource for SpoofingVirtualLineSource {
         if line_idx == line {
             out.push(Decoration::VirtualLine(VirtualLine {
                 anchor: self.anchor,
-                provider_id: 9999, // spoofed — must be overwritten by the pipeline
+                provider_id: 9999, // spoofed, must be overwritten by the pipeline
                 text: "V".to_string(),
                 segments: Vec::new(),
                 base_scope: None,
@@ -562,11 +562,11 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
 fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     // Two lines of 20 '中' chars each (true width 40 per line). At
     // WrapMode::Soft { width: 20 } each line wraps into two content display
-    // lines of exactly 20 columns — and since the second display line
+    // lines of exactly 20 columns, and since the second display line
     // exactly fills the wrap width, the trailing '\n's own sentinel wraps
     // onto a display line of its own rather than landing past the pane's
     // edge. Line 0 therefore supplies 3 display lines (content, content,
-    // blank sentinel) before line 1 begins — a 4-row viewport shows those
+    // blank sentinel) before line 1 begins, so a 4-row viewport shows those
     // three plus line 1's own first display line, with nothing left over
     // for tilde fillers.
     let line: String = "中".repeat(20);
@@ -684,7 +684,7 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
         default_gutter_scope,
     );
 
-    // Display line 1 is a Filler display line (past the single real line) —
+    // Display line 1 is a Filler display line (past the single real line):
     // its gutter must show the column's own Filler rendering ("~g"), not
     // blank.
     assert_eq!(cell_symbol(&buf, 0, 1), "~");
@@ -840,11 +840,11 @@ fn layout_tree_collect_appends_without_clearing() {
 #[test]
 fn find_rect_matches_collect_rects_into_for_each_pane() {
     // A 4th id from the same slotmap as id_a/id_b/id_c (never inserted into
-    // the tree below) — `pane_ids`'s own doc: a *fresh* map's first key can
+    // the tree below). Per `pane_ids`'s own doc, a *fresh* map's first key can
     // coincide with another fresh map's first key, so "unknown" must come
     // from this same call, not a separate one.
     let [id_a, id_b, id_c, unknown] = pane_ids();
-    // A 3-pane tree: (a | (b / c)) — a horizontal split whose right side is
+    // A 3-pane tree: (a | (b / c)), a horizontal split whose right side is
     // itself split vertically.
     let tree = LayoutTree::Split {
         direction: Direction::Horizontal,
@@ -892,7 +892,7 @@ fn find_containing_matches_collect_rects_into_by_position() {
     let mut collected = Vec::new();
     tree.collect_rects_into(area, true, &mut collected);
 
-    // One interior point per leaf — same pane and rect either way.
+    // One interior point per leaf: same pane and rect either way.
     for &(pid, r) in &collected {
         let pos = Position::new(r.x, r.y);
         assert_eq!(
@@ -952,7 +952,7 @@ fn collect_seams_nested_splits_yield_one_seam_per_split_node() {
     };
     let mut out = Vec::new();
     tree.collect_seams_into(rect(0, 0, 100, 100), &mut out);
-    assert_eq!(out.len(), 2, "one seam per split node — root + nested");
+    assert_eq!(out.len(), 2, "one seam per split node: root + nested");
 }
 
 #[test]
@@ -1039,7 +1039,7 @@ fn focused_pane_corners_at_screen_origin_drops_origin_corners() {
     // A pane flush with the top-left screen edge has no seam above its
     // top edge or to the left of its left edge (the screen edge carries
     // no seam), so every corner touching one of those edges is `None`;
-    // only the bottom-right corner — bounded by seams on both sides —
+    // only the bottom-right corner, bounded by seams on both sides,
     // survives.
     let pane = rect(0, 0, 10, 10);
     let corners = focused_pane_corners(pane);
@@ -1049,7 +1049,7 @@ fn focused_pane_corners_at_screen_origin_drops_origin_corners() {
     assert_eq!(corners[3], Some((10, 10)), "bottom-right");
 }
 
-/// `PaneId::default()` is the slotmap null key — every default is equal,
+/// `PaneId::default()` is the slotmap null key: every default is equal,
 /// so tests that assert on distinct ids mint real ones off a throwaway map.
 fn pane_ids<const N: usize>() -> [PaneId; N] {
     let mut sm: SlotMap<PaneId, ()> = SlotMap::with_key();
@@ -1128,7 +1128,7 @@ fn collect_seam_arms_t_junction() {
 #[test]
 fn collect_seam_arms_cross_junction() {
     // (A|D) over (B|C), both rows split at the same ratio so their
-    // vertical seams land in the same column (49) — the horizontal seam
+    // vertical seams land in the same column (49). The horizontal seam
     // between the rows is sandwiched by both, producing a full cross.
     let [a, b, c, d] = pane_ids();
     let tree = LayoutTree::Split {
@@ -1262,7 +1262,7 @@ fn split_leaf_thrice_gives_equal_thirds() {
     );
 
     // `a` is split again, so it (now paired with `c`) occupies 2 of the 3
-    // slots on the horizontal axis — hence 2/3, not 1/3 — with the nested
+    // slots on the horizontal axis (hence 2/3, not 1/3), with the nested
     // (a, c) pair itself split 0.5. The two ratios compose to an equal third
     // apiece, checked below against rendered widths.
     assert_eq!(
@@ -1510,7 +1510,7 @@ fn is_single_pane_true_for_a_leaf_false_for_a_split() {
 
 // ── Bottom band partition ──────────────────────────────────────────────
 
-/// A band that always reports a fixed height, regardless of `max` — lets
+/// A band that always reports a fixed height, regardless of `max`. Lets
 /// tests probe `pane_area`'s chrome arithmetic without a real `DrawerLayer`/
 /// `PopupLayer`.
 struct FixedHeightDrawer(u16);
@@ -1523,7 +1523,7 @@ impl crate::providers::BottomBandProvider for FixedHeightDrawer {
     fn render(&self, _area: Rect, _theme: &Theme, _canvas: &mut crate::render::Canvas) {}
 }
 
-/// A no-op tab bar — a fixed one-row `height()` is all `pane_area` reads
+/// A no-op tab bar: a fixed one-row `height()` is all `pane_area` reads
 /// from it.
 struct NoopTabBar;
 
@@ -1565,7 +1565,7 @@ fn pane_area_folds_tabbar_and_drawer_together() {
 #[test]
 fn pane_area_drawer_height_is_capped_by_35_percent_of_the_terminal_height() {
     let mut view = EngineView::new(Theme::default());
-    // Wants 50 rows — way more than 35% of a 20-row terminal (max = 7).
+    // Wants 50 rows, way more than 35% of a 20-row terminal (max = 7).
     view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
 
     let area = view.pane_area(rect(0, 0, 40, 20));
@@ -1581,7 +1581,7 @@ fn pane_area_degenerate_when_terminal_too_small_for_chrome_plus_drawer() {
     view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
 
     // chrome_height = 1 (tab bar) + 1 (statusline) + 1 (drawer, capped at
-    // 35% of 3 = 1) = 3, which is NOT less than a 3-row terminal —
+    // 35% of 3 = 1) = 3, which is NOT less than a 3-row terminal:
     // degenerate.
     let area = view.pane_area(rect(0, 0, 40, 3));
 

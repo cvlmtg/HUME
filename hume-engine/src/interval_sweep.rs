@@ -1,15 +1,15 @@
-//! Event-sweep flattener for overlapping same-scan-unit spans — shared by
+//! Event-sweep flattener for overlapping same-scan-unit spans, shared by
 //! `hume-treesitter`'s injection-layer flattening (nested grammar layers,
 //! `R` = nesting depth) and `hume-editor`'s diagnostic/extra-highlight
-//! flattening (`R` = `std::cmp::Reverse<u8>` priority — see
+//! flattening (`R` = `std::cmp::Reverse<u8>` priority; see
 //! [`flatten_overlapping_spans`]'s doc for why the wrapper).
 
-/// Which span wins when two spans have exactly equal `rank` and overlap —
+/// Which span wins when two spans have exactly equal `rank` and overlap;
 /// see [`flatten_overlapping_spans`]. The two current callers genuinely
 /// disagree, so this is a real two-case distinction, not a speculative
 /// flag: `hume-treesitter` wants the most-recently-collected (nested)
 /// layer to win a tie; `hume-editor` wants the alphabetically-first source
-/// (already sorted ascending into `raw` before the call) to win — pinned by
+/// (already sorted ascending into `raw` before the call) to win, pinned by
 /// `overlapping_extra_highlights_from_two_sources_resolve_alphabetically`.
 #[derive(Clone, Copy)]
 pub enum TieBreak {
@@ -20,16 +20,16 @@ pub enum TieBreak {
 }
 
 /// Flattens overlapping `(start, end, rank, scope)` spans (all sharing one
-/// scan unit — one line, one byte range, whatever the caller means by
+/// scan unit: one line, one byte range, whatever the caller means by
 /// "overlapping") into the sorted, non-overlapping `(start, end, scope)`
 /// sequence a single rendering layer's contract requires: its own output
-/// must not overlap itself. `P` is the position type — both current callers
+/// must not overlap itself. `P` is the position type. Both current callers
 /// pass `hume_rope::column::ByteCol` (a line-relative byte offset), but
 /// stays generic rather than hardcoded to match how this function is
 /// already agnostic over `R`/`S`: nothing here needs `P` to be a byte
 /// offset specifically, only `Ord + Copy + Default` (`P::default()` is the
 /// sweep's start-of-line origin). At each position, the span with the
-/// highest-`R`-per-`Ord` wins (`R` need not be a priority number directly —
+/// highest-`R`-per-`Ord` wins (`R` need not be a priority number directly:
 /// `hume-editor`'s caller passes `std::cmp::Reverse<u8>` so its "lower
 /// priority number wins" convention becomes "highest `Reverse` value wins"
 /// with no inversion arithmetic); a rank tie resolves per `tie_break`.
@@ -37,9 +37,9 @@ pub enum TieBreak {
 /// `raw` need not be pre-sorted; drained (left empty) on return. `stack`/
 /// `events` are caller-owned scratch, reused across calls to avoid a fresh
 /// allocation per call on a hot path (`hume-treesitter`'s highlighter runs
-/// this per visible line, every frame) — both must be empty on entry, and
+/// this per visible line, every frame). Both must be empty on entry, and
 /// are empty again on return. Adjacent output segments sharing one scope
-/// are merged into one — they can arise when an overlapping span ends while
+/// are merged into one. They can arise when an overlapping span ends while
 /// another of the same scope is still active (e.g. A=[0,5), B=[3,8): at pos
 /// 5, A ends and B continues, producing (3,5,B) then (5,8,B) without this
 /// merge pass).
@@ -57,11 +57,11 @@ pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: Part
     }
 
     // Build a sorted event list: (pos, is_end, seq, rank, scope). `seq`
-    // orders a rank tie — the span's index within `raw`, or its mirror
+    // orders a rank tie: the span's index within `raw`, or its mirror
     // image (`u32::MAX - index`) under `TieBreak::FirstPushed`, so that the
     // fixed "highest seq wins" rule below (shared with the rank ordering)
     // reads as "first pushed wins" from the caller's perspective without a
-    // second, divergent comparison path. Unique either way — end events
+    // second, divergent comparison path. Unique either way: end events
     // pop the exact matching start by this same value, never ambiguous,
     // unlike matching by scope value when two active spans share a scope.
     // End events sort before start events at the same position so a
@@ -75,7 +75,7 @@ pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: Part
         events.push((end, true, seq, rank, scope));
     }
     raw.clear();
-    // Sort purely by (pos, ends-before-starts) — priority among
+    // Sort purely by (pos, ends-before-starts). Priority among
     // simultaneously active spans is resolved by the sorted-stack insertion
     // below, not by event processing order.
     events.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
@@ -95,7 +95,7 @@ pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: Part
             let idx = stack.iter().position(|&(r, s, _)| r == rank && s == seq);
             debug_assert!(
                 idx.is_some(),
-                "end event with no matching start on the stack — a zero-width \
+                "end event with no matching start on the stack: a zero-width \
                  span would sort its end before its own start at the same \
                  position; callers must filter those out before collection"
             );

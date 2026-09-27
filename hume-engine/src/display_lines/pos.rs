@@ -4,7 +4,7 @@
 use hume_rope::line::ContentLine;
 
 /// The address of one display line: `slot` indexes into `line`'s visual
-/// block (`before`-virtuals, content/wrap display lines, `after`-virtuals —
+/// block (`before`-virtuals, content/wrap display lines, `after`-virtuals,
 /// in that order).
 ///
 /// `Ord` is lexicographic on `(line, slot)`, which is document order, so
@@ -21,15 +21,15 @@ impl DisplayLinePos {
     }
 }
 
-/// Which slot of a line's visual block a display line falls in — virtual
+/// Which slot of a line's visual block a display line falls in: virtual
 /// display lines anchored before it, its own wrap/content display lines, or
 /// virtual display lines anchored after. The payload is the display line's
 /// index within its own group, so `Content(2)` is a line's third content
 /// display line and `Before(0)` is the first virtual display line above it.
 ///
 /// Named `BlockSlot` rather than `DisplayLineKind` to stay distinct from
-/// [`crate::types::DisplayLineKind`] (`LineStart`/`Wrap`/`Virtual`/`Filler`)
-/// — a different question about the same display line: that one classifies
+/// [`crate::types::DisplayLineKind`] (`LineStart`/`Wrap`/`Virtual`/`Filler`),
+/// which asks a different question about the same display line: that one classifies
 /// how a display line was produced, this one where it sits within its
 /// line's block.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -41,7 +41,7 @@ pub enum BlockSlot {
 
 impl BlockSlot {
     /// Whether this slot is a real content display line, as opposed to a
-    /// `Before`/`After` virtual one — the distinction every display-line
+    /// `Before`/`After` virtual one. This is the distinction every display-line
     /// walk that skips or lands on virtual lines needs.
     pub fn is_content(self) -> bool {
         matches!(self, BlockSlot::Content(_))
@@ -68,18 +68,18 @@ impl BlockBreakdown {
 /// Which grapheme a display column resolves to in
 /// [`DisplayLineMap::char_at`](super::DisplayLineMap::char_at).
 ///
-/// The two variants are different questions, not different implementations —
+/// The two variants are different questions, not different implementations:
 /// a click and a sticky-column vertical move optimise different things, and
 /// collapsing them regresses one or the other.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DisplayColTarget {
-    /// The cell that *contains* this column — what a mouse click asks. A
+    /// The cell that *contains* this column: what a mouse click asks. A
     /// column inside a wide cell (a tab's expanse, a double-width glyph)
     /// resolves to that cell, and the end-of-line sentinel is a valid landing
     /// spot, so clicking past a line's text puts the cursor on its `\n`
     /// (a real cursor position in HUME's inclusive selection model).
     Cell,
-    /// The real grapheme whose start column is *nearest* this one — what a
+    /// The real grapheme whose start column is *nearest* this one: what a
     /// sticky-column `j`/`k` asks, since it minimises display column drift.
     /// The end-of-line sentinel is skipped unless it is the display line's
     /// only grapheme (an empty line), so vertical movement stays on content.

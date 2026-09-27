@@ -61,7 +61,7 @@ fn bake_if_stale_rebakes_scopes_interned_after_bake() {
     theme.bake(&reg);
     assert_eq!(theme.baked.len(), reg.len());
 
-    // Intern a new scope after bake() — this id is now unbaked.
+    // Intern a new scope after bake(): this id is now unbaked.
     let kw_op = reg.intern("keyword.operator");
     assert!(
         theme.baked.len() < reg.len(),
@@ -74,7 +74,7 @@ fn bake_if_stale_rebakes_scopes_interned_after_bake() {
     assert_eq!(theme.resolve(kw_op).fg, Some(Rgb(0, 255, 255)));
     assert_eq!(theme.resolve(kw).fg, Some(Rgb(0, 0, 255)));
 
-    // No new scopes interned — bake_if_stale is a no-op.
+    // No new scopes interned, so bake_if_stale is a no-op.
     let baked_before = theme.baked.clone();
     theme.bake_if_stale(&reg);
     assert_eq!(theme.baked, baked_before);
@@ -135,13 +135,13 @@ fn resolve_by_name_default() {
 #[test]
 fn ui_scopes_available_before_bake() {
     let theme = theme_with([("ui.cursorline", bg(Rgb(0, 0, 255)))]);
-    // theme.bake() NOT called — ui.cursorline must still be correct.
+    // theme.bake() NOT called: ui.cursorline must still be correct.
     assert_eq!(theme.ui.cursorline.bg, Some(Rgb(0, 0, 255)));
 }
 
 #[test]
 fn window_focused_falls_back_to_window_when_unset() {
-    // No "ui.window.focused" entry — dot-notation must fall back to "ui.window".
+    // No "ui.window.focused" entry: dot-notation must fall back to "ui.window".
     let theme = theme_with([("ui.window", fg(Rgb(0x80, 0x80, 0x80)))]);
     assert_eq!(theme.ui.window_focused.fg, Some(Rgb(0x80, 0x80, 0x80)));
     assert_eq!(theme.ui.window_focused, theme.ui.window);
@@ -161,8 +161,8 @@ fn window_focused_uses_its_own_entry_when_set() {
 
 #[test]
 fn search_match_falls_back_to_bracket_match() {
-    // Theme defines ui.cursor.match but not ui.cursor.match.search — the
-    // everforest case. Search matches must inherit the bracket-match style.
+    // Theme defines ui.cursor.match but not ui.cursor.match.search (the
+    // everforest case). Search matches must inherit the bracket-match style.
     let theme = theme_with([("ui.cursor.match", fg(Rgb(255, 128, 0)))]);
     assert_eq!(
         theme.resolve_by_name(Scope("ui.cursor.match.search")).fg,
@@ -172,7 +172,7 @@ fn search_match_falls_back_to_bracket_match() {
 
 #[test]
 fn search_match_uses_its_own_entry_when_set() {
-    // A theme that defines both must keep them distinct — no bundled theme
+    // A theme that defines both must keep them distinct. No bundled theme
     // regresses to sharing bracket-match's color.
     let theme = theme_with([
         ("ui.cursor.match", fg(Rgb(255, 128, 0))),
@@ -232,7 +232,7 @@ fn cursor_primary_select_uses_its_own_entry_when_set() {
 }
 
 /// A theme that colours Extend mode but never declares a `.primary` variant
-/// gives the primary head the plain block colour, not the select colour —
+/// gives the primary head the plain block colour, not the select colour,
 /// matching Helix's own `base_primary_cursor_scope`, which prefix-walks
 /// `ui.cursor.primary` → `ui.cursor` → `ui` and never consults
 /// `ui.cursor.select`. Only `ui.cursor.primary.select` itself (an exact
@@ -267,11 +267,11 @@ fn cursor_uses_normal_entry_when_set() {
 
 #[test]
 fn cursor_primary_falls_back_through_primary_then_cursor() {
-    // No ui.cursor.primary.normal, no ui.cursor.primary — falls all the way to ui.cursor.
+    // No ui.cursor.primary.normal, no ui.cursor.primary: falls all the way to ui.cursor.
     let theme = theme_with([("ui.cursor", fg(Rgb(1, 1, 1)))]);
     assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(1, 1, 1)));
 
-    // ui.cursor.primary set, no .normal variant — falls back to ui.cursor.primary.
+    // ui.cursor.primary set, no .normal variant: falls back to ui.cursor.primary.
     let theme = theme_with([
         ("ui.cursor", fg(Rgb(1, 1, 1))),
         ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
@@ -289,7 +289,7 @@ fn cursor_primary_normal_uses_its_own_entry_when_set() {
 }
 
 /// Normal-mode twin of `cursor_primary_select_never_visits_the_secondary_select_scope`:
-/// `ui.cursor.normal` is never consulted while resolving `cursor_primary` —
+/// `ui.cursor.normal` is never consulted while resolving `cursor_primary`;
 /// only `ui.cursor.primary.normal` (exact) or `ui.cursor.primary`/`ui.cursor`
 /// can.
 #[test]
@@ -316,7 +316,7 @@ fn cursor_insert_primary_never_visits_the_secondary_insert_scope() {
 }
 
 /// With no block scope defined at all, the primary Insert ladder now reaches
-/// past `ui.cursor`/`ui` all the way to `ui.selection` — the tail Helix's own
+/// past `ui.cursor`/`ui` all the way to `ui.selection`, the tail Helix's own
 /// `base_cursor_scope` falls to when `ui.cursor` is undefined.
 #[test]
 fn cursor_insert_primary_falls_back_to_selection_when_nothing_else_is_set() {

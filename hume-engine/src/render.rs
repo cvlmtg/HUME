@@ -1,7 +1,7 @@
 use hume_rope::column::DisplayLineCol;
 
 use hume_grid::{Rect, Rgb};
-// `Canvas` and its geometry helper live in `hume-grid` now — see its own doc
+// `Canvas` and its geometry helper live in `hume-grid` now; see its own doc
 // for why a crate with "no other HUME crate" as its rule takes this one
 // exception. Re-exported here so every existing `hume_engine::render::Canvas`
 // import (and `crate::render::clamp_rect_to_grid` call, in `pipeline/mod.rs`)
@@ -18,7 +18,7 @@ use crate::types::{CellContent, DisplayLineKind, EditorMode, ResolvedStyle, Scop
 // Stage 4: compose
 // ---------------------------------------------------------------------------
 
-/// Glyph drawn at each inner indent-guide tab stop. Single source of truth —
+/// Glyph drawn at each inner indent-guide tab stop. Single source of truth:
 /// referenced by `compose_display_line` and by tests, so the glyph only ever needs to
 /// change in one place.
 pub(crate) const INDENT_GUIDE_GLYPH: &str = "╎";
@@ -29,22 +29,22 @@ pub(crate) struct ComposeCtx<'a> {
     pub gutter_columns: &'a [(ProviderId, Box<dyn GutterColumn>)],
     pub visible: &'a PaneGeometry,
     /// Pulled straight from the pane's `Viewport` rather than borrowing the
-    /// whole thing — the only field of it `compose_display_line` ever needs.
+    /// whole thing, since it is the only field of it `compose_display_line` ever needs.
     pub horizontal_offset: DisplayLineCol,
     pub mode: EditorMode,
     pub primary_head_line: hume_rope::line::ContentLine,
     pub tab_width: u8,
-    /// Pre-resolved from `theme.ui.virtual_text` — avoids repeated field access in the hot loop.
+    /// Pre-resolved from `theme.ui.virtual_text` to avoid repeated field access in the hot loop.
     pub tilde_style: ResolvedStyle,
     /// Pre-resolved from `theme.ui.indent_guide`.
     pub indent_guide_style: ResolvedStyle,
-    /// From the `indent-guides` setting — gates the draw loop below.
+    /// From the `indent-guides` setting; gates the draw loop below.
     pub show_indent_guides: bool,
     pub pane_rect: Rect,
     /// `theme.ui.background.bg` is read directly wherever a row/gutter cell
     /// falls back to the pane's own background (trailing cells past the
     /// last grapheme, blank gutter cells) rather than through a cached copy
-    /// on this struct — `theme` is already here, so a copy would only be
+    /// on this struct: `theme` is already here, so a copy would only be
     /// another place that value could drift from it.
     pub theme: &'a Theme,
     /// Buffer rope, passed to `GutterColumn::render_cells` via `GutterCtx`
@@ -52,7 +52,7 @@ pub(crate) struct ComposeCtx<'a> {
     /// without pre-owning it.
     pub rope: &'a ropey::Rope,
     /// `DEFAULT_GUTTER_SCOPE` ("ui.linenr"), interned once at
-    /// `EngineView::new` — the fallback scope `compose_gutter` resolves
+    /// `EngineView::new`: the fallback scope `compose_gutter` resolves
     /// under when a cell/column has nothing more specific to say. Threaded
     /// in rather than re-interned here: the per-cell hot path only ever
     /// does an O(1) `ScopeId` index.
@@ -64,7 +64,7 @@ pub(crate) struct ComposeCtx<'a> {
 /// resolved to). Shared by `compose_gutter`'s per-cell loop and its
 /// leftover-width blank fill so the two resolution paths can't drift.
 ///
-/// `scope` is always already-interned — every gutter provider (`SignSource`,
+/// `scope` is always already-interned: every gutter provider (`SignSource`,
 /// `LineNumberColumn`) interns at construction, so this is an O(1) `Theme::resolve`
 /// index, never a by-name lookup.
 ///
@@ -91,12 +91,12 @@ fn gutter_cell_style(
 ///
 /// Shared by `compose_display_line` (real buffer/wrap/virtual display
 /// lines) and `render_tilde_fillers` (`DisplayLineKind::Filler` display
-/// lines) so a filler display line's gutter is never silently blank — a
+/// lines) so a filler display line's gutter is never silently blank. A
 /// custom column must be consulted for filler display lines too, not just
 /// `LineNumberColumn`'s blank-for-Filler default.
 ///
 /// `lane_widths` must already be populated by the caller (one entry per
-/// gutter column) — see `compose_display_line`'s doc comment for why it isn't folded
+/// gutter column); see `compose_display_line`'s doc comment for why it isn't folded
 /// into `ComposeCtx`.
 fn compose_gutter(
     line_kind: DisplayLineKind,
@@ -108,7 +108,7 @@ fn compose_gutter(
 ) {
     let mut gutter_x = compose_ctx.pane_rect.x;
     // A column's configured width (in particular `signcolumn`'s up-to-127
-    // slots) is never checked against the pane's actual width — `layout.rs`
+    // slots) is never checked against the pane's actual width: `layout.rs`
     // only clamps *content* width down to make room for the gutter, not the
     // other way around. Without this bound, a gutter wider than the pane
     // would write straight through the pane's right edge into whatever is
@@ -136,7 +136,7 @@ fn compose_gutter(
         let lane_width = lane_width.min(pane_right_edge - lane_x);
         let cells = lane_provider.render_cells(line_kind, &gutter_ctx);
         // Distribute `lane_width` across `cells.len()` sub-cells. Only the
-        // column's right padding (1 cell) is reserved — no separators between
+        // column's right padding (1 cell) is reserved, with no separators between
         // sub-cells. `usable_per_cell` is how much of each sub-cell's text
         // may be written before truncation.
         let n_cells = cells.len().max(1);
@@ -157,7 +157,7 @@ fn compose_gutter(
             // the text actually ends.
             //
             // A gutter cell is a glyph in a fixed-width lane with no tab
-            // stops of its own — the same convention `hume-editor`'s chrome
+            // stops of its own, the same convention `hume-editor`'s chrome
             // measurements use, hence the shared constant rather than a bare
             // `1`. For every non-tab cluster the parameter is inert.
             let (text, text_width) = hume_rope::width::truncate_to_width(
@@ -169,16 +169,16 @@ fn compose_gutter(
             let pad = usable_per_cell.saturating_sub(text_width);
             // `fill_glyph_run`, not a `write_cell` loop: the space glyph is a
             // compile-time constant repeated `pad` times, exactly its
-            // intended use, and both bound the write at `right_edge` equally
-            // — `fill_glyph_run` just does it once for the whole span
+            // intended use, and both bound the write at `right_edge` equally;
+            // `fill_glyph_run` just does it once for the whole span
             // instead of once per cell.
             canvas.fill_glyph_run(gutter_x, y, " ", pad, style, gutter_x + usable_per_cell);
-            // `after` is where the write actually stopped — used below
+            // `after` is where the write actually stopped, used below
             // instead of a second `gutter_x + pad + text_width` measurement,
             // so the separator's position can't drift from the draw.
             let after =
                 canvas.write_text_run(gutter_x + pad, y, text, style, gutter_x + usable_per_cell);
-            // Only write a separator after the last cell — it's the column's
+            // Only write a separator after the last cell: it's the column's
             // right padding, not a separator between sub-cells.
             if is_last {
                 canvas.fill_glyph_run(after, y, " ", 1, style, lane_x + lane_width);
@@ -189,11 +189,11 @@ fn compose_gutter(
             last_scope = cell.scope;
         }
         // Any leftover width (e.g. sub-cell widths that don't evenly divide
-        // lane_width - 1) fills as blanks under the last cell's scope —
+        // lane_width - 1) fills as blanks under the last cell's scope. This
         // preserves the single-cell builtin behaviour where the whole column
         // shared one scope. Bounded by `lane_x`, not `pane_rect.x`: for
         // every column after the first, `pane_rect.x` is the pane's left
-        // edge, not this column's — using it here left leftover cells
+        // edge, not this column's. Using it here left leftover cells
         // unpainted and `gutter_x` short of the column boundary for any
         // non-first column with uneven leftover.
         if gutter_x < lane_x + lane_width {
@@ -213,7 +213,7 @@ fn compose_gutter(
 /// Render a single display line at `screen_row` into the frame grid.
 ///
 /// `rendered` bundles the display line and its graphemes with the text they
-/// index into — `line_text`/`virtual_texts`, see [`RenderDisplayLine`]'s own
+/// index into (`line_text`/`virtual_texts`); see [`RenderDisplayLine`]'s own
 /// field docs for what each covers and why they're kept apart.
 ///
 /// `lane_widths` must already be populated by the caller (one entry per gutter
@@ -244,7 +244,7 @@ pub(crate) fn compose_display_line(
     let right_edge = compose_ctx.pane_rect.right();
 
     // Filler display lines are rendered exclusively by
-    // `render_tilde_fillers`, never routed through here — it has its own
+    // `render_tilde_fillers`, never routed through here. It has its own
     // gutter + tilde + background handling since a filler display line has
     // no backing graphemes to iterate.
     debug_assert!(!matches!(display_line.kind, DisplayLineKind::Filler));
@@ -275,7 +275,7 @@ pub(crate) fn compose_display_line(
     let line_styles = &styles[display_line.graphemes.start..display_line.graphemes.end];
 
     for (g, style) in line_graphemes.iter().zip(line_styles.iter()) {
-        // Skip WidthContinuation — already handled by the primary cell.
+        // Skip WidthContinuation: already handled by the primary cell.
         if matches!(g.content, CellContent::WidthContinuation) {
             continue;
         }
@@ -288,20 +288,20 @@ pub(crate) fn compose_display_line(
         // a display-line column (`DisplayLineCol`), which with wrapping off spans the
         // whole unwrapped line, but this render path always runs behind
         // `with_h_window` (`pane_render.rs`), so a cell surviving the skip
-        // above sits within one viewport width of `h_offset` — safely
+        // above sits within one viewport width of `h_offset`, safely
         // representable in the terminal-cell (`u16`) domain the rest of
         // compose works in. `.get()` here (not `cells_since`, which
-        // debug-panics on inversion): a cell straddling `h_offset` — handled
-        // below — legitimately has `g.display_col < h_offset`, and this
+        // debug-panics on inversion): a cell straddling `h_offset` (handled
+        // below) legitimately has `g.display_col < h_offset`, and this
         // clamps that case to 0 rather than treating it as a bug.
         let content_x = g.display_col.get().saturating_sub(h_offset.get());
         debug_assert!(
             u16::try_from(content_x).is_ok(),
-            "on-screen column {content_x} exceeds a u16 — h_window should have clipped this cell"
+            "on-screen column {content_x} exceeds a u16: h_window should have clipped this cell"
         );
         let screen_x = content_x_origin + content_x as u16;
         if screen_x >= right_edge {
-            break; // past right edge — done with this display line
+            break; // past right edge, done with this display line
         }
 
         let cell_style = *style;
@@ -309,7 +309,7 @@ pub(crate) fn compose_display_line(
         // A multi-column cell (double-width CJK grapheme, a tab's
         // Whitespace glyph or TabFill) whose left edge sits before `h_offset` still
         // passes the skip check above once its right edge crosses
-        // it — but `content_x` above already clamped to 0, so
+        // it, but `content_x` above already clamped to 0, so
         // rendering the glyph there would draw its *full* width at
         // the viewport's left edge instead of the fraction that's
         // actually scrolled into view, shifting the display line. Render
@@ -330,14 +330,14 @@ pub(crate) fn compose_display_line(
             CellContent::Grapheme => {
                 // `format.rs` cuts every `byte_range` out of this same line with
                 // `grapheme_indices`, so a range that won't slice means the formatted
-                // line and `line_text` have desynced — a `PaneLineStore` entry walked
+                // line and `line_text` have desynced: a `PaneLineStore` entry walked
                 // against another line's text. `.get()` rather than `&line_text[..]`
                 // because the bounds pair alone says nothing about char boundaries: a
                 // desynced range can still land mid-cluster and panic.
                 let Some(text) = line_text.get(g.byte_range.as_byte_range()) else {
                     debug_assert!(
                         false,
-                        "grapheme byte range {}..{} does not slice the {}-byte line — \
+                        "grapheme byte range {}..{} does not slice the {}-byte line: \
                          formatted line and line text have desynced",
                         g.byte_range.start.index(),
                         g.byte_range.end.index(),
@@ -350,7 +350,7 @@ pub(crate) fn compose_display_line(
                 };
                 if screen_x + g.width as u16 > right_edge {
                     // A wide grapheme whose right half would cross
-                    // `right_edge` cannot be drawn — there is no such
+                    // `right_edge` cannot be drawn: there is no such
                     // thing as half a glyph, and the cell past the edge
                     // belongs to whatever the terminal renders next (a
                     // neighbouring pane, the divider seam). Render spaces
@@ -365,9 +365,9 @@ pub(crate) fn compose_display_line(
             }
             CellContent::Whitespace { start, len } | CellContent::Placeholder { start, len } => {
                 let s = resolve_arena_text(virtual_texts, *start, *len);
-                // The indicator's text may be wider than one cell — an
+                // The indicator's text may be wider than one cell (an
                 // unrenderable cluster's `<200b>` placeholder spans as many
-                // cells as it has characters — so it is written across the
+                // cells as it has characters), so it is written across the
                 // span rather than into the first cell. A one-glyph
                 // indicator (a whitespace marker, a tab's `→`) writes one
                 // cell and leaves the rest to the fill below, exactly as
@@ -383,7 +383,7 @@ pub(crate) fn compose_display_line(
             CellContent::TabFill => {
                 // A tab with its indicator off: blank across its whole
                 // expanse, same `cell_style` a `Whitespace` glyph's fill
-                // would use — this is just that fill with no glyph in front.
+                // would use; this is just that fill with no glyph in front.
                 let cell_end = (screen_x + g.width as u16).min(right_edge);
                 for ex in screen_x..cell_end {
                     canvas.write_cell(ex, y, " ", 1, cell_style, cell_end);
@@ -420,7 +420,7 @@ pub(crate) fn compose_display_line(
     {
         let depth = line_graphemes.first().map(|g| g.indent_depth).unwrap_or(0);
         let tw = hume_rope::width::indent_stop(1, compose_ctx.tab_width);
-        // `indent_stop` counts buffer columns from the *line's* column 0 —
+        // `indent_stop` counts buffer columns from the *line's* column 0,
         // not the display line's, when a leading inline insert (an inlay
         // hint at byte 0) precedes the real text. A virtual cell carries an
         // empty `byte_range`, so the first non-empty one marks where the
@@ -437,7 +437,7 @@ pub(crate) fn compose_display_line(
             );
             // Account for horizontal scroll.
             if guide_display_col.advance_saturating(tw) > h_offset {
-                // See the content loop's own `.get()` comment above — a guide
+                // See the content loop's own `.get()` comment above: a guide
                 // left of `h_offset` clamps to 0 rather than panicking.
                 let content_x = guide_display_col.get().saturating_sub(h_offset.get());
                 debug_assert!(
@@ -459,7 +459,7 @@ pub(crate) fn compose_display_line(
 }
 
 /// Resolve a `(start, len)` arena range into the underlying text. Never
-/// panics — `start`/`len` are always produced by the same `push_arena_text`
+/// panics: `start`/`len` are always produced by the same `push_arena_text`
 /// call that sized the arena, so an out-of-range slice should not happen, but
 /// degrading to an empty string is cheaper than a debug_assert on a hot path.
 #[inline]
@@ -489,7 +489,7 @@ pub(crate) fn render_tilde_fillers(
     {
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.right();
-        // Gutter first — it already paints a real background (row_bg, or
+        // Gutter first: it already paints a real background (row_bg, or
         // theme.ui.background.bg, patched with the column's scope, see
         // `compose_gutter`) across the
         // whole gutter width, including column 0. The tilde below patches its

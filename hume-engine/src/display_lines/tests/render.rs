@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// A VIRTUAL_LINE-kind source that never emits anything — registered only to
+/// A VIRTUAL_LINE-kind source that never emits anything, registered only to
 /// consume a `ProviderId` so the next provider's real id is not 0.
 struct NoVirtualLines;
 
@@ -48,7 +48,7 @@ fn render_display_line_yields_a_content_lines_wrap_display_lines() {
 fn render_display_line_segments_a_virtual_lines_text() {
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
-    // Consume id 0 so the emitting provider's real id is 1 — it self-reports
+    // Consume id 0 so the emitting provider's real id is 1. It self-reports
     // 0, which must be overwritten.
     providers.add_decoration_source(Box::new(NoVirtualLines));
     providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
@@ -73,7 +73,7 @@ fn render_display_line_segments_a_virtual_lines_text() {
 
 #[test]
 fn render_display_line_expands_a_tab_in_a_virtual_lines_text() {
-    // A virtual display line must be tab-aware exactly like a real buffer line — this
+    // A virtual display line must be tab-aware exactly like a real buffer line. This
     // is what lets `set-virtual-lines!` accept a literal `\t` in `'text`
     // instead of requiring the caller to expand it by hand.
     let rope = Rope::from_str("hi\n");
@@ -125,7 +125,7 @@ fn render_display_line_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_st
     let virtual_line = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
     let cells = &virtual_line.graphemes[virtual_line.display_line.graphemes.clone()];
     // 漢(w2) + its WidthContinuation, then the tab (tab_advance(2, 4) == 2,
-    // so it also occupies 2 columns and gets its own WidthContinuation —
+    // so it also occupies 2 columns and gets its own WidthContinuation,
     // same as any width-2 cell, tab or not), then 'x'.
     assert_eq!(cells.len(), 5);
     assert_eq!(cells[0].display_col, dc(0));
@@ -183,7 +183,7 @@ fn render_display_line_formats_a_line_once_however_many_display_lines_are_drawn(
 
 #[test]
 fn render_display_line_does_not_reformat_a_line_because_of_its_virtual_lines() {
-    // A Before display line is laid out and rendered before its line's content display lines —
+    // A Before display line is laid out and rendered before its line's content display lines, so
     // it must not disturb the already-formatted content display line/grapheme/arena
     // state that follows it in the same block.
     let rope = Rope::from_str("abcdef\n");

@@ -4,13 +4,13 @@ use crate::pane::Viewport;
 use crate::providers::GutterColumn;
 
 // ---------------------------------------------------------------------------
-// Pane geometry — output of Stage 1
+// Pane geometry: output of Stage 1
 // ---------------------------------------------------------------------------
 
 /// The output of the Layout stage: the pane geometry the Format/Render stages
 /// should use.
 ///
-/// Which *display lines* are visible is not decided here — `display_lines::DisplayLineMap` walks them
+/// Which *display lines* are visible is not decided here: `display_lines::DisplayLineMap` walks them
 /// from the viewport's top address, so the walk is the layout and no estimate
 /// of "how many lines fill the screen" is needed.
 #[derive(Debug, Clone)]
@@ -32,7 +32,7 @@ pub struct PaneGeometry {
 // ---------------------------------------------------------------------------
 
 /// Per-lane widths of `gutter_columns` for the given `max_line` (0-based
-/// last line index), one entry per column in order — the single computation
+/// last line index), one entry per column in order: the single computation
 /// [`gutter_width_for_line`] sums and `pane_render`'s per-frame
 /// `scratch.lane_widths` collects, so a lane's width can't drift between the
 /// pane geometry pass and what `compose_gutter` actually paints.
@@ -41,7 +41,7 @@ pub struct PaneGeometry {
 /// across scrolling.
 ///
 /// Takes an iterator (rather than a slice) so callers can feed it
-/// `ProviderSet::gutter_columns()` directly — `ProviderSet` stores
+/// `ProviderSet::gutter_columns()` directly. `ProviderSet` stores
 /// `(ProviderId, Box<dyn GutterColumn>)` pairs internally, which isn't a
 /// shape this purely-arithmetic function needs to know about.
 pub fn lane_widths<'a>(
@@ -52,7 +52,7 @@ pub fn lane_widths<'a>(
     gutter_columns.map(move |c| c.width(max_line) as u16)
 }
 
-/// Sum of all gutter column widths for the given `max_line` — see
+/// Sum of all gutter column widths for the given `max_line`; see
 /// [`lane_widths`], which this sums.
 pub fn gutter_width_for_line<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
@@ -63,13 +63,13 @@ pub fn gutter_width_for_line<'a>(
 
 /// Compute the `PaneGeometry` for a pane given its current state.
 ///
-/// This is purely arithmetic — no heap allocations.
+/// This is purely arithmetic, with no heap allocations.
 pub fn compute_viewport<'a>(
     rope: &Rope,
     viewport: &Viewport,
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
 ) -> PaneGeometry {
-    // 0-based index of the last line — the single source of truth for
+    // 0-based index of the last line: the single source of truth for
     // GutterColumn::width(). Using the whole-file last line (not just what is
     // on screen) keeps gutter width stable as the user scrolls. Deliberately
     // the phantom trailing line, not the last content line: the gutter is

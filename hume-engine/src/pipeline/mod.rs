@@ -40,7 +40,7 @@ new_key_type! {
 /// Cleared at the start of each pane render. After a few frames, all `Vec`s
 /// have stabilised capacity and no more heap allocations occur.
 ///
-/// The Format stage's buffers are not here — they live on each
+/// The Format stage's buffers are not here. They live on each
 /// [`Pane`], one [`crate::format::LineFormat`] per line
 /// visited, since sharing them between every walk of a pane is the whole
 /// point of that store (see `display_lines::line_store`'s module doc).
@@ -73,7 +73,7 @@ impl Default for FrameScratch {
 }
 
 // ---------------------------------------------------------------------------
-// Render context — all per-frame scratch in one place
+// Render context: all per-frame scratch in one place
 // ---------------------------------------------------------------------------
 
 /// All scratch buffers needed for one render pass.
@@ -92,12 +92,12 @@ pub struct RenderContext {
     /// pane itself, and the pane loop holds `&mut self.panes`, so a closure
     /// doing that lookup could not run while the loop is borrowing. It lives
     /// here rather than arriving as a parameter so its map is reused across
-    /// frames instead of reallocated per frame — the same reason `pane_rects`
+    /// frames instead of reallocated per frame, the same reason `pane_rects`
     /// and `seams` are here.
     pub(crate) pane_settings: SecondaryMap<PaneId, PaneRenderSettings>,
     /// Pane rects computed by the layout stage.
     pub(crate) pane_rects: Vec<(PaneId, Rect)>,
-    /// Seam dividers computed alongside `pane_rects` each render — reused
+    /// Seam dividers computed alongside `pane_rects` each render: reused
     /// scratch storage, same rationale as `pane_rects`.
     pub(crate) seams: Vec<Seam>,
     /// Perpendicular-arm bits keyed by cell, computed from `seams` each
@@ -105,10 +105,10 @@ pub struct RenderContext {
     /// cross. Reused scratch storage, same rationale as `seams`.
     pub(crate) seam_arms: FxHashMap<(u16, u16), u8>,
     /// Where the focused pane's cursor landed within the pane's content area
-    /// (pane-relative, *before* the gutter and pane origin are added — not a
+    /// (pane-relative, *before* the gutter and pane origin are added, not a
     /// terminal-absolute screen cell), resolved by the scroll step that
     /// already had the display-line map open. `None` until that step runs, and reset
-    /// every frame — a `RenderContext` outlives the frame that filled it, so
+    /// every frame: a `RenderContext` outlives the frame that filled it, so
     /// a leftover value must never read as the current one. Callers that need
     /// the real screen cell add the gutter width and the pane rect's origin
     /// (see `lifecycle.rs`/`overlay_sync.rs` in `hume-editor`).
@@ -148,40 +148,40 @@ impl Default for RenderContext {
 }
 
 // ---------------------------------------------------------------------------
-// Editor view — top-level owner
+// Editor view: top-level owner
 // ---------------------------------------------------------------------------
 
 /// The root of the editor's rendering state.
 pub struct EngineView {
-    /// The active tab's tree — private so every whole-tree replacement
+    /// The active tab's tree, private so every whole-tree replacement
     /// routes through [`Self::replace_layout`], which is `#[must_use]`: an
     /// outgoing tree silently dropped here would leak every pane it still
     /// reaches (see [`DetachedPane`]'s own doc). In-place mutation goes
     /// through [`Self::split_leaf`]/[`Self::remove_leaf`], which themselves
-    /// mint or consume a pool token — there is no general `&mut LayoutTree`
+    /// mint or consume a pool token. There is no general `&mut LayoutTree`
     /// accessor, so a caller can't reach `LayoutTree`'s own mutating methods
     /// (`split_leaf`/`remove_leaf`) without going through one of these two.
     layout: LayoutTree,
     pub panes: PanePool,
     /// Pure `BufferId` allocator: a buffer's content, syntax, and rope all
-    /// live in the editor's `Document`/`Buffer` — this slotmap only mints and
+    /// live in the editor's `Document`/`Buffer`; this slotmap only mints and
     /// validates IDs so `PaneId -> BufferId` references stay checkable.
     pub buffers: SlotMap<BufferId, ()>,
     pub theme: Theme,
     /// Session-wide scope registry. Providers intern their scopes here.
     /// `Editor::prepare_frame` calls `theme.bake_if_stale(&registry)` twice
-    /// per frame — before its own steps run and again after — so a scope
+    /// per frame (before its own steps run and again after), so a scope
     /// interned by one of those steps (extra highlights, a newly attached
     /// grammar, ...) is still baked before `render_into` resolves anything.
     /// No other call site needs to bake manually after interning.
     pub registry: ScopeRegistry,
-    /// `DEFAULT_GUTTER_SCOPE` interned once at construction — carried on
+    /// `DEFAULT_GUTTER_SCOPE` interned once at construction, carried on
     /// `PaneRenderCtx`/`ComposeCtx` so gutter composition never falls back to
     /// a by-name lookup on the per-cell hot path.
     default_gutter_scope: ScopeId,
     /// Optional tab bar rendered at the top of the terminal area.
     pub tabbar: Option<Box<dyn TabBarProvider>>,
-    /// Bottom chrome bands, stacked directly above the statusline —
+    /// Bottom chrome bands, stacked directly above the statusline:
     /// currently the pick-list drawer and the docked hover popup. Only one
     /// is ever non-empty in practice, but the list carries both rather than
     /// special-casing which one "owns" the band.
@@ -190,24 +190,24 @@ pub struct EngineView {
     /// Pane-focus/split commands run between frames with no terminal handle
     /// of their own, so they recompute geometry from this plus `layout`
     /// (see `pane_rects`/`pane_rect`) rather than trusting a stored rect
-    /// list — a handful of panes makes the DFS cheap enough that there is no
+    /// list. A handful of panes makes the DFS cheap enough that there is no
     /// cache to go stale when a command mutates `layout` mid-frame. Zero
     /// area until the first `prepare_frame`.
     pub last_pane_area: Rect,
     /// Raw terminal area (before chrome subtraction) as of the last
-    /// `prepare_frame` — the same `area` passed to `pane_area`/`render`.
+    /// `prepare_frame`, the same `area` passed to `pane_area`/`render`.
     /// Distinct from `last_pane_area`: chrome that reserves rows off a
     /// fraction of this raw height (the drawer's `max` ceiling) needs the
     /// *un-subtracted* figure, since `last_pane_area` already has the
     /// drawer's own reserved rows folded out of it.
     pub last_terminal_area: Rect,
-    /// Whether pane splits reserve a 1-cell seam column/row — mirrors the
+    /// Whether pane splits reserve a 1-cell seam column/row. Mirrors the
     /// `pane-dividers` setting. Set alongside `last_pane_area`; consulted by
     /// the same recompute helpers.
     pub reserve_seam: bool,
 }
 
-/// Blend fraction used to dim non-focused panes toward `ui.background` — 0.0
+/// Blend fraction used to dim non-focused panes toward `ui.background`: 0.0
 /// leaves colors untouched, 1.0 flattens them entirely to the background.
 const PANE_DIM_FACTOR: f32 = 0.5;
 
@@ -218,7 +218,7 @@ impl EngineView {
         let mut registry = ScopeRegistry::new();
         let default_gutter_scope = registry.intern(DEFAULT_GUTTER_SCOPE.0);
         Self {
-            // Placeholder layout — will be replaced before the first render.
+            // Placeholder layout: will be replaced before the first render.
             layout: LayoutTree::Leaf(PaneId::default()),
             panes,
             buffers,
@@ -234,7 +234,7 @@ impl EngineView {
     }
 
     /// Recompute the current pane partition from `layout` and
-    /// `last_pane_area`. Cheap even with several splits open — recomputing
+    /// `last_pane_area`. Cheap even with several splits open: recomputing
     /// beats keeping a cross-frame cache in sync with every layout mutation.
     pub fn pane_rects(&self) -> Vec<(PaneId, Rect)> {
         let mut out = Vec::new();
@@ -251,14 +251,14 @@ impl EngineView {
     }
 
     /// Re-partition `last_pane_area` against the *current* `layout` and
-    /// write each active pane's `viewport.width`/`height` —
+    /// write each active pane's `viewport.width`/`height`:
     /// [`pane_rects`](Self::pane_rects)'s own partition, applied rather than
     /// merely read back.
     ///
     /// `last_pane_area`/`reserve_seam` need no recomputation here: neither
     /// depends on which tab is active (same terminal size, same tab-bar
     /// policy), only on the terminal and settings a resize or config change
-    /// already refreshed them from — so this is a pure re-partition of
+    /// already refreshed them from, so this is a pure re-partition of
     /// already-correct geometry onto whatever `layout` names right now.
     ///
     /// The one caller is `hume-editor`'s `tab::install_live`, immediately
@@ -267,7 +267,7 @@ impl EngineView {
     /// `sync_viewport_dims`, which a between-frame reader (a scroll command,
     /// a motion) chained onto the same tab switch would read as stale. A
     /// no-op before the first `prepare_frame` (`last_pane_area` still its
-    /// zero default) — nothing to re-partition onto yet, and the first real
+    /// zero default): nothing to re-partition onto yet, and the first real
     /// frame will size every pane from scratch regardless.
     pub fn resync_viewport_dims(&mut self) {
         if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
@@ -277,15 +277,15 @@ impl EngineView {
         self.write_viewport_dims(&rects);
     }
 
-    /// [`Self::resync_viewport_dims`], generalized to any `LayoutTree` —
+    /// [`Self::resync_viewport_dims`], generalized to any `LayoutTree`.
     /// `hume-editor`'s `Editor::sync_viewport_dims` calls this once per
     /// *inactive* tab too, on every resize, so a background-tab pane's
     /// viewport stays current continuously instead of only catching up the
     /// moment its tab becomes active (which `tab::install_live`'s own
     /// `resync_viewport_dims` call already handles for the tab that's
     /// switching in). An inactive tab's `LayoutTree` is otherwise immutable
-    /// while inactive — splits/closes only ever touch the active
-    /// `EngineView::layout` — so a resize is the only event that can make
+    /// while inactive (splits/closes only ever touch the active
+    /// `EngineView::layout`), so a resize is the only event that can make
     /// its panes' geometry stale.
     pub fn resync_viewport_dims_for(&mut self, layout: &LayoutTree) {
         if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
@@ -296,7 +296,7 @@ impl EngineView {
         self.write_viewport_dims(&rects);
     }
 
-    /// Write each `(PaneId, Rect)` pair's dims into `self.panes` — the
+    /// Write each `(PaneId, Rect)` pair's dims into `self.panes`: the
     /// shared tail [`Self::resync_viewport_dims`] and
     /// [`Self::resync_viewport_dims_for`] reduce to, once each has its own
     /// partition in hand.
@@ -315,7 +315,7 @@ impl EngineView {
 
     /// Replace the whole active-tab tree, returning what was there before.
     /// `#[must_use]`: the outgoing tree may still reach live panes (see
-    /// [`DetachedPane`]'s own doc) — a caller that means to discard it
+    /// [`DetachedPane`]'s own doc). A caller that means to discard it
     /// outright (installing a placeholder over a tree with nothing real
     /// left in it, or replacing it with a tree that names the exact same
     /// pool entries just reshaped) must say so explicitly with `let _ = `.
@@ -342,7 +342,7 @@ impl EngineView {
     }
 
     /// Insert a pane into the pool, returning the [`UnattachedPane`] token
-    /// proving it isn't yet reachable from any layout tree — splice it in
+    /// proving it isn't yet reachable from any layout tree. Splice it in
     /// with [`Self::split_leaf`] or [`LayoutTree::leaf`].
     pub fn insert_pane(&mut self, pane: Pane) -> UnattachedPane {
         self.panes.insert(pane)
@@ -354,12 +354,12 @@ impl EngineView {
         self.panes.remove(detached);
     }
 
-    /// Every pane `self.layout` — the active tab's — currently reaches. The
+    /// Every pane `self.layout` (the active tab's) currently reaches. The
     /// working set every per-frame sync step operates on, in place of the
     /// full `panes` pool: an inactive tab's pane is deliberately excluded,
     /// since nothing sizes, decorates, mirrors, or scrolls it while its tab
     /// isn't active, so its state reflects whatever its own tab last left it
-    /// at rather than this frame's — decorating, mirroring, or scrolling it
+    /// at rather than this frame's. Decorating, mirroring, or scrolling it
     /// against this frame's state would be wrong the moment the terminal has
     /// since been resized. It re-enters this set, and catches up, the moment
     /// its tab is switched back to.
@@ -380,7 +380,7 @@ impl EngineView {
         }
     }
 
-    /// The row ceiling every [`BottomBandProvider`] is called against — 35%
+    /// The row ceiling every [`BottomBandProvider`] is called against: 35%
     /// of the terminal's current height. Single source of truth for this
     /// policy: [`Self::pane_area`] and [`Self::render`] both call this
     /// rather than each computing the fraction inline, and `hume-editor`'s
@@ -393,20 +393,20 @@ impl EngineView {
         (u32::from(area_height) * 35 / 100) as u16
     }
 
-    /// Partition `area` into the tab bar's own rect — `self.tabbar`'s
+    /// Partition `area` into the tab bar's own rect: `self.tabbar`'s
     /// `height()` rows at the top, `height: 0` when absent or hidden this
     /// frame. Single source of truth for that one chrome row: `render`'s
     /// paint and the editor's `tabline_click` hit test both partition
     /// through this method (the latter via `pane_area`'s own degenerate
-    /// branch below, which does *not* offset `y` — reading `tabbar_height`
+    /// branch below, which does *not* offset `y`; reading `tabbar_height`
     /// from here rather than re-deriving it keeps the two in agreement).
     ///
     /// Clamped to `area.height.saturating_sub(1)`: the statusline
     /// unconditionally claims the bottom row (`render`'s own `sl_y =
     /// area.bottom() - 1`), so on a terminal too short to fit both, the tab
     /// bar must yield that row rather than have `render` paint the
-    /// statusline over it while this rect — and `tabline_click`'s hit test,
-    /// which partitions through this same method — still claim it.
+    /// statusline over it while this rect (and `tabline_click`'s hit test,
+    /// which partitions through this same method) still claim it.
     pub fn tabbar_area(&self, area: Rect) -> Rect {
         let tabbar_height: u16 = self.tabbar.as_ref().map_or(0, |t| t.height());
         Rect {
@@ -419,7 +419,7 @@ impl EngineView {
     /// Partition `area` into the pane-content rect, reserving the tab bar
     /// (`tabbar_area`) at the top, the bottom chrome bands directly above
     /// the statusline (`self.bottom_bands`), and a statusline row at the
-    /// bottom (always). Single source of truth for chrome layout — `render`
+    /// bottom (always). Single source of truth for chrome layout: `render`
     /// and the editor's `prepare_frame` both partition through this method
     /// so pane geometry is computed identically wherever it's needed.
     pub fn pane_area(&self, area: Rect) -> Rect {
@@ -439,7 +439,7 @@ impl EngineView {
             }
         } else {
             // Degenerate: terminal too small to fit chrome + content. Note
-            // `y` is left at `area.y`, not offset by `tabbar_height` — the
+            // `y` is left at `area.y`, not offset by `tabbar_height`. The
             // tab bar still paints here whenever `tabbar_area`'s own clamp
             // leaves it a nonzero height (`render`'s gate is just
             // `tabbar_area.height > 0`; on a terminal too short even for
@@ -455,10 +455,10 @@ impl EngineView {
     ///
     /// `get_rope` resolves a `BufferId` to the authoritative `&Rope` owned by
     /// the caller (typically the editor's `Document`). The borrow is used only
-    /// inside this call — no rope is stored in `EngineView`.
+    /// inside this call; no rope is stored in `EngineView`.
     ///
     /// `get_syntax` resolves a `BufferId` to its syntax highlight span
-    /// source, if any — same per-frame-borrow contract as `get_rope`.
+    /// source, if any. Same per-frame-borrow contract as `get_rope`.
     ///
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// always occupies the bottom row. Panes fill the remaining area.
@@ -470,7 +470,7 @@ impl EngineView {
     /// `draw_dividers` mirrors the `pane-dividers` setting: `true` reserves
     /// and paints a 1-cell seam between sibling panes; `false` tiles panes
     /// edge-to-edge with no reserved gap. Non-focused panes are dimmed
-    /// either way — dimming is the focus cue, the seam glyph is a separate
+    /// either way: dimming is the focus cue, the seam glyph is a separate
     /// cosmetic choice.
     #[allow(clippy::too_many_arguments)]
     pub fn render<'rope>(
@@ -491,14 +491,14 @@ impl EngineView {
 
         // A degenerate area (e.g. a terminal reporting height 0 during early
         // startup, or a genuinely tiny window) has no row to draw a chrome
-        // line into — providers write text via `write_text_run`, which
+        // line into. Providers write text via `write_text_run`, which
         // bounds-checks against the grid rather than panicking, but a chrome
         // row drawn at an out-of-bounds `y` is still
         // silently lost, so skip both chrome rows entirely rather than
         // handing them a `Rect` claiming a row that doesn't exist.
         if area.height > 0 {
             // One canvas for every chrome row. Chrome is never dimmed, so
-            // they all share the same `dim: None` — a canvas per provider
+            // they all share the same `dim: None`; a canvas per provider
             // would only re-derive that.
             let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
 
@@ -512,7 +512,7 @@ impl EngineView {
 
             // ── Render bottom bands ──────────────────────────────────────────────
             // Stacked directly above the statusline row, in registration
-            // order — derived from `area` directly (not `pane_area`),
+            // order, derived from `area` directly (not `pane_area`),
             // matching the tab bar/statusline's own convention: chrome
             // claims its band even when the terminal is too small to also
             // fit pane content (`pane_area`'s degenerate branch already
@@ -558,24 +558,24 @@ impl EngineView {
             if self.buffers.get(buffer_id).is_none() {
                 continue;
             }
-            // Resolve the rope from the caller — zero-copy, no clone needed.
+            // Resolve the rope from the caller: zero-copy, no clone needed.
             let Some(rope) = get_rope(buffer_id) else {
                 continue;
             };
-            // Unlike the three skips above — a pane, buffer or rope that
-            // genuinely may be gone by the time the frame draws — a missing
+            // Unlike the three skips above (a pane, buffer or rope that
+            // genuinely may be gone by the time the frame draws), a missing
             // entry here is the caller having resolved settings for a
             // different set of panes than it is now asking to draw. Drawing
             // the pane with stale settings, or skipping it and leaving its
             // rect blank, would both hide that.
             let settings = pane_settings.get(pane_id).expect(
-                "no render settings for a live pane — see RenderContext::set_pane_settings",
+                "no render settings for a live pane, see RenderContext::set_pane_settings",
             );
 
             scratch.clear();
 
             // The one place that can say these are disjoint parts of one pane:
-            // the render pass reads three of its fields while writing two —
+            // the render pass reads three of its fields while writing two:
             // `line_store`, and `viewport`'s own resolved top (`Viewport::top_at`).
             let Pane {
                 viewport,
@@ -597,9 +597,9 @@ impl EngineView {
                 rect,
                 settings,
                 // Dim non-focused panes so the active one reads clearly at a
-                // glance — independent of `draw_dividers`, which only controls
+                // glance, independent of `draw_dividers`, which only controls
                 // the seam glyph. Skipped when `ui.background` has no explicit
-                // bg — there is no defined blend target for custom themes that
+                // bg: there is no defined blend target for custom themes that
                 // leave it unset.
                 dim: (pane_id != focused_pane_id)
                     .then_some(self.theme.ui.background.bg)
@@ -627,13 +627,13 @@ impl EngineView {
             // line (`base_scope` in `pane_render.rs`): a scope that leaves
             // `fg` unset should fall
             // back to the theme's own base text color everywhere, not just on
-            // some rendered surfaces — the seam is chrome HUME draws itself,
+            // some rendered surfaces: the seam is chrome HUME draws itself,
             // it isn't Helix's own border (which leaves an unset fg as
             // whatever the terminal already shows), so there's no reason for
             // it to be the one exception.
             //
             // Only `ui.background`'s *background* is layered, never its whole
-            // style — the same constraint `style_display_line`'s Tier 4 and
+            // style, the same constraint `style_display_line`'s Tier 4 and
             // `render.rs`'s `row_bg` apply. A background scope has no business
             // contributing a foreground, and letting it would give a theme
             // that sets `ui.background = { fg, bg }` a seam glyph in that fg
@@ -650,7 +650,7 @@ impl EngineView {
             // them once so the per-cell loop only does a membership check.
             let corners = focused_rect.map(focused_pane_corners);
 
-            // The grid's size, read once ahead of `canvas` below — `Grid` is
+            // The grid's size, read once ahead of `canvas` below. `Grid` is
             // origin-free, so this `(u16, u16)` is all a per-seam clamp
             // needs, and it's `Copy` rather than a borrow, so it can be read
             // before the canvas takes its exclusive `&mut Grid` for the whole
@@ -664,7 +664,7 @@ impl EngineView {
                     Direction::Horizontal => ARM_N | ARM_S,
                     Direction::Vertical => ARM_E | ARM_W,
                 };
-                // The slice of this seam adjacent to the focused pane — drawn
+                // The slice of this seam adjacent to the focused pane, drawn
                 // in the accent color. Computed once per seam so the per-cell
                 // loop below only needs a bounds check, not a repeated call.
                 let accent_rect = focused_rect.and_then(|fr| focused_seam_segment(seam.rect, fr));
@@ -708,19 +708,19 @@ impl EngineView {
 /// Per-pane render settings supplied by the editor at render time.
 ///
 /// `format` bundles everything the render pass's `DisplayLineMap` resolves a line's
-/// layout from — wrap mode, tab width, whitespace config, buffer identity —
+/// layout from (wrap mode, tab width, whitespace config, buffer identity)
 /// as one [`FormatKey`](crate::display_lines::line_store::FormatKey), unresolved (the
 /// pane's own `content_width` resolves it, inside `DisplayLineMap::new`). `tab_width`
-/// and `whitespace` inside it are document facts — resolved from per-buffer
+/// and `whitespace` inside it are document facts, resolved from per-buffer
 /// overrides against global settings, identical for every pane viewing the
-/// same buffer — while `wrap_mode` is genuinely per-pane (two panes on the
+/// same buffer, while `wrap_mode` is genuinely per-pane (two panes on the
 /// same buffer may wrap differently, once `:wrap`/`:set pane wrap-mode=…`
 /// pins one); the editor resolves pane override → buffer override → global
 /// default (see `commands::effective_wrap_mode`) and folds the result into
 /// the same key alongside the document facts, since the render pass's
 /// `DisplayLineMap` and the scroll pass's must resolve a bit-identical key to share
-/// this pane's line store — see `FormatKey`'s own doc. `mode` and
-/// `cursor_is_block` are both per-focus facts rather than document facts —
+/// this pane's line store; see `FormatKey`'s own doc. `mode` and
+/// `cursor_is_block` are both per-focus facts rather than document facts;
 /// see `Editor::resolve_pane_settings` (`hume-editor`) for exactly what each
 /// resolves to and why. `mode` picks which cursor-scope ladder applies;
 /// `cursor_is_block` gates both selection heads in `style::style_display_line`'s
@@ -737,13 +737,13 @@ pub struct PaneRenderSettings {
 /// dozen separate parameters through the call stack.
 pub(crate) struct PaneRenderCtx<'a> {
     /// The pane's own fields rather than `&Pane`, so the render loop can hand
-    /// `render_pane` a `&mut` on that same pane's line store alongside this —
+    /// `render_pane` a `&mut` on that same pane's line store alongside this:
     /// one `&mut Pane` split into disjoint field borrows, which only the loop
     /// that owns the pane can say is sound.
     ///
     /// `&'a mut`, not `&'a`: the display-line walk resolves `viewport.top()`
     /// against its own `DisplayLineMap` via `Viewport::top_at` before
-    /// walking from it, and writes the resolved address back — see that
+    /// walking from it, and writes the resolved address back. See that
     /// method's doc for why a stale top must never reach the walk.
     pub viewport: &'a mut crate::pane::Viewport,
     pub providers: &'a crate::providers::ProviderSet,
@@ -760,7 +760,7 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// Borrowed from the caller's `RenderContext`, which owns the map these
     /// come out of for the whole frame.
     pub settings: &'a PaneRenderSettings,
-    /// `Some` for non-focused panes — blend every written cell's fg/bg toward
+    /// `Some` for non-focused panes: blend every written cell's fg/bg toward
     /// this target by `factor`. `None` for the focused pane.
     pub dim: Option<(Rgb, f32)>,
     /// See `EngineView::default_gutter_scope`.

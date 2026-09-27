@@ -1,5 +1,5 @@
 //! Names of the theme scopes HUME's UI chrome (statusline, tabline, popup,
-//! menu, drawer, gutter, window chrome) resolves by fixed name — mirrors
+//! menu, drawer, gutter, window chrome) resolves by fixed name. Mirrors
 //! `CURSOR_MODES`/`cursor_ladder_ids` (`theme/mod.rs`) one level up: a
 //! second hand-copy of any of these, anywhere in the workspace or in
 //! `tools/theme-editor/src/data.js`'s catalog, is exactly the drift this
@@ -12,7 +12,7 @@
 //! `FALLBACK_ONLY_CHROME` documents on the JS side), so it isn't a name any
 //! Rust call site resolves.
 //!
-//! Virtual-text scope names ([`VIRTUAL`]) live here too — still `"ui.*"`,
+//! Virtual-text scope names ([`VIRTUAL`]) live here too: still `"ui.*"`,
 //! still resolved by `compute_ui`/`decoration_providers.rs`. Cursor and
 //! Diagnostic scope names are out of scope for this table: Cursor's own
 //! names live next to `CURSOR_MODES`/`cursor_ladder_ids` in the parent
@@ -40,12 +40,12 @@ pub const MENU_SELECTED: &str = "ui.menu.selected";
 pub const MENU_SCROLL: &str = "ui.menu.scroll";
 pub const WINDOW: &str = "ui.window";
 pub const WINDOW_FOCUSED: &str = "ui.window.focused";
-/// HUME's own tab bar (Vim-style saved window layouts) — not the same
+/// HUME's own tab bar (Vim-style saved window layouts), not the same
 /// feature as Helix's per-buffer `ui.bufferline` strip, hence its own scope
 /// name; see [`BUFFERLINE`]'s doc for the fallback relationship between them.
 pub const TABLINE: &str = "ui.tabline";
 pub const TABLINE_ACTIVE: &str = "ui.tabline.active";
-/// Helix's own scope name, never resolved directly by HUME — read only as
+/// Helix's own scope name, never resolved directly by HUME: read only as
 /// `TablineColors::from_theme`'s (`hume-editor/src/statusline/colors.rs`)
 /// fallback when a theme defines `ui.bufferline` (every shipped Helix theme
 /// does) but not `ui.tabline` (no Helix theme does, since it's HUME's own
@@ -90,13 +90,13 @@ pub const ALL: &[&str] = &[
 ];
 
 /// `ui_scopes::VIRTUAL_TEXT` matches [`UiScopes`](super::UiScopes)'s own
-/// `virtual_text` field name — the scope resolves as the fallback every
+/// `virtual_text` field name. The scope resolves as the fallback every
 /// other `ui.virtual.*` scope dot-trims to.
 pub const VIRTUAL_TEXT: &str = "ui.virtual";
 pub const VIRTUAL_INDENT_GUIDE: &str = "ui.virtual.indent-guide";
 pub const VIRTUAL_WHITESPACE: &str = "ui.virtual.whitespace";
 /// Resolved in `hume-editor/src/editor/decoration_providers.rs`, not
-/// `compute_ui` — inlay hints are a per-frame LSP overlay, not one of
+/// `compute_ui`: inlay hints are a per-frame LSP overlay, not one of
 /// `UiScopes`'s eagerly pre-resolved styles.
 pub const VIRTUAL_INLAY_HINT: &str = "ui.virtual.inlay-hint";
 pub const VIRTUAL_INVISIBLE: &str = "ui.virtual.invisible";

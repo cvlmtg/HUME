@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// A LINE_BG-kind source that counts every `decorations_for_line` call —
+/// A LINE_BG-kind source that counts every `decorations_for_line` call,
 /// used to prove the layout stage (`block`/`ensure_formatted`) never queries a
 /// kind it has no use for, even when the same line is both counted and
 /// formatted.
@@ -101,7 +101,7 @@ fn block_ignores_virtual_lines_anchored_to_other_lines() {
 #[test]
 fn layout_stage_never_queries_a_paint_only_kind() {
     // block() drives both the VIRTUAL_LINE query and, under wrapping,
-    // ensure_formatted()'s INLINE query — a LINE_BG-kind source (paint-only)
+    // ensure_formatted()'s INLINE query. A LINE_BG-kind source (paint-only)
     // must be invisible to both.
     let calls = Rc::new(Cell::new(0));
     let mut providers = ProviderSet::new();
@@ -152,8 +152,8 @@ fn block_counts_inline_inserts_toward_wrapping() {
 
 #[test]
 fn no_wrap_block_counts_without_running_the_formatter() {
-    // `WrapMode::None` is always one content display line, so counting must not format
-    // — that is what keeps a display line query O(1) instead of O(line length) on a
+    // `WrapMode::None` is always one content display line, so counting must not format.
+    // That is what keeps a display line query O(1) instead of O(line length) on a
     // minified line megabytes wide. Querying decorations is what formatting
     // does first, so a zero call count is the observable proxy.
     let rope = Rope::from_str("abcdef\n");

@@ -20,7 +20,7 @@ impl<'a> DisplayLineMap<'a> {
         debug_assert!(
             char_offset.index() <= self.rope.len_chars(),
             "locate: char_offset {char_offset:?} is out of range for a buffer \
-             of {} chars — ropey's own `char_to_line` panics past this point, \
+             of {} chars: ropey's own `char_to_line` panics past this point, \
              so a caller holding a position from an earlier frame (an LSP \
              completion anchor, a stale selection) must revalidate it \
              against the current buffer before reaching here",
@@ -62,7 +62,7 @@ impl<'a> DisplayLineMap<'a> {
                 && (target_byte < last.byte_range.end || is_last)
             {
                 // The real grapheme, not an inline-insert decoration sharing
-                // its `char_offset` — `style::resolve_grapheme_display_col`
+                // its `char_offset`: `style::resolve_grapheme_display_col`
                 // skips forward past any `Virtual` cells to reach it, the
                 // same rule `style::char_offset_to_display_col` applies for
                 // selection styling.
@@ -84,13 +84,13 @@ impl<'a> DisplayLineMap<'a> {
         // last one. Every content display line has at least one grapheme
         // (an empty line still gets its EOL sentinel), and the last one's
         // `is_last` branch above matches any `target_byte` at or past its
-        // own start — so reaching here means either `lines` is empty or
+        // own start, so reaching here means either `lines` is empty or
         // every display line was skipped for having no graphemes, both of
         // which indicate a formatting bug rather than a normal input.
         debug_assert!(
             !lines.is_empty(),
             "locate_in_line: line {}, char_offset {char_offset:?} matched \
-             no display line — every content display line should claim \
+             no display line; every content display line should claim \
              some byte range of the line",
             entry.line.index()
         );
@@ -109,19 +109,19 @@ impl<'a> DisplayLineMap<'a> {
     ///
     /// In `WrapMode::None` a line is exactly one content display line (see
     /// [`DisplayLineMap::block`]), so the sub-index is always 0 and the
-    /// answer falls out of the block breakdown with no formatting at all —
+    /// answer falls out of the block breakdown with no formatting at all:
     /// the difference between O(1) and O(offset into the line) for the
     /// callers that only want the display line.
     pub fn locate_display_line(&mut self, char_offset: CharOffset) -> DisplayLinePos {
         debug_assert!(
             char_offset.index() <= self.rope.len_chars(),
             "locate_display_line: char_offset {char_offset:?} is out of range for a \
-             buffer of {} chars — see the debug_assert in DisplayLineMap::locate",
+             buffer of {} chars; see the debug_assert in DisplayLineMap::locate",
             self.rope.len_chars()
         );
         if self.key.wrap_mode.is_wrapping() {
             // Wrapping needs the sub-index, which only formatting can
-            // answer — and `block` has already formatted the line to count
+            // answer, and `block` has already formatted the line to count
             // its display lines.
             return self.locate(char_offset).0;
         }
@@ -134,7 +134,7 @@ impl<'a> DisplayLineMap<'a> {
     /// line, under `target`'s policy.
     ///
     /// A virtual display line is not buffer content, so `pos` landing on
-    /// one clamps to the nearest content sub-line of the same line — the
+    /// one clamps to the nearest content sub-line of the same line: the
     /// first for a `Before` display line, the last for an `After` one.
     pub fn char_at(
         &mut self,
@@ -198,21 +198,21 @@ impl<'a> DisplayLineMap<'a> {
                 // it can never answer anything the primary itself wouldn't):
                 // its `display_col` sits one column *past* the wide glyph,
                 // which is exactly where the next real cell starts, so a
-                // target landing on that boundary ties between the two — and
+                // target landing on that boundary ties between the two, and
                 // `min_by_key` keeps the first tied element, which is the
                 // continuation (pushed immediately after its primary, ahead
                 // of whatever comes next). Left in, that tie silently wins
                 // over the following cell's own, distinct `char_offset`.
                 // `Empty` (EOL sentinel) has a buffer position but isn't
                 // content, so it only answers when nothing else can (an empty
-                // line) — gated on `admit_eol`. `Virtual` (inline-insert)
+                // line), gated on `admit_eol`. `Virtual` (inline-insert)
                 // carries the real grapheme's `char_offset` it precedes, so
                 // minimising distance against it elsewhere on the display
-                // line would land on a character that cell isn't at — excluded outright,
+                // line would land on a character that cell isn't at. It's excluded outright,
                 // not just deprioritised. `Whitespace`/`TabFill` cover
                 // tab/space glyphs and blank tab fill, which *are* real
                 // content, except the newline indicator, which shares the
-                // EOL sentinel's column and must be excluded the same way —
+                // EOL sentinel's column and must be excluded the same way,
                 // singled out by `byte_range` being empty, just like the
                 // sentinel it's drawn on top of (`format.rs`'s
                 // newline-indicator push).
@@ -228,7 +228,7 @@ impl<'a> DisplayLineMap<'a> {
                         // at all; unreachable from `char_at`, which only
                         // ever formats content display lines, but guarded
                         // defensively. `usize::MAX` is `Grapheme::char_offset`'s
-                        // no-buffer-position sentinel — see its doc (`types.rs`).
+                        // no-buffer-position sentinel; see its doc (`types.rs`).
                         .filter(|g| g.char_offset != usize::MAX)
                         .filter(|g| match g.content {
                             CellContent::Grapheme => true,
@@ -255,7 +255,7 @@ impl<'a> DisplayLineMap<'a> {
 
     /// `(indent, span)` for content display line `sub` of `idx`'s line.
     /// `indent` is the display column the display line's first cell starts
-    /// at — 0 on a line's own first display line, `indent_display_cols` on
+    /// at: 0 on a line's own first display line, `indent_display_cols` on
     /// a wrap continuation display line (see
     /// [`crate::types::Grapheme::display_col`]). `span` is the display
     /// line's own content width with that indent excluded, so summing
@@ -281,7 +281,7 @@ impl<'a> DisplayLineMap<'a> {
     }
 
     /// The display column `char_offset` sits at, measured from its own
-    /// buffer line's start rather than from its display line's — the
+    /// buffer line's start rather than from its display line's. That's the
     /// column a numeric-prefixed vertical move (`9j`/`9k`) latches, since it
     /// targets the same buffer-line column on its landing line regardless
     /// of which display line of that (possibly wrapped) line it lands on.
@@ -289,14 +289,14 @@ impl<'a> DisplayLineMap<'a> {
     /// Continuation-display-line indent is excluded (see
     /// `DisplayLineMap::display_line_shape`) and inline virtual cells
     /// (inlay hints, ghost text) are included, same as
-    /// [`DisplayLineMap::locate`] — the two differ only in what they're
+    /// [`DisplayLineMap::locate`]. The two differ only in what they're
     /// measured from, and coincide under `WrapMode::None`, where a line is
     /// exactly one display line with no indent.
     pub fn buffer_line_col(&mut self, char_offset: CharOffset) -> BufferLineCol {
         debug_assert!(
             char_offset.index() <= self.rope.len_chars(),
             "buffer_line_col: char_offset {char_offset:?} is out of range for \
-             a buffer of {} chars — see the debug_assert in DisplayLineMap::locate",
+             a buffer of {} chars; see the debug_assert in DisplayLineMap::locate",
             self.rope.len_chars()
         );
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
@@ -314,7 +314,7 @@ impl<'a> DisplayLineMap<'a> {
     ///
     /// A line-relative column past the line's total width clamps to its
     /// last display line, where `target`'s own clamp rule (see
-    /// [`DisplayColTarget`]) applies — the same "stick to the last real
+    /// [`DisplayColTarget`]) applies. That's the same "stick to the last real
     /// character, land on `\n` only when the line is empty" rule bare
     /// `j`/`k` already gets from [`DisplayLineMap::char_at`].
     pub fn char_at_buffer_line_col(
@@ -327,7 +327,7 @@ impl<'a> DisplayLineMap<'a> {
         // Only up to the target column: while wrapping, `ensure_formatted`
         // promotes this to `Full` regardless (a display-line-relative bound
         // can't usefully clip a line-relative target), and without wrapping
-        // `content_display_lines == 1` so the two columns coincide — sound
+        // `content_display_lines == 1` so the two columns coincide. It's sound
         // to read as display-line-relative here for exactly that reason
         // (see `BufferLineCol::as_display_line_unwrapped`'s own doc).
         let idx = self.ensure_formatted(

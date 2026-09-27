@@ -26,11 +26,11 @@ pub type ProviderId = u16;
 /// Priority tier of a highlight span in the style cascade.
 /// Higher = wins over lower. Style stage processes tiers lowest-first so later
 /// calls' `layer()` results take precedence. Data on `Decoration::Highlight`,
-/// not a per-provider property — one source can emit spans at different tiers.
+/// not a per-provider property: one source can emit spans at different tiers.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum HighlightTier {
     Syntax = 0,
-    /// Generic plugin-supplied spans (`set-extra-highlights!`) — beat syntax,
+    /// Generic plugin-supplied spans (`set-extra-highlights!`): beat syntax,
     /// lose to search matches, diagnostics, and bracket matches.
     Extra = 1,
     SearchMatch = 2,
@@ -48,8 +48,8 @@ pub enum HighlightTier {
 /// the line start, sorted, non-overlapping, appended to `out`. Kept as its
 /// own trait rather than folded into `DecorationSource`: parse state is
 /// per-buffer while `DecorationSource` providers are per-pane, and this is
-/// the dependency-inversion seam to `hume-treesitter` — same span shape,
-/// different lifecycle. The engine consumes only these spans — it has no
+/// the dependency-inversion seam to `hume-treesitter`: same span shape,
+/// different lifecycle. The engine consumes only these spans; it has no
 /// knowledge of parse trees, grammars, or tree-sitter.
 pub trait SyntaxSpans {
     fn spans_for_line(
@@ -67,7 +67,7 @@ pub trait SyntaxSpans {
 /// Context passed to `GutterColumn::render_cells` for buffer/syntax access.
 ///
 /// Gutter rendering (~100 calls/frame) should stay cheap to build, so this
-/// struct does not precompute per-line data — providers that need e.g.
+/// struct does not precompute per-line data. Providers that need e.g.
 /// `line_to_byte` call it themselves.
 pub struct GutterCtx<'a> {
     pub mode: EditorMode,
@@ -78,7 +78,7 @@ pub struct GutterCtx<'a> {
 /// A single column in the gutter (line numbers, git signs, diagnostics, etc.).
 pub trait GutterColumn {
     /// Display width of this column in terminal cells.
-    /// `last_line_idx` is the 0-based index of the last line in the file — used to
+    /// `last_line_idx` is the 0-based index of the last line in the file, used to
     /// size line-number columns to fit the largest line number. Ropey domain,
     /// phantom trailing line included: deliberate, so the gutter stays one
     /// digit wider than content strictly requires (see `layout::compute_viewport`).
@@ -102,7 +102,7 @@ pub struct GutterCell {
     pub scope: ScopeId,
 }
 
-/// Default/blank gutter scope name — the fallback every built-in gutter
+/// Default/blank gutter scope name: the fallback every built-in gutter
 /// column (line numbers, unfilled sign slots) renders under when it has
 /// nothing more specific to say. `pub`, not `pub(crate)`: one source so the
 /// literal can't drift between `builtins::line_number`, `builtins::sign_column`,
@@ -110,7 +110,7 @@ pub struct GutterCell {
 /// `hume-editor`'s `build_pane`, which interns this same constant to hand
 /// `LineNumberColumn`/`SignColumn` their scopes at construction. Every
 /// caller interns this once (at pane/view construction) and carries the
-/// resulting `ScopeId` — same intern-at-construction contract as
+/// resulting `ScopeId`, the same intern-at-construction contract as
 /// `DecorationSource`, so the per-cell hot path in `compose_gutter` never
 /// falls back to a by-name lookup.
 pub const DEFAULT_GUTTER_SCOPE: Scope = Scope(crate::theme::ui_scopes::LINENR);
@@ -185,7 +185,7 @@ impl VirtualLineAnchor {
 /// pre-built `Grapheme`s: `display_lines::DisplayLineMap` does the grapheme segmentation and
 /// width/display-column bookkeeping itself, the same as it does for real buffer lines, so
 /// providers can't get that arithmetic wrong. Virtual
-/// lines own their own layout — `text` is not subject to the buffer's wrap
+/// lines own their own layout: `text` is not subject to the buffer's wrap
 /// mode or tab width.
 #[derive(Clone)]
 pub struct VirtualLine {
@@ -200,7 +200,7 @@ pub struct VirtualLine {
     ///
     /// Same span shape as `Decoration::Highlight`/`SyntaxSpans`: sorted by
     /// `byte_start`, non-overlapping. Providers are plugin code, so the
-    /// engine does not trust this — it re-sorts at intake (`DisplayLineMap::block`)
+    /// engine does not trust this. It re-sorts at intake (`DisplayLineMap::block`)
     /// before resolving scopes with a monotonic cursor, the same posture
     /// `style::rebuild_line_decorations` takes for highlight spans.
     pub segments: Vec<(ByteCol, ByteCol, ScopeId)>,
@@ -244,7 +244,7 @@ pub struct InlineInsert {
 /// one trait.
 pub enum Decoration {
     /// `(byte_start, byte_end)` relative to the line start, plus the tier
-    /// this span layers at — tier is data here, not a per-provider property,
+    /// this span layers at. Tier is data here, not a per-provider property,
     /// so one source can emit spans at different tiers.
     Highlight {
         byte_start: ByteCol,
@@ -274,7 +274,7 @@ bitflags! {
 
 impl DecorationKinds {
     /// Kinds the paint stage queries in one pass (`style::rebuild_line_decorations`)
-    /// — render-only, never consulted by layout. The layout stage has no
+    /// (render-only, never consulted by layout). The layout stage has no
     /// analogous combined constant: `display_lines::DisplayLineMap` queries `VIRTUAL_LINE` and
     /// `INLINE` separately, at different points in the display-line walk (`block()`
     /// for virtual lines, `ensure_formatted()` for inline inserts), so a `LAYOUT`
@@ -285,14 +285,14 @@ impl DecorationKinds {
 /// A source of per-line decorations (highlight spans, virtual lines, inline
 /// inserts, line backgrounds). Called once per queried buffer line; the
 /// caller clears `out` before the first provider for each line (or per
-/// provider, when order matters — see call sites), providers only append.
+/// provider, when order matters; see call sites), providers only append.
 ///
 /// Implementations must be cheap per-line lookups into their own state:
 /// `display_lines::DisplayLineMap` queries a single line whenever it needs that line's block
-/// shape, which is scroll, cursor, and movement math as well as render — so
+/// shape, which is scroll, cursor, and movement math as well as render, so
 /// this can run far more often than once per frame.
 pub trait DecorationSource {
-    /// The [`Decoration`] kinds this source can produce — fixed for the
+    /// The [`Decoration`] kinds this source can produce, fixed for the
     /// source's lifetime, cached at registration.
     fn kinds(&self) -> DecorationKinds;
 
@@ -328,7 +328,7 @@ pub trait StatuslineProvider {
 /// Renders the tab bar (top row of the terminal area).
 ///
 /// The engine reserves `height()` rows at the top for the tab bar when
-/// present — mirrors [`BottomBandProvider::height`]: a provider that wants
+/// present. Mirrors [`BottomBandProvider::height`]: a provider that wants
 /// to hide itself this frame (e.g. `tabline = dynamic` with only one tab
 /// open) returns `0` rather than the caller special-casing `Option::None`.
 pub trait TabBarProvider {
@@ -340,19 +340,19 @@ pub trait TabBarProvider {
 }
 
 /// Renders a bottom chrome band, directly above the statusline row (or
-/// stacked above a sibling band that already claimed that row — see
+/// stacked above a sibling band that already claimed that row; see
 /// `EngineView::render`). The engine reserves `height(max)` rows per band
-/// when present — panes shrink exactly like a terminal resize, with no
+/// when present. Panes shrink exactly like a terminal resize, with no
 /// separate mechanism (`EngineView::pane_area` folds every band into the
 /// same chrome-height arithmetic as the tab bar and statusline).
 ///
 /// Two independent callers implement this: the pick-list drawer
 /// (`show-drawer-list!`) and the docked hover popup (`show-popup! #:anchor
-/// 'bottom`) — only one is ever non-empty at a time in practice, so
+/// 'bottom`). Only one is ever non-empty at a time in practice, so
 /// `EngineView` carries both as a flat list rather than special-casing
 /// mutual exclusion.
 pub trait BottomBandProvider {
-    /// Rows to reserve this frame, given `max` (the caller's ceiling — 35%
+    /// Rows to reserve this frame, given `max` (the caller's ceiling, 35%
     /// of the terminal height). Content-driven (e.g. `min(rows + 1, max)`),
     /// not a fixed constant, so a short list doesn't reserve a large band.
     fn height(&self, max: u16) -> u16;
@@ -366,7 +366,7 @@ pub trait BottomBandProvider {
 
 /// Complete set of providers for a pane. Allocated once at startup.
 ///
-/// Each list stores `(ProviderId, Box<dyn Trait>)` pairs — the id is still
+/// Each list stores `(ProviderId, Box<dyn Trait>)` pairs. The id is still
 /// load-bearing even with no unregistration path: virtual display lines are stamped
 /// with their producing provider's id (`display_lines::DisplayLineMap::block`) so
 /// `DisplayLineKind::Virtual { provider_id }` can be attributed back to it (e.g. by a
@@ -415,7 +415,7 @@ impl ProviderSet {
     }
 
     /// Decoration sources whose declared [`DecorationKinds`] intersect
-    /// `want` — the kind-routing chokepoint: the layout stage (`display_lines::DisplayLineMap`)
+    /// `want`, the kind-routing chokepoint: the layout stage (`display_lines::DisplayLineMap`)
     /// queries `VIRTUAL_LINE` and `INLINE` separately, the paint stage
     /// (`style::rebuild_line_decorations`) queries `DecorationKinds::PAINT`
     /// (`HIGHLIGHT | LINE_BG`) in one pass, so no stage pays for a provider
@@ -445,7 +445,7 @@ impl ProviderSet {
     /// Push a new configured width into every registered `SignColumn`, if
     /// any. Called from `prepare_frame` each frame so the gutter can collapse
     /// to `0` when no sign exists for the pane's current buffer and grow back
-    /// when one appears — same downcast pattern as `sync_line_number_style`.
+    /// when one appears. Same downcast pattern as `sync_line_number_style`.
     pub fn sync_sign_column_width(&mut self, width: u8) {
         for (_, lane) in &mut self.gutter_columns {
             if let Some(sc) = lane.as_any_mut().downcast_mut::<SignColumn>() {

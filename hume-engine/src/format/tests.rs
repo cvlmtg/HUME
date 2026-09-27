@@ -10,7 +10,7 @@ fn dc(n: u32) -> DisplayLineCol {
 
 // Tab-stop arithmetic itself (`hume_rope::width::tab_advance`) is tested at
 // its own definition in `hume-rope`, this crate's SSOT for display-column
-// math — see `hume_rope::width::tests::tab_advance_*`. What's left to cover
+// math; see `hume_rope::width::tests::tab_advance_*`. What's left to cover
 // here is `format_buffer_line`'s use of it, below.
 
 fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayLine>, Vec<Grapheme>) {
@@ -50,7 +50,7 @@ fn single_line_no_wrap() {
 
 #[test]
 fn eol_sentinel_emitted_on_non_empty_line() {
-    // "hello\n" — the non-empty line must get an eol sentinel at the `\n`
+    // "hello\n": the non-empty line must get an eol sentinel at the `\n`
     // position so the cursor is visible when a line-selection head lands on `\n`.
     let (lines, graphemes) = do_format("hello\n", WrapMode::None);
     // "hello\n" has two ropey lines: "hello\n" and "" (trailing).
@@ -72,7 +72,7 @@ fn a_cr_is_line_content_not_a_line_break() {
     // "a\rb\n" is one line, not two: `\n` is the only break ropey splits on
     // here. A live buffer can't hold a `\r` at all (`BufferText::from`
     // normalizes it away), and `do_format` builds a `Rope::from_str`
-    // directly, so this pins the raw-rope contract — the `\r` sits in the
+    // directly, so this pins the raw-rope contract: the `\r` sits in the
     // display line like any other char instead of ending it.
     let (lines, graphemes) = do_format("a\rb\n", WrapMode::None);
     assert_eq!(lines.len(), 2, "\"a\\rb\\n\", \"\" (trailing)");
@@ -166,7 +166,7 @@ fn soft_wrap_splits_at_exact_column_not_whitespace() {
 #[test]
 fn soft_and_word_differ_at_same_width() {
     // Same input/width as above; Word backtracks to the space, keeping it
-    // as line0's last cell ("hello ", 6 graphemes — the space ends the display line
+    // as line0's last cell ("hello ", 6 graphemes; the space ends the display line
     // it was seen on, not the continuation display line's first cell),
     // while Soft splits mid-word ("hello w", 7 graphemes). The two modes
     // must not produce identical output.
@@ -197,7 +197,7 @@ fn soft_and_word_differ_at_same_width() {
 fn soft_wrap_defers_wide_char_whole_to_next_display_line_when_it_would_straddle_column() {
     // width=5: "abcd" fills cols 0..4 (current_display_col=4). The next grapheme
     // '中' (CJK, display width 2) would need cols 4..6, straddling the
-    // wrap column — `maybe_wrap` checks *before* placing a grapheme, so
+    // wrap column. `maybe_wrap` checks *before* placing a grapheme, so
     // it must defer '中' whole to the next display line rather than splitting its
     // two display cells across lines.
     let (lines, graphemes) = do_format("abcd\u{4e2d}ef", WrapMode::Soft { width: 5 });
@@ -238,7 +238,7 @@ fn soft_wrap_defers_tab_whole_to_next_display_line_when_it_would_straddle_column
     // must defer the whole tab to the next display line rather than truncating
     // its expansion mid-tab. Column 4 keeps the tab tab-stop-aligned
     // both pre- and post-wrap, so this doesn't also exercise the
-    // (separate) post-wrap width recompute — see
+    // (separate) post-wrap width recompute. See
     // `soft_wrap_recomputes_tab_width_at_post_wrap_column` for that.
     let (lines, graphemes) = do_format("abcd\tef", WrapMode::Soft { width: 6 });
     assert_eq!(lines.len(), 2, "must wrap into exactly 2 lines");
@@ -263,7 +263,7 @@ fn soft_wrap_recomputes_tab_width_at_post_wrap_column() {
     // Pre-wrap col=2 ("ab"): the tab would need cols 2..4 there (width 2,
     // its distance to the next tab stop from col 2). Deferred to a new
     // display line, it starts at col 0 instead and must expand its full 4-column
-    // tab stop — not keep the stale pre-wrap width of 2.
+    // tab stop, not keep the stale pre-wrap width of 2.
     let (lines, graphemes) = do_format("ab\tc", WrapMode::Soft { width: 3 });
     assert!(
         lines.len() >= 2,
@@ -284,7 +284,7 @@ fn soft_wrap_recomputes_tab_width_at_post_wrap_column() {
 #[test]
 fn soft_wrap_exact_fit_display_line_wraps_the_eol_sentinel_to_a_continuation_display_line() {
     // "abcde\n" wrapped at width 5 fits exactly, so no content wrap
-    // triggers — but the EOL sentinel needs a column of its own, and there
+    // triggers. But the EOL sentinel needs a column of its own, and there
     // isn't one left on a display line that's already full. It wraps the same way
     // any other cell that wouldn't fit does: onto a fresh continuation display line,
     // at that display line's column 0, rather than landing one column past the
@@ -382,7 +382,7 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayLine>, Vec<Grap
     )
 }
 
-/// Slice the arena text backing a `Whitespace`/`Virtual` cell — panics if
+/// Slice the arena text backing a `Whitespace`/`Virtual` cell. Panics if
 /// `content` isn't one of those variants (test-only helper).
 fn cell_text<'a>(arena: &'a str, content: &CellContent) -> &'a str {
     match content {
@@ -427,7 +427,7 @@ fn newline_indicator_all_mode() {
 #[test]
 fn newline_indicator_all_mode_blank_line() {
     // Newline is inherently always at end-of-line, so `all` shows it even
-    // on a whitespace-only line — there's no "trailing" axis to exempt it.
+    // on a whitespace-only line; there's no "trailing" axis to exempt it.
     let ws = WhitespaceConfig {
         newline: true,
         ..WhitespaceConfig::default()
@@ -545,7 +545,7 @@ fn space_indicator_trailing_mode_interior() {
 #[test]
 fn space_indicator_trailing_mode_blank_line() {
     // A whitespace-only line renders all its spaces as trailing
-    // indicators — there's no separate content to be "before".
+    // indicators. There's no separate content to be "before".
     let ws = WhitespaceConfig {
         space: crate::pane::WhitespaceRender::Trailing,
         space_char: "·",
@@ -645,7 +645,7 @@ fn word_wrap_keeps_a_two_column_tabs_continuation_cell_on_its_own_display_line()
     // "ab\tXXXXXXXXXXXX" at width 10, tab_width 4: the tab at display col 2
     // expands to columns 2-3 (advance 2, so it also gets a
     // `WidthContinuation` cell like a CJK character does). Word wrap
-    // backtracks to the last whitespace boundary on overflow — that boundary
+    // backtracks to the last whitespace boundary on overflow, and that boundary
     // must include the tab's continuation cell, not just the tab's own cell,
     // or the continuation strands itself as the next display line's first cell while
     // its primary stays behind on the previous display line.
@@ -672,7 +672,7 @@ fn word_wrap_keeps_a_two_column_tabs_continuation_cell_on_its_own_display_line()
 
 #[test]
 fn placeholder_wraps_whole_to_a_new_display_line_when_it_would_straddle_the_wrap_boundary() {
-    // "abc" fills display cols 0-2 of a width-6 display line, leaving 3 columns —
+    // "abc" fills display cols 0-2 of a width-6 display line, leaving 3 columns,
     // not the 6 a zero-width space's `<200b>` placeholder needs (6 chars,
     // `needs_placeholder` reports it via its own byte length). `maybe_wrap`
     // sees the placeholder's real width before it's ever split into cells,
@@ -780,7 +780,7 @@ fn do_format_windowed(
 
 #[test]
 fn long_line_no_wrap_clips_to_window_without_panic() {
-    // 70,000 ASCII chars — without clipping this would overflow `u16`
+    // 70,000 ASCII chars: without clipping this would overflow `u16`
     // (`current_display_col`) long before reaching the end. With a window of
     // [0, 80+slack) only a small prefix should be pushed.
     let text: String = "a".repeat(70_000);
@@ -872,7 +872,7 @@ fn display_line_char_offsets_are_non_decreasing_with_inline_inserts() {
 #[test]
 fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
     // A 300-char ASCII insert must produce 300 width-1 virtual cells
-    // (one per grapheme — each cell can only paint one column, see the
+    // (one per grapheme, since each cell can only paint one column; see the
     // fix in the insert-injection loop) with columns advancing 0..300,
     // not wrap around via `as u8` truncation anywhere in that count
     // (300 % 256 = 44 would be the buggy value).
@@ -936,7 +936,7 @@ fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> LineFormat 
 
 #[test]
 fn control_characters_in_an_inline_insert_render_as_their_codepoint() {
-    // An LSP server's `InlayHint.label` reaches the formatter verbatim — no
+    // An LSP server's `InlayHint.label` reaches the formatter verbatim. No
     // sanitiser sits between `set-inlay-hints!` and here (unlike
     // `set-virtual-lines!`, which substitutes at the Steel boundary). The
     // backend writes each cell's symbol to the terminal as-is, so a literal
@@ -947,7 +947,7 @@ fn control_characters_in_an_inline_insert_render_as_their_codepoint() {
 
     let resolve = |g: &Grapheme| -> String {
         match g.content {
-            // `Whitespace` never appears here — inline inserts have no
+            // `Whitespace` never appears here: inline inserts have no
             // whitespace-indicator setting of their own; a tab is always
             // `TabFill`, drawn as a plain space with no arena entry.
             CellContent::Placeholder { start, len } | CellContent::Virtual { start, len } => {
@@ -970,7 +970,7 @@ fn control_characters_in_an_inline_insert_render_as_their_codepoint() {
         .iter()
         .filter(|g| g.byte_range.is_empty() && !matches!(g.content, CellContent::Empty))
         .collect();
-    // ": \tFoo\nBar" — cols 0,1 are ": ", the tab at col 2 runs to the next
+    // ": \tFoo\nBar": cols 0,1 are ": ", the tab at col 2 runs to the next
     // stop (4) and so occupies 2 columns, which earns it a
     // `WidthContinuation` like any other width-2 cell (see
     // `display_lines::tests::render_display_line_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop`).
@@ -1000,7 +1000,7 @@ fn an_invisible_cluster_in_buffer_text_renders_as_its_codepoint() {
     // advance the terminal by nothing and slide every later grapheme left of
     // the display column the engine believes it is at. It is shown as
     // `<200b>` instead of a blank so a reader can see it is there *and*
-    // which character it is — a bidi override rendered as a space is the
+    // which character it is. A bidi override rendered as a space is the
     // Trojan Source attack.
     let rope = Rope::from_str("a\u{200B}b");
     let mut scratch = LineFormat::new();
@@ -1041,7 +1041,7 @@ fn an_invisible_cluster_in_buffer_text_renders_as_its_codepoint() {
 fn a_control_character_in_buffer_text_never_reaches_the_terminal() {
     // The hole a zero-measure test alone leaves open: `unicode-width` calls a
     // control character 1 column, so an ESC would have fallen through to
-    // `CellContent::Grapheme` and been written to the terminal verbatim —
+    // `CellContent::Grapheme` and been written to the terminal verbatim,
     // letting the contents of an opened file drive the editor's own display.
     let rope = Rope::from_str("a\u{1b}b");
     let mut scratch = LineFormat::new();
@@ -1164,7 +1164,7 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
     // A multi-char insert past the end of the line (diagnostics' EOL
     // summary, an inlay hint's `'after` anchor on the last char, etc.)
     // must go through the same per-grapheme cell emission as a mid-line
-    // insert — one Virtual cell per grapheme cluster, not a single wide
+    // insert: one Virtual cell per grapheme cluster, not a single wide
     // cell whose text a `Cell` can only paint at one column.
     let rope = Rope::from_str("abc");
     let inserts = vec![InlineInsert {
@@ -1229,8 +1229,8 @@ fn wrapping_modes_unaffected_by_h_window_none() {
     );
 }
 
-/// A virtual display line far wider than any ordinary one — a provider emitting a
-/// pathological string — must not pin its capacity in the pane's scratch for
+/// A virtual display line far wider than any ordinary one (a provider emitting a
+/// pathological string) must not pin its capacity in the pane's scratch for
 /// the rest of the session. The frame boundary is where that is given back;
 /// `clear` alone (run before laying out *each* display line, and followed immediately
 /// by filling it again) deliberately does not shrink.
@@ -1245,7 +1245,7 @@ fn clear_and_shrink_reclaims_an_oversized_virtual_display_line() {
     assert_eq!(
         vline.texts.capacity(),
         grown,
-        "clear runs mid-frame before an immediate refill — shrinking there \
+        "clear runs mid-frame before an immediate refill; shrinking there \
          would only force a re-grow"
     );
 
@@ -1256,7 +1256,7 @@ fn clear_and_shrink_reclaims_an_oversized_virtual_display_line() {
     );
 }
 
-/// Below the ceiling, the scratch keeps its capacity across frames — the
+/// Below the ceiling, the scratch keeps its capacity across frames. That's the
 /// whole point of holding one per pane rather than allocating per display line.
 #[test]
 fn clear_and_shrink_keeps_an_ordinary_virtual_display_line() {

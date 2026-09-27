@@ -10,7 +10,7 @@ fn stored_graphemes(store: &PaneLineStore, line: ContentLine) -> usize {
         .map_or(0, |i| store.entry(i).format.graphemes.len())
 }
 
-/// Whether `line` has an entry that was never formatted — the state a no-wrap
+/// Whether `line` has an entry that was never formatted: the state a no-wrap
 /// line sits in when only its block shape was ever asked for.
 fn is_unformatted(store: &PaneLineStore, line: ContentLine) -> bool {
     store
@@ -120,7 +120,7 @@ fn locate_display_line_answers_without_formatting_in_no_wrap() {
         "the line's own display line sits after the two Before display lines above it"
     );
 
-    // The entry exists — `block` built its shape — but carries no format at
+    // The entry exists (`block` built its shape) but carries no format at
     // all, which is exactly the claim: the display line came from the breakdown.
     drop(dlm);
     assert!(
@@ -148,7 +148,7 @@ fn locate_display_line_agrees_with_locate_in_both_wrap_modes() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 2 }] {
         let mut s = PaneLineStore::new();
         let mut dlm = map(&rope, wrap, &providers, &mut s);
-        // Inclusive upper bound is defensive — the buffer invariant keeps a
+        // Inclusive upper bound is defensive: the buffer invariant keeps a
         // cursor at `head < len_chars()`.
         for offset in 0..=rope.len_chars() {
             // `locate_display_line` first, so it has to be right without a previous

@@ -28,7 +28,7 @@ impl Viewport {
     /// `top` that is safe to walk: nothing validates a `top` write against the
     /// block it addresses (`Pane::recall_scroll` restores a saved offset
     /// verbatim; an LSP goto-definition jump moves `top` without re-deriving its
-    /// slot; `Pane::inherit_view_state` clones one wholesale) — and the block a
+    /// slot; `Pane::inherit_view_state` clones one wholesale), and the block a
     /// stale address was valid for can shrink or vanish (wrap-width change, a
     /// virtual-line decoration source removed, a resize) between the write and
     /// the next read.
@@ -45,7 +45,7 @@ impl Viewport {
 
     /// Scroll `delta` display lines (positive = down, negative = up). `carry`
     /// walks the same requested `delta` independently, with its own bound,
-    /// rather than tracking how far the view actually got — see this
+    /// rather than tracking how far the view actually got. See this
     /// module's doc for why.
     ///
     /// Resolves `top` first (see [`Viewport::top_at`]), so a caller need not
@@ -68,7 +68,7 @@ impl Viewport {
             return;
         }
         // `max_scroll_top` walks back from the document's very last display
-        // line, formatting every line it crosses under wrap — worth skipping
+        // line, formatting every line it crosses under wrap: worth skipping
         // when `next` is provably nowhere near EOF. Every buffer line
         // contributes at least one display line, so a `next` more than
         // `geo.height` *buffer* lines short of the document's last one (an
@@ -89,7 +89,7 @@ impl Viewport {
 
     /// Adjust `top` so `cursor_pos` is visible with `geo.margin` display
     /// lines of look-ahead above and below it. Returns the cursor's
-    /// resulting screen row — its distance below the (possibly just-moved)
+    /// resulting screen row: its distance below the (possibly just-moved)
     /// `top`.
     pub fn reveal(
         &mut self,
@@ -103,7 +103,7 @@ impl Viewport {
         }
         // Capped at `geo.target` rather than `geo.height`: walking past
         // `geo.target` under wrap only pays for `format_buffer_line` calls
-        // whose answer nothing inspects — `distance` never returns more than
+        // whose answer nothing inspects. `distance` never returns more than
         // its own cap, so a `Some` result here is always `<= geo.target`,
         // well inside the second arm below without needing its own
         // upper-bound check.
@@ -117,14 +117,14 @@ impl Viewport {
     }
 
     /// Scroll so `cursor_pos` lands `display_lines_below_top` display lines
-    /// below `top`, clamped to `[geo.margin, geo.target]` — the same
+    /// below `top`, clamped to `[geo.margin, geo.target]`: the same
     /// scrolloff range [`Viewport::reveal`] settles a too-close cursor into.
     /// Used by the `z z`/`z k`/`z j` view commands, which write no
     /// reveal-on-demand signal of their own, so the clamp is applied here
     /// rather than left to a follow-up `reveal` call.
     ///
     /// Top-of-buffer is clamped to the document's first display line;
-    /// bottom-of-buffer is *not* clamped (vim/Helix semantics — empty
+    /// bottom-of-buffer is *not* clamped (vim/Helix semantics: empty
     /// display lines past EOF are allowed).
     pub fn align(
         &mut self,
@@ -139,7 +139,7 @@ impl Viewport {
 
     /// Adjust `horizontal_offset` so `cursor_display_col` stays visible.
     /// Wrapping modes have no horizontal scroll, so the offset is forced to
-    /// 0 there. The horizontal margin is fixed — scrolloff governs only the
+    /// 0 there. The horizontal margin is fixed: scrolloff governs only the
     /// vertical axis, so this takes no `ViewGeometry`.
     pub fn reveal_horizontal(
         &mut self,
@@ -159,7 +159,7 @@ impl Viewport {
         let cursor_display_col = cursor_display_col.get() as usize;
         // `locate`'s column is content-relative (the gutter isn't part of
         // it), so the margin must compare against the content width the map
-        // itself was built with — not `Viewport::width`, which still
+        // itself was built with, not `Viewport::width`, which still
         // includes the gutter and so under-counts how many columns are
         // actually visible.
         let content_width = dlm.content_width() as usize;
@@ -182,7 +182,7 @@ impl Viewport {
 
     /// Put `top` `display_lines_above` display lines before `cursor_pos`,
     /// saturating at the document's first display line. Returns how many
-    /// display lines it actually stepped back — which, `next`/`prev` being
+    /// display lines it actually stepped back, which, `next`/`prev` being
     /// inverses, is the cursor's screen row under the new `top`.
     fn scroll_back_from(
         &mut self,
@@ -199,31 +199,31 @@ impl Viewport {
 
 impl<'a> DisplayLineMap<'a> {
     /// The furthest down the viewport top may scroll: `geo.target` display
-    /// lines of look-ahead past the document's last display line — a
+    /// lines of look-ahead past the document's last display line (a
     /// trailing `After` virtual block included, exactly like any real buffer
-    /// line — then no further. `geo` is [`Viewport::geometry`], the same
+    /// line), then no further. `geo` is [`Viewport::geometry`], the same
     /// geometry [`Viewport::reveal`] resolves, so the two agree on
     /// `margin`/`target`.
     ///
     /// The two bounds' *anchors* deliberately do not agree: this one
     /// measures back from the document's last display line, while `reveal`
-    /// measures from the cursor's own display line — which can never be a
+    /// measures from the cursor's own display line, which can never be a
     /// virtual one, since the cursor only ever occupies content display
     /// lines. That gap is what lets a scroll carry the viewport into a
     /// trailing virtual block at all; without it, the cursor being unable to
     /// follow would cap the scroll at the block's near edge. The two anchors
     /// coincide, and so land on the same top, only when the cursor sits on
-    /// the document's last display line — the case a plain `Ctrl-d`/wheel
+    /// the document's last display line: the case a plain `Ctrl-d`/wheel
     /// scroll to EOF followed by an ordinary cursor motion exercises.
     /// Saturates at the document's first display line, so a document that
     /// fits on screen (plus its margin) cannot be scrolled at all.
     ///
     /// Takes a [`ViewGeometry`] rather than a raw height precisely so a
-    /// zero-height viewport never reaches here at all — `Viewport::geometry`
+    /// zero-height viewport never reaches here at all. `Viewport::geometry`
     /// returns `None` for one, so every caller already branched away before
     /// constructing the `geo` this needs. `advance_saturating(last, -0)`
-    /// would otherwise return the document's *last* display line — the
-    /// opposite of "saturates at the first" — for the degenerate `target ==
+    /// would otherwise return the document's *last* display line (the
+    /// opposite of "saturates at the first") for the degenerate `target ==
     /// 0` a zero height produces.
     pub(crate) fn max_scroll_top(&mut self, geo: ViewGeometry) -> DisplayLinePos {
         let last_line = self.last_line();
@@ -234,15 +234,15 @@ impl<'a> DisplayLineMap<'a> {
 
 /// Where a head's display line goes after a view scroll of `delta` display
 /// lines (the same signed delta passed to `Viewport::scroll_by`), band-
-/// clamped against `top` — the viewport's top *after* that `scroll_by` call
-/// — so a `Some` result always already satisfies [`Viewport::reveal`]'s own
+/// clamped against `top` (the viewport's top *after* that `scroll_by` call),
+/// so a `Some` result always already satisfies [`Viewport::reveal`]'s own
 /// contract. See this module's doc for why the walk itself still uses the
 /// *requested* `delta`, not the amount the view actually moved, and for what
 /// the band clamp adds on top of that.
 ///
 /// Two passes: `walk_by_delta` finds where a plain `delta`-display-line
 /// walk from `head` would land (`None` if it never reaches a content
-/// line — `head` already sat at the document's edge in the direction of
+/// line: `head` already sat at the document's edge in the direction of
 /// travel, `delta == 0`, or a virtual-line block past the band swallowed the
 /// walk whole); `place_in_band` then clamps how many display lines below
 /// `top` that landing sits into `[geo.margin, geo.target]`, if it isn't
@@ -267,7 +267,7 @@ pub fn carry(
 /// cursor stranded at a block's near edge would make the next ordinary
 /// motion jump the view backwards across the whole block to reach it, so
 /// this keeps walking past the block to the first content display line
-/// beyond it — but only while doing so could still land inside the
+/// beyond it, but only while doing so could still land inside the
 /// scrolloff band (`geo.target` display lines past `top`); a block bigger
 /// than that has no legal landing spot at all, so the walk gives up instead
 /// of continuing arbitrarily far through it. The document's own edge still
@@ -306,14 +306,14 @@ fn walk_by_delta(
 }
 
 /// `carry`'s second pass: clamp how many display lines below `top`
-/// `candidate` sits into `[geo.margin, geo.target]` — walking forward from
+/// `candidate` sits into `[geo.margin, geo.target]`, walking forward from
 /// `top` to the band's near or far edge via [`walk_from_top`] if it isn't
 /// there already. A landing already in-band (the common case) passes
 /// through unchanged, so "the cursor keeps its screen row" still holds
 /// exactly for it.
 ///
 /// A landing short of `margin` is also left unchanged when `top` itself has
-/// no room to retreat any further — walking `candidate` back by `margin`
+/// no room to retreat any further: walking `candidate` back by `margin`
 /// lands on `top` again either way (saturating there), so
 /// [`Viewport::reveal`] would be idle on `candidate` exactly as it is; only
 /// when `top` still has document above it to scroll into would `reveal`
@@ -341,13 +341,13 @@ fn place_in_band(
         }
         // Short of `margin` with room for `top` to retreat further, or
         // `candidate` sits before `top` (or too far past `geo.height` to
-        // tell) — either way, not in band.
+        // tell). Either way, not in band.
         _ => walk_from_top(dlm, geo, top, geo.margin),
     }
 }
 
 /// Walk forward (`next`) from `top` by `display_lines_below_top` display
-/// lines, landing on the last content display line reached — continuing
+/// lines, landing on the last content display line reached and continuing
 /// past a virtual landing exactly like [`walk_by_delta`]'s own overshoot,
 /// capped at `geo.target` total steps so this can never itself land past the
 /// band. `top` counts as a landing in its own right when it's already

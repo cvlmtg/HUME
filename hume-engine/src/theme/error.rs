@@ -14,7 +14,7 @@ pub enum ThemeError {
     MaxDepth { name: String },
     /// A color value could not be parsed (bad hex, unknown palette name).
     /// `field` names the style field the value came from when `key` alone
-    /// doesn't say — the nested `underline.color`, whose failure would
+    /// doesn't say: the nested `underline.color`, whose failure would
     /// otherwise read identically to a bad `fg`/`bg` on the same scope.
     BadColor {
         key: String,
@@ -35,7 +35,7 @@ pub enum ThemeError {
     BadUnderline { key: String, value: String },
     /// A style field has the wrong TOML value type (`fg`, `bg`, `underline`,
     /// `modifiers`, or the extended `underline.color`/`underline.style`), or a
-    /// scope's style table carries a field that is not a style field at all —
+    /// scope's style table carries a field that is not a style field at all,
     /// in which case `field` is the offending name and `expected` lists the
     /// ones that are.
     BadStyleField {
@@ -50,7 +50,7 @@ pub enum ThemeError {
         path: PathBuf,
         error: std::io::Error,
     },
-    /// `error` was produced while loading `path` — attached wherever the
+    /// `error` was produced while loading `path`. Attached wherever the
     /// source file is known: a document's own parse/validation, or a
     /// resolve-time failure traced back through the `inherits` merge to the
     /// document that actually defined the offending key.

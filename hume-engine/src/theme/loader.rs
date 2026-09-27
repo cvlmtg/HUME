@@ -42,7 +42,7 @@ const MAX_DEPTH: usize = 8;
 
 /// Top-level keys that carry loader configuration rather than a scope entry.
 /// `validate_reserved_keys` and `merge_raw_themes` still name each one
-/// individually — they need per-key type expectations and merge behavior —
+/// individually (they need per-key type expectations and merge behavior),
 /// but every plain "is this a scope key?" test below goes through
 /// [`is_reserved`] so a third reserved key needs only one new entry here.
 const RESERVED_KEYS: [&str; 2] = ["inherits", "palette"];
@@ -57,12 +57,12 @@ fn is_reserved(key: &str) -> bool {
 
 /// A theme resolved from a TOML document, plus a warning for every entry
 /// that was malformed on its own. A non-empty `warnings` doesn't mean the
-/// load failed — [`Theme`] is always fully usable — it means some key in
+/// load failed ([`Theme`] is always fully usable); it means some key in
 /// the document didn't come through and now carries an empty style instead.
 /// See `resolve_theme_table`'s doc for exactly which problems fail the
 /// load rather than landing here.
 pub struct LoadedTheme {
-    /// Fully usable regardless of `warnings` — a malformed entry lands with
+    /// Fully usable regardless of `warnings`: a malformed entry lands with
     /// an empty style, never with a missing or half-built one.
     pub theme: Theme,
     /// One entry per malformed key found while resolving `theme`. Empty for
@@ -73,14 +73,14 @@ pub struct LoadedTheme {
 /// Load a theme by name from the given ordered search paths.
 ///
 /// `search_paths` is searched in order; the first `<name>.toml` file found
-/// wins — except when resolving an `inherits` parent that names a
+/// wins, except when resolving an `inherits` parent that names a
 /// higher-priority file already visited earlier in the chain (a theme
 /// shadowing one of the same name), in which case that candidate is skipped
 /// in favor of the next. Child scopes override parent scopes from `inherits`
 /// chains.
 ///
-/// Returns a fully-resolved, un-baked [`Theme`] wrapped in a [`LoadedTheme`]
-/// — check its `warnings` if you want to surface them. Call [`Theme::bake`]
+/// Returns a fully-resolved, un-baked [`Theme`] wrapped in a [`LoadedTheme`];
+/// check its `warnings` if you want to surface them. Call [`Theme::bake`]
 /// with the live [`crate::theme::ScopeRegistry`] before the first render.
 pub fn load_theme(name: &str, search_paths: &[PathBuf]) -> Result<LoadedTheme, ThemeError> {
     let mut visited: FxHashSet<PathBuf> = FxHashSet::default();
@@ -91,14 +91,14 @@ pub fn load_theme(name: &str, search_paths: &[PathBuf]) -> Result<LoadedTheme, T
 /// Parse a theme from a TOML string.
 ///
 /// Supports palette indirection and all scope value forms, but does **not**
-/// support `inherits` — the document must be a self-contained leaf. Passing a
+/// support `inherits`: the document must be a self-contained leaf. Passing a
 /// document with a string `inherits` returns [`ThemeError::NotFound`] for the
 /// named parent; a non-string `inherits` returns [`ThemeError::BadReservedKey`]
 /// instead, same as [`load_theme`].
 ///
 /// Intended for embedded themes (e.g. `include_str!` in the binary). Has no
-/// file of its own, so its errors — fatal or collected as [`LoadedTheme::warnings`]
-/// — are never wrapped in [`ThemeError::InFile`].
+/// file of its own, so its errors (fatal or collected as [`LoadedTheme::warnings`])
+/// are never wrapped in [`ThemeError::InFile`].
 pub fn parse_theme(toml_str: &str) -> Result<LoadedTheme, ThemeError> {
     let mut visited: FxHashSet<PathBuf> = FxHashSet::default();
     // Empty search_paths: any `inherits` key will fail with NotFound, which is
@@ -111,29 +111,29 @@ pub fn parse_theme(toml_str: &str) -> Result<LoadedTheme, ThemeError> {
 // Recursive loader
 // ---------------------------------------------------------------------------
 //
-// An `inherits` chain is merged as raw TOML — parent and child tables, palette
-// included — and resolved to colors exactly once, after the whole chain is
+// An `inherits` chain is merged as raw TOML (parent and child tables, palette
+// included) and resolved to colors exactly once, after the whole chain is
 // flat. This is Helix's own model (`helix-view::theme::merge_themes` +
 // `helix-loader::merge_toml_values`): a child's palette override must reach
 // every scope that references it, including ones the child never redeclares,
 // which is how a real Helix light/dark theme pair works (the light variant
 // overrides a handful of palette names and nothing else). Resolving per level
-// instead — the parent to concrete colors, then only letting the child's own
-// palette recolor scopes it explicitly restates — cannot support that: the
+// instead (the parent to concrete colors, then only letting the child's own
+// palette recolor scopes it explicitly restates) cannot support that: the
 // parent's palette is gone by the time the child is parsed.
 
 /// A merged-but-unresolved theme document, plus per-key file provenance.
 ///
 /// Built up through an `inherits` chain by `merge_raw_themes`, in parallel
 /// with the table itself, so a resolve-time error can name the document that
-/// actually defined the offending entry — information the merge would
+/// actually defined the offending entry, information the merge would
 /// otherwise erase. Scope keys and `[palette]` names are tracked separately
 /// because they merge separately: a child overriding one palette name leaves
 /// every other name pointing at the file that did define it. Both empty for
 /// an embedded ([`parse_theme`]) document, which has no file to attribute to.
 ///
 /// `warnings` carries flatten-time warnings (a misspelled style attribute
-/// found by `walk_scope`) already attributed to this document's file — they
+/// found by `walk_scope`) already attributed to this document's file. They
 /// happen before `origins`/`palette_origins` exist, so they can't wait to be
 /// attributed alongside `resolve_theme_table`'s own warnings the way a bad
 /// color or modifier does.
@@ -166,11 +166,11 @@ fn load_raw_recursive(
 }
 
 /// Parse one TOML document, merging in its `inherits` parent (via
-/// `load_raw_recursive`, when `search_paths` is non-empty) before returning —
+/// `load_raw_recursive`, when `search_paths` is non-empty) before returning;
 /// the result carries no unresolved `inherits` chain of its own.
 ///
 /// `path` is this document's own file, when it has one (`None` for an
-/// embedded [`parse_theme`] string) — used both to attribute this document's
+/// embedded [`parse_theme`] string), used both to attribute this document's
 /// own parse/validation errors and, if it declares `inherits`, as the
 /// requester attributed to a failure resolving its parent.
 fn parse_raw_recursive(
@@ -218,7 +218,7 @@ fn parse_raw_recursive(
     }
 }
 
-/// Wrap `err` as having come from `path`, when known — the identity a
+/// Wrap `err` as having come from `path`, when known: the identity a
 /// recursive lookup's caller (`requested_by`) or a document's own parse step
 /// already has in hand. `None` (an embedded document with no file of its
 /// own) leaves `err` unwrapped.
@@ -232,7 +232,7 @@ fn attribute(err: ThemeError, path: Option<&Path>) -> ThemeError {
     }
 }
 
-/// Map each of `keys` to `path` — one `Arc` shared by every entry, since a
+/// Map each of `keys` to `path`, one `Arc` shared by every entry, since a
 /// document has exactly one identity. `None` (an embedded document) produces
 /// an empty map: nothing to attribute to.
 fn origins_for<'a>(
@@ -247,7 +247,7 @@ fn origins_for<'a>(
 }
 
 /// Rejects a reserved top-level key with the wrong TOML value type, checked
-/// once per document before any merge — so an error names the document that
+/// once per document before any merge, so an error names the document that
 /// is actually malformed, rather than surfacing later as a `BadColor` on
 /// some unrelated inherited scope once a merge has silently discarded the
 /// key's real content.
@@ -273,13 +273,13 @@ fn validate_reserved_keys(table: &toml::Table) -> Result<(), ThemeError> {
 
 /// Merge a child [`RawTheme`] onto its parent's, child wins.
 ///
-/// `[palette]` merges key-by-key — a child's named color overrides the
+/// `[palette]` merges key-by-key: a child's named color overrides the
 /// parent's same-named one, and non-conflicting names from both sides
 /// survive. Every other top-level key is a scope entry, and the child's
 /// value replaces the parent's *wholesale* when present, rather than
 /// merging field-by-field: matching Helix's own merge (depth exhausted below
 /// the top level, `merge_toml_values(_, _, 1)`), and matching what a partial
-/// override table means to a theme author — `{ bg = "bg2" }` is meant to
+/// override table means to a theme author: `{ bg = "bg2" }` is meant to
 /// *become* the scope's new style, not patch one field of the parent's.
 ///
 /// Both origin maps merge in lockstep with the table so provenance stays
@@ -289,7 +289,7 @@ fn merge_raw_themes(parent: RawTheme, child: RawTheme) -> RawTheme {
     let mut table = parent.table;
     let mut child_table = child.table;
 
-    // Spent — a merged document carries no inherits chain of its own.
+    // Spent: a merged document carries no inherits chain of its own.
     child_table.remove("inherits");
 
     // `validate_reserved_keys` has already rejected a non-table `palette` on
@@ -326,14 +326,14 @@ fn merge_raw_themes(parent: RawTheme, child: RawTheme) -> RawTheme {
 }
 
 /// Resolve one fully-merged theme document into a [`LoadedTheme`]. Called
-/// once, after any `inherits` chain has already been flattened into `table`
-/// — so a child's palette override is visible to every scope that
+/// once, after any `inherits` chain has already been flattened into `table`,
+/// so a child's palette override is visible to every scope that
 /// references it, including ones neither the child nor any intermediate
 /// ancestor restates.
 ///
 /// A malformed palette entry or scope entry is collected into `warnings` and
 /// given a stand-in (the palette entry is dropped; the scope gets a default,
-/// all-`None` style) rather than failing the whole load — matching Helix's
+/// all-`None` style) rather than failing the whole load, matching Helix's
 /// own `build_theme_values`, which keeps the theme and warns on a bad key
 /// rather than discarding the file over it. This is a deliberate exception to
 /// this project's fail-fast default: a theme is content someone is actively
@@ -342,12 +342,12 @@ fn merge_raw_themes(parent: RawTheme, child: RawTheme) -> RawTheme {
 /// shouldn't cost them the rest of an otherwise-good theme.
 ///
 /// Everything that stays fatal instead is a problem with the *document*, not
-/// one entry in it — unparseable TOML, a missing or cyclic `inherits`
+/// one entry in it: unparseable TOML, a missing or cyclic `inherits`
 /// parent, a malformed `inherits`/`palette` key. All of those are raised
 /// earlier, in `parse_raw_recursive`/`load_raw_recursive`, before this
-/// function ever runs — there is no partial document to warn-and-continue
+/// function ever runs, so there is no partial document to warn-and-continue
 /// from. A misspelled style attribute (`walk_scope`'s own malformed entry) is
-/// collected as a warning the same way, just earlier — see `RawTheme::warnings`.
+/// collected as a warning the same way, just earlier (see `RawTheme::warnings`).
 fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     let RawTheme {
         table,
@@ -357,12 +357,12 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     } = raw;
 
     // ── Parse [palette] (if any) ──────────────────────────────────────────────
-    // Palette entries must be #rgb/#rrggbb literals — matching where Helix
+    // Palette entries must be #rgb/#rrggbb literals, matching where Helix
     // itself draws the line: its `ThemePalette::try_from` parses each palette
     // value before the built-in ANSI names are merged in, so a name here
     // (`red = "red"`) doesn't resolve there either. A malformed entry is
     // warned and recorded as `None` (declared but broken) rather than simply
-    // omitted — omitting it would let a scope referencing the same name fall
+    // omitted: omitting it would let a scope referencing the same name fall
     // through to an ANSI/hex match instead of getting its own cascading
     // warning from `resolve_color` below.
     let mut palette: FxHashMap<String, Option<Rgb>> = FxHashMap::default();
@@ -399,7 +399,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     // ── Parse scope entries ───────────────────────────────────────────────────
     // A malformed entry is warned and given a default (all-`None`) style
     // rather than omitted, so it still blocks the dot-notation fallback chain
-    // the way a real entry would — an explicit `keyword.function`, even a
+    // the way a real entry would: an explicit `keyword.function`, even a
     // broken one, must not silently fall through to `keyword`'s style. A style
     // *table* with only one bad field is the partial exception: the fields
     // that did parse are kept (see `parse_style_table`), so only a shorthand
@@ -407,7 +407,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     // back to a fully empty style.
     let mut scopes: FxHashMap<String, ResolvedStyle> = FxHashMap::default();
     for (key, value) in &table {
-        // Reserved keys — not scope entries.
+        // Reserved keys, not scope entries.
         if is_reserved(key) {
             continue;
         }
@@ -444,12 +444,12 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
 
 /// Parse one TOML scope entry into a `ResolvedStyle`, plus a warning for
 /// every individually malformed field inside a style table (the `Ok` arm's
-/// second element — empty for a clean table). Helix supports two forms:
-/// - `"keyword" = "red"` — shorthand; sets `fg` only
-/// - `"keyword" = { fg = "red", bg = "black", modifiers = ["bold"] }` — full form
+/// second element, empty for a clean table). Helix supports two forms:
+/// - `"keyword" = "red"`: shorthand; sets `fg` only
+/// - `"keyword" = { fg = "red", bg = "black", modifiers = ["bold"] }`: full form
 ///
 /// Only the shorthand string form and an outright wrong-shaped value
-/// (`BadScopeValue` — neither a string nor a table) fail outright: a
+/// (`BadScopeValue`, neither a string nor a table) fail outright: a
 /// shorthand color is the entry's only field, so nothing partial survives a
 /// bad one, and a value with no style table to draw fields from has nothing
 /// to salvage either.
@@ -488,7 +488,7 @@ fn bad_style_field(key: &str, field: &str, expected: impl Into<String>) -> Theme
 
 /// Read `t.get(lookup)` as a string and run `parse` on it, warning (into
 /// `warnings`) and returning `None` if the TOML value isn't a string or
-/// `parse` itself rejects it — the shared shape behind `fg`/`bg`/
+/// `parse` itself rejects it: the shared shape behind `fg`/`bg`/
 /// `underline.color`/`underline.style`, which differ only in `lookup`'s key
 /// (`"color"`/`"style"` inside the nested `underline` table, same as
 /// `display` everywhere else) and what `parse` does with the string. `None`
@@ -520,7 +520,7 @@ fn str_field<T>(
 }
 
 /// Parse a scope's style table field by field. A malformed field is warned
-/// and left unset rather than discarding the fields around it — matching
+/// and left unset rather than discarding the fields around it, matching
 /// Helix's own `build_theme_values`, which keeps a partially-built style
 /// rather than throwing it away over one bad key. A bad item inside
 /// `modifiers` gets the same treatment at the item level: the valid items

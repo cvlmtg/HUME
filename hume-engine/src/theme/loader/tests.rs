@@ -46,7 +46,7 @@ fn attributed_file(err: &ThemeError) -> &Path {
     }
 }
 
-/// The warning among `loaded.warnings` matching `predicate` — panics unless
+/// The warning among `loaded.warnings` matching `predicate`. Panics unless
 /// exactly one does. `predicate` sees each warning through `inner`, so it
 /// matches on the payload regardless of file attribution; the returned
 /// reference is the original (possibly `InFile`-wrapped) entry, so a caller
@@ -66,11 +66,11 @@ fn the_warning(loaded: &LoadedTheme, predicate: impl Fn(&ThemeError) -> bool) ->
     }
 }
 
-/// A malformed key still resolves — to the default (empty) style Helix also
+/// A malformed key still resolves, to the default (empty) style Helix also
 /// gives a bad key, not to whatever its dot-notation ancestor would supply.
 /// This is what "warn and load" means in practice: the key isn't dropped,
 /// its slot is just empty, so it still blocks fallback the way a real entry
-/// would. Only holds when *nothing* in the entry parsed — see
+/// would. Only holds when *nothing* in the entry parsed; see
 /// `assert_bad_style_field` for the partial case.
 fn assert_resolves_to_default_style(loaded: &LoadedTheme, key: &'static str) {
     assert_eq!(
@@ -81,11 +81,11 @@ fn assert_resolves_to_default_style(loaded: &LoadedTheme, key: &'static str) {
 }
 
 /// Assert `loaded`'s one `BadStyleField` warning has this payload, and that
-/// `key` resolves to `expected_style` — the fields that parsed cleanly
+/// `key` resolves to `expected_style`: the fields that parsed cleanly
 /// alongside the bad one, per `parse_style_table`'s partial-style behavior.
-/// The payload check alone can't tell strict-type rejections apart — every
+/// The payload check alone can't tell strict-type rejections apart. Every
 /// one produces the same variant, and only `field`/`expected` say which
-/// fired — so a mislabelled arm would otherwise pass.
+/// fired, so a mislabelled arm would otherwise pass.
 fn assert_bad_style_field(
     loaded: &LoadedTheme,
     key: &'static str,
@@ -114,7 +114,7 @@ fn assert_bad_style_field(
 /// The behavior this whole warn-vs-fail split exists for: two independently
 /// malformed entries each get collected as their own warning rather than the
 /// load stopping at the first one, and every other, well-formed entry in the
-/// same document loads normally — mirroring Helix's own `build_theme_values`,
+/// same document loads normally, mirroring Helix's own `build_theme_values`,
 /// which collects every bad key's warning instead of aborting on the first.
 #[test]
 fn multiple_malformed_entries_each_produce_their_own_warning() {
@@ -231,7 +231,7 @@ fn ansi_color_name_resolves_with_no_warning() {
 #[test]
 fn every_ansi_color_name_resolves() {
     // Expected values are xterm's own default palette, not a read-back of
-    // the loader's own table — catches a typo'd name or transposed value
+    // the loader's own table. Catches a typo'd name or transposed value
     // that a self-referential check would miss. Each color is used as its
     // own scope key (an arbitrary string as far as the loader is concerned),
     // so one theme document exercises the whole table in a single load.
@@ -373,7 +373,7 @@ blue = "#0000ff"
     assert_eq!(kw.fg, Some(Rgb(0xff, 0, 0)));
 
     // Child's palette entry resolves the child's own scope. No name
-    // collision here — see the tests below for what a collision does.
+    // collision here; see the tests below for what a collision does.
     let cm = theme.resolve_by_name(crate::types::Scope("comment"));
     assert_eq!(cm.fg, Some(Rgb(0, 0, 0xff)));
 }
@@ -402,7 +402,7 @@ inherits = "base5"
 
     let theme = load_theme("child5", &paths(dir.path())).unwrap().theme;
 
-    // Child redeclares "keyword" using "accent" — a name only the parent
+    // Child redeclares "keyword" using "accent", a name only the parent
     // defines. The parent's palette must be visible to the child's own
     // overrides, not just to the scopes the child leaves untouched.
     let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
@@ -435,7 +435,7 @@ bg0 = "#eeeeee"
 
     let theme = load_theme("child6", &paths(dir.path())).unwrap().theme;
 
-    // Child never redeclares "ui.background" — it only overrides "bg0" in
+    // Child never redeclares "ui.background"; it only overrides "bg0" in
     // its own palette. A Helix-style light/dark variant pair depends on
     // exactly this: reskin the palette, keep every inherited scope's
     // structure untouched.
@@ -481,7 +481,7 @@ fn inherits_child_without_ui_text_keeps_parent_default() {
 
     let theme = load_theme("child4", &paths(dir.path())).unwrap().theme;
 
-    // Child never redeclares "ui.text" — the merge keeps the parent's entry
+    // Child never redeclares "ui.text". The merge keeps the parent's entry
     // untouched, and `default` folds from that same value.
     assert_eq!(theme.default.fg, Some(Rgb(0x11, 0x11, 0x11)));
 }
@@ -505,8 +505,8 @@ inherits = "base7"
 
     let theme = load_theme("child7", &paths(dir.path())).unwrap().theme;
 
-    // Child's "ui.text" replaces the parent's whole style for that scope —
-    // it does not layer on top of it. A child that drops "modifiers" must
+    // Child's "ui.text" replaces the parent's whole style for that scope.
+    // It does not layer on top of it. A child that drops "modifiers" must
     // not still carry the parent's bold into `default`.
     assert_eq!(theme.default.fg, Some(Rgb(0x22, 0x22, 0x22)));
     assert!(
@@ -533,7 +533,7 @@ fn cycle_is_detected() {
 }
 
 /// A config-dir theme that shadows a bundled theme of the same name must
-/// still be able to `inherits` it — the shadowed (lower-priority) copy is a
+/// still be able to `inherits` it: the shadowed (lower-priority) copy is a
 /// distinct file, not the shadowing one itself.
 #[test]
 fn shadowing_theme_can_inherit_the_theme_it_shadows() {
@@ -795,7 +795,7 @@ fn crossed_out_is_accepted_as_strikethrough() {
     assert!(kw.modifiers.contains(Modifiers::STRIKETHROUGH));
 }
 
-/// Only Helix's "crossed_out" is accepted — Helix compatibility beats a
+/// Only Helix's "crossed_out" is accepted. Helix compatibility beats a
 /// HUME-only "strikethrough" alias with no reason to exist once the real
 /// name works everywhere.
 #[test]
@@ -845,7 +845,7 @@ fn bad_underline_becomes_a_warning() {
     assert_eq!(kw.underline, UnderlineStyle::None);
 }
 
-/// Only Helix's "line"/"curl" are accepted — same reason as `strikethrough` above.
+/// Only Helix's "line"/"curl" are accepted, for the same reason as `strikethrough` above.
 #[test]
 fn hume_only_underline_aliases_are_no_longer_accepted() {
     let dir = TempDir::new().unwrap();
@@ -948,7 +948,7 @@ fn nul_embedded_name_reports_not_found_not_io() {
 
 /// A higher-priority candidate that exists but can't be read (here: a
 /// directory sitting where `<name>.toml` should be a file) must not shadow a
-/// working lower-priority one — search order is a priority list, and one
+/// working lower-priority one. Search order is a priority list, and one
 /// broken candidate must not take the whole search down with it.
 #[test]
 fn unreadable_higher_priority_candidate_falls_through_to_the_next_search_dir() {
@@ -1159,7 +1159,7 @@ text = "#d0d0d0"
     assert_eq!(text.fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
     assert_eq!(theme.default.fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
 
-    // A container-only "ui" table must emit nothing for itself — otherwise
+    // A container-only "ui" table must emit nothing for itself. Otherwise
     // it poisons the dot-fallback chain and every unset ui.* scope resolves
     // to an empty style instead of falling through to `default`.
     let other = theme.resolve_by_name(crate::types::Scope("ui.other"));
@@ -1187,11 +1187,11 @@ bg = "#000000"
 }
 
 /// A table that carries a style field is that scope's style, so a scalar
-/// sibling in it is a misspelled style attribute, not a child scope — there is
+/// sibling in it is a misspelled style attribute, not a child scope. There is
 /// no way to tell `text = "#fff"` here from `underline_style = "curl"`, and
 /// reading it as a child silently invents a scope nothing resolves. The child
 /// meaning stays available: write `"ui.text"` as its own key. Warned and
-/// dropped, not fatal — the scope's own `fg` still loads.
+/// dropped, not fatal: the scope's own `fg` still loads.
 #[test]
 fn scalar_sibling_of_a_style_field_is_an_unknown_attribute() {
     let dir = TempDir::new().unwrap();
@@ -1213,7 +1213,7 @@ text = "#ffffff"
     assert_eq!(ui.fg, Some(Rgb(0xaa, 0xaa, 0xaa)));
 }
 
-/// Warned and dropped rather than failing the whole load — one typo in a
+/// Warned and dropped rather than failing the whole load: one typo in a
 /// hand-authored theme must not cost the rest of an otherwise-good file.
 #[test]
 fn misspelled_style_attribute_names_itself_not_a_phantom_scope() {
@@ -1235,7 +1235,7 @@ fn misspelled_style_attribute_names_itself_not_a_phantom_scope() {
 }
 
 /// A table with no style field of its own is a pure container, so its scalar
-/// entries stay child scopes — the shorthand-string form of a section header.
+/// entries stay child scopes (the shorthand-string form of a section header).
 #[test]
 fn scalar_child_of_a_container_table_is_still_a_scope() {
     let dir = TempDir::new().unwrap();
@@ -1252,8 +1252,8 @@ text = "#ffffff"
     assert_eq!(text.fg, Some(Rgb(0xff, 0xff, 0xff)));
 }
 
-/// A table child alongside a style field is unambiguous — `[ui.cursor]` with
-/// `fg` plus `[ui.cursor.match]` beneath it — and must keep working.
+/// A table child alongside a style field is unambiguous (`[ui.cursor]` with
+/// `fg` plus `[ui.cursor.match]` beneath it) and must keep working.
 #[test]
 fn table_child_alongside_a_style_field_is_still_a_scope() {
     let dir = TempDir::new().unwrap();
@@ -1281,7 +1281,7 @@ fg = "#ff0000"
     );
 }
 
-/// A document may name one scope both ways at once — TOML sees two distinct
+/// A document may name one scope both ways at once. TOML sees two distinct
 /// keys, so it isn't a duplicate-key error and the loader has to pick. The
 /// flat key wins, and this pins that: the alternative is an accident of
 /// whether the `toml` crate's `preserve_order` feature happens to be on.
@@ -1327,7 +1327,7 @@ crimson = "red"
         |w| matches!(w, ThemeError::BadColor { key, value, .. } if key == "palette.crimson" && value == "red"),
     );
     // ...and, since the entry never made it into the palette, the scope
-    // that referenced it by name gets its own cascading warning too — the
+    // that referenced it by name gets its own cascading warning too: the
     // load doesn't try to guess a colour for a name it just dropped.
     the_warning(
         &loaded,
@@ -1471,7 +1471,7 @@ fn empty_nested_scope_table_blocks_fallback() {
         .unwrap()
         .theme;
 
-    // "ui.cursor.insert" = {} deliberately blocks the dot-fallback chain —
+    // "ui.cursor.insert" = {} deliberately blocks the dot-fallback chain:
     // it must resolve to an empty style, not to "ui.cursor"'s fg.
     let insert = theme.resolve_by_name(crate::types::Scope("ui.cursor.insert"));
     assert_eq!(insert.fg, None);
@@ -1499,7 +1499,7 @@ text = "#222222"
         .unwrap()
         .theme;
 
-    // Flatten must run before the inherits merge — a nested child override
+    // Flatten must run before the inherits merge. A nested child override
     // and a flat parent key land on the same merged key ("ui.text"), so the
     // child wins outright rather than by iteration-order luck.
     let text = theme.resolve_by_name(crate::types::Scope("ui.text"));
@@ -1638,7 +1638,7 @@ fn non_string_underline_color_becomes_a_warning() {
 }
 
 /// A bad *colour* under `underline` names the field, so it can't be mistaken
-/// for a bad `fg`/`bg` on the same scope — the two would otherwise produce the
+/// for a bad `fg`/`bg` on the same scope, since the two would otherwise produce the
 /// same sentence.
 #[test]
 fn bad_underline_color_names_the_field_it_came_from() {
@@ -1654,7 +1654,7 @@ fn bad_underline_color_names_the_field_it_came_from() {
         warning.to_string().contains("underline.color"),
         "the warning must say which field carried the bad colour: {warning}"
     );
-    // The rest of the style still applies — one bad field doesn't discard it.
+    // The rest of the style still applies: one bad field doesn't discard it.
     let kw = loaded.theme.resolve_by_name(crate::types::Scope("keyword"));
     assert_eq!(kw.fg, Some(Rgb(0xff, 0, 0)));
     assert_eq!(kw.underline, UnderlineStyle::Wavy);
@@ -1678,8 +1678,8 @@ fn non_string_underline_style_becomes_a_warning() {
     );
 }
 
-/// A scope value that is neither a string nor a table has no style to build
-/// — the shape Helix's `rainbow = [...]` bracket array takes, for instance.
+/// A scope value that is neither a string nor a table has no style to build,
+/// for instance the shape Helix's `rainbow = [...]` bracket array takes.
 #[test]
 fn non_string_non_table_scope_value_becomes_a_warning() {
     let dir = TempDir::new().unwrap();
@@ -1781,8 +1781,8 @@ inherits = "ovr_parent"
     assert_resolves_to_default_style(&loaded, "keyword");
 }
 
-/// A parse error in a grandparent must be attributed once, to the grandparent
-/// — not re-wrapped by each level that propagated it. `inner` asserts the
+/// A parse error in a grandparent must be attributed once, to the grandparent,
+/// not re-wrapped by each level that propagated it. `inner` asserts the
 /// single wrap; this pins which file it names.
 #[test]
 fn parse_error_in_a_grandparent_is_attributed_once() {

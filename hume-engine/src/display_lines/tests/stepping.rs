@@ -3,7 +3,7 @@
 use super::*;
 use crate::pane::ViewGeometry;
 
-/// [`ViewGeometry`] for a `height`-row viewport and `margin` scrolloff —
+/// [`ViewGeometry`] for a `height`-row viewport and `margin` scrolloff.
 /// `max_scroll_top` cannot be called at `height == 0` (there is no
 /// `ViewGeometry` to construct one from), so every fixture here is implicitly
 /// nonzero-height.
@@ -226,7 +226,7 @@ fn max_scroll_top_counts_virtual_lines_toward_the_height() {
     assert_eq!(
         dlm.max_scroll_top(geo(6, 0)),
         expected[0],
-        "6 display lines fit in a 6-line viewport — top can't move"
+        "6 display lines fit in a 6-line viewport, so top can't move"
     );
     assert_eq!(
         dlm.max_scroll_top(geo(5, 0)),
@@ -243,7 +243,7 @@ fn max_scroll_top_counts_virtual_lines_toward_the_height() {
 #[test]
 fn max_scroll_top_margin_reserves_lookahead_rows_past_the_last_display_line() {
     // Same 6-display-line fixture. A margin > 0 pulls the bound back that
-    // many display lines from the last one — matching
+    // many display lines from the last one, matching
     // `Viewport::reveal`'s own bottom-margin arithmetic, so the two agree on
     // where "all the way down" is.
     let (rope, providers, expected) = three_line_doc();
@@ -265,7 +265,7 @@ fn max_scroll_top_margin_reserves_lookahead_rows_past_the_last_display_line() {
 #[test]
 fn max_scroll_top_margin_is_capped_the_same_way_reveal_caps_it() {
     // A margin at or above half the viewport height must not swallow the
-    // whole viewport — clamped to `(height - 1) / 2`, identically to
+    // whole viewport: clamped to `(height - 1) / 2`, identically to
     // `Viewport::reveal`'s own margin. An uncapped margin=10 here behaves
     // exactly like the clamped margin=1 case.
     let (rope, providers, expected) = three_line_doc();
@@ -281,7 +281,7 @@ fn max_scroll_top_margin_is_capped_the_same_way_reveal_caps_it() {
 
 #[test]
 fn zero_height_viewport_has_no_geometry_to_scroll_with() {
-    // A zero-height viewport has no room to scroll into at all — encoded as
+    // A zero-height viewport has no room to scroll into at all, encoded as
     // `Viewport::geometry` returning `None`, so `max_scroll_top` (and every
     // other scroll verb) can never be called at `height == 0` in the first
     // place; there is no `ViewGeometry` to construct one from.
@@ -306,7 +306,7 @@ fn degenerate_single_empty_line_document() {
     assert_eq!(
         dlm.max_scroll_top(geo(1, 0)),
         DisplayLinePos::default(),
-        "the document's single display line fits a height of 1 — top can't move"
+        "the document's single display line fits a height of 1, so top can't move"
     );
 }
 

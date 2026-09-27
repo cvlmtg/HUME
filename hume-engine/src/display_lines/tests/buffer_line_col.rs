@@ -9,7 +9,7 @@ use super::*;
 #[test]
 fn line_display_col_matches_locate_column_in_no_wrap() {
     // No-wrap: a line is exactly one display line, so the buffer-line-relative
-    // column and `locate`'s display-line-relative one must agree everywhere — the invariant
+    // column and `locate`'s display-line-relative one must agree everywhere: the invariant
     // `BufferLineCol::as_display_line_unwrapped` relies on to treat the two origins
     // as interchangeable there. `locate` is the reference, pinned separately
     // by the `locate_*` tests above.
@@ -79,7 +79,7 @@ fn line_display_col_excludes_wrap_indent() {
 
     // Sanity: the line really did wrap, and the last position really is on
     // the indented continuation display line, where the display-line-relative
-    // column (`locate`) disagrees with the buffer-line-relative one — proving
+    // column (`locate`) disagrees with the buffer-line-relative one, proving
     // `buffer_line_col` isn't just forwarding `locate`'s answer verbatim.
     let last = rope.len_chars() - 1;
     let (pos, display_line_col) = dlm.locate(co(last));
@@ -98,7 +98,7 @@ fn line_display_col_excludes_wrap_indent() {
 fn line_display_col_counts_a_preceding_inline_insert() {
     // "ab\n" with a 2-cell inline insert ("XY", an inlay hint say) spliced in
     // right before 'b': the insert occupies columns 1..3, so 'b's
-    // line-relative column is 3, not its char offset (1) — exactly the
+    // line-relative column is 3, not its char offset (1). That is exactly the
     // quantity the rope-only mirror this API replaces (`place_display_column`)
     // could never see, since inline inserts live only in the decoration layer
     // `DisplayLineMap` formats through.
@@ -125,7 +125,7 @@ fn char_at_line_display_col_round_trips_with_line_display_col() {
     // deliberately never lands there on a non-empty line (see
     // `char_at_nearest_content_stays_off_the_eol_sentinel`), so round-tripping
     // *that* offset's column intentionally clamps back to 'd' rather than
-    // returning 9 — not a round trip to test.
+    // returning 9, which makes it not a round trip to test.
     let rope = Rope::from_str("    ab cd\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
@@ -144,7 +144,7 @@ fn char_at_line_display_col_round_trips_with_line_display_col() {
 #[test]
 fn char_at_line_display_col_clamps_to_last_char_on_a_shorter_line() {
     // Line 1 ("ab") is shorter than the column target (5) carried over from a
-    // longer line — clamps to the last real character rather than landing on
+    // longer line. It clamps to the last real character rather than landing on
     // the '\n', matching `NearestContent`'s own EOL-exclusion (the "9j onto a
     // shorter line" rule).
     let rope = Rope::from_str("hello\nab\n");
@@ -185,7 +185,7 @@ fn char_at_line_display_col_lands_on_newline_for_an_empty_line() {
 fn char_at_line_display_col_matches_char_at_in_no_wrap() {
     // No-wrap: buffer-line-relative and display-line-relative columns coincide,
     // so `char_at_buffer_line_col` must agree with `char_at` (display line 0)
-    // everywhere — `char_at` is the reference here, pinned separately by the
+    // everywhere. `char_at` is the reference here, pinned separately by the
     // `char_at_*` tests above. Covers, via that agreement rather than by
     // duplicating hardcoded expectations, the same tab/CJK/width-boundary
     // cases: a tab or wide grapheme before the target,

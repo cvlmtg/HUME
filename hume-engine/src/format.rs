@@ -24,7 +24,7 @@ use cells::grapheme_display;
 
 /// Format one buffer line, appending zero or more `DisplayLine`s.
 ///
-/// `h_window` clips emitted graphemes to a horizontal column range — used only
+/// `h_window` clips emitted graphemes to a horizontal column range. It is used only
 /// by the fused render pipeline in `WrapMode::None`, where a single line can be
 /// arbitrarily long (a 1MB minified-JS line is a real case). Once the scan
 /// passes `h_window.end`, formatting stops early (bounding CPU cost to the
@@ -32,7 +32,7 @@ use cells::grapheme_display;
 /// are scanned (needed for tab-stop column arithmetic) but not pushed, since the
 /// compose stage would discard them anyway. Pass `None` for wrapping modes
 /// (already bounded by `wrap_width`) and for editor-side callers, which bound
-/// themselves by target position through `bound` instead — the window is a
+/// themselves by target position through `bound` instead. The window is a
 /// *viewport* clip, and their targets are routinely outside it (secondary
 /// selection heads are never tracked horizontally; the primary's own target
 /// is off-window until `Viewport::reveal_horizontal` scrolls to it
@@ -40,7 +40,7 @@ use cells::grapheme_display;
 /// a clipped-out target silently resolves to the wrong column instead of
 /// erroring.
 ///
-/// `bound` stops the scan once the requesting query's answer is determined —
+/// `bound` stops the scan once the requesting query's answer is determined;
 /// see [`FormatBound`]. Pass [`FormatBound::Full`] whenever the display line
 /// count or the line's tail matters.
 #[allow(clippy::too_many_arguments)]
@@ -56,7 +56,7 @@ pub fn format_buffer_line(
     out: &mut LineFormat,
 ) {
     // The caller (`display_lines::DisplayLineMap::ensure_formatted`) resets `out` right before
-    // this call, so `text_start` is always 0 — kept as a variable (not
+    // this call, so `text_start` is always 0. It is kept as a variable (not
     // assumed) so `line_str` below stays correct if that contract ever
     // changes. Rope chunks are valid UTF-8.
     let text_start = out.line_texts.len();
@@ -69,20 +69,20 @@ pub fn format_buffer_line(
     for chunk in line_slice.chunks() {
         out.line_texts.push_str(chunk);
     }
-    // Strip the trailing `\n` ropey includes for every non-final line — the
+    // Strip the trailing `\n` ropey includes for every non-final line: the
     // EOL sentinel below is emitted only for a line that actually had one.
     let had_newline = hume_rope::lines::truncate_line_break(&mut out.line_texts);
 
     let line_str = &out.line_texts[text_start..];
 
     // Byte offset where trailing whitespace begins. A ws grapheme is
-    // "trailing" iff its byte offset is at/after this point — this excludes
+    // "trailing" iff its byte offset is at/after this point, which excludes
     // leading and interior whitespace in one check. On an all-whitespace line
     // `trim_end()` yields `""` (offset 0), so every ws char counts as trailing.
     let trailing_ws_start = line_str.trim_end().len();
     let indent_depth = hume_rope::width::indent_depth(line_str, tab_width);
 
-    // `WrapMode { width }` stays terminal-bounded (`u16`) — widened here since
+    // `WrapMode { width }` stays terminal-bounded (`u16`), widened here since
     // it's compared against `current_display_col`, which now tracks a document column
     // that can exceed a `u16`. `None` means no wrap.
     let wrap_width: Option<u32> = wrap_mode.wrap_width().map(u32::from);
@@ -127,9 +127,9 @@ pub fn format_buffer_line(
     // so the style stage can resolve selection positions without rope lookups.
     let mut char_pos = hume_rope::lines::line_start_char(rope, line_idx).index();
 
-    // Set when the scan stopped early — either `h_window` reached its right
-    // edge, or `bound` was satisfied. Everything past that point — the EOL
-    // sentinel, trailing inserts, the newline indicator — sits at or beyond
+    // Set when the scan stopped early: either `h_window` reached its right
+    // edge, or `bound` was satisfied. Everything past that point (the EOL
+    // sentinel, trailing inserts, the newline indicator) sits at or beyond
     // the true end of line, so it is skipped rather than emitted at a column
     // the truncated scan never reached.
     let mut clipped = false;
@@ -150,7 +150,7 @@ pub fn format_buffer_line(
             if wrap_width.is_none() && h_window.is_none() {
                 // No wrapping and no horizontal window: `maybe_wrap` below
                 // would be a no-op and the visibility check would
-                // short-circuit on `h_window`'s own `None` — the only thing
+                // short-circuit on `h_window`'s own `None`. The only thing
                 // the insert's width would answer in that case is "is it
                 // empty", cheaper to ask directly than to walk every
                 // grapheme cluster to sum a width nothing downstream reads.
@@ -176,7 +176,7 @@ pub fn format_buffer_line(
                 // branches below ever does anything to `ins_width`:
                 // `maybe_wrap` moves `current_display_col` only when
                 // wrapping, and the `visible` check only reads `ins_width`
-                // when `h_window` is `Some` — which is only when not
+                // when `h_window` is `Some`, which is only when not
                 // wrapping, i.e. before `maybe_wrap` had any chance to move
                 // anything. Either way `ins_width` is measured at the exact
                 // column it's later used against; nothing here can go stale.
@@ -268,7 +268,7 @@ pub fn format_buffer_line(
         );
 
         // A tab deferred whole to a continuation display line expands from its new
-        // (post-wrap) column, not the one `grapheme_display` computed it at —
+        // (post-wrap) column, not the one `grapheme_display` computed it at:
         // tab width is column-dependent, unlike every other grapheme's.
         let width = if grapheme_str == "\t" {
             hume_rope::width::grapheme_width(
@@ -315,10 +315,10 @@ pub fn format_buffer_line(
             // Backing up the primary to avoid overflow is not yet implemented.
             graphemes_out.push(Grapheme {
                 byte_range,
-                // Same char as the primary cell — this is not a distinct buffer position.
+                // Same char as the primary cell; this is not a distinct buffer position.
                 char_offset: char_pos - char_count,
                 display_col: wrap.current_display_col,
-                width: 0, // zero — does not consume columns
+                width: 0, // zero: does not consume columns
                 content: CellContent::WidthContinuation,
                 indent_depth,
                 scope: None,
@@ -340,7 +340,7 @@ pub fn format_buffer_line(
         }
 
         // Checked here, at the very end of the iteration, so the grapheme that
-        // satisfies the bound is emitted whole — with any inline inserts that
+        // satisfies the bound is emitted whole, with any inline inserts that
         // precede it and its own width-continuation cell. Stopping earlier
         // (inside the insert-injection loop) could leave a run of `Virtual`
         // cells as the last thing on the display line, and `NearestContent` excludes
@@ -357,7 +357,7 @@ pub fn format_buffer_line(
     // definition once the window's right edge has been passed.
     if !clipped {
         // Both the EOL sentinel and the newline indicator below sit at the
-        // line's own end byte — an empty span, since neither is real line
+        // line's own end byte: an empty span, since neither is real line
         // content.
         let eol_bytes =
             ExclusiveRange::new(ByteCol::new(line_str.len()), ByteCol::new(line_str.len()));
@@ -373,7 +373,7 @@ pub fn format_buffer_line(
         // For non-empty lines it sits one column past the last visible character.
         if had_newline {
             // A display line that fits exactly `wrap_width` columns of real
-            // content has no column left for the sentinel itself — wrap it
+            // content has no column left for the sentinel itself. Wrap it
             // onto a fresh continuation display line (its own `maybe_wrap`
             // call, same as any other cell) rather than letting it land one
             // column past the pane's own right edge, where the cursor it
@@ -419,14 +419,14 @@ pub fn format_buffer_line(
         // ── Newline indicator ───────────────────────────────────────────────
         // Emitted at the end of the line (after all content and trailing inserts)
         // on the last wrap display line. A newline is inherently always at end-of-line,
-        // so there's no "trailing vs interior" distinction here — just on/off.
+        // so there's no "trailing vs interior" distinction here, just on/off.
         if had_newline && whitespace.newline {
             let (start, len) = push_arena_text(virtual_texts_out, whitespace.newline_char);
             graphemes_out.push(Grapheme {
                 byte_range: eol_bytes,
                 // Same offset as the EOL sentinel (the `\n` position). Style-stage
                 // lookups resolve to the *first* grapheme at a given offset, which
-                // is the EOL sentinel pushed earlier in this function — the
+                // is the EOL sentinel pushed earlier in this function. The
                 // indicator itself is never the cursor-cell match.
                 char_offset: char_pos,
                 display_col: wrap.current_display_col,
@@ -456,7 +456,7 @@ struct WrapState {
     /// Index into `graphemes_out` where the current display line began.
     line_g_start: usize,
     /// Grapheme index of the last seen whitespace boundary in the current
-    /// display line (for word-wrap backtracking) — `== line_g_start` means
+    /// display line (for word-wrap backtracking). `== line_g_start` means
     /// none has been seen yet, since a split resets both to the same value
     /// in the same `maybe_wrap` call.
     last_ws_g_idx: usize,
@@ -496,7 +496,7 @@ impl WrapState {
             return;
         }
         if self.current_display_col == DisplayLineCol::new(0) {
-            // Single grapheme wider than the viewport — emit it anyway to avoid
+            // Single grapheme wider than the viewport: emit it anyway to avoid
             // an infinite loop. (This can happen with very wide tab stops.)
             return;
         }

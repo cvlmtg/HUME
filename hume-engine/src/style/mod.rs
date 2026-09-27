@@ -17,7 +17,7 @@ use crate::types::{DisplayLine, EditorMode, Grapheme, ResolvedStyle, ScopeId, Se
 /// Reusable scratch buffers for the Style stage (Stage 3).
 ///
 /// Owned by [`crate::pipeline::FrameScratch`] so capacity is retained across
-/// frames — no heap allocation after the first frame warms up the `Vec`s.
+/// frames: no heap allocation after the first frame warms up the `Vec`s.
 pub struct StyleScratch {
     /// Per-grapheme resolved styles (parallel to the graphemes slice).
     pub styles: Vec<ResolvedStyle>,
@@ -39,7 +39,7 @@ pub struct StyleScratch {
     /// The primary is always `selections[0]` by convention (the selection the viewport follows).
     /// We track it by post-sort index rather than adding an `is_primary: bool` field on
     /// `Selection`, because `Selection` is a pure data type (anchor + head) and "primary" is a
-    /// display concern — it would bleed UI logic into the core model. Using an index also avoids
+    /// display concern; it would bleed UI logic into the core model. Using an index also avoids
     /// fragile DocPos equality: two distinct selections could share the same head position.
     pub primary_idx_in_sorted: Option<usize>,
     /// Display column of the primary selection's head on the current display line. `None` if not on this display line.
@@ -65,7 +65,7 @@ impl StyleScratch {
     }
 
     /// Copy `selections` (already sorted in ascending document order) into
-    /// `sorted_sels`. No sort is performed — the caller guarantees order.
+    /// `sorted_sels`. No sort is performed: the caller guarantees order.
     pub fn populate_sorted_sels(&mut self, selections: &[Selection], primary_idx: usize) {
         debug_assert!(
             selections.windows(2).all(|w| w[0].head <= w[1].head),
@@ -127,7 +127,7 @@ pub(crate) fn style_display_line(
     scratch: &mut StyleScratch,
 ) {
     let primary_idx = scratch.primary_idx_in_sorted;
-    // Whether the primary selection runs backward (head before anchor) — the
+    // Whether the primary selection runs backward (head before anchor): the
     // one piece of per-display-line context the unpainted-primary-head
     // carve-out below needs. A property of the selection itself, not of
     // this display line, so it's computed once here rather than per grapheme.
@@ -158,12 +158,12 @@ pub(crate) fn style_display_line(
     // Tiers 4 and 3 are properties of the *display line*, not of any
     // grapheme in it, so they resolve once here rather than per grapheme below.
     //
-    // Tier 4: provider line-background tint (lowest) — a full-row
+    // Tier 4: provider line-background tint (lowest), a full-row
     // *background* a `DecorationSource` requested for this line (e.g.
     // git-diff's changed-line highlight). Only `bg` is layered, not the
     // scope's whole resolved style: the row-fill paint site
-    // (`pane_render.rs`'s `row_bg`) can only ever contribute a background —
-    // it has no per-grapheme fg/modifiers to paint — so a `LineBg`-scoped fg
+    // (`pane_render.rs`'s `row_bg`) can only ever contribute a background
+    // (it has no per-grapheme fg/modifiers to paint), so a `LineBg`-scoped fg
     // or modifier applied here would only ever show up on content cells,
     // never on the gutter or the row's trailing fill past end-of-line.
     // Constraining both paint sites to `bg` is what keeps them in agreement
@@ -174,7 +174,7 @@ pub(crate) fn style_display_line(
     //
     // Tier 3: selection-head-line background tint, applied to every grapheme
     // on the line that contains a selection head. `theme.ui` fields are O(1)
-    // struct-field reads — no HashMap lookup.
+    // struct-field reads, no HashMap lookup.
     let mut base_style = theme.default;
     if let Some(scope) = line_tint {
         base_style = base_style.layer(ResolvedStyle {
@@ -206,8 +206,8 @@ pub(crate) fn style_display_line(
         // Tier 2d½: an unrenderable cluster's stand-in, or an opted-in
         // whitespace glyph. Layered over the syntax highlight so `<202e>`
         // reads as a placeholder rather than as whatever token it sits
-        // inside — these are the characters a reader most needs to notice
-        // — and so a whitespace glyph takes the theme's dedicated colour
+        // inside (these are the characters a reader most needs to notice),
+        // and so a whitespace glyph takes the theme's dedicated colour
         // rather than the token colour underneath it. Under Tier 2e so a
         // decoration that carries its own scope still wins. `TabFill` gets
         // neither scope: a tab's indicator being off must leave it unstyled.
@@ -230,14 +230,14 @@ pub(crate) fn style_display_line(
         }
 
         // Tiers 1 and 0: selection and selection-head, as mutually exclusive
-        // spans — matching Helix's own non-overlapping selection/cursor spans
+        // spans, matching Helix's own non-overlapping selection/cursor spans
         // in `doc_selection_highlights` rather than layering a (possibly
         // partial) head style over a selection style underneath it. Both
         // heads are painted only when the resolved cursor shape for the live
         // mode is `Block`; for Bar/Underline the real terminal cursor is the
         // primary's sole indicator, and HUME extends that same rule to
         // secondary heads (a deliberate departure from Helix, which paints
-        // secondary cursors unconditionally — HUME has no second hardware
+        // secondary cursors unconditionally; HUME has no second hardware
         // cursor for a themed block to stand in for either). This is the one
         // implementing site for that rule; every other mention in this
         // codebase is a pointer back here, not a second copy.
@@ -282,13 +282,13 @@ pub(crate) fn style_display_line(
 }
 
 /// Pick the Tier-0 cursor cell style for a selection head, by mode and
-/// primary-ness. This is the themed cell color/attrs a head is painted with —
+/// primary-ness. This is the themed cell color/attrs a head is painted with,
 /// unrelated to `hume_editor`'s internal `CursorShape` setting, which is the
 /// real terminal hardware cursor's appearance during Insert mode.
 ///
-/// `Insert` uses the insert chain; `Extend` — HUME's name for Helix's Select
-/// mode — uses the select chain; every other mode, including HUME's own
-/// Command/Search/Sift prompt modes (which have no Helix equivalent — Helix
+/// `Insert` uses the insert chain; `Extend` (HUME's name for Helix's Select
+/// mode) uses the select chain; every other mode, including HUME's own
+/// Command/Search/Sift prompt modes (which have no Helix equivalent: Helix
 /// keeps the underlying document mode while a prompt is open, and HUME's
 /// prompts have no cursor-shape option of their own), uses the plain Normal
 /// chain.
@@ -316,13 +316,13 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 /// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
 /// `sorted_sels`) has a visible span on this display line.
 ///
-/// Rescans all of `sorted_sels` on every call — O(display_lines × selections)
+/// Rescans all of `sorted_sels` on every call: O(display_lines × selections)
 /// per frame. Intentional: realistic selection counts are single digits, so
 /// this is nil in practice. The alternative (binding the window of selections
 /// overlapping one line via two `partition_point` calls, hoisted per buffer
 /// line) requires translating `primary_idx` into window-local coordinates and
 /// threading that through `StyleScratch`'s primary-span/primary-head
-/// bookkeeping — a second index space on top of the existing
+/// bookkeeping, a second index space on top of the existing
 /// head-sorted-vs-start-sorted subtlety around `pane.selections`, which has
 /// bitten this project before. Not worth it for microseconds; do not
 /// "optimize" this into the windowed form without re-deriving that trade-off.
@@ -340,10 +340,10 @@ fn collect_selection_spans(
 
     let gs = &graphemes[grapheme_range.clone()];
     // This display line has real content only when it has graphemes at all,
-    // and its first and last don't collapse to the same empty point — an
+    // and its first and last don't collapse to the same empty point: an
     // empty line's sole grapheme (the EOL sentinel) has an empty `byte_range`.
     // The style stage never runs on a virtual display line (whose cells carry
-    // `Grapheme::char_offset`'s no-buffer-position sentinel — see its doc),
+    // `Grapheme::char_offset`'s no-buffer-position sentinel; see its doc),
     // so `first`/`last`'s own char offsets are always genuine positions here.
     let content_chars = match (gs.first(), gs.last()) {
         (Some(first), Some(last)) if first.byte_range.start < last.byte_range.end => Some((
@@ -354,7 +354,7 @@ fn collect_selection_spans(
     };
 
     for (idx, sel) in sorted_sels.iter().enumerate() {
-        // A collapsed selection (anchor == head) has no extent to paint — the
+        // A collapsed selection (anchor == head) has no extent to paint. The
         // cursor at Tier 0 is its sole representation, and a 1-cell span here
         // would claim the head cell is *selected* rather than merely where the
         // cursor sits.
@@ -371,7 +371,7 @@ fn collect_selection_spans(
 
         // Clamp the selection to this line's char range.
         let sel_char_start = start.max(line_chars.start);
-        // `None` signals "extends past the end of this display line" — the
+        // `None` signals "extends past the end of this display line"; the
         // `display_col` fallback below will then use the last grapheme's
         // trailing column.
         let sel_char_end = (end < line_chars.end).then_some(end);
@@ -452,7 +452,7 @@ fn collect_head_display_cols(
 /// A display line's graphemes are non-decreasing in `char_offset` (inline-insert `Virtual` cells
 /// carry the offset of the real grapheme they precede, pushed just before it),
 /// so `partition_point` can land on an insert rather than the real grapheme at
-/// that offset — the loop below skips forward past any such ties.
+/// that offset. The loop below skips forward past any such ties.
 ///
 /// `pub(crate)`: also the resolver `display_lines::DisplayLineMap::locate_in_line` uses, so the
 /// two column-lookup paths (selection styling, cursor placement) can't drift
@@ -466,13 +466,13 @@ pub(crate) fn resolve_grapheme_display_col(
     let gs = &graphemes[grapheme_range.clone()];
     let idx = gs.partition_point(|g| g.char_offset < char_offset);
     // If char_offset falls before this display line's first grapheme, the
-    // position belongs to an earlier wrap segment — don't claim it for this
+    // position belongs to an earlier wrap segment, so don't claim it for this
     // display line.
     if idx == 0 && gs.first().is_some_and(|g| char_offset < g.char_offset) {
         return None;
     }
     // The cursor/selection must land on the real character, not an inline-insert
-    // decoration sharing its offset — skip forward past any `Virtual` cells.
+    // decoration sharing its offset, so skip forward past any `Virtual` cells.
     let mut idx = idx;
     while gs.get(idx).is_some_and(|g| {
         g.char_offset == char_offset

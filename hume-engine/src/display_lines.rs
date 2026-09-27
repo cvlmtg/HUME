@@ -1,7 +1,7 @@
 //! The single authority on the document's display-line list.
 //!
 //! A document's display lines come from two independent sources: a buffer
-//! line's own content display lines (one per wrap display line — exactly
+//! line's own content display lines (one per wrap display line, exactly
 //! one when wrapping is off), and virtual display lines contributed by
 //! [`DecorationSource`](crate::providers::DecorationSource) providers,
 //! anchored `Before` or `After` a line. Rendering, scrolling, cursor
@@ -11,8 +11,8 @@
 //! draws in the wrong place or a viewport that scrolls past content.
 //!
 //! [`DisplayLineMap`] is that one implementation. It bundles everything the
-//! display-line list depends on — rope, resolved wrap mode, tab width,
-//! whitespace config, providers, content width — so consumers hold one
+//! display-line list depends on (rope, resolved wrap mode, tab width,
+//! whitespace config, providers, content width), so consumers hold one
 //! `&mut DisplayLineMap` instead of threading eight-to-eleven parameters
 //! through every walk. What it learns about each line it visits goes in
 //! the pane's own [`line_store::PaneLineStore`], which every walk of that
@@ -60,8 +60,8 @@ pub struct RenderDisplayLine<'m> {
     pub line_text: &'m str,
     /// Arena backing `Whitespace`/`Placeholder`/`Virtual` cell text.
     pub virtual_texts: &'m str,
-    /// The display line's own background scope (`VirtualLine::base_scope`)
-    /// — `None` for content display lines, which get their background from
+    /// The display line's own background scope (`VirtualLine::base_scope`):
+    /// `None` for content display lines, which get their background from
     /// `Decoration::LineBg`/cursorline instead (`pane_render.rs`'s
     /// `LineStyle::tint`).
     pub base_scope: Option<ScopeId>,
@@ -70,19 +70,19 @@ pub struct RenderDisplayLine<'m> {
 /// The single authority on the document's display-line list. See the module doc.
 pub struct DisplayLineMap<'a> {
     rope: &'a Rope,
-    /// Everything this map's formats depend on besides the line's own text —
+    /// Everything this map's formats depend on besides the line's own text:
     /// wrap mode (always resolved against `content_width`: `WrapMode::wrap_width`
     /// panics on the `width: 0` sentinel, and [`DisplayLineMap::new`] is the one
     /// funnel every consumer passes through, so it resolves there rather
     /// than trusting callers to), tab width, whitespace config, and the
-    /// buffer's identity/generation — and, verbatim, this map's store-scope
+    /// buffer's identity/generation, plus, verbatim, this map's store-scope
     /// key. One field rather than four: see [`FormatKey`]'s own doc for why
     /// the scroll pass and the render pass sharing a store depends on it.
     key: FormatKey,
     providers: &'a ProviderSet,
     content_width: u16,
     h_window: Option<Range<DisplayLineCol>>,
-    /// Everything this map knows about the lines it has visited — the
+    /// Everything this map knows about the lines it has visited: the
     /// pane's own store, so every other walk of that pane this frame shares
     /// what this one formats. See [`line_store`]'s module doc.
     store: &'a mut PaneLineStore,
@@ -90,7 +90,7 @@ pub struct DisplayLineMap<'a> {
     /// the lines one map visits.
     inline_inserts: Vec<InlineInsert>,
     /// Scratch for one `DecorationSource::decorations_for_line` call at a
-    /// time — drained into `virtual_lines`/`inline_inserts` immediately
+    /// time, drained into `virtual_lines`/`inline_inserts` immediately
     /// after, so this stays empty between calls. Reused across providers and
     /// lines to avoid a per-call allocation.
     decorations: Vec<Decoration>,
@@ -106,13 +106,13 @@ impl<'a> DisplayLineMap<'a> {
     ) -> Self {
         debug_assert!(
             hume_rope::lines::ends_with_newline(rope),
-            "DisplayLineMap requires a trailing '\\n' (the buffer invariant) — \
+            "DisplayLineMap requires a trailing '\\n' (the buffer invariant): \
              without it `last_line`'s content-line derivation drops the \
              rope's actual last content line"
         );
         debug_assert!(
             content_width >= 1,
-            "DisplayLineMap requires content_width >= 1 — a 0 here leaves \
+            "DisplayLineMap requires content_width >= 1: a 0 here leaves \
              WrapMode::resolve's width:0 sentinel unresolved, and \
              wrap_width() then panics far from this call site. Callers pass \
              pane_width.max(1) (see Pane::content_width)."
@@ -140,7 +140,7 @@ impl<'a> DisplayLineMap<'a> {
         &self.store.entry(idx).format
     }
 
-    /// Clip `WrapMode::None` formatting to a horizontal column window — the
+    /// Clip `WrapMode::None` formatting to a horizontal column window, the
     /// render path's bound on arbitrarily long unwrapped lines.
     ///
     /// Display-line counts are unaffected (no-wrap is one content display
@@ -153,11 +153,11 @@ impl<'a> DisplayLineMap<'a> {
     /// so an entry's block shape and virtual display lines survive this call
     /// and only its format is subject to being recut. That is also what keeps the
     /// frame's two passes from sharing a *format* in `WrapMode::None`, where
-    /// only the render pass clips — they still share the block shape.
+    /// only the render pass clips; they still share the block shape.
     pub fn with_h_window(mut self, h_window: Option<Range<DisplayLineCol>>) -> Self {
         debug_assert!(
             h_window.is_none() || !self.key.wrap_mode.is_wrapping(),
-            "with_h_window is a WrapMode::None-only clip — a wrapping DisplayLineMap \
+            "with_h_window is a WrapMode::None-only clip: a wrapping DisplayLineMap \
              would silently under-count content display lines, since ensure_format_at \
              passes h_window through to the formatter even while wrapping"
         );
@@ -169,7 +169,7 @@ impl<'a> DisplayLineMap<'a> {
         self.key.wrap_mode.is_wrapping()
     }
 
-    /// The wrap column display lines are actually laid out against — `None`
+    /// The wrap column display lines are actually laid out against: `None`
     /// for `WrapMode::None`, otherwise the *resolved* width (the mode's own
     /// explicit width, or `content_width` when the mode used the `0`
     /// sentinel). Distinct from [`DisplayLineMap::content_width`]: an explicit wrap
@@ -181,7 +181,7 @@ impl<'a> DisplayLineMap<'a> {
         self.key.wrap_mode.wrap_width()
     }
 
-    /// Width available for content — the same `content_width` the caller
+    /// Width available for content: the same `content_width` the caller
     /// passed to [`DisplayLineMap::new`] (gutter already subtracted). The one column
     /// bound `locate`'s columns are relative to, so a caller sizing anything
     /// against display columns (horizontal scroll) reads it here rather than
@@ -216,7 +216,7 @@ impl<'a> DisplayLineMap<'a> {
     /// The store entry for `line`, building its block shape if this is the
     /// first time this store has seen it.
     ///
-    /// Only the *shape* — the format arrives separately, from whoever first
+    /// Only the *shape*. The format arrives separately, from whoever first
     /// needs the line's display lines. Under `WrapMode::None` that may be
     /// much later, or never.
     fn block_entry(&mut self, line: ContentLine) -> usize {
@@ -226,7 +226,7 @@ impl<'a> DisplayLineMap<'a> {
 
         let idx = self.store.insert(line);
         // `insert`'s `rebind` already cleared this entry's `virtual_lines`,
-        // keeping its allocation — taken out as scratch rather than building
+        // keeping its allocation. It is taken out as scratch rather than building
         // a separate `Vec` and overwriting it on return, which would throw
         // that allocation away. Taken rather than borrowed because the
         // provider intake below needs `&mut self` for `self.decorations`,
@@ -241,7 +241,7 @@ impl<'a> DisplayLineMap<'a> {
             let start = virtual_lines.len();
             provider.decorations_for_line(line, &mut self.decorations);
             // A provider that declared VIRTUAL_LINE but emitted something
-            // else is a provider bug — ignored, not a panic.
+            // else is a provider bug: ignored, not a panic.
             for d in self.decorations.drain(..) {
                 if let Decoration::VirtualLine(vl) = d {
                     virtual_lines.push(vl);
@@ -263,7 +263,7 @@ impl<'a> DisplayLineMap<'a> {
         // provider registration order survives within each group.
         virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
         // Providers are plugin code and the trait makes no ordering promise
-        // enforceable at the boundary — sort here so `segment_virtual_line`'s
+        // enforceable at the boundary. Sort here so `segment_virtual_line`'s
         // cursor scan (which requires sorted, non-overlapping input) never
         // has to trust it, same posture as `rebuild_line_decorations` takes
         // for highlight spans.
@@ -285,7 +285,7 @@ impl<'a> DisplayLineMap<'a> {
     /// How many content display lines `line`'s block occupies.
     ///
     /// `WrapMode::None` is always exactly one, and formatting cannot return
-    /// another answer there — so counting never runs the formatter. That is
+    /// another answer there, so counting never runs the formatter. That is
     /// the difference between O(1) and O(line length) per query on a minified
     /// line megabytes wide. Under a wrapping mode the count *is* the
     /// formatter's output, so the line gets formatted here if it wasn't
@@ -312,7 +312,7 @@ impl<'a> DisplayLineMap<'a> {
     }
 
     /// The content line a char offset resolves to, clamping the buffer's own
-    /// trailing phantom line down to [`DisplayLineMap::last_line`] — reachable when
+    /// trailing phantom line down to [`DisplayLineMap::last_line`], reachable when
     /// `char_offset == len_chars()` (the debug_assert in every caller below
     /// admits it), and there is no display line to address on a line that
     /// doesn't exist. Same posture as `hume_rope::lines::place_char_column`
@@ -337,7 +337,7 @@ impl<'a> DisplayLineMap<'a> {
         self.resolve(pos).1
     }
 
-    /// The entry index and block slot `pos` addresses, in one walk — for a
+    /// The entry index and block slot `pos` addresses, in one walk, for a
     /// caller (`render_display_line`) that needs both without resolving the line's
     /// block twice.
     fn resolve(&mut self, pos: DisplayLinePos) -> (usize, BlockSlot) {
@@ -378,7 +378,7 @@ impl<'a> DisplayLineMap<'a> {
     fn ensure_format_at(&mut self, idx: usize, bound: FormatBound) {
         debug_assert!(
             self.h_window.is_none() || matches!(bound, FormatBound::Full),
-            "a bounded query on an h_window map would clip twice — the render \
+            "a bounded query on an h_window map would clip twice: the render \
              path bounds its own formats by window and never asks for one"
         );
         let line = self.store.entry(idx).line;
@@ -391,9 +391,9 @@ impl<'a> DisplayLineMap<'a> {
         } else {
             bound
         };
-        // Already formatted far enough, cut to the same window — by an
+        // Already formatted far enough, cut to the same window (by an
         // earlier query on this map, or by the frame's other pass over this
-        // pane.
+        // pane).
         if self
             .store
             .entry(idx)
@@ -413,7 +413,7 @@ impl<'a> DisplayLineMap<'a> {
             provider.decorations_for_line(line, &mut self.decorations);
         }
         // A provider that declared INLINE but emitted something else is a
-        // provider bug — ignored, not a panic.
+        // provider bug: ignored, not a panic.
         self.inline_inserts
             .extend(self.decorations.drain(..).filter_map(|d| match d {
                 Decoration::Inline(ins) => Some(ins),

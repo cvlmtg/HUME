@@ -22,7 +22,7 @@ use crate::theme::error::ThemeError;
 /// Accepts exactly the same set as `hume_platform::path::is_safe_segment` and
 /// `core:stdlib`'s `stdlib/safe-path-segment?` (`runtime/plugins/core/stdlib/plugin.scm`).
 /// Kept as its own copy because `hume-engine` deliberately depends on no
-/// platform layer — taking one for a six-line predicate would pull `termina`
+/// platform layer: taking one for a six-line predicate would pull `termina`
 /// and `nix` into the renderer and everything downstream of it.
 pub(super) fn is_safe_theme_name(name: &str) -> bool {
     !name.is_empty()
@@ -63,7 +63,7 @@ pub(super) fn find_theme_file(
         let candidate = dir.join(&filename);
         match std::fs::read_to_string(&candidate) {
             Ok(source) => {
-                // Canonicalize after read — residual race only affects cycle-key
+                // Canonicalize after read: residual race only affects cycle-key
                 // accuracy, not file content. Not a security prefix check.
                 let canonical =
                     std::fs::canonicalize(&candidate).unwrap_or_else(|_| candidate.clone());

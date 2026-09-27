@@ -8,13 +8,13 @@ use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 // ---------------------------------------------------------------------------
 
 /// A semantic scope name emitted by providers. All style decisions go through
-/// the Theme — providers never emit raw colors.
+/// the Theme; providers never emit raw colors.
 ///
 /// Built-in scopes use `&'static str`. The scope format follows dot-notation
 /// with automatic fallback: `keyword.function` → `keyword` → default.
 ///
 /// Use `Scope` at construction time (theme maps, scope_map slices, gutter
-/// cells). Use [`ScopeId`] on the hot path — it is an O(1) Vec index into the
+/// cells). Use [`ScopeId`] on the hot path: it is an O(1) Vec index into the
 /// theme's baked style array, with no hashing.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Scope(pub &'static str);
@@ -25,7 +25,7 @@ pub struct Scope(pub &'static str);
 /// path to look up [`ResolvedStyle`] from [`crate::theme::Theme`] in O(1) via
 /// a direct `Vec` index.
 ///
-/// The mapping is stable within a session but not persistent — do not store
+/// The mapping is stable within a session but not persistent, so do not store
 /// `ScopeId` values across sessions.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ScopeId(pub u16);
@@ -41,7 +41,7 @@ pub struct ScopeId(pub u16);
 pub use hume_grid::{Modifiers, ResolvedStyle, UnderlineStyle};
 
 // ---------------------------------------------------------------------------
-// Grapheme — the atom of the formatter
+// Grapheme: the atom of the formatter
 // ---------------------------------------------------------------------------
 
 /// One grapheme cluster laid out by the Format stage.
@@ -58,7 +58,7 @@ pub struct Grapheme {
     /// Populated by the format stage so the style stage can resolve selection
     /// head positions without any rope lookups. A content display line's
     /// inline-insert (`Virtual`) cells and its newline indicator still carry
-    /// the real char offset of the buffer position they sit at or precede —
+    /// the real char offset of the buffer position they sit at or precede.
     /// `usize::MAX` is reserved for a virtual display line's cells, which
     /// have no buffer position at all (see [`crate::display_lines::DisplayLineMap::render_display_line`]).
     pub char_offset: usize,
@@ -70,7 +70,7 @@ pub struct Grapheme {
     ///
     /// With wrapping off a display line *is* the whole buffer line, so the
     /// same value is also the line's own display column and may run far past
-    /// the viewport's width — which is why the render path subtracts
+    /// the viewport's width, which is why the render path subtracts
     /// `Viewport::horizontal_offset` from it rather than treating it as
     /// a screen cell.
     pub display_col: DisplayLineCol,
@@ -78,10 +78,10 @@ pub struct Grapheme {
     pub width: u8,
     /// What to render.
     pub content: CellContent,
-    /// Indent depth at this display column — used for indent guide rendering.
+    /// Indent depth at this display column, used for indent guide rendering.
     pub indent_depth: u8,
     /// Scope this cell's decoration was interned with, if any. `None` for
-    /// every real buffer grapheme — their style comes from the highlight
+    /// every real buffer grapheme: their style comes from the highlight
     /// tiers, not a per-cell scope. `Some` for inline-insert (`Virtual`)
     /// cells and virtual-line cells that carry their own styling.
     pub scope: Option<ScopeId>,
@@ -91,9 +91,9 @@ pub struct Grapheme {
 ///
 /// `Whitespace`, `Placeholder`, and `Virtual` reference a range in a per-frame text arena in
 /// `LineFormat` (`virtual_texts` for a content line's inline decorations,
-/// `virtual_line.texts` for a provider's virtual display line — see
+/// `virtual_line.texts` for a provider's virtual display line; see
 /// `display_lines::RenderDisplayLine::virtual_texts`) rather than borrowing a string directly
-/// — their source text (Steel-configured whitespace glyphs, LSP inlay hints,
+/// because their source text (Steel-configured whitespace glyphs, LSP inlay hints,
 /// provider-built virtual lines) is never truly `'static`, and `CellContent`
 /// must stay `Copy` on the per-cell hot path (pushed and matched once per
 /// grapheme in `format_buffer_line`/`style_display_line`). `(start: u32, len: u16)`
@@ -112,12 +112,12 @@ pub enum CellContent {
     Whitespace { start: u32, len: u16 },
     /// A tab rendered as plain spaces because its indicator is off. Always
     /// exactly one space per cell, so unlike every other arena-backed
-    /// variant this one carries no `(start, len)` — there is nothing to
+    /// variant this one carries no `(start, len)`, since there is nothing to
     /// look up. Deliberately unstyled: a theme's `ui.virtual.whitespace`
     /// must not tint a tab expansion the user chose not to see indicators
     /// for.
     TabFill,
-    /// The stand-in for a cluster the terminal must not be shown as itself —
+    /// The stand-in for a cluster the terminal must not be shown as itself:
     /// a control character it would act on, or an invisible one it would
     /// collapse. Drawn like [`CellContent::Whitespace`], but its own variant
     /// because the style stage gives it its own scope (`ui.virtual.invisible`):
@@ -151,17 +151,17 @@ pub struct DisplayLine {
 ///
 /// `line_idx`/`anchor_line` are ropey domain, not content domain: every
 /// *production* display line comes from [`crate::display_lines::DisplayLineMap`], which never
-/// walks past [`crate::display_lines::DisplayLineMap::last_line`] — but
+/// walks past [`crate::display_lines::DisplayLineMap::last_line`], but
 /// [`crate::format::format_buffer_line`] is also exercised directly, one
 /// ropey line at a time, by its own unit tests
 /// (`hume-engine/src/format/tests.rs`), including on the buffer's trailing
-/// phantom line — every `do_format`-driven test there iterates
+/// phantom line. Every `do_format`-driven test there iterates
 /// `hume_rope::lines::ropey_lines`, which includes it, so this is exercised
 /// broadly rather than by one dedicated test.
 /// A `ContentLine` has no representation for that line, so the field has to
 /// be the wider domain; every real caller (`GutterColumn` implementations)
 /// narrows it back via [`hume_rope::line::RopeyLine::to_content`], clamping
-/// to the last content line — a no-op in practice, since it's never actually
+/// to the last content line: a no-op in practice, since it's never actually
 /// reached with a phantom index outside these tests.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DisplayLineKind {
@@ -243,7 +243,7 @@ impl Selection {
 /// replay queue by `count × macro length`) run long enough to hang the editor.
 pub const MAX_COUNT: usize = 10_000;
 
-/// Editor mode — selects the cursor scope ladder and highlight behavior.
+/// Editor mode: selects the cursor scope ladder and highlight behavior.
 ///
 /// Not the cursor's *shape*: that is `hume_editor`'s internal `CursorShape`
 /// setting, resolved per pane into `PaneRenderSettings::cursor_is_block`.
@@ -258,12 +258,12 @@ pub enum EditorMode {
     Search,
 }
 
-/// Which end of an over-long picker row is dropped — `picker!`'s and
+/// Which end of an over-long picker row is dropped: `picker!`'s and
 /// `live-picker!`'s `#:truncate` symbol, decoded once at the builtin
 /// boundary (`hume-scripting`'s `builtins::ui`) and carried as-is into the
 /// panel's paint-time clip (`hume-ui`'s `PickerViewState::truncate`). Lives
-/// here, not in `hume-scripting`, so `hume-ui` — which has no reason to
-/// depend on the scripting crate — can read it too. A path's distinguishing
+/// here, not in `hume-scripting`, so `hume-ui` (which has no reason to
+/// depend on the scripting crate) can read it too. A path's distinguishing
 /// part (the basename) sits at the end, so cutting the head is the default;
 /// a row whose distinguishing part sits at the front (a grep match's file
 /// path, say, before the line preview) wants `'tail` instead.

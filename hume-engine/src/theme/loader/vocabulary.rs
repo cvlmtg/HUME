@@ -19,7 +19,7 @@ fn vocabulary_dir() -> std::path::PathBuf {
         .join("tools/theme-editor/src/lib")
 }
 
-/// One emitted name, quoted as a JS string literal — the single funnel every
+/// One emitted name, quoted as a JS string literal: the single funnel every
 /// name in the generated file passes through, so the unescaped-`"`/`\` canary
 /// (a future vocabulary name that wouldn't embed cleanly) only needs writing
 /// once rather than once per table.
@@ -27,7 +27,7 @@ fn js_str(name: &str) -> String {
     assert!(
         !name.contains(['"', '\\']),
         "vocabulary name {name:?} cannot be embedded in a JS string literal \
-         unescaped — update render_vocabulary_js to escape it"
+         unescaped: update render_vocabulary_js to escape it"
     );
     format!("\"{name}\"")
 }
@@ -65,7 +65,7 @@ fn render_vocabulary_js() -> String {
     let cursor_match_scopes = js_string_array(&[CURSOR_MATCH, CURSOR_MATCH_SEARCH]);
 
     // One concrete ladder pair per real mode in `CURSOR_MODES`, rather than a
-    // templated fabricated scope — `cursor_ladder_ids` never receives
+    // templated fabricated scope. `cursor_ladder_ids` never receives
     // anything but a real mode's own literals in production, and iterating
     // `CURSOR_MODES` here pins that table's own scope names too, not just
     // `cursor_ladder_ids`' rung shape.
@@ -158,7 +158,7 @@ fn theme_vocabulary_js_matches_loader() {
 
     let actual = std::fs::read_to_string(&path).unwrap_or_else(|e| {
         panic!(
-            "cannot read {}: {e} — generate it with:\n  \
+            "cannot read {}: {e}, generate it with:\n  \
              HUME_WRITE_THEME_VOCABULARY=1 cargo test -p hume-engine \
              theme_vocabulary_js_matches_loader",
             path.display()

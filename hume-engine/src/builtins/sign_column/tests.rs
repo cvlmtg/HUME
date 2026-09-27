@@ -16,7 +16,7 @@ fn ctx(rope: &ropey::Rope) -> GutterCtx<'_> {
     }
 }
 
-/// One line's worth of signs from a single source — production has exactly
+/// One line's worth of signs from a single source. Production has exactly
 /// one `SignSource` per pane (`SharedSignSource`), whose one map entry can
 /// already hold several resolved-slot `Sign`s for a line
 /// (`Editor::update_sign_providers`), so a multi-sign line is one
@@ -59,7 +59,7 @@ fn sign_renders_in_its_own_resolved_slot() {
         },
         &ctx(&rope),
     );
-    assert_eq!(cells[0].as_str(), " ", "slot 0 unclaimed — stays blank");
+    assert_eq!(cells[0].as_str(), " ", "slot 0 unclaimed, stays blank");
     assert_eq!(
         cells[1].as_str(),
         "!",
@@ -160,7 +160,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     // Full compose path (not just SignColumn::render_display_line in isolation):
     // a 3-glyph sign in a width-2 column must come out clipped by
     // `render::compose_gutter`'s gutter clipping, same as every
-    // other gutter column — SignColumn adds no truncation of its own.
+    // other gutter column. SignColumn adds no truncation of its own.
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
@@ -237,21 +237,21 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let sym = |x: u16| buf.cell(x, 0).unwrap().text().to_string();
     assert_eq!(sym(0), "▶", "only the first glyph of the sign fits");
     assert_eq!(sym(1), " ", "separator cell, not a straggler glyph");
-    // Content area starts at x=2 (gutter_width) — must show the real
+    // Content area starts at x=2 (gutter_width) and must show the real
     // grapheme 'x', never a spillover from the sign text.
     assert_eq!(sym(2), "x");
 }
 
 /// A width-0 `SignColumn` (the auto-collapse state `set_width(0)`
 /// produces when no sign exists for the pane's buffer) must render as if
-/// it weren't registered at all — the gutter composer still iterates it,
+/// it weren't registered at all: the gutter composer still iterates it,
 /// but must not shift or corrupt whatever renders in the next column.
 #[test]
 fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
     let scope = registry.intern("diagnostic");
-    let empty_lane = SignColumn::with_width(0, Box::new(()), blank_scope); // no signs — width collapsed
+    let empty_lane = SignColumn::with_width(0, Box::new(()), blank_scope); // no signs, width collapsed
     let content_source = FixedSign {
         line: ContentLine::new(0),
         signs: vec![Sign {
@@ -385,7 +385,7 @@ fn multi_slot_column_places_each_sign_in_its_own_slot() {
                 scope: b,
                 slot: 1,
             },
-            // Ranked below the column's 2 configured slots — silently dropped.
+            // Ranked below the column's 2 configured slots, so silently dropped.
             Sign {
                 text: "~".into(),
                 scope: c,
@@ -430,7 +430,7 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
         },
         &ctx(&rope),
     );
-    assert_eq!(cells.len(), 2, "still 2 cells — padded to slot count");
+    assert_eq!(cells.len(), 2, "still 2 cells, padded to slot count");
     assert_eq!(cells[0].as_str(), "!");
     assert_eq!(cells[1].as_str(), " ", "unclaimed slot is blank");
 }

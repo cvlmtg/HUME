@@ -10,7 +10,7 @@ use super::{FrameScratch, PaneRenderCtx};
 /// Extra columns appended past `content_width` when clipping `WrapMode::None`
 /// formatting to the horizontal window (see [`render_pane`]). Covers a cell
 /// that starts just inside the right edge but is wider than one column (a
-/// double-width CJK glyph or a wide tab stop) — without slack, such a cell
+/// double-width CJK glyph or a wide tab stop). Without slack, such a cell
 /// would be scanned but never pushed, clipping it one column too early.
 const H_WINDOW_SLACK: u16 = 4;
 
@@ -69,7 +69,7 @@ pub(crate) fn render_pane(
         visible.last_line_idx,
     ));
 
-    // Clip `WrapMode::None` formatting to the visible horizontal window — a
+    // Clip `WrapMode::None` formatting to the visible horizontal window: a
     // single unwrapped line can be arbitrarily long (a minified JS file is a
     // real case), so scanning past the right edge would cost O(line_length)
     // per frame. Wrapping modes are already bounded by `wrap_width`.
@@ -91,8 +91,8 @@ pub(crate) fn render_pane(
     .with_h_window(h_window);
     let last_content_line = dlm.last_line();
 
-    // The render pass resolves the top it walks from — see `Viewport::top_at`
-    // — so a host with no per-frame healing discipline of its own (a
+    // The render pass resolves the top it walks from (see `Viewport::top_at`),
+    // so a host with no per-frame healing discipline of its own (a
     // different embedder, or this crate's own `pipeline/tests.rs`) can never
     // desync the walk from a stale address.
     let mut pos = pane_ctx.viewport.top_at(&mut dlm);
@@ -153,7 +153,7 @@ pub(crate) fn render_pane(
                     }
                 }));
                 // Row-wide fill, the virtual display line's counterpart of
-                // content display lines' `Decoration::LineBg` tint —
+                // content display lines' `Decoration::LineBg` tint:
                 // extends `base_scope`'s `bg` across the gutter and past
                 // the last grapheme to the window border, instead of
                 // stopping at end-of-text.
@@ -188,7 +188,7 @@ pub(crate) fn render_pane(
                     pane_ctx.theme,
                     style,
                 );
-                // Cursorline wins over the tint — a theme whose cursorline
+                // Cursorline wins over the tint: a theme whose cursorline
                 // has no `bg` falls through to the tint automatically.
                 let row_bg = line
                     .is_head_line
@@ -234,7 +234,7 @@ struct LineStyle {
     chars: ExclusiveRange<CharOffset>,
     is_head_line: bool,
     /// A provider-requested full-row background tint for this line, if any
-    /// (`Decoration::LineBg`) — resolved once here and read at both paint
+    /// (`Decoration::LineBg`), resolved once here and read at both paint
     /// sites (the row-fill `row_bg` and `style_display_line`'s per-grapheme
     /// layering) so they can't disagree about which line is tinted.
     tint: Option<crate::types::ScopeId>,
@@ -250,7 +250,7 @@ impl LineStyle {
         debug_assert!(
             line_idx <= last_content_line,
             "display-line walk reached line {}, past the buffer's last \
-             content line {} — `DisplayLineMap::last_line`, not \
+             content line {}: `DisplayLineMap::last_line`, not \
              `visible.last_line_idx` (the phantom trailing-\\n line one past it)",
             line_idx.index(),
             last_content_line.index()

@@ -13,7 +13,7 @@ impl<'a> DisplayLineMap<'a> {
     ///
     /// Content display lines come from the cached format, so a line is
     /// formatted once however many of its display lines get rendered.
-    /// Virtual display lines are segmented here — the same
+    /// Virtual display lines are segmented here, with the same
     /// grapheme/width/column bookkeeping `format_buffer_line` does for real
     /// lines, so a provider handing over plain text and scoped byte ranges
     /// cannot get that arithmetic wrong.
@@ -36,7 +36,7 @@ impl<'a> DisplayLineMap<'a> {
             }
             BlockSlot::Before(i) => self.segment_virtual_line(idx, i),
             // `resolve` already walked this line's block, so its `before`
-            // count is on the entry it handed back — no need to walk it again.
+            // count is on the entry it handed back, so no need to walk it again.
             BlockSlot::After(i) => {
                 let before = self.store.entry(idx).before;
                 self.segment_virtual_line(idx, before + i)
@@ -50,7 +50,7 @@ impl<'a> DisplayLineMap<'a> {
     /// Uses the store's `virtual_line`, not the line's own format: a
     /// `Before` display line renders ahead of its line's content display
     /// lines, which are very likely already formatted (`block` runs the
-    /// formatter in wrapping mode to count wrap display lines) — laying the
+    /// formatter in wrapping mode to count wrap display lines). Laying the
     /// virtual display line out over them would destroy that and force a
     /// reformat of the content display lines that follow.
     fn segment_virtual_line(&mut self, idx: usize, vl_idx: usize) -> RenderDisplayLine<'_> {
@@ -96,10 +96,10 @@ impl<'a> DisplayLineMap<'a> {
         RenderDisplayLine {
             display_line,
             graphemes: &vline.graphemes,
-            // A virtual display line has no buffer text — every cell resolves out of
+            // A virtual display line has no buffer text: every cell resolves out of
             // `virtual_texts` instead: `Virtual` text itself, or the
             // `Placeholder` a control character becomes. A tab needs no
-            // arena lookup at all — it's `TabFill`, drawn as blanks directly.
+            // arena lookup at all; it's `TabFill`, drawn as blanks directly.
             line_text: "",
             virtual_texts: &vline.texts,
             base_scope,

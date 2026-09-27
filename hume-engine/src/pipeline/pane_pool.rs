@@ -7,14 +7,14 @@ use crate::pane::Pane;
 use super::{DetachedPane, PaneId};
 
 /// Proof that a pane was just inserted into the pool and isn't yet reachable
-/// from any `LayoutTree` — minted only by `PanePool::insert`, in this
+/// from any `LayoutTree`. Minted only by `PanePool::insert`, in this
 /// module, and consumed by [`super::LayoutTree::split_leaf`]/
 /// [`super::LayoutTree::leaf`] to splice it in. Not `Clone`/`Copy`: a
 /// duplicable token would defeat the "exactly one tree ends up naming this
 /// pane" guarantee. Mirrors [`DetachedPane`]'s enforcement on the opposite
 /// transition (a pane about to leave the pool) at the same strength: this is
 /// the compiler-checked half of "a pane in the pool with no tree leaf naming
-/// it is a leak" — nothing stops a determined caller from pulling the id out
+/// it is a leak". Nothing stops a determined caller from pulling the id out
 /// via [`Self::pane_id`] and never grafting it in, same as `DetachedPane`
 /// allows for the destroy side, but the natural, ergonomic path requires a
 /// real graft.
@@ -30,7 +30,7 @@ impl UnattachedPane {
 
 #[cfg(test)]
 impl UnattachedPane {
-    /// Mint a token for a `PaneId` never actually inserted into a pool —
+    /// Mint a token for a `PaneId` never actually inserted into a pool:
     /// `LayoutTree`'s own unit tests (`pipeline::tests`) exercise tree
     /// shape in isolation from `PanePool`, off ids minted by a throwaway
     /// `SlotMap` (see that module's own `pane_ids` helper), and need a
@@ -40,15 +40,15 @@ impl UnattachedPane {
     }
 }
 
-/// Every pane that exists, across every tab — active or stashed — regardless
+/// Every pane that exists, across every tab (active or stashed), regardless
 /// of which one is on screen. Wraps the raw `SlotMap` so the type itself
 /// distinguishes the two things a caller can legitimately want from it: a
-/// specific pane by id (`Index`/`get`/`get_mut`, the common case — nothing
+/// specific pane by id (`Index`/`get`/`get_mut`, the common case: nothing
 /// below changes for the ~200 sites that already spell `view.panes[pid]`),
 /// or every pane regardless of tab visibility
 /// ([`Self::every_pane_across_all_tabs`], named so a call site states that
 /// scope in prose). There is deliberately no `iter`/`values`/`values_mut`/`keys`/
-/// `drain`/`IntoIterator` — the frame's own working set is
+/// `drain`/`IntoIterator`: the frame's own working set is
 /// `EngineView::active_pane_ids()` (the active tab's leaves only); a bare
 /// walk of the whole pool is right for buffer-lifecycle cleanup and wrong
 /// for anything scoped to what's currently on screen, and this type has no
@@ -83,7 +83,7 @@ impl PanePool {
     /// Insert a pane and mint the [`UnattachedPane`] token proving it isn't
     /// yet reachable from any layout tree. `pub(super)`: `EngineView::
     /// insert_pane` (`pipeline/mod.rs`) is the one sanctioned public
-    /// wrapper — see `UnattachedPane`'s own doc.
+    /// wrapper; see `UnattachedPane`'s own doc.
     pub(super) fn insert(&mut self, pane: Pane) -> UnattachedPane {
         UnattachedPane(self.0.insert(pane))
     }
@@ -101,7 +101,7 @@ impl PanePool {
     }
 
     /// Every pane in the pool, active tab or not. Use only for work that
-    /// must reach a background tab's pane too — buffer-lifecycle cleanup (a
+    /// must reach a background tab's pane too: buffer-lifecycle cleanup (a
     /// closed/reloaded buffer must be forgotten everywhere, or a stale
     /// reference in a background tab resurfaces the moment it's refocused),
     /// or the Steel `(panes)` builtin, which enumerates every open pane by

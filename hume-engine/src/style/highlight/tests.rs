@@ -35,7 +35,7 @@ fn interval_cursor_empty() {
     assert_eq!(cursor.scope_at(bc(100)), None);
 }
 
-/// Emits spans at two different tiers — proves tier is data on
+/// Emits spans at two different tiers. Proves tier is data on
 /// `Decoration::Highlight`, not a per-provider property.
 struct TwoTierSource(ScopeId);
 
@@ -95,7 +95,7 @@ fn rebuild_line_decorations_buckets_one_sources_spans_by_tier() {
 
 #[test]
 fn interval_cursor_adjacent_intervals() {
-    // (2,5) and (5,8) are adjacent — byte 5 must match the second.
+    // (2,5) and (5,8) are adjacent; byte 5 must match the second.
     let (_reg, ids) = make_scope_ids(&["kw", "fn"]);
     let (kw, fn_) = (ids[0], ids[1]);
     let intervals = vec![(bc(2), bc(5), kw), (bc(5), bc(8), fn_)];

@@ -41,8 +41,8 @@ fn ws() -> WhitespaceConfig {
     WhitespaceConfig::default()
 }
 
-/// [`crate::test_support::map`] at this suite's fixed 80-column width —
-/// every test in this tree that doesn't specifically vary width uses this.
+/// [`crate::test_support::map`] at this suite's fixed 80-column width.
+/// Every test in this tree that doesn't specifically vary width uses this.
 fn map<'a>(
     rope: &'a Rope,
     wrap: WrapMode,
@@ -52,7 +52,7 @@ fn map<'a>(
     crate::test_support::map(rope, wrap, providers, 80, store)
 }
 
-/// One inline insert on `line`, counting how often it is queried — the only
+/// One inline insert on `line`, counting how often it is queried: the only
 /// observable proxy for "did the map run the formatter".
 struct CountingInsert {
     line: ContentLine,
@@ -106,7 +106,7 @@ fn display_line_text(r: &RenderDisplayLine<'_>) -> String {
                 let start = start as usize;
                 Some(r.virtual_texts[start..start + len as usize].to_string())
             }
-            // No arena entry — blank across its whole reserved width, same
+            // No arena entry: blank across its whole reserved width, same
             // as `render::compose_display_line`'s `TabFill` arm draws it on screen.
             CellContent::TabFill => Some(" ".repeat(g.width as usize)),
             CellContent::Grapheme => {

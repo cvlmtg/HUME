@@ -4,7 +4,7 @@ use crate::theme::error::ThemeError;
 
 use super::{bad_style_field, is_reserved};
 
-/// Style-table fields — a table keyed by any of these is a scope's style,
+/// Style-table fields: a table keyed by any of these is a scope's style,
 /// never a container to recurse into.
 pub(super) const STYLE_KEYS: [&str; 4] = ["fg", "bg", "underline", "modifiers"];
 
@@ -12,19 +12,19 @@ pub(super) const STYLE_KEYS: [&str; 4] = ["fg", "bg", "underline", "modifiers"];
 /// / `fg = ...`) into HUME's flat dotted-key scope names, matching the theme
 /// editor's own `walkScopes` (`tools/theme-editor/src/lib/toml.js`) so a
 /// theme authored either way loads identically. Runs on each document
-/// individually, before an `inherits` merge — merging must compare a
+/// individually, before an `inherits` merge, since merging must compare a
 /// parent's flat `"ui.text"` against a child's `[ui]` / `text` on the same
 /// key, or which one wins depends on table iteration order instead of the
 /// child always winning.
 ///
 /// `warnings` collects a misspelled style attribute found along the way (see
-/// `walk_scope`) — flattening itself never fails a load.
+/// `walk_scope`); flattening itself never fails a load.
 ///
 /// One document may spell the same scope both ways (`"ui.text" = "red"` beside
 /// `[ui]` / `text = "blue"`); TOML sees two distinct keys, so this is legal
 /// input rather than a duplicate-key error it could reject. The flat key wins:
 /// `toml::Table` is a `BTreeMap` here (the crate's `preserve_order` feature is
-/// deliberately off — see hume-engine's `Cargo.toml`), so `"ui"` sorts before
+/// deliberately off; see hume-engine's `Cargo.toml`), so `"ui"` sorts before
 /// `"ui.text"` and the flat key's insert lands second. Pinned by test, since
 /// it would otherwise be an accident of a dependency's feature flags.
 pub(super) fn flatten_scopes(table: toml::Table, warnings: &mut Vec<ThemeError>) -> toml::Table {
@@ -43,18 +43,18 @@ pub(super) fn flatten_scopes(table: toml::Table, warnings: &mut Vec<ThemeError>)
 /// `path`. A table's entries split into style fields (kept as `path`'s own
 /// style table) and everything else (recursed as `"<path>.<key>"`). `path`
 /// is emitted as a scope in its own right whenever it carries a style field,
-/// or the table is empty — `"ui.cursor.insert" = {}` deliberately blocks the
+/// or the table is empty: `"ui.cursor.insert" = {}` deliberately blocks the
 /// dot-fallback chain and must not be dropped. A table holding *only*
 /// sub-tables (a pure container, e.g. `[ui.cursor]` with just
-/// `[ui.cursor.match]` beneath it) emits nothing for `path` itself — this is
+/// `[ui.cursor.match]` beneath it) emits nothing for `path` itself. This is
 /// what keeps the dot-fallback chain from stopping on an empty entry.
 ///
 /// A scalar entry *beside* a style field is dropped rather than recursed:
 /// once a table is known to be a style, `underline_style = "curl"` and
 /// `text = "#fff"` are indistinguishable, and treating either as a child
-/// scope silently invents a name nothing resolves. So it's warned instead —
-/// the same treatment `resolve_theme_table` gives every other malformed
-/// entry — and the rest of the style table is kept, exactly as one bad field
+/// scope silently invents a name nothing resolves. So it's warned instead
+/// (the same treatment `resolve_theme_table` gives every other malformed
+/// entry), and the rest of the style table is kept, exactly as one bad field
 /// inside a genuine style table (`parse_style_table`) is. A sub-table beside
 /// a style field stays a child, since nothing else it could be. The dropped
 /// spelling has a flat equivalent that still works: give the child its own
@@ -66,8 +66,8 @@ fn walk_scope(
     warnings: &mut Vec<ThemeError>,
 ) {
     let toml::Value::Table(t) = value else {
-        // Shorthand string (or an outright bad type — `parse_scope_value`
-        // reports that as `BadScopeValue`) — insert unchanged.
+        // Shorthand string (or an outright bad type, which `parse_scope_value`
+        // reports as `BadScopeValue`): insert unchanged.
         out.insert(path, value);
         return;
     };

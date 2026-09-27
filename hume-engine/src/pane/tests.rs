@@ -89,7 +89,7 @@ fn wrap_mode_values_round_trip_through_from_str() {
     // actually parse, so `VALUES` can't silently drift from `FromStr`.
     // One-directional: this can't catch a variant added to `FromStr` but
     // left out of `VALUES` (it would just silently vanish from
-    // completion) — `wrap_mode_from_str_bare_keywords` above is the
+    // completion). `wrap_mode_from_str_bare_keywords` above is the
     // closest thing to a reverse check, but it's a second
     // hand-maintained list, not a derived one.
     for v in WrapMode::VALUES {
@@ -160,7 +160,7 @@ fn whitespace_render_values_round_trip_through_from_str() {
     // actually parse, so `VALUES` can't silently drift from `FromStr`.
     // One-directional: this can't catch a variant added to `FromStr` but
     // left out of `VALUES` (it would just silently vanish from
-    // completion) — `whitespace_render_from_str_all_variants` above is
+    // completion). `whitespace_render_from_str_all_variants` above is
     // the closest thing to a reverse check, but it's a second
     // hand-maintained list, not a derived one.
     for v in WhitespaceRender::VALUES {
@@ -174,7 +174,7 @@ fn whitespace_render_values_round_trip_through_from_str() {
 #[test]
 fn whitespace_render_display_round_trips_through_from_str() {
     // `option_value!`'s `from_str` kind (settings.rs) renders this type via
-    // `to_string()` for `(get-option "whitespace-space"|"whitespace-tab")` —
+    // `to_string()` for `(get-option "whitespace-space"|"whitespace-tab")`, so
     // this must round-trip through the same `FromStr` used to write it.
     for variant in [
         WhitespaceRender::None,
@@ -235,7 +235,7 @@ fn wrap_mode_is_wrapping() {
 fn pane_new_has_no_wrap_override_and_nothing_to_restore() {
     // A fresh pane inherits the buffer/global setting (no pane-level pin)
     // and has never been toggled off, so there is no `:wrap` restore target
-    // yet — see `hume-editor`'s `pane_state::toggle_focused_wrap`.
+    // yet; see `hume-editor`'s `pane_state::toggle_focused_wrap`.
     let pane = Pane::new(BufferId::default());
     let wrap = pane.wrap();
     assert_eq!(wrap.mode, None);
@@ -244,7 +244,7 @@ fn pane_new_has_no_wrap_override_and_nothing_to_restore() {
 
 // ── remember_scroll / recall_scroll ─────────────────────────────────────
 
-/// A real (non-null) `BufferId` — `BufferId::default()` is slotmap's null
+/// A real (non-null) `BufferId`. `BufferId::default()` is slotmap's null
 /// key, which `SecondaryMap::insert` silently no-ops on, so `saved_scrolls`
 /// (a `SecondaryMap`) needs a minted key for `remember_scroll` to actually
 /// persist anything.
@@ -263,7 +263,7 @@ fn recall_scroll_clamps_top_line_to_the_buffers_current_last_content_line() {
         .seed_top_for_test(DisplayLinePos::new(ContentLine::new(100), 0));
     pane.remember_scroll();
 
-    // The pane moves elsewhere, then recalls the same buffer — which has
+    // The pane moves elsewhere, then recalls the same buffer, which has
     // since shrunk to a last content line of 3 (e.g. edited by another pane
     // in the meantime).
     pane.viewport
@@ -313,7 +313,7 @@ fn make_pane_at_char(head_char: usize) -> Pane {
 
 #[test]
 fn primary_head_line_returns_head_line() {
-    // "aaa\nbbb\nccc" — line 0 is chars 0..3, line 1 is chars 4..7, line 2 is chars 8..11.
+    // "aaa\nbbb\nccc": line 0 is chars 0..3, line 1 is chars 4..7, line 2 is chars 8..11.
     // Char 8 (start of line 2) should resolve to line 2.
     let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
     let pane = make_pane_at_char(8); // first char of line 2

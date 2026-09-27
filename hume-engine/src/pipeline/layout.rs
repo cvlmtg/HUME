@@ -27,15 +27,15 @@ pub enum Direction {
 pub struct Seam {
     pub rect: Rect,
     /// The split that produced this seam. `Horizontal` (a width split)
-    /// carves a 1-column-wide, full-height seam — drawn as a vertical line
+    /// carves a 1-column-wide, full-height seam, drawn as a vertical line
     /// (`│`). `Vertical` (a height split) carves a 1-row-tall, full-width
-    /// seam — drawn as a horizontal line (`─`). Same axis inversion as
+    /// seam, drawn as a horizontal line (`─`). Same axis inversion as
     /// `LayoutTree::Split` (see `split_focused_pane`'s doc comment).
     pub direction: Direction,
 }
 
 /// Proof that a `PaneId` has been detached from every `LayoutTree` that
-/// could reach it — minted only by [`LayoutTree::remove_leaf`] and
+/// could reach it. Minted only by [`LayoutTree::remove_leaf`] and
 /// [`LayoutTree::into_detached`], both in this module, and consumed by
 /// `hume-editor`'s `drop_pane_state` to free the pane's state. Not
 /// `Clone`/`Copy`: a duplicable token would let the same pane be freed
@@ -68,12 +68,12 @@ pub enum LayoutTree {
     Split {
         direction: Direction,
         /// Fraction (0.0–1.0) allocated to the first child. Derived by
-        /// `equalize` from the two children's `shares_along` counts —
-        /// not chosen by whatever split produced this node — so every pane
+        /// `equalize` from the two children's `shares_along` counts,
+        /// not chosen by whatever split produced this node, so every pane
         /// sharing a split axis stays equal-sized regardless of split order.
         /// Kept as stored (not derived-on-read) state because `LayoutTree`
         /// is `pub` and constructible directly with an arbitrary ratio (see
-        /// the tie-break test in `hume-editor`'s `pane_focus` tests) — a
+        /// the tie-break test in `hume-editor`'s `pane_focus` tests); a
         /// derived-on-read field couldn't hold a ratio nothing equalized.
         /// `equalize` currently rewrites every ratio in the whole tree on
         /// every split/close; a future manual pane resize will need to keep
@@ -86,7 +86,7 @@ pub enum LayoutTree {
 
 impl LayoutTree {
     /// Compute (PaneId, Rect) pairs for the leaf panes given the total area.
-    /// Results are appended to `out` (which is not cleared — caller must clear first).
+    /// Results are appended to `out` (which is not cleared; caller must clear first).
     ///
     /// `reserve_seam` mirrors the `pane-dividers` setting: `true` carves a
     /// 1-cell seam out of each split axis (see `split_rect`); `false` tiles
@@ -116,7 +116,7 @@ impl LayoutTree {
         }
     }
 
-    /// `pid`'s own rect, without collecting every other leaf's — the single-
+    /// `pid`'s own rect, without collecting every other leaf's: the single-
     /// target sibling of [`Self::collect_rects_into`], for callers (a single
     /// pane lookup, a mouse-motion hit test) that don't need the whole
     /// partition and would otherwise allocate one just to search it.
@@ -142,7 +142,7 @@ impl LayoutTree {
         }
     }
 
-    /// The leaf pane whose rect contains `pos`, and that rect — the
+    /// The leaf pane whose rect contains `pos`, and that rect: the
     /// position-search sibling of [`Self::find_rect`], for a mouse hit test
     /// that would otherwise collect every leaf's rect just to scan it for
     /// containment. Descends only the child whose rect contains `pos`
@@ -181,11 +181,11 @@ impl LayoutTree {
     /// split node, given the total area. Walks the same recursion as
     /// `collect_rects_into`, off the same `split_rect` math, so seams always
     /// align with the leaf rects computed for the same `area` this frame.
-    /// Results are appended to `out` (not cleared — caller must clear first).
+    /// Results are appended to `out` (not cleared; caller must clear first).
     ///
     /// Always reserves the seam: callers only invoke this when dividers are
     /// being drawn, which is also when `collect_rects_into` is called with
-    /// `reserve_seam: true` — the two stay aligned by construction.
+    /// `reserve_seam: true`, so the two stay aligned by construction.
     pub fn collect_seams_into(&self, area: Rect, out: &mut Vec<Seam>) {
         if let LayoutTree::Split {
             direction,
@@ -210,7 +210,7 @@ impl LayoutTree {
     /// Leaf(new_pane))`, then re-derive every split ratio in the tree so
     /// panes sharing a split axis stay equal-sized (see `equalize`). Takes
     /// the [`UnattachedPane`] token by value and hands it back on `Err` when
-    /// `target` isn't found — the token is consumed only on the success
+    /// `target` isn't found. The token is consumed only on the success
     /// path, so a caller can never end up with a pane the tree lost track
     /// of.
     pub fn split_leaf(
@@ -229,15 +229,15 @@ impl LayoutTree {
     }
 
     /// A freshly inserted, not-yet-attached pane as the sole content of a
-    /// brand-new tree — the new-tab and first-pane-bootstrap counterpart of
+    /// brand-new tree: the new-tab and first-pane-bootstrap counterpart of
     /// [`Self::split_leaf`]. Infallible: there is no existing tree to fail
     /// to find a target in.
     pub fn leaf(new_pane: UnattachedPane) -> LayoutTree {
         LayoutTree::Leaf(new_pane.pane_id())
     }
 
-    /// The recursive body of [`Self::split_leaf`], without the equalize pass
-    /// — kept separate so equalization runs once at the root instead of once
+    /// The recursive body of [`Self::split_leaf`], without the equalize pass,
+    /// kept separate so equalization runs once at the root instead of once
     /// per level of recursion.
     fn insert_split(&mut self, target: PaneId, new_pane: PaneId, direction: Direction) -> bool {
         match self {
@@ -268,8 +268,8 @@ impl LayoutTree {
         }
     }
 
-    /// Consume the whole tree, detaching every pane it reaches — one token
-    /// per leaf. Used by tab-close: discarding a tab's tree and freeing all
+    /// Consume the whole tree, detaching every pane it reaches (one token
+    /// per leaf). Used by tab-close: discarding a tab's tree and freeing all
     /// of its panes become the same operation, so there is no window where
     /// the tree is gone but a pane it referenced still lives in the pool
     /// (or vice versa).
@@ -308,7 +308,7 @@ impl LayoutTree {
     }
 
     /// Every pane id reachable in this subtree. No defined order beyond a
-    /// depth-first walk — callers that care about a specific pane (e.g. the
+    /// depth-first walk. Callers that care about a specific pane (e.g. the
     /// first one) should use `Self::first_leaf` instead of reading the
     /// first element.
     ///
@@ -335,12 +335,12 @@ impl LayoutTree {
     }
 
     /// How many side-by-side shares this subtree occupies along `direction`'s
-    /// axis — the unit [`Self::equalize`] balances a split's two children in.
+    /// axis: the unit [`Self::equalize`] balances a split's two children in.
     /// Named `share` because `slot` is this crate's display-line vocabulary.
     /// A leaf is always one share. A split *on* `direction`'s axis is the sum
     /// of its children's shares, since each becomes its own share of that
     /// axis. A split on the *other* axis (a stacked or side-by-side group)
-    /// counts as a single share when measured across its own axis — matching
+    /// counts as a single share when measured across its own axis, matching
     /// the `Ctrl-W =` convention most terminal multiplexers use, where a
     /// group of stacked panes shares one column's width rather than each
     /// stacked pane claiming its own.
@@ -383,14 +383,14 @@ impl LayoutTree {
     /// `split_leaf(target, _, direction)` call, without mutating this tree or
     /// requiring a real `new_pane` id. `equalize` runs whole-tree, so the two
     /// panes a split produces are not simply half of `target`'s current rect
-    /// — anything else sharing the split axis may resize too; this simulates
+    /// (anything else sharing the split axis may resize too); this simulates
     /// the actual insert-then-equalize sequence to get the real answer
     /// instead of approximating it. `None` when `target` isn't in this tree.
     ///
     /// `target`'s side of the new split is always this method's answer or
     /// smaller: `insert_split` makes `target` the first child, and
     /// `split_rect`'s integer truncation always rounds the first child's
-    /// share down — so checking only `target`'s predicted rect against a
+    /// share down, so checking only `target`'s predicted rect against a
     /// minimum is the conservative (never-too-generous) choice.
     pub fn predicted_split_rect(
         &self,
@@ -423,8 +423,8 @@ impl LayoutTree {
         })
     }
 
-    /// The recursive body of [`Self::remove_leaf`], without the equalize pass
-    /// — kept separate for the same reason as [`Self::insert_split`].
+    /// The recursive body of [`Self::remove_leaf`], without the equalize pass,
+    /// kept separate for the same reason as [`Self::insert_split`].
     fn prune_leaf(&mut self, target: PaneId) -> Option<PaneId> {
         match self {
             LayoutTree::Leaf(_) => None,
@@ -467,14 +467,14 @@ impl LayoutTree {
 // `collect_seam_arms` touches only two cells per seam: the one beyond each
 // endpoint where a perpendicular seam would be drawn if one abuts. But those
 // recorded cells can land on the *interior* of the perpendicular seam being
-// drawn — a child split's seam starts or ends partway along the parent seam,
+// drawn: a child split's seam starts or ends partway along the parent seam,
 // so its endpoint-adjacent record lands on an interior cell of the parent
 // (see `collect_seam_arms_t_junction`: a `│` seam starting one row below a
 // `─` seam records `ARM_S` on the `─` seam's interior). The draw loop
 // therefore probes every cell of each seam's rect, OR-ing the seam's `base`
 // mask with any arms recorded for that cell. This stays per-seam, not a
 // full-frame scan, and the arms map is sparse (at most two entries per seam)
-// so the lookups hit a tiny map — the per-cell buffer writes dominate.
+// so the lookups hit a tiny map and the per-cell buffer writes dominate.
 
 pub(super) const ARM_N: u8 = 0b0001;
 pub(super) const ARM_E: u8 = 0b0010;
@@ -483,7 +483,7 @@ pub(super) const ARM_W: u8 = 0b1000;
 
 /// Resolve a compass-bit mask (`ARM_N | ARM_E | ...`) to the box-drawing
 /// glyph with exactly those arms. Masks with fewer than two bits, or with
-/// only two opposite bits, fall back to a straight line — this keeps the
+/// only two opposite bits, fall back to a straight line. This keeps the
 /// function a total resolver even though seam geometry only ever produces
 /// `│ ─ ├ ┤ ┬ ┴ ┼`.
 pub(super) fn junction_glyph(mask: u8) -> &'static str {
@@ -503,9 +503,9 @@ pub(super) fn junction_glyph(mask: u8) -> &'static str {
 }
 
 /// Record the perpendicular arms each seam contributes to its two endpoint
-/// cells into `out` (not cleared — caller must clear first). A seam reserves
+/// cells into `out` (not cleared; caller must clear first). A seam reserves
 /// its own cell (see `split_rect`), so a perpendicular seam's nearest cell
-/// sits one cell *past* this seam's endpoint — e.g. a vertical seam
+/// sits one cell *past* this seam's endpoint. E.g. a vertical seam
 /// starting at row `y` contributes a southward arm to the cell at `y - 1`,
 /// which is where a horizontal seam ending there would actually be drawn.
 pub(super) fn collect_seam_arms(seams: &[Seam], out: &mut FxHashMap<(u16, u16), u8>) {
@@ -533,7 +533,7 @@ pub(super) fn collect_seam_arms(seams: &[Seam], out: &mut FxHashMap<(u16, u16), 
 
 /// Split `area` into two child rects plus the seam divider drawn between
 /// them, reserving that cell from the split axis so `first`, `seam`, and
-/// `second` together — not `first`/`second` alone — tile `area` exactly.
+/// `second` together (not `first`/`second` alone) tile `area` exactly.
 ///
 /// `reserve_seam` mirrors the `pane-dividers` setting: `true` reserves a
 /// 1-cell seam; `false` reserves none, so `first`/`second` tile `area`
@@ -542,7 +542,7 @@ pub(super) fn collect_seam_arms(seams: &[Seam], out: &mut FxHashMap<(u16, u16), 
 /// All arithmetic is saturating so degenerate areas (zero width/height, or a
 /// ratio that leaves no room for a seam) clamp to empty rects rather than
 /// panicking. Callers must not invoke this on an area too small to hold a
-/// seam plus two minimal panes — `:split`/`:vsplit` guard that before
+/// seam plus two minimal panes: `:split`/`:vsplit` guard that before
 /// mutating the layout tree (see `split_focused_pane` in the editor crate).
 pub(super) fn split_rect(
     area: Rect,
@@ -622,14 +622,14 @@ pub(super) fn focused_seam_segment(seam: Rect, pane: Rect) -> Option<Rect> {
     None
 }
 
-/// The four cells just outside the corners of `pane` — where the pane's
+/// The four cells just outside the corners of `pane`, where the pane's
 /// edge seams meet perpendicular seams from siblings, forming junctions.
 /// `focused_seam_segment` misses these because a junction cell sits on the
 /// perpendicular seam's column/row, which is the pane's boundary and thus
 /// one cell outside the accent sub-rect (which only covers the pane's own
 /// span on the parallel axis). A corner is `None` when it would sit off the
 /// screen origin: the screen edge carries no seam, so there is no junction
-/// there to color. Coordinates past the far screen edge are harmless — the
+/// there to color. Coordinates past the far screen edge are harmless: the
 /// draw loop's buffer clamp never visits them.
 pub(super) fn focused_pane_corners(pane: Rect) -> [Option<(u16, u16)>; 4] {
     let x0 = pane.x.checked_sub(1);

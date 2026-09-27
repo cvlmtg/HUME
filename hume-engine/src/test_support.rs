@@ -4,7 +4,7 @@
 //! assembling a `RenderDisplayLine` by hand for a direct `compose_display_line` call,
 //! for a char offset literal (`co`), for a `DisplayLineMap` over a fixed
 //! `FormatKey` (`map`), and for a fake `VIRTUAL_LINE` decoration source
-//! (`VirtualLineBlock`) — shared by `display_lines::tests` and
+//! (`VirtualLineBlock`), shared by `display_lines::tests` and
 //! `display_lines::scroll::tests`, which are cousins under `display_lines`
 //! and so can't see each other's own private test doubles.
 
@@ -33,7 +33,7 @@ pub(crate) fn co(n: usize) -> CharOffset {
 }
 
 /// A `DisplayLineMap` over `rope`, built from a fixed `FormatKey` (tag
-/// `[0; 3]`, 4-wide tabs, default whitespace) — every test in this crate
+/// `[0; 3]`, 4-wide tabs, default whitespace). Every test in this crate
 /// that needs a map builds one this way, varying only `wrap`/`providers`/
 /// `content_width`/`store`.
 pub(crate) fn map<'a>(
@@ -59,9 +59,9 @@ pub(crate) fn map<'a>(
 
 /// What each of a [`VirtualLineBlock`]'s display lines says.
 pub(crate) enum BlockText {
-    /// Every display line carries the same text — for tests that only count them.
+    /// Every display line carries the same text, for tests that only count them.
     Same(&'static str),
-    /// Display lines read "1", "2", … — for tests that assert *which* one of
+    /// Display lines read "1", "2", …, for tests that assert *which* one of
     /// a block landed on a given screen line, which identical text cannot show.
     Ordinal,
 }
@@ -97,7 +97,7 @@ impl VirtualLineBlock {
         }
     }
 
-    /// Count queries — the observable proxy for "did the display-line map
+    /// Count queries: the observable proxy for "did the display-line map
     /// treat this line as already known rather than re-querying it".
     ///
     /// Counts only queries for this double's *own* line. A frame queries every
@@ -168,8 +168,8 @@ pub(crate) fn byte_range(start: usize, end: usize) -> ExclusiveRange<ByteCol> {
     ExclusiveRange::new(ByteCol::new(start), ByteCol::new(end))
 }
 
-/// Build a `RenderDisplayLine` for a direct `compose_display_line` call —
-/// every test site has no provider-owned background, so `base_scope` is
+/// Build a `RenderDisplayLine` for a direct `compose_display_line` call.
+/// Every test site has no provider-owned background, so `base_scope` is
 /// always `None` here rather than a parameter.
 pub(crate) fn render_display_line<'m>(
     display_line: &'m DisplayLine,

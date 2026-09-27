@@ -42,7 +42,7 @@ impl<'a> IntervalCursor<'a> {
 
 // ── Highlight stack ────────────────────────────────────────────────────────────
 
-/// Number of [`HighlightTier`] variants — the tier arrays in [`HighlightStack`]
+/// Number of [`HighlightTier`] variants. The tier arrays in [`HighlightStack`]
 /// and [`TierBufs`] are indexed by `tier as usize`, so this must track the
 /// enum exactly (see `HighlightTier`'s doc for the discriminant assignments).
 const TIER_COUNT: usize = 5;
@@ -70,7 +70,7 @@ impl<'a> HighlightStack<'a> {
     /// priority first (`Syntax`) through highest (`BracketMatch`).
     ///
     /// Each `theme.resolve(id)` call is an O(1) `Vec` index into the baked
-    /// style array — no hashing on the per-grapheme hot path.
+    /// style array, with no hashing on the per-grapheme hot path.
     pub(super) fn layer_at(
         &mut self,
         byte_offset: ByteCol,
@@ -89,7 +89,7 @@ impl<'a> HighlightStack<'a> {
 /// Scratch buffer holding sorted highlight intervals split by tier.
 /// Owned by `FrameScratch` so capacity is retained across frames.
 ///
-/// Each interval is `(byte_start, byte_end, ScopeId)` — the `ScopeId` maps to
+/// Each interval is `(byte_start, byte_end, ScopeId)`; the `ScopeId` maps to
 /// a pre-baked [`ResolvedStyle`] via an O(1) `Vec` index in [`Theme::resolve`].
 /// Indexed by `HighlightTier as usize`; see `HighlightStack`.
 #[derive(Default)]
@@ -144,7 +144,7 @@ pub(crate) fn rebuild_line_decorations(
         provider.decorations_for_line(line_idx, &mut scratch.decorations);
     }
     // Last LineBg wins if more than one PAINT-kind provider tints the same
-    // line — the editor bridge already collapses multi-source ties to one
+    // line. The editor bridge already collapses multi-source ties to one
     // record per line (`update_line_bg_providers`), so this only matters for
     // a hypothetical second engine-side provider.
     let mut tint = None;
@@ -159,7 +159,7 @@ pub(crate) fn rebuild_line_decorations(
             Decoration::LineBg(scope) => tint = Some(scope),
             Decoration::VirtualLine(_) | Decoration::Inline(_) => {
                 // A provider that declared PAINT but emitted a
-                // VIRTUAL_LINE/INLINE kind is a provider bug — ignored, not
+                // VIRTUAL_LINE/INLINE kind is a provider bug: ignored, not
                 // a panic, same posture `display_lines::DisplayLineMap` takes for the
                 // reverse case.
             }

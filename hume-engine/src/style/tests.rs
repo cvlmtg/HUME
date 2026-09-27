@@ -20,7 +20,7 @@ fn dc(n: u32) -> DisplayLineCol {
 /// (`pipeline::pane_render::render_pane`'s display-line walk): primary-based
 /// `is_head_line`, `rebuild_line_decorations` once per buffer line,
 /// `style_display_line` per display line.
-/// No highlight providers or tree — these tests cover cursor/selection styling only.
+/// No highlight providers or tree: these tests cover cursor/selection styling only.
 #[allow(clippy::too_many_arguments)] // mirrors the live pipeline stage's own arity
 fn apply_styles(
     lines: &[DisplayLine],
@@ -122,7 +122,7 @@ fn no_selections_yields_default_style() {
 }
 
 /// A `line_tint` scope with `fg`/modifiers as well as `bg` must only
-/// contribute its `bg` — the row-fill paint site (`pane_render.rs`'s
+/// contribute its `bg`. The row-fill paint site (`pane_render.rs`'s
 /// `row_bg`) can only ever read a background color out of the same scope, so
 /// a fg/modifier applied here would show up on content cells but nowhere the
 /// row-fill site paints (gutter, trailing fill past end-of-line),
@@ -154,7 +154,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
         &lines[0],
         &graphemes,
         ExclusiveRange::new(co(0), co(3)),
-        false, // not the cursor line — isolates the tint's own contribution
+        false, // not the cursor line, which isolates the tint's own contribution
         Some(tint_scope),
         EditorMode::Normal,
         true,
@@ -169,7 +169,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
     );
     assert_eq!(
         scratch.styles[0].fg, None,
-        "the tint's foreground must not apply — only the row-fill paint \
+        "the tint's foreground must not apply: only the row-fill paint \
          site's `.bg` can express this decoration"
     );
     assert_eq!(
@@ -353,23 +353,23 @@ fn backward_selection_anchor_cell_highlighted() {
     assert_eq!(
         scratch.styles[0].fg,
         Some(Rgb(255, 255, 255)),
-        "display_col 0 is the head — must have cursor fg"
+        "display_col 0 is the head, must have cursor fg"
     );
     assert_eq!(
         scratch.styles[1].bg,
         Some(Rgb(0, 0, 255)),
-        "display_col 1 is inside selection — must have selection bg"
+        "display_col 1 is inside selection, must have selection bg"
     );
     // display_col 2 is the anchor (highest char) and must be highlighted too.
     assert_eq!(
         scratch.styles[2].bg,
         Some(Rgb(0, 0, 255)),
-        "display_col 2 is the anchor — must have selection bg (regression)"
+        "display_col 2 is the anchor, must have selection bg (regression)"
     );
 }
 
 /// A collapsed selection (anchor == head, i.e. bare cursor) must
-/// not emit a selection-highlight span — a bare cursor marks a position, not a
+/// not emit a selection-highlight span: a bare cursor marks a position, not a
 /// one-character selection.
 #[test]
 fn insert_mode_collapsed_selection_not_highlighted() {
@@ -400,7 +400,7 @@ fn insert_mode_collapsed_selection_not_highlighted() {
     assert_ne!(
         scratch.styles[1].bg,
         Some(Rgb(0, 0, 255)),
-        "display_col 1 is the collapsed cursor — must NOT have selection bg"
+        "display_col 1 is the collapsed cursor, must NOT have selection bg"
     );
     // Neighboring cells are also not highlighted.
     assert_ne!(
@@ -543,7 +543,7 @@ fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
     );
 }
 
-/// Pins the non-block fall-through this project departs from Helix on — see
+/// Pins the non-block fall-through this project departs from Helix on. See
 /// the Tier 1/0 comment in `style_display_line` for the why: a collapsed secondary
 /// head goes bare, a ranged one falls through to plain `ui.selection`.
 #[test]
@@ -597,7 +597,7 @@ fn insert_bar_shape_hides_both_heads_and_keeps_selection_styling() {
     );
     assert_eq!(
         scratch.styles[6].fg, None,
-        "collapsed secondary head has nothing to fall through to — stays bare"
+        "collapsed secondary head has nothing to fall through to, stays bare"
     );
 }
 
@@ -864,18 +864,18 @@ fn primary_selection_gets_primary_style() {
     // Col 2 is the head of the primary selection, painted (Block shape) from
     // the cursor ladder rather than the selection tier. With no ui.cursor*
     // scope defined at all, that ladder's tail is the bare `ui.selection`,
-    // not `ui.selection.primary` — matching Helix's own `base_cursor_scope`,
+    // not `ui.selection.primary`, matching Helix's own `base_cursor_scope`,
     // which only ever falls to `ui.selection`, never the `.primary` variant.
     assert_eq!(
         scratch.styles[2].bg,
         Some(Rgb(0, 0, 255)),
-        "display_col 2 is the primary head — falls to the bare ui.selection, not .primary"
+        "display_col 2 is the primary head: falls to the bare ui.selection, not .primary"
     );
 }
 
 #[test]
 fn extend_mode_uses_select_cursor_scope() {
-    // Extend is HUME's name for Helix's Select mode — a theme's
+    // Extend is HUME's name for Helix's Select mode, so a theme's
     // ui.cursor.select / ui.cursor.primary.select must apply there, not the
     // plain block scope.
     let rope = ropey::Rope::from_str("abcde");
@@ -971,9 +971,9 @@ fn insert_mode_distinguishes_primary_from_secondary_head() {
     );
 }
 
-/// HUME's Command/Search/Select prompt modes have no Helix equivalent — Helix
+/// HUME's Command/Search/Select prompt modes have no Helix equivalent. Helix
 /// keeps the underlying document mode while a prompt is open, and these
-/// prompts have no cursor-shape option of their own — so document heads use
+/// prompts have no cursor-shape option of their own, so document heads use
 /// the plain Normal ladder, never the Insert one.
 #[test]
 fn prompt_modes_use_the_normal_cursor_scope_for_document_heads() {
@@ -1021,7 +1021,7 @@ fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
 
     let theme = theme_with([("ui.selection.primary", bg(Rgb(255, 0, 255)))]);
 
-    // Forward: anchor 0, head 3 — head cell (col 3) is left bare.
+    // Forward: anchor 0, head 3. Head cell (col 3) is left bare.
     let lines = vec![make_display_line(0..5)];
     let selections = vec![Selection {
         anchor: co(0),
@@ -1048,7 +1048,7 @@ fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
         "forward: col 3 (the head) is left bare under a non-block shape"
     );
 
-    // Reverse: anchor 3, head 0 — head cell (col 0) keeps the selection bg.
+    // Reverse: anchor 3, head 0. Head cell (col 0) keeps the selection bg.
     let selections = vec![Selection {
         anchor: co(3),
         head: co(0),
@@ -1108,7 +1108,7 @@ fn normal_mode_still_uses_plain_cursor_scope_not_select() {
 
 #[test]
 fn primary_head_falls_back_when_no_primary_scope() {
-    // Theme does not define ui.cursor.primary — both heads should get ui.cursor.
+    // Theme does not define ui.cursor.primary, so both heads should get ui.cursor.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
     let lines = vec![make_display_line(0..5)];
@@ -1358,7 +1358,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     assert_eq!(
         scratch.styles[2].bg,
         Some(Rgb(0, 0, 255)),
-        "display_col 2 is selection head — included in inclusive span"
+        "display_col 2 is selection head, included in inclusive span"
     );
     // Segment 1: no selection highlight at all.
     assert_eq!(
@@ -1497,7 +1497,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
 #[test]
 fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
     // An opted-in whitespace glyph must carry `ui.virtual.whitespace`
-    // regardless of the syntax colour at that position — the same
+    // regardless of the syntax colour at that position: the same
     // contract `ui.virtual.invisible` gets for placeholders, above.
     let rope = ropey::Rope::from_str("a \tb");
     let ws = crate::pane::WhitespaceConfig {
@@ -1557,7 +1557,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
 #[test]
 fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
     // A tab drawn as blank spaces (indicator off) must not pick up
-    // `ui.virtual.whitespace` — that scope belongs only to the glyph the
+    // `ui.virtual.whitespace`. That scope belongs only to the glyph the
     // user opted into, never to the fallback fill a theme's `bg` would
     // otherwise leak onto every tab expansion regardless of the setting.
     let rope = ropey::Rope::from_str("a\tb");
@@ -1606,7 +1606,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
 
 // ── Inline-insert char_offset partition invariant ───────────────────────
 
-/// Drive the real formatter with a mid-display-line insert, then style the result —
+/// Drive the real formatter with a mid-display-line insert, then style the result:
 /// end-to-end coverage that `resolve_grapheme_display_col`'s partition_point lands
 /// on the real grapheme, not the insert sharing its char_offset.
 #[test]
@@ -1614,7 +1614,7 @@ fn insert_mid_display_line_head_resolves_to_real_grapheme_col() {
     // "abcdef", width-2 insert before 'c' (byte offset 2). Layout by hand:
     // a(col0) b(col1) [insert XY](col2..4) c(col4) d(col5) e(col6) f(col7).
     // The insert and 'c' share char_offset 2 (the insert is pushed first,
-    // at the offset of the grapheme it precedes) — the exact tie
+    // at the offset of the grapheme it precedes): the exact tie
     // `resolve_grapheme_display_col` must break in favour of the real grapheme.
     // Cursor at char 2 ('c') must land at display_col 4, not the insert's display_col 2.
     let rope = ropey::Rope::from_str("abcdef");
@@ -1686,7 +1686,7 @@ fn insert_mid_display_line_head_resolves_to_real_grapheme_col() {
 
 #[test]
 fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() {
-    // Insert at byte 0 — the display line starts with a virtual cell at display_col 0,
+    // Insert at byte 0: the display line starts with a virtual cell at display_col 0,
     // then 'a' at display_col 1, 'b' at display_col 2, etc. A selection over chars 0..1
     // ('a','b') must start its highlighted span at 'a's display_col (1), not the
     // insert's display_col (0).
@@ -1754,7 +1754,7 @@ fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() 
     assert_eq!(
         scratch.styles[a_idx].bg,
         Some(Rgb(0, 0, 255)),
-        "'a' is the first real grapheme — selection span must start here"
+        "'a' is the first real grapheme: selection span must start here"
     );
     assert_eq!(scratch.styles[b_idx].bg, Some(Rgb(0, 0, 255)));
 }

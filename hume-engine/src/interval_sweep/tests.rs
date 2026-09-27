@@ -36,7 +36,7 @@ fn three_level_nesting() {
 
 #[test]
 fn deeper_layer_wins_regardless_of_collection_order() {
-    // Collected out of depth order — the deeper span must still win.
+    // Collected out of depth order: the deeper span must still win.
     let got = run(vec![(3, 7, 2u8, 2), (0, 10, 0, 0)]);
     assert_eq!(got, vec![(0, 3, 0), (3, 7, 2), (7, 10, 0)]);
 }
@@ -53,7 +53,7 @@ fn adjacent_same_scope_segments_merge() {
 #[test]
 fn reverse_wrapped_rank_makes_the_lower_priority_number_win() {
     // Priority 0 (highest severity) must beat priority 5, even though 0 <
-    // 5 as plain integers — `Reverse` is what flips this.
+    // 5 as plain integers. `Reverse` is what flips this.
     let got = run(vec![(0, 10, Reverse(5u8), 0), (2, 6, Reverse(0u8), 1)]);
     assert_eq!(got, vec![(0, 2, 0), (2, 6, 1), (6, 10, 0)]);
 }
@@ -69,7 +69,7 @@ fn equal_priority_ties_keep_first_pushed_under_that_tie_break() {
 
 #[test]
 fn equal_rank_ties_keep_last_pushed_under_that_tie_break() {
-    // Same input, opposite `tie_break` — the other span must win instead,
+    // Same input, opposite `tie_break`: the other span must win instead,
     // proving the flag actually controls the outcome rather than being
     // ignored.
     let got = run_tb(

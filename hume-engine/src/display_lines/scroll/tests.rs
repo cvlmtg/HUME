@@ -5,7 +5,7 @@
 //! the same behavior when it lived in `hume-editor` as free functions over a
 //! `top_line`/`top_slot` pair. `local_content_pos`/`local_place` mirror
 //! `hume-editor`'s `cursor::content_pos`/`place` just closely enough to
-//! verify a verb's reported row agrees with a fresh forward walk — kept here
+//! verify a verb's reported row agrees with a fresh forward walk. Kept here
 //! rather than pulling hume-editor into an hume-engine test.
 
 use std::cell::Cell;
@@ -30,7 +30,7 @@ fn viewport(top: usize, height: u16, width: u16) -> Viewport {
     v
 }
 
-/// Mirror of `hume-editor`'s `cursor::content_pos` — see this module's doc.
+/// Mirror of `hume-editor`'s `cursor::content_pos`; see this module's doc.
 fn local_content_pos(
     v: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
@@ -48,7 +48,7 @@ fn local_content_pos(
     Some(local_place(v, cursor_display_col, row))
 }
 
-/// Mirror of `hume-editor`'s `cursor::place` — see this module's doc.
+/// Mirror of `hume-editor`'s `cursor::place`; see this module's doc.
 fn local_place(v: &Viewport, cursor_display_col: DisplayLineCol, row: usize) -> (u16, u16) {
     let x = cursor_display_col.cells_since_saturating(v.horizontal_offset);
     (x as u16, row as u16)
@@ -364,7 +364,7 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
 
 /// [`Viewport::top_at`] must shrink an out-of-range offset (as `recall_scroll`
 /// or an LSP jump could leave behind) down to the top line's actual current
-/// block size, in either wrap mode — and write the resolved value back to
+/// block size, in either wrap mode, and write the resolved value back to
 /// `top()`, not just return it.
 #[test]
 fn top_at_resolves_a_stale_offset() {
@@ -400,8 +400,8 @@ fn top_at_is_a_noop_when_already_valid() {
     assert_eq!(v.top().slot, 1);
 }
 
-/// `reveal` must be safe to call directly on a stale top — as `scroll_by`
-/// already is via its own `top_at` call — rather than requiring a caller to
+/// `reveal` must be safe to call directly on a stale top (as `scroll_by`
+/// already is via its own `top_at` call) rather than requiring a caller to
 /// resolve it first. Drives `reveal` from an identical wildly-stale seed
 /// twice: once handed to `reveal` untouched (relying on `reveal`'s own
 /// `top_at`), once pre-resolved via an explicit `top_at` call first. Both
@@ -410,7 +410,7 @@ fn top_at_is_a_noop_when_already_valid() {
 fn reveal_is_safe_to_call_directly_on_a_stale_top() {
     let r = Rope::from_str("a\nb\n");
     let providers = ProviderSet::new(); // no virtual lines: every line's block is exactly 1 slot
-    let cursor_char = co(0); // line 0's own first char — the cursor never has to move
+    let cursor_char = co(0); // line 0's own first char, so the cursor never has to move
 
     let mut stale = viewport(0, 5, 80);
     stale.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 200)); // wildly stale
@@ -632,7 +632,7 @@ fn far_jump_forward_walk_does_not_format_past_the_tightened_cap() {
         formats.get(),
         0,
         "line 9 sits past the tightened cap (height - margin - 1 = 7) but \
-         inside the old cap (height = 10) — the forward walk must not reach it"
+         inside the old cap (height = 10): the forward walk must not reach it"
     );
 }
 
@@ -656,7 +656,7 @@ fn distance_line_delta_short_circuit_never_formats_when_unreachable() {
     assert_eq!(
         formats.get(),
         0,
-        "a target 1000 lines away with cap 5 is provably unreachable — the \
+        "a target 1000 lines away with cap 5 is provably unreachable: the \
          walk must never format line 0 to discover that"
     );
 }
@@ -716,8 +716,8 @@ fn down_no_wrap_advances_by_count() {
 
 #[test]
 fn down_never_moves_the_top_backwards_from_past_max_scroll_top() {
-    // `align` (z z / z k / z j) deliberately does not clamp at the bottom —
-    // see its own doc — so it, and an LSP goto near EOF, can leave the top
+    // `align` (z z / z k / z j) deliberately does not clamp at the bottom
+    // (see its own doc), so it, and an LSP goto near EOF, can leave the top
     // past max_scroll_top. 10 content lines, height 5, margin 0: the bound
     // is line 5. Seed the top at line 8, well past it.
     let r = Rope::from_str(&"a\n".repeat(10));
@@ -856,7 +856,7 @@ fn down_overshoot_past_after_last_line_clamps_not_resets() {
 }
 
 /// A nonzero margin reserves that many display lines below the document's
-/// last one, instead of pinning it to the bottom row — the same bound
+/// last one, instead of pinning it to the bottom row: the same bound
 /// `Viewport::reveal` settles on once the cursor reaches the document's end,
 /// so a scroll-to-EOF and the very next ordinary cursor motion land on the
 /// same top.
@@ -884,7 +884,7 @@ fn down_with_margin_stops_short_of_the_bottom_row() {
 //
 // `top`/`geo` in most of these are a generously tall, zero-scrolloff
 // viewport (`margin == 0`, `target == height - 1`) seeded at the document
-// start — big enough that the band clamp never fires, so these still
+// start, big enough that the band clamp never fires, so these still
 // exercise exactly the plain delta-walk they did before `carry` gained the
 // band clamp. The clamp itself gets its own tests below.
 
@@ -935,7 +935,7 @@ fn carry_zero_rows_is_always_none() {
 /// line 1's own content at slot 3. Walking 2 display lines down from line 0
 /// lands inside the block (slot 1, still virtual); `carry` must keep walking
 /// past it to line 1's content (slot 3) rather than stranding the head at
-/// the block's near edge (see `carry`'s own doc) — as long as doing so still
+/// the block's near edge (see `carry`'s own doc), as long as doing so still
 /// lands inside a generous band; the band-bounded version of this same setup
 /// is `carry_overshoot_past_the_band_gives_up_instead_of_landing_outside_it`
 /// below.
@@ -959,10 +959,10 @@ fn carry_overshoots_a_virtual_block_that_swallows_the_whole_budget() {
 // ── carry's band clamp ──────────────────────────────────────────────────────
 
 /// A landing above `geo.margin` (too close to `top`, or before it) must be
-/// pushed down to the band's near edge — the case that makes `Viewport::reveal`
+/// pushed down to the band's near edge: the case that makes `Viewport::reveal`
 /// provably idle afterward instead of firing a second, undocumented
 /// correction next frame. `top` here has genuine room to scroll back further
-/// (line 20 of a 40-line document, not the document's own start — see
+/// (line 20 of a 40-line document, not the document's own start; see
 /// `carry_leaves_a_landing_short_of_margin_when_top_cannot_scroll_back_further`
 /// for the edge that loosens this), height 10 with scrolloff 3 (`margin` 3,
 /// `target` 6): walking down 1 display line from `top` lands on row 1, short
@@ -985,15 +985,15 @@ fn carry_pushes_a_landing_above_margin_down_to_the_bands_near_edge() {
 }
 
 /// The near-edge push above only applies when `top` itself still has room to
-/// scroll back — when `top` is already at the document's first display line,
+/// scroll back. When `top` is already at the document's first display line,
 /// walking `candidate` back by `margin` can only re-land on that same `top`
 /// (saturating there), so `Viewport::reveal` would be idle on `candidate`
 /// exactly as it is. Forcing the landing down to `margin` anyway would fight
 /// that idle behavior instead of matching it, permanently overshooting
-/// scrolloff at the buffer's own start — the bug `page_scroll.rs`'s
+/// scrolloff at the buffer's own start: the bug `page_scroll.rs`'s
 /// `half_page_up_moves_half_viewport`/`page_up_moves_full_viewport` cover
 /// end-to-end. Height 10, scrolloff 3 (`margin` 3): `top`/`head` both at the
-/// document start, walking down 2 lines lands on row 2, short of `margin` —
+/// document start, walking down 2 lines lands on row 2, short of `margin`,
 /// but the clamp must leave it there rather than push it to row 3.
 #[test]
 fn carry_leaves_a_landing_short_of_margin_when_top_cannot_scroll_back_further() {
@@ -1010,7 +1010,7 @@ fn carry_leaves_a_landing_short_of_margin_when_top_cannot_scroll_back_further() 
         landed,
         DisplayLinePos::new(ContentLine::new(2), 0),
         "top is already at the document start, so reveal would be idle on \
-         row 2 — the clamp must not force it down to margin (3)"
+         row 2: the clamp must not force it down to margin (3)"
     );
 }
 
@@ -1037,7 +1037,7 @@ fn carry_pulls_a_landing_past_target_back_to_the_bands_far_edge() {
 }
 
 /// A virtual-line block bigger than the band has no legal landing spot at
-/// all — `carry` must give up (leave the selection untouched) rather than
+/// all: `carry` must give up (leave the selection untouched) rather than
 /// land past `target`, the band-bounded counterpart to
 /// `carry_overshoots_a_virtual_block_that_swallows_the_whole_budget` above.
 /// Height 6, scrolloff 0 (`margin` 0, `target` 5): an 8-row `Before(1)`

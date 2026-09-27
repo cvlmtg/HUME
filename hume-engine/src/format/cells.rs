@@ -10,7 +10,7 @@ use super::virtual_cells::push_arena_text;
 /// Compute the display `width` and `CellContent` for one grapheme cluster.
 ///
 /// Width and rendering kind both come from one `hume_rope::width::classify`
-/// call — tab, space, NBSP/ideographic space, and regular graphemes alike —
+/// call (tab, space, NBSP/ideographic space, and regular graphemes alike),
 /// so this and every other column computation in the workspace (editing
 /// ops, Steel decorations, UI chrome) agree on where a given cluster lands,
 /// and the tab-before-placeholder ordering (a tab is also a control
@@ -38,7 +38,7 @@ pub(super) fn grapheme_display(
         // A cluster the terminal must not be shown as itself: a control
         // character it would act on, or an invisible one it would
         // collapse. Renders as its codepoint, `<200b>`, the way Vim and
-        // Emacs show them — never as a blank, which would leave a bidi
+        // Emacs show them, never as a blank, which would leave a bidi
         // override looking exactly like a space. Not gated by any
         // `whitespace-*` setting: these are unrenderable rather than
         // merely invisible, and a reader who cannot see them cannot
@@ -52,7 +52,7 @@ pub(super) fn grapheme_display(
 
         hume_rope::width::Cluster::Plain { width, .. } => {
             // Space and the invisible Unicode spaces (NBSP, ideographic
-            // space) are gated by the same `space` render mode — NBSP/
+            // space) are gated by the same `space` render mode. NBSP/
             // ideographic space get a distinct glyph so a stray
             // non-breaking space stands out from an ordinary one.
             let content = if matches!(grapheme_str, " " | "\u{A0}" | "\u{3000}")

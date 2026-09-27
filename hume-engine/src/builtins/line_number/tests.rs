@@ -7,7 +7,7 @@ const DEFAULT_SCOPE: ScopeId = ScopeId(0);
 const SELECTED_SCOPE: ScopeId = ScopeId(1);
 
 /// `LineNumberColumn` never reads `rope`, so an empty rope is fine
-/// for every test here — only `primary_head_line` varies.
+/// for every test here; only `primary_head_line` varies.
 fn ctx(rope: &ropey::Rope, primary_head_line: usize) -> GutterCtx<'_> {
     GutterCtx {
         mode: EditorMode::Normal,
@@ -236,7 +236,7 @@ fn line_number_style_values_round_trip_through_from_str() {
     // actually parse, so `VALUES` can't silently drift from `FromStr`.
     // One-directional: this can't catch a variant added to `FromStr` but
     // left out of `VALUES` (it would just silently vanish from
-    // completion) — `line_number_style_from_str_all_variants` above is
+    // completion). `line_number_style_from_str_all_variants` above is
     // the closest thing to a reverse check, but it's a second
     // hand-maintained list, not a derived one.
     for v in LineNumberStyle::VALUES {

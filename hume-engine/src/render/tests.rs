@@ -20,7 +20,7 @@ fn make_test_buf(w: u16, h: u16) -> Grid {
 /// Poke stale fixture content directly into `buf` at `(x, y)`. `Grid::set_glyph`
 /// is `pub(crate)` to `hume-grid` and unreachable from here, so this goes
 /// through `Canvas` instead (an unbounded `right_edge`: these fixtures write
-/// well within the grid they just allocated) — a test setup step, not
+/// well within the grid they just allocated). It's a test setup step, not
 /// behaviour under test, asserting nothing of its own. `Grid`'s own
 /// out-of-bounds/clip behavior is covered by `hume-grid`'s own suite.
 fn poke(buf: &mut Grid, x: u16, y: u16, text: &str) {
@@ -111,7 +111,7 @@ fn renders_simple_text() {
 #[test]
 #[should_panic(expected = "desynced")]
 fn grapheme_byte_range_past_line_str_asserts() {
-    // `byte_range` claims bytes 0..5, but `line_str` below is only 2 bytes —
+    // `byte_range` claims bytes 0..5, but `line_str` below is only 2 bytes:
     // the desync `compose_display_line`'s fail-fast guard exists to catch,
     // built directly through `test_support::byte_range` since the real
     // `format.rs` constructors can't produce an inverted/out-of-range one.
@@ -172,7 +172,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
 
 #[test]
 fn filler_rows_have_tilde() {
-    // Only render_tilde_fillers (not compose_display_line) draws tildes — verify
+    // Only render_tilde_fillers (not compose_display_line) draws tildes. Verify
     // it fills every requested row from the given start row onward.
     let visible = PaneGeometry {
         content_height: 5, // 5 rows requested; caller already rendered row 0
@@ -219,7 +219,7 @@ fn filler_rows_have_tilde() {
     }
 }
 
-/// Render one row via `compose_display_line` directly (stage isolation — no batch
+/// Render one row via `compose_display_line` directly (stage isolation, no batch
 /// orchestration) at screen row 0 and return the buffer.
 #[allow(clippy::too_many_arguments)]
 fn do_compose_display_line(
@@ -309,10 +309,10 @@ fn horizontal_scroll_clips_left_columns() {
 fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
     // "中X": '中' is width 2 at display_col 0 (+ a WidthContinuation at display_col 1);
     // 'X' is width 1 at display_col 2. With h_offset=1, '中' straddles the edge
-    // (display_col 0 < 1 < display_col 0 + width 2) — its right half is the only
+    // (display_col 0 < 1 < display_col 0 + width 2), so its right half is the only
     // visible cell. `content_x` (`g.display_col.saturating_sub(h_offset)`)
     // clamps to 0, and the straddle branch below must draw only that visible
-    // remainder as spaces — drawing the *whole* glyph there instead would
+    // remainder as spaces. Drawing the *whole* glyph there instead would
     // shift 'X' to look like it sits at screen_x 0 rather than screen_x 1.
     let graphemes = vec![
         Grapheme {
@@ -371,7 +371,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
 #[test]
 fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
     // A CJK glyph whose left cell sits at the pane's last content column: its
-    // right half would fall on whatever the terminal draws next — the
+    // right half would fall on whatever the terminal draws next: the
     // neighbouring pane in a vsplit, or the divider seam. It must not be
     // drawn at all; the column renders blank instead, mirroring the h-scroll
     // straddle case above.
@@ -408,7 +408,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
     // An inlay hint containing a CJK glyph: the primary `Virtual` cell and
     // its `WidthContinuation` companion (as `push_virtual_cells` emits for a
     // real double-width cluster) must both end up in the decoration's own
-    // background — the continuation cell is skipped by the per-cell loop
+    // background. The continuation cell is skipped by the per-cell loop
     // (it carries no drawable content of its own), so it has to inherit the
     // primary's style from the same write that draws the primary, not be
     // left for the row fill underneath.
@@ -501,7 +501,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
     assert_eq!(buf.cell(4, 0).unwrap().text(), INDENT_GUIDE_GLYPH);
     // screen_x 0 has the space content (no guide at depth boundary).
     assert_ne!(buf.cell(0, 0).unwrap().text(), INDENT_GUIDE_GLYPH);
-    // Col 8 is where content starts — no guide there.
+    // Col 8 is where content starts: no guide there.
     assert_ne!(buf.cell(8, 0).unwrap().text(), INDENT_GUIDE_GLYPH);
 }
 
@@ -510,7 +510,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
     // An inlay hint at byte 0 (`push_virtual_cells`'s empty `byte_range`,
     // format.rs) shifts where the buffer line's own columns actually start
     // on screen. The line is "  foo" with indent_depth=2, tab_width=4 (a
-    // guide would land at buffer column 4 with no insert) — but 6 virtual
+    // guide would land at buffer column 4 with no insert), but 6 virtual
     // cells precede it, so the real leading whitespace now sits at display
     // columns 6..8 and the guide must land at 6+4=10, not 4 (which is
     // inside the insert's own text and would overwrite it).
@@ -572,8 +572,8 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
 #[test]
 fn indent_guide_hidden_when_show_indent_guides_is_false() {
     // Same fixture as indent_guide_drawn_at_inner_tab_stops (depth=2,
-    // tab_width=4, guide expected at display_col 4) but with the setting off —
-    // proves ComposeCtx::show_indent_guides actually gates the draw loop,
+    // tab_width=4, guide expected at display_col 4) but with the setting off.
+    // This proves ComposeCtx::show_indent_guides actually gates the draw loop,
     // not just that the glyph can appear under default settings.
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
@@ -648,9 +648,9 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
 
 #[test]
 fn indent_guide_not_drawn_on_wrap_display_lines() {
-    // depth=1 means no inner guides (guides at k in 1..1 — empty range)
+    // depth=1 means no inner guides (guides at k in 1..1, an empty range)
     // in general, but this test specifically pins that a Wrap display line
-    // draws no guide even when it would otherwise qualify — so render only
+    // draws no guide even when it would otherwise qualify, so render only
     // the Wrap display line (a continuation of line 0, graphemes 4..8 of
     // "    text").
     let graphemes: Vec<Grapheme> = (0..8u32)
@@ -720,7 +720,7 @@ fn indicator_content_fills_tab_width() {
 fn tab_fill_blanks_its_whole_width() {
     // A tab with its indicator off (`TabFill`, no arena text at all) must
     // still blank its full reserved width, exactly as the glyph's own
-    // trailing fill does above — this is that same fill with no glyph in
+    // trailing fill does above; this is that same fill with no glyph in
     // front of it.
     let graphemes = vec![Grapheme {
         byte_range: crate::test_support::byte_range(0, 1),
@@ -947,7 +947,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         None,
     );
 
-    // x=5..10 belongs to the "next pane" — must remain untouched ('Z').
+    // x=5..10 belongs to the "next pane" and must remain untouched ('Z').
     for x in 5..11u16 {
         assert_eq!(
             buf.cell(x, 0).unwrap().text(),
@@ -957,7 +957,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     }
 }
 
-/// Width-6 column returning 4 single-char cells — `(6 - 1) / 4 == 1`
+/// Width-6 column returning 4 single-char cells: `(6 - 1) / 4 == 1`
 /// (integer division), leaving a 1-cell remainder that the exact-fill
 /// `SignColumn`/`LineNumberColumn` never produce on their own (see
 /// `sign_column.rs`: `max_signs == width - 1` always divides evenly).
@@ -985,7 +985,7 @@ impl GutterColumn for LeftoverGutter {
     }
 }
 
-/// Single-cell width-2 column — exact-fills like the shipped
+/// Single-cell width-2 column. Exact-fills like the shipped
 /// `LineNumberColumn`, placed first so the leftover column below it is the
 /// *second* column, which is what exposes the bug (see next test's doc).
 struct ExactFillGutter;
@@ -1011,7 +1011,7 @@ impl GutterColumn for ExactFillGutter {
 #[test]
 fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     // `compose_gutter`'s leftover-fill bound must be the column's real right
-    // edge, not `pane_rect.x + lane_width` — that's only correct for the
+    // edge, not `pane_rect.x + lane_width`. That's only correct for the
     // *first* column (where lane_x == pane_rect.x). For any column after
     // the first, a bound that small leaves a leftover cell in a non-first
     // column unpainted (stale glyph shows through) and `gutter_x` falls
@@ -1098,7 +1098,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     );
 }
 
-/// Width-20 single-cell column — `signcolumn` accepts up to 127 slots with
+/// Width-20 single-cell column. `signcolumn` accepts up to 127 slots with
 /// no clamp against pane width anywhere in `layout.rs`; this simulates a
 /// configured gutter wider than the pane itself (e.g. `signcolumn
 /// always:40` in a narrow vsplit).
@@ -1128,7 +1128,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     // actual width. A gutter wider than the pane (reachable via
     // `signcolumn always:N` in a narrow vsplit) would otherwise write through
     // the pane's right edge into whatever the shared terminal buffer holds
-    // next to it — typically a neighbouring pane.
+    // next to it, typically a neighbouring pane.
     let graphemes = vec![simple_grapheme(0, 0, 1)];
     let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default()];
@@ -1192,7 +1192,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     }
 }
 
-/// Gutter column returning a runtime-computed `Cow::Owned` icon — the
+/// Gutter column returning a runtime-computed `Cow::Owned` icon: the
 /// shape a Steel-configured gutter icon would take.
 struct OwnedIconGutter;
 impl GutterColumn for OwnedIconGutter {
@@ -1205,7 +1205,7 @@ impl GutterColumn for OwnedIconGutter {
         _: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
-            // Built at call time (e.g. `format!`) rather than a literal —
+            // Built at call time (e.g. `format!`) rather than a literal; this
             // exercises the `Cow::Owned` path, not `Cow::Borrowed`.
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                 "AB".to_string(),
@@ -1310,7 +1310,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
 // ── GutterColumn gets buffer context ──────────────────────────────────
 
 /// Gutter column that reads the first character of the display line's own
-/// buffer line straight out of `ctx.rope` — exercises the `GutterCtx`
+/// buffer line straight out of `ctx.rope`. Exercises the `GutterCtx`
 /// plumbing end to end through `compose_gutter`.
 struct FirstCharGutter;
 impl GutterColumn for FirstCharGutter {
@@ -1348,7 +1348,7 @@ impl GutterColumn for FirstCharGutter {
 
 #[test]
 fn gutter_column_reads_rope_via_ctx() {
-    // "apple\nbanana\n": rendering the display line for line 1 must show 'b' —
+    // "apple\nbanana\n": rendering the display line for line 1 must show 'b',
     // proving the column reached the buffer through `GutterCtx.rope`,
     // not some pre-owned/stale copy.
     let rope = ropey::Rope::from_str("apple\nbanana\n");
@@ -1440,7 +1440,7 @@ fn fill_row_bg_none_clips_right_edge() {
         poke(&mut buf, x, 0, "X");
     }
     let theme = Theme::default();
-    // x_end extends past the buffer's right edge — should clip, not panic.
+    // x_end extends past the buffer's right edge: should clip, not panic.
     Canvas::new(&mut buf, theme.ui.invisible, None).fill_row_bg(8, 20, 0, None);
     for x in 0..10 {
         let sym = buf.cell(x, 0).unwrap().text();
@@ -1634,11 +1634,11 @@ fn write_text_run_draws_a_tab_as_one_space_not_a_placeholder() {
 fn write_text_run_still_shows_a_genuine_placeholder_cluster_as_its_codepoint() {
     // A zero-width space (U+200B) measures zero columns and, unlike a ZWJ,
     // does not join with a neighbouring character into a shared grapheme
-    // cluster — it stands alone, so `needs_placeholder` is true for it with
+    // cluster. It stands alone, so `needs_placeholder` is true for it with
     // no narrower special case the way there is for a tab: it must still
     // render as `<200b>`, not vanish or collapse the row. It must also carry
-    // `invisible_style` rather than the surrounding text's `style` — the
-    // chrome equivalent of buffer text's Tier 2d½ layering — so a reader can
+    // `invisible_style` rather than the surrounding text's `style` (the
+    // chrome equivalent of buffer text's Tier 2d½ layering), so a reader can
     // tell it apart from ordinary text.
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle {
@@ -1675,7 +1675,7 @@ fn write_text_run_still_shows_a_genuine_placeholder_cluster_as_its_codepoint() {
 
 #[test]
 fn write_text_run_drops_a_wide_grapheme_whole_at_the_right_edge() {
-    // "中" is width 2; a right_edge of 1 can't fit it even partially —
+    // "中" is width 2; a right_edge of 1 can't fit it even partially, so it is
     // dropped whole, same rule `truncate_to_width` follows, not clipped to
     // its first column.
     let mut buf = make_test_buf(10, 1);
@@ -1695,7 +1695,7 @@ fn write_text_run_drops_a_wide_grapheme_whole_at_the_right_edge() {
 #[test]
 fn write_cell_drops_a_wide_glyph_at_the_right_edge() {
     // advance 2 at x=0 needs columns 0-1, but right_edge 1 only admits
-    // column 0 — dropped whole, the same rule `write_text_run` follows for
+    // column 0, so it's dropped whole, the same rule `write_text_run` follows for
     // a multi-cluster run (`write_cell` is what that method is built on).
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle::default();
@@ -1742,7 +1742,7 @@ fn write_text_run_claims_the_continuation_cell_of_a_wide_grapheme() {
 fn write_text_run_drops_a_placeholder_whole_when_it_would_straddle_the_right_edge() {
     // `<200b>` needs 6 cells; a right_edge that only leaves 3 after 'a'
     // must drop the whole placeholder rather than writing a partial
-    // `<20` — and, since drop-whole breaks the walk, 'a' is the only thing
+    // `<20`, and, since drop-whole breaks the walk, 'a' is the only thing
     // written at all.
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle::default();
@@ -1760,7 +1760,7 @@ fn write_text_run_drops_a_placeholder_whole_when_it_would_straddle_the_right_edg
         assert_eq!(
             buf[(x, 0)].text(),
             " ",
-            "cell {x} must stay untouched — the placeholder that would reach it was dropped whole"
+            "cell {x} must stay untouched: the placeholder that would reach it was dropped whole"
         );
     }
     assert_eq!(after, 1, "advance must stop before the dropped placeholder");

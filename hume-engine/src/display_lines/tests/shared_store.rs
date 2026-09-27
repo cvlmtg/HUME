@@ -18,8 +18,8 @@ fn with_counting_anchor() -> (ProviderSet, Rc<Cell<usize>>) {
 // Shared line store
 // ---------------------------------------------------------------------------
 
-/// The frame's two passes over one pane — the editor's scroll step and the
-/// render pass — each build their own `DisplayLineMap`, but over the same store. Under
+/// The frame's two passes over one pane (the editor's scroll step and the
+/// render pass) each build their own `DisplayLineMap`, but over the same store. Under
 /// a wrapping mode each formats the lines it walks, so sharing the store must
 /// collapse that to one format per line: `CountingInsert` counts INLINE
 /// queries, which happen once per format and nowhere else.
@@ -55,7 +55,7 @@ fn two_passes_over_one_pane_format_each_line_once() {
 /// A line read back from the store must produce the display line list the formatter
 /// would have. The line carries a tab and an inline insert so both the
 /// `line_texts` slices (`Grapheme::byte_range`) and the `virtual_texts` arena
-/// (`CellContent`'s `(start, len)`) are exercised — those offsets are
+/// (`CellContent`'s `(start, len)`) are exercised. Those offsets are
 /// line-local, which is what makes an entry readable on its own.
 #[test]
 fn a_stored_format_reproduces_the_display_lines_it_replaced() {
@@ -91,12 +91,12 @@ fn a_stored_format_reproduces_the_display_lines_it_replaced() {
 }
 
 /// A horizontally clipped format is not interchangeable with an unclipped
-/// one — it *drops* the graphemes left of its window rather than truncating,
+/// one: it *drops* the graphemes left of its window rather than truncating,
 /// so it cannot stand in for a scan that kept them. `LineFormat::covers`
 /// checks the recorded window against the querying map's own, so the two
 /// never meet; this is what stops the frame's two passes sharing a *format*
 /// in `WrapMode::None`, where only the render pass clips (they still share
-/// the entry's block shape — see `an_h_window_change_keeps_the_block_shape`).
+/// the entry's block shape; see `an_h_window_change_keeps_the_block_shape`).
 #[test]
 fn an_h_window_map_does_not_read_an_unclipped_format() {
     let r = Rope::from_str("alpha bravo charlie delta\n");
@@ -121,7 +121,7 @@ fn an_h_window_map_does_not_read_an_unclipped_format() {
 }
 
 /// Block shape (virtual display lines, `before`/`after`) does not depend on the
-/// horizontal window a `WrapMode::None` render clips to — only the formatted
+/// horizontal window a `WrapMode::None` render clips to; only the formatted
 /// display lines do. An `h_window` change must not force `block_entry` to re-query
 /// providers for a line the store already has.
 #[test]
@@ -145,7 +145,7 @@ fn an_h_window_change_keeps_the_block_shape() {
 }
 
 /// The scope key covers every formatting input, so a buffer that changed
-/// under the same pane invalidates what was stored for it — those entries
+/// under the same pane invalidates what was stored for it. Those entries
 /// describe a format the new inputs would not produce.
 #[test]
 fn a_changed_key_drops_the_scope() {
@@ -217,7 +217,7 @@ fn rewind_drops_the_previous_frames_entries() {
 }
 
 /// A line whose *block shape* is all anyone asked for must not pay for format
-/// buffers it never fills. Under `WrapMode::None` — the default — `content_display_lines`
+/// buffers it never fills. Under `WrapMode::None` (the default), `content_display_lines`
 /// answers 1 without running the formatter, so a walk that only asks for shape
 /// (a half-page motion stepping display line by display line, once per selection) touches many
 /// lines and formats none of them. Their entries have to cost bookkeeping
@@ -261,7 +261,7 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
 
 /// A line pathologically wider than any ordinary source line (a minified-JS
 /// file's single line, megabytes wide) must not pin its whole grapheme/text
-/// capacity once the frame that formatted it has passed — that would reverse
+/// capacity once the frame that formatted it has passed. That would reverse
 /// the free list's own memory bound.
 ///
 /// The frame boundary is the only moment that can be relied on to give it
@@ -283,7 +283,7 @@ fn rewind_shrinks_an_oversized_entry() {
 }
 
 /// Below the shrink ceiling, an entry keeps its capacity across the frame
-/// boundary — the free list's whole point, which a naive "always shrink on
+/// boundary. That is the free list's whole point, which a naive "always shrink on
 /// rewind" implementation would defeat for every ordinary line.
 #[test]
 fn rewind_does_not_shrink_an_ordinary_entry() {

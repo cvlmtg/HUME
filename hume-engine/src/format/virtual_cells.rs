@@ -1,4 +1,4 @@
-//! The single emitter behind both kinds of virtual text — inline inserts
+//! The single emitter behind both kinds of virtual text: inline inserts
 //! and standalone provider virtual lines. See [`push_virtual_cells`]'s own
 //! doc for why one emitter serves both.
 
@@ -40,7 +40,7 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
 pub(crate) struct VirtualRun<'a> {
     pub text: &'a str,
     /// A virtual cell occupies no buffer bytes, so this is never a real span
-    /// — just the one position each of `push_virtual_cells`'s output
+    /// but just the one position each of `push_virtual_cells`'s output
     /// `Grapheme`s reuses for both ends of their own (always-empty)
     /// `byte_range`. That value still matters: `DisplayLineMap`'s `NearestContent`
     /// filter reads emptiness to tell a `Whitespace`/`Placeholder` cell that
@@ -51,7 +51,7 @@ pub(crate) struct VirtualRun<'a> {
     /// precedes (not `usize::MAX`): keeps the display line non-decreasing in
     /// `char_offset`, which `resolve_grapheme_display_col`'s partition_point
     /// requires. Mid-line inserts are pushed before that grapheme, so ties
-    /// resolve to the insert first — `resolve_grapheme_display_col` skips
+    /// resolve to the insert first; `resolve_grapheme_display_col` skips
     /// forward past `Virtual` cells to reach the real one. Trailing inserts
     /// share the EOL sentinel's offset (the `\n` position) since there is no
     /// later real grapheme on the display line to precede.
@@ -62,18 +62,18 @@ pub(crate) struct VirtualRun<'a> {
 /// Push one `Grapheme`/cell per grapheme cluster of `run.text`, not one wide
 /// cell for the whole string: a `Cell` renders its text at
 /// exactly one column, so packing a multi-character run into a single cell
-/// leaves the columns after the first unwritten by this run — whatever the
+/// leaves the columns after the first unwritten by this run. Whatever the
 /// compose stage puts there instead (real buffer content) then wins when the
 /// backend paints cell-by-cell, clobbering everything past the first
 /// character.
 ///
-/// The single emitter behind both kinds of virtual text — `format_buffer_line`'s
+/// The single emitter behind both kinds of virtual text: `format_buffer_line`'s
 /// mid-line and end-of-line inline inserts, and `DisplayLineMap::segment_virtual_line`'s
 /// standalone provider display lines. They differ only in the identity
 /// their cells carry (`run`) and in how each cell's scope resolves
 /// (`scope_at`, a constant for an insert, an interval cursor for a virtual
-/// display line), so everything column-related — tab expansion, the
-/// control-character policy, double-width continuation cells — lives here
+/// display line), so everything column-related (tab expansion, the
+/// control-character policy, double-width continuation cells) lives here
 /// once and cannot drift between them.
 ///
 /// Widths are measured against the live `display_col`, not the run's starting
@@ -88,29 +88,29 @@ pub(crate) fn push_virtual_cells(
     mut scope_at: impl FnMut(ByteCol) -> Option<ScopeId>,
 ) {
     let (text_start, _) = push_arena_text(arena, run.text);
-    // A virtual cell occupies no buffer bytes — see `VirtualRun::byte_offset`'s
-    // doc — so every cell this run produces reuses the same always-empty range.
+    // A virtual cell occupies no buffer bytes (see `VirtualRun::byte_offset`'s
+    // doc), so every cell this run produces reuses the same always-empty range.
     let byte_range =
         ExclusiveRange::new(ByteCol::new(run.byte_offset), ByteCol::new(run.byte_offset));
     for (byte_offset, cluster) in run.text.grapheme_indices(true) {
         // One grapheme cluster's width is always <= tab_width (u8's own max
-        // 255), unlike a whole run's — no `.min(255)` cap needed before
+        // 255), unlike a whole run's, so no `.min(255)` cap needed before
         // narrowing.
         let classified = hume_rope::width::classify(cluster, display_col.get() as usize, tab_width);
-        // Cluster::width() reads classify()'s own decision — not a second raw measurement.
+        // Cluster::width() reads classify()'s own decision, not a second raw measurement.
         let width = classified.width() as u8;
 
         // A cluster the terminal must not be shown as itself renders as its
         // codepoint, exactly as buffer text does (`grapheme_display`), and
         // occupies the columns `classify` sized for that placeholder. A tab
         // keeps its stop expansion, drawn blank like a buffer line's tab
-        // with the indicator off — decoration providers have no per-line
+        // with the indicator off: decoration providers have no per-line
         // whitespace setting to key off.
         //
         // `set-virtual-lines!` already substitutes control characters at the
         // Steel boundary to keep its caller's `'segments` offsets aligned,
-        // but inline-insert text does not go through that path — an LSP
-        // server's `InlayHint.label` reaches here verbatim — so the
+        // but inline-insert text does not go through that path (an LSP
+        // server's `InlayHint.label` reaches here verbatim), so the
         // guarantee is enforced at this chokepoint rather than at each
         // producer.
         let content = match classified {
@@ -145,7 +145,7 @@ pub(crate) fn push_virtual_cells(
                 byte_range,
                 char_offset: run.char_offset,
                 display_col: *display_col,
-                width: 0, // zero — does not consume columns
+                width: 0, // zero: does not consume columns
                 content: CellContent::WidthContinuation,
                 indent_depth: run.indent_depth,
                 scope: None,

@@ -19,7 +19,7 @@ impl DecorationSource for DummyHighlight {
 }
 
 /// A `VIRTUAL_LINE`-kind source, distinguishable from `DummyHighlight` by
-/// declared kind — used to prove `ProviderSet::decoration_sources` filters
+/// declared kind. Used to prove `ProviderSet::decoration_sources` filters
 /// by kind rather than returning every registered source.
 struct DummyVirtualLine;
 
@@ -109,7 +109,7 @@ fn sync_line_number_style_skips_non_line_number_columns() {
     use crate::builtins::line_number::LineNumberStyle;
     let mut set = ProviderSet::new();
     set.add_gutter_column(Box::new(DummyGutter));
-    // Should not panic — DummyGutter doesn't downcast to LineNumberColumn.
+    // Should not panic: DummyGutter doesn't downcast to LineNumberColumn.
     set.sync_line_number_style(LineNumberStyle::Absolute);
 }
 
@@ -137,7 +137,7 @@ fn sync_sign_column_width_updates_registered_sign_columns() {
 fn sync_sign_column_width_skips_non_sign_columns() {
     let mut set = ProviderSet::new();
     set.add_gutter_column(Box::new(DummyGutter));
-    // Should not panic — DummyGutter doesn't downcast to SignColumn.
+    // Should not panic: DummyGutter doesn't downcast to SignColumn.
     set.sync_sign_column_width(0);
 }
 

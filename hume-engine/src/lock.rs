@@ -1,6 +1,6 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
-/// A shared, frame-local mutable slot — `Arc<RwLock<T>>` with this
+/// A shared, frame-local mutable slot: `Arc<RwLock<T>>` with this
 /// workspace's poison policy baked in, for the render/overlay/decoration
 /// state shared across crate boundaries via a raw `Arc` (`hume-ui`'s
 /// overlay views and pane-render handles, `hume-decorations`'s per-buffer

@@ -28,23 +28,23 @@ use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::VirtualLine;
 use hume_rope::line::ContentLine;
 
-/// The caller's identification of a buffer *state* — which buffer, at which
-/// content generation, with which decorations — as the three numbers naming
+/// The caller's identification of a buffer *state* (which buffer, at which
+/// content generation, with which decorations) as the three numbers naming
 /// it.
 ///
 /// Compared as a unit and never interpreted, so which component is which is
 /// this crate's business only insofar as the caller stays consistent about
 /// it. Three numbers rather than one the caller hashed them into: the
 /// comparison here is exact, and a fold would trade that for a probabilistic
-/// one to buy nothing — a key this small is copied, not stored at scale.
+/// one to buy nothing: a key this small is copied, not stored at scale.
 pub type BufferTag = [u64; 3];
 
 /// Everything a line's block shape depends on besides the line's own text.
 ///
 /// Deliberately excludes the horizontal clip (`h_window`) a `WrapMode::None`
 /// render applies: block shape doesn't depend on it, only the formatted
-/// display lines do, so that lives on `LineFormat` instead — see the module
-/// doc's "Scope key" section.
+/// display lines do, so that lives on `LineFormat` instead (see the module
+/// doc's "Scope key" section).
 ///
 /// Also excludes the pane's content width, which reaches formatting through
 /// `wrap_mode` and nowhere else: the mode is stored already resolved (see
@@ -58,7 +58,7 @@ pub type BufferTag = [u64; 3];
 /// `DisplayLineMap::new`: the frame's scroll pass and render pass each resolve this
 /// from a different composition (`commands::pane_display_lines` vs.
 /// `frame.rs::resolve_pane_settings`), and their sharing this pane's store
-/// depends entirely on the two agreeing bit for bit — a single constructor is
+/// depends entirely on the two agreeing bit for bit. A single constructor is
 /// what makes disagreement a compile-time impossibility rather than a
 /// property four independently-resolved fields have to earn by convention.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -70,7 +70,7 @@ pub struct FormatKey {
 }
 
 impl FormatKey {
-    /// Replace `wrap_mode`'s `width: 0` sentinel with `content_width` —
+    /// Replace `wrap_mode`'s `width: 0` sentinel with `content_width`,
     /// [`WrapMode::resolve`]'s own contract. Applied once, by [`DisplayLineMap::new`](super::DisplayLineMap::new),
     /// so every other holder of a `FormatKey` (the store's own `scope`, a
     /// caller comparing two keys) sees one already resolved against the
@@ -89,7 +89,7 @@ pub struct LineEntry {
     /// line: every caller working from one reads the line back here rather
     /// than carrying it alongside and risking the two disagreeing.
     pub line: ContentLine,
-    /// This line's virtual display lines, `Before` ones first — the order
+    /// This line's virtual display lines, `Before` ones first: the order
     /// [`crate::providers::VirtualLineAnchor::sort_key`] imposes, so the
     /// `i`th `After` one is at index `before + i`.
     pub virtual_lines: Vec<VirtualLine>,
@@ -109,7 +109,7 @@ impl LineEntry {
         }
     }
 
-    /// Virtual display lines anchored `After` this line — whatever `before`
+    /// Virtual display lines anchored `After` this line: whatever `before`
     /// doesn't claim, since `virtual_lines` holds the two groups back to back.
     pub fn after(&self) -> usize {
         self.virtual_lines.len() - self.before
@@ -119,13 +119,13 @@ impl LineEntry {
     ///
     /// `format` needs no resetting here: the only way an entry becomes a
     /// spare is through [`PaneLineStore::rewind`], which already reset (and,
-    /// past its ceiling, shrank) it. `virtual_lines` is different —
+    /// past its ceiling, shrank) it. `virtual_lines` is different:
     /// `rewind` deliberately leaves it alone (nothing there needs shrinking,
     /// so touching it would only cost a pass over every spare for no
     /// reason), so a slot can still be holding the *previous* line's
     /// display lines from the last time it was live. [`super::DisplayLineMap::block_entry`]'s
     /// intake takes this field as scratch and pushes the new line's display
-    /// lines onto whatever is already in it — clearing here is what makes that
+    /// lines onto whatever is already in it, and clearing here is what makes that
     /// start from empty rather than appending onto a stale block. `before`
     /// gets no such treatment: `block_entry` overwrites it unconditionally
     /// right after this call returns, before anything reads it.
@@ -138,8 +138,8 @@ impl LineEntry {
 /// The lines one [`DisplayLineMap`](super::DisplayLineMap) is working with.
 ///
 /// `entries` is a free list: `PaneLineStore::rewind` drops what is live but
-/// keeps each entry's allocation — bar one grown past
-/// [`crate::format::LineFormat::reset_and_shrink`]'s ceiling, so a store
+/// keeps each entry's allocation (bar one grown past
+/// [`crate::format::LineFormat::reset_and_shrink`]'s ceiling), so a store
 /// settles into reusing what it already has without one pathologically wide
 /// line pinning its capacity for the pane's whole life. An entry only ever
 /// holds buffers for a line something actually formatted; one walked for its
@@ -172,11 +172,11 @@ impl PaneLineStore {
         }
     }
 
-    /// Drop what this store holds, keeping the allocations behind it — bar
+    /// Drop what this store holds, keeping the allocations behind it, bar
     /// one grown past its ceiling, which is handed back here.
     ///
     /// Called once per frame via [`EngineView::begin_frame`](crate::pipeline::EngineView::begin_frame),
-    /// and a correctness requirement rather than hygiene — see the module doc.
+    /// and a correctness requirement rather than hygiene; see the module doc.
     ///
     /// The shrink belongs at this boundary rather than at
     /// [`LineEntry::rebind`], the other point an entry changes hands: a slot

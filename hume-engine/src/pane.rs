@@ -20,22 +20,22 @@ use ropey::Rope;
 ///
 /// `top` is `pub(crate)`, not `pub`: every write to it from outside this
 /// crate goes through one of the scroll verbs in
-/// [`crate::display_lines::scroll`] (`scroll_by`/`reveal`/`align`) — the
+/// [`crate::display_lines::scroll`] (`scroll_by`/`reveal`/`align`), the
 /// single write API for a pane's scroll position, so no caller resolves a
 /// `DisplayLinePos` address independently of it. `DisplayLinePos::slot` is a
-/// raw `usize`, unnarrowed — nothing needs a slot past a display-line count
+/// raw `usize`, unnarrowed: nothing needs a slot past a display-line count
 /// no real terminal or document reaches.
 #[derive(Clone, Debug)]
 pub struct Viewport {
     pub(crate) top: DisplayLinePos,
     /// Horizontal scroll in columns (0 when soft-wrap is on). A document
-    /// column, not a terminal cell — widened past `u16` alongside
+    /// column, not a terminal cell. Widened past `u16` alongside
     /// `Grapheme::display_col` so scrolling isn't ceilinged at column 65535 on an
     /// unwrapped line.
     ///
     /// `pub(crate)`, not `pub`, for the same reason as `top`: the only write
     /// from outside this crate is "reset to 0" (a wrap-mode change), which
-    /// [`Viewport::reset_horizontal`] covers — every other write is
+    /// [`Viewport::reset_horizontal`] covers; every other write is
     /// [`Viewport::reveal_horizontal`](crate::display_lines::scroll)'s own.
     pub(crate) horizontal_offset: DisplayLineCol,
     /// Total width of the pane in terminal cells (gutter + content).
@@ -54,7 +54,7 @@ impl Viewport {
         }
     }
 
-    /// The viewport's top display-line address — the last one
+    /// The viewport's top display-line address: the last one
     /// [`Viewport::top_at`](crate::display_lines::scroll) resolved it to.
     ///
     /// A caller holding a `DisplayLineMap` must call `top_at` instead of this:
@@ -62,9 +62,9 @@ impl Viewport {
     /// shape, so a write site that ran since the last resolve (`recall_scroll`,
     /// an LSP jump, `Pane::inherit_view_state`) can leave it stale. This
     /// accessor exists for the three production readers that hold no map at
-    /// all — `hume-editor`'s `OnViewportChange` debounce key, and the
+    /// all (`hume-editor`'s `OnViewportChange` debounce key, and the
     /// coarse visible-line supersets `decorated_panes`/`pane_visible_range`
-    /// build from `top.line` alone — plus every test assertion on the stored
+    /// build from `top.line` alone), plus every test assertion on the stored
     /// value.
     pub fn top(&self) -> DisplayLinePos {
         self.top
@@ -75,7 +75,7 @@ impl Viewport {
         self.horizontal_offset
     }
 
-    /// Zero the horizontal scroll offset — for a wrap-mode change, where
+    /// Zero the horizontal scroll offset, for a wrap-mode change, where
     /// horizontal scroll is meaningless once wrapped and the caller needs
     /// it zero immediately rather than waiting a frame for
     /// [`Viewport::reveal_horizontal`](crate::display_lines::scroll) to
@@ -84,7 +84,7 @@ impl Viewport {
         self.horizontal_offset = DisplayLineCol::new(0);
     }
 
-    /// This viewport's scrolloff geometry, or `None` at zero height — every
+    /// This viewport's scrolloff geometry, or `None` at zero height. Every
     /// scroll verb takes a [`ViewGeometry`] rather than a raw height, so a
     /// collapsed pane is one early return here instead of a `height == 0`
     /// check repeated inside each verb. The sole constructor, so
@@ -109,14 +109,14 @@ impl Viewport {
         })
     }
 
-    /// Seed an arbitrary top — for test fixtures that need a pane to start
+    /// Seed an arbitrary top, for test fixtures that need a pane to start
     /// scrolled without exercising the scroll verbs themselves. Not
     /// `#[cfg(test)]`: `hume-editor`'s own integration tests need this too,
     /// and cross-crate `cfg(test)` items are invisible to a dependent
     /// crate's test build (a normal, non-test build of `hume-engine`
     /// backs it).
     ///
-    /// Production code never calls this — every real write goes through a
+    /// Production code never calls this. Every real write goes through a
     /// scroll verb or `Pane::recall_scroll`. An unvalidated address left
     /// here self-heals on the next `top_at` read, the same posture
     /// `recall_scroll`'s own unvalidated slot write already has.
@@ -124,8 +124,8 @@ impl Viewport {
         self.top = top;
     }
 
-    /// [`Viewport::seed_top_for_test`]'s counterpart for `horizontal_offset`
-    /// — a test fixture that needs a pane pre-scrolled horizontally without
+    /// [`Viewport::seed_top_for_test`]'s counterpart for `horizontal_offset`:
+    /// a test fixture that needs a pane pre-scrolled horizontally without
     /// driving `reveal_horizontal` to get there.
     pub fn seed_horizontal_offset_for_test(&mut self, horizontal_offset: DisplayLineCol) {
         self.horizontal_offset = horizontal_offset;
@@ -134,11 +134,11 @@ impl Viewport {
 
 /// A nonzero-height viewport's scrolloff geometry, resolved once per scroll
 /// operation and threaded through every verb in
-/// [`crate::display_lines::scroll`] — [`Viewport::geometry`] is the sole
+/// [`crate::display_lines::scroll`]. [`Viewport::geometry`] is the sole
 /// constructor, so a verb can never observe `height == 0` or a `target` with
 /// nothing to reach, and [`Viewport::reveal`](crate::display_lines::scroll)
 /// (vertical cursor-follow) and `DisplayLineMap::max_scroll_top` (the
-/// scroll-down bound) can never disagree on `margin`/`target` — both read
+/// scroll-down bound) can never disagree on `margin`/`target`: both read
 /// them off the same `ViewGeometry`, rather than each computing its own.
 /// That agreement matters because a `Ctrl-d`/wheel scroll to EOF and the
 /// very next ordinary cursor motion share one viewport top.
@@ -156,7 +156,7 @@ pub struct ViewGeometry {
     /// the two margins can never meet in the middle of an odd-or-even height.
     pub margin: usize,
     /// Display line (0-indexed from the top) the far edge settles at once
-    /// `margin` is reserved on both sides — always `>= margin`.
+    /// `margin` is reserved on both sides; always `>= margin`.
     pub target: usize,
 }
 
@@ -185,7 +185,7 @@ pub struct ScrollPosition {
 /// to substitute a concrete column count before handing the mode to engine code.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum WrapMode {
-    /// No wrapping — horizontal scroll.
+    /// No wrapping: horizontal scroll.
     #[default]
     None,
     /// Break at `width` columns (`0` = content width sentinel).
@@ -204,7 +204,7 @@ pub enum WrapMode {
 /// actually wrap.
 pub const DEFAULT_WRAP_STYLE: WrapMode = WrapMode::Indent { width: 0 };
 
-/// A pane's wrap-mode override for one buffer — the value type of
+/// A pane's wrap-mode override for one buffer: the value type of
 /// `Pane::wraps`.
 ///
 /// Kept per (pane, buffer) rather than flat on `Pane` so the pin follows the
@@ -215,21 +215,21 @@ pub const DEFAULT_WRAP_STYLE: WrapMode = WrapMode::Indent { width: 0 };
 /// already has via `saved_scrolls`.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct WrapOverride {
-    /// `None` means no override — the effective mode falls back to the
+    /// `None` means no override: the effective mode falls back to the
     /// buffer's, then the global default (`hume-editor`'s
-    /// `commands::effective_wrap_mode` is the resolver — `hume-engine` has
+    /// `commands::effective_wrap_mode` is the resolver; `hume-engine` has
     /// no dependency on `hume-editor` and so cannot resolve that chain
     /// itself). Stored raw (the `width: 0` sentinel unresolved) when `Some`;
     /// call `WrapMode::resolve(content_width)` on the resolved mode since
     /// content width depends on live pane geometry.
     pub mode: Option<WrapMode>,
     /// The *override* to restore when `:wrap` turns wrapping back on for
-    /// this buffer — provenance, not a resolved value: `None` means the pane
+    /// this buffer. Provenance, not a resolved value: `None` means the pane
     /// was inheriting (from the buffer/global setting) when it was last
     /// turned off, so toggling back on returns it to inheriting; `Some(m)`
     /// means it was explicitly pinned to `m` (`:set pane wrap-mode=…`), so
-    /// toggling back on restores that exact pin. Never `Some(WrapMode::None)`
-    /// — that would make toggle-on a no-op. Written by both
+    /// toggling back on restores that exact pin. Never `Some(WrapMode::None)`,
+    /// since that would make toggle-on a no-op. Written by both
     /// `hume-editor`'s `pane_state::toggle_focused_wrap` (the toggle-off
     /// stash and the "inheriting but the inherited mode doesn't wrap"
     /// fallback) and `pane_state::set_focused_wrap_override` (synced to the
@@ -244,9 +244,9 @@ impl FromStr for WrapMode {
     /// Parse a wrap mode from a string.
     ///
     /// Accepted forms:
-    /// - `none`                 — no wrapping
-    /// - `soft` / `word` / `indent` — wrap at terminal width
-    /// - `soft:N` / `word:N` / `indent:N` — wrap at column N (N=0 also means terminal width)
+    /// - `none`: no wrapping
+    /// - `soft` / `word` / `indent`: wrap at terminal width
+    /// - `soft:N` / `word:N` / `indent:N`: wrap at column N (N=0 also means terminal width)
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lower = s.to_ascii_lowercase();
         if lower == "none" {
@@ -281,7 +281,7 @@ impl FromStr for WrapMode {
 
 impl std::fmt::Display for WrapMode {
     /// Canonical `kind:width` form (width always explicit, even the `0`
-    /// sentinel) — round-trips through `FromStr`, which also accepts the
+    /// sentinel). Round-trips through `FromStr`, which also accepts the
     /// bare-keyword shorthand this never emits.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -297,7 +297,7 @@ impl WrapMode {
     /// Concrete wrap column, or `None` if wrapping is off.
     ///
     /// The caller must have already resolved the `width: 0` sentinel via
-    /// `WrapMode::resolve(content_width)` — passing an unresolved sentinel is
+    /// `WrapMode::resolve(content_width)`. Passing an unresolved sentinel is
     /// a bug and panics in both debug and release. The alternative (returning
     /// `None` or `Some(0)`) would silently format at column 0 in production.
     pub fn wrap_width(&self) -> Option<u16> {
@@ -306,7 +306,7 @@ impl WrapMode {
             WrapMode::Soft { width } | WrapMode::Word { width } | WrapMode::Indent { width } => {
                 assert!(
                     *width != 0,
-                    "wrap_width() received unresolved sentinel (width: 0) — \
+                    "wrap_width() received unresolved sentinel (width: 0): \
                      call WrapMode::resolve(content_width) before reaching the engine",
                 );
                 Some(*width)
@@ -318,8 +318,8 @@ impl WrapMode {
     ///
     /// `WrapMode::None` and concrete non-zero widths pass through unchanged.
     /// The effective mode (see `hume-editor`'s `commands::effective_wrap_mode`)
-    /// is raw (unresolved); call this at each use site — editor's
-    /// `resolve_pane_settings`, scroll/cursor/mouse — passing that pane's
+    /// is raw (unresolved); call this at each use site (editor's
+    /// `resolve_pane_settings`, scroll/cursor/mouse), passing that pane's
     /// `pane_width − gutter_width` (see `Pane::content_width`), since content
     /// width depends on live pane geometry and must re-derive on resize.
     pub fn resolve(self, content_width: u16) -> WrapMode {
@@ -341,13 +341,13 @@ impl WrapMode {
         !matches!(self, WrapMode::None)
     }
 
-    /// The bare-keyword wire-format strings `FromStr` accepts — the single
+    /// The bare-keyword wire-format strings `FromStr` accepts: the single
     /// source `:set global wrap-mode=<Tab>` completion mirrors. `FromStr` also
     /// accepts `soft:N`/`word:N`/`indent:N` suffix forms, which completion
     /// intentionally doesn't offer (the user types the column count).
     ///
     /// Struct-variant fields (`width`) mean this can't be derived from the
-    /// enum itself — it's hand-maintained here, next to `FromStr`, so the two
+    /// enum itself. It's hand-maintained here, next to `FromStr`, so the two
     /// stay adjacent and a round-trip test can catch drift.
     pub const VALUES: &'static [&'static str] = &["none", "soft", "word", "indent"];
 }
@@ -369,7 +369,7 @@ pub enum WhitespaceRender {
 }
 
 impl WhitespaceRender {
-    /// The wire-format strings `FromStr` accepts — the single source
+    /// The wire-format strings `FromStr` accepts: the single source
     /// `:set buffer whitespace-*=<Tab>` completion mirrors, so the two can
     /// never drift out of sync.
     pub const VALUES: &'static [&'static str] = &["none", "all", "trailing"];
@@ -402,7 +402,7 @@ impl std::fmt::Display for WhitespaceRender {
 
 /// Configuration for whitespace indicator rendering.
 ///
-/// `PartialEq`/`Eq` so it can sit in `display_lines::line_store`'s scope key — a
+/// `PartialEq`/`Eq` so it can sit in `display_lines::line_store`'s scope key: a
 /// whitespace change alters how a line formats, so a cached format from
 /// before the change must not be served after it.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -411,10 +411,10 @@ pub struct WhitespaceConfig {
     pub tab: WhitespaceRender,
     /// Whether to render the newline indicator. A newline is inherently
     /// always at end-of-line, so unlike `space`/`tab` there is no meaningful
-    /// "trailing vs all" distinction here — just on/off.
+    /// "trailing vs all" distinction here, just on/off.
     pub newline: bool,
     /// Character to show in place of a space when rendered. Not
-    /// runtime-configurable — no `:set` key or Steel setter writes it.
+    /// runtime-configurable: no `:set` key or Steel setter writes it.
     pub space_char: &'static str,
     /// Character to show at the start of a tab expansion.
     pub tab_char: &'static str,
@@ -423,7 +423,7 @@ pub struct WhitespaceConfig {
     /// Character to show in place of an invisible Unicode space (NBSP U+00A0,
     /// ideographic space U+3000) when rendered. Distinct from `space_char` so
     /// stray non-breaking spaces stand out from ordinary ones. Gated by the
-    /// `space` render mode — no separate render axis.
+    /// `space` render mode, with no separate render axis.
     pub nbsp_char: &'static str,
 }
 
@@ -445,7 +445,7 @@ impl Default for WhitespaceConfig {
 // Pane
 // ---------------------------------------------------------------------------
 
-/// A single editor pane — an independent view into a buffer.
+/// A single editor pane: an independent view into a buffer.
 pub struct Pane {
     /// Which buffer this pane views.
     pub buffer_id: BufferId,
@@ -461,14 +461,14 @@ pub struct Pane {
     pub primary_idx: usize,
     /// Registered providers for this pane.
     pub providers: ProviderSet,
-    /// This pane's wrap-mode override, per buffer it has shown — a view
+    /// This pane's wrap-mode override, per buffer it has shown. A view
     /// property, not a document one: two panes on the same buffer may wrap
     /// differently, and this pane may pin a different style per buffer. See
     /// [`WrapOverride`]. Read/written through [`Pane::wrap`]/[`Pane::set_wrap`]
     /// rather than directly, mirroring `saved_scrolls`/`remember_scroll`.
     pub wraps: SecondaryMap<BufferId, WrapOverride>,
     /// What every walk of this pane's display lines has learned about the
-    /// lines it visited — see [`crate::display_lines::line_store`].
+    /// lines it visited; see [`crate::display_lines::line_store`].
     ///
     /// Per pane rather than one shared store, because two panes can show the
     /// same buffer at the same width and resolve a bit-identical
@@ -486,7 +486,7 @@ pub struct Pane {
 
 impl Pane {
     /// Create a new pane viewing `buffer_id`, with no wrap-mode override for
-    /// any buffer — it inherits each buffer's/the global's effective mode
+    /// any buffer. It inherits each buffer's/the global's effective mode
     /// until `:wrap` or `:set pane wrap-mode=…` pins one for that buffer.
     ///
     /// Callers that need custom providers should use `Pane { providers, ..Pane::new(bid) }`.
@@ -528,7 +528,7 @@ impl Pane {
         self.wraps = wraps.clone();
     }
 
-    /// This pane's wrap-mode override for the buffer it currently views —
+    /// This pane's wrap-mode override for the buffer it currently views:
     /// `WrapOverride::default()` (no override, nothing to restore) if this
     /// pane has never pinned or toggled wrap for that buffer.
     pub fn wrap(&self) -> WrapOverride {
@@ -543,7 +543,7 @@ impl Pane {
     /// Width available for text after subtracting the gutter, clamped to at least 1.
     ///
     /// `last_line_idx` is the buffer's last ropey line index (used to size
-    /// the line-number column — `hume_rope::lines::last_ropey_line`). Call this
+    /// the line-number column, `hume_rope::lines::last_ropey_line`). Call this
     /// before `WrapMode::resolve` to get the concrete wrap column.
     pub fn content_width(&self, last_line_idx: RopeyLine) -> u16 {
         let gutter_w = gutter_width_for_line(self.providers.gutter_columns(), last_line_idx);
@@ -563,12 +563,12 @@ impl Pane {
 
     /// Restore the saved scroll for `id`, or reset to top on first visit.
     ///
-    /// `last_content_line` is `id`'s *current* last content line index — the
+    /// `last_content_line` is `id`'s *current* last content line index. The
     /// buffer may have shrunk since this scroll was saved (edited elsewhere
     /// while this pane viewed a different buffer), so `top`'s line is
     /// clamped to it, the same bound `reload_buffer_in_place` applies
     /// (`hume-editor/src/editor/buffer/file_open.rs`). `top`'s slot is
-    /// restored verbatim, unvalidated against the block it addresses — like
+    /// restored verbatim, unvalidated against the block it addresses: like
     /// every other write outside `display_lines::scroll`'s verbs, it relies
     /// on the next `Viewport::top_at` read, whichever pass gets there first,
     /// to self-heal a stale address.
@@ -587,7 +587,7 @@ impl Pane {
 
     /// Line index of the primary selection head, resolved via the rope.
     ///
-    /// See [`primary_head_line`] — this is the whole-pane spelling, for
+    /// See [`primary_head_line`]. This is the whole-pane spelling, for
     /// callers that hold a `&Pane` rather than its split-out fields.
     pub fn primary_head_line(&self, rope: &Rope) -> ContentLine {
         primary_head_line(&self.selections, self.primary_idx, rope)
@@ -596,12 +596,12 @@ impl Pane {
 
 /// Line index of the primary selection head, resolved via the rope.
 ///
-/// Called once per frame from the pipeline — O(log n) rope lookup. Takes the
+/// Called once per frame from the pipeline: O(log n) rope lookup. Takes the
 /// two fields rather than `&Pane` so the render pass can call it while holding
 /// a `&mut` on a *different* field of the same pane (its line store).
 ///
 /// Panics (debug and release) if `selections` is empty or `primary_idx` is out
-/// of range — both are violated invariants, not recoverable cases, so this
+/// of range. Both are violated invariants, not recoverable cases, so this
 /// fails loudly rather than defaulting to char 0 and hiding the bug.
 pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Rope) -> ContentLine {
     let head_char = selections
@@ -610,13 +610,13 @@ pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Ro
         .head;
     debug_assert!(
         head_char.index() <= rope.len_chars(),
-        "stale selection mirror: head {head_char:?} beyond rope len {} — \
+        "stale selection mirror: head {head_char:?} beyond rope len {}: \
          pane.selections is out of sync with pane.buffer_id",
         rope.len_chars()
     );
     // Trusted mint, not `RopeyLine::to_content`: a well-formed head is always
     // < len_chars(), landing on a real content line, and the `<=` above only
-    // tolerates a stale mirror's head == len_chars() without crashing on it —
+    // tolerates a stale mirror's head == len_chars() without crashing on it;
     // it doesn't ask this function to repair that case, so this mints the
     // line as-is rather than validating it against `rope`'s own invariant
     // (which a bare `ropey::Rope` in a unit test may not even uphold).

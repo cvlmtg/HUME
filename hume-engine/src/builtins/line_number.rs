@@ -21,7 +21,7 @@ pub enum LineNumberStyle {
 }
 
 impl LineNumberStyle {
-    /// The wire-format strings `FromStr` accepts — the single source
+    /// The wire-format strings `FromStr` accepts: the single source
     /// `:set buffer line-number-style=<Tab>` completion mirrors, so the two
     /// can never drift out of sync.
     pub const VALUES: &'static [&'static str] = &["absolute", "relative", "hybrid"];
@@ -62,15 +62,15 @@ impl std::fmt::Display for LineNumberStyle {
 /// one space of padding on the right.
 pub struct LineNumberColumn {
     pub style: LineNumberStyle,
-    /// Interned `"ui.linenr"` — every display line but the primary head line.
+    /// Interned `"ui.linenr"`: every display line but the primary head line.
     default_scope: ScopeId,
-    /// Interned `"ui.linenr.selected"` — the primary selection's head line.
+    /// Interned `"ui.linenr.selected"`: the primary selection's head line.
     selected_scope: ScopeId,
 }
 
 impl LineNumberColumn {
     /// `default_scope`/`selected_scope` are interned by the caller (once, at
-    /// pane construction) — same intern-at-construction contract as every
+    /// pane construction), the same intern-at-construction contract as every
     /// other provider (`DecorationSource`, `SignSource`).
     pub fn new(default_scope: ScopeId, selected_scope: ScopeId) -> Self {
         Self {
@@ -80,7 +80,7 @@ impl LineNumberColumn {
         }
     }
 
-    /// No production caller — production always starts `Hybrid` via `new`
+    /// No production caller: production always starts `Hybrid` via `new`
     /// and changes style through settings; kept as a test helper for
     /// constructing a column already in a specific style.
     #[cfg(test)]
@@ -99,7 +99,7 @@ impl LineNumberColumn {
 
 /// Number of base-10 digits needed to write `n`, with `0` counting as one
 /// digit. The single source of truth for how wide a line number renders,
-/// shared by this gutter column and the statusline's `line:col` element —
+/// shared by this gutter column and the statusline's `line:col` element:
 /// both size a field around the largest line number they can show, and a
 /// change to that sizing (a minimum width, a different numbering base)
 /// has to reach both or they disagree on screen.
@@ -112,10 +112,10 @@ impl GutterColumn for LineNumberColumn {
         // Digits needed to display the 1-based line number, plus 1 space of
         // right-padding. `last_line_idx` is the phantom-inclusive
         // `hume_rope::lines::last_ropey_line` (see `layout.rs`/`Pane::content_width`
-        // callers), so this sizes for `content_line_count() + 1` digits — one
+        // callers), so this sizes for `content_line_count() + 1` digits, one
         // wider than content strictly needs. The statusline's own line-digit
         // field (`hume-editor/src/statusline/elements/position.rs`) instead sizes for
-        // `content_line_count()` — an accidental, shipped divergence, not a
+        // `content_line_count()`: an accidental, shipped divergence, not a
         // bug to fix here.
         digit_count(last_line_idx.index() + 1).saturating_add(1)
     }
@@ -127,7 +127,7 @@ impl GutterColumn for LineNumberColumn {
     ) -> Vec<GutterCell> {
         // Widened from the content domain: `DisplayLineKind::LineStart`'s own field is
         // ropey domain (see its doc), so the comparison needs both sides in
-        // the same one. The widening is a no-op in practice — a real render
+        // the same one. The widening is a no-op in practice: a real render
         // walk (`DisplayLineMap`) never emits a `LineStart` for the phantom line.
         let primary_head_line: hume_rope::line::RopeyLine = ctx.primary_head_line.into();
         let cell = match kind {
@@ -144,7 +144,7 @@ impl GutterColumn for LineNumberColumn {
                 // `+ 1`, not `.number()`: that method belongs to `ContentLine`
                 // only, since a ropey-domain line has no meaningful 1-based
                 // display number to begin with (the phantom line has no
-                // number a user would ever see) — this plain escape-hatch
+                // number a user would ever see), and this plain escape-hatch
                 // arithmetic mirrors `width()`'s own `last_line_idx.index() + 1`.
                 let display_num = match self.style {
                     LineNumberStyle::Absolute => line_idx.index() + 1,

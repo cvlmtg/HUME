@@ -13,7 +13,7 @@ use crate::types::{DisplayLine, Grapheme};
 
 /// One buffer line's formatted display lines.
 ///
-/// Every index inside is line-local — `DisplayLine::graphemes` indexes
+/// Every index inside is line-local: `DisplayLine::graphemes` indexes
 /// `graphemes`, `Grapheme::byte_range` indexes `line_texts` from 0, and
 /// `CellContent`'s arena `(start, len)` pairs index `virtual_texts`. That is
 /// what lets one of these be held alongside others, or handed between the
@@ -21,7 +21,7 @@ use crate::types::{DisplayLine, Grapheme};
 ///
 /// Lives in a [`crate::display_lines::line_store::PaneLineStore`], which owns them for as
 /// long as the lines they describe are being walked and reuses their
-/// allocations afterwards — so a line formatted on one frame costs the
+/// allocations afterwards, so a line formatted on one frame costs the
 /// allocator nothing on the next.
 pub struct LineFormat {
     /// `DisplayLine`s produced for this buffer line.
@@ -35,16 +35,16 @@ pub struct LineFormat {
     /// Arena backing this line's `CellContent::Virtual` (inline inserts) and
     /// `Whitespace` (indicator glyphs) text ranges, none of which can be
     /// `&'static str` (LSP hints, Steel-configured icons). `TabFill` needs no
-    /// arena entry — its text is always a single space.
+    /// arena entry: its text is always a single space.
     pub virtual_texts: String,
     /// How much of the line the buffers above actually cover, or `None` when
-    /// nothing has been formatted into them yet — the state a line sits in
+    /// nothing has been formatted into them yet. That's the state a line sits in
     /// while only its virtual display lines and block shape are known.
     ///
     /// A bounded scan stops early, so a later query wanting more has to
     /// reformat; see [`FormatBound::covers`].
     pub extent: Option<FormatBound>,
-    /// The horizontal clip this format was cut to, if any — `DisplayLineMap`'s own
+    /// The horizontal clip this format was cut to, if any: `DisplayLineMap`'s own
     /// `h_window` at the moment this ran. Not a formatting input in the sense
     /// `wrap_mode`/`tab_width`/etc. are (those live on `crate::display_lines::line_store::FormatKey`
     /// and invalidate the whole entry on change): a windowed format *drops*
@@ -56,14 +56,14 @@ pub struct LineFormat {
     pub h_window: Option<Range<DisplayLineCol>>,
 }
 
-/// How large each buffer may stay across a frame boundary — past this,
+/// How large each buffer may stay across a frame boundary. Past this,
 /// [`LineFormat::reset_and_shrink`] reclaims it down to exactly this size.
 ///
 /// Ceilings only, not starting sizes: a `LineFormat` begins empty and grows to
 /// whatever its line actually needs. These sit far above an ordinary source
 /// line (which vary by an order of magnitude among themselves) because they
-/// only need to catch the genuinely pathological case — a minified-JS file's
-/// single line, megabytes wide — that would otherwise pin that much capacity
+/// only need to catch the genuinely pathological case (a minified-JS file's
+/// single line, megabytes wide) that would otherwise pin that much capacity
 /// for the pane's whole life, reversing the free list's own memory bound,
 /// since retained allocations are exactly what the free list keeps to avoid
 /// reallocating.
@@ -76,7 +76,7 @@ impl LineFormat {
     /// Empty, with nothing allocated yet.
     ///
     /// One of these exists per buffer line a pass *walks*, not per line it
-    /// formats — and under `WrapMode::None` block shape is known without
+    /// formats, and under `WrapMode::None` block shape is known without
     /// formatting, so most of them never fill. Reserving up front would charge
     /// every walked line for buffers only a rendered one uses; the free list
     /// (see [`crate::display_lines::line_store::PaneLineStore`]) is what makes growing
@@ -103,14 +103,14 @@ impl LineFormat {
         self.h_window = None;
     }
 
-    /// [`Self::reset`] plus reclaiming any buffer grown past its ceiling —
+    /// [`Self::reset`] plus reclaiming any buffer grown past its ceiling:
     /// the frame-boundary counterpart to `reset`, and the exact shape
     /// [`VirtualLineScratch::clear_and_shrink`] takes for the same reason.
     ///
     /// `reset` alone runs when the same line is about to be reformatted,
     /// where shrinking would only force an immediate re-grow. This one runs
     /// from `PaneLineStore::rewind`, where the buffer's next user may be a
-    /// different line or no line at all — the point where an outsized
+    /// different line or no line at all, which is the point where an outsized
     /// allocation is worth paying to give back.
     ///
     /// Resetting first is what lets the shrink take effect at all:
@@ -145,7 +145,7 @@ impl LineFormat {
 
     /// Whether this format already answers a query bounded by `bound`, cut to
     /// the same `h_window` the querying map is using. A windowed format never
-    /// answers for an unwindowed query or vice versa — see the field doc.
+    /// answers for an unwindowed query or vice versa; see the field doc.
     pub fn covers(&self, bound: FormatBound, h_window: Option<&Range<DisplayLineCol>>) -> bool {
         self.extent.is_some_and(|e| e.covers(bound)) && self.h_window.as_ref() == h_window
     }
@@ -163,7 +163,7 @@ impl Default for LineFormat {
 /// a `Before` virtual display line renders ahead of its line's content
 /// display lines, and those may already be formatted and cached
 /// (`display_lines::DisplayLineMap::block` runs the formatter in wrapping mode to count
-/// wrap display lines) — clobbering the shared buffers to lay out the
+/// wrap display lines). Clobbering the shared buffers to lay out the
 /// virtual display line would destroy that cached format and force a
 /// redundant reformat of the content display lines that follow.
 pub struct VirtualLineScratch {
@@ -172,7 +172,7 @@ pub struct VirtualLineScratch {
     /// Graphemes for `display_line`.
     pub graphemes: Vec<Grapheme>,
     /// Arena backing this display line's `CellContent::Virtual` text ranges
-    /// — entirely the provider's `VirtualLine::text`, unlike
+    /// (entirely the provider's `VirtualLine::text`), unlike
     /// `LineFormat::virtual_texts` which backs a content line's inline
     /// decorations.
     pub texts: String,
@@ -184,7 +184,7 @@ pub struct VirtualLineScratch {
 ///
 /// Lower than the content-line ceilings because a virtual display line's
 /// text is a display string a provider *built* (an inlay hint, a blame line, a
-/// diagnostic), not a line read off disk — the megabytes-wide minified-JS
+/// diagnostic), not a line read off disk. The megabytes-wide minified-JS
 /// case that sets the content-line ceilings has no counterpart here.
 const VIRTUAL_LINE_GRAPHEMES_CEILING: usize = 2048;
 const VIRTUAL_LINE_TEXTS_CEILING: usize = 2048;
@@ -194,7 +194,7 @@ impl VirtualLineScratch {
     ///
     /// One of these exists per pane whether or not that pane has any virtual
     /// display lines at all, so it grows on first use rather than charging
-    /// every pane up front — the same reasoning as [`LineFormat::new`].
+    /// every pane up front, the same reasoning as [`LineFormat::new`].
     pub fn new() -> Self {
         Self {
             display_line: None,
@@ -217,7 +217,7 @@ impl VirtualLineScratch {
     /// runs before laying out each virtual display line and is followed
     /// immediately by filling it again, where shrinking would only force a
     /// re-grow. This one runs at the frame boundary, when the next user may
-    /// be a different display line or no display line at all — the point
+    /// be a different display line or no display line at all, which is the point
     /// where an outsized allocation is worth paying to give back.
     pub fn clear_and_shrink(&mut self) {
         self.clear();
@@ -238,15 +238,15 @@ impl Default for VirtualLineScratch {
 
 /// How far into a line [`format_buffer_line`](super::format_buffer_line) needs to scan.
 ///
-/// A query that only wants one position out of a line — where a char offset
-/// sits (`ToByte`), or which char a display column lands on (`ToDisplayCol`)
-/// — has its answer as soon as the scan passes that point, so it can stop there
+/// A query that only wants one position out of a line (where a char offset
+/// sits (`ToByte`), or which char a display column lands on (`ToDisplayCol`))
+/// has its answer as soon as the scan passes that point, so it can stop there
 /// instead of walking an arbitrarily long unwrapped line to the end.
 ///
 /// **The stop is a pure optimization, never a correctness mechanism.** A
 /// bounded scan emits a strict *prefix* of what `Full` emits: it only
 /// truncates, no emitted cell differs, and `clipped` suppresses only the
-/// end-of-line tail. Every consumer is prefix-stable — `display_lines::DisplayLineMap::locate`
+/// end-of-line tail. Every consumer is prefix-stable: `display_lines::DisplayLineMap::locate`
 /// resolves by binary search and never reads past its target,
 /// `char_at`/`Cell` takes the first cell containing the column, and
 /// `char_at`/`NearestContent` takes the first column-nearest cell. So
@@ -269,7 +269,7 @@ impl FormatBound {
     /// `other`. Conservative by design: a `false` costs a reformat, never a
     /// stale read.
     ///
-    /// Cross-kind pairs never cover each other — a byte bound implies no
+    /// Cross-kind pairs never cover each other: a byte bound implies no
     /// useful column bound (a 4-byte char is one column) and vice versa (a
     /// tab is one byte and up to 255 columns).
     pub fn covers(self, other: Self) -> bool {
@@ -287,7 +287,7 @@ impl FormatBound {
     /// `ToDisplayCol` tests the grapheme's *own* start display column, not
     /// the running column after it: a wide cell (tab expanse, CJK glyph) can
     /// straddle the target, and stopping on the running column would drop
-    /// the cell to its right — which may be strictly nearer the target than
+    /// the cell to its right, which may be strictly nearer the target than
     /// the straddling one, changing what `NearestContent` answers.
     pub(super) fn reached(
         self,
