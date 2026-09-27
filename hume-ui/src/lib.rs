@@ -33,13 +33,13 @@ use popup::PopupOverlay;
 /// Bundling as one struct with distinctly-named fields (not loose
 /// same-typed `Arc` parameters) is what stops two different slots (same
 /// `SharedSlot<Option<PopupState>>` type for `minibuf_completion`/`popup`/
-/// `menu`/`completion_menu`) from being wired to each other by mistake — a
+/// `menu`/`completion_menu`) from being wired to each other by mistake: a
 /// `views.popup` at a construction site can't silently become `views.menu`
 /// the way two positional `Arc` arguments of the same type could swap.
 ///
 /// Fields are `pub`, not behind a getter/setter pair: every field is a
 /// [`SharedSlot`], whose own `read()`/`set()` already carry the poison
-/// policy and the only mutation this type ever needs — a wrapping accessor
+/// policy and the only mutation this type ever needs. A wrapping accessor
 /// pair here would have been a pass-through with nothing left to add.
 #[derive(Default)]
 pub struct OverlayViews {
@@ -54,7 +54,7 @@ pub struct OverlayViews {
 
 impl OverlayViews {
     /// The two chrome bands (drawer, docked popup) reading this set's
-    /// band-shaped slots — for `EngineView::bottom_bands`. **Call once**: a
+    /// band-shaped slots, for `EngineView::bottom_bands`. **Call once**: a
     /// second call registers a duplicate band painting the same data twice.
     /// `Editor::open` is the only caller; `Editor::for_testing` deliberately
     /// registers none (see `lsp_popup.rs`'s doc on why).
@@ -72,14 +72,14 @@ impl OverlayViews {
 
 /// Register every overlay provider (minibuffer completion, hover/hint
 /// popup, selection menu, LSP completion menu, fuzzy picker) into `providers`
-/// — the overlay half of pane construction. Sibling of
+/// as the overlay half of pane construction. Sibling of
 /// `hume_decorations::build_providers`; together the two calls populate one
 /// pane's `ProviderSet`. Registration order is z-order (last registered
 /// paints on top): completion overlay, then the hover/signature-help popup,
 /// then the selection menu, then the LSP completion menu (an in-progress
 /// completion is the most action-relevant overlay when more than one could
 /// theoretically be visible), then the picker last, since it's full-modal
-/// and every other opener clears or truncates it before landing above it —
+/// and every other opener clears or truncates it before landing above it.
 /// `show-popup!`'s own `'scrollable` arm refuses to push above an open
 /// picker for exactly this reason, so this registration order and input
 /// precedence (push order on `InputStack`, decided per event) always agree.
@@ -107,7 +107,7 @@ pub fn register_overlays(providers: &mut ProviderSet, views: &OverlayViews) {
 
 /// Rows of `area` as plain symbols, trailing spaces trimmed per row.
 ///
-/// Shared by `menu_box`'s and `picker_panel`'s own test modules — both dump
+/// Shared by `menu_box`'s and `picker_panel`'s own test modules: both dump
 /// a rendered `Grid` region to a string for `insta`/plain assertions, and
 /// the dump itself is identical between the two overlay kinds.
 #[cfg(test)]

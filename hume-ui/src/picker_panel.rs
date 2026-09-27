@@ -1,17 +1,17 @@
-//! Centered fuzzy-picker panel — bordered box with a query input line on
+//! Centered fuzzy-picker panel: bordered box with a query input line on
 //! top and a ranked, scrolling item list below.
 //!
 //! Deliberately a sibling of [`super::menu_box`], not built on it: this
 //! panel is a *fixed-size* box (sized as a fraction of the panes region,
 //! independent of item count) with a two-zone layout (input row + list) and
-//! an edge-anchored scroll model owned by `PickerSession` — `menu_box`'s
+//! an edge-anchored scroll model owned by `PickerSession`. `menu_box`'s
 //! selected-row window centers the selection instead, a different and
 //! conflicting scroll model. The only thing shared is the border-drawing
 //! routine itself, `super::menu_box::draw_box_border`.
 //!
 //! Write side (`Editor::sync_picker_view`) resolves geometry once per
 //! frame against the current panes region and writes a [`PickerViewState`]
-//! snapshot; `PickerOverlay` only paints it — same split as
+//! snapshot; `PickerOverlay` only paints it, the same split as
 //! `super::popup::PopupOverlay`.
 //!
 use hume_engine::types::ResolvedStyle;
@@ -29,11 +29,11 @@ use hume_engine::types::TruncateEnd;
 use super::width::{text_width, truncate_marked, truncate_text, truncate_text_tail};
 
 /// Maximum panel width/height in terminal cells, before the pane-fraction
-/// clamp — mirrors `MAX_POPUP_WIDTH`'s role for the popup widget.
+/// clamp. Mirrors `MAX_POPUP_WIDTH`'s role for the popup widget.
 const MAX_PANEL_WIDTH: u16 = 100;
 const MAX_PANEL_HEIGHT: u16 = 30;
 
-/// Smallest panel `panel_geometry`/`draw_picker_panel` will paint into — a
+/// Smallest panel `panel_geometry`/`draw_picker_panel` will paint into: a
 /// single shared bound so the two can't drift on what counts as "too small
 /// to render" (one place returned `None`, the other painted a truncated box
 /// for the same input).
@@ -42,35 +42,35 @@ const MIN_PANEL_HEIGHT: u16 = 4;
 
 /// Rows the border and input line always claim: the top border, the input
 /// row, and the bottom border. Subtracted from the outer height exactly
-/// once, in `panel_geometry`, to produce `PanelGeometry::list_rows` — the
+/// once, in `panel_geometry`, to produce `PanelGeometry::list_rows`, so the
 /// row budget a keystroke pages against and the one a frame paints
 /// (`PickerViewState::list_rows`, carried from the same call) are the same
 /// number by construction rather than two derivations that have to agree.
 const CHROME_ROWS: u16 = 3;
 
-/// Fully-resolved panel content and position — computed once per frame by
+/// Fully-resolved panel content and position, computed once per frame by
 /// the write side (`Editor::sync_picker_view`); the overlay only paints.
 pub struct PickerViewState {
-    /// Label painted before the query on the input row, e.g. `"files: "` —
-    /// empty by default, in which case the input row renders exactly as it
-    /// did before prompts existed. Not yet width-clipped — paint-time
-    /// concern, same as `query`.
+    /// Label painted before the query on the input row, e.g. `"files: "`.
+    /// Empty by default, in which case the input row renders exactly as it
+    /// did before prompts existed. Not yet width-clipped (a paint-time
+    /// concern, same as `query`).
     pub prompt: String,
-    /// Raw query text (not yet tail-truncated — that's a paint-time
+    /// Raw query text (not yet tail-truncated; that's a paint-time
     /// concern, so this snapshot stays a dumb value, not pre-formatted UI).
     pub query: String,
     /// Display strings of the current scroll window, in ranked order
-    /// (`PickerSession::window`'s output) — already scrolled; the widget
+    /// (`PickerSession::window`'s output), already scrolled; the widget
     /// never re-windows.
     pub rows: Vec<String>,
     /// On-screen index into `rows` of the selected row (`selected - scroll`
     /// from the store); `None` when `rows` is empty.
     pub selected_row: Option<usize>,
-    /// `PickerSession::matched_len` / `total_len` — rendered as a
+    /// `PickerSession::matched_len` / `total_len`, rendered as a
     /// right-aligned `"matched/total"` counter on the input row.
     pub matched: usize,
     pub total: usize,
-    /// `PickerSession::is_pending` — appends a "still arriving" marker to
+    /// `PickerSession::is_pending`: appends a "still arriving" marker to
     /// the counter so a picker opened empty (`spawn-async!`-backed, or a
     /// live `picker-source-spawn!` source) doesn't read as "zero results"
     /// while its job is still running.
@@ -79,18 +79,18 @@ pub struct PickerViewState {
     /// region this same frame.
     pub rect: Rect,
     /// `PanelGeometry::list_rows` from the same `panel_geometry` call that
-    /// produced `rect` — carried alongside it rather than re-subtracted
+    /// produced `rect`, carried alongside it rather than re-subtracted
     /// from `rect.height` at paint time, so the row budget a keystroke
     /// paged against and the one a frame paints can never drift apart.
     pub list_rows: usize,
     /// Fed from the `popup-border` setting, same as popup/menu/drawer.
     pub border: bool,
-    /// Which end of an over-long row this session clips — `#:truncate`,
+    /// Which end of an over-long row this session clips: `#:truncate`,
     /// `PickerSession::truncate()`.
     pub truncate: TruncateEnd,
 }
 
-/// Resolved panel geometry — the single source of truth shared by the write
+/// Resolved panel geometry: the single source of truth shared by the write
 /// side (`sync_picker_view`, sizing the paint) and the input-handling side
 /// (`Editor::picker_input`, sizing `move_selection`'s `visible_rows`). Both
 /// call this against the same `EditorState.view.last_pane_area`, so a
@@ -101,10 +101,10 @@ pub struct PanelGeometry {
     pub list_rows: usize,
 }
 
-/// Size the panel as a fraction of `pane_area` — width `min(80%, 100 cols)`,
-/// height `min(60%, 30 rows)` — then center it. Returns `None` when the
+/// Size the panel as a fraction of `pane_area` (width `min(80%, 100 cols)`,
+/// height `min(60%, 30 rows)`), then center it. Returns `None` when the
 /// region can't host a viable panel (narrower than `MIN_PANEL_WIDTH` or
-/// shorter than `MIN_PANEL_HEIGHT`, i.e. not even one list row) — callers
+/// shorter than `MIN_PANEL_HEIGHT`, i.e. not even one list row). Callers
 /// then paint nothing rather than a degenerate box.
 pub fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     let width = ((pane_area.width as u32 * 80 / 100) as u16)
@@ -122,9 +122,9 @@ pub fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     })
 }
 
-/// Resolved styles for the picker body — Helix's own picker scopes, not a
+/// Resolved styles for the picker body. These are Helix's own picker scopes, not a
 /// HUME invention: `ui.background` (panel fill), `ui.text` (border/rows/
-/// query), `ui.text.focus` (the selected row — Helix's docs call it "the
+/// query), `ui.text.focus` (the selected row, which Helix's docs call "the
 /// currently selected line in the picker"), `ui.cursor.primary` (query block
 /// cursor). `Theme::resolve_raw`'s prefix-trim already degrades each of
 /// these to `default` when a theme omits it, so no custom fallback layer is
@@ -149,7 +149,7 @@ pub(in crate::picker_panel) fn picker_styles(theme: &Theme) -> PickerStyles {
 
 /// Paint the panel into `state`'s resolved outer rect. Pure function of its
 /// arguments (styles pre-resolved by the caller, mirroring
-/// `draw_menu_box`'s shape) — safe to call once per pane per frame even
+/// `draw_menu_box`'s shape). Safe to call once per pane per frame even
 /// though the overlay loop hands every pane the same whole-panes-region
 /// rect (`hume-engine/src/pipeline/mod.rs`'s "may span panes" overlay pass).
 ///
@@ -157,7 +157,7 @@ pub(in crate::picker_panel) fn picker_styles(theme: &Theme) -> PickerStyles {
 /// cursor cell at the end styled `ui.cursor.primary`, and a right-aligned
 /// `matched/total` counter when it fits); the remaining rows are `state.rows`, with
 /// `state.selected_row` highlighted across the full inner width. `rows` is
-/// never re-windowed here — the store already scrolled it.
+/// never re-windowed here: the store already scrolled it.
 pub(in crate::picker_panel) fn draw_picker_panel(
     canvas: &mut Canvas,
     state: &PickerViewState,
@@ -191,7 +191,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     let counts_width = text_width(&counts);
 
     // Clip the prompt itself only in the pathological case where it alone
-    // exceeds the inner width — the common case (empty or a short label)
+    // exceeds the inner width. The common case (empty or a short label)
     // leaves this a no-op, so an empty prompt renders identically to no
     // prompt at all. The readable prefix matters more than the tail for a
     // fixed label, so this keeps the *head* (unlike the query's own
@@ -210,7 +210,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
         after_prompt_width.saturating_sub(1)
     };
     // Remove leading graphemes until the query fits `query_budget`, keeping
-    // the *tail* — so the cursor cell (always at the end of the query, per
+    // the *tail*, so the cursor cell (always at the end of the query, per
     // the store's append/pop-at-end-only editing model) stays visible.
     let (query_tail, query_width) = truncate_text_tail(&state.query, query_budget);
 
@@ -244,7 +244,7 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     }
 }
 
-/// Overlay provider painting the picker panel — registered per-pane (last,
+/// Overlay provider painting the picker panel, registered per-pane (last,
 /// for top z-order, since the picker is full-modal and must sit above every
 /// other overlay). See [`super::register_overlays`].
 pub(crate) struct PickerOverlay {
@@ -263,7 +263,7 @@ impl OverlayProvider for PickerOverlay {
         };
 
         // Defensive clip: the write side computed this rect against this
-        // same pane's region this same frame — see `fits_inside`'s doc.
+        // same pane's region this same frame; see `fits_inside`'s doc.
         if !super::menu_box::fits_inside(state.rect, pane_rect) {
             return;
         }

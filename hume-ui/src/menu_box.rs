@@ -2,7 +2,7 @@
 //! Placement (bottom-anchored minibuffer completion, cursor-anchored popup/
 //! menu, full-modal picker) is resolved per write side, each against a
 //! different anchor; once a position and outer size are settled, painting the
-//! frame, scroll window, and rows is identical — that shared part lives here.
+//! frame, scroll window, and rows is identical. That shared part lives here.
 
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
@@ -17,7 +17,7 @@ use hume_grid::box_glyphs::{
 use super::popup::StyledRow;
 use super::width::text_width;
 
-/// Theme styles a bordered box paints with — grouped into one struct rather
+/// Theme styles a bordered box paints with, grouped into one struct rather
 /// than three positional `ResolvedStyle` arguments on `draw_menu_box`, which needs
 /// `#[allow(clippy::too_many_arguments)]` regardless given its other params
 /// (canvas, rect, rows, selection, scroll, border).
@@ -25,7 +25,7 @@ use super::width::text_width;
 pub(crate) struct MenuBoxStyles {
     /// Fill, border, and unstyled rows.
     pub base: ResolvedStyle,
-    /// The highlighted row (menus only — plain popups never set `selected`).
+    /// The highlighted row (menus only; plain popups never set `selected`).
     pub selected: ResolvedStyle,
     /// The scrollbar thumb.
     pub scroll: ResolvedStyle,
@@ -33,13 +33,13 @@ pub(crate) struct MenuBoxStyles {
 
 impl MenuBoxStyles {
     /// Resolve all three styles from one root scope (`"ui.popup"` or
-    /// `"ui.menu"`) — the single place that pairs each root with its
+    /// `"ui.menu"`: the single place that pairs each root with its
     /// `.selected`/`.scroll` leaves, so the three every popup/menu overlay
     /// paints with can't drift out of sync with each other. Leaf names are
     /// paired here rather than built with `format!` because `Scope` requires
     /// a `&'static str`, which a runtime-joined `String` can't provide.
     ///
-    /// A root with no `.selected` leaf (`"ui.popup"` — hover popups never
+    /// A root with no `.selected` leaf (`"ui.popup"`, since hover popups never
     /// highlight a row) falls back to `base`, matching what an undefined
     /// theme scope would already resolve to via `Theme::resolve_by_name`'s
     /// own dot-notation chain.
@@ -67,7 +67,7 @@ impl MenuBoxStyles {
 pub(crate) const MAX_MENU_ROWS: u16 = 10;
 
 /// Widest of an arbitrary run of texts' display widths, or `0` for an empty
-/// run — the one measurement rule behind `resolve_popup`'s wrapped-content
+/// run: the one measurement rule behind `resolve_popup`'s wrapped-content
 /// width and `resolve_menu`'s own main/trailing column folds, so a change to
 /// how width is measured (a leading icon's cells, a different wide-cluster
 /// clamp) can't update one caller and silently miss another.
@@ -76,13 +76,13 @@ pub(crate) fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
 }
 
 /// Outer row count (including the 1-cell frame's top/bottom) for a box
-/// windowing `row_count` rows to at most `row_cap` visible ones — the height
+/// windowing `row_count` rows to at most `row_cap` visible ones: the height
 /// half of [`outer_dims_from_width`], split out because `resolve_menu`
 /// resolves its height before it knows its width (see that function's own
 /// comment on the ordering) and so has no `inner_width` to hand that
 /// function yet.
 pub(crate) fn outer_rows(row_count: usize, row_cap: u16) -> u16 {
-    // Clamp in `usize` before casting down — `(row_count as u16)` truncates
+    // Clamp in `usize` before casting down: `(row_count as u16)` truncates
     // first and can wrap a huge `row_count` (a large `buffer-words` index on
     // an empty prefix) to a value *smaller* than `row_cap`, which then wins
     // the min and produces a near-zero menu height. Same fix as
@@ -105,7 +105,7 @@ pub(crate) fn outer_dims_from_width(
 
 /// Outer row count for a bottom band showing `content_rows` rows plus
 /// `chrome_rows` of fixed frame (a drawer's 1-row padding gap, a docked
-/// popup's 2-row top/bottom border), capped at `max` — the single source of
+/// popup's 2-row top/bottom border), capped at `max`. The single source of
 /// truth for this arithmetic, shared by `DrawerWidget`/`PopupBandWidget`'s
 /// own `height` (what the engine paints against) and `band_visible_rows`
 /// (what the write side pages against). Kept in one place so the painted
@@ -122,7 +122,7 @@ pub(crate) fn band_capacity(content_rows: usize, chrome_rows: u16, max: u16) -> 
 }
 
 /// Rows a bottom band shows at once, given `content_rows` rows, `chrome_rows`
-/// of fixed frame, and the band's row ceiling `max` — the number the write
+/// of fixed frame, and the band's row ceiling `max`: the number the write
 /// side pages against, agreeing with what the engine will next paint by
 /// construction (both derive from [`band_capacity`]).
 pub(crate) fn band_visible_rows(content_rows: usize, chrome_rows: u16, max: u16) -> usize {
@@ -130,7 +130,7 @@ pub(crate) fn band_visible_rows(content_rows: usize, chrome_rows: u16, max: u16)
 }
 
 /// The `[start, end)` window of `max_height` entries out of `total`,
-/// starting as close to `desired_start` as the total allows — clamped so the
+/// starting as close to `desired_start` as the total allows, clamped so the
 /// window never runs past the end. Resolved on the write side (every
 /// `resolve_popup`/`resolve_band`/`resolve_menu` caller), not at paint time:
 /// a menu passes `selected.saturating_sub(max_height / 2)` to keep the
@@ -154,10 +154,10 @@ pub(crate) fn window_range(
 /// `PickerSession::move_selection` and `Editor::clamp_drawer_scroll`, whose
 /// scroll models otherwise differ (edge-anchored vs centered) but converge on
 /// this one "keep the selection on screen" formula. A no-op (returns `scroll`
-/// unchanged) when `visible_rows` is `0` — nothing fits, so there's no window
+/// unchanged) when `visible_rows` is `0`: nothing fits, so there's no window
 /// to clamp into.
 ///
-/// This alone doesn't bound `scroll` to the list's own length — a caller
+/// This alone doesn't bound `scroll` to the list's own length. A caller
 /// whose list just shrank under an unrelated `scroll` (a diagnostics refresh
 /// dropping most of the rows) needs that bound applied separately, at read
 /// time; see `EditorState::clamp_drawer_scroll_to_terminal`'s own doc for
@@ -179,7 +179,7 @@ pub fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_rows: usiz
 /// that positions itself against a pane rect resolved earlier in the frame
 /// (`PopupOverlay`, `PickerOverlay`) as a defensive backstop: the write side
 /// already computed `outer` against this same rect this same frame, so this
-/// should never return `false` — but painting outside the pane is worse than
+/// should never return `false`, but painting outside the pane is worse than
 /// a dropped frame of content.
 pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
     outer.left() >= pane_rect.left()
@@ -189,23 +189,23 @@ pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
 }
 
 /// Overdraws `outer`'s 1-cell frame with box-drawing glyphs (`┌─┐└┘│`).
-/// Shared by every bordered box overlay — [`draw_menu_box`] and
-/// `super::picker_panel::draw_picker_panel` — so the frame glyphs stay
+/// Shared by every bordered box overlay ([`draw_menu_box`] and
+/// `super::picker_panel::draw_picker_panel`), so the frame glyphs stay
 /// identical without a copy per caller.
 pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
     let inner = outer.inset(1, 1);
-    // The right/bottom border's own column/row — `outer.right()`/`.bottom()`
+    // The right/bottom border's own column/row: `outer.right()`/`.bottom()`
     // is the exclusive bound one past it; `inner.right()`/`.bottom()` is
     // this same column/row, already computed by `inset` above.
     let right = inner.right();
     let bottom = inner.bottom();
 
     // Border glyphs are constants a cell wide, so they need none of
-    // `write_text_run`'s substitution — but the corners go through it
+    // `write_text_run`'s substitution, but the corners go through it
     // anyway rather than carry an exemption from the one-writer rule for no
     // benefit, and the bound keeps a mis-sized box from drawing past its
     // own footprint. The two edges are a run of the same glyph repeated,
-    // so they go through `fill_glyph_run` instead — same writer, no `String`
+    // so they go through `fill_glyph_run` instead: same writer, no `String`
     // built just to hand a grapheme walker a cluster it already knows is
     // one repeated character.
     let edge = outer.right();
@@ -227,8 +227,8 @@ pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedS
 /// fits (nothing to scroll, so no thumb to draw).
 ///
 /// `len` is proportional to the visible fraction (`view / total`), clamped to
-/// `1..=(view - 1).max(1)` so the thumb never grows to fill the whole track —
-/// a full track conveys no position at all — except at `view == 1`, where
+/// `1..=(view - 1).max(1)` so the thumb never grows to fill the whole track
+/// (a full track conveys no position at all), except at `view == 1`, where
 /// there's no shorter length to clamp to and the single-cell track is always
 /// a full-length thumb. `start` places the thumb so it sits flush against the
 /// top edge exactly when `scroll == 0` and flush against the bottom edge
@@ -255,21 +255,21 @@ fn scrollbar_thumb(view: usize, total: usize, scroll: usize) -> Option<(usize, u
 }
 
 /// Paint a menu/popup box into `outer` (the full footprint, including the
-/// 1-cell frame). `rows` arrives *already windowed* to what's visible — the
+/// 1-cell frame). `rows` arrives *already windowed* to what's visible: the
 /// write side (`resolve_popup`/`resolve_band`/`resolve_menu`) resolves the
 /// window, this only paints it; `total_rows` and `scroll` (the window's own
 /// start within the full, unwindowed list) exist here solely to size and
 /// place the scrollbar thumb.
 ///
 /// `selected`: the highlighted row, already window-relative (an index into
-/// `rows`, not into the full list) — `None` for a plain popup, which never
+/// `rows`, not into the full list), or `None` for a plain popup, which never
 /// highlights a row.
 ///
 /// `border`: when `true`, overdraws the 1-cell frame with box-drawing
 /// glyphs; when `false`, the frame stays a plain background-filled margin
-/// (still 1 cell wide — only the glyphs are suppressed).
+/// (still 1 cell wide; only the glyphs are suppressed).
 ///
-/// `styled`: per-row style runs, same length (and same window) as `rows` — a
+/// `styled`: per-row style runs, same length (and same window) as `rows`, for a
 /// markdown popup with a `markdown` grammar registered. `None` for every
 /// other caller (plain popups, menus), which paint each row in one style.
 /// Ignored for a row that has `selected == Some(i)`: the highlight bar
@@ -320,13 +320,13 @@ pub(crate) fn draw_menu_box(
     }
 
     let text_x = inner.x;
-    // Rows arrive untruncated — `outer` was sized to the widest of them but
+    // Rows arrive untruncated: `outer` was sized to the widest of them but
     // then clamped to the pane, so a row wider than the pane would otherwise
     // be written straight over the right border and past it. Bounding every
     // row write at the inner edge is what keeps the box a box, horizontally.
     // The `.take` below is that same guarantee for the vertical axis: the
     // write side is trusted to hand in a pre-windowed slice, but this is the
-    // one place that could still catch a caller that gets it wrong — one row
+    // one place that could still catch a caller that gets it wrong. One row
     // too many would otherwise overwrite the bottom border, then paint
     // straight past the box.
     let text_right = inner.right();
@@ -334,10 +334,10 @@ pub(crate) fn draw_menu_box(
         let y = inner.y + i as u16;
         let is_selected = selected == Some(i);
 
-        // Highlight bar always wins, even over a styled row — a selected row
+        // Highlight bar always wins, even over a styled row: a selected row
         // never needs per-run markdown styling, just the plain highlight.
         if !is_selected && let Some(runs) = styled.and_then(|rows| rows.get(i)) {
-            // The base fill (step 1) already covers the row — runs are
+            // The base fill (step 1) already covers the row. Runs are
             // contiguous and together span exactly `row_text`, so there are
             // no gaps left for `styles.base` to show through.
             paint_styled_row(canvas, text_x, y, runs, text_right);
@@ -362,7 +362,7 @@ pub(crate) fn draw_menu_box(
 /// `base_style` otherwise. Shared by every list-style overlay
 /// ([`draw_menu_box`], `super::picker_panel::draw_picker_panel`,
 /// `super::drawer::DrawerWidget::render`) so the fill-then-write shape can't
-/// drift between them — each caller still owns its own row-index bookkeeping
+/// drift between them. Each caller still owns its own row-index bookkeeping
 /// and text truncation, which differ in kind, not just in value, between them.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_list_row(
@@ -385,7 +385,7 @@ pub(crate) fn draw_list_row(
 }
 
 /// Paint one pre-resolved styled row's runs left-to-right starting at
-/// `(x, y)` — [`draw_menu_box`]'s styled-row branch, factored out for
+/// `(x, y)`: [`draw_menu_box`]'s styled-row branch, factored out for
 /// readability.
 fn paint_styled_row(canvas: &mut Canvas, x: u16, y: u16, runs: &StyledRow, right_edge: u16) {
     let mut cx = x;

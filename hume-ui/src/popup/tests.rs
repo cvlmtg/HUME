@@ -78,7 +78,7 @@ fn wrap_styled_preserves_a_style_boundary_within_one_row() {
 fn wrap_styled_splits_a_style_change_across_two_wrapped_rows() {
     // "aaaa bbbb" at width 4: "aaaa" and "bbbb" each land on their own row
     // (the too-narrow-for-both-words case `wrap_text_breaks_on_word_boundary`
-    // already covers for plain text) — here "bbbb" carries a different style,
+    // already covers for plain text). Here "bbbb" carries a different style,
     // which must survive onto its own row's run list untouched.
     let runs = [
         ("aaaa ".to_string(), ResolvedStyle::default()),
@@ -107,7 +107,7 @@ fn geometry_places_below_cursor_by_default() {
 }
 
 /// Content fits below the anchor even though there happens to be *more*
-/// room above than below — must still place it below. Distinguishes the
+/// room above than below. It must still place it below. Distinguishes the
 /// "fits below" condition from a "prefer whichever side has more room"
 /// condition, which would flip it above unnecessarily here.
 #[test]
@@ -116,7 +116,7 @@ fn geometry_stays_below_when_content_fits_even_with_more_room_above() {
     let (_, y, _, _) = resolve_popup_geometry(5, 10, (5, 50), pane);
     assert_eq!(
         y, 51,
-        "content (height 10) fits in the 49 rows below — must not flip \
+        "content (height 10) fits in the 49 rows below: must not flip \
              just because 50 rows happen to be available above"
     );
 }
@@ -124,7 +124,7 @@ fn geometry_stays_below_when_content_fits_even_with_more_room_above() {
 #[test]
 fn geometry_flips_above_near_bottom_edge() {
     let pane = rect(0, 0, 40, 20);
-    // Cursor near the bottom: only 2 rows below, 17 above — flip.
+    // Cursor near the bottom: only 2 rows below, 17 above, so flip.
     let (_, y, _, _) = resolve_popup_geometry(5, 5, (5, 18), pane);
     assert_eq!(y, 13, "flips to render entirely above the cursor row");
 }
@@ -152,7 +152,7 @@ fn geometry_never_escapes_pane_bounds_even_at_corner() {
 }
 
 /// A box wider than the pane must be clamped to the pane's width, not
-/// merely repositioned — an unclamped over-wide box fails
+/// merely repositioned. An unclamped over-wide box fails
 /// `PopupOverlay`'s bounds check and the whole popup is silently
 /// dropped instead of painting a clamped one.
 #[test]
@@ -206,7 +206,7 @@ fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
     rows[0] = MenuRow::plain("x".repeat(100));
 
     // selected = 14 (the last row) centers the window well past the wide
-    // row 0 — window_range(15, 14 - 10/2 = 9, 10) clamps to [5, 15).
+    // row 0: window_range(15, 14 - 10/2 = 9, 10) clamps to [5, 15).
     let window = menu_window(rows.len(), 14, rect(0, 0, 200, 50));
     assert_eq!(window.range, 5..15, "sanity: the wide row 0 is outside");
     let state = menu(&rows, 14, rect(0, 0, 200, 50));
@@ -232,7 +232,7 @@ fn resolve_menu_rejects_rows_that_are_not_the_windows_slice() {
 
 /// Two-column composition: `trailing` right-aligned flush against the
 /// widest of it in the window, `main` left-aligned and padded to the
-/// widest of it — an exact fit, no truncation.
+/// widest of it: an exact fit, no truncation.
 #[test]
 fn resolve_menu_right_aligns_trailing_when_it_fits() {
     let rows = vec![
@@ -263,13 +263,13 @@ fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
         trailing: Some("macro_rules! assert".into()),
     }];
     // max_inner = pane.width - 2 = 10; main_col = 7 ("assert!"); trail_col
-    // = min(19, 10 - 7 - 2) = 1 — just enough for the ellipsis marker.
+    // = min(19, 10 - 7 - 2) = 1, just enough for the ellipsis marker.
     let state = menu(&rows, 0, rect(0, 0, 12, 50));
     insta::assert_snapshot!(state.lines.join("\n"), @"assert!  …");
 }
 
 /// When there's no room left for a trailing column at all (`trail_col`
-/// clamps to 0), every row's trailing part is dropped uniformly — never a
+/// clamps to 0), every row's trailing part is dropped uniformly, never a
 /// half-truncated fragment with no gap before it.
 #[test]
 fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
@@ -283,7 +283,7 @@ fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
 }
 
 /// A session narrowed to zero matches must not panic computing `selected`
-/// against an empty list — a real path (`sync_completion_menu_view` calls
+/// against an empty list. This is a real path (`sync_completion_menu_view` calls
 /// `menu_window`/`resolve_menu` unconditionally, whether or not the filter
 /// matched anything).
 #[test]
@@ -296,7 +296,7 @@ fn resolve_menu_on_an_empty_list_does_not_panic() {
 // ── band_visible_rows ─────────────────────────────────────────────────
 
 /// The overflow-safety guard on the shared arithmetic itself lives in
-/// `menu_box::tests` (`band_capacity_clamps_instead_of_overflowing_u16`) —
+/// `menu_box::tests` (`band_capacity_clamps_instead_of_overflowing_u16`);
 /// this pins the popup band's own 2-row frame against it instead of
 /// re-testing the arithmetic.
 #[test]

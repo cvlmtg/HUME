@@ -129,7 +129,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
 #[test]
 fn draw_picker_panel_truncate_tail_clips_overlong_row_keeping_head() {
     // A grep-style row (path in front, line preview trailing) with
-    // `#:truncate 'tail` must clip the *end*, not the path — the mirror of
+    // `#:truncate 'tail` must clip the *end*, not the path: the mirror of
     // the head-cut test above.
     let mut buf = Grid::new(40, 20);
     let theme = Theme::default();
@@ -204,13 +204,13 @@ fn truncate_marked_cut_tail_appends_ellipsis_and_keeps_head() {
 fn truncate_marked_never_splits_a_grapheme_cluster() {
     use unicode_segmentation::UnicodeSegmentation;
 
-    // "é" here is e + combining acute (U+0065 U+0301) — a cut landing inside
+    // "é" here is e + combining acute (U+0065 U+0301). A cut landing inside
     // this cluster would emit a bare combining mark with no base character
     // ahead of it, which re-segmenting the output would catch: a bare mark
     // opens its own (invalid) cluster instead of extending the previous one.
     let source = "cafe\u{0301} bar";
     for cut in [TruncateEnd::Head, TruncateEnd::Tail] {
-        // Every clip width up to the source's own — including one that lands
+        // Every clip width up to the source's own, including one that lands
         // mid-cluster if the code were byte-counting instead of grapheme-aware.
         for budget in 0..=8 {
             let out = truncate_marked(source, budget, cut);
@@ -296,7 +296,7 @@ fn draw_picker_panel_highlights_selected_row_full_width() {
         },
     );
 
-    // Row 1 ("item1") is the selected row — its whole inner width (cols
+    // Row 1 ("item1") is the selected row: its whole inner width (cols
     // 1..=8) must carry the selected background, not just the text cells.
     for x in 1..=8u16 {
         assert_eq!(

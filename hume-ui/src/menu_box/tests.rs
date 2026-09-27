@@ -25,7 +25,7 @@ fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
     // A zero-width space draws as nothing, so writing it into the cell
     // reserved for it would leave the terminal's cursor where it was and
     // slide the rest of the row one column left. It renders as its codepoint
-    // instead — the same substitution buffer text gets — and the next run
+    // instead (the same substitution buffer text gets), and the next run
     // begins after the whole placeholder.
     let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
@@ -55,7 +55,7 @@ fn styled_runs_stop_at_the_right_edge() {
         ("\u{6F22}z".to_string(), style()),
     ];
     // Edge at 4: "abc" fills 0..3, and 漢 would need cells 3 and 4, so it is
-    // dropped — leaving 'z' nowhere to start from either.
+    // dropped, leaving 'z' nowhere to start from either.
     paint_styled_row(&mut canvas, 0, 1, &runs, 4);
 
     insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 8, 1)), @"abc");
@@ -63,7 +63,7 @@ fn styled_runs_stop_at_the_right_edge() {
 
 #[test]
 fn a_row_wider_than_the_box_is_clipped_at_the_border() {
-    // Rows reach `draw_menu_box` untruncated — the box was sized to the
+    // Rows reach `draw_menu_box` untruncated: the box was sized to the
     // widest of them, then clamped to the pane it has to fit inside (see
     // `resolve_popup_geometry`), so a long LSP label on a narrow terminal is
     // wider than the box it lands in. It must stop at the inner edge: the
@@ -143,7 +143,7 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
 }
 
 /// Windowing is the write side's job (`resolve_menu`/`resolve_popup`, via
-/// `window_range`), not `draw_menu_box`'s — this test pre-slices `rows` the
+/// `window_range`), not `draw_menu_box`'s. This test pre-slices `rows` the
 /// same way a caller must, and checks `draw_menu_box` paints exactly that
 /// slice, not the full list.
 #[test]
@@ -180,7 +180,7 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
 }
 
 /// Unlike a menu (which windows around `selected`), a plain popup
-/// (`selected: None`) windows from `scroll` directly — this is what makes
+/// (`selected: None`) windows from `scroll` directly. This is what makes
 /// `Ctrl-u`/`Ctrl-d` page a scrollable hover popup instead of the window
 /// always anchoring back to row 0.
 #[test]
@@ -303,7 +303,7 @@ fn draw_menu_box_shows_scrollbar_thumb_at_bottom_when_scrolled_to_bottom() {
     ");
 }
 
-/// `inner_h == 1` (`outer.height == 3`): the thumb has nowhere to move —
+/// `inner_h == 1` (`outer.height == 3`): the thumb has nowhere to move, so
 /// `scrollbar_thumb` degenerates to a single full-height thumb regardless of
 /// `scroll`, still distinguishing "more to scroll" from "nothing to scroll".
 #[test]
@@ -339,7 +339,7 @@ fn draw_menu_box_no_overflow_shows_no_scrollbar() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    // 2 rows fit entirely inside inner height 3 — nothing to scroll.
+    // 2 rows fit entirely inside inner height 3, so there is nothing to scroll.
     let outer = Rect::new(0, 0, 10, 5);
     draw_menu_box(
         &mut canvas,
@@ -368,7 +368,7 @@ fn draw_menu_box_scrolled_menu_shows_scrollbar_thumb() {
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Same overflowing case as the middle-scroll test above, but with a
-    // selection (a menu) — the highlight signals *which* row, the thumb
+    // selection (a menu): the highlight signals *which* row, the thumb
     // signals how much more there is to scroll past; both show together.
     let outer = Rect::new(0, 0, 10, 5);
     let data = rows(10);
@@ -435,7 +435,7 @@ fn band_visible_rows_is_band_capacity_minus_chrome() {
 //
 // A list shrinking out from under a stale, deep `scroll` is deliberately
 // *not* covered here: this function only keeps `selected` in view, and does
-// not know the list's own length — see its own doc. That case is
+// not know the list's own length (see its own doc). That case is
 // `EditorState::clamp_drawer_scroll_to_terminal`'s own test, in
 // `hume-editor/src/editor/input_stack/drawer.rs`.
 
@@ -472,7 +472,7 @@ fn draw_menu_box_too_small_outer_does_nothing() {
 }
 
 // ---------------------------------------------------------------------------
-// scrollbar_thumb — pure geometry, independent of the painter
+// scrollbar_thumb: pure geometry, independent of the painter
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -503,7 +503,7 @@ fn scrollbar_thumb_flush_bottom_at_max_scroll() {
 }
 
 /// Without the `scroll > 0` nudge, floor division alone would leave the
-/// thumb pinned at the same start as `scroll == 0` here — indistinguishable
+/// thumb pinned at the same start as `scroll == 0` here, indistinguishable
 /// from "haven't scrolled at all". This is the test that would catch
 /// reverting to plain `scroll * slack / max_scroll`.
 #[test]
@@ -525,7 +525,7 @@ fn scrollbar_thumb_length_is_proportional_and_leaves_track_visible() {
 
 /// The `(view*view).div_ceil(total)` proportional term, not just the
 /// `(view-1).max(1)` clamp, must actually drive the thumb length. The test
-/// above (`view=3,total=4`) only exercises the clamp — the ratio term there
+/// above (`view=3,total=4`) only exercises the clamp: the ratio term there
 /// (`ceil(9/4)=3`) gets clamped down to 2 regardless, so deleting that term
 /// entirely and hardcoding `view-1` would still pass it. Hand-computed
 /// expected lengths here land below the clamp ceiling,
@@ -547,7 +547,7 @@ fn scrollbar_thumb_length_scales_with_visible_fraction_not_just_the_clamp() {
     assert!(
         len_10_of_20 > len_10_of_100,
         "a larger visible fraction (10/20) must give a longer thumb than a \
-         smaller one (10/100) — proves length scales with the fraction \
+         smaller one (10/100); proves length scales with the fraction \
          rather than being pinned to the view-1 clamp ceiling (which would \
          give 9 for both)"
     );
@@ -561,7 +561,7 @@ fn scrollbar_thumb_single_row_window_is_a_solid_cell() {
 
 /// A caller that hands more rows than the box's inner height fits (a
 /// pre-windowing bug, since production always slices to `window_range`
-/// first) must not paint past the box — the vertical twin of
+/// first) must not paint past the box: the vertical twin of
 /// `a_row_wider_than_the_box_is_clipped_at_the_border`. The bottom border
 /// row, and everything below the box, must survive untouched.
 #[test]
@@ -571,7 +571,7 @@ fn draw_menu_box_clips_extra_rows_at_the_bottom_border() {
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Outer height 5 → inner height 3, but 5 rows are handed in unwindowed.
     let outer = Rect::new(2, 3, 8, 5);
-    // `total_rows` matches the 3 that should actually be visible — this
+    // `total_rows` matches the 3 that should actually be visible. This
     // test is about the row-count mismatch alone, not the scrollbar thumb
     // a real `total_rows > view` would also draw.
     draw_menu_box(
@@ -606,7 +606,7 @@ fn draw_menu_box_clips_extra_rows_at_the_bottom_border() {
 /// truncation before the `min` runs.
 #[test]
 fn outer_rows_clamps_a_huge_row_count_instead_of_wrapping() {
-    // 65_536 is an exact multiple of u16::MAX + 1 — truncating to u16
+    // 65_536 is an exact multiple of u16::MAX + 1, so truncating to u16
     // *before* the min wraps it to 0, which then wins the min against
     // `row_cap` and produces the wrong (much too small) result.
     assert_eq!(outer_rows(65_536, MAX_MENU_ROWS), MAX_MENU_ROWS + 2);
