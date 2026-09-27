@@ -219,7 +219,7 @@ fn absolute_unresolved_collapses_dots() {
 fn absolute_unresolved_does_not_canonicalize_symlinks() {
     // We can't make a symlink in a pure unit test, but we can verify that
     // a directory name that looks like it could be a symlink (e.g. "link")
-    // is passed through unchanged — no fs access occurs.
+    // is passed through unchanged; no fs access occurs.
     let cwd = PathBuf::from("/real/path");
     let result = absolute_unresolved(std::path::Path::new("../symlink-dir/file.txt"), &cwd);
     // `../` from `/real/path` → `/real` (lexical pop), then `symlink-dir/file.txt`

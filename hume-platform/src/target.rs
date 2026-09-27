@@ -4,7 +4,7 @@
 /// `hume-target` vocabulary used in `runtime/scheme/lsp-sources.scm`
 /// (`darwin-arm64` | `darwin-x64` | `linux-x64` | `windows-x64`).
 ///
-/// Returns `None` on any other platform/architecture combination — callers
+/// Returns `None` on any other platform/architecture combination. Callers
 /// treat that as "no seeded install source can match here", not an error.
 pub const fn hume_target() -> Option<&'static str> {
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {

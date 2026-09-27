@@ -1,7 +1,7 @@
 //! Frame presentation: the terminal-facing half of [`hume_grid`].
 //!
-//! [`Screen`] owns the two grids a double-buffered frame needs — `front`,
-//! what the terminal is showing, and `back`, what is being composed — and the
+//! [`Screen`] owns the two grids a double-buffered frame needs (`front`,
+//! what the terminal is showing, and `back`, what is being composed) and the
 //! escape-sequence emitter that carries one to the other. Callers compose
 //! into [`Screen::frame`] and then [`Screen::present`]; nothing else in HUME
 //! writes cell content to the terminal.
@@ -44,7 +44,7 @@ pub struct Screen {
     /// What the next [`Screen::present`] will make it show.
     back: Grid,
     /// Emit every cell next time instead of diffing, because what the
-    /// terminal shows is no longer known — after a resize, or after something
+    /// terminal shows is no longer known: after a resize, or after something
     /// else wrote over the screen (see [`Screen::invalidate`]).
     force_full: bool,
     /// Reused escape buffer. One frame is built here and written in a single
@@ -54,7 +54,7 @@ pub struct Screen {
 }
 
 impl Screen {
-    /// Both grids start at 0×0 — [`Screen::frame`]'s first call always sees
+    /// Both grids start at 0×0, so [`Screen::frame`]'s first call always sees
     /// a size mismatch against the real terminal and resizes both before
     /// anything is drawn, so there is nothing for this constructor to read
     /// the terminal for.
@@ -81,7 +81,7 @@ impl Screen {
     /// has exactly one size authority: the loop reads the terminal once, and
     /// viewport geometry and cell storage are derived from that same answer.
     /// A resize between that read and [`Screen::present`] costs one clipped
-    /// frame — harmless, since the terminal clamps a too-large cursor move
+    /// frame, harmless since the terminal clamps a too-large cursor move
     /// and the queued resize event wakes the loop straight into another
     /// frame at the new size.
     pub fn frame(&mut self, width: u16, height: u16) -> &mut Grid {
@@ -98,8 +98,8 @@ impl Screen {
 
     /// Force the next [`Screen::present`] to emit every cell.
     ///
-    /// For when something outside this type has written to the screen — HUME
-    /// leaves the alternate screen to run a subprocess inline — so the front
+    /// For when something outside this type has written to the screen (HUME
+    /// leaves the alternate screen to run a subprocess inline), so the front
     /// grid no longer describes what is displayed.
     pub fn invalidate(&mut self) {
         self.force_full = true;
@@ -131,7 +131,7 @@ fn dimensions(term: &SharedTerm) -> io::Result<(u16, u16)> {
 }
 
 /// [`Screen::frame`]'s resize decision, pulled out as a pure function over
-/// its two grids and the invalidation flag — no `SharedTerm` involved, so
+/// its two grids and the invalidation flag. No `SharedTerm` involved, so
 /// this (unlike the rest of `Screen`, which needs a live terminal to
 /// construct) is directly unit-testable.
 fn resize_if_needed(
@@ -144,7 +144,7 @@ fn resize_if_needed(
     if back.size() != (width, height) {
         back.resize(width, height);
         // The front grid tracks the terminal, whose content after a resize
-        // is its own business — reflowed, truncated, or cleared. Resize it
+        // is its own business: reflowed, truncated, or cleared. Resize it
         // too so the two stay diffable, and repaint in full rather than
         // trusting a guess about what survived.
         front.resize(width, height);
@@ -162,7 +162,7 @@ fn frame(out: &mut String, next: &Grid, prev: Option<&Grid>, cursor: Option<Posi
 
     match prev {
         Some(prev) => emit_runs(out, next.diff_runs(prev, MAX_REPRINT_GAP)),
-        // A full redraw is the same emitter over one run per row — no
+        // A full redraw is the same emitter over one run per row, no
         // erase-display first, since every cell is written anyway.
         None => {
             let (_, height) = next.size();
@@ -244,7 +244,7 @@ fn sgr_delta(from: &ResolvedStyle, to: &ResolvedStyle) -> SgrAttributes {
 
 fn color_spec(color: Option<Rgb>) -> ColorSpec {
     match color {
-        // The terminal's own default, as SGR 39/49/59 — not a colour we pick.
+        // The terminal's own default, as SGR 39/49/59, not a colour we pick.
         None => ColorSpec::Reset,
         Some(Rgb(r, g, b)) => ColorSpec::TrueColor(RgbColor::new(r, g, b).into()),
     }
@@ -257,7 +257,7 @@ fn modifier_delta(from: &ResolvedStyle, to: &ResolvedStyle) -> SgrModifiers {
     // SGR rather than two independent switches: SGR 22 clears bold and dim
     // together, SGR 25 clears both blink rates. So when either member of a
     // pair changes, clear the whole state and re-assert whatever the target
-    // still wants — deriving the update from added/removed bits alone emits
+    // still wants. Deriving the update from added/removed bits alone emits
     // a bare clear and silently drops the member that was meant to survive.
     let intensity = |s: &ResolvedStyle| s.modifiers & (Modifiers::BOLD | Modifiers::DIM);
     if intensity(from) != intensity(to) {
@@ -314,7 +314,7 @@ fn modifier_delta(from: &ResolvedStyle, to: &ResolvedStyle) -> SgrModifiers {
         // rather than a `4:n` sub-parameter. ECMA-48 assigns 21 to "doubly
         // underlined", but several terminals read it as "bold off" instead, so
         // a scope pairing `modifiers = ["bold"]` with `underline =
-        // "double_line"` can lose its bold there — termina emits intensity
+        // "double_line"` can lose its bold there: termina emits intensity
         // before underline in the same burst. Left as termina writes it: the
         // alternative is hand-emitting `4:2` outside its `Sgr` writer, which
         // buys correctness on those terminals at the cost of this crate no
@@ -342,8 +342,8 @@ fn cursor_to(pos: Position) -> Cursor {
     }
 }
 
-/// Append one escape sequence. `write!` into a `String` cannot fail —
-/// `fmt::Write for String` only ever returns `Ok` — so there is no error to
+/// Append one escape sequence. `write!` into a `String` cannot fail
+/// (`fmt::Write for String` only ever returns `Ok`), so there is no error to
 /// propagate, and asserting that says so more clearly than discarding it.
 fn push(out: &mut String, escape: impl std::fmt::Display) {
     use std::fmt::Write as _;

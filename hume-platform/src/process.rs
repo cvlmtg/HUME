@@ -27,13 +27,13 @@ use crate::path::strip_unc_prefix;
 
 /// Shared spawn/pipe/wake machinery underneath [`line_source`] (line-batch
 /// streaming, for the picker's external-command source) and [`job`]
-/// (whole-output capture, for `spawn-async!`) — kept internal since neither
+/// (whole-output capture, for `spawn-async!`), kept internal since neither
 /// consumption shape is meant to be built a third way.
 pub(crate) mod child;
 
 /// Called by a spawned job/source's reader thread on completion, so the
 /// editor's main loop wakes and drains it instead of polling. Defined in
-/// `child` (crate-private), re-exported once here — the single public path
+/// `child` (crate-private), re-exported once here as the single public path
 /// both [`line_source::spawn_line_source`] and [`job::spawn_job`] name in
 /// their signatures, rather than each re-exporting it separately.
 pub use child::WakeCallback;
@@ -42,7 +42,7 @@ pub use child::WakeCallback;
 /// external-command source (`picker-source-spawn!`).
 pub mod line_source;
 
-/// One-shot subprocess capture — spawns a command, waits for it to exit,
+/// One-shot subprocess capture: spawns a command, waits for it to exit,
 /// and delivers the complete stdout/stderr/exit-status once. Backs the
 /// `spawn-async!` Steel builtin.
 pub mod job;
@@ -50,14 +50,14 @@ pub mod job;
 /// Process-wide tracking so a force-exit can still reap long-lived children.
 pub mod tracked;
 
-/// `Command::new(cmd)` with `args`, `cwd` (via `strip_unc_prefix` — a no-op
-/// on non-Windows), and `GIT_TERMINAL_PROMPT=0` already applied — the
+/// `Command::new(cmd)` with `args`, `cwd` (via `strip_unc_prefix`, a no-op
+/// on non-Windows), and `GIT_TERMINAL_PROMPT=0` already applied: the
 /// preamble every spawn site in this crate shares. Each caller layers its
 /// own remaining stdio/process-group setup on top.
 ///
 /// Denying git a credential prompt is a blanket policy here, not a
 /// git-specific carve-out: every spawn path in this crate has left the
-/// child with no *answerable* terminal, by one of two routes —
+/// child with no *answerable* terminal, by one of two routes.
 /// [`run_inline_output`] backgrounds it into its own process group while
 /// inheriting the terminal, so a prompt it wrote would be followed by a
 /// read that takes `SIGTTIN` and stops the child cold; [`run_capture`] and
@@ -76,7 +76,7 @@ fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
 
 /// Run `cmd` with `args`, inherited stdio, in its own process group.
 ///
-/// Used for `#:inline-output` Steel commands — terminal raw mode is
+/// Used for `#:inline-output` Steel commands. Terminal raw mode is
 /// temporarily disabled there (`hume_platform::terminal::enter_inline_output`
 /// calls `disable_raw_mode()`), so a terminal-generated Ctrl-c (SIGINT)
 /// targets the whole foreground process group. Without `process_group(0)`
@@ -88,7 +88,7 @@ fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
 ///
 /// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set. A
 /// genuinely interactive child (an editor, a pager) still can't be run this
-/// way regardless — it would hit the same background-process-group
+/// way regardless: it would hit the same background-process-group
 /// `SIGTTIN`/`SIGTTOU` wall on its own reads/writes the moment it touched
 /// the terminal.
 pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::Result<ExitStatus> {
@@ -96,13 +96,13 @@ pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::
 }
 
 /// Run `cmd` with `args`, both stdout and stderr fully captured, stdin
-/// closed immediately (`Stdio::null()` — the child sees EOF on read rather
+/// closed immediately (`Stdio::null()`, so the child sees EOF on read rather
 /// than racing the editor's own key reads on the terminal). Backs the
 /// `stdlib/run` Steel builtin (`run-capture!`).
 ///
 /// Built on `Command::output`, which drains both pipes concurrently rather
-/// than one after the other — see this module's doc for the deadlock that
-/// closes. No process-group isolation: the caller is always blocked inside
+/// than one after the other (see this module's doc for the deadlock that
+/// closes). No process-group isolation: the caller is always blocked inside
 /// this call with raw mode still on, so there is no live Ctrl-c to isolate
 /// the child from.
 ///
@@ -121,7 +121,7 @@ pub fn run_capture(
 /// `tree-sitter build` shells out to a C compiler via the `cc` crate. On
 /// Windows that defaults to MSVC's `cl.exe`, which many machines don't have.
 /// If `cl` is missing, we point `cc` at whichever alternative compiler is on
-/// `PATH` (clang, gcc, or zig) via `CC`/`CXX` — see `choose_windows_compiler`.
+/// `PATH` (clang, gcc, or zig) via `CC`/`CXX` (see `choose_windows_compiler`).
 pub fn tree_sitter_build(src: &Path, out: &Path) -> io::Result<ExitStatus> {
     let src = strip_unc_prefix(src.to_path_buf());
     let out = strip_unc_prefix(out.to_path_buf());
@@ -185,16 +185,16 @@ fn choose_windows_compiler(exists: impl Fn(&str) -> bool) -> Option<WindowsCompi
 /// Resolve a `WindowsCompiler` to the `(CC, CXX)` values to set.
 ///
 /// `gcc` is a single executable name, so it passes straight through as
-/// `CC`/`CXX` — the `cc` crate never adds `--target` for GNU-family
+/// `CC`/`CXX`: the `cc` crate never adds `--target` for GNU-family
 /// compilers, so there's nothing to strip.
 ///
 /// `clang` and `zig` both get `.cmd` wrappers instead of a bare executable
 /// name. Both need `--target` stripped (see
-/// `target_stripping_wrapper_script`) — the `cc` crate detects both as
+/// `target_stripping_wrapper_script`): the `cc` crate detects both as
 /// clang-family and force-feeds them the host's LLVM triple, wrong for any
 /// install not paired with MSVC. `zig` additionally can't be named directly
 /// in `CC`, since its C/C++ compilers are invoked as `zig cc` / `zig c++`,
-/// not standalone executables — `CC="zig cc"` relies on the `cc` crate
+/// not standalone executables. `CC="zig cc"` relies on the `cc` crate
 /// splitting on whitespace and reassembling wrapper + args, which has
 /// changed across `cc` crate versions and is broken in at least one still in
 /// the wild (drops the `cc`/`c++` argument, so flags like `-O2` go straight
@@ -235,8 +235,8 @@ fn write_target_stripping_wrapper(file_name: &str, invocation: &str) -> io::Resu
 /// the official LLVM.org build paired with MSVC. That assumption breaks two
 /// ways:
 ///
-/// - `zig cc` parses `--target` as a zig target query — a 3-field
-///   `<arch>-<os>-<abi>` string, not the 4-field LLVM triple — so the `pc`
+/// - `zig cc` parses `--target` as a zig target query (a 3-field
+///   `<arch>-<os>-<abi>` string, not the 4-field LLVM triple), so the `pc`
 ///   vendor component reads as an unknown OS and zig rejects it outright.
 /// - A real `clang` that isn't paired with MSVC (e.g. `llvm-mingw`, MSYS2's
 ///   `clang64`) parses the triple fine but has no MSVC sysroot to satisfy
@@ -244,7 +244,7 @@ fn write_target_stripping_wrapper(file_name: &str, invocation: &str) -> io::Resu
 ///   `-gnu` default.
 ///
 /// Dropping the flag lets each compiler fall back to its own native target,
-/// which is the `-gnu` ABI whenever MSVC (`cl`) is absent — exactly the case
+/// which is the `-gnu` ABI whenever MSVC (`cl`) is absent, exactly the case
 /// these wrappers are used in.
 #[cfg(windows)]
 fn target_stripping_wrapper_script(invocation: &str) -> String {
@@ -280,7 +280,7 @@ pub fn exit_code_str(status: ExitStatus) -> String {
 // sha256 verification and archive unpacking shell out to per-platform system
 // tools rather than pulling in hashing/archive crates: `shasum`/`sha256sum`/
 // `certutil` below for hashing, `gzip`/`unzip`/`tar` (in
-// `hume-scripting/src/builtins/install.rs`) for unpacking — one more
+// `hume-scripting/src/builtins/install.rs`) for unpacking. One more
 // dependency HUME's own build doesn't need to vendor or keep current.
 
 /// Compute the sha256 digest of `path` as lowercase hex, by shelling out to
@@ -378,7 +378,7 @@ fn parse_certutil_sha256_output(stdout: &str) -> Option<String> {
 /// Decode a single-file `.gz` at `src` into `dest`, by shelling out to
 /// `gzip -dc` with stdout redirected to `dest`.
 ///
-/// On Unix, `dest` is chmod'd to `0o755` after a successful decode — gzip
+/// On Unix, `dest` is chmod'd to `0o755` after a successful decode: gzip
 /// carries no file mode, and Mason's `.gz` assets are bare server
 /// executables. On error, the caller is responsible for removing any partial
 /// `dest` (mirroring `curl_fetch`'s cleanup contract at the Steel boundary).
@@ -413,14 +413,14 @@ pub fn unpack_gz(src: &Path, dest: &Path) -> io::Result<()> {
 /// `bin_path` (relative to `dest_dir`) is the server binary the caller
 /// expects; verified to exist after extraction, mirroring `unpack_gz`'s
 /// guarantee. On Unix, every regular file in the extracted tree (not just
-/// `bin_path`) is chmod'd `0o755` — unlike `.gz`, zip entries carry the
+/// `bin_path`) is chmod'd `0o755`. Unlike `.gz`, zip entries carry the
 /// archive's own stored permissions and CI-built release zips routinely
 /// strip the exec bit, so a layout with a wrapper script or sibling helpers
 /// needs all of them executable. Every check/chmod goes through
-/// `symlink_metadata` — a symlink is never followed.
+/// `symlink_metadata`, so a symlink is never followed.
 ///
 /// Zip-slip and symlink-entry protection is delegated to the system tool
-/// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default) —
+/// (modern Info-ZIP strips `../` entries; bsdtar refuses them by default);
 /// the residual risk is bounded by the sync-time sha256 pin verified before
 /// unpacking, so only maintainer-vetted, hash-locked assets ever reach this
 /// function.
@@ -458,7 +458,7 @@ pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()
     Ok(())
 }
 
-/// Recursively chmod every regular file under `dir` to `0o755` —
+/// Recursively chmod every regular file under `dir` to `0o755`, via
 /// `symlink_metadata` so a symlink (wherever it points, even at another
 /// directory) is never followed, neither recursed into nor chmod'd.
 #[cfg(unix)]
@@ -477,7 +477,7 @@ fn chmod_all_regular_files(dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// See the Unix `unpack_zip` doc comment — same contract, via `tar -xf`
+/// See the Unix `unpack_zip` doc comment: same contract, via `tar -xf`
 /// (bsdtar, built into Windows 10+) instead of `unzip`. No chmod: Windows has
 /// no exec-bit concept.
 #[cfg(windows)]
@@ -512,7 +512,7 @@ pub fn unpack_zip(src: &Path, dest_dir: &Path, bin_path: &Path) -> io::Result<()
 /// toolchain.
 #[cfg(windows)]
 pub fn no_windows_compiler_found() -> bool {
-    // Probe `cl` once and reuse it — `choose_windows_compiler` checks `cl`
+    // Probe `cl` once and reuse it: `choose_windows_compiler` checks `cl`
     // first internally, so passing `exe_on_path` straight through here would
     // spawn a second `cl --version` on top of the one `tree_sitter_build`
     // already ran on the same failure path.
@@ -530,7 +530,7 @@ pub fn no_windows_compiler_found() -> bool {
     .is_none()
 }
 
-/// Spawns `command` as its own process group leader on Unix — a no-op
+/// Spawns `command` as its own process group leader on Unix; a no-op
 /// `Command::spawn()` on other platforms, where `std` has no process-group
 /// concept.
 ///
@@ -538,12 +538,12 @@ pub fn no_windows_compiler_found() -> bool {
 /// leader lets `tracked::kill_tracked_children` reach the child's own
 /// children with one `killpg` (rust-analyzer's `proc-macro-srv`, build
 /// scripts, ...) instead of leaving them orphaned. `NewProcessGroup`'s
-/// other use — Ctrl-c isolation for `run_inline_output`'s short-lived
-/// children — doesn't need this wrapper, just the trait: a plain `.status()`
+/// other use (Ctrl-c isolation for `run_inline_output`'s short-lived
+/// children) doesn't need this wrapper, just the trait: a plain `.status()`
 /// call has nothing to track.
 ///
 /// Trade-off: leaving the foreground process group costs these children the
-/// kernel's SIGHUP on pty teardown (only the foreground group gets one) —
+/// kernel's SIGHUP on pty teardown (only the foreground group gets one),
 /// covered instead by the LSP `processId` convention and stdin EOF for
 /// everything else.
 ///
@@ -551,7 +551,7 @@ pub fn no_windows_compiler_found() -> bool {
 /// hook, racing the parent: this function hasn't returned when that hook
 /// runs, so a caller that registers/signals the returned `Child` right away
 /// could still be racing a child that hasn't exec'd. The parent-side
-/// `setpgid(pid, pid)` below closes that race — idempotent, and `EACCES`
+/// `setpgid(pid, pid)` below closes that race. It's idempotent, and `EACCES`
 /// here just means the child's own call won first (see
 /// `sigint_to_child_group_does_not_kill_hume`).
 pub fn spawn_in_own_group(command: &mut Command) -> io::Result<std::process::Child> {
@@ -570,7 +570,7 @@ pub fn spawn_in_own_group(command: &mut Command) -> io::Result<std::process::Chi
 /// Kills and reaps the wrapped child if still armed when dropped.
 ///
 /// Guards the window between spawning a long-lived child and handing it off
-/// to [`tracked::TrackedChild::new`] — a window `hume-lsp`'s `ServerHandle`
+/// to [`tracked::TrackedChild::new`], a window `hume-lsp`'s `ServerHandle`
 /// and this crate's `SpawnedLineSource` both need, since starting their
 /// bridging threads is fallible and an early `?` return must not leak the
 /// already-running process (`Child`'s own `Drop` does not kill). Call
@@ -583,7 +583,7 @@ impl ReapOnDrop {
         ReapOnDrop(Some(child))
     }
 
-    /// Mutable access to the wrapped child — e.g. to `.take()` its stdio
+    /// Mutable access to the wrapped child, e.g. to `.take()` its stdio
     /// pipes before spawning bridging threads on them.
     pub fn get_mut(&mut self) -> &mut std::process::Child {
         self.0

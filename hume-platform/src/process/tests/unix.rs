@@ -20,8 +20,8 @@ fn run_capture_does_not_deadlock_on_large_stderr() {
     assert_eq!(out.stderr.len(), 200_000);
 }
 
-/// `run_capture`'s stdout counterpart to the stderr deadlock test above —
-/// pins that a large stdout stream is captured whole, not truncated at
+/// `run_capture`'s stdout counterpart to the stderr deadlock test above.
+/// Pins that a large stdout stream is captured whole, not truncated at
 /// whatever a pipe's OS buffer happens to hold.
 #[test]
 fn run_capture_captures_large_stdout_whole() {
@@ -34,7 +34,7 @@ fn run_capture_captures_large_stdout_whole() {
     assert_eq!(out.stdout.len(), 200_000);
 }
 
-/// `run_capture` must deny git a credential prompt — this call has no
+/// `run_capture` must deny git a credential prompt: this call has no
 /// terminal to put one on (stdin is closed), so left unset, `git` would try
 /// `/dev/tty` directly and hang instead of failing fast.
 #[test]
@@ -63,13 +63,13 @@ fn run_inline_output_returns_exit_status_of_child() {
 }
 
 /// `run_inline_output` puts the child in its own *background* process
-/// group (for Ctrl-c safety — see the test below), not the terminal's
+/// group (for Ctrl-c safety; see the test below), not the terminal's
 /// foreground one, so a credential prompt it wrote would be followed by a
 /// read that hangs on `SIGTTIN` rather than an answerable question. Must
 /// deny the prompt outright, the same as `run_capture`.
 #[test]
 fn run_inline_output_sets_git_terminal_prompt_to_deny_credential_prompts() {
-    // Inherited stdio means the child's stdout is this test process's own —
+    // Inherited stdio means the child's stdout is this test process's own, so
     // write to a file instead of asserting on captured output.
     let dir = tempfile::tempdir().expect("tempdir");
     let status = run_inline_output(
@@ -108,7 +108,7 @@ fn run_inline_output_honors_cwd() {
 ///
 /// `nix::killpg` is used instead of spawning `kill -INT -<pgid>` because
 /// BSD `kill` and util-linux `kill` disagree on negative-pgid argument
-/// parsing — the Linux version returned exit 0 without signalling, causing
+/// parsing: the Linux version returned exit 0 without signalling, causing
 /// `sleep` to run to completion and the test to fail.
 #[test]
 fn sigint_to_child_group_does_not_kill_hume() {
@@ -128,19 +128,19 @@ fn sigint_to_child_group_does_not_kill_hume() {
     // which races with the parent.  Calling setpgid(child, child) from the
     // parent is idempotent and closes the race: if the child hasn't run its
     // hook yet we set it; if it already exec'd we get EACCES (the child set
-    // it first) — either way the group is correct.
+    // it first). Either way the group is correct.
     let _ = setpgid(pid, pid);
 
     killpg(pid, Signal::SIGINT).expect("killpg");
 
-    // Wait for the child — must have been killed by the signal.
+    // Wait for the child, which must have been killed by the signal.
     let exit = child.wait_with_output().expect("wait").status;
     assert!(
         !exit.success(),
         "child should have been killed by SIGINT, got: {exit:?}"
     );
 
-    // Reaching here means HUME survived — the guarantee holds.
+    // Reaching here means HUME survived: the guarantee holds.
 }
 
 // ── spawn_in_own_group ──────────────────────────────────────────────────────
@@ -215,13 +215,13 @@ fn unpack_zip_round_trip_sets_exec_bit() {
     let dir = tempfile::tempdir().expect("tempdir");
     let src_dir = dir.path().join("src");
     std::fs::create_dir(&src_dir).expect("mkdir src");
-    // Default create mode (0o644, no exec bit) — matches what CI-built
+    // Default create mode (0o644, no exec bit) matches what CI-built
     // release zips routinely ship, the exact case this test guards.
     std::fs::write(src_dir.join("bin-name"), b"binary contents").expect("write fixture");
 
     let zip_path = dir.path().join("archive.zip");
     let zip_status = Command::new("zip")
-        .arg("-j") // junk paths — we only care about the entry name, not src/
+        .arg("-j") // junk paths: we only care about the entry name, not src/
         .arg(&zip_path)
         .arg(src_dir.join("bin-name"))
         .status()
@@ -255,7 +255,7 @@ fn unpack_zip_chmods_every_regular_file_not_just_bin_path() {
     std::fs::create_dir(&src_dir).expect("mkdir src");
     std::fs::write(src_dir.join("bin-name"), b"binary contents").expect("write fixture");
     // A sibling helper/wrapper the archive ships alongside the seeded
-    // entry point — must end up executable too, not just "bin-name".
+    // entry point must end up executable too, not just "bin-name".
     std::fs::write(src_dir.join("helper"), b"helper contents").expect("write fixture");
 
     let zip_path = dir.path().join("archive.zip");

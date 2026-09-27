@@ -1,14 +1,14 @@
 //! Platform-aware base directory resolution for HUME.
 //!
 //! Follows XDG Base Directory conventions on Unix and macOS. On Windows:
-//! - Config lives under `%APPDATA%\hume\` (Roaming — syncs across domain machines,
+//! - Config lives under `%APPDATA%\hume\` (Roaming: syncs across domain machines,
 //!   appropriate for user-edited config files).
-//! - Data lives under `%LOCALAPPDATA%\hume\` (Local — machine-specific, appropriate
+//! - Data lives under `%LOCALAPPDATA%\hume\` (Local: machine-specific, appropriate
 //!   for plugin binaries and caches that must not roam between machines).
 //!
 //! All resolvers return `Option<PathBuf>`: `None` means the platform-specific
 //! env vars are unset (no silent fallback to `.config/hume` or `.local/share/hume`).
-//! Callers decide how to handle the missing directory — PLUM disables itself,
+//! Callers decide how to handle the missing directory: PLUM disables itself,
 //! `init.scm` loading is skipped, etc. Fail-fast over silent-wrong.
 
 use std::{
@@ -113,10 +113,10 @@ fn home_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 /// Search order:
 /// 1. `HUME_RUNTIME` environment variable (dev escape hatch; not existence-checked).
 /// 2. `../share/hume/` relative to the binary, Unix / macOS installed (FHS) layout.
-/// 3. `runtime/` relative to the binary — portable/archive layout (nightly zips/tarballs
+/// 3. `runtime/` relative to the binary: portable/archive layout (nightly zips/tarballs
 ///    ship `hume(.exe)` next to a `runtime/` directory; this covers Windows, where there
 ///    is no `share/` layout, and any unpacked archive run in place on Unix).
-/// 4. `./runtime` relative to cwd — dev fallback when running with `cargo run` from the
+/// 4. `./runtime` relative to cwd: dev fallback when running with `cargo run` from the
 ///    workspace root.
 ///
 /// Every candidate except (1) is existence-checked; returns `None` if none exist.

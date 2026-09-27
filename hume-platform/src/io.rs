@@ -2,8 +2,8 @@
 //!
 //! The key primitive is [`write_file_atomic`]: write to a sibling temp file,
 //! restore the original file's permissions and ownership, then `rename(2)` it
-//! into place. The caller always sees either the old content or the new content
-//! — never a partial write. [`FileMeta`] bundles the metadata captured on open
+//! into place. The caller always sees either the old content or the new content,
+//! never a partial write. [`FileMeta`] bundles the metadata captured on open
 //! so it can be faithfully restored on save.
 
 use std::fs;
@@ -16,12 +16,12 @@ use std::time::SystemTime;
 ///
 /// Compares mtime **and** size: some filesystems (HFS+, FAT) only report
 /// mtime to one-second resolution, so a same-second rewrite can be invisible
-/// to mtime alone. Equality (`!=`), not ordering — restoring a file from a
+/// to mtime alone. Equality (`!=`), not ordering: restoring a file from a
 /// backup moves mtime *backwards* and must still count as a change.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct FileSignature {
     /// `None` on platforms/filesystems that don't report a modification
-    /// time — never conjured into a fake value, since that could compare
+    /// time. Never conjured into a fake value, since that could compare
     /// equal to a genuinely different unset case.
     mtime: Option<SystemTime>,
     size: u64,
@@ -29,7 +29,7 @@ pub struct FileSignature {
 
 impl FileSignature {
     /// Extracts the mtime+size fingerprint from an already-fetched
-    /// `fs::Metadata` — shared by [`read_signature`] and [`read_file_meta`]
+    /// `fs::Metadata`, shared by [`read_signature`] and [`read_file_meta`]
     /// so the fingerprint rule stays defined in one place.
     fn from_metadata(metadata: &fs::Metadata) -> Self {
         FileSignature {
@@ -41,7 +41,7 @@ impl FileSignature {
 
 /// Read a file's current [`FileSignature`] without touching its content.
 ///
-/// No `canonicalize` — callers already hold the resolved path (from an
+/// No `canonicalize`: callers already hold the resolved path (from an
 /// earlier `read_file_meta`/`read_file`).
 pub fn read_signature(path: &Path) -> io::Result<FileSignature> {
     Ok(FileSignature::from_metadata(&fs::metadata(path)?))
@@ -55,7 +55,7 @@ pub fn read_signature(path: &Path) -> io::Result<FileSignature> {
 pub struct FileMeta {
     /// The canonical path after following all symlinks.
     ///
-    /// Writes always target this path so the symlink itself is preserved —
+    /// Writes always target this path so the symlink itself is preserved:
     /// `rename(2)` replaces inodes, not symlink targets.
     ///
     /// Private: always produced by `canonicalize` inside `read_file_meta` /
@@ -85,7 +85,7 @@ pub struct FileMeta {
 impl FileMeta {
     /// The canonical path after following all symlinks.
     ///
-    /// This is the target for atomic writes — using it ensures the symlink
+    /// This is the target for atomic writes. Using it ensures the symlink
     /// itself is preserved while the content behind it is updated.
     pub fn resolved_path(&self) -> &Path {
         &self.resolved_path
@@ -138,7 +138,7 @@ pub fn read_file_meta(path: &Path) -> io::Result<FileMeta> {
 /// The stat backing `meta.signature` happens in `read_file_meta`, before the
 /// content read below. If a writer races us here, storing the *older*
 /// signature means a later disk-change check reports a change instead of
-/// silently missing one — biased toward a spurious check, never toward a
+/// silently missing one: biased toward a spurious check, never toward a
 /// miss.
 pub fn read_file(path: &Path) -> io::Result<(String, FileMeta)> {
     let meta = read_file_meta(path)?;
@@ -166,7 +166,7 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
     io::Write::write_all(&mut tmp, content.as_bytes())?;
 
-    // Set permissions before rename — the window with wrong perms is zero.
+    // Set permissions before rename, so the window with wrong perms is zero.
     tmp.as_file().set_permissions(meta.permissions.clone())?;
 
     // fchown requires root or matching uid to succeed; ignore errors so a
@@ -185,7 +185,7 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
     // Note: on POSIX, rename(2) ignores the target file's permission bits when
     // the containing directory is writable, so this PermissionDenied branch is
     // primarily reached on Windows (READONLY attribute) and on exotic POSIX
-    // filesystems / ACL setups — it is genuinely hard to exercise from a
+    // filesystems / ACL setups. It is genuinely hard to exercise from a
     // unit test on macOS/Linux without root or chflags.
     let result = match tmp.persist(target) {
         Ok(_) => Ok(false),
@@ -194,7 +194,7 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
         {
             // Target is readonly; make it writable just long enough for the
             // rename. After rename(2) the old inode (transiently writable) is
-            // unlinked — the new inode already carries meta.permissions, so
+            // unlinked; the new inode already carries meta.permissions, so
             // `set_readonly(false)` on a clone of meta.permissions is enough
             // (the value we pass is overwritten by the rename anyway).
             // Using the cross-platform API is deliberate; PermissionsExt is Unix-only.
@@ -206,7 +206,7 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
                 Ok(_) => Ok(true),
                 Err(retry_err) => {
                     // A failed `:w!` must not leave the target more permissive
-                    // than it was. Best-effort restore — if this also fails,
+                    // than it was. Best-effort restore: if this also fails,
                     // surface the original retry error rather than masking it.
                     let _ = fs::set_permissions(target, meta.permissions.clone());
                     Err(retry_err.error)
@@ -227,7 +227,7 @@ pub fn write_file_atomic(content: &str, meta: &mut FileMeta, force: bool) -> io:
 // ── write_file_new ────────────────────────────────────────────────────────────
 
 /// Follows a chain of symlinks lexically until reaching a path with nothing
-/// backing it — the write target for [`write_file_new`].
+/// backing it: the write target for [`write_file_new`].
 ///
 /// Not `canonicalize`: that requires every component (including the final
 /// one) to exist, which is exactly false for a dangling symlink's target.
@@ -262,7 +262,7 @@ fn resolve_symlink_target(path: &Path) -> io::Result<PathBuf> {
 /// file is never partially visible even for a new path.
 ///
 /// If `path` is a dangling symlink, writes through it to the link's target
-/// instead of replacing the link itself with a regular file — matching
+/// instead of replacing the link itself with a regular file, matching
 /// [`FileMeta::resolved_path`]'s guarantee for the existing-file case (see
 /// its doc). `path` may also point through a chain of missing intermediate
 /// directories in the *target's* path; that still surfaces as the same I/O
@@ -278,7 +278,7 @@ pub fn write_file_new(content: &str, path: &Path) -> io::Result<FileMeta> {
     let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
     io::Write::write_all(&mut tmp, content.as_bytes())?;
 
-    // Set 0o644 (rw-r--r--) before rename — safe default for a new file.
+    // Set 0o644 (rw-r--r--) before rename: safe default for a new file.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

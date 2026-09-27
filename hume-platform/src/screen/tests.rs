@@ -14,7 +14,7 @@ fn red() -> ResolvedStyle {
 /// Poke fixture content directly into `grid` at `(x, y)`. `Grid::set_glyph`
 /// is `pub(crate)` to `hume-grid`, unreachable from this crate's own suite,
 /// so this goes through `Canvas` instead (an unbounded `right_edge`: these
-/// fixtures write well within the grid they just allocated) — diff/emitter
+/// fixtures write well within the grid they just allocated). This is diff/emitter
 /// test setup, not behaviour under test, asserting nothing of its own.
 fn poke(grid: &mut Grid, x: u16, y: u16, text: &str, advance: u8, style: ResolvedStyle) {
     Canvas::new(grid, ResolvedStyle::default(), None).write_cell(
@@ -27,7 +27,7 @@ fn poke(grid: &mut Grid, x: u16, y: u16, text: &str, advance: u8, style: Resolve
     );
 }
 
-/// The bytes one SGR update renders to — what the terminal actually receives
+/// The bytes one SGR update renders to: what the terminal actually receives
 /// for a `from` → `to` style transition.
 fn delta(from: ResolvedStyle, to: ResolvedStyle) -> String {
     Csi::Sgr(Sgr::Attributes(sgr_delta(&from, &to))).to_string()
@@ -342,7 +342,7 @@ fn an_unchanged_size_touches_neither_grid_nor_the_flag() {
     let mut front = back.clone();
     let mut force_full = false;
     resize_if_needed(&mut back, &mut front, &mut force_full, 4, 2);
-    // Content survives — only a size *change* discards it (see
+    // Content survives; only a size *change* discards it (see
     // `Grid::resize`'s own doc on why content is never preserved across one).
     assert_eq!(back.cell(0, 0).unwrap().text(), "a");
     assert!(!force_full);

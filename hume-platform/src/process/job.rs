@@ -1,9 +1,9 @@
 //! One-shot subprocess capture: run a command to completion and deliver its
-//! whole stdout, whole stderr, and exit status exactly once — the shape
+//! whole stdout, whole stderr, and exit status exactly once: the shape
 //! `spawn-async!` needs, as opposed to `line_source`'s per-line streaming.
 //!
 //! Completion here is the child *exiting*, which is not implied by its
-//! pipes reaching EOF — a child can close (or exec away from) its stdio
+//! pipes reaching EOF. A child can close (or exec away from) its stdio
 //! while continuing to run, so "both pipes at EOF" is not "the child is
 //! done". The capture thread this module spawns is free to block, so it
 //! reads stdout to EOF, joins the stderr thread, then polls the child's
@@ -12,13 +12,13 @@
 //! the child's entire remaining lifetime and starve a concurrent
 //! `cancel-async!`/`SpawnedJob`'s `Drop`), and only then sends the complete
 //! result. [`SpawnedJob::try_take_result`](crate::process::job::SpawnedJob::try_take_result)
-//! is a pure receive with no reaping of its own — unlike
+//! is a pure receive with no reaping of its own, unlike
 //! `line_source::SpawnedLineSource::finish`, which reaps on the main thread
 //! because EOF really is completion for a line source.
 //!
 //! Two capture threads, not one: reading stdout to EOF and then stderr
 //! would deadlock on a child that fills its stderr pipe while this thread
-//! is still blocked reading stdout — the same hazard the Scheme sync path
+//! is still blocked reading stdout, the same hazard the Scheme sync path
 //! documents at `runtime/plugins/core/stdlib/plugin.scm`'s `stdlib/run`.
 
 use std::io;
@@ -35,14 +35,14 @@ use crate::process::child::{
 use crate::process::tracked::TrackedChild;
 
 /// The complete output of a finished [`SpawnedJob`]: whole stdout (never
-/// *silently* truncated — capped at `JOB_STDOUT_CAP`, but exceeding it
+/// *silently* truncated: capped at `JOB_STDOUT_CAP`, but exceeding it
 /// fails the job rather than handing back a short prefix), whole stderr
-/// (capped at `STDERR_CAPTURE_CAP` — diagnostic only, truncation there is
+/// (capped at `STDERR_CAPTURE_CAP`; diagnostic only, so truncation there is
 /// fine), and exit status (`None` on a stdout read failure/overflow, or if
 /// the capture thread's own exit-status poll errored, or the thread
-/// panicked before sending — the last three vanishingly rare).
+/// panicked before sending, the last three vanishingly rare).
 ///
-/// Also what the capture thread sends the main thread over the channel —
+/// Also what the capture thread sends the main thread over the channel:
 /// `status` is `None` there only if the exit-status poll itself errored; a
 /// thread that panics before sending is handled separately, by
 /// [`SpawnedJob::try_take_result`] synthesizing an empty `JobResult` on
@@ -57,11 +57,11 @@ pub struct JobResult {
 /// completion.
 ///
 /// Owns the child: dropping it kills the child (`Drop` = kill + wait,
-/// matching `SpawnedLineSource`), so an abandoned job — cancelled from
-/// Steel, or the registry holding it torn down on `:reload-config` — can't
+/// matching `SpawnedLineSource`), so an abandoned job (cancelled from
+/// Steel, or the registry holding it torn down on `:reload-config`) can't
 /// leak a process. The child is a [`TrackedChild`], its own process-group
 /// leader, so it's also reaped on a force-exit that skips this `Drop`
-/// entirely — see `tracked`'s module doc.
+/// entirely; see `tracked`'s module doc.
 pub struct SpawnedJob {
     child: TrackedChild,
     rx: Option<mpsc::Receiver<JobResult>>,
@@ -69,7 +69,7 @@ pub struct SpawnedJob {
 
 /// Spawns `cmd` with `args` (direct argv, no shell), piped stdio, stdin
 /// closed immediately. One thread reads stderr to EOF (capped, lenient); a
-/// second reads stdout to EOF (capped at `JOB_STDOUT_CAP`, strict — a
+/// second reads stdout to EOF (capped at `JOB_STDOUT_CAP`, strict: a
 /// read error or overflow fails the job), joins the first, then sends the
 /// combined capture once and fires `wake`.
 pub fn spawn_job(
@@ -80,7 +80,7 @@ pub fn spawn_job(
 ) -> io::Result<SpawnedJob> {
     let (child, stdout, stderr) = spawn_piped(cmd, args, cwd)?;
     // Converted to a `TrackedChild` up front, not deferred to the end like
-    // `line_source` does — the job thread below needs its own handle to
+    // `line_source` does. The job thread below needs its own handle to
     // poll the child's exit status, so it and this function's returned
     // `SpawnedJob` must share the same tracked slot from the start. From
     // here on this function owns reaping the child on every early return
@@ -100,19 +100,19 @@ pub fn spawn_job(
     let job_cmd = cmd.to_string();
     // The returned `JoinHandle` is intentionally dropped, not stored:
     // dropping it detaches the thread (same as a bare `thread::spawn`
-    // whose handle is discarded) — nothing here ever needs to join it, so
+    // whose handle is discarded). Nothing here ever needs to join it, so
     // keeping it around would just be a field that's written once and read
     // never.
     thread::Builder::new()
         .name("hume-job".into())
         .spawn(move || {
-            // Fires as this closure returns, after the send below — a
+            // Fires as this closure returns, after the send below, so a
             // panicking read still wakes the drain to observe the
             // synthesized result `try_take_result` produces on disconnect.
             let _wake_on_drop = WakeOnDrop(wake);
             let stdout_result = read_bounded(stdout, JOB_STDOUT_CAP);
             // A panicked stderr thread degrades to empty stderr rather than
-            // wedging this job forever — the exit status still carries the
+            // wedging this job forever. The exit status still carries the
             // failure, and stdout is what most callers actually want.
             let stderr_bytes = stderr_thread.join().unwrap_or_default();
             let status = wait_for_exit(&job_child);
@@ -143,11 +143,11 @@ pub fn spawn_job(
     })
 }
 
-/// Polls `child`'s exit status rather than blocking on a plain `wait()` —
+/// Polls `child`'s exit status rather than blocking on a plain `wait()`:
 /// `wait()` would hold the shared slot's mutex for the child's entire
 /// remaining lifetime, starving the `try_wait`/`reap` calls a concurrent
 /// `cancel-async!` or [`SpawnedJob::drop`] needs that same lock for. `None`
-/// only if `try_wait` itself errors — vanishingly rare.
+/// only if `try_wait` itself errors, which is vanishingly rare.
 fn wait_for_exit(child: &TrackedChild) -> Option<ExitStatus> {
     loop {
         match child.try_wait() {
@@ -158,14 +158,14 @@ fn wait_for_exit(child: &TrackedChild) -> Option<ExitStatus> {
     }
 }
 
-/// Poll interval for [`wait_for_exit`] — frequent enough that a job's
+/// Poll interval for [`wait_for_exit`]: frequent enough that a job's
 /// result is delivered promptly after the child actually exits, cheap
 /// enough that a long-running child costs nothing but idle wakeups.
 const EXIT_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 impl SpawnedJob {
     /// The child's OS process id, for a signal-0 liveness probe independent
-    /// of this handle's own state. Test-support only — mirrors
+    /// of this handle's own state. Test-support only; mirrors
     /// `SpawnedLineSource::pid`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn pid(&self) -> u32 {
@@ -173,9 +173,9 @@ impl SpawnedJob {
     }
 
     /// Non-blocking: `Some` at most once, the moment the capture thread's
-    /// single message — stdout, stderr, and the child's real exit status,
-    /// already waited for — arrives (or, if that thread panicked before
-    /// sending, synthesized as empty output with no status — the callback
+    /// single message (stdout, stderr, and the child's real exit status,
+    /// already waited for) arrives (or, if that thread panicked before
+    /// sending, synthesized as empty output with no status, since the callback
     /// must still fire exactly once). Nothing left to reap here: unlike
     /// `SpawnedLineSource::finish`, the capture thread already confirmed
     /// the child exited before sending.
@@ -201,7 +201,7 @@ impl Drop for SpawnedJob {
     fn drop(&mut self) {
         self.child.reap();
         // Bounded channel (capacity 1): the job thread can be blocked
-        // mid-`send` if `try_take_result` was never polled — dropping the
+        // mid-`send` if `try_take_result` was never polled; dropping the
         // receiver makes that `send` return `Err`, letting the detached
         // thread exit on its own.
         self.rx = None;
@@ -248,7 +248,7 @@ mod tests {
         }
 
         /// Polls `job` until its result arrives, with a generous bound so a
-        /// slow CI box can't flake this — mirrors
+        /// slow CI box can't flake this. Mirrors
         /// `line_source::tests::unix::drain_until_disconnected`.
         fn poll_until_result(job: &mut SpawnedJob) -> JobResult {
             let deadline = Instant::now() + Duration::from_secs(2);
@@ -283,7 +283,7 @@ mod tests {
         #[test]
         fn child_still_running_after_pipes_close_is_not_reported_as_killed() {
             // Closes both pipes, then keeps running for a bit before a
-            // real, successful exit — both pipes reaching EOF must not be
+            // real, successful exit. Both pipes reaching EOF must not be
             // mistaken for the child having exited (reaping it right there
             // would turn this into exit code -1).
             let args = vec![
@@ -328,7 +328,7 @@ mod tests {
 
         #[test]
         fn concurrent_large_stdout_and_stderr_does_not_deadlock() {
-            // Both streams fill well past a pipe buffer at the same time —
+            // Both streams fill well past a pipe buffer at the same time:
             // this is exactly the shape a sequential stdout-then-stderr
             // read would deadlock on.
             let args = vec![

@@ -1,5 +1,5 @@
 //! Unix-only tests, gated once at the `mod unix;` declaration in the
-//! parent — mirrors `process/tests.rs`'s own split.
+//! parent. Mirrors `process/tests.rs`'s own split.
 //!
 //! Every test below builds its own [`ChildRegistry`] rather than touching
 //! the crate's real global: `cargo test` runs this crate's tests as threads
@@ -22,7 +22,7 @@ fn is_alive(pid: i32) -> bool {
 }
 
 /// SIGKILLs and reaps a child this test spawned but never routed through a
-/// `Child` the test still holds — `kill_tracked_children`'s own reap path
+/// `Child` the test still holds. `kill_tracked_children`'s own reap path
 /// deliberately never waits (see `kill_slot`'s doc), so a child it kills is
 /// left a zombie until *something* calls `waitpid` on it; in production
 /// that's the OS once the whole process exits, but this test process keeps
@@ -34,7 +34,7 @@ fn kill_and_reap(pid: i32) {
 }
 
 /// `kill_all` doesn't `wait()` its victims (force-exit must never block on
-/// one) — SIGKILL delivery is asynchronous, so death is polled rather than
+/// one), and SIGKILL delivery is asynchronous, so death is polled rather than
 /// asserted immediately after the call.
 fn wait_until_dead(pid: i32, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
@@ -74,7 +74,7 @@ fn dropping_the_only_handle_removes_it_from_the_registry() {
     let tracked = TrackedChild::in_registry(child, &registry);
     assert_eq!(registry.live_count(), 1);
 
-    // Nothing reaped it — dropping the handle alone must not leak the
+    // Nothing reaped it. Dropping the handle alone must not leak the
     // process, so kill it directly for the assertion and to clean up.
     drop(tracked);
     assert_eq!(
@@ -121,7 +121,7 @@ fn kill_all_kills_the_whole_process_group() {
     // sleep; a direct (non-group) kill of just the tracked pid would leave
     // the grandchild alive, which is exactly the gap this test exists to
     // catch. The background job inherits the shell's stdout, so the pipe
-    // only reaches EOF once every group member exits — `read_line` instead
+    // only reaches EOF once every group member exits. `read_line` instead
     // of reading to EOF, so this doesn't block on that for up to 30s.
     let mut cmd = Command::new("sh");
     cmd.args(["-c", "sleep 30 & echo $!; exec sleep 30"])
@@ -140,10 +140,10 @@ fn kill_all_kills_the_whole_process_group() {
     registry.kill_all();
 
     // `kill_all` deliberately never waits (force-exit must never block), so
-    // the direct child — parented to *this* test process — is confirmed and
+    // the direct child (parented to *this* test process) is confirmed and
     // reaped the same way `kill_and_reap` does. The grandchild's parent is
     // the direct child, not us, so `waitpid` isn't ours to call on it; once
-    // its parent exits it's reparented to launchd/init, which reaps it —
+    // its parent exits it's reparented to launchd/init, which reaps it;
     // `wait_until_dead`'s `kill(pid, 0)` poll genuinely observes that.
     let status = waitpid(Pid::from_raw(direct_pid), None).expect("reap direct child");
     assert!(
@@ -212,7 +212,7 @@ fn reap_kills_the_whole_process_group() {
 
     // Same fixture as `kill_all_kills_the_whole_process_group`: a direct
     // child that forks a grandchild and prints its pid before both sleep.
-    // This exercises `TrackedChild::reap` — the *normal-exit* `Drop` path —
+    // This exercises `TrackedChild::reap` (the *normal-exit* `Drop` path)
     // rather than `kill_all`'s force-exit path, so it catches a regression
     // where only `kill_all` was taught to signal the whole group.
     let mut cmd = Command::new("sh");
@@ -254,7 +254,7 @@ fn kill_all_waits_for_a_contended_table_lock() {
     let tracked = TrackedChild::in_registry(child, &registry);
 
     // Hold the table lock ourselves first, standing in for `register()`
-    // running on another thread — `kill_all` must wait for it rather than
+    // running on another thread: `kill_all` must wait for it rather than
     // bailing out and killing nothing.
     let table_guard = registry.entries.lock().unwrap();
 
@@ -273,7 +273,7 @@ fn kill_all_waits_for_a_contended_table_lock() {
     killer.join().expect("kill_all thread must not panic");
 
     // `kill_all` deliberately never waits (force-exit must never block), so
-    // the child — parented to *this* test process — is a zombie until
+    // the child (parented to *this* test process) is a zombie until
     // reaped here, the same way `kill_and_reap`/`kill_all_kills_the_whole_process_group`
     // do; a plain `kill(pid, 0)` liveness poll would see the zombie as still
     // "alive" and this assertion would never fail even on a broken `kill_all`.
@@ -301,7 +301,7 @@ fn kill_all_tolerates_an_already_reaped_child() {
         std::thread::sleep(Duration::from_millis(10));
     }
 
-    // Must return promptly without panicking — the regression this guards
+    // Must return promptly without panicking. The regression this guards
     // against is `kill_all` signalling a pid `Child` has already reaped
     // (and the kernel may have since recycled) instead of consulting the
     // cached exit status first.
@@ -321,7 +321,7 @@ fn kill_all_retries_a_slot_contended_by_a_non_killing_reader() {
     let tracked = TrackedChild::in_registry(child, &registry);
 
     // Stand in for a concurrent `id()`/`try_wait()` call, which holds the
-    // same slot mutex without killing anything — unlike a concurrent
+    // same slot mutex without killing anything. Unlike a concurrent
     // `reap()`, there is no one else here to signal the child, so a retrying
     // kill giving up on the first contended `try_lock` (the pre-retry
     // behaviour) would leave it alive. A channel handshake (not a blind
@@ -332,7 +332,7 @@ fn kill_all_retries_a_slot_contended_by_a_non_killing_reader() {
     // path this exercises in production) with a retry budget an order of
     // magnitude past the 1ms hold below: comparing the production constants
     // (`KILL_LOCK_ATTEMPTS`/`KILL_LOCK_RETRY`, a ~4ms budget) against a 1ms
-    // hold is a race between two scheduler-controlled durations — one
+    // hold is a race between two scheduler-controlled durations. One
     // preemption between the hold's sleep expiring and its guard dropping,
     // and the retries run out first, flaking the test on correct behaviour.
     let (acquired_tx, acquired_rx) = mpsc::channel::<()>();
@@ -350,7 +350,7 @@ fn kill_all_retries_a_slot_contended_by_a_non_killing_reader() {
     holder.join().expect("holder thread must not panic");
 
     // `kill_all` deliberately never `wait()`s its victims (see its own doc),
-    // so a killed-but-unreaped child is still a zombie — `is_alive`'s
+    // so a killed-but-unreaped child is still a zombie, and `is_alive`'s
     // signal-0 probe would report it "alive" either way, telling a retried
     // kill apart from an abandoned child requires reaping it ourselves, same
     // as `kill_all_waits_for_a_contended_table_lock` above.

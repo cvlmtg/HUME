@@ -46,7 +46,7 @@ fn expand_unknown_var_stays_literal() {
 #[test]
 fn expand_unclosed_brace_stays_literal() {
     let result = expand_with("${UNCLOSED/foo", no_env, no_home);
-    // `${UNCLOSED` has no closing `}` before `/` — emitted literally.
+    // `${UNCLOSED` has no closing `}` before `/`, so it's emitted literally.
     assert_eq!(result, "${UNCLOSED/foo");
 }
 
@@ -58,7 +58,7 @@ fn expand_trailing_dollar_is_literal() {
 
 #[test]
 fn expand_dollar_digit_is_literal() {
-    // `$1var` — digit cannot start an identifier.
+    // `$1var`: a digit cannot start an identifier.
     let result = expand_with("$1var", no_env, no_home);
     assert_eq!(result, "$1var");
 }
@@ -130,7 +130,7 @@ fn shorten_home_with_no_home_returns_full_path() {
 #[test]
 fn shorten_home_with_path_prefix_not_a_dir_boundary() {
     use std::path::Path;
-    // "/home/userx" must NOT match home="/home/user" — strip_prefix is
+    // "/home/userx" must NOT match home="/home/user": strip_prefix is
     // component-aware and rejects partial component matches.
     let got = shorten_home_with(Path::new("/home/userx/foo"), || {
         Some(PathBuf::from("/home/user"))

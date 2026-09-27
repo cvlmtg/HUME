@@ -6,8 +6,8 @@
 //!
 //! [`probe_kitty`] is a separate step, called *before* [`init`]. It runs on
 //! the normal screen (raw mode only, no alt-screen) so the caller can finish
-//! scripting initialisation — which installs kitty-only default keybinds
-//! before user `bind-key!` calls run — while the shell is still visible.
+//! scripting initialisation (which installs kitty-only default keybinds
+//! before user `bind-key!` calls run) while the shell is still visible.
 //!
 //! Also provides cursor shape/colour control, DEC 2026 synchronized-update
 //! framing, and the inline-subprocess-output flow
@@ -16,7 +16,7 @@
 //! [`SharedTerm`] is a cheap-to-clone handle: every caller that needs to read
 //! or write the terminal (the render loop, the signal handler, the inline-
 //! output bracket) holds a clone. Event reads/polls never lock the shared
-//! mutex — they go straight to the cloned [`EventReader`] — so a blocking
+//! mutex (they go straight to the cloned [`EventReader`]), so a blocking
 //! read on one thread can never stall a write on another.
 
 use std::io::{self, Write};
@@ -42,7 +42,7 @@ pub use termina::style::CursorStyle;
 /// Wraps the platform terminal behind a mutex so it can be shared between the
 /// render loop, the signal handler, and the inline-output bracket, plus a
 /// cloned [`EventReader`] captured once at [`create`] time. The mutex guards
-/// only short operations — writes and mode switches; blocking `poll`/`read`
+/// only short operations (writes and mode switches); blocking `poll`/`read`
 /// calls go through the `EventReader` directly and never take the lock, so a
 /// pending read can never stall a writer on another thread.
 #[derive(Clone)]
@@ -147,7 +147,7 @@ fn kitty_flags() -> KittyKeyboardFlags {
     // SHIFT. See docs/learning/command-keymap-dispatch.md.
     //
     // Known limitation: WezTerm 20240203-110809-5046fc22 does not fully
-    // support REPORT_ALTERNATE_KEYS — Ctrl-shifted-char one-shot extend may
+    // support REPORT_ALTERNATE_KEYS: Ctrl-shifted-char one-shot extend may
     // not work on that version.
     KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES
         | KittyKeyboardFlags::REPORT_EVENT_TYPES
@@ -241,14 +241,14 @@ fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
     out.flush()
 }
 
-/// Runs every step in `steps`, even if an earlier one fails — the goal is to
+/// Runs every step in `steps`, even if an earlier one fails. The goal is to
 /// leave the shell as usable as possible rather than abandon teardown at the
 /// first error. Returns the first error encountered; later ones are silently
 /// discarded. Shared by [`restore`] and [`write_unwind_escapes`], the two
 /// "attempt everything, report the first failure" sequences in this module.
 ///
 /// Each element of `steps` is a call expression (e.g. `write_sync_reset(out)`)
-/// already evaluated — and so already run for its side effect — by the time
+/// already evaluated (and so already run for its side effect) by the time
 /// this function sees it; array elements evaluate left to right, so passing
 /// an array literal here preserves the steps' intended order.
 fn run_all(steps: impl IntoIterator<Item = io::Result<()>>) -> io::Result<()> {
@@ -268,7 +268,7 @@ fn run_all(steps: impl IntoIterator<Item = io::Result<()>>) -> io::Result<()> {
 /// turns on: closes any open synchronized-update envelope, disables focus
 /// tracking and bracketed paste, pops the kitty keyboard stack, disables
 /// mouse tracking, and leaves the alternate screen. Shared between
-/// [`restore`] and the panic hook installed by [`init`] — the hook can only
+/// [`restore`] and the panic hook installed by [`init`]. The hook can only
 /// write bytes (no raw/cooked mode switch), and termina restores the
 /// platform mode itself right after the hook returns.
 fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
@@ -281,7 +281,7 @@ fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
         write_leave_alt_screen(out),
         // Second pop. Since `init()` pushes onto the alt screen's stack, the
         // first pop (above) clears it. This extra pop handles terminals with
-        // a global keyboard stack — a harmless no-op on per-screen-buffer
+        // a global keyboard stack; a harmless no-op on per-screen-buffer
         // terminals (WezTerm, kitty).
         write_kitty_pop(out),
     ])
@@ -292,7 +292,7 @@ fn write_unwind_escapes(out: &mut impl io::Write) -> io::Result<()> {
 /// Probe for kitty keyboard protocol support on the normal screen.
 ///
 /// Enables raw mode (required to read the terminal's reply to the probe
-/// query), runs the probe, then disables raw mode again before returning —
+/// query), runs the probe, then disables raw mode again before returning:
 /// callers get a cooked terminal back on every path, since scripting
 /// initialisation (which may spawn subprocesses, e.g. grammar installs) runs
 /// on the normal screen between this call and [`init`].
@@ -378,7 +378,7 @@ pub fn init(
 }
 
 /// Undo everything [`init`] did: run `write_unwind_escapes` then leave raw
-/// mode. Both are attempted even if the first fails — the goal is to leave
+/// mode. Both are attempted even if the first fails; the goal is to leave
 /// the shell as usable as possible. The first error encountered is returned;
 /// a second is silently discarded.
 pub fn restore(term: &SharedTerm) -> io::Result<()> {
@@ -388,7 +388,7 @@ pub fn restore(term: &SharedTerm) -> io::Result<()> {
 
 /// Emit an OSC 12 sequence to set the terminal cursor colour.
 ///
-/// When `black` is `true`, sets the cursor to black — used when the cursor
+/// When `black` is `true`, sets the cursor to black. Used when the cursor
 /// sits on a light-background surface (e.g. the statusline in Command/Search
 /// mode) where the default colour would be invisible.
 ///
@@ -417,7 +417,7 @@ pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
 /// Emit a DECSCUSR escape for the cursor shape.
 ///
 /// Takes the `termina` style directly rather than HUME's own `CursorShape`
-/// setting enum — that enum lives in `hume-editor` (a settings concept this
+/// setting enum: that enum lives in `hume-editor` (a settings concept this
 /// crate has no business depending on), so the `CursorShape` → `CursorStyle`
 /// mapping is the caller's job.
 pub fn set_cursor_shape(term: &SharedTerm, style: CursorStyle) -> io::Result<()> {
@@ -455,11 +455,11 @@ pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
 ///
 /// Must be paired with [`leave_inline_output`] to restore the editor. Passes
 /// the current kitty and mouse state so [`leave_inline_output`] can re-apply it.
-/// Also disables focus tracking for the duration — a subprocess reading raw
+/// Also disables focus tracking for the duration: a subprocess reading raw
 /// terminal input shouldn't see stray `CSI I`/`CSI O` bytes.
 ///
 /// Called from `EditorHostImpl::ensure_inline_output_screen`, not eagerly at
-/// dispatch — the caller only reaches this on a command's first real output,
+/// dispatch. The caller only reaches this on a command's first real output,
 /// so a command whose body produces none never leaves the alt-screen at all.
 pub fn enter_inline_output(
     term: &SharedTerm,
@@ -509,7 +509,7 @@ pub fn leave_inline_output(
 /// Reapply the mouse-tracking mode to match `mouse_enabled`/`mouse_select`.
 ///
 /// Always disables tracking first (a harmless no-op for modes not currently
-/// set — see `write_mouse_disable`) then re-enables per the new flags, so
+/// set; see `write_mouse_disable`) then re-enables per the new flags, so
 /// it's safe to call whenever the desired mode changes at runtime, not just
 /// once at startup (unlike [`init`], which only applies the startup mode).
 pub fn set_mouse_mode(

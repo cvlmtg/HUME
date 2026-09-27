@@ -11,7 +11,7 @@
 //! [`spawn_line_source`](crate::process::line_source::spawn_line_source) is
 //! the other half: spawns `cmd` with piped stdio, closes stdin immediately
 //! (same non-inherited-stdin contract as [`crate::process::run_capture`]),
-//! and bridges stdout/stderr to `mpsc` channels via two reader threads — mirrors
+//! and bridges stdout/stderr to `mpsc` channels via two reader threads. Mirrors
 //! `hume-lsp`'s `transport.rs` (thread/channel ownership, the bounded-channel
 //! backpressure, `Drop` = kill+wait). No writer thread: this is a one-shot
 //! streaming source, not a bidirectional protocol.
@@ -52,7 +52,7 @@ impl LineSplitter {
 
     /// Split `chunk` into complete lines. A line that doesn't end in `delim`
     /// by the end of `chunk` is carried and prefixed onto the next call's
-    /// (or [`finish`](Self::finish)'s) output — it never appears here.
+    /// (or [`finish`](Self::finish)'s) output; it never appears here.
     fn push_chunk(&mut self, chunk: &[u8]) -> Vec<String> {
         let mut lines = Vec::new();
         let mut start = 0;
@@ -89,13 +89,13 @@ impl LineSplitter {
 
 /// Bound on the line-batch channel. A child producing lines faster than the
 /// editor drains them blocks the reader thread's `send`, which stops it
-/// reading stdout, which back-pressures the child on its own stdout pipe —
+/// reading stdout, which back-pressures the child on its own stdout pipe:
 /// a flooding child slows itself rather than growing editor memory
 /// unboundedly.
 const BATCH_CHANNEL_BOUND: usize = 128;
 
 /// Bound on how long [`SpawnedLineSource::finish`] waits for the captured
-/// stderr to arrive once the child has been reaped or killed — the stderr
+/// stderr to arrive once the child has been reaped or killed. The stderr
 /// thread's `send` follows right behind, so this only guards against a
 /// wedged thread, not normal timing.
 const REAP_GRACE: Duration = Duration::from_millis(250);
@@ -104,11 +104,11 @@ const REAP_GRACE: Duration = Duration::from_millis(250);
 ///
 /// Owns the child and its bridging threads: dropping it kills the child
 /// (`Drop` = kill + wait, matching `hume-lsp::transport::ServerHandle`),
-/// which is what makes the picker's kill-on-close/replace automatic — the
+/// which is what makes the picker's kill-on-close/replace automatic: the
 /// session that owns this handle needs no explicit cleanup call. The child
 /// is a [`TrackedChild`], its own process-group leader, so it's also reaped
-/// on a force-exit that skips this `Drop` entirely — see `tracked`'s module
-/// doc.
+/// on a force-exit that skips this `Drop` entirely (see `tracked`'s module
+/// doc).
 pub struct SpawnedLineSource {
     cmd: String,
     child: TrackedChild,
@@ -117,7 +117,7 @@ pub struct SpawnedLineSource {
 }
 
 /// The outcome of a finished [`SpawnedLineSource`]: exit status (`None` only
-/// if the OS gave none back even after a kill+wait fallback — vanishingly
+/// if the OS gave none back even after a kill+wait fallback, vanishingly
 /// rare) and whatever stderr was captured, capped at `STDERR_CAPTURE_CAP`.
 pub struct SourceExit {
     pub status: Option<ExitStatus>,
@@ -141,7 +141,7 @@ pub fn spawn_line_source(
     let (tx_err, rx_err) = mpsc::sync_channel::<String>(1);
 
     // `child` kills and reaps itself (`ReapOnDrop`) on an early `?` return
-    // below — a bridging thread failing to spawn leaves nothing for the
+    // below, so a bridging thread failing to spawn leaves nothing for the
     // process to leak. A thread that already started is not joined here:
     // killing the child closes stdout/stderr, which ends its blocking read.
     let reader_wake = Arc::clone(&wake);
@@ -173,18 +173,18 @@ impl SpawnedLineSource {
     }
 
     /// The child's OS process id, for a signal-0 liveness probe independent
-    /// of this handle's own state — not for signalling it directly (that's
+    /// of this handle's own state, not for signalling it directly (that's
     /// `Drop`'s job). Test-support only.
     #[cfg(any(test, feature = "test-util"))]
     pub fn pid(&self) -> u32 {
         self.child.id()
     }
 
-    /// Whether the child has already exited, without reaping it — a
+    /// Whether the child has already exited, without reaping it: a
     /// non-blocking peek used to decide whether a source being superseded or
     /// explicitly stopped (as opposed to draining to a natural EOF) has an
     /// exit worth reporting. An `Err` from the underlying `try_wait` (rare)
-    /// reads as "not exited" — safer than reporting an exit that may not
+    /// reads as "not exited", safer than reporting an exit that may not
     /// have happened.
     pub fn has_exited(&self) -> bool {
         matches!(self.child.try_wait(), Ok(Some(_)))
@@ -192,7 +192,7 @@ impl SpawnedLineSource {
 
     /// Drains every batch of lines queued since the last call. The returned
     /// bool is whether the reader thread has disconnected (stdout EOF or a
-    /// read error) — once true, call [`finish`](Self::finish) to reap the
+    /// read error). Once true, call [`finish`](Self::finish) to reap the
     /// exit status and captured stderr.
     pub fn try_recv_batches(&mut self) -> (Vec<String>, bool) {
         let mut lines = Vec::new();
@@ -216,7 +216,7 @@ impl SpawnedLineSource {
     /// status and whatever stderr was captured.
     ///
     /// Runs on the editor's per-frame drain path (`drain_picker_source`), not
-    /// a background thread — so this never blocks waiting for the child.
+    /// a background thread, so this never blocks waiting for the child.
     /// Stdout EOF (the caller's precondition for calling `finish` at all)
     /// almost always means the child has already exited, in which case
     /// `try_wait` returns immediately with the real status; the rare child
@@ -241,7 +241,7 @@ impl Drop for SpawnedLineSource {
     fn drop(&mut self) {
         self.child.reap();
         // Bounded channel: a reader thread can be blocked mid-`send` on a
-        // full channel — dropping the receiver makes that `send` return
+        // full channel; dropping the receiver makes that `send` return
         // `Err`, letting the thread self-exit even though it's detached
         // rather than joined below.
         self.rx = None;
@@ -281,7 +281,7 @@ fn reader_loop(
         wake();
     }
     // `tx` (moved into the caller's closure) drops when this returns,
-    // disconnecting the channel — the drain side observes that as EOF.
+    // disconnecting the channel, and the drain side observes that as EOF.
 }
 
 #[cfg(test)]
@@ -465,7 +465,7 @@ mod tests {
         #[test]
         fn finish_kills_a_child_that_lingers_after_closing_stdout_without_polling() {
             // Closes stdout immediately (triggering `disconnected`) but keeps
-            // running — the exact shape `finish()` must not busy-wait on: it
+            // running: the exact shape `finish()` must not busy-wait on: it
             // should kill the child right away rather than polling for a
             // grace period before falling back to `kill`. The second `exec`
             // replaces the shell's own process image instead of forking a
@@ -482,7 +482,7 @@ mod tests {
 
             // 5s, not a tight bound on the kill/reap/stderr-EOF handoff
             // itself (which spans two thread wakeups and is scheduler-
-            // sensitive) — it only needs to rule out `finish()` waiting the
+            // sensitive). It only needs to rule out `finish()` waiting the
             // child out instead of killing it, which would take the full 30s
             // the child sleeps for. Matches the margin `drop_kills_the_child_
             // promptly` below uses against the same kind of child.
@@ -507,8 +507,8 @@ mod tests {
         fn drop_kills_the_child_promptly() {
             // `sleep 30` makes a missing `kill()` observable two ways: the
             // signal-liveness check below (a `wait()`-only Drop still reaps
-            // it, just 30s later) AND — the check that actually catches
-            // that case — `drop()` itself must return promptly, not block
+            // it, just 30s later) AND (the check that actually catches
+            // that case) `drop()` itself must return promptly, not block
             // for the child's remaining lifetime.
             let args = vec!["30".to_string()];
             let source =

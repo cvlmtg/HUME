@@ -3,7 +3,7 @@
 
 use super::*;
 
-/// `cl` on PATH means MSVC is usable — no override, regardless of what
+/// `cl` on PATH means MSVC is usable: no override, regardless of what
 /// else is installed.
 #[test]
 fn choose_windows_compiler_prefers_msvc_when_present() {

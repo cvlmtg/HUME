@@ -29,7 +29,7 @@ const ENV_SIGIL: char = '%';
 /// `%USERPROFILE%` on Windows).  `~user/foo` forms are **not** expanded (no
 /// `getpwnam` lookup).
 ///
-/// **Env vars**: Native syntax per platform — `$VAR` / `${VAR}` on Unix;
+/// **Env vars**: Native syntax per platform: `$VAR` / `${VAR}` on Unix;
 /// `%VAR%` on Windows.  Unknown variables are left **literal** (not replaced
 /// with an empty string) so that mistyped `$NONEXISTENT/foo` produces a
 /// recognisable "no such file" error rather than silently resolving to `/foo`.
@@ -61,7 +61,7 @@ fn expand_with(
         if let Some(home) = home_fn() {
             out.push_str(&home.to_string_lossy());
         } else {
-            out.push('~'); // HOME unset — pass through literally
+            out.push('~'); // HOME unset: pass through literally
         }
         rest = tail; // tail is the portion after `~` (may start with `/`)
     }
@@ -87,7 +87,7 @@ fn strip_tilde(s: &str) -> Option<&str> {
     if after.is_empty() || after.starts_with('/') || (cfg!(windows) && after.starts_with('\\')) {
         Some(after)
     } else {
-        None // `~user` form — do not expand
+        None // `~user` form: do not expand
     }
 }
 
@@ -131,7 +131,7 @@ fn expand_env_vars(
                 }
                 remaining = after_close;
             } else {
-                // Unclosed `${...` — literal.
+                // Unclosed `${...`: literal.
                 out.push_str("${");
                 out.push_str(name);
                 remaining = after_name;
@@ -174,7 +174,7 @@ fn expand_env_vars(
         let nlen = var_name_len(remaining);
         // Need a non-empty name AND a closing `%`.
         if nlen == 0 || !remaining[nlen..].starts_with('%') {
-            out.push('%'); // lone or unclosed `%` — literal
+            out.push('%'); // lone or unclosed `%`: literal
             // `remaining` already past the opening `%`; keep scanning for next.
             continue;
         }
@@ -279,7 +279,7 @@ pub fn split_path_at_sep(s: &str) -> (&str, &str) {
 
 /// If `p` carries the `\\?\` verbatim **drive** prefix, returns the plain
 /// drive-letter form it strips down to (e.g. `C:\Users\…\hume`).  Verbatim
-/// UNC paths (`\\?\UNC\…`) are left alone — `None` — since they are rare
+/// UNC paths (`\\?\UNC\…`) are left alone (`None`) since they are rare
 /// and the `\\` prefix they'd collapse to is already a valid UNC path.
 /// Shared by [`strip_unc_prefix`] and [`strip_unc_prefix_cow`], which only
 /// differ in whether the caller needs an owned result, and by
@@ -326,7 +326,7 @@ pub fn strip_unc_prefix(p: PathBuf) -> PathBuf {
 
 /// Borrowing sibling of [`strip_unc_prefix`] for comparison call sites (e.g.
 /// scanning many candidate paths against a needle) that don't need an owned
-/// result — avoids an allocation per candidate when no verbatim prefix is
+/// result. Avoids an allocation per candidate when no verbatim prefix is
 /// present to strip, which off Windows is every call.
 #[cfg(windows)]
 pub fn strip_unc_prefix_cow(p: &Path) -> Cow<'_, Path> {
@@ -347,7 +347,7 @@ pub fn strip_unc_prefix_cow(p: &Path) -> Cow<'_, Path> {
 /// Make `typed` absolute by joining it against `cwd` when relative, then
 /// normalize `.` and `..` lexically without touching the filesystem.
 ///
-/// Symlinks are intentionally **not** resolved — this is for display purposes
+/// Symlinks are intentionally **not** resolved: this is for display purposes
 /// where the user expects to see the path as they typed it (e.g. inside a
 /// symlinked project root).
 pub fn absolute_unresolved(typed: &Path, cwd: &Path) -> PathBuf {
@@ -391,7 +391,7 @@ pub fn normalize_lexical(path: &Path) -> PathBuf {
 /// technically valid filename characters, but `\` is unsafe in portable
 /// paths, `"` is invalid in Windows filenames (and unsafe to embed in quoted
 /// contexts), and `:` after a single letter makes `PathBuf::push` treat the
-/// segment as a drive-relative root on Windows — replacing the sandboxed base
+/// segment as a drive-relative root on Windows, replacing the sandboxed base
 /// path entirely instead of joining onto it (e.g. `c:evil` under
 /// `data_dir/plugins/`).
 ///

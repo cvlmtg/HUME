@@ -1,7 +1,7 @@
 use super::*;
 use std::time::Duration;
 
-// FileSignature must compare on size as well as mtime — some filesystems
+// FileSignature must compare on size as well as mtime: some filesystems
 // (HFS+, FAT) only report mtime to one-second resolution, so a same-second
 // rewrite would be invisible to mtime alone. A mtime-only implementation
 // would pass every other test in this module but silently miss this one.
@@ -72,7 +72,7 @@ fn write_file_new_through_dangling_symlink_creates_target_leaves_link() {
     let dir = tempfile::tempdir().unwrap();
     let target = dir.path().join("target.txt");
     let link = dir.path().join("link.txt");
-    symlink(&target, &link).unwrap(); // target does not exist yet — dangling
+    symlink(&target, &link).unwrap(); // target does not exist yet, so it's dangling
 
     let meta = write_file_new("hello\n", &link).unwrap();
 

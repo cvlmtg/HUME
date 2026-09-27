@@ -8,7 +8,7 @@ use std::time::Instant;
 // ── claim_exit ─────────────────────────────────────────────────────────────
 //
 // `EXIT_CLAIMED` is a single process-wide static, so this is the only test
-// in the crate allowed to call `claim_exit` — a second caller anywhere else
+// in the crate allowed to call `claim_exit`. A second caller anywhere else
 // would observe it pre-claimed and silently break this test's own "exactly
 // once" assertion.
 
@@ -47,7 +47,7 @@ fn hangup_exit_code_is_none_for_unrelated_errors() {
     );
 }
 
-// `EBADF` means the fd itself is invalid, never that the terminal hung up —
+// `EBADF` means the fd itself is invalid, never that the terminal hung up, so it
 // must not be mistaken for a hangup even though it's a raw Unix errno too.
 #[cfg(unix)]
 #[test]
@@ -262,14 +262,14 @@ fn probe_returns_false_for_unsupported_terminal() {
 #[test]
 fn probe_stops_after_da1_even_if_more_chunks_remain() {
     // DA1 arrives in the first chunk; a second "would-be-consumed" chunk
-    // must NOT be read — DA1 terminates the loop.
+    // must NOT be read: DA1 terminates the loop.
     let mut ch = MockChannel {
         replies: vec![b"\x1B[?62;22c".to_vec(), b"\x1B[?0u".to_vec()],
         ..Default::default()
     };
     // No kitty flags before DA1 and DA1 carries no XTVERSION -> false.
     assert!(!run_probe(&mut ch).unwrap());
-    // Exactly one read occurred — the loop did not consume the post-DA1 chunk.
+    // Exactly one read occurred: the loop did not consume the post-DA1 chunk.
     assert_eq!(ch.read_idx, 1);
 }
 
