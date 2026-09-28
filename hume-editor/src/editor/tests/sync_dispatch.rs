@@ -1270,7 +1270,7 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
 /// `(when …)` branch fires → second move-down → line 3.
 ///
 /// This depends on the `if proc { apply proc args }` branch in
-/// `%dispatch-command`. If plugin commands fell through to `%call-native!`
+/// `%dispatch-command!`. If plugin commands fell through to `%call-native!`
 /// instead, the inner move would queue, the cursor would still be on line 1
 /// during eval, and the branch would not fire (final line 2).
 #[test]

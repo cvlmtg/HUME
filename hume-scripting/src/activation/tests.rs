@@ -280,7 +280,7 @@ fn eval_string_nested_registers_command_in_command_table() {
     );
 }
 
-/// `%begin-lazy-activation` on a `Declared` plugin transitions to `Loading`,
+/// `%begin-lazy-activation!` on a `Declared` plugin transitions to `Loading`,
 /// pushes onto `plugin_stack`, and returns the require-string.
 #[test]
 fn begin_lazy_activation_declared_returns_require_string() {
@@ -297,7 +297,7 @@ fn begin_lazy_activation_declared_returns_require_string() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path: path.clone() });
 
-    let program = r#"(define result (%begin-lazy-activation "core:p"))"#;
+    let program = r#"(define result (%begin-lazy-activation! "core:p"))"#;
     host.eval_source(program, &mut NullHost).unwrap();
 
     // Plugin must be in Loading state.
@@ -306,7 +306,7 @@ fn begin_lazy_activation_declared_returns_require_string() {
             host.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
-        "Declared plugin must be Loading after %begin-lazy-activation"
+        "Declared plugin must be Loading after %begin-lazy-activation!"
     );
     // plugin_stack must have grown by one: begin pushed the id.
     assert_eq!(
@@ -316,7 +316,7 @@ fn begin_lazy_activation_declared_returns_require_string() {
     );
 }
 
-/// `%begin-lazy-activation` on a `Loading` plugin returns `#f` (cycle guard).
+/// `%begin-lazy-activation!` on a `Loading` plugin returns `#f` (cycle guard).
 #[test]
 fn begin_lazy_activation_loading_returns_false() {
     let id = plugin_id("core:cycling");
@@ -326,10 +326,10 @@ fn begin_lazy_activation_loading_returns_false() {
         .plugins
         .insert(id.clone(), PluginState::Loading);
 
-    // The result `#f` means the (when prog ...) in %activate-plugin-inline
+    // The result `#f` means the (when prog ...) in %activate-plugin-inline!
     // does nothing: activation is a no-op.
     let program = r#"
-(define result (%begin-lazy-activation "core:cycling"))
+(define result (%begin-lazy-activation! "core:cycling"))
 (when result (error "cycle guard must return #f!"))
 "#;
     host.eval_source(program, &mut NullHost).unwrap();
@@ -343,7 +343,7 @@ fn begin_lazy_activation_loading_returns_false() {
     );
 }
 
-/// `%finish-lazy-activation` with `error = #f` (no exception caught)
+/// `%finish-lazy-activation!` with `error = #f` (no exception caught)
 /// transitions to `Loaded`.
 #[test]
 fn finish_lazy_activation_success_transitions_to_loaded() {
@@ -356,7 +356,7 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
     // Seed the stack as begin_lazy_activation would have done.
     host.push_plugin_for_test(id.clone());
 
-    let program = r#"(%finish-lazy-activation "core:finishing" #f)"#;
+    let program = r#"(%finish-lazy-activation! "core:finishing" #f)"#;
     host.eval_source(program, &mut NullHost).unwrap();
 
     assert!(
@@ -373,7 +373,7 @@ fn finish_lazy_activation_success_transitions_to_loaded() {
     );
 }
 
-/// `%finish-lazy-activation` with `error` bound to a caught exception value
+/// `%finish-lazy-activation!` with `error` bound to a caught exception value
 /// transitions to `Failed`. `(with-handler (lambda (e) e) (error …))` is the
 /// idiomatic way to get that exact value in hand outside an actual
 /// `with-handler`-wrapped activation body. Steel hands the raised
@@ -391,7 +391,7 @@ fn finish_lazy_activation_failure_transitions_to_failed() {
 
     let program = r#"
 (define err-val (with-handler (lambda (e) e) (error "intentional")))
-(%finish-lazy-activation "core:failing" err-val)
+(%finish-lazy-activation! "core:failing" err-val)
 "#;
     host.eval_source(program, &mut NullHost).unwrap();
 
@@ -836,12 +836,12 @@ fn lazy_plugin_can_define_its_own_activation_command() {
 /// `EvalWatchdog`): A's own activation is contained exactly as any other
 /// body error (Failed, rolled back), but the interrupt itself must not be:
 /// it must abort the whole eval before B ever loads. Without that,
-/// `%dispatch-command`'s later `(load-plugin! "core:b")` would run past an
+/// `%dispatch-command!`'s later `(load-plugin! "core:b")` would run past an
 /// exhausted budget, and B would falsely be blamed as "failed to load" for
 /// hitting the same still-set flag on its own first `(hume/yield!)`.
 ///
 /// The abort comes from the `(hume/yield!)` re-check that
-/// `%activate-plugin-inline` runs after its `with-handler`.
+/// `%activate-plugin-inline!` runs after its `with-handler`.
 #[test]
 fn interrupt_during_activation_aborts_before_next_plugin_loads() {
     use crate::null_host::LazyStubHost;
@@ -895,7 +895,7 @@ fn interrupt_during_activation_aborts_before_next_plugin_loads() {
 // ── `call!` of a command owned by a Failed plugin ──────────────────────────
 
 /// A lazy plugin's command is `call!`ed (e.g. from another plugin's body);
-/// activation runs inline, fails, and is contained. `%dispatch-command`
+/// activation runs inline, fails, and is contained. `%dispatch-command!`
 /// must not then fall through to `%call-native!` and silently return `#f`
 /// as if the name were simply unknown. The plugin failed, and the caller
 /// needs to know that, not receive a value indistinguishable from success.
@@ -992,13 +992,13 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     );
 }
 
-// ── `%finish-lazy-activation` balances stack/marks even on a bad `error` ──
+// ── `%finish-lazy-activation!` balances stack/marks even on a bad `error` ──
 
-/// `(%finish-lazy-activation id garbage)` where `garbage` decodes as
+/// `(%finish-lazy-activation! id garbage)` where `garbage` decodes as
 /// neither `#f` nor a caught error value: the plugin stack and the
 /// activation-effect marks must still be popped and balanced: a decode
 /// failure must become the failure *reason*, not skip the bookkeeping that
-/// every other failure path performs. `%begin-lazy-activation` and a queued
+/// every other failure path performs. `%begin-lazy-activation!` and a queued
 /// `register-lsp-server!` run first in the same eval, since
 /// `activation_effect_marks` is per-eval transient state (rebuilt fresh in
 /// every `SteelCtx`), only observable by whether its own effect survives.
@@ -1018,9 +1018,9 @@ fn finish_lazy_activation_bad_error_value_still_balances_stack_and_marks() {
         .insert(id.clone(), PluginState::Declared { path });
 
     let program = r#"
-        (%begin-lazy-activation "core:badvalue")
+        (%begin-lazy-activation! "core:badvalue")
         (register-lsp-server! "badvalue-lang" #:command "bv")
-        (%finish-lazy-activation "core:badvalue" 42)
+        (%finish-lazy-activation! "core:badvalue" 42)
     "#;
     host.eval_source(program, &mut NullHost)
         .expect("a bad error value must be folded into the failure, not raised");

@@ -53,7 +53,7 @@
     (for-each
       (lambda (old)
         (unless (member old names)
-          (call! "stdlib/delete-file" (path-join (plum/themes-dir) (string-append old ".toml")))))
+          (call! "stdlib/delete-file!" (path-join (plum/themes-dir) (string-append old ".toml")))))
       old-names)
     (for-each
       (lambda (name)
@@ -61,7 +61,7 @@
           (unless (null? shadowed)
             (log! 'warn (string-append "PLUM: " slug "'s theme \"" name "\" shadows the same "
                                        "name from " (string-join shadowed ", ")))))
-        (call! "stdlib/write-file"
+        (call! "stdlib/write-file!"
                (path-join (plum/themes-dir) (string-append name ".toml"))
                (plum/read-file (path-join (plum/theme-src-dir slug) "themes" (string-append name ".toml")))))
       names)
@@ -82,7 +82,7 @@
                (old-names (plum/repo-theme-names slug)))
           (log! 'info (string-append "PLUM: installing theme repo " slug))
           ;; Clear any stale clone first — see README.md's "Theme install".
-          (call! "stdlib/delete-dir" src-dir)
+          (call! "stdlib/delete-dir!" src-dir)
           (plum/clone-github! slug src-dir)
           (let ((names (plum/sync-theme-files! slug old-names)))
             (log! 'info (string-append "PLUM: installed " slug ": " (string-join names ", ")))
@@ -95,7 +95,7 @@
     (let ((installed (plum/installed-theme-repos)))
       (if (null? installed)
           (log! 'info "PLUM: no installed theme repos to update")
-          (plum/batch-run "updated theme repo" installed
+          (plum/batch-run! "updated theme repo" installed
             (lambda (slug)
               (let ((old-names (plum/repo-theme-names slug)))
                 (plum/git-pull! (plum/theme-src-dir slug))
@@ -139,8 +139,8 @@
               (begin
                 (for-each
                   (lambda (name)
-                    (call! "stdlib/delete-file" (path-join (plum/themes-dir) (string-append name ".toml"))))
+                    (call! "stdlib/delete-file!" (path-join (plum/themes-dir) (string-append name ".toml"))))
                   names)
-                (call! "stdlib/delete-dir" src-dir)
+                (call! "stdlib/delete-dir!" src-dir)
                 (log! 'info (string-append "PLUM: removed " slug ": " (string-join names ", ")))))))))
   #:complete "plum:themes")

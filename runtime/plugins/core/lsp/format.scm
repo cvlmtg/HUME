@@ -19,7 +19,7 @@
 (define (lsp/format-callback pane gen)
   (lambda (err res)
     (if err
-        (lsp/report-error "lsp-fmt" err)
+        (lsp/report-error! "lsp-fmt" err)
         (lsp/format-apply! pane gen (lsp/format-edits res)))))
 
 (define (lsp/format-fan-out! pane gen td ranges)
@@ -36,7 +36,7 @@
               (if err
                   (begin
                     (set-box! aborted #t)
-                    (lsp/report-error "lsp-fmt" err))
+                    (lsp/report-error! "lsp-fmt" err))
                   (begin
                     (set-box! edits (append (unbox edits) (lsp/format-edits res)))
                     (set-box! pending (- (unbox pending) 1))

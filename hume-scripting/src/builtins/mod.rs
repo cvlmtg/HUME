@@ -126,11 +126,11 @@ macro_rules! builtins {
 /// (`known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack`
 /// in `tests/unix.rs`).
 //
-// %activate-plugin-inline: %begin-lazy-activation moves a Declared plugin to
+// %activate-plugin-inline!: %begin-lazy-activation! moves a Declared plugin to
 // Loading and returns its `(require "<abs>")` string (#f otherwise: cycle
 // guard and idempotency), eval-string runs it in the live VM, and
-// %finish-lazy-activation records the outcome. The handler hands the error to
-// %finish-lazy-activation and returns normally, so a failing plugin never
+// %finish-lazy-activation! records the outcome. The handler hands the error to
+// %finish-lazy-activation! and returns normally, so a failing plugin never
 // aborts the enclosing eval and nothing is re-raised. The trailing
 // (hume/yield!) then re-checks the interrupt flag with a fresh raise: an
 // exhausted step budget must abort the whole eval, not be recorded as every
@@ -145,7 +145,7 @@ macro_rules! builtins {
 // a TypedBody::Steel entry. A name defined one way is never reachable the
 // other way. No #:repeatable: dot-repeat means nothing for a `:` command.
 //
-// call! / %dispatch-command: the dispatcher for calls from inside Steel (call!
+// call! / %dispatch-command!: the dispatcher for calls from inside Steel (call!
 // and the bare command-name lambdas); keypress and `:` dispatch use
 // ScriptingHost::call_steel_cmd instead. The miss, activate, retry path lives
 // in Scheme because a builtin can't re-enter the Rust dispatcher while the
@@ -153,7 +153,7 @@ macro_rules! builtins {
 // %call-native!, which would misreport the name as unknown. call! is defined
 // here, not only in prelude.scm, so harnesses without the prelude have it.
 //
-// %apply-command: arms the #:inline-output alt-screen bracket for call!, as
+// %apply-command!: arms the #:inline-output alt-screen bracket for call!, as
 // Editor::call_steel_command_body does for keypress and `:`. The restore
 // truncates to the armed depth instead of popping, so an unpaired descendant
 // frame is never taken for this call's own. No with-handler (hazard above): a
@@ -257,10 +257,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "plugin-config" plugins::plugin_config();
         open "%load-plugin!" plugins::load_plugin(name: String, config: SteelVal);
 
-        // Inline activation primitives, called from the %activate-plugin-inline
+        // Inline activation primitives, called from the %activate-plugin-inline!
         // Scheme helper to drive mid-eval plugin loading without &mut Engine.
-        open "%begin-lazy-activation" plugins::begin_lazy_activation(id_str: String);
-        open "%finish-lazy-activation" plugins::finish_lazy_activation(id_str: String, error: SteelVal);
+        open "%begin-lazy-activation!" plugins::begin_lazy_activation(id_str: String);
+        open "%finish-lazy-activation!" plugins::finish_lazy_activation(id_str: String, error: SteelVal);
         open "%lazy-command-owner" plugins::lazy_command_owner(name: String);
 
         // Manifest resolution: zero-trigger declare-plugin! routes here to eval
@@ -279,14 +279,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // above BOOTSTRAP. No #:repeatable keyword arg.
         config "%define-typed-command!" commands::define_typed_command(name: String, doc: String, proc: SteelVal, inline_output: bool, completer: SteelVal);
         // %call-native! is the Rust leaf for native/unknown dispatch; the variadic
-        // (call! name args…) macro desugars to (%dispatch-command …) which routes
+        // (call! name args…) macro desugars to (%dispatch-command! …) which routes
         // activated plugin commands inline in Steel and falls back here for everything else.
         open "%call-native!" commands::call_command_primitive(name: String, args: SteelVal);
         // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,
-        // or #f. Called by %dispatch-command in Steel to decide inline-apply vs. %call-native!.
+        // or #f. Called by %dispatch-command! in Steel to decide inline-apply vs. %call-native!.
         open "%lookup-plugin-proc" commands::lookup_plugin_proc(name: String);
         // %arm-inline-output!/%restore-inline-output!: the call!-path counterpart
-        // of dispatch.rs's own inline-output arm/close, wrapping %dispatch-command's
+        // of dispatch.rs's own inline-output arm/close, wrapping %dispatch-command!'s
         // in-VM apply. See the BOOTSTRAP comment block above for the full picture.
         open "%arm-inline-output!" commands::arm_inline_output(name: String);
         open "%restore-inline-output!" commands::restore_inline_output(depth: SteelVal);
@@ -458,10 +458,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "%spawn-async!" process::spawn_async(cmd: SteelVal, args: SteelVal, cwd: SteelVal, callback: SteelVal);
         cmd "cancel-async!" process::cancel_async(id: SteelVal);
 
-        // Blocking subprocess capture, no callback. Backs `stdlib/run`.
+        // Blocking subprocess capture, no callback. Backs `stdlib/run!`.
         // `open`, not `cmd`: Steel's own `spawn-process`/`wait`, which
         // `run_capture` stands in for (see its own doc), carry no legality
-        // gate either, and `stdlib/run` is a plain helper any plugin body can
+        // gate either, and `stdlib/run!` is a plain helper any plugin body can
         // reach, not a top-level dispatched command.
         open "%run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
 

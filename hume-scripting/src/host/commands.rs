@@ -124,7 +124,7 @@ pub trait CommandHost {
     /// `name` has no pending mappable activation, even if a typed stub of
     /// the same name exists.
     ///
-    /// Used by `%lazy-command-owner`, which backs `%dispatch-command`'s
+    /// Used by `%lazy-command-owner`, which backs `%dispatch-command!`'s
     /// (the `call!` path) lazy-activation branch: `call!` can only ever
     /// reach a mappable command (`command_table`), so a typed-only name
     /// reported here would trigger a plugin load for an activation that can

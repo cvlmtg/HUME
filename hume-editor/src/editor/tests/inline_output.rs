@@ -56,11 +56,11 @@ fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
 
 /// A plain (non-`#:inline-output`) editor command's own body can `call!` an
 /// `#:inline-output` command and have *that* command's prints reach the
-/// gate: the runtime gap `%dispatch-command`'s in-VM `(apply proc args)`
+/// gate: the runtime gap `%dispatch-command!`'s in-VM `(apply proc args)`
 /// otherwise left open (only keypress/`:` dispatch armed the bracket before
 /// this).
 ///
-/// Without `(%arm-inline-output! name)` in `%apply-command`
+/// Without `(%arm-inline-output! name)` in `%apply-command!`
 /// (`bootstrap.scm`), the probe would log `"gate-closed"`.
 ///
 /// Also covers the depth-`0` restore: `trigger` itself is not declared
@@ -68,7 +68,7 @@ fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
 /// own gate reads closed both before and after the nested `call!`: the
 /// common case, distinct from `nested_call_bang_restores_the_outer_commands_state`
 /// below, where the *outer* command is itself declared and restores to depth
-/// `1`. `%apply-command` discriminates "no restore" from "restore to this
+/// `1`. `%apply-command!` discriminates "no restore" from "restore to this
 /// depth" with `(when depth …)`, which only works because Steel's `is_truthy`
 /// treats `(IntV 0)` as true. Pinning the after-open/after-closed pair here
 /// exercises that depth-`0` branch instead of assuming it.
@@ -103,7 +103,7 @@ fn call_bang_to_inline_output_editor_command_opens_the_gate() {
     assert!(!logged(&ed, "trigger-after-open"));
 }
 
-/// A typed command is never reachable through `call!`. `%dispatch-command`
+/// A typed command is never reachable through `call!`. `%dispatch-command!`
 /// only ever resolves `command_table` (mappable names), never
 /// `typed_command_table`, so declaring one `#:inline-output` gives it no
 /// `call!` path to arm through. Pins the separation rather than assuming it:

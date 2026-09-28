@@ -1,7 +1,7 @@
 ;;; core:lsp/lib.scm — shared helpers used by every feature file. See
 ;;; docs/architecture.md.
 
-(provide lsp/supports? lsp/guard-capability lsp/report-error
+(provide lsp/supports? lsp/guard-capability lsp/report-error!
          lsp/visible-lines lsp/show-locations! lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?)
 
@@ -52,7 +52,7 @@
         (when (equal? source source-name)
           (on-trigger pane ch))))))
 
-(define (lsp/report-error what err)
+(define (lsp/report-error! what err)
   (log! 'error
         (string-append "lsp " what ": "
                        (if (string? err) err (hash-ref err 'message)))))

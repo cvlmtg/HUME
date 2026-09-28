@@ -5,7 +5,7 @@ use super::*;
 // ── call! ─────────────────────────────────────────────────────────────────
 
 /// `call_steel_cmd` forwards positional args by value into the invoked
-/// lambda (direct `%dispatch-command` function call). The expected dispatch
+/// lambda (direct `%dispatch-command!` function call). The expected dispatch
 /// name is derived from the input arg, not from re-reading the
 /// implementation.
 #[test]

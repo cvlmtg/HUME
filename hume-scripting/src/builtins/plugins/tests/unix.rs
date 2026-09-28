@@ -200,8 +200,11 @@ fn plugin_config_survives_lazy_declare_to_activation() {
 
     // Activation happens later, decoupled from declare: exactly the lazy
     // scenario the config channel must survive.
-    host.eval_source(r#"(%activate-plugin-inline "user/cfgtest")"#, &mut NullHost)
-        .expect("lazy activation must succeed");
+    host.eval_source(
+        r#"(%activate-plugin-inline! "user/cfgtest")"#,
+        &mut NullHost,
+    )
+    .expect("lazy activation must succeed");
 
     let messages = host.peek_pending_messages();
     assert!(
@@ -292,7 +295,7 @@ fn manifest_declare_user_config_wins_over_manifest_default() {
     .expect("zero-trigger declare with #:config must succeed");
 
     host.eval_source(
-        r#"(%activate-plugin-inline "user/cfgmftest")"#,
+        r#"(%activate-plugin-inline! "user/cfgmftest")"#,
         &mut NullHost,
     )
     .expect("lazy activation must succeed");

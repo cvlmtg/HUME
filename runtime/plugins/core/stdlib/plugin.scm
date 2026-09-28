@@ -42,7 +42,7 @@
         ((pred? (car lst)) (car lst))
         (else (stdlib/find pred? (cdr lst)))))
 
-(define (stdlib/write-file path content)
+(define (stdlib/write-file! path content)
   ;; `#:exists 'truncate` — without it, `open-output-file` neither errors nor
   ;; truncates an existing file, so a shorter `content` leaves the old
   ;; file's tail behind past the new write's end.
@@ -51,12 +51,12 @@
     (close-output-port port)))
 
 ;;; Idempotent, unlike Steel's own `delete-directory!` — see README.md's "Filesystem and list search".
-(define (stdlib/delete-dir dir)
+(define (stdlib/delete-dir! dir)
   (when (path-exists? dir)
     (delete-directory! dir)))
 
 ;;; Idempotent, unlike Steel's own `delete-file!` — see README.md's "Filesystem and list search".
-(define (stdlib/delete-file path)
+(define (stdlib/delete-file! path)
   (when (path-exists? path)
     (delete-file! path)))
 
@@ -82,13 +82,13 @@
 ;; ── Subprocess helper ────────────────────────────────────────────────────────
 
 ;;; See `hume_platform::process::run_capture`'s own doc and this plugin's
-;;; README (Subprocess) for why `stdlib/run` is `run-capture!` directly.
-(define stdlib/run run-capture!)
+;;; README (Subprocess) for why `stdlib/run!` is `run-capture!` directly.
+(define stdlib/run! run-capture!)
 
 ;; ── Git probes ───────────────────────────────────────────────────────────────
 
 (define (stdlib/run-stdout cmd args)
-  (let ([result (stdlib/run cmd args)])
+  (let ([result (stdlib/run! cmd args)])
     (and (equal? (caddr result) 0) (trim (car result)))))
 
 (define (stdlib/git-repo?)
@@ -216,17 +216,17 @@
   "First element of the given list satisfying the given predicate, or #f."
   stdlib/find)
 
-(define-command! "stdlib/write-file"
+(define-command! "stdlib/write-file!"
   "Write the given content to the given path, creating or truncating it."
-  stdlib/write-file)
+  stdlib/write-file!)
 
-(define-command! "stdlib/delete-dir"
+(define-command! "stdlib/delete-dir!"
   "Recursively delete the given directory. Idempotent."
-  stdlib/delete-dir)
+  stdlib/delete-dir!)
 
-(define-command! "stdlib/delete-file"
+(define-command! "stdlib/delete-file!"
   "Delete the file at the given path. Idempotent."
-  stdlib/delete-file)
+  stdlib/delete-file!)
 
 (define-command! "stdlib/list-subdirs"
   "Sorted basenames of the given directory's subdirectories."
@@ -236,9 +236,9 @@
   "#t iff the given name is safe to use as one filesystem path segment."
   stdlib/safe-path-segment?)
 
-(define-command! "stdlib/run"
+(define-command! "stdlib/run!"
   "Spawn a command; blocks until exit. Returns (stdout stderr exit-code), exit-code #f on spawn/wait failure."
-  stdlib/run)
+  stdlib/run!)
 
 (define-command! "stdlib/git-repo?"
   "#t iff the editor's cwd is inside a git work tree."

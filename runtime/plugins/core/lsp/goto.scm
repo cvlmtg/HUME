@@ -10,7 +10,7 @@
                                     #:what [what "goto"]
                                     #:not-found-msg [not-found-msg "No definition found"])
   (cond
-    (err (lsp/report-error what err))
+    (err (lsp/report-error! what err))
     ((void? res) (log! 'info not-found-msg))
     ((json-array? res)
      (let ((locs (json-list res)))

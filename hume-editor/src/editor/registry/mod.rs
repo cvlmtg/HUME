@@ -252,7 +252,7 @@ impl CommandRegistry {
     /// has no pending mappable activation, even when a typed stub of the
     /// same name exists.
     ///
-    /// Used only by `%lazy-command-owner` (the `call!`/`%dispatch-command`
+    /// Used only by `%lazy-command-owner` (the `call!`/`%dispatch-command!`
     /// lazy-activation check): `call!` can never reach a typed command, so
     /// that path must not see a typed-only stub as activatable. Every other
     /// caller wants [`Self::lazy_owner`]'s kind-agnostic answer.

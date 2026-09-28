@@ -33,9 +33,9 @@
   (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
     (run-inline-output! "curl" (list "-fsSL" "-o" tmp "--" (plum/helix-query-url name filename)))
     (let ((content (with-handler
-                     (lambda (err) (call! "stdlib/delete-file" tmp) (raise-error err))
+                     (lambda (err) (call! "stdlib/delete-file!" tmp) (raise-error err))
                      (plum/read-file tmp))))
-      (call! "stdlib/delete-file" tmp)
+      (call! "stdlib/delete-file!" tmp)
       content)))
 
 ;;; Fully resolves any `; inherits:` chain into one string — see README.md.
@@ -57,7 +57,7 @@
               content)))))
 
 (define (plum/fetch-query! name filename dest)
-  (call! "stdlib/write-file" dest (plum/resolve-query name filename #f)))
+  (call! "stdlib/write-file!" dest (plum/resolve-query name filename #f)))
 
 ;; ── Injection dependencies ────────────────────────────────────────────────────
 ;; See README.md.
@@ -133,7 +133,7 @@
          (hl-path  (grammar-highlights-path name)))
     (plum/install-grammar-deps! name)
     ;; git clone refuses a non-empty dest — clear any stale source tree first.
-    (call! "stdlib/delete-dir" src-dir)
+    (call! "stdlib/delete-dir!" src-dir)
     ;; Blobless clone at the pinned rev — see README.md's "Grammar install pipeline".
     (run-inline-output! "git" (list "clone" "--filter=blob:none" "--" url src-dir))
     (run-inline-output! "git" (list "checkout" "--force" "--end-of-options" rev "--") #:cwd src-dir)
@@ -172,7 +172,7 @@
     (let ((missing (filter plum/not-installed? grammars)))
       (if (null? missing)
           (log! 'info "PLUM: all requested grammars are installed")
-          (plum/batch-run "installed grammar" missing plum/install-grammar))))
+          (plum/batch-run! "installed grammar" missing plum/install-grammar))))
   #:inline-output #t)
 
 (define-typed-command! "plum-list-grammars"
@@ -193,6 +193,6 @@
     (let ((orphans (plum/orphan-grammars)))
       (if (null? orphans)
           (log! 'info "PLUM: no orphan grammars to remove")
-          (plum/batch-run "removed grammar" orphans
+          (plum/batch-run! "removed grammar" orphans
             (lambda (name)
-              (call! "stdlib/delete-file" (grammar-output-path name))))))))
+              (call! "stdlib/delete-file!" (grammar-output-path name))))))))

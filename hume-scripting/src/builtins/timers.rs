@@ -16,7 +16,7 @@ pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: SteelVal) -> SteelR
     let ms = usize_arg(ms, "after!")? as u64;
     match ctx.host.timers().and_then(|t| t.schedule_timer(ms, thunk)) {
         Some(id) => Ok(SteelVal::IntV(id as isize)),
-        None => steel::stop!(Generic => "after: no timer support in this context"),
+        None => steel::stop!(Generic => "after!: no timer support in this context"),
     }
 }
 

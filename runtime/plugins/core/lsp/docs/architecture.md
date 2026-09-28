@@ -27,7 +27,7 @@ Every feature file shares these:
 
 - **JSON `null` decodes to Steel `void`, not `#f`**: every response handler in this
   plugin checks `(void? res)` for "no results", never `(not res)`.
-- **`lsp/report-error`** takes either a `(hash 'code 'message)` hashmap or the bare string
+- **`lsp/report-error!`** takes either a `(hash 'code 'message)` hashmap or the bare string
   `"timeout"` and logs one `'error` line either way.
 - **Capability guards** (`lsp/supports?`, `lsp/guard-capability`) read
   `(lsp-capabilities pane)`, a `JsonHandle` onto the buffer's attached server's provider

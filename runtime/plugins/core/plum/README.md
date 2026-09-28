@@ -15,8 +15,8 @@ walking disk at the moment it's asked (see [Plugin discovery](#plugin-discovery)
 ```
 
 - **Depends on:** `core:stdlib`: plugin/grammar/theme install and cleanup call
-  `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`,
-  `stdlib/list-subdirs`, `stdlib/run`, `stdlib/resolve-lang-arg` via `call!`.
+  `stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`,
+  `stdlib/list-subdirs`, `stdlib/run!`, `stdlib/resolve-lang-arg` via `call!`.
 - **Activates on:** the first `:plum-*` command typed. `(load-plugin! "core:plum")` also
   works, loading it eagerly instead.
 - PLUM is not privileged. It's a plugin like any other, so disabling it only removes the
@@ -65,7 +65,7 @@ PLUM bundles three independent subsystems over shared plumbing:
   [Theme install](#theme-install)).
 - **`lib.scm`**: shared utilities: `plum/clone-github!`/`plum/git-pull!` (the one
   GitHub-clone URL shape and its update-side counterpart every install command shares),
-  `plum/batch-run` (see [Output model](#output-model) below), and `plum/two-level-repos`
+  `plum/batch-run!` (see [Output model](#output-model) below), and `plum/two-level-repos`
   (the `<root>/<user>/<repo>/` discovery walk shared by plugin and theme-repo discovery).
   Directory listing, filesystem cleanup, list search, and path-segment validation live in
   `core:stdlib` instead, reached via `call!`.
@@ -223,7 +223,7 @@ it leaves the alt-screen on its first real write, so `git`'s own progress prints
 instead of vanishing behind a frozen-looking screen, and returns to the editor on a
 keypress once the run finishes.
 
-A batch command's per-item progress line (`plum/batch-run`) is painted with `displayln`,
+A batch command's per-item progress line (`plum/batch-run!`) is painted with `displayln`,
 not `log!`: `log!` only buffers until the whole command returns, then collapses into one
 status-line slot, so every per-item line but the last would be silently lost while the
 batch is still running. `displayln` is gated shut for a non-`#:inline-output` caller

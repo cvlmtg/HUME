@@ -592,7 +592,7 @@ fn activate_plugin_drops_language_activation_on_loaded() {
 /// `(load-plugin! "x")` after `(declare-plugin! "x" #:commands …)` force-activates
 /// the plugin: state transitions to `Loaded` and the activation command entry is cleared.
 ///
-/// The activation comes from the `%activate-plugin-inline` call in the load-plugin!
+/// The activation comes from the `%activate-plugin-inline!` call in the load-plugin!
 /// wrapper. Lacking it, the plugin would stay `Declared` with its entry intact.
 #[test]
 fn declare_then_load_activates_and_logs_soft_error() {

@@ -325,8 +325,8 @@ pub(crate) fn optional_json_arg(
 /// as the `SteelErr` `with-handler` caught (`with-handler`'s lambda receives
 /// the raised error's own `into_steelval()` form, so `SteelErr::from_steelval`
 /// round-trips it with its span intact). Used only by
-/// `%finish-lazy-activation`/`%finish-manifest-declare!`'s `error` argument;
-/// see `bootstrap.scm`'s `%activate-plugin-inline`/`declare-plugin!`.
+/// `%finish-lazy-activation!`/`%finish-manifest-declare!`'s `error` argument;
+/// see `bootstrap.scm`'s `%activate-plugin-inline!`/`declare-plugin!`.
 pub(crate) fn optional_steel_error_arg(
     val: SteelVal,
     ctx_name: &str,

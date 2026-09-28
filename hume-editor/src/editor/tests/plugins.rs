@@ -44,14 +44,14 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
 
 /// Keypress dispatch of a `SteelBacked` command whose `command_table` entry
 /// is missing must fail loudly, naming the desync, never silently no-op or
-/// fall back to `%dispatch-command`'s own miss handling (that dispatcher is
+/// fall back to `%dispatch-command!`'s own miss handling (that dispatcher is
 /// reserved for `call!`/bare-name calls originating inside the VM).
 ///
 /// This state (registry entry present, no `command_table` entry) cannot
 /// arise from `define-command!` in production; it simulates a desync
 /// directly to pin `call_steel_cmd`'s fail-fast guard.
 ///
-/// A fallback to `%dispatch-command` on a `command_table` miss would report
+/// A fallback to `%dispatch-command!` on a `command_table` miss would report
 /// a vague "unknown command" through the native/call! path instead of naming
 /// the desync.
 #[test]

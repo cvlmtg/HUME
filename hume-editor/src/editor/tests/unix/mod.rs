@@ -550,8 +550,8 @@ fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
 }
 
 /// Load the real `core:plum` plugin (plus its `core:stdlib` dependency:
-/// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file`/
-/// `stdlib/delete-dir`/`stdlib/delete-file` via `call!`): plugin/grammar/
+/// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file!`/
+/// `stdlib/delete-dir!`/`stdlib/delete-file!` via `call!`): plugin/grammar/
 /// theme management, no LSP awareness at all (servers.scm lives entirely in
 /// core:lsp now).
 fn load_plum(ed: &mut Editor, data_dir: &Path) {

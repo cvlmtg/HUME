@@ -291,7 +291,7 @@ fn core_stdlib_list_subdirs_filters_stray_files() {
     );
 }
 
-/// `stdlib/write-file` must replace a file's entire content, not just
+/// `stdlib/write-file!` must replace a file's entire content, not just
 /// overwrite its leading bytes: writing a shorter string over a longer
 /// existing file must not leave the old tail behind.
 ///
@@ -308,8 +308,8 @@ fn core_stdlib_write_file_truncates_existing_content() {
 
     let assertions = format!(
         r#"
-(call! "stdlib/write-file" {path} "long-content")
-(call! "stdlib/write-file" {path} "short")
+(call! "stdlib/write-file!" {path} "long-content")
+(call! "stdlib/write-file!" {path} "short")
 "#
     );
 
@@ -319,44 +319,44 @@ fn core_stdlib_write_file_truncates_existing_content() {
     };
     assert!(
         result.is_ok(),
-        "stdlib/write-file assertions must pass: {result:?}"
+        "stdlib/write-file! assertions must pass: {result:?}"
     );
 
     let written = std::fs::read_to_string(&target).unwrap();
     assert_eq!(
         written, "short",
-        "stdlib/write-file must truncate, not leave the previous content's tail behind"
+        "stdlib/write-file! must truncate, not leave the previous content's tail behind"
     );
 }
 
-/// `stdlib/run` must cover all three subprocess outcomes it promises:
+/// `stdlib/run!` must cover all three subprocess outcomes it promises:
 /// success with captured stdout, a nonzero exit with captured stderr, and a
 /// spawn failure (nonexistent binary) reporting exit-code `#f` with the
 /// failure reason standing in for stderr.
 ///
 /// Each case's expected shape is asserted directly
 /// against the real `sh`/nonexistent-binary spawn, not against any of
-/// `stdlib/run`'s own internals.
+/// `stdlib/run!`'s own internals.
 #[test]
 fn core_stdlib_run_covers_success_failure_and_spawn_error() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
     let assertions = r#"
-(let ([r (call! "stdlib/run" "echo" (list "hello-world"))])
+(let ([r (call! "stdlib/run!" "echo" (list "hello-world"))])
   (unless (and (string-contains? (car r) "hello-world") (equal? (caddr r) 0))
-    (error (string-append "stdlib/run success case: " (to-string r)))))
+    (error (string-append "stdlib/run! success case: " (to-string r)))))
 
-(let ([r (call! "stdlib/run" "sh" (list "-c" "echo err-msg 1>&2; exit 3"))])
+(let ([r (call! "stdlib/run!" "sh" (list "-c" "echo err-msg 1>&2; exit 3"))])
   (unless (and (string-contains? (cadr r) "err-msg") (equal? (caddr r) 3))
-    (error (string-append "stdlib/run nonzero-exit case: " (to-string r)))))
+    (error (string-append "stdlib/run! nonzero-exit case: " (to-string r)))))
 
-(let ([r (call! "stdlib/run" "hume-definitely-not-a-real-binary-xyz" '())])
+(let ([r (call! "stdlib/run!" "hume-definitely-not-a-real-binary-xyz" '())])
   (unless (not (caddr r))
-    (error (string-append "stdlib/run spawn-failure case: " (to-string r)))))
+    (error (string-append "stdlib/run! spawn-failure case: " (to-string r)))))
 
-(let ([r (call! "stdlib/run" "pwd" '() #:cwd "/")])
+(let ([r (call! "stdlib/run!" "pwd" '() #:cwd "/")])
   (unless (equal? (trim (car r)) "/")
-    (error (string-append "stdlib/run #:cwd case: " (to-string r)))))
+    (error (string-append "stdlib/run! #:cwd case: " (to-string r)))))
 "#;
 
     let result = {
@@ -365,7 +365,7 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
     };
     assert!(
         result.is_ok(),
-        "stdlib/run assertions must pass: {result:?}"
+        "stdlib/run! assertions must pass: {result:?}"
     );
 }
 

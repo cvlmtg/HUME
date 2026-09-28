@@ -52,7 +52,7 @@
         (lsp-request! pane "textDocument/hover" (lsp-position-params pane)
           (lambda (err res)
             (cond
-              (err (lsp/report-error "hover" err))
+              (err (lsp/report-error! "hover" err))
               ((void? res) (log! 'info "No hover info"))
               (else (let ((contents (json-ref res "contents")))
                       (lsp/show-hover pane (lsp/hover-contents->text contents)

@@ -1,6 +1,6 @@
 ;;; core:plum/lib.scm
 
-(provide plum/batch-run plum/read-file plum/two-level-repos
+(provide plum/batch-run! plum/read-file plum/two-level-repos
          plum/clone-github! plum/git-pull!)
 
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
@@ -44,7 +44,7 @@
 ;; ── Batch runner ──────────────────────────────────────────────────────────────
 
 ;;; Runs `thunk` on each of `names`, collecting errors rather than aborting.
-(define (plum/batch-run verb names thunk)
+(define (plum/batch-run! verb names thunk)
   (let loop ((names names) (ok 0) (errs '()))
     (cond
       ((null? names)

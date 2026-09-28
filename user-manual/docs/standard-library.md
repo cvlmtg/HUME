@@ -29,9 +29,9 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 | Call | Effect |
 |------|--------|
 | `(call! "stdlib/find" pred? lst)` | First element of `lst` satisfying `pred?`, or `#f` |
-| `(call! "stdlib/write-file" path content)` | Write `content` to `path`, creating or truncating it |
-| `(call! "stdlib/delete-dir" dir)` | Recursively delete `dir`; idempotent |
-| `(call! "stdlib/delete-file" path)` | Delete `path`; idempotent |
+| `(call! "stdlib/write-file!" path content)` | Write `content` to `path`, creating or truncating it |
+| `(call! "stdlib/delete-dir!" dir)` | Recursively delete `dir`; idempotent |
+| `(call! "stdlib/delete-file!" path)` | Delete `path`; idempotent |
 | `(call! "stdlib/list-subdirs" dir)` | Sorted basenames of `dir`'s subdirectories |
 | `(call! "stdlib/safe-path-segment?" name)` | `#t` iff `name` is safe to use as a single path component |
 
@@ -41,9 +41,9 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 
 | Call | Effect |
 |------|--------|
-| `(call! "stdlib/run" cmd args #:cwd dir)` | Spawn `cmd`/`args` (in `dir`, or the inherited directory if omitted); blocks until exit |
+| `(call! "stdlib/run!" cmd args #:cwd dir)` | Spawn `cmd`/`args` (in `dir`, or the inherited directory if omitted); blocks until exit |
 
-Returns `(stdout stderr exit-code)`. `exit-code` is `#f`, with the failure reason in `stderr`'s place, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
+Returns `(stdout stderr exit-code)`. `exit-code` is `#f`, with the failure reason in `stderr`'s place, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run!` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
 
 ## Git
 

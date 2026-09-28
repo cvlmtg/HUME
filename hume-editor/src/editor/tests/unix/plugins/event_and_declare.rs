@@ -316,10 +316,10 @@ fn load_plugin_absent_top_level_silently_skips() {
 }
 
 /// A lazy plugin B can call another lazy plugin A's command via `(call! "a-cmd")`.
-/// The inline lazy-miss retry in `%dispatch-command` activates A on the fly and
+/// The inline lazy-miss retry in `%dispatch-command!` activates A on the fly and
 /// runs the command, with no `(load-plugin!)` needed.
 ///
-/// Without the lazy-miss retry in `%dispatch-command`, `(call! "a-cmd")` would
+/// Without the lazy-miss retry in `%dispatch-command!`, `(call! "a-cmd")` would
 /// fall through to `%call-native!`, which does not know `a-cmd`, so it would log
 /// a warning and the cursor would stay put.
 #[test]
@@ -518,7 +518,7 @@ fn nested_activation_multi_file_via_real_editor_host() {
 /// A plugin body's `(plugin-config)` read must resolve to its own `#:config`
 /// even after nested-activating a dependency in between: `plugin-config`
 /// resolves off the top of `plugin_stack`
-/// (`hume-scripting/src/builtins/plugins.rs`), which `%finish-lazy-activation`
+/// (`hume-scripting/src/builtins/plugins.rs`), which `%finish-lazy-activation!`
 /// pops back to the enclosing plugin once the nested activation completes.
 ///
 /// If the stack were left unpopped (or popped twice) after A's nested

@@ -459,7 +459,7 @@ fn drawer_refreshes_rows_when_the_severity_floor_changes() {
 }
 
 /// A refresh that shrinks the row list must also pull a stale, deep `scroll`
-/// back into range. `lsp/refresh-diagnostics-drawer` goes through
+/// back into range. `lsp/refresh-diagnostics-drawer!` goes through
 /// `update-drawer-list!` -> `EditorState::set_drawer_items`, which clamps
 /// `selected` but leaves `scroll` alone; `EditorState::
 /// clamp_drawer_scroll_to_terminal`, run every frame from `prepare_frame`,

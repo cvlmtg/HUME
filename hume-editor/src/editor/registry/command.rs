@@ -395,7 +395,7 @@ pub(in crate::editor) enum MappableCommand {
     /// A command implemented as a Steel (Scheme) lambda.
     ///
     /// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
-    /// routes through `%dispatch-command` → `command_table` → `(apply proc args)`.
+    /// routes through `%dispatch-command!` → `command_table` → `(apply proc args)`.
     ///
     /// All Steel commands are extendable (Ctrl-key delivers `extend = #t` to the
     /// lambda body). Dot-repeat is opt-in via `#:repeatable #t` in `(define-command! …)`.

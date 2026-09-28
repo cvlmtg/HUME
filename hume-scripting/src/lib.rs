@@ -6,7 +6,7 @@
 //!
 //! ## Plugin loading
 //! - `load-plugin!`: eager, init.scm/`:reload-config` only; runs the body at
-//!   once via `%activate-plugin-inline`.
+//!   once via `%activate-plugin-inline!`.
 //! - `declare-plugin!`: lazy manifest; records `Declared` plus activation
 //!   entries in `LazyRegistry`. The first entry exercised runs the body,
 //!   marks it `Loaded`, and drops all of that plugin's entries.
@@ -104,7 +104,7 @@ pub(crate) struct ScriptingRegistries {
     /// including plugins absent on disk.
     pub(crate) declared_plugins: Vec<String>,
     /// In-Steel dispatch table: maps activated plugin command name to its Steel
-    /// closure for synchronous inline application by `%dispatch-command`.
+    /// closure for synchronous inline application by `%dispatch-command!`.
     ///
     /// Populated by `define_command` inline during init or plugin activation.
     /// Consulted by `%lookup-plugin-proc` in both init and command mode.
@@ -112,7 +112,7 @@ pub(crate) struct ScriptingRegistries {
     /// Same as `command_table`, but for `define-typed-command!` procs.
     ///
     /// Kept separate (not a second key range in `command_table`) so
-    /// `%lookup-plugin-proc`/`%dispatch-command` (the `call!` path, which
+    /// `%lookup-plugin-proc`/`%dispatch-command!` (the `call!` path, which
     /// only ever reads `command_table`) can never reach a typed command's
     /// proc: `call!` invoking a `:`-only command would break the strict
     /// mappable/typed separation the editor's `CommandRegistry` enforces
@@ -272,7 +272,7 @@ impl ScriptingHost {
 
     /// Pre-register native command names as callable Steel bindings.
     ///
-    /// For each name, evaluates `(define name (lambda args (%dispatch-command
+    /// For each name, evaluates `(define name (lambda args (%dispatch-command!
     /// "name" args)))`. This makes bare `(move-left pane)` callable without
     /// `(call! "move-left" pane)`, and variadic, so `(move-down pane 3)` /
     /// `(move-down pane 0)` work too (count `0` = "no count typed", see
@@ -280,9 +280,9 @@ impl ScriptingHost {
     /// `%call-native!`'s own contract: this binding is a thin wrapper over
     /// the same dispatcher, not a separate calling convention.
     ///
-    /// Calls `%dispatch-command` directly rather than the public `call!` macro
+    /// Calls `%dispatch-command!` directly rather than the public `call!` macro
     /// (which desugars to exactly this): the variadic lambda's args are
-    /// already the list `%dispatch-command` expects, no intermediate
+    /// already the list `%dispatch-command!` expects, no intermediate
     /// `(list ...)` needed.
     ///
     /// Called from `Editor::init_scripting`, after `ScriptingHost::new` and
@@ -297,7 +297,7 @@ impl ScriptingHost {
         for &name in names {
             source.push_str("(define ");
             source.push_str(name);
-            source.push_str(" (lambda args (%dispatch-command \"");
+            source.push_str(" (lambda args (%dispatch-command! \"");
             source.push_str(name);
             source.push_str("\" args)))\n");
         }
@@ -636,7 +636,7 @@ impl ScriptingHost {
         // `name` must already have a live closure in command_table. A miss
         // means the editor's registry and this table have desynced (a bug,
         // not a retry case), so this fails loudly rather than falling back to
-        // %dispatch-command's own miss-handling (that dispatcher is reserved
+        // %dispatch-command!'s own miss-handling (that dispatcher is reserved
         // for call!/bare-name calls originating inside the VM).
         let proc = self
             .registries

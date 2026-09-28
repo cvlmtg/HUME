@@ -55,7 +55,7 @@ fn invalid_segments() {
 
 // ── Activation depth cap ──────────────────────────────────────────────────
 
-/// `%begin-lazy-activation` refuses to start when `plugin_stack` depth is at
+/// `%begin-lazy-activation!` refuses to start when `plugin_stack` depth is at
 /// `MAX_ACTIVATION_DEPTH`, marks the plugin `Failed`, and returns a Steel error.
 ///
 /// Without that check, an activation cycle would overflow the stack instead
@@ -85,7 +85,7 @@ fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
         host.push_plugin_for_test(dummy.clone());
     }
 
-    let result = host.eval_source(r#"(%begin-lazy-activation "core:deep")"#, &mut NullHost);
+    let result = host.eval_source(r#"(%begin-lazy-activation! "core:deep")"#, &mut NullHost);
 
     assert!(
         result.is_err(),
@@ -100,7 +100,7 @@ fn begin_lazy_activation_at_depth_cap_errors_and_marks_failed() {
     );
 }
 
-/// `%begin-lazy-activation` at depth cap − 1 succeeds (cap is exclusive).
+/// `%begin-lazy-activation!` at depth cap − 1 succeeds (cap is exclusive).
 ///
 /// Confirms the off-by-one is correct: depth 15 of 16 is still allowed.
 #[test]
@@ -129,21 +129,21 @@ fn begin_lazy_activation_below_depth_cap_succeeds() {
     }
 
     // Transition to Loading and return the require-string (not an error).
-    let result = host.eval_source(r#"(%begin-lazy-activation "core:ok")"#, &mut NullHost);
+    let result = host.eval_source(r#"(%begin-lazy-activation! "core:ok")"#, &mut NullHost);
     assert!(result.is_ok(), "depth below cap must be allowed; got Err");
     assert!(
         matches!(
             host.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
-        "plugin must be Loading after successful %begin-lazy-activation"
+        "plugin must be Loading after successful %begin-lazy-activation!"
     );
 }
 
-/// `%begin-lazy-activation` failing at the depth cap must clean up exactly
-/// like `%finish-lazy-activation`'s failure branch does (dropping the
+/// `%begin-lazy-activation!` failing at the depth cap must clean up exactly
+/// like `%finish-lazy-activation!`'s failure branch does (dropping the
 /// plugin's activation-event/language entries and its `Lazy` command stub),
-/// even though the body never ran and `%finish-lazy-activation` never fires
+/// even though the body never ran and `%finish-lazy-activation!` never fires
 /// for it.
 ///
 /// The depth-cap branch gets this cleanup from `fail_plugin_activation`. A
@@ -185,7 +185,7 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
         host.push_plugin_for_test(dummy.clone());
     }
 
-    let result = host.eval_source(r#"(%begin-lazy-activation "core:deep")"#, &mut editor_host);
+    let result = host.eval_source(r#"(%begin-lazy-activation! "core:deep")"#, &mut editor_host);
     assert!(result.is_err(), "depth cap must raise; got Ok");
 
     assert!(
@@ -520,7 +520,7 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
 
 // ── Windows path escaping ────────────────────────────────────────────────
 
-/// `%begin-lazy-activation` must escape backslashes in the plugin path so
+/// `%begin-lazy-activation!` must escape backslashes in the plugin path so
 /// a Windows-style path (e.g. `C:\Users\x\plugin.scm`) survives embedding
 /// inside a Steel string literal without producing an invalid-escape error.
 ///
@@ -548,7 +548,7 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
     //   "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"
     // In a Rust raw string (r#"…"#) there is no further Rust escaping.
     let program = r#"
-(define __result (%begin-lazy-activation "core:winpath"))
+(define __result (%begin-lazy-activation! "core:winpath"))
 (when (not (equal? __result "(require \"C:\\\\Users\\\\x\\\\plugin.scm\")"))
   (error (string-append "backslash escaping wrong; got: " __result)))
 "#;
@@ -560,7 +560,7 @@ fn begin_lazy_activation_escapes_backslashes_in_path() {
             host.registries.lazy_registry.plugins.get(&id),
             Some(PluginState::Loading)
         ),
-        "plugin must be Loading after %begin-lazy-activation"
+        "plugin must be Loading after %begin-lazy-activation!"
     );
 }
 

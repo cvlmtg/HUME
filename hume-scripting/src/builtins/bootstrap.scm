@@ -16,14 +16,14 @@
 
 (define (load-plugin! name #:config [config (hash)])
   (%load-plugin! name config)
-  (%activate-plugin-inline name))
+  (%activate-plugin-inline! name))
 
-(define (%activate-plugin-inline id)
-  (let ((prog (%begin-lazy-activation id)))
+(define (%activate-plugin-inline! id)
+  (let ((prog (%begin-lazy-activation! id)))
     (when prog
       (with-handler
-        (lambda (e) (%finish-lazy-activation id e))
-        (begin (hm.eval-string prog) (%finish-lazy-activation id #f)))
+        (lambda (e) (%finish-lazy-activation! id e))
+        (begin (hm.eval-string prog) (%finish-lazy-activation! id #f)))
       (hume/yield!))))
 
 (define (define-command! name doc proc
@@ -36,23 +36,23 @@
                                #:complete [complete #f])
   (%define-typed-command! name doc proc inline-output complete))
 
-(define (%apply-command proc name args)
+(define (%apply-command! proc name args)
   (let* ((depth (%arm-inline-output! name))
          (r (apply proc args)))
     (when depth (%restore-inline-output! depth))
     r))
 
-(define (%dispatch-command name args)
+(define (%dispatch-command! name args)
   (let ((proc (%lookup-plugin-proc name)))
     (if proc
-        (%apply-command proc name args)
+        (%apply-command! proc name args)
         (let ((owner (%lazy-command-owner name)))
           (if owner
               (begin
-                (%activate-plugin-inline owner)
+                (%activate-plugin-inline! owner)
                 (let ((proc2 (%lookup-plugin-proc name)))
                   (cond
-                    (proc2 (%apply-command proc2 name args))
+                    (proc2 (%apply-command! proc2 name args))
                     ((member owner (loaded-plugins))
                      (error (string-append "'" name "': plugin '" owner
                                            "' loaded but did not define it")))
@@ -192,7 +192,7 @@
 (define-syntax call!
   (syntax-rules ()
     ((_ name args ...)
-     (%dispatch-command name (list args ...)))))
+     (%dispatch-command! name (list args ...)))))
 
 (define %raw-displayln displayln)
 (define %raw-display display)

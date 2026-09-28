@@ -22,7 +22,7 @@
   (lsp-request! pane "workspace/executeCommand"
     (hash "command" (json-ref cmd-obj "command")
           "arguments" (json-ref-or cmd-obj (list) "arguments"))
-    (lambda (err res) (when err (lsp/report-error "code action" err)))
+    (lambda (err res) (when err (lsp/report-error! "code action" err)))
     #:allow-stale #t))
 
 (define (lsp/run-action pane action gen #:resolved? [resolved? #f])
@@ -36,7 +36,7 @@
        (lsp-request! pane "codeAction/resolve" action
          (lambda (err resolved)
            (cond
-             (err (lsp/report-error "code action" err))
+             (err (lsp/report-error! "code action" err))
              ((void? resolved) (log! 'info "Code action has no edit or command"))
              (else (lsp/run-action pane resolved gen #:resolved? #t))))
          #:allow-stale #t))
@@ -54,7 +54,7 @@
             (hash-insert (lsp-primary-range-params pane) "context" context)
             (lambda (err res)
               (cond
-                (err (lsp/report-error "code action" err))
+                (err (lsp/report-error! "code action" err))
                 ((void? res) (log! 'info "No code actions"))
                 (else
                   (let ((actions (filter (lambda (a) (not (lsp/action-disabled? a))) (json-list res))))

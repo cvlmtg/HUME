@@ -10,7 +10,7 @@
         (lsp-request! pane "textDocument/completion" (lsp-position-params pane)
           (lambda (err res)
             (cond
-              (err (lsp/report-error "completion" err)
+              (err (lsp/report-error! "completion" err)
                    (completion-emit! id '()))
               ((void? res) (completion-emit! id '()))
               (else (completion-emit! id res))))

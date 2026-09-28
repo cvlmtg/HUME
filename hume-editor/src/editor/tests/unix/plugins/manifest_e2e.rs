@@ -150,7 +150,7 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
 /// above) with a live `Lazy` stub for every helper its own `manifest.scm`
 /// exports. Loading `core:pickers` next must still succeed: its body-time
 /// `call!` into `stdlib/config-boolean` hits that stub, and
-/// `%dispatch-command`'s lazy-miss retry
+/// `%dispatch-command!`'s lazy-miss retry
 /// (`hume-scripting/src/builtins/bootstrap.scm`) inline-activates
 /// `core:stdlib` to `Loaded` before the config read runs.
 ///

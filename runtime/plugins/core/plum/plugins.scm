@@ -37,7 +37,7 @@
     (let ((missing (plum/missing-plugins)))
       (if (null? missing)
           (log! 'info "PLUM: nothing to install")
-          (let ((n (plum/batch-run "installed" missing
+          (let ((n (plum/batch-run! "installed" missing
                      (lambda (name) (plum/clone-github! name (plum/plugin-dir name))))))
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to activate the newly installed plugins"))))))
@@ -49,8 +49,8 @@
     (let ((orphans (plum/orphan-plugins)))
       (if (null? orphans)
           (log! 'info "PLUM: nothing to remove")
-          (plum/batch-run "removed" orphans
-            (lambda (name) (call! "stdlib/delete-dir" (plum/plugin-dir name))))))))
+          (plum/batch-run! "removed" orphans
+            (lambda (name) (call! "stdlib/delete-dir!" (plum/plugin-dir name))))))))
 
 (define-typed-command! "plum-update-plugins"
   "Run git pull in every installed third-party plugin directory."
@@ -58,7 +58,7 @@
     (let ((installed (plum/installed-plugins)))
       (if (null? installed)
           (log! 'info "PLUM: no installed plugins to update")
-          (let ((n (plum/batch-run "updated" installed
+          (let ((n (plum/batch-run! "updated" installed
                      (lambda (name) (plum/git-pull! (plum/plugin-dir name))))))
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to pick up the updated plugins"))))))

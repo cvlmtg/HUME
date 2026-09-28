@@ -1,7 +1,7 @@
 //! `(define-command! name doc proc)`, `(call! name args…)`, and
 //! `(request-wait-char! cmd)` builtins.
 //!
-//! `call!` expands to `%dispatch-command` (BOOTSTRAP), which routes:
+//! `call!` expands to `%dispatch-command!` (BOOTSTRAP), which routes:
 //! - **Activated plugin commands**: `(apply proc args)` inside the VM; `call!`
 //!   returns the body's value and later reads see its effects.
 //! - **Lazy commands**: activates the owner inline, then retries.
@@ -213,7 +213,7 @@ pub(crate) fn define_typed_command(
     Ok(SteelVal::Void)
 }
 
-/// `%call-native!`: `%dispatch-command`'s fallback for a name that is neither
+/// `%call-native!`: `%dispatch-command!`'s fallback for a name that is neither
 /// in `command_table` nor owned by a lazy plugin.
 ///
 /// - **Native**: decodes the leading `pane` argument, validates count/extend,
@@ -268,7 +268,7 @@ pub(crate) fn call_command_primitive(
     }
 }
 
-/// `(%arm-inline-output! name)`: see `%apply-command` in `bootstrap.scm`.
+/// `(%arm-inline-output! name)`: see `%apply-command!` in `bootstrap.scm`.
 /// Arms the alt-screen bracket for a `call!`-dispatched `name` if it is a
 /// Steel command declared `#:inline-output #t`. Returns the depth to
 /// truncate back to at the matching `%restore-inline-output!`, so the
@@ -290,7 +290,7 @@ pub(crate) fn arm_inline_output(ctx: &mut SteelCtx, name: String) -> SteelResult
 /// `(%restore-inline-output! depth)`: truncates the bracket's frame stack
 /// back to `depth` (the value `%arm-inline-output!` returned for this same
 /// call). Only ever called after `%arm-inline-output!` returned non-`#f`; see
-/// `%apply-command` in `bootstrap.scm`'s BOOTSTRAP comment (`builtins/mod.rs`)
+/// `%apply-command!` in `bootstrap.scm`'s BOOTSTRAP comment (`builtins/mod.rs`)
 /// for what happens when a body raises before reaching it.
 pub(crate) fn restore_inline_output(ctx: &mut SteelCtx, depth: SteelVal) -> SteelResult {
     let depth = super::args::usize_arg(depth, "%restore-inline-output!")?;

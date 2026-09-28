@@ -29,7 +29,7 @@
 (define (lsp/diag-jump-to! pane d)
   (goto-location! (focused-pane) (list pane (hash-ref d 'line) (hash-ref d 'char-col))))
 
-(define (lsp/diag-jump pane direction)
+(define (lsp/diag-jump! pane direction)
   (let ((diags (diagnostics-for-buffer pane)))
     (if (null? diags)
         (log! 'info "No diagnostics")
@@ -44,11 +44,11 @@
 
 (define-command! "goto-next-diagnostic"
   "Jump to the next diagnostic after the cursor (wraps to the first)."
-  (lambda (pane) (lsp/diag-jump pane 1)))
+  (lambda (pane) (lsp/diag-jump! pane 1)))
 
 (define-command! "goto-prev-diagnostic"
   "Jump to the previous diagnostic before the cursor (wraps to the last)."
-  (lambda (pane) (lsp/diag-jump pane -1)))
+  (lambda (pane) (lsp/diag-jump! pane -1)))
 
 (define (lsp/diag-row d)
   (string-append (lsp/severity-glyph (hash-ref d 'severity)) " "
@@ -93,7 +93,7 @@
         (old (and (< old-idx (length old-diags)) (list-ref old-diags old-idx))))
     (if old (or (lsp/diag-best-match old new-diags) fallback) fallback)))
 
-(define (lsp/refresh-diagnostics-drawer pane diags)
+(define (lsp/refresh-diagnostics-drawer! pane diags)
   (when (and lsp/*diag-drawer* (equal? (buffer-key pane) (car lsp/*diag-drawer*)))
     (let ((tok (cadr lsp/*diag-drawer*)))
       (if (null? diags)
@@ -167,7 +167,7 @@
              (hash 'line line 'text "●" 'scope (symbol->string (hash-ref (lsp/most-severe line-diags) 'severity)))))
          groups)))
 
-(define (lsp/refresh-diagnostic-decorations pane diags)
+(define (lsp/refresh-diagnostic-decorations! pane diags)
   (register-sign-source! "lsp-diagnostics" pane lsp/*sign-priority*)
   (set-eol-text! "lsp-diagnostics" pane
     (map lsp/line-group->entry (lsp/group-by-line diags)))
@@ -176,21 +176,21 @@
 (register-hook! 'on-diagnostics-changed
   (lambda (pane)
     (let ((diags (diagnostics-for-buffer pane)))
-      (lsp/refresh-diagnostic-decorations pane diags)
-      (lsp/refresh-diagnostics-drawer pane diags))))
+      (lsp/refresh-diagnostic-decorations! pane diags)
+      (lsp/refresh-diagnostics-drawer! pane diags))))
 
 (register-hook! 'on-lsp-detach
   (lambda (pane server-name)
     (register-sign-source! "lsp-diagnostics" pane lsp/*sign-priority*)
     (set-eol-text! "lsp-diagnostics" pane '())
     (set-signs! "lsp-diagnostics" pane '())
-    (lsp/refresh-diagnostics-drawer pane '())))
+    (lsp/refresh-diagnostics-drawer! pane '())))
 
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.diagnostics-severity-floor")
       (for-each (lambda (pane)
                   (let ((diags (diagnostics-for-buffer pane)))
-                    (lsp/refresh-diagnostic-decorations pane diags)
-                    (lsp/refresh-diagnostics-drawer pane diags)))
+                    (lsp/refresh-diagnostic-decorations! pane diags)
+                    (lsp/refresh-diagnostics-drawer! pane diags)))
                 (buffers)))))

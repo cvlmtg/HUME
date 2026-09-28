@@ -3,10 +3,10 @@
 ## Unreleased
 
 ### Breaking changes
-- Every scripting function that changes something now ends in `!`: `declare-plugin`, `load-plugin`, `lsp-request`, `lsp-notify`, `after`, `unpack-gz`, and `unpack-zip` are renamed `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `unpack-gz!`, and `unpack-zip!`.
+- Every scripting function that changes something now ends in `!`: `declare-plugin`, `load-plugin`, `lsp-request`, `lsp-notify`, `after`, `unpack-gz`, and `unpack-zip` are renamed `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `unpack-gz!`, and `unpack-zip!`. `core:stdlib`'s `stdlib/run`, `stdlib/write-file`, `stdlib/delete-file`, and `stdlib/delete-dir` are renamed `stdlib/run!`, `stdlib/write-file!`, `stdlib/delete-file!`, and `stdlib/delete-dir!`.
 - `buffer-cursor-line` and `offset->line` now return 0-based lines, like every other position in the scripting API.
 - The `on-mode-change` hook now passes the old and new modes as symbols (`'insert`), not strings.
-- `spawn-async!` and `run-capture!` (and `stdlib/run`) take the working directory as an optional `#:cwd` keyword instead of a required positional argument: `(spawn-async! cmd args callback #:cwd dir)`, `(run-capture! cmd args #:cwd dir)`.
+- `spawn-async!` and `run-capture!` (and `stdlib/run!`) take the working directory as an optional `#:cwd` keyword instead of a required positional argument: `(spawn-async! cmd args callback #:cwd dir)`, `(run-capture! cmd args #:cwd dir)`.
 - `show-popup!` and `show-menu!` return a token, and `close-popup!`, `close-menu!`, and `picker-close!` now require one, matching `show-drawer-list!`/`close-drawer!`: `(close-popup! token)`, `(close-menu! token)`, `(picker-close! token)`. A token for a widget that already closed or was replaced is a no-op.
 - Decoration entries are symbol-keyed hashmaps instead of positional lists: `set-signs!`/`set-eol-text!` take `(hash 'line l 'text t 'scope s)`, `set-extra-highlights!` and `set-virtual-lines!`'s `'segments` take `(hash 'start s 'end e 'scope sc)`, `set-line-backgrounds!` takes `(hash 'line l 'scope s)`, and `set-inlay-hints!` takes `(hash 'offset o 'text t 'side 'before)`.
 - `diagnostics-for-buffer` entries, `lsp-server-status` entries, and `lsp-request!`'s `err` use symbol keys: `(hash-ref d 'message)`, not `(hash-ref d "message")`. A diagnostic's `'severity` is a symbol (`'error`), and a server status's `'state` is a lowercase symbol (`'running`).

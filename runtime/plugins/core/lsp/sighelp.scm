@@ -45,7 +45,7 @@
         (lsp-request! pane "textDocument/signatureHelp" (lsp-position-params pane)
           (lambda (err res)
             (cond
-              (err (lsp/report-error "signature help" err) (lsp/close-sighelp!))
+              (err (lsp/report-error! "signature help" err) (lsp/close-sighelp!))
               ((void? res) (lsp/close-sighelp!))
               (else (lsp/show-sighelp pane res))))
           #:require-focus #t)))))

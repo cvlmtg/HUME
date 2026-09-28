@@ -84,7 +84,7 @@ A lazy plugin needs at least one activation entry, or it could never activate. D
   ; typing :picker-grep the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
 - **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
-- **`#:languages`**: buffer language names that trigger loading.
+- **`#:languages`**: buffer language names that trigger loading. Triggers on the name being *set* on a buffer (by detection, `:set buffer language=`, or another plugin's `define-language!`), not on the name being a known language yet — so a plugin can't use `#:languages '("foo")` to lazily define `"foo"` itself: HUME sets the buffer's language and reports it as unregistered before your plugin's activation runs, then activates you anyway. The message is informational; call `define-language!` in your activation body and everything downstream (highlighting, LSP) still works from there.
 
 ...or, if the plugin ships its own defaults, leave all four off:
 

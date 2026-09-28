@@ -517,13 +517,13 @@ fn fail_plugin_activation(ctx: &mut SteelCtx, id: &PluginId) {
     ctx.host.commands().unregister_lazy_stubs_of(id);
 }
 
-/// `(%begin-lazy-activation id-str)`: Rust primitive for inline activation.
+/// `(%begin-lazy-activation! id-str)`: Rust primitive for inline activation.
 ///
-/// Called from the BOOTSTRAP `%activate-plugin-inline` helper immediately before
+/// Called from the BOOTSTRAP `%activate-plugin-inline!` helper immediately before
 /// `(hm.eval-string require-string)`.  If the plugin is `Declared`, transitions
 /// to `Loading`, pushes `plugin_stack`, and returns the `(require "<abs>")` string.
 /// Returns `#f` for the cycle/idempotency guard (Loading/Loaded/Failed/absent) so
-/// `%activate-plugin-inline` becomes a no-op without error.
+/// `%activate-plugin-inline!` becomes a no-op without error.
 pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> SteelResult {
     let id = PluginId::parse(&id_str).map_err(generic_err)?;
 
@@ -537,7 +537,7 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     if ctx.plugin_stack.len() >= MAX_ACTIVATION_DEPTH {
         fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>
-            "%begin-lazy-activation: activation depth limit ({}) exceeded \
+            "%begin-lazy-activation!: activation depth limit ({}) exceeded \
              (check for circular load-plugin! chains); '{}' marked Failed",
             MAX_ACTIVATION_DEPTH, id_str);
     }
@@ -556,8 +556,8 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
     Ok(SteelVal::StringV(require_program.into()))
 }
 
-/// `(%finish-lazy-activation id-str error)`: called by
-/// `%activate-plugin-inline` after the plugin body's `eval-string`. `error` is
+/// `(%finish-lazy-activation! id-str error)`: called by
+/// `%activate-plugin-inline!` after the plugin body's `eval-string`. `error` is
 /// `#f` on success or the caught exception value. Pops `plugin_stack` and
 /// moves the plugin to `Loaded` or `Failed`.
 ///
@@ -589,7 +589,7 @@ pub(crate) fn finish_lazy_activation(
     // failure becomes the failure *reason* instead: `unwrap_or_else` folds
     // it into `Some`, same shape as a body's own raised error.
     ctx.plugin_stack.pop();
-    let error = optional_steel_error_arg(error, "%finish-lazy-activation").unwrap_or_else(Some);
+    let error = optional_steel_error_arg(error, "%finish-lazy-activation!").unwrap_or_else(Some);
     ctx.pop_effect_marks(error.is_none());
 
     let id = PluginId::parse(&id_str).map_err(generic_err)?;
@@ -635,10 +635,10 @@ pub(crate) fn finish_lazy_activation(
 
 /// `(%lazy-command-owner name)`: return the owning plugin's id string if `name`
 /// is a registered *mappable* activation command, or `#f` if not.  Used by
-/// `%dispatch-command` to decide whether a `command_table` miss should trigger
+/// `%dispatch-command!` to decide whether a `command_table` miss should trigger
 /// inline activation.
 ///
-/// Mappable-only deliberately: `%dispatch-command` backs `call!`, which can
+/// Mappable-only deliberately: `%dispatch-command!` backs `call!`, which can
 /// never reach a typed command (`typed_command_table` is a separate table;
 /// see its own doc). Reporting a typed-only stub as activatable here would
 /// load the plugin for a lookup that misses again right after and errors:
@@ -660,7 +660,7 @@ pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResul
 /// can declare itself with its own default activation triggers.
 ///
 /// Returns the `(require "<abs manifest.scm>")` string to eval (mirrors
-/// `%begin-lazy-activation`), or `#f` for the no-op cases: already declared
+/// `%begin-lazy-activation!`), or `#f` for the no-op cases: already declared
 /// (first-wins) or absent on disk (soft-logged exactly like `%declare-plugin!`:
 /// a user plugin not yet installed by PLUM, or a core plugin typo/broken
 /// `HUME_RUNTIME`). Hard-errors when the plugin directory exists but has no
@@ -731,7 +731,7 @@ pub(crate) fn begin_manifest_declare(
 }
 
 /// `(%finish-manifest-declare! name error)`: Rust primitive; the tail half
-/// of the zero-trigger `declare-plugin!` path (mirrors `%finish-lazy-activation`,
+/// of the zero-trigger `declare-plugin!` path (mirrors `%finish-lazy-activation!`,
 /// including its `error` argument convention and its unconditional-before-
 /// any-fallible-decode ordering; see that function's doc for why).
 ///

@@ -36,7 +36,7 @@
   (string-append "\"" (string-replace (string-replace s "\\" "\\\\") "\"" "\\\"") "\""))
 
 (define (lsp/write-receipt! name version bin)
-  (call! "stdlib/write-file" (lsp/receipt-path name)
+  (call! "stdlib/write-file!" (lsp/receipt-path name)
     (string-append "((name . " (lsp/scheme-quote name) ")"
                    " (version . " (lsp/scheme-quote version) ")"
                    " (bin . " (lsp/scheme-quote bin) "))")))
@@ -48,7 +48,7 @@
                               expected)))
          (actual (string-downcase (sha256-file path))))
     (unless (equal? actual expected-hex)
-      (call! "stdlib/delete-file" path)
+      (call! "stdlib/delete-file!" path)
       (error (string-append "lsp/verify-sha256!: sha256 mismatch for '" path
                             "': expected " expected-hex ", got " actual)))))
 
@@ -128,7 +128,7 @@
     (cond
       ((equal? fmt 'gz) (unpack-gz! archive (path-join dir bin)))
       ((equal? fmt 'zip) (unpack-zip! archive dir bin)))
-    (call! "stdlib/delete-file" archive)
+    (call! "stdlib/delete-file!" archive)
     (unless (path-exists? (path-join dir bin))
       (error (string-append "lsp/install-github!: " name
                             ": expected binary not found after unpack: " bin)))
@@ -171,7 +171,7 @@
          (dir           (lsp/server-dir name)))
     (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
               (cdr (lsp/field server-fields 'languages)))
-    (call! "stdlib/delete-dir" dir)
+    (call! "stdlib/delete-dir!" dir)
     (let ((bin-rel (cond
                      ((equal? kind 'github) (lsp/install-github! name source-fields dir))
                      ((equal? kind 'cargo)  (lsp/install-cargo! name source-fields dir))
@@ -262,7 +262,7 @@
                 (log! 'info (string-append "LSP: shutting down and removing " name "..."))
                 (after! 0 (lambda ()
                            (when (lsp/with-install-lock! (string-append "uninstall " name)
-                                   (lambda () (call! "stdlib/delete-dir" dir)))
+                                   (lambda () (call! "stdlib/delete-dir!" dir)))
                              (log! 'info (string-append "LSP: removed " name))))))
               (log! 'info (string-append "LSP: nothing to uninstall for " name)))))))
   #:complete "lsp:servers")

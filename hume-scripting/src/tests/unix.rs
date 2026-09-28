@@ -8,7 +8,7 @@ use super::*;
 /// *before* calling `wait`: calling it after returns `#f` even though the
 /// stream was piped. Also pins the stdin-close-for-EOF pattern needed
 /// since stdin is not inherited by default. No in-tree Scheme calls
-/// `spawn-process` directly any more (`core:stdlib`'s `stdlib/run` is now
+/// `spawn-process` directly any more (`core:stdlib`'s `stdlib/run!` is now
 /// `run-capture!`, a native builtin closing the exact deadlock this shape
 /// invites; see its own doc), but the full-trust plugin model leaves
 /// `spawn-process` reachable from any user plugin, so the gotcha stays live
@@ -95,7 +95,7 @@ fn uncaught_native_error_propagates_one_hop_to_outer_tolerant_handler() {
         .expect("uncaught native error one-hop propagation to outer handler failed");
 }
 
-/// Characterizes the pattern `%activate-plugin-inline` (`bootstrap.scm`)
+/// Characterizes the pattern `%activate-plugin-inline!` (`bootstrap.scm`)
 /// relies on for aborting on an interrupt: a *fresh* raise placed
 /// sequentially *after* a `with-handler` form returns (not a `raise-error`
 /// re-raise of the value the handler caught, which is the corrupting shape

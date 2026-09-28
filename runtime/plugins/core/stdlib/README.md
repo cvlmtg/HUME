@@ -33,7 +33,7 @@ Cross-plugin access in HUME is `call!`-only: plugins never `require` each other'
 modules, since that would break the namespace isolation each plugin gets. That's why
 this plugin's public API is a set of `define-command!`-registered commands rather than a
 `provide`d library. A command name and a Steel binding of the same name live in
-separate namespaces, so there's no collision between the command `"stdlib/run"` and the
+separate namespaces, so there's no collision between the command `"stdlib/run!"` and the
 function it wraps.
 
 ## Commands
@@ -60,7 +60,7 @@ selection list is actually fetched, not one that picks an already-fetched list a
 
 ### Filesystem and list search
 
-`stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`,
+`stdlib/find`, `stdlib/write-file!`, `stdlib/delete-dir!`, `stdlib/delete-file!`,
 `stdlib/list-subdirs`.
 
 Thin wrappers over Steel's `steel/filesystem`/`steel/ports`. `core:plum` and `core:lsp`
@@ -91,7 +91,7 @@ sandboxed base path entirely instead of joining onto it (mirrors
 
 ### Subprocess
 
-`stdlib/run`.
+`stdlib/run!`.
 
 Three ways to run a subprocess exist across the codebase; pick by shape:
 
@@ -99,9 +99,9 @@ Three ways to run a subprocess exist across the codebase; pick by shape:
 |---|---|
 | An `#:inline-output` command | `run-inline-output!` (process-group safety for Ctrl-c) |
 | Enumeration-scale streaming output | `spawn-async!` |
-| Everything else | `stdlib/run` |
+| Everything else | `stdlib/run!` |
 
-`stdlib/run` is `run-capture!` (native, `hume_platform::process::run_capture`); see its
+`stdlib/run!` is `run-capture!` (native, `hume_platform::process::run_capture`); see its
 own Rust doc for why it exists instead of Steel's `spawn-process`/`wait`/`child-stdout`/
 `child-stderr`, and `hume_platform::process::base_command`'s doc for the
 `GIT_TERMINAL_PROMPT=0` policy it shares with `run-inline-output!`. The git probes below
@@ -111,7 +111,7 @@ build their `#f`-on-failure policy on it.
 
 `stdlib/git-repo?`, `stdlib/git-toplevel`.
 
-Both build on an internal `stdlib/run-stdout` (`stdlib/run`'s stdout, trimmed, if the
+Both build on an internal `stdlib/run-stdout` (`stdlib/run!`'s stdout, trimmed, if the
 command exits 0, else `#f`), not exposed as a command itself, since trimming is only
 safe for a single-value probe like these; a `-z`-delimited multi-entry blob (e.g. `git
 status`) can have a leading space as significant data in its first entry, which trimming

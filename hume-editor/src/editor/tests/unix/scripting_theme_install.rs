@@ -225,7 +225,7 @@ fn sync_errors_when_repo_has_no_themes_dir() {
     let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-update-themes");
 
-    // The per-item error is `log! 'error` (message_log). plum/batch-run's
+    // The per-item error is `log! 'error` (message_log). plum/batch-run!'s
     // "N updated — M failed" summary is `log! 'info`, logged *before* the
     // per-item errors. Error severity also overwrites status_msg, so the
     // summary text is overwritten by the error that follows it and isn't

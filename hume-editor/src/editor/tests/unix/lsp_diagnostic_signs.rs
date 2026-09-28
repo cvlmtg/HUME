@@ -1,6 +1,6 @@
 // Diagnostic gutter signs, placed by `core:lsp` itself through `set-signs!`
 // (source `"lsp-diagnostics"`); see `runtime/plugins/core/lsp/diagnostics.scm`'s
-// `lsp/refresh-diagnostic-decorations`. Shares `setup_diagnostics` with
+// `lsp/refresh-diagnostic-decorations!`. Shares `setup_diagnostics` with
 // `lsp_diagnostics_inline.rs` (hoisted to `tests/unix/mod.rs`), since both
 // decorations are driven by the same `on-diagnostics-changed` hook.
 //

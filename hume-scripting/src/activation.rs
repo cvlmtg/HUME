@@ -3,19 +3,19 @@
 //! ## Activation state machine
 //!
 //! ```text
-//! Declared ──── %activate-plugin-inline ────► Loading ──┬──► Loaded
+//! Declared ──── %activate-plugin-inline! ────► Loading ──┬──► Loaded
 //!                                                        └──► Failed
 //!
-//! Loaded / Failed / Loading / absent  ──► no-op (#f guard in %begin-lazy-activation)
+//! Loaded / Failed / Loading / absent  ──► no-op (#f guard in %begin-lazy-activation!)
 //! ```
 //!
 //! All plugin activation is synchronous/inline:
 //! - `load-plugin!` (init.scm): the BOOTSTRAP Scheme wrapper calls `%load-plugin!`
-//!   (declare/record) then `%activate-plugin-inline` (inline body eval via `hm.eval-string`).
-//! - Lazy keypress dispatch: `%dispatch-command` activates the owner inline on a
+//!   (declare/record) then `%activate-plugin-inline!` (inline body eval via `hm.eval-string`).
+//! - Lazy keypress dispatch: `%dispatch-command!` activates the owner inline on a
 //!   `command_table` miss, then retries.
 //! - Event/language activations: `activate_plugin_inline` (Rust) bounces into
-//!   `(%activate-plugin-inline id)` via `run_steel_call` (a direct function
+//!   `(%activate-plugin-inline! id)` via `run_steel_call` (a direct function
 //!   call, not source), using the `ScriptingHost`'s one persistent watchdog.
 
 use rustc_hash::FxHashSet;
@@ -40,7 +40,7 @@ use crate::watchdog::EvalWatchdog;
 /// `*hume.ctx*`, then cancel the watchdog, reset the interrupt flag, and
 /// truncate any unrestored inline-output frame back to zero
 /// (`OutputHost::truncate_inline_output`): the backstop for a `call!`-armed
-/// bracket (`bootstrap.scm`'s `%apply-command`) whose body raised before
+/// bracket (`bootstrap.scm`'s `%apply-command!`) whose body raised before
 /// reaching its matching restore; see that function's own comment in
 /// `builtins/mod.rs`'s BOOTSTRAP block for why it isn't paired via
 /// `with-handler` instead. A no-op whenever every arm this session was
@@ -195,7 +195,7 @@ impl ScriptingHost {
     ///
     /// Evaluates `source` (init.scm) synchronously.  `(load-plugin! …)` calls
     /// inside the source activate their plugin bodies inline via the BOOTSTRAP
-    /// `%activate-plugin-inline` helper (VM-aware `hm.eval-string`, no
+    /// `%activate-plugin-inline!` helper (VM-aware `hm.eval-string`, no
     /// `&mut Engine` borrow).  `(define-command! …)` calls register commands
     /// directly into the editor's `CommandRegistry` via `host.register_command`.
     ///
@@ -218,7 +218,7 @@ impl ScriptingHost {
         self.take_eval_effects(effects_start, result)
     }
 
-    /// Activate a plugin inline via `%activate-plugin-inline` using `run_steel_call`.
+    /// Activate a plugin inline via `%activate-plugin-inline!` using `run_steel_call`.
     ///
     /// Used by event- and language-activation paths that
     /// fire outside any running eval and need their own watchdog.  The plugin body
@@ -232,8 +232,8 @@ impl ScriptingHost {
     /// skip attaching the very buffer that triggered this activation.
     ///
     /// A failed activation's own effects are already rolled back by the
-    /// BOOTSTRAP `%activate-plugin-inline` wrapper's `%begin-lazy-activation`/
-    /// `%finish-lazy-activation` mark/pop (`ctx.pop_effect_marks`) before the
+    /// BOOTSTRAP `%activate-plugin-inline!` wrapper's `%begin-lazy-activation!`/
+    /// `%finish-lazy-activation!` mark/pop (`ctx.pop_effect_marks`) before the
     /// error reaches here, except any effects committed by a nested
     /// successful plugin activation, which `pop_effect_marks` keeps and which
     /// `take_eval_effects` salvages onto the returned `EvalError`.
@@ -253,7 +253,7 @@ impl ScriptingHost {
                 steel,
                 watchdog,
                 &mut steel_ctx,
-                "%activate-plugin-inline",
+                "%activate-plugin-inline!",
                 args,
                 budget_ms,
             )

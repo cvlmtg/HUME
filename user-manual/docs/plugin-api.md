@@ -13,7 +13,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
 - Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder.
 - A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](#json-handles)).
-- Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget.
+- Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget. `#f` — an opener's own answer when the open was dropped before it could happen — is stale by construction and a no-op the same way.
 - A value from a fixed set of names (a mode, a hook name, a log level) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
@@ -274,7 +274,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's own working directory); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later |
 | `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
 | `(run-inline-output! cmd args #:cwd)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; raises on nonzero exit |
-| `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's own working directory), blocking until it exits; returns `(stdout stderr exit-code)`. `core:stdlib`'s `stdlib/run` (see [Standard Library](standard-library.md)) is this call under its usual name |
+| `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's own working directory), blocking until it exits; returns `(stdout stderr exit-code)`. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
 
 Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-processes).
 

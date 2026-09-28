@@ -116,7 +116,7 @@ pub trait EditorHost {
     fn registers(&mut self) -> Option<&mut dyn RegisterHost> {
         None
     }
-    /// `(after …)` / `(cancel-timer! …)` scheduling, or `None` for hosts with
+    /// `(after! …)` / `(cancel-timer! …)` scheduling, or `None` for hosts with
     /// no timer wheel (test stubs).
     fn timers(&mut self) -> Option<&mut dyn TimerHost> {
         None
