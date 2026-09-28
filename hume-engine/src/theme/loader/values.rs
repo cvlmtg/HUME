@@ -127,7 +127,7 @@ pub(super) const MODIFIER_NAMES: [(&str, Modifiers); 8] = [
 ];
 
 /// The one `modifiers = [...]` literal the loader accepts outside
-/// [`MODIFIER_NAMES`], intercepted in `parse_style_table` (`loader.rs`)
+/// [`MODIFIER_NAMES`], intercepted in `parse_style_table`
 /// before `parse_modifier` ever sees it, and routed to the dedicated
 /// underline field instead of the modifier bitset. Named so it can join
 /// [`MODIFIER_NAMES`] in the generated vocabulary rather than being a bare

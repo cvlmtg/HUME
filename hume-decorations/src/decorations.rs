@@ -261,8 +261,7 @@ impl<K, T> Default for SourceStore<K, T> {
 
 impl<K, T> SourceStore<K, T> {
     /// Every source's entries for `bid`, grouped (not flattened): the
-    /// primitive `for_buffer` and a per-source-structure caller (e.g.
-    /// `DiagnosticsStore::for_range`'s per-source `partition_point` prune)
+    /// primitive `for_buffer` and a per-source-structure caller
     /// both build on.
     pub fn groups_for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&K, &[T])> {
         self.by_buffer
@@ -309,8 +308,7 @@ impl<K, T> SourceStore<K, T> {
     }
 
     /// Drops every entry for `bid`. Returns whether `bid` had an entry to
-    /// drop. `DiagnosticsStore::remove_buffer` uses this to only bump its
-    /// generation when the removal actually changed anything.
+    /// drop.
     pub fn remove_buffer(&mut self, bid: BufferId) -> bool {
         self.by_buffer.remove(&bid).is_some()
     }
@@ -322,8 +320,7 @@ impl<K, T> SourceStore<K, T> {
             .is_some_and(|entry| entry.iter().any(|(_, v)| !v.is_empty()))
     }
 
-    /// Every buffer with at least one source registered, of any kind:
-    /// `DiagnosticsStore::buffers_with_diagnostics`'s sole caller.
+    /// Every buffer with at least one source registered, of any kind.
     pub fn buffers(&self) -> impl Iterator<Item = BufferId> + '_ {
         self.by_buffer.keys().copied()
     }
@@ -331,7 +328,7 @@ impl<K, T> SourceStore<K, T> {
     /// Drops every source `keep` rejects, across every buffer; a buffer left
     /// with zero sources is dropped from `by_buffer` entirely rather than
     /// kept as an empty `Vec`. Returns the buffers actually touched.
-    /// `DiagnosticsStore::remove_server`'s sole caller. Decoration kinds
+    /// Decoration kinds
     /// have no per-source removal (a source only ever replaces its own
     /// entries wholesale via `set`, never disappears on its own).
     pub fn retain_sources(&mut self, mut keep: impl FnMut(&K) -> bool) -> Vec<BufferId> {
@@ -525,10 +522,8 @@ pub struct DecorationStores {
 }
 
 impl DecorationStores {
-    /// A fresh, empty store, used by `hume-editor`'s `ConfigState::new` for both session
-    /// start (`prior_clock: 0`, nothing to carry forward) and
-    /// `:reload-config`'s reset (the outgoing `ConfigState`'s own
-    /// `decorations.clock()`).
+    /// A fresh, empty store, for session start (`prior_clock: 0`) and a
+    /// config-reload reset (the outgoing store's `clock()`).
     ///
     /// Carries `prior_clock` forward rather than starting over at `0`: with
     /// a per-buffer stamp map that resets to empty (every buffer defaulting
@@ -780,9 +775,9 @@ impl DecorationStores {
 
     /// Whether `bid` has any decoration, of any kind, that needs to stay in
     /// sync with edits: every kind remaps through `remap_through` now.
-    /// `record_lsp_edits` (`doc_ops.rs`) uses this to queue a buffer's edits
-    /// for the remap chokepoint even with no attached LSP server:
-    /// decorations are not LSP-owned, LSP is just their first client.
+    /// Gates queueing a buffer's edits for the remap chokepoint even with
+    /// no LSP server attached: decorations are not LSP-owned, LSP is just
+    /// their first client.
     ///
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
     /// compile here until it is listed, so a kind can never silently go
@@ -850,7 +845,7 @@ impl DecorationStores {
     /// chokepoint as the diagnostics remap (`flush_lsp_pending_changes`), so
     /// decoration positions never drift out of sync with the diagnostics
     /// they're often paired with. Touches `bid`'s stamp only if some kind
-    /// actually had an entry to remap: `record_lsp_edits` (`doc_ops.rs`)
+    /// actually had an entry to remap: `record_lsp_edits`
     /// queues *every* edit in an LSP-attached buffer for this chokepoint,
     /// decorated or not, so touching unconditionally would stamp a
     /// zero-decoration buffer on every keystroke, defeating the

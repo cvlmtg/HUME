@@ -31,7 +31,7 @@ fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
     (file, uri)
 }
 
-/// Same shape as `lsp_hover.rs::setup`: a real opened file (three lines, so
+/// A real opened file (three lines, so
 /// a `Location` can point at a different line for the jump-back test),
 /// driven handshake (so `lsp-capabilities` decodes), the real `core:lsp`
 /// plugin loaded in place.
@@ -598,10 +598,6 @@ fn goto_missing_target_opens_new_file_buffer_and_jumps_to_it() {
 /// applies to `goto-location!` too, through the shared
 /// `hume_lsp::location::decode_location`: a `Location` missing `range` must
 /// error rather than silently jumping to line 0.
-///
-/// This test and `column_display_agreement.rs`'s
-/// `a_malformed_location_aborts_the_batch_instead_of_a_degraded_row` both
-/// go through the one shared decoder.
 #[test]
 fn location_missing_range_errors_instead_of_jumping() {
     let tmp = safe_tempdir();

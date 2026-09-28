@@ -350,8 +350,7 @@ impl KillRing {
 }
 
 /// Whether a kill-ring entry is pure whitespace: every string in the entry,
-/// every char `char::is_whitespace`. Used by [`KillRing::push`] to decide
-/// whether to overwrite the head in place or take a fresh slot.
+/// every char `char::is_whitespace`.
 fn entry_is_whitespace(entry: &[String]) -> bool {
     entry.iter().all(|s| s.chars().all(char::is_whitespace))
 }

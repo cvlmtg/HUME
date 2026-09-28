@@ -115,8 +115,7 @@ impl Editor {
 
     /// Sends one queued `(lsp-notify …)` call. Same server resolution as
     /// `send_one_lsp_request`; no callback, so a resolution error is the
-    /// only failure mode. Called from `Editor::apply_script_effects` for
-    /// each `Effect::LspNotify`.
+    /// only failure mode.
     pub(in crate::editor) fn send_one_lsp_notify(&mut self, notif: PendingLspNotify) {
         let server_id =
             match super::introspect::resolve_server_for_buffer(&self.state, &self.lsp, notif.bid) {

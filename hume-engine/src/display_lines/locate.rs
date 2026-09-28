@@ -153,13 +153,12 @@ impl<'a> DisplayLineMap<'a> {
         self.resolve_in_display_line(idx, sub, target_display_col, target)
     }
 
-    /// Shared core of [`DisplayLineMap::char_at`] and [`DisplayLineMap::char_at_buffer_line_col`]:
-    /// which char offset on content display line `sub` of `idx`'s line
+    /// Which char offset on content display line `sub` of `idx`'s line
     /// resolves to `target_display_col`, under `target`'s policy. `idx`
     /// must come from an [`DisplayLineMap::ensure_formatted`] bounded at
     /// least up to `target_display_col`.
     ///
-    /// Returns [`CharOffset`] so both callers hand the result over directly
+    /// Returns [`CharOffset`] so callers hand the result over directly
     /// instead of re-wrapping a bare index. The `CharOffset::new` crossings
     /// inside are the typed world's own re-entry: `Grapheme::char_offset`
     /// stays bare `usize` for its `usize::MAX` no-position sentinel (see

@@ -584,9 +584,8 @@ fn compose_menu_row(row: &MenuRow, main_col: u16, trail_col: u16) -> String {
 
 /// Resolve the top-left corner and clamped size for a `width` × `height` box
 /// (the outer footprint, including any frame) anchored near `anchor`
-/// (cursor cell, absolute screen coords) within `pane_rect`. Shared by
-/// [`resolve_popup`]/[`resolve_menu`]: callers pass their content size plus
-/// the 2-cell frame reserved for the border.
+/// (cursor cell, absolute screen coords) within `pane_rect`. Callers pass
+/// their content size plus the 2-cell frame reserved for the border.
 ///
 /// `width`/`height` are clamped to `pane_rect`'s size before the position is
 /// resolved, so the returned box always fits inside the pane. Callers must
@@ -620,8 +619,7 @@ fn resolve_popup_geometry(
 }
 
 /// Clamp `width`×`height` to fit inside `pane_rect`: the size half of a
-/// box-in-pane placement, used by [`resolve_popup_geometry`] before it
-/// resolves a position.
+/// box-in-pane placement.
 fn clamp_size_to_pane(width: u16, height: u16, pane_rect: Rect) -> (u16, u16) {
     (width.min(pane_rect.width), height.min(pane_rect.height))
 }

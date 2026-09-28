@@ -101,10 +101,7 @@ pub fn restore_for_exit(term: &terminal::SharedTerm) -> std::io::Result<()> {
 }
 
 /// Restores the terminal, then kills every still-registered
-/// [`process::tracked::TrackedChild`], then exits with `code`. Shared by
-/// every force-exit path ([`unix::spawn_terminator`]'s signal arm and the
-/// Windows arm below), so there is one restore-reap-exit sequence rather than
-/// each platform repeating it.
+/// [`process::tracked::TrackedChild`], then exits with `code`.
 ///
 /// The reap runs *after* [`restore_for_exit`]'s claim, not before: a caller
 /// that loses that race parks forever without ever reaching `process::exit`,

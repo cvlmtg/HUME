@@ -3,12 +3,7 @@
 //!
 //! Holds disjoint borrows of `EditorState` and `EngineView`, which enables the
 //! Steel VM (`scripting.steel`) to take `&mut Engine` simultaneously without
-//! aliasing editor data. Two construction sites create this:
-//!
-//! - **Command dispatch** (`editor/mod.rs`, `run_steel_command`): called with the
-//!   live editor state and view from the focused pane.
-//! - **Init dispatch** (`scripting_setup.rs`): called with the same fields
-//!   during `init_scripting`; init-only builtins set settings.
+//! aliasing editor data.
 //!
 //! Every capability trait impl lives one-per-file below, one module per
 //! `EditorHost` accessor, isomorphic with `hume_scripting::host`'s own
@@ -86,8 +81,8 @@ pub(in crate::editor) struct EditorHostImpl<'a> {
 impl<'a> EditorHostImpl<'a> {
     /// Constructor for the three init/activation call sites: `init_scripting`
     /// (init.scm + runtime scheme evals), `typed_reload_config`'s re-eval,
-    /// and `Editor::activate_and_register`'s runtime lazy-plugin activation
-    /// (`mappings/lazy.rs`). Unlike `full`, has no LSP/timer access:
+    /// and `Editor::activate_and_register`'s runtime lazy-plugin activation.
+    /// Unlike `full`, has no LSP/timer access:
     /// none of these three eval kinds reach an LSP or timer builtin
     /// (`require_cmd_ctx!` blocks command-mode builtins during init; lazy
     /// activation's body may itself later call a real command via `call!`,
@@ -110,10 +105,8 @@ impl<'a> EditorHostImpl<'a> {
     /// Convenience constructor for callers with no terminal/`OutputHost`
     /// needs, general-purpose in shape (a Rust-side helper reaching for an
     /// unrelated capability such as `DecorationHost` via `EditorHostImpl`
-    /// would use it too), though today every caller is the test suite,
-    /// driving a host through some other trait directly (bypassing the
-    /// declare/activate plugin ceremony `init`/`full` sit behind). `tui:
-    /// None` gives this host no inline-output authority, so it can be built
+    /// would use it too). `tui: None` gives this host no inline-output
+    /// authority, so it can be built
     /// at any point (including inside a live `Editor::run` loop) with no
     /// risk of it entering or mis-reading a bracket armed by whichever host
     /// actually owns the current dispatch.

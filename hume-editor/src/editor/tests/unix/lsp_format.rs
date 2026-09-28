@@ -52,8 +52,7 @@ fn setup_with_content(
 }
 
 /// Same as `setup_with_content`, with the handshake's `initialize` result
-/// also under caller control, for the `rangesSupport` tests, which need it
-/// to differ from the common case above.
+/// also under caller control.
 fn setup_with_caps(
     file: &Path,
     tmp: &Path,

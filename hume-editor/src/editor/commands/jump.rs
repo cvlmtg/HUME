@@ -98,7 +98,7 @@ pub(super) enum BufferStep {
 
 /// The one place an open-order buffer step is taken, shared by the mappable
 /// `goto-next-buffer`/`goto-prev-buffer` and their typed `:bnext`/`:bprev`
-/// spellings (`typed_buffer::typed_buffer_step`).
+/// spellings.
 ///
 /// Switches via `switch_pane_to_buffer` directly for the same reason as
 /// `cmd_goto_alternate_buffer` above: the mappable half carries `.jump()`, so

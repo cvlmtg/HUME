@@ -95,8 +95,7 @@ fn push_str<'a>(cow: &mut Cow<'a, str>, s: &'a str) {
 /// Push an operation onto `ops`, merging with the last element if they are
 /// the same variant. Zero-length ops are silently dropped.
 ///
-/// This is the single normalization point used by the builder, `invert`,
-/// and `compose`. Every path that constructs a `Vec<Operation>` goes
+/// This is the single normalization point. Every path that constructs a `Vec<Operation>` goes
 /// through here to guarantee the merged/no-zeros invariant.
 pub(super) fn push_merge(ops: &mut Vec<Operation>, op: Operation) {
     match op {
@@ -127,9 +126,6 @@ pub(super) fn push_merge(ops: &mut Vec<Operation>, op: Operation) {
 ///
 /// - `Retain(n)` and `Delete(n)` consume `n` chars from the old doc.
 /// - `Insert` consumes `n` chars from the intermediate doc (its char length).
-///
-/// This is used by `compose` to find the minimum consumption for lockstep
-/// advancement.
 fn op_consuming_len(op: &Operation) -> usize {
     match op {
         Operation::Retain(n) | Operation::Delete(n) => *n,
@@ -426,8 +422,7 @@ impl ChangeSet {
 
     /// Map a sorted slice of positions in place, through one [`PosMapCursor`]
     /// pass: O(ops + n) total instead of O(ops × n) for `n` fresh
-    /// `ChangeSet::map_pos` calls. Used by callers remapping stored
-    /// positions (diagnostics, bookmarks) through every edit.
+    /// `ChangeSet::map_pos` calls.
     ///
     /// # Panics
     /// Panics (debug) if `positions` is not sorted ascending, or any position
@@ -507,9 +502,8 @@ impl ChangeSet {
     /// preceding range when it sits exactly at that range's end (e.g. an
     /// Insert immediately following a Delete at the same position).
     ///
-    /// Used by `SelectionSet::translate_in_place`: one O(ops) walk here lets
-    /// the caller check every selection's line against these ranges with a
-    /// single forward-only cursor, instead of re-walking `self.ops` per
+    /// One O(ops) walk here lets the caller check every selection's line
+    /// against these ranges with a single forward-only cursor, instead of re-walking `self.ops` per
     /// selection. `pub` (not `pub(crate)`) so a caller translating many
     /// independent `SelectionSet`s through the same `ChangeSet` (HUME's
     /// per-pane jump lists) can compute this once and feed it to
@@ -526,11 +520,6 @@ impl ChangeSet {
     /// more than one (an `Insert` sitting between two other touching
     /// ops, which only `compose` of several changesets can produce) copies
     /// into an owned `String` to concatenate them in order.
-    ///
-    /// Used by `Editor::cursor_replacement_at` (`hume-editor/src/editor/
-    /// replay.rs`) and `hume-treesitter::input_edits_from_changeset`, both of
-    /// which need the replacement text a region's `Delete`/`Insert` pair
-    /// produced, not just its span.
     pub fn edited_regions(&self) -> Vec<EditedRegion<'_>> {
         let mut regions: Vec<EditedRegion<'_>> = Vec::new();
         let mut old = 0usize;

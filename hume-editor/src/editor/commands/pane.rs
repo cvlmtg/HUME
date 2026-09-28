@@ -88,7 +88,6 @@ pub(in crate::editor) fn open_pane_in_layout(
 /// split-beside-an-existing-pane one: a new tab isn't beside anything, and
 /// its graft touches `TabStore` (stash the outgoing tab, allocate the new
 /// one), not just `view.layout`, so it can't share that function's body.
-/// `commands::tab::open_tab` is the one caller.
 ///
 /// Before `take_live`: `open_pane` never reads `view.layout`, so the new
 /// pane exists before the live layout is displaced, and `take_live`'s own
@@ -116,9 +115,7 @@ pub(in crate::editor) fn open_pane_as_new_tab(
 /// `open_pane`'s seeding. Takes a `DetachedPane` rather than a bare
 /// `PaneId`: the token is proof the pane is already unreachable from every
 /// layout tree (see `DetachedPane`'s own doc), so this can never be called
-/// on a pane a tree still references. Shared by `close_focused_pane` and
-/// `commands::tab::close_tab` (once per token `LayoutTree::into_detached`
-/// yields for the closing tab's tree).
+/// on a pane a tree still references.
 pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pane: DetachedPane) {
     let pid = pane.pane_id();
     view.remove_pane(pane);

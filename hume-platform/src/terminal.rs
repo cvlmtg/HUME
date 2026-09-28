@@ -244,8 +244,7 @@ fn write_leave_alt_screen(out: &mut impl io::Write) -> io::Result<()> {
 /// Runs every step in `steps`, even if an earlier one fails. The goal is to
 /// leave the shell as usable as possible rather than abandon teardown at the
 /// first error. Returns the first error encountered; later ones are silently
-/// discarded. Shared by [`restore`] and [`write_unwind_escapes`], the two
-/// "attempt everything, report the first failure" sequences in this module.
+/// discarded.
 ///
 /// Each element of `steps` is a call expression (e.g. `write_sync_reset(out)`)
 /// already evaluated (and so already run for its side effect) by the time
@@ -457,10 +456,6 @@ pub fn end_synchronized_update(term: &SharedTerm) -> io::Result<()> {
 /// the current kitty and mouse state so [`leave_inline_output`] can re-apply it.
 /// Also disables focus tracking for the duration: a subprocess reading raw
 /// terminal input shouldn't see stray `CSI I`/`CSI O` bytes.
-///
-/// Called from `EditorHostImpl::ensure_inline_output_screen`, not eagerly at
-/// dispatch. The caller only reaches this on a command's first real output,
-/// so a command whose body produces none never leaves the alt-screen at all.
 pub fn enter_inline_output(
     term: &SharedTerm,
     kitty_enabled: bool,

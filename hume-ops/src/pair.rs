@@ -1,8 +1,4 @@
 //! Scanning primitives for paired delimiters (brackets and quotes).
-//!
-//! These functions are used by both [`super::text_object`] (to implement `mi(`,
-//! `a"`, etc.) and [`super::surround`] (to find the delimiter pair that wraps
-//! the cursor before replacing or deleting it).
 
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::lines::next_line_start;

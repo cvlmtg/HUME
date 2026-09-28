@@ -510,10 +510,9 @@ impl Editor {
     /// every frame than the other bridges' viewport-filtered passes. The
     /// stamp is per-buffer (not a single store-wide counter): an edit only
     /// bumps the buffer it edited, so typing in one buffer does not force
-    /// every pane on every *other* buffer to resync too. Called from
-    /// `prepare_frame`'s pre-scroll decoration sync. Unlike the rest of that sync, it has no
-    /// viewport dependency (so which [`Self::decorated_panes`] snapshot it
-    /// reads is immaterial) and takes only `pid`/`bid` from it. Two sources
+    /// every pane on every *other* buffer to resync too. No
+    /// viewport dependency: any [`Self::decorated_panes`] snapshot works, since only
+    /// `pid`/`bid` are read per pane. Two sources
     /// anchored to the same line stack rather than collapse (unlike the
     /// four line-anchored kinds `last_writer_per_line` folds):
     /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
@@ -661,8 +660,7 @@ fn last_writer_per_line<T>(
 /// A fresh `set-*!` call can never produce this; a `remap_points` result can,
 /// when an edit deletes everything after the entry's anchor up to
 /// end-of-buffer. The entry disappears rather than getting relocated onto
-/// whatever line precedes it (four callers: signs, EOL text, virtual lines,
-/// line backgrounds: all four line-anchored decoration kinds).
+/// whatever line precedes it.
 fn resolve_decoration_line(
     text: &hume_editing::text::BufferText,
     pos: CharOffset,
@@ -700,8 +698,7 @@ fn visible_line_anchored<'a, K, E: 'a>(
 }
 
 /// Push one `(line, byte_start, byte_end, scope)` quadruple per line `range`
-/// touches, all sharing `scope`. Search matches are the one caller, always
-/// one fixed scope per call. See [`line_segments`].
+/// touches, all sharing `scope`. See [`line_segments`].
 fn push_match_highlight_lines(
     text: &hume_editing::text::BufferText,
     range: ExclusiveRange<CharOffset>,

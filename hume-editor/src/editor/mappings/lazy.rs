@@ -5,8 +5,7 @@ impl Editor {
     // ── Command execution ─────────────────────────────────────────────────────
 
     /// Shared core: activate `plugin` inline, apply its queued side effects (or
-    /// report the error), leaving messages unflushed.  Called by both the
-    /// command-stub path and the event-/language-activation path.
+    /// report the error), leaving messages unflushed.
     ///
     /// Applying effects here, rather than leaving them for some later drain,
     /// is what lets a lazily-activated plugin's own `register-lsp-server!` (or

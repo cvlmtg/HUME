@@ -29,8 +29,7 @@ pub struct FileSignature {
 
 impl FileSignature {
     /// Extracts the mtime+size fingerprint from an already-fetched
-    /// `fs::Metadata`, shared by [`read_signature`] and [`read_file_meta`]
-    /// so the fingerprint rule stays defined in one place.
+    /// `fs::Metadata`.
     fn from_metadata(metadata: &fs::Metadata) -> Self {
         FileSignature {
             mtime: metadata.modified().ok(),

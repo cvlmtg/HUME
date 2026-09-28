@@ -338,8 +338,7 @@ impl<'a> DisplayLineMap<'a> {
     }
 
     /// The entry index and block slot `pos` addresses, in one walk, for a
-    /// caller (`render_display_line`) that needs both without resolving the line's
-    /// block twice.
+    /// caller that needs both without resolving the line's block twice.
     fn resolve(&mut self, pos: DisplayLinePos) -> (usize, BlockSlot) {
         let idx = self.block_entry(pos.line);
         let b = self.breakdown(idx);

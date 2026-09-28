@@ -66,9 +66,7 @@ impl EditSession {
         self.dot_capture.as_mut()
     }
 
-    /// Arms `cap`. Called by `Editor::run_dot_captured`, just before the
-    /// operation that might go interactive, and again to re-arm a capture
-    /// handed off from a resolved picker. Never nests: an Insert-key binding
+    /// Arms `cap`. Never nests: an Insert-key binding
     /// that itself calls `completion-accept!` shares the *outer* capture
     /// instead (see `EditorState::mark_dot_interactive`'s own doc), so a
     /// capture is always taken back out (by `Editor::run_dot_captured`
@@ -320,12 +318,7 @@ pub(in crate::editor) struct DotCapture {
     /// detects that case from the mismatch and drops the capture instead of
     /// composing it.
     pub(in crate::editor) text_gen: u64,
-    /// Set by `EditorState::mark_dot_interactive`: `completion-accept!`/
-    /// `completion-trigger` call it directly, `picker!`/`live-picker!`
-    /// indirectly via `picker::open_picker`, whichever fires first. A
-    /// capture that never sees this stay `false` belongs to an ordinary
-    /// (non-interactive) binding: its `edits` are discarded at finalize
-    /// time in favor of `fallback`.
+    /// Set by `EditorState::mark_dot_interactive`.
     pub(in crate::editor) interactive: bool,
     /// What to record if this capture turns out non-interactive: the
     /// `Binding` entry `handle_insert`'s Leaf branch would otherwise have
@@ -337,9 +330,8 @@ pub(in crate::editor) struct DotCapture {
 
 /// Accumulated state for an in-progress insert or paste session.
 pub(in crate::editor) struct EditGroup {
-    /// Buffer text snapshot taken at `begin_edit_group`. Used by
-    /// `commit_edit_group` to invert the composed CS and record a single
-    /// history revision.
+    /// Buffer text snapshot taken at `begin_edit_group`; inverted at commit
+    /// to record a single history revision.
     pub(in crate::editor) text_snapshot: BufferText,
     /// Selection state at group open, stored in the history revision so
     /// undo restores the cursor to its pre-insert position.

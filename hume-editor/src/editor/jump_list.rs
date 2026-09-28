@@ -38,9 +38,7 @@ pub(in crate::editor) struct JumpEntry {
 
 impl JumpEntry {
     /// `primary_line`'s one derivation: the primary selection's head, resolved
-    /// to a line via `text`. Shared by [`Self::new`] (constructing an entry) and
-    /// [`JumpList::translate_in_place`] (recomputing it after an edit moved the
-    /// head), so the two never drift apart.
+    /// to a line via `text`.
     fn primary_line_of(
         selections: &SelectionSet,
         text: &BufferText,

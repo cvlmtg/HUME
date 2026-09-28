@@ -67,10 +67,7 @@ impl MenuBoxStyles {
 pub(crate) const MAX_MENU_ROWS: u16 = 10;
 
 /// Widest of an arbitrary run of texts' display widths, or `0` for an empty
-/// run: the one measurement rule behind `resolve_popup`'s wrapped-content
-/// width and `resolve_menu`'s own main/trailing column folds, so a change to
-/// how width is measured (a leading icon's cells, a different wide-cluster
-/// clamp) can't update one caller and silently miss another.
+/// run.
 pub(crate) fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
     texts.map(text_width).max().unwrap_or(0) as u16
 }
@@ -131,8 +128,7 @@ pub(crate) fn band_visible_rows(content_rows: usize, chrome_rows: u16, max: u16)
 
 /// The `[start, end)` window of `max_height` entries out of `total`,
 /// starting as close to `desired_start` as the total allows, clamped so the
-/// window never runs past the end. Resolved on the write side (every
-/// `resolve_popup`/`resolve_band`/`resolve_menu` caller), not at paint time:
+/// window never runs past the end. Resolved on the write side, not at paint time:
 /// a menu passes `selected.saturating_sub(max_height / 2)` to keep the
 /// selected row anchored near the window's center; a plain popup passes its
 /// own `scroll` directly, so the window start is exactly the scroll
@@ -150,10 +146,7 @@ pub(crate) fn window_range(
 }
 
 /// Clamps `scroll` so `selected` stays inside a `visible_rows`-tall window,
-/// scrolling by the minimum needed in either direction. Shared by
-/// `PickerSession::move_selection` and `Editor::clamp_drawer_scroll`, whose
-/// scroll models otherwise differ (edge-anchored vs centered) but converge on
-/// this one "keep the selection on screen" formula. A no-op (returns `scroll`
+/// scrolling by the minimum needed in either direction. A no-op (returns `scroll`
 /// unchanged) when `visible_rows` is `0`: nothing fits, so there's no window
 /// to clamp into.
 ///
@@ -177,10 +170,9 @@ pub fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_rows: usiz
 
 /// Whether `outer` fits entirely inside `pane_rect`. Shared by every overlay
 /// that positions itself against a pane rect resolved earlier in the frame
-/// (`PopupOverlay`, `PickerOverlay`) as a defensive backstop: the write side
-/// already computed `outer` against this same rect this same frame, so this
-/// should never return `false`, but painting outside the pane is worse than
-/// a dropped frame of content.
+/// as a defensive backstop: the write side already computed `outer` against
+/// this same rect this same frame, so this should never return `false`, but
+/// painting outside the pane is worse than a dropped frame of content.
 pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
     outer.left() >= pane_rect.left()
         && outer.top() >= pane_rect.top()
@@ -189,9 +181,6 @@ pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
 }
 
 /// Overdraws `outer`'s 1-cell frame with box-drawing glyphs (`┌─┐└┘│`).
-/// Shared by every bordered box overlay ([`draw_menu_box`] and
-/// `super::picker_panel::draw_picker_panel`), so the frame glyphs stay
-/// identical without a copy per caller.
 pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
     let inner = outer.inset(1, 1);
     // The right/bottom border's own column/row: `outer.right()`/`.bottom()`
@@ -256,10 +245,9 @@ fn scrollbar_thumb(view: usize, total: usize, scroll: usize) -> Option<(usize, u
 
 /// Paint a menu/popup box into `outer` (the full footprint, including the
 /// 1-cell frame). `rows` arrives *already windowed* to what's visible: the
-/// write side (`resolve_popup`/`resolve_band`/`resolve_menu`) resolves the
-/// window, this only paints it; `total_rows` and `scroll` (the window's own
-/// start within the full, unwindowed list) exist here solely to size and
-/// place the scrollbar thumb.
+/// write side resolves the window, this only paints it; `total_rows` and
+/// `scroll` (the window's own start within the full, unwindowed list) exist
+/// here solely to size and place the scrollbar thumb.
 ///
 /// `selected`: the highlighted row, already window-relative (an index into
 /// `rows`, not into the full list), or `None` for a plain popup, which never
@@ -359,10 +347,7 @@ pub(crate) fn draw_menu_box(
 
 /// Paint one row of a scrolling list: a full-width highlight-bar fill plus
 /// its text in `selected_style` when `is_selected`, or just the text in
-/// `base_style` otherwise. Shared by every list-style overlay
-/// ([`draw_menu_box`], `super::picker_panel::draw_picker_panel`,
-/// `super::drawer::DrawerWidget::render`) so the fill-then-write shape can't
-/// drift between them. Each caller still owns its own row-index bookkeeping
+/// `base_style` otherwise. Each caller still owns its own row-index bookkeeping
 /// and text truncation, which differ in kind, not just in value, between them.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_list_row(

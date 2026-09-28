@@ -21,9 +21,7 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
-/// `((start_line, start_char), (end_line, end_char), severity)`, the same shape
-/// as `lsp_diagnostics.rs`'s fixture (kept independent per this codebase's
-/// one-file-owns-its-fixtures convention).
+/// `((start_line, start_char), (end_line, end_char), severity)`.
 type DiagFixture = ((u32, u32), (u32, u32), i64);
 
 fn publish_diagnostics_notification(
@@ -47,8 +45,7 @@ fn publish_diagnostics_notification(
 }
 
 /// Keeps the temp file alive for the test's duration (dropped at the end of
-/// the owning test function, same lifetime shape as `lsp_diagnostics.rs`'s
-/// inline `tempfile::tempdir()` locals).
+/// the owning test function).
 struct DiagCtx {
     _file_dir: tempfile::TempDir,
     ed: Editor,

@@ -59,9 +59,8 @@ fn render_indent(width: usize, style: TabStyle, tab_width: u8) -> String {
     }
 }
 
-/// Shared implementation for [`indent_lines`]/[`unindent_lines`]: one signed
-/// display-column delta (positive indents, negative unindents), since the two
-/// are otherwise identical. Callers pass columns (via
+/// One signed display-column delta (positive indents, negative unindents),
+/// since the two are otherwise identical. Callers pass columns (via
 /// [`indent_stop`]) rather than levels, so this function never re-derives
 /// "how many columns is a level" itself.
 ///

@@ -27,8 +27,7 @@ fn sign(pos: usize, text: &str) -> SignEntry {
     }
 }
 
-/// Same as `sign`, for `EolTextEntry`, used by the two ordering/isolation
-/// tests below. `DecorationStores` has no `signs_for_buffer` accessor
+/// Same as `sign`, for `EolTextEntry`. `DecorationStores` has no `signs_for_buffer` accessor
 /// (`SourceStore::for_buffer`'s ordering guarantee only needs one production
 /// `*_for_buffer` reader to exercise it), so those two tests go through
 /// `eol_text_for_buffer` instead.
@@ -294,7 +293,7 @@ fn remove_buffer_bumps_generation() {
 }
 
 /// `remap_through` must only touch a buffer's stamp when a kind actually had
-/// an entry to remap. `record_lsp_edits` (`doc_ops.rs`) queues edits for any
+/// an entry to remap. `record_lsp_edits` queues edits for any
 /// LSP-attached buffer, since it gates on `lsp_server.is_some() ||
 /// has_any(bid)`, so a buffer with zero decorations still reaches
 /// `remap_through`. Bumping its stamp would resync every pane on that buffer

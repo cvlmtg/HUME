@@ -360,13 +360,11 @@ pub(in crate::editor) const LANGUAGE_KEY: &str = "language";
 
 /// The `:set`/completion key for the active theme, declared as a
 /// `define_settings!` entry (below), but also matched directly at a few
-/// non-macro call sites (`typed_theme`, completion, `resync_derived_state`'s
-/// theme-reload branch), so this constant keeps those literals from drifting
+/// non-macro call sites, so this constant keeps those literals from drifting
 /// off the macro's own key string.
 pub(in crate::editor) const THEME_KEY: &str = "theme";
 
-/// Same rationale as [`THEME_KEY`], for `wrap-mode`'s non-macro call sites
-/// (completion, `typed_set`'s pane-scope handler).
+/// Same rationale as [`THEME_KEY`], for `wrap-mode`'s non-macro call sites.
 pub(in crate::editor) const WRAP_MODE_KEY: &str = "wrap-mode";
 
 /// One global setting key declared `resync: true` in `define_settings!`.
@@ -733,9 +731,7 @@ macro_rules! define_settings {
         /// `global`/`buffer`/`subfield` macro entries and the `manual_keys`
         /// entries (`statusline`). Notably **excludes** `"language"`, which
         /// has no macro entry and is surfaced only when the completer knows
-        /// the scope is `"buffer"` (its sole valid scope). Used by
-        /// `completion::complete_set` to enumerate key candidates, filtered
-        /// further by [`setting_scopes`] against the chosen scope.
+        /// the scope is `"buffer"` (its sole valid scope).
         pub(in crate::editor) fn all_setting_keys() -> &'static [&'static str] {
             &[$($gkey,)* $($bkey,)* $($skey,)* $($mkey,)*]
         }
@@ -1000,9 +996,7 @@ fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
 }
 
 /// Render a `StatusLineConfig` back to the `"left|center|right"` wire format
-/// [`parse_statusline`] accepts: the inverse, used by `(get-option
-/// "statusline")` and by `configure-statusline!`'s re-serialization before
-/// handing the value to the `write_global` chokepoint.
+/// [`parse_statusline`] accepts: the inverse.
 pub(crate) fn format_statusline(cfg: &StatusLineConfig) -> String {
     let join = |elems: &[StatusElement]| {
         elems
@@ -1040,8 +1034,7 @@ fn parse_show_newline(s: &str) -> Result<bool, String> {
 }
 
 /// Render a `whitespace-newline` value back to the wire format
-/// [`parse_show_newline`] accepts: the inverse, used by
-/// `(get-buffer-option bid "whitespace-newline")`.
+/// [`parse_show_newline`] accepts: the inverse.
 fn format_show_newline(value: bool) -> &'static str {
     if value { "all" } else { "none" }
 }

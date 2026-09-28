@@ -506,8 +506,7 @@ impl InputStack {
     /// not fired), and resets `Base` itself to a fresh, all-default
     /// [`BaseLayer`]: a reload must not leave Extend on, or a
     /// signature-help popup visible, for hooks that never saw either turned
-    /// on. Returns nothing: its one caller (`reload.rs`) never reads what
-    /// was removed.
+    /// on.
     pub(in crate::editor) fn truncate_to_base(&mut self) {
         self.layers.truncate(1);
         self.layers[0].1 = Box::new(BaseLayer {
@@ -791,14 +790,7 @@ impl EditorState {
     /// Removes exactly `r` via [`InputStack::excise`], running its own
     /// `tear_down` but leaving everything stacked above it untouched.
     /// [`Self::retire`] calls this itself for a [`RemovalScope::SelfOnly`]
-    /// layer; its other two callers name a specific `LayerRef` they already
-    /// hold rather than going through `retire`'s own `ref_of::<L>()` lookup:
-    /// a stale `Confirm` retirement ([`Self::retire_stale_confirm`]), where
-    /// an unrelated session landing above it since has nothing to do with
-    /// the question the confirm was answering (`ConfirmLayer::tear_down` is
-    /// empty, so this can never double-fire a callback there); and
-    /// `close_drawer`, which already has the token-matched ref
-    /// `drawer_ref_with_token` gave it. A no-op when `r` is already stale.
+    /// layer. A no-op when `r` is already stale.
     pub(in crate::editor) fn excise_layer(&mut self, view: &EngineView, r: LayerRef) {
         if let Some(mut layer) = self.input.excise(r) {
             layer.tear_down(self, view, Removal::Explicit);
@@ -808,9 +800,7 @@ impl EditorState {
     /// Retires the topmost layer of type `L`, if one is open: the
     /// `ref_of::<L>()` lookup shared by every `close-*!` builtin and internal
     /// dismissal that names its target by type rather than a `LayerRef` it
-    /// already holds (`close_menu`, `dismiss_completion`; `close_drawer`
-    /// excises directly instead, since it holds a token-matched `LayerRef`
-    /// already; see its own doc). `show_menu`/`show_drawer_list`'s
+    /// already holds. `show_menu`/`show_drawer_list`'s
     /// self-replace paths take by value instead, via
     /// [`Self::take_firing_false`], since they must fire the outgoing
     /// callback themselves. What happens to anything stacked above `L` is

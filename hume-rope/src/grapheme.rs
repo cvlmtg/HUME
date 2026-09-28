@@ -296,8 +296,7 @@ fn cluster_str(slice: RopeSlice<'_>, start: CharOffset, end: CharOffset) -> Cow<
 /// renderer uses, so this and `hume_engine::format::grapheme_display` always
 /// agree on where a given position lands on screen.
 ///
-/// Used by `insert_tab` (Soft style: insert spaces to the next tab stop) and
-/// dedent-on-Backspace (compute the previous tab stop). Vertical motion uses
+/// Vertical motion uses
 /// `hume_engine::display_lines::DisplayLineMap` instead, which measures through the
 /// decoration layer this rope-only function can't see.
 pub fn display_col_in_line(

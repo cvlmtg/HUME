@@ -248,7 +248,7 @@ fn define_typed_command_name_with_backslash_errors() {
 
 /// When the host rejects the registration, `typed_command_table` and
 /// `cmd_owners` must stay clean: the host call runs *before* the table
-/// inserts. Mirrors `define_command_host_rejection_leaves_tables_clean`.
+/// inserts.
 #[test]
 fn define_typed_command_host_rejection_leaves_tables_clean() {
     fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
@@ -401,9 +401,7 @@ fn define_command_dup_names_error_names_existing_owner() {
 /// guard checks `typed_command_table` too, so a second
 /// `define-typed-command!` for the same name names the owner here. The
 /// editor-side host's generic "conflicts with existing command" error
-/// would not. Mirrors
-/// `define_command_dup_names_error_names_existing_owner`, seeding
-/// `typed_command_table` instead of `command_table`.
+/// would not. Seeds `typed_command_table` instead of `command_table`.
 #[test]
 fn define_typed_command_dup_names_error_names_existing_owner() {
     fn dummy_proc(_args: &[SteelVal]) -> SteelResult {

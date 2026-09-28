@@ -100,9 +100,7 @@ pub(in crate::editor) fn token_end_at(input: &str, cursor: usize, stops: &[char]
 /// doesn't swallow a following `=value`; a `:set` value stops backward at
 /// `'='` and forward at `[' ']` only, since the value itself may contain
 /// `=`), and every one of them backs up to exactly one separator, never a
-/// choice of several. Shared by [`super::orchestrate`]'s whitespace-
-/// delimited `'arg` span (`back_stop`/`fwd_stops` both `' '`) and `set.rs`'s
-/// three phases.
+/// choice of several.
 pub(in crate::editor) fn arg_span(
     input: &str,
     cursor: usize,
@@ -118,13 +116,10 @@ pub(in crate::editor) fn arg_span(
 
 /// Every installed theme's name (file stem), directory-scanned across
 /// `theme_search_paths()` once each; a stem in an earlier search path
-/// shadows a same-named one in a later path. Shared by `:theme`
-/// ([`simple::complete_theme`], a `String`-kind source's full universe,
-/// no prefix filtering here, since that source's own token-vs-item scoring
-/// happens later, at rank time) and `:set global theme=`'s value phase
-/// ([`set::complete_set_value`], `Delegated`, filtered by the typed prefix
-/// through [`set::prefix_completions`]): the one place both need to agree
-/// on which theme names exist and which one wins under a shared stem.
+/// shadows a same-named one in a later path. No prefix filtering here
+/// (callers score/filter later): the one place every caller needs to
+/// agree on which theme names exist and which one wins under a shared
+/// stem.
 fn theme_name_candidates() -> Vec<String> {
     let mut seen: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
     let mut stems = Vec::new();

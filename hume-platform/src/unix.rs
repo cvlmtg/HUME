@@ -276,13 +276,9 @@ enum Watched {
 
 /// Blocks on the registered-signal pipe `sig_fd` until a signal fires or
 /// `deadline` elapses. Never touches the process. Kept separate from
-/// [`spawn_terminator`] so it can be driven directly in tests. Two callers,
-/// each passing a different `deadline`: `spawn_terminator`'s own thread body
-/// calls it with `None` for the very first, unbounded wait before any
-/// trigger has fired (never returns [`Watched::Ended`], since an unbounded
-/// wait has no deadline to end on); [`grace_window_exit_code`] calls it with
-/// `Some` for the bounded wait afterward, racing a second signal against the
-/// grace window running out.
+/// [`spawn_terminator`] so it can be driven directly in tests. With
+/// `deadline: None` this never returns [`Watched::Ended`], since an
+/// unbounded wait has no deadline to end on.
 ///
 /// `deadline: None` blocks indefinitely. A permanently closed `sig_fd` is a
 /// hard failure only when `deadline` is `None` (matched by this module's own

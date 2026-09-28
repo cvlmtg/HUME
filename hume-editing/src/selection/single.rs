@@ -102,11 +102,8 @@ impl Selection {
 
     /// A directional selection with a preserved sticky display column.
     ///
-    /// Used by `editor::visual_move`'s vertical motion (display-line-domain
-    /// `j`/`k`/scroll/wheel, and buffer-line `9j`/`9k`; all three units
-    /// share one path there) to carry the column across consecutive vertical moves,
-    /// and by word-snap (`text_object::apply_nearest_word_result`) to pass
-    /// an existing latch through unchanged. All other code uses
+    /// Carries the column across consecutive vertical moves, or passes an
+    /// existing latch through unchanged. All other code uses
     /// [`Self::new`] or [`Self::collapsed`], which reset
     /// `sticky_display_col` to `None`.
     pub fn with_sticky_display_col(
@@ -145,10 +142,8 @@ impl Selection {
     /// `max` of both ends), built with [`Self::directed`] so the caller
     /// controls which end becomes the anchor.
     ///
-    /// Shared by every "extend to cover a newly found match" path:
-    /// `hume-ops`'s `text_object::apply_text_object_extend`,
-    /// `text_object::word::apply_nearest_word_result`, and
-    /// `motion::apply_object_motion`'s Extend arm. A found range only
+    /// Shared by every "extend to cover a newly found match" path.
+    /// A found range only
     /// guarantees it starts past (or ends before) the search origin, not
     /// that it extends past the selection's own far edge. A plain
     /// replacement would shrink the selection when the found range nests

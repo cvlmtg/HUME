@@ -14,10 +14,8 @@ use super::registry::LanguageName;
 use crate::editor::Editor;
 use crate::editor::EditorState;
 
-/// Resolves `bid`'s own attached server to a running `ServerId`. Shared by
-/// `lsp-request`/`lsp-notify` (`bridge.rs`'s `send_one_lsp_request`/
-/// `send_one_lsp_notify`) and `lsp-capabilities`, never a fallback to
-/// whichever buffer happens to be focused when this runs, so a caller
+/// Resolves `bid`'s own attached server to a running `ServerId`. Never a
+/// fallback to whichever buffer happens to be focused when this runs, so a caller
 /// resolving a follow-up request from inside a response callback gets the
 /// buffer the original request was about, not one a user's intervening
 /// keystrokes moved focus to.
@@ -57,8 +55,7 @@ pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<Lan
 }
 
 /// Whether `server` advertises `completionProvider.resolveProvider`, the
-/// gate `BufferSession::accept`'s resolve round trip reads
-/// (`editor/completion/session/accept.rs`). A narrow reader rather than
+/// gate `BufferSession::accept`'s resolve round trip reads. A narrow reader rather than
 /// widening `LspState.servers`/`ServerEntry.client` themselves: the
 /// completion store lives outside this module now, and one bool is all it
 /// needs.
@@ -571,14 +568,10 @@ pub(in crate::editor) fn linewise_ranges_params(
 }
 
 /// `pane`'s visible line range, end-exclusive, clamped to a buffer of
-/// `content_lines`: the single computation shared by `queue_viewport_change`
-/// (pane -> its own range, for the `on-viewport-change` hook payload) and
-/// [`viewport_range`] (buffer -> the pane showing it, for the synchronous
-/// `(viewport-range bid)` builtin, which wraps this range in a dotted-pair
-/// wire value). Clamped to `content_lines` so the range never points past the
-/// buffer's last *content* line (not ropey's phantom line past the
-/// structural trailing `\n`), even when the pane's viewport height exceeds
-/// the buffer.
+/// `content_lines`, so the hook payload and `(viewport-range bid)` agree.
+/// Never points past the buffer's last *content* line (not ropey's phantom
+/// line past the structural trailing `\n`), even when the pane's viewport
+/// height exceeds the buffer.
 ///
 /// `height.max(1)` (not `height` directly): a `height == 0` pane (no visible
 /// rows, e.g. one not yet laid out) still reports a one-line range rather

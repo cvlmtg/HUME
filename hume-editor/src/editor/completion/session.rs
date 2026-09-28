@@ -50,16 +50,14 @@ pub(in crate::editor) enum MatchKind {
 /// replacement span always includes both its own endpoints, since the
 /// cursor is allowed to sit exactly at either, unlike
 /// `hume_rope::offset::ExclusiveRange`'s half-open one, which doesn't apply
-/// here). Shared by every span-containment check in this module tree and by
-/// `accept.rs`.
+/// here).
 fn contains_cursor<T: PartialOrd>(range: &Range<T>, pos: T) -> bool {
     range.start <= pos && pos <= range.end
 }
 
-/// Boundary-safe prefix check shared by every `MatchKind::String` source:
-/// `str::get` returns `None` (never a panic) when `prefix.len()` lands off a
-/// char boundary or past `haystack`'s end, matching `complete_command`'s own
-/// original safety for non-ASCII names.
+/// Boundary-safe prefix check: `str::get` returns `None` (never a panic)
+/// when `prefix.len()` lands off a char boundary or past `haystack`'s end,
+/// matching `complete_command`'s own original safety for non-ASCII names.
 fn prefix_matches(haystack: &str, prefix: &str, case_sensitive: bool) -> bool {
     if case_sensitive {
         haystack.starts_with(prefix)

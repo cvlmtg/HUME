@@ -94,9 +94,7 @@ impl Editor {
     }
 
     /// `{name} [new file]`, the message reported when a newly opened `buf`
-    /// has nothing on disk yet. `None` for a genuinely read file. Shared by
-    /// `open_extra_file` and `:e`'s own `typed_buffer::typed_edit`, which
-    /// falls back to `Opened {name}` when this is `None`.
+    /// has nothing on disk yet. `None` for a genuinely read file.
     pub(in crate::editor) fn new_file_open_msg(buf: &Buffer) -> Option<String> {
         buf.is_new_file()
             .then(|| format!("{} [new file]", buf.display_name()))
@@ -213,8 +211,6 @@ impl Editor {
     /// `ChangeSet`, same as any edit), per-buffer search state (match cache
     /// rebuilds lazily). Dropped as stale: in-progress edit groups/paste
     /// sessions, the engine-side syntax tree, and saved scrolls.
-    ///
-    /// Used by the no-arg `:e`/`:e!` reload branch.
     pub(in crate::editor) fn reload_buffer_in_place(
         &mut self,
         fp: FocusedPane,

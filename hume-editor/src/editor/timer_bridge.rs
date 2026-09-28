@@ -77,9 +77,7 @@ impl Editor {
     /// (Re)schedules `pane_id`'s viewport-change debounce, cancelling
     /// whichever timer from a previous call is still pending, so a scroll
     /// burst collapses to one fire, `lsp.viewport-debounce-ms` after the
-    /// burst settles. Called from `prepare_frame`'s scroll step whenever a
-    /// pane's visible range actually changed since the last frame,
-    /// never from the render math itself, just this cheap follow-up.
+    /// burst settles.
     ///
     /// This coalescer is Rust, not the Scheme `debounce` builtin: that one
     /// wraps a user-supplied proc, but this guards a *built-in* fire site

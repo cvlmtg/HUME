@@ -133,8 +133,7 @@ impl Editor {
     }
 }
 
-/// Named sugar over the generic lookup: the ~350 existing call sites
-/// (`ed.state.input.picker()`) stay as they are, and `stack.rs` stays agnostic.
+/// Named sugar over the generic lookup; `stack.rs` stays agnostic.
 impl super::stack::InputStack {
     pub(in crate::editor) fn picker(&self) -> Option<&PickerSession> {
         self.find::<PickerLayer>().map(|l| &l.0)
@@ -163,9 +162,7 @@ pub(in crate::editor) fn session_for_token(
         .filter(|session| session.token() == token)
 }
 
-/// Single open chokepoint for the picker: `hume-scripting`'s `picker!`/
-/// `live-picker!` builtins (`ui::open_picker`/`open_live_picker`) call this
-/// via `EditorHostImpl`. Entry policy (dismiss-completion, replace-a-live-
+/// Single open chokepoint for the picker. Entry policy (dismiss-completion, replace-a-live-
 /// picker, clear-popups) lives on [`PickerLayer::setup`], run by
 /// [`EditorState::push_layer`]. This function is the named door to it, plus
 /// the one place a dot-capture armed on the focused pane's Insert session
@@ -207,9 +204,7 @@ pub(in crate::editor) fn open_picker(
 
 /// Single close chokepoint for the picker: ends the session (if one is
 /// open) and fires exactly one callback with `payload`: `on_select` unless
-/// `callback` overrides it. Shared by `Esc`, `Enter` (with the selected
-/// payload), a bound `#:actions` key, `picker-close!`, and `open_picker`'s
-/// replace-on-open path. One chokepoint, not one copy per caller. Takes
+/// `callback` overrides it. Takes
 /// the layer *by value* via `EditorState::take_layer` (tearing down
 /// whatever was pushed above it, but not the picker itself) rather than
 /// `truncate_layers`, since `PickerLayer::tear_down` would otherwise fire

@@ -371,8 +371,7 @@ impl JsonHandle {
     }
 
     /// Walks `path` from this handle's own position, `None` if any step
-    /// doesn't resolve. `json-ref-or`'s host builtin: the one caller that
-    /// wants a container result wrapped in a handle (unlike
+    /// doesn't resolve. Wraps a container result in a handle (unlike
     /// [`JsonHandle::contains`], which only needs a yes/no and so calls
     /// [`walk`] directly rather than paying for a child handle nobody wants).
     pub(crate) fn lookup(&self, path: &[Seg]) -> Option<SteelVal> {

@@ -1,6 +1,5 @@
 //! Light box-drawing glyphs, shared by every crate that draws a border or a
-//! divider: `hume-engine`'s pane-seam dividers and `hume-editor`'s popup/menu
-//! boxes. One set of named escapes rather than one per drawing site, so a
+//! divider. One set of named escapes rather than one per drawing site, so a
 //! grep for a glyph finds every use, and so a terminal or editor that renders
 //! one of them ambiguously can't have some call sites silently drawing a
 //! different (but visually similar) character than the rest.

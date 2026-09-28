@@ -25,8 +25,7 @@ const BUFFER_WORDS_PLUGIN: &str = include_str!(concat!(
 /// into `guard`'s isolated runtime and loads them. No buffer is open yet:
 /// every test opens its own fixture afterward, via [`open`], so
 /// `on-buffer-open` fires with the plugin's hook already registered
-/// (`Editor::open`'s own startup buffer opens *before* any plugin loads,
-/// same as `git_diff_plugin.rs`'s `setup`/`open` split).
+/// (`Editor::open`'s own startup buffer opens *before* any plugin loads).
 fn setup(guard: &HumeRuntimeGuard, tmp: &Path, config_expr: Option<&str>) -> Editor {
     write_core_plugin(guard, "buffer-words", BUFFER_WORDS_PLUGIN);
     write_core_plugin(guard, "stdlib", STDLIB_PLUGIN);
@@ -42,8 +41,7 @@ fn setup(guard: &HumeRuntimeGuard, tmp: &Path, config_expr: Option<&str>) -> Edi
     ed
 }
 
-/// Opens `path` as a real, file-backed buffer (mirrors `git_diff_plugin.rs`'s
-/// `open`) and returns its id.
+/// Opens `path` as a real, file-backed buffer and returns its id.
 fn open(ed: &mut Editor, path: &Path) -> BufferId {
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
     ed.focused_buffer_id()

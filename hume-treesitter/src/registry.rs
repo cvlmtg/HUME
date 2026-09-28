@@ -309,8 +309,7 @@ impl LanguageRegistry {
     /// extension (e.g. `.h` claimed by both `c` and `cpp`) may have been
     /// reassigned to a different language since `identity` was registered, and
     /// deindexing unconditionally would evict that newer owner's mapping.
-    /// Shared by `register_identity_no_rebuild`'s replace-existing branch and
-    /// `remove`. Note: this does not resurrect an older claimant if `id` was
+    /// Note: this does not resurrect an older claimant if `id` was
     /// indeed still the owner; the extension simply becomes unclaimed, which
     /// matches the last-registered-wins model elsewhere in this registry.
     fn deindex(&mut self, id: LanguageId, identity: &LanguageIdentity) {
@@ -350,7 +349,7 @@ impl LanguageRegistry {
     }
 
     /// Iterator over registered language names (those with an identity), in
-    /// arbitrary order. Used by `:set buffer language=` completion.
+    /// arbitrary order.
     pub fn iter_names(&self) -> impl Iterator<Item = &str> {
         self.identities
             .iter()

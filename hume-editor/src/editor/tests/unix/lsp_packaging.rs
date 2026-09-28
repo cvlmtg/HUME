@@ -38,7 +38,7 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
                "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics"))"#;
 
-/// Mirrors `lsp_hover.rs`'s `setup`, but declares `core:lsp` lazily
+/// Declares `core:lsp` lazily
 /// (`declare_src`, normally `DECLARE_LSP`) instead of `(load-plugin
 /// "core:lsp")`: `declare-plugin` registers the `Lazy` stub directly via
 /// `CommandHost::register_lazy_command` as `eval_with_real_host` runs, so a

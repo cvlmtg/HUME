@@ -229,8 +229,7 @@ use hume_scripting::ScriptingHost;
 
 /// `<file_dir>/main.rs` holding `"foo\n"`: char 3 is the trailing newline,
 /// so a collapsed selection there puts Insert mode's cursor right after
-/// "foo", ready to type a trigger char. Shared by the two trigger-char
-/// features (completion, signature help).
+/// "foo", ready to type a trigger char.
 fn write_foo_fixture(file_dir: &Path) -> PathBuf {
     let file = file_dir.join("main.rs");
     std::fs::write(&file, "foo\n").unwrap();
@@ -303,9 +302,7 @@ fn setup_trigger_char_feature(
     (ed, guard, requests)
 }
 
-/// How many requests logged in `requests` were sent for `method`, shared by
-/// `lsp_sighelp.rs`, `lsp_inlay_feature.rs`, and `lsp_completion_feature.rs`,
-/// every trigger-char feature's own re-request/debounce assertions.
+/// How many requests logged in `requests` were sent for `method`.
 fn request_count(requests: &RequestLog, method: &str) -> usize {
     requests
         .borrow()
@@ -347,9 +344,7 @@ fn publish_diagnostics_notification(uri: &str, diags: &[DiagFixture]) -> hume_ls
 /// that needs one doesn't also have to hold a borrow of the whole struct.
 struct DiagSetup {
     ed: Editor,
-    /// The on-disk path `ed` opened. Only
-    /// `lsp_diagnostic_signs.rs`'s reload test writes new content to this
-    /// and `:e!`s it; every other caller lets it go unread after setup.
+    /// The on-disk path `ed` opened.
     file: std::path::PathBuf,
     /// The Steel init-eval directory; some tests `run` a second plugin
     /// sign source after setup and need this again.
@@ -488,9 +483,7 @@ impl Drop for StagedGrammarFixture {
     }
 }
 
-/// Runs `git <args>` in `dir`, asserting success, shared by every test
-/// fixture that needs a real git repository (`core:pickers`'s git-branch
-/// picker, `core:git-diff`'s ref fetch).
+/// Runs `git <args>` in `dir`, asserting success.
 fn git(dir: &Path, args: &[&str]) {
     let status = std::process::Command::new("git")
         .args(args)

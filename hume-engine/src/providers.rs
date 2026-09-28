@@ -105,10 +105,7 @@ pub struct GutterCell {
 /// Default/blank gutter scope name: the fallback every built-in gutter
 /// column (line numbers, unfilled sign slots) renders under when it has
 /// nothing more specific to say. `pub`, not `pub(crate)`: one source so the
-/// literal can't drift between `builtins::line_number`, `builtins::sign_column`,
-/// `EngineView`'s own interned fallback for `compose_gutter`, and
-/// `hume-editor`'s `build_pane`, which interns this same constant to hand
-/// `LineNumberColumn`/`SignColumn` their scopes at construction. Every
+/// literal can't drift across crates. Every
 /// caller interns this once (at pane/view construction) and carries the
 /// resulting `ScopeId`, the same intern-at-construction contract as
 /// `DecorationSource`, so the per-cell hot path in `compose_gutter` never
@@ -285,7 +282,7 @@ impl DecorationKinds {
 /// A source of per-line decorations (highlight spans, virtual lines, inline
 /// inserts, line backgrounds). Called once per queried buffer line; the
 /// caller clears `out` before the first provider for each line (or per
-/// provider, when order matters; see call sites), providers only append.
+/// provider, when order matters), providers only append.
 ///
 /// Implementations must be cheap per-line lookups into their own state:
 /// `display_lines::DisplayLineMap` queries a single line whenever it needs that line's block
@@ -432,8 +429,8 @@ impl ProviderSet {
 
     /// Push the resolved line-number style into the `LineNumberColumn`, if present.
     ///
-    /// Called from `prepare_frame` each frame so `:set line-number-style` takes
-    /// effect without rebuilding the provider set.
+    /// Per-frame push, so `:set line-number-style` takes effect without
+    /// rebuilding the provider set.
     pub fn sync_line_number_style(&mut self, style: LineNumberStyle) {
         for (_, lane) in &mut self.gutter_columns {
             if let Some(ln) = lane.as_any_mut().downcast_mut::<LineNumberColumn>() {
@@ -443,9 +440,9 @@ impl ProviderSet {
     }
 
     /// Push a new configured width into every registered `SignColumn`, if
-    /// any. Called from `prepare_frame` each frame so the gutter can collapse
-    /// to `0` when no sign exists for the pane's current buffer and grow back
-    /// when one appears. Same downcast pattern as `sync_line_number_style`.
+    /// any. Per-frame push, so the gutter can collapse to `0` when no sign
+    /// exists for the pane's current buffer and grow back when one appears.
+    /// Same downcast pattern as `sync_line_number_style`.
     pub fn sync_sign_column_width(&mut self, width: u8) {
         for (_, lane) in &mut self.gutter_columns {
             if let Some(sc) = lane.as_any_mut().downcast_mut::<SignColumn>() {

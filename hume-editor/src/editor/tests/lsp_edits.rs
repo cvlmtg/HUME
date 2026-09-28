@@ -14,8 +14,7 @@ use hume_lsp::inline::InlineLspBackend;
 
 /// Attaches the focused buffer to a `Running` scripted server negotiated on
 /// UTF-8, after handing `configure` the backend to script canned responses
-/// on (called before the handshake, matching `lsp_bridge.rs`'s `setup_with`
-/// convention). Negotiating the non-default encoding here does not by
+/// on (called before the handshake). Negotiating the non-default encoding here does not by
 /// itself prove `apply-text-edits!` consults it rather than assuming
 /// UTF-16. A wire offset only diverges between the two encodings on a line
 /// with a multi-byte character, so most fixtures below (all ASCII) would

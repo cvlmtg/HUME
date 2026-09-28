@@ -132,12 +132,11 @@ impl EditorState {
         self.push_layer(view, BufferCompletionLayer { session });
     }
 
-    /// Records an Insert-mode edit that landed on `bid`. Called from the
-    /// one chokepoint every keystroke edit goes through
-    /// (`Editor::apply_insert_edit`). Re-ranks against the tokens' new
-    /// text, dismisses a session the cursor has typed out of, and calls
-    /// again every source that flagged its last answer `isIncomplete` (or
-    /// is still pending against the document before this edit).
+    /// Records an Insert-mode edit that landed on `bid`. Re-ranks against
+    /// the tokens' new text, dismisses a session the cursor has typed out
+    /// of, and calls again every source that flagged its last answer
+    /// `isIncomplete` (or is still pending against the document before this
+    /// edit).
     pub(in crate::editor) fn completion_observe_edit(
         &mut self,
         view: &EngineView,
@@ -351,8 +350,7 @@ impl EditorState {
         landed
     }
 
-    /// Recovery for a Steel call batch that failed (see
-    /// `Editor::run_call_batch`'s own call site): drops every completion
+    /// Recovery for a Steel call batch that failed: drops every completion
     /// invocation still `Pending`, since nothing will ever call
     /// `completion-emit!` for it now; see `SlotSet::drop_stalled`'s own
     /// doc for why this is always safe. A no-op with no completion session
@@ -413,9 +411,7 @@ impl EditorState {
         }
     }
 
-    /// Queues every `(proc, args)` pair `invoke_buffer_sources` returned:
-    /// the drain repeated at both its call sites (a fresh/reused trigger,
-    /// and a post-edit re-invocation).
+    /// Queues every `(proc, args)` pair `invoke_buffer_sources` returned.
     fn queue_steel_calls(&mut self, calls: Vec<SteelCall>) {
         for (proc, args) in calls {
             self.queue_steel_call(proc, args);
@@ -523,11 +519,8 @@ fn invoke_minibuf_source(
 
 /// The `:` line's own command name and the byte offset one past it (and
 /// its optional trailing `!`). `None` if the cursor hasn't moved past the
-/// name yet, still typing it. Shared by [`resolve_minibuf_source`] (which
-/// also uses the offset as [`invoke_minibuf_source`]'s own argument-span
-/// floor) and [`EditorState::minibuf_target_command`], the one place both
-/// need to agree on what "past the command name" means, using the same
-/// name-shape rule `execute_command` itself uses
+/// name yet, still typing it. Uses the same name-shape rule
+/// `execute_command` itself uses
 /// (`input_stack::command::scan_command_name`), so completion never picks
 /// a different command than Enter would actually run.
 fn target_command_name(input: &str, cursor: usize) -> Option<(&str, usize)> {

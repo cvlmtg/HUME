@@ -169,11 +169,7 @@ pub struct EngineView {
     pub buffers: SlotMap<BufferId, ()>,
     pub theme: Theme,
     /// Session-wide scope registry. Providers intern their scopes here.
-    /// `Editor::prepare_frame` calls `theme.bake_if_stale(&registry)` twice
-    /// per frame (before its own steps run and again after), so a scope
-    /// interned by one of those steps (extra highlights, a newly attached
-    /// grammar, ...) is still baked before `render_into` resolves anything.
-    /// No other call site needs to bake manually after interning.
+    /// See [`Theme::bake_if_stale`] for when it gets baked.
     pub registry: ScopeRegistry,
     /// `DEFAULT_GUTTER_SCOPE` interned once at construction, carried on
     /// `PaneRenderCtx`/`ComposeCtx` so gutter composition never falls back to
@@ -261,14 +257,14 @@ impl EngineView {
     /// already refreshed them from, so this is a pure re-partition of
     /// already-correct geometry onto whatever `layout` names right now.
     ///
-    /// The one caller is `hume-editor`'s `tab::install_live`, immediately
-    /// after [`Self::replace_layout`]: without this, the incoming tab's panes keep
-    /// the outgoing tab's viewport dims until the next frame's
-    /// `sync_viewport_dims`, which a between-frame reader (a scroll command,
-    /// a motion) chained onto the same tab switch would read as stale. A
-    /// no-op before the first `prepare_frame` (`last_pane_area` still its
-    /// zero default): nothing to re-partition onto yet, and the first real
-    /// frame will size every pane from scratch regardless.
+    /// Call immediately after [`Self::replace_layout`]: without this, the
+    /// incoming tab's panes keep the outgoing tab's viewport dims until the
+    /// next frame's `sync_viewport_dims`, which a between-frame reader (a
+    /// scroll command, a motion) chained onto the same tab switch would
+    /// read as stale. A no-op before the first `prepare_frame`
+    /// (`last_pane_area` still its zero default): nothing to re-partition
+    /// onto yet, and the first real frame will size every pane from scratch
+    /// regardless.
     pub fn resync_viewport_dims(&mut self) {
         if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
             return;
@@ -277,16 +273,13 @@ impl EngineView {
         self.write_viewport_dims(&rects);
     }
 
-    /// [`Self::resync_viewport_dims`], generalized to any `LayoutTree`.
-    /// `hume-editor`'s `Editor::sync_viewport_dims` calls this once per
-    /// *inactive* tab too, on every resize, so a background-tab pane's
-    /// viewport stays current continuously instead of only catching up the
-    /// moment its tab becomes active (which `tab::install_live`'s own
-    /// `resync_viewport_dims` call already handles for the tab that's
-    /// switching in). An inactive tab's `LayoutTree` is otherwise immutable
-    /// while inactive (splits/closes only ever touch the active
-    /// `EngineView::layout`), so a resize is the only event that can make
-    /// its panes' geometry stale.
+    /// [`Self::resync_viewport_dims`], generalized to any `LayoutTree`. Call
+    /// this once per *inactive* tab, on every resize, so a background-tab
+    /// pane's viewport stays current continuously instead of only catching
+    /// up the moment its tab becomes active. An inactive tab's
+    /// `LayoutTree` is otherwise immutable while inactive (splits/closes
+    /// only ever touch the active `EngineView::layout`), so a resize is the
+    /// only event that can make its panes' geometry stale.
     pub fn resync_viewport_dims_for(&mut self, layout: &LayoutTree) {
         if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
             return;
@@ -382,13 +375,10 @@ impl EngineView {
 
     /// The row ceiling every [`BottomBandProvider`] is called against: 35%
     /// of the terminal's current height. Single source of truth for this
-    /// policy: [`Self::pane_area`] and [`Self::render`] both call this
-    /// rather than each computing the fraction inline, and `hume-editor`'s
-    /// own band-height *predictors* (`Editor::sync_popup_band_view`,
-    /// `drawer_visible_rows`/`scroll_popup`) call it too, so the number a
-    /// write side pages against can never drift from what this crate will
-    /// next paint. Widened to `u32` for the multiply so a `u16::MAX`-tall
-    /// area can't overflow before the divide narrows it back.
+    /// policy: painters and write-side band-height predictors must all use
+    /// this so paging can't drift from painting. Widened to `u32` for the
+    /// multiply so a `u16::MAX`-tall area can't overflow before the divide
+    /// narrows it back.
     pub fn bottom_band_max(area_height: u16) -> u16 {
         (u32::from(area_height) * 35 / 100) as u16
     }

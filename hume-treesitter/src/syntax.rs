@@ -89,8 +89,7 @@ pub struct Syntax {
 
 impl Syntax {
     /// A fresh, unparsed attachment: no committed layers, no in-flight
-    /// request, generations at zero. Shared by `attach` and `attach_sync`,
-    /// which differ only in how (or whether) the first parse is requested.
+    /// request, generations at zero.
     fn detached(bundle: Arc<GrammarBundle>) -> Self {
         Self {
             bundle,
@@ -160,8 +159,7 @@ impl Syntax {
     }
 
     /// Record one batch of `InputEdit`s translated from a `ChangeSet` against
-    /// the pre-edit rope. Called from the `doc_ops` chokepoint immediately
-    /// after every text mutation.
+    /// the pre-edit rope. Must be recorded after every text mutation.
     pub fn record_edit(&mut self, text_gen: u64, cs: &ChangeSet, rope_pre: &ropey::Rope) {
         for edit in input_edits_from_changeset(cs, rope_pre) {
             self.pending_edits.push((text_gen, edit));

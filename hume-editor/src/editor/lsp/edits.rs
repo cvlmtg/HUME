@@ -24,12 +24,7 @@ use crate::editor::pane_state;
 
 /// Shared precondition check for every edit entry point in this module: the
 /// buffer exists, is writable, and hasn't moved since the caller computed its
-/// positions against it. One definition so `build_edit_changeset` and
-/// `BufferSession::accept` (which needs the same guard but isn't
-/// building from wire `TextEdit`s) can't drift apart. `pub(in crate::editor)`:
-/// `accept` lives in `editor::completion` now, outside this subtree; see
-/// `wire_range_to_chars`'s doc (`lsp/mod.rs`) for why this is the narrowest
-/// visibility that reaches it.
+/// positions against it.
 pub(in crate::editor) fn checked_buffer(
     state: &EditorState,
     bid: BufferId,
@@ -227,10 +222,7 @@ pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
 /// Returns an empty `Vec` (not an error) when `edits` is empty, matching
 /// `apply-text-edits!`'s convention of erroring on an empty list only when
 /// the caller has no legitimate empty-response case; both callers here do
-/// (no `additionalTextEdits` at all is normal). `pub(in crate::editor)`:
-/// both callers now live in `editor::completion`; see `wire_range_to_chars`'s
-/// doc (`lsp/mod.rs`) for why this is the narrowest visibility that reaches
-/// them.
+/// (no `additionalTextEdits` at all is normal).
 pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
     rope_at: &ropey::Rope,
     cs_forward: &ChangeSet,
@@ -272,10 +264,7 @@ pub(in crate::editor) fn build_edits_from_earlier_document<'a>(
 /// [`build_changeset_from_char_edits`]) immediately before mutating.
 /// `Ok(None)` for an empty batch (nothing to commit); `Ok(Some(cs))`
 /// otherwise, so a caller composing this into a larger changeset doesn't need
-/// its own empty-batch branch. `pub(in crate::editor)`: the completion
-/// accept path (`editor::completion`) is a caller; see `wire_range_to_chars`'s
-/// doc (`lsp/mod.rs`) for why this is the narrowest visibility that reaches
-/// it.
+/// its own empty-batch branch.
 pub(in crate::editor) fn commit_char_edits(
     state: &mut EditorState,
     panes: &PanePool,

@@ -218,9 +218,7 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 
 /// 10 content lines, a 5-line `After(9)` (last line) block registered
 /// directly on the focused pane, cursor seeked to line 3, `mouse_scroll_lines`
-/// = 3. Shared by [`wheel_reaches_a_trailing_after_last_line_block`] and
-/// every parked-view test below it: they all need the same block to wheel
-/// into, only what happens once parked differs.
+/// = 3.
 fn trailing_block_editor() -> (Editor, Rect) {
     let content: String = numbered_lines(10);
     let mut ed = unwrapped_editor(&content, 0);

@@ -174,7 +174,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
     );
 }
 
-/// Fixture shared by the inlay-hint and EOL-text wrap tests below: 40 lines,
+/// Fixture: 40 lines,
 /// wrap at a fixed 10-column width (independent of pane/gutter width), line
 /// 19 exactly 9 columns: it fits one display row alone, wraps to two once a
 /// 2-column decoration pushes it past the width-10 wrap boundary. `scrolloff`

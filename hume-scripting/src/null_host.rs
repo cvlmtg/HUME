@@ -332,9 +332,8 @@ impl CommandHost for FailingRegisterHost {
 /// counts calls to `ensure_inline_output_screen`. Lets a test assert a
 /// builtin opens the inline-output bracket exactly when (and only when) it
 /// has real terminal output to produce, without a real terminal. Exercises
-/// the `SteelCtx::new_command` wiring that reads the flag off the host (see
-/// `context.rs` tests) without pulling in the editor crate's real
-/// `EditorHostImpl`.
+/// the `SteelCtx::new_command` wiring that reads the flag off the host
+/// without pulling in the editor crate's real `EditorHostImpl`.
 pub(crate) struct RecordingInlineOutputHost {
     inner: NullHost,
     /// Backs `is_inline_output_command`. Defaults to `true` (see the manual

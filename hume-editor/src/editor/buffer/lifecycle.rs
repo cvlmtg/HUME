@@ -54,12 +54,10 @@ pub(in crate::editor) fn open_buffer(
 /// announces neither hook, rather than an `OnBufferClose` with no matching
 /// open.
 ///
-/// Two callers: [`open_buffer_and_notify`] below, the disjoint-borrow
-/// (`view`/`state`) chokepoint `Editor::open_buffer`, `EditorHostImpl::open_buffer`
-/// (`(open-buffer! …)`), and `lsp::edits::resolve_or_open` all share; and
-/// `Editor::open`, which builds the startup buffer inline (bootstrapping the
-/// very `EngineView`/pane-state maps `open_buffer` needs, so it can't call
-/// that helper) but must leave the buffer in the same state.
+/// Two callers: [`open_buffer_and_notify`] below, and `Editor::open`, which
+/// builds the startup buffer inline (bootstrapping the very
+/// `EngineView`/pane-state maps `open_buffer` needs, so it can't call that
+/// helper) but must leave the buffer in the same state.
 pub(in crate::editor) fn queue_open_announcement(state: &mut EditorState, bid: BufferId) {
     state.buffers.get_mut(bid).open_hook_pending = true;
     state.config.pending_language_detection.push(bid);
@@ -230,13 +228,11 @@ pub(in crate::editor) fn close_buffer(
 
 /// [`close_buffer`] plus the pre-close LSP sync and post-close cleanup
 /// `Editor::close_buffer` performs: `didClose` notification, diagnostics
-/// clear, decoration clear, and the `OnBufferClose` hook enqueue: the
-/// disjoint-borrow (`view`/`state`/`lsp`) chokepoint shared by `Editor::
-/// close_buffer` and `EditorHostImpl::close_buffer` (`(close-buffer! …)`).
+/// clear, decoration clear, and the `OnBufferClose` hook enqueue.
 ///
 /// Unlike buffer open, none of this needs Steel eval (`didClose` is pure
 /// protocol, diagnostics/decorations are plain state), so, unlike
-/// `open_buffer_and_notify`, this runs identically from both callers, no
+/// `open_buffer_and_notify`, this runs identically from both paths, no
 /// deferred effect needed. `lsp` is `Option` to mirror `EditorHostImpl.lsp`'s
 /// own `Option<&mut LspState>` shape: when `None`, the LSP side effects are
 /// skipped rather than panicking, though in practice this is never observed

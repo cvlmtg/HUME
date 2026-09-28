@@ -61,11 +61,7 @@ impl Viewport {
     /// nothing here validates the address against the map's current block
     /// shape, so a write site that ran since the last resolve (`recall_scroll`,
     /// an LSP jump, `Pane::inherit_view_state`) can leave it stale. This
-    /// accessor exists for the three production readers that hold no map at
-    /// all (`hume-editor`'s `OnViewportChange` debounce key, and the
-    /// coarse visible-line supersets `decorated_panes`/`pane_visible_range`
-    /// build from `top.line` alone), plus every test assertion on the stored
-    /// value.
+    /// accessor exists for readers that hold no map, plus test assertions.
     pub fn top(&self) -> DisplayLinePos {
         self.top
     }
@@ -318,8 +314,7 @@ impl WrapMode {
     ///
     /// `WrapMode::None` and concrete non-zero widths pass through unchanged.
     /// The effective mode (see `hume-editor`'s `commands::effective_wrap_mode`)
-    /// is raw (unresolved); call this at each use site (editor's
-    /// `resolve_pane_settings`, scroll/cursor/mouse), passing that pane's
+    /// is raw (unresolved); call this at each use site, passing that pane's
     /// `pane_width − gutter_width` (see `Pane::content_width`), since content
     /// width depends on live pane geometry and must re-derive on resize.
     pub fn resolve(self, content_width: u16) -> WrapMode {
@@ -566,8 +561,7 @@ impl Pane {
     /// `last_content_line` is `id`'s *current* last content line index. The
     /// buffer may have shrunk since this scroll was saved (edited elsewhere
     /// while this pane viewed a different buffer), so `top`'s line is
-    /// clamped to it, the same bound `reload_buffer_in_place` applies
-    /// (`hume-editor/src/editor/buffer/file_open.rs`). `top`'s slot is
+    /// clamped to it. `top`'s slot is
     /// restored verbatim, unvalidated against the block it addresses: like
     /// every other write outside `display_lines::scroll`'s verbs, it relies
     /// on the next `Viewport::top_at` read, whichever pass gets there first,
@@ -596,9 +590,9 @@ impl Pane {
 
 /// Line index of the primary selection head, resolved via the rope.
 ///
-/// Called once per frame from the pipeline: O(log n) rope lookup. Takes the
-/// two fields rather than `&Pane` so the render pass can call it while holding
-/// a `&mut` on a *different* field of the same pane (its line store).
+/// O(log n) rope lookup. Takes the two fields rather than `&Pane` so the
+/// render pass can call it while holding a `&mut` on a *different* field of
+/// the same pane (its line store).
 ///
 /// Panics (debug and release) if `selections` is empty or `primary_idx` is out
 /// of range. Both are violated invariants, not recoverable cases, so this

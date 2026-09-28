@@ -181,20 +181,13 @@ pub(in crate::editor) fn cmd_yank(
     Ok(())
 }
 
-/// Exhaustion messages `history_step` reports below, shared by `cmd_undo`/
-/// `cmd_redo` and, via those same functions, `:earlier`/`:later`
-/// (`commands::typed_misc::travel`, which calls `cmd_undo`/`cmd_redo`
-/// directly rather than a second copy of this reporting), so one undo
-/// command means one message regardless of which key or typed name reached
-/// it.
+/// Exhaustion messages `history_step` reports below.
 const UNDO_EXHAUSTED_MSG: &str = "Already at oldest change";
 const REDO_EXHAUSTED_MSG: &str = "Already at newest change";
 
 /// Walk the undo/redo history `count` steps as one composed transform,
-/// reporting exhaustion when the walk fell short. Shared by `cmd_undo`/
-/// `cmd_redo`, which differ only in direction. Duplicating this instead would
-/// split the exhaustion message and the one-`finish_edit`-per-walk contract
-/// in two.
+/// reporting exhaustion when the walk fell short. Calls `finish_edit`
+/// exactly once per walk.
 fn history_step(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -224,10 +217,6 @@ fn history_step(
     Ok(())
 }
 
-/// `:earlier`/`:later` (`commands::typed_misc::travel`) call this directly
-/// too, via a function pointer on `TravelDir`: the same undo path `u`/
-/// `Ctrl-r` take, `refuse_if_read_only` guard included, rather than a second
-/// hand-copied one.
 pub(in crate::editor) fn cmd_undo(
     state: &mut EditorState,
     view: &mut EngineView,

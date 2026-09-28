@@ -91,8 +91,6 @@ pub trait CommandHost {
     /// Remove a previously registered Steel command (mappable or typed) from
     /// the `CommandRegistry`.
     ///
-    /// Called by `finish_lazy_activation` on the failure path to roll back
-    /// commands that a partially-evaluated plugin body registered before erroring.
     /// No-op if the name is not present.
     fn unregister_command(&mut self, name: &str);
 
@@ -131,8 +129,7 @@ pub trait CommandHost {
     /// reach a mappable command (`command_table`), so a typed-only name
     /// reported here would trigger a plugin load for an activation that can
     /// never succeed. [`Self::lazy_command_owner`] stays kind-agnostic for
-    /// the callers that genuinely want either kind (`check_definable`'s
-    /// self-ownership guard, `register_lazy_*`, `:plugin-status`).
+    /// the callers that genuinely want either kind.
     fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId>;
 
     /// Remove every remaining `Lazy` stub owned by `plugin`, mappable and

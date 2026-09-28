@@ -255,10 +255,7 @@ impl Buffer {
     /// form the caller resolved `path` to.
     ///
     /// The single decision point for "is a missing path openable", shared by
-    /// every open chokepoint (`Editor::open_or_dedup`,
-    /// `lifecycle::open_or_dedup_and_notify` (Steel `open-buffer!`, LSP
-    /// goto/workspace-edit), and `Editor::open`'s first-CLI-arg case), so
-    /// they can't diverge on tolerance.
+    /// every open chokepoint, so they can't diverge on tolerance.
     ///
     /// A path with no basename (`/`, `..`) still errors: `Buffer::set_path`
     /// would panic on it in debug.
@@ -413,7 +410,7 @@ impl Buffer {
     /// Replace `self.text` with `new_text`, recording the swap as a single
     /// revision in the existing history so `u` reverts to the pre-reload state.
     ///
-    /// This is the history-preserving reload path used by `:e!`. Unlike
+    /// This is the history-preserving reload path. Unlike
     /// [`set_view_content`](Self::set_view_content), which resets history,
     /// this treats the reload as an ordinary edit: `u` after `:e!` shows the
     /// pre-reload buffer with its full undo tree intact beneath, and

@@ -141,11 +141,9 @@ impl CommandRegistry {
     /// is unregistered entirely.
     ///
     /// Shared by every "unknown command" site that can otherwise only say
-    /// a name doesn't exist when it actually exists as the wrong kind: the
-    /// keymap dispatcher and the post-init keymap lint (a mappable-only
-    /// lookup missing a typed name) and the `:` dispatcher (a typed-only
-    /// lookup missing a mappable name). One wording, so the three sites
-    /// can't drift into subtly different advice for the same mistake.
+    /// a name doesn't exist when it actually exists as the wrong kind. One
+    /// wording, so the sites can't drift into subtly different advice for
+    /// the same mistake.
     pub(in crate::editor) fn other_kind_hint(&self, name: &str) -> Option<String> {
         match self.commands.get(name)? {
             Command::Mappable(_) => Some(format!(
@@ -160,8 +158,7 @@ impl CommandRegistry {
     /// Register a typed command.
     ///
     /// Inserts the canonical name into `commands` and each alias into
-    /// `alias_map`. Called by the native default registrations and by
-    /// `(define-typed-command! …)`.
+    /// `alias_map`.
     pub(in crate::editor) fn register_typed(&mut self, cmd: TypedCommand) {
         let canonical = cmd.name.clone();
         for &alias in cmd.aliases {
@@ -174,7 +171,6 @@ impl CommandRegistry {
     /// Look up a mappable command by exact name.
     ///
     /// Returns `None` if the name is unknown or resolves to a typed command.
-    /// Used by `execute_keymap_command` in `mappings/execute.rs`.
     ///
     /// Exact-only: mappable commands are resolved from key bindings, not
     /// user-typed names, so there is no user typo to tolerate and case-folding
@@ -298,10 +294,8 @@ impl CommandRegistry {
     /// Remove every remaining `Lazy` stub owned by `plugin`, mappable and
     /// typed alike.
     ///
-    /// Called by `finish_lazy_activation` (via `CommandHost::unregister_lazy_
-    /// stubs_of`) on both the success and failure path. Never touches a
-    /// resolved `SteelBacked`/`Steel` command, even one that just replaced a
-    /// stub of the same name for this plugin.
+    /// Never touches a resolved `SteelBacked`/`Steel` command, even one that
+    /// just replaced a stub of the same name for this plugin.
     pub(in crate::editor) fn unregister_lazy_stubs_of(
         &mut self,
         plugin: &hume_scripting::attribution::PluginId,
@@ -311,9 +305,7 @@ impl CommandRegistry {
     }
 }
 
-/// Shared match behind [`CommandRegistry::lazy_owner`],
-/// [`CommandRegistry::lazy_stubs`], and [`CommandRegistry::unregister_lazy_stubs_of`].
-/// It is a free function (not a `&self` method) so it can be called from inside
+/// A free function (not a `&self` method) so it can be called from inside
 /// `self.commands`'s own iterator/`retain` closures without a borrow conflict.
 fn lazy_owner_of(cmd: &Command) -> Option<&hume_scripting::attribution::PluginId> {
     match cmd {
@@ -326,10 +318,7 @@ fn lazy_owner_of(cmd: &Command) -> Option<&hume_scripting::attribution::PluginId
     }
 }
 
-/// `true` if `cmd` is a *typed* `Lazy` stub. Used only by
-/// [`CommandRegistry::lazy_stubs`] to tag its `(name, plugin)` pairs;
-/// [`lazy_owner_of`] already decides "is this some kind of stub at all";
-/// this refines "which kind" for the one caller that needs to know.
+/// `true` if `cmd` is a *typed* `Lazy` stub.
 fn is_typed_lazy(cmd: &Command) -> bool {
     matches!(
         cmd,

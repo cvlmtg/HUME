@@ -67,10 +67,6 @@ impl EditorState {
     /// breaks smart-paste routing, so no call site gets to do them
     /// separately. Never used for an explicit named register, which bare
     /// paste never reads. See [`PasteStamp`]'s doc for the full mechanism.
-    ///
-    /// `pub(in crate::editor)`, not `pub(super)`: `host_impl.rs`'s
-    /// `RegisterHost::write_register` also reaches this, so `(write-register!
-    /// "k" …)` gets the same stamped ring push as `"ky`.
     pub(in crate::editor) fn capture_to_ring(&mut self, yanked: Vec<String>) {
         self.kill_ring.push(yanked);
         self.paste_stamp = Some(PasteStamp {
@@ -147,9 +143,9 @@ struct ResolvedPaste {
     bare: bool,
 }
 
-/// Core paste implementation, shared by the plain and smart variants: applies
-/// `resolved` at `sels`, opens the paste/ring-cycle session, and stamps
-/// [`PasteStamp`]/seeds the ring cycle for bare pastes. Carries no knowledge
+/// Core paste implementation: applies `resolved` at `sels`, opens the
+/// paste/ring-cycle session, and stamps [`PasteStamp`]/seeds the ring cycle
+/// for bare pastes. Carries no knowledge
 /// of where `resolved` came from or of the repeat-vs-swap rule. Callers
 /// resolve the source and (for smart paste) collapse `sels` before calling in.
 ///
@@ -215,8 +211,7 @@ fn do_paste(
 }
 
 /// Resolve values for a fresh paste against an explicit `"<reg>` prefix.
-/// Shared by plain and smart paste: an explicit register bypasses the
-/// smart-paste heuristic entirely, so both variants resolve it identically.
+/// An explicit register bypasses the smart-paste heuristic entirely.
 /// Returns `None` for a no-op paste: black-hole or an empty register.
 fn resolve_explicit_register(state: &mut EditorState, reg: char) -> Option<ResolvedPaste> {
     let (values, from) = match reg {

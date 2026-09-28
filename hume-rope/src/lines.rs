@@ -52,9 +52,8 @@ pub fn char_to_ropey_line(rope: &Rope, char_pos: CharOffset) -> RopeyLine {
 }
 
 /// Index of the last ropey line (the phantom trailing line, under the
-/// trailing-newline invariant). Gutter sizing and LSP wire-position clamps
-/// use this: both must stay addressable up to ropey's own last line, not
-/// just the last line with real content.
+/// trailing-newline invariant). Use when a position must stay addressable up
+/// to ropey's own last line, not just the last line with real content.
 pub fn last_ropey_line(rope: &Rope) -> RopeyLine {
     // ropey_line_count() is always >= 1, so this never underflows.
     RopeyLine::new(ropey_line_count(rope).get() - 1)
@@ -207,8 +206,7 @@ pub fn leading_whitespace_end(rope: &Rope, line: ContentLine) -> CharOffset {
 
 /// [`leading_whitespace_end`], plus the leading whitespace run's display
 /// width in `tab_width`, one scan instead of two. A caller needing both
-/// (e.g. `>`/`<` indent/unindent, which must know both where the old indent
-/// ends and how wide it is) would otherwise measure the same ASCII prefix
+/// would otherwise measure the same ASCII prefix
 /// twice: once here, once through `crate::grapheme::display_col_in_line`,
 /// which re-walks it with full grapheme-cluster machinery it doesn't need:
 /// leading whitespace is always ASCII (`' '`/`'\t'`).
@@ -377,9 +375,9 @@ pub fn char_col_in_line(rope: &Rope, line: ContentLine, char_pos: CharOffset) ->
 /// from the start of `line`, clamped to the last content character and
 /// snapped to a grapheme boundary.
 ///
-/// For callers with no `DisplayLineMap`: buffer reload and `goto-location!`'s
-/// char-indexed target. Display-column placement (vertical motion, selection
-/// copy) uses `DisplayLineMap::char_at_buffer_line_col` in `hume-editor`.
+/// For callers with no `DisplayLineMap`. Display-column placement (vertical
+/// motion, selection copy) uses `DisplayLineMap::char_at_buffer_line_col` in
+/// `hume-editor`.
 ///
 /// `line` is ropey-domain because `goto-location!` can address the phantom
 /// line, which places at `rope.len_chars()`. That is not a legal head, so

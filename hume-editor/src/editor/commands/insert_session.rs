@@ -53,8 +53,7 @@ fn has_blank_line_cursor(
 /// An out-of-bounds index into the returned vec (via `.get(i)`) then reads as
 /// "no record for this selection", same as an empty vec would.
 ///
-/// Owned rather than borrowed: every caller (`tear_down_insert` here,
-/// `input_stack/insert.rs`'s Enter handler) needs it cloned out of
+/// Owned rather than borrowed: every caller needs it cloned out of
 /// `PaneBufferState` before running the edit whose `ChangeSet` will remap
 /// (or, for Enter, replace) that same record.
 pub(in crate::editor) fn autoindent_owned(

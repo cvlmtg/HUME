@@ -2,13 +2,11 @@
 //! Insert keymap has no binding for it (or, via the `insert-key!` builtin,
 //! when a bound command wants that same default behaviour anyway). A free
 //! function over `(state, view, fp)` rather than an `impl Editor` method:
-//! two of its callers, `handle_insert`'s (`input_stack/insert.rs`) own
-//! unbound-key fallback and the `EditHost::insert_key` builtin, are on
-//! opposite sides of the `Editor`/`EditorState` split: a
-//! Steel builtin only ever holds `&mut EditorState` + `&mut EngineView` (see
-//! `host_impl.rs`'s own doc), never a whole `&mut Editor`. `replay.rs`'s own
-//! replay of an unbound key reuses the same function despite already
-//! holding `&mut Editor`, rather than duplicating its match.
+//! two of its callers, `handle_insert`'s own unbound-key fallback and the
+//! `EditHost::insert_key` builtin, are on opposite sides of the
+//! `Editor`/`EditorState` split: a Steel builtin only ever holds
+//! `&mut EditorState` + `&mut EngineView` (see `host_impl.rs`'s own doc),
+//! never a whole `&mut Editor`.
 
 use hume_editing::changeset::ChangeSet;
 use hume_editing::lines::leading_whitespace_end;
@@ -42,10 +40,7 @@ use super::{
 /// Returns `true` if `key` has default Insert-mode behaviour at all (a
 /// plain char, Tab, Enter, Backspace, or Delete) and that behaviour ran;
 /// `false` for any other key (Esc, an arrow, an unhandled Ctrl-chord, …),
-/// which have none to fall back to. `handle_insert` records a key for
-/// dot-repeat only on `true`; `insert-key!` (`host_impl/edits.rs`) uses it
-/// to fail fast instead of silently doing nothing for a key it names
-/// explicitly.
+/// which have none to fall back to.
 pub(in crate::editor) fn insert_default_key(
     state: &mut EditorState,
     view: &EngineView,
@@ -270,8 +265,6 @@ fn should_skip_close(state: &EditorState, view: &EngineView, fp: FocusedPane, ch
 
 /// Returns `true` if every selection is a cursor AND the pair
 /// `(char_before_cursor, char_at_cursor)` matches a configured pair.
-///
-/// Used by Backspace to decide whether to delete both brackets or just one.
 fn is_between_pair(
     state: &EditorState,
     view: &EngineView,

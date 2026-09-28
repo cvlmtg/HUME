@@ -201,13 +201,10 @@ impl super::stack::FiresFalseOnReplace for DrawerLayer {
     }
 }
 
-/// Named sugar over the generic lookup: the ~350 existing call sites
-/// (`ed.state.input.drawer()`) stay as they are, and `stack.rs` stays
+/// Named sugar over the generic lookup; `stack.rs` stays
 /// agnostic. Read-only: every handler-side mutation now addresses its own
 /// dispatched-to layer via `at_mut::<DrawerLayer>(r)` instead, so there is
-/// no `drawer_mut()` sibling. This one's only remaining caller is
-/// render-sync (`sync_drawer_view`, independent of dispatch), which never
-/// needs `&mut`.
+/// no `drawer_mut()` sibling.
 impl super::stack::InputStack {
     pub(in crate::editor) fn drawer(&self) -> Option<&DrawerLayer> {
         self.find()
@@ -306,10 +303,7 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// arithmetic `DrawerWidget::height` uses to size what it paints next
 /// frame. The height is the last-rendered *terminal* height (not the
 /// already-chrome-reduced pane height), the same call the engine itself
-/// makes, so this can never drift from what it will next paint. Shared by
-/// the selection keys (via `drawer_visible_rows`) and the frame-time clamp
-/// (`EditorState::clamp_drawer_scroll_to_terminal`), so the scroll window
-/// always agrees with what's on screen on both paths.
+/// makes, so this can never drift from what it will next paint.
 fn drawer_visible_for(terminal_height: u16, len: usize) -> usize {
     hume_ui::drawer::visible_rows(len, EngineView::bottom_band_max(terminal_height))
 }
@@ -324,8 +318,7 @@ fn drawer_visible_rows(ed: &Editor, r: LayerRef) -> usize {
 }
 
 /// Moves the drawer's selection by `delta` (clamped to `[0, len - 1]`), then
-/// syncs the scroll/view. Shared by both selection keys (Ctrl-d/Ctrl-u)
-/// so each key site is just "which delta", not its own lookup.
+/// syncs the scroll/view.
 fn move_drawer_selection(ed: &mut Editor, r: LayerRef, delta: isize) {
     let drawer = ed
         .state

@@ -1,7 +1,5 @@
-//! Screen-placement math shared by the three cursor/token-anchored overlays
-//! ([`super::popup::sync_popup_view`], [`super::menu::sync_menu_view`], and
-//! [`super::completion::sync_completion_menu_view`]). Nothing here is
-//! specific to any one of them.
+//! Screen-placement math shared by the three cursor/token-anchored overlays.
+//! Nothing here is specific to any one of them.
 
 use hume_engine::pipeline::RenderContext;
 use hume_rope::offset::CharOffset;
@@ -18,9 +16,8 @@ pub(in crate::editor) fn focused_cursor_char(ed: &Editor) -> CharOffset {
 }
 
 /// Screen anchor (absolute cell) + containing pane + text-column budget for
-/// the focused pane, given an arbitrary buffer char position. Shared by
-/// [`super::popup::sync_popup_view`], [`super::menu::sync_menu_view`], and
-/// the LSP completion menu (each passes a different `anchor_char`). `None`
+/// the focused pane, given an arbitrary buffer char position (each caller
+/// passes a different `anchor_char`). `None`
 /// when the pane has no rect yet or `anchor_char` isn't currently visible.
 pub(in crate::editor) fn popup_placement(
     ed: &mut Editor,

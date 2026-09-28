@@ -72,7 +72,7 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
 /// collapses into one `Err`, and in the signal-killed shape it returns
 /// `Ok`). On spawn failure `stdout` is `""` and `stderr` names `cmd` and the
 /// io error. This is `stdlib/run`'s three-case contract, which its callers
-/// (`stdlib/run-stdout`, the git probes) rely on.
+/// rely on.
 pub(crate) fn run_capture(
     ctx: &mut SteelCtx,
     cmd: SteelVal,

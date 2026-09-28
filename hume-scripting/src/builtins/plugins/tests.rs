@@ -604,8 +604,6 @@ fn declare_plugin_bang_direct_zero_trigger_call_errors() {
 
 /// A zero-trigger declare of a plugin whose directory doesn't exist at all is a
 /// soft no-op: Info log, `declared_plugins` recorded for PLUM, no plugin state.
-/// Mirrors the existing `declare_plugin_user_absent_logs_info` behavior for the
-/// trigger-ful path.
 ///
 /// Treating "not installed yet" like "installed but missing manifest.scm"
 /// would break the declare-then-:plum-install-plugins flow for every

@@ -8,10 +8,8 @@ use crate::editor::error::CommandError;
 use crate::editor::settings::WRAP_MODE_KEY;
 use crate::editor::settings::ops as settings_ops;
 
-/// Shared by every stale-write refusal: `write_buffer_by_id`'s no-arg `:w`
-/// path and `write_file`'s save-as-in-disguise path (see `targets_own_file`
-/// below) both report exactly this, so `typed_write_all` can tell a stale
-/// refusal apart from any other write failure by comparing against it.
+/// Shared by every stale-write refusal, so `typed_write_all` can tell a
+/// stale refusal apart from any other write failure by comparing against it.
 const STALE_WRITE_MSG: &str = "file has changed on disk (add ! to override)";
 
 /// `Some(msg)` when a non-forced write to `meta`'s file must be refused.
@@ -284,9 +282,6 @@ fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, hume_rope::line::Con
 
 /// Post-write side effects for a buffer that just had its own content
 /// written to its own file: mark it saved, report the result, and sync LSP.
-/// Shared by the no-arg `:w` path and the save-as path (when the source
-/// buffer is a normal writable buffer, i.e. save-as, not export; see
-/// `write_file`'s save-as branch).
 fn mark_written_and_synced(
     ed: &mut Editor,
     bid: BufferId,
@@ -305,7 +300,7 @@ fn mark_written_and_synced(
 }
 
 /// Write a specific buffer to its file path. No save-as: only writes to the
-/// buffer's own path. Used by `:wa` and the no-arg path of `:w`.
+/// buffer's own path.
 ///
 /// `file_meta` (not `path`) is the SSOT for "has this buffer ever touched
 /// disk" (see `Buffer::is_new_file`): a buffer with a `path` but no

@@ -95,11 +95,7 @@ impl TabStore {
 
     /// Every *inactive* tab's own `LayoutTree`. `stash[current]` is
     /// excluded (see this struct's own doc: it's stale while `current` is
-    /// live). `Editor::sync_viewport_dims` (`frame.rs`) re-partitions each
-    /// of these against the terminal on every resize, so a background-tab
-    /// pane's viewport dims stay current the same way the active tab's own
-    /// already do. The active tab's geometry is resynced separately, from
-    /// `EngineView::layout` itself.
+    /// live).
     pub(in crate::editor) fn inactive_layouts(&self) -> impl Iterator<Item = &LayoutTree> {
         self.stash
             .iter()
@@ -117,11 +113,10 @@ impl TabStore {
     /// of failing loudly.
     ///
     /// `pub(in crate::editor)` rather than private: `Editor::sync_tabline_view`
-    /// (`frame.rs`) needs the same index and is the one caller outside this
-    /// module. It reads it from here rather than re-deriving it from
-    /// `order()`/`current()` separately, which would let the tabline's own
-    /// copy silently drift from this one's panic message the moment either
-    /// changes.
+    /// needs the same index. It reads it from here rather than re-deriving it
+    /// from `order()`/`current()` separately, which would let the tabline's
+    /// own copy silently drift from this one's panic message the moment
+    /// either changes.
     pub(in crate::editor) fn current_pos(&self) -> usize {
         self.order
             .iter()

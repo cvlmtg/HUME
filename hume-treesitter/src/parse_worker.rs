@@ -170,10 +170,9 @@ pub(crate) fn run_parse(
 }
 
 /// Execute a parse request synchronously, returning the finished `ParseDone`.
-/// Used by `WorkerState`, `InlineParseBackend` (tests), and
-/// `Syntax::attach_sync` (small one-shot content, e.g. a hover popup, where
-/// routing through the async worker isn't worth it). `pub(crate)` for that
-/// last caller, which lives in this crate's `syntax` module.
+/// `pub(crate)` for `Syntax::attach_sync` (small one-shot content, e.g. a
+/// hover popup, where routing through the async worker isn't worth it),
+/// which lives in this crate's `syntax` module.
 ///
 /// Always calls `set_language` and resets `included_ranges` to whole-buffer
 /// before the root parse: layer parsing switches languages and ranges

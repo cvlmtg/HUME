@@ -32,8 +32,7 @@ pub fn workspace_root() -> std::path::PathBuf {
 /// `[workspace] members = [...]` line, the single source of truth for
 /// "what crates exist." A hand-maintained crate list can silently drop out
 /// of sync with the workspace (a renamed directory, a newly added crate);
-/// reading it back out of `Cargo.toml` can't. Shared by every lint that
-/// scans the whole workspace rather than a curated file list.
+/// reading it back out of `Cargo.toml` can't.
 pub(crate) fn workspace_member_crates(workspace_root: &std::path::Path) -> Vec<String> {
     let manifest = std::fs::read_to_string(workspace_root.join("Cargo.toml"))
         .expect("cannot read workspace Cargo.toml");
@@ -89,8 +88,7 @@ pub fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) 
 
 /// Every `.rs` file under `hume-editor/src/editor/tests/`, the scan root
 /// shared by every lint in this crate that inspects the editor's own test
-/// suite (`test_globals.rs`'s tempdir-hygiene lint, `test_globals_spawn.rs`'s
-/// unqualified-spawn lint). Asserts the scan found at least one file: a
+/// suite. Asserts the scan found at least one file: a
 /// renamed `tests/` tree (exactly what the hume-ui/hume-decorations split
 /// did to `hume-editor/src/ui/`) would otherwise scan zero files and pass
 /// every one of these lints green forever.
@@ -112,9 +110,7 @@ pub fn editor_test_tree_paths(workspace_root: &std::path::Path) -> Vec<std::path
 /// via `collect_source_rs`, then retain out this `lints/` directory's own
 /// pattern literals and any path in `extra_excludes` (a lint excluding one
 /// specific implementation file while still scanning the rest of that
-/// file's crate, e.g. `absent_decode`'s sole caller excludes its own
-/// `hume-scripting/src/builtins/args.rs`, the file that defines the pattern
-/// it scans for). This is the shared setup every whole-workspace lint needs.
+/// file's crate). This is the shared setup every whole-workspace lint needs.
 pub fn workspace_source_paths(
     workspace_root: &std::path::Path,
     extra_excludes: &[std::path::PathBuf],

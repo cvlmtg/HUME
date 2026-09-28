@@ -121,9 +121,7 @@ fn edit_deleted_file_with_no_buffer_reopens_as_new_file() {
 
 /// `:e <missing-path>` opens a buffer whose display path is exactly the path
 /// the user typed, `~`-collapsed, not its tilde-expanded `$HOME` form.
-/// Matches `:split`/`:vsplit`
-/// (`split_missing_file_opens_new_file_with_raw_typed_display_path` in
-/// `multi_pane.rs`), which both share `Editor::resolve_open_path`.
+/// Matches `:split`/`:vsplit`, which both share `Editor::resolve_open_path`.
 ///
 /// Uses a `~`-prefixed path rather than a plain relative one: `expand()` is a
 /// no-op on inputs with no `~`/env-var sigil, so a plain relative path can't
@@ -417,7 +415,7 @@ fn edit_relative_path_matches_existing_buffer() {
 
 // ── `:e path:line[:col]` ─────────────────────────────────────────────────
 
-/// Fixture shared by the `:e path:line[:col]` tests below: "line one\n" (9
+/// Fixture: "line one\n" (9
 /// chars) + "line two\n" (9) + "line three\n" (11), so line starts are char
 /// 0, 9, 18.
 fn three_line_file() -> (tempfile::NamedTempFile, std::path::PathBuf) {

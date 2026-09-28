@@ -122,10 +122,6 @@ impl Editor {
 
     /// Activate `plugin` (a `Lazy` stub's owner), reporting the standard
     /// warning on failure.
-    ///
-    /// Shared by [`Self::run_steel_command`] (a mappable `Lazy` stub) and
-    /// [`Self::run_typed_steel_command`] (a typed `TypedBody::Lazy` stub):
-    /// the two Lazy-stub call sites, one per registry kind.
     fn activate_lazy_and_report(
         &mut self,
         plugin: &hume_scripting::attribution::PluginId,
@@ -142,9 +138,7 @@ impl Editor {
     /// The registry lost `name`'s entry between resolving it and using it:
     /// activation replaced a `Lazy` stub but left nothing usable behind, or
     /// `name` wasn't the expected kind at all. Always `false`, so a caller
-    /// returns it directly. Shared by `run_steel_command`'s two lookups
-    /// (classification and post-activation re-query) and
-    /// `run_typed_steel_command`'s own re-query.
+    /// returns it directly.
     fn report_command_lost(&mut self, name: &str) -> bool {
         self.report(
             Severity::Error,
@@ -155,7 +149,7 @@ impl Editor {
 
     /// Activates the `:` line's current target command's owning plugin, if
     /// it is still a `TypedBody::Lazy` stub. Runs before
-    /// `EditorState::trigger_minibuf_completion` at both its call sites, so
+    /// `EditorState::trigger_minibuf_completion`, so
     /// a lazily-declared typed command's `#:complete` completer is visible
     /// on the command's very first use. Without this, `register_lazy_typed_
     /// command` (`host_impl/commands.rs`) hardcodes the stub's `completer`
@@ -328,10 +322,8 @@ impl Editor {
     /// Invoke a Steel command lambda by name with pre-marshalled positional
     /// args, bracketing the call for `#:inline-output` commands.
     ///
-    /// Shared by [`Self::run_steel_command`] and
-    /// [`Self::run_typed_steel_command`]. The two differ only in how they
-    /// resolve `name`'s metadata and marshal `effective_args`; the Steel
-    /// invocation, alt-screen bracket, and effect application are one funnel.
+    /// The Steel invocation, alt-screen bracket, and effect application are
+    /// one funnel.
     fn call_steel_command_body(
         &mut self,
         name: &str,
@@ -462,10 +454,7 @@ impl Editor {
     /// resolve the way the caller needed. If the registry recognizes `name`
     /// under the *other* kind, names it and explains how it's actually
     /// reachable instead of `fallback`: a split that resolves only one
-    /// kind would otherwise leave the other kind unexplained at every
-    /// single-kind site: [`Self::resolve_mappable`]'s three callers, the
-    /// post-init keymap lint (`scripting_setup.rs`), and the `:` dispatcher
-    /// (`input_stack/command.rs`).
+    /// kind would otherwise leave the other kind unexplained.
     ///
     /// Stays `Warning`, not `Info`, despite most of those being live-typo
     /// cases that would otherwise fit the transient rule: the post-init
@@ -485,11 +474,7 @@ impl Editor {
 
     /// Looks up `name` in the command registry, reporting (via
     /// [`Self::report_unknown_command`]) and returning `None` if it isn't
-    /// there. Shared by every entry point that resolves a keymap-bound
-    /// command name just before dispatching or replaying it:
-    /// `execute_keymap_command` (`mappings/execute.rs`), `handle_insert`'s
-    /// trie-leaf branch (`input_stack/insert.rs`), and `replay.rs`'s replay
-    /// of a recorded `InsertInput::Binding`.
+    /// there.
     pub(in crate::editor) fn resolve_mappable(&mut self, name: &str) -> Option<MappableCommand> {
         let cmd = self.state.config.registry.get_mappable(name).cloned();
         if cmd.is_none() {

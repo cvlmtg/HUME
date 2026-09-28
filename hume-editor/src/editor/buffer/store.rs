@@ -25,9 +25,9 @@ pub(crate) struct BufferStore {
     /// open (see `open`'s own doc for why) and otherwise promoted by the two
     /// focus chokepoints, [`crate::editor::focus::focus_pane`] and
     /// [`crate::editor::buffer::lifecycle::switch_pane_to_buffer`] (focused
-    /// switch only), plus `cmd_goto_alternate_buffer`'s (`commands/jump.rs`)
-    /// own explicit touches for a remote-pane dispatch; see that
-    /// function's doc for why it can't rely on the two chokepoints alone.
+    /// switch only), plus `cmd_goto_alternate_buffer`'s own explicit touches
+    /// for a remote-pane dispatch; see that function's doc for why it can't
+    /// rely on the two chokepoints alone.
     /// Always holds the same entries as `order`, just in a different order.
     mru: Vec<BufferId>,
     /// Monotonic counter bumped once per user edit/undo/redo, in any open
@@ -63,8 +63,7 @@ impl BufferStore {
         self.edit_seq += 1;
     }
 
-    /// Register a new buffer slot. Called from `Editor::open_buffer` after the
-    /// engine slot is allocated.
+    /// Register a new buffer slot.
     ///
     /// Seeds `mru` too, ahead of any focus it may never receive: a buffer
     /// opened in a background pane and never focused still needs a valid
@@ -91,7 +90,6 @@ impl BufferStore {
     /// (`\\?\C:\…` on Windows) and match as-is, but the `:b <name>` fallback
     /// for a deleted backing file uses `std::path::absolute` (no prefix),
     /// which would otherwise dedup-miss against an already-open buffer.
-    /// Used by `:e` to deduplicate already-open files.
     pub(in crate::editor) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
         let needle = strip_unc_prefix_cow(path);
         self.buffers.iter().find_map(|(id, buf)| {
@@ -104,8 +102,6 @@ impl BufferStore {
     /// Find a read-only view buffer by its label (e.g. `"[messages]"`).
     ///
     /// Returns the first `BufferId` whose `buffer.label == Some(label)`.
-    /// Used by `open_read_only_view` to reuse existing view buffers instead
-    /// of accumulating duplicates.
     pub(in crate::editor) fn find_by_label(&self, label: &str) -> Option<BufferId> {
         self.buffers
             .iter()
@@ -173,9 +169,8 @@ impl BufferStore {
 
     /// Apply the `undo-levels` cap to every open buffer's history.
     ///
-    /// Called from the `:set global` side-effect path and from the
-    /// post-init.scm settings pickup. There is no per-buffer scope for
-    /// this setting, so every buffer always tracks the same cap.
+    /// There is no per-buffer scope for this setting, so every buffer
+    /// always tracks the same cap.
     pub(in crate::editor) fn set_undo_levels_all(&mut self, levels: usize) {
         for buf in self.buffers.values_mut() {
             buf.set_undo_levels(levels);
@@ -232,13 +227,6 @@ impl BufferStore {
     }
 
     /// Move `id` to the tail of the MRU list: "most recently viewed."
-    /// Called from the two focus chokepoints, [`crate::editor::focus::
-    /// focus_pane`] and [`crate::editor::buffer::lifecycle::
-    /// switch_pane_to_buffer`] (focused switch only), and from
-    /// `cmd_goto_alternate_buffer` (`commands/jump.rs`), which touches the
-    /// outgoing buffer and the target explicitly around its own switch;
-    /// see that function's own doc for why a remote-pane dispatch can't
-    /// rely on the two chokepoints alone.
     pub(in crate::editor) fn touch_mru(&mut self, id: BufferId) {
         self.mru.retain(|&x| x != id);
         self.mru.push(id);
@@ -259,9 +247,9 @@ impl BufferStore {
     /// is seeded at open, so this needs no buffer to have actually been
     /// *viewed*; see `open`'s own doc). Distinct from `mru_excluding`: that
     /// skips *by value*, useful
-    /// when the caller already knows which specific buffer to exclude
-    /// (`close`'s own replacement target); this is a pure positional read,
-    /// since here the "current" buffer is whatever the tail *happens to be*
+    /// when the caller already knows which specific buffer to exclude; this
+    /// is a pure positional read, since here the "current" buffer is
+    /// whatever the tail *happens to be*
     /// right now, not a value some caller already has in hand.
     pub(in crate::editor) fn second_most_recent(&self) -> Option<BufferId> {
         self.mru.iter().rev().nth(1).copied()

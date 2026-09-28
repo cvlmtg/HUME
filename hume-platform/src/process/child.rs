@@ -50,9 +50,7 @@ pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
 /// child sees EOF on read rather than racing the editor's own key reads on
 /// the terminal (same contract as `hume_platform::process::run_capture`).
 /// See `super::base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is
-/// set. It's true of both [`super::job`]'s `spawn-async!` and
-/// [`super::line_source`]'s `picker-source-spawn!`, so it lives in that one
-/// shared preamble rather than duplicated in each caller. Returns the
+/// set. Returns the
 /// kill-on-early-return guard plus the piped stdout/stderr handles; the
 /// caller starts its bridging threads before converting the guard into a
 /// [`crate::process::tracked::TrackedChild`], so a thread failing to spawn

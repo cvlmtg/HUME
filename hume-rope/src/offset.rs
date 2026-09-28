@@ -59,9 +59,7 @@ impl CharOffset {
     /// Chars between `earlier` and `self` (`earlier <= self`). Debug-panics
     /// on inversion. A raw `self - earlier` would silently wrap instead.
     ///
-    /// The named form for "how many chars does this span cover":
-    /// `ChangeSetBuilder::retain`/`delete`, span-width comparisons, and
-    /// similar length derivations all read `later.chars_since(earlier)`.
+    /// The named form for "how many chars does this span cover".
     /// `self` is the *later* offset deliberately: every call site today is a
     /// subtraction (`end - start`, `p - b.old_pos()`), and keeping `self` on
     /// the same side as the minuend preserves that written order. A

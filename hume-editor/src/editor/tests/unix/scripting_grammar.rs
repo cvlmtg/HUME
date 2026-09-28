@@ -135,11 +135,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
 /// a fresh init.scm, prefixed with the real prelude so the macro is in
 /// scope, eval it, apply its queued effect (init-mode `register-grammar!`
 /// only queues an `Effect::LanguageReg`; this is what `init_scripting`
-/// would do next), and return the resulting `json` grammar bundle. Shared by
-/// `register_grammar_textobjects_only_populates_textobjects_not_injections`
-/// and `register_grammar_injections_only_populates_injections`, which differ
-/// only in which trailing query path the call passes and which of the
-/// bundle's two optional queries they assert on.
+/// would do next), and return the resulting `json` grammar bundle.
 fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");

@@ -46,11 +46,9 @@ use crate::watchdog::EvalWatchdog;
 /// `with-handler` instead. A no-op whenever every arm this session was
 /// already paired, the common case.
 ///
-/// Shared by `eval_source_raw` (compiles a source program), `call_steel_cmd` /
-/// `fire_hook` / `activate_plugin_inline` (direct function calls) so the
-/// arm / eval / cancel / reset / truncate ceremony lives in one place: the
-/// one boundary every Steel entry point passes through regardless of
-/// outcome.
+/// Exists so the arm / eval / cancel / reset / truncate ceremony lives in
+/// one place: the one boundary every Steel entry point passes through
+/// regardless of outcome.
 pub(crate) fn run_steel_session<'a, R>(
     steel: &mut Engine,
     watchdog: &EvalWatchdog,
@@ -193,7 +191,7 @@ pub(crate) fn run_steel_call<'a>(
 // ── ScriptingHost — activation impl ──────────────────────────────────────────
 
 impl ScriptingHost {
-    /// Core eval machinery used by [`ScriptingHost::eval_init`].
+    /// Core eval machinery.
     ///
     /// Evaluates `source` (init.scm) synchronously.  `(load-plugin …)` calls
     /// inside the source activate their plugin bodies inline via the BOOTSTRAP
@@ -222,7 +220,7 @@ impl ScriptingHost {
 
     /// Activate a plugin inline via `%activate-plugin-inline` using `run_steel_call`.
     ///
-    /// Used by event- and language-activation paths (`activate_and_register`) that
+    /// Used by event- and language-activation paths that
     /// fire outside any running eval and need their own watchdog.  The plugin body
     /// runs inside `hm.eval-string` (VM-aware, no `&mut Engine` borrow), sharing
     /// the same `ctx.registries` as any concurrent eval.  `define-command!` calls

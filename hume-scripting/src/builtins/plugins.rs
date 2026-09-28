@@ -38,9 +38,6 @@ fn log_absent_core(ctx: &mut SteelCtx, name: &str, verb: &str) {
 /// plugins go through [`log_absent_core`] (typo or broken `HUME_RUNTIME`,
 /// never installed by PLUM); `user/repo` plugins log a softer Info (not yet
 /// installed; PLUM will fetch it on `:plum-install-plugins`).
-///
-/// Shared by `declare_plugin` and `begin_manifest_declare`'s identical
-/// absent-on-disk fork.
 fn log_absent_plugin(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str, verb: &str) {
     match plugin_id {
         PluginId::Core(_) => log_absent_core(ctx, name, verb),
@@ -54,8 +51,6 @@ fn log_absent_plugin(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str, verb:
 /// PLUM compat: records `name` in `declared_plugins` if not already present
 /// (case-insensitive), regardless of whether the plugin resolves on disk.
 /// PLUM reads this list to know what to install on `:plum-install-plugins`.
-///
-/// Shared by `declare_plugin`, `load_plugin`, and `begin_manifest_declare`.
 fn record_declared(ctx: &mut SteelCtx, name: &str) {
     if !ctx
         .registries
@@ -362,10 +357,6 @@ pub(crate) fn declare_plugin(
 /// The directory a plugin's files live in, given its id: `core:` plugins
 /// under `runtime_dir`, `user/repo` plugins under `data_dir`. `None` when the
 /// relevant root is unset (`HOME`/`APPDATA` unset for user plugins).
-///
-/// Shared by `plugin.scm` resolution (`resolve_path_for_name`) and
-/// `manifest.scm` resolution (`begin_manifest_declare`) so the two-root
-/// layout logic lives in one place.
 fn plugin_dir_for_id(
     plugin_id: &PluginId,
     runtime_dir: Option<&std::path::Path>,
@@ -393,9 +384,6 @@ fn path_exists(path: &std::path::Path) -> Result<bool, String> {
 
 /// Pure path resolution: given a plugin name and the runtime / data directories,
 /// return the resolved `PathBuf` if `plugin.scm` exists on disk, or `None`.
-///
-/// Called by the `resolve-plugin-path` Steel builtin (which accesses the dirs
-/// via `&mut SteelCtx`).
 pub(crate) fn resolve_path_for_name(
     name: &str,
     runtime_dir: Option<&std::path::Path>,

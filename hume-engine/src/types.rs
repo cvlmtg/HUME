@@ -49,9 +49,6 @@ pub use hume_grid::{Modifiers, ResolvedStyle, UnderlineStyle};
 #[derive(Copy, Clone, Debug)]
 pub struct Grapheme {
     /// Byte range within the materialized line buffer (empty for virtual content).
-    ///
-    /// Used by the highlight system (tree-sitter intervals are byte-native) and
-    /// by the wrap-segment intersection check in the style stage.
     pub byte_range: ExclusiveRange<ByteCol>,
     /// Absolute char offset from the start of the buffer.
     ///
@@ -153,11 +150,8 @@ pub struct DisplayLine {
 /// *production* display line comes from [`crate::display_lines::DisplayLineMap`], which never
 /// walks past [`crate::display_lines::DisplayLineMap::last_line`], but
 /// [`crate::format::format_buffer_line`] is also exercised directly, one
-/// ropey line at a time, by its own unit tests
-/// (`hume-engine/src/format/tests.rs`), including on the buffer's trailing
-/// phantom line. Every `do_format`-driven test there iterates
-/// `hume_rope::lines::ropey_lines`, which includes it, so this is exercised
-/// broadly rather than by one dedicated test.
+/// ropey line at a time, by its own unit tests, including on the buffer's
+/// trailing phantom line.
 /// A `ContentLine` has no representation for that line, so the field has to
 /// be the wider domain; every real caller (`GutterColumn` implementations)
 /// narrows it back via [`hume_rope::line::RopeyLine::to_content`], clamping

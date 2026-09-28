@@ -82,8 +82,7 @@ fn split_missing_file_opens_new_file_with_raw_typed_display_path() {
 }
 
 /// `:split <dir>` must still error, not silently open a new-file buffer.
-/// Mirrors `edit_directory_path_still_errors` in `file_io.rs`. Also proves
-/// the error echoes the raw typed path (`~`), not its expanded `$HOME` form.
+/// Proves the error echoes the raw typed path (`~`), not its expanded `$HOME` form.
 #[test]
 fn split_directory_path_still_errors_with_raw_typed_path() {
     let home = hume_platform::dirs::home_dir().expect("HOME must be set for this test");

@@ -15,8 +15,7 @@ use hume_scripting::host::{
 impl<'a> EditorHostImpl<'a> {
     /// Synchronously parses `text` through the grammar named `lang`, if one
     /// is registered, `None` otherwise (no such grammar), which leaves the
-    /// popup rendering plain. `show_popup`'s only caller, shared across its
-    /// cursor and docked layouts.
+    /// popup rendering plain.
     fn build_markup_syntax(
         &self,
         lang: &str,

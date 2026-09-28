@@ -735,8 +735,7 @@ fn paste_after_repeat_over_backward_selection_collapses_to_end() {
     );
 }
 
-/// Mirrors `paste_after_repeat_over_backward_selection_collapses_to_end` for
-/// `smart-paste-before`, which collapses to `start()`, not `anchor()`.
+/// `smart-paste-before` collapses to `start()`, not `anchor()`.
 #[test]
 fn paste_before_repeat_over_backward_selection_collapses_to_start() {
     let mut ed = editor_from("-[ab]>cd\n");

@@ -16,9 +16,8 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 /// Maps scope name strings to compact [`ScopeId`] integers.
 ///
 /// Two registration entry points share one map and interning path:
-/// - [`ScopeRegistry::intern`] for `&'static str`, used by engine builtins and theme loaders.
-/// - [`ScopeRegistry::intern_runtime`] for `&str`, used by Steel-loaded language configs
-///   where scope names are runtime strings.
+/// - [`ScopeRegistry::intern`] for `&'static str`.
+/// - [`ScopeRegistry::intern_runtime`] for `&str`, where scope names are runtime strings.
 ///
 /// Interning is cold (construction, a runtime language/grammar load,
 /// mid-session plugin activation, never the per-grapheme render path), so a
@@ -27,12 +26,8 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 /// interning method instead of two. The total number of distinct scopes is
 /// bounded by `u16::MAX`.
 ///
-/// [`Theme::bake_if_stale`], called unconditionally from `prepare_frame`
-/// twice every frame (once before the frame's own steps run, once after),
-/// re-bakes whenever new scopes were interned since the last bake, so no
-/// caller needs to bake manually after interning, including a scope a
-/// frame's own steps intern partway through, which the first call alone
-/// can't see. After baking, [`Theme::resolve`] is an O(1) `Vec` index.
+/// See [`Theme::bake_if_stale`] for when interned scopes get baked into
+/// resolvable styles. After baking, [`Theme::resolve`] is an O(1) `Vec` index.
 ///
 /// Lives on [`crate::pipeline::EngineView`] so it outlives all providers.
 #[derive(Default)]
@@ -296,9 +291,6 @@ impl Theme {
     }
 
     /// Build a theme from a `scope → style` map with owned string keys.
-    ///
-    /// Used by [`loader::load_theme`] which produces `String` scope names from
-    /// TOML parsing.
     pub fn from_owned(styles: FxHashMap<String, ResolvedStyle>, default: ResolvedStyle) -> Self {
         let mut t = Self {
             raw: styles,
@@ -372,11 +364,6 @@ impl Theme {
     }
 
     /// Return `true` if this scope name has an explicit entry in the raw map.
-    ///
-    /// Used by `:theme-debug` to build the dot-notation fallback chain display,
-    /// and by `EditorColors::from_theme` to decide whether the statusline
-    /// separator should fall back to the row's own resolved style instead of
-    /// walking the dot-notation chain to the untinted base scope.
     pub fn raw_contains(&self, key: &str) -> bool {
         self.raw.contains_key(key)
     }

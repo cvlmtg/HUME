@@ -15,9 +15,9 @@ const VIM_KEYBIND_PLUGIN: &str = include_str!(concat!(
 ));
 
 /// Build an editor with `core:vim-keybind` eagerly loaded via a real
-/// `init.scm` + the real plugin file. Mirrors `setup_lazy_editor` in
-/// `tests/plugins.rs`, but uses `HUME_RUNTIME` (core plugin resolution)
-/// instead of a user data dir, and loads eagerly (no lazy stubs needed).
+/// `init.scm` + the real plugin file. Uses `HUME_RUNTIME` (core plugin
+/// resolution) instead of a user data dir, and loads eagerly (no lazy stubs
+/// needed).
 fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile::TempDir) {
     setup_vim_keybind_editor_with_config(input, None)
 }

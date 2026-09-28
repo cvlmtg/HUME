@@ -55,8 +55,7 @@ impl ResolvedStyle {
     /// resolving a partial per-write style against whatever a cell already
     /// holds, rather than against another cascade layer. The caller has an
     /// opinion (`self`) that may leave some fields unset, and `under` is
-    /// what's already painted there. See
-    /// `hume_engine::render::Canvas::over_painted`.
+    /// what's already painted there.
     pub(crate) fn over(self, under: ResolvedStyle) -> ResolvedStyle {
         ResolvedStyle {
             fg: self.fg.or(under.fg),

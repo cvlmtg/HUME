@@ -93,8 +93,7 @@ fn republish(
 
 /// Dispatches `goto-next-diagnostic`/`goto-prev-diagnostic` (key-bindable,
 /// not typed) through the keymap pipeline, the way their bound keys
-/// (`g n`/`g p`) would. `:diagnostics` (typed) dispatches via `type_cmd`
-/// directly at its one call site instead.
+/// (`g n`/`g p`) would.
 fn run(ed: &mut Editor, cmd: &str) {
     ed.execute_keymap_command(cmd.to_owned().into(), Some(1), false);
     ed.settle();

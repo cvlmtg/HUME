@@ -61,8 +61,7 @@ pub(crate) struct ComposeCtx<'a> {
 
 /// Resolve a gutter cell's scope to a style, layered over the row's
 /// background (cursorline tint or pane bg, whichever `row_bg` already
-/// resolved to). Shared by `compose_gutter`'s per-cell loop and its
-/// leftover-width blank fill so the two resolution paths can't drift.
+/// resolved to).
 ///
 /// `scope` is always already-interned: every gutter provider (`SignSource`,
 /// `LineNumberColumn`) interns at construction, so this is an O(1) `Theme::resolve`
@@ -471,9 +470,6 @@ fn resolve_arena_text(arena: &str, start: u32, len: u16) -> &str {
 
 /// Draw tilde filler rows from `start_screen_row` up to (but not including)
 /// `visible.content_height`, clamped to `pane_rect.height`.
-///
-/// Called by the fused pipeline (`render_pane`) to fill any remaining
-/// vertical space after the last real content row has been rendered.
 pub(crate) fn render_tilde_fillers(
     start_screen_row: u16,
     lane_widths: &[u16],

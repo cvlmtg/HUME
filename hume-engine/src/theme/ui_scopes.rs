@@ -12,9 +12,8 @@
 //! `FALLBACK_ONLY_CHROME` documents on the JS side), so it isn't a name any
 //! Rust call site resolves.
 //!
-//! Virtual-text scope names ([`VIRTUAL`]) live here too: still `"ui.*"`,
-//! still resolved by `compute_ui`/`decoration_providers.rs`. Cursor and
-//! Diagnostic scope names are out of scope for this table: Cursor's own
+//! Virtual-text scope names ([`VIRTUAL`]) live here too: still `"ui.*"`.
+//! Cursor and Diagnostic scope names are out of scope for this table: Cursor's own
 //! names live next to `CURSOR_MODES`/`cursor_ladder_ids` in the parent
 //! module, and Diagnostic's in `super::diagnostic_scopes`.
 
@@ -46,8 +45,7 @@ pub const WINDOW_FOCUSED: &str = "ui.window.focused";
 pub const TABLINE: &str = "ui.tabline";
 pub const TABLINE_ACTIVE: &str = "ui.tabline.active";
 /// Helix's own scope name, never resolved directly by HUME: read only as
-/// `TablineColors::from_theme`'s (`hume-editor/src/statusline/colors.rs`)
-/// fallback when a theme defines `ui.bufferline` (every shipped Helix theme
+/// `TablineColors::from_theme`'s fallback when a theme defines `ui.bufferline` (every shipped Helix theme
 /// does) but not `ui.tabline` (no Helix theme does, since it's HUME's own
 /// addition), so an unmodified Helix theme still colours the tab bar instead
 /// of leaving it unstyled.

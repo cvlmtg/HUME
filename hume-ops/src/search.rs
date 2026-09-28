@@ -211,9 +211,6 @@ pub fn find_next_match(
 
 /// Return all non-overlapping regex matches in `text` as inclusive char
 /// ranges, in document order. Zero-width matches are skipped.
-///
-/// Used by `SearchMatchHighlighter` to convert matches to line-relative byte
-/// ranges for the engine's highlight provider system.
 pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<InclusiveRange<CharOffset>> {
     find_matches_in_range(
         text,
@@ -251,10 +248,6 @@ pub fn find_matches_in_range(
 }
 
 /// Escape regex metacharacters so the string matches literally.
-///
-/// Used by [`word_search_pattern`] (`*`, search-word-under-cursor) and by
-/// [`compile_search_input`]'s verbatim (`v`) arm, which Ctrl-/
-/// (search-selection) reaches by setting `verbatim` on its pattern.
 ///
 /// `regex_syntax::escape` escapes a few characters (`-`, `#`, `&`, `~`) that
 /// only have meaning inside `[...]` classes. Harmless here since none of

@@ -569,10 +569,7 @@ pub(in crate::editor) fn commit_open_session(
 /// the `doc_ops`-level counterpart to [`commit_edit_group`], for the other
 /// kinds [`EditSession`] can hold. No-op if the open session (if any)
 /// isn't Paste-kind, so every caller can route through this unconditionally
-/// instead of checking first. `EditorState::commit_paste_session`
-/// (`commands::paste`) is a thin wrapper around this; [`apply_doc_edit`]
-/// calls it directly to close a same-pane Paste session before an
-/// unrelated edit can go stale against it (see that function's own doc).
+/// instead of checking first.
 pub(in crate::editor) fn commit_paste_group(
     buffers: &mut BufferStore,
     pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -614,8 +611,8 @@ pub(in crate::editor) fn commit_edit_group(
 /// `text_pre` must be the buffer text **before** the edit. `translate_in_place_with`
 /// uses it to identify which line each head was on pre-edit, which governs
 /// whether `Selection.sticky_display_col` is reset after the translation.
-/// `edits` must be `cs.edited_old_ranges()`; see `finish_edit`, this
-/// function's one caller, for why it's computed there instead of here.
+/// `edits` must be `cs.edited_old_ranges()`; see `finish_edit` for why it's
+/// computed there instead of here.
 ///
 /// Engine pane mirrors are **not** updated here; `sync_all_pane_mirrors` in
 /// the next `prepare_frame` handles that. Only the authoritative `SelectionSet`

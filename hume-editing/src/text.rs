@@ -119,8 +119,7 @@ pub(crate) fn is_cr_free(rope: &Rope) -> bool {
 impl BufferText {
     /// Wrap a raw `Rope` into a `BufferText`.
     ///
-    /// Used by `ChangeSet::apply` to construct the result buffer after
-    /// mutating the rope directly. The trailing-`\n` invariant is enforced
+    /// The trailing-`\n` invariant is enforced
     /// by `ChangeSet::apply` returning `Err(TrailingNewlineMissing)` before
     /// this constructor is called; the `\r`-free invariant has no such
     /// production-path gate (see `is_cr_free`'s doc for why: it's O(n), not
@@ -154,8 +153,7 @@ impl BufferText {
     /// mutable copy for operations that take `&BufferText` instead of consuming it.
     ///
     /// # Design note
-    /// This exposes the `ropey` type directly. Callers (regex search, syntax
-    /// highlighting, scroll logic) need raw `Rope` / `RopeSlice` access for
+    /// This exposes the `ropey` type directly. Callers need raw `Rope` / `RopeSlice` access for
     /// performance, so the boundary is intentionally permeable here. `ropey`
     /// is a stable, semver-pinned dependency; changing it would require
     /// touching the caller sites regardless.

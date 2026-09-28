@@ -7,8 +7,7 @@ use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
 use hume_treesitter::registry::GrammarBundle;
 use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 
-/// Load `name`'s compiled grammar fixture and parse `source` with it,
-/// shared by every test below that needs a working tree.
+/// Load `name`'s compiled grammar fixture and parse `source` with it.
 fn open_and_parse(name: &str, symbol: &str, source: &str) -> (tree_sitter::Tree, ropey::Rope) {
     let gpath = grammar_parser_path(name);
     let grammar = LoadedGrammar::open(&gpath, symbol).expect("open grammar");

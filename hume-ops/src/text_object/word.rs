@@ -287,8 +287,6 @@ pub fn nearest_word_on_line(
 /// preserving `sel.sticky_display_col` throughout.
 ///
 /// Returns `sel` unchanged when `found` is `None` (no candidate word in bounds).
-/// Shared by the buffer-line path in `cmd_select_word_nearest_on_line` and the
-/// wrap-aware path in `cmd_visual_select_word_nearest_on_line`.
 pub fn apply_nearest_word_result(
     sel: Selection,
     found: Option<InclusiveRange<CharOffset>>,
@@ -358,7 +356,7 @@ type WordUnitFn =
 
 /// [`word_unit_at`] with `min_start` pinned to `0`: the shape every
 /// text-object command below needs, as opposed to the sticky-column motion
-/// path (`motion/word.rs`), which passes a nonzero visual-line floor.
+/// path, which passes a nonzero visual-line floor.
 fn around_unit(
     text: &BufferText,
     pos: CharOffset,

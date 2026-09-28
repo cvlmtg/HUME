@@ -167,8 +167,7 @@ impl Editor {
     ///
     /// Calls `sync_viewport_dims` + `settle` + `prepare_frame` (the same
     /// three-step sequence `Editor::run`'s loop uses), so pane mirrors are
-    /// synced and parse trees are up to date before rendering. Used by
-    /// snapshot tests to lock down styled output without a live terminal.
+    /// synced and parse trees are up to date before rendering.
     #[cfg(test)]
     pub(in crate::editor) fn render_to_buf(&mut self, rect: Rect) -> Grid {
         let mut buf = Grid::new(rect.width, rect.height);
@@ -590,8 +589,7 @@ impl Editor {
     /// Called once per frame from `prepare_frame`, after the async/Steel
     /// drains and before `render()`, passing the same `active_pane_ids()`
     /// snapshot `prepare_frame` already computed for its other steps rather
-    /// than recomputing it here too. Tests that need the mirror without a
-    /// full frame call this directly, passing `ed.view.active_pane_ids()`.
+    /// than recomputing it here too.
     pub(in crate::editor) fn sync_all_pane_mirrors(&mut self, active: &[PaneId]) {
         let state = &mut self.state;
         let view = &mut self.view;

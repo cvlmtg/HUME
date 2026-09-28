@@ -21,10 +21,7 @@ impl EditorState {
     }
 }
 
-/// Trace-log a broken pending-edit chain. Shared by `reparse_stale_buffers`
-/// (the per-frame path, `&mut Editor`) and [`ensure_syntax_current`] (the
-/// synchronous on-demand path, only `&mut EditorState`): one message, never
-/// a second copy of the string.
+/// Trace-log a broken pending-edit chain.
 fn report_chain_break(state: &mut EditorState, bid: BufferId, brk: &ChainBreak) {
     state.report(
         Severity::Trace,

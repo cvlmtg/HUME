@@ -185,15 +185,14 @@ fn cmd_view_scroll_to_display_line(
 /// Center the head in the viewport, like `z z`. Infallible core shared by
 /// [`cmd_view_center`] (the registered `z z` command) and any other caller
 /// that wants the same effect without going through a native `EditorCmd`'s
-/// `Result`: `lifecycle.rs`'s post-file-load placement, LSP goto-definition
-/// (`lsp/edits.rs`), and `step_align_view`'s `Center` arm.
+/// `Result`.
 pub(in crate::editor) fn view_center(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
     let target = (viewport(view, pid).height as usize) / 2;
     cmd_view_scroll_to_display_line(state, view, pid, target);
 }
 
 /// Pin the head at the viewport's top display line, like `z k`. Infallible core
-/// shared by [`cmd_view_top`] and `step_align_view`'s `Top` arm.
+/// of [`cmd_view_top`].
 pub(in crate::editor::commands) fn view_top(
     state: &mut EditorState,
     view: &mut EngineView,

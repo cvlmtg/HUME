@@ -72,7 +72,7 @@ impl MockHost {
 
     /// Whether `name` is already claimed by a defined (non-Lazy) command,
     /// mappable or typed: the two vectors are one namespace in the real
-    /// registry. Shared by `register_command`/`register_typed_command`.
+    /// registry.
     fn is_registered(&self, name: &str) -> bool {
         self.registered_cmds.iter().any(|d| d.name == name)
             || self.registered_typed_cmds.iter().any(|d| d.name == name)

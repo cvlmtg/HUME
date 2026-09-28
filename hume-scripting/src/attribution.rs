@@ -192,8 +192,7 @@ impl PluginStack {
 
     /// The [`PluginId`] whose body is currently executing, if any.
     ///
-    /// Used by `(plugin-config)` to look up the caller's own `#:config` value,
-    /// valid during both eager (`load-plugin`) and lazy (`declare-plugin`,
+    /// Valid during both eager (`load-plugin`) and lazy (`declare-plugin`,
     /// activated later) bodies, since both push here for the duration of the eval.
     pub(crate) fn current(&self) -> Option<&PluginId> {
         self.stack.last()

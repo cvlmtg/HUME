@@ -43,7 +43,7 @@ impl TimerWheel {
     }
 
     /// Schedule a timer to fire `after` from now. Returns a handle usable
-    /// with [`Self::cancel`]. Production caller: `timer_bridge::TimerHandle`.
+    /// with [`Self::cancel`].
     pub(in crate::editor) fn schedule(&mut self, after: Duration) -> TimerId {
         let id = TimerId(self.next_id);
         self.next_id += 1;

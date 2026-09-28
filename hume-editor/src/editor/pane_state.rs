@@ -300,8 +300,7 @@ pub(in crate::editor) fn try_ensure<'a>(
 /// switching focus or recording a jump entry. The primitive every cursor
 /// placement outside the focused-buffer fast path (`set_current_selections`)
 /// reduces to: [`park_cursor_at`] is its line/grapheme-column convenience for
-/// a caller with no char position yet, and `commands::jump_pane_to`, whose
-/// target is already char-indexed, calls this directly.
+/// a caller with no char position yet.
 pub(in crate::editor) fn write_cursor(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
@@ -328,8 +327,7 @@ pub(in crate::editor) fn line_grapheme_to_char(
 /// Collapse `pane_state[pid][bid]`'s selection onto a 0-based
 /// `(line, grapheme_col)`, clamping the line to the buffer's last content
 /// line. Shared by every caller that parks a cursor at a line/column pair
-/// with no char position yet: a read-only view's opening position and a
-/// CLI startup position both reduce to this.
+/// with no char position yet.
 pub(in crate::editor) fn park_cursor_at(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,

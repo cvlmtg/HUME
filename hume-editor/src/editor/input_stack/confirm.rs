@@ -103,8 +103,7 @@ impl Layer for ConfirmLayer {
     // other opener that can land above one.
 }
 
-/// Named sugar over the generic lookup: the ~350 existing call sites
-/// (`ed.state.input.confirm()`) stay as they are, and `stack.rs` stays agnostic.
+/// Named sugar over the generic lookup; `stack.rs` stays agnostic.
 impl super::stack::InputStack {
     pub(in crate::editor) fn confirm(&self) -> Option<&ConfirmLayer> {
         self.find()

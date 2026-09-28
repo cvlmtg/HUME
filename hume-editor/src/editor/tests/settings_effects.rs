@@ -9,8 +9,7 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::RenderContext;
 
 /// Drive `(set-option! ...)` through the real Steel path
-/// (`EditorHostImpl::set_global_option`). Mirrors the harness in
-/// `editor/tests/undo_levels.rs`'s `steel_set_option_applies_undo_levels`.
+/// (`EditorHostImpl::set_global_option`).
 fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
     let names: Vec<String> = ed
         .state
@@ -363,8 +362,6 @@ fn typed_theme_bad_name_leaves_setting() {
 /// a test, so `theme::load_theme_by_name` can find real theme files.
 /// Mirrors `editor/tests/unix/mod.rs`'s `RealRuntimeGuard`, minus the
 /// `XDG_DATA_HOME` redirect (unneeded for a read-only theme load).
-/// `pub(in crate::editor::tests)`: shared with `lsp_popup.rs`'s own
-/// real-theme-reload regression test, not just this module's.
 pub(in crate::editor::tests) struct RealThemeRuntimeGuard {
     _lock: ClaimGuard,
 }

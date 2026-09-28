@@ -81,8 +81,7 @@ impl ScriptDirs {
         }
     }
 
-    /// The canonical `<data>/servers/` root. Used by `install.rs`'s
-    /// cross-process install lock.
+    /// The canonical `<data>/servers/` root.
     ///
     /// Returns `Err` when no data directory is available (HOME/APPDATA unset),
     /// which fails the lock closed rather than silently permitting it.

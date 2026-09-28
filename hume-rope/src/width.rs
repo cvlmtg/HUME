@@ -1,8 +1,5 @@
 //! Display-column arithmetic: the single source of truth for "how many
-//! terminal cells does this text occupy", shared by every crate that renders
-//! or aligns text: `hume-engine` (buffer lines, virtual decoration rows),
-//! `hume-ops` (tab insert/dedent), and `hume-editor` (popups, pickers, the
-//! statusline). A caller measuring or drawing display width goes through
+//! terminal cells does this text occupy". A caller measuring or drawing display width goes through
 //! this module rather than re-deriving its own tab/placeholder rules.
 //! Two independent conventions can silently disagree at the exact cells
 //! where a tab stop or an unrenderable cluster falls.
@@ -51,9 +48,8 @@ pub fn prev_tab_stop(display_col: usize, tw: u8) -> usize {
 /// text), decided once by [`classify`] and carrying each variant's own
 /// display width, so every caller that needs to know not just *how wide* a
 /// cluster is but *what to draw* for it reads that off one decision instead
-/// of re-deriving it: `format::grapheme_display`, `format::push_virtual_cells`,
-/// and `render::write_text_run` all need `cluster == "\t"` tested before
-/// [`needs_placeholder`], in that order ([`classify`]'s own doc). That is one
+/// of re-deriving it: every drawing caller needs `cluster == "\t"` tested
+/// before [`needs_placeholder`], in that order ([`classify`]'s own doc). That is one
 /// ordering hazard, checked once instead of at each call site, with no
 /// [`Placeholder`] rebuilt after `grapheme_width` already discarded it.
 pub enum Cluster {

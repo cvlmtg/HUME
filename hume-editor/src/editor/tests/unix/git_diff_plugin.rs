@@ -72,8 +72,7 @@ fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
 /// Same as `setup`, but also places `"steel:git-branch"` in the statusline
 /// config: `branch.scm`'s fetch is gated on the element being placed (see
 /// README's "Branch tracking"), so every branch-tracking test below needs
-/// this; the ~20 other call sites in this file want the fetch to stay off
-/// and call `setup` directly.
+/// this.
 fn setup_with_git_branch(tmp: &Path) -> (Editor, RealRuntimeGuard) {
     let (mut ed, guard) = setup(tmp, None);
     let mut host = ed.scripting.take().expect("setup() installs a host");
@@ -87,8 +86,7 @@ fn setup_with_git_branch(tmp: &Path) -> (Editor, RealRuntimeGuard) {
     (ed, guard)
 }
 
-/// Opens `path` as a real, file-backed buffer (mirrors `lsp_hover.rs`'s
-/// `setup`) and returns its id.
+/// Opens `path` as a real, file-backed buffer and returns its id.
 fn open(ed: &mut Editor, path: &Path) -> BufferId {
     ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
     ed.focused_buffer_id()

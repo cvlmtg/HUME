@@ -74,8 +74,7 @@ impl MiniBuffer {
     }
 
     /// Installs `text` as `input` and parks the cursor at its end: the
-    /// "just replaced the whole input" invariant shared by `with_prefill`
-    /// and history recall ([`recall_history`]).
+    /// "just replaced the whole input" invariant.
     pub(in crate::editor) fn set_input(&mut self, text: String) {
         self.cursor = text.len();
         self.input = text;
@@ -86,11 +85,6 @@ impl MiniBuffer {
     /// renderer prepends, plus the prompt's width, plus the display width of
     /// `input` up to `byte_offset` (clamped to `input`'s length). Add
     /// `area.x` to get the absolute screen column.
-    ///
-    /// Shared by the edit cursor ([`Self::statusline_cursor_x`], at
-    /// `self.cursor`) and the completion-overlay anchor (at a completion
-    /// span's start). Both are "where does this byte offset into `input`
-    /// land on screen" under the same prompt.
     pub(in crate::editor) fn cursor_x_at(&self, byte_offset: usize) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
         let prompt_w = text_width(&self.prompt) as u16;

@@ -118,9 +118,7 @@ fn locate_argument(
 
 /// Whitespace HUME's argument separator rule treats as blank: anything
 /// [`blank_class`] classifies as `Space` or `Eol`: space, tab, NBSP,
-/// ideographic space, or newline. Shared by [`trim_segment`]
-/// (leading/trailing trim) and [`around_from_inner`] (searching either side
-/// of an inner span for its separator comma). Routed through `blank_class`
+/// ideographic space, or newline. Routed through `blank_class`
 /// rather than a hand-rolled char match so `m a a` agrees with `m a w` on
 /// which characters count as blank.
 fn is_blank(text: &BufferText, pos: CharOffset) -> bool {

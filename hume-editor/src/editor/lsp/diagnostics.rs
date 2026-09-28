@@ -184,7 +184,8 @@ impl DiagnosticsStore {
         self.store.buffers()
     }
 
-    /// Production callers: `:lsp-status` and the `(diagnostic-counts …)` builtin.
+    /// Counts `bid`'s diagnostics by severity, returning `(errors, warnings)`;
+    /// `Info`/`Hint` are not counted.
     pub(in crate::editor) fn counts(&self, bid: BufferId) -> (usize, usize) {
         let mut errors = 0;
         let mut warnings = 0;
@@ -198,9 +199,6 @@ impl DiagnosticsStore {
         (errors, warnings)
     }
 
-    /// Production caller: the `(diagnostics-for-buffer …)` builtin. The
-    /// underline/sign providers also read from here.
-    ///
     /// Each server's own entries are sorted by `start` (`SourceStore::set`),
     /// but with 2+ servers publishing for the same buffer, concatenating
     /// them in server order would not be globally sorted. Callers that

@@ -179,8 +179,8 @@ impl CompletionItem {
     }
 
     /// No `textEdit`, no `additionalTextEdits`: accepting this item does
-    /// nothing beyond inserting `insert_text` at the cursor. Shared by
-    /// [`Self::is_noop_for`] and `BufferSession::recompute_dedup`'s
+    /// nothing beyond inserting `insert_text` at the cursor. Used by
+    /// `BufferSession::recompute_dedup`'s
     /// cross-source duplicate check: only a plain item is ever hidden as
     /// someone else's duplicate, since an item carrying edits does
     /// something a duplicate-looking plain item from another source

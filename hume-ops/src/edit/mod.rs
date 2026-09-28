@@ -101,7 +101,7 @@ pub fn repeat_edit(
 /// The closure `f` receives:
 ///   - `b`: the changeset builder (original-buffer coordinate space)
 ///   - `text`: shared borrow of the original buffer for read-only queries
-///   - `i`: 0-based iteration index in sorted order (N-to-N paste uses this)
+///   - `i`: 0-based iteration index in sorted order
 ///   - `sel`: the current selection
 ///   - `new_sels`: accumulator for result selections; `f` must push exactly one entry
 ///
@@ -147,8 +147,7 @@ where
 /// Delete the grapheme cluster at `p` and push a cursor result onto `new_sels`.
 ///
 /// No-op when `p` is the last position in the buffer (the structural trailing
-/// `\n`): deleting it would violate the buffer invariant. Used by
-/// `delete_char_forward` (cursor branch).
+/// `\n`): deleting it would violate the buffer invariant.
 ///
 /// All offsets fed to `b` are in original-buffer coordinate space. The builder
 /// translates them to result-buffer positions internally.
@@ -186,9 +185,6 @@ fn delete_one_grapheme(
 /// the structural one. This matches the vim `dd`-on-last-line convention:
 /// rather than leaving a blank trailing line the line merges back into the one
 /// above it by removing the separator newline.
-///
-/// Shared by `delete_char_forward` and `delete_char_backward`, which have
-/// identical selection branches.
 fn delete_sel_region(
     b: &mut ChangeSetBuilder,
     text: &BufferText,

@@ -56,8 +56,6 @@ impl OverlayViews {
     /// The two chrome bands (drawer, docked popup) reading this set's
     /// band-shaped slots, for `EngineView::bottom_bands`. **Call once**: a
     /// second call registers a duplicate band painting the same data twice.
-    /// `Editor::open` is the only caller; `Editor::for_testing` deliberately
-    /// registers none (see `lsp_popup.rs`'s doc on why).
     pub fn bottom_bands(&self) -> Vec<Box<dyn BottomBandProvider>> {
         vec![
             Box::new(drawer::DrawerWidget {
@@ -106,10 +104,6 @@ pub fn register_overlays(providers: &mut ProviderSet, views: &OverlayViews) {
 }
 
 /// Rows of `area` as plain symbols, trailing spaces trimmed per row.
-///
-/// Shared by `menu_box`'s and `picker_panel`'s own test modules: both dump
-/// a rendered `Grid` region to a string for `insta`/plain assertions, and
-/// the dump itself is identical between the two overlay kinds.
 #[cfg(test)]
 pub(crate) fn symbols_in(buf: &hume_grid::Grid, area: hume_grid::Rect) -> String {
     (area.y..area.y + area.height)

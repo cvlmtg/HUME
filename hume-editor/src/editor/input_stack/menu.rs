@@ -137,12 +137,10 @@ impl Editor {
     }
 }
 
-/// Named sugar over the generic lookup: the ~350 existing call sites
-/// (`ed.state.input.menu()`) stay as they are, and `stack.rs` stays
+/// Named sugar over the generic lookup; `stack.rs` stays
 /// agnostic. Read-only: every handler-side mutation now addresses its own
 /// dispatched-to layer via `at_mut::<MenuLayer>(r)` instead, so there is no
-/// `menu_mut()` sibling. This one's only remaining caller is render-sync
-/// (`sync_menu_view`, independent of dispatch), which never needs `&mut`.
+/// `menu_mut()` sibling.
 impl super::stack::InputStack {
     pub(in crate::editor) fn menu(&self) -> Option<&MenuLayer> {
         self.find()
@@ -229,8 +227,6 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
 /// Take the menu at `r` off the stack, handing back its model so the
 /// caller can fire the one callback this layer owes
 /// (`.take()`-equivalent one-shot discipline via `EditorState::take_layer`).
-/// Shared by every `menu_input` retirement path (Enter, Escape, a stray
-/// key, a fresh mouse gesture).
 fn take_menu(ed: &mut Editor, r: LayerRef) -> MenuLayer {
     *ed.state.take_layer::<MenuLayer>(&ed.view, r)
 }

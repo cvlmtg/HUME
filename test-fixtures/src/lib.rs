@@ -1,9 +1,9 @@
-//! Shared test infrastructure for `hume-editor` and `hume-treesitter`.
+//! Shared test infrastructure.
 //!
 //! [`testing`] holds the marker-annotated buffer/selection DSL
 //! (`parse_state`/`serialize_state`/`assert_state!`) used by editing-command
 //! tests. Everything below is grammar-fixture paths and fixture-presence
-//! preconditions shared by both crates' test suites. Fixtures are installed
+//! preconditions. Fixtures are installed
 //! by `scripts/fetch-test-grammars.sh` into `tests/fixtures/grammars/<name>/`,
 //! with `queries/` normalized to the fixture root regardless of whether the
 //! upstream grammar repo is a monorepo — callers never need to parse

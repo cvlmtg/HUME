@@ -2,9 +2,7 @@
 //! small API so no caller names it directly (mirrors the `ropey`/`termina`
 //! wrapping precedent elsewhere in the editor).
 //!
-//! Consumed by `PickerSession` (`editor/input_stack/picker/session.rs`) and
-//! `SlotSet` (`editor/completion/session/slots.rs`), one instance per
-//! profile; see [`FuzzyProfile`].
+//! One instance per profile; see [`FuzzyProfile`].
 
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};

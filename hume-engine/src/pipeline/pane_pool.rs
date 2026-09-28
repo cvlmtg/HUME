@@ -43,8 +43,7 @@ impl UnattachedPane {
 /// Every pane that exists, across every tab (active or stashed), regardless
 /// of which one is on screen. Wraps the raw `SlotMap` so the type itself
 /// distinguishes the two things a caller can legitimately want from it: a
-/// specific pane by id (`Index`/`get`/`get_mut`, the common case: nothing
-/// below changes for the ~200 sites that already spell `view.panes[pid]`),
+/// specific pane by id (`Index`/`get`/`get_mut`, the common case),
 /// or every pane regardless of tab visibility
 /// ([`Self::every_pane_across_all_tabs`], named so a call site states that
 /// scope in prose). There is deliberately no `iter`/`values`/`values_mut`/`keys`/
@@ -82,8 +81,8 @@ impl PanePool {
 
     /// Insert a pane and mint the [`UnattachedPane`] token proving it isn't
     /// yet reachable from any layout tree. `pub(super)`: `EngineView::
-    /// insert_pane` (`pipeline/mod.rs`) is the one sanctioned public
-    /// wrapper; see `UnattachedPane`'s own doc.
+    /// insert_pane` is the one sanctioned public wrapper; see
+    /// `UnattachedPane`'s own doc.
     pub(super) fn insert(&mut self, pane: Pane) -> UnattachedPane {
         UnattachedPane(self.0.insert(pane))
     }

@@ -2,8 +2,7 @@ use super::*;
 use pretty_assertions::assert_eq;
 
 /// Open a second real (file-backed) buffer with content `"world\n"` and
-/// return its id. Used by the `:q`/`:qa`/`:wq` multi-buffer tests below,
-/// which need a second file buffer distinct from `editor_with_file`'s.
+/// return its id — a second file buffer distinct from `editor_with_file`'s.
 fn open_second_file_buffer(ed: &mut Editor) -> BufferId {
     let (buf, _tmp_path) = file_buffer("world\n");
     ed.open_buffer(buf)

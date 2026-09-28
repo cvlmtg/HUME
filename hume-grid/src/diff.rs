@@ -29,7 +29,7 @@ pub struct RowRun<'a> {
 /// shares its neighbours' style. Merging under a small threshold is therefore
 /// cheaper in bytes *and* in sequences, and it keeps a styled run contiguous
 /// so the emitter's SGR state survives across it. The threshold is the
-/// caller's (`max_gap`); `hume-platform` owns the value.
+/// caller's (`max_gap`).
 ///
 /// Re-printing an unchanged cell is safe because it is idempotent: the cell
 /// is emitted with its own style, so the terminal ends up with exactly what

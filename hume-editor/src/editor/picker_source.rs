@@ -134,9 +134,7 @@ impl Editor {
 }
 
 /// Reports a spawned source's exit as a message-log error unless its status
-/// code is in `ok_exit_codes`. Shared by the natural end-of-stream drain
-/// above and a source taken out early by [`take_and_report_outgoing_source`].
-/// `ok_exit_codes` is the complete allowlist, not an addition to
+/// code is in `ok_exit_codes`. `ok_exit_codes` is the complete allowlist, not an addition to
 /// `ExitStatus::success`; see `UiHost::picker_source_spawn`'s doc for why a
 /// list omitting `0` reports a successful exit as a failure.
 fn report_source_exit(state: &mut EditorState, source: SpawnedLineSource, ok_exit_codes: &[i32]) {
@@ -164,9 +162,7 @@ fn report_source_exit(state: &mut EditorState, source: SpawnedLineSource, ok_exi
 /// A source still running is dropped silently: `SpawnedLineSource::drop`
 /// kills it, and the exit status of a deliberate kill is noise, not a
 /// failure worth logging. This is the distinction `has_exited` exists to
-/// draw. Shared by `spawn_source` (re-spawn on the same token) and
-/// `stop_source`, so neither has to duplicate the "was it actually done?"
-/// check. `close_picker` (`picker.rs`) is a third, deliberate path that
+/// draw. `close_picker` (`input_stack/picker/mod.rs`) is a third, deliberate path that
 /// drops a source without going through here: a picker being closed has
 /// nowhere left to report to, so its exit (if any) goes unreported.
 fn take_and_report_outgoing_source(state: &mut EditorState) {

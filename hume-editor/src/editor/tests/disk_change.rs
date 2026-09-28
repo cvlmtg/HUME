@@ -1476,8 +1476,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
 
 /// A change hit mid macro-replay must never open a confirm: a `Confirm`
 /// layer on top would consume the next replayed key, silently truncating
-/// the macro. Mirrors `change_detected_mid_insert_warns_instead_of_prompting`'s
-/// shape: blocked during replay, deferred prompt still honoured afterward.
+/// the macro. Blocked during replay, deferred prompt still honoured afterward.
 ///
 /// Without `!self.state.is_replaying` in `can_open_confirm`, the confirm
 /// would open partway through `drain_replay_queue` and could eat the macro's

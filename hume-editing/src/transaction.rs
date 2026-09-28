@@ -62,10 +62,6 @@ impl Transaction {
     }
 
     /// Consume this transaction and return just the `ChangeSet`.
-    ///
-    /// Used by `Buffer::undo` / `Buffer::redo` to extract the CS for
-    /// propagation to non-acting panes after `apply` has already validated and
-    /// applied the transaction.
     pub fn into_changes(self) -> ChangeSet {
         self.changes
     }

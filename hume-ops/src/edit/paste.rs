@@ -8,8 +8,6 @@ use hume_editing::text::BufferText;
 use super::apply_edit;
 use crate::register;
 
-/// Private implementation shared by [`paste_after`] and [`paste_before`].
-///
 /// `before` governs insert position for cursor (non-collapsed) selections:
 ///
 /// | `before` | charwise content           | linewise content (ends `\n`)   |

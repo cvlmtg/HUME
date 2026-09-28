@@ -186,8 +186,7 @@ fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals
 }
 
 /// `StatusElement::Custom(name)`'s rendered text for the focused buffer:
-/// the render side of `(set-statusline-text! name bid text)`. Shared by
-/// `statusline_steel.rs`, `unix/git_diff_plugin.rs`, and `unix/reload_config.rs`.
+/// the render side of `(set-statusline-text! name bid text)`.
 fn custom_text(ed: &Editor, name: &str) -> String {
     let colors = crate::statusline::colors::EditorColors::default();
     let (text, _) = crate::statusline::render_element(
@@ -200,22 +199,18 @@ fn custom_text(ed: &Editor, name: &str) -> String {
 }
 
 /// The open drawer's rows. Every drawer assertion reads through this
-/// instead of reaching into `views.drawer` by hand. Shared by
-/// `lsp_drawer.rs`, `unix/lsp_diagnostics_nav.rs`, `unix/lsp_goto.rs`,
-/// `unix/lsp_references.rs`, and `unix/column_display_agreement.rs`.
+/// instead of reaching into `views.drawer` by hand.
 fn drawer_rows(ed: &Editor) -> Vec<String> {
     let guard = ed.state.views.drawer.read();
     guard.as_ref().expect("drawer must be open").rows.to_vec()
 }
 
-/// The `:` line's current input, `""` when no minibuffer is open. Shared by
-/// `command_mode.rs` and `completion/minibuf.rs`.
+/// The `:` line's current input, `""` when no minibuffer is open.
 fn minibuf_input(ed: &Editor) -> &str {
     ed.state.minibuf().map(|mb| mb.input.as_str()).unwrap_or("")
 }
 
-/// The last status-line message, `""` when none is set. Shared by
-/// `completion/mod.rs` and `unix/lsp_completion_feature.rs`.
+/// The last status-line message, `""` when none is set.
 fn status(ed: &Editor) -> String {
     ed.state.status_msg.clone().unwrap_or_default()
 }
@@ -238,8 +233,7 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
 
 /// Opens a drawer with `items` through `EditorHostImpl`'s `UiHost` impl
 /// directly (bypassing Steel), for tests exercising the host seam's own
-/// token contract (`lsp_prompt.rs`, `lsp_drawer.rs`'s mismatched-token
-/// tests). Returns the live token; panics if `show-drawer-list!` refused the
+/// token contract. Returns the live token; panics if `show-drawer-list!` refused the
 /// items or the stack read the request as stale. Neither is under test at
 /// any of this helper's callers.
 fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
@@ -356,8 +350,7 @@ fn key_left() -> KeyEvent {
     KeyEvent::new(KeyCode::Left, Modifiers::NONE)
 }
 
-/// A left-button-down mouse event at the given screen coordinates. Shared by
-/// `mouse.rs` and `disk_change.rs` (click-to-focus's buffer-enter disk check).
+/// A left-button-down mouse event at the given screen coordinates.
 fn mouse_left_down(x: u16, y: u16) -> TerminalEvent {
     TerminalEvent::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
@@ -435,8 +428,7 @@ fn type_text(ed: &mut Editor, text: &str) {
 }
 
 /// The gutter sign map synced onto pane `pid`: the read side every
-/// `set-signs!`/`register-sign-source!` test (portable `lsp_signs.rs` and
-/// unix-only `lsp_diagnostic_signs.rs` alike) asserts against.
+/// `set-signs!`/`register-sign-source!` test asserts against.
 fn pane_signs(
     ed: &Editor,
     pid: PaneId,

@@ -24,8 +24,7 @@ pub(super) fn goto_line_end(text: &BufferText, head: CharOffset) -> CharOffset {
 ///
 /// Unlike `goto_line_end` (which stops at the last non-newline grapheme and
 /// therefore lands on the `\n` itself only on empty lines), this always
-/// returns the `\n` position. Used by `cmd_open_line_below` to make the
-/// insertion point uniform across empty and non-empty lines.
+/// returns the `\n` position.
 pub(super) fn goto_line_newline(text: &BufferText, head: CharOffset) -> CharOffset {
     let line = text.char_to_line(head);
     line_break_char(text, line)

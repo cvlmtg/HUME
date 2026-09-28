@@ -620,12 +620,7 @@ impl PickerSession {
     }
 
     /// Rebuilds `filtered` from `items`/`query`: the ranking-only half
-    /// shared by [`rerank`](Self::rerank) (used directly by `replace`,
-    /// `set_query`, `insert_char`, and `pop_grapheme`; a live session
-    /// recomputes the same identity permutation on every keystroke rather
-    /// than skip the call, since the result is a pure function of
-    /// `items.len()` either way and a separate skip-path bought nothing
-    /// observable) and
+    /// shared by [`rerank`](Self::rerank) and
     /// [`rerank_keeping_selection`](Self::rerank_keeping_selection); neither
     /// touches `selected`/`scroll` itself.
     fn rebuild_filtered(&mut self) {

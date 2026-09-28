@@ -6,7 +6,7 @@
 //! `ChangeSet` remapping that keeps entries positioned through edits;
 //! `signs`/`inline_decorations`/`virtual_lines`/`line_backgrounds`/
 //! `highlight_providers` are the read half, each a [`SharedSlot`] handle
-//! `hume-editor`'s per-frame sync (`decoration_providers.rs`) writes into
+//! `hume-editor`'s per-frame sync writes into
 //! and a provider impl reads during render.
 //!
 //! No type here references `Editor`/`EditorState`: every provider reads

@@ -307,10 +307,7 @@ impl History {
     /// definition of one step. Short of `count` when the walk reaches the
     /// root; empty when `count == 0` or already at the root.
     ///
-    /// The caller feeds the result into `Buffer::apply_transactions`, which
-    /// folds it with `ChangeSet::compose_all` into one net transform and
-    /// applies that once: one `set_text`/`finish_edit` cycle for the whole
-    /// walk, however many revisions it crosses, instead of one per step.
+    /// Fold with `ChangeSet::compose_all` to apply once.
     pub fn undo_n(&mut self, count: usize) -> Vec<Transaction> {
         let mut txns = Vec::new();
         for _ in 0..count {
@@ -484,8 +481,7 @@ impl History {
     /// buffer into the target state, **in order**: txn₁ maps state A→B, txn₂
     /// maps B→C, and so on, exactly [`ChangeSet::compose`]'s contract
     /// (`self.len_after == other.len_before`). A caller applying them one at
-    /// a time (as this module's tests do, to keep assertions per-hop) is
-    /// free to; a caller walking many revisions in one logical step instead
+    /// a time is free to; a caller walking many revisions in one logical step instead
     /// folds the list with `ChangeSet::compose_all` into one net transform
     /// and applies that once: same end state, one text mutation instead
     /// of N.

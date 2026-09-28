@@ -271,9 +271,7 @@ fn collect_helper_fns(paths: &[std::path::PathBuf]) -> Vec<(String, String)> {
 /// Grow `seeded` (a name → its own body already known to have some property)
 /// to a fixed point: any other helper whose body *calls* a name already in
 /// the set gains the property too, however many hops away: `commit_file`
-/// calling `git`, which calls `Command::new`, is two. Shared by
-/// [`spawning_helper_names`] and [`claiming_helper_names`], which differ
-/// only in which predicate seeds the initial set.
+/// calling `git`, which calls `Command::new`, is two.
 fn propagate_transitively(
     helper_fns: &[(String, String)],
     mut has_property: std::collections::HashSet<String>,

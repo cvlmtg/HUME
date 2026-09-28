@@ -116,8 +116,6 @@ impl KeyTrie {
     /// Bind a multi-key sequence prefix to a WaitChar node, creating interior
     /// nodes as needed. The next character the user presses after the sequence
     /// will be stored in `pending_char` and `wc.cmd_name` will be dispatched.
-    ///
-    /// Called by [`Keymap::bind_wait_char_user`] at runtime (e.g. from Steel config).
     pub(in crate::editor) fn bind_wait_char_sequence(
         &mut self,
         keys: &[KeyEvent],
@@ -142,8 +140,6 @@ impl KeyTrie {
 
     /// Bind a multi-key sequence to a leaf command, creating interior nodes as
     /// needed. Single-key sequences insert directly as a `Leaf`.
-    ///
-    /// Called by [`Keymap::bind_user_with_extend`] at runtime (e.g. from Steel config).
     pub(in crate::editor::keymap) fn bind_sequence(
         &mut self,
         keys: &[KeyEvent],
@@ -187,8 +183,6 @@ impl KeyTrie {
     }
 
     /// Walk a key sequence through the trie, returning the result after all keys.
-    ///
-    /// Called by the dispatcher with `self.pending_keys` on every keypress.
     pub(super) fn walk(&self, keys: &[KeyEvent]) -> WalkResult {
         debug_assert!(!keys.is_empty(), "walk called with empty key sequence");
 
@@ -238,8 +232,6 @@ impl KeyTrie {
 }
 
 /// Which keymap to apply a user-supplied binding to.
-///
-/// Used by [`Keymap::bind_user_with_extend`] and [`Keymap::unbind_user`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) enum BindMode {
     Normal,

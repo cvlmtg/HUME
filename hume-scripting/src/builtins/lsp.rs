@@ -20,9 +20,9 @@ use super::args::{
 use super::errors::generic_err;
 
 /// `Some(json)` → decoded to a Steel hashmap; `None` (unresolvable, no
-/// attached server, handshake incomplete, …) → `#f`. Shared by the three
-/// params-builder introspection builtins below. Every field in these is
-/// HUME-computed, not server JSON, so they stay a native decode; see
+/// attached server, handshake incomplete, …) → `#f`. Every field these
+/// builtins pass is HUME-computed, not server JSON, so they stay a native
+/// decode; see
 /// `lsp_capabilities`, which instead converts via `to_steel_handle` since
 /// its own JSON isn't HUME-computed.
 fn json_or_false(json: Option<serde_json::Value>) -> SteelVal {

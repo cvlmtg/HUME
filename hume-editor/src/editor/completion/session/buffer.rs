@@ -30,8 +30,6 @@ pub(super) struct DocSnapshot {
 /// The token in live coordinates that a `Buffer` invocation answered for,
 /// fixed at invoke time (the source's token rule: the word before the
 /// cursor) and tracked through every edit since via [`Invocation::observe`].
-/// `pub(in crate::editor)`, not private: `orchestrate.rs` names
-/// `Invocation<BufferSpan>` at every invoke call site.
 pub(in crate::editor) struct BufferSpan {
     pub(super) doc: DocSnapshot,
     /// `start` mapped `Assoc::Before` through every observed edit (text

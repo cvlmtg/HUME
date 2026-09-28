@@ -7,11 +7,11 @@
 //! domains:
 //!
 //! - **Ropey domain** (`ropey_line_count`, `last_ropey_line`): phantom line
-//!   included. Valid on any rope; used by gutter sizing and LSP wire-position
-//!   clamps, which must address every ropey line.
+//!   included. Valid on any rope; for positions that must address every
+//!   ropey line.
 //! - **Content domain** (`content_line_count`, `last_content_line`): phantom
-//!   line excluded. Assumes the invariant (debug-asserted); used for
-//!   user-facing counts and content bounds.
+//!   line excluded. Assumes the invariant (debug-asserted); for user-facing
+//!   counts and content bounds.
 //!
 //! ## LF is the only line break
 //!

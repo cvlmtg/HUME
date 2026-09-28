@@ -106,8 +106,7 @@ pub(crate) struct MessageLog {
     /// earlier once `MAX_ENTRIES` starts evicting). `:reload-config` diffs
     /// this against a before/after snapshot to detect "did this reload push
     /// a new warning or error", a question `unseen_counts` alone can't
-    /// answer reliably across a long session. See `MessageLog::totals`'s
-    /// call site.
+    /// answer reliably across a long session.
     total_errors: u64,
     total_warnings: u64,
 }
@@ -122,7 +121,7 @@ impl MessageLog {
         }
     }
 
-    /// Append an entry to the log. Called by `Editor::report`.
+    /// Append an entry to the log.
     ///
     /// When the entry count would exceed [`MAX_ENTRIES`], the oldest entry is
     /// evicted and `seen_up_to` is shifted so it stays in bounds.

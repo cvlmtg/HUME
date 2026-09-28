@@ -58,8 +58,7 @@ pub(in crate::editor::lsp::registry) fn resolve_root(
 }
 
 impl Editor {
-    /// Applies one queued op. Called by `Editor::apply_script_effects` for
-    /// each `Effect::LspServerOp`, in emission order. The one apply path
+    /// Applies one queued op. The one apply path
     /// for LSP server registration/unregistration regardless of which eval
     /// queued it.
     pub(in crate::editor) fn apply_lsp_server_op(

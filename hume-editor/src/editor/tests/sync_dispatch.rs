@@ -1604,10 +1604,9 @@ fn steel_body_with_no_native_dispatch_clears_the_recipe() {
 }
 
 /// After `.` replays a Steel insert action, a single `u` must undo the entire
-/// replay as one step, proving `replay_dot`'s edit-group bracketing
-/// works correctly for the Steel insert path.
-///
-/// Mirrors `dot_is_single_undo_step` from dot_repeat.rs but drives insert via Steel.
+/// replay as one step: a Steel-driven insert is one undo step, proving
+/// `replay_dot`'s edit-group bracketing works correctly for the Steel
+/// insert path.
 #[test]
 fn steel_repeatable_insert_dot_repeat_single_undo() {
     let mut ed = editor_from("-[x]>y\n");

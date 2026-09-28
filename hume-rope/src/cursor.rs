@@ -51,7 +51,7 @@ impl CharCursor<'_> {
     /// Not a [`DoubleEndedIterator`] impl:
     /// that trait means "consume from the far end of the same forward
     /// sequence," not "walk backward from here," which is what callers
-    /// (bracket-pair scans) actually need.
+    /// actually need.
     pub fn prev(&mut self) -> Option<(CharOffset, char)> {
         let ch = self.iter.prev()?;
         self.pos = self.pos.retreat(1);

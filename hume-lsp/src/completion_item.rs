@@ -85,8 +85,7 @@ pub fn parse_additional_text_edits_lenient(
 /// that wants an `#:incomplete` argument of its own to still apply can tell
 /// the two shapes apart) or a `CompletionList` object (`{isIncomplete,
 /// items}`). `None` for any other shape, or an object missing (or
-/// malformed) `items`. The caller treats that the same as an error
-/// response, rather than silently completing nothing. A missing or
+/// malformed) `items`. A missing or
 /// non-bool `isIncomplete` on a `CompletionList` counts as `false`. This
 /// is the response-level counterpart of the same lenient-everywhere-but-
 /// the-one-required-field discipline the completion store itself uses to

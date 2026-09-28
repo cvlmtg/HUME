@@ -158,8 +158,7 @@ impl TreeSitterHighlighter {
 }
 
 /// Build sorted, non-overlapping highlight spans for `line_idx` across every
-/// syntax layer that covers it, for consumption by the engine's
-/// `rebuild_line_decorations` (reached via the `SyntaxSpans` trait).
+/// syntax layer that covers it.
 ///
 /// Collects each covering layer's raw captures (tagged with the layer's
 /// depth) then flattens once via [`hume_engine::interval_sweep::flatten_overlapping_spans`]

@@ -117,9 +117,9 @@ impl LayoutTree {
     }
 
     /// `pid`'s own rect, without collecting every other leaf's: the single-
-    /// target sibling of [`Self::collect_rects_into`], for callers (a single
-    /// pane lookup, a mouse-motion hit test) that don't need the whole
-    /// partition and would otherwise allocate one just to search it.
+    /// target sibling of [`Self::collect_rects_into`], for callers that
+    /// don't need the whole partition and would otherwise allocate one just
+    /// to search it.
     pub fn find_rect(&self, pid: PaneId, area: Rect, reserve_seam: bool) -> Option<Rect> {
         match self {
             LayoutTree::Leaf(id) => (*id == pid).then_some(area),
@@ -269,10 +269,10 @@ impl LayoutTree {
     }
 
     /// Consume the whole tree, detaching every pane it reaches (one token
-    /// per leaf). Used by tab-close: discarding a tab's tree and freeing all
-    /// of its panes become the same operation, so there is no window where
-    /// the tree is gone but a pane it referenced still lives in the pool
-    /// (or vice versa).
+    /// per leaf). Discarding a tab's tree and freeing all of its panes
+    /// become the same operation, so there is no window where the tree is
+    /// gone but a pane it referenced still lives in the pool (or vice
+    /// versa).
     pub fn into_detached(self) -> Vec<DetachedPane> {
         let mut out = Vec::new();
         self.collect_detached(&mut out);
@@ -312,8 +312,7 @@ impl LayoutTree {
     /// first one) should use `Self::first_leaf` instead of reading the
     /// first element.
     ///
-    /// Used by tab-close to find every pane owned by the tab being closed,
-    /// since panes are never shared across tabs (each tab's `LayoutTree`
+    /// Panes are never shared across tabs (each tab's `LayoutTree`
     /// references a disjoint set of leaves) but all live in one global pool
     /// regardless of which tab is active. See
     /// [`EngineView::active_pane_ids`](super::EngineView::active_pane_ids)

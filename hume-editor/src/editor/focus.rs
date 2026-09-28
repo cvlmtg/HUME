@@ -74,10 +74,7 @@ pub(in crate::editor) fn end_focus_sessions(state: &mut EditorState, view: &Engi
 }
 
 /// Move focus to `pid`, first calling [`end_focus_sessions`]: the one
-/// production chokepoint every focus change goes through
-/// (`commands::pane::close_focused_pane`/`split_pane_onto`,
-/// `commands::jump::focus_in_direction`/`cmd_pane_focus_next`,
-/// `tab::install_live`, `mouse::mouse_left_down`).
+/// production chokepoint every focus change goes through.
 ///
 /// Usually already done by the time this runs: `tab::take_live` calls
 /// `end_focus_sessions` itself before touching the layout (see its own

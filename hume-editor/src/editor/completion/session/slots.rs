@@ -294,8 +294,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// The sources to call again after an edit: those that flagged their
     /// latest answer `isIncomplete`, and those still pending (their
     /// in-flight call saw an older document, so it is superseded rather
-    /// than waited for). `Buffer`-only caller (`Minibuf` has no edit-driven
-    /// reinvocation loop), but the underlying bookkeeping is generic.
+    /// than waited for).
     pub(super) fn sources_to_reinvoke(&self) -> Vec<Id> {
         self.slots
             .iter()
@@ -335,11 +334,8 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
         Some(self.item(s, i))
     }
 
-    /// The source/invocation/item behind ranked position `idx`. `accept`
-    /// is the only caller that needs the source id (to read
-    /// `BufferSourceEntry::resolve`) and the invocation itself (for its
-    /// span); every other reader just wants the item
-    /// ([`Self::selected_item`]).
+    /// The source/invocation/item behind ranked position `idx`. Readers
+    /// that only want the item should use [`Self::selected_item`] instead.
     pub(super) fn ranked(&self, idx: usize) -> Option<(Id, &Invocation<S>, &CompletionItem)> {
         let (s, i) = self.ranked_indices(idx)?;
         let slot = &self.slots[s as usize];

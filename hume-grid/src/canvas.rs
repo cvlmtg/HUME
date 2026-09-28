@@ -9,10 +9,10 @@ use crate::style::ResolvedStyle;
 ///
 /// Wraps the frame's [`Grid`] and, when set, a dim target: fg/bg is blended
 /// toward it on every write. This is the single chokepoint for the non-focused
-/// pane dim effect. `compose_display_line` / `render_tilde_fillers` (`hume-engine`)
-/// never touch the grid directly, so a future write site cannot forget to
-/// dim: the blend happens exactly once per cell, inline in the single write,
-/// never a separate sweep over an already-drawn rect. Chrome (menus,
+/// pane dim effect. Pane renderers never touch the grid directly, so a
+/// future write site cannot forget to dim: the blend happens exactly once
+/// per cell, inline in the single write, never a separate sweep over an
+/// already-drawn rect. Chrome (menus,
 /// pickers, the drawer, the statusline) is never dimmed, so it always passes
 /// `dim: None`; the field only ever blends for a pane.
 ///
@@ -52,8 +52,7 @@ impl<'a> Canvas<'a> {
     /// [`Canvas::write_text_run`] follows for a multi-cluster run.
     ///
     /// The frame's lowest-level writer, for a caller drawing exactly one
-    /// pre-measured glyph rather than a run: `compose_display_line`/`compose_gutter`'s
-    /// (`hume-engine`) per-cell fills and straddle fallbacks. `Grid::set_glyph`
+    /// pre-measured glyph rather than a run. `Grid::set_glyph`
     /// itself has no `right_edge` (only the grid's own physical edge), which
     /// is what made a bare `Grid::set_glyph` call unsafe to expose before
     /// this bound existed: nothing stopped a write from crossing a pane,
@@ -318,8 +317,6 @@ impl<'a> Canvas<'a> {
 /// an out-of-bounds write.
 ///
 /// `pub`, not `pub(crate)`: pure rect/size geometry, no write capability.
-/// `hume-engine`'s seam-junction pass (`pipeline/mod.rs`) clamps a seam rect
-/// with it ahead of its own per-cell loop, independently of [`Canvas`].
 #[inline]
 pub fn clamp_rect_to_grid((width, height): (u16, u16), rect: Rect) -> (u16, u16, u16, u16) {
     (

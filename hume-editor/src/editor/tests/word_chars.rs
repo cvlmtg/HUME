@@ -151,7 +151,6 @@ fn invalid_word_chars_is_rejected() {
     assert!(result.is_err(), "a space in word-chars must be rejected");
 }
 
-/// Mirrors `word_motion_settings::dot_repeat_of_mm_delete_reresolves_word_selects_whitespace`:
 /// `.` must re-resolve `word-chars` fresh from settings at replay time, not
 /// bake in whatever was configured when the original `mm` first ran.
 #[test]

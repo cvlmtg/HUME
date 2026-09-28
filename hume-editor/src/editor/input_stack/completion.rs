@@ -144,9 +144,7 @@ impl Editor {
     }
 }
 
-/// Named sugar over the generic lookup: the existing call sites
-/// (`ed.state.input.buffer_completion()`) stay as they are, and `stack.rs`
-/// stays agnostic.
+/// Named sugar over the generic lookup; `stack.rs` stays agnostic.
 impl super::stack::InputStack {
     pub(in crate::editor) fn buffer_completion(&self) -> Option<&BufferSession> {
         self.find::<BufferCompletionLayer>().map(|l| &l.session)

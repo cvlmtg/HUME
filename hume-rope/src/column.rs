@@ -91,10 +91,9 @@ impl DisplayLineCol {
     /// Unsigned distance between `self` and `other`, direction
     /// discarded: the "which grapheme is visually closest" metric a
     /// nearest-column resolve needs, where [`Self::cells_since`]'s
-    /// ordering requirement would be the wrong tool. Its only caller
-    /// (`DisplayLineMap`'s nearest-column resolve) works in display-line-
-    /// relative columns, so this lives on `DisplayLineCol` alone rather than
-    /// in the shared macro.
+    /// ordering requirement would be the wrong tool. Needed only in
+    /// display-line-relative columns, so this lives on `DisplayLineCol`
+    /// alone rather than in the shared macro.
     pub fn abs_diff(self, other: Self) -> u32 {
         self.0.abs_diff(other.0)
     }
@@ -145,12 +144,7 @@ impl BufferLineCol {
     /// as `isize`) into a small or negative number instead of saturating.
     ///
     /// Buffer-line-relative only, so this lives on `BufferLineCol` alone
-    /// rather than in the shared macro. Two shapes among its callers:
-    /// `hume-ops`'s `indent_lines` and `align_selections`'s pass-3 anchor
-    /// tracking each fold a running delta accumulated within one buffer
-    /// line; `align_selections`'s pass-2 `fit_0`/`fit_k` instead apply a
-    /// one-shot cross-slot delta to compute a floor. Both shapes need the
-    /// same saturate-don't-panic contract.
+    /// rather than in the shared macro.
     pub fn shift_saturating(self, delta: isize) -> Self {
         Self(
             (self.0 as i64)

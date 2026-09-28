@@ -341,9 +341,6 @@ impl ScriptingHost {
     /// simultaneously, since `parking_lot`'s `RwLock` is not reentrant): globals
     /// first, then macros, each collected into an owned `Vec` before the
     /// guard drops.
-    ///
-    /// Only called by the editor's `hume-globals.scm` drift test; no
-    /// production caller.
     #[cfg(any(test, feature = "test-util"))]
     pub fn host_global_names(&self) -> Vec<String> {
         let baseline = Engine::new();
@@ -401,9 +398,6 @@ impl ScriptingHost {
     }
 
     /// A snapshot of the language activation entries declared during init (language → plugins).
-    ///
-    /// Used by the post-init lint in `init_scripting` to detect `#:languages` entries
-    /// that don't match any registered language identity.
     pub fn activation_languages(
         &self,
     ) -> rustc_hash::FxHashMap<String, Vec<attribution::PluginId>> {
@@ -510,15 +504,13 @@ impl ScriptingHost {
     }
 
     /// Current plugin activation nesting depth (number of bodies on the call
-    /// stack). Used by tests that verify `%begin-lazy-activation` /
-    /// `%finish-lazy-activation` side effects.
+    /// stack).
     #[cfg(test)]
     pub(crate) fn plugin_stack_depth_for_test(&self) -> usize {
         self.plugin_stack.len()
     }
 
-    /// Push a fake plugin id onto the attribution stack.  Used by tests that
-    /// need to pre-seed the stack depth before calling `%begin-lazy-activation`.
+    /// Push a fake plugin id onto the attribution stack.
     #[cfg(test)]
     pub(crate) fn push_plugin_for_test(&mut self, id: attribution::PluginId) {
         self.plugin_stack.push(id);
@@ -740,13 +732,11 @@ impl ScriptingHost {
     /// text.
     ///
     /// The *first* failure (interrupt or not) is returned as this function's
-    /// own `Err`. Callers key cleanup on it (`Editor::run_call_batch`'s
-    /// completion-session teardown on a raising source) and report it
-    /// themselves (`apply_script_result`'s `"steel call error: "`/`"hook
-    /// error: "` prefix). A *second* (or later) failure in the same batch
-    /// would otherwise have no trace at all, since it doesn't abort
-    /// anything. It is logged here directly, with the same `"steel call error: "`
-    /// text, so it isn't silently dropped.
+    /// own `Err`. Callers key cleanup on it and report it themselves. A
+    /// *second* (or later) failure in the same batch would otherwise have no
+    /// trace at all, since it doesn't abort anything. It is logged here
+    /// directly, with the same `"steel call error: "` text, so it isn't
+    /// silently dropped.
     ///
     /// Never called from inside a completion-detection borrow (LSP drain,
     /// timer drain, minibuffer key handling). The caller queues `(proc,

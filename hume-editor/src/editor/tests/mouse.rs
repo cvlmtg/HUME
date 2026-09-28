@@ -20,9 +20,7 @@ fn mouse_drag(x: u16, y: u16) -> TerminalEvent {
 }
 
 /// A left-button-release mouse event: the tail of a gesture that began
-/// before whatever's on top of the stack right now, unlike `mouse_left_down`
-/// (used by the layer-gating tests below to distinguish a fresh press from a
-/// release the layer must not treat as stray input).
+/// before whatever's on top of the stack right now, unlike `mouse_left_down`.
 fn mouse_left_up(x: u16, y: u16) -> TerminalEvent {
     TerminalEvent::Mouse(MouseEvent {
         kind: MouseEventKind::Up(MouseButton::Left),
@@ -202,8 +200,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
 
 /// At the top of the document with the cursor already on line 0, neither the
 /// viewport nor the cursor has anywhere to go: `move_vertical` (like every
-/// `j`/`k`/motion) already leaves a document-start cursor untouched, the same
-/// as `commands::scroll_view`'s other callers (`Ctrl-u`, `PageUp`).
+/// `j`/`k`/motion) already leaves a document-start cursor untouched.
 #[test]
 fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
@@ -218,7 +215,7 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     assert_eq!(ed.current_selections().primary().head(), co(0));
 }
 
-/// `scroll_view` (shared with `Ctrl-d`/`Ctrl-u`/`PageDown`/`PageUp`) always
+/// `scroll_view` always
 /// carries the cursor, even when the viewport itself has nowhere to go
 /// because the whole document already fits on screen. The cursor stops
 /// exactly `mouse_scroll_lines` (1) below the top, on "b" (row 1), short of

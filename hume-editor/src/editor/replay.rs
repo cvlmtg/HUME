@@ -559,9 +559,8 @@ impl Editor {
     }
 
     /// Builds a fresh [`edit_session::DotCapture`] at the focused cursor and
-    /// runs `f` with it armed. `handle_insert`'s Leaf branch and
-    /// `accept_completion_selection` are the only callers, each wrapping the
-    /// one operation that might go interactive. `fallback` is what to record
+    /// runs `f` with it armed, wrapping only the one operation that might go
+    /// interactive. `fallback` is what to record
     /// if `f` turns out *not* interactive (see [`DotCapture::fallback`]'s
     /// own doc). Delegates to [`Self::run_dot_captured`] for the arm/
     /// take/finalize mechanics.

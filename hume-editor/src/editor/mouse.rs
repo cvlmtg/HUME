@@ -107,8 +107,7 @@ impl Editor {
 
     /// Reset transient input state every click starts fresh from: any
     /// half-typed key sequence (`pending_keys`/`count`) and the status line.
-    /// Shared by `mouse_left_down`'s pane path and `tabline_click`: both
-    /// are "the user just clicked somewhere new". Leaves `mouse_drag_anchor`
+    /// Leaves `mouse_drag_anchor`
     /// alone: `mouse_left_down` sets its own right after calling this, and
     /// `tabline_click` clears it explicitly, since a tab switch is exactly
     /// the case where a stale anchor would extend a drag against a buffer
@@ -272,9 +271,8 @@ fn rect_relative(rect: Rect, x: u16, y: u16) -> Option<(u16, u16)> {
 
 /// Translate a pane-content-relative `(content_x, row)` cell (relative to
 /// the pane's content area, past the `gutter_w`-wide gutter) into an
-/// absolute terminal cell. The inverse of [`rect_relative`], for the two
-/// call sites (the popup/menu anchor, the Insert-mode bar cursor) that need
-/// to go the other way: a content-relative position `pane_display_lines`'s cursor
+/// absolute terminal cell. The inverse of [`rect_relative`]: a
+/// content-relative position `pane_display_lines`'s cursor
 /// walk already resolved, placed onto the screen.
 pub(super) fn content_pos_to_screen(
     content_x: u16,

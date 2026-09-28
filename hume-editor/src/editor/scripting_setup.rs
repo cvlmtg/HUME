@@ -54,8 +54,7 @@ impl Editor {
     /// `apply_pending_language_regs` call so a large run (e.g.
     /// `languages.scm`'s ~700 `define-language!` calls) rebuilds the glob
     /// matcher once, not once per entry; every other effect kind applies one
-    /// at a time. Shared tail for `call_steel_cmd`'s call site, `settle`,
-    /// and `init_scripting`.
+    /// at a time.
     ///
     /// Finishes by draining `state.config.pending_language_detection`, which covers every
     /// buffer a disjoint-borrow Steel path opened via `buffer::lifecycle::
@@ -213,12 +212,8 @@ impl Editor {
 
     // ── Event queueing ───────────────────────────────────────────────────────
 
-    /// Queue `OnBufferSave` for `bid`. One production caller
-    /// (`commands/typed_file.rs`'s `mark_written_and_synced`, shared by
-    /// every `:w`-family command); kept as a named seam anyway since tests
-    /// across `unix/plugins.rs`, `unix/lsp_format.rs`, and this file's own
-    /// `events.rs` call it directly to raise the event without dispatching
-    /// a real write.
+    /// Queue `OnBufferSave` for `bid`. Kept as a named seam so tests can
+    /// raise the event without a real write.
     pub(super) fn queue_buffer_save(&mut self, bid: BufferId) {
         self.state
             .queue_event(EditorEvent::OnBufferSave { buffer: bid });
@@ -285,9 +280,7 @@ impl Editor {
     /// batching. A handler that queues more work is picked up within the
     /// same `settle()` call, not the next frame.
     ///
-    /// Takes no arguments, so it's callable without a terminal: the
-    /// headless path (`hume_editor::run_keys`) and `render_to_buf` both call
-    /// it directly, alongside `Editor::run`'s loop.
+    /// Takes no arguments, so it's callable without a terminal.
     ///
     /// `drain_async_sources` runs once, *outside* [`Self::drain_pending_work`]'s
     /// fixpoint, deliberately: a timer thunk that re-arms itself
@@ -943,9 +936,8 @@ impl Editor {
     }
 
     /// Evaluate a bundled runtime Scheme file (`rel_path`, relative to the
-    /// runtime dir) as an init-mode eval, shared by `init_scripting`'s
-    /// prelude/languages/grammars loads. A missing runtime dir or a missing
-    /// file at that path is a silent no-op (all three are optional layers);
+    /// runtime dir) as an init-mode eval. A missing runtime dir or a missing
+    /// file at that path is a silent no-op (every bundled layer is optional);
     /// a file that exists but fails to parse/eval is reported as an error.
     fn eval_runtime_scheme(
         &mut self,

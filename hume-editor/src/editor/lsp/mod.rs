@@ -37,11 +37,7 @@ use registry::{LanguageName, LspServerConfig};
 /// [`hume_lsp::position::from_lsp_range`] and
 /// [`hume_rope::position_encoding::wire_range_to_char_range`]; see
 /// `hume_lsp::position` for why the `lsp_types` crossing is a free function
-/// rather than a `From` impl. `pub(in crate::editor)`, not `lsp`-only: the
-/// completion accept path (`editor/completion/session/accept.rs`) is the
-/// one caller outside this subtree: `pub(in path)` requires an ancestor of
-/// the defining module, and `editor::completion` isn't one of `editor::lsp`,
-/// so this is the narrowest visibility that reaches it.
+/// rather than a `From` impl.
 pub(in crate::editor) fn wire_range_to_chars(
     rope: &ropey::Rope,
     range: &lsp_types::Range,
@@ -437,10 +433,8 @@ impl LspState {
         self.diagnostics.for_range_unsorted(bid, range, floor)
     }
 
-    /// Drops every diagnostic for `bid`, across every server. Called from
-    /// `close_buffer` (a pure memory-leak fix there) and from `:e!` reload
-    /// (a correctness fix: stale offsets must not survive against the new
-    /// content). Returns whether anything was actually removed.
+    /// Drops every diagnostic for `bid`, across every server. Returns
+    /// whether anything was actually removed.
     pub(in crate::editor) fn remove_buffer_diagnostics(&mut self, bid: BufferId) -> bool {
         self.diagnostics.remove_buffer(bid)
     }
@@ -466,9 +460,7 @@ impl LspState {
     /// its backend in the same call (`send_or_queue`, `start_handshake`):
     /// a plain two-method-call sequence can't do this from outside
     /// `LspState` since `backend_mut`/`client_for_test` each borrow the
-    /// whole struct. Production caller: every send site in `sync.rs`, so
-    /// document sync respects the Starting-queue instead of writing to the
-    /// wire directly.
+    /// whole struct.
     pub(in crate::editor) fn client_and_backend(
         &mut self,
         server: ServerId,
@@ -482,9 +474,7 @@ impl LspState {
 
     /// Files `callback` under an already-sent request's `(server, id)`:
     /// `drain_lsp`'s per-server loop already has both in scope at dispatch
-    /// time, so no separate token needs to be minted. Production caller:
-    /// `bridge::send_one_lsp_request`, called after `send_request`
-    /// returns the id.
+    /// time, so no separate token needs to be minted.
     pub(in crate::editor) fn register_callback(
         &mut self,
         server: ServerId,

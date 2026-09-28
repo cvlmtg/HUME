@@ -93,9 +93,7 @@ pub fn parse_file_arg(raw: &Path, cwd: &Path) -> Result<FileArg, String> {
 
 /// Does `candidate` name a real file or symlink, exactly as typed (modulo
 /// `~` expansion and joining against `cwd`)? The disk half of the "literal
-/// path wins over splitting" rule, shared by [`parse_file_arg`] and `:e`'s
-/// own probe (`typed_buffer::typed_edit`, which also checks already-open
-/// buffers first).
+/// path wins over splitting" rule.
 ///
 /// Probes the *expanded* form (`~/weird:12` → `$HOME/weird:12`) so a quoted
 /// tilde path is disambiguated the same way it will actually be opened.
@@ -109,9 +107,7 @@ pub(crate) fn literal_path_on_disk(candidate: &str, cwd: &Path) -> bool {
     std::fs::symlink_metadata(absolute).is_ok()
 }
 
-/// Splits `s` into a path and an optional trailing `:line[:col]` position,
-/// shared by [`parse_file_arg`] and `:e`'s argument
-/// (`typed_buffer::typed_edit`).
+/// Splits `s` into a path and an optional trailing `:line[:col]` position.
 ///
 /// `literal_exists` is consulted only when `s` has a trailing `:<digits>`
 /// suffix to begin with (see [`split_trailing_number`]); if it returns

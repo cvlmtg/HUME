@@ -218,11 +218,7 @@ impl ConfigState {
 
 /// The keymap every session and every `:reload-config` starts from: the
 /// compiled-in trie, plus the kitty-only default binds when the terminal
-/// supports the protocol. Shared by [`ConfigState::new`] (session start /
-/// reload) and [`Editor::set_kitty_support`] (which re-derives the keymap
-/// once the terminal probe result is known, before `init.scm` can override
-/// it) so the two can't drift apart on what "kitty defaults installed"
-/// means.
+/// supports the protocol.
 pub(in crate::editor) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
     let mut keymap = Keymap::default();
     if kitty_enabled {
@@ -445,9 +441,8 @@ pub(crate) struct EditorState {
     pub(super) mouse_drag_anchor: Option<hume_rope::offset::CharOffset>,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
-    /// Every overlay view shared between the per-frame write side (each
-    /// layer's own `sync_*_view`, `input_stack/{command,popup,menu,
-    /// completion,drawer,picker}.rs`) and the engine's render side:
+    /// Every overlay view shared between the per-frame write side and the
+    /// engine's render side:
     /// minibuf-completion, popup (cursor + docked), menu, completion menu,
     /// drawer, picker. One
     /// `hume_ui::OverlayViews` instead of seven hand-allocated `Arc`s, each
@@ -575,8 +570,7 @@ impl LayoutKey {
     /// The subset of `self` a `DisplayLineMap` needs, as one
     /// `hume_engine::display_lines::line_store::FormatKey`. See
     /// [`EditorState::format_key`]'s own doc for which fields and why. A
-    /// caller that has already resolved a `LayoutKey` (`frame.rs`'s scroll
-    /// step, which needs both) derives its `FormatKey` from here instead of
+    /// caller that has already resolved a `LayoutKey` derives its `FormatKey` from here instead of
     /// a second, independent `EditorState::format_key` call that would
     /// re-resolve every field from scratch.
     pub(in crate::editor) fn format_key(
@@ -692,8 +686,7 @@ impl EditorState {
 
     // ── Quit ──────────────────────────────────────────────────────────────────
 
-    /// Unconditional quit-the-whole-editor. Used by `:qa!`'s force path:
-    /// "quit all, no confirmation".
+    /// Unconditional quit-the-whole-editor: quit all, no confirmation.
     pub(in crate::editor) fn request_quit(&mut self) {
         self.should_quit = true;
     }
@@ -809,8 +802,7 @@ impl EditorState {
 
     /// [`Self::queue_steel_call`]'s counterpart for a call carrying a
     /// dot-capture handed off from a picker (see
-    /// [`edit_session::DotCapture`]'s own doc). `picker::close_picker_with`/
-    /// `PickerLayer::tear_down` are the only callers that ever pass `Some`.
+    /// [`edit_session::DotCapture`]'s own doc).
     pub(in crate::editor) fn queue_steel_call_with_capture(
         &mut self,
         proc: steel::rvals::SteelVal,
