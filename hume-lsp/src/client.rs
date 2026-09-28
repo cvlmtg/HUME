@@ -79,7 +79,7 @@ pub enum ClientAction {
     /// unclassified method, or a known method whose params fail both the
     /// strict parse and `classify_notification`'s lenient recovery
     /// (surfaced here rather than dropped, so Steel's `on-lsp-notification`
-    /// can still observe it).
+    /// hook can still observe it).
     ServerNotification {
         method: String,
         params: serde_json::Value,

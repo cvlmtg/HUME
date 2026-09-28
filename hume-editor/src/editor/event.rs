@@ -133,6 +133,23 @@ pub(in crate::editor) enum EditorEvent {
         target: PaneHandle,
         item: JsonHandle,
     },
+    /// Fires for a server notification HUME doesn't handle itself (it
+    /// handles `window/logMessage`, `window/showMessage`, `$/progress`, and
+    /// `publishDiagnostics`). `server` is the server's registered language,
+    /// `None` if it has none. `params` crosses through `to_steel_handle`
+    /// tagged with `origin` (the server's position encoding), so a handler
+    /// can read a wire position out of it. A `register-hook!` handler sees
+    /// every method; a `register-lsp-notification-hook!` one only the
+    /// methods it lists. `server_name` is the server's display name, used
+    /// only to prefix the "unhandled notification" Trace when no handler
+    /// takes `method`; it is not passed to Steel.
+    OnLspNotification {
+        server_name: String,
+        server: Option<String>,
+        method: String,
+        params: std::sync::Arc<serde_json::Value>,
+        origin: hume_scripting::json::WireOrigin,
+    },
     /// Fires when a buffer's text changes: user edits, undo, redo, `:e!`
     /// reload, and read-only view refreshes (`:messages`, `:ls`,
     /// `:plugin-status`) alike, all of which bump `Buffer::text_gen`. Raised
@@ -207,7 +224,61 @@ impl EditorEvent {
             | EditorEvent::OnCompletionAccept { target, .. } => Some(*target),
             EditorEvent::OnFocusGained
             | EditorEvent::OnModeChange { .. }
-            | EditorEvent::OnOptionChange { .. } => None,
+            | EditorEvent::OnOptionChange { .. }
+            | EditorEvent::OnLspNotification { .. } => None,
+        }
+    }
+
+    /// The key a keyed hook handler filters on: an LSP notification's
+    /// method, matched against `register-lsp-notification-hook!`'s methods.
+    /// `None` for every other event, which only unkeyed handlers receive.
+    /// Exhaustive match for the same reason as `handle`.
+    pub(in crate::editor) fn hook_key(&self) -> Option<&str> {
+        match self {
+            EditorEvent::OnLspNotification { method, .. } => Some(method),
+            EditorEvent::OnBufferOpen { .. }
+            | EditorEvent::OnBufferClose { .. }
+            | EditorEvent::OnBufferSave { .. }
+            | EditorEvent::OnBufferEnter { .. }
+            | EditorEvent::OnFocusGained
+            | EditorEvent::OnModeChange { .. }
+            | EditorEvent::OnLanguageSet { .. }
+            | EditorEvent::OnLspAttach { .. }
+            | EditorEvent::OnLspDetach { .. }
+            | EditorEvent::OnDiagnosticsChanged { .. }
+            | EditorEvent::OnViewportChange { .. }
+            | EditorEvent::OnTriggerChar { .. }
+            | EditorEvent::OnCompletionAccept { .. }
+            | EditorEvent::OnOptionChange { .. }
+            | EditorEvent::OnTextChanged { .. } => None,
+        }
+    }
+
+    /// The Trace line reported when no handler takes this event, for the
+    /// events where that is worth surfacing. Exhaustive match for the same
+    /// reason as `handle`.
+    pub(in crate::editor) fn unhandled_trace(&self) -> Option<String> {
+        match self {
+            EditorEvent::OnLspNotification {
+                server_name,
+                method,
+                ..
+            } => Some(format!("{server_name}: unhandled notification {method}")),
+            EditorEvent::OnBufferOpen { .. }
+            | EditorEvent::OnBufferClose { .. }
+            | EditorEvent::OnBufferSave { .. }
+            | EditorEvent::OnBufferEnter { .. }
+            | EditorEvent::OnFocusGained
+            | EditorEvent::OnModeChange { .. }
+            | EditorEvent::OnLanguageSet { .. }
+            | EditorEvent::OnLspAttach { .. }
+            | EditorEvent::OnLspDetach { .. }
+            | EditorEvent::OnDiagnosticsChanged { .. }
+            | EditorEvent::OnViewportChange { .. }
+            | EditorEvent::OnTriggerChar { .. }
+            | EditorEvent::OnCompletionAccept { .. }
+            | EditorEvent::OnOptionChange { .. }
+            | EditorEvent::OnTextChanged { .. } => None,
         }
     }
 }
@@ -263,6 +334,7 @@ editor_event_names! {
     OnViewportChange => "on-viewport-change",
     OnTriggerChar => "on-trigger-char",
     OnCompletionAccept => "on-completion-accept",
+    OnLspNotification => "on-lsp-notification",
     OnOptionChange => "on-option-change",
     OnTextChanged => "on-text-changed",
 }
@@ -337,6 +409,21 @@ impl EditorEvent {
                 vec![
                     SteelVal::StringV(key.as_str().into()),
                     SteelVal::StringV(value.as_str().into()),
+                ]
+            }
+            EditorEvent::OnLspNotification {
+                server_name: _,
+                server,
+                method,
+                params,
+                origin,
+            } => {
+                vec![
+                    server
+                        .as_deref()
+                        .map_or(SteelVal::BoolV(false), |s| SteelVal::StringV(s.into())),
+                    SteelVal::StringV(method.as_str().into()),
+                    hume_scripting::json::to_steel_handle(std::sync::Arc::clone(params), *origin),
                 ]
             }
         }

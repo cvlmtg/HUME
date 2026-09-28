@@ -55,8 +55,7 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
 /// from any context, including command bodies and hook handlers:
 /// signature help registers a server's trigger characters from inside an
 /// `on-lsp-attach` handler, which runs as plain command context (no
-/// `EvalMode` gate applies here, unlike `register-hook!` /
-/// `on-lsp-notification`). `chars` landing in Insert mode fires the
+/// `EvalMode` gate applies here, unlike `register-hook!`). `chars` landing in Insert mode fires the
 /// `on-trigger-char` hook for any listener named `source`, a shared,
 /// listener-agnostic table, *not* how a completion source's own trigger
 /// chars are joined (that's `set-completion-triggers!`, a completion

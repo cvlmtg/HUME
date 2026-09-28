@@ -51,6 +51,13 @@ fn all_variants() -> Vec<EditorEvent> {
             key: "lsp.inlay-hints".to_string(),
             value: "true".to_string(),
         },
+        EditorEvent::OnLspNotification {
+            server_name: "rust-analyzer".to_string(),
+            server: Some("rust".to_string()),
+            method: "custom/event".to_string(),
+            params: std::sync::Arc::new(serde_json::json!({"x": 1})),
+            origin: hume_scripting::json::WireOrigin::Local,
+        },
         EditorEvent::OnTextChanged { buffer },
     ]
 }
@@ -271,6 +278,25 @@ fn on_completion_accept_item_crosses_as_a_json_handle() {
     let handle = hume_scripting::json::downcast_json_handle(&args[1])
         .expect("item must cross as a JsonHandle");
     assert_eq!(handle.value(), &item);
+}
+
+#[test]
+fn on_lsp_notification_carries_server_method_and_params_handle() {
+    let params = serde_json::json!({"x": 1});
+    let event = EditorEvent::OnLspNotification {
+        server_name: "rust-analyzer".to_string(),
+        server: None,
+        method: "custom/event".to_string(),
+        params: std::sync::Arc::new(params.clone()),
+        origin: hume_scripting::json::WireOrigin::Local,
+    };
+    let args = event.steel_args();
+    assert_eq!(args.len(), 3);
+    assert_eq!(args[0], SteelVal::BoolV(false), "no language crosses as #f");
+    assert_eq!(steel_string(&args, 1), "custom/event");
+    let handle = hume_scripting::json::downcast_json_handle(&args[2])
+        .expect("params must cross as a JsonHandle");
+    assert_eq!(handle.value(), &params);
 }
 
 #[test]

@@ -126,7 +126,8 @@ fn register_hook_fires_on_buffer_open() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
-    h.fire_hook("on-buffer-open", &[val], &mut mock).unwrap();
+    h.fire_hook("on-buffer-open", None, &[val], &mut mock)
+        .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-right")),
@@ -147,7 +148,8 @@ fn register_hook_fires_on_buffer_close() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
-    h.fire_hook("on-buffer-close", &[val], &mut mock).unwrap();
+    h.fire_hook("on-buffer-close", None, &[val], &mut mock)
+        .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-left")),
@@ -168,7 +170,8 @@ fn register_hook_fires_on_buffer_save() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
-    h.fire_hook("on-buffer-save", &[val], &mut mock).unwrap();
+    h.fire_hook("on-buffer-save", None, &[val], &mut mock)
+        .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
         msgs.iter().any(|(_, m)| m.contains("move-right")),
@@ -191,7 +194,7 @@ fn register_hook_fires_on_mode_change() {
     .unwrap();
     let old_val = SteelVal::SymbolV("normal".into());
     let new_val = SteelVal::SymbolV("insert".into());
-    h.fire_hook("on-mode-change", &[old_val, new_val], &mut mock)
+    h.fire_hook("on-mode-change", None, &[old_val, new_val], &mut mock)
         .unwrap();
     let msgs = h.take_pending_messages();
     assert!(
@@ -207,7 +210,7 @@ fn register_hook_no_fire_if_no_handlers() {
     let mut mock = MockHost::new();
 
     // No handlers registered: fire_hook must succeed without dispatching anything.
-    h.fire_hook("on-buffer-open", &[], &mut mock).unwrap();
+    h.fire_hook("on-buffer-open", None, &[], &mut mock).unwrap();
 
     // Proves no native dispatch occurred (would have been recorded in dispatched_native).
     assert!(
@@ -231,7 +234,8 @@ fn register_hook_multiple_handlers_all_fire() {
     .unwrap();
     let bid = BufferId::default();
     let val = SteelPane::new(PaneHandle::buffer_only(bid)).into_steel_val();
-    h.fire_hook("on-buffer-save", &[val], &mut mock).unwrap();
+    h.fire_hook("on-buffer-save", None, &[val], &mut mock)
+        .unwrap();
     let msgs = h.take_pending_messages();
     let warned: Vec<&str> = msgs
         .iter()
@@ -300,8 +304,13 @@ fn fire_hook_globals_cleared_between_fires() {
     .unwrap();
     let old_val = SteelVal::SymbolV("normal".into());
     let new_val = SteelVal::SymbolV("insert".into());
-    h.fire_hook("on-mode-change", &[old_val.clone(), new_val], &mut mock)
-        .unwrap();
+    h.fire_hook(
+        "on-mode-change",
+        None,
+        &[old_val.clone(), new_val],
+        &mut mock,
+    )
+    .unwrap();
     let msgs1 = h.take_pending_messages();
     assert!(
         msgs1.iter().any(|(_, m)| m.contains("insert")),
@@ -311,7 +320,7 @@ fn fire_hook_globals_cleared_between_fires() {
 
     // Second fire with different args: any stale first-fire arg would give a wrong result.
     let new_val2 = SteelVal::SymbolV("normal".into());
-    h.fire_hook("on-mode-change", &[old_val, new_val2], &mut mock)
+    h.fire_hook("on-mode-change", None, &[old_val, new_val2], &mut mock)
         .unwrap();
     let msgs2 = h.take_pending_messages();
     assert!(

@@ -812,3 +812,99 @@ fn lsp_locations_to_display_parts_accepts_a_list_of_json_handles() {
         .to_string();
     assert!(msg.contains("no LSP state available"), "got: {msg}");
 }
+
+// ── register-lsp-notification-hook! ──────────────────────────────────────────
+
+fn noop_proc(_args: &[SteelVal]) -> SteelResult {
+    Ok(SteelVal::Void)
+}
+
+/// The keys the single registered `on-lsp-notification` entry carries.
+fn registered_keys(h: &SteelCtxTestHarness) -> Option<Vec<String>> {
+    let entries = h.registries.hooks.handlers_for("on-lsp-notification");
+    assert_eq!(entries.len(), 1, "one entry must be registered, no more");
+    entries[0].keys.as_ref().map(|k| k.to_vec())
+}
+
+#[test]
+fn register_lsp_notification_hook_accepts_a_single_method_string() {
+    let mut h = SteelCtxTestHarness::new();
+    register_lsp_notification_hook(
+        &mut h.ctx_init(),
+        SteelVal::StringV("a/b".into()),
+        SteelVal::FuncV(noop_proc),
+    )
+    .expect("a method string must register");
+    assert_eq!(registered_keys(&h), Some(vec!["a/b".to_string()]));
+}
+
+#[test]
+fn register_lsp_notification_hook_accepts_a_list_of_methods() {
+    let mut h = SteelCtxTestHarness::new();
+    register_lsp_notification_hook(
+        &mut h.ctx_init(),
+        list_of(&["a", "b", "c"]),
+        SteelVal::FuncV(noop_proc),
+    )
+    .expect("a method list must register");
+    assert_eq!(
+        registered_keys(&h),
+        Some(vec!["a".to_string(), "b".to_string(), "c".to_string()])
+    );
+}
+
+/// An empty filter could never fire, so it is rejected instead of stored.
+#[test]
+fn register_lsp_notification_hook_rejects_an_empty_method_list() {
+    let mut h = SteelCtxTestHarness::new();
+    let msg =
+        register_lsp_notification_hook(&mut h.ctx_init(), list_of(&[]), SteelVal::FuncV(noop_proc))
+            .expect_err("an empty list must be rejected")
+            .to_string();
+    assert!(msg.contains("must not be empty"), "got: {msg}");
+    assert!(!h.registries.hooks.has_match("on-lsp-notification", None));
+}
+
+#[test]
+fn register_lsp_notification_hook_rejects_a_non_string_method() {
+    let mut h = SteelCtxTestHarness::new();
+    let result = register_lsp_notification_hook(
+        &mut h.ctx_init(),
+        vec![SteelVal::IntV(1)].into_steelval().unwrap(),
+        SteelVal::FuncV(noop_proc),
+    );
+    assert!(result.is_err(), "a non-string method must be rejected");
+}
+
+#[test]
+fn register_lsp_notification_hook_rejects_a_non_callable_proc() {
+    let mut h = SteelCtxTestHarness::new();
+    let msg = register_lsp_notification_hook(
+        &mut h.ctx_init(),
+        SteelVal::StringV("a/b".into()),
+        SteelVal::IntV(1),
+    )
+    .expect_err("a non-callable proc must be rejected")
+    .to_string();
+    assert!(msg.contains("expected a callable"), "got: {msg}");
+}
+
+/// Registered from a plugin body, the entry belongs to that plugin, so
+/// rollback of a failed activation removes it.
+#[test]
+fn register_lsp_notification_hook_attributes_the_running_plugin() {
+    use crate::attribution::PluginId;
+    let mut h = SteelCtxTestHarness::new();
+    let id = PluginId::parse("core:myplugin").unwrap();
+    h.plugin_stack.push(id.clone());
+    register_lsp_notification_hook(
+        &mut h.ctx(),
+        SteelVal::StringV("a/b".into()),
+        SteelVal::FuncV(noop_proc),
+    )
+    .expect("registration during plugin load must succeed");
+    assert_eq!(
+        h.registries.hooks.handlers_for("on-lsp-notification")[0].owner,
+        Some(id)
+    );
+}

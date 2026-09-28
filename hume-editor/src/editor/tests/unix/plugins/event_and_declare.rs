@@ -715,7 +715,124 @@ fn plugin_hook_rolled_back_on_failed_activation() {
         !ed.scripting
             .as_ref()
             .unwrap()
-            .has_hook_handlers("on-buffer-save"),
+            .has_hook_handlers("on-buffer-save", None),
         "the failed plugin's register-hook! must not survive rollback"
+    );
+}
+
+/// Same rollback for a method-filtered handler: a failed plugin's
+/// `register-lsp-notification-hook!` stops claiming its method, so that
+/// method is traced as unhandled again.
+#[test]
+fn plugin_lsp_notification_hook_rolled_back_on_failed_activation() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))
+           (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
+        r#"(register-lsp-notification-hook! "m/a" (lambda (server method params) 0))
+           (error "boom")"#,
+    );
+
+    type_cmd(&mut ed, ":trigger");
+
+    assert!(
+        !ed.scripting
+            .as_ref()
+            .unwrap()
+            .has_hook_handlers("on-lsp-notification", Some("m/a")),
+        "the failed plugin's method-filtered handler must not survive rollback"
+    );
+}
+
+/// `#:events '(on-lsp-notification)` plugin activates on the first
+/// notification, same as any other lazy event trigger.
+///
+/// The plugin registers no hook until it activates, so the event must
+/// reach `fire_one_event` regardless of what is registered at drain time.
+#[test]
+fn on_lsp_notification_event_trigger_activates_on_first_fire() {
+    use hume_scripting::attribution::PluginId;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-lsp-notification))"#,
+        r#"(register-hook! 'on-lsp-notification (lambda (server method params)
+             (when (equal? method "custom/event")
+               (call! "move-right" (focused-pane)))))"#,
+    );
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+
+    crate::editor::tests::lsp_bridge::setup_with(&mut ed, |b, sid| {
+        b.push_from_server(
+            sid,
+            hume_lsp::codec::Message::Notification {
+                method: "custom/event".to_string(),
+                params: serde_json::Value::Null,
+            },
+        );
+    });
+
+    let before = state(&ed);
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "on-lsp-notification hook must fire and move the cursor on first activation"
+    );
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Loaded)
+        ),
+        "plugin must be Loaded after first fire"
+    );
+}
+
+/// A lazy `#:events '(on-lsp-notification)` plugin that activates on a
+/// method it registers no handler for leaves that notification traced as
+/// unhandled.
+#[test]
+fn lazy_plugin_activated_by_unlisted_method_traces_unhandled() {
+    use hume_scripting::attribution::PluginId;
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-lsp-notification))"#,
+        r#"(register-lsp-notification-hook! "m/y"
+             (lambda (server method params) (call! "move-right" (focused-pane))))"#,
+    );
+    let id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+
+    crate::editor::tests::lsp_bridge::setup_with(&mut ed, |b, sid| {
+        b.push_from_server(
+            sid,
+            hume_lsp::codec::Message::Notification {
+                method: "m/x".to_string(),
+                params: serde_json::Value::Null,
+            },
+        );
+    });
+
+    let before = state(&ed);
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(state(&ed), before, "the m/y handler must not run for m/x");
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&id),
+            Some(PluginStatus::Loaded)
+        ),
+        "plugin must be Loaded after the activating notification"
+    );
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("unhandled notification m/x"),
+        "m/x has no handler after activation; it must be traced: {log:?}"
     );
 }

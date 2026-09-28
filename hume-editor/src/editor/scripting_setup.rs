@@ -603,6 +603,7 @@ impl Editor {
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
             | EditorEvent::OnOptionChange { .. }
+            | EditorEvent::OnLspNotification { .. }
             | EditorEvent::OnTextChanged { .. } => {}
         }
     }
@@ -611,14 +612,18 @@ impl Editor {
     /// the per-item body of `settle`'s `Event` arm.
     fn fire_one_event(&mut self, event: EditorEvent) {
         let name = event.name();
+        let key = event.hook_key();
         // Activate lazy event plugins first so their register-hook! calls
         // land before the has_hook_handlers check below.
         self.activate_lazy_event_plugins(name);
         if self
             .scripting
             .as_ref()
-            .is_none_or(|h| !h.has_hook_handlers(name))
+            .is_none_or(|h| !h.has_hook_handlers(name, key))
         {
+            if let Some(message) = event.unhandled_trace() {
+                self.report(Severity::Trace, message);
+            }
             return;
         }
         // Built only once a handler is confirmed registered, so an event
@@ -635,7 +640,7 @@ impl Editor {
                 self.tui.clone(),
                 self.kitty_enabled,
             );
-            host_scr.fire_hook(name, &args, &mut impl_host)
+            host_scr.fire_hook(name, key, &args, &mut impl_host)
         };
         self.flush_script_messages();
         // A hook body's own `call!` to an `#:inline-output` command is

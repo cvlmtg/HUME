@@ -181,7 +181,7 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(lsp-show-status! pane)` | Open the `[lsp-status]` read-only view, only while `pane` is still the one you're looking at |
 | `(lsp-request! pane method params callback #:allow-stale #:supersede #:require-focus)` | Send a raw request to `pane`'s attached server; `callback` is `(lambda (err result) ...)`. A real response delivers as a JSON handle; read it with `json-ref`/`json-contains?`/`json-list`, or pass it straight to `completion-emit!`. `#:require-focus #t` drops the callback unless `pane` is still the exact pane you were looking at, still showing the same buffer, when the response arrives. It needs `pane` to carry a pane, not just a buffer |
 | `(lsp-notify! pane method params)` | Fire-and-forget notification to `pane`'s attached server, no callback |
-| `(on-lsp-notification method handler)` | Register `handler` (`(lambda (server params) ...)`) for every `method` notification HUME doesn't already special-case (`window/logMessage`, `window/showMessage`, `$/progress`, `publishDiagnostics`) |
+| `(register-lsp-notification-hook! methods proc)` | Call `proc` as `(lambda (server method params) ...)` only for server notifications whose method is `methods` (a string) or one of `methods` (a list of strings), so one `proc` can serve several methods. Any other method is still logged as unhandled. Like `register-hook!`: init or plugin load only, and removed if your plugin fails to load |
 | `(lsp-capabilities pane)` | A JSON handle onto `pane`'s attached server's `ServerCapabilities` (read with `json-ref`/`json-contains?`), or `#f` if unresolved or mid-handshake |
 | `(lsp-server-status)` | List of hashmaps with keys `'language`, `'root`, `'state` (`'starting`, `'running`, `'crashed`, or `'dead`), and `'pending`, one per registered server |
 | `(lsp-server-for-buffer pane)` | Registered language name attached to the buffer, or `#f` |
@@ -313,7 +313,7 @@ The pattern for reading a plugin's own files is covered in [Filesystem and proce
 ## JSON handles
 
 An `lsp-request!` response, `lsp-capabilities`, a `diagnostics-for-buffer`
-entry's `'raw` field, `on-lsp-notification`'s params, `on-completion-accept`'s
+entry's `'raw` field, the `on-lsp-notification` hook's params, `on-completion-accept`'s
 item, and `json-parse`'s result are all opaque JSON handles rather than
 decoded hashmaps. Read one with these instead of `hash-ref`/`hash?`/`list?`:
 

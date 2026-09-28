@@ -126,11 +126,6 @@ pub(crate) struct ScriptingRegistries {
     /// resolved via the top of `plugin_stack`. Works identically whether the
     /// plugin activates immediately (eager) or much later (lazy).
     pub(crate) plugin_configs: rustc_hash::FxHashMap<PluginId, SteelVal>,
-    /// Handlers registered by `(on-lsp-notification method handler)`, keyed
-    /// by protocol method name. Consulted by the editor's notification
-    /// dispatch for any method Rust doesn't already special-case
-    /// (window/logMessage, window/showMessage, $/progress, publishDiagnostics).
-    pub(crate) lsp_notification_handlers: rustc_hash::FxHashMap<String, Vec<SteelVal>>,
 }
 
 /// Borrows of [`ScriptingHost`] fields needed to populate [`SteelCtx`].
@@ -381,20 +376,11 @@ impl ScriptingHost {
         std::mem::take(&mut self.pending_messages)
     }
 
-    /// Returns `true` if at least one handler is registered for `name`.
-    pub fn has_hook_handlers(&self, name: &str) -> bool {
-        !self.registries.hooks.is_empty_for(name)
-    }
-
-    /// Handlers registered for `method`, or empty if none. Cloned (Steel
-    /// closures are cheap `Gc` clones) so the editor can queue calls without
-    /// holding a borrow into `self.registries` across the queueing.
-    pub fn lsp_notification_handlers_for(&self, method: &str) -> Vec<SteelVal> {
-        self.registries
-            .lsp_notification_handlers
-            .get(method)
-            .cloned()
-            .unwrap_or_default()
+    /// Returns `true` if at least one handler for `name` fires for an event
+    /// carrying `key`: an unkeyed handler always does, a keyed one only when
+    /// `key` is among its keys.
+    pub fn has_hook_handlers(&self, name: &str, key: Option<&str>) -> bool {
+        self.registries.hooks.has_match(name, key)
     }
 
     /// A snapshot of the language activation entries declared during init (language → plugins).
@@ -685,17 +671,19 @@ impl ScriptingHost {
         })
     }
 
-    /// Fire all registered handlers for `name`, passing `args` to each.
+    /// Fire every handler for `name` that matches `key`, passing `args` to
+    /// each.
     ///
-    /// Handlers are called in registration order inside a single
-    /// `with_mut_reference` session so they have full access to HUME builtins
-    /// (`focused-pane`, `call!`, etc.).
+    /// Handlers are called in registration order, each in its own
+    /// `with_mut_reference` session (see [`Self::run_steel_calls`]) so they
+    /// have full access to HUME builtins (`focused-pane`, `call!`, etc.).
     ///
-    /// Returns immediately (no Steel engine call, no watchdog) if no handlers are
-    /// registered for `name`.
+    /// Returns immediately (no Steel engine call, no watchdog) if no handler
+    /// for `name` matches `key`.
     pub fn fire_hook<'a>(
         &'a mut self,
         name: &str,
+        key: Option<&str>,
         args: &[SteelVal],
         host: &'a mut dyn EditorHost,
     ) -> Result<Vec<Effect>, EvalError> {
@@ -706,8 +694,7 @@ impl ScriptingHost {
         let calls: Vec<(SteelVal, Vec<SteelVal>)> = self
             .registries
             .hooks
-            .handlers_for(name)
-            .iter()
+            .matching(name, key)
             .map(|e| (e.proc.clone(), args.to_vec()))
             .collect();
         self.run_steel_calls(calls, host)

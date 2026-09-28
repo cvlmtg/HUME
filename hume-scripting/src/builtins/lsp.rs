@@ -14,10 +14,12 @@ use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, bool_arg, cons_pair, json_arg, json_params, list_items, list_to_env_pairs,
-    list_to_strings, optional_json_arg, optional_string_arg, string_arg, wire_position,
+    ArgPane, bool_arg, callable_arg, cons_pair, json_arg, json_params, list_items,
+    list_to_env_pairs, list_to_strings, optional_json_arg, optional_string_arg, string_arg,
+    wire_position,
 };
 use super::errors::generic_err;
+use super::hooks::{register_entry, require_known_event};
 
 /// `Some(json)` → decoded to a Steel hashmap; `None` (unresolvable, no
 /// attached server, handshake incomplete, …) → `#f`. Every field these
@@ -204,23 +206,39 @@ pub(crate) fn lsp_notify(
     Ok(SteelVal::Void)
 }
 
-/// `(on-lsp-notification method handler)`: registers `handler` for every
-/// server notification of `method` that Rust doesn't already special-case
-/// (window/logMessage, window/showMessage, $/progress, publishDiagnostics).
-/// Persistent, immediate registration straight onto `ctx.registries`, same
-/// init/plugin-load gate as `register-hook!`, no per-eval queue needed since
-/// registration doesn't touch the transport.
-pub(crate) fn on_lsp_notification(
+/// The event `register-lsp-notification-hook!` registers on. This crate
+/// compiles in no event list, so the name is checked against the host's on
+/// every call and a rename in the editor fails loudly here.
+const LSP_NOTIFICATION_EVENT: &str = "on-lsp-notification";
+
+/// `(register-lsp-notification-hook! methods proc)`: an `on-lsp-notification`
+/// handler that fires only for a notification whose method is `methods` (a
+/// string) or one of `methods` (a list of strings). `proc` receives
+/// `(server method params)` like a `register-hook!` handler, so one proc can
+/// serve several methods. Same registry, init/plugin-load gate and plugin
+/// ownership as `register-hook!`: a failed plugin's handler is removed with
+/// it, filter included.
+pub(crate) fn register_lsp_notification_hook(
     ctx: &mut SteelCtx,
-    method: SteelVal,
-    handler: SteelVal,
+    methods: SteelVal,
+    proc: SteelVal,
 ) -> SteelResult {
-    let method = string_arg(method, "on-lsp-notification method")?;
-    ctx.registries
-        .lsp_notification_handlers
-        .entry(method)
-        .or_default()
-        .push(handler);
+    const VERB: &str = "register-lsp-notification-hook!";
+    let methods = match methods {
+        SteelVal::StringV(s) => vec![s.to_string()],
+        other => list_to_strings(other, &format!("{VERB} methods"))?,
+    };
+    if methods.is_empty() {
+        steel::stop!(Generic => "{VERB}: methods must not be empty");
+    }
+    let proc = callable_arg(proc, &format!("{VERB} proc"))?;
+    require_known_event(ctx, LSP_NOTIFICATION_EVENT, VERB)?;
+    register_entry(
+        ctx,
+        LSP_NOTIFICATION_EVENT,
+        proc,
+        Some(methods.into_boxed_slice()),
+    );
     Ok(SteelVal::Void)
 }
 

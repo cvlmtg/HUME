@@ -1,6 +1,10 @@
 use super::*;
 use crate::test_support::SteelCtxTestHarness;
 
+fn noop_proc(_args: &[SteelVal]) -> SteelResult {
+    Ok(SteelVal::Void)
+}
+
 /// `register-hook!` is blocked in plain command mode (init/plugin-load only).
 ///
 /// An `open` table entry would let a command body silently register hooks,
@@ -28,12 +32,27 @@ fn register_hook_non_symbol_arg_errors() {
     let result = register_hook(
         &mut ctx,
         SteelVal::StringV("on-buffer-open".into()), // should be a symbol
-        SteelVal::BoolV(true),
+        SteelVal::FuncV(noop_proc),
     );
     let msg = result
         .expect_err("register-hook! must reject a string name")
         .to_string();
     assert!(msg.contains("expected an event-name symbol"), "got: {msg}");
+}
+
+/// `register-hook!` rejects a handler that is not callable at registration,
+/// not later when the event fires.
+#[test]
+fn register_hook_non_callable_proc_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let msg = register_hook(
+        &mut h.ctx_init(),
+        SteelVal::SymbolV("on-buffer-open".into()),
+        SteelVal::IntV(1),
+    )
+    .expect_err("a non-callable proc must be rejected")
+    .to_string();
+    assert!(msg.contains("expected a callable"), "got: {msg}");
 }
 
 /// `register-hook!` errors for an unknown hook name.
@@ -47,7 +66,7 @@ fn register_hook_unknown_hook_name_errors() {
     let result = register_hook(
         &mut ctx,
         SteelVal::SymbolV("on-nonexistent-event".into()),
-        SteelVal::BoolV(true),
+        SteelVal::FuncV(noop_proc),
     );
     assert!(
         result.is_err(),
@@ -73,7 +92,7 @@ fn register_hook_valid_in_init_mode() {
         let result = register_hook(
             &mut ctx,
             SteelVal::SymbolV("on-buffer-save".into()),
-            SteelVal::BoolV(true), // dummy proc: registry just stores SteelVal
+            SteelVal::FuncV(noop_proc),
         );
         assert!(result.is_ok(), "register-hook! must succeed in init mode");
     }
@@ -103,14 +122,14 @@ fn register_hook_valid_during_plugin_load() {
         let result = register_hook(
             &mut ctx,
             SteelVal::SymbolV("on-buffer-open".into()),
-            SteelVal::IntV(42),
+            SteelVal::FuncV(noop_proc),
         );
         assert!(
             result.is_ok(),
             "register-hook! must succeed during plugin load"
         );
     }
-    assert!(!h.registries.hooks.is_empty_for("on-buffer-open"));
+    assert!(h.registries.hooks.has_match("on-buffer-open", None));
     assert_eq!(
         h.registries.hooks.handlers_for("on-buffer-open")[0].owner,
         Some(PluginId::parse("core:myplugin").unwrap()),
@@ -132,7 +151,7 @@ fn register_hook_validates_against_the_host_not_a_compiled_in_table() {
     let stub_only = register_hook(
         &mut ctx,
         SteelVal::SymbolV("on-stub-only".into()),
-        SteelVal::BoolV(true),
+        SteelVal::FuncV(noop_proc),
     );
     assert!(
         stub_only.is_ok(),
@@ -142,7 +161,7 @@ fn register_hook_validates_against_the_host_not_a_compiled_in_table() {
     let real_editor_event = register_hook(
         &mut ctx,
         SteelVal::SymbolV("on-lsp-attach".into()),
-        SteelVal::BoolV(true),
+        SteelVal::FuncV(noop_proc),
     );
     assert!(
         real_editor_event.is_err(),

@@ -1,5 +1,5 @@
 // Generic LSP bridge: lsp-request!, lsp-notify!,
-// on-lsp-notification, delivered through the queued-Steel-call mechanism.
+// the on-lsp-notification hook, fired as an `EditorEvent` through `fire_hook`.
 
 #[cfg(unix)]
 use std::cell::RefCell;
@@ -337,8 +337,9 @@ fn on_lsp_notification_fires_the_registered_handler() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(on-lsp-notification "custom/event" (lambda (server params)
-             (when (equal? (json-ref params "x") 1)
+        r#"(register-hook! 'on-lsp-notification (lambda (server method params)
+             (when (and (equal? method "custom/event")
+                        (equal? (json-ref params "x") 1))
                (call! "move-right" (focused-pane)))))"#,
         tmp.path(),
     );
@@ -351,7 +352,7 @@ fn on_lsp_notification_fires_the_registered_handler() {
     assert_ne!(
         state(&ed),
         before,
-        "registered on-lsp-notification handler must fire with decoded params"
+        "an on-lsp-notification hook must fire with the method and decoded params"
     );
 }
 
@@ -369,12 +370,95 @@ fn unhandled_notification_without_a_registered_handler_only_logs_trace() {
     });
 
     ed.drain_lsp();
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert!(
         log.contains("unhandled notification custom/unhandled"),
         "no handler registered; must fall back to the existing Trace log: {log:?}"
     );
+}
+
+/// Wires `ed` with one pushed server notification per entry of `methods`
+/// and evaluates `source` against a real host.
+fn editor_with_notifications(methods: &[&str], source: &str) -> (Editor, tempfile::TempDir) {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdefgh\n");
+    setup_with(&mut ed, |b, sid| {
+        for method in methods {
+            b.push_from_server(
+                sid,
+                Message::Notification {
+                    method: method.to_string(),
+                    params: serde_json::Value::Null,
+                },
+            );
+        }
+    });
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(&mut ed, &mut host, source, tmp.path());
+    ed.scripting = Some(host);
+    (ed, tmp)
+}
+
+#[test]
+fn lsp_notification_hook_runs_one_proc_once_per_listed_method_only() {
+    let (mut ed, _tmp) = editor_with_notifications(
+        &["m/one", "m/two", "m/three", "m/other"],
+        r#"(register-lsp-notification-hook! '("m/one" "m/two" "m/three")
+             (lambda (server method params) (call! "move-right" (focused-pane))))"#,
+    );
+
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(
+        state(&ed),
+        "abc-[d]>efgh\n",
+        "the proc must run once for each of its three methods and never for m/other"
+    );
+}
+
+/// A method-filtered hook claims only its own methods: any other
+/// notification still reaches the "unhandled notification" Trace line.
+#[test]
+fn lsp_notification_hook_leaves_other_methods_traced_as_unhandled() {
+    let (mut ed, _tmp) = editor_with_notifications(
+        &["m/a", "m/b"],
+        r#"(register-lsp-notification-hook! "m/a"
+             (lambda (server method params) #t))"#,
+    );
+
+    ed.drain_lsp();
+    ed.settle();
+
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("unhandled notification m/b"),
+        "m/b has no handler; it must be traced: {log:?}"
+    );
+    assert!(
+        !log.contains("unhandled notification m/a"),
+        "m/a has a handler; it must not be traced: {log:?}"
+    );
+}
+
+/// A plain `register-hook!` handler asked for every method, so every
+/// notification reaches it and none is traced as unhandled.
+#[test]
+fn catch_all_lsp_notification_hook_sees_every_method_untraced() {
+    let (mut ed, _tmp) = editor_with_notifications(
+        &["m/a", "m/b"],
+        r#"(register-hook! 'on-lsp-notification
+             (lambda (server method params) (call! "move-right" (focused-pane))))"#,
+    );
+
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(state(&ed), "ab-[c]>defgh\n");
+    let log = ed.state.message_log.format_for_display();
+    assert!(!log.contains("unhandled notification"), "got: {log:?}");
 }
 
 /// A callback that itself calls `lsp-request!` must not evaluate the second

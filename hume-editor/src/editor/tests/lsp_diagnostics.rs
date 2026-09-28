@@ -195,6 +195,7 @@ fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
     open_with_client(&mut ed, &file, sid);
 
     ed.drain_lsp(); // must not panic
+    ed.settle();
 
     let log = ed.state.message_log.format_for_display();
     assert!(

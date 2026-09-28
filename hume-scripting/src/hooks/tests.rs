@@ -4,11 +4,20 @@ fn pid(s: &str) -> PluginId {
     PluginId::parse(s).unwrap()
 }
 
+fn keys(ks: &[&str]) -> Option<Box<[String]>> {
+    Some(ks.iter().map(|k| k.to_string()).collect())
+}
+
 /// `register` records the given owner on the stored entry.
 #[test]
 fn register_records_owner() {
     let mut reg = HookRegistry::default();
-    reg.register("on-buffer-save", Some(pid("core:a")), SteelVal::IntV(1));
+    reg.register(
+        "on-buffer-save",
+        Some(pid("core:a")),
+        SteelVal::IntV(1),
+        None,
+    );
     assert_eq!(
         reg.handlers_for("on-buffer-save")[0].owner,
         Some(pid("core:a"))
@@ -21,9 +30,19 @@ fn register_records_owner() {
 #[test]
 fn remove_owned_by_removes_only_matching_owner() {
     let mut reg = HookRegistry::default();
-    reg.register("on-buffer-save", Some(pid("core:a")), SteelVal::IntV(1));
-    reg.register("on-buffer-save", Some(pid("core:b")), SteelVal::IntV(2));
-    reg.register("on-buffer-save", None, SteelVal::IntV(3));
+    reg.register(
+        "on-buffer-save",
+        Some(pid("core:a")),
+        SteelVal::IntV(1),
+        None,
+    );
+    reg.register(
+        "on-buffer-save",
+        Some(pid("core:b")),
+        SteelVal::IntV(2),
+        None,
+    );
+    reg.register("on-buffer-save", None, SteelVal::IntV(3), None);
 
     reg.remove_owned_by(&pid("core:a"));
 
@@ -41,8 +60,53 @@ fn remove_owned_by_removes_only_matching_owner() {
 #[test]
 fn handlers_are_isolated_per_name() {
     let mut reg = HookRegistry::default();
-    reg.register("on-buffer-save", None, SteelVal::IntV(1));
+    reg.register("on-buffer-save", None, SteelVal::IntV(1), None);
 
     assert_eq!(reg.handlers_for("on-buffer-save").len(), 1);
     assert!(reg.handlers_for("on-buffer-open").is_empty());
+}
+
+/// A keyed entry matches only an event carrying one of its keys, never a
+/// keyless one.
+#[test]
+fn keyed_entry_matches_only_its_keys() {
+    let mut reg = HookRegistry::default();
+    reg.register("ev", None, SteelVal::IntV(1), keys(&["a", "b"]));
+
+    assert_eq!(reg.matching("ev", Some("a")).count(), 1);
+    assert_eq!(reg.matching("ev", Some("b")).count(), 1);
+    assert_eq!(reg.matching("ev", Some("c")).count(), 0);
+    assert_eq!(reg.matching("ev", None).count(), 0);
+    assert!(reg.has_match("ev", Some("a")));
+    assert!(!reg.has_match("ev", Some("c")));
+}
+
+/// An unkeyed entry matches every key and a keyless event alike, and sits
+/// beside keyed entries in registration order.
+#[test]
+fn unkeyed_entry_matches_any_key() {
+    let mut reg = HookRegistry::default();
+    reg.register("ev", None, SteelVal::IntV(1), keys(&["a"]));
+    reg.register("ev", None, SteelVal::IntV(2), None);
+
+    let procs = |key| {
+        reg.matching("ev", key)
+            .map(|e| e.proc.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(procs(Some("a")), vec![SteelVal::IntV(1), SteelVal::IntV(2)]);
+    assert_eq!(procs(Some("z")), vec![SteelVal::IntV(2)]);
+    assert_eq!(procs(None), vec![SteelVal::IntV(2)]);
+}
+
+/// Rollback removes a keyed entry like any other, so a failed plugin's
+/// method filter stops claiming its methods.
+#[test]
+fn remove_owned_by_drops_keyed_entries() {
+    let mut reg = HookRegistry::default();
+    reg.register("ev", Some(pid("core:a")), SteelVal::IntV(1), keys(&["a"]));
+
+    reg.remove_owned_by(&pid("core:a"));
+
+    assert!(!reg.has_match("ev", Some("a")));
 }

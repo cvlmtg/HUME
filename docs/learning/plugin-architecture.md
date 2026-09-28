@@ -151,6 +151,7 @@ The full set of lifecycle hooks, for reference:
 | `on-language-set` | A buffer's language is set or cleared |
 | `on-lsp-attach` | A language server attaches to a buffer |
 | `on-lsp-detach` | A language server detaches from a buffer |
+| `on-lsp-notification` | A language server sent a notification the editor doesn't handle itself |
 | `on-diagnostics-changed` | Diagnostics arrived (or cleared) for a buffer |
 | `on-viewport-change` | The visible region settled after a scroll or resize |
 | `on-trigger-char` | A registered trigger character was typed in insert mode |

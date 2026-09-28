@@ -3,6 +3,7 @@
 use steel::rvals::SteelVal;
 
 use super::SteelResult;
+use super::args::callable_arg;
 use crate::SteelCtx;
 
 /// Decode a Steel event name: a symbol, validated against the host's
@@ -30,16 +31,26 @@ pub(crate) fn event_name_arg(
         _ => steel::stop!(TypeMismatch =>
             "{verb}: expected an event-name symbol like 'on-buffer-save, got {:?}", val),
     };
+    require_known_event(ctx, &name_str, verb)?;
+    Ok(name_str)
+}
+
+/// Errors unless the host knows the event `name`.
+pub(crate) fn require_known_event(
+    ctx: &mut SteelCtx,
+    name: &str,
+    verb: &str,
+) -> Result<(), steel::rerrs::SteelErr> {
     let known = ctx.host.events().known_event_names();
-    if !known.contains(&name_str.as_str()) {
+    if !known.contains(&name) {
         steel::stop!(
             Generic =>
             "{verb}: unknown event '{}'; known events: {}",
-            name_str,
+            name,
             known.join(", ")
         );
     }
-    Ok(name_str)
+    Ok(())
 }
 
 /// `(register-hook! 'name proc)`: register `proc` as a handler for the
@@ -53,9 +64,22 @@ pub(crate) fn event_name_arg(
 /// to install a *hook* that reacts on every subsequent transition.
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {
     let name_str = event_name_arg(ctx, &name, "register-hook!")?;
-    let owner = ctx.plugin_stack.current().cloned();
-    ctx.registries.hooks.register(&name_str, owner, proc);
+    let proc = callable_arg(proc, "register-hook! proc")?;
+    register_entry(ctx, &name_str, proc, None);
     Ok(SteelVal::Void)
+}
+
+/// The one registration path behind `register-hook!` and
+/// `register-lsp-notification-hook!`: attributes the entry to the plugin
+/// whose body is running, so rollback removes it with that plugin.
+pub(crate) fn register_entry(
+    ctx: &mut SteelCtx,
+    name: &str,
+    proc: SteelVal,
+    keys: Option<Box<[String]>>,
+) {
+    let owner = ctx.plugin_stack.current().cloned();
+    ctx.registries.hooks.register(name, owner, proc, keys);
 }
 
 #[cfg(test)]

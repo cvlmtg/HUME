@@ -372,7 +372,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Generic LSP bridge: any protocol method reachable from Steel.
         cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal);
         cmd "lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal);
-        config "on-lsp-notification" lsp::on_lsp_notification(method: SteelVal, handler: SteelVal);
+        config "register-lsp-notification-hook!" lsp::register_lsp_notification_hook(methods: SteelVal, proc: SteelVal);
         // Introspection
         cmd  "lsp-capabilities" lsp::lsp_capabilities(pane: args::ArgPane);
         cmd  "lsp-server-status" lsp::lsp_server_status();

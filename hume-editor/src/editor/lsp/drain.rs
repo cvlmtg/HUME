@@ -269,9 +269,10 @@ impl Editor {
     /// them into typed `ClientAction` variants, handled directly in
     /// `dispatch_lsp_action`. Only an unclassified method, or a known
     /// method whose params fail both the strict parse and `hume-lsp`'s
-    /// lenient recovery, arrives here. Either goes to a registered Steel
-    /// `on-lsp-notification` handler, or an "unhandled notification" Trace
-    /// line if none is registered.
+    /// lenient recovery, arrives here. Either becomes an
+    /// `on-lsp-notification` event. `fire_one_event` traces it as
+    /// "unhandled notification" if, once lazy plugins have activated, no
+    /// handler takes `method`.
     fn dispatch_server_notification(
         &mut self,
         server_id: ServerId,
@@ -279,25 +280,10 @@ impl Editor {
         params: serde_json::Value,
     ) {
         let name = self.lsp_server_name(server_id);
-        let handlers = self
-            .scripting
-            .as_ref()
-            .map(|h| h.lsp_notification_handlers_for(method))
-            .unwrap_or_default();
-        if handlers.is_empty() {
-            self.report(
-                Severity::Trace,
-                format!("{name}: unhandled notification {method}"),
-            );
-            return;
-        }
         // The registered language is the "server name" the Steel surface deals
         // in, since that's what `register-lsp-server!` uses, the sole
         // server-name-string argument on the LSP builtins surface.
-        let server_val = match introspect::server_language(&self.lsp, server_id) {
-            Some(lang) => steel::rvals::SteelVal::StringV(lang.into()),
-            None => steel::rvals::SteelVal::BoolV(false),
-        };
+        let server = introspect::server_language(&self.lsp, server_id);
         // No untagged fallback: a notification's params may carry wire
         // positions (e.g. a server-defined custom notification echoing a
         // range), so an untracked server (crashed between sending this and
@@ -310,14 +296,14 @@ impl Editor {
             );
             return;
         };
-        let params_val = hume_scripting::json::to_steel_handle(
-            std::sync::Arc::new(params),
-            hume_scripting::json::WireOrigin::Server(encoding),
-        );
-        for handler in handlers {
-            self.state
-                .queue_steel_call(handler, vec![server_val.clone(), params_val.clone()]);
-        }
+        self.state
+            .queue_event(crate::editor::event::EditorEvent::OnLspNotification {
+                server_name: name,
+                server,
+                method: method.to_owned(),
+                params: std::sync::Arc::new(params),
+                origin: hume_scripting::json::WireOrigin::Server(encoding),
+            });
     }
 
     pub(super) fn dispatch_completed(

@@ -702,7 +702,7 @@ fn hook_registered_before_failure_is_rolled_back() {
         "plugin must be Failed after mid-body error"
     );
     assert!(
-        !host.has_hook_handlers("on-buffer-save"),
+        !host.has_hook_handlers("on-buffer-save", None),
         "a Failed plugin's hook must not survive rollback"
     );
 }
@@ -768,7 +768,7 @@ fn nested_activation_hook_survives_enclosing_plugin_failure() {
         "C must be Loaded: its activation succeeded before B's own failure"
     );
     assert!(
-        host.has_hook_handlers("on-buffer-save"),
+        host.has_hook_handlers("on-buffer-save", None),
         "C's hook must survive B's failure: rollback is scoped to B's own id"
     );
 }
