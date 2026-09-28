@@ -109,24 +109,26 @@ pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
 /// way a file on disk does). When `literal_exists(s)` is true, splitting
 /// never happens at all, not even to try and fail: a file genuinely named
 /// `weird:12` must never have its suffix peeled off to probe a
-/// `weird:12:34` split.
+/// `weird:12:34` split. Only called when `s` has a trailing `:<digits>`
+/// suffix to begin with: an `s` with no such suffix can never split, so
+/// there's nothing for "literal wins" to decide, and the plain-path common
+/// case (`:e foo.rs`, `hume foo.rs`) skips the probe entirely.
 ///
 /// Returns `(s, None)` unsplit whenever there's no trailing `:<digits>`
 /// suffix (see [`split_trailing_number`]) or `literal_exists` claims `s`.
 /// `0` in either position is an error naming `s` and which number was
 /// rejected.
-pub(crate) fn split_path_position<'a>(
-    s: &'a str,
+pub(crate) fn split_path_position(
+    s: &str,
     literal_exists: impl Fn(&str) -> bool,
-) -> Result<(&'a str, Option<PathPosition>), String> {
-    if literal_exists(s) {
-        return Ok((s, None));
-    }
-
+) -> Result<(&str, Option<PathPosition>), String> {
     let trimmed = s.strip_suffix(':').unwrap_or(s);
     let Some((rest, last)) = split_trailing_number(trimmed) else {
         return Ok((s, None));
     };
+    if literal_exists(s) {
+        return Ok((s, None));
+    }
     let (path_str, line, grapheme_col) = match split_trailing_number(rest) {
         Some((rest2, prev)) => (rest2, prev, last),
         None => (rest, last, 1),

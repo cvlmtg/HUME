@@ -1,8 +1,24 @@
 use super::*;
 use crate::editor::tests::safe_tempdir;
+use std::cell::Cell;
 
 // `tmp.path().join(name)` below is guaranteed absent from disk: `tmp` is a
 // freshly created, otherwise empty tempdir.
+
+#[test]
+fn literal_probe_is_skipped_without_a_suffix() {
+    let calls = Cell::new(0);
+    let result = split_path_position("foo.rs", |_| {
+        calls.set(calls.get() + 1);
+        false
+    });
+    assert_eq!(result, Ok(("foo.rs", None)));
+    assert_eq!(
+        calls.get(),
+        0,
+        "no :<digits> suffix means nothing to disambiguate, so literal_exists must not run"
+    );
+}
 
 #[test]
 fn line_only_suffix() {
