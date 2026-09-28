@@ -163,14 +163,6 @@ impl SettingsHost for NullHost {
     fn get_buffer_option(&self, _key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         Err("NullHost: get_buffer_option not available".into())
     }
-    fn configure_statusline(
-        &mut self,
-        _l: Vec<String>,
-        _c: Vec<String>,
-        _r: Vec<String>,
-    ) -> Result<(), String> {
-        Err("NullHost: configure_statusline not available".into())
-    }
     fn steel_command_budget_ms(&self) -> u64 {
         10_000
     }

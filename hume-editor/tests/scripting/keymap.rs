@@ -97,18 +97,6 @@ fn unbind_key_invalid_mode_errors() {
 // The expected bindings come from the literal key/cmd pairs
 // passed to the macro, not from re-reading the keymap.
 
-/// Real `runtime/scheme/prelude.scm` source, read fresh per call so these tests
-/// exercise the file plugin authors actually get, using the same `CARGO_MANIFEST_DIR`-
-/// relative approach as `editor::tests::scripting_grammar::runtime_scheme_dir`,
-/// which is independent of the test runner's CWD.
-fn real_prelude_source() -> String {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("runtime/scheme/prelude.scm");
-    std::fs::read_to_string(&path).unwrap()
-}
-
 #[test]
 fn prelude_bind_keys_batch_binds_multiple() {
     use termina::event::{KeyCode, KeyEvent, Modifiers};

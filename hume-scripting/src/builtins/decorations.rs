@@ -294,7 +294,7 @@ pub(crate) fn set_line_backgrounds(
 
 /// `(set-statusline-text! source pane text)`: replaces `source`'s
 /// statusline text for `pane`'s buffer wholesale. Rendered by the `steel:<source>`
-/// statusline element (see `configure-statusline!`). Placing it is a
+/// statusline element (see `configure-statusline!`, defined in the prelude). Placing it is a
 /// separate step, this only pushes the value a placed element will show.
 pub(crate) fn set_statusline_text(
     ctx: &mut SteelCtx,

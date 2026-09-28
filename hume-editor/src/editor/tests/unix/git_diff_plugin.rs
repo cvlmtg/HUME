@@ -79,7 +79,7 @@ fn setup_with_git_branch(tmp: &Path) -> (Editor, RealRuntimeGuard) {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(configure-statusline! '("steel:git-branch") '() '())"#,
+        r#"(set-option! "statusline" "steel:git-branch||")"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -1119,7 +1119,7 @@ fn git_branch_element_activates_when_placed_after_open() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(configure-statusline! '("steel:git-branch") '() '())"#,
+        r#"(set-option! "statusline" "steel:git-branch||")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

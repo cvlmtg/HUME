@@ -28,7 +28,6 @@ pub(crate) mod plugins;
 pub(crate) mod process;
 pub(crate) mod registers;
 pub(crate) mod settings;
-pub(crate) mod statusline;
 pub(crate) mod syntax;
 pub(crate) mod timers;
 pub(crate) mod ui;
@@ -230,7 +229,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd  "set-buffer-option!" settings::set_buffer_option(pane: args::LivePane, key: String, value: SteelVal);
         open "get-option" settings::get_option(key: String);
         cmd  "get-buffer-option" settings::get_buffer_option(pane: args::LivePane, key: String);
-        open "configure-statusline!" statusline::configure_statusline(left: SteelVal, center: SteelVal, right: SteelVal);
 
         // Step budget
         open "hume/yield!" interrupt::hume_yield();

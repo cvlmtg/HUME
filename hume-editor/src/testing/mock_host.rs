@@ -214,25 +214,6 @@ impl SettingsHost for MockHost {
         hume::editor::settings::setting_value(key, &self.settings, None)
             .ok_or_else(|| format!("get-buffer-option: unknown setting '{key}'"))
     }
-    fn configure_statusline(
-        &mut self,
-        left: Vec<String>,
-        center: Vec<String>,
-        right: Vec<String>,
-    ) -> Result<(), String> {
-        // `EditorSettings.statusline` is private outside `settings.rs`, so
-        // this re-serializes to the wire format and writes through
-        // `write_global`, the same path `EditorHostImpl::configure_statusline`
-        // (`host_impl.rs`) uses, rather than a second, mock-only writer.
-        use hume::statusline::{StatusLineConfig, parse_statusline_section};
-        let cfg = StatusLineConfig {
-            left: parse_statusline_section(left, "left")?,
-            center: parse_statusline_section(center, "center")?,
-            right: parse_statusline_section(right, "right")?,
-        };
-        let wire = hume::editor::settings::format_statusline(&cfg);
-        hume::editor::settings::ops::write_global_for_test("statusline", &wire, &mut self.settings)
-    }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64
     }

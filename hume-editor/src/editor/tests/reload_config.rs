@@ -242,7 +242,7 @@ fn reset_reverts_runtime_set_command_too() {
     );
 }
 
-/// `configure-statusline!` reverts to `StatusLineConfig::default()`: same
+/// A `statusline` option write reverts to `StatusLineConfig::default()`: same
 /// global-setting reset path as `scroll-margin`, just a richer value.
 #[test]
 fn reset_reverts_statusline_config_to_default() {
@@ -252,7 +252,7 @@ fn reset_reverts_statusline_config_to_default() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(configure-statusline! (list "Cwd") (list) (list))"#,
+        r#"(set-option! "statusline" "Cwd||")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

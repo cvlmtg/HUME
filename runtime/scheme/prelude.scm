@@ -25,3 +25,9 @@
                            #:injections [injections-path #f]
                            #:textobjects [textobjects-path #f])
   (%register-grammar! name grammar-path symbol highlights-path injections-path textobjects-path))
+
+(define (configure-statusline! left center right)
+  (set-option! "statusline"
+               (string-join (map (lambda (names) (string-join names ","))
+                                 (list left center right))
+                            "|")))

@@ -973,7 +973,8 @@ define_settings! {
 /// Parse the `"left|center|right"` wire format into a `StatusLineConfig`.
 ///
 /// Requires exactly three `|`-separated sections. Each section is a
-/// comma-separated list of `StatusElement` names; empty sections are allowed.
+/// comma-separated list of `StatusElement` names; an empty section is
+/// allowed, an empty name inside a non-empty one (`Mode,,FileName`) is not.
 fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
     let parts: Vec<&str> = s.splitn(4, '|').collect();
     if parts.len() != 3 {
@@ -983,10 +984,19 @@ fn parse_statusline(s: &str) -> Result<StatusLineConfig, String> {
         ));
     }
     let parse_section = |section: &str| -> Result<Vec<StatusElement>, String> {
+        if section.is_empty() {
+            return Ok(Vec::new());
+        }
         section
             .split(',')
-            .filter(|name| !name.is_empty())
-            .map(|name| name.parse::<StatusElement>())
+            .map(|name| {
+                if name.is_empty() {
+                    return Err(format!(
+                        "statusline section '{section}' has an empty element name"
+                    ));
+                }
+                name.parse::<StatusElement>()
+            })
             .collect()
     };
     Ok(StatusLineConfig {

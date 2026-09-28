@@ -28,8 +28,7 @@ pub(crate) struct SteelCtx<'a> {
     ///
     /// In `EvalSession::Init`, `host.buffers()`'s methods are gated by the
     /// `cmd` kind in `builtins!`'s registration table and never called; the
-    /// init-only methods (`host.settings().set_global_option`,
-    /// `host.settings().configure_statusline`) are always safe.
+    /// init-only method (`host.settings().set_global_option`) is always safe.
     pub(crate) host: &'a mut dyn EditorHost,
     // ── Persistent state borrowed from ScriptingHost ──────────────────────────
     /// Plugin attribution stack; identifies whose mutation is being recorded.

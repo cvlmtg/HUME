@@ -359,14 +359,6 @@ impl crate::host::SettingsHost for RecordingBufferOptionHost {
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
         crate::host::SettingsHost::get_buffer_option(&self.inner, key, bid)
     }
-    fn configure_statusline(
-        &mut self,
-        left: Vec<String>,
-        center: Vec<String>,
-        right: Vec<String>,
-    ) -> Result<(), String> {
-        crate::host::SettingsHost::configure_statusline(&mut self.inner, left, center, right)
-    }
     fn steel_command_budget_ms(&self) -> u64 {
         crate::host::SettingsHost::steel_command_budget_ms(&self.inner)
     }

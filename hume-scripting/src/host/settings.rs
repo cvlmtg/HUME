@@ -1,4 +1,4 @@
-//! Global settings, statusline config, and the Steel eval budget.
+//! Global settings and the Steel eval budget.
 
 use hume_engine::pipeline::BufferId;
 
@@ -40,7 +40,7 @@ impl From<OptionValue> for steel::rvals::SteelVal {
     }
 }
 
-/// Global settings, statusline config, and the Steel eval budget,
+/// Global settings and the Steel eval budget,
 /// accessed through [`EditorHost::settings`](super::EditorHost::settings).
 pub trait SettingsHost {
     /// `(set-option! key value)`: only `Global` scope from scripts. No
@@ -74,14 +74,6 @@ pub trait SettingsHost {
     /// `on-language-set`, whose buffer may differ from the focused one).
     /// Kind-C, same as `set_buffer_option`.
     fn get_buffer_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String>;
-
-    /// Init-only; the editor parses element names into `StatusElement`.
-    fn configure_statusline(
-        &mut self,
-        left: Vec<String>,
-        center: Vec<String>,
-        right: Vec<String>,
-    ) -> Result<(), String>;
 
     /// Steel eval budget in milliseconds for command / hook execution.
     fn steel_command_budget_ms(&self) -> u64;

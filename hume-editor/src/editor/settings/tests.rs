@@ -869,6 +869,17 @@ fn apply_statusline_unknown_element_name_errors() {
 }
 
 #[test]
+fn apply_statusline_empty_element_name_errors() {
+    let mut s = EditorSettings::default();
+    let err = write_global("statusline", "Mode,,FileName||", &mut s).unwrap_err();
+    assert!(err.contains("empty element name"), "got: {err}");
+    assert!(
+        write_global("statusline", "Mode,||", &mut s).is_err(),
+        "a trailing comma leaves an empty name too"
+    );
+}
+
+#[test]
 fn apply_statusline_text_scope_rejected() {
     let mut ov = BufferOverrides::default();
     assert!(write_buffer("statusline", "||", &mut ov).is_err());

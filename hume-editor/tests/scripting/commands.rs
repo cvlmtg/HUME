@@ -163,11 +163,17 @@ fn declared_plugins_includes_core_plugins() {
 
 // ── configure-statusline! ─────────────────────────────────────────────────
 
+fn host_with_prelude(mock: &mut MockHost) -> ScriptingHost {
+    let mut h = host();
+    h.eval_source(&real_prelude_source(), mock).unwrap();
+    h
+}
+
 #[test]
 fn configure_statusline_sets_left_section() {
     use hume_editor::statusline::StatusElement;
-    let mut h = host();
     let mut mock = MockHost::new();
+    let mut h = host_with_prelude(&mut mock);
 
     h.eval_source(
         r#"(configure-statusline! '("Mode" "FileName") '() '("Position"))"#,
@@ -189,8 +195,8 @@ fn configure_statusline_sets_left_section() {
 #[test]
 fn configure_statusline_all_sections() {
     use hume_editor::statusline::StatusElement;
-    let mut h = host();
     let mut mock = MockHost::new();
+    let mut h = host_with_prelude(&mut mock);
 
     h.eval_source(
         r#"(configure-statusline!
@@ -221,8 +227,8 @@ fn configure_statusline_all_sections() {
 
 #[test]
 fn configure_statusline_empty_sections() {
-    let mut h = host();
     let mut mock = MockHost::new();
+    let mut h = host_with_prelude(&mut mock);
 
     h.eval_source("(configure-statusline! '() '() '())", &mut mock)
         .unwrap();
@@ -234,8 +240,8 @@ fn configure_statusline_empty_sections() {
 
 #[test]
 fn configure_statusline_unknown_element_errors() {
-    let mut h = host();
     let mut mock = MockHost::new();
+    let mut h = host_with_prelude(&mut mock);
 
     let err = h
         .eval_source(
@@ -247,10 +253,21 @@ fn configure_statusline_unknown_element_errors() {
 }
 
 #[test]
+fn configure_statusline_empty_element_name_errors() {
+    let mut mock = MockHost::new();
+    let mut h = host_with_prelude(&mut mock);
+
+    let err = h
+        .eval_source(r#"(configure-statusline! '("Mode" "") '() '())"#, &mut mock)
+        .unwrap_err();
+    assert!(err.contains("empty element name"), "got: {err}");
+}
+
+#[test]
 fn configure_statusline_new_elements() {
     use hume_editor::statusline::StatusElement;
-    let mut h = host();
     let mut mock = MockHost::new();
+    let mut h = host_with_prelude(&mut mock);
 
     h.eval_source(
         r#"(configure-statusline! '("LineEnding") '() '("Cwd"))"#,
@@ -268,8 +285,8 @@ fn configure_statusline_new_elements() {
 
 #[test]
 fn configure_statusline_wrong_arity_errors() {
-    let mut h = host();
     let mut mock = MockHost::new();
+    let mut h = host_with_prelude(&mut mock);
 
     let err = h
         .eval_source("(configure-statusline! '())", &mut mock)

@@ -23,7 +23,8 @@ it.
 
 ## What it defines
 
-Five forms: `bind-keys!`, `bind-keys-extend!`, `unbind-keys!`, `define-language!`,
-`register-grammar!`. For signatures and usage examples, see the user manual:
+Six forms: `bind-keys!`, `bind-keys-extend!`, `unbind-keys!`, `define-language!`,
+`register-grammar!`, `configure-statusline!`. For signatures and usage examples, see the user manual:
 - [Configuration — Key bindings](https://cvlmtg.github.io/HUME/configuration.html#key-bindings)
+- [Configuration — Statusline](https://cvlmtg.github.io/HUME/configuration.html#statusline)
 - [Syntax Highlighting — Teach HUME a new language](https://cvlmtg.github.io/HUME/syntax-highlighting.html#teach-hume-a-new-language)

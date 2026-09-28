@@ -3,8 +3,6 @@
 
 use hume_engine::pipeline::BufferId;
 
-use crate::statusline::StatusLineConfig;
-
 use super::EditorHostImpl;
 use hume_scripting::host::{OptionValue, SettingsHost};
 
@@ -36,27 +34,6 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         };
         crate::editor::settings::setting_value(key, &self.state.settings, Some(&buf.overrides))
             .ok_or_else(|| format!("get-buffer-option: unknown setting '{key}'"))
-    }
-
-    fn configure_statusline(
-        &mut self,
-        left: Vec<String>,
-        center: Vec<String>,
-        right: Vec<String>,
-    ) -> Result<(), String> {
-        // Validate here (for a section-labeled error message), then hand the
-        // re-serialized wire string to the chokepoint so the write itself goes
-        // through `write_global` like every other setting. See
-        // `settings::ops::apply_global`'s doc for why a raw field write must
-        // not bypass it.
-        let cfg = StatusLineConfig {
-            left: crate::statusline::parse_statusline_section(left, "left")?,
-            center: crate::statusline::parse_statusline_section(center, "center")?,
-            right: crate::statusline::parse_statusline_section(right, "right")?,
-        };
-        let wire = crate::editor::settings::format_statusline(&cfg);
-
-        crate::editor::settings::ops::apply_global(self.state, self.view, "statusline", &wire)
     }
 
     fn steel_command_budget_ms(&self) -> u64 {
