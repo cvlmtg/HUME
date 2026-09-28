@@ -81,7 +81,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         // trailing phantom line, so this goes through the ropey domain rather
         // than `char_to_line`'s content-only contract.
         let offset = CharOffset::checked(text.rope(), idx)?;
-        Some(text.ropey_char_to_line(offset).index() + 1)
+        Some(text.ropey_char_to_line(offset).index())
     }
 
     fn symbol_under_cursor(&self, pane: PaneHandle) -> Result<String, String> {

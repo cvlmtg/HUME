@@ -12,7 +12,7 @@ use crate::types::PaneHandle;
 /// closed one, or one that no longer shows `pane`'s buffer: the same
 /// fail-fast contract every pane-needing builtin shares.
 pub trait CursorHost {
-    /// `(buffer-cursor-line pane)`: line number (1-indexed) of the primary
+    /// `(buffer-cursor-line pane)`: 0-indexed line of the primary
     /// cursor in `pane`'s own pane.
     fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<usize, String>;
 
@@ -23,7 +23,7 @@ pub trait CursorHost {
     /// selection start, with exactly one triple flagged primary.
     fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String>;
 
-    /// `(offset->line bid idx)`: 1-indexed line number containing the
+    /// `(offset->line bid idx)`: 0-indexed line containing the
     /// 0-indexed char offset `idx` in `bid`'s live text. Pure text math, not
     /// selection/pane state. Kind-C, unlike every other method here: `bid`
     /// need not be shown in any pane.

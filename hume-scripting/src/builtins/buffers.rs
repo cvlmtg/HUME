@@ -335,7 +335,7 @@ pub(crate) fn buffer_language(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
 
 // ── Live cursor/selection reads ───────────────────────────────────────────────
 
-/// `(buffer-cursor-line pane)` → 1-indexed line number of the primary
+/// `(buffer-cursor-line pane)` → 0-indexed line of the primary
 /// cursor in `pane`'s own pane.
 ///
 /// Reads live state: reflects any synchronous edits or motions that ran
@@ -374,7 +374,7 @@ pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
     list.into_steelval().map_err(generic_err)
 }
 
-/// `(offset->line pane idx)` → 1-indexed line number containing 0-indexed
+/// `(offset->line pane idx)` → 0-indexed line containing 0-indexed
 /// char offset `idx` in `pane`'s buffer's live text, or `#f` when `idx` is
 /// out of range (> buffer length in chars). Raises on a stale buffer, same
 /// liveness contract as every other explicit-pane builtin, checked at
@@ -395,9 +395,6 @@ pub(crate) fn offset_to_line(ctx: &mut SteelCtx, pane: PaneHandle, idx: usize) -
 /// a `line` past the content line count, same bounds contract as
 /// `buffer-lines` (raises rather than clamping).
 ///
-/// Not the inverse of `offset->line`: that builtin's *result* is
-/// 1-indexed (a line number, meant for display); this one's *input* is
-/// 0-indexed (a content line index, meant for further buffer indexing).
 /// Named for the conversion family (`offset->line`, `lsp-position->offset`,
 /// `lsp-range->offsets`, `path->display`), not the `buffer-text`/
 /// `buffer-lines` accessor family.

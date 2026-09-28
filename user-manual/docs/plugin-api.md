@@ -10,6 +10,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 ## Conventions
 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
+- Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
 
 ## Settings & statusline
 
@@ -103,9 +104,9 @@ A closed buffer behaves differently depending on the call: most reads below (`bu
 | `(buffer-text pane)` | Full live content as a string |
 | `(buffer-lines pane #:start #:end)` | Content as a list of lines, each with its ending stripped |
 | `(buffer-line-count pane)` | Content line count, cheaper than `(length (buffer-lines pane))` |
-| `(buffer-cursor-line pane)` | 1-indexed line of the primary cursor in `pane`'s own pane |
+| `(buffer-cursor-line pane)` | 0-based line of the primary cursor in `pane`'s own pane |
 | `(buffer-selections pane)` | List of `(anchor head primary?)` triples in `pane`'s own pane |
-| `(offset->line pane idx)` | 1-indexed line number containing 0-indexed char offset `idx` in the buffer's text |
+| `(offset->line pane idx)` | 0-based line containing 0-based char offset `idx` in the buffer's text |
 | `(line->offset pane line)` | 0-based char offset where 0-based content line `line` starts |
 | `(viewport-range pane)` | `(first-line . end-line)` currently visible in `pane`'s own pane, 0-based end-exclusive |
 | `(open-buffer! path)` | Open `path`, returning a pane-less pane value for it |

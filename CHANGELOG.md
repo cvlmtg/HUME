@@ -4,6 +4,7 @@
 
 ### Breaking changes
 - Every scripting function that changes something now ends in `!`: `declare-plugin`, `load-plugin`, `lsp-request`, `lsp-notify`, `after`, `unpack-gz`, and `unpack-zip` are renamed `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `unpack-gz!`, and `unpack-zip!`.
+- `buffer-cursor-line` and `offset->line` now return 0-based lines, like every other position in the scripting API.
 
 ### Commands
 - `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.

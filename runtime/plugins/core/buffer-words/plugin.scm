@@ -67,7 +67,7 @@
 ;;; 0-indexed cursor line, or the top of the buffer when no pane shows it — see README.md's "Cursor-outward, line-windowed indexing".
 (define (bw/anchor-line pane)
   (let ([panes (buffer-panes pane)])
-    (if (null? panes) 0 (- (buffer-cursor-line (car panes)) 1))))
+    (if (null? panes) 0 (buffer-cursor-line (car panes)))))
 
 ;;; Pure — see README.md's "Double-buffered cache"; `bw/walk!` installs and pushes.
 (define (bw/finish-entry entry building)

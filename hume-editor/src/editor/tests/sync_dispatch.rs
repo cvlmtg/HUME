@@ -167,16 +167,16 @@ fn run_command_sync_returns_true_on_a_successful_split() {
 /// second line proves liveness.
 #[test]
 fn current_line_number_reads_live_position() {
-    // Two-line buffer: "ab\ncd\n"; cursor on line 1.
+    // Two-line buffer: "ab\ncd\n"; cursor on line 0.
     let mut ed = editor_from("-[a]>b\ncd\n");
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     let before = live_host!(ed)
         .buffer_cursor_line(pane)
         .expect("line before");
-    assert_eq!(before, 1, "cursor starts on line 1");
+    assert_eq!(before, 0, "cursor starts on line 0");
 
-    // move-down crosses to line 2.
+    // move-down crosses to line 1.
     {
         live_host!(ed)
             .run_command_sync("move-down", pane, Some(1), false, None)
@@ -185,8 +185,8 @@ fn current_line_number_reads_live_position() {
 
     let after = live_host!(ed).buffer_cursor_line(pane).expect("line after");
     assert_eq!(
-        after, 2,
-        "current_line_number must reflect the sync move to line 2"
+        after, 1,
+        "current_line_number must reflect the sync move to line 1"
     );
 }
 
@@ -278,9 +278,9 @@ fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
 ///
 /// The discriminating logic:
 /// - Start on line 1.  Call `(move-down bid)`.
-/// - Cursor is immediately on line 2, so the `(when (= (buffer-cursor-line
-///   bid) 2) ...)` arm fires and calls `(move-down bid)` a second time → final
-///   line 3.
+/// - Cursor is immediately on line 2 (index 1), so the `(when (=
+///   (buffer-cursor-line bid) 1) ...)` arm fires and calls `(move-down bid)`
+///   a second time → final line 3.
 ///
 /// A deferred dispatch would leave the cursor on line 2.
 #[test]
@@ -293,7 +293,7 @@ fn case_b_sync_cursor_read_reflects_motion() {
         r#"(define-command! "test-case-b" "Case B probe"
                  (lambda (bid)
                    (move-down bid)
-                   (when (= (buffer-cursor-line bid) 2)
+                   (when (= (buffer-cursor-line bid) 1)
                      (move-down bid))))"#,
     );
 
@@ -659,9 +659,9 @@ fn steel_native_via_call_preserves_own_count() {
     let pane = focused_pane(&ed);
     let host = live_host!(ed);
     let line = host.buffer_cursor_line(pane).expect("buffer_cursor_line");
-    // Started on line 1, moved down 3 → should be on line 4.
+    // Started on line 0, moved down 3 → should be on line 3.
     assert_eq!(
-        line, 4,
+        line, 3,
         "native count=3 must be preserved in plugin→native chain; got line {line}"
     );
 }
@@ -1288,7 +1288,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
                (define-command! "outer-cmd" ""
                  (lambda (bid)
                    (call! "inner-move")
-                   (when (> (buffer-cursor-line bid) 1)
+                   (when (> (buffer-cursor-line bid) 0)
                      (call! "move-down" bid))))"#,
     );
     ed.execute_keymap_command("outer-cmd".into(), Some(1), false);
@@ -1917,7 +1917,7 @@ fn buffer_selections_primary_flag_follows_primary_index() {
     );
 }
 
-/// `offset_to_line` maps a 0-indexed char offset to its 1-indexed line.
+/// `offset_to_line` maps a 0-indexed char offset to its 0-indexed line.
 ///
 /// Expected lines are hand-counted from the buffer text rather than derived
 /// via `char_to_line` or any shared helper.
@@ -1930,13 +1930,13 @@ fn offset_to_line_maps_offsets() {
     let host = live_host!(ed);
     assert_eq!(
         host.offset_to_line(bid, 0),
-        Some(1),
-        "offset 0 ('a') is on line 1"
+        Some(0),
+        "offset 0 ('a') is on line 0"
     );
     assert_eq!(
         host.offset_to_line(bid, 3),
-        Some(2),
-        "offset 3 ('c') is on line 2"
+        Some(1),
+        "offset 3 ('c') is on line 1"
     );
 }
 
@@ -1946,7 +1946,7 @@ fn offset_to_line_maps_offsets() {
 fn offset_to_line_out_of_range_returns_none() {
     // "ab\ncd\n": 6 chars, len_chars() == 6. Every buffer ends with a
     // structural '\n' (HUME invariant), so ropey counts a trailing virtual
-    // empty line after it: line 1 "ab\n", line 2 "cd\n", line 3 "". Idx 6
+    // empty line after it: line 0 "ab\n", line 1 "cd\n", line 2 "". Idx 6
     // (== len_chars()) sits on that third, empty line.
     let mut ed = editor_from("-[a]>b\ncd\n");
     let bid = ed.focused_buffer_id();
@@ -1959,7 +1959,7 @@ fn offset_to_line_out_of_range_returns_none() {
     );
     assert_eq!(
         host.offset_to_line(bid, 6),
-        Some(3),
+        Some(2),
         "offset exactly at len_chars() is still a valid boundary (trailing virtual line)"
     );
 }

@@ -117,9 +117,7 @@ pub trait BufferHost {
     /// `None` if `id` is unknown.
     ///
     /// Backs the Steel `(line->offset bid line)` builtin, the inverse
-    /// direction of `offset->line`, but not a drop-in inverse of it:
-    /// `offset->line`'s result is 1-indexed (a display line number), this
-    /// call's `line` input is 0-indexed (a content line index).
+    /// direction of `offset->line`.
     fn line_to_offset(&self, id: BufferId, line: hume_rope::line::ContentLine) -> Option<usize>;
 
     /// The content-domain line range currently visible in `pane`'s own pane.
