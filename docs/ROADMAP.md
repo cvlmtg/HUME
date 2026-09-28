@@ -19,6 +19,9 @@
 - [ ] Auto-generated command reference + in-editor `:help` expansion.
 - [x] `:earlier` / `:later` undo-tree time travel — count + relative-age specs over the linear undo/redo path; cross-branch jumps and history-browsing UI remain future work.
 - [ ] Steel-side picker row display formatter — `#:truncate 'head|'tail` only picks which end of an over-long row is clipped; see `docs/FUZZY-FINDERS.md`'s "Remaining work" for the general per-row formatter this doesn't cover.
+- [ ] Fully rebindable picker keys — every key a picker handles, `Enter` and `Esc` included, is an ordinary user-overridable binding to a named picker command, beyond the extra keys `#:actions` adds today. HUME ships a default set (candidate home: `core:stdlib`) that users customize, e.g. `2` picks the second candidate, `Tab` marks a candidate in a multi-select picker, `Ctrl-x` clears the query.
+- [ ] Shell filter/insert commands — pipe each selection through a shell command and replace it with the command's stdout (`!` in vim), and run a shell command and insert its stdout into the buffer (`:r !cmd` in vim). Decide whether one command with two modes (a selection present vs. absent) covers both, or two separate named commands.
+- [ ] Increment/decrement number under cursor (`Ctrl-a`/`Ctrl-x` in vim) — detect and step the numeric literal at/after the cursor, handling decimal, hex (`0x…`), binary (`0b…`), and octal (`0o…`) forms, preserving the literal's width/padding and prefix.
 
 ### Editor — fixes & optimizations
 
@@ -60,7 +63,9 @@ Structural work found during a cheap-wins sweep. Each is real but wants a design
 - [ ] PLUM: pin plugins to commit / tag / branch.
 - [ ] `core:lsp` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
 - [ ] `core:lsp` install support for `pkg:golang` (gopls) and `pkg:pypi` source kinds — currently fail loudly as unsupported (see `docs/LSP-INSTALL.md`'s "v1 scope and limitations").
+- [ ] Per-buffer plugin exclusion — enable a plugin everywhere except for chosen languages or file patterns, e.g. `core:buffer-words` on for every buffer but `*.min.js`. `declare-plugin`'s `#:languages` only picks what triggers loading; once active, a plugin acts on every buffer. Exclusion therefore has to be checked per buffer each time the plugin would act, not once at activation.
 - [x] `:lsp-install` argument completion — a `#:target 'minibuf` source over the installable server names, declared via `define-typed-command!`'s `#:complete`.
+- [ ] Color highlighter plugin — inline-highlight hex color literals (`#abcdef`, `#0365AF01`) in a buffer, like `nvim-colorizer.lua`. Needs a new Steel builtin to set a decoration whose background/foreground is computed from arbitrary RGB(A), not one of the theme's fixed scopes.
 
 ## Open questions
 
