@@ -20,9 +20,8 @@ use hume_rope::line::ContentLine;
 pub(crate) const LINE_NUMBERS_START_AT_1: &str = "line numbers start at 1";
 /// Error text for a `0` column (a [`PathPosition::grapheme_col`]) in a
 /// `path:line:col` position. No `:goto` counterpart to share with (`:goto`
-/// only ever takes a line); `pub(crate)` so `:e`'s own tests
-/// (`editor/tests/unix/file_io.rs`) can assert on it without a second copy
-/// of the string.
+/// only ever takes a line); `pub(crate)` so `:e`'s own tests can assert on it
+/// without a second copy of the string.
 pub(crate) const GRAPHEME_COL_NUMBERS_START_AT_1: &str = "column numbers start at 1";
 
 /// A startup or `:e` cursor position, in the units the statusline shows:
