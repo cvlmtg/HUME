@@ -417,14 +417,20 @@ fn edit_relative_path_matches_existing_buffer() {
 
 // ── `:e path:line[:col]` ─────────────────────────────────────────────────
 
-#[test]
-fn edit_position_suffix_on_an_unopened_file_places_the_cursor() {
-    // "line one\n" is 9 chars, so line 1 (0-based) starts at char 9; column
-    // 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two" (hand
-    // counted, same layout as `apply_startup_positions_places_focused_cursor`).
+/// Fixture shared by the `:e path:line[:col]` tests below: "line one\n" (9
+/// chars) + "line two\n" (9) + "line three\n" (11), so line starts are char
+/// 0, 9, 18.
+fn three_line_file() -> (tempfile::NamedTempFile, std::path::PathBuf) {
     let f = safe_named_tempfile();
     std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();
+    (f, canonical)
+}
+
+#[test]
+fn edit_position_suffix_on_an_unopened_file_places_the_cursor() {
+    // Column 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two".
+    let (_f, canonical) = three_line_file();
     let arg = format!("{}:2:6", canonical.display());
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -436,11 +442,9 @@ fn edit_position_suffix_on_an_unopened_file_places_the_cursor() {
 
 #[test]
 fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor() {
-    let f1 = safe_named_tempfile();
+    let (_f1, canonical1) = three_line_file();
     let f2 = safe_named_tempfile();
-    std::fs::write(f1.path(), "line one\nline two\nline three\n").unwrap();
     std::fs::write(f2.path(), "other\n").unwrap();
-    let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
     let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
@@ -452,8 +456,7 @@ fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor
         "sanity: focus is on the second file"
     );
 
-    // Line 3 (1-based, no column) is `ContentLine` index 2, char 18: "line
-    // one\n" (9) + "line two\n" (9).
+    // Line 3 (1-based, no column) is `ContentLine` index 2, char 18.
     let arg = format!("{}:3", canonical1.display());
     ed.execute_typed("e", Some(&arg)).unwrap();
 
@@ -463,9 +466,7 @@ fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor
 
 #[test]
 fn edit_position_suffix_on_the_focused_buffer_records_a_jump_entry() {
-    let f = safe_named_tempfile();
-    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
-    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let (_f, canonical) = three_line_file();
 
     let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
     let before = ed.current_selections().primary().head();
@@ -488,11 +489,9 @@ fn edit_position_suffix_on_the_focused_buffer_records_a_jump_entry() {
 
 #[test]
 fn edit_position_suffix_on_another_file_ctrl_o_returns_in_one_step() {
-    let f1 = safe_named_tempfile();
+    let (_f1, canonical1) = three_line_file();
     let f2 = safe_named_tempfile();
-    std::fs::write(f1.path(), "line one\nline two\nline three\n").unwrap();
     std::fs::write(f2.path(), "b one\nb two\nb three\n").unwrap();
-    let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
     let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
 
     let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
@@ -584,9 +583,7 @@ fn edit_position_suffix_line_zero_errors() {
 
 #[test]
 fn edit_position_suffix_column_zero_errors() {
-    let f = safe_named_tempfile();
-    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
-    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let (_f, canonical) = three_line_file();
     let arg = format!("{}:3:0", canonical.display());
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -606,12 +603,8 @@ fn edit_position_suffix_column_zero_errors() {
 
 #[test]
 fn edit_position_suffix_tolerates_a_trailing_colon() {
-    // "line one\n" (9) + "line two\n" (9): line 3 (1-based, no column) starts
-    // at char 18, same layout as
-    // `edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor`.
-    let f = safe_named_tempfile();
-    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
-    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    // Line 3 (1-based, no column) starts at char 18.
+    let (_f, canonical) = three_line_file();
     let arg = format!("{}:3:", canonical.display());
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -626,9 +619,7 @@ fn edit_position_suffix_column_past_line_end_clamps() {
     // Line 2 (1-based) is "line two", chars 9..17: a column past its end
     // clamps to the last grapheme of the line, char 16 (the 'o' of "two"),
     // never the line's own `\n` at 17.
-    let f = safe_named_tempfile();
-    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
-    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let (_f, canonical) = three_line_file();
     let arg = format!("{}:2:999", canonical.display());
 
     let mut ed = editor_from("-[h]>ello\n");
@@ -715,12 +706,8 @@ use hume_rope::column::GraphemeCol;
 
 #[test]
 fn apply_startup_positions_places_focused_cursor() {
-    let f = safe_named_tempfile();
-    // "line one\n" is 9 chars, so line 1 (0-based) starts at char 9; column
-    // 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two" (hand
-    // counted, not derived from `place_grapheme_column` itself).
-    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
-    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    // Column 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two".
+    let (_f, canonical) = three_line_file();
 
     let mut ed = Editor::open(Some(canonical), std::sync::Arc::new(|| {})).unwrap();
     let bid = ed.focused_buffer_id();

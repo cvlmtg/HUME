@@ -573,14 +573,10 @@ pub(in crate::editor) fn goto_location(
     target: GotoTarget,
 ) -> Result<(), String> {
     let (bid, char_pos) = resolve_goto_target(state, view, target)?;
-    // Every path above can legitimately return `len_chars()` (e.g. a wire
-    // line past EOF, or a char-indexed target on the trailing structural
-    // line, both clamp to that line's start = len_chars()), but cursors
-    // must satisfy `head < len_chars()`. Clamp to the last char (the
-    // buffer's own trailing `\n`, always present and always its own
-    // grapheme boundary, so no snap is needed).
-    let char_pos = char_pos.min(state.buffers.get(bid).text().last_char());
-
+    // `jump_pane_to` clamps `char_pos` to the buffer's last char: every path
+    // above can legitimately return `len_chars()` (e.g. a wire line past
+    // EOF, or a char-indexed target on the trailing structural line, both
+    // clamp to that line's start = `len_chars()`).
     crate::editor::commands::jump_pane_to(state, view, t, bid, char_pos);
 
     Ok(())

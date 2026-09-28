@@ -113,22 +113,10 @@ pub(crate) fn literal_path_on_disk(candidate: &str, cwd: &Path) -> bool {
 /// shared by [`parse_file_arg`] and `:e`'s argument
 /// (`typed_buffer::typed_edit`).
 ///
-/// `literal_exists` decides whether `s` itself already names something the
-/// caller considers "the literal path wins": `parse_file_arg` probes the
-/// filesystem, `:e` also checks already-open buffers first (an unsaved
-/// new-file buffer literally named `notes:12` must stay reachable, the same
-/// way a file on disk does). When `literal_exists(s)` is true, splitting
-/// never happens at all, not even to try and fail: a file genuinely named
-/// `weird:12` must never have its suffix peeled off to probe a
-/// `weird:12:34` split. Only called when `s` has a trailing `:<digits>`
-/// suffix to begin with: an `s` with no such suffix can never split, so
-/// there's nothing for "literal wins" to decide, and the plain-path common
-/// case (`:e foo.rs`, `hume foo.rs`) skips the probe entirely.
-///
-/// Returns `(s, None)` unsplit whenever there's no trailing `:<digits>`
-/// suffix (see [`split_trailing_number`]) or `literal_exists` claims `s`.
-/// `0` in either position is an error naming `s` and which number was
-/// rejected.
+/// `literal_exists` is consulted only when `s` has a trailing `:<digits>`
+/// suffix to begin with (see [`split_trailing_number`]); if it returns
+/// `true`, `s` is returned unsplit rather than peeled apart. `0` in either
+/// position is an error naming `s` and which number was rejected.
 pub(crate) fn split_path_position(
     s: &str,
     literal_exists: impl Fn(&str) -> bool,

@@ -18,13 +18,11 @@ use crate::editor::error::CommandError;
 /// - `path` given and not open: read from disk, open a new buffer, switch to it.
 ///   A `path` that doesn't exist on disk opens an empty buffer bound to it
 ///   instead of erroring: `:w` creates the file (Vim's `:e newfile` semantics).
-/// - `path` may carry a trailing `:line[:col]` position, the same shape and
-///   rules the CLI's `hume path:line:col` accepts (`cli::split_path_position`):
-///   1-based, `0` is an error, a lone trailing `:` is tolerated, and a
-///   literal path (an already-open buffer or one on disk, checked against
-///   `ed.state.cwd`) always wins over splitting. Landing on the position
-///   goes through `jump_pane_to`, so it records a jump entry (`Ctrl-o`
-///   returns) and centers the viewport, same as `:goto`/`goto-location!`.
+/// - `path` may carry a trailing `:line[:col]` position, split the same way
+///   as the CLI's `hume path:line:col` (`cli::split_path_position`).
+///   Landing on the position goes through `jump_pane_to`, so it records a
+///   jump entry (`Ctrl-o` returns) and centers the viewport, same as
+///   `:goto`/`goto-location!`.
 ///
 /// Dedup uses `find_by_path` (canonical path comparison, or best-effort for a
 /// not-yet-existing path; see `Editor::resolve_buffer_path`). `force` (`!`
@@ -40,22 +38,28 @@ pub(in crate::editor) fn typed_edit(
     use std::path::Path;
 
     if let Some(raw_arg) = arg {
-        // An unsaved new-file buffer literally named `notes:12` must stay
+        // `literal_exists` is only ever probed with `raw_arg` itself (see
+        // `split_path_position`), so this lookup covers both that probe and
+        // the "already open, reuse it" check below without repeating it. An
+        // unsaved new-file buffer literally named `notes:12` must stay
         // reachable the same way a file on disk does, so this checks open
         // buffers first, on top of `cli::literal_path_on_disk`'s disk check.
+        let raw_expanded = hume_platform::path::expand(raw_arg);
+        let literal_bid = find_buffer_by_path_arg(ed, raw_expanded.as_ref());
         let literal_exists = |candidate: &str| {
-            let expanded = hume_platform::path::expand(candidate);
-            find_buffer_by_path_arg(ed, expanded.as_ref()).is_some()
-                || crate::cli::literal_path_on_disk(candidate, &ed.state.cwd)
+            literal_bid.is_some() || crate::cli::literal_path_on_disk(candidate, &ed.state.cwd)
         };
         let (path_str, pos) = crate::cli::split_path_position(raw_arg, literal_exists)
             .map_err(CommandError::transient)?;
 
-        let expanded = hume_platform::path::expand(path_str);
-
         // If a buffer is already open for this path, reuse it without re-reading.
         // Matches Vim semantics and covers the deleted-from-disk case.
-        let (bid, opened_msg) = if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
+        let existing = if path_str == raw_arg {
+            literal_bid
+        } else {
+            find_buffer_by_path_arg(ed, hume_platform::path::expand(path_str).as_ref())
+        };
+        let (bid, opened_msg) = if let Some(bid) = existing {
             (bid, None)
         } else {
             let (bid, is_new) = ed
@@ -63,21 +67,14 @@ pub(in crate::editor) fn typed_edit(
                 .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
             let msg = is_new.then(|| {
                 let buf = ed.state.buffers.get(bid);
-                let name = buf.display_name();
-                if buf.is_new_file() {
-                    format!("{name} [new file]")
-                } else {
-                    format!("Opened {name}")
-                }
+                Editor::new_file_open_msg(buf)
+                    .unwrap_or_else(|| format!("Opened {}", buf.display_name()))
             });
             (bid, msg)
         };
 
-        // Exactly one switch, whichever path landed here: a position suffix
-        // switches (and records its jump entry) through `jump_pane_to` itself.
-        // A prior `enter_buffer`/`switch_to_buffer_with_jump` here would push
-        // a second jump entry (the outgoing buffer's own start), so the first
-        // Ctrl-o would land on that instead of back where `:e` was run.
+        // `jump_pane_to` does the only switch when a position is given; see
+        // its caller contract.
         match pos {
             Some(pos) => {
                 let char_pos = crate::editor::pane_state::line_grapheme_to_char(

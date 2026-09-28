@@ -93,6 +93,15 @@ impl Editor {
         Ok((bid, is_new))
     }
 
+    /// `{name} [new file]`, the message reported when a newly opened `buf`
+    /// has nothing on disk yet. `None` for a genuinely read file. Shared by
+    /// `open_extra_file` and `:e`'s own `typed_buffer::typed_edit`, which
+    /// falls back to `Opened {name}` when this is `None`.
+    pub(in crate::editor) fn new_file_open_msg(buf: &Buffer) -> Option<String> {
+        buf.is_new_file()
+            .then(|| format!("{} [new file]", buf.display_name()))
+    }
+
     /// Open an additional file without switching focus; an error is logged
     /// as a warning and yields `None`. A path that doesn't exist opens a
     /// new-file buffer instead of erroring (see `resolve_open_path`) and
@@ -102,10 +111,8 @@ impl Editor {
     pub(crate) fn open_extra_file(&mut self, path: &std::path::Path) -> Option<BufferId> {
         match self.try_open_extra(path) {
             Ok((bid, is_new)) => {
-                let buf = self.state.buffers.get(bid);
-                if is_new && buf.is_new_file() {
-                    let name = buf.display_name();
-                    self.report(Severity::Info, format!("{name} [new file]"));
+                if is_new && let Some(msg) = Self::new_file_open_msg(self.state.buffers.get(bid)) {
+                    self.report(Severity::Info, msg);
                 }
                 Some(bid)
             }

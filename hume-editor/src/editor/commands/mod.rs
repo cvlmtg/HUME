@@ -339,6 +339,13 @@ pub(super) fn jump_pane_to(
 ) {
     let entry = current_jump_entry(state, view, t);
 
+    // A resolved target position can legitimately land on `len_chars()`
+    // (e.g. a wire line past EOF), but cursors must satisfy `head <
+    // len_chars()`. Clamp to the last char (the buffer's own trailing `\n`,
+    // always present and always its own grapheme boundary, so no snap is
+    // needed).
+    let char_pos = char_pos.min(state.buffers.get(bid).text().last_char());
+
     let pid = t.pid();
     crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
     crate::editor::pane_state::write_cursor(
