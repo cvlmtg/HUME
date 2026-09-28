@@ -10,6 +10,10 @@ I have written this editor for my own use, and release it without expectation. I
 
 ---
 
+<p align="center">
+  <img src="user-manual/docs/public/HUME.png" alt="HUME" width="800" />
+</p>
+
 **The pragmatic modal editor.**
 
 Zero friction, maximum output. HUME is built on a simple premise: the common case should be the short case, and the classic papercuts of text editing should be designed out from the start.
