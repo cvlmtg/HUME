@@ -41,7 +41,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 
 | Call | Effect |
 |------|--------|
-| `(call! "stdlib/run" cmd args cwd)` | Spawn `cmd`/`args` (in `cwd`, or the inherited directory if `#f`); blocks until exit |
+| `(call! "stdlib/run" cmd args #:cwd dir)` | Spawn `cmd`/`args` (in `dir`, or the inherited directory if omitted); blocks until exit |
 
 Returns `(stdout stderr exit-code)`. `exit-code` is `#f`, with the failure reason in `stderr`'s place, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
 

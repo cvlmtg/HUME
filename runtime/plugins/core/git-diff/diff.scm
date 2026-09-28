@@ -34,9 +34,9 @@
   (git-diff/cancel-fetch! pane)
   (let ([job (spawn-async! "git"
                            (list "show" (string-append ref ":./" (file-name path)))
-                           (parent-name path)
                            (lambda (stdout stderr exit-code)
-                             (git-diff/handle-fetch-result! pane stdout stderr exit-code)))])
+                             (git-diff/handle-fetch-result! pane stdout stderr exit-code))
+                           #:cwd (parent-name path))])
     (git-diff/entry-set! pane "job" job)))
 
 ;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced entry point.

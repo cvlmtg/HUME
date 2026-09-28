@@ -6,6 +6,7 @@
 - Every scripting function that changes something now ends in `!`: `declare-plugin`, `load-plugin`, `lsp-request`, `lsp-notify`, `after`, `unpack-gz`, and `unpack-zip` are renamed `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `unpack-gz!`, and `unpack-zip!`.
 - `buffer-cursor-line` and `offset->line` now return 0-based lines, like every other position in the scripting API.
 - The `on-mode-change` hook now passes the old and new modes as symbols (`'insert`), not strings.
+- `spawn-async!` and `run-capture!` (and `stdlib/run`) take the working directory as an optional `#:cwd` keyword instead of a required positional argument: `(spawn-async! cmd args callback #:cwd dir)`, `(run-capture! cmd args #:cwd dir)`.
 
 ### Commands
 - `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.

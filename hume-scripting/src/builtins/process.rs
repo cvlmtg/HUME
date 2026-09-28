@@ -1,4 +1,4 @@
-//! `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)`: generic
+//! `(spawn-async! cmd args callback #:cwd dir)` / `(cancel-async! id)`: generic
 //! async subprocess execution. `run-capture!`: a blocking counterpart with
 //! no callback, backing `core:stdlib`'s `stdlib/run`.
 //!
@@ -17,7 +17,8 @@ use super::SteelResult;
 use super::args::{list_to_strings, optional_path_arg, string_arg, usize_arg};
 use super::errors::require_cap;
 
-/// `(spawn-async! cmd args cwd callback)`: runs `cmd` with `args` (direct
+/// `(%spawn-async! cmd args cwd callback)`, wrapped by `spawn-async!`'s
+/// `#:cwd` keyword in `bootstrap.scm`: runs `cmd` with `args` (direct
 /// argv, no shell) in `cwd` (`#f` = the editor's own cwd), off the main
 /// thread. `callback` fires exactly once, with `(stdout stderr exit-code)`,
 /// once the child exits; never inline, so typing never stalls waiting for
@@ -60,7 +61,8 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
-/// `(run-capture! cmd args cwd)` → `(stdout stderr exit-code)`. Runs `cmd`
+/// `(%run-capture! cmd args cwd)` → `(stdout stderr exit-code)`, wrapped by
+/// `run-capture!`'s `#:cwd` keyword in `bootstrap.scm`. Runs `cmd`
 /// with `args` (direct argv, no shell) in `cwd` (`#f` = the editor's own
 /// cwd), blocking the calling thread until it exits: the small-output,
 /// synchronous-with-the-TUI-still-up shape `stdlib/run` is for; use

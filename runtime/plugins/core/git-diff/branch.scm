@@ -18,9 +18,10 @@
 ;;; `git rev-parse --abbrev-ref HEAD`, cwd = `path`'s directory.
 (define (git-diff/fetch-branch! pane path)
   (git-diff/cancel-branch-fetch! pane)
-  (let ([job (spawn-async! "git" '("rev-parse" "--abbrev-ref" "HEAD") (parent-name path)
+  (let ([job (spawn-async! "git" '("rev-parse" "--abbrev-ref" "HEAD")
                            (lambda (stdout stderr exit-code)
-                             (git-diff/handle-branch-result! pane stdout stderr exit-code)))])
+                             (git-diff/handle-branch-result! pane stdout stderr exit-code))
+                           #:cwd (parent-name path))])
     (git-diff/entry-set! pane "branch-job" job)))
 
 ;;; Gates the fetch on `"steel:git-branch"` being placed — see docs/pipeline.md.

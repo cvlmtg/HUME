@@ -342,17 +342,21 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
     let assertions = r#"
-(let ([r (call! "stdlib/run" "echo" (list "hello-world") #f)])
+(let ([r (call! "stdlib/run" "echo" (list "hello-world"))])
   (unless (and (string-contains? (car r) "hello-world") (equal? (caddr r) 0))
     (error (string-append "stdlib/run success case: " (to-string r)))))
 
-(let ([r (call! "stdlib/run" "sh" (list "-c" "echo err-msg 1>&2; exit 3") #f)])
+(let ([r (call! "stdlib/run" "sh" (list "-c" "echo err-msg 1>&2; exit 3"))])
   (unless (and (string-contains? (cadr r) "err-msg") (equal? (caddr r) 3))
     (error (string-append "stdlib/run nonzero-exit case: " (to-string r)))))
 
-(let ([r (call! "stdlib/run" "hume-definitely-not-a-real-binary-xyz" '() #f)])
+(let ([r (call! "stdlib/run" "hume-definitely-not-a-real-binary-xyz" '())])
   (unless (not (caddr r))
     (error (string-append "stdlib/run spawn-failure case: " (to-string r)))))
+
+(let ([r (call! "stdlib/run" "pwd" '() #:cwd "/")])
+  (unless (equal? (trim (car r)) "/")
+    (error (string-append "stdlib/run #:cwd case: " (to-string r)))))
 "#;
 
     let result = {

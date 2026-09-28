@@ -67,12 +67,12 @@
           (completion-emit! id '())
           (spawn-async! "git"
             '("for-each-ref" "--format=%(refname:short)" "refs/heads" "refs/tags" "refs/remotes")
-            (parent-name path)
             (lambda (stdout stderr exit-code)
               (completion-emit! id
                 (if (= exit-code 0)
                     (filter (lambda (s) (not (equal? s ""))) (split-many stdout "\n"))
-                    '())))))))
+                    '())))
+            #:cwd (parent-name path)))))
   #:target 'minibuf #:match 'string)
 
 ;;; Shared body for both toggles below — see docs/architecture.md's "Ref handling".

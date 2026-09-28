@@ -76,7 +76,6 @@
                     (list "status" "--porcelain" "-z" "--no-renames"
                           (string-append "--untracked-files="
                                           (if pickers/untracked "all" "no")))
-                    #f
                     (lambda (stdout stderr exit-code)
                       (if (= exit-code 0)
                           (picker-push! token (pickers/parse-git-status stdout))

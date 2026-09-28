@@ -88,7 +88,7 @@
 ;; ── Git probes ───────────────────────────────────────────────────────────────
 
 (define (stdlib/run-stdout cmd args)
-  (let ([result (stdlib/run cmd args #f)])
+  (let ([result (stdlib/run cmd args)])
     (and (equal? (caddr result) 0) (trim (car result)))))
 
 (define (stdlib/git-repo?)

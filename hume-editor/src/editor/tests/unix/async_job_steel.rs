@@ -25,7 +25,7 @@ fn happy_path_delivers_stdout_stderr_and_exit_code() {
         tmp.path(),
         r#"
         (define-command! "go" "" (lambda ()
-          (spawn-async! "sh" (list "-c" "printf hi") #f
+          (spawn-async! "sh" (list "-c" "printf hi")
             (lambda (out err code)
               (log! 'info (string-append out "|" err "|" (number->string code)))))))
         "#,
@@ -35,6 +35,28 @@ fn happy_path_delivers_stdout_stderr_and_exit_code() {
     drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "hi||0");
+}
+
+#[test]
+fn cwd_keyword_sets_the_child_working_directory() {
+    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"
+        (define-command! "go" "" (lambda ()
+          (spawn-async! "pwd" '()
+            (lambda (out err code) (log! 'info (trim out)))
+            #:cwd "/")))
+        "#,
+    );
+    call(&mut ed, "go");
+
+    drain_until(&mut ed, |ed| ed.state.status_msg.is_some());
+
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "/");
 }
 
 #[test]
@@ -48,7 +70,7 @@ fn nonzero_exit_and_stderr_reach_the_callback() {
         tmp.path(),
         r#"
         (define-command! "go" "" (lambda ()
-          (spawn-async! "sh" (list "-c" "echo boom >&2; exit 3") #f
+          (spawn-async! "sh" (list "-c" "echo boom >&2; exit 3")
             (lambda (out err code)
               (log! 'info (string-append err "|" (number->string code)))))))
         "#,
@@ -69,7 +91,7 @@ fn missing_binary_fires_the_callback_with_code_negative_one() {
         tmp.path(),
         r#"
         (define-command! "go" "" (lambda ()
-          (spawn-async! "definitely-not-a-real-binary-xyz" '() #f
+          (spawn-async! "definitely-not-a-real-binary-xyz" '()
             (lambda (out err code)
               (log! 'info (number->string code))))))
         "#,
@@ -92,7 +114,7 @@ fn empty_cmd_fires_the_callback_instead_of_raising() {
         tmp.path(),
         r#"
         (define-command! "go" "" (lambda ()
-          (spawn-async! "" '() #f
+          (spawn-async! "" '()
             (lambda (out err code)
               (log! 'info (number->string code))))))
         "#,
@@ -123,7 +145,7 @@ fn spawn_failure_wakes_the_event_loop() {
         tmp.path(),
         r#"
         (define-command! "go" "" (lambda ()
-          (spawn-async! "definitely-not-a-real-binary-xyz" '() #f
+          (spawn-async! "definitely-not-a-real-binary-xyz" '()
             (lambda (out err code) (void)))))
         "#,
     );
@@ -150,7 +172,7 @@ fn cancel_async_prevents_the_callback_and_kills_the_child() {
         r#"
         (define job-id #f)
         (define-command! "go" "" (lambda ()
-          (set! job-id (spawn-async! "sleep" (list "30") #f
+          (set! job-id (spawn-async! "sleep" (list "30")
             (lambda (out err code) (log! 'info "must-not-fire"))))))
         (define-command! "cancel-it" "" (lambda () (cancel-async! job-id)))
         "#,

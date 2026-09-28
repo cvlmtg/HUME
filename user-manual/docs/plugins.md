@@ -387,15 +387,16 @@ A few extra functions cover things Scheme has no way to know on its own:
 `command`/`spawn-process`/`wait` all block the whole editor until the command finishes. That's fine for something instant (`git rev-parse`), but not for anything that might take a moment while the user keeps typing. For that, run it in the background instead:
 
 ```scheme
-(spawn-async! "git" (list "show" (string-append ref ":" path)) repo-root
+(spawn-async! "git" (list "show" (string-append ref ":" path))
   (lambda (stdout stderr exit-code)
     (if (= exit-code 0)
         (use-the-output stdout)
-        (report-the-failure stderr))))
+        (report-the-failure stderr)))
+  #:cwd repo-root)
 ```
 
-`spawn-async!` starts `cmd` with `args` (in `cwd`, or `#f` for HUME's own working
-directory) and returns immediately; nothing blocks. `callback` is called exactly once,
+`spawn-async!` starts `cmd` with `args` (in `#:cwd`, or HUME's own working
+directory when omitted) and returns immediately; nothing blocks. `callback` is called exactly once,
 later, once the command has finished: `stdout` and `stderr` are its complete output as
 strings, `exit-code` is its exit code (`-1` if it was killed by a signal, or if the
 command couldn't even be started, like a missing binary). A command that fails to

@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 
 /// Async subprocess execution, accessed through
-/// [`EditorHost::async_process`](super::EditorHost::async_process). Backs `(spawn-async! cmd args cwd
-/// callback)` / `(cancel-async! id)`.
+/// [`EditorHost::async_process`](super::EditorHost::async_process). Backs `(spawn-async! cmd args callback
+/// #:cwd dir)` / `(cancel-async! id)`.
 pub trait AsyncProcessHost {
     /// Spawns `cmd` with `args` (direct argv, no shell) in `cwd` (`None` =
     /// the editor's own cwd), capturing its whole stdout/stderr to

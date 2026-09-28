@@ -129,6 +129,12 @@
 (define (completion-emit! id items #:incomplete [incomplete #f])
   (%completion-emit! id items incomplete))
 
+(define (spawn-async! cmd args callback #:cwd [cwd #f])
+  (%spawn-async! cmd args cwd callback))
+
+(define (run-capture! cmd args #:cwd [cwd #f])
+  (%run-capture! cmd args cwd))
+
 (define (run-inline-output! cmd args #:cwd [cwd #f])
   (let ([code (%run-inline-output! cmd args cwd)])
     (unless (= code 0)

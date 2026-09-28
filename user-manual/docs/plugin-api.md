@@ -11,6 +11,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
+- Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder.
 - A value from a fixed set of names (a mode, a hook name, a log level) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
@@ -270,10 +271,10 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 
 | Call | Effect |
 |------|--------|
-| `(spawn-async! cmd args cwd callback)` | Run `cmd` in the background; `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later |
+| `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's own working directory); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later |
 | `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
 | `(run-inline-output! cmd args #:cwd)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; raises on nonzero exit |
-| `(run-capture! cmd args cwd)` | Run `cmd`, blocking until it exits; returns `(stdout stderr exit-code)`. `core:stdlib`'s `stdlib/run` (see [Standard Library](standard-library.md)) is this call under its usual name |
+| `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's own working directory), blocking until it exits; returns `(stdout stderr exit-code)`. `core:stdlib`'s `stdlib/run` (see [Standard Library](standard-library.md)) is this call under its usual name |
 
 Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-processes).
 
