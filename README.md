@@ -2,6 +2,13 @@
   <img src="user-manual/docs/public/HUME-logo.svg" alt="HUME logo" width="200" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/cvlmtg/HUME/actions/workflows/ci.yml"><img src="https://github.com/cvlmtg/HUME/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+  <a href="https://github.com/cvlmtg/HUME/releases/latest"><img src="https://img.shields.io/github/v/release/cvlmtg/HUME" alt="Latest release" /></a>
+  <a href="https://cvlmtg.github.io/HUME/"><img src="https://img.shields.io/badge/docs-user%20manual-informational" alt="Documentation" /></a>
+  <a href="https://github.com/cvlmtg/HUME/blob/main/LICENSE"><img src="https://img.shields.io/github/license/cvlmtg/HUME" alt="License" /></a>
+</p>
+
 **HUME's Unfinished Modal Editor**
 
 *"We have no rational grounds to believe that a text editor, however carefully constructed, will ever reach a state we might call "finished". What we observe is a succession of patches, each one arising from the last, connected by habit rather than necessity. We call this progress, but that is merely a custom of thought.
@@ -40,6 +47,10 @@ Grab the archive for your platform from the [latest release](https://github.com/
 | Linux (x86\_64, glibc 2.39+) | `hume-*-x86_64-unknown-linux-gnu.tar.gz` |
 | Windows (x86\_64) | `hume-*-x86_64-pc-windows-msvc.zip` |
 
-See the [installation guide](https://cvlmtg.github.io/HUME/installation.html) to extract and run it, then type `:tutor` inside HUME for an interactive introduction.
+See the [installation guide](https://cvlmtg.github.io/HUME/installation.html) to extract and run it.
+
+## Getting help
+
+Read the full user manual [here](https://cvlmtg.github.io/HUME/), or type `:tutor` inside HUME for an interactive introduction.
 
 Coming from another modal editor? See [Helix](https://cvlmtg.github.io/HUME/from-helix.html), [Kakoune](https://cvlmtg.github.io/HUME/from-kakoune.html), or [Vim](https://cvlmtg.github.io/HUME/from-vim.html).
