@@ -582,6 +582,62 @@ fn edit_position_suffix_line_zero_errors() {
     );
 }
 
+#[test]
+fn edit_position_suffix_column_zero_errors() {
+    let f = safe_named_tempfile();
+    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let arg = format!("{}:3:0", canonical.display());
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed.execute_typed("e", Some(&arg)).unwrap_err();
+    assert!(
+        err.message()
+            .contains(crate::cli::GRAPHEME_COL_NUMBERS_START_AT_1),
+        "got: {}",
+        err.message()
+    );
+    assert!(
+        !err.message().contains(crate::cli::LINE_NUMBERS_START_AT_1),
+        "line was valid, must not be blamed, got: {}",
+        err.message()
+    );
+}
+
+#[test]
+fn edit_position_suffix_tolerates_a_trailing_colon() {
+    // "line one\n" (9) + "line two\n" (9): line 3 (1-based, no column) starts
+    // at char 18, same layout as
+    // `edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor`.
+    let f = safe_named_tempfile();
+    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let arg = format!("{}:3:", canonical.display());
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(&arg)).unwrap();
+
+    assert_eq!(ed.doc().path(), Some(canonical.as_path()));
+    assert_eq!(ed.current_selections().primary().head(), co(18));
+}
+
+#[test]
+fn edit_position_suffix_column_past_line_end_clamps() {
+    // Line 2 (1-based) is "line two", chars 9..17: a column past its end
+    // clamps to the last grapheme of the line, char 16 (the 'o' of "two"),
+    // never the line's own `\n` at 17.
+    let f = safe_named_tempfile();
+    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let arg = format!("{}:2:999", canonical.display());
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(&arg)).unwrap();
+
+    assert_eq!(ed.doc().path(), Some(canonical.as_path()));
+    assert_eq!(ed.current_selections().primary().head(), co(16));
+}
+
 /// A new-file buffer opened while an intermediate directory was missing is
 /// keyed by `resolve_buffer_path`'s fully-lexical fallback (parent couldn't
 /// be canonicalized either). Once that directory appears, re-resolving the
