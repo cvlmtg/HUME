@@ -11,6 +11,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
+- A value from a fixed set of names (a mode, a hook name, a log level) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
 

@@ -112,6 +112,7 @@ fn call_bang_arity_mismatch_surfaces_steel_error() {
 // ── register-hook! / fire_hook ────────────────────────────────────────────
 
 use hume_scripting::{PaneHandle, SteelPane};
+use steel::rvals::SteelVal;
 
 #[test]
 fn register_hook_fires_on_buffer_open() {
@@ -184,13 +185,12 @@ fn register_hook_fires_on_mode_change() {
     h.eval_source(
         r#"(register-hook! 'on-mode-change
               (lambda (old new)
-                (when (equal? new "insert") (call! "move-right"))))"#,
+                (when (equal? new 'insert) (call! "move-right"))))"#,
         &mut mock,
     )
     .unwrap();
-    use steel::rvals::IntoSteelVal as _;
-    let old_val = "normal".into_steelval().unwrap();
-    let new_val = "insert".into_steelval().unwrap();
+    let old_val = SteelVal::SymbolV("normal".into());
+    let new_val = SteelVal::SymbolV("insert".into());
     h.fire_hook("on-mode-change", &[old_val, new_val], &mut mock)
         .unwrap();
     let msgs = h.take_pending_messages();
@@ -294,13 +294,12 @@ fn fire_hook_globals_cleared_between_fires() {
 
     // Handler reads arg 1 (new mode) and dispatches it as a command name.
     h.eval_source(
-        r#"(register-hook! 'on-mode-change (lambda (old new) (call! new)))"#,
+        r#"(register-hook! 'on-mode-change (lambda (old new) (call! (symbol->string new))))"#,
         &mut mock,
     )
     .unwrap();
-    use steel::rvals::IntoSteelVal as _;
-    let old_val = "normal".into_steelval().unwrap();
-    let new_val = "insert".into_steelval().unwrap();
+    let old_val = SteelVal::SymbolV("normal".into());
+    let new_val = SteelVal::SymbolV("insert".into());
     h.fire_hook("on-mode-change", &[old_val.clone(), new_val], &mut mock)
         .unwrap();
     let msgs1 = h.take_pending_messages();
@@ -311,7 +310,7 @@ fn fire_hook_globals_cleared_between_fires() {
     );
 
     // Second fire with different args: any stale first-fire arg would give a wrong result.
-    let new_val2 = "normal".into_steelval().unwrap();
+    let new_val2 = SteelVal::SymbolV("normal".into());
     h.fire_hook("on-mode-change", &[old_val, new_val2], &mut mock)
         .unwrap();
     let msgs2 = h.take_pending_messages();

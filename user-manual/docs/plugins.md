@@ -278,7 +278,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-buffer-save` | A buffer is saved | `(pane)` |
 | `on-buffer-enter` | The focused buffer changes | `(pane)` |
 | `on-focus-gained` | The terminal regains focus | `()` |
-| `on-mode-change` | The editor mode changes | `(old new)`: mode strings |
+| `on-mode-change` | The editor mode changes | `(old new)`: mode symbols (`'normal`, `'insert`, `'extend`, `'command`, `'search`, `'sift`); compare with `equal?` |
 | `on-language-set` | A buffer's language is detected or changed | `(pane lang)`: `lang` is a string or `#f` |
 | `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(pane)`: pull details with `diagnostics-for-buffer` |
 | `on-lsp-attach` | A language server attaches to a buffer | `(pane server-name)` |

@@ -288,8 +288,8 @@ impl EditorEvent {
             EditorEvent::OnFocusGained => vec![],
             EditorEvent::OnModeChange { from, to } => {
                 vec![
-                    SteelVal::StringV(mode_name(*from).into()),
-                    SteelVal::StringV(mode_name(*to).into()),
+                    SteelVal::SymbolV(mode_name(*from).into()),
+                    SteelVal::SymbolV(mode_name(*to).into()),
                 ]
             }
             EditorEvent::OnLanguageSet { buffer, language } => {

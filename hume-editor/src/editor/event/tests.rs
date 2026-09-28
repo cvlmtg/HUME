@@ -156,15 +156,19 @@ fn on_focus_gained_carries_no_args() {
 }
 
 #[test]
-fn on_mode_change_stringifies_in_steel_args_not_at_the_raise_site() {
+fn on_mode_change_passes_symbols_built_in_steel_args_not_at_the_raise_site() {
     let event = EditorEvent::OnModeChange {
         from: Mode::Insert,
         to: Mode::Normal,
     };
     let args = event.steel_args();
-    assert_eq!(args.len(), 2);
-    assert_eq!(steel_string(&args, 0), "insert");
-    assert_eq!(steel_string(&args, 1), "normal");
+    assert_eq!(
+        args,
+        vec![
+            SteelVal::SymbolV("insert".into()),
+            SteelVal::SymbolV("normal".into())
+        ]
+    );
 }
 
 #[test]
