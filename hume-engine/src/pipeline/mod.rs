@@ -719,7 +719,7 @@ impl EngineView {
 pub struct PaneRenderSettings {
     pub mode: EditorMode,
     pub format: crate::display_lines::line_store::FormatKey,
-    pub show_indent_guides: bool,
+    pub indent_guides: bool,
     pub cursor_is_block: bool,
 }
 

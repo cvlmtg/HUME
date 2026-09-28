@@ -51,7 +51,7 @@ fn render_test_pane(
             tab_width: 4,
             whitespace: WhitespaceConfig::default(),
         },
-        show_indent_guides: true,
+        indent_guides: true,
         cursor_is_block: true,
     };
     let mut pane_ctx = PaneRenderCtx {

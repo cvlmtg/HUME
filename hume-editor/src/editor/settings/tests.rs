@@ -14,7 +14,7 @@ fn editor_settings_default_matches_old_constants() {
     assert_eq!(s.history_capacity, 100);
     assert_eq!(s.undo_levels, 0);
     assert_eq!(s.tab_width, 4);
-    assert!(s.show_indent_guides);
+    assert!(s.indent_guides);
     assert_eq!(s.tab_style, TabStyle::Hard);
     assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
     assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
@@ -32,7 +32,7 @@ fn editor_settings_default_matches_old_constants() {
 fn buffer_overrides_default_is_all_none() {
     let ov = BufferOverrides::default();
     assert!(ov.tab_width.is_none());
-    assert!(ov.show_indent_guides.is_none());
+    assert!(ov.indent_guides.is_none());
     assert!(ov.tab_style.is_none());
     assert!(ov.line_number_style.is_none());
     assert!(ov.auto_pairs.is_none());
@@ -575,7 +575,7 @@ fn set_global_auto_pairs() {
 
 #[test]
 fn set_global_indent_guides() {
-    assert!(!global("indent-guides", "false").unwrap().show_indent_guides);
+    assert!(!global("indent-guides", "false").unwrap().indent_guides);
 }
 
 #[test]
@@ -752,7 +752,7 @@ fn set_buffer_word_chars() {
 fn set_buffer_indent_guides() {
     let global = EditorSettings::default();
     let ov = buffer("indent-guides", "false").unwrap();
-    assert!(!ov.show_indent_guides(&global));
+    assert!(!ov.indent_guides(&global));
 }
 
 #[test]

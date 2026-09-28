@@ -68,7 +68,7 @@ impl Editor {
     pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> PaneRenderSettings {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
-        let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
+        let indent_guides = doc.overrides.indent_guides(&self.state.settings);
         let is_focused = pid == self.state.focus.id();
         let mode = if is_focused {
             self.state.mode()
@@ -80,7 +80,7 @@ impl Editor {
         PaneRenderSettings {
             mode,
             format: self.state.format_key(pane),
-            show_indent_guides,
+            indent_guides,
             cursor_is_block,
         }
     }

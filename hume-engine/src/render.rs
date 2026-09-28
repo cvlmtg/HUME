@@ -39,7 +39,7 @@ pub(crate) struct ComposeCtx<'a> {
     /// Pre-resolved from `theme.ui.indent_guide`.
     pub indent_guide_style: ResolvedStyle,
     /// From the `indent-guides` setting; gates the draw loop below.
-    pub show_indent_guides: bool,
+    pub indent_guides: bool,
     pub pane_rect: Rect,
     /// `theme.ui.background.bg` is read directly wherever a row/gutter cell
     /// falls back to the pane's own background (trailing cells past the
@@ -414,9 +414,7 @@ pub(crate) fn compose_display_line(
     // so that continuation display lines don't clobber content at guide
     // positions. Drawn after content so they appear on top of
     // leading-whitespace cells.
-    if compose_ctx.show_indent_guides
-        && matches!(display_line.kind, DisplayLineKind::LineStart { .. })
-    {
+    if compose_ctx.indent_guides && matches!(display_line.kind, DisplayLineKind::LineStart { .. }) {
         let depth = line_graphemes.first().map(|g| g.indent_depth).unwrap_or(0);
         let tw = hume_rope::width::indent_stop(1, compose_ctx.tab_width);
         // `indent_stop` counts buffer columns from the *line's* column 0,

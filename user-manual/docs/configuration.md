@@ -77,7 +77,7 @@ Sets the global default. The value is a string, symbol, boolean, or integer. An 
 
 ## Global options
 
-Option names are lowercase words joined by `-` (`tab-width`, `scroll-margin`). Three names are single words because they name a piece of the interface: `statusline`, `tabline`, and `signcolumn`. A `bool` option is named for the feature it turns on (`mouse`, `auto-pairs`), with no `-enabled` suffix.
+Option names are lowercase words joined by `-` (`tab-width`, `scroll-margin`). A dotted prefix (`lsp.`, `statusline.`) groups an option under the feature it configures (`lsp.inlay-hints`). Three names are single words because they name a piece of the interface: `statusline`, `tabline`, and `signcolumn`. A `bool` option is named for the feature it turns on (`mouse`, `auto-pairs`), with no `-enabled` suffix.
 
 Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All of these are global-only.
 

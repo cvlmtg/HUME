@@ -87,7 +87,7 @@ fn renders_simple_text() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -152,7 +152,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -199,7 +199,7 @@ fn filler_rows_have_tilde() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -253,7 +253,7 @@ fn do_compose_display_line(
         tab_width,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -570,10 +570,10 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
 }
 
 #[test]
-fn indent_guide_hidden_when_show_indent_guides_is_false() {
+fn indent_guide_hidden_when_indent_guides_is_false() {
     // Same fixture as indent_guide_drawn_at_inner_tab_stops (depth=2,
     // tab_width=4, guide expected at display_col 4) but with the setting off.
-    // This proves ComposeCtx::show_indent_guides actually gates the draw loop,
+    // This proves ComposeCtx::indent_guides actually gates the draw loop,
     // not just that the glyph can appear under default settings.
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
@@ -619,7 +619,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: false,
+        indent_guides: false,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -641,7 +641,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         assert_ne!(
             buf.cell(x, 0).unwrap().text(),
             INDENT_GUIDE_GLYPH,
-            "no indent guide should render at display_col {x} when show_indent_guides is false"
+            "no indent guide should render at display_col {x} when indent_guides is false"
         );
     }
 }
@@ -762,7 +762,7 @@ fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
             fg: Some(guide_fg),
             ..Default::default()
         },
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -959,7 +959,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -1033,7 +1033,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -1163,7 +1163,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -1268,7 +1268,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -1380,7 +1380,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             tab_width: 4,
             tilde_style: ResolvedStyle::default(),
             indent_guide_style: ResolvedStyle::default(),
-            show_indent_guides: true,
+            indent_guides: true,
             pane_rect,
             theme: &theme,
             rope: &rope,
@@ -1493,7 +1493,7 @@ fn gutter_column_reads_rope_via_ctx() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -1606,7 +1606,7 @@ fn compose_display_line_dims_cells_inline() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,
@@ -1662,7 +1662,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
-        show_indent_guides: true,
+        indent_guides: true,
         pane_rect,
         theme: &theme,
         rope: &rope,

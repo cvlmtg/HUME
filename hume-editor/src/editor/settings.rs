@@ -882,7 +882,7 @@ define_settings! {
         "tab-width" => tab_width: u8 = 4,
             scope: [Scope::Global, Scope::Buffer],
             parser: tab_width;
-        "indent-guides" => show_indent_guides: bool = true,
+        "indent-guides" => indent_guides: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         "tab-style" => tab_style: TabStyle = TabStyle::Hard,
