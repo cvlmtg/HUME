@@ -7,7 +7,7 @@
 
 (define bw/cfg (plugin-config))
 (define bw/match (call! "stdlib/config-enum" "core:buffer-words" bw/cfg "match" 'string '(string fuzzy)))
-(define bw/lines-per-tick (call! "stdlib/config-integer" "core:buffer-words" bw/cfg "lines" 200 1))
+(define bw/lines-per-tick (call! "stdlib/config-integer" "core:buffer-words" bw/cfg "lines" 100 1))
 
 ;;; Not 0 — see README.md's "Cursor-outward, line-windowed indexing".
 (define bw/tick-delay-ms 16)
@@ -59,9 +59,10 @@
             (hashset-insert (hashset-insert set w) twin)
             (hashset-insert set w)))))
 
-;;; Folds every word `(split-words line wc)` finds across `lines` into `set`.
-(define (bw/add-lines set lines wc)
-  (foldl (lambda (line words) (foldl (lambda (w s) (bw/add-word s w)) words (split-words line wc)))
+;;; Folds every word in `lines` into `set` — see README.md's "Non-ASCII words".
+(define (bw/add-lines set pane lines)
+  (foldl (lambda (line words)
+           (foldl (lambda (w s) (bw/add-word s w)) words (call! "stdlib/split-words" pane line)))
          set lines))
 
 ;;; 0-indexed cursor line, or the top of the buffer when no pane shows it — see README.md's "Cursor-outward, line-windowed indexing".
@@ -89,7 +90,7 @@
       (bw/install! pane (hash-insert entry "live-id" #f)))))
 
 ;;; One reindex tick — see README.md's "Cursor-outward, line-windowed indexing".
-(define (bw/walk! pane gen wc fwd-line bwd-line)
+(define (bw/walk! pane gen fwd-line bwd-line)
   (let ([entry (bw/entry pane)])
     (when (and entry (= (hash-ref entry "gen") gen))
       (let* ([total (buffer-line-count pane)]
@@ -98,8 +99,9 @@
              [bwd-hi (min bwd-line total)]
              [bwd-lo (max 0 (- bwd-hi bw/lines-per-tick))]
              [bwd-lines (if (< bwd-lo bwd-hi) (buffer-lines pane #:start bwd-lo #:end bwd-hi) '())]
-             [building (bw/add-lines (bw/add-lines (or (hash-ref entry "building") (hashset)) fwd-lines wc)
-                                      bwd-lines wc)])
+             [building (bw/add-lines (bw/add-lines (or (hash-ref entry "building") (hashset))
+                                                   pane fwd-lines)
+                                     pane bwd-lines)])
         (if (and (>= fwd-hi total) (<= bwd-lo 0))
             (let ([finished (bw/finish-entry entry building)])
               (bw/install! pane finished)
@@ -107,7 +109,7 @@
             (bw/install! pane
               (bw/continue-entry entry building
                                   (after! bw/tick-delay-ms
-                                    (lambda () (bw/walk! pane gen wc fwd-hi bwd-lo))))))))))
+                                    (lambda () (bw/walk! pane gen fwd-hi bwd-lo))))))))))
 
 ;;; Cancels any in-flight walk and restarts it fresh — see README.md's
 ;;; "Double-buffered cache" and "Cursor-outward, line-windowed indexing".
@@ -119,10 +121,9 @@
     (when entry
       (bw/cancel-timer! entry)
       (let* ([anchor (bw/anchor-line pane)]
-             [gen (+ (hash-ref entry "gen") 1)]
-             [wc (get-buffer-option pane "word-chars")])
+             [gen (+ (hash-ref entry "gen") 1)])
         (bw/install! pane (hash-insert (hash-insert entry "gen" gen) "building" #f))
-        (bw/walk! pane gen wc anchor anchor)))))
+        (bw/walk! pane gen anchor anchor)))))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 

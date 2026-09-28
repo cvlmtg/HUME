@@ -13,6 +13,9 @@
 - Options renamed: `scrolloff` → `scroll-margin`, `autoread` → `auto-read`, `mouse-enabled` → `mouse`, `auto-pairs-enabled` → `auto-pairs`.
 - `register-trigger-chars!` is renamed `set-hook-triggers!`, and `completion-set-trigger-chars!` is renamed `set-completion-triggers!`.
 
+### Plugins
+- `core:buffer-words` now indexes 100 lines on each side of the cursor per background step by default, instead of 200, halving the pause a step can cause in a file with very long lines.
+
 ### Commands
 - `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.
 

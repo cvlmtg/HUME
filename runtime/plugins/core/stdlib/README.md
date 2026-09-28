@@ -180,11 +180,8 @@ turn off, only a kwarg to omit.
 classification `w`/`b` motions and text objects use, without the caller fetching and
 threading `word-chars` through itself.
 
-A plugin tokenizing many of `pane`'s own lines in a loop should instead read
-`(get-buffer-option pane "word-chars")` once and call the underlying `split-words`
-directly per line. `core:buffer-words`' own per-tick scan does this, since re-deriving
-the same setting on every line would be wasted work. A plugin tokenizing text that isn't
-`pane`'s own content also calls `split-words` directly.
+`core:buffer-words`' scan calls it once per line. A plugin tokenizing text that isn't
+`pane`'s own content calls `split-words` directly.
 
 ### Plugin config
 

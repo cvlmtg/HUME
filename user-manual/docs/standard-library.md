@@ -68,7 +68,7 @@ Use this for a `:` command that takes an optional language name: `arg` is whatev
 |------|--------|
 | `(call! "stdlib/split-words" pane str)` | Every word in `str`, tokenized using `pane`'s buffer's own `word-chars` setting |
 
-Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-buffer-option pane "word-chars"))`. Use it whenever `str` is that buffer's own content (typically one of its lines) and you want that buffer's own notion of a word. Tokenizing many of a buffer's lines in a loop? Fetch `(get-buffer-option pane "word-chars")` once and call `(split-words line word-chars)` per line instead, rather than re-deriving the same setting every time. Call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from that buffer's setting.
+Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-buffer-option pane "word-chars"))`. Use it whenever `str` is that buffer's own content (typically one of its lines) and you want that buffer's own notion of a word. Call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from that buffer's setting.
 
 ## Plugin configuration
 

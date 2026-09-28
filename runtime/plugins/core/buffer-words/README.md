@@ -8,7 +8,7 @@ ask.
 
 ```scheme
 (declare-plugin! "core:stdlib")
-(load-plugin! "core:buffer-words" #:config (hash "match" 'string "lines" 200))
+(load-plugin! "core:buffer-words" #:config (hash "match" 'string "lines" 100))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-enum`/
@@ -23,7 +23,7 @@ ask.
 | Key | Default | Meaning |
 |---|---|---|
 | `"match"` | `'string` | `'string`: a case-sensitive prefix gate, the vim `i_CTRL-N` feel. `'fuzzy`: subsequence-scored like `core:lsp`'s own candidates, so the two compete on score rather than priority |
-| `"lines"` | `200` | Lines fetched and scanned per side (before/after the cursor) on each background indexing tick. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
+| `"lines"` | `100` | Lines fetched and scanned per side (before/after the cursor) on each background indexing tick. Lower trims the pause a keystroke can add near a huge buffer; raising it finishes indexing a large buffer in fewer ticks |
 
 ## How it works
 
@@ -37,8 +37,8 @@ indexed so far.
 cursor line
      │
      ▼
-  ◀── bwd-lines (200) ── │ fwd-lines (200) ──▶      one tick
-  ◀────── bwd-lines (200) ──── │ ──── fwd-lines (200) ──────▶   next tick
+  ◀── bwd-lines (100) ── │ fwd-lines (100) ──▶      one tick
+  ◀────── bwd-lines (100) ──── │ ──── fwd-lines (100) ──────▶   next tick
         …outward in both directions until both hit a buffer edge…
 ```
 
@@ -213,9 +213,9 @@ typed, and backspacing away from it brings it straight back.
 
 ### `word-chars` invalidation
 
-`word-chars` is read once per reindex and baked into the cached word set for as long as
-that index stands. Nothing about the cache invalidates on its own when the option
-changes later. A global `:set global word-chars=…` reindexes every open buffer, so that
+`word-chars` is read on every scan tick and baked into the cached word set for as long
+as that index stands. Nothing about a finished index invalidates on its own when the
+option changes later; a change mid-scan applies only to the lines not yet scanned. A global `:set global word-chars=…` reindexes every open buffer, so that
 case stays live. A *buffer-scoped* `:set buffer word-chars=…` does not: the corresponding
 hook is raised only by the global write path, never by the buffer-scoped one, so there is
 no Steel-visible event this plugin can subscribe to for that case (see
@@ -224,8 +224,9 @@ no Steel-visible event this plugin can subscribe to for that case (see
 ### Non-ASCII words
 
 Steel has no Unicode character-category table (no `char-alphabetic?`, no regex), so
-classification isn't done in Steel at all: the scan calls the native `split-words`
-builtin, which tokenizes a whole line at once using the same word/character classifier
+classification isn't done in Steel at all: the scan hands each line to `core:stdlib`'s
+`stdlib/split-words`, which reads the buffer's own `word-chars` and runs the native
+`split-words` builtin. `split-words` tokenizes using the same word/character classifier
 `w`/`b` motions and text objects use (`hume-ops`'s word-motion scan primitives, built on
 grapheme-cluster-safe stepping). A word this plugin offers is, by construction, exactly
 what a `w` motion would select: `café` (with a combining accent) stays one candidate,
