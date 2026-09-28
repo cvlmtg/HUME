@@ -142,3 +142,47 @@ fn normalized_makes_invisible_difference_compare_equal() {
     assert_ne!(painted, dormant);
     assert_eq!(painted.normalized(), dormant.normalized());
 }
+
+#[test]
+fn normalized_swaps_colors_and_clears_reversed_when_both_are_set() {
+    let s = ResolvedStyle {
+        fg: Some(Rgb(1, 2, 3)),
+        bg: Some(Rgb(4, 5, 6)),
+        modifiers: Modifiers::REVERSED | Modifiers::BOLD,
+        ..Default::default()
+    };
+    let n = s.normalized();
+    assert_eq!(n.fg, Some(Rgb(4, 5, 6)));
+    assert_eq!(n.bg, Some(Rgb(1, 2, 3)));
+    assert_eq!(n.modifiers, Modifiers::BOLD);
+}
+
+#[test]
+fn normalized_keeps_reversed_when_a_color_is_missing() {
+    let s = ResolvedStyle {
+        fg: None,
+        bg: Some(Rgb(4, 5, 6)),
+        modifiers: Modifiers::REVERSED,
+        ..Default::default()
+    };
+    let n = s.normalized();
+    assert_eq!(n.fg, None);
+    assert_eq!(n.bg, Some(Rgb(4, 5, 6)));
+    assert_eq!(n.modifiers, Modifiers::REVERSED);
+}
+
+#[test]
+fn normalized_reversed_cell_equals_hand_swapped_cell() {
+    let reversed = ResolvedStyle {
+        fg: Some(Rgb(1, 2, 3)),
+        bg: Some(Rgb(4, 5, 6)),
+        modifiers: Modifiers::REVERSED,
+        ..Default::default()
+    };
+    let swapped = ResolvedStyle {
+        fg: Some(Rgb(4, 5, 6)),
+        bg: Some(Rgb(1, 2, 3)),
+        ..Default::default()
+    };
+    assert_eq!(reversed.normalized(), swapped.normalized());
+}

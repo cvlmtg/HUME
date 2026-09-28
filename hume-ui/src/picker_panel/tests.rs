@@ -573,3 +573,48 @@ fn picker_styles_default_when_scopes_absent() {
     assert_eq!(styles.selected.fg, Some(Rgb(255, 0, 0)));
     assert_eq!(styles.cursor.fg, Some(Rgb(255, 0, 0)));
 }
+
+#[test]
+fn draw_picker_panel_reversed_cursor_swaps_against_the_panels_own_text_color() {
+    // `ui.cursor.primary` carrying only `modifiers = ["reversed"]` (no fg/bg
+    // of its own, as upstream Helix's gruvbox_light defines it) needs a
+    // concrete color already painted under the cursor cell to swap against.
+    // `ui.background` (the panel fill) is bg-only by Helix convention, so
+    // the panel's own `ui.text` fg is what the swap must land on.
+    let mut buf = Grid::new(40, 20);
+    let theme = Theme::default();
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let geo = PanelGeometry {
+        rect: rect(0, 0, 20, 4),
+        list_rows: 1,
+    };
+    let s = state("", &[], None, &geo);
+    let text_fg = Rgb(10, 20, 30);
+    let background_bg = Rgb(1, 1, 1);
+    let styles = PickerStyles {
+        background: ResolvedStyle {
+            bg: Some(background_bg),
+            ..Default::default()
+        },
+        text: ResolvedStyle {
+            fg: Some(text_fg),
+            ..Default::default()
+        },
+        selected: style(),
+        cursor: ResolvedStyle {
+            modifiers: hume_engine::types::Modifiers::REVERSED,
+            ..Default::default()
+        },
+    };
+    draw_picker_panel(&mut canvas, &s, styles);
+
+    // Query cursor: row 1, right after the empty query at the inner left edge.
+    let cursor_cell = buf[(geo.rect.x + 1, geo.rect.y + 1)].style();
+    assert_eq!(cursor_cell.fg, Some(background_bg));
+    assert_eq!(cursor_cell.bg, Some(text_fg));
+    assert!(
+        !cursor_cell
+            .modifiers
+            .contains(hume_engine::types::Modifiers::REVERSED)
+    );
+}

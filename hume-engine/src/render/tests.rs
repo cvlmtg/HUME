@@ -686,6 +686,109 @@ fn indent_guide_not_drawn_on_wrap_display_lines() {
 }
 
 #[test]
+fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
+    // A REVERSED-only cursor cell (no explicit bg of its own) landing on an
+    // inner guide stop: the guide's own write, `over`-composed on top,
+    // replaces modifiers outright and would carry no REVERSED bit forward.
+    // The cell must still read as highlighted after that write, which only
+    // holds if REVERSED was already flattened into concrete fg/bg by the
+    // time the guide's write reads what's underneath.
+    let text_fg = Rgb(10, 20, 30);
+    let background_bg = Rgb(1, 1, 1);
+    let guide_fg = Rgb(9, 9, 9);
+
+    let graphemes: Vec<Grapheme> = (0..11u32)
+        .map(|i| Grapheme {
+            byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
+            char_offset: i as usize,
+            display_col: dc(i),
+            width: 1,
+            content: CellContent::Grapheme,
+            indent_depth: 2, // 8 spaces / 4 tab_width = depth 2
+            scope: None,
+        })
+        .collect();
+    let display_line = DisplayLine {
+        kind: DisplayLineKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
+        graphemes: 0..11,
+    };
+    let mut styles = vec![ResolvedStyle::default(); 11];
+    // The primary cursor head sits at display_col 4, the same guide stop
+    // `indent_guide_drawn_at_inner_tab_stops` pins (k=1, tab_width=4). Its fg
+    // is already folded from `ui.text` by the style stage, matching
+    // production; REVERSED is the cursor scope's only own contribution.
+    styles[4] = ResolvedStyle {
+        fg: Some(text_fg),
+        modifiers: Modifiers::REVERSED,
+        ..Default::default()
+    };
+
+    let visible = PaneGeometry {
+        content_height: 5,
+        content_width: 20,
+        gutter_width: 0,
+        last_line_idx: RopeyLine::new(0),
+    };
+    let viewport = Viewport::new(20, 5);
+    let pane_rect = Rect {
+        x: 0,
+        y: 0,
+        width: 20,
+        height: 5,
+    };
+    let mut buf = make_test_buf(20, 5);
+    let mut background_scopes = std::collections::HashMap::new();
+    background_scopes.insert(
+        "ui.background",
+        ResolvedStyle {
+            bg: Some(background_bg),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(background_scopes, ResolvedStyle::default());
+    let lane_widths: Vec<u16> = Vec::new();
+    let rope = ropey::Rope::new();
+    let ctx = ComposeCtx {
+        gutter_columns: &[],
+        visible: &visible,
+        horizontal_offset: viewport.horizontal_offset,
+        mode: EditorMode::Normal,
+        primary_head_line: ContentLine::new(0),
+        tab_width: 4,
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle {
+            fg: Some(guide_fg),
+            ..Default::default()
+        },
+        show_indent_guides: true,
+        pane_rect,
+        theme: &theme,
+        rope: &rope,
+        default_gutter_scope: ScopeId(0),
+    };
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    compose_display_line(
+        &render_display_line(&display_line, &graphemes, "        foo", ""),
+        &styles,
+        0,
+        &lane_widths,
+        &ctx,
+        &mut canvas,
+        None,
+    );
+
+    let cell = buf.cell(4, 0).unwrap();
+    assert_eq!(cell.text(), INDENT_GUIDE_GLYPH);
+    // The swapped-in cursor fg (its own bg was never set) still marks the
+    // cell distinctly from an ordinary guide cell, which would carry the
+    // pane's own background instead.
+    assert_eq!(cell.style().bg, Some(text_fg));
+    assert_ne!(cell.style().bg, Some(background_bg));
+}
+
+#[test]
 fn indicator_content_fills_tab_width() {
     // A tab indicator with width=4 should write the indicator char at display_col 0
     // and spaces at cols 1-3.

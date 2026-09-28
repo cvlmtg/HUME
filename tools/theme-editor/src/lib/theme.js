@@ -178,7 +178,8 @@ export function cssUnderlineStyle(s) {
 
 // Build a React style object for a token or markup span from its scope's theme style.
 // `tag` (optional) overrides fg/bg and appends modifiers (used for cursor/selection/match).
-// `editorBg` is the canvas background, needed for the `reversed` modifier.
+// `editorBg` is the canvas background, the `reversed` modifier's fallback fg
+// when the scope carries no bg of its own to swap against.
 export function tokenStyle(scopeId, sc, pal, fallbackFg, editorBg, tag) {
   const s = scopeId ? fullStyle(scopeId, sc, pal) : null;
   let fg = tag?.fg ?? s?.fg ?? fallbackFg;
@@ -190,7 +191,7 @@ export function tokenStyle(scopeId, sc, pal, fallbackFg, editorBg, tag) {
   // carries no underline itself.
   const u = tag?.underline ?? s?.underline;
 
-  if (mods.includes("reversed")) { const t = fg; fg = editorBg; bg = t; }
+  if (mods.includes("reversed")) { const t = fg; fg = bg ?? editorBg; bg = t; }
 
   const decos = [];
   if (mods.includes("crossed_out")) decos.push("line-through");

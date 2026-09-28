@@ -144,3 +144,13 @@ test("tokenStyle keeps the token's own underline when the tag has none", () => {
   const css = tokenStyle('a', sc, {}, '#fff', '#282828', { fg: '#ff0000', mods: [] });
   assert.equal(css.textDecorationStyle, 'dotted');
 });
+
+// Mirrors `ResolvedStyle::normalized` (hume-grid/src/style.rs): reversed
+// swaps the scope's own fg and bg. Reading only `editorBg` for the new fg
+// drops a scope's own bg entirely, which is wrong whenever one is set.
+test('tokenStyle swaps against the scope\'s own bg when reversed', () => {
+  const sc = { a: { fg: '#111111', bg: '#eeeeee', modifiers: ['reversed'] } };
+  const css = tokenStyle('a', sc, {}, '#fff', '#282828');
+  assert.equal(css.color, '#eeeeee');
+  assert.equal(css.background, '#111111');
+});

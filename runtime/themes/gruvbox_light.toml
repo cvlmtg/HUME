@@ -6,12 +6,11 @@
 # Source: https://github.com/helix-editor/helix/blob/master/runtime/themes/gruvbox_light.toml
 #
 # Same as upstream plus HUME's own additions (the `diff_*_bg` palette entries
-# below), with one deviation: upstream's
-# `"ui.cursor.primary" = { modifiers = ["reversed"] }` is not ported; the
-# parent's explicit `fg`/`bg` is kept instead.
+# below).
 
 inherits = "gruvbox"
 
+"ui.cursor.primary" = { modifiers = ["reversed"] }
 "ui.cursor.match" = { bg = "bg2" }
 "ui.cursorline" = { bg = "bg1" }
 

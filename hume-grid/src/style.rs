@@ -66,19 +66,38 @@ impl ResolvedStyle {
         }
     }
 
-    /// Drop state that cannot be seen, so two styles that render identically
-    /// also compare equal.
+    /// Drop state that cannot be seen, or that a later write over this same
+    /// cell could otherwise lose, so two styles that render identically also
+    /// compare equal.
     ///
-    /// An `underline_color` with no underline to paint is the only such case
-    /// today: a theme can set one on a scope that doesn't underline, and a
-    /// cascade can inherit one past a layer that turned the underline off.
-    /// Left in place it would make the diff repaint a cell whose appearance
-    /// never changed, and emit an SGR 58 the terminal has nothing to apply
-    /// it to. Applied by every [`Cell`](crate::Cell) constructor, so cell
-    /// equality is appearance equality.
+    /// An `underline_color` with no underline to paint: a theme can set one
+    /// on a scope that doesn't underline, and a cascade can inherit one past
+    /// a layer that turned the underline off. Left in place it would make
+    /// the diff repaint a cell whose appearance never changed, and emit an
+    /// SGR 58 the terminal has nothing to apply it to.
+    ///
+    /// REVERSED with both `fg` and `bg` set: flattened into the swapped
+    /// colours outright, REVERSED cleared. [`ResolvedStyle::over`] replaces
+    /// modifiers wholesale from whichever style writes on top, so a later
+    /// write over this cell (an indent guide, a decoration) that carries no
+    /// REVERSED of its own would otherwise erase this cell's reversal along
+    /// with it, even though its own colours are untouched. A REVERSED style
+    /// missing a colour is left as is: swapping the terminal's own default
+    /// for a written cell's colour is not a colour, so there is nothing to
+    /// fold it into.
+    ///
+    /// Applied by every [`Cell`](crate::Cell) constructor, so cell equality
+    /// is appearance equality.
     pub(crate) fn normalized(mut self) -> ResolvedStyle {
         if self.underline == UnderlineStyle::None {
             self.underline_color = None;
+        }
+        if self.modifiers.contains(Modifiers::REVERSED)
+            && let (Some(fg), Some(bg)) = (self.fg, self.bg)
+        {
+            self.fg = Some(bg);
+            self.bg = Some(fg);
+            self.modifiers.remove(Modifiers::REVERSED);
         }
         self
     }

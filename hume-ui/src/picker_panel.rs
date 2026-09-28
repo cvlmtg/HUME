@@ -168,7 +168,11 @@ pub(in crate::picker_panel) fn draw_picker_panel(
         return;
     }
 
-    canvas.fill_rect_bg(outer, styles.background);
+    // `styles.background` (`ui.background`) is bg-only by Helix convention
+    // (see `PickerStyles`'s own doc): layering `text` under it gives the
+    // panel's blank cells a concrete fg too, which a reversed-only cursor
+    // cell written over them needs to swap against.
+    canvas.fill_rect_bg(outer, styles.text.layer(styles.background));
 
     if state.border {
         super::menu_box::draw_box_border(canvas, outer, styles.text);

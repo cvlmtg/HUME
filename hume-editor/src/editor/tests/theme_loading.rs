@@ -60,8 +60,12 @@ fn bundled_themes_load_and_resolve() {
     for (name, theme) in load_bundled_themes() {
         let style = theme.resolve_by_name(hume_engine::types::Scope("ui.cursor.primary"));
         assert!(
-            style.fg.is_some() || style.bg.is_some(),
-            "bundled theme '{name}': ui.cursor.primary has neither fg nor bg"
+            style.fg.is_some()
+                || style.bg.is_some()
+                || style
+                    .modifiers
+                    .contains(hume_engine::types::Modifiers::REVERSED),
+            "bundled theme '{name}': ui.cursor.primary has neither fg, bg, nor reversed"
         );
     }
 }

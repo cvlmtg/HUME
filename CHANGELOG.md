@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Theming
+- `gruvbox_light`'s picker cursor now matches upstream's reversed style, instead of the parent theme's explicit colors.
+- A reversed cursor stays visible when it lands on an indent guide.
+
 ## [0.13.0] - 2026-09-28
 
 ### Breaking changes
