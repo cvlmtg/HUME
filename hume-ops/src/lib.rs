@@ -10,6 +10,7 @@ pub mod selection_cmd;
 pub mod surround;
 mod tag;
 pub mod text_object;
+mod word_unit;
 
 /// Controls how a motion updates the selection's anchor and head.
 ///

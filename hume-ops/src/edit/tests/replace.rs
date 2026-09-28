@@ -314,6 +314,21 @@ fn replace_grapheme_cluster_cursor() {
 }
 
 #[test]
+fn replace_selection_ending_on_a_combining_mark_stops_at_its_own_cluster() {
+    // A word-end motion leaves the inclusive end on a cluster's trailing
+    // combining mark, not its base char: the selection here ends on the
+    // U+0301 itself, one char past "cafe". The stop test must recognize
+    // that the é cluster it's already inside is the last one selected,
+    // rather than reading the raw char offset and wandering into the
+    // untouched " x" that follows.
+    assert_state!(
+        "-[cafe\u{0301}]> x\n",
+        |(text, sels)| replace_selections(text, sels, 'x'),
+        "-[xxxx]> x\n"
+    );
+}
+
+#[test]
 fn replace_multiline_selection_skips_newline() {
     // Selection spans two lines. The '\n' between them is retained;
     // only the visible characters are replaced. Lines stay separate.

@@ -17,6 +17,14 @@ pub struct Cluster {
     pub first: char,
 }
 
+impl Cluster {
+    /// The cluster's last char, including a trailing combining mark: the
+    /// inclusive counterpart of `end`.
+    pub fn last_char(&self) -> CharOffset {
+        self.end.retreat(1)
+    }
+}
+
 /// The grapheme clusters of `slice` from `pos` to its end, in order. The one
 /// forward grapheme stepper: [`next_grapheme_boundary`] is its first step, and
 /// a loop that walks forward cluster by cluster iterates this instead of
@@ -40,20 +48,14 @@ pub struct Cluster {
 /// (`next_boundary` / `provide_context`), and the walk keeps its current chunk
 /// between clusters, so the rope is descended once per chunk, not per step.
 pub fn graphemes_at(slice: RopeSlice<'_>, pos: CharOffset) -> Graphemes<'_> {
-    let len_bytes = slice.len_bytes();
-    let byte = slice.char_to_byte(pos.index().min(slice.len_chars()));
-    let (chunk, chunk_byte_start) = if byte < len_bytes {
-        let (chunk, start, _, _) = slice.chunk_at_byte(byte);
-        (chunk, start)
-    } else {
-        ("", byte)
-    };
+    let char = pos.min(CharOffset::new(slice.len_chars()));
+    let byte = slice.char_to_byte(char.index());
     Graphemes {
         slice,
-        chunk,
-        chunk_byte_start,
+        chunk: "",
+        chunk_byte_start: byte,
         byte,
-        char: pos.min(CharOffset::new(slice.len_chars())),
+        char,
     }
 }
 
@@ -212,19 +214,13 @@ pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> C
 /// For a single-codepoint cluster (the common case) this equals
 /// `cluster_start`. For a multi-codepoint cluster such as `e` + U+0301
 /// (combining acute) it includes the trailing combining mark, so a selection
-/// or delete range built from this end never orphans it. Callers that need
-/// this must not step `next_grapheme_boundary(..) - 1` by hand: the buffer's
-/// structural trailing `\n` guarantees `next_grapheme_boundary` is always
-/// `> 0` here, but only this function's `saturating_sub` makes that safe to
-/// forget.
+/// or delete range built from this end never orphans it. A caller already
+/// holding a [`Cluster`] uses [`Cluster::last_char`] instead. Past the end of
+/// the slice this clamps to its last char.
 pub fn cluster_last_char(slice: RopeSlice<'_>, cluster_start: CharOffset) -> CharOffset {
-    // Trusted mint: this module is the grapheme-boundary authority itself,
-    // and the `- 1` is exactly the documented inclusive/exclusive
-    // conversion this function exists to provide.
-    CharOffset::new(
-        next_grapheme_boundary(slice, cluster_start)
-            .index()
-            .saturating_sub(1),
+    graphemes_at(slice, cluster_start).next().map_or(
+        CharOffset::new(slice.len_chars()).retreat_saturating(1),
+        |cluster| cluster.last_char(),
     )
 }
 

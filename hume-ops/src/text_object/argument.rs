@@ -6,6 +6,7 @@ use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, blank_class};
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
+use super::trim_blank;
 use crate::pair::{bracket_role, find_tightest_bracket_pair};
 
 /// One comma segment's inclusive char range, leading and trailing whitespace
@@ -121,9 +122,8 @@ fn locate_argument(
 /// ideographic space, or newline. Routed through `blank_class`
 /// rather than a hand-rolled char match so `m a a` agrees with `m a w` on
 /// which characters count as blank.
-fn is_blank(text: &BufferText, pos: CharOffset) -> bool {
-    text.char_at(pos)
-        .is_some_and(|ch| blank_class(ch).is_some())
+fn is_blank(ch: char) -> bool {
+    blank_class(ch).is_some()
 }
 
 /// Narrower than [`is_blank`]: `Space`-classified only, no `Eol`. Used only
@@ -131,9 +131,8 @@ fn is_blank(text: &BufferText, pos: CharOffset) -> bool {
 /// break there belongs to the *next* argument's indentation, not to this
 /// one's trailing whitespace, so `foo(\n    a,\n    b\n)` around `a` eats
 /// `a,` and leaves the newline.
-fn is_inline_blank(text: &BufferText, pos: CharOffset) -> bool {
-    text.char_at(pos)
-        .is_some_and(|ch| blank_class(ch) == Some(CharClass::Space))
+fn is_inline_blank(ch: char) -> bool {
+    blank_class(ch) == Some(CharClass::Space)
 }
 
 /// Extends `pos` forward while the char immediately after it is blank,
@@ -142,10 +141,10 @@ fn is_inline_blank(text: &BufferText, pos: CharOffset) -> bool {
 fn extend_forward_while(
     text: &BufferText,
     mut pos: CharOffset,
-    blank: impl Fn(&BufferText, CharOffset) -> bool,
+    blank: impl Fn(char) -> bool,
 ) -> CharOffset {
     for cluster in graphemes_at(text, pos).skip(1) {
-        if !blank(text, cluster.start) {
+        if !blank(cluster.first) {
             break;
         }
         pos = cluster.start;
@@ -159,35 +158,16 @@ fn extend_forward_while(
 fn extend_backward_while(
     text: &BufferText,
     mut pos: CharOffset,
-    blank: impl Fn(&BufferText, CharOffset) -> bool,
+    blank: impl Fn(char) -> bool,
 ) -> CharOffset {
     while pos > CharOffset::new(0) {
         let prev = prev_grapheme_boundary(text, pos);
-        if !blank(text, prev) {
+        if !text.char_at(prev).is_some_and(&blank) {
             break;
         }
         pos = prev;
     }
     pos
-}
-
-/// Trim leading and trailing whitespace from a raw segment span. Returns
-/// `None` if the segment is entirely whitespace.
-fn trim_segment(text: &BufferText, raw: Segment) -> Option<InclusiveRange<CharOffset>> {
-    let start = graphemes_at(text, raw.start)
-        .map(|cluster| cluster.start)
-        .find(|&start| start > raw.end || !is_blank(text, start))
-        .unwrap_or(text.end());
-    let mut end = raw.end;
-    while end > start && is_blank(text, end) {
-        end = prev_grapheme_boundary(text, end);
-    }
-    // Segment is entirely whitespace: nothing to select.
-    if start > raw.end {
-        return None;
-    }
-
-    Some(InclusiveRange::new(start, end))
 }
 
 /// Inner argument: the text of the comma-separated item at `pos`, with leading
@@ -197,7 +177,7 @@ fn trim_segment(text: &BufferText, raw: Segment) -> Option<InclusiveRange<CharOf
 /// fields `{x: 1, y: 2}`, and any comma-separated list inside brackets.
 pub fn inner_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
     let (segments, idx, _) = locate_argument(text, pos)?;
-    trim_segment(text, segments[idx])
+    trim_blank(text, segments[idx])
 }
 
 /// Derives an argument's "around" span from its "inner" span by locating its
@@ -259,12 +239,12 @@ pub fn around_argument(text: &BufferText, pos: CharOffset) -> Option<InclusiveRa
         // inner_argument would just re-resolve the same pair and segments
         // this call already has, so trim directly instead.
         return if nudged_pos == pos {
-            trim_segment(text, segments[idx])
+            trim_blank(text, segments[idx])
         } else {
             inner_argument(text, nudged_pos)
         };
     }
 
-    let inner = trim_segment(text, segments[idx])?;
+    let inner = trim_blank(text, segments[idx])?;
     Some(around_from_inner(text, inner))
 }

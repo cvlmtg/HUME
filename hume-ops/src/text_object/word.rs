@@ -1,188 +1,16 @@
 //! Word/WORD text objects (`iw`/`aw`, `iW`/`aW`) and the position-based
 //! `mm`/`MM`/nearest-word-on-line family they share with visual-move.
 
-use hume_editing::grapheme::{
-    graphemes_at, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
-};
+use hume_editing::grapheme::graphemes_at;
 use hume_editing::lines::next_line_start;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_editing::word::{
-    CharClass, WordChars, blank_class, is_uppercase_word_boundary, is_word_boundary,
-};
+use hume_editing::word::{WordChars, blank_class, is_uppercase_word_boundary, is_word_boundary};
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use super::apply_text_object_by_mode;
+use crate::word_unit::{IsBoundary, inner_word_impl, prev_nonblank, word_unit_at};
 use crate::{MotionMode, WordCtx};
-
-/// Inner word parameterised by boundary predicate.
-///
-/// Scans left and right from `pos` while adjacent chars share the same
-/// "class" (no boundary crossing). Whatever class the char at `pos` belongs
-/// to defines the selected run, including whitespace runs and EOL.
-pub fn inner_word_impl(
-    text: &BufferText,
-    pos: CharOffset,
-    is_boundary: impl Fn(CharClass, CharClass) -> bool,
-    chars: WordChars<'_>,
-) -> Option<InclusiveRange<CharOffset>> {
-    let class = chars.classify(text.char_at(pos)?);
-
-    // Scan left: walk back by grapheme cluster boundaries while the preceding
-    // grapheme belongs to the same class. Using prev_grapheme_boundary ensures
-    // we always inspect the *base* codepoint of each grapheme (not a combining
-    // codepoint like U+0301 that would be misclassified as Punctuation).
-    let mut start = pos;
-    while start > CharOffset::new(0) {
-        let prev_pos = prev_grapheme_boundary(text, start);
-        let prev = chars.classify(text.char_at(prev_pos)?);
-        if is_boundary(prev, class) {
-            break;
-        }
-        start = prev_pos;
-    }
-
-    // Scan right: walk forward cluster by cluster while the next grapheme
-    // belongs to the same class. The range ends on the final cluster's last
-    // codepoint, so a trailing combining mark (e.g. the U+0301 in
-    // "e\u{0301}") is included.
-    let mut clusters = graphemes_at(text, pos);
-    let mut last = clusters.next()?;
-    for next in clusters {
-        if is_boundary(class, chars.classify(next.first)) {
-            break;
-        }
-        last = next;
-    }
-    let end = last.end.retreat(1);
-
-    Some(InclusiveRange::new(start, end))
-}
-
-/// Grow a word/punct span `(start, end)` to include an adjacent whitespace
-/// run: leading preferred, trailing when the leading run is indentation or
-/// absent.
-///
-/// A leading run that reaches back to the start of its line (or the start of
-/// the buffer) is indentation, not inter-word spacing, and must never be
-/// absorbed: the first word of a line always takes its trailing whitespace
-/// instead. This keeps `w`/`b`/`mm`/`maw` from ever eating indentation.
-///
-/// `min_start` is a hard lower bound on the leading scan, never crossed.
-/// Buffer-line callers pass `0` (no floor beyond the buffer itself). The wrap
-/// path passes the visual sub-line's start so a word beginning a continuation
-/// display line never absorbs the inter-word space that lives at the end of
-/// the previous display line.
-///
-/// Reaching `min_start` only counts as indentation (blocking absorption) when
-/// `min_start` is itself a genuine line start: the buffer start, or right
-/// after a real newline. A wrap sub-line boundary is neither: it falls
-/// mid-line, so a leading run that reaches it is ordinary inter-word spacing
-/// that happens to sit at the display-line split, not indentation, and stays
-/// absorbable up to that floor.
-pub fn expand_word_unit(
-    text: &BufferText,
-    start: CharOffset,
-    end: CharOffset,
-    min_start: CharOffset,
-) -> InclusiveRange<CharOffset> {
-    let min_start_is_bol = min_start == CharOffset::new(0)
-        || blank_class(
-            text.char_at(prev_grapheme_boundary(text, min_start))
-                .expect("min_start > 0 implies a preceding char"),
-        ) == Some(CharClass::Eol);
-
-    // Leading scan: walk back over Space graphemes from `start`. Stopping on
-    // Eol means the run touches the start of the line, so it is indentation.
-    let mut run_start = start;
-    let mut hit_eol = false;
-    while run_start > min_start {
-        let prev_pos = prev_grapheme_boundary(text, run_start);
-        match blank_class(text.char_at(prev_pos).expect("prev_pos < len")) {
-            Some(CharClass::Space) => run_start = prev_pos,
-            Some(CharClass::Eol) => {
-                hit_eol = true;
-                break;
-            }
-            _ => break,
-        }
-    }
-    let at_bol = hit_eol || (run_start == min_start && min_start_is_bol);
-
-    if run_start < start && !at_bol {
-        return InclusiveRange::new(run_start, end);
-    }
-
-    // Trailing fallback: first word of a line, punctuation immediately
-    // before, or no adjacent whitespace at all.
-    let mut clusters = graphemes_at(text, end);
-    let mut last = clusters.next().expect("end < len");
-    for next in clusters {
-        if blank_class(next.first) != Some(CharClass::Space) {
-            break;
-        }
-        last = next;
-    }
-    if last.start == end {
-        InclusiveRange::new(start, end)
-    } else {
-        InclusiveRange::new(start, last.end.retreat(1))
-    }
-}
-
-/// The word (or WORD) unit at `pos`: the inner word plus its whitespace
-/// bookend per [`expand_word_unit`].
-///
-/// When `pos` sits on whitespace there is no word under the cursor: snap to
-/// the adjacent word (the one right after the run if any, else the one right
-/// before it) and expand that instead. The whitespace under the cursor is
-/// never selected for its own sake; it only appears in the span when the
-/// expansion re-absorbs it (an inter-word space run is the following word's
-/// leading run), so newlines and indentation never leak into the selection.
-/// Returns `None` when no word is adjacent to the run (e.g. a
-/// whitespace-only buffer, or indentation at the start of the buffer), and the
-/// callers treat that as a no-op.
-///
-/// This is the shared body of `mm`/`MM` and `maw`/`maW` (position-based,
-/// unlike the motion-based `w`/`b`): all four names select the same span.
-/// Also used to resolve an extend selection's anchor unit when
-/// `word-selects-whitespace` is on.
-pub fn word_unit_at(
-    text: &BufferText,
-    pos: CharOffset,
-    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
-    min_start: CharOffset,
-    chars: WordChars<'_>,
-) -> Option<InclusiveRange<CharOffset>> {
-    // `pos` may be any valid selection endpoint, including the trailing
-    // codepoint of a multi-codepoint grapheme cluster (see `anchor_unit`'s
-    // doc for why this snap to the cluster start matters before classifying).
-    let pos = snap_to_cluster_start(text, pos);
-    let range = inner_word_impl(text, pos, is_boundary, chars)?;
-    let class = chars.classify(text.char_at(pos)?);
-    if class != CharClass::Space && class != CharClass::Eol {
-        return Some(expand_word_unit(text, range.start, range.end, min_start));
-    }
-
-    // On whitespace: `range` is the whitespace run. Find the word adjacent
-    // to it (following preferred, preceding fallback) and expand that one by
-    // the normal rule instead.
-    let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
-    let next_pos = next_grapheme_boundary(text, range.end);
-    let word_pos = if next_pos < text.end() && is_word(chars.classify(text.char_at(next_pos)?)) {
-        next_pos
-    } else if range.start > CharOffset::new(0) {
-        let prev_pos = prev_grapheme_boundary(text, range.start);
-        if !is_word(chars.classify(text.char_at(prev_pos)?)) {
-            return None;
-        }
-        prev_pos
-    } else {
-        return None;
-    };
-    let range = inner_word_impl(text, word_pos, is_boundary, chars)?;
-    Some(expand_word_unit(text, range.start, range.end, min_start))
-}
 
 /// Find the nearest word within `[line_start, line_end_excl)` from `head`.
 ///
@@ -216,36 +44,19 @@ pub fn nearest_word_on_line(
         }
     };
 
-    let class = chars.classify(text.char_at(head)?);
-
     // Fast path: head is already on a word/punct, so delegate to inner/around unit.
-    if class != CharClass::Space && class != CharClass::Eol {
+    if blank_class(text.char_at(head)?).is_none() {
         return unit(head);
     }
 
     // Scan LEFT within the given bounds for the first non-whitespace grapheme.
-    let prev_anchor = {
-        let mut pos = head;
-        let mut found = None;
-        while pos > line_start {
-            pos = prev_grapheme_boundary(text, pos);
-            let c = chars.classify(text.char_at(pos)?);
-            if c != CharClass::Space && c != CharClass::Eol {
-                found = Some(pos);
-                break;
-            }
-        }
-        found
-    };
+    let prev_anchor = prev_nonblank(text, head, line_start);
 
     // Scan RIGHT within the given bounds for the first non-whitespace grapheme.
     let next_anchor = graphemes_at(text, head)
         .skip(1)
         .take_while(|cluster| cluster.start < line_end_excl)
-        .find(|cluster| {
-            let c = chars.classify(cluster.first);
-            c != CharClass::Space && c != CharClass::Eol
-        })
+        .find(|cluster| blank_class(cluster.first).is_none())
         .map(|cluster| cluster.start);
 
     match (prev_anchor, next_anchor) {
@@ -331,7 +142,6 @@ pub fn cmd_select_word_nearest_on_line(
     result
 }
 
-type IsBoundary = fn(CharClass, CharClass) -> bool;
 type WordUnitFn =
     fn(&BufferText, CharOffset, IsBoundary, WordChars<'_>) -> Option<InclusiveRange<CharOffset>>;
 
@@ -415,7 +225,7 @@ word_object_variant!(
 /// Select the word under the cursor (`mm`): the inner word, or (when
 /// `ctx.around`, the effective `word-selects-whitespace`, is set) the same
 /// unit `maw`/[`cmd_around_word`] selects, covering its surrounding
-/// whitespace per [`expand_word_unit`]. Both modes use the same unit;
+/// whitespace per [`expand_word_unit`](crate::word_unit::expand_word_unit). Both modes use the same unit;
 /// `Extend` unions it with the current selection via
 /// `apply_text_object_extend`.
 pub fn cmd_select_word(

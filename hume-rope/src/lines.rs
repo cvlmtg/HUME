@@ -205,11 +205,9 @@ pub fn leading_whitespace_end(rope: &Rope, line: ContentLine) -> CharOffset {
 }
 
 /// [`leading_whitespace_end`], plus the leading whitespace run's display
-/// width in `tab_width`, one scan instead of two. A caller needing both
-/// would otherwise measure the same ASCII prefix
-/// twice: once here, once through `crate::grapheme::display_col_in_line`,
-/// which re-walks it with full grapheme-cluster machinery it doesn't need:
-/// leading whitespace is always ASCII (`' '`/`'\t'`).
+/// width in `tab_width`, one scan instead of two. The run is clusters whose
+/// first char is `' '` or `'\t'`, so a space carrying a combining mark stays
+/// whole.
 ///
 /// The width is a [`BufferLineCol`]: display cells from the buffer line's
 /// start, which is exactly where a leading run sits. So indent math uses
@@ -219,35 +217,23 @@ pub fn leading_indent(
     line: ContentLine,
     tab_width: u8,
 ) -> (CharOffset, BufferLineCol) {
-    let line_start = rope.line_to_char(line.index());
-    let end_excl = next_line_start(rope, line.into());
-    let slice = rope.slice(line_start..end_excl.index());
-    // Each whitespace char is ASCII (single byte == single char), so the
-    // byte count is also the char count; no grapheme stepping needed.
-    let mut n = 0usize;
+    let line_start = CharOffset::new(rope.line_to_char(line.index()));
     let mut display_width = BufferLineCol::new(0);
-    for chunk in slice.chunks() {
-        for b in chunk.bytes() {
-            match b {
-                b' ' => display_width = display_width.advance_saturating(1),
-                // `width` is origin-agnostic (see its own doc), so this is
-                // the sanctioned `.get()` crossing into it.
-                b'\t' => {
-                    display_width = display_width.advance_saturating(crate::width::tab_advance(
-                        display_width.get() as usize,
-                        tab_width,
-                    ) as u32);
-                }
-                // `line_start + n`: `n` counts ASCII whitespace bytes seen so
-                // far, one char apiece, so this is exactly `line_start`
-                // advanced by a char count already proven ASCII-safe above,
-                // not a raw stepping hazard.
-                _ => return (CharOffset::new(line_start + n), display_width),
+    for cluster in crate::grapheme::graphemes_at(rope.slice(..), line_start) {
+        match cluster.first {
+            ' ' => display_width = display_width.advance_saturating(1),
+            // `width` is origin-agnostic (see its own doc), so this is
+            // the sanctioned `.get()` crossing into it.
+            '\t' => {
+                display_width = display_width.advance_saturating(crate::width::tab_advance(
+                    display_width.get() as usize,
+                    tab_width,
+                ) as u32);
             }
-            n += 1;
+            _ => return (cluster.start, display_width),
         }
     }
-    (CharOffset::new(line_start + n), display_width)
+    (next_line_start(rope, line.into()), display_width)
 }
 
 /// Snap `target` back to the nearest grapheme boundary at or before it,

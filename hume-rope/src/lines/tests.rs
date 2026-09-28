@@ -244,6 +244,20 @@ fn leading_whitespace_end_empty_line_equals_line_start() {
     );
 }
 
+#[test]
+fn leading_whitespace_end_stops_at_the_cluster_after_a_marked_space() {
+    // A combining mark on the space makes `" \u{301}"` one cluster, so the
+    // run ends at `x`, never between the space and its mark.
+    let buf = rope(" \u{301}x\n");
+    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(2));
+}
+
+#[test]
+fn leading_whitespace_end_skips_marked_and_plain_spaces() {
+    let buf = rope(" \u{301}  x\n");
+    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(4));
+}
+
 // ── leading_indent ────────────────────────────────────────────────────────
 
 #[test]

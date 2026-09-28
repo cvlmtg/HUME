@@ -1,5 +1,4 @@
-use hume_editing::grapheme::graphemes_at;
-use hume_editing::lines::{line_break_char, line_content_end, next_line_start};
+use hume_editing::lines::{leading_whitespace_end, line_break_char, line_content_end};
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
 
@@ -37,15 +36,10 @@ pub(super) fn goto_line_newline(text: &BufferText, head: CharOffset) -> CharOffs
 /// stays at its current position.
 pub(super) fn goto_first_nonblank(text: &BufferText, head: CharOffset) -> CharOffset {
     let line = text.char_to_line(head);
-    let line_start = text.line_to_char(line.into());
-    let end_excl = next_line_start(text, line.into());
-
-    for cluster in graphemes_at(text, line_start).take_while(|cluster| cluster.start < end_excl) {
-        match cluster.first {
-            ' ' | '\t' => {}
-            '\n' => break,             // end of line content without finding non-blank
-            _ => return cluster.start, // found a non-blank char
-        }
+    let first = leading_whitespace_end(text, line);
+    if first == line_break_char(text, line) {
+        head
+    } else {
+        first
     }
-    head // no non-blank found: no-op, matching Helix
 }

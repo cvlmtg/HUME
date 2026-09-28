@@ -2,11 +2,10 @@ use regex_cursor::engines::meta::Regex;
 
 use crate::MotionMode;
 use crate::search::find_matches_in_range;
-use hume_editing::grapheme::{graphemes_at, prev_grapheme_boundary};
+use crate::text_object::trim_blank;
 use hume_editing::lines::line_content_end;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_editing::word::blank_class;
 use hume_rope::offset::InclusiveRange;
 
 // ── Split on newlines ─────────────────────────────────────────────────────────
@@ -148,32 +147,12 @@ pub fn cmd_trim_selection_whitespace(
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.map(|sel| {
-        let end = sel.end();
         let forward = sel.anchor() <= sel.head();
 
-        // Walk forward from start, skipping whitespace clusters.
-        // `blank_class` is the authoritative whitespace definition for this
-        // codebase: Space covers ' '/'\t', Eol covers '\n'.
-        let start = graphemes_at(text, sel.start())
-            .find(|cluster| cluster.start > end || blank_class(cluster.first).is_none())
-            .map_or(text.end(), |cluster| cluster.start);
-
-        // If we consumed everything, the selection is all whitespace.
-        if start > end {
-            return Selection::collapsed(sel.head());
+        match trim_blank(text, InclusiveRange::new(sel.start(), sel.end())) {
+            Some(range) => Selection::directed(range.start, range.end, forward),
+            None => Selection::collapsed(sel.head()),
         }
-
-        // Walk backward from end, skipping whitespace (grapheme boundary steps).
-        let mut new_end = end;
-        while new_end > start
-            && text
-                .char_at(new_end)
-                .is_some_and(|c| blank_class(c).is_some())
-        {
-            new_end = prev_grapheme_boundary(text, new_end);
-        }
-
-        Selection::directed(start, new_end, forward)
     });
     new_sels.debug_assert_valid(text);
     new_sels

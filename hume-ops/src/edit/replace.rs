@@ -148,7 +148,12 @@ pub fn replace_selections(
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, i, sel, new_sels| {
         let sel_start = sel.start();
-        let sel_end = sel.end(); // inclusive last-grapheme-start; equal to sel_start for cursor
+        // Exclusive: one past the end of the cluster `sel.end()` sits in,
+        // not `sel.end()` itself. A word-end motion or `iw` can leave
+        // `sel.end()` on a cluster's trailing combining mark rather than
+        // its base char, and the loop below must stop once that whole
+        // cluster (not just the one char) has been replaced.
+        let sel_end = sel.end_exclusive(text);
 
         // Smart replace: when replacing a single character (cursor selection)
         // and the replacement is a pair character, resolve open/close based on
@@ -183,7 +188,7 @@ pub fn replace_selections(
                 b.delete(len);
                 b.insert_char(effective_ch);
             }
-            if cluster.start >= sel_end {
+            if cluster.end >= sel_end {
                 break;
             }
         }

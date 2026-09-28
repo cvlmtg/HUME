@@ -115,6 +115,16 @@ fn inner_word_includes_combining_grapheme() {
     );
 }
 
+#[test]
+fn inner_word_from_a_head_on_the_combining_mark_selects_the_whole_word() {
+    // The head sits on the trailing codepoint of {e◌́}, where `w` leaves it.
+    assert_state!(
+        "cafe-[\u{0301}]> world\n",
+        |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        "-[cafe\u{0301}]> world\n"
+    );
+}
+
 // ── WORD ──────────────────────────────────────────────────────────────────
 
 #[test]

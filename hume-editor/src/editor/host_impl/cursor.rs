@@ -1,5 +1,6 @@
 //! `EditorHostImpl`'s live cursor/selection reads.
 
+use hume_editing::grapheme::snap_to_cluster_start;
 use hume_rope::offset::CharOffset;
 
 use crate::editor::commands::CommandPane;
@@ -88,7 +89,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         let t = self.command_pane(pane)?;
         let (buf, sels) = self.buffer_and_selections(t);
         let text = buf.text();
-        let head = sels.primary().head();
+        let head = snap_to_cluster_start(text, sels.primary().head());
         let Some(ch) = text.char_at(head) else {
             return Ok(String::new());
         };

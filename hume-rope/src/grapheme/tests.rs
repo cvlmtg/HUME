@@ -628,3 +628,27 @@ fn graphemes_at_crosses_chunk_boundaries_including_mid_cluster() {
 
     assert_eq!(walk(&r, 0), segmentation_clusters(&r, 0));
 }
+
+#[test]
+fn graphemes_at_keeps_a_flag_pair_together_across_a_chunk_boundary() {
+    let flags = "\u{1F1EE}\u{1F1F9}\u{1F1EB}\u{1F1F7}".repeat(4000);
+    let mut straddled_a_pair = false;
+    for prefix in 0..4 {
+        let r = rope(&format!("{}{flags}", "a".repeat(prefix)));
+        let s = r.to_string();
+        let mut chunk_ends = Vec::new();
+        let mut byte = 0;
+        for chunk in r.chunks() {
+            byte += chunk.len();
+            chunk_ends.push(byte);
+        }
+        straddled_a_pair |= s.grapheme_indices(true).any(|(i, g)| {
+            g.chars().count() == 2 && chunk_ends.iter().any(|&b| i < b && b < i + g.len())
+        });
+        assert_eq!(walk(&r, 0), segmentation_clusters(&r, 0), "prefix {prefix}");
+    }
+    assert!(
+        straddled_a_pair,
+        "some flag pair must straddle a chunk boundary for this test to cover that path"
+    );
+}

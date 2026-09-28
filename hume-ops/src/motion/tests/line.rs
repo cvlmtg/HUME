@@ -118,6 +118,15 @@ fn goto_first_nonblank_from_middle() {
 }
 
 #[test]
+fn goto_first_nonblank_steps_over_a_marked_space_as_one_cluster() {
+    assert_state!(
+        "-[ ]>\u{301}x\n",
+        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        " \u{301}-[x]>\n"
+    );
+}
+
+#[test]
 fn goto_first_nonblank_skips_tab() {
     assert_state!(
         "-[\t]>hello\n",

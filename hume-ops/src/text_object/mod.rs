@@ -1,6 +1,7 @@
-use hume_editing::grapheme::next_grapheme_boundary;
+use hume_editing::grapheme::{graphemes_at, next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_editing::word::blank_class;
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use crate::MotionMode;
@@ -12,6 +13,7 @@ mod paragraph;
 mod quote;
 mod word;
 
+pub use crate::word_unit::{expand_word_unit, inner_word_impl, word_unit_at};
 pub use argument::{around_argument, around_from_inner, inner_argument};
 pub use bracket::{
     cmd_around_angle, cmd_around_brace, cmd_around_bracket, cmd_around_paren, cmd_inner_angle,
@@ -26,8 +28,7 @@ pub use quote::{
 pub use word::{
     apply_nearest_word_result, cmd_around_uppercase_word, cmd_around_word,
     cmd_inner_uppercase_word, cmd_inner_word, cmd_select_uppercase_word, cmd_select_word,
-    cmd_select_word_nearest_on_line, expand_word_unit, inner_word_impl, nearest_word_on_line,
-    word_unit_at,
+    cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
 
 // ── Text object framework ──────────────────────────────────────────────────────
@@ -124,3 +125,22 @@ pub fn apply_text_object_by_mode(
 
 #[cfg(test)]
 mod tests;
+
+/// Shrinks `range` inward until both ends sit on non-blank chars (per
+/// [`blank_class`]). `None` if the whole range is blank.
+pub(crate) fn trim_blank(
+    text: &BufferText,
+    range: InclusiveRange<CharOffset>,
+) -> Option<InclusiveRange<CharOffset>> {
+    let start = graphemes_at(text, range.start)
+        .find(|cluster| cluster.start > range.end || blank_class(cluster.first).is_none())
+        .map_or(text.end(), |cluster| cluster.start);
+    if start > range.end {
+        return None;
+    }
+    let mut end = range.end;
+    while end > start && text.char_at(end).is_some_and(|c| blank_class(c).is_some()) {
+        end = prev_grapheme_boundary(text, end);
+    }
+    Some(InclusiveRange::new(start, end))
+}

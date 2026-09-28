@@ -75,6 +75,15 @@ fn star_on_cursor_expands_to_word() {
     assert!(ed.search_pattern().is_some());
 }
 
+/// `*` with the head on a word's trailing combining mark expands to the whole
+/// word, as it does from any other char of it.
+#[test]
+fn star_on_a_trailing_combining_mark_expands_to_the_whole_word() {
+    let mut ed = editor_from("cafe-[\u{0301}]> world\n");
+    ed.handle_key(key('*'));
+    assert_eq!(state(&ed), "-[cafe\u{0301}]> world\n");
+}
+
 /// `*` on a partial-word selection expands to the whole word under the head:
 /// it must NOT search the literal partial text. Searching the literal
 /// substring would produce `\bell\b` (from "ell"), which can never match
