@@ -5,20 +5,15 @@
 #
 # Source: https://github.com/helix-editor/helix/blob/master/runtime/themes/gruvbox_light.toml
 #
-# Every scope gruvbox.toml defines is inherited and reskinned by the palette
-# override below, so only `ui.cursor.match` — the one scope whose colour
-# doesn't follow from it — is restated. `gray`, `bg0_s` and the neutral `*0`
-# accent colours (`red0`, `green0`, …) keep gruvbox dark's values, as
-# upstream's light file also leaves them alone; `bg0`/`fg0` are overridden
-# below like the rest of the greys. `gray0` is upstream's palette shape only,
-# referenced by no scope in either file.
-#
-# Upstream's `"ui.cursor.primary" = { modifiers = ["reversed"] }` is not
-# ported; the parent's explicit `fg`/`bg` is kept instead.
+# Same as upstream plus HUME's own additions (the `diff_*_bg` palette entries
+# below), with one deviation: upstream's
+# `"ui.cursor.primary" = { modifiers = ["reversed"] }` is not ported; the
+# parent's explicit `fg`/`bg` is kept instead.
 
 inherits = "gruvbox"
 
 "ui.cursor.match" = { bg = "bg2" }
+"ui.cursorline" = { bg = "bg1" }
 
 [palette]
 bg0 = "#fbf1c7" # main background

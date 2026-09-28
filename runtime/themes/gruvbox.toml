@@ -3,18 +3,8 @@
 # The theme uses the gruvbox dark palette with standard contrast: github.com/morhetz/gruvbox
 #
 # Source: https://github.com/helix-editor/helix/blob/master/runtime/themes/gruvbox.toml
-# Everything up to the "HUME additions" marker below is the upstream file,
-# byte-for-byte, except at two places, each marked with its own comment
-# where it appears: `ui.window` gained an `fg` (HUME paints the seam divider
-# glyph in it, not just its background); and the four `diagnostic.<severity>`
-# scopes gained an `fg`. Helix scopes HUME doesn't read yet (`ui.bufferline.background`,
-# `ui.virtual.ruler`/`.wrap`/`.jump-label`, `ui.picker.header.column*`,
-# `ui.help`, `ui.text.directory`, `definition`, `annotation`) are kept as-is
-# so a future re-sync stays a clean diff — see
-# user-manual/docs/configuration.md's Themes section for the full list of
-# scopes HUME adds, doesn't read, or reads differently from Helix. The palette
-# is kept whole for the same reason, so `bg0_s`, `fg0`, `fg2` and `green0`
-# below are upstream's shape and are referenced by no scope in this file.
+# Same as upstream, plus HUME's own additions and deviations marked inline
+# below (see the "HUME additions" marker).
 
 "annotation" = { fg = "fg1" }
 
@@ -103,6 +93,7 @@
 "ui.cursor.primary.normal" = { fg = "bg1", bg = "fg3" }
 "ui.cursor.primary.select" = { fg = "bg1", bg = "orange1" }
 
+"ui.cursorline" = { bg = "bg0_s" }
 "ui.cursorline.primary" = { bg = "bg1" }
 
 "ui.help" = { bg = "bg1", fg = "fg1" }
