@@ -1,9 +1,7 @@
 use super::MotionMode;
 use crate::WordCtx;
 use crate::text_object::{expand_word_unit, word_unit_at};
-use hume_editing::grapheme::{
-    cluster_last_char, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
-};
+use hume_editing::grapheme::{graphemes_at, prev_grapheme_boundary, snap_to_cluster_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars, is_uppercase_word_boundary, is_word_boundary};
@@ -31,23 +29,23 @@ pub(super) fn next_word_start(
         return head;
     }
 
-    let mut pos = head;
-    let mut prev_class = chars.classify(text.char_at(pos).expect("pos < len"));
-    // Advance by a full grapheme cluster so we never land mid-cluster.
-    // This matters for combining sequences like e + U+0301 (combining acute):
-    // stepping by 1 would land on the combining codepoint, which classify_char
-    // sees as Punctuation, creating a false word boundary inside the grapheme.
-    pos = next_grapheme_boundary(text, pos);
-
-    while pos < end {
-        let cur_class = chars.classify(text.char_at(pos).expect("pos < len"));
+    // Whole grapheme clusters, never single chars. This matters for
+    // combining sequences like e + U+0301 (combining acute): stepping by one
+    // char would land on the combining codepoint, which classify_char sees as
+    // Punctuation, creating a false word boundary inside the grapheme.
+    let mut clusters = graphemes_at(text, head);
+    let first = clusters.next().expect("head < end");
+    let mut prev_class = chars.classify(first.first);
+    let mut pos = first.end;
+    for cluster in clusters {
+        let cur_class = chars.classify(cluster.first);
         if is_boundary(prev_class, cur_class)
             && (cur_class == CharClass::Eol || cur_class != CharClass::Space)
         {
-            return pos;
+            return cluster.start;
         }
         prev_class = cur_class;
-        pos = next_grapheme_boundary(text, pos);
+        pos = cluster.end;
     }
     // Clamp to last valid position (the trailing \n).
     pos.min(text.last_char())
@@ -102,30 +100,28 @@ pub(crate) fn prev_word_start(
     pos
 }
 
-/// Every maximal run of `Word`-class characters in `text`, in order: the
-/// full-string counterpart to `next_word_start`/`find_word_end_from`'s
-/// single-boundary queries. Reuses the same grapheme-cluster and
-/// combining-mark handling those already rely on, so a run found here is,
-/// by construction, exactly what `w`/`b` would select, the property
-/// `core:buffer-words`' Steel-side `split-words` builtin
-/// (`hume-scripting/src/builtins/words.rs`) depends on. Always
-/// `is_word_boundary`: unlike `find_word_end_from`'s single-boundary query
-/// (which also serves `W`'s `is_uppercase_word_boundary`), there is no WORD
-/// variant of "every run in the buffer" for this to generalize over.
+/// Every maximal run of `Word`-class grapheme clusters in `text`, in order:
+/// the whole-text counterpart to `find_word_end_from`'s single-run query.
+/// Each cluster is classified by its first char, the same classification
+/// `w`/`b` step by, so a run found here is what `w`/`b` would select, the
+/// property `core:buffer-words`' Steel-side `split-words` builtin
+/// (`hume-scripting/src/builtins/words.rs`) depends on. A run ends on the
+/// last char of its last cluster, so a trailing combining mark stays in it.
 pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<InclusiveRange<CharOffset>> {
-    let end = text.end();
     let mut runs = Vec::new();
-    let mut pos = CharOffset::new(0);
-    while pos < end {
-        let cat = chars.classify(text.char_at(pos).expect("pos < end"));
-        if cat == CharClass::Word {
-            let run_end = find_word_end_from(text, pos, is_word_boundary, chars);
-            runs.push(InclusiveRange::new(pos, run_end));
-            pos = next_grapheme_boundary(text, run_end);
-        } else {
-            pos = next_grapheme_boundary(text, pos);
+    let mut open: Option<InclusiveRange<CharOffset>> = None;
+    for cluster in graphemes_at(text, CharOffset::new(0)) {
+        if chars.classify(cluster.first) == CharClass::Word {
+            let last = cluster.end.retreat(1);
+            open = Some(InclusiveRange::new(
+                open.map_or(cluster.start, |run| run.start),
+                last,
+            ));
+        } else if let Some(run) = open.take() {
+            runs.push(run);
         }
     }
+    runs.extend(open);
     runs
 }
 
@@ -157,26 +153,20 @@ pub(super) fn find_word_end_from(
         return start.retreat(1);
     }
 
-    let cat = chars.classify(text.char_at(start).expect("start < len"));
-    let mut pos = start;
-
-    loop {
-        let next_pos = next_grapheme_boundary(text, pos);
-        // cluster_last_char(pos) is the last codepoint of the grapheme
-        // cluster that starts at `pos`. For a single-codepoint cluster (the
-        // common case) this equals `pos`; for a multi-codepoint cluster such
-        // as "e\u{0301}" (é = base letter + combining accent) it includes the
-        // trailing combining marks that logically belong to the same
-        // grapheme.
-        if next_pos >= end {
-            return cluster_last_char(text, pos);
+    let mut clusters = graphemes_at(text, start);
+    let mut current = clusters.next().expect("start < end");
+    let cat = chars.classify(current.first);
+    for next in clusters {
+        if is_boundary(cat, chars.classify(next.first)) {
+            break;
         }
-        let next_cat = chars.classify(text.char_at(next_pos).expect("next_pos < len"));
-        if is_boundary(cat, next_cat) {
-            return cluster_last_char(text, pos);
-        }
-        pos = next_pos;
+        current = next;
     }
+    // The last codepoint of the final cluster. For a single-codepoint cluster
+    // (the common case) this is its start; for a multi-codepoint cluster such
+    // as "e\u{0301}" (é = base letter + combining accent) it includes the
+    // trailing combining marks that logically belong to the same grapheme.
+    current.end.retreat(1)
 }
 
 /// Scan backward from a char known to be inside a word or punct group,

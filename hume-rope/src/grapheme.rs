@@ -7,70 +7,144 @@ use crate::column::{BufferLineCol, GraphemeCol};
 use crate::line::ContentLine;
 use crate::offset::CharOffset;
 
-/// Returns the char offset of the start of the *next* grapheme cluster after
-/// `char_offset`, or `slice.len_chars()` when already at (or past) the end.
+/// One grapheme cluster yielded by [`graphemes_at`]: chars `[start, end)`,
+/// and the first of them, which is what classifies the cluster (a base
+/// letter, not the combining mark after it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cluster {
+    pub start: CharOffset,
+    pub end: CharOffset,
+    pub first: char,
+}
+
+/// The grapheme clusters of `slice` from `pos` to its end, in order. The one
+/// forward grapheme stepper: [`next_grapheme_boundary`] is its first step, and
+/// a loop that walks forward cluster by cluster iterates this instead of
+/// calling that once per step, which would re-seek the rope every time.
+///
+/// If `pos` is inside a cluster, the first item runs from `pos` to that
+/// cluster's end.
 ///
 /// # Why byte offsets internally?
 ///
 /// `GraphemeCursor` (from `unicode-segmentation`) operates in *byte* space
-/// because Unicode break algorithms work on UTF-8 encoded bytes. We convert
-/// the caller-facing char offset to a byte offset, run the cursor, then
-/// convert the result back. Byte offsets never leave this module.
+/// because Unicode break algorithms work on UTF-8 encoded bytes. Byte offsets
+/// never leave this module: each cluster's char count is taken from its own
+/// bytes, so the walk never converts back through the rope per step.
 ///
 /// # Why chunks instead of a full `&str`?
 ///
 /// Ropey stores the rope as a B-tree of `&str` chunks. Materializing the
-/// whole buffer into a single `String` just to walk one boundary would be
-/// O(n) in space and time. `GraphemeCursor` supports a chunk-at-a-time API
-/// (`next_boundary` / `provide_context`) that lets us stay O(log n) and
-/// allocation-free.
-pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
-    let char_offset = char_offset.index();
-    let len_chars = slice.len_chars();
-    if char_offset >= len_chars {
-        return CharOffset::new(len_chars);
-    }
-
+/// whole buffer into a single `String` just to walk it would be O(n) in
+/// space. `GraphemeCursor` takes the text a chunk at a time
+/// (`next_boundary` / `provide_context`), and the walk keeps its current chunk
+/// between clusters, so the rope is descended once per chunk, not per step.
+pub fn graphemes_at(slice: RopeSlice<'_>, pos: CharOffset) -> Graphemes<'_> {
     let len_bytes = slice.len_bytes();
-    let byte_offset = slice.char_to_byte(char_offset);
-
-    // Start with the chunk that contains `byte_offset`.
-    // chunk_at_byte returns (chunk, byte_start, char_start, line_start); we only
-    // need the chunk text and its byte offset; the char/line starts are unused.
-    let (mut chunk, mut chunk_byte_start, _, _) = slice.chunk_at_byte(byte_offset);
-
-    let mut gc = GraphemeCursor::new(byte_offset, len_bytes, true);
-
-    loop {
-        match gc.next_boundary(chunk, chunk_byte_start) {
-            Ok(None) => return CharOffset::new(len_chars),
-            Ok(Some(b)) => return CharOffset::new(slice.byte_to_char(b)),
-
-            // The cursor needs the next chunk of the rope.
-            Err(GraphemeIncomplete::NextChunk) => {
-                let next_byte = chunk_byte_start + chunk.len();
-                if next_byte >= len_bytes {
-                    // No more chunks: treat as end.
-                    return CharOffset::new(len_chars);
-                }
-                let (c, s, _, _) = slice.chunk_at_byte(next_byte);
-                chunk = c;
-                chunk_byte_start = s;
-            }
-
-            // The cursor needs context from *before* the current position to
-            // resolve a boundary that depends on a preceding codepoint (e.g.
-            // Regional Indicator pairs, ZWJ sequences).
-            Err(GraphemeIncomplete::PreContext(n)) => {
-                let (ctx_chunk, ctx_start, _, _) = slice.chunk_at_byte(n - 1);
-                gc.provide_context(ctx_chunk, ctx_start);
-            }
-
-            // All other variants are unreachable when using the public API
-            // correctly: `next_boundary` only returns the three above.
-            Err(_) => unreachable!("unexpected GraphemeIncomplete variant"),
-        }
+    let byte = slice.char_to_byte(pos.index().min(slice.len_chars()));
+    let (chunk, chunk_byte_start) = if byte < len_bytes {
+        let (chunk, start, _, _) = slice.chunk_at_byte(byte);
+        (chunk, start)
+    } else {
+        ("", byte)
+    };
+    Graphemes {
+        slice,
+        chunk,
+        chunk_byte_start,
+        byte,
+        char: pos.min(CharOffset::new(slice.len_chars())),
     }
+}
+
+/// See [`graphemes_at`].
+pub struct Graphemes<'a> {
+    slice: RopeSlice<'a>,
+    chunk: &'a str,
+    chunk_byte_start: usize,
+    byte: usize,
+    char: CharOffset,
+}
+
+impl Graphemes<'_> {
+    fn load_chunk_at(&mut self, byte: usize) {
+        let (chunk, start, _, _) = self.slice.chunk_at_byte(byte);
+        self.chunk = chunk;
+        self.chunk_byte_start = start;
+    }
+}
+
+impl Iterator for Graphemes<'_> {
+    type Item = Cluster;
+
+    fn next(&mut self) -> Option<Cluster> {
+        let len_bytes = self.slice.len_bytes();
+        if self.byte >= len_bytes {
+            return None;
+        }
+        if self.byte >= self.chunk_byte_start + self.chunk.len() {
+            self.load_chunk_at(self.byte);
+        }
+        // A fresh cursor per cluster: one carried over from the previous
+        // cluster splits a regional-indicator pair that straddles a chunk
+        // boundary.
+        let mut cursor = GraphemeCursor::new(self.byte, len_bytes, true);
+        let start_chunk_byte = self.chunk_byte_start;
+        let first = self.chunk[self.byte - start_chunk_byte..]
+            .chars()
+            .next()
+            .expect("byte < len_bytes lies inside the current chunk");
+        let end_byte = loop {
+            match cursor.next_boundary(self.chunk, self.chunk_byte_start) {
+                Ok(Some(b)) => break b,
+                Ok(None) => break len_bytes,
+                Err(GraphemeIncomplete::NextChunk) => {
+                    let next_byte = self.chunk_byte_start + self.chunk.len();
+                    if next_byte >= len_bytes {
+                        break len_bytes;
+                    }
+                    self.load_chunk_at(next_byte);
+                }
+                // The cursor needs context from *before* the current position
+                // to resolve a boundary that depends on a preceding codepoint
+                // (e.g. Regional Indicator pairs, ZWJ sequences).
+                Err(GraphemeIncomplete::PreContext(n)) => {
+                    let (ctx_chunk, ctx_start, _, _) = self.slice.chunk_at_byte(n - 1);
+                    cursor.provide_context(ctx_chunk, ctx_start);
+                }
+                // `next_boundary` only returns the three variants above.
+                Err(_) => unreachable!("unexpected GraphemeIncomplete variant"),
+            }
+        };
+        // A cluster inside one chunk counts its own chars; one straddling a
+        // chunk boundary (rare) asks the rope.
+        let end_char = if self.chunk_byte_start == start_chunk_byte {
+            let chars = self.chunk[self.byte - start_chunk_byte..end_byte - start_chunk_byte]
+                .chars()
+                .count();
+            // Trusted mint: this module is the grapheme-boundary authority.
+            CharOffset::new(self.char.index() + chars)
+        } else {
+            CharOffset::new(self.slice.byte_to_char(end_byte))
+        };
+        let cluster = Cluster {
+            start: self.char,
+            end: end_char,
+            first,
+        };
+        self.byte = end_byte;
+        self.char = end_char;
+        Some(cluster)
+    }
+}
+
+/// Returns the char offset of the start of the *next* grapheme cluster after
+/// `char_offset`, or `slice.len_chars()` when already at (or past) the end:
+/// the first step of [`graphemes_at`], for a caller taking a single step.
+pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
+    graphemes_at(slice, char_offset)
+        .next()
+        .map_or(CharOffset::new(slice.len_chars()), |cluster| cluster.end)
 }
 
 /// Returns the char offset of the start of the grapheme cluster *before*
@@ -189,65 +263,17 @@ pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
 /// not itself counted. For example, if the cursor sits at char offset `c`,
 /// `grapheme_count(slice, line_start, c)` returns the number of grapheme
 /// clusters that precede the cursor on that line, i.e. its 0-based grapheme
-/// column.
+/// column. A cluster that `to_char` falls inside is not counted.
 ///
 /// If `to_char < from_char` the range is treated as empty and 0 is returned.
-///
-/// # Why chunk-based?
-///
-/// The naïve alternative is `slice.slice(from..to).to_string().graphemes(true).count()`,
-/// which allocates a heap String proportional to line length. Long lines
-/// (minified JSON, generated files, log files with no newlines) can be
-/// arbitrarily wide. This implementation uses the same chunk-at-a-time
-/// `GraphemeCursor` strategy as `next_grapheme_boundary`: O(log n) per
-/// cluster with no heap allocation.
 pub(crate) fn grapheme_count(
     slice: RopeSlice<'_>,
     from_char: CharOffset,
     to_char: CharOffset,
 ) -> usize {
-    let to_char = to_char.max(from_char).index();
-    let from_char = from_char.index();
-    if from_char == to_char {
-        return 0;
-    }
-
-    let len_bytes = slice.len_bytes();
-    let from_byte = slice.char_to_byte(from_char);
-    let to_byte = slice.char_to_byte(to_char);
-
-    let (mut chunk, mut chunk_byte_start, _, _) = slice.chunk_at_byte(from_byte);
-    let mut gc = GraphemeCursor::new(from_byte, len_bytes, true);
-    let mut count = 0;
-
-    loop {
-        match gc.next_boundary(chunk, chunk_byte_start) {
-            Ok(None) => return count,
-            Ok(Some(b)) => {
-                if b > to_byte {
-                    return count;
-                }
-                count += 1;
-                if b == to_byte {
-                    return count;
-                }
-            }
-            Err(GraphemeIncomplete::NextChunk) => {
-                let next_byte = chunk_byte_start + chunk.len();
-                if next_byte >= len_bytes {
-                    return count;
-                }
-                let (c, s, _, _) = slice.chunk_at_byte(next_byte);
-                chunk = c;
-                chunk_byte_start = s;
-            }
-            Err(GraphemeIncomplete::PreContext(n)) => {
-                let (ctx_chunk, ctx_start, _, _) = slice.chunk_at_byte(n - 1);
-                gc.provide_context(ctx_chunk, ctx_start);
-            }
-            Err(_) => unreachable!("unexpected GraphemeIncomplete variant"),
-        }
-    }
+    graphemes_at(slice, from_char)
+        .take_while(|cluster| cluster.end <= to_char)
+        .count()
 }
 
 /// 0-based grapheme column of `char_pos` within line `line_idx`.
@@ -307,19 +333,16 @@ pub fn display_col_in_line(
 ) -> BufferLineCol {
     let line_start = crate::lines::slice_line_start_char(slice, line_idx.into());
     let mut display_col = BufferLineCol::new(0);
-    let mut pos = line_start;
-    while pos < char_pos {
-        let next = next_grapheme_boundary(slice, pos);
-        if next > char_pos || next == pos {
+    for cluster in graphemes_at(slice, line_start) {
+        if cluster.end > char_pos {
             break;
         }
         let w = crate::width::grapheme_width(
-            &cluster_str(slice, pos, next),
+            &cluster_str(slice, cluster.start, cluster.end),
             display_col.get() as usize,
             tab_width,
         );
         display_col = display_col.advance_saturating(w as u32);
-        pos = next;
     }
     display_col
 }
@@ -357,16 +380,12 @@ pub fn char_pos_at_display_col(
     }
     let mut display_col = BufferLineCol::new(0);
     let mut pos = line_start;
-    loop {
-        let next = next_grapheme_boundary(slice, pos);
-        if next == pos {
-            break; // end of buffer
-        }
-        if slice.get_char(pos.index()) == Some('\n') {
+    for cluster in graphemes_at(slice, line_start) {
+        if cluster.first == '\n' {
             break; // end of line: never walk onto the next line
         }
         let w = crate::width::grapheme_width(
-            &cluster_str(slice, pos, next),
+            &cluster_str(slice, cluster.start, cluster.end),
             display_col.get() as usize,
             tab_width,
         );
@@ -375,7 +394,7 @@ pub fn char_pos_at_display_col(
             break; // this grapheme would overshoot, stop here
         }
         display_col = advanced;
-        pos = next;
+        pos = cluster.end;
         if display_col == target_display_col {
             break;
         }

@@ -1,5 +1,5 @@
 use super::{FindKind, MotionMode, apply_motion};
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{graphemes_at, next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::lines::line_break_char;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -20,14 +20,11 @@ pub(super) fn find_char_on_line_forward(
     let line = text.char_to_line(head);
     // Exclude the '\n': stop iteration once pos reaches the newline position.
     let newline = line_break_char(text, line);
-    let mut pos = next_grapheme_boundary(text, head);
-    while pos < newline {
-        if text.char_at(pos) == Some(ch) {
-            return Some(pos);
-        }
-        pos = next_grapheme_boundary(text, pos);
-    }
-    None
+    graphemes_at(text, head)
+        .skip(1)
+        .take_while(|cluster| cluster.start < newline)
+        .find(|cluster| cluster.first == ch)
+        .map(|cluster| cluster.start)
 }
 
 /// Scan backward on `head`'s line for `ch`, starting one grapheme before `head`.

@@ -263,14 +263,13 @@ pub(crate) fn snap_to_grapheme_boundary(
     target: CharOffset,
 ) -> CharOffset {
     let mut pos = line_start;
-    loop {
-        let next = crate::grapheme::next_grapheme_boundary(rope.slice(..), pos);
-        // `next == pos` when at EOF (the function clamps to len_chars).
-        if next > target || next == pos {
-            return pos;
+    for cluster in crate::grapheme::graphemes_at(rope.slice(..), line_start) {
+        if cluster.end > target {
+            break;
         }
-        pos = next;
+        pos = cluster.end;
     }
+    pos
 }
 
 /// Char offset of `line`'s terminating `\n`, or `line`'s exclusive end when
@@ -435,14 +434,14 @@ pub fn place_grapheme_column(
         Some(content_line) => line_content_end(rope, content_line),
         None => line_start,
     };
-    let slice = rope.slice(..);
     let mut pos = line_start;
-    for _ in 0..grapheme_col.index() {
-        let next = crate::grapheme::next_grapheme_boundary(slice, pos);
-        if next > content_end || next == pos {
+    for cluster in
+        crate::grapheme::graphemes_at(rope.slice(..), line_start).take(grapheme_col.index())
+    {
+        if cluster.end > content_end {
             break;
         }
-        pos = next;
+        pos = cluster.end;
     }
     pos
 }

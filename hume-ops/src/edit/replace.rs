@@ -3,7 +3,7 @@
 
 use hume_editing::changeset::ChangeSet;
 use hume_editing::grapheme::{
-    next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
+    graphemes_at, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
 };
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -169,25 +169,23 @@ pub fn replace_selections(
         b.retain(sel_start.chars_since(b.old_pos()));
         let new_sel_start = b.new_pos();
 
-        let mut pos = sel_start;
-        loop {
-            let next = next_grapheme_boundary(text, pos);
+        for cluster in graphemes_at(text, sel_start) {
+            let len = cluster.end.chars_since(cluster.start);
             // `\n` graphemes are skipped (retained) to preserve line structure.
             // This also naturally protects the structural trailing '\n'.
-            if text.char_at(pos) == Some('\n') {
-                b.retain(next.chars_since(pos));
+            if cluster.first == '\n' {
+                b.retain(len);
             } else {
-                // After the initial `retain` above, b.old_pos() == sel_start == pos.
-                // Each subsequent delete advances b.old_pos() by the cluster size,
-                // landing exactly at the next grapheme start, so the builder stays
-                // in sync without additional retain calls between graphemes.
-                b.delete(next.chars_since(pos));
+                // After the initial `retain` above, b.old_pos() == sel_start.
+                // Each delete advances b.old_pos() by the cluster size,
+                // landing at the next grapheme start, so the builder stays in
+                // sync without additional retain calls between graphemes.
+                b.delete(len);
                 b.insert_char(effective_ch);
             }
-            if pos >= sel_end {
+            if cluster.start >= sel_end {
                 break;
             }
-            pos = next;
         }
         // new_pos() is one past the last written char, the final grapheme of the
         // replaced range. -1 gives the cursor position (inclusive last char).

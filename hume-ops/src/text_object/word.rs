@@ -2,7 +2,7 @@
 //! `mm`/`MM`/nearest-word-on-line family they share with visual-move.
 
 use hume_editing::grapheme::{
-    cluster_last_char, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
+    graphemes_at, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
 };
 use hume_editing::lines::next_line_start;
 use hume_editing::selection::{Selection, SelectionSet};
@@ -42,26 +42,19 @@ pub fn inner_word_impl(
         start = prev_pos;
     }
 
-    // Scan right: walk forward by grapheme cluster boundaries while the next
-    // grapheme belongs to the same class. We track the grapheme-*start* position
-    // and convert to an inclusive char-level end at the very end, so that the
-    // returned range covers the full grapheme (including combining codepoints).
-    let mut end_grapheme_start = pos;
-    loop {
-        let next_pos = next_grapheme_boundary(text, end_grapheme_start);
-        if next_pos >= text.end() {
+    // Scan right: walk forward cluster by cluster while the next grapheme
+    // belongs to the same class. The range ends on the final cluster's last
+    // codepoint, so a trailing combining mark (e.g. the U+0301 in
+    // "e\u{0301}") is included.
+    let mut clusters = graphemes_at(text, pos);
+    let mut last = clusters.next()?;
+    for next in clusters {
+        if is_boundary(class, chars.classify(next.first)) {
             break;
         }
-        let next = chars.classify(text.char_at(next_pos)?);
-        if is_boundary(class, next) {
-            break;
-        }
-        end_grapheme_start = next_pos;
+        last = next;
     }
-    // end_grapheme_start tracks the *start* of the final grapheme cluster;
-    // convert to its last codepoint so a trailing combining mark (e.g. the
-    // U+0301 in "e\u{0301}") is included in the returned range.
-    let end = cluster_last_char(text, end_grapheme_start);
+    let end = last.end.retreat(1);
 
     Some(InclusiveRange::new(start, end))
 }
@@ -122,21 +115,18 @@ pub fn expand_word_unit(
 
     // Trailing fallback: first word of a line, punctuation immediately
     // before, or no adjacent whitespace at all.
-    let mut run_end_start = end;
-    loop {
-        let next_pos = next_grapheme_boundary(text, run_end_start);
-        if next_pos >= text.end() {
+    let mut clusters = graphemes_at(text, end);
+    let mut last = clusters.next().expect("end < len");
+    for next in clusters {
+        if blank_class(next.first) != Some(CharClass::Space) {
             break;
         }
-        if blank_class(text.char_at(next_pos).expect("next_pos < len")) != Some(CharClass::Space) {
-            break;
-        }
-        run_end_start = next_pos;
+        last = next;
     }
-    if run_end_start == end {
+    if last.start == end {
         InclusiveRange::new(start, end)
     } else {
-        InclusiveRange::new(start, cluster_last_char(text, run_end_start))
+        InclusiveRange::new(start, last.end.retreat(1))
     }
 }
 
@@ -249,23 +239,14 @@ pub fn nearest_word_on_line(
     };
 
     // Scan RIGHT within the given bounds for the first non-whitespace grapheme.
-    let next_anchor = {
-        let mut pos = head;
-        let mut found = None;
-        loop {
-            let next_pos = next_grapheme_boundary(text, pos);
-            if next_pos >= line_end_excl {
-                break;
-            }
-            let c = chars.classify(text.char_at(next_pos)?);
-            if c != CharClass::Space && c != CharClass::Eol {
-                found = Some(next_pos);
-                break;
-            }
-            pos = next_pos;
-        }
-        found
-    };
+    let next_anchor = graphemes_at(text, head)
+        .skip(1)
+        .take_while(|cluster| cluster.start < line_end_excl)
+        .find(|cluster| {
+            let c = chars.classify(cluster.first);
+            c != CharClass::Space && c != CharClass::Eol
+        })
+        .map(|cluster| cluster.start);
 
     match (prev_anchor, next_anchor) {
         (None, None) => None,

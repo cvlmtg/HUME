@@ -1,7 +1,7 @@
 //! Inner/around argument (comma-separated item) text objects: function
 //! arguments, array items, object fields, or any comma list inside brackets.
 
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{graphemes_at, next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, blank_class};
 use hume_rope::offset::{CharOffset, InclusiveRange};
@@ -144,13 +144,13 @@ fn extend_forward_while(
     mut pos: CharOffset,
     blank: impl Fn(&BufferText, CharOffset) -> bool,
 ) -> CharOffset {
-    loop {
-        let next = next_grapheme_boundary(text, pos);
-        if next == pos || !blank(text, next) {
-            return pos;
+    for cluster in graphemes_at(text, pos).skip(1) {
+        if !blank(text, cluster.start) {
+            break;
         }
-        pos = next;
+        pos = cluster.start;
     }
+    pos
 }
 
 /// Extends `pos` backward while the char immediately before it is blank,
@@ -174,10 +174,10 @@ fn extend_backward_while(
 /// Trim leading and trailing whitespace from a raw segment span. Returns
 /// `None` if the segment is entirely whitespace.
 fn trim_segment(text: &BufferText, raw: Segment) -> Option<InclusiveRange<CharOffset>> {
-    let mut start = raw.start;
-    while start <= raw.end && is_blank(text, start) {
-        start = next_grapheme_boundary(text, start);
-    }
+    let start = graphemes_at(text, raw.start)
+        .map(|cluster| cluster.start)
+        .find(|&start| start > raw.end || !is_blank(text, start))
+        .unwrap_or(text.end());
     let mut end = raw.end;
     while end > start && is_blank(text, end) {
         end = prev_grapheme_boundary(text, end);

@@ -13,6 +13,11 @@ pub fn next_grapheme_boundary(text: &BufferText, char_offset: CharOffset) -> Cha
     hume_rope::grapheme::next_grapheme_boundary(text.full_slice(), char_offset)
 }
 
+/// See [`hume_rope::grapheme::graphemes_at`].
+pub fn graphemes_at(text: &BufferText, pos: CharOffset) -> hume_rope::grapheme::Graphemes<'_> {
+    hume_rope::grapheme::graphemes_at(text.full_slice(), pos)
+}
+
 /// See [`hume_rope::grapheme::prev_grapheme_boundary`].
 pub fn prev_grapheme_boundary(text: &BufferText, char_offset: CharOffset) -> CharOffset {
     hume_rope::grapheme::prev_grapheme_boundary(text.full_slice(), char_offset)

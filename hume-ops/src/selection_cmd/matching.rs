@@ -2,7 +2,7 @@ use regex_cursor::engines::meta::Regex;
 
 use crate::MotionMode;
 use crate::search::find_matches_in_range;
-use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{graphemes_at, prev_grapheme_boundary};
 use hume_editing::lines::line_content_end;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -148,20 +148,15 @@ pub fn cmd_trim_selection_whitespace(
     _mode: MotionMode,
 ) -> SelectionSet {
     let new_sels = sels.map(|sel| {
-        let mut start = sel.start();
         let end = sel.end();
         let forward = sel.anchor() <= sel.head();
 
-        // Walk forward from start, skipping whitespace (grapheme boundary steps).
+        // Walk forward from start, skipping whitespace clusters.
         // `blank_class` is the authoritative whitespace definition for this
         // codebase: Space covers ' '/'\t', Eol covers '\n'.
-        while start <= end
-            && text
-                .char_at(start)
-                .is_some_and(|c| blank_class(c).is_some())
-        {
-            start = next_grapheme_boundary(text, start);
-        }
+        let start = graphemes_at(text, sel.start())
+            .find(|cluster| cluster.start > end || blank_class(cluster.first).is_none())
+            .map_or(text.end(), |cluster| cluster.start);
 
         // If we consumed everything, the selection is all whitespace.
         if start > end {

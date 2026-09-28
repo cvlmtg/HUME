@@ -1,6 +1,7 @@
 use super::*;
 use crate::test_support::rope;
 use pretty_assertions::assert_eq;
+use ropey::Rope;
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
@@ -536,4 +537,94 @@ fn char_pos_target_beyond_line_width_stops_at_newline() {
         char_pos_at_display_col(buf.slice(..), ContentLine::new(1), dc(99), 4),
         co(5)
     );
+}
+
+// ── graphemes_at ──────────────────────────────────────────────────────────
+
+/// The clusters `graphemes_at(text, pos)` must yield, derived from
+/// `unicode-segmentation` over the whole text as one `&str`, not from the
+/// rope walker under test. A cluster that starts before `pos` and ends after
+/// it is cut at `pos`, matching a cursor dropped inside a cluster.
+fn segmentation_clusters(text: &Rope, pos: usize) -> Vec<Cluster> {
+    let s = text.to_string();
+    let mut out = Vec::new();
+    let mut start = 0;
+    for g in s.graphemes(true) {
+        let end = start + g.chars().count();
+        if end > pos {
+            let from = start.max(pos);
+            out.push(Cluster {
+                start: co(from),
+                end: co(end),
+                first: g.chars().nth(from - start).expect("from < end"),
+            });
+        }
+        start = end;
+    }
+    out
+}
+
+fn walk(text: &Rope, pos: usize) -> Vec<Cluster> {
+    graphemes_at(text.slice(..), co(pos)).collect()
+}
+
+#[test]
+fn graphemes_at_yields_every_cluster_segmentation_finds() {
+    for text in [
+        "hello world",
+        "cafe\u{301} au lait",
+        "family: \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} ok",
+        "flags \u{1F1EE}\u{1F1F9}\u{1F1EB}\u{1F1F7} end",
+        "漢字とかな、句読点。",
+        "two\nlines\n",
+    ] {
+        let r = rope(text);
+        assert_eq!(walk(&r, 0), segmentation_clusters(&r, 0), "text: {text:?}");
+    }
+}
+
+#[test]
+fn graphemes_at_from_inside_a_cluster_starts_at_that_position() {
+    // "e" + U+0301 is one cluster at chars 0..2; starting at 1 yields the
+    // combining mark alone as the first item, like `next_grapheme_boundary`
+    // from inside a cluster.
+    let r = rope("e\u{301}x");
+    let clusters = walk(&r, 1);
+    assert_eq!(
+        clusters[0],
+        Cluster {
+            start: co(1),
+            end: co(2),
+            first: '\u{301}'
+        }
+    );
+    assert_eq!(clusters, segmentation_clusters(&r, 1));
+}
+
+#[test]
+fn graphemes_at_the_end_yields_nothing() {
+    let r = rope("ab");
+    assert_eq!(walk(&r, r.len_chars()), Vec::new());
+}
+
+#[test]
+fn graphemes_at_crosses_chunk_boundaries_including_mid_cluster() {
+    let unit = "abc e\u{301} \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} \u{1F1EE}\u{1F1F9} 字\n";
+    let r = rope(&unit.repeat(2000));
+    let s = r.to_string();
+
+    let mut chunk_ends = Vec::new();
+    let mut byte = 0;
+    for chunk in r.chunks() {
+        byte += chunk.len();
+        chunk_ends.push(byte);
+    }
+    assert!(chunk_ends.len() > 1, "the text must span several chunks");
+    assert!(
+        s.grapheme_indices(true)
+            .any(|(i, g)| chunk_ends.iter().any(|&b| i < b && b < i + g.len())),
+        "at least one cluster must straddle a chunk boundary for this test to cover that path"
+    );
+
+    assert_eq!(walk(&r, 0), segmentation_clusters(&r, 0));
 }

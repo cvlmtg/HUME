@@ -1299,3 +1299,46 @@ fn word_runs_on_an_empty_or_all_punctuation_string_is_empty() {
         Vec::<String>::new()
     );
 }
+
+/// Runs of `Word`-class grapheme clusters, from `unicode-segmentation` over a
+/// plain `&str` and classified by each cluster's first char: an
+/// implementation independent of the rope walk `word_runs` uses.
+fn segmentation_runs(s: &str, chars: WordChars<'_>) -> Vec<String> {
+    use hume_editing::word::CharClass;
+    use unicode_segmentation::UnicodeSegmentation;
+    let mut runs = Vec::new();
+    let mut current = String::new();
+    for g in s.graphemes(true) {
+        let first = g.chars().next().expect("a grapheme is never empty");
+        if chars.classify(first) == CharClass::Word {
+            current.push_str(g);
+        } else if !current.is_empty() {
+            runs.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        runs.push(current);
+    }
+    runs
+}
+
+#[test]
+fn word_runs_matches_a_plain_string_segmentation_on_unicode_text() {
+    for s in [
+        "hello, world! foo_bar baz42",
+        "cafe\u{301} au lait, na\u{ef}ve",
+        "l\u{2019}\u{e9}l\u{e9}ment foo\u{2014}bar",
+        "family \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} flags \u{1F1EE}\u{1F1F9}\u{1F1EB}\u{1F1F7}",
+        "漢字とかな、句読点。abc",
+        "foo-bar baz\nnext-line qux\n",
+    ] {
+        for word_chars in ["", "-"] {
+            let chars = WordChars::new(word_chars);
+            assert_eq!(
+                runs(s, chars),
+                segmentation_runs(s, chars),
+                "text {s:?}, word-chars {word_chars:?}"
+            );
+        }
+    }
+}

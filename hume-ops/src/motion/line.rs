@@ -1,4 +1,4 @@
-use hume_editing::grapheme::next_grapheme_boundary;
+use hume_editing::grapheme::graphemes_at;
 use hume_editing::lines::{line_break_char, line_content_end, next_line_start};
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
@@ -40,14 +40,11 @@ pub(super) fn goto_first_nonblank(text: &BufferText, head: CharOffset) -> CharOf
     let line_start = text.line_to_char(line.into());
     let end_excl = next_line_start(text, line.into());
 
-    let mut pos = line_start;
-    while pos < end_excl {
-        match text.char_at(pos) {
-            // Step by grapheme boundary to respect the project invariant even
-            // for space/tab (both are always single-codepoint, but be consistent).
-            Some(' ') | Some('\t') => pos = next_grapheme_boundary(text, pos),
-            Some('\n') | None => break, // end of line content without finding non-blank
-            Some(_) => return pos,      // found a non-blank char
+    for cluster in graphemes_at(text, line_start).take_while(|cluster| cluster.start < end_excl) {
+        match cluster.first {
+            ' ' | '\t' => {}
+            '\n' => break,             // end of line content without finding non-blank
+            _ => return cluster.start, // found a non-blank char
         }
     }
     head // no non-blank found: no-op, matching Helix
