@@ -171,7 +171,8 @@ pub(in crate::editor) fn typed_set(
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    use crate::editor::settings::{LANGUAGE_KEY, Scope};
+    use crate::editor::settings::Scope;
+    use hume_scripting::host::{LANGUAGE_OPTION, language_option_value};
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
@@ -193,21 +194,10 @@ pub(in crate::editor) fn typed_set(
     // `Buffer.language`, not `EditorSettings`/`BufferOverrides`), so it has no
     // `scope:` entry in `settings::setting_scopes`. Checked here first and
     // unconditionally, or it would fall through to "unknown setting" below.
-    if key == LANGUAGE_KEY {
+    if key == LANGUAGE_OPTION {
         return match scope_str {
             "buffer" => {
-                let new_lang = if value.is_empty() {
-                    None
-                } else {
-                    if ed.state.config.languages.by_name(value).is_none() {
-                        ed.report(
-                            Severity::Info,
-                            format!("language '{value}' is not registered"),
-                        );
-                    }
-                    Some(ed.state.config.languages.intern(value))
-                };
-                ed.set_buffer_language_explicit(bid, new_lang);
+                ed.set_buffer_language_by_name(bid, language_option_value(value));
                 Ok(())
             }
             _ => Err(CommandError::transient(

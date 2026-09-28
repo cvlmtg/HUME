@@ -351,13 +351,6 @@ impl FromStr for Scope {
     }
 }
 
-/// The `:set`/completion key for a buffer's language identity. Not a
-/// `define_settings!` entry (see the module doc's "Adding a setting"
-/// section for why). This constant is the single source `typed_set` and
-/// `completion::set` compare against, so the two special cases can't drift
-/// on the literal.
-pub(in crate::editor) const LANGUAGE_KEY: &str = "language";
-
 /// The `:set`/completion key for the active theme, declared as a
 /// `define_settings!` entry (below), but also matched directly at a few
 /// non-macro call sites, so this constant keeps those literals from drifting
@@ -679,9 +672,8 @@ macro_rules! define_settings {
         /// `(get-option key)` (`overrides` always `None`: global only) and
         /// `(get-buffer-option bid key)` (`overrides` from `bid`'s stored
         /// `BufferOverrides`). `None` for a key with no generic storage.
-        /// This covers only `"language"` today, which has no getter (it lives on
-        /// the buffer's language identity; use `(buffer-language bid)`
-        /// instead).
+        /// This covers only `"language"` today, which lives on the buffer's
+        /// language identity; `get-buffer-option` reads it itself.
         pub fn setting_value(
             key: &str,
             settings: &EditorSettings,

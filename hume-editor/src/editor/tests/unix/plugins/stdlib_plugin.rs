@@ -381,7 +381,7 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
 /// (`tests/mod.rs`) uses, rather than `eval_source`'s bare init-mode
 /// assertions.
 ///
-/// The buffer's language is set via `set-buffer-language!`
+/// The buffer's language is set via `set-buffer-option!`'s `"language"`
 /// (a command already covered elsewhere), and the expected fallback value is
 /// asserted literally, not derived from `stdlib/resolve-lang-arg` itself.
 #[test]
@@ -390,6 +390,11 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
 
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
+    ed.state
+        .config
+        .languages
+        .register_identity_no_rebuild("python", &[], &[], &[], None);
+
     let define_probe = r#"
 (define-typed-command! "probe-resolve-lang-arg" ""
   (lambda (bid)
@@ -397,7 +402,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
       (error "resolve-lang-arg: typed string argument must win"))
     (unless (equal? (call! "stdlib/resolve-lang-arg" bid "probe-cmd" 1) #f)
       (error "resolve-lang-arg: no typed arg and no buffer language must return #f"))
-    (set-buffer-language! bid "python")
+    (set-buffer-option! bid "language" "python")
     (unless (equal? (call! "stdlib/resolve-lang-arg" bid "probe-cmd" 1) "python")
       (error "resolve-lang-arg: non-string arg must fall back to the buffer's language"))))
 "#;
@@ -422,7 +427,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
         "resolve-lang-arg assertions must all pass: {errors:?}"
     );
     // Boundary condition, not a failure: Severity::Info, statusline only:
-    // the third `resolve-lang-arg` call (after `set-buffer-language!`)
+    // the third `resolve-lang-arg` call (after setting `"language"`)
     // succeeds silently, so nothing overwrites the message from the middle
     // (no-fallback) call.
     assert!(

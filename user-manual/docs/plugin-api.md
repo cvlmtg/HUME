@@ -116,8 +116,6 @@ A closed buffer behaves differently depending on the call: most reads below (`bu
 | `(open-buffer! path)` | Open `path`, returning a pane-less pane value for it |
 | `(close-buffer! pane)` | Close a buffer |
 | `(switch-to-buffer! pane target)` | Redirect `pane`'s own pane to `target`'s buffer |
-| `(buffer-language pane)` | Language name string, or `#f` |
-| `(set-buffer-language! pane lang)` | Set (or clear, with `#f`) a buffer's language override |
 | `(buffer-generation pane)` | Int, bumped by every mutation to the buffer: a staleness token for comparing against a stored snapshot |
 | `(selections-linewise? pane)` | `#t` if every selection in `pane`'s own pane covers whole lines. A cursor sitting alone on a blank line doesn't count either way (it neither satisfies this nor breaks it when a real whole-line selection is also present), and `#f` if every selection is such a cursor |
 | `(selections-charwise? pane)` | `#t` if none of the selections in `pane`'s own pane cover whole lines, with the same blank-line-cursor exception as above; `#t` if every selection is such a cursor |

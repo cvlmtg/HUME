@@ -80,20 +80,18 @@ impl Editor {
                 Effect::SetBufferLanguage { buffer, language } => {
                     // `buffer` may have closed between the Steel call that
                     // queued this effect and this drain (e.g. `(set-buffer-
-                    // language! bid "rust") (close-buffer! bid)` in one
-                    // eval), the same shape as `LspRequest`/`LspNotify`'s own
+                    // option! bid "language" "rust") (close-buffer! bid)` in
+                    // one eval), the same shape as `LspRequest`/`LspNotify`'s own
                     // `try_get` guard in `bridge.rs`. `set_buffer_language_
                     // explicit` uses the panicking `get_mut`, so this must
                     // check first rather than let it panic.
                     if self.state.buffers.try_get(buffer).is_none() {
                         self.report(
                             Severity::Trace,
-                            format!("set-buffer-language!: buffer {buffer:?} no longer exists"),
+                            format!("set-buffer-option!: buffer {buffer:?} no longer exists"),
                         );
                     } else {
-                        let lang_id =
-                            language.map(|name| self.state.config.languages.intern(&name));
-                        self.set_buffer_language_explicit(buffer, lang_id)
+                        self.set_buffer_language_by_name(buffer, language.as_deref())
                     }
                 }
                 Effect::GrammarSweep(name) => {

@@ -110,12 +110,12 @@ fn detect_and_set_language_no_match_leaves_none() {
     assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
-/// `open-buffer!` then `set-buffer-language!` on the same new buffer, in one
+/// `open-buffer!` then setting its `language` option on the same new buffer, in one
 /// eval. `apply_script_effects`'s tail (`detect_pending_languages`) must not
 /// re-detect the freshly-opened buffer over the explicit assertion the same
 /// eval *just* made (the `SetBufferLanguage` effect applies first, earlier
 /// in the same effect log). Detection would pick "rust" from the
-/// `.rs` extension; the explicit `set-buffer-language!` call asks for
+/// `.rs` extension; the explicit `set-buffer-option!` call asks for
 /// "notes"; the explicit call must win.
 #[test]
 fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
@@ -144,7 +144,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
         &format!(
             r#"(define-typed-command! "go" "" (lambda ()
                  (define b (open-buffer! {file_str}))
-                 (set-buffer-language! b "notes")))"#
+                 (set-buffer-option! b "language" "notes")))"#
         ),
         tmp.path(),
     );
@@ -163,12 +163,59 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
             .language
             .map(|id| ed.state.config.languages.name_of(id)),
         Some("notes"),
-        "the explicit set-buffer-language! call must win over what plain \
+        "the explicit language set-buffer-option! call must win over what plain \
          detection would have found from the .rs extension"
     );
     assert!(
         ed.state.buffers.get(bid).language_explicit,
         "the buffer must be marked explicit, not left looking auto-detected"
+    );
+}
+
+/// `(set-buffer-option! pane "language" …)` parses its value the way
+/// `:set buffer language=` does: `""` clears the language, an unregistered
+/// name is still applied but reported, and `get-buffer-option` reads a
+/// change queued earlier in the same eval.
+#[test]
+fn language_option_parses_like_set_and_reads_back_a_queued_change() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>b\n");
+    register_rust(&mut ed, "rust", &["rs"]);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "to-rust" "" (lambda (bid)
+             (set-buffer-option! bid "language" "rust")
+             (log! 'info (get-buffer-option bid "language"))))
+           (define-typed-command! "to-none" "" (lambda (bid)
+             (set-buffer-option! bid "language" "")
+             (log! 'info (string-append "[" (get-buffer-option bid "language") "]"))))
+           (define-typed-command! "to-unknown" "" (lambda (bid)
+             (set-buffer-option! bid "language" "no-such-lang")))"#,
+    );
+    let bid = ed.focused_buffer_id();
+
+    type_cmd(&mut ed, ":to-rust");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("rust"));
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.config.languages.id_of("rust")
+    );
+
+    type_cmd(&mut ed, ":to-none");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("[]"));
+    assert_eq!(ed.state.buffers.get(bid).language, None, "\"\" clears");
+
+    type_cmd(&mut ed, ":to-unknown");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("language 'no-such-lang' is not registered"),
+        "an unregistered name must be reported"
+    );
+    assert_eq!(
+        ed.state.buffers.get(bid).language,
+        ed.state.config.languages.id_of("no-such-lang"),
+        "an unregistered name is still applied"
     );
 }
 
@@ -269,7 +316,7 @@ fn on_language_set_hook_does_not_fire_on_no_op() {
     );
 }
 
-/// `(set-buffer-language! bid "rust") (close-buffer!
+/// `(set-buffer-option! bid "language" "rust") (close-buffer!
 /// bid)` in one eval must not panic. The `Effect::SetBufferLanguage` this
 /// queues only applies after the eval returns (`apply_script_effects`
 /// drains the effect vec after the whole body ran), so by the time it
@@ -296,7 +343,7 @@ fn set_buffer_language_then_close_in_one_eval_does_not_panic() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "set-then-close" "" (lambda (bid)
-             (set-buffer-language! bid "rust")
+             (set-buffer-option! bid "language" "rust")
              (close-buffer! bid)))"#,
     );
     let bid = ed.focused_buffer_id();

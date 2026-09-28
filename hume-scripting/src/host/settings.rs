@@ -2,6 +2,19 @@
 
 use hume_engine::pipeline::BufferId;
 
+/// The buffer option naming a buffer's language. It lives on the buffer's
+/// language identity rather than in the settings tables, so
+/// `set-buffer-option!`/`get-buffer-option` handle it themselves: a change
+/// is queued as `Effect::SetBufferLanguage`, and a read has to see one
+/// queued earlier in the same eval.
+pub const LANGUAGE_OPTION: &str = "language";
+
+/// A `language` option value as a language name: `""` is the spelling of
+/// "no language", so it decodes to `None`.
+pub fn language_option_value(value: &str) -> Option<&str> {
+    Some(value).filter(|name| !name.is_empty())
+}
+
 /// A setting's effective value, typed just enough for `(get-option key)` to
 /// build the right `SteelVal`. `hume-scripting` has no dependency on
 /// `hume-editor`'s settings types, so the editor impl converts its own

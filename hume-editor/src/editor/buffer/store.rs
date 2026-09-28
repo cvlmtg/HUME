@@ -191,7 +191,7 @@ impl BufferStore {
     /// called by `:reload-config`'s reset immediately before `state.config.languages`
     /// is replaced with a fresh `LanguageRegistry`. `reset_config_state` reads
     /// `language_explicit` on every buffer *before* calling this, so a
-    /// `:set buffer language=`/`set-buffer-language!` assertion can be
+    /// `:set buffer language=`/`set-buffer-option!`'s `"language"` assertion can be
     /// restored after the post-reload re-detect sweep rather than being
     /// silently overwritten by whatever plain detection finds.
     ///

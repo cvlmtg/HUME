@@ -112,7 +112,7 @@ pub(crate) struct Buffer {
     /// `None` for unrecognised filetypes and scratch buffers.
     pub(crate) language: Option<LanguageId>,
     /// `true` when `language` was written by `:set buffer language=` or Steel's
-    /// `set-buffer-language!`, rather than by detection. `:reload-config`'s
+    /// `set-buffer-option!`'s `"language"`, rather than by detection. `:reload-config`'s
     /// reset reads this (before clearing it) to restore the user's own
     /// assertion across the reload instead of letting re-detection silently
     /// pick something else. See `clear_languages_all`.

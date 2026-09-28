@@ -279,7 +279,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-buffer-enter` | The focused buffer changes | `(pane)` |
 | `on-focus-gained` | The terminal regains focus | `()` |
 | `on-mode-change` | The editor mode changes | `(old new)`: mode symbols (`'normal`, `'insert`, `'extend`, `'command`, `'search`, `'sift`); compare with `equal?` |
-| `on-language-set` | A buffer's language is detected or changed | `(pane lang)`: `lang` is a string or `#f` |
+| `on-language-set` | A buffer's language is detected or changed | `(pane lang)`: `lang` is the language name, or `""` when the buffer has none |
 | `on-diagnostics-changed` | A buffer's LSP diagnostics change | `(pane)`: pull details with `diagnostics-for-buffer` |
 | `on-lsp-attach` | A language server attaches to a buffer | `(pane server-name)` |
 | `on-lsp-detach` | A language server detaches from a buffer | `(pane server-name)` |
@@ -298,7 +298,7 @@ For lazy plugins, declare the events that should trigger activation via `#:event
 
 `set-option!` works from a hook or command handler too, not just at the top level of your plugin. It changes the *global* default, so use it there when that's really what you want.
 
-For a per-buffer override, `(set-buffer-option! pane "option" value)` sets an option just on `pane`'s buffer, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the value the hook itself hands you rather than assuming the buffer you're editing: a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, see [Reading options from Scheme](#reading-options-from-scheme) below.
+For a per-buffer override, `(set-buffer-option! pane "option" value)` sets an option just on `pane`'s buffer, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the value the hook itself hands you rather than assuming the buffer you're editing: a hook can fire for a buffer other than the one you're currently focused on. Setting `language` changes the buffer's language; `""` clears it. To read a specific buffer's options back the same way, see [Reading options from Scheme](#reading-options-from-scheme) below.
 
 A few more examples:
 
@@ -321,7 +321,7 @@ A few more examples:
 (get-buffer-option pane "option-name")
 ```
 
-`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value: its own override if one is set, else the global default. Pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name; `language` has no getter; read it with `(buffer-language pane)` instead. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only: a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
+`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value: its own override if one is set, else the global default. Pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name. `(get-buffer-option pane "language")` returns the buffer's language name, or `""` if it has none. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only: a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
 
 ```scheme
 (get-option "tab-width")           ; the global default tab-width

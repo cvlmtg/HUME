@@ -365,13 +365,9 @@ impl EditorEvent {
                 ]
             }
             EditorEvent::OnLanguageSet { buffer, language } => {
-                let lang_val = match language {
-                    Some(name) => SteelVal::StringV(name.as_str().into()),
-                    None => SteelVal::BoolV(false),
-                };
                 vec![
                     SteelPane::new(PaneHandle::buffer_only(*buffer)).into_steel_val(),
-                    lang_val,
+                    SteelVal::StringV(language.as_deref().unwrap_or_default().into()),
                 ]
             }
             EditorEvent::OnLspAttach { buffer, server }

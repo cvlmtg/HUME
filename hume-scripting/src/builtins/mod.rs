@@ -469,8 +469,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "diff-buffer-lines" diff::diff_buffer_lines(pane: args::LivePane, ref_text: SteelVal);
         cmd "diff-words" diff::diff_words(old: SteelVal, new: SteelVal);
         open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
-        cmd "buffer-language" buffers::buffer_language(pane: args::LivePane);
-        cmd "set-buffer-language!" buffers::set_buffer_language_steel(pane: args::LivePane, lang: args::OptString);
 
         // Editor-integration directory info, read from `ctx.dirs` (computed
         // once by `ScriptingHost::new`). Callable from anywhere (`open`).

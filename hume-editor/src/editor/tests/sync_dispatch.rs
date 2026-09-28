@@ -895,7 +895,7 @@ fn steel_arity_1_lambda_receives_bid_only() {
     attach_steel(
         &mut ed,
         r#"(define-command! "step-bid-only" ""
-             (lambda (bid) (buffer-language bid) (call! "move-right" bid)))"#,
+             (lambda (bid) (get-buffer-option bid "language") (call! "move-right" bid)))"#,
     );
 
     // Dispatch with count=5: an arity-1 lambda ignores count (it isn't
@@ -932,7 +932,7 @@ fn steel_arity_1_lambda_receives_bid_only() {
     );
 
     // No arity error was produced, and `bid` resolved to a real buffer id
-    // (the `buffer-language` call above would itself error otherwise).
+    // (the `get-buffer-option` call above would itself error otherwise).
     assert!(
         ed.state
             .message_log
@@ -951,7 +951,7 @@ fn steel_arity_2_lambda_receives_bid_and_count() {
     attach_steel(
         &mut ed,
         r#"(define-command! "step-count-only" ""
-             (lambda (bid count) (buffer-language bid) (call! "move-right" bid count)))"#,
+             (lambda (bid count) (get-buffer-option bid "language") (call! "move-right" bid count)))"#,
     );
 
     // Dispatch with count=3: cursor must land 3 positions to the right.

@@ -129,8 +129,8 @@
 ;; ── Command-argument helper ──────────────────────────────────────────────────
 
 (define (stdlib/resolve-lang-arg pane cmd arg)
-  (let ([name (if (string? arg) arg (buffer-language pane))])
-    (if (string? name)
+  (let ([name (if (string? arg) arg (get-buffer-option pane "language"))])
+    (if (not (equal? name ""))
         name
         (begin
           (log! 'info (string-append cmd ": no language given and current buffer has no language set"))

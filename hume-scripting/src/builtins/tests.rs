@@ -79,11 +79,6 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
             "switch-to-buffer!",
             "(switch-to-buffer! (focused-pane) (focused-pane))",
         ),
-        ("buffer-language", "(buffer-language (focused-pane))"),
-        (
-            "set-buffer-language!",
-            r#"(set-buffer-language! (focused-pane) "rust")"#,
-        ),
         ("offset->line", "(offset->line (focused-pane) 0)"),
         ("line->offset", "(line->offset (focused-pane) 0)"),
         (

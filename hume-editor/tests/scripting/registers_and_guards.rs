@@ -214,7 +214,7 @@ fn switch_to_buffer_errors_in_init_mode() {
     );
 }
 
-/// `(buffer-language …)` / `(set-buffer-language! …)` on a stale buffer id must
+/// `(get-buffer-option … "language")` / `(set-buffer-option! … "language" …)` on a stale buffer id must
 /// raise a Steel error, not silently return `#f` or push a no-op. `bid`
 /// (MockHost's `buffer_exists` returns false unconditionally) is a stale
 /// handle from the builtins' point of view, exercising the guard path. Each
@@ -226,8 +226,8 @@ fn language_builtins_error_on_stale_buffer_id() {
     let bid = SteelPane::new(PaneHandle::buffer_only(BufferId::default())).into_steel_val();
 
     h.eval_source(
-        r#"(define-command! "q-lang" "" (lambda (bid) (buffer-language bid)))
-           (define-command! "set-lang" "" (lambda (bid) (set-buffer-language! bid "rust")))"#,
+        r#"(define-command! "q-lang" "" (lambda (bid) (get-buffer-option bid "language")))
+           (define-command! "set-lang" "" (lambda (bid) (set-buffer-option! bid "language" "rust")))"#,
         &mut mock,
     )
     .unwrap();
@@ -236,8 +236,8 @@ fn language_builtins_error_on_stale_buffer_id() {
         .call_steel_cmd("q-lang", None, vec![bid.clone()], &mut mock)
         .unwrap_err();
     assert!(
-        err.message.contains("buffer-language: invalid buffer id"),
-        "buffer-language must reject a stale id; got: {err}"
+        err.message.contains("get-buffer-option: invalid buffer id"),
+        "get-buffer-option must reject a stale id; got: {err}"
     );
 
     let err = h
@@ -245,7 +245,7 @@ fn language_builtins_error_on_stale_buffer_id() {
         .unwrap_err();
     assert!(
         err.message
-            .contains("set-buffer-language!: invalid buffer id"),
-        "set-buffer-language! must reject a stale id; got: {err}"
+            .contains("set-buffer-option!: invalid buffer id"),
+        "set-buffer-option! must reject a stale id; got: {err}"
     );
 }

@@ -60,7 +60,7 @@ pub trait BufferHost {
     fn buffer_display_path(&self, id: BufferId) -> Option<String>;
     fn buffer_display_name(&self, id: BufferId) -> Option<String>;
     fn buffer_is_dirty(&self, id: BufferId) -> Option<bool>;
-    /// Language stored on the buffer (not accounting for pending `set-buffer-language!`).
+    /// Language stored on the buffer (not accounting for pending `set-buffer-option!`'s `"language"`).
     fn buffer_stored_language(&self, id: BufferId) -> Option<String>;
 
     // ── Buffer lifecycle ─────────────────────────────────────────────────────

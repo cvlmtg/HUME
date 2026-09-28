@@ -209,7 +209,7 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
 }
 
 /// A lazily-activated `#:languages` plugin body that itself calls
-/// `set-buffer-language!` on the very buffer whose language-set triggered
+/// `set-buffer-option!`'s `"language"` on the very buffer whose language-set triggered
 /// its own activation: the nested call (applied inline, before activation
 /// returns) must win. The outer `set_buffer_language` call must detect the
 /// buffer no longer holds the value it's about to fire `OnLanguageSet` for,
@@ -221,7 +221,7 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
 fn set_buffer_language_reentrant_activation_uses_final_value() {
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
-        r#"(set-buffer-language! (car (buffers)) "python")"#,
+        r#"(set-buffer-option! (car (buffers)) "language" "python")"#,
     );
     let bid = ed.focused_buffer_id();
 
@@ -231,7 +231,7 @@ fn set_buffer_language_reentrant_activation_uses_final_value() {
     assert_eq!(
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("python"),
-        "the plugin's own set-buffer-language! call inside its activation body must win"
+        "the plugin's own language set-buffer-option! call inside its activation body must win"
     );
     let queued_events: Vec<&EditorEvent> = ed
         .state

@@ -21,7 +21,7 @@ fn write_efx_plugin(
 }
 
 /// One eval (a lazy plugin's activation body) emits, in this exact order:
-/// `register-lsp-server!` → `set-buffer-language!` → `define-language!`,
+/// `register-lsp-server!` → `set-buffer-option!`'s `"language"` → `define-language!`,
 /// deliberately not grouped by kind (language regs, then LSP ops, then
 /// buffer-language sets). The returned log must reflect the exact push
 /// order (proving builtins share one `Vec<Effect>`, not per-kind queues
@@ -44,7 +44,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
         // macro; that macro lives in `runtime/scheme/prelude.scm`, not
         // loaded by this test's bare `ScriptingHost::new()`.
         r#"(register-lsp-server! "widget" #:command "widget-lsp" #:root-markers '())
-           (set-buffer-language! (car (buffers)) "widget")
+           (set-buffer-option! (car (buffers)) "language" "widget")
            (%define-language! "widget" '("widget") '() '() #f)
            (define-command! "efx-noop" "" (lambda () 0))"#,
         r#"(declare-plugin! "user/efx" #:commands '("efx-noop"))"#,
@@ -89,7 +89,7 @@ fn effect_log_preserves_emission_order_across_kinds() {
             &effects[1],
             Effect::SetBufferLanguage { language, .. } if language.as_deref() == Some("widget")
         ),
-        "effect 1 must be the set-buffer-language! call, pushed second; got {:?}",
+        "effect 1 must be the language set-buffer-option! call, pushed second; got {:?}",
         effects[1]
     );
     assert!(

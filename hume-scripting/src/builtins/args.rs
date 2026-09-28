@@ -1,6 +1,6 @@
 //! One marshalling vocabulary for builtins: plain `SteelVal` decoders,
 //! `FromSteelVal` newtypes for pane params (`ArgPane`/`LivePane`, plus
-//! `Usize`/`OptUsize`/`OptString` for a `LivePane`-sibling argument that
+//! `Usize`/`OptUsize` for a `LivePane`-sibling argument that
 //! needs the same steel-core-driven, ahead-of-the-closure-body decode;
 //! see `BuiltinArg`, the seam that runs `LivePane`'s liveness check),
 //! free-fn decoders for wire position / text-edit params (`WirePos` is a
@@ -10,7 +10,7 @@
 //! and the shared list/hash decoders every multi-field setter builds on.
 //!
 //! `#f`-means-absent is decoded only by this module's `optional_*` family
-//! (plus `OptUsize`/`OptString`'s own `FromSteelVal` impls, which live in
+//! (plus `OptUsize`'s own `FromSteelVal` impl, which lives in
 //! this same file). Enforced by `cargo test
 //! absent_marker_is_decoded_only_in_args_rs` (`arch-lints/tests/
 //! absent_decode.rs`).
@@ -629,44 +629,11 @@ impl BuiltinArg for OptUsize {
     }
 }
 
-/// [`string_arg`]'s `FromSteelVal` counterpart, with `#f` decoding to
-/// `None` (like [`optional_string_arg`]), for `set-buffer-language!`'s
-/// `lang`, the one other `LivePane`-sibling argument needing decode-before-
-/// liveness ordering.
-#[derive(Debug, Clone)]
-pub(crate) struct OptString(pub(crate) Option<String>);
-
-impl FromSteelVal for OptString {
-    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        match val {
-            SteelVal::BoolV(false) => Ok(OptString(None)),
-            SteelVal::StringV(s) => Ok(OptString(Some(s.to_string()))),
-            SteelVal::SymbolV(s) => Ok(OptString(Some(s.to_string()))),
-            _ => Err(SteelErr::new(
-                ErrorKind::TypeMismatch,
-                "expected a string".to_string(),
-            )),
-        }
-    }
-}
-
-impl BuiltinArg for OptString {
-    type Out = Option<String>;
-    fn resolve(
-        self,
-        _ctx: &mut crate::SteelCtx,
-        _name: &'static str,
-    ) -> Result<Option<String>, SteelErr> {
-        Ok(self.0)
-    }
-}
-
 /// `(lsp-stop! target)` / `(lsp-restart! target)`'s `target` argument, ahead
 /// of [`BuiltinArg::resolve`]'s liveness check on the `Buffer` case. A pane
 /// decodes like [`LivePane`] (only its buffer is used: this is a kind-C,
-/// buffer-only operation), a string or symbol names a language (like
-/// [`OptString`], but required: there is no "focused buffer" fallback left
-/// to decode `#f` into).
+/// buffer-only operation), a string or symbol names a language (required:
+/// there is no "focused buffer" fallback to decode `#f` into).
 #[derive(Debug)]
 pub(crate) enum LspTargetArg {
     Buffer(LivePane),

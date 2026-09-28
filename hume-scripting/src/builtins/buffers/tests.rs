@@ -74,17 +74,6 @@ fn switch_to_buffer_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "switch-to-buffer!").is_err());
 }
 
-/// `set-buffer-language!` is blocked in init mode.
-#[test]
-fn set_buffer_language_blocked_in_init_mode() {
-    let mut h = SteelCtxTestHarness::new();
-    let result = super::super::errors::require_cmd(&h.ctx_init(), "set-buffer-language!");
-    assert!(
-        result.is_err(),
-        "set-buffer-language! must error in init mode"
-    );
-}
-
 /// `buffer-cursor-line` is blocked in init mode.
 #[test]
 fn buffer_cursor_line_blocked_in_init_mode() {

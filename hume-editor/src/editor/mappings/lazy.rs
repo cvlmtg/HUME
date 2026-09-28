@@ -9,7 +9,7 @@ impl Editor {
     ///
     /// Applying effects here, rather than leaving them for some later drain,
     /// is what lets a lazily-activated plugin's own `register-lsp-server!` (or
-    /// `set-buffer-language!`, grammar sweep, ...) take effect before this call
+    /// `set-buffer-option!`'s `"language"`, grammar sweep, ...) take effect before this call
     /// returns, so the buffer that triggered activation isn't skipped.
     pub(in crate::editor::mappings::lazy) fn activate_and_register(
         &mut self,

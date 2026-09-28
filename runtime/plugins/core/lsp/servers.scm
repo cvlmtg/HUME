@@ -298,7 +298,7 @@
 
 (register-hook! 'on-language-set
   (lambda (pane lang)
-    (when (and (string? lang) (not (hash-contains? *lsp-hinted-languages* lang)))
+    (when (and (not (equal? lang "")) (not (hash-contains? *lsp-hinted-languages* lang)))
       (set! *lsp-hinted-languages* (hash-insert *lsp-hinted-languages* lang #t))
       (when (hash-contains? *lsp-lang->server* lang)
         (let* ((name    (hash-ref *lsp-lang->server* lang))

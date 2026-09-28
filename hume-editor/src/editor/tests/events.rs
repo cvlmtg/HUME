@@ -145,7 +145,7 @@ fn hook_feedback_loop_is_cut_off_by_drain_cap() {
     host.eval_source(
         r#"(register-hook! 'on-language-set
              (lambda (bid lang)
-               (set-buffer-language! bid (if (equal? lang "aaa") "bbb" "aaa"))))"#,
+               (set-buffer-option! bid "language" (if (equal? lang "aaa") "bbb" "aaa"))))"#,
         &mut mock,
     )
     .unwrap();
@@ -193,8 +193,8 @@ fn amplifying_hook_cascade_is_cut_off_by_drain_cap() {
     host.eval_source(
         r#"(register-hook! 'on-language-set
              (lambda (bid lang)
-               (set-buffer-language! bid "a")
-               (set-buffer-language! bid "b")))"#,
+               (set-buffer-option! bid "language" "a")
+               (set-buffer-option! bid "language" "b")))"#,
         &mut mock,
     )
     .unwrap();
@@ -612,7 +612,7 @@ fn fifo_order_preserved_across_call_and_event_items() {
 }
 
 /// **Fixpoint within one `settle()` call.** A handler that itself queues
-/// another event (`on-language-set`'s handler calling `set-buffer-language!`
+/// another event (`on-language-set`'s handler calling `set-buffer-option!`'s `"language"`
 /// exactly once, not repeatedly) must see that second event drained in the
 /// *same* `settle()` call, not deferred to the next frame or keystroke.
 /// Bounded counterpart to the cascade-cap tests below: exactly two fires,
@@ -634,7 +634,7 @@ fn handler_queued_event_drains_within_the_same_settle_call() {
         r#"(register-hook! 'on-language-set
              (lambda (bid lang)
                (log! 'trace (to-string "fired:" lang))
-               (if (equal? lang "first") (set-buffer-language! bid "second") (begin))))"#,
+               (if (equal? lang "first") (set-buffer-option! bid "language" "second") (begin))))"#,
         &mut mock,
     )
     .unwrap();

@@ -191,17 +191,17 @@ fn on_language_set_carries_buffer_and_language_name() {
     assert_eq!(steel_string(&args, 1), "python");
 }
 
-/// The only sentinel arg in the whole event set: no language is `#f`, not
-/// an empty string or an omitted arg.
+/// No language crosses as `""`, the value `get-buffer-option` returns and
+/// `set-buffer-option!` accepts for the same state.
 #[test]
-fn on_language_set_with_no_language_sends_false() {
+fn on_language_set_with_no_language_sends_empty_string() {
     let event = EditorEvent::OnLanguageSet {
         buffer: BufferId::default(),
         language: None,
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 2);
-    assert!(matches!(args[1], SteelVal::BoolV(false)));
+    assert_eq!(steel_string(&args, 1), "");
 }
 
 #[test]

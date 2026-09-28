@@ -4,9 +4,11 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use hume_engine::pipeline::BufferId;
+
 use crate::SteelCtx;
-use crate::host::OptionValue;
-use crate::types::PaneHandle;
+use crate::host::{LANGUAGE_OPTION, OptionValue, language_option_value};
+use crate::types::{Effect, PaneHandle, QueuedEffect};
 
 use super::SteelResult;
 use super::errors::generic_err;
@@ -50,8 +52,9 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 /// coercion as `set-option!`). The override persists on the buffer until
 /// overwritten, same as `:set buffer key=value`.
 ///
-/// `key` must not be `"language"`: that lives on the buffer's language
-/// identity, not its settings; use `(set-buffer-language! pane lang)` instead.
+/// `"language"` takes a string, `""` meaning no language, and is queued as
+/// `Effect::SetBufferLanguage` rather than written here: setting it can
+/// activate plugins, which must not happen inside the current eval.
 ///
 /// Command/hook context only (`cmd` kind). The idiomatic caller is an
 /// `on-language-set` hook handler, which receives the target buffer id as an
@@ -64,11 +67,21 @@ pub(crate) fn set_buffer_option(
     value: SteelVal,
 ) -> SteelResult {
     let bid = pane.buffer();
-    let value_str = coerce_option_value(&value, "set-buffer-option!")?;
-    if key == "language" {
-        steel::stop!(Generic =>
-            "set-buffer-option!: .language. is not a setting: use (set-buffer-language! pane lang)");
+    if key == LANGUAGE_OPTION {
+        let SteelVal::StringV(language) = value else {
+            steel::stop!(TypeMismatch =>
+                "set-buffer-option!: \"language\" must be a string, got {:?}", value);
+        };
+        let language = language_option_value(&language).map(str::to_string);
+        if effective_language(ctx, bid) != language {
+            ctx.push_effect(Effect::SetBufferLanguage {
+                buffer: bid,
+                language,
+            });
+        }
+        return Ok(SteelVal::Void);
     }
+    let value_str = coerce_option_value(&value, "set-buffer-option!")?;
 
     ctx.host
         .settings()
@@ -99,7 +112,9 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 }
 
 /// `(get-buffer-option pane key)`: the effective value of `key` for `pane`'s buffer:
-/// its buffer override if one is set, else the global default.
+/// its buffer override if one is set, else the global default. `"language"`
+/// reads the buffer's language name (`""` for none), including a change
+/// queued earlier in this same eval.
 ///
 /// Command/hook context only (`cmd` kind). The idiomatic caller is an
 /// `on-language-set` hook handler, which receives the target buffer id as an
@@ -107,11 +122,34 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
 /// that may differ from the buffer whose language just changed), same
 /// reasoning as `set-buffer-option!`.
 pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, pane: PaneHandle, key: String) -> SteelResult {
+    if key == LANGUAGE_OPTION {
+        return Ok(SteelVal::StringV(
+            effective_language(ctx, pane.buffer())
+                .unwrap_or_default()
+                .into(),
+        ));
+    }
     ctx.host
         .settings()
         .get_buffer_option(&key, pane.buffer())
         .map(option_value_to_steel)
         .map_err(generic_err)
+}
+
+/// `bid`'s language as a script sees it: the last `"language"` write queued
+/// so far this eval, else the buffer's stored language, `None` for none.
+fn effective_language(ctx: &mut SteelCtx, bid: BufferId) -> Option<String> {
+    let queued = ctx
+        .effects
+        .iter()
+        .rev()
+        .find_map(|QueuedEffect { effect, .. }| match effect {
+            Effect::SetBufferLanguage { buffer, language } if *buffer == bid => {
+                Some(language.clone())
+            }
+            _ => None,
+        });
+    queued.unwrap_or_else(|| ctx.host.buffers().buffer_stored_language(bid))
 }
 
 #[cfg(test)]

@@ -12,8 +12,8 @@ use super::SteelResult;
 use super::args::{ArgPane, cons_pair, not_live_err};
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
+use crate::SteelCtx;
 use crate::types::PaneHandle;
-use crate::{SteelCtx, types::Effect};
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
 
@@ -300,39 +300,6 @@ pub(crate) fn switch_to_buffer(
     Ok(SteelVal::Void)
 }
 
-// ── Language builtins ─────────────────────────────────────────────────────────
-
-/// Reverse-scan the effect log for the last `set-buffer-language!` call for
-/// `id` queued so far this eval; fall back to `fallback` (the buffer's
-/// stored language).
-fn effective_language(
-    effects: &[crate::types::QueuedEffect],
-    id: hume_engine::pipeline::BufferId,
-    fallback: Option<String>,
-) -> Option<String> {
-    effects
-        .iter()
-        .rev()
-        .find_map(|queued| match &queued.effect {
-            Effect::SetBufferLanguage { buffer, language } if *buffer == id => {
-                Some(language.clone())
-            }
-            _ => None,
-        })
-        .unwrap_or(fallback)
-}
-
-/// `(buffer-language pane)` → string or `#f`.
-pub(crate) fn buffer_language(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
-    let bid = pane.buffer();
-    let fallback = ctx.host.buffers().buffer_stored_language(bid);
-    let lang = effective_language(ctx.effects, bid, fallback);
-    match lang {
-        Some(name) => name.into_steelval().map_err(generic_err),
-        None => Ok(SteelVal::BoolV(false)),
-    }
-}
-
 // ── Live cursor/selection reads ───────────────────────────────────────────────
 
 /// `(buffer-cursor-line pane)` → 0-indexed line of the primary
@@ -470,24 +437,6 @@ pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
             .map_err(generic_err)?
             .into(),
     ))
-}
-
-/// `(set-buffer-language! pane lang-or-#f)`: deferred, applied after the eval returns.
-pub(crate) fn set_buffer_language_steel(
-    ctx: &mut SteelCtx,
-    pane: PaneHandle,
-    lang: Option<String>,
-) -> SteelResult {
-    let bid = pane.buffer();
-    let fallback = ctx.host.buffers().buffer_stored_language(bid);
-    if effective_language(ctx.effects, bid, fallback) == lang {
-        return Ok(SteelVal::Void);
-    }
-    ctx.push_effect(Effect::SetBufferLanguage {
-        buffer: bid,
-        language: lang,
-    });
-    Ok(SteelVal::Void)
 }
 
 #[cfg(test)]

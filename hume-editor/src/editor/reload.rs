@@ -30,7 +30,7 @@ pub(crate) struct ReloadSnapshot {
     /// is needed to rule out a same-key content swap.
     pre_reload_bids: rustc_hash::FxHashSet<BufferId>,
     /// `(bid, explicit-language-name)` for every buffer whose language was
-    /// an explicit assertion (`:set buffer language=`/`set-buffer-language!`)
+    /// an explicit assertion (`:set buffer language=`/`set-buffer-option!`'s `"language"`)
     /// rather than detection. `None` means the user explicitly cleared the
     /// language; that must survive the reload too, not be silently
     /// repopulated by re-detection. Consumed (via `take_explicit_languages`)
@@ -163,7 +163,7 @@ impl Editor {
 
         // ── Config-owned editor state ──
         // Snapshot every buffer's own `:set buffer language=`/
-        // `set-buffer-language!` assertion (by name, since the `LanguageId`
+        // `set-buffer-option!`'s `"language"` assertion (by name, since the `LanguageId`
         // below is about to dangle) so `init_scripting`'s post-reload
         // re-detect sweep can restore it. Otherwise a buffer whose language
         // was explicitly asserted rather than detected (e.g. an extensionless

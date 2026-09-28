@@ -285,7 +285,7 @@ fn live_pane_accepts_a_real_pane() {
     );
 }
 
-// ── Usize / OptUsize / OptString ────────────────────────────────────────────
+// ── Usize / OptUsize ────────────────────────────────────────────
 
 #[test]
 fn usize_newtype_rejects_negative_and_non_integer() {
@@ -309,27 +309,6 @@ fn opt_usize_newtype_false_is_none_int_is_some() {
         Some(4)
     );
     assert!(OptUsize::from_steelval(&SteelVal::IntV(-1)).is_err());
-}
-
-#[test]
-fn opt_string_newtype_false_is_none_string_and_symbol_are_some() {
-    assert_eq!(
-        OptString::from_steelval(&SteelVal::BoolV(false)).unwrap().0,
-        None
-    );
-    assert_eq!(
-        OptString::from_steelval(&SteelVal::StringV("rust".into()))
-            .unwrap()
-            .0,
-        Some("rust".to_string())
-    );
-    assert_eq!(
-        OptString::from_steelval(&SteelVal::SymbolV("rust".into()))
-            .unwrap()
-            .0,
-        Some("rust".to_string())
-    );
-    assert!(OptString::from_steelval(&SteelVal::IntV(1)).is_err());
 }
 
 // ── LspTargetArg ─────────────────────────────────────────────────────────

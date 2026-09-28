@@ -227,7 +227,7 @@ impl ScriptingHost {
     /// inside the body register directly into `host.register_command` inline.
     ///
     /// Returns the activating body's queued effects (`register-lsp-server!`,
-    /// `set-buffer-language!`, etc.) so the caller can apply them immediately.
+    /// `set-buffer-option!`'s `"language"`, etc.) so the caller can apply them immediately.
     /// Otherwise they'd sit unapplied until some unrelated later drain, which can
     /// skip attaching the very buffer that triggered this activation.
     ///

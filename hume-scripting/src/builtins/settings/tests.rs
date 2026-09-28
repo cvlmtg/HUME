@@ -163,26 +163,47 @@ fn set_buffer_option_invalid_value_type_errors() {
     );
 }
 
-/// `set-buffer-option!` rejects `"language"` outright (that lives on the
-/// buffer's language identity, not its settings) before checking the bid,
-/// so the error names `set-buffer-language!` rather than the (also true,
-/// but less useful) "invalid buffer id" from `NullHost`.
+/// `set-buffer-option!`'s `"language"` queues its value as an effect instead
+/// of writing through the host, and a second write of the same value in
+/// the same eval queues nothing.
 #[test]
-fn set_buffer_option_language_key_errors() {
+fn set_buffer_option_language_queues_one_effect_per_change() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let result = set_buffer_option(
+    for _ in 0..2 {
+        set_buffer_option(
+            &mut ctx,
+            default_pane(),
+            "language".into(),
+            SteelVal::StringV("rust".into()),
+        )
+        .expect("a string language is accepted");
+    }
+    drop(ctx);
+    let languages: Vec<&str> = h
+        .effects
+        .iter()
+        .filter_map(|q| match &q.effect {
+            crate::types::Effect::SetBufferLanguage { language, .. } => language.as_deref(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(languages, vec!["rust"]);
+}
+
+#[test]
+fn set_buffer_option_language_rejects_a_non_string() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let msg = set_buffer_option(
         &mut ctx,
         default_pane(),
         "language".into(),
-        SteelVal::StringV("rust".into()),
-    );
-    assert!(result.is_err(), "'language' must be rejected");
-    let msg = result.unwrap_err().to_string();
-    assert!(
-        msg.contains("set-buffer-language!"),
-        "error must point at set-buffer-language!; got: {msg}"
-    );
+        SteelVal::BoolV(false),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(msg.contains("must be a string"), "got: {msg}");
 }
 
 // `set-buffer-option!`'s `bid` is now validated live before the builtin

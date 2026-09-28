@@ -12,6 +12,7 @@
 - `diagnostics-for-buffer` entries, `lsp-server-status` entries, and `lsp-request!`'s `err` use symbol keys: `(hash-ref d 'message)`, not `(hash-ref d "message")`. A diagnostic's `'severity` is a symbol (`'error`), and a server status's `'state` is a lowercase symbol (`'running`).
 - Options renamed: `scrolloff` → `scroll-margin`, `autoread` → `auto-read`, `mouse-enabled` → `mouse`, `auto-pairs-enabled` → `auto-pairs`.
 - `register-trigger-chars!` is renamed `set-hook-triggers!`, and `completion-set-trigger-chars!` is renamed `set-completion-triggers!`.
+- `language` is an ordinary buffer option: set it with `(set-buffer-option! pane "language" "rust")` and read it with `(get-buffer-option pane "language")`, which returns `""` when no language is set. `set-buffer-language!` and `buffer-language` are gone. Setting an unregistered language from a script now reports it, as `:set buffer language=` already did, and `""` clears the language instead of setting one named `""`. `on-language-set` passes `""`, not `#f`, when the language is cleared.
 - `on-lsp-notification` is now a hook: `(register-hook! 'on-lsp-notification (lambda (server method params) ...))`, called for every notification HUME doesn't handle itself, with the method as a new second argument. Like any hook, a plugin that fails to load has its handlers removed. To handle only specific methods, use `(register-lsp-notification-hook! '("method/a" "method/b") (lambda (server method params) ...))`; a single method can be passed as a plain string.
 
 ### Plugins

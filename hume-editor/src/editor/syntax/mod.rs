@@ -67,8 +67,26 @@ impl Editor {
         self.set_buffer_language_impl(bid, new_lang, false);
     }
 
+    /// A user or script `language` option value: `None` clears the language,
+    /// and a name no `define-language!` registered is reported but still
+    /// applied (a grammar or plugin may register it later). The one parser
+    /// `:set buffer language=` and `(set-buffer-option! pane "language" …)`
+    /// share.
+    pub(super) fn set_buffer_language_by_name(&mut self, bid: BufferId, name: Option<&str>) {
+        let new_lang = name.map(|name| {
+            if self.state.config.languages.by_name(name).is_none() {
+                self.report(
+                    super::Severity::Info,
+                    format!("language '{name}' is not registered"),
+                );
+            }
+            self.state.config.languages.intern(name)
+        });
+        self.set_buffer_language_explicit(bid, new_lang);
+    }
+
     /// Set the language identity for buffer `bid` from a user or script
-    /// assertion (`:set buffer language=`, Steel's `set-buffer-language!`)
+    /// assertion (`:set buffer language=`, `set-buffer-option!`'s `"language"`)
     /// rather than detection. Stamps `language_explicit` so
     /// `:reload-config`'s reset can restore the assertion across the reload
     /// instead of letting its post-reload re-detect sweep silently pick
@@ -101,7 +119,7 @@ impl Editor {
         // registered in time for the OnLanguageSet fire below.
         if let Some(name) = lang_name.as_deref() {
             self.activate_lazy_language_plugins(name);
-            // A lazy plugin's own body can call `set-buffer-language!` on
+            // A lazy plugin's own body can call `set-buffer-option!`'s `"language"` on
             // this same buffer (applied inline via `apply_script_effects`
             // before `activate_lazy_language_plugins` returns); that nested
             // call already ran this function to completion for the newer
@@ -177,9 +195,9 @@ impl Editor {
             {
                 // A `SetBufferLanguage` effect for this same bid, applied
                 // earlier in this same `apply_script_effects` call (e.g.
-                // `(define b (open-buffer! path)) (set-buffer-language! b
-                // "notes")` in one eval), already stamped `language_explicit`,
-                // so detection must not clobber it with whatever plain
+                // `(define b (open-buffer! path)) (set-buffer-option! b
+                // "language" "notes")` in one eval), already stamped
+                // `language_explicit`, so detection must not clobber it with whatever plain
                 // detection finds for the path, the same reasoning as
                 // `init_scripting`'s post-reload sweep. `OnBufferOpen` still
                 // fires either way: the buffer was genuinely opened.

@@ -305,6 +305,8 @@ pub struct SteelCmdResult {
 pub enum Effect {
     LanguageReg(PendingLanguageReg),
     LspServerOp(PendingLspServerOp),
+    /// `(set-buffer-option! pane "language" name)`: `None` clears the
+    /// language. The editor resolves the name when the effect applies.
     SetBufferLanguage {
         buffer: BufferId,
         language: Option<String>,
