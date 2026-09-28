@@ -35,9 +35,9 @@ pub(in crate::editor) enum Trigger {
     /// Ctrl-Space / the `completion-trigger` command: every `Buffer` source.
     Explicit,
     /// A char landed in Insert mode: every `Buffer` source registered for
-    /// `(ch, language)` via `(completion-set-trigger-chars! …)`
+    /// `(ch, language)` via `(set-completion-triggers! …)`
     /// (`SourceRegistry::buffer_sources_for_trigger` is the join), with its own
-    /// table, separate from `register-trigger-chars!`'s shared one, which
+    /// table, separate from `set-hook-triggers!`'s shared one, which
     /// only ever feeds the generic `on-trigger-char` hook. `language` is
     /// owned, not borrowed from the caller's own `&str` (`LanguageRegistry::
     /// name_of`'s return): the caller passes this straight into a `&mut

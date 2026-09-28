@@ -127,7 +127,7 @@ pub(crate) struct ConfigState {
     /// Registry of configured language identities.
     pub(crate) languages: LanguageRegistry,
     /// Chars that fire `OnTriggerChar` in Insert mode: the shared,
-    /// listener-agnostic table set by `(register-trigger-chars! source
+    /// listener-agnostic table set by `(set-hook-triggers! source
     /// language chars)`, keyed by `(source, language)`: a call only ever
     /// replaces its own `(source, language)` entry, so two languages
     /// sharing a source (e.g. the `"lsp"` completion source registered
@@ -136,7 +136,7 @@ pub(crate) struct ConfigState {
     /// `on-lsp-detach`'s clear-on-detach usage). Distinct from a `Buffer`
     /// completion source's own trigger chars (`SourceRegistry`'s
     /// `BufferSourceEntry::trigger_chars`, set by
-    /// `completion-set-trigger-chars!`). *That* table, not this one,
+    /// `set-completion-triggers!`). *That* table, not this one,
     /// decides which completion sources a keystroke invokes
     /// (`EditorState::trigger_buffer_completion`'s `Trigger::Char` arm).
     pub(in crate::editor) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,

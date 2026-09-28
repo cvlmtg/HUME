@@ -389,7 +389,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "buffer-generation" buffers::buffer_generation(pane: args::LivePane);
         cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);
         cmd "pane-live?" buffers::pane_live(pane: args::ArgPane);
-        open "register-trigger-chars!" completion::register_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
+        open "set-hook-triggers!" completion::set_hook_triggers(source: SteelVal, language: SteelVal, chars: SteelVal);
 
         // Decoration stores + diagnostics pull.
         cmd "set-inlay-hints!" decorations::set_inlay_hints(source: SteelVal, pane: args::LivePane, hints: SteelVal);
@@ -422,7 +422,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "completion-top" completion::completion_top(n: SteelVal);
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
         cmd "completion-dismiss!" completion::completion_dismiss();
-        open "completion-set-trigger-chars!" completion::completion_set_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
+        open "set-completion-triggers!" completion::set_completion_triggers(source: SteelVal, language: SteelVal, chars: SteelVal);
 
         // Cursor-anchored popup widget.
         cmd "%show-popup!" ui::show_popup(pane: args::LivePane, text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);

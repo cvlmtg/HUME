@@ -15,7 +15,7 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
         self.state.config.languages.has_grammar(language)
     }
 
-    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>) {
+    fn set_hook_triggers(&mut self, source: String, language: String, chars: Vec<char>) {
         if chars.is_empty() {
             self.state.config.trigger_chars.remove(&(source, language));
         } else {

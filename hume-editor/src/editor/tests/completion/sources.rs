@@ -632,7 +632,7 @@ fn top_carries_the_contributing_source_name() {
 }
 
 /// A trigger char invokes the `Buffer` source registered under its name
-/// (via `completion-set-trigger-chars!`) into the open session. The other
+/// (via `set-completion-triggers!`) into the open session. The other
 /// source's slot survives, shown again once the typed char is backspaced
 /// away.
 #[test]
@@ -658,10 +658,10 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
              #:target 'buffer)
            ;; Same eval as the "dot" registration above: `register-
            ;; completion-source!` only queues an `Effect`, applied after
-           ;; this whole eval returns, and `completion-set-trigger-chars!`
-           ;; is queued too (`Effect::SetCompletionTriggerChars`), so the
+           ;; this whole eval returns, and `set-completion-triggers!`
+           ;; is queued too (`Effect::SetCompletionTriggers`), so the
            ;; two apply in emission order rather than racing each other.
-           (completion-set-trigger-chars! "dot" "rust" (list "."))"#,
+           (set-completion-triggers! "dot" "rust" (list "."))"#,
     );
     assert_eq!(labels(&ed), vec!["dot1", "other"]);
 

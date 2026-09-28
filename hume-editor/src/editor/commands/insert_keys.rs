@@ -109,7 +109,7 @@ pub(in crate::editor) fn insert_default_key(
                 // directly against the registry
                 // (`SourceRegistry::buffer_sources_for_trigger`), with no hook
                 // round trip, and no dependency on
-                // `register-trigger-chars!`'s separate table (`sources`
+                // `set-hook-triggers!`'s separate table (`sources`
                 // above is that table's own answer, used only to fire the
                 // generic hook).
                 state.trigger_buffer_completion(

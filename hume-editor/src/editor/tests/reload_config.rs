@@ -753,7 +753,7 @@ fn complete_handshake(ed: &mut Editor, sid: ServerId) {
 }
 
 /// A `Running` server's attachment must re-fire `OnLspAttach` on resync:
-/// this is what makes `register-trigger-chars!` (called from `core:lsp`'s
+/// this is what makes `set-hook-triggers!` (called from `core:lsp`'s
 /// `on-lsp-attach` handler) take effect again after a reload, without any
 /// LSP wire traffic: the server was never detached.
 #[test]

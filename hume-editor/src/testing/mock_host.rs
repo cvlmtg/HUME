@@ -275,7 +275,7 @@ impl LanguageHost for MockHost {
     fn has_grammar(&self, language: &str) -> bool {
         self.grammars.contains(language)
     }
-    fn register_trigger_chars(&mut self, _source: String, _language: String, _chars: Vec<char>) {}
+    fn set_hook_triggers(&mut self, _source: String, _language: String, _chars: Vec<char>) {}
 }
 
 impl CommandHost for MockHost {

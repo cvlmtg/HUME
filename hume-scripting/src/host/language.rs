@@ -13,11 +13,11 @@ pub trait LanguageHost {
 
     fn has_grammar(&self, language: &str) -> bool;
 
-    /// `(register-trigger-chars! source language chars)`: registers `chars`
+    /// `(set-hook-triggers! source language chars)`: registers `chars`
     /// as `OnTriggerChar`-firing chars for `(source, language)`, replacing
     /// that exact pair's previous set (a plugin's own reload doesn't
     /// accumulate duplicates; a second language attaching under the same
     /// source doesn't clobber the first's). An empty `chars` removes the
     /// entry.
-    fn register_trigger_chars(&mut self, source: String, language: String, chars: Vec<char>);
+    fn set_hook_triggers(&mut self, source: String, language: String, chars: Vec<char>);
 }

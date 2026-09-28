@@ -66,7 +66,7 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// its items, however the buffer's own LSP server capabilities read.
     pub(in crate::editor) resolve: bool,
     /// This source's own trigger characters, per language, set by
-    /// `(completion-set-trigger-chars! name language chars)`
+    /// `(set-completion-triggers! name language chars)`
     /// ([`SourceRegistry::set_buffer_trigger_chars`]), not at registration
     /// time (a server's own trigger characters usually aren't known until
     /// it attaches). Empty until then; an empty `chars` for a language
@@ -169,7 +169,7 @@ impl SourceRegistry {
 
     /// Sets `name`'s own trigger characters for `language`, replacing that
     /// exact `(name, language)` pair's previous set: the completion-
-    /// specific counterpart to `register-trigger-chars!`'s shared,
+    /// specific counterpart to `set-hook-triggers!`'s shared,
     /// listener-agnostic table (`EditorState.config.trigger_chars`), for
     /// the one reader (`orchestrate.rs`'s `Trigger::Char` arm) that needs a
     /// completion source's own answer, not a hook fire. An empty `chars`
@@ -185,7 +185,7 @@ impl SourceRegistry {
         chars: Vec<char>,
     ) -> Result<(), String> {
         let id = self.buffer_id_of(name).ok_or_else(|| {
-            format!("completion-set-trigger-chars!: no buffer completion source named {name:?}")
+            format!("set-completion-triggers!: no buffer completion source named {name:?}")
         })?;
         let trigger_chars = &mut self.buffer[id.0 as usize].trigger_chars;
         if chars.is_empty() {

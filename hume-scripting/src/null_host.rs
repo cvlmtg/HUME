@@ -178,7 +178,7 @@ impl LanguageHost for NullHost {
     fn has_grammar(&self, _language: &str) -> bool {
         false
     }
-    fn register_trigger_chars(&mut self, _source: String, _language: String, _chars: Vec<char>) {}
+    fn set_hook_triggers(&mut self, _source: String, _language: String, _chars: Vec<char>) {}
 }
 
 impl CommandHost for NullHost {

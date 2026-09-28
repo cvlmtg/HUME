@@ -107,7 +107,7 @@ pub(in crate::editor) enum EditorEvent {
         end_line: hume_rope::line::ContentLine,
     },
     /// Fires in Insert mode after a registered trigger char (see
-    /// `register-trigger-chars!`) has been inserted into the buffer, once
+    /// `set-hook-triggers!`) has been inserted into the buffer, once
     /// per source registered for that char under the buffer's language, so
     /// two sources sharing a char each get their own fire. `target`'s pane
     /// is the focused pane at raise time (Insert mode only ever types into

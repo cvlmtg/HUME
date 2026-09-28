@@ -282,7 +282,7 @@ fn setup_trigger_char_feature(
     // real `Editor::init_scripting` startup sequence), so `.rs` extension
     // detection never ran. Set the language explicitly to match the
     // "rust" server key below, which on-lsp-attach's `server-name` arg
-    // (the language) must equal for register-trigger-chars! to route here.
+    // (the language) must equal for set-hook-triggers! to route here.
     let lang = ed.state.config.languages.intern("rust");
     ed.state.buffers.get_mut(bid).language = Some(lang);
 

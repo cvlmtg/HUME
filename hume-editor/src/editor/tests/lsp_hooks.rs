@@ -1,5 +1,5 @@
 // New hooks: on-lsp-attach, on-diagnostics-changed,
-// on-viewport-change (debounced), on-trigger-char + register-trigger-chars!.
+// on-viewport-change (debounced), on-trigger-char + set-hook-triggers!.
 
 use std::path::{Path, PathBuf};
 
@@ -109,8 +109,8 @@ fn on_lsp_detach_fires_with_the_language_when_a_server_is_stopped() {
 }
 
 #[test]
-fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
-    // register-trigger-chars! must work from command context (not just
+fn set_hook_triggers_from_inside_a_hook_handler_takes_effect() {
+    // set-hook-triggers! must work from command context (not just
     // init/plugin-load): hover/signature-help register a server's trigger characters from
     // inside their on-lsp-attach handler, which runs as plain command
     // context. Like `on_trigger_char_fires_only_for_registered_
@@ -131,7 +131,7 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (register-trigger-chars! "test" server-name '("."))))
+             (set-hook-triggers! "test" server-name '("."))))
            (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
     );
@@ -150,18 +150,18 @@ fn register_trigger_chars_from_inside_a_hook_handler_takes_effect() {
     assert_ne!(
         state(&ed),
         state(&plain),
-        "register-trigger-chars! called from inside a hook handler (command \
+        "set-hook-triggers! called from inside a hook handler (command \
          context, not init/plugin-load) must still register the char and \
          fire the extra move-right"
     );
 }
 
-/// `register-trigger-chars!` is keyed `(source, language)`, not
+/// `set-hook-triggers!` is keyed `(source, language)`, not
 /// globally per source: a second language attaching under the same source
 /// must not clobber the first's chars, and a char typed in the wrong
 /// language's buffer must not fire at all.
 #[test]
-fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber_each_other() {
+fn set_hook_triggers_for_two_languages_under_the_same_source_do_not_clobber_each_other() {
     use hume_editing::selection::Selection;
 
     let tmp = safe_tempdir();
@@ -205,7 +205,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-lsp-attach (lambda (bid server-name)
-             (register-trigger-chars! "test" server-name
+             (set-hook-triggers! "test" server-name
                (if (equal? server-name "rust") '(".") '(",")))))
            (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
@@ -385,7 +385,7 @@ fn on_trigger_char_fires_only_for_registered_chars_in_insert_mode_after_insertio
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-trigger-chars! "test" "rust" '("."))
+        r#"(set-hook-triggers! "test" "rust" '("."))
            (register-hook! 'on-trigger-char (lambda (bid ch source)
              (when (equal? ch ".")
                (call! "move-right" bid))))"#,
@@ -440,7 +440,7 @@ fn on_trigger_char_does_not_fire_in_normal_mode() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-trigger-chars! "test" "rust" '("."))
+        r#"(set-hook-triggers! "test" "rust" '("."))
            (register-hook! 'on-trigger-char (lambda (bid ch source) (call! "move-right" bid)))"#,
         tmp.path(),
     );

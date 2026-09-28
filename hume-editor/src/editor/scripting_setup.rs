@@ -134,7 +134,7 @@ impl Editor {
                     .keymap
                     .unbind_user(to_editor_bind_mode(mode), &keys),
                 Effect::RegisterCompletionSource(reg) => self.register_completion_source(reg),
-                Effect::SetCompletionTriggerChars {
+                Effect::SetCompletionTriggers {
                     source,
                     language,
                     chars,

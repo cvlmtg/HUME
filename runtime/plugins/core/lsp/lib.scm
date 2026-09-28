@@ -35,8 +35,8 @@
 (define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)
   (define (set-chars! server-name chars)
     (if on-trigger
-        (register-trigger-chars! source-name server-name chars)
-        (completion-set-trigger-chars! source-name server-name chars)))
+        (set-hook-triggers! source-name server-name chars)
+        (set-completion-triggers! source-name server-name chars)))
   (register-hook! 'on-lsp-attach
     (lambda (pane server-name)
       (let ((caps (lsp-capabilities pane)))

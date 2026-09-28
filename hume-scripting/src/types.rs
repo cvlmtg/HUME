@@ -357,7 +357,7 @@ pub enum Effect {
     /// validation (a callable `proc`, a `#:target` that exists) still fails
     /// synchronously inside the builtin.
     RegisterCompletionSource(crate::host::PendingCompletionSource),
-    /// `(completion-set-trigger-chars! source language chars)`: applied
+    /// `(set-completion-triggers! source language chars)`: applied
     /// into the named `Buffer` source's own trigger-char table. Queued
     /// alongside [`Effect::RegisterCompletionSource`] for the same ordering
     /// reason `Effect::UnbindKey` gives for the three binders it follows: a
@@ -366,7 +366,7 @@ pub enum Effect {
     /// applied in emission order. Checking the registry synchronously
     /// would race a same-eval `register-completion-source!`, which only
     /// takes effect once the whole eval succeeds.
-    SetCompletionTriggerChars {
+    SetCompletionTriggers {
         source: String,
         language: String,
         chars: Vec<char>,

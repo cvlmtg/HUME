@@ -44,8 +44,8 @@ Every feature file shares these:
 - **Trigger-char lifecycle**: `lsp/setup-trigger-chars!` wires `on-lsp-attach`/
   `on-lsp-detach` for a feature (completion, signature help), registering the attached
   chars through whichever table the feature actually needs: signature help (which passes
-  a handler) goes through `register-trigger-chars!` and gets `on-trigger-char` wired too;
-  completion (no handler) goes through `completion-set-trigger-chars!` instead; the
+  a handler) goes through `set-hook-triggers!` and gets `on-trigger-char` wired too;
+  completion (no handler) goes through `set-completion-triggers!` instead; the
   editor invokes that source directly against its own trigger chars, no hook round trip.
   Both tables are keyed `(source, language)`, so a second language attaching under the
   same source name gets its own entry rather than clobbering the first.

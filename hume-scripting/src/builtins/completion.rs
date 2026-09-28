@@ -50,7 +50,7 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
     )
 }
 
-/// `(register-trigger-chars! source language chars)`: `chars` is a list of
+/// `(set-hook-triggers! source language chars)`: `chars` is a list of
 /// 1-char strings, registered for exactly `(source, language)`. Callable
 /// from any context, including command bodies and hook handlers:
 /// signature help registers a server's trigger characters from inside an
@@ -59,20 +59,20 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
 /// `on-lsp-notification`). `chars` landing in Insert mode fires the
 /// `on-trigger-char` hook for any listener named `source`, a shared,
 /// listener-agnostic table, *not* how a completion source's own trigger
-/// chars are joined (that's `completion-set-trigger-chars!`, a completion
+/// chars are joined (that's `set-completion-triggers!`, a completion
 /// source's own routing table, checked before invoking sources directly).
-pub(crate) fn register_trigger_chars(
+pub(crate) fn set_hook_triggers(
     ctx: &mut SteelCtx,
     source: SteelVal,
     language: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let source = string_arg(source, "register-trigger-chars! source")?;
-    let language = string_arg(language, "register-trigger-chars! language")?;
-    let chars = chars_arg(chars, "register-trigger-chars! chars")?;
+    let source = string_arg(source, "set-hook-triggers! source")?;
+    let language = string_arg(language, "set-hook-triggers! language")?;
+    let chars = chars_arg(chars, "set-hook-triggers! chars")?;
     ctx.host
         .language()
-        .register_trigger_chars(source, language, chars);
+        .set_hook_triggers(source, language, chars);
     Ok(SteelVal::Void)
 }
 
@@ -179,29 +179,29 @@ pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(completion-set-trigger-chars! source language chars)`: a `'buffer`
+/// `(set-completion-triggers! source language chars)`: a `'buffer`
 /// completion source's own trigger characters for `language`, replacing
 /// that pair's previous set (`SourceRegistry::set_buffer_trigger_chars`).
-/// Callable from any context, same as `register-trigger-chars!`
+/// Callable from any context, same as `set-hook-triggers!`
 /// (`on-lsp-attach` runs as plain command context).
 ///
 /// Queued as an `Effect`, not applied here; see
-/// `Effect::SetCompletionTriggerChars`'s own doc. Whether `source` names a
+/// `Effect::SetCompletionTriggers`'s own doc. Whether `source` names a
 /// registered `Buffer` source can only be checked once the effect applies
 /// (an earlier *queued* `register-completion-source!` in the same eval may
 /// be the one supplying it): a miss is reported as a log message there,
 /// never raised back to the caller. Argument decoding (a well-formed
 /// `chars` list) still fails synchronously here.
-pub(crate) fn completion_set_trigger_chars(
+pub(crate) fn set_completion_triggers(
     ctx: &mut SteelCtx,
     source: SteelVal,
     language: SteelVal,
     chars: SteelVal,
 ) -> SteelResult {
-    let source = string_arg(source, "completion-set-trigger-chars! source")?;
-    let language = string_arg(language, "completion-set-trigger-chars! language")?;
-    let chars = chars_arg(chars, "completion-set-trigger-chars! chars")?;
-    ctx.push_effect(Effect::SetCompletionTriggerChars {
+    let source = string_arg(source, "set-completion-triggers! source")?;
+    let language = string_arg(language, "set-completion-triggers! language")?;
+    let chars = chars_arg(chars, "set-completion-triggers! chars")?;
+    ctx.push_effect(Effect::SetCompletionTriggers {
         source,
         language,
         chars,

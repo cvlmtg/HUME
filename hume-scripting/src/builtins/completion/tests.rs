@@ -149,18 +149,18 @@ fn register_is_blocked_in_command_mode() {
     );
 }
 
-// ── completion-set-trigger-chars! ─────────────────────────────────────────
+// ── set-completion-triggers! ─────────────────────────────────────────
 
-/// Queues an `Effect::SetCompletionTriggerChars` with the decoded fields,
+/// Queues an `Effect::SetCompletionTriggers` with the decoded fields,
 /// nothing applied inline, same shape as `register-completion-source!`'s
 /// own test above. This is what lets a same-eval
-/// `register-completion-source!` + `completion-set-trigger-chars!` pair
+/// `register-completion-source!` + `set-completion-triggers!` pair
 /// apply in emission order instead of racing the registration.
 #[test]
 fn set_trigger_chars_queues_an_effect_with_the_decoded_fields() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_init();
-    completion_set_trigger_chars(
+    set_completion_triggers(
         &mut ctx,
         SteelVal::StringV("src".into()),
         SteelVal::StringV("rust".into()),
@@ -170,13 +170,13 @@ fn set_trigger_chars_queues_an_effect_with_the_decoded_fields() {
     drop(ctx);
     let effects = effects(&h);
     assert_eq!(effects.len(), 1);
-    let Effect::SetCompletionTriggerChars {
+    let Effect::SetCompletionTriggers {
         source,
         language,
         chars,
     } = effects[0]
     else {
-        panic!("expected SetCompletionTriggerChars, got {:?}", effects[0]);
+        panic!("expected SetCompletionTriggers, got {:?}", effects[0]);
     };
     assert_eq!(source, "src");
     assert_eq!(language, "rust");
