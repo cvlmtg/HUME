@@ -53,7 +53,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // regardless of which line it's anchored to, so 'x' (line 0's own
     // content) must land at row 1, not row 0.
     let mut ed = editor_with_before_line();
-    ed.state.settings.scrolloff = 0; // isolate this from margin-triggered auto-scroll
+    ed.state.settings.scroll_margin = 0; // isolate this from margin-triggered auto-scroll
     // Height 4: the engine reserves row 3 for the statusline, leaving 3 rows
     // of actual pane content (V, x, y).
     let rect = Rect::new(0, 0, 10, 4);
@@ -149,7 +149,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
 
 /// 20 content lines, a 4-line `After(8)` block, `mouse-scroll-lines` = 3 (one
 /// short of the block). Cursor starts mid-buffer (line 5), away from the
-/// document's own top edge: `Viewport::reveal`'s `scrolloff` margin
+/// document's own top edge: `Viewport::reveal`'s `scroll-margin` margin
 /// otherwise tempers the *first* scroll away from a document boundary
 /// regardless of virtual lines, a separate and expected interaction this
 /// test isn't about. Three notches, each followed by a render, must each
@@ -201,7 +201,7 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 // ── A trailing ghost block is fully reachable ─────────────────────────────
 //
 // Reachable by *no* keyboard command: `Ctrl-d`/`PageDown` cap the view at
-// `scrolloff` rows below the last content line (`Viewport::scroll_by`'s own
+// `scroll-margin` rows below the last content line (`Viewport::scroll_by`'s own
 // `max_scroll_top` bound). Only a view-led scroll can go further. Once the
 // cursor reaches the document's last content line it can advance no further
 // (`carry`'s overshoot can't escape a document edge), so the selection it
@@ -210,7 +210,7 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 // `Viewport::reveal`, and the wheel's direct viewport write is free to keep
 // advancing up to `max_scroll_top`.
 //
-// `max_scroll_top` itself leaves `scrolloff` rows of look-ahead past the
+// `max_scroll_top` itself leaves `scroll-margin` rows of look-ahead past the
 // block's last virtual line, exactly like a real buffer line, matching
 // where `Ctrl-d`/an ordinary cursor motion would independently settle once
 // the cursor reaches the document's end, so a scroll all the way down and
@@ -255,7 +255,7 @@ fn park_behind_trailing_block(ed: &mut Editor, rect: Rect) {
 
 /// 10 content lines, a 5-line `After(9)` (last line) block. Repeated wheel
 /// notches must reach the point where the block's last virtual line renders
-/// `scrolloff` (default 3) rows above the bottom of the pane (not pinned to
+/// `scroll-margin` (default 3) rows above the bottom of the pane (not pinned to
 /// the bottom row itself) and then stay there.
 #[test]
 fn wheel_reaches_a_trailing_after_last_line_block() {
@@ -264,16 +264,16 @@ fn wheel_reaches_a_trailing_after_last_line_block() {
 
     let settled = ed.render_to_buf(rect);
     // margin = min(3, (8-1)/2) = 3; the block's last virtual line lands at
-    // row 8-3-1 = 4, leaving rows 5..7 (3 rows) as scrolloff padding below it.
+    // row 8-3-1 = 4, leaving rows 5..7 (3 rows) as scroll-margin padding below it.
     assert_eq!(
         cell(&settled, 0, 4),
         "V",
-        "the block's last virtual line must land scrolloff rows above the bottom"
+        "the block's last virtual line must land scroll-margin rows above the bottom"
     );
     assert_eq!(
         cell(&settled, 0, 7), // bottom content row
         "~",
-        "the scrolloff margin past the block's end must render as filler, not more ghost lines"
+        "the scroll-margin past the block's end must render as filler, not more ghost lines"
     );
 
     // Further scrolling must stay clamped there, not stall short of it or
@@ -386,7 +386,7 @@ fn a_parked_panes_own_edit_still_reveals_it() {
     assert_eq!(
         cell(&settled, 0, 4),
         "V",
-        "revealing must settle the cursor back at the same scrolloff-bound row \
+        "revealing must settle the cursor back at the same scroll-margin-bound row \
          `wheel_reaches_a_trailing_after_last_line_block` already pins"
     );
 }
@@ -394,7 +394,7 @@ fn a_parked_panes_own_edit_still_reveals_it() {
 // ── Bottom bound ─────────────────────────────────────────────────────────
 
 /// A plain (no virtual lines) 30-line buffer. Many wheel notches must settle
-/// with the document's own last line `scrolloff` rows above the bottom row
+/// with the document's own last line `scroll-margin` rows above the bottom row
 /// (matching where an ordinary cursor motion would independently place it),
 /// never scrolled further, and never pinned to the very bottom row.
 #[test]
@@ -422,12 +422,12 @@ fn wheel_never_scrolls_past_the_documents_last_display_line() {
     assert_eq!(
         cell(&settled, 0, 20),
         "l", // "line29"'s first character
-        "the document's last line must sit scrolloff rows above the bottom"
+        "the document's last line must sit scroll-margin rows above the bottom"
     );
     assert_eq!(
         cell(&settled, 0, 23), // bottom content row
         "~",
-        "the scrolloff margin past the last line must render as filler"
+        "the scroll-margin past the last line must render as filler"
     );
 }
 
@@ -496,7 +496,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     // Cursor on line 1 (char 7), below the wrap the hint causes.
     let sels = SelectionSet::single(Selection::collapsed(co(7)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.state.settings.scrolloff = 0;
+    ed.state.settings.scroll_margin = 0;
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 0 }),

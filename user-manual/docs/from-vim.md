@@ -67,11 +67,11 @@ HUME has no `vimrc`. Every setting and keybinding is a call to a Scheme function
 | Line numbers | `set number relativenumber` | `(set-option! "line-number-style" "relative")` |
 | Tab width | `set tabstop=4 shiftwidth=4` | `(set-option! "tab-width" 4)` |
 | Spaces vs tabs | `set expandtab` | `(set-option! "tab-style" "soft")` |
-| Scroll padding | `set scrolloff=5` | `(set-option! "scrolloff" 5)` |
-| Mouse | `set mouse=a` | `(set-option! "mouse-enabled" #t)` |
+| Scroll padding | `set scrolloff=5` | `(set-option! "scroll-margin" 5)` |
+| Mouse | `set mouse=a` | `(set-option! "mouse" #t)` |
 | Line wrapping | `set wrap linebreak breakindent` | `(set-option! "wrap-mode" "indent")` |
 | Whitespace indicators | `set list listchars=tab:>-,trail:-` | `(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-space" "trailing")` |
-| Reload on external change | `set autoread` | `(set-option! "autoread" #t)` |
+| Reload on external change | `set autoread` | `(set-option! "auto-read" #t)` |
 | Word characters | `set iskeyword+=-` | `(set-option! "word-chars" "-")` |
 | Keybinding | `nnoremap <C-j> ...` | `(bind-key! 'normal "ctrl-j" "move-down")` |
 

@@ -30,10 +30,10 @@ fn set_option_bool_as_bool() {
     let mut h = host();
     let mut mock = MockHost::new();
 
-    assert!(mock.settings.mouse_enabled);
-    h.eval_source("(set-option! \"mouse-enabled\" #f)", &mut mock)
+    assert!(mock.settings.mouse);
+    h.eval_source("(set-option! \"mouse\" #f)", &mut mock)
         .unwrap();
-    assert!(!mock.settings.mouse_enabled);
+    assert!(!mock.settings.mouse);
 }
 
 #[test]

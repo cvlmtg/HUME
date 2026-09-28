@@ -207,7 +207,7 @@ impl Editor {
         });
     }
 
-    /// Re-apply the terminal's mouse-tracking mode if `mouse-enabled`/
+    /// Re-apply the terminal's mouse-tracking mode if `mouse`/
     /// `mouse-select` changed since the last time this ran. A no-op when
     /// nothing changed (the common case, checked every frame) and when no
     /// terminal is attached (tests, headless `run_keys`).
@@ -218,10 +218,7 @@ impl Editor {
     /// which is what makes the change-detection unit-testable without a
     /// real `SharedTerm`.
     pub(in crate::editor::frame) fn resync_mouse_mode(&mut self) {
-        let desired = (
-            self.state.settings.mouse_enabled,
-            self.state.settings.mouse_select,
-        );
+        let desired = (self.state.settings.mouse, self.state.settings.mouse_select);
         if desired == self.applied_mouse_mode {
             return;
         }
@@ -456,7 +453,7 @@ impl Editor {
         self.prune_closed_pane_caches();
 
         // Mouse modes are terminal state applied once at startup; resyncing
-        // here makes `:set global mouse-enabled=…` take effect immediately.
+        // here makes `:set global mouse=…` take effect immediately.
         self.resync_mouse_mode();
 
         // Bake scopes interned since the last frame. It must run before the
@@ -518,7 +515,7 @@ impl Editor {
         // next visible frame always counts as a viewport change.
         self.last_viewport_key.retain(|pid, _| active.contains(pid));
 
-        let scrolloff = self.state.settings.scrolloff;
+        let scroll_margin = self.state.settings.scroll_margin;
         for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id;
             let layout_key = self.state.layout_key(&self.view.panes[pid]);
@@ -539,7 +536,7 @@ impl Editor {
                 &mut self.view.panes[pid],
                 cursor_char,
                 format_key,
-                scrolloff,
+                scroll_margin,
                 reveal,
             );
             self.state.panes.state[pid][buf_id].parked = outcome.parked;
@@ -627,7 +624,7 @@ impl Editor {
 
 /// [`scroll_into_view`]'s result: where the cursor ended up on screen, and
 /// whether this pane came out of the pass parked (its cursor outside the
-/// scrolloff band). `PaneBufferState::parked`'s only writer is the caller,
+/// scroll-margin band). `PaneBufferState::parked`'s only writer is the caller,
 /// which stores this field back onto it.
 struct ScrollOutcome {
     /// Pane-relative, before the gutter. `None` for a viewport with no
@@ -666,7 +663,7 @@ fn scroll_into_view(
     pane: &mut Pane,
     cursor_char: hume_rope::offset::CharOffset,
     format_key: hume_engine::display_lines::line_store::FormatKey,
-    scrolloff: usize,
+    scroll_margin: usize,
     reveal: bool,
 ) -> ScrollOutcome {
     // Whatever this pass formats deciding where to scroll, the render pass
@@ -676,14 +673,14 @@ fn scroll_into_view(
     // Checked before `locate`, which would otherwise format the cursor's
     // line for an answer no one can use, and before `geometry`, which
     // returns `None` for exactly this case.
-    let Some(geo) = viewport.geometry(scrolloff) else {
+    let Some(geo) = viewport.geometry(scroll_margin) else {
         return ScrollOutcome {
             cursor_screen: None,
             parked: false,
         };
     };
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
-    // Horizontal scroll is its own axis (a fixed margin, no `scrolloff`, no
+    // Horizontal scroll is its own axis (a fixed margin, no `scroll-margin`, no
     // document-edge special-casing; see `reveal_horizontal`'s own doc) and
     // has no snap-back to guard against, so it always runs: a
     // same-display-line cursor move (`l` on a long unwrapped line) changes

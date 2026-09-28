@@ -143,7 +143,7 @@ pub(crate) struct PaneBufferState {
     /// `frame.rs`'s prune-cache doc: both die with the pane's own
     /// `SecondaryMap` entry, same as everything else on this struct).
     pub(in crate::editor) last_layout_key: Option<LayoutKey>,
-    /// Whether this pane's cursor sat outside the scrolloff band as of the
+    /// Whether this pane's cursor sat outside the scroll-margin band as of the
     /// last frame `frame.rs`'s scroll step settled it: `Viewport::settled_row`
     /// returning `None`, the case a wheel or `Ctrl-d` scroll leaves behind
     /// when `carry` can't fully follow it (a virtual block too tall for the

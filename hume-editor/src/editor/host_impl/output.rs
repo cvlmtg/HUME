@@ -22,7 +22,7 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         };
         let name = name.to_string();
         let tui = tui.clone();
-        let mouse = self.state.settings.mouse_enabled;
+        let mouse = self.state.settings.mouse;
         let mouse_select = self.state.settings.mouse_select;
         // `None` only for the test-only headless shape.
         if let Some(term) = tui.terminal() {

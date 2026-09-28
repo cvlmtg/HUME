@@ -113,14 +113,14 @@ fn set_option_applies_jump_list_capacity() {
     );
 }
 
-// ── :set global mouse-enabled / mouse-select resync per frame ─────────────
+// ── :set global mouse / mouse-select resync per frame ─────────────
 
-/// `mouse-enabled`/`mouse-select` are terminal modes applied once at startup
+/// `mouse`/`mouse-select` are terminal modes applied once at startup
 /// (`hume_platform::terminal::init`, called from `hume-editor/src/lib.rs`
 /// before entering the event loop); there is no other write side.
 /// `prepare_frame` calls `resync_mouse_mode` every frame, re-applying the
 /// terminal mode whenever it drifts from `state.settings`, so `:set global
-/// mouse-enabled=false` takes effect without restarting.
+/// mouse=false` takes effect without restarting.
 ///
 /// No `SharedTerm` exists in test `Editor`s (`Editor::for_testing`/`open`
 /// both seed `terminal: None`), so this can't assert on emitted escape
@@ -137,17 +137,17 @@ fn set_option_applies_jump_list_capacity() {
 /// `applied_mouse_mode` would keep its constructor default `(true, false)`
 /// after this `:set`.
 #[test]
-fn set_global_mouse_enabled_resyncs_applied_mode_next_frame() {
+fn set_global_mouse_resyncs_applied_mode_next_frame() {
     let mut ed = editor_from("-[h]>ello\n");
     assert_eq!(
         ed.applied_mouse_mode,
         (true, false),
-        "default EditorSettings has mouse_enabled=true, mouse_select=false"
+        "default EditorSettings has mouse=true, mouse_select=false"
     );
 
     let fp = FocusedPane::current(&ed.state);
-    crate::editor::commands::typed_set(&mut ed, fp, Some("global mouse-enabled=false"), false)
-        .expect("set mouse-enabled");
+    crate::editor::commands::typed_set(&mut ed, fp, Some("global mouse=false"), false)
+        .expect("set mouse");
     assert_eq!(
         ed.applied_mouse_mode,
         (true, false),
@@ -611,14 +611,14 @@ fn get_buffer_option_closed_bid_errors() {
 /// A global-only key rejected by `write_buffer`'s global-only arm is
 /// reported as a hook error and leaves the global setting unchanged.
 ///
-/// Without the scope check in `write_buffer`, `scrolloff` would silently end
+/// Without the scope check in `write_buffer`, `scroll-margin` would silently end
 /// up in the buffer's override slot.
 #[test]
 fn set_buffer_option_global_only_key_errors_from_hook() {
     let mut ed = editor_from("-[a]>b\n");
     crate::editor::tests::language::attach_host(
         &mut ed,
-        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "scrolloff" 1)))"#,
+        r#"(register-hook! 'on-language-set (lambda (bid lang) (set-buffer-option! bid "scroll-margin" 1)))"#,
     );
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
@@ -626,8 +626,8 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
     ed.settle();
 
     assert_eq!(
-        ed.state.settings.scrolloff, 3,
-        "global scrolloff must be untouched"
+        ed.state.settings.scroll_margin, 3,
+        "global scroll-margin must be untouched"
     );
     assert!(
         ed.state

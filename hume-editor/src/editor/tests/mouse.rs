@@ -162,7 +162,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     let mut ed = editor_from(&lines);
 
     // Scroll the viewport down to line 10, then place the cursor 5 rows into
-    // it (line 15), in-band for the default scrolloff (margin 3, target
+    // it (line 15), in-band for the default scroll-margin (margin 3, target
     // 20), not pinned to the top itself: `carry`'s band clamp would
     // otherwise treat a cursor sitting exactly at `top` (row 0, below
     // margin) as needing correction, masking whether the cursor actually
@@ -219,7 +219,7 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
 /// carries the cursor, even when the viewport itself has nowhere to go
 /// because the whole document already fits on screen. The cursor stops
 /// exactly `mouse_scroll_lines` (1) below the top, on "b" (row 1), short of
-/// the default scrolloff margin (3), but `top` is already at the document's
+/// the default scroll-margin margin (3), but `top` is already at the document's
 /// own first line with no room to retreat any further to honor it, so
 /// `carry`'s band clamp leaves the landing alone rather than pushing it
 /// further down, the same edge tolerance `Viewport::reveal` already has.
@@ -409,7 +409,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
     ed.prepare_frame(&mut ctx);
 
     // Scroll pane A's viewport to line 10 and park its own cursor 5 rows
-    // into it (line 15, in-band for the default scrolloff; see
+    // into it (line 15, in-band for the default scroll-margin; see
     // `scroll_up_moves_viewport_and_cursor_together`'s doc for why not row 0):
     // the same setup that test uses, reproduced per-pane since both panes
     // view the same buffer but keep independent viewports/selections.

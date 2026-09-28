@@ -77,6 +77,8 @@ Sets the global default. The value is a string, boolean, or integer. Callable fr
 
 ## Global options
 
+Option names are lowercase words joined by `-` (`tab-width`, `scroll-margin`). Three names are single words because they name a piece of the interface: `statusline`, `tabline`, and `signcolumn`. A `bool` option is named for the feature it turns on (`mouse`, `auto-pairs`), with no `-enabled` suffix.
+
 Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All of these are global-only.
 
 For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `1`/`0`; from Scheme, pass `#t`/`#f`.
@@ -85,9 +87,9 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 |--------|------|---------|-------------|
 | `theme` | string | `""` (built-in `sand`) | Active color theme name |
 | `cursor-shape-insert` | `block`/`bar`/`underline` | `bar` | Cursor shape while in Insert mode, applied to every cursor when multiple are active |
-| `scrolloff` | integer | `3` | Minimum lines kept above/below cursor |
-| `object-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scrolloff` |
-| `mouse-enabled` | bool | `#t` | Enable mouse support |
+| `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor |
+| `object-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scroll-margin` |
+| `mouse` | bool | `#t` | Enable mouse support |
 | `mouse-scroll-lines` | integer | `3` | Lines per mouse scroll tick |
 | `mouse-select` | bool | `#f` | Mouse drag creates selections |
 | `jump-list-capacity` | integer ≥ 1 | `100` | Max jump list entries |
@@ -126,12 +128,12 @@ These options have a global default that every buffer without its own override r
 | `indent-guides` | bool | `#t` | Draw vertical guides at each indentation level |
 | `tab-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
 | `line-number-style` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
-| `auto-pairs-enabled` | bool | `#t` | Enable auto-pair insertion |
+| `auto-pairs` | bool | `#t` | Enable auto-pair insertion |
 | `select-inserted-text` | bool | `#t` | Leaving Insert mode keeps the text you typed selected, instead of leaving a plain cursor |
 | `word-selects-whitespace` | bool | `#t` | `w`/`W`/`b`/`B` and `mm`/`MM` cover the whitespace before the destination word (trailing instead, for the first word of a line); `#f` selects the bare word instead |
 | `word-chars` | string | `""` | Extra characters counted as part of a word by `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`, `Ctrl-w`, and `*`, e.g. `-` makes `foo-bar` one word instead of three. Also affects quote auto-pairing (`'`, `"`, `` ` ``, not bracket pairs), the identifier under the cursor used by plugin commands (e.g. rename), and where a completion without a server-supplied replace range starts. Does not affect `W`/`B`/`MM`, which already treat punctuation as part of a WORD. No global default ships; set it per language from an `on-language-set` hook (see below). Whitespace and newline characters are rejected |
 | `signcolumn` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` sizes the column to one column per registered sign source: a source claims its column the moment the plugin registers it, so the width doesn't change as individual signs come and go; `:N` pins it to exactly N columns (1–127) instead, hiding whichever lower-priority sources don't fit. `auto` additionally collapses to zero width when no signs are visible |
-| `autoread` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns; reload manually with `:e!` |
+| `auto-read` | bool | `#t` | Prompt to reload when the current buffer's file changes on disk. `#f` only warns; reload manually with `:e!` |
 | `whitespace-space` | `none` \| `all` \| `trailing` | `none` | When to render space indicators. Also reveals invisible Unicode spaces (non-breaking and ideographic) with a distinct `⍽` marker |
 | `whitespace-tab` | `none` \| `all` \| `trailing` | `none` | When to render tab indicators |
 | `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |

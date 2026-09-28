@@ -8,13 +8,13 @@
 //! through, so no verb recomputes `margin`/`target` or sees a zero height.
 //!
 //! `carry` walks the requested delta itself rather than following how far
-//! `scroll_by` moved. Near EOF `scroll_by`'s scrolloff bound is tighter than
+//! `scroll_by` moved. Near EOF `scroll_by`'s scroll-margin bound is tighter than
 //! the document bound, and following it would stall the cursor short of the
 //! last line once the viewport saturates. Farther from EOF the two agree.
 //!
 //! `carry` then clamps the landing into `[geo.margin, geo.target]` display
 //! lines below the viewport's new top, so the head always ends inside the
-//! scrolloff band and [`Viewport::reveal`] is idle after `scroll_view`. An
+//! scroll-margin band and [`Viewport::reveal`] is idle after `scroll_view`. An
 //! in-band landing is unchanged, keeping the cursor's screen row.
 
 use super::{DisplayLineMap, DisplayLinePos};
@@ -134,7 +134,7 @@ impl Viewport {
 
     /// Whether `cursor_pos` already sits where [`Self::reveal`] would leave
     /// it, without moving `top`: the single definition of a pane being
-    /// "parked" (its cursor outside the scrolloff band, left behind by a
+    /// "parked" (its cursor outside the scroll-margin band, left behind by a
     /// wheel/`Ctrl-d` scroll `carry` couldn't fully follow). `Some(row)`
     /// when `top` is already `reveal`'s fixed point for `cursor_pos`, giving
     /// the cursor's row for free; `None` otherwise.
@@ -151,7 +151,7 @@ impl Viewport {
 
     /// Scroll so `cursor_pos` lands `display_lines_below_top` display lines
     /// below `top`, clamped to `[geo.margin, geo.target]`: the same
-    /// scrolloff range [`Viewport::reveal`] settles a too-close cursor into.
+    /// scroll-margin range [`Viewport::reveal`] settles a too-close cursor into.
     /// Used by the `z z`/`z k`/`z j` view commands, which write no
     /// reveal-on-demand signal of their own, so the clamp is applied here
     /// rather than left to a follow-up `reveal` call.
@@ -172,7 +172,7 @@ impl Viewport {
 
     /// Adjust `horizontal_offset` so `cursor_display_col` stays visible.
     /// Wrapping modes have no horizontal scroll, so the offset is forced to
-    /// 0 there. The horizontal margin is fixed: scrolloff governs only the
+    /// 0 there. The horizontal margin is fixed: scroll-margin governs only the
     /// vertical axis, so this takes no `ViewGeometry`.
     pub fn reveal_horizontal(
         &mut self,
@@ -312,7 +312,7 @@ pub fn carry(
 /// motion jump the view backwards across the whole block to reach it, so
 /// this keeps walking past the block to the first content display line
 /// beyond it, but only while doing so could still land inside the
-/// scrolloff band (`geo.target` display lines past `top`); a block bigger
+/// scroll-margin band (`geo.target` display lines past `top`); a block bigger
 /// than that has no legal landing spot at all, so the walk gives up instead
 /// of continuing arbitrarily far through it. The document's own edge still
 /// breaks the walk before either bound is satisfied.
@@ -363,7 +363,7 @@ fn walk_by_delta(
 /// when `top` still has document above it to scroll into would `reveal`
 /// actually move it on the very next frame, which is what the clamp exists
 /// to preempt. Without this exception the clamp would permanently override
-/// `scrolloff` at the buffer's own start, since `top` can never retreat far
+/// `scroll-margin` at the buffer's own start, since `top` can never retreat far
 /// enough there to satisfy a bare `< geo.margin` check.
 fn place_in_band(
     dlm: &mut DisplayLineMap<'_>,

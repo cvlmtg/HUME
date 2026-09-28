@@ -148,12 +148,12 @@ fn object_jump_align_top_setting() {
 
     key_count(&mut ed, 15, '}');
 
-    // target_row = 0 clamps up to scrolloff's own margin inside
+    // target_row = 0 clamps up to scroll-margin's own margin inside
     // scroll_cursor_to_display_line, so top settles at cursor_line -
-    // scrolloff immediately, with no separate per-frame correction needed.
+    // scroll-margin immediately, with no separate per-frame correction needed.
     assert_eq!(
         ed.viewport().top().line,
-        hume_rope::line::ContentLine::new(30 - ed.state.settings.scrolloff)
+        hume_rope::line::ContentLine::new(30 - ed.state.settings.scroll_margin)
     );
     assert_eq!(ed.viewport().top().slot, 0);
 
@@ -161,7 +161,7 @@ fn object_jump_align_top_setting() {
     frame(&mut ed, 80, 24);
     assert_eq!(
         ed.viewport().top().line,
-        hume_rope::line::ContentLine::new(30 - ed.state.settings.scrolloff)
+        hume_rope::line::ContentLine::new(30 - ed.state.settings.scroll_margin)
     );
 }
 
@@ -180,13 +180,13 @@ fn object_jump_align_off_setting_restores_old_behavior() {
         hume_rope::line::ContentLine::new(0)
     );
 
-    // The per-frame `scrolloff` scroll still runs and parks the cursor at `height - scrolloff - 1` rows from the top.
+    // The per-frame `scroll-margin` scroll still runs and parks the cursor at `height - scroll-margin - 1` rows from the top.
     frame(&mut ed, 80, 24);
-    let scrolloff = ed.state.settings.scrolloff;
+    let scroll_margin = ed.state.settings.scroll_margin;
     let height = ed.viewport().height as usize;
     assert_eq!(
         ed.viewport().top().line,
-        hume_rope::line::ContentLine::new(30 - (height - scrolloff - 1))
+        hume_rope::line::ContentLine::new(30 - (height - scroll_margin - 1))
     );
 }
 

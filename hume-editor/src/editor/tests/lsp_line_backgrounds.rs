@@ -234,7 +234,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
 /// takes before scrolling (which the sign/inlay-hint/virtual-line/EOL-text
 /// bridges deliberately do read; see `decoration_providers.rs`'s
 /// `decorated_panes` doc). A ten-line buffer with the cursor on the last
-/// line, `scrolloff` 0, and a viewport four content rows tall forces a real
+/// line, `scroll-margin` 0, and a viewport four content rows tall forces a real
 /// scroll during this frame: cursor line 9 minus the scroll target's 3 rows
 /// of look-ahead (`Viewport::reveal`) lands `top().line` at 6.
 /// Line 8 sits inside that post-scroll viewport (lines 6..11) but well
@@ -244,7 +244,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
 fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.state.settings.scrolloff = 0; // isolate from margin-triggered auto-scroll
+    ed.state.settings.scroll_margin = 0; // isolate from margin-triggered auto-scroll
     type_text(
         &mut ed,
         "line0\nline1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9",

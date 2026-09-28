@@ -26,7 +26,7 @@ use crate::editor::error::CommandError;
 /// post-scroll `top` (walking its own bound independently of `scroll_by`'s;
 /// see `hume_engine::display_lines::scroll`'s module doc for why) is what
 /// keeps the cursor at the same relative position (or, failing that, lands
-/// it back inside the scrolloff band) instead of being snapped back next
+/// it back inside the scroll-margin band) instead of being snapped back next
 /// frame. See `carry`'s own doc for why a selection it can't place stays
 /// untouched rather than collapsing.
 pub(in crate::editor) fn scroll_view(
@@ -39,10 +39,10 @@ pub(in crate::editor) fn scroll_view(
 ) {
     let buf_id = view.panes[pid].buffer_id;
     let key = state.format_key(&view.panes[pid]);
-    let scrolloff = state.settings.scrolloff;
+    let scroll_margin = state.settings.scroll_margin;
     let (mut dlm, viewport) =
         pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key);
-    let Some(geo) = viewport.geometry(scrolloff) else {
+    let Some(geo) = viewport.geometry(scroll_margin) else {
         return; // a collapsed pane has nothing to scroll and nowhere to carry a cursor
     };
     let delta = if down {
@@ -171,11 +171,11 @@ fn cmd_view_scroll_to_display_line(
         .primary()
         .head();
     let key = state.format_key(&view.panes[pid]);
-    let scrolloff = state.settings.scrolloff;
+    let scroll_margin = state.settings.scroll_margin;
     let (mut dlm, viewport) =
         pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key);
     // A collapsed pane has no geometry, and nowhere to align a cursor to.
-    let Some(geo) = viewport.geometry(scrolloff) else {
+    let Some(geo) = viewport.geometry(scroll_margin) else {
         return;
     };
     let cursor_pos = dlm.locate_display_line(cursor_char);

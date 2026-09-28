@@ -170,7 +170,7 @@ fn close_paren_closes_the_popup_without_a_request() {
     // insert.rs). Disable it so this test's own ")" keystroke is a real
     // insertion, exercising the same code path a non-auto-paired ")"
     // (or a language without auto-pairs configured) would take.
-    ed.state.settings.auto_pairs_enabled = false;
+    ed.state.settings.auto_pairs = false;
     position_after_foo(&mut ed);
     ed.feed_key(key('i'));
     ed.settle();

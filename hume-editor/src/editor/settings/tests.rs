@@ -5,9 +5,9 @@ use super::*;
 #[test]
 fn editor_settings_default_matches_old_constants() {
     let s = EditorSettings::default();
-    assert_eq!(s.scrolloff, 3);
+    assert_eq!(s.scroll_margin, 3);
     assert_eq!(s.mouse_scroll_lines, 3);
-    assert!(s.mouse_enabled);
+    assert!(s.mouse);
     assert!(!s.mouse_select);
     assert_eq!(s.jump_list_capacity, 100);
     assert_eq!(s.jump_line_threshold, 5);
@@ -18,7 +18,7 @@ fn editor_settings_default_matches_old_constants() {
     assert_eq!(s.tab_style, TabStyle::Hard);
     assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
     assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
-    assert!(s.auto_pairs_enabled);
+    assert!(s.auto_pairs);
     assert!(s.select_inserted_text);
     assert!(s.word_selects_whitespace);
     assert_eq!(s.word_chars, "");
@@ -35,7 +35,7 @@ fn buffer_overrides_default_is_all_none() {
     assert!(ov.show_indent_guides.is_none());
     assert!(ov.tab_style.is_none());
     assert!(ov.line_number_style.is_none());
-    assert!(ov.auto_pairs_enabled.is_none());
+    assert!(ov.auto_pairs.is_none());
     assert!(ov.select_inserted_text.is_none());
     assert!(ov.word_selects_whitespace.is_none());
     assert!(ov.word_chars.is_none());
@@ -101,7 +101,7 @@ use hume_scripting::host::OptionValue;
 fn setting_value_bool_key_returns_bool() {
     let global = EditorSettings::default();
     assert_eq!(
-        setting_value("mouse-enabled", &global, None),
+        setting_value("mouse", &global, None),
         Some(OptionValue::Bool(true))
     );
 }
@@ -155,12 +155,12 @@ fn setting_value_falls_back_to_global_when_no_override() {
 
 #[test]
 fn setting_value_global_only_key_ignores_overrides_arg() {
-    // "mouse-enabled" is global-only: passing `Some(&ov)` must not
+    // "mouse" is global-only: passing `Some(&ov)` must not
     // change the outcome (there is no per-buffer storage for it).
     let global = EditorSettings::default();
     let ov = BufferOverrides::default();
     assert_eq!(
-        setting_value("mouse-enabled", &global, Some(&ov)),
+        setting_value("mouse", &global, Some(&ov)),
         Some(OptionValue::Bool(true))
     );
 }
@@ -287,7 +287,7 @@ fn cursor_shape_values_round_trip_through_from_str() {
 fn auto_pairs_ref_enabled_resolves_override_over_global() {
     let global = EditorSettings::default();
     let ov = BufferOverrides {
-        auto_pairs_enabled: Some(false),
+        auto_pairs: Some(false),
         ..Default::default()
     };
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
@@ -300,7 +300,7 @@ fn auto_pairs_ref_enabled_falls_back_to_global_when_no_override() {
     let global = EditorSettings::default();
     let ov = BufferOverrides::default();
     let (enabled, pairs) = ov.auto_pairs_ref(&global);
-    assert_eq!(enabled, global.auto_pairs_enabled);
+    assert_eq!(enabled, global.auto_pairs);
     assert_eq!(pairs, hume_ops::auto_pairs::DEFAULT_PAIRS);
 }
 
@@ -319,8 +319,8 @@ fn buffer(key: &str, value: &str) -> Result<BufferOverrides, String> {
 }
 
 #[test]
-fn set_global_scrolloff() {
-    assert_eq!(global("scrolloff", "1").unwrap().scrolloff, 1);
+fn set_global_scroll_margin() {
+    assert_eq!(global("scroll-margin", "1").unwrap().scroll_margin, 1);
 }
 
 #[test]
@@ -369,8 +369,8 @@ fn set_global_mouse_scroll_lines() {
 }
 
 #[test]
-fn set_global_mouse_enabled() {
-    assert!(!global("mouse-enabled", "false").unwrap().mouse_enabled);
+fn set_global_mouse() {
+    assert!(!global("mouse", "false").unwrap().mouse);
 }
 
 #[test]
@@ -543,12 +543,8 @@ fn set_global_wrap_mode_soft_no_colon() {
 }
 
 #[test]
-fn set_global_auto_pairs_enabled() {
-    assert!(
-        !global("auto-pairs-enabled", "false")
-            .unwrap()
-            .auto_pairs_enabled
-    );
+fn set_global_auto_pairs() {
+    assert!(!global("auto-pairs", "false").unwrap().auto_pairs);
 }
 
 #[test]
@@ -654,14 +650,14 @@ fn set_global_unknown_key_errors() {
 
 #[test]
 fn set_global_invalid_value_errors() {
-    assert!(global("scrolloff", "abc").is_err());
+    assert!(global("scroll-margin", "abc").is_err());
 }
 
 #[test]
 fn set_global_empty_value_errors() {
-    assert!(global("scrolloff", "").is_err());
+    assert!(global("scroll-margin", "").is_err());
     assert!(global("tab-width", "").is_err());
-    assert!(global("mouse-enabled", "").is_err());
+    assert!(global("mouse", "").is_err());
 }
 
 // ── write_buffer ───────────────────────────────────────────────────────────
@@ -698,9 +694,9 @@ fn set_buffer_line_number_style() {
 }
 
 #[test]
-fn set_buffer_auto_pairs_enabled() {
+fn set_buffer_auto_pairs() {
     let global = EditorSettings::default();
-    let ov = buffer("auto-pairs-enabled", "false").unwrap();
+    let ov = buffer("auto-pairs", "false").unwrap();
     let (enabled, _) = ov.auto_pairs_ref(&global);
     assert!(!enabled);
 }
@@ -770,7 +766,7 @@ fn set_buffer_whitespace_fields_are_independent() {
 #[test]
 fn set_buffer_global_only_setting_errors() {
     let mut ov = BufferOverrides::default();
-    let err = write_buffer("scrolloff", "3", &mut ov).unwrap_err();
+    let err = write_buffer("scroll-margin", "3", &mut ov).unwrap_err();
     assert!(
         err.contains("global-only"),
         "expected 'global-only' in error: {err}"
@@ -855,11 +851,11 @@ fn apply_statusline_text_scope_rejected() {
 #[test]
 fn is_bool_setting_matches_every_bool_field() {
     for key in [
-        "mouse-enabled",
+        "mouse",
         "mouse-select",
         "popup-border",
         "pane-dividers",
-        "auto-pairs-enabled",
+        "auto-pairs",
         "select-inserted-text",
         "indent-guides",
     ] {
@@ -868,7 +864,7 @@ fn is_bool_setting_matches_every_bool_field() {
     for key in [
         "tab-style",
         "wrap-mode",
-        "scrolloff",
+        "scroll-margin",
         "whitespace-newline",
         "unknown-key",
     ] {

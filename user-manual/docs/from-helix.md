@@ -46,12 +46,12 @@ HUME has no TOML config file. Every setting and keybinding is a call to a Scheme
 |---|---|---|
 | Theme | `theme = "onedark"` | `(set-option! "theme" "onedark")` |
 | Line numbers | `[editor]`<br>`line-number = "relative"` | `(set-option! "line-number-style" "relative")` |
-| Scroll padding | `scrolloff = 5` | `(set-option! "scrolloff" 5)` |
-| Mouse | `mouse = false` | `(set-option! "mouse-enabled" #f)` |
+| Scroll padding | `scrolloff = 5` | `(set-option! "scroll-margin" 5)` |
+| Mouse | `mouse = false` | `(set-option! "mouse" #f)` |
 | Soft wrap | `[editor.soft-wrap]`<br>`enable = true` | `(set-option! "wrap-mode" "soft")` |
 | Whitespace indicators | `[editor.whitespace]`<br>`render = "all"` | `(set-option! "whitespace-space" "all")`<br>`(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-newline" "all")` |
 | Insert-mode cursor | `[editor.cursor-shape]`<br>`insert = "bar"` | `(set-option! "cursor-shape-insert" "bar")` |
-| Auto-pairs | `auto-pairs = false` | `(set-option! "auto-pairs-enabled" #f)` |
+| Auto-pairs | `auto-pairs = false` | `(set-option! "auto-pairs" #f)` |
 | Inlay hints | `[editor.lsp]`<br>`display-inlay-hints = true` | `(set-option! "lsp.inlay-hints" #t)` |
 | Statusline | `[editor.statusline]`<br>`left = [...]` | `(configure-statusline! '(...) '(...) '(...))`, see [Statusline](#statusline) |
 | Keybinding | `[keys.normal]`<br>`"C-j" = "move_line_down"` | `(bind-key! 'normal "ctrl-j" "move-down")` |

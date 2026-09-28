@@ -120,9 +120,9 @@ fn mw_esc_cancels() {
 #[test]
 fn mw_wraps_when_auto_pairs_disabled() {
     // surround-add uses the pairs table only as a lookup; it ignores the
-    // auto-pairs-enabled flag. `mw[` must still wrap even when auto-pairs are off.
+    // auto-pairs flag. `mw[` must still wrap even when auto-pairs are off.
     let mut ed = editor_from("-[bar]>\n");
-    ed.state.settings.auto_pairs_enabled = false;
+    ed.state.settings.auto_pairs = false;
     ed.handle_key(key('m'));
     ed.handle_key(key('w'));
     ed.handle_key(key('['));

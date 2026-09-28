@@ -75,13 +75,13 @@ fn before_hint_renders_immediately_before_its_char() {
 /// participates in wrapping. With the hint, line 0 wraps to 2 rows (`HHH` /
 /// `x`), pushing line 2 ("b", the cursor) to absolute row 3. Viewport height
 /// 3 content rows (rect height 4, one row reserved for the statusline),
-/// scrolloff 0: without the hint, the cursor's row (2) is already the last
+/// scroll-margin 0: without the hint, the cursor's row (2) is already the last
 /// visible row, so a scroll step that doesn't see the hint decides nothing
 /// needs to move.
 #[test]
 fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.state.settings.scrolloff = 0;
+    ed.state.settings.scroll_margin = 0;
     type_text(&mut ed, "x\na\nb");
     let bid = ed.focused_buffer_id();
     ed.set_current_selections(hume_editing::selection::SelectionSet::single(

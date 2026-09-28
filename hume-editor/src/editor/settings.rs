@@ -226,21 +226,21 @@ impl FromStr for SignColumnConfig {
 /// `Selection::new(end, start)`, deliberately, so a following `w` walks into
 /// the object's body), and the body then extends *below* that head. A
 /// forward jump scrolls downward, so the default per-frame scroll parks the
-/// head at `scrolloff` rows from the *bottom*, hiding the very body the
+/// head at `scroll-margin` rows from the *bottom*, hiding the very body the
 /// head-first convention was chosen to show. The backward motions (`{`)
 /// don't have this problem: their head lands at the object's start too, but
-/// an upward scroll parks it at `scrolloff` rows from the *top*, so the body
+/// an upward scroll parks it at `scroll-margin` rows from the *top*, so the body
 /// below it is already on screen. Hence only the forward motions read this
 /// setting; see `CmdMeta::aligns_view` in `editor::registry::command`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ObjectJumpAlign {
-    /// Pin the head at the viewport's top row, subject to `scrolloff` on
+    /// Pin the head at the viewport's top row, subject to `scroll-margin` on
     /// the next frame, exactly like `z k`.
     Top,
     /// Center the head in the viewport, like `z z`.
     #[default]
     Center,
-    /// No extra alignment: the pre-existing per-frame `scrolloff` scroll is
+    /// No extra alignment: the pre-existing per-frame `scroll-margin` scroll is
     /// all that runs.
     Off,
 }
@@ -757,7 +757,7 @@ macro_rules! define_settings {
 
 define_settings! {
     global {
-        "scrolloff" => scrolloff: usize = 3,
+        "scroll-margin" => scroll_margin: usize = 3,
             scope: [Scope::Global],
             parser: usize;
         "object-jump-align" => object_jump_align: ObjectJumpAlign = ObjectJumpAlign::Center,
@@ -769,7 +769,7 @@ define_settings! {
         "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,
             scope: [Scope::Global],
             parser: usize;
-        "mouse-enabled" => mouse_enabled: bool = true,
+        "mouse" => mouse: bool = true,
             scope: [Scope::Global],
             parser: bool;
         "mouse-select" => mouse_select: bool = false,
@@ -890,7 +890,7 @@ define_settings! {
         "line-number-style" => line_number_style: LineNumberStyle = LineNumberStyle::Hybrid,
             scope: [Scope::Global, Scope::Buffer],
             parser: from_str;
-        "auto-pairs-enabled" => auto_pairs_enabled: bool = true,
+        "auto-pairs" => auto_pairs: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         // Leaving Insert mode selects whatever text the session just typed
@@ -935,7 +935,7 @@ define_settings! {
         // but reload stays manual via `:e!`/`:checktime`. Independent of
         // `:w`'s write guard, which stats the file itself at write time
         // regardless of this setting. See `stale_write_block`.
-        "autoread" => autoread: bool = true,
+        "auto-read" => auto_read: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
     }
@@ -1061,15 +1061,12 @@ impl BufferOverrides {
     /// Effective auto-pairs config for this buffer: `(enabled, &pairs)`.
     ///
     /// The pair list itself is a fixed constant (`hume_ops::auto_pairs::DEFAULT_PAIRS`)
-    /// and only `auto-pairs-enabled` is an actual per-buffer setting.
+    /// and only `auto-pairs` is an actual per-buffer setting.
     pub(in crate::editor) fn auto_pairs_ref(
         &self,
         global: &EditorSettings,
     ) -> (bool, &'static [Pair]) {
-        (
-            self.auto_pairs_enabled(global),
-            hume_ops::auto_pairs::DEFAULT_PAIRS,
-        )
+        (self.auto_pairs(global), hume_ops::auto_pairs::DEFAULT_PAIRS)
     }
 }
 

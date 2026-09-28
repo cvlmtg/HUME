@@ -202,21 +202,21 @@ fn reset_reverts_set_option_to_compiled_in_default() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(set-option! "scrolloff" 42)"#,
+        r#"(set-option! "scroll-margin" 42)"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
 
     assert_eq!(
-        ed.state.settings.scrolloff, 42,
+        ed.state.settings.scroll_margin, 42,
         "sanity: the write must land"
     );
 
     ed.reset_config_state();
 
     assert_eq!(
-        ed.state.settings.scrolloff,
-        EditorSettings::default().scrolloff,
+        ed.state.settings.scroll_margin,
+        EditorSettings::default().scroll_margin,
         "runtime overrides must not survive a reset any more than init.scm ones do"
     );
 }
@@ -227,23 +227,23 @@ fn reset_reverts_set_option_to_compiled_in_default() {
 #[test]
 fn reset_reverts_runtime_set_command_too() {
     let mut ed = editor_from("-[a]>b\n");
-    type_cmd(&mut ed, ":set global scrolloff=7");
+    type_cmd(&mut ed, ":set global scroll-margin=7");
 
     assert_eq!(
-        ed.state.settings.scrolloff, 7,
+        ed.state.settings.scroll_margin, 7,
         "sanity: the write must land"
     );
 
     ed.reset_config_state();
 
     assert_eq!(
-        ed.state.settings.scrolloff,
-        EditorSettings::default().scrolloff
+        ed.state.settings.scroll_margin,
+        EditorSettings::default().scroll_margin
     );
 }
 
 /// `configure-statusline!` reverts to `StatusLineConfig::default()`: same
-/// global-setting reset path as `scrolloff`, just a richer value.
+/// global-setting reset path as `scroll-margin`, just a richer value.
 #[test]
 fn reset_reverts_statusline_config_to_default() {
     let tmp = safe_tempdir();

@@ -11,12 +11,12 @@ use pretty_assertions::assert_eq;
 // wheel uses (`mouse.rs`), differing only in `count`. These tests verify both
 // halves: the cursor moves by the right distance, and (new since the wheel
 // and the page keys were unified) the viewport moves with it instead of only
-// following once the cursor reaches the `scrolloff` margin.
+// following once the cursor reaches the `scroll-margin` margin.
 //
 // Viewport height in for_testing = 24 → page = 24, half = 12.
 // Text: 30 single-char lines "a\n" (60 chars total). No wrap needed.
 // Line N starts at char 2*N. 30 lines is close enough to the 24-row viewport
-// that `max_scroll_top` caps a full page at line 9 (default scrolloff 3).
+// that `max_scroll_top` caps a full page at line 9 (default scroll-margin 3).
 // See `page_scroll_stops_at_max_scroll_top` below, which exercises that cap
 // deliberately; the other tests here stay under it.
 
@@ -66,7 +66,7 @@ fn half_page_down_moves_half_viewport() {
 /// document's own start saturates both the view and a plain 12-line-up walk
 /// at line 0, and landing exactly at the new top (row 0) is in-band there:
 /// `top` has no room left to scroll back further, so `carry`'s band clamp
-/// leaves the landing alone rather than forcing it down to `scrolloff`.
+/// leaves the landing alone rather than forcing it down to `scroll-margin`.
 #[test]
 fn half_page_up_moves_half_viewport() {
     let mut ed = page_test_editor();
@@ -116,7 +116,7 @@ fn page_up_moves_full_viewport() {
 //
 // `scroll_view` writes the viewport directly, matching vim/Helix. Moving
 // only the cursor would leave the viewport in place until the cursor reached
-// `scrolloff`, which from the top of a file never happens for a single page.
+// `scroll-margin`, which from the top of a file never happens for a single page.
 
 /// Half-page-down from the top of a file moves the *view* by `height / 2`
 /// display lines, not just the cursor.
@@ -124,7 +124,7 @@ fn page_up_moves_full_viewport() {
 /// The cursor itself lands at line 15, not 12: landing exactly at the new
 /// top (row 0) is `carry`'s band clamp's job to catch, not something a fresh
 /// file's degenerate "cursor already at row 0" starting state should be
-/// allowed to skip (see `carry`'s own doc). `scrolloff` defaults to 3, so
+/// allowed to skip (see `carry`'s own doc). `scroll-margin` defaults to 3, so
 /// the clamp pushes the landing down to row `margin` (3) below the new top
 /// (12), landing on line 15.
 #[test]
@@ -141,7 +141,7 @@ fn half_page_down_moves_the_view() {
             .text()
             .char_to_line(ed.current_selections().primary().head()),
         hume_rope::line::ContentLine::new(15),
-        "cursor lands scrolloff (3) rows below the new top, not pinned to row 0"
+        "cursor lands scroll-margin (3) rows below the new top, not pinned to row 0"
     );
 }
 
@@ -164,7 +164,7 @@ fn scroll_view_leaves_nothing_for_reveal_to_correct() {
         ed.viewport().top(),
         top_after_scroll,
         "reveal must find nothing to correct: carry already left the \
-         cursor inside the scrolloff band"
+         cursor inside the scroll-margin band"
     );
 }
 
@@ -198,7 +198,7 @@ fn wheel_and_half_page_down_agree() {
 // ── Bottom bound ─────────────────────────────────────────────────────────────
 
 /// A page_test_editor's 30 lines nearly fill the 24-row viewport. Line 29
-/// (the last) settles `scrolloff` (default 3) rows above the bottom row
+/// (the last) settles `scroll-margin` (default 3) rows above the bottom row
 /// (row 20 of 0..23), not pinned to the bottom itself, so top stops at line 9
 /// (29 - 20), matching where `Ctrl-d`/an ordinary cursor motion would
 /// independently settle once the cursor reaches line 29.
@@ -211,7 +211,7 @@ fn page_scroll_stops_at_max_scroll_top() {
     assert_eq!(
         ed.viewport().top().line,
         hume_rope::line::ContentLine::new(9),
-        "the view must stop scrolloff rows short of the last line reaching the bottom row"
+        "the view must stop scroll-margin rows short of the last line reaching the bottom row"
     );
     assert_eq!(ed.viewport().top().slot, 0);
 }
@@ -265,7 +265,7 @@ fn ctrl_d_to_eof_then_an_ordinary_motion_does_not_jump_the_view() {
     assert_eq!(
         before.0,
         hume_rope::line::ContentLine::new(9),
-        "sanity: settled at the same scrolloff-aware bound as page_scroll_stops_at_max_scroll_top"
+        "sanity: settled at the same scroll-margin-aware bound as page_scroll_stops_at_max_scroll_top"
     );
 
     ed.handle_key(key('k'));
@@ -305,9 +305,9 @@ fn a_stalled_scroll_survives_repeated_idle_frames() {
 /// `z k` (`top-view-on-cursor`) only writes the viewport: the cursor is
 /// unmoved by construction, and writes no selection, so it raises no
 /// `reveal_pending` of its own; `scroll_cursor_to_display_line` must apply
-/// the scrolloff clamp itself, since no follow-up `Viewport::reveal` will.
+/// the scroll-margin clamp itself, since no follow-up `Viewport::reveal` will.
 #[test]
-fn view_top_lands_the_cursor_at_scrolloff_through_the_real_frame() {
+fn view_top_lands_the_cursor_at_scroll_margin_through_the_real_frame() {
     let content: String = numbered_lines(50);
     let mut ed = unwrapped_editor(&content, 0);
     seek_to_line(&mut ed, 25);
@@ -321,7 +321,7 @@ fn view_top_lands_the_cursor_at_scrolloff_through_the_real_frame() {
     assert_eq!(
         ed.viewport().top().line,
         hume_rope::line::ContentLine::new(22),
-        "top-view-on-cursor must settle scrolloff (3) rows above the cursor, \
+        "top-view-on-cursor must settle scroll-margin (3) rows above the cursor, \
          not pin it to screen row 0"
     );
 }

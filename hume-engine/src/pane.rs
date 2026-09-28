@@ -80,13 +80,13 @@ impl Viewport {
         self.horizontal_offset = DisplayLineCol::new(0);
     }
 
-    /// This viewport's scrolloff geometry, or `None` at zero height. Every
+    /// This viewport's scroll-margin geometry, or `None` at zero height. Every
     /// scroll verb takes a [`ViewGeometry`] rather than a raw height, so a
     /// collapsed pane is one early return here instead of a `height == 0`
     /// check repeated inside each verb. The sole constructor, so
     /// `margin`/`target` can never disagree between callers the way two
     /// independent computations of them could.
-    pub fn geometry(&self, scrolloff: usize) -> Option<ViewGeometry> {
+    pub fn geometry(&self, scroll_margin: usize) -> Option<ViewGeometry> {
         if self.height == 0 {
             return None;
         }
@@ -96,7 +96,7 @@ impl Viewport {
         // bounds `margin..height-margin` collapse to a single point), so the
         // two correction arms that use this margin would fight over that one
         // display line and rescroll every frame.
-        let margin = scrolloff.min(height.saturating_sub(1) / 2);
+        let margin = scroll_margin.min(height.saturating_sub(1) / 2);
         let target = height.saturating_sub(margin).saturating_sub(1);
         Some(ViewGeometry {
             height,
@@ -128,7 +128,7 @@ impl Viewport {
     }
 }
 
-/// A nonzero-height viewport's scrolloff geometry, resolved once per scroll
+/// A nonzero-height viewport's scroll-margin geometry, resolved once per scroll
 /// operation and threaded through every verb in
 /// [`crate::display_lines::scroll`]. [`Viewport::geometry`] is the sole
 /// constructor, so a verb can never observe `height == 0` or a `target` with

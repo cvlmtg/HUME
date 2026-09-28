@@ -93,7 +93,7 @@ impl Drop for ReloadFixture {
 fn reload_config_command_resets_state_from_a_real_init_scm() {
     let fixture = ReloadFixture::new(
         r#"(bind-key! 'normal "Q" "move-down")
-           (set-option! "scrolloff" 9)
+           (set-option! "scroll-margin" 9)
            (define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut ed = editor_from("-[a]>b\n");
@@ -108,7 +108,7 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
         "sanity: the initial init.scm must have applied"
     );
     assert_eq!(
-        ed.state.settings.scrolloff, 9,
+        ed.state.settings.scroll_margin, 9,
         "sanity: the initial init.scm must have applied"
     );
     assert!(
@@ -128,8 +128,8 @@ fn reload_config_command_resets_state_from_a_real_init_scm() {
         "bind-key! from the old init.scm must not survive the reload"
     );
     assert_eq!(
-        ed.state.settings.scrolloff,
-        EditorSettings::default().scrolloff,
+        ed.state.settings.scroll_margin,
+        EditorSettings::default().scroll_margin,
         "set-option! from the old init.scm must not survive the reload"
     );
     assert!(
@@ -233,17 +233,18 @@ fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
 /// on disk right where `config_dir()` would otherwise find it.
 #[test]
 fn config_override_is_evaluated_instead_of_default_init_scm() {
-    let fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
-    let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
+    let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
+    let override_path =
+        fixture.write_override("override.scm", r#"(set-option! "scroll-margin" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
     ed.set_config_source(ConfigSource::File(override_path));
     ed.init_scripting(&mut Default::default());
 
     assert_eq!(
-        ed.state.settings.scrolloff, 42,
+        ed.state.settings.scroll_margin, 42,
         "the --config override must be evaluated, not the default init.scm \
-         (which would have set scrolloff to 9)"
+         (which would have set scroll-margin to 9)"
     );
 }
 
@@ -252,22 +253,23 @@ fn config_override_is_evaluated_instead_of_default_init_scm() {
 /// as session state across the reload, not just the initial `init_scripting`.
 #[test]
 fn config_override_survives_reload_config() {
-    let fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
-    let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
+    let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
+    let override_path =
+        fixture.write_override("override.scm", r#"(set-option! "scroll-margin" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
     ed.set_config_source(ConfigSource::File(override_path.clone()));
     ed.init_scripting(&mut Default::default());
     assert_eq!(
-        ed.state.settings.scrolloff, 42,
+        ed.state.settings.scroll_margin, 42,
         "sanity: the override must have applied at startup"
     );
 
-    std::fs::write(&override_path, r#"(set-option! "scrolloff" 7)"#).unwrap();
+    std::fs::write(&override_path, r#"(set-option! "scroll-margin" 7)"#).unwrap();
     type_cmd(&mut ed, ":reload-config");
 
     assert_eq!(
-        ed.state.settings.scrolloff, 7,
+        ed.state.settings.scroll_margin, 7,
         "reload must re-evaluate the override file's new contents"
     );
     assert!(
@@ -293,14 +295,15 @@ fn config_override_survives_reload_config() {
 /// re-checked on every reload, not just once at process start.
 #[test]
 fn config_override_missing_at_reload_reports_error_and_does_not_report_success() {
-    let fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
-    let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
+    let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
+    let override_path =
+        fixture.write_override("override.scm", r#"(set-option! "scroll-margin" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
     ed.set_config_source(ConfigSource::File(override_path.clone()));
     ed.init_scripting(&mut Default::default());
     assert_eq!(
-        ed.state.settings.scrolloff, 42,
+        ed.state.settings.scroll_margin, 42,
         "sanity: the override must have applied at startup"
     );
 
@@ -308,8 +311,8 @@ fn config_override_missing_at_reload_reports_error_and_does_not_report_success()
     type_cmd(&mut ed, ":reload-config");
 
     assert_eq!(
-        ed.state.settings.scrolloff,
-        EditorSettings::default().scrolloff,
+        ed.state.settings.scroll_margin,
+        EditorSettings::default().scroll_margin,
         "reset_config_state must still have reverted settings to defaults; \
          the missing override must not leave the pre-reload value in place \
          either"
@@ -345,7 +348,7 @@ fn config_override_works_with_no_config_dir() {
     let _guard = NoConfigDirGuard::new();
     let scm_tmp = safe_tempdir();
     let override_path = scm_tmp.path().join("override.scm");
-    std::fs::write(&override_path, r#"(set-option! "scrolloff" 42)"#).unwrap();
+    std::fs::write(&override_path, r#"(set-option! "scroll-margin" 42)"#).unwrap();
     // Isolate the scenario under test (no *config* dir) from data-dir and
     // runtime-dir resolution: `NoConfigDirGuard` unsets `HOME` too, which
     // `data_dir()` also falls back to, and the resulting warnings would
@@ -364,12 +367,12 @@ fn config_override_works_with_no_config_dir() {
         "a --config override must initialize scripting even with no \
          resolvable config directory"
     );
-    assert_eq!(ed.state.settings.scrolloff, 42);
+    assert_eq!(ed.state.settings.scroll_margin, 42);
 
     type_cmd(&mut ed, ":reload-config");
 
     assert_eq!(
-        ed.state.settings.scrolloff, 42,
+        ed.state.settings.scroll_margin, 42,
         "reload must succeed (not fail-fast) when a --config override is set, \
          even with no config directory"
     );
@@ -385,21 +388,21 @@ fn config_override_works_with_no_config_dir() {
 // ---------------------------------------------------------------------------
 
 /// `ConfigSource::Skip` (`--no-config`) must skip the user's `init.scm`:
-/// `scrolloff` stays at its compiled-in default despite the fixture's
+/// `scroll-margin` stays at its compiled-in default despite the fixture's
 /// `init.scm` setting it to 9, while still initialising the scripting host
 /// itself (the bundled runtime Scheme load is a silent no-op here since
 /// `HUME_RUNTIME` points at an empty tempdir, not exercised by this test).
 #[test]
 fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
-    let _fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
+    let _fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
 
     let mut ed = editor_from("-[a]>b\n");
     ed.set_config_source(ConfigSource::Skip);
     ed.init_scripting(&mut Default::default());
 
     assert_eq!(
-        ed.state.settings.scrolloff,
-        EditorSettings::default().scrolloff,
+        ed.state.settings.scroll_margin,
+        EditorSettings::default().scroll_margin,
         "--no-config must skip the fixture's init.scm entirely"
     );
     assert!(
@@ -412,7 +415,7 @@ fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
 /// `typed_reload_config`'s doc for why.
 #[test]
 fn reload_config_under_no_config_errors() {
-    let _fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
+    let _fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
 
     let mut ed = editor_from("-[a]>b\n");
     ed.set_config_source(ConfigSource::Skip);
@@ -586,11 +589,11 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
 /// `Severity::Error` report had just set.
 #[test]
 fn reload_config_does_not_report_success_when_init_scm_errors() {
-    let fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
+    let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 9)"#);
     let mut ed = editor_from("-[a]>b\n");
     ed.init_scripting(&mut Default::default());
     assert_eq!(
-        ed.state.settings.scrolloff, 9,
+        ed.state.settings.scroll_margin, 9,
         "sanity: the initial init.scm must have applied"
     );
 
@@ -855,25 +858,25 @@ fn reload_config_with_no_config_dir_fails_fast_and_resets_nothing() {
 /// pass, would surface here.
 #[test]
 fn reload_config_twice_in_a_row_both_apply_cleanly() {
-    let fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 3)"#);
+    let fixture = ReloadFixture::new(r#"(set-option! "scroll-margin" 3)"#);
     let mut ed = editor_from("-[a]>b\n");
     ed.init_scripting(&mut Default::default());
     assert_eq!(
-        ed.state.settings.scrolloff, 3,
+        ed.state.settings.scroll_margin, 3,
         "sanity: first init must apply"
     );
 
-    fixture.write_init(r#"(set-option! "scrolloff" 5)"#);
+    fixture.write_init(r#"(set-option! "scroll-margin" 5)"#);
     type_cmd(&mut ed, ":reload-config");
     assert_eq!(
-        ed.state.settings.scrolloff, 5,
+        ed.state.settings.scroll_margin, 5,
         "first reload must apply the updated value"
     );
 
-    fixture.write_init(r#"(set-option! "scrolloff" 9)"#);
+    fixture.write_init(r#"(set-option! "scroll-margin" 9)"#);
     type_cmd(&mut ed, ":reload-config");
     assert_eq!(
-        ed.state.settings.scrolloff, 9,
+        ed.state.settings.scroll_margin, 9,
         "second reload must apply the value again, not reuse stale state \
          from the first reload"
     );
@@ -1007,7 +1010,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
     // Minibuf command history: a real command dispatch, not a buffer- or
     // focus-changing one (`:messages`/`:ls` would open a new view and
     // confuse the focused-buffer assertion below).
-    type_cmd(&mut ed, ":set global scrolloff=5");
+    type_cmd(&mut ed, ":set global scroll-margin=5");
 
     let mode_before = ed.state.mode();
     let selections_before = ed.current_selections().clone();
@@ -1070,7 +1073,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
             .cloned()
             .collect::<Vec<_>>(),
         vec![
-            "set global scrolloff=5".to_string(),
+            "set global scroll-margin=5".to_string(),
             "reload-config".to_string(),
         ],
         "command history must survive the reload"

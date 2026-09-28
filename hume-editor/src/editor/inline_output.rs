@@ -41,7 +41,7 @@ struct Frame {
 /// Terminal state captured when the alt-screen was actually left, so
 /// `Editor::close_inline_output_bracket` restores exactly what it saw rather
 /// than re-reading `Editor`/`EditorSettings` fields that may have changed
-/// mid-command (`:set global mouse-enabled=…` inside the very body that's
+/// mid-command (`:set global mouse=…` inside the very body that's
 /// running, say).
 pub(in crate::editor) struct Entered {
     pub(in crate::editor) kitty: bool,

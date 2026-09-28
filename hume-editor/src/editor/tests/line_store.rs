@@ -229,7 +229,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     let text = BufferText::from("abcdef\ny\n");
     let sels = SelectionSet::single(Selection::collapsed(co(7)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.state.settings.scrolloff = 0;
+    ed.state.settings.scroll_margin = 0;
     let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),

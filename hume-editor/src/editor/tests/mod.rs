@@ -704,7 +704,7 @@ impl Editor {
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
-        let initial_mouse_mode = (settings.mouse_enabled, settings.mouse_select);
+        let initial_mouse_mode = (settings.mouse, settings.mouse_select);
         let pane = Pane::new(buffer_id);
         let unattached = engine_view.insert_pane(pane);
         let pane_id = unattached.pane_id();

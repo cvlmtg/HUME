@@ -27,7 +27,7 @@ If something else changes a file you have open (another program, a formatter, `g
 
 The prompt only appears when it can't interrupt something else you're doing. While you're typing a command or search, or in Insert mode, HUME warns instead and asks the next time you land on the buffer.
 
-Turn the prompt off with `:set global autoread=false` (or `:set buffer autoread=false` for just the current buffer). HUME still warns you, it just won't ask. Either way, `:w` refuses to overwrite a file that's changed since you last read or saved it; add `!` (`:w!`) to save anyway.
+Turn the prompt off with `:set global auto-read=false` (or `:set buffer auto-read=false` for just the current buffer). HUME still warns you, it just won't ask. Either way, `:w` refuses to overwrite a file that's changed since you last read or saved it; add `!` (`:w!`) to save anyway.
 
 ## The buffer list
 

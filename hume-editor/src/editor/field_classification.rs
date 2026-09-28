@@ -158,7 +158,7 @@ fn editor_fields_are_classified() {
             tui: _,
             // preserved: prepare_frame reconciles it lazily against
             // state.settings after a reload, same as any runtime
-            // :set mouse-enabled/mouse-select change
+            // :set mouse/mouse-select change
             applied_mouse_mode: _,
             // preserved: drained by apply_startup_positions at the
             // first settle, long before any :reload-config could run

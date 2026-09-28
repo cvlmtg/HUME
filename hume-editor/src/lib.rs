@@ -181,7 +181,7 @@ pub fn run(
 
     let mut term = hume_platform::terminal::init(
         &shared,
-        editor.state.settings.mouse_enabled,
+        editor.state.settings.mouse,
         editor.state.settings.mouse_select,
         kitty_enabled,
     )?;

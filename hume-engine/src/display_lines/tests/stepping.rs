@@ -3,7 +3,7 @@
 use super::*;
 use crate::pane::ViewGeometry;
 
-/// [`ViewGeometry`] for a `height`-row viewport and `margin` scrolloff.
+/// [`ViewGeometry`] for a `height`-row viewport and `margin` scroll-margin.
 /// `max_scroll_top` cannot be called at `height == 0` (there is no
 /// `ViewGeometry` to construct one from), so every fixture here is implicitly
 /// nonzero-height.

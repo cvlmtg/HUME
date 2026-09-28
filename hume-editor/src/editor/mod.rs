@@ -539,7 +539,7 @@ impl Default for EditorState {
 }
 
 /// Every input a pane's layout depends on: [`EditorState::format_key`]'s
-/// fields plus content width, viewport height and scrolloff, which decide
+/// fields plus content width, viewport height and scroll-margin, which decide
 /// where the cursor's display line falls.
 ///
 /// `FormatKey` leaves out content width because formatting already sees it
@@ -563,7 +563,7 @@ pub(in crate::editor) struct LayoutKey {
     whitespace: hume_engine::pane::WhitespaceConfig,
     content_width: u16,
     height: u16,
-    scrolloff: usize,
+    scroll_margin: usize,
 }
 
 impl LayoutKey {
@@ -655,7 +655,7 @@ impl EditorState {
             whitespace: doc.overrides.whitespace(&self.settings),
             content_width: pane.content_width(doc.text().last_ropey_line()),
             height: pane.viewport.height,
-            scrolloff: self.settings.scrolloff,
+            scroll_margin: self.settings.scroll_margin,
         }
     }
 
@@ -665,7 +665,7 @@ impl EditorState {
     /// subset of [`LayoutKey`] the line store's scope actually needs.
     /// `content_width` reaches formatting only through `wrap_mode`'s own
     /// resolved width (see `hume_engine::display_lines::line_store::FormatKey`'s
-    /// own doc), and `height`/`scrolloff` don't reach formatting at all:
+    /// own doc), and `height`/`scroll-margin` don't reach formatting at all:
     /// neither names a line's shape, only where the viewport settles
     /// against one already formatted, so none of the three earns a place
     /// in this narrower key.
@@ -924,10 +924,10 @@ pub(crate) struct Editor {
     /// (alt-screen toggle + "press any key to return" block) when there is
     /// no TUI to suspend and no interactive user to press a key.
     tui: Tui,
-    /// `(mouse_enabled, mouse_select)` as last applied to the terminal's
+    /// `(mouse, mouse_select)` as last applied to the terminal's
     /// mouse tracking mode. `prepare_frame` compares this against the live
     /// `state.settings` values every frame and re-applies the terminal mode
-    /// when they differ, so `:set global mouse-enabled=…`/`mouse-select=…`
+    /// when they differ, so `:set global mouse=…`/`mouse-select=…`
     /// take effect immediately instead of only at the next restart. See
     /// `hume_platform::terminal::set_mouse_mode`.
     applied_mouse_mode: (bool, bool),

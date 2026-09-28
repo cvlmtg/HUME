@@ -128,7 +128,7 @@ fn complete_set_value(
 ///   declared scopes include the chosen scope, plus `language` for `buffer`.
 /// - **value** (`=` present): offers the valid value set for enum/bool keys,
 ///   registered language names for `language`, installed theme names for
-///   `theme`. Numeric/free-form keys (e.g. `scrolloff`, `statusline`) get no
+///   `theme`. Numeric/free-form keys (e.g. `scroll-margin`, `statusline`) get no
 ///   candidates: the user types them and `write_global`/`write_buffer`
 ///   validates.
 ///

@@ -10,6 +10,7 @@
 - `show-popup!` and `show-menu!` return a token, and `close-popup!`, `close-menu!`, and `picker-close!` now require one, matching `show-drawer-list!`/`close-drawer!`: `(close-popup! token)`, `(close-menu! token)`, `(picker-close! token)`. A token for a widget that already closed or was replaced is a no-op.
 - Decoration entries are symbol-keyed hashmaps instead of positional lists: `set-signs!`/`set-eol-text!` take `(hash 'line l 'text t 'scope s)`, `set-extra-highlights!` and `set-virtual-lines!`'s `'segments` take `(hash 'start s 'end e 'scope sc)`, `set-line-backgrounds!` takes `(hash 'line l 'scope s)`, and `set-inlay-hints!` takes `(hash 'offset o 'text t 'side 'before)`.
 - `diagnostics-for-buffer` entries, `lsp-server-status` entries, and `lsp-request!`'s `err` use symbol keys: `(hash-ref d 'message)`, not `(hash-ref d "message")`. A diagnostic's `'severity` is a symbol (`'error`), and a server status's `'state` is a lowercase symbol (`'running`).
+- Options renamed: `scrolloff` → `scroll-margin`, `autoread` → `auto-read`, `mouse-enabled` → `mouse`, `auto-pairs-enabled` → `auto-pairs`.
 
 ### Commands
 - `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.

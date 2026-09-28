@@ -1,6 +1,6 @@
 //! A resize, a wrap-mode change, a virtual-line block appearing above the
 //! cursor, an inlay hint or EOL text wrapping an earlier line, a buffer
-//! switch, a tab-width or scrolloff change, or a gutter that widens for a
+//! switch, a tab-width or scroll-margin change, or a gutter that widens for a
 //! longer line count must still replace the caret even though the cursor
 //! itself is unmoved between the two frames each test drives. None of these
 //! fixtures move the primary head, so `PaneBufferState::reveal_pending`
@@ -8,7 +8,7 @@
 //! as some field of `EditorState::layout_key(pane)` differing from
 //! `PaneBufferState::last_layout_key`, which `frame.rs`'s scroll step
 //! compares every frame. Every pane in this suite is unparked throughout
-//! (its cursor is always in the scrolloff band), the condition a changed
+//! (its cursor is always in the scroll-margin band), the condition a changed
 //! key needs to reveal it; `virtual_line_scroll.rs`'s parked-view
 //! tests are this suite's counterpart for `PaneBufferState::parked`, where
 //! the same layout-key changes must *not* reveal. These tests pin that
@@ -85,7 +85,7 @@ fn a_wrap_mode_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 /// `update_virtual_line_providers` bumps by adding the block, so `frame.rs`'s
 /// scroll step re-scrolls the viewport to follow the cursor's now-lower
 /// display row rather than trusting `content_pos`'s plain re-lookup against
-/// the unchanged top, which, five rows below the settled scrolloff target
+/// the unchanged top, which, five rows below the settled scroll-margin target
 /// in a 10-row viewport, would find the cursor's row past the bottom edge
 /// and answer `None`.
 #[test]
@@ -103,7 +103,7 @@ fn a_virtual_line_block_above_the_cursor_replaces_the_caret_even_when_the_cursor
 
     // A 5-row `Before` block anchored on the cursor's own line pushes its
     // display row down by 5, past the 10-row viewport's settled bottom
-    // margin (scrolloff 3, target row 6) if the viewport doesn't re-scroll
+    // margin (scroll-margin 3, target row 6) if the viewport doesn't re-scroll
     // to follow it.
     let pos = hume_rope::lines::line_start_char(
         ed.doc().text().rope(),
@@ -177,8 +177,8 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
 /// Fixture: 40 lines,
 /// wrap at a fixed 10-column width (independent of pane/gutter width), line
 /// 19 exactly 9 columns: it fits one display row alone, wraps to two once a
-/// 2-column decoration pushes it past the width-10 wrap boundary. `scrolloff`
-/// zeroed so the scrolloff *margin* can't itself explain a `None`: a bare
+/// 2-column decoration pushes it past the width-10 wrap boundary. `scroll-margin`
+/// zeroed so the scroll-margin *margin* can't itself explain a `None`: a bare
 /// 1-row push must already exceed the viewport's raw height to prove the
 /// caret would otherwise vanish, not just drift out of the margin band.
 /// Cursor seeks to line 20, one line *after* the wrapping line, between the
@@ -186,7 +186,7 @@ fn a_buffer_switch_replaces_the_caret_even_when_the_recalled_head_matches() {
 /// `content_pos`'s `top`-to-`cursor` walk crosses.
 fn wrap_earlier_line_fixture() -> (Editor, BufferId, hume_rope::offset::CharOffset) {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.state.settings.scrolloff = 0;
+    ed.state.settings.scroll_margin = 0;
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),
         saved: None,
@@ -301,7 +301,7 @@ fn a_tab_width_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let text = BufferText::from(content.as_str());
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.state.settings.scrolloff = 0;
+    ed.state.settings.scroll_margin = 0;
     ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 10 }),
         saved: None,
@@ -339,7 +339,7 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     // line-number gutter, so it needs the real pane-construction path that
     // registers one (`pane_state.rs`'s `new_pane`).
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.state.settings.scrolloff = 0;
+    ed.state.settings.scroll_margin = 0;
     let pid_a = ed.state.focus.id();
     ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
@@ -411,13 +411,13 @@ fn a_gutter_growth_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     );
 }
 
-/// A `:set global scrolloff=` change with the cursor unmoved must still
+/// A `:set global scroll-margin=` change with the cursor unmoved must still
 /// re-settle the viewport: `cursor_content_pos.is_some()` can't distinguish
 /// this case (the false branch's own cap is the raw viewport height, not the
-/// scrolloff band; see `frame.rs`'s `scroll_into_view`), so this asserts on
+/// scroll-margin band; see `frame.rs`'s `scroll_into_view`), so this asserts on
 /// `top` moving directly.
 #[test]
-fn a_scrolloff_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
+fn a_scroll_margin_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let content: String = numbered_lines(60);
     let mut ed = unwrapped_editor(&content, 0);
     seek_to_line(&mut ed, 40);
@@ -426,14 +426,14 @@ fn a_scrolloff_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     frame(&mut ed, 80, 20);
     let top_before = ed.view.panes[pid].viewport.top();
 
-    run_set(&mut ed, "global scrolloff=6").expect(":set global scrolloff=6 failed");
+    run_set(&mut ed, "global scroll-margin=6").expect(":set global scroll-margin=6 failed");
 
     frame(&mut ed, 80, 20);
     let top_after = ed.view.panes[pid].viewport.top();
 
     assert_ne!(
         top_after, top_before,
-        "the viewport must re-settle against the new scrolloff band, even \
+        "the viewport must re-settle against the new scroll-margin band, even \
          though the cursor's own CharOffset never moved"
     );
 }

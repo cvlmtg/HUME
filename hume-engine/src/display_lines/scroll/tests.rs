@@ -141,14 +141,14 @@ fn no_wrap_cursor_above_viewport_scrolls_up() {
     assert!(cursor_line < v.top().line.index() + v.height as usize);
 }
 
-/// A `scrolloff` at or above half the viewport height (`:set scrolloff=999`'s
+/// A `scroll-margin` at or above half the viewport height (`:set scroll-margin=999`'s
 /// "always center" idiom, at an even height) would leave the "no scroll
 /// needed" window empty if uncapped: the two correction arms would disagree
 /// about where the cursor should land and rescroll every frame. The margin
 /// is capped at `(height - 1) / 2`, so calling `reveal` again with the
 /// cursor unmoved must be a no-op.
 #[test]
-fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
+fn no_wrap_huge_scroll_margin_at_even_height_settles_after_one_scroll() {
     let text: String = (0..50).map(|i| format!("line{i}\n")).collect();
     let r = Rope::from_str(&text);
     let mut v = viewport(0, 24, 80);
@@ -236,7 +236,7 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
 
 // ── settled_row: "would reveal move top" without writing it ──────────────
 
-/// A cursor already inside the scrolloff band: `settled_row` must answer the
+/// A cursor already inside the scroll-margin band: `settled_row` must answer the
 /// same row `reveal` would have placed it at, without moving `top`.
 #[test]
 fn settled_row_matches_reveal_when_cursor_is_in_band() {
@@ -270,7 +270,7 @@ fn settled_row_matches_reveal_when_cursor_is_in_band() {
     );
 }
 
-/// A cursor outside the scrolloff band (parked, e.g. behind an unfollowable
+/// A cursor outside the scroll-margin band (parked, e.g. behind an unfollowable
 /// virtual-line scroll): `settled_row` must answer `None`, the single
 /// definition of "parked" `hume-editor`'s scroll step reads.
 #[test]
@@ -336,10 +336,10 @@ fn settled_row_is_some_at_the_documents_start_saturation() {
     );
 }
 
-// ── align (z z / z k / z j) with scrolloff ────────────────────────────────
+// ── align (z z / z k / z j) with scroll-margin ────────────────────────────────
 
 #[test]
-fn view_top_then_scrolloff_trims_cursor_inward() {
+fn view_top_then_scroll_margin_trims_cursor_inward() {
     let r = Rope::from_str(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
     let cursor_char =
@@ -354,12 +354,12 @@ fn view_top_then_scrolloff_trims_cursor_inward() {
     assert_eq!(
         v.top().line,
         ContentLine::new(22),
-        "scrolloff trims top inward by margin (3)"
+        "scroll-margin trims top inward by margin (3)"
     );
 }
 
 #[test]
-fn view_bottom_then_scrolloff_trims_cursor_inward() {
+fn view_bottom_then_scroll_margin_trims_cursor_inward() {
     let r = Rope::from_str(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
     let cursor_char =
@@ -374,7 +374,7 @@ fn view_bottom_then_scrolloff_trims_cursor_inward() {
     assert_eq!(
         v.top().line,
         ContentLine::new(5),
-        "scrolloff trims top up by margin (3)"
+        "scroll-margin trims top up by margin (3)"
     );
 }
 
@@ -984,7 +984,7 @@ fn down_with_margin_stops_short_of_the_bottom_row() {
 
 // ── carry ─────────────────────────────────────────────────────────────────
 //
-// `top`/`geo` in most of these are a generously tall, zero-scrolloff
+// `top`/`geo` in most of these are a generously tall, zero-scroll-margin
 // viewport (`margin == 0`, `target == height - 1`) seeded at the document
 // start, big enough that the band clamp never fires, so these still
 // exercise exactly the plain delta-walk they did before `carry` gained the
@@ -1066,7 +1066,7 @@ fn carry_overshoots_a_virtual_block_that_swallows_the_whole_budget() {
 /// correction next frame. `top` here has genuine room to scroll back further
 /// (line 20 of a 40-line document, not the document's own start; see
 /// `carry_leaves_a_landing_short_of_margin_when_top_cannot_scroll_back_further`
-/// for the edge that loosens this), height 10 with scrolloff 3 (`margin` 3,
+/// for the edge that loosens this), height 10 with scroll-margin 3 (`margin` 3,
 /// `target` 6): walking down 1 display line from `top` lands on row 1, short
 /// of `margin`, so the clamp must walk it 2 further, to row 3.
 #[test]
@@ -1092,9 +1092,9 @@ fn carry_pushes_a_landing_above_margin_down_to_the_bands_near_edge() {
 /// (saturating there), so `Viewport::reveal` would be idle on `candidate`
 /// exactly as it is. Forcing the landing down to `margin` anyway would fight
 /// that idle behavior instead of matching it, permanently overshooting
-/// scrolloff at the buffer's own start: the bug `page_scroll.rs`'s
+/// scroll-margin at the buffer's own start: the bug `page_scroll.rs`'s
 /// `half_page_up_moves_half_viewport`/`page_up_moves_full_viewport` cover
-/// end-to-end. Height 10, scrolloff 3 (`margin` 3): `top`/`head` both at the
+/// end-to-end. Height 10, scroll-margin 3 (`margin` 3): `top`/`head` both at the
 /// document start, walking down 2 lines lands on row 2, short of `margin`,
 /// but the clamp must leave it there rather than push it to row 3.
 #[test]
@@ -1118,7 +1118,7 @@ fn carry_leaves_a_landing_short_of_margin_when_top_cannot_scroll_back_further() 
 
 /// A landing past `geo.target` (a big enough `delta`, no virtual lines
 /// involved) must be pulled back up to the band's far edge. Height 10,
-/// scrolloff 3 (`target` 6): walking down 8 real content lines from top
+/// scroll-margin 3 (`target` 6): walking down 8 real content lines from top
 /// lands on row 8, past `target`, so the clamp must pull it back to row 6.
 #[test]
 fn carry_pulls_a_landing_past_target_back_to_the_bands_far_edge() {
@@ -1142,7 +1142,7 @@ fn carry_pulls_a_landing_past_target_back_to_the_bands_far_edge() {
 /// all: `carry` must give up (leave the selection untouched) rather than
 /// land past `target`, the band-bounded counterpart to
 /// `carry_overshoots_a_virtual_block_that_swallows_the_whole_budget` above.
-/// Height 6, scrolloff 0 (`margin` 0, `target` 5): an 8-row `Before(1)`
+/// Height 6, scroll-margin 0 (`margin` 0, `target` 5): an 8-row `Before(1)`
 /// block swallows every display line through row 8, past `target`.
 #[test]
 fn carry_overshoot_past_the_band_gives_up_instead_of_landing_outside_it() {

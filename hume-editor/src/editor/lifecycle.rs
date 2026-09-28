@@ -117,7 +117,7 @@ impl Editor {
 
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;
-        let initial_mouse_mode = (settings.mouse_enabled, settings.mouse_select);
+        let initial_mouse_mode = (settings.mouse, settings.mouse_select);
 
         // Seed per-pane state from the buffer's history-root selections.
         let mut per_pane_bufs: SecondaryMap<BufferId, PaneBufferState> = SecondaryMap::new();

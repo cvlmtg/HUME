@@ -47,7 +47,7 @@ fn set_completer_keys_for_global_scope() {
     let names = names_of(&result);
     assert!(!names.is_empty());
     assert!(
-        names.contains(&"scrolloff"),
+        names.contains(&"scroll-margin"),
         "global-only key should appear"
     );
     assert!(
@@ -74,7 +74,7 @@ fn set_completer_keys_for_buffer_scope_includes_language() {
         "wrap-mode is buffer-overridable too, not just global+pane"
     );
     assert!(
-        !names.contains(&"scrolloff"),
+        !names.contains(&"scroll-margin"),
         "global-only key must not appear under buffer scope"
     );
 }
@@ -107,8 +107,8 @@ fn set_completer_key_includes_an_exact_match() {
 
 #[test]
 fn set_completer_value_bool_offers_true_false() {
-    let result = set_result("set global mouse-enabled=");
-    assert_eq!(result.0.start, "set global mouse-enabled=".len());
+    let result = set_result("set global mouse=");
+    assert_eq!(result.0.start, "set global mouse=".len());
     assert_eq!(names_of(&result), vec!["false", "true"]);
 }
 
@@ -162,7 +162,7 @@ fn set_completer_value_includes_an_exact_match() {
 
 #[test]
 fn set_completer_value_numeric_no_candidates() {
-    let result = set_result("set global scrolloff=");
+    let result = set_result("set global scroll-margin=");
     assert!(result.1.is_empty());
 }
 
@@ -177,7 +177,7 @@ fn set_completer_value_static_enum_rejects_ineligible_scope() {
 
 #[test]
 fn set_completer_value_static_bool_rejects_unknown_scope() {
-    let result = set_result("set bogus mouse-enabled=");
+    let result = set_result("set bogus mouse=");
     assert!(result.1.is_empty());
 }
 
@@ -223,7 +223,7 @@ fn set_completer_double_space_before_key_still_filters() {
 
 #[test]
 fn set_completer_double_space_before_value_still_offers_bools() {
-    let result = set_result("set global  mouse-enabled=");
+    let result = set_result("set global  mouse=");
     assert_eq!(names_of(&result), vec!["false", "true"]);
 }
 

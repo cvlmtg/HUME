@@ -81,7 +81,7 @@ pub(in crate::editor) enum DiskCheckTrigger {
     /// Switching the focused pane onto this buffer (`:e`, `:b`, `:bn`,
     /// `:bp`, …). Delivers on the documented "asked about on its own next
     /// buffer-enter" promise: a change that only got a warning earlier
-    /// (buffer wasn't focused yet, or `autoread` was off at the time) must
+    /// (buffer wasn't focused yet, or `auto-read` was off at the time) must
     /// still prompt now that the user has actually landed on it, even
     /// though nothing changed on disk since that warning.
     BufferEnter,
@@ -121,17 +121,17 @@ impl Editor {
     /// `Vanished` always just warns, once: there is nothing to reload
     /// from, so never prompt, and a state already reported must not
     /// re-warn on every later trigger. `Changed` on the *focused* buffer
-    /// opens a reload confirm when its `autoread` setting is on and
+    /// opens a reload confirm when its `auto-read` setting is on and
     /// [`Self::can_open_confirm`] allows one; every other case (a
-    /// non-focused buffer, `autoread` off, or a blocked confirm) only warns.
+    /// non-focused buffer, `auto-read` off, or a blocked confirm) only warns.
     ///
     /// A `Changed`/`Vanished` state already reported stays silent on a
     /// further `Ambient`/`Explicit` check ("don't nag again for the same
     /// thing"), but a `BufferEnter` check always prompts a pending `Changed`
-    /// on the focused, `autoread`-on, prompt-eligible buffer regardless:
+    /// on the focused, `auto-read`-on, prompt-eligible buffer regardless:
     /// that is the "asked about on its own next buffer-enter" deferred
     /// prompt the earlier warning promised. For a buffer that's
-    /// prompt-eligible (focused, `autoread` on) but currently blocked from
+    /// prompt-eligible (focused, `auto-read` on) but currently blocked from
     /// actually opening one, a `BufferEnter` still warns even if the same
     /// signature already warned once: landing on a stale buffer must never
     /// be completely silent, only a *repeat* `Ambient` recheck of the same
@@ -191,9 +191,9 @@ impl Editor {
                 let buf = self.state.buffers.get(bid);
                 let name = buf.display_name();
                 let dirty = buf.is_dirty();
-                let autoread = buf.overrides.autoread(&self.state.settings);
+                let auto_read = buf.overrides.auto_read(&self.state.settings);
                 let focused = bid == self.focused_buffer_id();
-                let promptable = focused && autoread;
+                let promptable = focused && auto_read;
                 let is_buffer_enter = trigger == DiskCheckTrigger::BufferEnter;
 
                 if promptable
