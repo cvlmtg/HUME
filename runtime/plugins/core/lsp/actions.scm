@@ -48,7 +48,7 @@
       (lambda ()
         (let* ((gen (buffer-generation pane))
                (diags (diagnostics-for-buffer pane #:range (lsp/primary-selection-range pane)))
-               (context (hash "diagnostics" (map (lambda (d) (hash-ref d "raw")) diags)
+               (context (hash "diagnostics" (map (lambda (d) (hash-ref d 'raw)) diags)
                               "triggerKind" 1)))
           (lsp-request! pane "textDocument/codeAction"
             (hash-insert (lsp-primary-range-params pane) "context" context)

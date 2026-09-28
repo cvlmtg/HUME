@@ -48,8 +48,7 @@ Where a hunk's removed old-side lines attach, as a `(kind . line)` anchor pair:
 count (a deletion at end of file, where `'before new-start` would address the phantom
 trailing line and raise). `'before 0` only for a deletion at the very start.
 
-The virtual-line hashmap `set-virtual-lines!` expects uses symbol keys, not strings: a
-string key raises "hashmap key must be a symbol". `'segments` is omitted when empty rather
+`'segments` is omitted when empty rather
 than set to `'()`, keeping the hash to what's used. A whole removed line with no
 word-level detail passes the old line straight through as `'text`; `set-virtual-lines!`
 accepts a literal tab and expands it itself.
@@ -58,7 +57,7 @@ A removed line's word-deletion `'segments` come from `diff-words`' `(old-start o
 new-start new-end old-text new-text)` hunks, filtered to `old-start < old-end`: a pure
 insertion has nothing to underline on the old-side line, and a zero-width segment would
 raise (`set-virtual-lines!`'s `start < end` check). The new-side counterpart
-(`(start end scope)` triples in *buffer* char offsets, since `set-extra-highlights!`
+(`(hash 'start 'end 'scope)` spans in *buffer* char offsets, since `set-extra-highlights!`
 addresses the whole buffer, not one line) is filtered to `new-start < new-end` for the
 same reason.
 
@@ -84,7 +83,7 @@ into two renderers to keep one setter each would call `diff-words` twice for no 
 
 ## Line background tint
 
-One hunk becomes `(line scope)` entries, one per new-side line: pure add → `diff.plus.line`,
+One hunk becomes `(hash 'line 'scope)` entries, one per new-side line: pure add → `diff.plus.line`,
 change → `diff.delta.line`. A pure delete contributes nothing: the inline pass's virtual
 lines already cover the removed content, tinted via `diff.minus.line` on the virtual
 line's own scope instead. No priority field on this setter (unlike `set-signs!`), since this

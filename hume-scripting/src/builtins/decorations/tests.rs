@@ -19,12 +19,21 @@ fn list(items: Vec<SteelVal>) -> SteelVal {
     items.into_steelval().unwrap()
 }
 
-/// Builds a `(start end scope)` segment 3-list.
+/// Builds a `(hash 'start 'end 'scope)` segment.
 fn seg(start: isize, end: isize, scope: &str) -> SteelVal {
-    list(vec![
-        SteelVal::IntV(start),
-        SteelVal::IntV(end),
-        SteelVal::StringV(scope.into()),
+    hashmap(vec![
+        ("start", SteelVal::IntV(start)),
+        ("end", SteelVal::IntV(end)),
+        ("scope", SteelVal::StringV(scope.into())),
+    ])
+}
+
+/// Builds a `(hash 'line 'text 'scope)` sign.
+fn sign(line: isize, text: &str, scope: &str) -> SteelVal {
+    hashmap(vec![
+        ("line", SteelVal::IntV(line)),
+        ("text", SteelVal::StringV(text.into())),
+        ("scope", SteelVal::StringV(scope.into())),
     ])
 }
 
@@ -106,16 +115,11 @@ fn set_signs_rejects_a_control_character_in_the_glyph() {
     // value was wrong.
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let sign = list(vec![
-        SteelVal::IntV(0),
-        SteelVal::StringV("\tS".into()),
-        SteelVal::StringV("ui.sign".into()),
-    ]);
     let result = set_signs(
         &mut ctx,
         SteelVal::StringV("test".into()),
         default_pane(),
-        list(vec![sign]),
+        list(vec![sign(0, "\tS", "ui.sign")]),
     );
     let msg = result.unwrap_err().to_string();
     assert!(
@@ -131,20 +135,55 @@ fn set_signs_accepts_a_multi_codepoint_glyph() {
     // (here a combining sequence) must still reach the gutter untouched.
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let sign = list(vec![
-        SteelVal::IntV(0),
-        SteelVal::StringV("e\u{0301}".into()),
-        SteelVal::StringV("ui.sign".into()),
-    ]);
     let result = set_signs(
         &mut ctx,
         SteelVal::StringV("test".into()),
         default_pane(),
-        list(vec![sign]),
+        list(vec![sign(0, "e\u{0301}", "ui.sign")]),
     );
     // The harness has no decoration host, so validation passing means the
     // call gets as far as the host lookup and fails *there*.
     assert_names_builtin(result, "set-signs!");
+}
+
+#[test]
+fn set_signs_rejects_a_positional_list_entry() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let positional = list(vec![
+        SteelVal::IntV(0),
+        SteelVal::StringV("!".into()),
+        SteelVal::StringV("ui.sign".into()),
+    ]);
+    let msg = set_signs(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        default_pane(),
+        list(vec![positional]),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(msg.contains("hashmap"), "got: {msg}");
+    assert!(msg.contains("set-signs!"), "got: {msg}");
+}
+
+#[test]
+fn set_signs_rejects_a_missing_key() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let entry = hashmap(vec![
+        ("line", SteelVal::IntV(0)),
+        ("text", SteelVal::StringV("!".into())),
+    ]);
+    let msg = set_signs(
+        &mut ctx,
+        SteelVal::StringV("test".into()),
+        default_pane(),
+        list(vec![entry]),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(msg.contains("missing 'scope"), "got: {msg}");
 }
 
 #[test]
@@ -379,17 +418,20 @@ fn virtual_line_spec_keeps_a_control_character_verbatim() {
 }
 
 #[test]
-fn virtual_line_spec_rejects_segment_with_wrong_arity() {
+fn virtual_line_spec_rejects_segment_missing_a_key() {
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(0)),
         ("text", SteelVal::StringV("abcdef".into())),
         (
             "segments",
-            list(vec![list(vec![SteelVal::IntV(0), SteelVal::IntV(1)])]),
+            list(vec![hashmap(vec![
+                ("start", SteelVal::IntV(0)),
+                ("end", SteelVal::IntV(1)),
+            ])]),
         ),
     ]);
     let err = virtual_line_specs(list(vec![entry]))
         .unwrap_err()
         .to_string();
-    assert!(err.contains("(start end scope)"), "got: {err}");
+    assert!(err.contains("missing 'scope"), "got: {err}");
 }

@@ -31,7 +31,7 @@ fn line_background_tints_gutter_content_and_trailing_cells() {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
                  (set-line-backgrounds! "git-diff" bid
-                   (list (list 0 "{TINT_SCOPE}")))))"#
+                   (list (hash 'line 0 'scope "{TINT_SCOPE}")))))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -93,7 +93,7 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
                  (set-line-backgrounds! "git-diff" bid
-                   (list (list 0 "{TINT_SCOPE}")))))"#
+                   (list (hash 'line 0 'scope "{TINT_SCOPE}")))))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -133,7 +133,7 @@ fn cursorline_wins_over_the_line_background_tint() {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
                  (set-line-backgrounds! "git-diff" bid
-                   (list (list 1 "{TINT_SCOPE}")))))"#
+                   (list (hash 'line 1 'scope "{TINT_SCOPE}")))))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -199,7 +199,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
                  (set-line-backgrounds! "git-diff" bid
-                   (list (list 1 "{TINT_SCOPE}")))))"#
+                   (list (hash 'line 1 'scope "{TINT_SCOPE}")))))"#
         ),
     );
     type_cmd(&mut ed, ":go");
@@ -266,7 +266,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
                  (set-line-backgrounds! "git-diff" bid
-                   (list (list 8 "{TINT_SCOPE}")))))"#
+                   (list (hash 'line 8 'scope "{TINT_SCOPE}")))))"#
         ),
     );
     type_cmd(&mut ed, ":go");

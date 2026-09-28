@@ -15,7 +15,7 @@
          (text (if pad-left (string-append " " text) text))
          (text (if pad-right (string-append text " ") text))
          (offset (lsp-position->offset pane (json-ref hint "position"))))
-    (and offset (list offset text 'before))))
+    (and offset (hash 'offset offset 'text text 'side 'before))))
 
 (define (lsp/inlay-hint-params pane first end)
   (let ((pp (lsp-position-params pane)))

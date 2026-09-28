@@ -130,7 +130,7 @@ fn per_segment_scopes_style_the_virtual_lines_text() {
         r#"(define-typed-command! "go" "" (lambda (bid)
              (set-virtual-lines! "linter" bid
                (list (hash 'line 0 'text "let x"
-                           'segments (list (list 0 3 "keyword") (list 4 5 "string")))))))"#,
+                           'segments (list (hash 'start 0 'end 3 'scope "keyword") (hash 'start 4 'end 5 'scope "string")))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -153,7 +153,7 @@ fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
         r#"(define-typed-command! "go" "" (lambda (bid)
              (set-virtual-lines! "linter" bid
                (list (hash 'line 0 'text "abcdef" 'scope "base"
-                           'segments (list (list 2 4 "kw")))))))"#,
+                           'segments (list (hash 'start 2 'end 4 'scope "kw")))))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -387,7 +387,7 @@ fn segments_touching_both_ends_yield_no_zero_length_filler() {
         r#"(define-typed-command! "go" "" (lambda (bid)
              (set-virtual-lines! "linter" bid
                (list (hash 'line 0 'text "abcdef"
-                           'segments (list (list 0 3 "a") (list 3 6 "b")))))))"#,
+                           'segments (list (hash 'start 0 'end 3 'scope "a") (hash 'start 3 'end 6 'scope "b")))))))"#,
     );
     type_cmd(&mut ed, ":go");
 

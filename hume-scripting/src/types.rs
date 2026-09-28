@@ -217,9 +217,9 @@ pub enum PendingLspServerOp {
 pub struct LspServerStatusEntry {
     pub language: String,
     pub root: std::path::PathBuf,
-    /// `LspClient::state`'s `Debug` spelling (`"Running"`, `"Starting"`, …), so
-    /// the trait boundary stays free of a `hume-lsp` dependency.
-    pub state: String,
+    /// `ServerState::name`'s lowercase spelling (`"running"`, `"starting"`,
+    /// …), so the trait boundary stays free of a `hume-lsp` dependency.
+    pub state: &'static str,
     pub pending: usize,
 }
 

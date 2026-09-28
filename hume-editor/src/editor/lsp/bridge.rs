@@ -178,11 +178,11 @@ fn outcome_to_steel(
         Outcome::Err(e) => {
             let mut map = steel::HashMap::new();
             map.insert(
-                SteelVal::StringV("code".into()),
+                SteelVal::SymbolV("code".into()),
                 SteelVal::IntV(e.code as isize),
             );
             map.insert(
-                SteelVal::StringV("message".into()),
+                SteelVal::SymbolV("message".into()),
                 SteelVal::StringV(e.message.into()),
             );
             let err = SteelVal::HashMapV(steel::gc::Gc::new(map).into());

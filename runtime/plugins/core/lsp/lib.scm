@@ -55,7 +55,7 @@
 (define (lsp/report-error what err)
   (log! 'error
         (string-append "lsp " what ": "
-                       (if (string? err) err (hash-ref err "message")))))
+                       (if (string? err) err (hash-ref err 'message)))))
 
 ;; ── Pane resolution ──────────────────────────────────────────────────────────
 

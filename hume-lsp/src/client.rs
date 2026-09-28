@@ -37,6 +37,18 @@ pub enum ServerState {
     Dead,
 }
 
+impl ServerState {
+    /// The lowercase name scripting sees (`lsp-server-status`'s `'state`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Starting => "starting",
+            Self::Running => "running",
+            Self::Crashed => "crashed",
+            Self::Dead => "dead",
+        }
+    }
+}
+
 /// One action for the editor glue to take in response to a lifecycle event.
 #[derive(Debug)]
 pub enum ClientAction {

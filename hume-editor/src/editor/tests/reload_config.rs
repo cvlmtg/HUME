@@ -420,7 +420,7 @@ fn reset_clears_plugin_decorations() {
         &mut host,
         r#"(define-typed-command! "mark" "" (lambda (bid)
              (register-sign-source! "linter" bid 7)
-             (set-signs! "linter" bid (list (list 0 "!" "warn-scope")))))"#,
+             (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "warn-scope")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1016,7 +1016,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
         &mut host,
         r#"(register-hook! 'on-diagnostics-changed (lambda (bid)
              (register-sign-source! "diag" bid 1)
-             (set-signs! "diag" bid (list (list 0 "!" "diag")))))"#,
+             (set-signs! "diag" bid (list (hash 'line 0 'text "!" 'scope "diag")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1115,7 +1115,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
         &mut host,
         r#"(register-hook! 'on-diagnostics-changed (lambda (bid)
              (register-sign-source! "diag" bid 1)
-             (set-signs! "diag" bid (list (list 0 "!" "diag")))))"#,
+             (set-signs! "diag" bid (list (hash 'line 0 'text "!" 'scope "diag")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

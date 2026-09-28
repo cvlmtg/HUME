@@ -12,6 +12,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
 - Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder.
+- A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](#json-handles)).
 - Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget.
 - A value from a fixed set of names (a mode, a hook name, a log level) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
@@ -182,7 +183,7 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(lsp-notify! pane method params)` | Fire-and-forget notification to `pane`'s attached server, no callback |
 | `(on-lsp-notification method handler)` | Register `handler` (`(lambda (server params) ...)`) for every `method` notification HUME doesn't already special-case (`window/logMessage`, `window/showMessage`, `$/progress`, `publishDiagnostics`) |
 | `(lsp-capabilities pane)` | A JSON handle onto `pane`'s attached server's `ServerCapabilities` (read with `json-ref`/`json-contains?`), or `#f` if unresolved or mid-handshake |
-| `(lsp-server-status)` | List of `{"language" "root" "state" "pending"}` hashmaps, one per registered server |
+| `(lsp-server-status)` | List of hashmaps with keys `'language`, `'root`, `'state` (`'starting`, `'running`, `'crashed`, or `'dead`), and `'pending`, one per registered server |
 | `(lsp-server-for-buffer pane)` | Registered language name attached to the buffer, or `#f` |
 | `(lsp-registered-for-language? language)` | `#t` if a server is registered for `language` |
 | `(lsp-position-params pane)` | `{"textDocument" {"uri"} "position" {"line" "character"}}` from the primary cursor in `pane`'s own pane, or `#f` |
@@ -203,13 +204,13 @@ Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay 
 |------|--------|
 | `(diagnostics-for-buffer pane #:severity #:range)` | Diagnostics for the buffer, optionally floored by severity symbol or restricted to a `(start . end)` char range |
 | `(diagnostic-counts pane)` | `(errors . warnings)` pair for the buffer |
-| `(set-inlay-hints! source pane hints)` | Replace `source`'s inlay hints for the buffer. `hints`: list of `(offset text 'before\|'after)` |
+| `(set-inlay-hints! source pane hints)` | Replace `source`'s inlay hints for the buffer. `hints`: list of `(hash 'offset o 'text t 'side 'before)`, `'side` `'before` or `'after` |
 | `(register-sign-source! name pane priority)` | Reserve a gutter sign slot for `name` on the buffer, ranked by `(priority desc, name asc)` among every source registered for it |
-| `(set-signs! source pane signs)` | Replace `source`'s gutter signs for the buffer. `signs`: list of `(line text scope)`; `source` must already be registered |
-| `(set-virtual-lines! source pane lines)` | Replace `source`'s virtual (ghost) lines for the buffer. `lines`: list of hashmaps with `'line`/`'text` required, optional `'anchor` (`'before`/`'after`), `'scope`, `'segments` |
-| `(set-eol-text! source pane lines)` | Replace `source`'s end-of-line text for the buffer. `lines`: list of `(line text scope)` |
-| `(set-extra-highlights! source pane spans)` | Replace `source`'s extra syntax highlights for the buffer. `spans`: list of `(start end scope)` char ranges |
-| `(set-line-backgrounds! source pane entries)` | Replace `source`'s full-line background tints for the buffer. `entries`: list of `(line scope)` |
+| `(set-signs! source pane signs)` | Replace `source`'s gutter signs for the buffer. `signs`: list of `(hash 'line l 'text t 'scope s)`; `source` must already be registered |
+| `(set-virtual-lines! source pane lines)` | Replace `source`'s virtual (ghost) lines for the buffer. `lines`: list of hashmaps with `'line`/`'text` required, optional `'anchor` (`'before`/`'after`), `'scope`, `'segments` (a list of `(hash 'start 'end 'scope)` char ranges into `'text`) |
+| `(set-eol-text! source pane lines)` | Replace `source`'s end-of-line text for the buffer. `lines`: list of `(hash 'line l 'text t 'scope s)` |
+| `(set-extra-highlights! source pane spans)` | Replace `source`'s extra syntax highlights for the buffer. `spans`: list of `(hash 'start s 'end e 'scope sc)` char ranges |
+| `(set-line-backgrounds! source pane entries)` | Replace `source`'s full-line background tints for the buffer. `entries`: list of `(hash 'line l 'scope s)` |
 
 `diagnostics-for-buffer` and the hook that feeds it are shown in [Hooks](plugins.md#hooks). A sign source's gutter slot is reserved the first time it registers for a buffer, even before placing any sign, which is what keeps the gutter's width stable as signs come and go; there's no `unregister-sign-source!`, and re-registering the same `name` for the same buffer just replaces its priority. Line backgrounds have no priority: same-line entries from different sources break ties by source name instead.
 
@@ -312,12 +313,12 @@ The pattern for reading a plugin's own files is covered in [Filesystem and proce
 ## JSON handles
 
 An `lsp-request!` response, `lsp-capabilities`, a `diagnostics-for-buffer`
-entry's `"raw"` field, `on-lsp-notification`'s params, `on-completion-accept`'s
+entry's `'raw` field, `on-lsp-notification`'s params, `on-completion-accept`'s
 item, and `json-parse`'s result are all opaque JSON handles rather than
 decoded hashmaps. Read one with these instead of `hash-ref`/`hash?`/`list?`:
 
 Other values stay ordinary hashmaps: `lsp-request!`'s `err`, `lsp-server-status`,
-and a `diagnostics-for-buffer` entry itself (outside its `"raw"` field) are
+and a `diagnostics-for-buffer` entry itself (outside its `'raw` field) are
 built by HUME, not decoded from server JSON, and read with `hash-ref` as
 usual; see [Advanced: custom requests](lsp.md#advanced-custom-requests) for
 the `err`/`res` distinction in practice.

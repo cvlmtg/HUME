@@ -87,7 +87,7 @@ its underlying text span are different render surfaces, and every bundled theme
 underlines the `diagnostic.<severity>` scope for the text squiggle, an underline the
 gutter glyph must not inherit.
 
-Severity ranking folds over each diagnostic's own `"severity-rank"` field (authored once
+Severity ranking folds over each diagnostic's own `'severity-rank` field (authored once
 in Rust: `0` for error, counting up to `3` for hint) rather than re-encoding that order
 in Scheme, so there is exactly one place either decoration's severity comparison happens.
 It's a running-best fold, not a sort-then-take-first: this runs once per line group on

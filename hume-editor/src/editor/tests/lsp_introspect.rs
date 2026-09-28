@@ -188,9 +188,9 @@ fn lsp_server_status_lists_the_running_server() {
         ScriptingHost::new(),
         tmp.path(),
         r#"(let ((entry (car (lsp-server-status))))
-             (and (equal? (hash-ref entry "language") "rust")
-                  (equal? (hash-ref entry "state") "Running")
-                  (equal? (hash-ref entry "pending") 0)))"#,
+             (and (equal? (hash-ref entry 'language) "rust")
+                  (equal? (hash-ref entry 'state) 'running)
+                  (equal? (hash-ref entry 'pending) 0)))"#,
     );
     assert!(
         fired,

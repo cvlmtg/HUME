@@ -13,19 +13,19 @@
 (define git-diff/*sign-priority* 0)
 
 (define (git-diff/line-signs new-start new-count text scope)
-  (map (lambda (line) (list line text scope))
+  (map (lambda (line) (hash 'line line 'text text 'scope scope))
        (range new-start (+ new-start new-count))))
 
-;;; One `diff-buffer-lines` hunk -> a list of `(line text scope)` sign entries — see docs/rendering.md.
+;;; One `diff-buffer-lines` hunk -> a list of `(hash 'line 'text 'scope)` sign entries — see docs/rendering.md.
 (define (git-diff/hunk->signs hunk)
   (let* ([old-count (list-ref hunk 1)]
          [new-start (list-ref hunk 2)]
          [new-count (list-ref hunk 3)])
     (cond
       [(and (= new-count 0) (= new-start 0))
-       (list (list 0 "▔" "diff.minus"))]
+       (list (hash 'line 0 'text "▔" 'scope "diff.minus"))]
       [(= new-count 0)
-       (list (list (- new-start 1) "▁" "diff.minus"))]
+       (list (hash 'line (- new-start 1) 'text "▁" 'scope "diff.minus"))]
       [(= old-count 0) (git-diff/line-signs new-start new-count "+" "diff.plus")]
       [else (git-diff/line-signs new-start new-count "~" "diff.delta")])))
 
@@ -42,8 +42,6 @@
       (cons 'before 0)
       (cons 'after (- new-start 1))))
 
-;;; Symbol keys, not strings — `set-virtual-lines!` looks each field up as
-;;; `(SteelVal::SymbolV k)`.
 (define (git-diff/virtual-line-hash text anchor segments)
   (let ([base (hash 'line (cdr anchor) 'text text 'anchor (car anchor) 'scope "diff.minus.line")])
     (if (null? segments) base (hash-insert base 'segments segments))))
@@ -53,17 +51,17 @@
 
 (define (git-diff/virtual-line-with-segments old-line anchor word-hunks)
   (let* ([removals (filter (lambda (wh) (< (list-ref wh 0) (list-ref wh 1))) word-hunks)]
-         [segments (map (lambda (wh) (list (list-ref wh 0) (list-ref wh 1) "diff.minus.word"))
+         [segments (map (lambda (wh) (hash 'start (list-ref wh 0) 'end (list-ref wh 1) 'scope "diff.minus.word"))
                         removals)])
     (git-diff/virtual-line-hash old-line anchor segments)))
 
-;;; `(start end scope)` triples in *buffer* char offsets — see docs/rendering.md.
+;;; `(hash 'start 'end 'scope)` spans in *buffer* char offsets — see docs/rendering.md.
 (define (git-diff/word-hunks->new-side-spans line-offset word-hunks)
   (let ([additions (filter (lambda (wh) (< (list-ref wh 2) (list-ref wh 3))) word-hunks)])
     (map (lambda (wh)
-           (list (+ line-offset (list-ref wh 2))
-                 (+ line-offset (list-ref wh 3))
-                 "diff.plus.word"))
+           (hash 'start (+ line-offset (list-ref wh 2))
+                 'end (+ line-offset (list-ref wh 3))
+                 'scope "diff.plus.word"))
          additions)))
 
 ;;; Char offset where each of the first `paired-count` `new-lines` starts — see docs/rendering.md.
@@ -134,7 +132,7 @@
     (if (= new-count 0)
         '()
         (let ([scope (if (= old-count 0) "diff.plus.line" "diff.delta.line")])
-          (map (lambda (line) (list line scope)) (range new-start (+ new-start new-count)))))))
+          (map (lambda (line) (hash 'line line 'scope scope)) (range new-start (+ new-start new-count)))))))
 
 (define (git-diff/render-line-bgs! pane hunks)
   (set-line-backgrounds! git-diff/*source* pane (apply append (map git-diff/hunk->line-bgs hunks))))

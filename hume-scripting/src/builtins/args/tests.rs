@@ -138,34 +138,69 @@ fn checked_fields_accepts_arity_within_range() {
     );
 }
 
+fn symbol_hash(entries: &[(&str, &str)]) -> SteelVal {
+    let mut hm = steel::HashMap::new();
+    for (k, v) in entries {
+        hm.insert(
+            SteelVal::SymbolV((*k).into()),
+            SteelVal::StringV((*v).into()),
+        );
+    }
+    SteelVal::HashMapV(steel::gc::Gc::new(hm).into())
+}
+
 #[test]
-fn tuple_list_decodes_each_entry_via_row() {
-    let entries: SteelVal = vec![list_of(&["a", "b"]), list_of(&["c", "d"])]
-        .into_steelval()
-        .unwrap();
-    let out = tuple_list(entries, "f", 2..=2, "(a b)", |fields| {
+fn hash_list_decodes_each_entry_via_row() {
+    let entries: SteelVal = vec![
+        symbol_hash(&[("a", "1"), ("b", "2")]),
+        symbol_hash(&[("a", "3")]),
+    ]
+    .into_steelval()
+    .unwrap();
+    let out = hash_list(entries, "f", &["a", "b"], |entry| {
         Ok((
-            string_arg(fields[0].clone(), "f")?,
-            string_arg(fields[1].clone(), "f")?,
+            string_arg(entry.required("a")?, "f")?,
+            entry
+                .optional("b")
+                .map(|v| string_arg(v, "f"))
+                .transpose()?,
         ))
     })
     .unwrap();
     assert_eq!(
         out,
         vec![
-            ("a".to_string(), "b".to_string()),
-            ("c".to_string(), "d".to_string())
+            ("1".to_string(), Some("2".to_string())),
+            ("3".to_string(), None)
         ]
     );
 }
 
 #[test]
-fn tuple_list_propagates_a_bad_entry_arity() {
-    let entries: SteelVal = vec![list_of(&["a"])].into_steelval().unwrap();
-    let result = tuple_list(entries, "f", 2..=2, "(a b)", |fields| {
-        string_arg(fields[0].clone(), "f")
-    });
-    assert!(result.is_err());
+fn hash_list_rejects_an_unknown_key() {
+    let entries: SteelVal = vec![symbol_hash(&[("a", "1"), ("c", "2")])]
+        .into_steelval()
+        .unwrap();
+    let err = hash_list(entries, "f", &["a", "b"], |entry| entry.required("a")).unwrap_err();
+    assert!(err.to_string().contains("unknown key 'c,"), "got: {err}");
+}
+
+#[test]
+fn hash_list_rejects_a_string_key() {
+    let mut hm = steel::HashMap::new();
+    hm.insert(SteelVal::StringV("a".into()), SteelVal::IntV(1));
+    let entries: SteelVal = vec![SteelVal::HashMapV(steel::gc::Gc::new(hm).into())]
+        .into_steelval()
+        .unwrap();
+    let err = hash_list(entries, "f", &["a"], |entry| entry.required("a")).unwrap_err();
+    assert!(err.to_string().contains("must be a symbol"), "got: {err}");
+}
+
+#[test]
+fn hash_list_reports_a_missing_required_key() {
+    let entries: SteelVal = vec![symbol_hash(&[("b", "2")])].into_steelval().unwrap();
+    let err = hash_list(entries, "f", &["a", "b"], |entry| entry.required("a")).unwrap_err();
+    assert!(err.to_string().contains("f: missing 'a"), "got: {err}");
 }
 
 // ── pair_fields / cons_pair ──────────────────────────────────────────────

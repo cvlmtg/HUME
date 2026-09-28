@@ -267,7 +267,7 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
              (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
-               (when (and (hash? err) (equal? (hash-ref err "code") -32601))
+               (when (and (hash? err) (equal? (hash-ref err 'code) -32601))
                  (call! "move-right" bid))))))"#,
         tmp.path(),
     );

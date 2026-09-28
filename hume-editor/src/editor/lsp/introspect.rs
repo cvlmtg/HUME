@@ -94,7 +94,7 @@ pub(in crate::editor) fn server_status(
             Some(hume_scripting::LspServerStatusEntry {
                 language,
                 root: e.client.root().to_path_buf(),
-                state: format!("{:?}", e.client.state()),
+                state: e.client.state().name(),
                 pending: e.client.pending_count(),
             })
         })
@@ -629,9 +629,9 @@ impl crate::editor::Editor {
         }
         for (language, client) in servers {
             lines.push(format!(
-                "{language} @ {}: {:?}, {} in flight, encoding: {:?}",
+                "{language} @ {}: {}, {} in flight, encoding: {:?}",
                 client.root().display(),
-                client.state(),
+                client.state().name(),
                 client.pending_count(),
                 client.encoding(),
             ));

@@ -8,10 +8,10 @@
 
 (define (lsp/severity-glyph severity)
   (cond
-    ((equal? severity "error") "✘")
-    ((equal? severity "warning") "⚠")
-    ((equal? severity "info") "ℹ")
-    ((equal? severity "hint") "·")
+    ((equal? severity 'error) "✘")
+    ((equal? severity 'warning) "⚠")
+    ((equal? severity 'info) "ℹ")
+    ((equal? severity 'hint) "·")
     (else "?")))
 
 (define (lsp/first-line text)
@@ -19,15 +19,15 @@
     (if (pair? parts) (car parts) text)))
 
 (define (lsp/first-after diags head)
-  (let ((after (filter (lambda (d) (> (hash-ref d "start") head)) diags)))
+  (let ((after (filter (lambda (d) (> (hash-ref d 'start) head)) diags)))
     (if (null? after) (car diags) (car after))))
 
 (define (lsp/last-before diags head)
-  (let ((before (filter (lambda (d) (< (hash-ref d "start") head)) diags)))
+  (let ((before (filter (lambda (d) (< (hash-ref d 'start) head)) diags)))
     (if (null? before) (car (reverse diags)) (car (reverse before)))))
 
 (define (lsp/diag-jump-to! pane d)
-  (goto-location! (focused-pane) (list pane (hash-ref d "line") (hash-ref d "char-col"))))
+  (goto-location! (focused-pane) (list pane (hash-ref d 'line) (hash-ref d 'char-col))))
 
 (define (lsp/diag-jump pane direction)
   (let ((diags (diagnostics-for-buffer pane)))
@@ -38,7 +38,7 @@
                            (lsp/first-after diags head)
                            (lsp/last-before diags head))))
           (lsp/diag-jump-to! pane target)
-          (show-popup! (focused-pane) (hash-ref target "message") #:kind 'scrollable)))))
+          (show-popup! (focused-pane) (hash-ref target 'message) #:kind 'scrollable)))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -51,9 +51,9 @@
   (lambda (pane) (lsp/diag-jump pane -1)))
 
 (define (lsp/diag-row d)
-  (string-append (lsp/severity-glyph (hash-ref d "severity")) " "
-                 (lsp/format-position (hash-ref d "line") (hash-ref d "grapheme-col")) " "
-                 (lsp/first-line (hash-ref d "message"))))
+  (string-append (lsp/severity-glyph (hash-ref d 'severity)) " "
+                 (lsp/format-position (hash-ref d 'line) (hash-ref d 'grapheme-col)) " "
+                 (lsp/first-line (hash-ref d 'message))))
 
 (define lsp/*diag-drawer* #f)
 
@@ -73,16 +73,16 @@
               (set! lsp/*diag-drawer* (list (buffer-key pane) tok diags))))))))
 
 (define (lsp/diag-best-match old new-diags)
-  (let ((old-msg (hash-ref old "message"))
-        (old-sev (hash-ref old "severity"))
-        (old-line (hash-ref old "line")))
+  (let ((old-msg (hash-ref old 'message))
+        (old-sev (hash-ref old 'severity))
+        (old-line (hash-ref old 'line)))
     (let loop ((rest new-diags) (i 0) (best #f) (best-dist #f))
       (if (null? rest)
           best
           (let ((d (car rest)))
-            (if (and (equal? (hash-ref d "message") old-msg)
-                     (equal? (hash-ref d "severity") old-sev))
-                (let ((dist (abs (- (hash-ref d "line") old-line))))
+            (if (and (equal? (hash-ref d 'message) old-msg)
+                     (equal? (hash-ref d 'severity) old-sev))
+                (let ((dist (abs (- (hash-ref d 'line) old-line))))
                   (if (or (not best-dist) (< dist best-dist))
                       (loop (cdr rest) (+ i 1) i dist)
                       (loop (cdr rest) (+ i 1) best best-dist)))
@@ -114,11 +114,11 @@
 (define lsp/*sign-priority* 10)
 
 (define (lsp/severity-scope severity)
-  (string-append severity ".diagnostic.inline"))
+  (string-append (symbol->string severity) ".diagnostic.inline"))
 
 (define (lsp/most-severe line-diags)
   (foldl (lambda (d best)
-           (if (< (hash-ref d "severity-rank") (hash-ref best "severity-rank")) d best))
+           (if (< (hash-ref d 'severity-rank) (hash-ref best 'severity-rank)) d best))
          (car line-diags)
          (cdr line-diags)))
 
@@ -139,20 +139,20 @@
                  (cons (cons current-key (reverse current-group)) groups)))))))
 
 (define (lsp/group-by-line diags)
-  (map cdr (lsp/group-by (lambda (d) (hash-ref d "line")) diags)))
+  (map cdr (lsp/group-by (lambda (d) (hash-ref d 'line)) diags)))
 
 (define (lsp/line-group->entry group)
   (let* ((leftmost (car group))
          (n (length group))
-         (msg (lsp/first-line (hash-ref leftmost "message")))
+         (msg (lsp/first-line (hash-ref leftmost 'message)))
          (body (if (> n 1) (string-append "[" (number->string n) "] " msg) msg))
          (text (string-append " " body))
-         (scope (lsp/severity-scope (hash-ref (lsp/most-severe group) "severity"))))
-    (list (hash-ref leftmost "line") text scope)))
+         (scope (lsp/severity-scope (hash-ref (lsp/most-severe group) 'severity))))
+    (hash 'line (hash-ref leftmost 'line) 'text text 'scope scope)))
 
 (define (lsp/diag-line-pairs diag)
   (map (lambda (line) (cons line diag))
-       (range (hash-ref diag "line") (+ (hash-ref diag "end-line") 1))))
+       (range (hash-ref diag 'line) (+ (hash-ref diag 'end-line) 1))))
 
 (define (lsp/diagnostic-signs diags)
   (let* ((pairs (foldl (lambda (diag acc)
@@ -164,7 +164,7 @@
     (map (lambda (kv)
            (let ((line (car kv))
                  (line-diags (map cdr (cdr kv))))
-             (list line "●" (hash-ref (lsp/most-severe line-diags) "severity"))))
+             (hash 'line line 'text "●" 'scope (symbol->string (hash-ref (lsp/most-severe line-diags) 'severity)))))
          groups)))
 
 (define (lsp/refresh-diagnostic-decorations pane diags)

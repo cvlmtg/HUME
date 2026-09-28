@@ -46,8 +46,8 @@ fn status_text_lists_a_running_server_with_root_and_pending_count() {
         "must show the root: {text:?}"
     );
     assert!(
-        text.contains("Running"),
-        "must show the lifecycle state: {text:?}"
+        text.contains("running"),
+        "must show the lifecycle state, spelled the same as lsp-server-status's 'running: {text:?}"
     );
     assert!(
         text.contains("0 in flight"),

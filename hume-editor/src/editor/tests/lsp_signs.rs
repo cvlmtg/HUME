@@ -79,7 +79,7 @@ fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-signs! "nope" bid (list (list 0 "!" "sc")))))"#,
+             (set-signs! "nope" bid (list (hash 'line 0 'text "!" 'scope "sc")))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -99,7 +99,7 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
         None,
         r#"(register-sign-source! "a" bid 2)
            (register-sign-source! "b" bid 1)
-           (set-signs! "a" bid (list (list 0 "+" "sc")))"#,
+           (set-signs! "a" bid (list (hash 'line 0 'text "+" 'scope "sc")))"#,
     );
     assert_eq!(
         sign_column_width(&ed, pid),
@@ -113,7 +113,7 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "arm-b" "" (lambda (bid)
-             (set-signs! "b" bid (list (list 0 "-" "sc")))))"#,
+             (set-signs! "b" bid (list (hash 'line 0 'text "-" 'scope "sc")))))"#,
     );
     type_cmd(&mut ed, ":arm-b");
     render(&mut ed);
@@ -145,8 +145,8 @@ fn re_registering_a_sign_source_updates_its_priority_and_slot() {
         Some("always:2"),
         r#"(register-sign-source! "a" bid 1)
            (register-sign-source! "b" bid 2)
-           (set-signs! "a" bid (list (list 0 "A" "sc")))
-           (set-signs! "b" bid (list (list 0 "B" "sc")))
+           (set-signs! "a" bid (list (hash 'line 0 'text "A" 'scope "sc")))
+           (set-signs! "b" bid (list (hash 'line 0 'text "B" 'scope "sc")))
            (register-sign-source! "a" bid 10)"#,
     );
 
@@ -168,7 +168,7 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
     let (ed, pid) = plugin_sign_editor(
         None,
         r#"(register-sign-source! "linter" bid 7)
-           (set-signs! "linter" bid (list (list 0 "!" "warn-scope")))"#,
+           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "warn-scope")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -203,8 +203,8 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
         None,
         r#"(register-sign-source! "linter" bid 3)
            (register-sign-source! "vcs" bid 9)
-           (set-signs! "linter" bid (list (list 0 "!" "a")))
-           (set-signs! "vcs" bid (list (list 0 "+" "b")))"#,
+           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))
+           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -235,8 +235,8 @@ fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
         Some("auto"),
         r#"(register-sign-source! "linter" bid 3)
            (register-sign-source! "vcs" bid 9)
-           (set-signs! "linter" bid (list (list 0 "!" "a")))
-           (set-signs! "vcs" bid (list (list 0 "+" "b")))"#,
+           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))
+           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -265,11 +265,11 @@ fn auto_size_grows_to_five_registered_sources() {
            (register-sign-source! "c" bid 3)
            (register-sign-source! "d" bid 2)
            (register-sign-source! "e" bid 1)
-           (set-signs! "a" bid (list (list 0 "5" "sc")))
-           (set-signs! "b" bid (list (list 0 "4" "sc")))
-           (set-signs! "c" bid (list (list 0 "3" "sc")))
-           (set-signs! "d" bid (list (list 0 "2" "sc")))
-           (set-signs! "e" bid (list (list 0 "1" "sc")))"#,
+           (set-signs! "a" bid (list (hash 'line 0 'text "5" 'scope "sc")))
+           (set-signs! "b" bid (list (hash 'line 0 'text "4" 'scope "sc")))
+           (set-signs! "c" bid (list (hash 'line 0 'text "3" 'scope "sc")))
+           (set-signs! "d" bid (list (hash 'line 0 'text "2" 'scope "sc")))
+           (set-signs! "e" bid (list (hash 'line 0 'text "1" 'scope "sc")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -295,8 +295,8 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
         Some("always:1"),
         r#"(register-sign-source! "linter" bid 3)
            (register-sign-source! "vcs" bid 9)
-           (set-signs! "linter" bid (list (list 0 "!" "a")))
-           (set-signs! "vcs" bid (list (list 0 "+" "b")))"#,
+           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))
+           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -322,8 +322,8 @@ fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
         Some("always:2"),
         r#"(register-sign-source! "vcs" bid 5)
            (register-sign-source! "linter" bid 5)
-           (set-signs! "vcs" bid (list (list 0 "+" "b")))
-           (set-signs! "linter" bid (list (list 0 "!" "a")))"#,
+           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))
+           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -351,8 +351,8 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
         Some("always:2"),
         r#"(register-sign-source! "linter" bid 3)
            (register-sign-source! "vcs" bid 9)
-           (set-signs! "linter" bid (list (list 0 "!" "a")))
-           (set-signs! "vcs" bid (list (list 0 "+" "b")))"#,
+           (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "a")))
+           (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "b")))"#,
     );
 
     let signs = pane_signs(&ed, pid);
@@ -384,9 +384,9 @@ fn a_source_ranked_past_the_resolved_slot_count_is_hidden_not_miscast_into_slot_
         r#"(register-sign-source! "a" bid 3)
            (register-sign-source! "b" bid 2)
            (register-sign-source! "c" bid 1)
-           (set-signs! "a" bid (list (list 0 "3" "sc")))
-           (set-signs! "b" bid (list (list 0 "2" "sc")))
-           (set-signs! "c" bid (list (list 0 "1" "sc")))"#,
+           (set-signs! "a" bid (list (hash 'line 0 'text "3" 'scope "sc")))
+           (set-signs! "b" bid (list (hash 'line 0 'text "2" 'scope "sc")))
+           (set-signs! "c" bid (list (hash 'line 0 'text "1" 'scope "sc")))"#,
     );
 
     let signs = pane_signs(&ed, pid);

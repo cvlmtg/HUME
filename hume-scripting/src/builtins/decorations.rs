@@ -15,13 +15,13 @@ use crate::types::{PaneHandle, VirtualLineSpec};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, cons_pair, int_arg, list_items, optional_pair_fields, optional_symbol_arg, string_arg,
-    symbol_enum_arg, tuple_list, usize_arg,
+    ArgPane, HashEntry, cons_pair, hash_list, int_arg, optional_pair_fields, optional_symbol_arg,
+    string_arg, symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
-/// `(set-inlay-hints! source pane hints)`: `hints`: list of `(offset text
-/// 'before|'after)`, `offset` a char offset. LSP wire `{"line"
+/// `(set-inlay-hints! source pane hints)`: `hints`: list of `(hash 'offset
+/// 'text 'side)`, `offset` a char offset, `side` `'before` or `'after`. LSP wire `{"line"
 /// "character"}` positions convert via `lsp-position->offset` before
 /// reaching this builtin. The Steel decoration surface speaks editor-native
 /// units only, so a caller never needs to know which server's encoding a
@@ -34,23 +34,14 @@ pub(crate) fn set_inlay_hints(
 ) -> SteelResult {
     let bid = pane.buffer();
     let source = string_arg(source, "set-inlay-hints! source")?;
-    let parsed = tuple_list(
+    let parsed = hash_list(
         hints,
-        "set-inlay-hints! hints",
-        3..=3,
-        "(offset text 'before|'after)",
-        |fields| {
-            let pos = usize_arg(fields[0].clone(), "set-inlay-hints! offset")?;
-            let text = string_arg(fields[1].clone(), "set-inlay-hints! text")?;
-            let before = match &fields[2] {
-                SteelVal::SymbolV(s) => symbol_enum_arg(
-                    s.as_str(),
-                    "set-inlay-hints! third element",
-                    &[("before", true), ("after", false)],
-                )?,
-                _ => steel::stop!(Generic =>
-                    "set-inlay-hints!: third element must be a symbol"),
-            };
+        "set-inlay-hints!",
+        &["offset", "text", "side"],
+        |entry| {
+            let pos = usize_arg(entry.required("offset")?, "set-inlay-hints! 'offset")?;
+            let text = string_arg(entry.required("text")?, "set-inlay-hints! 'text")?;
+            let before = side_arg(entry.required("side")?, "set-inlay-hints! 'side")?;
             Ok((pos, text, before))
         },
     )?;
@@ -90,7 +81,7 @@ pub(crate) fn register_sign_source(
     Ok(SteelVal::Void)
 }
 
-/// `(set-signs! source pane signs)`: `signs`: list of `(line text scope)`.
+/// `(set-signs! source pane signs)`: `signs`: list of `(hash 'line 'text 'scope)`.
 /// `source` selects the already-registered channel (see
 /// `register-sign-source!`) whose slot every entry here renders in; an
 /// unregistered `source` errors rather than being silently dropped.
@@ -102,33 +93,27 @@ pub(crate) fn set_signs(
 ) -> SteelResult {
     let bid = pane.buffer();
     let source = string_arg(source, "set-signs! source")?;
-    let parsed = tuple_list(
-        signs,
-        "set-signs! signs",
-        3..=3,
-        "(line text scope)",
-        |fields| {
-            let text = string_arg(fields[1].clone(), "set-signs! text")?;
-            // A sign is a glyph in a fixed-width gutter lane: no control
-            // character has a meaning there, and one would misalign the lane
-            // rather than render. The gutter measures the text to right-align
-            // it but writes it with a terminal-buffer writer that drops what
-            // it can't draw, so a tab would reserve columns that then stay
-            // blank and push the padding off. Rejected outright rather than
-            // substituted, unlike `set-virtual-lines!`, which maps them to
-            // spaces because its callers' `'segments` offsets have to keep
-            // lining up with the text.
-            if text.contains(char::is_control) {
-                steel::stop!(Generic =>
+    let parsed = hash_list(signs, "set-signs!", LINE_TEXT_SCOPE, |entry| {
+        let text = string_arg(entry.required("text")?, "set-signs! 'text")?;
+        // A sign is a glyph in a fixed-width gutter lane: no control
+        // character has a meaning there, and one would misalign the lane
+        // rather than render. The gutter measures the text to right-align
+        // it but writes it with a terminal-buffer writer that drops what
+        // it can't draw, so a tab would reserve columns that then stay
+        // blank and push the padding off. Rejected outright rather than
+        // substituted, unlike `set-virtual-lines!`, which maps them to
+        // spaces because its callers' `'segments` offsets have to keep
+        // lining up with the text.
+        if text.contains(char::is_control) {
+            steel::stop!(Generic =>
                     "set-signs!: 'text must not contain a control character, got {:?}", text);
-            }
-            Ok((
-                usize_arg(fields[0].clone(), "set-signs! line")?,
-                text,
-                string_arg(fields[2].clone(), "set-signs! scope")?,
-            ))
-        },
-    )?;
+        }
+        Ok((
+            usize_arg(entry.required("line")?, "set-signs! 'line")?,
+            text,
+            string_arg(entry.required("scope")?, "set-signs! 'scope")?,
+        ))
+    })?;
     require_cap(ctx.host.decorations(), "set-signs!")?
         .set_signs(source, bid, parsed)
         .map_err(generic_err)?;
@@ -138,8 +123,8 @@ pub(crate) fn set_signs(
 /// `(set-virtual-lines! source pane lines)`: `lines`: list of hashmaps, each
 /// with required `'line`/`'text`, plus optional `'anchor` (`'before` or
 /// `'after`, default `'after`), `'scope` (whole-line base style, `ui.virtual`
-/// fallback when absent), and `'segments` (list of `(start end scope)` char
-/// ranges into `text`, styling only the covered chars; chars outside every
+/// fallback when absent), and `'segments` (list of `(hash 'start 'end
+/// 'scope)` char ranges into `text`, styling only the covered chars; chars outside every
 /// segment keep `'scope`'s style). Segment bounds/ordering/overlap are
 /// validated at the host boundary, not here (see `VirtualLineSpec::segments`).
 pub(crate) fn set_virtual_lines(
@@ -157,44 +142,22 @@ pub(crate) fn set_virtual_lines(
     Ok(SteelVal::Void)
 }
 
-const VIRTUAL_LINE_KEYS: &[&str] = &["line", "text", "anchor", "scope", "segments"];
-
-/// Decodes `lines` into `VirtualLineSpec`s. Each entry is a hashmap. Only
-/// decodes shape (arity, types):
-/// segment bounds/ordering/overlap validation happens at the host boundary
-/// (`host_impl.rs`'s `set_virtual_lines`), the sole enforcement point for
-/// that contract.
+/// Decodes `lines` into `VirtualLineSpec`s. Only decodes shape (keys,
+/// types): segment bounds/ordering/overlap validation happens at the host
+/// boundary (`host_impl.rs`'s `set_virtual_lines`), the sole enforcement
+/// point for that contract.
 fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr> {
-    list_items(lines, "set-virtual-lines! lines")?
-        .into_iter()
-        .map(virtual_line_spec)
-        .collect()
+    hash_list(
+        lines,
+        "set-virtual-lines!",
+        &["line", "text", "anchor", "scope", "segments"],
+        virtual_line_spec,
+    )
 }
 
-fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
-    let SteelVal::HashMapV(map) = &entry else {
-        steel::stop!(TypeMismatch =>
-            "set-virtual-lines!: each entry must be a hashmap with 'line and 'text keys \
-             (plus optional 'anchor/'scope/'segments)");
-    };
-    for (key, _) in map.iter() {
-        let SteelVal::SymbolV(key_name) = key else {
-            steel::stop!(Generic =>
-                "set-virtual-lines!: hashmap key must be a symbol, got {:?}", key);
-        };
-        if !VIRTUAL_LINE_KEYS.contains(&key_name.as_str()) {
-            steel::stop!(Generic =>
-                "set-virtual-lines!: unknown key '{}, expected one of {:?}",
-                key_name, VIRTUAL_LINE_KEYS);
-        }
-    }
-    let field = |k: &str| map.get(&SteelVal::SymbolV(k.into())).cloned();
-
-    let line = field("line").ok_or_else(|| generic_err("set-virtual-lines!: missing 'line"))?;
-    let line = usize_arg(line, "set-virtual-lines! line")?;
-
-    let text = field("text").ok_or_else(|| generic_err("set-virtual-lines!: missing 'text"))?;
-    let text = string_arg(text, "set-virtual-lines! text")?;
+fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
+    let line = usize_arg(entry.required("line")?, "set-virtual-lines! 'line")?;
+    let text = string_arg(entry.required("text")?, "set-virtual-lines! 'text")?;
     if text.contains(['\n', '\r']) {
         steel::stop!(Generic =>
             "set-virtual-lines!: 'text must not contain a newline (virtual lines render as a \
@@ -212,21 +175,17 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     // Leaving `text` untouched also keeps a caller's `'segments` offsets
     // (validated below) trivially aligned with it.
 
-    let before = match field("anchor") {
+    let before = match entry.optional("anchor") {
         None => false,
-        Some(SteelVal::SymbolV(s)) => symbol_enum_arg(
-            &s,
-            "set-virtual-lines! #:anchor",
-            &[("before", true), ("after", false)],
-        )?,
-        Some(_) => steel::stop!(Generic => "set-virtual-lines!: #:anchor must be a symbol"),
+        Some(v) => side_arg(v, "set-virtual-lines! 'anchor")?,
     };
 
-    let scope = field("scope")
-        .map(|v| string_arg(v, "set-virtual-lines! scope"))
+    let scope = entry
+        .optional("scope")
+        .map(|v| string_arg(v, "set-virtual-lines! 'scope"))
         .transpose()?;
 
-    let segments = match field("segments") {
+    let segments = match entry.optional("segments") {
         None => Vec::new(),
         Some(v) => virtual_line_segments(v)?,
     };
@@ -240,28 +199,46 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     })
 }
 
-/// Decodes `'segments`: each a `(start end scope)` char range into `text`.
-/// Shape only (arity, types): bounds, ordering, overlap, and
+/// Decodes `'segments`: each a `(hash 'start 'end 'scope)` char range into
+/// `text`. Shape only (keys, types): bounds, ordering, overlap, and
 /// grapheme-cluster alignment are validated at the host boundary
 /// (`host_impl.rs`'s `set_virtual_lines`), which also converts these char
 /// offsets to the byte offsets the engine needs.
 fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String)>, SteelErr> {
-    tuple_list(
+    hash_list(
         segments,
-        "set-virtual-lines! segments",
-        3..=3,
-        "(start end scope)",
-        |fields| {
-            let start = usize_arg(fields[0].clone(), "set-virtual-lines! segment start")?;
-            let end = usize_arg(fields[1].clone(), "set-virtual-lines! segment end")?;
-            let scope = string_arg(fields[2].clone(), "set-virtual-lines! segment scope")?;
-            Ok((start, end, scope))
+        "set-virtual-lines! 'segments",
+        START_END_SCOPE,
+        |entry| {
+            Ok((
+                usize_arg(
+                    entry.required("start")?,
+                    "set-virtual-lines! segment 'start",
+                )?,
+                usize_arg(entry.required("end")?, "set-virtual-lines! segment 'end")?,
+                string_arg(
+                    entry.required("scope")?,
+                    "set-virtual-lines! segment 'scope",
+                )?,
+            ))
         },
     )
 }
 
-/// `(set-eol-text! source pane lines)`: `lines`: list of `(line text
-/// scope)`. Not diagnostics-specific: the diagnostics plugin is its first
+/// An inlay hint's `'side` or a virtual line's `'anchor`: `'before` → `true`,
+/// `'after` → `false`.
+fn side_arg(val: SteelVal, ctx_name: &str) -> Result<bool, SteelErr> {
+    let SteelVal::SymbolV(s) = val else {
+        steel::stop!(Generic => "{}: must be a symbol, 'before or 'after", ctx_name);
+    };
+    symbol_enum_arg(&s, ctx_name, &[("before", true), ("after", false)])
+}
+
+const LINE_TEXT_SCOPE: &[&str] = &["line", "text", "scope"];
+const START_END_SCOPE: &[&str] = &["start", "end", "scope"];
+
+/// `(set-eol-text! source pane lines)`: `lines`: list of `(hash 'line 'text
+/// 'scope)`. Not diagnostics-specific: the diagnostics plugin is its first
 /// client, not its owner, same as every other decoration kind is to LSP.
 pub(crate) fn set_eol_text(
     ctx: &mut SteelCtx,
@@ -271,26 +248,21 @@ pub(crate) fn set_eol_text(
 ) -> SteelResult {
     let bid = pane.buffer();
     let source = string_arg(source, "set-eol-text! source")?;
-    let parsed = tuple_list(
-        lines,
-        "set-eol-text! lines",
-        3..=3,
-        "(line text scope)",
-        |fields| {
-            Ok((
-                usize_arg(fields[0].clone(), "set-eol-text! line")?,
-                string_arg(fields[1].clone(), "set-eol-text! text")?,
-                string_arg(fields[2].clone(), "set-eol-text! scope")?,
-            ))
-        },
-    )?;
+    let parsed = hash_list(lines, "set-eol-text!", LINE_TEXT_SCOPE, |entry| {
+        Ok((
+            usize_arg(entry.required("line")?, "set-eol-text! 'line")?,
+            string_arg(entry.required("text")?, "set-eol-text! 'text")?,
+            string_arg(entry.required("scope")?, "set-eol-text! 'scope")?,
+        ))
+    })?;
     require_cap(ctx.host.decorations(), "set-eol-text!")?
         .set_eol_text(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(set-extra-highlights! source pane spans)`: `spans`: list of `(start end scope)`.
+/// `(set-extra-highlights! source pane spans)`: `spans`: list of `(hash
+/// 'start 'end 'scope)`, char offsets.
 pub(crate) fn set_extra_highlights(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -299,27 +271,21 @@ pub(crate) fn set_extra_highlights(
 ) -> SteelResult {
     let bid = pane.buffer();
     let source = string_arg(source, "set-extra-highlights! source")?;
-    let parsed = tuple_list(
-        spans,
-        "set-extra-highlights! spans",
-        3..=3,
-        "(start end scope)",
-        |fields| {
-            Ok((
-                usize_arg(fields[0].clone(), "set-extra-highlights! start")?,
-                usize_arg(fields[1].clone(), "set-extra-highlights! end")?,
-                string_arg(fields[2].clone(), "set-extra-highlights! scope")?,
-            ))
-        },
-    )?;
+    let parsed = hash_list(spans, "set-extra-highlights!", START_END_SCOPE, |entry| {
+        Ok((
+            usize_arg(entry.required("start")?, "set-extra-highlights! 'start")?,
+            usize_arg(entry.required("end")?, "set-extra-highlights! 'end")?,
+            string_arg(entry.required("scope")?, "set-extra-highlights! 'scope")?,
+        ))
+    })?;
     require_cap(ctx.host.decorations(), "set-extra-highlights!")?
         .set_extra_highlights(source, bid, parsed)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
 }
 
-/// `(set-line-backgrounds! source pane entries)`: `entries`: list of `(line
-/// scope)`. A full-row background tint on each named line. No `priority`
+/// `(set-line-backgrounds! source pane entries)`: `entries`: list of `(hash
+/// 'line 'scope)`. A full-row background tint on each named line. No `priority`
 /// field: unlike signs, row tints have no single-slot contention; same-line
 /// entries from different sources break ties by source name.
 pub(crate) fn set_line_backgrounds(
@@ -330,15 +296,14 @@ pub(crate) fn set_line_backgrounds(
 ) -> SteelResult {
     let bid = pane.buffer();
     let source = string_arg(source, "set-line-backgrounds! source")?;
-    let parsed = tuple_list(
+    let parsed = hash_list(
         entries,
-        "set-line-backgrounds! entries",
-        2..=2,
-        "(line scope)",
-        |fields| {
+        "set-line-backgrounds!",
+        &["line", "scope"],
+        |entry| {
             Ok((
-                usize_arg(fields[0].clone(), "set-line-backgrounds! line")?,
-                string_arg(fields[1].clone(), "set-line-backgrounds! scope")?,
+                usize_arg(entry.required("line")?, "set-line-backgrounds! 'line")?,
+                string_arg(entry.required("scope")?, "set-line-backgrounds! 'scope")?,
             ))
         },
     )?;
@@ -395,16 +360,16 @@ pub(crate) fn diagnostics_for_buffer(
     Ok(SteelVal::ListV(list.into()))
 }
 
-/// `DiagnosticEntry` -> a Steel hashmap, field-by-field native except
-/// `"raw"`, the one field that crosses as a `JsonHandle` sharing the
+/// `DiagnosticEntry` -> a symbol-keyed Steel hashmap, field-by-field native
+/// except `'raw`, the one field that crosses as a `JsonHandle` sharing the
 /// entry's own `Arc` rather than a value rebuilt (and reconverted) just to
 /// carry it. Written by hand rather than `json_to_steel` on a
-/// `serde_json::Value` blob precisely so `"raw"` can take that different
+/// `serde_json::Value` blob precisely so `'raw` can take that different
 /// path from every other field.
 fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
     let mut hm = SteelHashMap::new();
     let mut insert = |k: &'static str, v: SteelVal| {
-        hm.insert(SteelVal::StringV(k.into()), v);
+        hm.insert(SteelVal::SymbolV(k.into()), v);
     };
     insert("start", SteelVal::IntV(entry.start as isize));
     insert("end", SteelVal::IntV(entry.end as isize));
@@ -412,7 +377,7 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
     insert("end-line", SteelVal::IntV(entry.end_line as isize));
     insert("char-col", SteelVal::IntV(entry.char_col as isize));
     insert("grapheme-col", SteelVal::IntV(entry.grapheme_col as isize));
-    insert("severity", SteelVal::StringV(entry.severity.into()));
+    insert("severity", SteelVal::SymbolV(entry.severity.into()));
     insert(
         "severity-rank",
         SteelVal::IntV(entry.severity_rank as isize),

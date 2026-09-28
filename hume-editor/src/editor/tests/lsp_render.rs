@@ -245,7 +245,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-extra-highlights! "linter" bid (list (list 1 4 "unused")))))"#,
+             (set-extra-highlights! "linter" bid (list (hash 'start 1 'end 4 'scope "unused")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -280,9 +280,9 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm-a" "" (lambda (bid)
-             (set-extra-highlights! "a" bid (list (list 0 1 "shared")))))
+             (set-extra-highlights! "a" bid (list (hash 'start 0 'end 1 'scope "shared")))))
            (define-typed-command! "arm-b" "" (lambda (bid)
-             (set-extra-highlights! "b" bid (list (list 2 3 "shared")))))"#,
+             (set-extra-highlights! "b" bid (list (hash 'start 2 'end 3 'scope "shared")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -319,9 +319,9 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm-zzz" "" (lambda (bid)
-             (set-extra-highlights! "zzz" bid (list (list 1 4 "zzz-scope")))))
+             (set-extra-highlights! "zzz" bid (list (hash 'start 1 'end 4 'scope "zzz-scope")))))
            (define-typed-command! "arm-aaa" "" (lambda (bid)
-             (set-extra-highlights! "aaa" bid (list (list 1 4 "aaa-scope")))))"#,
+             (set-extra-highlights! "aaa" bid (list (hash 'start 1 'end 4 'scope "aaa-scope")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -370,7 +370,7 @@ fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() 
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
              (set-extra-highlights! "linter" bid
-               (list (list 0 8 "diagnostic.warning.qa-regression-marker")))))"#,
+               (list (hash 'start 0 'end 8 'scope "diagnostic.warning.qa-regression-marker")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -422,7 +422,7 @@ fn search_match_beats_extra_highlight_in_overlapping_region() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-extra-highlights! "linter" bid (list (list 0 8 "diagnostic.warning")))))"#,
+             (set-extra-highlights! "linter" bid (list (hash 'start 0 'end 8 'scope "diagnostic.warning")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

@@ -7,7 +7,7 @@
 //! `hume-rope` type, so the orphan rule rules out `FromSteelVal for
 //! WirePos` here, so a plain function is used for its sibling
 //! `WireTextEdit` decoder too, for one calling convention across both),
-//! and the shared list/tuple decoders every multi-field setter builds on.
+//! and the shared list/hash decoders every multi-field setter builds on.
 //!
 //! `#f`-means-absent is decoded only by this module's `optional_*` family
 //! (plus `OptUsize`/`OptString`'s own `FromSteelVal` impls, which live in
@@ -344,8 +344,8 @@ pub(crate) fn optional_steel_error_arg(
 // ── Fixed-arity list decoders ────────────────────────────────────────────────
 
 /// Unpacks `val` as a list and errors unless its length falls in `arity`:
-/// the shared shape check every fixed-field entry (a decoration setter's
-/// tuple, a position pair, a text edit) opens with.
+/// the shared shape check every fixed-field entry (a position pair, a text
+/// edit) opens with.
 pub(crate) fn checked_fields(
     val: SteelVal,
     ctx_name: &str,
@@ -359,27 +359,62 @@ pub(crate) fn checked_fields(
     Ok(fields)
 }
 
-/// Decodes a Steel list of fixed-arity tuples into `Vec<T>`: the shared
-/// skeleton every tuple-shaped decoration setter (`set-signs!`,
-/// `set-extra-highlights!`, `set-eol-text!`, and
-/// `set-virtual-lines!`'s inner `'segments` list, …) opens with: unpack the
-/// outer list, check each entry's arity against `shape`, then hand the
-/// checked, index-safe slice to `row` for field-specific decoding.
-/// `set-virtual-lines!`'s own outer `lines` list is hashmap-shaped instead
-/// (`virtual_line_specs` in `builtins/decorations.rs`) and doesn't go
-/// through this.
-pub(crate) fn tuple_list<T>(
+// ── Symbol-keyed hash entries ────────────────────────────────────────────────
+
+/// One entry of a hash-shaped list (a decoration setter's `(hash 'line …)`),
+/// its keys already checked against the caller's own key set by
+/// [`hash_list`].
+pub(crate) struct HashEntry<'a> {
+    map: steel::rvals::SteelHashMap,
+    ctx_name: &'a str,
+}
+
+impl HashEntry<'_> {
+    pub(crate) fn optional(&self, key: &str) -> Option<SteelVal> {
+        self.map.get(&SteelVal::SymbolV(key.into())).cloned()
+    }
+
+    pub(crate) fn required(&self, key: &str) -> Result<SteelVal, SteelErr> {
+        self.optional(key)
+            .ok_or_else(|| generic_err(format!("{}: missing '{key}", self.ctx_name)))
+    }
+}
+
+/// Decodes a Steel list of symbol-keyed hashmaps into `Vec<T>`: the shared
+/// skeleton every decoration setter opens with. Each entry must be a
+/// hashmap whose keys are all symbols drawn from `keys`; an unknown or
+/// non-symbol key errors, so a misspelled key is reported, not ignored. Which
+/// keys are required is `row`'s call, via [`HashEntry::required`].
+pub(crate) fn hash_list<T>(
     val: SteelVal,
     ctx_name: &str,
-    arity: RangeInclusive<usize>,
-    shape: &str,
-    mut row: impl FnMut(&[SteelVal]) -> Result<T, SteelErr>,
+    keys: &[&str],
+    mut row: impl FnMut(&HashEntry) -> Result<T, SteelErr>,
 ) -> Result<Vec<T>, SteelErr> {
+    let expected = || {
+        keys.iter()
+            .map(|k| format!("'{k}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
     list_items(val, ctx_name)?
         .into_iter()
         .map(|entry| {
-            let fields = checked_fields(entry, ctx_name, arity.clone(), shape)?;
-            row(&fields)
+            let SteelVal::HashMapV(map) = entry else {
+                steel::stop!(TypeMismatch =>
+                    "{}: each entry must be a hashmap with keys from {}", ctx_name, expected());
+            };
+            for (key, _) in map.iter() {
+                let SteelVal::SymbolV(name) = key else {
+                    steel::stop!(Generic =>
+                        "{}: hashmap key must be a symbol, got {:?}", ctx_name, key);
+                };
+                if !keys.contains(&name.as_str()) {
+                    steel::stop!(Generic =>
+                        "{}: unknown key '{}, expected one of {}", ctx_name, name, expected());
+                }
+            }
+            row(&HashEntry { map, ctx_name })
         })
         .collect()
 }

@@ -90,7 +90,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
         r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
              (lsp-request! bid "test/echo" (hash) (lambda (err res)
                (set-inlay-hints! "linter" bid
-                 (list (list (lsp-position->offset bid res) "hint" 'after)))))))"#,
+                 (list (hash 'offset (lsp-position->offset bid res) 'text "hint" 'side 'after)))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -126,10 +126,10 @@ fn set_inlay_hints_replaces_wholesale_not_appends() {
         &mut host,
         r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (list 0 "first" 'before)))))
+               (list (hash 'offset 0 'text "first" 'side 'before)))))
            (define-typed-command! "arm-hints-b" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (list 1 "second" 'before)))))"#,
+               (list (hash 'offset 1 'text "second" 'side 'before)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -166,7 +166,7 @@ fn set_inlay_hints_errors_loudly_on_a_malformed_offset() {
         &mut host,
         r#"(define-typed-command! "arm-bad" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (list "not-a-number" "oops" 'before)))))"#,
+               (list (hash 'offset "not-a-number" 'text "oops" 'side 'before)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -207,7 +207,7 @@ fn set_inlay_hints_errors_loudly_on_an_after_hint_at_the_trailing_newline() {
         &mut host,
         r#"(define-typed-command! "arm-bad" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (list 7 "hint" 'after)))))"#,
+               (list (hash 'offset 7 'text "hint" 'side 'after)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -242,7 +242,7 @@ fn set_extra_highlights_errors_loudly_on_an_out_of_range_end() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm-bad" "" (lambda (bid)
-             (set-extra-highlights! "linter" bid (list (list 0 100 "unused")))))"#,
+             (set-extra-highlights! "linter" bid (list (hash 'start 0 'end 100 'scope "unused")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -279,13 +279,13 @@ fn set_signs_set_virtual_lines_set_eol_text_and_set_line_backgrounds_error_loudl
         &mut host,
         r#"(define-typed-command! "arm-signs" "" (lambda (bid)
              (register-sign-source! "linter" bid 10)
-             (set-signs! "linter" bid (list (list 99 "!" "error")))))
+             (set-signs! "linter" bid (list (hash 'line 99 'text "!" 'scope "error")))))
            (define-typed-command! "arm-vlines" "" (lambda (bid)
              (set-virtual-lines! "git-diff" bid (list (hash 'line 99 'text "note")))))
            (define-typed-command! "arm-eol" "" (lambda (bid)
-             (set-eol-text! "diagnostics" bid (list (list 99 "msg" "diagnostic.error")))))
+             (set-eol-text! "diagnostics" bid (list (hash 'line 99 'text "msg" 'scope "diagnostic.error")))))
            (define-typed-command! "arm-linebg" "" (lambda (bid)
-             (set-line-backgrounds! "git-diff" bid (list (list 99 "diff.plus")))))"#,
+             (set-line-backgrounds! "git-diff" bid (list (hash 'line 99 'scope "diff.plus")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -353,7 +353,7 @@ fn inlay_hints_remap_through_an_edit() {
         &mut host,
         r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
              (set-inlay-hints! "linter" bid
-               (list (list 3 "hint" 'after)))))"#,
+               (list (hash 'offset 3 'text "hint" 'side 'after)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -401,7 +401,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-extra-highlights! "linter" bid (list (list 3 5 "unused")))))"#,
+             (set-extra-highlights! "linter" bid (list (hash 'start 3 'end 5 'scope "unused")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -459,7 +459,7 @@ fn sign_remaps_through_a_line_inserted_above_it() {
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
              (register-sign-source! "linter" bid 10)
-             (set-signs! "linter" bid (list (list 1 "!" "error")))))"#,
+             (set-signs! "linter" bid (list (hash 'line 1 'text "!" 'scope "error")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -502,7 +502,7 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
              (set-virtual-lines! "git-diff" bid (list (hash 'line 1 'text "note")))
-             (set-eol-text! "diagnostics" bid (list (list 1 "msg" "diagnostic.error")))))"#,
+             (set-eol-text! "diagnostics" bid (list (hash 'line 1 'text "msg" 'scope "diagnostic.error")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -575,7 +575,7 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
              (register-sign-source! "linter" bid 10)
-             (set-signs! "linter" bid (list (list 1 "!" "error")))))"#,
+             (set-signs! "linter" bid (list (hash 'line 1 'text "!" 'scope "error")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -625,10 +625,10 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
         r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
              (register-sign-source! "linter" bid 10)
              (register-sign-source! "vcs" bid 5)
-             (set-signs! "linter" bid (list (list 0 "!" "error")))
-             (set-signs! "vcs" bid (list (list 0 "+" "added")))
+             (set-signs! "linter" bid (list (hash 'line 0 'text "!" 'scope "error")))
+             (set-signs! "vcs" bid (list (hash 'line 0 'text "+" 'scope "added")))
              (set-virtual-lines! "linter" bid (list (hash 'line 0 'text "note: …")))
-             (set-extra-highlights! "linter" bid (list (list 0 3 "unused")))))
+             (set-extra-highlights! "linter" bid (list (hash 'start 0 'end 3 'scope "unused")))))
            (define-typed-command! "clear-linter-signs" "" (lambda (bid)
              (set-signs! "linter" bid '())))"#,
         tmp.path(),
@@ -707,12 +707,12 @@ fn every_setter_interns_its_scope_at_the_set_call_not_at_first_render() {
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
              (register-sign-source! "src" bid 10)
-             (set-signs! "src" bid (list (list 0 "!" "scope-sign")))
+             (set-signs! "src" bid (list (hash 'line 0 'text "!" 'scope "scope-sign")))
              (set-virtual-lines! "src" bid
                (list (hash 'line 0 'text "x" 'scope "scope-vline")))
-             (set-eol-text! "src" bid (list (list 0 "x" "scope-eol")))
-             (set-line-backgrounds! "src" bid (list (list 0 "scope-linebg")))
-             (set-extra-highlights! "src" bid (list (list 0 3 "scope-extra")))))"#,
+             (set-eol-text! "src" bid (list (hash 'line 0 'text "x" 'scope "scope-eol")))
+             (set-line-backgrounds! "src" bid (list (hash 'line 0 'scope "scope-linebg")))
+             (set-extra-highlights! "src" bid (list (hash 'start 0 'end 3 'scope "scope-extra")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -748,7 +748,7 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
         r#"(define-typed-command! "arm" "" (lambda (bid)
              (set-virtual-lines! "git-diff" bid
                (list (hash 'line 3 'anchor 'before 'text "- let x = 5" 'scope "diff.minus"
-                           'segments (list (list 2 5 "keyword")))))))"#,
+                           'segments (list (hash 'start 2 'end 5 'scope "keyword")))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -790,10 +790,10 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         &mut host,
         r#"(define-typed-command! "arm-a" "" (lambda (bid)
              (set-eol-text! "diagnostics" bid
-               (list (list 0 "[2] first problem" "diagnostic.error")))))
+               (list (hash 'line 0 'text "[2] first problem" 'scope "diagnostic.error")))))
            (define-typed-command! "arm-b" "" (lambda (bid)
              (set-eol-text! "diagnostics" bid
-               (list (list 1 "second problem" "diagnostic.warning")))))"#,
+               (list (hash 'line 1 'text "second problem" 'scope "diagnostic.warning")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -847,9 +847,9 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm-a" "" (lambda (bid)
-             (set-line-backgrounds! "git-diff" bid (list (list 0 "diff.plus")))))
+             (set-line-backgrounds! "git-diff" bid (list (hash 'line 0 'scope "diff.plus")))))
            (define-typed-command! "arm-b" "" (lambda (bid)
-             (set-line-backgrounds! "git-diff" bid (list (list 1 "diff.minus")))))"#,
+             (set-line-backgrounds! "git-diff" bid (list (hash 'line 1 'scope "diff.minus")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -902,7 +902,7 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm" "" (lambda (bid)
-             (set-line-backgrounds! "git-diff" bid (list (list 1 "diff.plus")))))"#,
+             (set-line-backgrounds! "git-diff" bid (list (hash 'line 1 'scope "diff.plus")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1004,7 +1004,11 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
            (define-typed-command! "floored" "" (lambda (bid)
              (log! 'info (to-string (length (diagnostics-for-buffer bid #:severity 'warning))))))
            (define-typed-command! "ranged" "" (lambda (bid)
-             (log! 'info (to-string (length (diagnostics-for-buffer bid #:range (cons 5 10)))))))"#,
+             (log! 'info (to-string (length (diagnostics-for-buffer bid #:range (cons 5 10)))))))
+           (define-typed-command! "first" "" (lambda (bid)
+             (let ((d (car (diagnostics-for-buffer bid))))
+               (log! 'info (to-string (hash-ref d 'message) "@" (hash-ref d 'start)
+                                      (equal? (hash-ref d 'severity) 'error))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1035,6 +1039,13 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
         ed.state.status_msg.clone().unwrap(),
         "1",
         "range 5..10 must keep only the hint at char 8"
+    );
+
+    type_cmd(&mut ed, ":first");
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "an error @ 0 #true",
+        "an entry's fields are read by symbol key, its severity a symbol"
     );
 }
 

@@ -237,7 +237,7 @@ pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult
         }))
 }
 
-/// `(lsp-server-status)` → list of `{"language" "root" "state" "pending"}`.
+/// `(lsp-server-status)` → list of `(hash 'language 'root 'state 'pending)`.
 pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
     let entries: Vec<SteelVal> = ctx
         .host
@@ -248,19 +248,19 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
         .map(|e| {
             let mut map = steel::HashMap::new();
             map.insert(
-                SteelVal::StringV("language".into()),
+                SteelVal::SymbolV("language".into()),
                 SteelVal::StringV(e.language.into()),
             );
             map.insert(
-                SteelVal::StringV("root".into()),
+                SteelVal::SymbolV("root".into()),
                 SteelVal::StringV(e.root.to_string_lossy().into_owned().into()),
             );
             map.insert(
-                SteelVal::StringV("state".into()),
-                SteelVal::StringV(e.state.into()),
+                SteelVal::SymbolV("state".into()),
+                SteelVal::SymbolV(e.state.into()),
             );
             map.insert(
-                SteelVal::StringV("pending".into()),
+                SteelVal::SymbolV("pending".into()),
                 SteelVal::IntV(e.pending as isize),
             );
             SteelVal::HashMapV(steel::gc::Gc::new(map).into())
