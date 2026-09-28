@@ -324,6 +324,12 @@ pub(super) fn record_jump_if_moved(
 /// to an already-resolved buffer/position pair: `goto_location`
 /// (`lsp/edits.rs`) and `:e`'s own `path:line[:col]` suffix
 /// (`typed_buffer::typed_edit`).
+///
+/// Caller contract: `t` must still be showing its pre-jump buffer when this
+/// is called. This is the only switch to `bid`; a caller that already
+/// switched (`enter_buffer`, `switch_to_buffer_with_jump`) would make the
+/// jump entry this function records snapshot `bid`'s own position instead of
+/// the buffer the jump actually started from.
 pub(super) fn jump_pane_to(
     state: &mut EditorState,
     view: &mut EngineView,

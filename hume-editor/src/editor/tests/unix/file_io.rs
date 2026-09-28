@@ -487,6 +487,40 @@ fn edit_position_suffix_on_the_focused_buffer_records_a_jump_entry() {
 }
 
 #[test]
+fn edit_position_suffix_on_another_file_ctrl_o_returns_in_one_step() {
+    let f1 = safe_named_tempfile();
+    let f2 = safe_named_tempfile();
+    std::fs::write(f1.path(), "line one\nline two\nline three\n").unwrap();
+    std::fs::write(f2.path(), "b one\nb two\nb three\n").unwrap();
+    let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
+    let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
+    ed.execute_typed("goto", Some("2")).unwrap();
+    let before = ed.current_selections().primary().head();
+
+    let arg = format!("{}:3", canonical2.display());
+    ed.execute_typed("e", Some(&arg)).unwrap();
+    assert_eq!(
+        ed.doc().path(),
+        Some(canonical2.as_path()),
+        "sanity: switched to the second file"
+    );
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(
+        ed.doc().path(),
+        Some(canonical1.as_path()),
+        "one Ctrl-o must return to the first file, not stop on the second file's own start"
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        before,
+        "Ctrl-o must land exactly on the pre-:e position"
+    );
+}
+
+#[test]
 fn edit_a_disk_file_literally_named_with_a_colon_number_opens_without_splitting() {
     let dir = safe_tempdir();
     let path = dir.path().join("weird:2");

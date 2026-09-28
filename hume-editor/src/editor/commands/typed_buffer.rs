@@ -54,38 +54,44 @@ pub(in crate::editor) fn typed_edit(
 
         let expanded = hume_platform::path::expand(path_str);
 
-        // If a buffer is already open for this path, switch without re-reading.
+        // If a buffer is already open for this path, reuse it without re-reading.
         // Matches Vim semantics and covers the deleted-from-disk case.
-        let bid = if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
-            ed.enter_buffer(fp, bid);
-            bid
+        let (bid, opened_msg) = if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
+            (bid, None)
         } else {
             let (bid, is_new) = ed
                 .resolve_open_path(path_str)
                 .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
-            if is_new {
+            let msg = is_new.then(|| {
                 let buf = ed.state.buffers.get(bid);
                 let name = buf.display_name();
-                let msg = if buf.is_new_file() {
+                if buf.is_new_file() {
                     format!("{name} [new file]")
                 } else {
                     format!("Opened {name}")
-                };
-                ed.switch_to_buffer_with_jump(fp, bid);
-                ed.report(Severity::Info, msg);
-            } else {
-                ed.enter_buffer(fp, bid);
-            }
-            bid
+                }
+            });
+            (bid, msg)
         };
 
-        if let Some(pos) = pos {
-            let char_pos = crate::editor::pane_state::line_grapheme_to_char(
-                ed.state.buffers.get(bid).text(),
-                pos.line,
-                pos.grapheme_col,
-            );
-            jump_pane_to(&mut ed.state, &mut ed.view, fp.pane(), bid, char_pos);
+        // Exactly one switch, whichever path landed here: a position suffix
+        // switches (and records its jump entry) through `jump_pane_to` itself.
+        // A prior `enter_buffer`/`switch_to_buffer_with_jump` here would push
+        // a second jump entry (the outgoing buffer's own start), so the first
+        // Ctrl-o would land on that instead of back where `:e` was run.
+        match pos {
+            Some(pos) => {
+                let char_pos = crate::editor::pane_state::line_grapheme_to_char(
+                    ed.state.buffers.get(bid).text(),
+                    pos.line,
+                    pos.grapheme_col,
+                );
+                jump_pane_to(&mut ed.state, &mut ed.view, fp.pane(), bid, char_pos);
+            }
+            None => ed.enter_buffer(fp, bid),
+        }
+        if let Some(msg) = opened_msg {
+            ed.report(Severity::Info, msg);
         }
         Ok(())
     } else {
