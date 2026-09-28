@@ -153,7 +153,8 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     assert!(ed.state.input.menu().is_some(), "sanity: menu open");
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.close_menu(token + 1).unwrap();
+    host.close_menu(crate::editor::widget_token::mint())
+        .unwrap();
     assert!(
         ed.state.input.menu().is_some(),
         "a token the open menu doesn't carry must leave it open"

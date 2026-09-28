@@ -336,11 +336,12 @@ fn close_drawer_with_a_mismatched_token_leaves_it_open() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let token = open_drawer_via_host(&mut ed, &["a"]);
+    open_drawer_via_host(&mut ed, &["a"]);
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.close_drawer(token.wrapping_add(1)).unwrap();
+    host.close_drawer(crate::editor::widget_token::mint())
+        .unwrap();
 
     assert!(
         ed.state.input.drawer().is_some(),
@@ -360,12 +361,12 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let token = open_drawer_via_host(&mut ed, &["a", "b"]);
+    open_drawer_via_host(&mut ed, &["a", "b"]);
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let applied = host.update_drawer_list(
-        token.wrapping_add(1),
+        crate::editor::widget_token::mint(),
         vec!["x".to_string()],
         steel::rvals::SteelVal::Void,
         0,
@@ -393,7 +394,7 @@ fn drawer_selected_index_with_a_mismatched_token_reports_none() {
     let _pane = focused_pane(&ed);
     let host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert_eq!(
-        host.drawer_selected_index(token.wrapping_add(1)),
+        host.drawer_selected_index(crate::editor::widget_token::mint()),
         None,
         "a foreign token must read as no selection, even though a drawer is open"
     );

@@ -38,7 +38,9 @@ pub use output::OutputHost;
 pub use registers::RegisterHost;
 pub use settings::{OptionValue, SettingsHost};
 pub use timers::TimerHost;
-pub use ui::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost};
+pub use ui::{
+    LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost, WidgetToken,
+};
 
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
 ///

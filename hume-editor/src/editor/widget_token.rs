@@ -12,12 +12,18 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use hume_scripting::host::WidgetToken;
+
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
-/// Mints a fresh token. Starts at `1`, never `0`, so a caller that needs a
-/// token-shaped value with nothing behind it can use `0` knowing no live
-/// instance holds it. Every widget's/invocation's own constructor calls
+/// Mints a fresh token. Starts at `1`, never `0`, so no live instance holds
+/// [`WidgetToken::NONE`]. Every widget's/invocation's own constructor calls
 /// this once, at construction, as its token field's only initializer.
 pub(in crate::editor) fn next() -> u64 {
     NEXT_TOKEN.fetch_add(1, Ordering::Relaxed)
+}
+
+/// [`next`], wrapped for a widget's own token field.
+pub(in crate::editor) fn mint() -> WidgetToken {
+    WidgetToken::from_raw(next())
 }

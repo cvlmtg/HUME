@@ -13,7 +13,9 @@ use termina::event::KeyEvent;
 use hume_engine::types::TruncateEnd;
 
 use crate::SteelCtx;
-use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
+use crate::host::{
+    LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, WidgetToken,
+};
 use crate::types::PaneHandle;
 
 use super::SteelResult;
@@ -65,9 +67,7 @@ pub(crate) fn show_popup(
 /// `(close-popup! token)`. A `#f` token (the opener returned `#f`, or the
 /// popup has since closed) is a no-op, same as any other stale token.
 pub(crate) fn close_popup(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let Some(token) = token_arg(token, "close-popup! token")? else {
-        return Ok(SteelVal::Void);
-    };
+    let token = token_arg(token, "close-popup! token")?;
     require_cap(ctx.host.ui(), "close-popup!")?
         .close_popup(token)
         .map(|()| SteelVal::Void)
@@ -92,9 +92,7 @@ pub(crate) fn show_menu(
 
 /// `(close-menu! token)`. A `#f` token is a no-op, same as `close-popup!`.
 pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let Some(token) = token_arg(token, "close-menu! token")? else {
-        return Ok(SteelVal::Void);
-    };
+    let token = token_arg(token, "close-menu! token")?;
     require_cap(ctx.host.ui(), "close-menu!")?
         .close_menu(token)
         .map(|()| SteelVal::Void)
@@ -103,20 +101,19 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 
 /// A widget opener's result: the new widget's token, or `#f` when the open
 /// was dropped.
-fn token_or_false(token: Option<u64>) -> SteelVal {
-    match token {
-        Some(token) => SteelVal::IntV(token as isize),
-        None => SteelVal::BoolV(false),
-    }
+fn token_or_false(token: Option<WidgetToken>) -> SteelVal {
+    token.map_or(SteelVal::BoolV(false), WidgetToken::to_steel)
 }
 
 /// `token_or_false`'s inverse: decodes a closer/updater's own `token`
 /// argument, which is `#f` either because the opener that produced it
 /// already returned `#f` (the open was dropped) or because the widget it
-/// named has since closed. Both are the same stale case, so callers treat
-/// `None` as a no-op rather than raising.
-fn token_arg(val: SteelVal, ctx_name: &str) -> Result<Option<u64>, SteelErr> {
-    Ok(optional_usize_arg(val, ctx_name)?.map(|n| n as u64))
+/// named has since closed. Both are the same stale case, so `#f` decodes to
+/// [`WidgetToken::NONE`], which the host treats as any other stale token
+/// rather than raising.
+fn token_arg(val: SteelVal, ctx_name: &str) -> Result<WidgetToken, SteelErr> {
+    Ok(optional_usize_arg(val, ctx_name)?
+        .map_or(WidgetToken::NONE, |n| WidgetToken::from_raw(n as u64)))
 }
 
 /// `(show-drawer-list! pane items on-select)`: no keyword defaults, so this
@@ -142,9 +139,7 @@ pub(crate) fn show_drawer_list(
 
 /// `(close-drawer! token)`. A `#f` token is a no-op, same as `close-popup!`.
 pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let Some(token) = token_arg(token, "close-drawer! token")? else {
-        return Ok(SteelVal::Void);
-    };
+    let token = token_arg(token, "close-drawer! token")?;
     require_cap(ctx.host.ui(), "close-drawer!")?
         .close_drawer(token)
         .map(|()| SteelVal::Void)
@@ -168,9 +163,6 @@ pub(crate) fn update_drawer_list(
     let token = token_arg(token, "update-drawer-list! token")?;
     let items = list_to_strings(items, "update-drawer-list! items")?;
     let selected = usize_arg(selected, "update-drawer-list! selected")?;
-    let Some(token) = token else {
-        return Ok(SteelVal::BoolV(false));
-    };
     let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?
         .update_drawer_list(token, items, on_select, selected);
     Ok(SteelVal::BoolV(applied))
@@ -180,9 +172,7 @@ pub(crate) fn update_drawer_list(
 /// `#f` when no drawer is open, `token` doesn't match its own, or `token`
 /// itself is `#f` (the opener that produced it returned `#f`).
 pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let Some(token) = token_arg(token, "drawer-selected-index token")? else {
-        return Ok(SteelVal::BoolV(false));
-    };
+    let token = token_arg(token, "drawer-selected-index token")?;
     match require_cap(ctx.host.ui(), "drawer-selected-index")?.drawer_selected_index(token) {
         Some(idx) => Ok(SteelVal::IntV(idx as isize)),
         None => Ok(SteelVal::BoolV(false)),
@@ -295,7 +285,7 @@ pub(crate) fn picker(
     let token = require_cap(ctx.host.ui(), "picker!")?
         .open_picker(pane, items, on_select, opts)
         .map_err(generic_err)?;
-    Ok(SteelVal::IntV(token as isize))
+    Ok(token.to_steel())
 }
 
 /// `(%live-picker! on-select prompt query on-query-change truncate actions)`: the
@@ -337,7 +327,7 @@ pub(crate) fn live_picker(
     let token = require_cap(ctx.host.ui(), "live-picker!")?
         .open_live_picker(pane, on_select, opts)
         .map_err(generic_err)?;
-    Ok(SteelVal::IntV(token as isize))
+    Ok(token.to_steel())
 }
 
 /// Shared body of `picker-push!`/`picker-replace!`: identical shape, differing
@@ -352,9 +342,6 @@ fn picker_feed_builtin(
 ) -> SteelResult {
     let token = token_arg(token, &format!("{name} token"))?;
     let items = picker_items(items, &format!("{name} items"))?;
-    let Some(token) = token else {
-        return Ok(SteelVal::BoolV(false));
-    };
     let applied = require_cap(ctx.host.ui(), name)?.picker_feed(token, items, mode);
     Ok(SteelVal::BoolV(applied))
 }
@@ -403,9 +390,6 @@ pub(crate) fn picker_source_spawn(
     let cwd = optional_path_arg(cwd, "picker-source-spawn! #:cwd")?;
     let nul = bool_arg(nul, "picker-source-spawn! #:nul")?;
     let ok_exit_codes = list_to_i32s(ok_exit_codes, "picker-source-spawn! #:ok-exit-codes")?;
-    let Some(token) = token else {
-        return Ok(SteelVal::BoolV(false));
-    };
     let opts = PickerSourceOpts {
         cwd,
         nul,
@@ -424,9 +408,7 @@ pub(crate) fn picker_source_spawn(
 /// contract as `picker-push!`), regardless of whether a source was actually
 /// attached.
 pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let Some(token) = token_arg(token, "picker-source-stop! token")? else {
-        return Ok(SteelVal::BoolV(false));
-    };
+    let token = token_arg(token, "picker-source-stop! token")?;
     let applied = require_cap(ctx.host.ui(), "picker-source-stop!")?.picker_source_stop(token);
     Ok(SteelVal::BoolV(applied))
 }
@@ -435,9 +417,7 @@ pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelRe
 /// directly, same shape as `picker-source-stop!`. A `#f` token is a no-op,
 /// same as `close-popup!`.
 pub(crate) fn picker_close(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
-    let Some(token) = token_arg(token, "picker-close! token")? else {
-        return Ok(SteelVal::Void);
-    };
+    let token = token_arg(token, "picker-close! token")?;
     require_cap(ctx.host.ui(), "picker-close!")?.picker_close(token);
     Ok(SteelVal::Void)
 }

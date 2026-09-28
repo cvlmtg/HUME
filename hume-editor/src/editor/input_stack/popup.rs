@@ -9,6 +9,7 @@ use hume_engine::pipeline::RenderContext;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::{EditorMode, Scope};
+use hume_scripting::host::WidgetToken;
 
 use super::super::Editor;
 use super::super::commands::half_page;
@@ -54,7 +55,7 @@ pub(in crate::editor) struct PopupLayer {
     pub(in crate::editor) content: Option<hume_ui::popup::PopupContent>,
     /// Identifies which `show-popup!` call opened this popup; see
     /// [`Self::token`]'s doc.
-    token: u64,
+    token: WidgetToken,
 }
 
 impl PopupLayer {
@@ -71,13 +72,13 @@ impl PopupLayer {
             syntax,
             layout,
             content: None,
-            token: widget_token::next(),
+            token: widget_token::mint(),
         }
     }
 
     /// `show-popup!`'s return value, checked by `close-popup!` so a caller
     /// only ever closes the popup it opened. Mirrors `DrawerLayer::token`.
-    pub(in crate::editor) fn token(&self) -> u64 {
+    pub(in crate::editor) fn token(&self) -> WidgetToken {
         self.token
     }
 

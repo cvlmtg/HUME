@@ -12,7 +12,34 @@ use termina::event::KeyEvent;
 
 use hume_engine::types::TruncateEnd;
 
+use steel::rvals::SteelVal;
+
 use crate::types::PaneHandle;
+
+/// Opaque handle a widget opener returns to Steel, scoping a later
+/// closer/updater to the instance that minted it: a late callback racing a
+/// widget the user already closed or replaced names a token no live widget
+/// holds, and reads as a no-op. Crosses the Steel boundary as an integer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WidgetToken(u64);
+
+impl WidgetToken {
+    /// Names no live widget: what a `#f` token argument decodes to. The
+    /// editor's mint starts at `1`, so no widget ever holds it.
+    pub const NONE: Self = Self(0);
+
+    /// Wraps a counter value the editor minted, or an integer Steel handed
+    /// back. Any value is safe to wrap: a forged one matches at most a live
+    /// widget's own token, never a different kind of object.
+    pub fn from_raw(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// The token as the integer Steel sees.
+    pub fn to_steel(self) -> SteelVal {
+        SteelVal::IntV(self.0 as isize)
+    }
+}
 
 /// How an open popup reacts to key and mouse input: `show-popup!`'s
 /// `#:kind` symbol, decoded once at the builtin boundary
@@ -163,12 +190,12 @@ pub trait UiHost {
         kind: PopupKind,
         docked: bool,
         lang: Option<String>,
-    ) -> Result<Option<u64>, String>;
+    ) -> Result<Option<WidgetToken>, String>;
 
     /// `(close-popup! token)` dismisses the popup `token` names. Idempotent:
     /// a no-op when no popup is showing or the showing one was opened by a
     /// different `show-popup!` call (only an unsupported *host* errors).
-    fn close_popup(&mut self, token: u64) -> Result<(), String>;
+    fn close_popup(&mut self, token: WidgetToken) -> Result<(), String>;
 
     /// `(show-menu! items on-select)` opens a selection menu near the
     /// cursor. `on-select` fires exactly once: the chosen index, or `#f` on
@@ -194,14 +221,14 @@ pub trait UiHost {
         pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<Option<u64>, String>;
+    ) -> Result<Option<WidgetToken>, String>;
 
     /// `(close-menu! token)` dismisses the menu `token` names *without*
     /// invoking its callback (caller-initiated close, distinct from the
     /// key-driven dismissal paths which do call back with `#f`). Idempotent:
     /// a no-op if none is open or the open one carries a different token.
     /// Closes a buried menu too (a scrollable popup can land above one).
-    fn close_menu(&mut self, token: u64) -> Result<(), String>;
+    fn close_menu(&mut self, token: WidgetToken) -> Result<(), String>;
 
     /// `(show-drawer-list! items on-select)` opens a scrolling pick-list
     /// in the bottom chrome band. `items` are pre-formatted display strings;
@@ -228,7 +255,7 @@ pub trait UiHost {
         pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<Option<u64>, String>;
+    ) -> Result<Option<WidgetToken>, String>;
 
     /// `(close-drawer! token)` dismisses the drawer *without* invoking its
     /// callback (caller-initiated close, distinct from `Esc`, which does
@@ -239,7 +266,7 @@ pub trait UiHost {
     /// too: the drawer stays open across `Insert`/a popup/etc. by design
     /// (browse-while-editing), so being buried is its normal state, not a
     /// "wrong widget is active" error.
-    fn close_drawer(&mut self, token: u64) -> Result<(), String>;
+    fn close_drawer(&mut self, token: WidgetToken) -> Result<(), String>;
 
     /// `(update-drawer-list! token items on-select selected)` replaces the
     /// open drawer's rows in place, keeping the browse session (selection,
@@ -254,7 +281,7 @@ pub trait UiHost {
     /// callers close instead of clearing through an update.
     fn update_drawer_list(
         &mut self,
-        token: u64,
+        token: WidgetToken,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
         selected: usize,
@@ -265,7 +292,7 @@ pub trait UiHost {
     /// match its own. Read-only; pairs with [`Self::update_drawer_list`] so
     /// an owner can map its own selection identity across a refresh (Rust
     /// holds opaque display strings; only the owner knows what a row *is*).
-    fn drawer_selected_index(&self, token: u64) -> Option<usize>;
+    fn drawer_selected_index(&self, token: WidgetToken) -> Option<usize>;
 
     /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""])`
     /// opens the fuzzy-finder panel, always fuzzy-filtered over `items`
@@ -297,7 +324,7 @@ pub trait UiHost {
         items: Vec<(String, steel::rvals::SteelVal)>,
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
-    ) -> Result<u64, String>;
+    ) -> Result<WidgetToken, String>;
 
     /// `(live-picker! on-select #:command command #:prompt "…" #:query [""]
     /// #:debounce-ms [150] #:cwd [#f] #:nul [#f] #:ok-exit-codes ['(0)])`
@@ -323,7 +350,7 @@ pub trait UiHost {
         pane: PaneHandle,
         on_select: steel::rvals::SteelVal,
         opts: LivePickerOpts,
-    ) -> Result<u64, String>;
+    ) -> Result<WidgetToken, String>;
 
     /// `(picker-push! token items)` / `(picker-replace! token items)`
     /// appends to, or wholesale replaces, the open picker's item list and
@@ -340,7 +367,7 @@ pub trait UiHost {
     /// nothing). Items are otherwise append-only.
     fn picker_feed(
         &mut self,
-        token: u64,
+        token: WidgetToken,
         items: Vec<(String, steel::rvals::SteelVal)>,
         mode: PickerFeedMode,
     ) -> bool;
@@ -363,7 +390,7 @@ pub trait UiHost {
     /// binary, bad `#:cwd`).
     fn picker_source_spawn(
         &mut self,
-        token: u64,
+        token: WidgetToken,
         cmd: &str,
         args: Vec<String>,
         opts: PickerSourceOpts,
@@ -379,7 +406,7 @@ pub trait UiHost {
     /// `token` matched the open session, regardless of whether a source was
     /// actually attached. Reports the outgoing source's exit if it had
     /// already exited, same as a re-spawn via `picker_source_spawn`.
-    fn picker_source_stop(&mut self, token: u64) -> bool;
+    fn picker_source_stop(&mut self, token: WidgetToken) -> bool;
 
     /// `(picker-close! token)` ends the picker `token` names, firing its
     /// `on-select` with `#f` (unlike `close-menu!`/`close-drawer!`, which
@@ -388,5 +415,5 @@ pub trait UiHost {
     /// ends). A no-op if no picker is open or the open one carries a
     /// different token (someone else's session has since taken over), the
     /// same guard `picker-push!` applies.
-    fn picker_close(&mut self, token: u64);
+    fn picker_close(&mut self, token: WidgetToken);
 }

@@ -10,7 +10,7 @@ use std::cmp::Reverse;
 
 use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{LivePickerOpts, PickerOpts};
+use hume_scripting::host::{LivePickerOpts, PickerOpts, WidgetToken};
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
@@ -140,7 +140,7 @@ pub(in crate::editor) struct PickerSession {
     /// Identifies this session to Steel and to [`super::session_for_token`],
     /// the shared guard every token-scoped picker mutation checks before
     /// reaching a `&mut PickerSession` at all.
-    token: u64,
+    token: WidgetToken,
     /// Whether results are still arriving, and how; see [`Population`].
     /// Owning a `Streaming` source here, rather than in some separate
     /// registry, is what makes kill-on-close/replace automatic:
@@ -238,7 +238,7 @@ impl PickerSession {
             on_select,
             prompt,
             truncate,
-            token: widget_token::next(),
+            token: widget_token::mint(),
             population,
             mode,
             requery_armed: false,
@@ -250,7 +250,7 @@ impl PickerSession {
         }
     }
 
-    pub(in crate::editor) fn token(&self) -> u64 {
+    pub(in crate::editor) fn token(&self) -> WidgetToken {
         self.token
     }
 

@@ -10,6 +10,7 @@ use crate::editor::input_stack::{
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
     BufferHost, LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
+    WidgetToken,
 };
 
 impl<'a> EditorHostImpl<'a> {
@@ -94,7 +95,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         kind: PopupKind,
         docked: bool,
         lang: Option<String>,
-    ) -> Result<Option<u64>, String> {
+    ) -> Result<Option<WidgetToken>, String> {
         self.require_focused_pane(pane)?;
         let layout = if docked {
             hume_ui::popup::PopupLayout::Docked
@@ -146,7 +147,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// carries a different token, same as `close_menu`/`close_drawer`
     /// below. Clearing both homes is sound because at most one popup is
     /// ever showing: every popup opener clears both homes first.
-    fn close_popup(&mut self, token: u64) -> Result<(), String> {
+    fn close_popup(&mut self, token: WidgetToken) -> Result<(), String> {
         if self.state.input.popup().is_some_and(|p| p.token() == token) {
             self.state.input.clear_popups();
         }
@@ -159,7 +160,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<Option<u64>, String> {
+    ) -> Result<Option<WidgetToken>, String> {
         self.require_focused_pane(pane)?;
         // Async staleness; see `EditorState::async_opener_stale`'s own doc.
         // `top` `Menu` is the self-replace exception below: a second
@@ -191,7 +192,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// land above it, so being buried is an ordinary state, not a mistake.
     /// `MenuLayer::removal_scope` is `SelfOnly` for exactly this reason,
     /// same as `close_drawer` below.
-    fn close_menu(&mut self, token: u64) -> Result<(), String> {
+    fn close_menu(&mut self, token: WidgetToken) -> Result<(), String> {
         if self.state.input.menu().is_some_and(|m| m.token() == token) {
             self.state.retire::<MenuLayer>(self.view);
         }
@@ -204,7 +205,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<Option<u64>, String> {
+    ) -> Result<Option<WidgetToken>, String> {
         self.require_focused_pane(pane)?;
         // Fail fast on empty: a 0-row drawer leaves `selected` at 0 with no
         // row behind it, so `Enter` would fire `0` to a callback that can't
@@ -251,7 +252,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// because it depends on the drawer being open). This call excises
     /// directly rather than through `retire::<DrawerLayer>` because it needs
     /// the token-matched ref, not just "topmost of type".
-    fn close_drawer(&mut self, token: u64) -> Result<(), String> {
+    fn close_drawer(&mut self, token: WidgetToken) -> Result<(), String> {
         if let Some(r) = self.state.input.drawer_ref_with_token(token) {
             self.state.excise_layer(self.view, r);
         }
@@ -269,7 +270,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// for the no-op contract on a mismatch.
     fn update_drawer_list(
         &mut self,
-        token: u64,
+        token: WidgetToken,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
         selected: usize,
@@ -278,7 +279,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .set_drawer_items(token, items, callback, selected)
     }
 
-    fn drawer_selected_index(&self, token: u64) -> Option<usize> {
+    fn drawer_selected_index(&self, token: WidgetToken) -> Option<usize> {
         self.state
             .input
             .drawer_with_token(token)
@@ -292,7 +293,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<(String, steel::rvals::SteelVal)>,
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
-    ) -> Result<u64, String> {
+    ) -> Result<WidgetToken, String> {
         self.state.refuse_during_dot("picker!")?;
         self.require_focused_pane(pane)?;
         let mut session = PickerSession::new(on_select, opts);
@@ -307,7 +308,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         on_select: steel::rvals::SteelVal,
         opts: LivePickerOpts,
-    ) -> Result<u64, String> {
+    ) -> Result<WidgetToken, String> {
         self.state.refuse_during_dot("live-picker!")?;
         self.require_focused_pane(pane)?;
         let session = PickerSession::new_live(on_select, opts);
@@ -318,7 +319,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
 
     fn picker_feed(
         &mut self,
-        token: u64,
+        token: WidgetToken,
         items: Vec<(String, steel::rvals::SteelVal)>,
         mode: PickerFeedMode,
     ) -> bool {
@@ -335,7 +336,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
 
     fn picker_source_spawn(
         &mut self,
-        token: u64,
+        token: WidgetToken,
         cmd: &str,
         args: Vec<String>,
         opts: PickerSourceOpts,
@@ -343,11 +344,11 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         crate::editor::picker_source::spawn_source(self.state, token, cmd, args, opts)
     }
 
-    fn picker_source_stop(&mut self, token: u64) -> bool {
+    fn picker_source_stop(&mut self, token: WidgetToken) -> bool {
         crate::editor::picker_source::stop_source(self.state, token)
     }
 
-    fn picker_close(&mut self, token: u64) {
+    fn picker_close(&mut self, token: WidgetToken) {
         if picker::session_for_token(self.state, token).is_none() {
             return;
         }

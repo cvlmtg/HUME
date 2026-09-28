@@ -4,6 +4,7 @@ use termina::event::KeyCode;
 
 use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
+use hume_scripting::host::WidgetToken;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState, widget_token};
@@ -27,7 +28,7 @@ pub(in crate::editor) struct MenuLayer {
     pub(in crate::editor) callback: steel::rvals::SteelVal,
     /// Identifies which `show-menu!` call opened this menu; see
     /// [`Self::token`]'s doc.
-    token: u64,
+    token: WidgetToken,
 }
 
 impl MenuLayer {
@@ -42,13 +43,13 @@ impl MenuLayer {
                 .collect(),
             selected: 0,
             callback,
-            token: widget_token::next(),
+            token: widget_token::mint(),
         }
     }
 
     /// `show-menu!`'s return value, checked by `close-menu!` so a caller
     /// only ever closes the menu it opened. Mirrors `DrawerLayer::token`.
-    pub(in crate::editor) fn token(&self) -> u64 {
+    pub(in crate::editor) fn token(&self) -> WidgetToken {
         self.token
     }
 }

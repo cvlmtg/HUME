@@ -236,7 +236,7 @@ fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsPara
 /// token contract. Returns the live token; panics if `show-drawer-list!` refused the
 /// items or the stack read the request as stale. Neither is under test at
 /// any of this helper's callers.
-fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
+fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> hume_scripting::host::WidgetToken {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 

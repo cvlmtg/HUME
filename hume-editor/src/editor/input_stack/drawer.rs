@@ -7,6 +7,7 @@ use termina::event::{KeyCode, Modifiers};
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
+use hume_scripting::host::WidgetToken;
 
 use super::super::Editor;
 use super::super::EditorState;
@@ -30,7 +31,7 @@ pub(in crate::editor) struct DrawerLayer {
     pub(in crate::editor) callback: steel::rvals::SteelVal,
     /// Identifies which `show-drawer-list!` call opened this drawer; see
     /// [`Self::token`]'s doc.
-    token: u64,
+    token: WidgetToken,
 }
 
 impl DrawerLayer {
@@ -47,7 +48,7 @@ impl DrawerLayer {
             selected: 0,
             scroll: 0,
             callback,
-            token: widget_token::next(),
+            token: widget_token::mint(),
         }
     }
 
@@ -56,7 +57,7 @@ impl DrawerLayer {
     /// (`close-drawer!`, `update-drawer-list!`, `drawer-selected-index`)
     /// checks before touching the open drawer. Mirrors
     /// `PickerSession::token`.
-    pub(in crate::editor) fn token(&self) -> u64 {
+    pub(in crate::editor) fn token(&self) -> WidgetToken {
         self.token
     }
 }
@@ -149,7 +150,7 @@ impl EditorState {
     /// point; callers close instead).
     pub(in crate::editor) fn set_drawer_items(
         &mut self,
-        token: u64,
+        token: WidgetToken,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
         selected: usize,
@@ -217,14 +218,14 @@ impl super::stack::InputStack {
     /// expected-normal (a late callback racing a drawer the user already
     /// closed or replaced), so callers treat `None` as a silent no-op, never
     /// an error.
-    pub(in crate::editor) fn drawer_with_token(&self, token: u64) -> Option<&DrawerLayer> {
+    pub(in crate::editor) fn drawer_with_token(&self, token: WidgetToken) -> Option<&DrawerLayer> {
         self.drawer().filter(|d| d.token() == token)
     }
 
     /// [`Self::drawer_with_token`]'s ref-returning counterpart, for
     /// `close-drawer!`, which needs a [`LayerRef`] to excise rather than a
     /// borrow to read.
-    pub(in crate::editor) fn drawer_ref_with_token(&self, token: u64) -> Option<LayerRef> {
+    pub(in crate::editor) fn drawer_ref_with_token(&self, token: WidgetToken) -> Option<LayerRef> {
         self.drawer_with_token(token)?;
         self.ref_of::<DrawerLayer>()
     }
