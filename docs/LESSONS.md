@@ -74,6 +74,8 @@ numbers directly.
   that consumes it, not declared by command authors.
 - **L24** — End-user docs state a missing feature plainly, never as permanent.
   "Not yet" only for a gap the user has confirmed is planned.
+- **L25** — "No in-tree callers" doesn't make a user-facing API dead. Read why it
+  was added and why its last caller left before proposing removal.
 
 ---
 
@@ -1305,3 +1307,21 @@ feature will be implemented.
 HUME gets", "fixed rather than user-declarable"). Use "not yet" only for a
 gap the user has confirmed is planned. When one instruction is specific and
 the next is general, don't apply the specific fix everywhere; ask if unsure.
+
+---
+
+## L25 — A user-facing convenience was deleted as "unused" (2026-09-28)
+
+**Root cause:** An API-consistency review listed `split-words` twice. The
+plan resolved it by deleting `core:stdlib`'s `stdlib/split-words` because
+no shipped plugin called it. The command was a convenience for plugin
+authors: it spares them reading `word-chars` themselves. Its one in-tree
+caller had been moved off it for a performance reason, and nobody asked
+why the command was kept.
+
+**Prevention rule:** "No callers in the repo" is not evidence that a
+user-facing API (builtin, stdlib command, option) is dead. Before
+proposing to remove one, read the commit that added it and the commit
+that removed its last caller, and state both reasons in the plan. If an
+in-tree caller left for a fixable reason (cost, shape), fix that and keep
+the caller rather than dropping the API.
