@@ -68,7 +68,11 @@ pub enum ConfigSource {
 /// 1-based; `0` in either position is an error naming both the offending
 /// argument and which number was rejected: `LINE_NUMBERS_START_AT_1`
 /// (matching `:goto`'s own contract) or `GRAPHEME_COL_NUMBERS_START_AT_1`.
-pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
+///
+/// `cwd` resolves a relative `raw` the same way `Editor::open`'s own startup
+/// path handling does (`absolute_unresolved`), so the disambiguation probe
+/// agrees with where the file will actually be read from.
+pub fn parse_file_arg(raw: &Path, cwd: &Path) -> Result<FileArg, String> {
     // A non-UTF-8 path can't hold a parseable `:<digits>` suffix in any
     // sense this parser understands.
     let Some(s) = raw.to_str() else {
@@ -78,24 +82,29 @@ pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
         });
     };
 
-    // Probes the *expanded* form (`~/weird:12` → `$HOME/weird:12`) so a
-    // quoted tilde path is disambiguated the same way it will actually be
-    // opened, but returns the untransformed `raw`/`s` either way, the same
-    // "display the typed form" convention `open_extra_file` follows.
-    // `symlink_metadata`, not `.exists()`: this is a disambiguation probe,
-    // not a pre-open gate, so a broken symlink still counts as "the user
-    // meant this path", and a later TOCTOU race just falls through to the
-    // other reading rather than lying about a check that already passed.
-    let literal_exists = |candidate: &str| {
-        let expanded = hume_platform::path::expand(candidate);
-        std::fs::symlink_metadata(expanded.as_ref()).is_ok()
-    };
-
-    let (path_str, pos) = split_path_position(s, literal_exists)?;
+    let (path_str, pos) = split_path_position(s, |candidate| literal_path_on_disk(candidate, cwd))?;
     Ok(FileArg {
         path: PathBuf::from(path_str),
         pos,
     })
+}
+
+/// Does `candidate` name a real file or symlink, exactly as typed (modulo
+/// `~` expansion and joining against `cwd`)? The disk half of the "literal
+/// path wins over splitting" rule, shared by [`parse_file_arg`] and `:e`'s
+/// own probe (`typed_buffer::typed_edit`, which also checks already-open
+/// buffers first).
+///
+/// Probes the *expanded* form (`~/weird:12` → `$HOME/weird:12`) so a quoted
+/// tilde path is disambiguated the same way it will actually be opened.
+/// `symlink_metadata`, not `.exists()`: this is a disambiguation probe, not
+/// a pre-open gate, so a broken symlink still counts as "the user meant this
+/// path", and a later TOCTOU race just falls through to the other reading
+/// rather than lying about a check that already passed.
+pub(crate) fn literal_path_on_disk(candidate: &str, cwd: &Path) -> bool {
+    let expanded = hume_platform::path::expand(candidate);
+    let absolute = hume_platform::path::absolute_unresolved(Path::new(expanded.as_ref()), cwd);
+    std::fs::symlink_metadata(absolute).is_ok()
 }
 
 /// Splits `s` into a path and an optional trailing `:line[:col]` position,

@@ -40,14 +40,13 @@ pub(in crate::editor) fn typed_edit(
     use std::path::Path;
 
     if let Some(raw_arg) = arg {
+        // An unsaved new-file buffer literally named `notes:12` must stay
+        // reachable the same way a file on disk does, so this checks open
+        // buffers first, on top of `cli::literal_path_on_disk`'s disk check.
         let literal_exists = |candidate: &str| {
             let expanded = hume_platform::path::expand(candidate);
             find_buffer_by_path_arg(ed, expanded.as_ref()).is_some()
-                || std::fs::symlink_metadata(hume_platform::path::absolute_unresolved(
-                    Path::new(expanded.as_ref()),
-                    &ed.state.cwd,
-                ))
-                .is_ok()
+                || crate::cli::literal_path_on_disk(candidate, &ed.state.cwd)
         };
         let (path_str, pos) = crate::cli::split_path_position(raw_arg, literal_exists)
             .map_err(CommandError::transient)?;

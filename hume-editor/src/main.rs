@@ -105,10 +105,12 @@ fn resolve(cli: Cli) -> Result<Invocation, String> {
             }
         }
         None => {
+            let cwd =
+                std::env::current_dir().map_err(|e| format!("resolving current directory: {e}"))?;
             let files = cli
                 .files
                 .iter()
-                .map(|p| hume_editor::cli::parse_file_arg(p))
+                .map(|p| hume_editor::cli::parse_file_arg(p, &cwd))
                 .collect::<Result<Vec<_>, _>>()?;
             Mode::Normal { files }
         }
