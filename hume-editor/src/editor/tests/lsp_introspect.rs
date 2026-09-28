@@ -85,7 +85,7 @@ fn run_tagged_probe(ed: &mut Editor, tmp: &std::path::Path, assertion: &str) -> 
         tmp,
         &format!(
             r#"(define-typed-command! "probe" "" (lambda (bid)
-                 (lsp-request bid "test/echo" (hash) (lambda (err res)
+                 (lsp-request! bid "test/echo" (hash) (lambda (err res)
                    (when {assertion} (call! "move-right" bid))))))"#
         ),
     );
@@ -1045,7 +1045,7 @@ fn lsp_position_to_offset_decodes_via_the_tag_even_after_the_server_detaches() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "probe" "" (lambda (bid)
-             (lsp-request bid "test/echo" (hash) (lambda (err res)
+             (lsp-request! bid "test/echo" (hash) (lambda (err res)
                (when (equal? (lsp-position->offset bid res) 1)
                  (call! "move-right" bid))))))"#,
     );

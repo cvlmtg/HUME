@@ -95,7 +95,7 @@ pub(crate) fn register_lsp_server(
 /// still alive. A caller that must touch the on-disk server files after
 /// shutdown (e.g. reinstalling on Windows, where a running binary's file is
 /// locked) should do that work in a follow-up queued eval (e.g. via
-/// `(after 0 …)`), which runs strictly after this eval's drain reaps the
+/// `(after! 0 …)`), which runs strictly after this eval's drain reaps the
 /// process.
 pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "unregister-lsp-server! language")?;
@@ -134,8 +134,8 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
     Ok(SteelVal::Void)
 }
 
-/// `(%lsp-request pane method params callback allow-stale supersede
-/// require-focus)`, behind the `lsp-request` wrapper (BOOTSTRAP), which
+/// `(%lsp-request! pane method params callback allow-stale supersede
+/// require-focus)`, behind the `lsp-request!` wrapper (BOOTSTRAP), which
 /// supplies the keyword defaults. Pushes an `Effect::LspRequest` that
 /// `Editor::send_one_lsp_request` sends after this eval, since `SteelCtx` has
 /// no route to the transport. The server is resolved from `pane`'s buffer at
@@ -147,7 +147,7 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
 /// actions), not background requests. It raises at once if `pane` carries no
 /// pane.
 // Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
-// `lsp-request`'s own Steel signature, same rationale as
+// `lsp-request!`'s own Steel signature, same rationale as
 // `register_lsp_server`'s own `#[allow]`, just above in this file.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lsp_request(
@@ -160,15 +160,15 @@ pub(crate) fn lsp_request(
     supersede: SteelVal,
     require_focus: SteelVal,
 ) -> SteelResult {
-    let method = string_arg(method, "lsp-request method")?;
-    let params = json_params(params, "lsp-request params")?;
-    let allow_stale = bool_arg(allow_stale, "lsp-request #:allow-stale")?;
-    let supersede = optional_string_arg(supersede, "lsp-request supersede")?;
-    let require_focus = bool_arg(require_focus, "lsp-request #:require-focus")?;
+    let method = string_arg(method, "lsp-request! method")?;
+    let params = json_params(params, "lsp-request! params")?;
+    let allow_stale = bool_arg(allow_stale, "lsp-request! #:allow-stale")?;
+    let supersede = optional_string_arg(supersede, "lsp-request! supersede")?;
+    let require_focus = bool_arg(require_focus, "lsp-request! #:require-focus")?;
     let require_focus = require_focus
         .then(|| {
             pane.pane().ok_or_else(|| {
-                generic_err("lsp-request: #:require-focus needs a pane, but was given none")
+                generic_err("lsp-request!: #:require-focus needs a pane, but was given none")
             })
         })
         .transpose()?;
@@ -184,9 +184,9 @@ pub(crate) fn lsp_request(
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-notify pane method params)`: fire-and-forget, no callback, no
+/// `(lsp-notify! pane method params)`: fire-and-forget, no callback, no
 /// staleness tag (nothing to correlate a response against). Same queue
-/// discipline as `lsp-request`, including `pane`'s buffer resolution
+/// discipline as `lsp-request!`, including `pane`'s buffer resolution
 /// contract.
 pub(crate) fn lsp_notify(
     ctx: &mut SteelCtx,
@@ -194,8 +194,8 @@ pub(crate) fn lsp_notify(
     method: SteelVal,
     params: SteelVal,
 ) -> SteelResult {
-    let method = string_arg(method, "lsp-notify method")?;
-    let params = json_params(params, "lsp-notify params")?;
+    let method = string_arg(method, "lsp-notify! method")?;
+    let params = json_params(params, "lsp-notify! params")?;
     ctx.push_effect(Effect::LspNotify(PendingLspNotify {
         bid: pane.buffer(),
         method,
@@ -354,7 +354,7 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> 
 /// (touching selections coalesced into one range apiece). Carries no
 /// all/none/mixed verdict. `:lsp-fmt` gets that from `selections-linewise?`/
 /// `selections-charwise?` instead, since every `lsp-*-params` builtin's
-/// return value is a wire-ready params hash forwarded to `lsp-request`
+/// return value is a wire-ready params hash forwarded to `lsp-request!`
 /// unchanged or with a protocol key inserted, and a non-protocol key here
 /// would break that (see `CursorHost::selections_linewise`'s doc comment).
 pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {

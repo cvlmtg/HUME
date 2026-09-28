@@ -27,7 +27,7 @@ fn lazy_repeatable_round_trip() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        r#"(declare-plugin "user/tp" #:commands '("tp-del"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("tp-del"))"#,
     )
     .unwrap();
 

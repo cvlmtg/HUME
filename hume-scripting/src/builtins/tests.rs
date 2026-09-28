@@ -95,10 +95,10 @@ fn live_pane_builtins_raise_on_a_closed_buffer_through_real_registration() {
             "(apply-text-edits! (focused-pane) (list))",
         ),
         (
-            "lsp-request",
-            r#"(lsp-request (focused-pane) "m" (hash) (lambda (e r) (begin)))"#,
+            "lsp-request!",
+            r#"(lsp-request! (focused-pane) "m" (hash) (lambda (e r) (begin)))"#,
         ),
-        ("lsp-notify", r#"(lsp-notify (focused-pane) "m" (hash))"#),
+        ("lsp-notify!", r#"(lsp-notify! (focused-pane) "m" (hash))"#),
         (
             "lsp-position->offset",
             r#"(lsp-position->offset (focused-pane) (hash "line" 0 "character" 0))"#,

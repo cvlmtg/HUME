@@ -220,7 +220,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
 }
 
 /// `push_mode_layer` truncates the outgoing mode layer before pushing:
-/// entering `Prompt` from `Insert` (a queued `(after 0 …)` thunk firing
+/// entering `Prompt` from `Insert` (a queued `(after! 0 …)` thunk firing
 /// while the user is mid-insert) must end the insert session cleanly
 /// (edit group committed, `active_session` cleared) rather than leaving it
 /// dangling underneath a `Prompt` layer with no way back to it.
@@ -232,7 +232,7 @@ fn prompt_from_insert_ends_the_insert_session_cleanly() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "arm" "" (lambda (pane)
-             (after 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
+             (after! 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -275,7 +275,7 @@ fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "arm" "" (lambda (pane)
-             (after 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
+             (after! 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
     );
     type_cmd(&mut ed, ":arm");
 
@@ -307,7 +307,7 @@ fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
     );
 }
 
-/// `exit-insert` reached from outside Insert (a queued `(after 0 …)` thunk,
+/// `exit-insert` reached from outside Insert (a queued `(after! 0 …)` thunk,
 /// same as a hook or async LSP callback would) must be a no-op: it has no
 /// `Insert` layer to end, so it must not cancel an unrelated `Prompt`
 /// session that happens to be the current mode layer. `cmd_exit_insert` is
@@ -326,7 +326,7 @@ fn exit_insert_outside_insert_does_not_cancel_an_unrelated_prompt() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (pane)
-             (after 0 (lambda () (call! "exit-insert" (focused-pane))))
+             (after! 0 (lambda () (call! "exit-insert" (focused-pane))))
              (prompt! pane "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
     );
     type_cmd(&mut ed, ":go");

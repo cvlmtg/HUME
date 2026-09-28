@@ -20,7 +20,7 @@ Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it]
 |------|-------|------|
 | Uncomment line 20 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
 | Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `:17` `x` `x` `d` | `:17` `Ctrl-x` `Ctrl-x` `d` |
-| Turn `declare-plugin` into `load-plugin` on line 16 | `:16` `l` `m i w` `c` `load` `Esc` | `:16` `l` `m m` `c` `load` `Esc` |
+| Turn `declare-plugin!` into `load-plugin!` on line 16 | `:16` `l` `m i w` `c` `load` `Esc` | `:16` `l` `m m` `c` `load` `Esc` |
 | Copy line 16 to another application | `x` `Space y` | `x` `y` |
 
 What each step shows:
@@ -108,8 +108,8 @@ A theme editor is also available online: a single-file HTML tool you download an
 Helix's Steel plugin system is still an unmerged branch; HUME's ships in every release. HUME's plugins are Steel too, the same Scheme dialect, but plugins written for Helix's Steel branch won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. Declare the plugin in your [`init.scm`](configuration.md#example-init-scm), then run `:plum-install-plugins` to fetch it. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
 
 ```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "cvlmtg/grep.hume")
+(declare-plugin! "core:stdlib")
+(load-plugin! "cvlmtg/grep.hume")
 ```
 
 ### Growing selections
@@ -199,7 +199,7 @@ By default there's no dedicated delete or replace key because you don't need one
 Enable the Helix-style bindings by loading the built-in plugin:
 
 ```scheme
-(load-plugin "core:helix-surround")
+(load-plugin! "core:helix-surround")
 ```
 
 ### Matching brackets and structural navigation

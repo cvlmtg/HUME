@@ -25,7 +25,7 @@ fn setup_vim_keybind_editor(input: &str) -> (Editor, HumeRuntimeGuard, tempfile:
 /// Like `setup_vim_keybind_editor`, but passes `config_expr` (a Scheme
 /// expression, e.g. `(hash "change-to-eol" 'off)`) as `core:vim-keybind`'s
 /// `#:config`. Lets tests exercise `#:config` without hand-rolling the
-/// plugin-dir setup or the surrounding `load-plugin` boilerplate.
+/// plugin-dir setup or the surrounding `load-plugin!` boilerplate.
 fn setup_vim_keybind_editor_with_config(
     input: &str,
     config_expr: Option<&str>,
@@ -38,9 +38,9 @@ fn setup_vim_keybind_editor_with_config(
 
     let init_source = match config_expr {
         Some(cfg) => format!(
-            "(load-plugin \"core:stdlib\")\n(load-plugin \"core:vim-keybind\" #:config {cfg})"
+            "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:vim-keybind\" #:config {cfg})"
         ),
-        None => "(load-plugin \"core:stdlib\")\n(load-plugin \"core:vim-keybind\")".to_string(),
+        None => "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:vim-keybind\")".to_string(),
     };
 
     let init_dir = safe_tempdir();
@@ -436,7 +436,7 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
 
     let init_dir = safe_tempdir();
     let init_path = init_dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin "core:vim-keybind")"#).unwrap();
+    std::fs::write(&init_path, r#"(load-plugin! "core:vim-keybind")"#).unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
@@ -469,7 +469,7 @@ fn change_to_eol_off_also_requires_stdlib() {
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        r#"(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
+        r#"(load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'off))"#,
     )
     .unwrap();
 
@@ -503,7 +503,7 @@ fn change_to_eol_bogus_value_fails_load_with_enum_message() {
     let init_path = init_dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:vim-keybind\" #:config (hash \"change-to-eol\" 'bogus))",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:vim-keybind\" #:config (hash \"change-to-eol\" 'bogus))",
     )
     .unwrap();
 

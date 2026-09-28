@@ -1,4 +1,4 @@
-// Hover: `lsp-hover` composing `lsp-request`, `lsp-capabilities`,
+// Hover: `lsp-hover` composing `lsp-request!`, `lsp-capabilities`,
 // `show-popup!`, `show-drawer-list!`. Loads the
 // real shipped `core:lsp` plugin in place (`RealRuntimeGuard` points
 // HUME_RUNTIME at the actual on-disk runtime/ dir) so tests exercise the
@@ -77,8 +77,8 @@ fn setup(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -515,7 +515,7 @@ fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
 /// `hover.scm`'s own body) once the focused buffer no longer matches the
 /// buffer that sent the request.
 ///
-/// Without `#:require-focus` on `hover.scm`'s `lsp-request`, the popup would
+/// Without `#:require-focus` on `hover.scm`'s `lsp-request!`, the popup would
 /// show regardless of which buffer answered, since a queued callback's
 /// `(focused-pane)` is live focus at drain time.
 #[test]

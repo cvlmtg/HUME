@@ -7,7 +7,7 @@ use hume_scripting::PluginStatus;
 // ── End-to-end: real manifest.scm ─────────────────────────────────────────
 
 /// The real `core:lsp` plugin's own shipped `manifest.scm` (not a synthetic
-/// fixture) resolves and evaluates via a zero-trigger `(declare-plugin
+/// fixture) resolves and evaluates via a zero-trigger `(declare-plugin!
 /// "core:lsp")`, through the full production `init_scripting` path against the
 /// repo's actual `runtime/` tree.
 ///
@@ -34,9 +34,9 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
-        r#"(load-plugin "core:stdlib")
+        r#"(load-plugin! "core:stdlib")
            (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
-           (declare-plugin "core:lsp")"#,
+           (declare-plugin! "core:lsp")"#,
         Some(&runtime_dir),
     );
 
@@ -84,7 +84,7 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
 }
 
 /// The real `core:stdlib` plugin's own shipped `manifest.scm` resolves and evaluates via a
-/// zero-trigger `(declare-plugin "core:stdlib")`, through the full production
+/// zero-trigger `(declare-plugin! "core:stdlib")`, through the full production
 /// `init_scripting` path against the repo's actual `runtime/` tree.
 ///
 /// The synthetic-fixture tests in this file cannot see breakage in the real
@@ -110,7 +110,7 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 
     let (ed, _dirs) =
-        setup_editor_with_init_scripting(r#"(declare-plugin "core:stdlib")"#, Some(&runtime_dir));
+        setup_editor_with_init_scripting(r#"(declare-plugin! "core:stdlib")"#, Some(&runtime_dir));
 
     let errors: Vec<String> = ed
         .state
@@ -146,7 +146,7 @@ fn core_stdlib_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 }
 
-/// A bare `(declare-plugin "core:stdlib")` leaves it `Declared` (proven
+/// A bare `(declare-plugin! "core:stdlib")` leaves it `Declared` (proven
 /// above) with a live `Lazy` stub for every helper its own `manifest.scm`
 /// exports. Loading `core:pickers` next must still succeed: its body-time
 /// `call!` into `stdlib/config-boolean` hits that stub, and
@@ -170,7 +170,7 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
         .join("runtime");
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
-        "(declare-plugin \"core:stdlib\")\n(load-plugin \"core:pickers\")",
+        "(declare-plugin! \"core:stdlib\")\n(load-plugin! \"core:pickers\")",
         Some(&runtime_dir),
     );
 
@@ -203,12 +203,12 @@ fn declared_core_stdlib_serves_dependent_body_time_call() {
             ed.scripting.as_ref().unwrap().plugin_status(&id_pickers),
             Some(PluginStatus::Loaded)
         ),
-        "core:pickers must itself be Loaded: its own eager load-plugin completed"
+        "core:pickers must itself be Loaded: its own eager load-plugin! completed"
     );
 }
 
 /// The real `core:plum` plugin's own shipped `manifest.scm` resolves and evaluates via a
-/// zero-trigger `(declare-plugin "core:plum")`, through the full production `init_scripting`
+/// zero-trigger `(declare-plugin! "core:plum")`, through the full production `init_scripting`
 /// path against the repo's actual `runtime/` tree.
 ///
 /// Only this test would notice a syntax error, a wrong plugin name, or a stale
@@ -234,7 +234,7 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
 
     let (ed, _dirs) =
-        setup_editor_with_init_scripting(r#"(declare-plugin "core:plum")"#, Some(&runtime_dir));
+        setup_editor_with_init_scripting(r#"(declare-plugin! "core:plum")"#, Some(&runtime_dir));
 
     let errors: Vec<String> = ed
         .state
@@ -281,7 +281,7 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
 }
 
 /// The scenario plugin-activation containment exists for: a third-party
-/// `load-plugin` fails, and `core:plum` (the user's only in-editor path to
+/// `load-plugin!` fails, and `core:plum` (the user's only in-editor path to
 /// update and fix a broken plugin) is declared afterward, on a later line of
 /// the same `init.scm`. If the failed load re-raised and aborted `init.scm`,
 /// `core:plum` and everything after the failing line would never be declared,
@@ -318,9 +318,9 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
     std::fs::create_dir_all(&hume_config).unwrap();
     std::fs::write(
         hume_config.join("init.scm"),
-        "(load-plugin \"core:stdlib\")\n\
-         (load-plugin \"user/broken\")\n\
-         (declare-plugin \"core:plum\")",
+        "(load-plugin! \"core:stdlib\")\n\
+         (load-plugin! \"user/broken\")\n\
+         (declare-plugin! \"core:plum\")",
     )
     .unwrap();
 
@@ -371,7 +371,7 @@ fn failed_third_party_load_does_not_block_plum_declared_afterward() {
 }
 
 /// The real `core:git-diff` plugin's own shipped `manifest.scm` resolves and evaluates via a
-/// zero-trigger `(declare-plugin "core:git-diff")`, through the full production
+/// zero-trigger `(declare-plugin! "core:git-diff")`, through the full production
 /// `init_scripting` path against the repo's actual `runtime/` tree.
 ///
 /// It guards the real `runtime/plugins/core/git-diff/manifest.scm` against a
@@ -396,8 +396,10 @@ fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
         "sanity: the real manifest.scm must exist at the expected repo path"
     );
 
-    let (ed, _dirs) =
-        setup_editor_with_init_scripting(r#"(declare-plugin "core:git-diff")"#, Some(&runtime_dir));
+    let (ed, _dirs) = setup_editor_with_init_scripting(
+        r#"(declare-plugin! "core:git-diff")"#,
+        Some(&runtime_dir),
+    );
 
     let errors: Vec<String> = ed
         .state

@@ -452,7 +452,7 @@ fn reset_clears_plugin_decorations() {
 
 // ── Timers ───────────────────────────────────────────────────────────────────
 
-/// A scheduled `(after ms thunk)` must not fire against the *new* engine
+/// A scheduled `(after! ms thunk)` must not fire against the *new* engine
 /// after a reset: its `SteelVal` thunk is rooted in the outgoing one.
 #[test]
 fn reset_cancels_pending_steel_timers() {
@@ -462,7 +462,7 @@ fn reset_cancels_pending_steel_timers() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-typed-command! "start" "" (lambda () (after 100000 (lambda () (car '())))))"#,
+        r#"(define-typed-command! "start" "" (lambda () (after! 100000 (lambda () (car '())))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -478,7 +478,7 @@ fn reset_cancels_pending_steel_timers() {
 
     assert!(
         ed.timer_payloads.is_empty(),
-        "a Steel `after` thunk must not survive the reset"
+        "a Steel `after!` thunk must not survive the reset"
     );
 }
 

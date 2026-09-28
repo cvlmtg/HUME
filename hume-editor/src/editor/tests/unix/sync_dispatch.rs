@@ -27,7 +27,7 @@ fn lazy_command_first_dispatch_forwards_extend() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        r#"(declare-plugin "user/tp" #:commands '("tp-branch"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("tp-branch"))"#,
     )
     .unwrap();
 

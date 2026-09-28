@@ -13,7 +13,7 @@ pub trait AsyncProcessHost {
     /// exit-code)`, `exit-code` `-1` for a signal-killed child, a status the
     /// OS never returned, or a spawn failure (missing binary, bad `cwd`).
     /// No error channel: a plugin holding a callback should never have to
-    /// handle failure in two places, matching `lsp-request`/`prompt!`/
+    /// handle failure in two places, matching `lsp-request!`/`prompt!`/
     /// `picker!`'s exactly-once contract.
     fn spawn_async(
         &mut self,

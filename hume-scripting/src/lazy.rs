@@ -68,7 +68,7 @@ impl LazyRegistry {
         languages: Vec<String>,
     ) {
         if self.plugins.contains_key(&id) {
-            return; // already declared: duplicate declare-plugin call, ignore
+            return; // already declared: duplicate declare-plugin! call, ignore
         }
         let Some(path) = path else {
             return; // absent on disk: silently skip, no activation entries

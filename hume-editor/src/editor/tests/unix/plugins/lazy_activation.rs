@@ -6,12 +6,12 @@ use crate::editor::registry::{MappableCommand, TypedBody};
 use hume_scripting::PluginStatus;
 
 /// After `eval_init`, a `Lazy` stub is present for the declared command name:
-/// `declare-plugin` registers it directly via `CommandHost::register_lazy_command`
+/// `declare-plugin!` registers it directly via `CommandHost::register_lazy_command`
 /// as the manifest is processed, with no separate post-init pass.
 #[test]
 fn lazy_stub_present_after_init() {
     let (ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     assert!(
@@ -33,7 +33,7 @@ fn lazy_stub_present_after_init() {
 #[test]
 fn first_dispatch_activates_plugin_and_runs() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         r#"(define-typed-command! "bar" "doc" (lambda () (call! "move-right" (focused-pane))))"#,
     );
     let before = state(&ed);
@@ -66,7 +66,7 @@ fn first_dispatch_activates_plugin_and_runs() {
 #[test]
 fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("myfetch"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("myfetch"))"#,
         r#"(define-typed-command! "myfetch" "doc" (lambda (bid arg) (log! 'info arg)) #:complete "path")"#,
     );
     let files_dir = safe_tempdir();
@@ -103,7 +103,7 @@ fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
     use hume_scripting::attribution::PluginId;
 
     let (ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))
            (call! "bar")"#,
         r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
@@ -135,7 +135,7 @@ fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
 #[test]
 fn loop_guard_removes_stub_when_body_never_defines_command() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         // Plugin body exists but never defines "bar".
         r#"(define-command! "other-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
@@ -169,7 +169,7 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 #[test]
 fn failed_activation_does_not_leave_a_queued_lsp_registration() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         r#"(register-lsp-server! "rust" #:command "rust-analyzer")
            (error "intentional mid-body error")"#,
     );
@@ -189,7 +189,7 @@ fn failed_activation_does_not_leave_a_queued_lsp_registration() {
 #[test]
 fn lazy_plugin_defined_language_is_registered_on_activation() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         r#"(%define-language! "foo" '() '() '() #f)
            (define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
@@ -220,7 +220,7 @@ fn lazy_plugin_defined_language_is_registered_on_activation() {
 #[test]
 fn set_buffer_language_reentrant_activation_uses_final_value() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
+        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
         r#"(set-buffer-language! (car (buffers)) "python")"#,
     );
     let bid = ed.focused_buffer_id();
@@ -266,7 +266,7 @@ fn body_error_removes_stub_and_marks_failed() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         r#"(error "intentional plugin failure")"#,
     );
     assert!(
@@ -311,7 +311,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
     // we just verify that after activation the command is SteelBacked (i.e.
     // arg was accepted, no arity error), and the plugin is Loaded.
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         r#"(define-typed-command! "bar" "doc" (lambda (bid x) (+ 1 0)))"#,
     );
 
@@ -345,7 +345,7 @@ fn lazy_cmd_arg_passed_on_first_call() {
 fn key_press_activates_lazy_plugin_via_keymap() {
     use crate::editor::keymap::BindMode;
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (call! "move-right" (focused-pane))))"#,
     );
     // setup_lazy_editor passes a throwaway Keymap to eval_init; bind here so
@@ -381,7 +381,7 @@ fn key_press_activates_lazy_plugin_via_keymap() {
 
 /// Eager-plugin-command collision: an eager plugin defines "foo", then a lazy
 /// plugin declares `#:commands '("foo")`.  The collision is caught at
-/// `declare-plugin` time, directly against the editor's live registry: the
+/// `declare-plugin!` time, directly against the editor's live registry: the
 /// declaration fails with "no activation entries", the eager SteelBacked
 /// command survives, and no `Lazy` stub is ever registered for "foo".
 ///
@@ -408,7 +408,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"user/eager\")\n(declare-plugin \"user/lz\" #:commands '(\"foo\"))",
+        "(load-plugin! \"user/eager\")\n(declare-plugin! \"user/lz\" #:commands '(\"foo\"))",
     )
     .unwrap();
 
@@ -416,15 +416,15 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     // Mirror real init_scripting order: eager command is in command_table
-    // before declare-plugin runs, so the filter loop rejects "foo".
+    // before declare-plugin! runs, so the filter loop rejects "foo".
     let init_err = {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
-    // declare-plugin now hard-errors when all entries are filtered (collision
+    // declare-plugin! now hard-errors when all entries are filtered (collision
     // caught at declaration, not at stub registration).
     let err =
-        init_err.expect_err("eval_init must fail: declare-plugin rejects 'foo' at declare time");
+        init_err.expect_err("eval_init must fail: declare-plugin! rejects 'foo' at declare time");
     assert!(
         err.message.contains("no activation entries") || err.message.contains("conflicted"),
         "error must explain the cause; got: {err:?}"
@@ -448,7 +448,7 @@ fn lazy_stub_rejected_when_name_taken_by_eager_plugin() {
 }
 
 /// Two plugins both declare `#:commands '("bar")`: the collision is caught
-/// at `declare-plugin` time against the editor's live registry: the second
+/// at `declare-plugin!` time against the editor's live registry: the second
 /// plugin's "bar" entry is dropped (logged as an Error, first-writer-wins),
 /// and both plugins remain `Declared` (neither is stuck or hard-errored).
 ///
@@ -481,8 +481,8 @@ fn lazy_stub_collision_lazy_vs_lazy_first_writer_wins() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/pa\" #:commands '(\"bar\"))\n\
-         (declare-plugin \"user/pb\" #:commands '(\"bar\" \"pb-only\"))",
+        "(declare-plugin! \"user/pa\" #:commands '(\"bar\"))\n\
+         (declare-plugin! \"user/pb\" #:commands '(\"bar\" \"pb-only\"))",
     )
     .unwrap();
 

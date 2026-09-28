@@ -223,7 +223,7 @@ pub struct LspServerStatusEntry {
     pub pending: usize,
 }
 
-/// `(lsp-request pane method params callback #:allow-stale bool)` calls
+/// `(lsp-request! pane method params callback #:allow-stale bool)` calls
 /// queued during a command, hook, or queued-Steel-call eval and sent by
 /// `Editor::send_one_lsp_request` as part of `Effect::LspRequest` application.
 ///
@@ -246,13 +246,13 @@ pub struct PendingLspRequest {
     /// two features issuing the same method concurrently never cancel each
     /// other by accident.
     pub supersede: Option<String>,
-    /// `#:require-focus`: the pane `(lsp-request …)` was called with, if
+    /// `#:require-focus`: the pane `(lsp-request! …)` was called with, if
     /// the callback should fire only while it's still the focused pane when
     /// the response arrives (never re-derived from `bid` alone, which would
     /// pass on any pane still showing it rather than the exact pane the
     /// request was made from). `None` for a background request (formatting,
     /// rename, completion, diagnostics), which must keep delivering
-    /// regardless of focus. `%lsp-request`'s decode refuses to queue
+    /// regardless of focus. `%lsp-request!`'s decode refuses to queue
     /// `#:require-focus` with no pane, so a request whose only purpose is
     /// opening cursor-anchored UI always carries one here.
     pub require_focus: Option<PaneId>,
@@ -274,7 +274,7 @@ impl std::fmt::Debug for PendingLspRequest {
     }
 }
 
-/// `(lsp-notify bid method params)` calls queued the same way as
+/// `(lsp-notify! bid method params)` calls queued the same way as
 /// [`PendingLspRequest`], minus the callback: notifications get no response.
 #[derive(Debug)]
 pub struct PendingLspNotify {

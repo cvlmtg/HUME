@@ -19,7 +19,7 @@
   (lsp/cap-flag? pane "codeActionProvider" "resolveProvider"))
 
 (define (lsp/exec-command pane cmd-obj)
-  (lsp-request pane "workspace/executeCommand"
+  (lsp-request! pane "workspace/executeCommand"
     (hash "command" (json-ref cmd-obj "command")
           "arguments" (json-ref-or cmd-obj (list) "arguments"))
     (lambda (err res) (when err (lsp/report-error "code action" err)))
@@ -33,7 +33,7 @@
        (when edit (apply-workspace-edit! pane edit #:expect-generation gen))
        (when command (lsp/exec-command pane (if (string? command) action command))))
       ((and (not resolved?) (lsp/action-resolve-provider? pane))
-       (lsp-request pane "codeAction/resolve" action
+       (lsp-request! pane "codeAction/resolve" action
          (lambda (err resolved)
            (cond
              (err (lsp/report-error "code action" err))
@@ -50,7 +50,7 @@
                (diags (diagnostics-for-buffer pane #:range (lsp/primary-selection-range pane)))
                (context (hash "diagnostics" (map (lambda (d) (hash-ref d "raw")) diags)
                               "triggerKind" 1)))
-          (lsp-request pane "textDocument/codeAction"
+          (lsp-request! pane "textDocument/codeAction"
             (hash-insert (lsp-primary-range-params pane) "context" context)
             (lambda (err res)
               (cond

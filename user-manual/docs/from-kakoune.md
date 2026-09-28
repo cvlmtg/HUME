@@ -20,7 +20,7 @@ Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it]
 |------|---------|------|
 | Uncomment line 20 (`core:buffer-words`) | `t(` `d` | `Ctrl-t` `(` `d` |
 | Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `17g` `x` `x` `d` | `:17` `Ctrl-x` `Ctrl-x` `d` |
-| Turn `declare-plugin` into `load-plugin` on line 16 | `16g` `l` `<a-i>w` `c` `load` `Esc` | `:16` `l` `m m` `c` `load` `Esc` |
+| Turn `declare-plugin!` into `load-plugin!` on line 16 | `16g` `l` `<a-i>w` `c` `load` `Esc` | `:16` `l` `m m` `c` `load` `Esc` |
 | Copy line 16 to another application | `x` `<a-\|>` + your clipboard tool | `x` `y` |
 
 What each step shows:
@@ -220,8 +220,8 @@ Kakoune has neither a package manager nor LSP support in the core; both come fro
 Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the built-in plugin manager: declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub. Here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
 
 ```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "cvlmtg/grep.hume")
+(declare-plugin! "core:stdlib")
+(load-plugin! "cvlmtg/grep.hume")
 ```
 
 Language server support is a bundled plugin rather than a separate process you configure by hand. See [Language Servers](lsp.md). Syntax highlighting is tree-sitter based and built in.

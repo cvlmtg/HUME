@@ -5,9 +5,9 @@
 //! operations where an IPC round-trip per keystroke would cost more.
 //!
 //! ## Plugin loading
-//! - `load-plugin`: eager, init.scm/`:reload-config` only; runs the body at
+//! - `load-plugin!`: eager, init.scm/`:reload-config` only; runs the body at
 //!   once via `%activate-plugin-inline`.
-//! - `declare-plugin`: lazy manifest; records `Declared` plus activation
+//! - `declare-plugin!`: lazy manifest; records `Declared` plus activation
 //!   entries in `LazyRegistry`. The first entry exercised runs the body,
 //!   marks it `Loaded`, and drops all of that plugin's entries.
 //! - States: `Declared -> Loading -> Loaded | Failed`. `Loading` guards
@@ -100,7 +100,7 @@ pub(crate) struct ScriptingRegistries {
     /// Lazy plugin registry: populated by `%declare-plugin!` during init;
     /// activation maps consulted by command dispatch, event firing, and language-set.
     pub(crate) lazy_registry: LazyRegistry,
-    /// Every plugin name passed to `(load-plugin …)` or `(declare-plugin …)`,
+    /// Every plugin name passed to `(load-plugin! …)` or `(declare-plugin! …)`,
     /// including plugins absent on disk.
     pub(crate) declared_plugins: Vec<String>,
     /// In-Steel dispatch table: maps activated plugin command name to its Steel
@@ -121,8 +121,8 @@ pub(crate) struct ScriptingRegistries {
     /// dispatch) checks both tables, since its caller has already resolved
     /// which kind `name` is through the editor's own registry.
     pub(crate) typed_command_table: rustc_hash::FxHashMap<String, SteelVal>,
-    /// Per-plugin config value passed via `#:config` on `(load-plugin …)` /
-    /// `(declare-plugin …)`. Read back by the plugin body through `(plugin-config)`,
+    /// Per-plugin config value passed via `#:config` on `(load-plugin! …)` /
+    /// `(declare-plugin! …)`. Read back by the plugin body through `(plugin-config)`,
     /// resolved via the top of `plugin_stack`. Works identically whether the
     /// plugin activates immediately (eager) or much later (lazy).
     pub(crate) plugin_configs: rustc_hash::FxHashMap<PluginId, SteelVal>,
@@ -458,7 +458,7 @@ impl ScriptingHost {
             .any(|s| matches!(s, PluginState::Loaded))
     }
 
-    /// All plugin names ever passed to `(load-plugin …)` or `(declare-plugin …)`.
+    /// All plugin names ever passed to `(load-plugin! …)` or `(declare-plugin! …)`.
     #[cfg(any(test, feature = "test-util"))]
     pub fn declared_plugins(&self) -> &[String] {
         &self.registries.declared_plugins
@@ -547,7 +547,7 @@ impl ScriptingHost {
     ///   normal: `effects` is empty) or if eval succeeds, with every effect
     ///   this file's eval queued, in emission order.  Commands defined during
     ///   eval are registered into the `CommandRegistry` inline via
-    ///   `host.register_command`. A plugin (`load-plugin`/`declare-plugin`)
+    ///   `host.register_command`. A plugin (`load-plugin!`/`declare-plugin!`)
     ///   body raising is contained here too, not a cause of `Err`: its own
     ///   activation is atomically rolled back (see
     ///   `builtins::plugins::finish_lazy_activation`), reported by name and
@@ -714,7 +714,7 @@ impl ScriptingHost {
     }
 
     /// Calls each `(proc, args)` pair directly, in order: the shared
-    /// mechanism behind the `lsp-request` callback, timer thunks, and the
+    /// mechanism behind the `lsp-request!` callback, timer thunks, and the
     /// prompt callback, and (via [`fire_hook`](Self::fire_hook)) every
     /// handler registered for one event.
     ///

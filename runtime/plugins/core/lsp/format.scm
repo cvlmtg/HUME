@@ -29,7 +29,7 @@
         (opts (lsp/format-options pane)))
     (for-each
       (lambda (range)
-        (lsp-request pane "textDocument/rangeFormatting"
+        (lsp-request! pane "textDocument/rangeFormatting"
           (hash "textDocument" td "range" range "options" opts)
           (lambda (err res)
             (unless (unbox aborted)
@@ -52,7 +52,7 @@
             (cap (get-option "lsp.format-max-ranges")))
         (cond
           ((and (> n 1) (lsp/cap-flag? pane "documentRangeFormattingProvider" "rangesSupport"))
-           (lsp-request pane "textDocument/rangesFormatting"
+           (lsp-request! pane "textDocument/rangesFormatting"
              (hash "textDocument" td "ranges" ranges "options" (lsp/format-options pane))
              (lsp/format-callback pane gen)
              #:allow-stale #t))
@@ -78,7 +78,7 @@
             ((selections-charwise? pane)
              (lsp/guard-capability pane "documentFormattingProvider"
                (lambda ()
-                 (lsp-request pane "textDocument/formatting"
+                 (lsp-request! pane "textDocument/formatting"
                    (hash "textDocument" td "options" (lsp/format-options pane))
                    (lsp/format-callback pane gen)
                    #:allow-stale #t))))

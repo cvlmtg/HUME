@@ -6,12 +6,12 @@ plugin might need, exposed via `call!` so cross-plugin code never has to re-deri
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
+(declare-plugin! "core:stdlib")
 ```
 
 - **Depends on:** nothing.
 - **Activates on:** the first call to any command below. Its `manifest.scm` lists every
-  one of them as an activation trigger. `(load-plugin "core:stdlib")` also works, loading
+  one of them as an activation trigger. `(load-plugin! "core:stdlib")` also works, loading
   it eagerly instead.
 - **Pitfall:** this mechanism only works while `core:stdlib` is declared with no explicit
   `#:commands`/`#:events`/`#:languages` override. An override that omits a helper a

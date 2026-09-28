@@ -171,7 +171,7 @@ fn state(ed: &Editor) -> String {
 
 /// Every queued `PendingWork::Call` in `pending_work`, in FIFO order,
 /// ignoring any interleaved `Event` items, for tests that assert on
-/// specific queued callbacks (an `lsp-request`/timer/prompt/menu/drawer/
+/// specific queued callbacks (an `lsp-request!`/timer/prompt/menu/drawer/
 /// picker callback).
 fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals::SteelVal>)> {
     ed.state

@@ -147,5 +147,5 @@ If you prefer Helix's dedicated surround keys, a bundled plugin provides them:
 Note that this moves wrapping onto `m s`: it takes over the default `m s` (select the pair) and removes `m w`.
 
 ```scheme
-(load-plugin "core:helix-surround")
+(load-plugin! "core:helix-surround")
 ```

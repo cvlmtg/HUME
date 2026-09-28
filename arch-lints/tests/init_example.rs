@@ -1,7 +1,7 @@
 //! # `init.scm.example` core-plugin coverage drift
 //!
 //! `runtime/init.scm.example` is a hand-maintained list of core plugins:
-//! active `(load-plugin ...)`/`(declare-plugin ...)` calls for the ones on by
+//! active `(load-plugin! ...)`/`(declare-plugin! ...)` calls for the ones on by
 //! default, commented-out samples for the rest. Nothing cross-checks it
 //! against `runtime/plugins/core/`. A new core plugin can ship and be fully
 //! documented in the user manual while the example a fresh install is told to
@@ -9,7 +9,7 @@
 //!
 //! `init_scm_example_lists_every_core_plugin` scans `runtime/plugins/core/*`
 //! for the on-disk plugin set and `runtime/init.scm.example` for every
-//! `core:`-named `load-plugin`/`declare-plugin` call, active or commented
+//! `core:`-named `load-plugin!`/`declare-plugin!` call, active or commented
 //! out, and asserts the two sets match exactly.
 
 use arch_lints::{quoted_strings, workspace_root};
@@ -24,8 +24,8 @@ fn on_disk_core_plugins(plugins_root: &std::path::Path) -> std::collections::BTr
         .collect()
 }
 
-/// Every `core:`-named plugin passed to `(load-plugin ...)` or
-/// `(declare-plugin ...)` in `example`, active or commented out. Anchored on
+/// Every `core:`-named plugin passed to `(load-plugin! ...)` or
+/// `(declare-plugin! ...)` in `example`, active or commented out. Anchored on
 /// the two loader verbs (not every quoted string in the file) so a plugin
 /// merely named in prose (a README pointer, a doc URL) doesn't count as
 /// "listed": it must appear in copy-pasteable call form.
@@ -35,8 +35,8 @@ fn example_core_plugins(example: &str) -> std::collections::BTreeSet<String> {
         .filter_map(|line| {
             let rest = line.trim_start().trim_start_matches(';').trim_start();
             let call = rest
-                .strip_prefix("(load-plugin ")
-                .or_else(|| rest.strip_prefix("(declare-plugin "))?;
+                .strip_prefix("(load-plugin! ")
+                .or_else(|| rest.strip_prefix("(declare-plugin! "))?;
             quoted_strings(call).into_iter().next()
         })
         .filter(|name| name.starts_with("core:"))
@@ -67,7 +67,7 @@ fn init_scm_example_lists_every_core_plugin() {
     for missing in on_disk.difference(&listed) {
         violations.push(format!(
             "  {missing}: exists under runtime/plugins/core/ but is not \
-             load-plugin'd or declare-plugin'd (active or commented) in \
+             load-plugin!'d or declare-plugin!'d (active or commented) in \
              runtime/init.scm.example"
         ));
     }

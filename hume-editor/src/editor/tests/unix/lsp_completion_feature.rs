@@ -470,7 +470,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
     // request sent); the single `settle()` below drains the scripted
     // backend's already-queued response and runs the (plain Rust, not
     // Steel-queued) resolve callback inline, so no second drain round needed,
-    // unlike a Steel `lsp-request` callback which only queues on response.
+    // unlike a Steel `lsp-request!` callback which only queues on response.
     ed.feed_key(key_enter());
     settle(&mut ed);
 
@@ -486,7 +486,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
 /// The staleness half of the resolve contract: a resolve response arriving
 /// after the user has typed more text must be dropped, not applied against
 /// stale positions (same discipline `ResponseAnchor` already gives every
-/// other `lsp-request`).
+/// other `lsp-request!`).
 #[test]
 fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
     let tmp = safe_tempdir();
@@ -539,7 +539,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
 }
 
 /// `:lsp-stop` sweeps every pending request via `LspClient::drain_pending`
-/// (the same generic teardown every in-flight `lsp-request` gets): a
+/// (the same generic teardown every in-flight `lsp-request!` gets): a
 /// resolve request in flight at stop time must not apply anything once its
 /// swept `Outcome::TimedOut` reaches the callback, and must not panic.
 #[test]

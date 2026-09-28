@@ -17,25 +17,25 @@ doesn't carry, or a `$PATH` copy you want to take precedence), register it by ha
 instead. See [Registering a language server](#registering-a-language-server).
 
 ```scheme
-(declare-plugin "core:stdlib")   ; core:lsp depends on it — declared or loaded, either works
-(declare-plugin "core:lsp")
+(declare-plugin! "core:stdlib")   ; core:lsp depends on it — declared or loaded, either works
+(declare-plugin! "core:lsp")
 ```
 
 Declaring `core:lsp` is recommended: it keeps startup fast, and `core:lsp` activates the
 first time any file with a recognized language opens, or you run one of its commands
 directly (including `:lsp-install`). If you use LSP in every session and would rather it
-load from the start, swap `declare-plugin` for `load-plugin`:
+load from the start, swap `declare-plugin!` for `load-plugin!`:
 
 ```scheme
-(load-plugin "core:lsp")
+(load-plugin! "core:lsp")
 ```
 
 Want activation to only trigger for specific languages, or a smaller set of commands?
-Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin` yourself
+Pass `#:languages`/`#:commands`/`#:typed-commands`/`#:events` to `declare-plugin!` yourself
 and it uses exactly what you list instead of the defaults:
 
 ```scheme
-(declare-plugin "core:lsp"
+(declare-plugin! "core:lsp"
   #:languages '("rust")   ; only activate for languages you name here
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
@@ -159,7 +159,7 @@ below.
 seen it: either `core:lsp` hasn't loaded or activated this session at all (a lazily
 declared `core:lsp` whose trigger hasn't fired yet), or the server appeared on disk after
 the scan already ran (installed outside `:lsp-install`, copied in or installed by an
-earlier HUME version). Run `:lsp-rescan-servers`, add `(load-plugin "core:lsp")`, or add a
+earlier HUME version). Run `:lsp-rescan-servers`, add `(load-plugin! "core:lsp")`, or add a
 `#:languages`/`#:commands` entry that triggers activation on a lazily declared `core:lsp`
 (see [Setup](#setup)).
 
@@ -178,7 +178,7 @@ catalog doesn't carry, or a `$PATH` copy you want to take precedence over a mana
 `:lsp-restart`) are `core:lsp` commands, so a manually registered server still needs
 `core:lsp` loaded or declared to inspect, stop, or restart it. A manual `register-lsp-server!`
 call always overrides a seeded, installed server for the same language, whether it comes
-before or after `(load-plugin "core:lsp")` or `(declare-plugin "core:lsp")` in your init.scm;
+before or after `(load-plugin! "core:lsp")` or `(declare-plugin! "core:lsp")` in your init.scm;
 order doesn't matter. `register-lsp-server!` takes:
 
 | Argument | Meaning |
@@ -315,7 +315,7 @@ Server output and protocol errors are visible in `:messages`.
 
 ## Advanced: custom requests
 
-`lsp-request` isn't limited to the built-in commands above: any plugin can call it to reach
+`lsp-request!` isn't limited to the built-in commands above: any plugin can call it to reach
 a server extension the built-in feature set doesn't cover. This is how you'd add a command
 for rust-analyzer's `rust-analyzer/expandMacro`, which expands the macro under the cursor and
 returns its generated code:
@@ -323,7 +323,7 @@ returns its generated code:
 ```scheme
 (define-command! "rust-expand-macro" "Show the expansion of the macro under the cursor."
   (lambda (pane)
-    (lsp-request pane "rust-analyzer/expandMacro" (lsp-position-params pane)
+    (lsp-request! pane "rust-analyzer/expandMacro" (lsp-position-params pane)
       (lambda (err res)
         (cond
           (err (log! 'error (string-append "expand macro: "
@@ -341,6 +341,6 @@ on it, the way every built-in feature does. `res` is a JSON handle: read a field
 `err`, when set, is an ordinary hashmap (`"code"`, `"message"`) or the string `"timeout"`; read
 it with `hash-ref`, not `json-ref`.
 
-`lsp-request` also takes three keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key (the server gets `$/cancelRequest` and the old callback never fires), which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file.
+`lsp-request!` also takes three keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key (the server gets `$/cancelRequest` and the old callback never fires), which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file.
 
 A server's response sometimes carries its own position or range rather than the one you sent, such as a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->offset`/`lsp-range->offsets` before using it with any editing command; both return `#f` if the buffer has no server attached to convert against.

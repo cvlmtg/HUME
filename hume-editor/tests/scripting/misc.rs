@@ -1,4 +1,4 @@
-//! Arity-1 command list-arg validation, load-plugin runtime-guard
+//! Arity-1 command list-arg validation, load-plugin! runtime-guard
 //! firing, and the plum grammars.scm balance check.
 
 use super::*;
@@ -59,19 +59,19 @@ fn arity1_list_command_accepts_list_arg() {
     );
 }
 
-/// `(load-plugin …)` raises a Steel error when called from a command body
+/// `(load-plugin! …)` raises a Steel error when called from a command body
 /// (`EvalMode::Command`): the `ensure_top_level` gate rejects it.
 ///
 /// Without that gate the call would return `Ok` and queue a load request that
 /// nothing ever drains.
 #[test]
 fn load_plugin_runtime_guard_fires() {
-    // (load-plugin ...) from a command body (EvalMode::Command) must be rejected.
+    // (load-plugin! ...) from a command body (EvalMode::Command) must be rejected.
     let mut h = host();
     let mut mock = MockHost::new();
 
     h.eval_source(
-        r#"(define-command! "try-load" "" (lambda () (load-plugin "user/tp")))"#,
+        r#"(define-command! "try-load" "" (lambda () (load-plugin! "user/tp")))"#,
         &mut mock,
     )
     .unwrap();
@@ -86,7 +86,7 @@ fn load_plugin_runtime_guard_fires() {
 }
 
 /// Test that core:plum grammars.scm has balanced parentheses.
-/// This plugin is loaded via `(load-plugin "core:plum")` in init.scm.
+/// This plugin is loaded via `(load-plugin! "core:plum")` in init.scm.
 /// An earlier imbalance caused "Parse: Unexpected EOF" on startup.
 #[test]
 fn plum_grammars_scm_balanced() {

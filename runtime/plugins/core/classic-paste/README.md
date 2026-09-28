@@ -6,7 +6,7 @@ scheme, as an alternative to HUME's default smart-`p` heuristic.
 ## Usage
 
 ```scheme
-(load-plugin "core:classic-paste")
+(load-plugin! "core:classic-paste")
 ```
 
 - **Depends on:** nothing.

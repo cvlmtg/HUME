@@ -45,7 +45,7 @@ impl BufferSession {
     /// `completionProvider.resolveProvider`, sends `completionItem/resolve`
     /// and applies whatever it returns once the response lands (via the
     /// ordinary `LspCallback`/`stale_check` machinery every other
-    /// `lsp-request` uses, dropped silently if the buffer has moved past
+    /// `lsp-request!` uses, dropped silently if the buffer has moved past
     /// the accept's own generation by then, same staleness discipline as
     /// any other LSP response). Without the source's own flag, an item from
     /// a source that merely *shares* an LSP-attached buffer
@@ -492,7 +492,7 @@ impl BufferSession {
             return;
         };
 
-        // Same discipline `lsp-request` itself uses (bridge.rs): a request
+        // Same discipline `lsp-request!` itself uses (bridge.rs): a request
         // minted here must not reach the wire ahead of the didChange
         // describing the edit `accept` just applied.
         crate::editor::lsp::sync::flush_lsp_pending_changes(state, lsp);

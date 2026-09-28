@@ -4,7 +4,7 @@
 ///
 /// The name-based boundary this crate is built on: `hume-scripting` has no
 /// compiled-in knowledge of which event names exist (that's the editor's
-/// `EditorEvent`), so `register-hook!` and `declare-plugin`'s `#:events`
+/// `EditorEvent`), so `register-hook!` and `declare-plugin!`'s `#:events`
 /// validate against this instead of a static match.
 pub trait EventHost {
     /// Every Steel-visible event name this host can raise.

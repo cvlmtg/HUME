@@ -14,7 +14,7 @@ fn setup_stdlib_editor() -> (Editor, ScriptingHost, HumeRuntimeGuard, tempfile::
 
     let init_dir = safe_tempdir();
     let init_path = init_dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin "core:stdlib")"#).unwrap();
+    std::fs::write(&init_path, r#"(load-plugin! "core:stdlib")"#).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
@@ -38,7 +38,7 @@ fn core_stdlib_plugin_loads_eagerly() {
     assert_eq!(
         host.plugin_status(&id),
         Some(PluginStatus::Loaded),
-        "core:stdlib must be Loaded after eager load-plugin"
+        "core:stdlib must be Loaded after eager load-plugin!"
     );
 }
 

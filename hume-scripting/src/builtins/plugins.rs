@@ -1,8 +1,8 @@
 //! Plugin lifecycle builtins: `%declare-plugin!`, `%load-plugin!`,
 //! `resolve-plugin-path`, `declared-plugins`, `loaded-plugins`.
 //!
-//! `%declare-plugin!` backs the Scheme `declare-plugin` wrapper (lazy).
-//! `%load-plugin!` backs the Scheme `load-plugin` wrapper (eager).
+//! `%declare-plugin!` backs the Scheme `declare-plugin!` wrapper (lazy).
+//! `%load-plugin!` backs the Scheme `load-plugin!` wrapper (eager).
 //! Both wrappers are defined in the bootstrap; see `builtins/mod.rs`.
 
 use steel::rerrs::SteelErr;
@@ -62,7 +62,7 @@ fn record_declared(ctx: &mut SteelCtx, name: &str) {
     }
 }
 
-/// Shared idempotency rule for both `declare-plugin` forms (regular and the
+/// Shared idempotency rule for both `declare-plugin!` forms (regular and the
 /// manifest zero-trigger fallback): `Loaded` → soft error, else first
 /// declaration wins. Returns `true` if the caller should short-circuit
 /// immediately (with its own success sentinel: `declare_plugin` and
@@ -77,7 +77,7 @@ fn already_declared(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str) -> boo
             // entry goes away.
             ctx.log(
                 crate::log::LogLevel::Error,
-                format!("declare-plugin: '{name}' is already loaded; ignoring declare"),
+                format!("declare-plugin!: '{name}' is already loaded; ignoring declare"),
             );
             true
         }
@@ -125,7 +125,7 @@ fn require_program_for_path(
     Ok(format!("(require {literal})"))
 }
 
-/// Gate for plugin-registration verbs (`load-plugin`, `declare-plugin`).
+/// Gate for plugin-registration verbs (`load-plugin!`, `declare-plugin!`).
 ///
 /// Both verbs are valid only at the top level of `init.scm`, i.e. only
 /// [`crate::context::EvalMode::Init`]. A plugin can never load or declare
@@ -144,15 +144,15 @@ fn ensure_top_level(ctx: &SteelCtx, verb: &str) -> Result<(), SteelErr> {
     }
 }
 
-/// Error label for a `declare-plugin` keyword-argument decode.
+/// Error label for a `declare-plugin!` keyword-argument decode.
 ///
 /// Inside manifest resolution the offending code is the *plugin's*
 /// `manifest.scm`, not the user's `init.scm` that the init-eval error prefix
 /// will otherwise imply, so name it, and the plugin, explicitly.
 fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
     match &ctx.manifest_resolving {
-        Some(id) => format!("declare-plugin {keyword} in manifest.scm for '{id}'"),
-        None => format!("declare-plugin {keyword}"),
+        Some(id) => format!("declare-plugin! {keyword} in manifest.scm for '{id}'"),
+        None => format!("declare-plugin! {keyword}"),
     }
 }
 
@@ -173,7 +173,7 @@ fn filter_and_register_lazy(
             ctx.log(
                 crate::log::LogLevel::Error,
                 format!(
-                    "declare-plugin: command '{cmd}' conflicts with a built-in; activation entry ignored"
+                    "declare-plugin!: command '{cmd}' conflicts with a built-in; activation entry ignored"
                 ),
             );
             continue;
@@ -182,7 +182,7 @@ fn filter_and_register_lazy(
             Ok(()) => valid.push(cmd),
             Err(msg) => ctx.log(
                 crate::log::LogLevel::Error,
-                format!("declare-plugin: {msg}; activation entry ignored"),
+                format!("declare-plugin!: {msg}; activation entry ignored"),
             ),
         }
     }
@@ -190,10 +190,10 @@ fn filter_and_register_lazy(
 }
 
 /// `(%declare-plugin! name commands typed-commands events languages config)`:
-/// backs the Scheme `declare-plugin` wrapper. Top-level only
+/// backs the Scheme `declare-plugin!` wrapper. Top-level only
 /// (`ensure_top_level`), so a plugin can never declare another plugin.
 ///
-/// `declare-plugin` is the lazy counterpart of `load-plugin`: it records the
+/// `declare-plugin!` is the lazy counterpart of `load-plugin!`: it records the
 /// plugin's activation entries and defers its body until one fires. At least
 /// one entry is required, otherwise the plugin could never activate. Every
 /// entry list is validated before any state is recorded; `#:events` goes
@@ -209,7 +209,7 @@ pub(crate) fn declare_plugin(
     languages: SteelVal,
     config: SteelVal,
 ) -> SteelResult {
-    ensure_top_level(ctx, "declare-plugin")?;
+    ensure_top_level(ctx, "declare-plugin!")?;
     let plugin_id = PluginId::parse(&name).map_err(generic_err)?;
 
     // A manifest.scm being resolved by %begin-manifest-declare! may only ever
@@ -220,7 +220,7 @@ pub(crate) fn declare_plugin(
         && *expected != plugin_id
     {
         return Err(generic_err(format!(
-            "declare-plugin: manifest.scm for '{expected}' must declare '{expected}', not '{name}'"
+            "declare-plugin!: manifest.scm for '{expected}' must declare '{expected}', not '{name}'"
         )));
     }
 
@@ -248,7 +248,7 @@ pub(crate) fn declare_plugin(
     for cmd in cmd_list.iter().chain(typed_cmd_list.iter()) {
         if cmd.contains('"') || cmd.contains('\\') {
             steel::stop!(Generic =>
-                "declare-plugin: command name '{}' must not contain '\"' or '\\'", cmd);
+                "declare-plugin!: command name '{}' must not contain '\"' or '\\'", cmd);
         }
     }
 
@@ -263,8 +263,8 @@ pub(crate) fn declare_plugin(
         && lang_list.is_empty()
     {
         return Err(generic_err(format!(
-            "declare-plugin: '{name}' declares no activation entries; it could never be activated. \
-             Add #:commands/#:typed-commands/#:events/#:languages, or use (load-plugin \"{name}\") for eager loading."
+            "declare-plugin!: '{name}' declares no activation entries; it could never be activated. \
+             Add #:commands/#:typed-commands/#:events/#:languages, or use (load-plugin! \"{name}\") for eager loading."
         )));
     }
 
@@ -302,7 +302,7 @@ pub(crate) fn declare_plugin(
     // plugins, so it can't catch the error.  `declared_plugins` is already
     // recorded above for PLUM.
     let Some(path) = path else {
-        log_absent_plugin(ctx, &plugin_id, &name, "declare-plugin");
+        log_absent_plugin(ctx, &plugin_id, &name, "declare-plugin!");
         return Ok(SteelVal::Void);
     };
 
@@ -332,9 +332,9 @@ pub(crate) fn declare_plugin(
         && lang_list.is_empty()
     {
         return Err(generic_err(format!(
-            "declare-plugin: '{name}' declares no activation entries; \
+            "declare-plugin!: '{name}' declares no activation entries; \
              all #:commands/#:typed-commands entries conflicted with existing commands. \
-             Fix the collision or use (load-plugin \"{name}\") for eager loading."
+             Fix the collision or use (load-plugin! \"{name}\") for eager loading."
         )));
     }
 
@@ -418,14 +418,14 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 }
 
 /// `(%load-plugin! "name" config)`: Rust primitive backing the Scheme-side
-/// `load-plugin` wrapper (eager).
+/// `load-plugin!` wrapper (eager).
 ///
 /// Top-level only: a plugin can never load another plugin (see
 /// `ensure_top_level`).
 ///
 /// Stores `config` unconditionally, overriding any prior value (unlike
-/// `declare-plugin`'s first-wins): a bare `(load-plugin "x")` after
-/// `(declare-plugin "x" #:config h)` runs the body with the empty default,
+/// `declare-plugin!`'s first-wins): a bare `(load-plugin! "x")` after
+/// `(declare-plugin! "x" #:config h)` runs the body with the empty default,
 /// not `h`, since the most recent call should always win. Read back by the
 /// body via `(plugin-config)`.
 ///
@@ -435,10 +435,10 @@ pub(crate) fn resolve_plugin_path(ctx: &mut SteelCtx, name: String) -> SteelResu
 /// if already `Loaded`/`Failed`, `begin_lazy_activation`'s idempotency guard
 /// no-ops it.
 pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) -> SteelResult {
-    ensure_top_level(ctx, "load-plugin")?;
+    ensure_top_level(ctx, "load-plugin!")?;
     let id = PluginId::parse(&name).map_err(generic_err)?;
 
-    // load-plugin always overrides: unlike declare-plugin's first-wins, a repeat
+    // load-plugin! always overrides: unlike declare-plugin!'s first-wins, a repeat
     // (re)load intentionally replaces the config the body will see next activation.
     ctx.registries.plugin_configs.insert(id.clone(), config);
 
@@ -455,8 +455,8 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
         ctx.log(
             crate::log::LogLevel::Error,
             format!(
-                "load-plugin: '{name}' was already declared lazily; \
-                 load-plugin overrides and forces eager loading"
+                "load-plugin!: '{name}' was already declared lazily; \
+                 load-plugin! overrides and forces eager loading"
             ),
         );
     }
@@ -481,7 +481,7 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
                 // core: absent → error (typo or HUME_RUNTIME broken; PLUM won't catch it).
                 // user/ absent → silent (PLUM installs it on :plum-install-plugins).
                 if matches!(&id, PluginId::Core(_)) {
-                    log_absent_core(ctx, &name, "load-plugin");
+                    log_absent_core(ctx, &name, "load-plugin!");
                 }
                 return Ok(SteelVal::Void);
             }
@@ -538,7 +538,7 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
         fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>
             "%begin-lazy-activation: activation depth limit ({}) exceeded \
-             (check for circular load-plugin chains); '{}' marked Failed",
+             (check for circular load-plugin! chains); '{}' marked Failed",
             MAX_ACTIVATION_DEPTH, id_str);
     }
 
@@ -651,9 +651,9 @@ pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResul
 }
 
 /// `(%begin-manifest-declare! name config)`: Rust primitive backing the
-/// zero-trigger branch of the Scheme `declare-plugin` wrapper.
+/// zero-trigger branch of the Scheme `declare-plugin!` wrapper.
 ///
-/// A `(declare-plugin "id")` call with no
+/// A `(declare-plugin! "id")` call with no
 /// `#:commands`/`#:typed-commands`/`#:events`/`#:languages`
 /// is routed here instead of `%declare-plugin!`: rather than hard-erroring,
 /// HUME looks for `<plugin-dir>/manifest.scm` and evaluates it so the plugin
@@ -672,11 +672,11 @@ pub(crate) fn begin_manifest_declare(
     name: String,
     config: SteelVal,
 ) -> SteelResult {
-    ensure_top_level(ctx, "declare-plugin")?;
+    ensure_top_level(ctx, "declare-plugin!")?;
 
     if ctx.manifest_resolving.is_some() {
         steel::stop!(Generic =>
-            "declare-plugin: '{}' has no activation entries and manifest.scm \
+            "declare-plugin!: '{}' has no activation entries and manifest.scm \
              must declare at least one (a manifest.scm cannot itself be zero-trigger)",
             name);
     }
@@ -699,16 +699,16 @@ pub(crate) fn begin_manifest_declare(
         return Ok(SteelVal::BoolV(false));
     };
     if !path_exists(&dir).map_err(generic_err)? {
-        log_absent_plugin(ctx, &plugin_id, &name, "declare-plugin");
+        log_absent_plugin(ctx, &plugin_id, &name, "declare-plugin!");
         return Ok(SteelVal::BoolV(false));
     }
 
     let manifest_path = dir.join("manifest.scm");
     if !path_exists(&manifest_path).map_err(generic_err)? {
         return Err(generic_err(format!(
-            "declare-plugin: '{name}' has no manifest.scm; add \
+            "declare-plugin!: '{name}' has no manifest.scm; add \
              #:commands/#:typed-commands/#:events/#:languages to declare it explicitly, \
-             or use (load-plugin \"{name}\") for eager loading."
+             or use (load-plugin! \"{name}\") for eager loading."
         )));
     }
 
@@ -716,7 +716,7 @@ pub(crate) fn begin_manifest_declare(
 
     // Store the user's #:config now, before evaluating manifest.scm, so the
     // or_insert guard in declare_plugin (fired by the manifest's own
-    // declare-plugin call) doesn't let the manifest's default clobber it.
+    // declare-plugin! call) doesn't let the manifest's default clobber it.
     ctx.registries
         .plugin_configs
         .insert(plugin_id.clone(), config);
@@ -731,14 +731,14 @@ pub(crate) fn begin_manifest_declare(
 }
 
 /// `(%finish-manifest-declare! name error)`: Rust primitive; the tail half
-/// of the zero-trigger `declare-plugin` path (mirrors `%finish-lazy-activation`,
+/// of the zero-trigger `declare-plugin!` path (mirrors `%finish-lazy-activation`,
 /// including its `error` argument convention and its unconditional-before-
 /// any-fallible-decode ordering; see that function's doc for why).
 ///
 /// Clears `manifest_resolving` and pops the effect mark `begin_manifest_declare`
 /// pushed unconditionally, before decoding `error`. On success, verifies the
 /// manifest actually declared the plugin: a `manifest.scm` that evaluates
-/// without error but never calls `declare-plugin` would otherwise leave the
+/// without error but never calls `declare-plugin!` would otherwise leave the
 /// plugin silently undeclared; that check's own failure is raised, caught by
 /// the same `with-handler` in `bootstrap.scm`, and reaches this function a
 /// second time as a genuine failure. On failure, rolls the plugin back to
@@ -755,7 +755,7 @@ pub(crate) fn finish_manifest_declare(
     // `manifest_resolving` must clear unconditionally, before any fallible
     // decode, mirroring `finish_lazy_activation`'s stack/marks discipline.
     // Otherwise a decode failure would leave manifest resolution permanently
-    // "in progress", and every later zero-trigger `declare-plugin` would
+    // "in progress", and every later zero-trigger `declare-plugin!` would
     // hard-error on `begin_manifest_declare`'s reentrancy guard.
     ctx.manifest_resolving = None;
     let error = optional_steel_error_arg(error, "%finish-manifest-declare!").unwrap_or_else(Some);
@@ -766,15 +766,15 @@ pub(crate) fn finish_manifest_declare(
     match error {
         None if !ctx.registries.lazy_registry.plugins.contains_key(&id) => {
             return Err(generic_err(format!(
-                "declare-plugin: manifest.scm for '{name}' did not declare '{name}': a \
-                 manifest.scm must call (declare-plugin \"{name}\" …) with at least one \
+                "declare-plugin!: manifest.scm for '{name}' did not declare '{name}': a \
+                 manifest.scm must call (declare-plugin! \"{name}\" …) with at least one \
                  activation entry"
             )));
         }
         None => {}
         Some(err) => {
             // A manifest can self-declare (a direct, non-zero-trigger
-            // `declare-plugin` call inside manifest.scm; see
+            // `declare-plugin!` call inside manifest.scm; see
             // `begin_manifest_declare`'s own doc for how `manifest_resolving`
             // licenses it) before a *later* top-level form in the same file
             // raises. `hm.eval-string` runs manifest.scm as one program, so
@@ -836,7 +836,7 @@ fn empty_config() -> SteelResult {
 ///
 /// Resolved via the top of `plugin_stack`, which is non-empty for the whole
 /// duration of a plugin body's evaluation, pushed in `begin_lazy_activation`
-/// before either `load-plugin` (eager) or a deferred lazy activation runs the
+/// before either `load-plugin!` (eager) or a deferred lazy activation runs the
 /// `(require …)`. Both paths therefore read config identically.
 pub(crate) fn plugin_config(ctx: &mut SteelCtx) -> SteelResult {
     let Some(id) = ctx.plugin_stack.current() else {

@@ -1,4 +1,4 @@
-// Packaging: lazy `declare-plugin` activation, and the goto-trie keybindings
+// Packaging: lazy `declare-plugin!` activation, and the goto-trie keybindings
 // bound in `plugin.scm`. Loads the real shipped `core:lsp` plugin in place
 // (`RealRuntimeGuard`).
 //
@@ -16,8 +16,8 @@ use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 use hume_scripting::attribution::PluginId;
 
-const DECLARE_LSP: &str = r#"(load-plugin "core:stdlib")
-(declare-plugin "core:lsp"
+const DECLARE_LSP: &str = r#"(load-plugin! "core:stdlib")
+(declare-plugin! "core:lsp"
   #:events '(on-lsp-attach)
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
@@ -29,8 +29,8 @@ const DECLARE_LSP: &str = r#"(load-plugin "core:stdlib")
 /// `on-lsp-attach`, used to prove a positive activation result isn't a
 /// confound of `setup_declared`'s staging (see
 /// `attach_event_does_not_activate_a_plugin_declared_for_a_different_event`).
-const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
-(declare-plugin "core:lsp"
+const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin! "core:stdlib")
+(declare-plugin! "core:lsp"
   #:events '(on-buffer-save)
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
@@ -39,8 +39,8 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
   #:typed-commands '("diagnostics"))"#;
 
 /// Declares `core:lsp` lazily
-/// (`declare_src`, normally `DECLARE_LSP`) instead of `(load-plugin
-/// "core:lsp")`: `declare-plugin` registers the `Lazy` stub directly via
+/// (`declare_src`, normally `DECLARE_LSP`) instead of `(load-plugin!
+/// "core:lsp")`: `declare-plugin!` registers the `Lazy` stub directly via
 /// `CommandHost::register_lazy_command` as `eval_with_real_host` runs, so a
 /// `:`-command dispatch can trigger activation with no separate
 /// stub-registration step, combined with the real-runtime staging every
@@ -191,7 +191,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
 /// `attach_event_does_not_activate_a_plugin_declared_for_a_different_event`
 /// runs the identical attach sequence against a manifest declared on
 /// `on-buffer-save` instead, and confirms it stays `Declared`, ruling out
-/// some other confound in `setup_declared`'s staging (e.g. `load-plugin
+/// some other confound in `setup_declared`'s staging (e.g. `load-plugin!
 /// "core:stdlib"` in the same source, or the handshake itself) as the cause
 /// of this test's `Loaded` result.
 #[test]
@@ -282,8 +282,8 @@ fn every_default_lsp_binding_dispatches_without_error() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -350,7 +350,7 @@ fn missing_stdlib_errors_at_load() {
     let guard = RealRuntimeGuard::new();
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin "core:lsp")"#).unwrap();
+    std::fs::write(&init_path, r#"(load-plugin! "core:lsp")"#).unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();

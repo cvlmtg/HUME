@@ -355,7 +355,7 @@ fn handshake_failure_response_crashes() {
 
 /// Pins that the `initialize` response is discriminated by the id stashed
 /// in `initialize_id`, not by matching on the method string: a Steel
-/// plugin issuing `(lsp-request bid "initialize" ...)` through the generic
+/// plugin issuing `(lsp-request! bid "initialize" ...)` through the generic
 /// bridge must get an ordinary correlated response, never be mistaken
 /// for the handshake and hijack the client into `BecameRunning`/`Crashed`.
 #[test]

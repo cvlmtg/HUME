@@ -1,7 +1,7 @@
 //! Steel builtins for HUME's scripting layer.
 //!
 //! [`register_all`] registers every builtin on the Steel engine and then evaluates
-//! the Scheme bootstrap that defines `load-plugin` and `declare-plugin`.
+//! the Scheme bootstrap that defines `load-plugin!` and `declare-plugin!`.
 //! This must be called once during [`crate::ScriptingHost::new`] before any
 //! `eval_init` call.
 
@@ -136,7 +136,7 @@ macro_rules! builtins {
 // exhausted step budget must abort the whole eval, not be recorded as every
 // later plugin failing to load.
 //
-// declare-plugin: with no triggers, evaluates <plugin-dir>/manifest.scm for
+// declare-plugin!: with no triggers, evaluates <plugin-dir>/manifest.scm for
 // default entries (caller's #:config wins) under the same handler/yield
 // contract, %finish-manifest-declare! recording any error.
 //
@@ -159,7 +159,7 @@ macro_rules! builtins {
 // frame is never taken for this call's own. No with-handler (hazard above): a
 // raising body skips the restore; run_steel_session truncates to zero at end.
 //
-// lsp-request: callback is (lambda (err result)), exactly one non-#f.
+// lsp-request!: callback is (lambda (err result)), exactly one non-#f.
 // #:supersede <key> cancels the caller's own pending request under the same
 // (server, key). #:require-focus drops the callback unless pane is still
 // focused when the response arrives.
@@ -221,6 +221,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
     // is injected at eval / dispatch time via steel.update_value.
     steel.register_value(HUME_CTX, SteelVal::Void);
 
+    // A name ends in `!` when calling it mutates editor state, registers
+    // something, spawns a process, or writes to disk. Reads and closure
+    // constructors (`debounce`) carry no `!`.
     builtins! { steel,
         // Config / settings
         open "set-option!" settings::set_option(key: String, value: SteelVal);
@@ -260,7 +263,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "%finish-lazy-activation" plugins::finish_lazy_activation(id_str: String, error: SteelVal);
         open "%lazy-command-owner" plugins::lazy_command_owner(name: String);
 
-        // Manifest resolution: zero-trigger declare-plugin routes here to eval
+        // Manifest resolution: zero-trigger declare-plugin! routes here to eval
         // <plugin-dir>/manifest.scm so the plugin can declare its own defaults.
         open "%begin-manifest-declare!" plugins::begin_manifest_declare(name: String, config: SteelVal);
         open "%finish-manifest-declare!" plugins::finish_manifest_declare(name: String, error: SteelVal);
@@ -302,8 +305,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // /`git-clone`/`curl-fetch`/`npm-install!` are plain Scheme, atop Steel's
         // own `steel/process` stdlib (`which`, `spawn-process`).
         open  "sha256-file" install::sha256_file(path: String);
-        open  "unpack-gz" install::unpack_gz(src: String, dest: String);
-        open  "unpack-zip" install::unpack_zip(src: String, dest_dir: String, bin_path: String);
+        open  "unpack-gz!" install::unpack_gz(src: String, dest: String);
+        open  "unpack-zip!" install::unpack_zip(src: String, dest_dir: String, bin_path: String);
         open  "acquire-install-lock!" install::acquire_install_lock();
         open  "release-install-lock!" install::release_install_lock();
         open  "%run-inline-output!" install::run_inline_output(cmd: String, args_val: SteelVal, cwd_val: SteelVal);
@@ -367,8 +370,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-restart!" lsp::lsp_restart(target: args::LspTargetArg);
         cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
         // Generic LSP bridge: any protocol method reachable from Steel.
-        cmd "%lsp-request" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal);
-        cmd "lsp-notify" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal);
+        cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal);
+        cmd "lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal);
         config "on-lsp-notification" lsp::on_lsp_notification(method: SteelVal, handler: SteelVal);
         // Introspection
         cmd  "lsp-capabilities" lsp::lsp_capabilities(pane: args::ArgPane);
@@ -447,7 +450,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "%callable?" args::is_callable(val: SteelVal);
 
         // Timers: not LSP-specific, any plugin can schedule one.
-        cmd "after" timers::after(ms: SteelVal, thunk: SteelVal);
+        cmd "after!" timers::after(ms: SteelVal, thunk: SteelVal);
         cmd "cancel-timer!" timers::cancel_timer(id: SteelVal);
 
         // Generic async subprocess execution: one-shot capture, not a
@@ -494,7 +497,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
     steel.register_value("json-contains?", SteelVal::FuncV(json::json_contains));
     steel.register_value("json-ref-or", SteelVal::FuncV(json::json_ref_or));
 
-    // Evaluate the Scheme bootstrap (defines `load-plugin`, and, at its
+    // Evaluate the Scheme bootstrap (defines `load-plugin!`, and, at its
     // tail, captures steel-core's original print functions/port before
     // anything shadows them). Runs before any user init.scm; HUME_CTX is not
     // yet set but the bootstrap only uses `define`, so no builtins are

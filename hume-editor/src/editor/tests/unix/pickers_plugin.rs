@@ -55,10 +55,10 @@ fn setup_with_config(
     let mut ed = editor_from(input);
     let mut host = ScriptingHost::new();
     let load_pickers = match config_expr {
-        Some(cfg) => format!("(load-plugin \"core:pickers\" #:config {cfg})"),
-        None => "(load-plugin \"core:pickers\")".to_string(),
+        Some(cfg) => format!("(load-plugin! \"core:pickers\" #:config {cfg})"),
+        None => "(load-plugin! \"core:pickers\")".to_string(),
     };
-    let source = format!("(load-plugin \"core:stdlib\")\n{load_pickers}\n{extra_source}");
+    let source = format!("(load-plugin! \"core:stdlib\")\n{load_pickers}\n{extra_source}");
     eval_with_real_host(&mut ed, &mut host, &source, tmp);
     ed.scripting = Some(host);
     ed
@@ -677,7 +677,7 @@ fn git_modified_picker_invalid_untracked_config_fails_load() {
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:pickers\" #:config (hash \"untracked\" 'bogus))",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:pickers\" #:config (hash \"untracked\" 'bogus))",
     )
     .unwrap();
 
@@ -708,7 +708,7 @@ fn missing_stdlib_errors_at_load() {
     // Deliberately no `write_core_plugin(&guard, "stdlib", ...)`.
     let tmp = safe_tempdir();
     let init_path = tmp.path().join("init.scm");
-    std::fs::write(&init_path, "(load-plugin \"core:pickers\")").unwrap();
+    std::fs::write(&init_path, "(load-plugin! \"core:pickers\")").unwrap();
 
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();

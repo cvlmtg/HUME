@@ -1,7 +1,7 @@
 //! # Plugin manifest command-list drift
 //!
 //! A plugin's `manifest.scm` (`#:commands '(...)` / `#:typed-commands '(...)`)
-//! is the zero-argument `(declare-plugin "core:foo")` activation list,
+//! is the zero-argument `(declare-plugin! "core:foo")` activation list,
 //! hand-maintained, and duplicated nowhere else the compiler checks. The two
 //! clauses feed mutually exclusive lookups (`get_mappable` vs `get_typed`), so
 //! a command added to a feature file without a matching manifest entry
@@ -20,7 +20,7 @@
 //! name declared in one clause but defined by the other kind's `define-*!` is
 //! reported once, as a wrong-clause violation, rather than as an unpaired
 //! "missing" and "stale" entry on each side. A plugin directory with no
-//! `manifest.scm` (no zero-arg `declare-plugin` activation defined) is
+//! `manifest.scm` (no zero-arg `declare-plugin!` activation defined) is
 //! skipped, not a violation.
 
 use arch_lints::{quoted_strings, workspace_root};
@@ -149,7 +149,7 @@ fn plugin_manifest_commands_match_defined_commands() {
     for dir in plugin_dirs {
         let manifest_path = dir.join("manifest.scm");
         if !manifest_path.exists() {
-            continue; // no zero-arg declare-plugin activation, nothing to check
+            continue; // no zero-arg declare-plugin! activation, nothing to check
         }
         let plugin_name = dir
             .file_name()

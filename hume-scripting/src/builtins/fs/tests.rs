@@ -109,7 +109,7 @@ fn path_to_display_type_error() {
 /// `steel/meta` module, already a bare global in `Engine::new()`. Prove it
 /// resolves *through a loaded plugin*, not just at the top level: a
 /// `register_value` of a non-function value is known to silently stub out
-/// inside `load-plugin`'d code, and this name must not
+/// inside `load-plugin!`'d code, and this name must not
 /// regress to a HUME-registered shadow that could reintroduce that trap.
 ///
 /// An `fs::path_separator` registered as a bare value instead of a niladic
@@ -130,7 +130,7 @@ fn path_separator_resolves_inside_loaded_plugin() {
     let mut host = crate::ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     let mut null_host = crate::null_host::NullHost;
-    host.eval_source(r#"(load-plugin "user/probe")"#, &mut null_host)
+    host.eval_source(r#"(load-plugin! "user/probe")"#, &mut null_host)
         .expect("(path-separator) must be callable from inside a loaded plugin");
 
     let msgs = host.take_pending_messages();

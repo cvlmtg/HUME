@@ -140,7 +140,7 @@ pub(crate) struct LspState {
     /// the animation speed doesn't depend on the event loop's wake cadence.
     spinner: SpinnerClock,
     /// `(server, supersede-key) -> the in-flight request id filed under that
-    /// key`, for `lsp-request`'s `#:supersede` option: a new request under
+    /// key`, for `lsp-request!`'s `#:supersede` option: a new request under
     /// the same key cancels the previous one first. Entries are removed in
     /// `dispatch_completed` (response/timeout/crash-drain/stop-drain all
     /// funnel there) and swept per-server in `lsp_stop_one`, so an id can

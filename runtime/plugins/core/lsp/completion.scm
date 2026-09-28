@@ -7,7 +7,7 @@
 (register-completion-source! "lsp"
   (lambda (id pane prefix)
     (if (lsp/supports? pane "completionProvider")
-        (lsp-request pane "textDocument/completion" (lsp-position-params pane)
+        (lsp-request! pane "textDocument/completion" (lsp-position-params pane)
           (lambda (err res)
             (cond
               (err (lsp/report-error "completion" err)

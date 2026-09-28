@@ -526,7 +526,7 @@ fn reload_config_does_not_double_fire_buffer_open_for_a_plugin_opened_buffer() {
     let companion_str = steel_path(&companion);
 
     let init_scm = r#"(%define-language! "rust" '("rs") '() '() #f)
-        (declare-plugin "user/opener" #:languages '("rust"))"#;
+        (declare-plugin! "user/opener" #:languages '("rust"))"#;
     let fixture = ReloadFixture::new(init_scm);
 
     let plugin_dir = fixture

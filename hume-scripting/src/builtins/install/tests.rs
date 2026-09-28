@@ -65,7 +65,7 @@ fn sha256_file_missing_source_is_error() {
     assert!(sha256_file(&mut ctx, f.to_string_lossy().to_string()).is_err());
 }
 
-// ── unpack-gz / unpack-zip ───────────────────────────────────────────────
+// ── unpack-gz! / unpack-zip! ───────────────────────────────────────────────
 //
 // Round-trip behavior (content, exec bit, zip entries, symlink safety)
 // is covered by `hume-platform`'s own tests against the real system
@@ -109,7 +109,7 @@ fn unpack_zip_missing_src_is_error() {
     );
 }
 
-/// `unpack-zip` shells out to `unzip`/`tar` with inherited stdio, so it
+/// `unpack-zip!` shells out to `unzip`/`tar` with inherited stdio, so it
 /// must open the inline-output bracket before spawning that tool, even
 /// when the spawn itself then fails (missing src).
 #[test]

@@ -7,15 +7,15 @@ a language server for Scheme buffers (`.ss`/`.scm`/`.sld`), including HUME's own
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
-(declare-plugin "core:lsp")
-(declare-plugin "core:steel-server")
+(declare-plugin! "core:stdlib")
+(declare-plugin! "core:lsp")
+(declare-plugin! "core:steel-server")
 ```
 
 - **Depends on:** `core:lsp` (supplies the editor-side LSP features this plugin's server
   feeds: hover, goto, diagnostics; this plugin only registers the server itself).
 - **Activates on:** the first Scheme buffer, or `:steel-server-install`, whichever comes
-  first. `(load-plugin "core:steel-server")` also works, loading it eagerly instead.
+  first. `(load-plugin! "core:steel-server")` also works, loading it eagerly instead.
 - A manual `register-lsp-server! "scheme"` call in `init.scm` always wins over this
   plugin's own registration, the same override rule as `core:lsp`.
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-steel-server)

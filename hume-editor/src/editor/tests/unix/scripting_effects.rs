@@ -47,14 +47,14 @@ fn effect_log_preserves_emission_order_across_kinds() {
            (set-buffer-language! (car (buffers)) "widget")
            (%define-language! "widget" '("widget") '() '() #f)
            (define-command! "efx-noop" "" (lambda () 0))"#,
-        r#"(declare-plugin "user/efx" #:commands '("efx-noop"))"#,
+        r#"(declare-plugin! "user/efx" #:commands '("efx-noop"))"#,
     );
 
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid = ed.focused_buffer_id();
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
-    // declare-plugin queues no effects: nothing to apply from this eval.
+    // declare-plugin! queues no effects: nothing to apply from this eval.
     {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
@@ -138,7 +138,7 @@ fn failed_command_delivers_committed_activation_effects() {
         dir.path(),
         r#"(register-lsp-server! "widget" #:command "widget-lsp")
            (define-command! "b-cmd" "" (lambda () 0))"#,
-        r#"(declare-plugin "user/efx" #:commands '("b-cmd"))
+        r#"(declare-plugin! "user/efx" #:commands '("b-cmd"))
            (define-typed-command! "outer-fail" ""
              (lambda ()
                (register-lsp-server! "before" #:command "x")
@@ -193,7 +193,7 @@ fn failed_command_delivers_committed_activation_effects() {
 }
 
 /// Pins the salvage contract at the exact boundary `init_scripting` uses:
-/// `eval_init` returning `Err(EvalError)` when `load-plugin` (eager
+/// `eval_init` returning `Err(EvalError)` when `load-plugin!` (eager
 /// activation) already committed effects before a later top-level error.
 /// The caller (mirroring `init_scripting`'s error arm) must apply
 /// `EvalError::effects` before reporting.
@@ -203,7 +203,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     let init_path = write_efx_plugin(
         dir.path(),
         r#"(register-lsp-server! "widget" #:command "widget-lsp")"#,
-        r#"(load-plugin "user/efx")
+        r#"(load-plugin! "user/efx")
            (error "init fails")"#,
     );
 
@@ -219,7 +219,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     assert_eq!(
         err.effects.len(),
         1,
-        "load-plugin's committed register-lsp-server! must be salvaged; got: {:?}",
+        "load-plugin!'s committed register-lsp-server! must be salvaged; got: {:?}",
         err.effects
     );
     assert!(
@@ -245,7 +245,7 @@ fn failed_init_eval_salvages_eager_plugin_effects() {
     assert_eq!(
         host.plugin_status(&plugin_id),
         Some(PluginStatus::Loaded),
-        "user/efx must be Loaded: load-plugin's activation succeeded before the top-level error"
+        "user/efx must be Loaded: load-plugin!'s activation succeeded before the top-level error"
     );
 }
 

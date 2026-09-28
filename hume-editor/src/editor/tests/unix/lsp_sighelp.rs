@@ -1,5 +1,5 @@
 // Signature help: trigger chars fire a debounced
-// textDocument/signatureHelp, composing `lsp-request`,
+// textDocument/signatureHelp, composing `lsp-request!`,
 // `lsp-capabilities`, debounce, `on-lsp-attach`, `on-trigger-char`.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
@@ -73,7 +73,7 @@ fn signature_help_response(
 /// `on-lsp-detach` must clear it. The `on-trigger-char` handler also needs
 /// its own `lsp/guard-capability` check (unlike completion.scm, which
 /// doesn't need one). Without it, a trigger char left registered past
-/// `:lsp-stop` would hit `lsp-request`'s server-resolution failure and log
+/// `:lsp-stop` would hit `lsp-request!`'s server-resolution failure and log
 /// an Error, not a polite Info skip, on every matching keystroke.
 #[test]
 fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
@@ -98,7 +98,7 @@ fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
         ed.state.message_log.entries().count(),
         before_log_len,
         "a trigger char left registered past detach must be a true no-op, not an \
-         lsp-request server-resolution Error logged every keystroke"
+         lsp-request! server-resolution Error logged every keystroke"
     );
 }
 
@@ -410,7 +410,7 @@ fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
 /// the request only gets built) after this switch, not before it.
 ///
 /// This depends on `lsp/sighelp-request` (`sighelp.scm`) passing
-/// `#:require-focus` to its `lsp-request`.
+/// `#:require-focus` to its `lsp-request!`.
 #[test]
 fn stale_response_after_a_pane_switch_shows_no_popup() {
     let tmp = safe_tempdir();

@@ -96,7 +96,7 @@ fn syntax_error_transitions_to_failed() {
 
 /// A failed plugin body's log message names the plugin and points at the
 /// exact file, line, and column of the failing reference, not just
-/// `init.scm`, the file that happened to `load-plugin` it.
+/// `init.scm`, the file that happened to `load-plugin!` it.
 /// `describe_steel_error` resolves the error's span against the engine's own
 /// `Sources`. Without that, the message would read bare
 /// `init.scm: Error: FreeIdentifier: …` with no way to tell which plugin,
@@ -801,7 +801,7 @@ fn lazy_plugin_can_define_its_own_activation_command() {
         .plugins
         .insert(id.clone(), PluginState::Declared { path });
 
-    // Simulate declare-plugin having claimed self-act-cmd as the
+    // Simulate declare-plugin! having claimed self-act-cmd as the
     // activation entry, now tracked in the editor's registry (here,
     // the stateful test host), not a scripting-crate map.
     let mut editor_host = LazyStubHost::default();
@@ -836,7 +836,7 @@ fn lazy_plugin_can_define_its_own_activation_command() {
 /// `EvalWatchdog`): A's own activation is contained exactly as any other
 /// body error (Failed, rolled back), but the interrupt itself must not be:
 /// it must abort the whole eval before B ever loads. Without that,
-/// `%dispatch-command`'s later `(load-plugin "core:b")` would run past an
+/// `%dispatch-command`'s later `(load-plugin! "core:b")` would run past an
 /// exhausted budget, and B would falsely be blamed as "failed to load" for
 /// hitting the same still-set flag on its own first `(hume/yield!)`.
 ///
@@ -869,7 +869,7 @@ fn interrupt_during_activation_aborts_before_next_plugin_loads() {
     host.interrupt_flag_for_test()
         .store(true, Ordering::Relaxed);
 
-    let src = r#"(load-plugin "core:a") (load-plugin "core:b")"#;
+    let src = r#"(load-plugin! "core:a") (load-plugin! "core:b")"#;
     let result = host.eval_source(src, &mut LazyStubHost::default());
 
     assert!(
@@ -951,14 +951,14 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     let dir = TempDir::new().unwrap();
     let plugin_dir = dir.path().join("plugins").join("user").join("selfdecl");
     std::fs::create_dir_all(&plugin_dir).unwrap();
-    // The full (non-zero-trigger) `declare-plugin` inside manifest.scm only
+    // The full (non-zero-trigger) `declare-plugin!` inside manifest.scm only
     // registers `Declared` state once `plugin.scm` resolves on disk. Absent,
     // it soft-logs and no-ops, which would make this test pass for the wrong
     // reason (never-declared, not rolled-back-after-declared).
     std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
     std::fs::write(
         plugin_dir.join("manifest.scm"),
-        br#"(declare-plugin "user/selfdecl" #:commands '("selfdecl-cmd"))
+        br#"(declare-plugin! "user/selfdecl" #:commands '("selfdecl-cmd"))
             (error "manifest body fails after self-declare")"#,
     )
     .unwrap();
@@ -967,7 +967,7 @@ fn manifest_declare_self_declared_then_failed_rolls_back_to_failed() {
     host.set_data_dir(dir.path().to_path_buf());
     let mut editor_host = LazyStubHost::default();
 
-    let result = host.eval_source(r#"(declare-plugin "user/selfdecl")"#, &mut editor_host);
+    let result = host.eval_source(r#"(declare-plugin! "user/selfdecl")"#, &mut editor_host);
 
     assert!(
         result.is_ok(),

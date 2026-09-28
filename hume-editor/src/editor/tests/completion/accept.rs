@@ -207,7 +207,7 @@ fn a_buffer_edit_the_session_never_saw_invalidates_it() {
         r#"(list (hash "label" "x" "insertText" "z"))"#,
         r#"(define stashed-edits (box #f))
            (define-typed-command! "stash" "" (lambda (bid)
-             (lsp-request bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
+             (lsp-request! bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
            (define-command! "finish" "" (lambda (bid)
              (apply-text-edits! bid (json-list (unbox stashed-edits)))
              (completion-accept! 0)))"#,

@@ -10,7 +10,7 @@
 //! ```
 //!
 //! All plugin activation is synchronous/inline:
-//! - `load-plugin` (init.scm): the BOOTSTRAP Scheme wrapper calls `%load-plugin!`
+//! - `load-plugin!` (init.scm): the BOOTSTRAP Scheme wrapper calls `%load-plugin!`
 //!   (declare/record) then `%activate-plugin-inline` (inline body eval via `hm.eval-string`).
 //! - Lazy keypress dispatch: `%dispatch-command` activates the owner inline on a
 //!   `command_table` miss, then retries.
@@ -193,7 +193,7 @@ pub(crate) fn run_steel_call<'a>(
 impl ScriptingHost {
     /// Core eval machinery.
     ///
-    /// Evaluates `source` (init.scm) synchronously.  `(load-plugin …)` calls
+    /// Evaluates `source` (init.scm) synchronously.  `(load-plugin! …)` calls
     /// inside the source activate their plugin bodies inline via the BOOTSTRAP
     /// `%activate-plugin-inline` helper (VM-aware `hm.eval-string`, no
     /// `&mut Engine` borrow).  `(define-command! …)` calls register commands

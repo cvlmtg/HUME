@@ -1,4 +1,4 @@
-// Formatting: `:lsp-fmt`, composing `lsp-request`,
+// Formatting: `:lsp-fmt`, composing `lsp-request!`,
 // `lsp-capabilities`, `selections-linewise?`/`selections-charwise?`, `apply-text-edits!`.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
@@ -92,8 +92,8 @@ fn setup_with_caps(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp,
     );
     ed.scripting = Some(host);

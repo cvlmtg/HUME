@@ -21,7 +21,7 @@ catalogs generated from those pins by the scripts in `../../scripts/` (see that 
 `hume-editor/src/editor/scripting_setup.rs`'s `init_scripting` evaluates, in order:
 
 1. `builtins/bootstrap.scm`: embedded in `hume-scripting` via `include_str!`, not part of
-  this directory; defines `load-plugin`/`declare-plugin` and the inline-activation machinery.
+  this directory; defines `load-plugin!`/`declare-plugin!` and the inline-activation machinery.
 2. `prelude.scm`
 3. `languages.scm`
 4. `grammars.scm`: reads `grammar-sources.scm` lazily, only once a grammar is actually

@@ -32,10 +32,10 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/completion" (hash)
+             (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
                #:supersede "k")
-             (lsp-request bid "textDocument/completion" (hash)
+             (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
                #:supersede "k")))"#,
         tmp.path(),
@@ -122,7 +122,7 @@ fn callback_fires_normally_without_an_intervening_edit() {
         &mut host,
         &format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-                 (lsp-request bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
+                 (lsp-request! bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right" bid)))))"#
         ),
         tmp.path(),
@@ -156,7 +156,7 @@ fn stale_response_is_dropped_without_allow_stale() {
         &mut host,
         &format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-                 (lsp-request bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
+                 (lsp-request! bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right" bid)))))"#
         ),
         tmp.path(),
@@ -196,7 +196,7 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
         &mut host,
         &format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-                 (lsp-request bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
+                 (lsp-request! bid "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right" bid)) #:allow-stale #t)))"#
         ),
         tmp.path(),
@@ -221,7 +221,7 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
 
 /// Same staleness drop as `stale_response_is_dropped_without_allow_stale`,
 /// but with params that carry no `textDocument` at all, proving the check
-/// is keyed off the request's own `bid` (mandatory on every `lsp-request`),
+/// is keyed off the request's own `bid` (mandatory on every `lsp-request!`),
 /// not off sniffing `params.textDocument.uri`.
 #[test]
 fn stale_response_without_text_document_is_dropped() {
@@ -237,7 +237,7 @@ fn stale_response_without_text_document_is_dropped() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (call! "move-right" bid)))))"#,
         tmp.path(),
     );
@@ -276,7 +276,7 @@ fn allow_stale_without_text_document_delivers() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (call! "move-right" bid)) #:allow-stale #t)))"#,
         tmp.path(),
     );
@@ -299,7 +299,7 @@ fn allow_stale_without_text_document_delivers() {
 }
 
 /// A Steel command that edits the buffer (queuing an LSP `didChange`) and
-/// then immediately fires an `lsp-request` (the same shape as a
+/// then immediately fires an `lsp-request!` (the same shape as a
 /// trigger-char hook firing right after the edit that triggered it) must
 /// put the `didChange` on the wire *before* the request. Left in
 /// `Buffer.lsp_pending` until the next frame's `prepare_frame`, the queued
@@ -342,10 +342,10 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
         &mut host,
         r#"(define stashed-edits (box #f))
            (define-typed-command! "stash" "" (lambda (bid)
-             (lsp-request bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
+             (lsp-request! bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
            (define-typed-command! "test-cmd" "" (lambda (bid)
              (apply-text-edits! bid (json-list (unbox stashed-edits)))
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result) (begin)))))"#,
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result) (begin)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

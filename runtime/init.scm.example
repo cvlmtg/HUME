@@ -11,17 +11,17 @@
 ;; README next to its plugin.scm, before keeping or dropping one. A few
 ;; rebind the same keys, so know what you're enabling.
 
-(load-plugin "core:stdlib")           ; helper toolkit other plugins depend on
-(load-plugin "core:pickers")          ; fuzzy file/buffer finders
-(declare-plugin "core:lsp")           ; language server features
-(declare-plugin "core:plum")          ; plugin/grammar manager
-(declare-plugin "core:git-diff")      ; live inline git diff
+(load-plugin! "core:stdlib")           ; helper toolkit other plugins depend on
+(load-plugin! "core:pickers")          ; fuzzy file/buffer finders
+(declare-plugin! "core:lsp")           ; language server features
+(declare-plugin! "core:plum")          ; plugin/grammar manager
+(declare-plugin! "core:git-diff")      ; live inline git diff
 
-;; (load-plugin "core:buffer-words")     ; identifiers already in the buffer, as completions
-;; (load-plugin "core:vim-keybind")      ; vim muscle memory
-;; (load-plugin "core:helix-surround")   ; helix-style surround
-;; (load-plugin "core:classic-paste")    ; GUI-style paste
-;; (declare-plugin "core:steel-server")  ; scheme LSP for HUME config; needs :steel-server-install
+;; (load-plugin! "core:buffer-words")     ; identifiers already in the buffer, as completions
+;; (load-plugin! "core:vim-keybind")      ; vim muscle memory
+;; (load-plugin! "core:helix-surround")   ; helix-style surround
+;; (load-plugin! "core:classic-paste")    ; GUI-style paste
+;; (declare-plugin! "core:steel-server")  ; scheme LSP for HUME config; needs :steel-server-install
 
 ;; ── Your settings & key bindings ─────────────────────────────────────────────
 ;; Full reference, in the user manual:

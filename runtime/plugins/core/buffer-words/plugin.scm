@@ -1,7 +1,7 @@
 ;;; core:buffer-words
 
 (unless (member "core:stdlib" (declared-plugins))
-  (error "core:buffer-words: requires core:stdlib — (declare-plugin \"core:stdlib\") or (load-plugin \"core:stdlib\") before (load-plugin \"core:buffer-words\")"))
+  (error "core:buffer-words: requires core:stdlib — (declare-plugin! \"core:stdlib\") or (load-plugin! \"core:stdlib\") before (load-plugin! \"core:buffer-words\")"))
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
@@ -106,7 +106,7 @@
               (bw/push-finished-answer! pane finished))
             (bw/install! pane
               (bw/continue-entry entry building
-                                  (after bw/tick-delay-ms
+                                  (after! bw/tick-delay-ms
                                     (lambda () (bw/walk! pane gen wc fwd-hi bwd-lo))))))))))
 
 ;;; Cancels any in-flight walk and restarts it fresh — see README.md's

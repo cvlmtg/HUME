@@ -61,7 +61,7 @@ pub(in crate::editor) enum EditorEvent {
     /// registry before this drains, so resolving early is the only
     /// consistent read.
     ///
-    /// **For lazy-loading:** use `#:languages` in `declare-plugin` instead.
+    /// **For lazy-loading:** use `#:languages` in `declare-plugin!` instead.
     /// `#:languages` *activates* the plugin on the *first* matching transition;
     /// the body then registers an `on-language-set` *hook* to react on every
     /// subsequent transition. Using `on-language-set` as a `#:events` activation
@@ -243,7 +243,7 @@ macro_rules! editor_event_names {
         }
 
         /// Every Steel-visible event name. Backs `EventHost::known_event_names`,
-        /// consulted by `register-hook!` and `declare-plugin`'s `#:events` to
+        /// consulted by `register-hook!` and `declare-plugin!`'s `#:events` to
         /// validate names without `hume-scripting` compiling in `EditorEvent`.
         const EVENT_NAMES: &[&str] = &[$($name),+];
     };
@@ -360,11 +360,11 @@ impl EditorEvent {
 #[derive(Debug)]
 pub(in crate::editor) enum PendingWork {
     /// A specific Steel closure already captured by the raise site: an
-    /// `lsp-request` callback, a timer thunk, a prompt/menu/drawer/picker
+    /// `lsp-request!` callback, a timer thunk, a prompt/menu/drawer/picker
     /// callback. Delivered to exactly that closure, not to every handler for
     /// a name.
     ///
-    /// `anchor`: `Some` only for an `lsp-request` callback, carrying the same
+    /// `anchor`: `Some` only for an `lsp-request!` callback, carrying the same
     /// `ResponseAnchor` already checked once at LSP drain time
     /// (`Editor::anchor_admits`), re-checked here, at dequeue, because
     /// arbitrary other queued work (an earlier `Call` in the same batch, a

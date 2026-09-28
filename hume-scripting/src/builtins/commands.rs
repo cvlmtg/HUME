@@ -304,7 +304,7 @@ pub(crate) fn restore_inline_output(ctx: &mut SteelCtx, depth: SteelVal) -> Stee
 /// command, or `#f` if the name is not in the `command_table`.
 ///
 /// Works in both init and command mode: during init, `define-command!` populates
-/// `command_table` inline, so `(call! "cmd")` that follows a `(load-plugin …)`
+/// `command_table` inline, so `(call! "cmd")` that follows a `(load-plugin! …)`
 /// in the same init.scm body finds the closure immediately.
 pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResult {
     match ctx.registries.command_table.get(&name) {
@@ -378,7 +378,7 @@ pub(crate) fn request_wait_char(ctx: &mut SteelCtx, cmd: String) -> SteelResult 
 /// command was registered by a plugin, `"user"` if registered from top-level
 /// `init.scm`, or `"hume"` for built-in Rust commands (not Steel-registered).
 ///
-/// Valid during both eval (e.g. conflict detection in `declare-plugin`) and
+/// Valid during both eval (e.g. conflict detection in `declare-plugin!`) and
 /// command execution.  Returns `"hume"` for any name not in the owner cache
 /// (unknown commands are implicitly built-in).
 pub(crate) fn command_plugin(ctx: &mut SteelCtx, name: String) -> SteelResult {

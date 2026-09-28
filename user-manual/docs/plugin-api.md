@@ -7,6 +7,10 @@ Reference for every function a plugin or `init.scm` can call directly, as oppose
 
 This page is a lookup reference: tables of signatures and one-line effects. For narrative walkthroughs and worked examples, see [Plugins](plugins.md), [Language Servers](lsp.md), [Configuration](configuration.md), and the other pages linked throughout.
 
+## Conventions
+
+- A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
+
 ## Settings & statusline
 
 | Call | Effect |
@@ -51,8 +55,8 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 
 | Call | Effect |
 |------|--------|
-| `(declare-plugin name #:commands #:typed-commands #:events #:languages #:config)` | Lazy plugin registration |
-| `(load-plugin name #:config)` | Eager plugin registration |
+| `(declare-plugin! name #:commands #:typed-commands #:events #:languages #:config)` | Lazy plugin registration |
+| `(load-plugin! name #:config)` | Eager plugin registration |
 | `(resolve-plugin-path name)` | The plugin's resolved file path if it exists on disk, else `#f`; raises for a malformed name |
 | `(loaded-plugins)` | List of plugin names that have finished activating |
 | `(declared-plugins)` | List of every declared plugin name, `core:*` included |
@@ -82,7 +86,7 @@ Almost every call on this page takes a **pane** value: an opaque handle that nam
 
 If a buffer is shown in more than one pane and you need a *specific* one rather than whatever value you already have, use `(buffer-panes pane)` (below) to list them and pick explicitly: a debounced or async continuation that fires after focus has moved to a different pane on the same buffer should capture the pane it cares about up front, not assume one.
 
-A closed buffer behaves differently depending on the call: most reads below (`buffer-cursor-line`, `buffer-selections`, `symbol-under-cursor`, `selections-linewise?`/`selections-charwise?`, `viewport-range`, `diagnostic-counts`, `diagnostics-for-buffer`, the `lsp-*-params` calls) answer `#f`/empty for a value naming a closed buffer, the same as they would for one that just isn't shown anywhere, indistinguishable from "not shown" without checking `buffer-live?` first. Every call that writes to a buffer, or that reads bookkeeping with no "not shown" case of its own (`buffer-path`, `buffer-text`, `buffer-generation`, `get-buffer-option`, the decoration setters, `apply-text-edits!`, `lsp-request`, …) raises instead.
+A closed buffer behaves differently depending on the call: most reads below (`buffer-cursor-line`, `buffer-selections`, `symbol-under-cursor`, `selections-linewise?`/`selections-charwise?`, `viewport-range`, `diagnostic-counts`, `diagnostics-for-buffer`, the `lsp-*-params` calls) answer `#f`/empty for a value naming a closed buffer, the same as they would for one that just isn't shown anywhere, indistinguishable from "not shown" without checking `buffer-live?` first. Every call that writes to a buffer, or that reads bookkeeping with no "not shown" case of its own (`buffer-path`, `buffer-text`, `buffer-generation`, `get-buffer-option`, the decoration setters, `apply-text-edits!`, `lsp-request!`, …) raises instead.
 
 | Call | Effect |
 |------|--------|
@@ -122,7 +126,7 @@ A closed buffer behaves differently depending on the call: most reads below (`bu
 | Call | Effect |
 |------|--------|
 | `(apply-text-edits! pane edits #:expect-generation)` | Apply a list of edits to `pane`'s buffer, mapped through `pane`'s own selections, each entry a JSON handle onto a wire `TextEdit` (e.g. a `textDocument/formatting` response element, passed straight through) |
-| `(apply-workspace-edit! pane wsedit)` | Apply an LSP `WorkspaceEdit` (a JSON handle onto one, e.g. straight from an `lsp-request` response) across every buffer it touches, mapping the hunk for `pane`'s own buffer (if any) through `pane`'s selections; returns the count of buffers modified |
+| `(apply-workspace-edit! pane wsedit)` | Apply an LSP `WorkspaceEdit` (a JSON handle onto one, e.g. straight from an `lsp-request!` response) across every buffer it touches, mapping the hunk for `pane`'s own buffer (if any) through `pane`'s selections; returns the count of buffers modified |
 | `(goto-location! pane loc)` | Move `pane`'s own pane to `loc`: an LSP `Location`/`LocationLink` JSON handle, or `(list target line char-col)` with `target` a pane value, path, or `file://` URI and `line`/`char-col` char-indexed |
 | `(insert-key! pane key)` | Run `key`'s normal Insert-mode behaviour (tab-style-aware Tab, auto-pairs, auto-indented Enter, …) on `pane`, as if it had no Insert-mode binding; `key` is one chord in `bind-key!`'s own syntax |
 
@@ -170,8 +174,8 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(unregister-lsp-server! language)` | Queue removing `language`'s registration and shutting down its running clients; idempotent |
 | `(lsp-stop! target)`, `(lsp-restart! target)` | Queue stopping / stopping-then-respawning a server: `target` is a pane value (that buffer's attached server) or a language-name string (every server registered for it) |
 | `(lsp-show-status! pane)` | Open the `[lsp-status]` read-only view, only while `pane` is still the one you're looking at |
-| `(lsp-request pane method params callback #:allow-stale #:supersede #:require-focus)` | Send a raw request to `pane`'s attached server; `callback` is `(lambda (err result) ...)`. A real response delivers as a JSON handle; read it with `json-ref`/`json-contains?`/`json-list`, or pass it straight to `completion-emit!`. `#:require-focus #t` drops the callback unless `pane` is still the exact pane you were looking at, still showing the same buffer, when the response arrives. It needs `pane` to carry a pane, not just a buffer |
-| `(lsp-notify pane method params)` | Fire-and-forget notification to `pane`'s attached server, no callback |
+| `(lsp-request! pane method params callback #:allow-stale #:supersede #:require-focus)` | Send a raw request to `pane`'s attached server; `callback` is `(lambda (err result) ...)`. A real response delivers as a JSON handle; read it with `json-ref`/`json-contains?`/`json-list`, or pass it straight to `completion-emit!`. `#:require-focus #t` drops the callback unless `pane` is still the exact pane you were looking at, still showing the same buffer, when the response arrives. It needs `pane` to carry a pane, not just a buffer |
+| `(lsp-notify! pane method params)` | Fire-and-forget notification to `pane`'s attached server, no callback |
 | `(on-lsp-notification method handler)` | Register `handler` (`(lambda (server params) ...)`) for every `method` notification HUME doesn't already special-case (`window/logMessage`, `window/showMessage`, `$/progress`, `publishDiagnostics`) |
 | `(lsp-capabilities pane)` | A JSON handle onto `pane`'s attached server's `ServerCapabilities` (read with `json-ref`/`json-contains?`), or `#f` if unresolved or mid-handshake |
 | `(lsp-server-status)` | List of `{"language" "root" "state" "pending"}` hashmaps, one per registered server |
@@ -185,7 +189,7 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(lsp-label-offsets->text label offsets)` | The slice of `label` a `ParameterInformation`-style `(start end)` wire offset pair names; `offsets` decodes with its own tagged producing-server encoding |
 | `(lsp-locations->display-parts locs)` | One `(path line grapheme-col-or-wire)` list per raw `Location`/`LocationLink` in `locs`, each decodes wire positions with its own tagged producing-server encoding |
 
-`register-lsp-server!`, `lsp-request`, and `lsp-notify` are covered with examples in [Registering a language server](lsp.md#registering-a-language-server) and [Advanced: custom requests](lsp.md#advanced-custom-requests). `lsp-position->offset`/`lsp-range->offsets`/`lsp-label-offsets->text` convert LSP wire units (UTF-16 or byte offsets, depending on the server's negotiated encoding) to editor-native char offsets. Always go through these rather than assuming a 1:1 mapping. `lsp-locations->display-parts`'s column is an exact grapheme column when the target has an open buffer; otherwise it's the location's own wire `character` verbatim, since refining it would mean reading a file the user may never open.
+`register-lsp-server!`, `lsp-request!`, and `lsp-notify!` are covered with examples in [Registering a language server](lsp.md#registering-a-language-server) and [Advanced: custom requests](lsp.md#advanced-custom-requests). `lsp-position->offset`/`lsp-range->offsets`/`lsp-label-offsets->text` convert LSP wire units (UTF-16 or byte offsets, depending on the server's negotiated encoding) to editor-native char offsets. Always go through these rather than assuming a 1:1 mapping. `lsp-locations->display-parts`'s column is an exact grapheme column when the target has an open buffer; otherwise it's the location's own wire `character` verbatim, since refining it would mean reading a file the user may never open.
 
 ## Diagnostics & decorations
 
@@ -212,7 +216,7 @@ A plugin registers a completion *source*; the editor drives it. `Ctrl-Space` in 
 | Call | Effect |
 |------|--------|
 | `(register-completion-source! name proc #:target #:match #:priority #:resolve)` | Register `proc` as the completion source `name`. `#:target 'buffer` serves Insert mode, calling `(proc id pane prefix)`; its token is always the identifier run before the cursor (`prefix` being that text). `#:target 'minibuf` serves the `:` line, calling `(proc id input cursor)`; its token is always the whitespace-delimited argument the cursor is in. Either way, the token is what the source's answers are filtered against and what accepting one replaces. `#:match` (`'fuzzy` default, `'string`, or `'delegated`) picks how items are scored against the token's text; `#:priority` (default `0`) breaks score ties, higher first. `#:resolve #t` (`'buffer` sources only, default `#f`) claims that this source's items are wire completion items from the buffer's attached LSP server, so accepting one may send `completionItem/resolve` for it. Set this only for a source whose items genuinely came from that server, never for one that just builds its own items in an LSP-attached buffer. `'buffer` and `'minibuf` names are separate: registering `name` again under the same `#:target` replaces the earlier source; the same `name` under the *other* target is a second, independent source |
-| `(completion-emit! id items #:incomplete)` | `proc`'s answer to the call it received `id` from, sync or from a later callback, exactly once; an empty list means "nothing from me". `items` is a list (each entry either a completion-item hashmap, where `label` is the only required key, or a bare string, which is sugar for a hashmap with just that `label`) or the JSON handle from an `lsp-request` response, passed straight through. `#:incomplete #t` asks to be called again as the user keeps typing. It applies to a plain `items` list, or a handle onto a bare `CompletionItem[]` array (which has no `isIncomplete` field of its own); combining it with a handle onto a `CompletionList` object errors, since that shape's own `isIncomplete` field is used instead. Any handle that isn't one of those two response shapes errors too. Returns `#f` when `id` is no longer the latest call (a later keystroke re-asked, or the menu closed) and the answer was dropped |
+| `(completion-emit! id items #:incomplete)` | `proc`'s answer to the call it received `id` from, sync or from a later callback, exactly once; an empty list means "nothing from me". `items` is a list (each entry either a completion-item hashmap, where `label` is the only required key, or a bare string, which is sugar for a hashmap with just that `label`) or the JSON handle from an `lsp-request!` response, passed straight through. `#:incomplete #t` asks to be called again as the user keeps typing. It applies to a plain `items` list, or a handle onto a bare `CompletionItem[]` array (which has no `isIncomplete` field of its own); combining it with a handle onto a `CompletionList` object errors, since that shape's own `isIncomplete` field is used instead. Any handle that isn't one of those two response shapes errors too. Returns `#f` when `id` is no longer the latest call (a later keystroke re-asked, or the menu closed) and the answer was dropped |
 | `(register-trigger-chars! source language chars)` | Register 1-char trigger strings `chars` for `(source, language)`: typing one in Insert mode fires the `on-trigger-char` hook for any listener named `source`. This is *not* how a `'buffer` completion source's own trigger chars are joined; see `completion-set-trigger-chars!` below |
 | `(completion-set-trigger-chars! source language chars)` | A `'buffer` completion source's own trigger characters for `language`, replacing that `(source, language)` pair's previous set; an empty `chars` removes it. Typing one of `chars` in Insert mode invokes `source` directly, the same as an explicit trigger's own `#:target 'buffer` invocation. Errors if `source` names no registered `'buffer` source |
 | `(completion-top n)` | The top `n` ranked items of the open menu, each carrying its `source` |
@@ -255,7 +259,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 
 | Call | Effect |
 |------|--------|
-| `(after ms thunk)` | Call `thunk` with no args once `ms` milliseconds pass; returns a timer id |
+| `(after! ms thunk)` | Call `thunk` with no args once `ms` milliseconds pass; returns a timer id |
 | `(cancel-timer! id)` | Cancel a pending timer; idempotent, a no-op if `id` already fired, was cancelled, or never existed |
 | `(debounce ms proc)` | Wrap `proc` so each call reschedules it `ms` out, cancelling any still-pending call from a prior invocation |
 | `(debounce-by ms proc #:key [key car])` | Same, but keyed per `(key . args)`: a call keyed one way never cancels a call keyed another. `#:key` defaults to the first argument itself; pass `#:key (lambda (pane . _) (buffer-key pane))` to key by buffer when different calls might carry different pane values for the same buffer |
@@ -303,12 +307,12 @@ The pattern for reading a plugin's own files is covered in [Filesystem and proce
 
 ## JSON handles
 
-An `lsp-request` response, `lsp-capabilities`, a `diagnostics-for-buffer`
+An `lsp-request!` response, `lsp-capabilities`, a `diagnostics-for-buffer`
 entry's `"raw"` field, `on-lsp-notification`'s params, `on-completion-accept`'s
 item, and `json-parse`'s result are all opaque JSON handles rather than
 decoded hashmaps. Read one with these instead of `hash-ref`/`hash?`/`list?`:
 
-Other values stay ordinary hashmaps: `lsp-request`'s `err`, `lsp-server-status`,
+Other values stay ordinary hashmaps: `lsp-request!`'s `err`, `lsp-server-status`,
 and a `diagnostics-for-buffer` entry itself (outside its `"raw"` field) are
 built by HUME, not decoded from server JSON, and read with `hash-ref` as
 usual; see [Advanced: custom requests](lsp.md#advanced-custom-requests) for
@@ -331,8 +335,8 @@ These back `:plum-*` and `:lsp-install`/`:lsp-uninstall`: full-trust primitives 
 |------|--------|
 | `(compile-grammar! src out)` | Compile the tree-sitter grammar source at `src` to `out` |
 | `(sha256-file path)` | Lowercase hex sha256 digest of `path` |
-| `(unpack-gz src dest)` | Decode a single-file gzip archive into `dest`; chmod's it executable on Unix |
-| `(unpack-zip src dest-dir bin-path)` | Extract a zip archive into `dest-dir`, then verify `bin-path` exists and chmod it executable on Unix |
+| `(unpack-gz! src dest)` | Decode a single-file gzip archive into `dest`; chmod's it executable on Unix |
+| `(unpack-zip! src dest-dir bin-path)` | Extract a zip archive into `dest-dir`, then verify `bin-path` exists and chmod it executable on Unix |
 | `(acquire-install-lock!)`, `(release-install-lock!)` | Cross-process install lock guarding concurrent `:lsp-install`/`:lsp-uninstall` runs |
 
 ## Standard Library

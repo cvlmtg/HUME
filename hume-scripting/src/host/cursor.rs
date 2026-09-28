@@ -48,7 +48,7 @@ pub trait CursorHost {
     /// three-way verdict (all linewise / none linewise / mixed) as two
     /// booleans rather than a symbol on `lsp-linewise-ranges-params`'s wire
     /// params. Every other `lsp-*-params` builtin returns a hash forwarded
-    /// to `lsp-request` verbatim or with a *protocol* key inserted, and a
+    /// to `lsp-request!` verbatim or with a *protocol* key inserted, and a
     /// non-protocol verdict key would break that. `(false, false)` from the
     /// pair means *mixed*; an all-ambiguous set answers `(false, true)`,
     /// deliberately indistinguishable from all-charwise, which is the

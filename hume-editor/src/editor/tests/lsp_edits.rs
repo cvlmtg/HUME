@@ -86,7 +86,7 @@ fn apply_wire_text_edits(
         tmp,
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (lsp-request bid "test/textEdits" (hash) (lambda (err res)
+                 (lsp-request! bid "test/textEdits" (hash) (lambda (err res)
                    (apply-text-edits! bid (json-list res){expect_gen_clause})))))"#
         ),
     );
@@ -331,7 +331,7 @@ fn apply_wire_workspace_edit(ed: &mut Editor, tmp: &std::path::Path, wsedit: ser
         ed,
         tmp,
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (lsp-request bid "test/workspaceEdit" (hash) (lambda (err res)
+             (lsp-request! bid "test/workspaceEdit" (hash) (lambda (err res)
                (apply-workspace-edit! bid res)))))"#,
     );
     type_cmd(ed, ":go");
@@ -525,7 +525,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
 /// not only inside `commit_changeset`'s own check partway through the
 /// commit loop (which would have already mutated `ok.txt` by the time
 /// `conflict.txt` is reached). Called directly through `EditHost`, not the
-/// `apply_wire_workspace_edit`/`lsp-request` round trip. This needs no LSP
+/// `apply_wire_workspace_edit`/`lsp-request!` round trip. This needs no LSP
 /// server, only a second pane to issue the edit from.
 #[test]
 fn apply_workspace_edit_conflicting_session_on_another_pane_leaves_earlier_files_untouched() {
@@ -898,7 +898,7 @@ fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (lsp-request bid "test/gotoTarget" (hash) (lambda (err res)
+             (lsp-request! bid "test/gotoTarget" (hash) (lambda (err res)
                (goto-location! bid res)))))"#,
     );
     type_cmd(&mut ed, ":go");

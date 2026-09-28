@@ -8,11 +8,11 @@ Plugins are installed and updated by **PLUM**, a bundled plugin. See [Core Plugi
 
 ## Installing a plugin
 
-Add a `declare-plugin` or `load-plugin` call to your [`init.scm`](configuration.md).
+Add a `declare-plugin!` or `load-plugin!` call to your [`init.scm`](configuration.md).
 
 ```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "cvlmtg/grep.hume")
+(declare-plugin! "core:stdlib")
+(load-plugin! "cvlmtg/grep.hume")
 ```
 
 ::: info
@@ -27,8 +27,8 @@ See [How plugins are loaded](#how-plugins-are-loaded) for the difference between
 If a plugin supports configuration, pass it with `#:config`:
 
 ```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'off))
+(declare-plugin! "core:stdlib")
+(load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'off))
 ```
 
 See [Configuring a plugin](#configuring-a-plugin) for what a plugin does with this value, and the plugin's own docs for which keys it understands.
@@ -61,26 +61,26 @@ There are two ways to bring a plugin into the editor from `init.scm`:
 
 | Verb | Timing |
 |------|--------|
-| `(declare-plugin "name" #:commands ...)` | **Lazy**: body deferred until first use |
-| `(load-plugin "name")` | **Eager**: body runs during startup |
+| `(declare-plugin! "name" #:commands ...)` | **Lazy**: body deferred until first use |
+| `(load-plugin! "name")` | **Eager**: body runs during startup |
 
-**Lazy plugins** (`declare-plugin`) record a *manifest* of what the plugin offers, but don't evaluate the body until the first activation entry is exercised. This keeps startup fast, and is the recommended default: a language-server or formatting plugin whose commands you might never call costs nothing until you do.
+**Lazy plugins** (`declare-plugin!`) record a *manifest* of what the plugin offers, but don't evaluate the body until the first activation entry is exercised. This keeps startup fast, and is the recommended default: a language-server or formatting plugin whose commands you might never call costs nothing until you do.
 
-**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for a plugin whose only way of being triggered is one of the things its own body sets up (a key binding it adds or overrides, an option, a hook), since nothing else could ever wake it.
+**Eager plugins** (`load-plugin!`) evaluate their body immediately. Use this for a plugin whose only way of being triggered is one of the things its own body sets up (a key binding it adds or overrides, an option, a hook), since nothing else could ever wake it.
 
 A lazy plugin needs at least one activation entry, or it could never activate. Declare them yourself:
 
 - **`#:commands`**: editor-command names the plugin provides (defined with `define-command!`). HUME creates placeholder stubs so the names are key-bindable and reachable from `call!` immediately; the first dispatch triggers real definition. A key you bind to one of these names in your own `init.scm` works this way: pressing it activates the plugin, then runs the command, so a lazy plugin's commands are key-bindable from the start even though the plugin's *own* bindings aren't in place yet:
 
   ```scheme
-  (declare-plugin "cvlmtg/grep.hume" #:commands '("picker-grep"))
+  (declare-plugin! "cvlmtg/grep.hume" #:commands '("picker-grep"))
   (bind-key! 'normal "space g" "picker-grep")
   ; pressing <space>g the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
 - **`#:typed-commands`**: typed-command names the plugin provides (defined with `define-typed-command!`). Same stub-then-activate behavior as `#:commands`, but the stub appears in `:` Tab completion and is reachable only from `:`, never from a key or `call!`:
 
   ```scheme
-  (declare-plugin "cvlmtg/grep.hume" #:typed-commands '("picker-grep"))
+  (declare-plugin! "cvlmtg/grep.hume" #:typed-commands '("picker-grep"))
   ; typing :picker-grep the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
 - **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
@@ -89,10 +89,10 @@ A lazy plugin needs at least one activation entry, or it could never activate. D
 ...or, if the plugin ships its own defaults, leave all four off:
 
 ```scheme
-(declare-plugin "cvlmtg/grep.hume")
+(declare-plugin! "cvlmtg/grep.hume")
 ```
 
-A bare `declare-plugin` with no activation entries asks the plugin for its own defaults instead of erroring. See [Default activation](#default-activation) if you're writing a plugin and want to support this.
+A bare `declare-plugin!` with no activation entries asks the plugin for its own defaults instead of erroring. See [Default activation](#default-activation) if you're writing a plugin and want to support this.
 
 ## Writing a plugin
 
@@ -293,7 +293,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 
 `on-text-changed` covers edits, undo, redo, `:e!` reload, and refreshes of read-only view buffers (`:messages`, `:ls`, `:plugin-status`) alike. Those buffers have no file, so a handler that looks up a path must handle it being absent. It coalesces multiple mutations made by a single command (a multi-cursor edit, a macro, a paste) into one fire, but each keystroke while typing is its own command and so fires on its own. Pair it with `debounce` if you want to react only after typing settles rather than on every character.
 
-For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry: a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
+For lazy plugins, declare the events that should trigger activation via `#:events` on `declare-plugin!` instead (see [How plugins are loaded](#how-plugins-are-loaded)). LSP-related hooks like `on-lsp-attach` work fine with `register-hook!`, but can't be used as an `#:events` activation entry: a plugin gated only on `on-lsp-attach` never activates, since nothing attaches to a server until the plugin has already loaded and registered it. The same caveat applies to `on-text-changed`: gating a lazy plugin on it activates on the first edit in *any* buffer, not a buffer the plugin specifically cares about.
 
 `set-option!` works from a hook or command handler too, not just at the top level of your plugin. It changes the *global* default, so use it there when that's really what you want.
 
@@ -329,32 +329,32 @@ A few more examples:
 
 ### Default activation
 
-If most users would activate your plugin the same way, give them a one-liner: put a `declare-plugin` call for your own plugin in a `manifest.scm` file next to your plugin's main file.
+If most users would activate your plugin the same way, give them a one-liner: put a `declare-plugin!` call for your own plugin in a `manifest.scm` file next to your plugin's main file.
 
 ```scheme
 ; manifest.scm
-(declare-plugin "username/repo-name"
+(declare-plugin! "username/repo-name"
   #:commands '("my-cmd" "my-other-cmd"))
 ```
 
-A user who writes `(declare-plugin "username/repo-name")` with no `#:commands`/`#:typed-commands`/`#:events`/`#:languages` gets your manifest's entries instead of an error. Passing any activation entry explicitly skips your manifest entirely: the user's list is authoritative, not merged with yours. A plugin with no `manifest.scm` can't be declared this way; users who want to use it lazily must list its activation entries themselves (or you can add one).
+A user who writes `(declare-plugin! "username/repo-name")` with no `#:commands`/`#:typed-commands`/`#:events`/`#:languages` gets your manifest's entries instead of an error. Passing any activation entry explicitly skips your manifest entirely: the user's list is authoritative, not merged with yours. A plugin with no `manifest.scm` can't be declared this way; users who want to use it lazily must list its activation entries themselves (or you can add one).
 
 If your plugin reacts to a language but can't predict which ones a given user cares about, `#:languages '("*")` matches any buffer with a detected language:
 
 ```scheme
 ; manifest.scm
-(declare-plugin "username/repo-name"
+(declare-plugin! "username/repo-name"
   #:languages '("*")
   #:commands '("my-cmd"))
 ```
 
-`#:config` behaves the same as elsewhere: if the user passes `#:config` to their zero-argument `declare-plugin`, that value wins over anything your manifest passes; read it back the usual way with `(plugin-config)`.
+`#:config` behaves the same as elsewhere: if the user passes `#:config` to their zero-argument `declare-plugin!`, that value wins over anything your manifest passes; read it back the usual way with `(plugin-config)`.
 
-Keep `manifest.scm` to just the `declare-plugin` call. It runs whenever a user's bare `declare-plugin` resolves it, which is not a signal that your plugin is about to load.
+Keep `manifest.scm` to just the `declare-plugin!` call. It runs whenever a user's bare `declare-plugin!` resolves it, which is not a signal that your plugin is about to load.
 
 ### Configuring a plugin
 
-A plugin can read the `#:config` value its user passed to `load-plugin` or `declare-plugin` with `(plugin-config)`. It returns whatever was passed (typically a hash) or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
+A plugin can read the `#:config` value its user passed to `load-plugin!` or `declare-plugin!` with `(plugin-config)`. It returns whatever was passed (typically a hash) or an empty hash if nothing was passed. Rather than picking it apart with raw `hash-contains?`/`hash-ref` and hand-rolling a type check, go through `core:stdlib`'s config helpers, which default a missing key and raise an error naming your plugin and the offending key if the resolved value is the wrong type:
 
 ```scheme
 (unless (call! "stdlib/config-boolean" "my-plugin" (plugin-config) "disable-binding" #f)
@@ -365,7 +365,7 @@ A plugin can read the `#:config` value its user passed to `load-plugin` or `decl
 
 Document the keys your plugin understands so users know what to pass.
 
-The two verbs treat `#:config` differently: with `declare-plugin` the first declaration wins, so a later one can't quietly change it, while `load-plugin` always applies the config it's given. That means a bare `(load-plugin "name")` after a configured `declare-plugin` resets the plugin to its defaults.
+The two verbs treat `#:config` differently: with `declare-plugin!` the first declaration wins, so a later one can't quietly change it, while `load-plugin!` always applies the config it's given. That means a bare `(load-plugin! "name")` after a configured `declare-plugin!` resets the plugin to its defaults.
 
 ### Filesystem and processes
 

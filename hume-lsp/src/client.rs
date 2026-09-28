@@ -237,7 +237,7 @@ pub struct LspClient {
     /// order, right after `initialized` once the handshake completes.
     queued: Vec<Message>,
     /// Discriminates the `initialize` response in `on_event`, kept
-    /// separate from a method-string check so a Steel-issued `(lsp-request
+    /// separate from a method-string check so a Steel-issued `(lsp-request!
     /// "initialize" ...)` through the generic bridge (which mints its own
     /// ordinary `pending` entry) can never be mistaken for the handshake.
     initialize_id: Option<RequestId>,

@@ -12,17 +12,17 @@ For ownership and conflict rules see [Plugin Attribution: Who Owns What](plugin-
 There are two ways to bring a plugin into the editor from `init.scm`:
 
 ```scheme
-(load-plugin "alice/my-theme")           ; eager — body runs now, at startup
-(declare-plugin "alice/lazy-thing"       ; lazy — body deferred until first use
+(load-plugin! "alice/my-theme")           ; eager — body runs now, at startup
+(declare-plugin! "alice/lazy-thing"       ; lazy — body deferred until first use
   #:commands '("my-cmd"))
 ```
 
-**Eager plugins** (`load-plugin`) evaluate their body immediately. Use this for a plugin
+**Eager plugins** (`load-plugin!`) evaluate their body immediately. Use this for a plugin
 whose only possible trigger is something its own body sets up — a key binding it adds or
 overrides, an option, a hook — since nothing outside the plugin could ever fire first and
 wake it.
 
-**Lazy plugins** (`declare-plugin`) don't evaluate their body until the first activation
+**Lazy plugins** (`declare-plugin!`) don't evaluate their body until the first activation
 entry is exercised. This keeps startup fast: a Rust formatting plugin whose commands you
 might never actually call in a session costs nothing until you do.
 
@@ -34,7 +34,7 @@ Both verbs accept an optional `#:config` value — typically a hash — that the
 body can read back for itself:
 
 ```scheme
-(load-plugin "alice/my-theme" #:config (hash "variant" "dark"))
+(load-plugin! "alice/my-theme" #:config (hash "variant" "dark"))
 ```
 
 ```scheme
@@ -48,7 +48,7 @@ body can read back for itself:
 
 `(plugin-config)` returns the calling plugin's own config — never another plugin's —
 while its body is being evaluated: instantly for an eager plugin, or at activation
-time for a lazy one (the value recorded at `declare-plugin` time is kept until then,
+time for a lazy one (the value recorded at `declare-plugin!` time is kept until then,
 even much later in the session). Called from anywhere else, such as inside a command
 the plugin registers, it returns an empty hash — commands run after the body has
 already finished, outside that window. Read the config once at the top of the body,
@@ -57,8 +57,8 @@ plugin author decides what keys their config hash understands and documents them
 users.
 
 When the same plugin is mentioned more than once, the two verbs resolve differently:
-duplicate `declare-plugin` calls keep the *first* config, while `load-plugin` always
-overwrites whatever was recorded. So a bare `(load-plugin "x")` after a configured
+duplicate `declare-plugin!` calls keep the *first* config, while `load-plugin!` always
+overwrites whatever was recorded. So a bare `(load-plugin! "x")` after a configured
 declare deliberately runs the body with the empty default — the most recent explicit
 load wins.
 
@@ -66,9 +66,9 @@ load wins.
 
 ## The manifest and the body
 
-When HUME processes a `declare-plugin` call with at least one activation entry, it
+When HUME processes a `declare-plugin!` call with at least one activation entry, it
 records a *manifest* — a description of what the plugin offers — and nothing else. The
-plugin file is not read, no code runs. A `declare-plugin` with *no* entries instead
+plugin file is not read, no code runs. A `declare-plugin!` with *no* entries instead
 evaluates the plugin's own small manifest file, which declares the plugin with its
 author-chosen default activation entries — a bare declare lets the plugin supply its own
 triggers.
@@ -105,7 +105,7 @@ time someone dispatches one, the plugin body runs and replaces the stub with the
 implementation.
 
 ```scheme
-(declare-plugin "alice/rust-tools" #:commands '("rust-check" "rust-fmt"))
+(declare-plugin! "alice/rust-tools" #:commands '("rust-check" "rust-fmt"))
 (bind-key! 'normal "space r" "rust-check")
 ; pressing <space>r the first time loads alice/rust-tools, then runs rust-check
 ```
@@ -116,7 +116,7 @@ symbols, the same form `register-hook!` takes — not strings, unlike `#:command
 `#:languages`:
 
 ```scheme
-(declare-plugin "alice/autosave" #:events '(on-buffer-open))
+(declare-plugin! "alice/autosave" #:events '(on-buffer-open))
 ; body runs the first time any buffer is opened
 ```
 
@@ -125,7 +125,7 @@ named languages. This is the preferred pattern for language-specific plugins (se
 [Language Identity and Detection](language-identity.md) for how languages are detected):
 
 ```scheme
-(declare-plugin "alice/rust-tools" #:languages '("rust"))
+(declare-plugin! "alice/rust-tools" #:languages '("rust"))
 ; body runs the first time a buffer language is set to "rust"
 ```
 
@@ -181,7 +181,7 @@ so its identity exists from startup, then declare the tooling lazily:
 ```scheme
 ; init.scm
 (define-language! "mylang" '("ml"))                           ; identity — eager
-(declare-plugin "alice/mylang-tools" #:languages '("mylang")) ; behavior — lazy
+(declare-plugin! "alice/mylang-tools" #:languages '("mylang")) ; behavior — lazy
 ```
 
 Once the body has run (on the first match), register `on-language-set` *inside the body*
@@ -246,7 +246,7 @@ before the plugin's own bindings exist. A plugin that rebinds a key which alread
 something is a sharper case of the same problem: until it activates, that key keeps doing
 whatever it did before, which is often worse than doing nothing. Either way, if a
 plugin's own bindings are the only path to its commands — nothing else can dispatch them,
-no event or language would ever fire first — it must use `load-plugin` (eager).
+no event or language would ever fire first — it must use `load-plugin!` (eager).
 
 ---
 
@@ -260,8 +260,8 @@ dependent plugin is activated.
 
 ```scheme
 ; init.scm — declare dependencies before dependents
-(load-plugin "alice/formatter")
-(declare-plugin "bob/on-save-format" #:events '(on-buffer-save))
+(load-plugin! "alice/formatter")
+(declare-plugin! "bob/on-save-format" #:events '(on-buffer-save))
 ```
 
 `:plugin-status` (alias `:plugins`) lists every declared plugin with its current state

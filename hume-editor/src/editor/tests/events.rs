@@ -514,7 +514,7 @@ fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
 /// when a `publishDiagnostics` batch lands) must fire once `settle()` runs,
 /// even with **no input dispatched at all**. `Editor::run`'s poll loops back
 /// on `Ok(false)` without dispatching anything, so this is the path a
-/// diagnostics batch takes while the user sits idle (or an `(after 0 …)`
+/// diagnostics batch takes while the user sits idle (or an `(after! 0 …)`
 /// timer firing between keystrokes).
 ///
 /// A drain that lived in `handle_input`, or that only ran after a keystroke,
@@ -575,8 +575,8 @@ fn fifo_order_preserved_across_call_and_event_items() {
            (define-typed-command! "arm" "" (lambda (pane)
              (prompt! pane "x" (lambda (s) (log! 'trace "call-0")))))
            (define-typed-command! "start" "" (lambda ()
-             (after 0 (lambda () (log! 'trace "call-a")))
-             (after 0 (lambda () (log! 'trace "call-b")))))"#,
+             (after! 0 (lambda () (log! 'trace "call-a")))
+             (after! 0 (lambda () (log! 'trace "call-b")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1998,7 +1998,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
         &mut host,
         r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))
            (define-typed-command! "start" ""
-             (lambda (bid) (after 0 (lambda () (close-buffer! bid)))))"#,
+             (lambda (bid) (after! 0 (lambda () (close-buffer! bid)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

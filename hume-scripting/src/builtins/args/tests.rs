@@ -104,8 +104,11 @@ fn chars_arg_accepts_single_char_entries() {
 
 #[test]
 fn json_params_rejects_bool() {
-    let err = json_params(SteelVal::BoolV(true), "lsp-request params").unwrap_err();
-    assert!(err.to_string().contains("lsp-request params"), "got: {err}");
+    let err = json_params(SteelVal::BoolV(true), "lsp-request! params").unwrap_err();
+    assert!(
+        err.to_string().contains("lsp-request! params"),
+        "got: {err}"
+    );
 }
 
 // ── checked_fields / tuple_list ──────────────────────────────────────────

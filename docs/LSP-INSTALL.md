@@ -271,9 +271,9 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   `#:languages` (activation triggered by opening a matching file), or declare it with
   `#:commands` naming `lsp-install`/`lsp-uninstall`/`lsp-servers`/`lsp-rescan-servers` — Lazy
   command stubs activate their plugin before arity marshalling, so `:lsp-install <lang>` on
-  a not-yet-activated `core:lsp` works with no eager `(load-plugin "core:lsp")` needed.
+  a not-yet-activated `core:lsp` works with no eager `(load-plugin! "core:lsp")` needed.
 - **Last-wins registration.** `register-lsp-server!` uses *replace* semantics, matching
-  `define-language!`. `init.scm` reads naturally: `load-plugin` → scan auto-registers →
+  `define-language!`. `init.scm` reads naturally: `load-plugin!` → scan auto-registers →
   later user `register-lsp-server!` calls override. At init time replacement never races
   a running client — nothing has spawned yet. `register-lsp-server!` also works from
   command context (queued, flushed end-of-eval) — not init-only — which is what
@@ -387,7 +387,7 @@ Scheme rewrite would only make platform-conditional logic worse: `run-inline-out
 raw mode off and Steel's `spawn-process` has no `setpgid`), `sha256-file` (hash only; the
 compare-and-delete-on-mismatch logic lives in `lsp/verify-sha256!` in `servers.scm`),
 platform/arch identifier, `lsp-registered-for-language?` (registry query for the
-discovery hint), and `unpack-gz`/`unpack-zip` (chmod + archive-format platform logic).
+discovery hint), and `unpack-gz!`/`unpack-zip!` (chmod + archive-format platform logic).
 `$PATH` lookup (for the already-on-`$PATH` notice) uses Steel's own `which`. The
 tool-preflight and zip-slip/symlink notes below are otherwise unaffected.
 
@@ -421,14 +421,14 @@ developer's `git`/build toolchain — costs no new install step in the common ca
 
 **Accepted tradeoff — zip-slip protection is delegated to the system tool** (modern
 Info-ZIP strips `../` entries; bsdtar refuses them by default), rather than implemented in
-HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip` runs only
+HUME. The residual risk is bounded by the sync-time sha256 pin: `unpack-zip!` runs only
 after `lsp/verify-sha256!` (Scheme, `servers.scm` — wraps the sandbox-free `sha256-file`
 builtin; see the Rust-platform-primitives note above) has confirmed the archive matches the
 maintainer-vetted, hash-locked asset recorded in `lsp-sources.scm` — an attacker would need
 to compromise the pinned upstream release itself, not just something interposed at install
 time.
 
-**Symlink-entry handling**: `unpack-zip` (Unix) chmods `0o755` every *regular file* in the
+**Symlink-entry handling**: `unpack-zip!` (Unix) chmods `0o755` every *regular file* in the
 extracted tree, not just the seeded `bin-path` — a server whose layout ships a wrapper
 script or sibling helper binaries needs all of them executable. Every check and chmod goes
 through `symlink_metadata`, never a symlink-following stat/chmod: a symlink entry the

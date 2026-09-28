@@ -51,7 +51,7 @@ pub trait CompletionHost {
     /// `(completion-emit! id items #:incomplete f)`: a source's answer to
     /// invocation `id`. `response` is `items` funneled through `json_arg`
     /// (`builtins/completion.rs`): an already-handle argument (an
-    /// `lsp-request` response passed straight through) crosses as-is; a
+    /// `lsp-request!` response passed straight through) crosses as-is; a
     /// plain Steel list (of item hashmaps/bare strings) becomes a handle
     /// onto a fresh JSON array, no deep copy either way, an empty list
     /// meaning "nothing from this source". `incomplete` is the caller's

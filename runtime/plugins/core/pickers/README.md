@@ -7,8 +7,8 @@ a Rust PR for every new finder.
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "core:pickers" #:config (hash "untracked" #f))
+(declare-plugin! "core:stdlib")
+(load-plugin! "core:pickers" #:config (hash "untracked" #f))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-boolean` at load

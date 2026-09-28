@@ -41,7 +41,7 @@
     (close-popup!)
     (lsp/guard-capability pane "hoverProvider"
       (lambda ()
-        (lsp-request pane "textDocument/hover" (lsp-position-params pane)
+        (lsp-request! pane "textDocument/hover" (lsp-position-params pane)
           (lambda (err res)
             (cond
               (err (lsp/report-error "hover" err))

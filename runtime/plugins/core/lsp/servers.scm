@@ -126,8 +126,8 @@
     (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
     (lsp/verify-sha256! archive sha)
     (cond
-      ((equal? fmt 'gz) (unpack-gz archive (path-join dir bin)))
-      ((equal? fmt 'zip) (unpack-zip archive dir bin)))
+      ((equal? fmt 'gz) (unpack-gz! archive (path-join dir bin)))
+      ((equal? fmt 'zip) (unpack-zip! archive dir bin)))
     (call! "stdlib/delete-file" archive)
     (unless (path-exists? (path-join dir bin))
       (error (string-append "lsp/install-github!: " name
@@ -260,7 +260,7 @@
           (if (path-exists? dir)
               (begin
                 (log! 'info (string-append "LSP: shutting down and removing " name "..."))
-                (after 0 (lambda ()
+                (after! 0 (lambda ()
                            (when (lsp/with-install-lock! (string-append "uninstall " name)
                                    (lambda () (call! "stdlib/delete-dir" dir)))
                              (log! 'info (string-append "LSP: removed " name))))))

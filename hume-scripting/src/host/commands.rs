@@ -99,7 +99,7 @@ pub trait CommandHost {
 
     /// Register a `Lazy` activation stub for `name`, owned by `plugin`.
     ///
-    /// Called from `declare-plugin`'s `#:commands` processing, once per
+    /// Called from `declare-plugin!`'s `#:commands` processing, once per
     /// accepted command name, so the editor's `CommandRegistry` is the single
     /// place a name is claimed, with no separate scripting-side activation map.
     ///
@@ -110,7 +110,7 @@ pub trait CommandHost {
 
     /// Register a typed `Lazy` activation stub for `name`, owned by `plugin`.
     ///
-    /// Called from `declare-plugin`'s `#:typed-commands` processing: the
+    /// Called from `declare-plugin!`'s `#:typed-commands` processing: the
     /// typed counterpart of [`Self::register_lazy_command`]. Same conflict
     /// rules, same message shape.
     fn register_lazy_typed_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String>;

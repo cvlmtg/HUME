@@ -26,14 +26,14 @@ plugin-authoring API (not core-specific), see
 | [`classic-paste`](classic-paste/README.md) | GUI-style clipboard/kill-ring split | eager | — |
 
 "Loads": **lazy** means the plugin ships a `manifest.scm` and can be brought in with
-`declare-plugin`, activating itself later. **Eager** means it has no `manifest.scm` and
-must be loaded with `load-plugin` (see below for why).
+`declare-plugin!`, activating itself later. **Eager** means it has no `manifest.scm` and
+must be loaded with `load-plugin!` (see below for why).
 
 ## Loading model
 
-`declare-plugin` reads a plugin's `manifest.scm`, which lists the commands, typed
+`declare-plugin!` reads a plugin's `manifest.scm`, which lists the commands, typed
 commands, events, and languages that should activate it. The plugin's body doesn't run
-until one of those actually fires. `load-plugin` skips all of that and runs the plugin's
+until one of those actually fires. `load-plugin!` skips all of that and runs the plugin's
 body immediately.
 
 A plugin has no `manifest.scm`, and so can only be loaded eagerly, when **its own key
@@ -43,7 +43,7 @@ would leave it permanently dormant. `buffer-words`, `pickers`, `vim-keybind`,
 `helix-surround`, and `classic-paste` are all this shape.
 
 Passing an explicit `#:commands`/`#:events`/`#:languages`/`#:typed-commands` list to
-`declare-plugin` bypasses the plugin's own `manifest.scm` entirely. This is how a config
+`declare-plugin!` bypasses the plugin's own `manifest.scm` entirely. This is how a config
 can activate a plugin on a narrower trigger than its default, but see the pitfall below
 before doing it to a plugin other code depends on.
 
@@ -52,7 +52,7 @@ before doing it to a plugin other code depends on.
 Plugins never `require` each other's Scheme modules, since that would break the namespace
 isolation each plugin gets. All cross-plugin calls go through `call!` by command name.
 
-`call!`'s lazy-miss retry means a bare `(declare-plugin "core:stdlib")` is enough to
+`call!`'s lazy-miss retry means a bare `(declare-plugin! "core:stdlib")` is enough to
 satisfy a dependency, even for a call made at the dependent plugin's own load time:
 `call!` notices the target is only declared, not yet loaded, activates it inline, and
 retries. Every core plugin that depends on `stdlib` checks `(declared-plugins)` for it at

@@ -272,7 +272,7 @@ impl Editor {
     /// drain `state.config.pending_work` to a fixpoint.
     ///
     /// This is the single consumer of the merged work queue: a
-    /// `Call` (an `lsp-request` callback, a timer thunk, a prompt/menu/
+    /// `Call` (an `lsp-request!` callback, a timer thunk, a prompt/menu/
     /// drawer/picker callback) and an `Event` (fired to every handler
     /// registered for its name) drain in the exact order they were queued,
     /// grouped only where that's free, i.e. a contiguous run of `Call`s
@@ -284,7 +284,7 @@ impl Editor {
     ///
     /// `drain_async_sources` runs once, *outside* [`Self::drain_pending_work`]'s
     /// fixpoint, deliberately: a timer thunk that re-arms itself
-    /// (`(after 0 (lambda () (after 0 …)))`) would otherwise never leave the
+    /// (`(after! 0 (lambda () (after! 0 …)))`) would otherwise never leave the
     /// loop: each firing converts straight back into a due timer the same
     /// pass would immediately redrain. Outside the fixpoint, a re-arm is
     /// picked up on the *next* `settle()` instead, one frame later, which
@@ -475,7 +475,7 @@ impl Editor {
     /// Run one snapshot of `pending_work` in queued order: event handlers
     /// fire one event at a time, and a contiguous run of unanchored `Call`s
     /// batches into one Steel session before the next `Event` (or end of
-    /// batch). An anchored `Call` (an `lsp-request` callback) always runs
+    /// batch). An anchored `Call` (an `lsp-request!` callback) always runs
     /// alone in its own session, its anchor re-checked immediately first;
     /// see the `Call` match arm's own comment for why it can't be batched.
     fn run_pending_batch(&mut self, mut items: std::collections::VecDeque<PendingWork>) {
@@ -744,7 +744,7 @@ impl Editor {
         self.eval_runtime_scheme(&mut host, "scheme/grammars.scm", builtin_names.clone());
         // `Skipped` (`--no-config`) and `NoConfigDir` both mean there's no
         // `init.scm` to evaluate, so every plugin it would otherwise
-        // `load-plugin` is skipped for free. The runtime scheme above
+        // `load-plugin!` is skipped for free. The runtime scheme above
         // always loads regardless, it's HUME's own, not the user's. `Skipped`
         // is what the user asked for (no warning); `NoConfigDir` means
         // there's no meaningful place to look (warned).
@@ -808,7 +808,7 @@ impl Editor {
         self.scripting = Some(host);
         // Post-init lint: warn on keymap leaves that target a name a key
         // binding can't actually reach. Lazy stubs are registered live as
-        // each declare-plugin call runs during init.scm eval, so they
+        // each declare-plugin! call runs during init.scm eval, so they
         // already count as valid mappable commands by this point.
         // Built-in keymaps only reference registered built-ins, so any
         // warnings here come from user bind-key! calls to typos, undeclared

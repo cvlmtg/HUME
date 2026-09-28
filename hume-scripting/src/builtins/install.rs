@@ -15,8 +15,8 @@
 //! |---------------------------------|------------------------|-------------------------------------|
 //! | `hume-target`                   | `() → string \| #f`    | install-target id, or `#f`         |
 //! | `sha256-file`                   | `string → string`      | sha256 digest as lowercase hex     |
-//! | `unpack-gz`                     | `string string → void` | `gzip -dc`, chmod 0755 on Unix     |
-//! | `unpack-zip`                    | `string string string → void` | `unzip`/`tar`, bin-path chmod'd |
+//! | `unpack-gz!`                     | `string string → void` | `gzip -dc`, chmod 0755 on Unix     |
+//! | `unpack-zip!`                    | `string string string → void` | `unzip`/`tar`, bin-path chmod'd |
 //! | `acquire-install-lock!`         | `() → void`            | O_EXCL over `<data>/servers/.install-lock`; stale (>1h) → replace |
 //! | `release-install-lock!`        | `() → void`            | idempotent: a missing lock is not an error |
 //! | `%run-inline-output!`           | `string list string|#f → int` | process-group-isolated spawn for `#:inline-output` commands; see `run_inline_output` doc |
@@ -69,7 +69,7 @@ pub(crate) fn sha256_file(ctx: &mut SteelCtx, path: String) -> SteelResult {
     digest.into_steelval().map_err(generic_err)
 }
 
-/// `(unpack-gz src dest)`: decode the single-file gzip archive at `src`
+/// `(unpack-gz! src dest)`: decode the single-file gzip archive at `src`
 /// into `dest` (shells out to `gzip -dc`; on Unix, `dest` is chmod'd `0o755`
 /// after success, since Mason `.gz` assets are bare server executables).
 ///
@@ -78,16 +78,16 @@ pub(crate) fn unpack_gz(ctx: &mut SteelCtx, src: String, dest: String) -> SteelR
     let src_path = PathBuf::from(&src);
     let dest_path = PathBuf::from(&dest);
 
-    ctx.log(LogLevel::Trace, format!("unpack-gz: {src} → {dest}"));
+    ctx.log(LogLevel::Trace, format!("unpack-gz!: {src} → {dest}"));
 
     if let Err(e) = hume_platform::process::unpack_gz(&src_path, &dest_path) {
         let _ = std::fs::remove_file(&dest_path);
-        steel::stop!(Generic => "unpack-gz: {}", e);
+        steel::stop!(Generic => "unpack-gz!: {}", e);
     }
     Ok(SteelVal::Void)
 }
 
-/// `(unpack-zip src dest-dir bin-path)`: extract the zip archive at `src`
+/// `(unpack-zip! src dest-dir bin-path)`: extract the zip archive at `src`
 /// into `dest-dir` (`unzip -o` on Unix, `tar -xf` on Windows), then verify
 /// `bin-path` (relative to `dest-dir`) exists and (on Unix) chmod it
 /// `0o755`. Unlike `.gz` (always a bare executable, chmod'd unconditionally),
@@ -115,13 +115,13 @@ pub(crate) fn unpack_zip(
     let dest_path = PathBuf::from(&dest_dir);
     std::fs::create_dir_all(&dest_path).map_err(|e| {
         generic_err(format!(
-            "unpack-zip: cannot create dest dir '{dest_dir}': {e}"
+            "unpack-zip!: cannot create dest dir '{dest_dir}': {e}"
         ))
     })?;
 
     ctx.log(
         LogLevel::Trace,
-        format!("unpack-zip: {src} → {dest_dir} (bin: {bin_path})"),
+        format!("unpack-zip!: {src} → {dest_dir} (bin: {bin_path})"),
     );
 
     // `unzip`/`tar` inherit stdio (see `hume_platform::process::unpack_zip`'s
@@ -129,10 +129,10 @@ pub(crate) fn unpack_zip(
     if let Some(output) = ctx.host.output() {
         output
             .ensure_inline_output_screen()
-            .map_err(|e| generic_err(format!("unpack-zip: {e}")))?;
+            .map_err(|e| generic_err(format!("unpack-zip!: {e}")))?;
     }
     hume_platform::process::unpack_zip(&src_path, &dest_path, Path::new(&bin_path))
-        .map_err(|e| generic_err(format!("unpack-zip: {e}")))?;
+        .map_err(|e| generic_err(format!("unpack-zip!: {e}")))?;
     Ok(SteelVal::Void)
 }
 

@@ -9,11 +9,11 @@ the repository. `core:plum` (the plugin manager) is not involved.
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
+(declare-plugin! "core:stdlib")
 
 (register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))
 
-(declare-plugin "core:lsp")
+(declare-plugin! "core:lsp")
 ```
 
 - **Depends on:** `core:stdlib`: scans installed servers via `stdlib/list-subdirs` at
@@ -27,7 +27,7 @@ the repository. `core:plum` (the plugin manager) is not involved.
   commands (`lsp-install`, `lsp-uninstall`, `lsp-servers`, `lsp-rescan-servers`), give it
   a real trigger instead.
 - **A manual `register-lsp-server!` call always wins** over the catalog default, placed
-  before or after the `declare-plugin` line, since the post-load scan reads through any
+  before or after the `declare-plugin!` line, since the post-load scan reads through any
   registration queued earlier in the same eval and skips a language that override already
   claims.
 - **User docs:** [Language Servers](https://cvlmtg.github.io/HUME/lsp.html) for the full
@@ -49,11 +49,11 @@ the repository. `core:plum` (the plugin manager) is not involved.
 
 ## Shape
 
-Every feature file follows the same three-line shape: send an `lsp-request`, transform
+Every feature file follows the same three-line shape: send an `lsp-request!`, transform
 the response, call a UI or store builtin.
 
 ```
-lsp-request ──▶ transform response ──▶ UI builtin (show-popup!/show-menu!/goto-location!)
+lsp-request! ──▶ transform response ──▶ UI builtin (show-popup!/show-menu!/goto-location!)
                                     └─▶ store builtin (set-signs!/set-inlay-hints!/…)
 ```
 

@@ -24,7 +24,7 @@ use super::errors::require_cap;
 /// it. Unlike `picker-source-spawn!`, a spawn failure (missing binary, bad
 /// `cwd`) does not raise: `callback` still fires, with empty stdout, a
 /// message naming `cmd` in stderr, and `exit-code` `-1`: the same
-/// "callback always fires, exactly once" contract as `lsp-request`, so a
+/// "callback always fires, exactly once" contract as `lsp-request!`, so a
 /// plugin never has to handle failure in two places. Returns a job id for
 /// `cancel-async!`.
 pub(crate) fn spawn_async(

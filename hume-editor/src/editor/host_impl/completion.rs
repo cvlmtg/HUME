@@ -82,7 +82,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         incomplete: bool,
     ) -> Result<bool, String> {
         // `hume-scripting` funnels both of `completion-emit!`'s item-input
-        // shapes (a plain Steel list, or an `lsp-request` response passed
+        // shapes (a plain Steel list, or an `lsp-request!` response passed
         // straight through) into one `JsonHandle`. It knows nothing about
         // LSP response shapes itself (the handle is opaque to it, by
         // design; see `JsonHandle`'s own doc). Deciding the response's own

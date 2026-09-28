@@ -5,7 +5,7 @@
 ## Setup
 
 ```scheme
-(declare-plugin "core:stdlib")
+(declare-plugin! "core:stdlib")
 ```
 
 See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay bare, and [Depending on another plugin](plugins.md#depending-on-another-plugin) for checking it's available before your own plugin relies on it.

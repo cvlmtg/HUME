@@ -173,12 +173,12 @@ fn plugin_fixture(init_body: &str, plugin_body: &str) -> (tempfile::TempDir, std
     (dir, init_path)
 }
 
-/// `(load-plugin "user/tp")` with no keywords → plugin activates eagerly,
+/// `(load-plugin! "user/tp")` with no keywords → plugin activates eagerly,
 /// reaches `Loaded`, and its command appears in the returned defs.
 #[test]
 fn eager_load_no_keywords_reaches_loaded_state() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp")"#,
+        r#"(load-plugin! "user/tp")"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -208,12 +208,12 @@ fn eager_load_no_keywords_reaches_loaded_state() {
     );
 }
 
-/// `(declare-plugin "user/tp" #:commands '("lazy-cmd"))` → plugin stays
+/// `(declare-plugin! "user/tp" #:commands '("lazy-cmd"))` → plugin stays
 /// `Declared`, body is NOT evaluated, and its commands are absent from init result.
 #[test]
 fn lazy_load_stays_declared_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:commands '("lazy-cmd"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("lazy-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -239,14 +239,14 @@ fn lazy_load_stays_declared_body_not_evaluated() {
     );
 }
 
-/// `(declare-plugin "user/tp" #:commands '("my-cmd"))` → plugin stays lazy,
+/// `(declare-plugin! "user/tp" #:commands '("my-cmd"))` → plugin stays lazy,
 /// the host's `Lazy` stub for "my-cmd" maps to the plugin, body not evaluated.
 #[test]
 fn on_command_trigger_populates_registry_body_not_evaluated() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:commands '("my-cmd"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -283,7 +283,7 @@ fn on_command_trigger_populates_registry_body_not_evaluated() {
 #[test]
 fn activate_plugin_idempotent_on_declared_lazy_plugin() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:commands '("lazy-cmd"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("lazy-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -330,7 +330,7 @@ fn activate_plugin_idempotent_on_declared_lazy_plugin() {
 #[test]
 fn eager_plugin_body_error_is_contained() {
     let (dir, init_path) = plugin_fixture(
-        r#"(load-plugin "user/tp")"#,
+        r#"(load-plugin! "user/tp")"#,
         r#"(error "intentional plugin failure")"#,
     );
 
@@ -376,7 +376,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:commands '("move-right" "my-cmd"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("move-right" "my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -420,7 +420,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 
     // A non-colliding entry, by contrast, logs no Error and is registered.
     let (dir2, init_path2) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:commands '("not-a-builtin"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("not-a-builtin"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h2 = host();
@@ -454,7 +454,7 @@ fn manifest_collision_with_builtin_logs_error_continues() {
 #[test]
 fn cmd_owners_pre_seeded_before_activation() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -486,7 +486,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:commands '("my-cmd"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("my-cmd"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -516,7 +516,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
     );
 }
 
-/// `(declare-plugin "user/tp" #:languages '("rust"))` → plugin stays lazy,
+/// `(declare-plugin! "user/tp" #:languages '("rust"))` → plugin stays lazy,
 /// `activation_languages["rust"]` contains the plugin, body not evaluated.
 ///
 /// If `%declare-plugin!` dropped the `#:languages` list, the plugin would still be
@@ -524,7 +524,7 @@ fn activate_plugin_drops_command_trigger_on_loaded() {
 #[test]
 fn on_language_trigger_populates_registry_body_not_evaluated() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
+        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -561,7 +561,7 @@ fn on_language_trigger_populates_registry_body_not_evaluated() {
 #[test]
 fn activate_plugin_drops_language_activation_on_loaded() {
     let (dir, init_path) = plugin_fixture(
-        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
+        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
     let mut h = host();
@@ -589,17 +589,17 @@ fn activate_plugin_drops_language_activation_on_loaded() {
     );
 }
 
-/// `(load-plugin "x")` after `(declare-plugin "x" #:commands …)` force-activates
+/// `(load-plugin! "x")` after `(declare-plugin! "x" #:commands …)` force-activates
 /// the plugin: state transitions to `Loaded` and the activation command entry is cleared.
 ///
-/// The activation comes from the `%activate-plugin-inline` call in the load-plugin
+/// The activation comes from the `%activate-plugin-inline` call in the load-plugin!
 /// wrapper. Lacking it, the plugin would stay `Declared` with its entry intact.
 #[test]
 fn declare_then_load_activates_and_logs_soft_error() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
-        "(declare-plugin \"user/tp\" #:commands '(\"my-cmd\"))\n(load-plugin \"user/tp\")",
+        "(declare-plugin! \"user/tp\" #:commands '(\"my-cmd\"))\n(load-plugin! \"user/tp\")",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -616,7 +616,7 @@ fn declare_then_load_activates_and_logs_soft_error() {
     };
     assert!(
         matches!(h.plugin_status(&id), Some(PluginStatus::Loaded)),
-        "plugin must be Loaded after explicit load-plugin; got {:?}",
+        "plugin must be Loaded after explicit load-plugin!; got {:?}",
         h.plugin_status(&id)
     );
     assert!(
@@ -639,7 +639,7 @@ fn declare_then_load_activates_and_logs_soft_error() {
     );
 }
 
-/// `(load-plugin "foo")` then `(declare-plugin "foo" …)`: load runs first,
+/// `(load-plugin! "foo")` then `(declare-plugin! "foo" …)`: load runs first,
 /// plugin is `Loaded`; the declare is ignored with a soft error.
 ///
 /// That error comes from the load-then-declare guard in `declare_plugin`. Without
@@ -650,7 +650,7 @@ fn load_then_declare_ignored_with_soft_error() {
     use hume_scripting::host::CommandHost;
 
     let (dir, init_path) = plugin_fixture(
-        "(load-plugin \"user/tp\")\n(declare-plugin \"user/tp\" #:commands '(\"my-cmd\"))",
+        "(load-plugin! \"user/tp\")\n(declare-plugin! \"user/tp\" #:commands '(\"my-cmd\"))",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -687,7 +687,7 @@ fn load_then_declare_ignored_with_soft_error() {
     );
 }
 
-/// `(load-plugin …)` inside an eager plugin body is rejected unconditionally,
+/// `(load-plugin! …)` inside an eager plugin body is rejected unconditionally,
 /// even when the dep is present on disk, the gate fires before path
 /// resolution. `pb`'s own activation is contained by the rejection (a body
 /// error like any other), so `eval_init` still succeeds; `pb` itself ends up
@@ -697,17 +697,17 @@ fn load_then_declare_ignored_with_soft_error() {
 /// in-body call would succeed.
 #[test]
 fn load_plugin_in_plugin_body_rejected() {
-    // Plugin pb calls (load-plugin "user/dep") in its body; dep IS present on
+    // Plugin pb calls (load-plugin! "user/dep") in its body; dep IS present on
     // disk so a missing-file error cannot mask the gate.
     let dir = tempfile::tempdir().unwrap();
     let pb_dir = dir.path().join("plugins").join("user").join("pb");
     let dep_dir = dir.path().join("plugins").join("user").join("dep");
     std::fs::create_dir_all(&pb_dir).unwrap();
     std::fs::create_dir_all(&dep_dir).unwrap();
-    std::fs::write(pb_dir.join("plugin.scm"), r#"(load-plugin "user/dep")"#).unwrap();
+    std::fs::write(pb_dir.join("plugin.scm"), r#"(load-plugin! "user/dep")"#).unwrap();
     std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
     let init_path = dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin "user/pb")"#).unwrap();
+    std::fs::write(&init_path, r#"(load-plugin! "user/pb")"#).unwrap();
 
     let mut h = host();
     h.set_data_dir(dir.path().to_path_buf());
@@ -734,7 +734,7 @@ fn load_plugin_in_plugin_body_rejected() {
     );
 }
 
-/// `(declare-plugin …)` inside an eager plugin body is rejected: plugins
+/// `(declare-plugin! …)` inside an eager plugin body is rejected: plugins
 /// cannot register other plugins; both registration verbs are top-level
 /// only. `pb`'s own activation is contained by the rejection (a body error
 /// like any other), so `eval_init` still succeeds; `pb` itself ends up
@@ -749,11 +749,11 @@ fn declare_plugin_in_plugin_body_rejected() {
     std::fs::create_dir_all(&pb_dir).unwrap();
     std::fs::write(
         pb_dir.join("plugin.scm"),
-        r#"(declare-plugin "user/other" #:commands '("other-cmd"))"#,
+        r#"(declare-plugin! "user/other" #:commands '("other-cmd"))"#,
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin "user/pb")"#).unwrap();
+    std::fs::write(&init_path, r#"(load-plugin! "user/pb")"#).unwrap();
 
     let mut h = host();
     h.set_data_dir(dir.path().to_path_buf());
@@ -782,7 +782,7 @@ fn declare_plugin_in_plugin_body_rejected() {
 
 // ── zero-entry / duplicate no-op regressions ─────────────────────────────────
 
-/// `(declare-plugin "foo")` with no activation entries and no `manifest.scm`
+/// `(declare-plugin! "foo")` with no activation entries and no `manifest.scm`
 /// on disk is a hard error even in the hume-scripting unit-test harness (no
 /// editor needed); a plugin directory without a manifest doesn't support the
 /// zero-trigger form at all.
@@ -797,7 +797,7 @@ fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
     std::fs::write(plugin_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
     // No manifest.scm written.
     let init_path = dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(declare-plugin "user/tp")"#).unwrap();
+    std::fs::write(&init_path, r#"(declare-plugin! "user/tp")"#).unwrap();
 
     let mut h = host();
     h.set_data_dir(dir.path().to_path_buf());
@@ -806,7 +806,7 @@ fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
     let result = h.eval_init(&init_path, 10_000, &mut mock, Default::default());
     assert!(
         result.is_err(),
-        "zero-trigger declare-plugin without a manifest.scm must hard-error"
+        "zero-trigger declare-plugin! without a manifest.scm must hard-error"
     );
     let msg = result.unwrap_err();
     assert!(
@@ -816,7 +816,7 @@ fn declare_plugin_no_triggers_no_manifest_hard_error_scripting_level() {
 }
 
 /// The Rust `%declare-plugin!` primitive's own zero-entry backstop still
-/// hard-errors when called directly, bypassing the Scheme `declare-plugin`
+/// hard-errors when called directly, bypassing the Scheme `declare-plugin!`
 /// wrapper's zero-trigger → manifest.scm routing.
 ///
 /// Without the zero-entry guard in `declare_plugin`, eval_source would succeed.
@@ -864,7 +864,7 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     // "move-right" is a built-in, so the collision filter drops it, leaving no activation entries.
     std::fs::write(
         &init_path,
-        r#"(declare-plugin "user/tp" #:commands '("move-right"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("move-right"))"#,
     )
     .unwrap();
 
@@ -881,14 +881,14 @@ fn declare_plugin_all_commands_collide_is_hard_error() {
     );
 }
 
-/// Duplicate `(declare-plugin …)` for the same name stays a silent no-op.
+/// Duplicate `(declare-plugin! …)` for the same name stays a silent no-op.
 ///
 /// `LazyRegistry::declare` must not treat the repeat as an error.
 #[test]
 fn duplicate_declare_remains_silent_noop() {
     let (dir, init_path) = plugin_fixture(
-        "(declare-plugin \"user/tp\" #:commands '(\"tp-cmd\"))\n\
-         (declare-plugin \"user/tp\" #:commands '(\"tp-cmd\"))",
+        "(declare-plugin! \"user/tp\" #:commands '(\"tp-cmd\"))\n\
+         (declare-plugin! \"user/tp\" #:commands '(\"tp-cmd\"))",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -909,13 +909,13 @@ fn duplicate_declare_remains_silent_noop() {
     );
 }
 
-/// Duplicate `(load-plugin …)` for the same name stays a silent no-op.
+/// Duplicate `(load-plugin! …)` for the same name stays a silent no-op.
 ///
 /// The second load must neither error nor panic.
 #[test]
 fn duplicate_load_remains_silent_noop() {
     let (dir, init_path) = plugin_fixture(
-        "(load-plugin \"user/tp\")\n(load-plugin \"user/tp\")",
+        "(load-plugin! \"user/tp\")\n(load-plugin! \"user/tp\")",
         r#"(define-command! "tp-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
 

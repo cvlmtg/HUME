@@ -2,7 +2,7 @@
 
 ## Request flags at a glance
 
-Every `lsp-request` call in this plugin picks its flags for a reason. Reading them side
+Every `lsp-request!` call in this plugin picks its flags for a reason. Reading them side
 by side is more useful than reading each feature's own paragraph in isolation:
 
 | Request | `#:require-focus` | `#:allow-stale` | `#:supersede` | Why |

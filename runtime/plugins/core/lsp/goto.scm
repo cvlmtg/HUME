@@ -23,7 +23,7 @@
 (define (lsp/goto-request pane method cap)
   (lsp/guard-capability pane cap
     (lambda ()
-      (lsp-request pane method (lsp-position-params pane)
+      (lsp-request! pane method (lsp-position-params pane)
         (lambda (err res) (lsp/goto-response err res))))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@
   (lambda (pane)
     (lsp/guard-capability pane "referencesProvider"
       (lambda ()
-        (lsp-request pane "textDocument/references"
+        (lsp-request! pane "textDocument/references"
           (hash-insert (lsp-position-params pane)
                        "context" (hash "includeDeclaration" #t))
           (lambda (err res)

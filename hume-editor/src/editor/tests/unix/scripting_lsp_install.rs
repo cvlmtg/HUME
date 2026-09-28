@@ -366,8 +366,8 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
     load_with_init(
         &mut ed,
         data_tmp.path(),
-        "(load-plugin \"core:stdlib\")\n\
-         (load-plugin \"core:lsp\")\n\
+        "(load-plugin! \"core:stdlib\")\n\
+         (load-plugin! \"core:lsp\")\n\
          (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
          #:root-markers '(\"Cargo.toml\"))",
     );
@@ -393,12 +393,12 @@ fn rescan_does_not_clobber_a_manually_registered_language() {
 }
 
 /// When a seeded server is *already installed before init.scm even runs*, an
-/// eager `(load-plugin "core:lsp")` queues a Register op for it from its own
+/// eager `(load-plugin! "core:lsp")` queues a Register op for it from its own
 /// startup scan, in the very same eval as anything that follows. The user's
-/// own `register-lsp-server!` queued *after* that `load-plugin` line must
+/// own `register-lsp-server!` queued *after* that `load-plugin!` line must
 /// win: `register-lsp-server!` is last-wins over queue order. Differs from
 /// `rescan_does_not_clobber_a_manually_registered_language` above: there,
-/// the receipt is fabricated *after* init.scm's eval, so `load-plugin`'s own
+/// the receipt is fabricated *after* init.scm's eval, so `load-plugin!`'s own
 /// scan queues nothing competing for "rust" in that eval, so it never
 /// exercises this same-eval race at all.
 #[test]
@@ -416,8 +416,8 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
     load_with_init(
         &mut ed,
         data_tmp.path(),
-        "(load-plugin \"core:stdlib\")\n\
-         (load-plugin \"core:lsp\")\n\
+        "(load-plugin! \"core:stdlib\")\n\
+         (load-plugin! \"core:lsp\")\n\
          (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
          #:root-markers '(\"Cargo.toml\"))",
     );
@@ -425,13 +425,13 @@ fn register_lsp_server_after_eager_load_plugin_overrides_the_scans_own_registrat
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
         Some("my-custom-rust-analyzer".to_owned()),
-        "register-lsp-server! queued after load-plugin must win over the scan's \
+        "register-lsp-server! queued after load-plugin! must win over the scan's \
          own registration of the already-installed catalog server"
     );
 }
 
 /// Unlike the sibling test above, this queues the override *before* the
-/// eager `load-plugin` line. `lsp-registered-for-language?` reads through
+/// eager `load-plugin!` line. `lsp-registered-for-language?` reads through
 /// the pending op queue, so the scan's no-clobber filter sees this
 /// earlier-queued registration and skips "rust" entirely regardless of
 /// call order.
@@ -450,23 +450,23 @@ fn register_lsp_server_before_eager_load_plugin_also_survives_the_scan() {
     load_with_init(
         &mut ed,
         data_tmp.path(),
-        "(load-plugin \"core:stdlib\")\n\
+        "(load-plugin! \"core:stdlib\")\n\
          (register-lsp-server! \"rust\" #:command \"my-custom-rust-analyzer\" \
          #:root-markers '(\"Cargo.toml\"))\n\
-         (load-plugin \"core:lsp\")",
+         (load-plugin! \"core:lsp\")",
     );
 
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
         Some("my-custom-rust-analyzer".to_owned()),
-        "register-lsp-server! queued before load-plugin must survive the scan's \
+        "register-lsp-server! queued before load-plugin! must survive the scan's \
          no-clobber filter, which now reads through the same-eval pending queue"
     );
 }
 
 /// A lazily-declared core:lsp (`#:languages`) still registers an installed
 /// server once activated (the startup scan runs at activation time, not
-/// only at eager `(load-plugin "core:lsp")`), and the very buffer whose
+/// only at eager `(load-plugin! "core:lsp")`), and the very buffer whose
 /// language-set triggered the activation attaches to that server in the
 /// same call, with no need to wait for a later effects-applying drain.
 ///
@@ -497,7 +497,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
     load_with_init(
         &mut ed,
         data_tmp.path(),
-        "(load-plugin \"core:stdlib\")\n(declare-plugin \"core:lsp\" #:languages '(\"rust\"))",
+        "(load-plugin! \"core:stdlib\")\n(declare-plugin! \"core:lsp\" #:languages '(\"rust\"))",
     );
     assert_eq!(
         ed.lsp.config_command_for_test("rust"),
@@ -539,7 +539,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
 /// command name is listed in the declaration's `#:commands` manifest:
 /// dispatch runs `activate_lazy_plugin` before arity marshalling (see
 /// input_stack/command.rs), so `:lsp-install` on a plugin that hasn't
-/// loaded yet still works, no eager `(load-plugin "core:lsp")` required.
+/// loaded yet still works, no eager `(load-plugin! "core:lsp")` required.
 #[test]
 fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
     let _lock = lock();
@@ -548,8 +548,8 @@ fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
     load_with_init(
         &mut ed,
         data_tmp.path(),
-        "(load-plugin \"core:stdlib\")\n\
-         (declare-plugin \"core:lsp\" #:typed-commands '(\"lsp-install\"))",
+        "(load-plugin! \"core:stdlib\")\n\
+         (declare-plugin! \"core:lsp\" #:typed-commands '(\"lsp-install\"))",
     );
 
     type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
@@ -822,9 +822,9 @@ fn plum_missing_plugins_excludes_declared_core_plugins() {
     load_with_init(
         &mut ed,
         data_tmp.path(),
-        "(load-plugin \"core:stdlib\")\n\
-         (load-plugin \"core:plum\")\n\
-         (declare-plugin \"core:lsp\" #:languages '(\"rust\"))",
+        "(load-plugin! \"core:stdlib\")\n\
+         (load-plugin! \"core:plum\")\n\
+         (declare-plugin! \"core:lsp\" #:languages '(\"rust\"))",
     );
 
     type_cmd(&mut ed, ":plum-list-plugins");
@@ -875,7 +875,7 @@ fn lsp_uninstall_removes_registration_and_directory() {
         .join("rust-analyzer");
     assert!(
         !dir.exists(),
-        "uninstall must remove the server directory once the deferred (after 0 ...) fires"
+        "uninstall must remove the server directory once the deferred (after! 0 ...) fires"
     );
 }
 
@@ -905,7 +905,7 @@ fn lsp_uninstall_tab_completes_an_installed_server() {
 }
 
 /// The uninstall delete is guarded by the same cross-process lock: a live
-/// `.install-lock` at the moment the deferred `(after 0 ...)` callback fires
+/// `.install-lock` at the moment the deferred `(after! 0 ...)` callback fires
 /// must refuse the delete loudly, leaving the directory intact.
 #[test]
 fn lsp_uninstall_refuses_the_delete_when_the_cross_process_lock_is_already_held() {

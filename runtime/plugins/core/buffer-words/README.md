@@ -7,8 +7,8 @@ ask.
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "core:buffer-words" #:config (hash "match" 'string "lines" 200))
+(declare-plugin! "core:stdlib")
+(load-plugin! "core:buffer-words" #:config (hash "match" 'string "lines" 200))
 ```
 
 - **Depends on:** `core:stdlib`: config validation calls `stdlib/config-enum`/

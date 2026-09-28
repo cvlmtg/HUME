@@ -586,7 +586,7 @@ fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
             completion_source("test", &completion_labels(&["x"]), ""),
             r#"(define stashed-edits (box #f))
                (define-typed-command! "stash" "" (lambda (bid)
-                 (lsp-request bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
+                 (lsp-request! bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
                (define-command! "corrupt" "" (lambda (bid)
                  (apply-text-edits! bid (json-list (unbox stashed-edits)))))"#
         ),

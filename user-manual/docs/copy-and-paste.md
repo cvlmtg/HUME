@@ -77,5 +77,5 @@ Two further registers exist but cannot be named through the `"` prefix:
 If you'd rather keep the clipboard and the kill ring on separate keys instead of letting `p` choose, load `core:classic-paste`. It rebinds `p` / `P` to always paste from the kill ring, and binds `Ctrl-v` / `Ctrl-Shift-v` to always paste from the system clipboard (the latter needs the kitty protocol).
 
 ```scheme
-(load-plugin "core:classic-paste")
+(load-plugin! "core:classic-paste")
 ```

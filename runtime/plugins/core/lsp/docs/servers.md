@@ -63,7 +63,7 @@ validates the name via `core:stdlib`'s `stdlib/safe-path-segment?` before touchi
 `lsp-install` never needs this validation since its name always comes from the seeded
 language-to-server index, never a raw argument. An orphan directory (on disk, no seeded
 catalog entry) skips the unregister step and only removes the directory. Uninstall's
-delete is deferred via `after 0` so the unregister above has already shut down any
+delete is deferred via `after! 0` so the unregister above has already shut down any
 running client before the cross-process lock is acquired. The rejection of an
 invalid name logs `'warn`, not `'info`: it also catches a path-traversal name (e.g.
 `"../plugins"`), a security-relevant refusal worth a persistent `:messages` record, not

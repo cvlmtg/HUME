@@ -65,8 +65,8 @@ fn setup(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp,
     );
     ed.scripting = Some(host);

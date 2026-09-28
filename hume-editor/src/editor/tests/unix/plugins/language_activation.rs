@@ -16,7 +16,7 @@ fn language_trigger_activates_on_set() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
+        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
@@ -78,7 +78,7 @@ fn language_trigger_idempotent_on_round_trip() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
+        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
@@ -153,8 +153,8 @@ fn language_trigger_one_to_many_activates_all() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tp\"  #:languages '(\"rust\"))\n\
-         (declare-plugin \"user/tp2\" #:languages '(\"rust\"))",
+        "(declare-plugin! \"user/tp\"  #:languages '(\"rust\"))\n\
+         (declare-plugin! \"user/tp2\" #:languages '(\"rust\"))",
     )
     .unwrap();
 
@@ -210,7 +210,7 @@ fn language_trigger_does_not_fire_on_unrelated_language() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:languages '("rust"))"#,
+        r#"(declare-plugin! "user/tp" #:languages '("rust"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
@@ -250,7 +250,7 @@ fn language_wildcard_trigger_activates_on_any_language() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:languages '("*"))"#,
+        r#"(declare-plugin! "user/tp" #:languages '("*"))"#,
         r#"(register-hook! 'on-language-set (lambda (bid lang) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
@@ -307,8 +307,8 @@ fn language_wildcard_and_specific_entry_coexist() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tp\"  #:languages '(\"rust\"))\n\
-         (declare-plugin \"user/tp2\" #:languages '(\"*\"))",
+        "(declare-plugin! \"user/tp\"  #:languages '(\"rust\"))\n\
+         (declare-plugin! \"user/tp2\" #:languages '(\"*\"))",
     )
     .unwrap();
 
@@ -360,7 +360,7 @@ fn command_trigger_logs_trace_on_activation() {
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 

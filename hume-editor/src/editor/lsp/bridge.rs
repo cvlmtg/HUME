@@ -1,4 +1,4 @@
-//! The generic LSP bridge: sends `(lsp-request …)` / `(lsp-notify …)` calls
+//! The generic LSP bridge: sends `(lsp-request! …)` / `(lsp-notify! …)` calls
 //! Steel queued this eval, one at a time as `Editor::apply_script_effects`
 //! encounters each `Effect::LspRequest`/`Effect::LspNotify` in emission
 //! order, resolving `bid`'s attached server and (for requests) wiring the
@@ -15,7 +15,7 @@ use super::{Editor, ResponseAnchor};
 use crate::editor::message_log::Severity;
 
 impl Editor {
-    /// Sends one queued `(lsp-request …)` call. Called from
+    /// Sends one queued `(lsp-request! …)` call. Called from
     /// `Editor::apply_script_effects` for each `Effect::LspRequest`, in
     /// emission order, after `flush_lsp_pending_changes` so a request
     /// minted against text just edited doesn't reach the wire ahead of the
@@ -25,7 +25,7 @@ impl Editor {
             match super::introspect::resolve_server_for_buffer(&self.state, &self.lsp, req.bid) {
                 Ok(id) => id,
                 Err(e) => {
-                    self.report(Severity::Error, format!("lsp-request: {e}"));
+                    self.report(Severity::Error, format!("lsp-request!: {e}"));
                     self.fail_lsp_request_callback(req.callback, &e);
                     return;
                 }
@@ -87,7 +87,7 @@ impl Editor {
             .send_request(server_id, &req.method, req.params, meta)
         else {
             let msg = format!("no client tracked for the server sending '{}'", req.method);
-            self.report(Severity::Error, format!("lsp-request: {msg}"));
+            self.report(Severity::Error, format!("lsp-request!: {msg}"));
             self.fail_lsp_request_callback(req.callback, &msg);
             return;
         };
@@ -98,7 +98,7 @@ impl Editor {
             .register_callback(server_id, id, anchor, lsp_callback);
     }
 
-    /// Fires an `(lsp-request …)` callback immediately with an error,
+    /// Fires an `(lsp-request! …)` callback immediately with an error,
     /// used when resolution or the send itself fails before any
     /// request/response pair could ever exist, so the callback would
     /// otherwise never fire at all. Keeps the documented `(err result)`
@@ -113,7 +113,7 @@ impl Editor {
         );
     }
 
-    /// Sends one queued `(lsp-notify …)` call. Same server resolution as
+    /// Sends one queued `(lsp-notify! …)` call. Same server resolution as
     /// `send_one_lsp_request`; no callback, so a resolution error is the
     /// only failure mode.
     pub(in crate::editor) fn send_one_lsp_notify(&mut self, notif: PendingLspNotify) {
@@ -121,7 +121,7 @@ impl Editor {
             match super::introspect::resolve_server_for_buffer(&self.state, &self.lsp, notif.bid) {
                 Ok(id) => id,
                 Err(e) => {
-                    self.report(Severity::Error, format!("lsp-notify: {e}"));
+                    self.report(Severity::Error, format!("lsp-notify!: {e}"));
                     return;
                 }
             };

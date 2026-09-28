@@ -8,7 +8,7 @@ use crate::SteelCtx;
 /// Decode a Steel event name: a symbol, validated against the host's
 /// `known_event_names()`.
 ///
-/// Shared by `register-hook!` and `declare-plugin`'s `#:events` (the two
+/// Shared by `register-hook!` and `declare-plugin!`'s `#:events` (the two
 /// verbs that name an event), so the accepted form and the error text can't
 /// drift apart between them.
 ///
@@ -48,7 +48,7 @@ pub(crate) fn event_name_arg(
 ///
 /// `on-language-set` fires `(lambda (bid lang-or-#f) …)` on every language
 /// transition.  For lazy-loaded language plugins the typical pattern is:
-/// `#:languages '("lang")` in `declare-plugin` *activates* the body on the
+/// `#:languages '("lang")` in `declare-plugin!` *activates* the body on the
 /// first matching transition; the body then calls `(register-hook! 'on-language-set …)`
 /// to install a *hook* that reacts on every subsequent transition.
 pub(crate) fn register_hook(ctx: &mut SteelCtx, name: SteelVal, proc: SteelVal) -> SteelResult {

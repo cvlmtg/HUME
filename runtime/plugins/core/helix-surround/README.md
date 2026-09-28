@@ -5,7 +5,7 @@ Rebinds HUME's `m`-prefixed surround keys to Helix's own `ms`/`md`/`mr` layout.
 ## Usage
 
 ```scheme
-(load-plugin "core:helix-surround")
+(load-plugin! "core:helix-surround")
 ```
 
 - **Depends on:** nothing.

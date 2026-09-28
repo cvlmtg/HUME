@@ -274,7 +274,7 @@ pub(crate) fn chars_arg(val: SteelVal, ctx_name: &str) -> Result<Vec<char>, Stee
 }
 
 /// The single entry point for a JSON-shaped argument that might already be
-/// a [`JsonHandle`](crate::json::JsonHandle) (an `lsp-request` response
+/// a [`JsonHandle`](crate::json::JsonHandle) (an `lsp-request!` response
 /// threaded straight back in, e.g. `codeAction/resolve`'s params, or a
 /// WorkspaceEdit/Location a plugin got from one and hands to
 /// `apply-workspace-edit!`/`goto-location!`) or ordinary Steel data a
@@ -326,7 +326,7 @@ pub(crate) fn optional_json_arg(
 /// the raised error's own `into_steelval()` form, so `SteelErr::from_steelval`
 /// round-trips it with its span intact). Used only by
 /// `%finish-lazy-activation`/`%finish-manifest-declare!`'s `error` argument;
-/// see `bootstrap.scm`'s `%activate-plugin-inline`/`declare-plugin`.
+/// see `bootstrap.scm`'s `%activate-plugin-inline`/`declare-plugin!`.
 pub(crate) fn optional_steel_error_arg(
     val: SteelVal,
     ctx_name: &str,

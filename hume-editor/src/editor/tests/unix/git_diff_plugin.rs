@@ -58,12 +58,12 @@ fn setup(tmp: &Path, config_expr: Option<&str>) -> (Editor, RealRuntimeGuard) {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let mut host = ScriptingHost::new();
     let load_git_diff = match config_expr {
-        Some(cfg) => format!("(load-plugin \"core:git-diff\" #:config {cfg})"),
-        None => "(load-plugin \"core:git-diff\")".to_string(),
+        Some(cfg) => format!("(load-plugin! \"core:git-diff\" #:config {cfg})"),
+        None => "(load-plugin! \"core:git-diff\")".to_string(),
     };
     // core:git-diff's config validation depends on core:stdlib (see
     // plugin.scm's header); load it first, same as the shipped init.scm.example.
-    let load = format!("(load-plugin \"core:stdlib\")\n{load_git_diff}");
+    let load = format!("(load-plugin! \"core:stdlib\")\n{load_git_diff}");
     eval_with_real_host(&mut ed, &mut host, &load, tmp);
     ed.scripting = Some(host);
     (ed, guard)
@@ -1170,7 +1170,7 @@ fn bad_config_value_fails_plugin_load_with_prefixed_error() {
     let init_path = tmp.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:git-diff\" #:config (hash \"signs\" \"yes\"))",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:git-diff\" #:config (hash \"signs\" \"yes\"))",
     )
     .unwrap();
 
@@ -1218,8 +1218,8 @@ fn missing_stdlib_errors_at_load() {
     let tmp = safe_tempdir();
     let _guard = RealRuntimeGuard::new();
     let init_path = tmp.path().join("init.scm");
-    // Deliberately no `(load-plugin "core:stdlib")`.
-    std::fs::write(&init_path, r#"(load-plugin "core:git-diff")"#).unwrap();
+    // Deliberately no `(load-plugin! "core:stdlib")`.
+    std::fs::write(&init_path, r#"(load-plugin! "core:git-diff")"#).unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();

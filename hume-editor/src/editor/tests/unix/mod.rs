@@ -145,7 +145,7 @@ const STDLIB_PLUGIN: &str = include_str!(concat!(
 ));
 
 /// Stage a real shipped core plugin's source into `guard`'s isolated
-/// `HUME_RUNTIME/plugins/core/<name>/plugin.scm`, so `load-plugin` resolves it
+/// `HUME_RUNTIME/plugins/core/<name>/plugin.scm`, so `load-plugin!` resolves it
 /// as a core plugin during the test.
 fn write_core_plugin(guard: &HumeRuntimeGuard, name: &str, source: &str) {
     let plugin_dir = guard.runtime.path().join("plugins").join("core").join(name);
@@ -269,8 +269,8 @@ fn setup_trigger_char_feature(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -357,7 +357,7 @@ struct DiagSetup {
 /// otherwise-identical `setup`): both the EOL summary and the gutter signs
 /// are driven by `on-diagnostics-changed`, which is a queued hook
 /// (`queue_event` → `pending_work`, actually invoked by `settle()`): the
-/// handler must be registered by `(load-plugin "core:lsp")` before that
+/// handler must be registered by `(load-plugin! "core:lsp")` before that
 /// queued hook is drained, or the first batch's decorations never render.
 fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
     let guard = RealRuntimeGuard::new();
@@ -385,7 +385,7 @@ fn setup_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagSetup {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib") (load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib") (load-plugin! "core:lsp")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -558,7 +558,7 @@ fn load_plum(ed: &mut Editor, data_dir: &Path) {
     load_with_init(
         ed,
         data_dir,
-        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:plum\")",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:plum\")",
     );
 }
 
@@ -569,7 +569,7 @@ fn load_lsp(ed: &mut Editor, data_dir: &Path) {
     load_with_init(
         ed,
         data_dir,
-        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:lsp\")",
+        "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:lsp\")",
     );
 }
 

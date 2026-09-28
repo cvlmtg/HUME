@@ -1,4 +1,4 @@
-// Generic LSP bridge: lsp-request, lsp-notify,
+// Generic LSP bridge: lsp-request!, lsp-notify!,
 // on-lsp-notification, delivered through the queued-Steel-call mechanism.
 
 #[cfg(unix)]
@@ -66,7 +66,7 @@ pub(super) fn setup_with_recording(
 
 // ── #:supersede ──────────────────────────────────────────────────────────────
 
-/// Two `lsp-request` calls with no `#:supersede` key must never cancel each
+/// Two `lsp-request!` calls with no `#:supersede` key must never cancel each
 /// other: both are independent, both fire.
 #[test]
 fn requests_without_a_supersede_key_do_not_cancel_each_other() {
@@ -87,9 +87,9 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/completion" (hash)
+             (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker")))))
-             (lsp-request bid "textDocument/completion" (hash)
+             (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker")))))))"#,
         tmp.path(),
     );
@@ -132,7 +132,7 @@ fn lsp_stop_clears_supersede_entries() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/completion" (hash)
+             (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace "fired"))
                #:supersede "k")))"#,
         tmp.path(),
@@ -165,7 +165,7 @@ fn response_delivers_a_handle_to_callback() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (when (equal? (json-ref result "contents") "hi")
                  (call! "move-right" bid))))))"#,
         tmp.path(),
@@ -184,7 +184,7 @@ fn response_delivers_a_handle_to_callback() {
     );
 }
 
-/// Every `lsp-request` response crosses as an opaque handle, not a
+/// Every `lsp-request!` response crosses as an opaque handle, not a
 /// hashmap, for a real (non-null) response.
 #[test]
 fn request_delivers_an_opaque_handle_not_a_hashmap() {
@@ -201,7 +201,7 @@ fn request_delivers_an_opaque_handle_not_a_hashmap() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/completion" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/completion" (hash) (lambda (err result)
                (when (not (hash? result))
                  (call! "move-right" bid))))))"#,
         tmp.path(),
@@ -235,7 +235,7 @@ fn request_with_a_null_response_still_gives_void() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/completion" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/completion" (hash) (lambda (err result)
                (when (void? result)
                  (call! "move-right" bid))))))"#,
         tmp.path(),
@@ -266,7 +266,7 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (when (and (hash? err) (equal? (hash-ref err "code") -32601))
                  (call! "move-right" bid))))))"#,
         tmp.path(),
@@ -298,7 +298,7 @@ fn timeout_delivers_err_string_timeout_to_callback() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (when (equal? err "timeout")
                  (call! "move-right" bid))))))"#,
         tmp.path(),
@@ -377,7 +377,7 @@ fn unhandled_notification_without_a_registered_handler_only_logs_trace() {
     );
 }
 
-/// A callback that itself calls `lsp-request` must not evaluate the second
+/// A callback that itself calls `lsp-request!` must not evaluate the second
 /// request's callback synchronously within the same Steel session. It only
 /// resolves on a later drain cycle, one cursor move per completed cycle.
 #[test]
@@ -399,9 +399,9 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (call! "move-right" bid)
-               (lsp-request bid "textDocument/definition" (hash) (lambda (err2 result2)
+               (lsp-request! bid "textDocument/definition" (hash) (lambda (err2 result2)
                  (call! "move-right" bid)))))))"#,
         tmp.path(),
     );
@@ -438,7 +438,7 @@ fn callback_error_lands_in_message_log_not_a_crash() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (car '())))))"#,
         tmp.path(),
     );
@@ -535,7 +535,7 @@ fn lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (when (string? err)
                  (call! "move-right" bid))))))"#,
         tmp.path(),
@@ -554,7 +554,7 @@ fn lsp_request_with_no_attached_server_reports_an_error_and_fires_callback_with_
     );
     let log = ed.state.message_log.format_for_display();
     assert!(
-        log.contains("lsp-request:"),
+        log.contains("lsp-request!:"),
         "resolution failure must also be reported: {log:?}"
     );
 }
@@ -578,7 +578,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result)
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result)
                (when (string? err)
                  (call! "move-right" bid))))))"#,
         tmp.path(),
@@ -612,7 +612,7 @@ fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" #f (lambda (err result) (begin)))))"#,
+             (lsp-request! bid "textDocument/hover" #f (lambda (err result) (begin)))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -646,7 +646,7 @@ fn require_focus_drops_the_callback_after_a_buffer_switch() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result) (call! "move-right" bid))
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result) (call! "move-right" bid))
                #:require-focus #t)))"#,
         tmp.path(),
     );
@@ -694,7 +694,7 @@ fn require_focus_drops_the_callback_after_a_pane_split_on_the_same_buffer() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result) (log! 'trace "callback-fired"))
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result) (log! 'trace "callback-fired"))
                #:require-focus #t)))"#,
         tmp.path(),
     );
@@ -746,7 +746,7 @@ fn no_require_focus_still_delivers_after_a_buffer_switch() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "textDocument/hover" (hash) (lambda (err result) (log! 'trace "callback-fired")))))"#,
+             (lsp-request! bid "textDocument/hover" (hash) (lambda (err result) (log! 'trace "callback-fired")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -801,9 +801,9 @@ fn queued_callback_reanchors_against_an_earlier_sibling_in_the_same_batch() {
         &mut host,
         &format!(
             r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-                 (lsp-request bid "textDocument/hover" (hash)
+                 (lsp-request! bid "textDocument/hover" (hash)
                    (lambda (err result) (switch-to-buffer! bid (open-buffer! {other_path}))))
-                 (lsp-request bid "textDocument/completion" (hash)
+                 (lsp-request! bid "textDocument/completion" (hash)
                    (lambda (err result) (log! 'trace "b-fired"))
                    #:require-focus #t)))"#
         ),
@@ -854,9 +854,9 @@ fn queued_callback_restales_against_an_earlier_siblings_edit_in_the_same_batch()
         &mut ed,
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda (bid)
-             (lsp-request bid "test/edit" (hash)
+             (lsp-request! bid "test/edit" (hash)
                (lambda (err res) (apply-text-edits! bid (json-list res))))
-             (lsp-request bid "textDocument/completion" (hash)
+             (lsp-request! bid "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace "b-fired")))))"#,
         tmp.path(),
     );

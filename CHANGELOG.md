@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Breaking changes
+- Every scripting function that changes something now ends in `!`: `declare-plugin`, `load-plugin`, `lsp-request`, `lsp-notify`, `after`, `unpack-gz`, and `unpack-zip` are renamed `declare-plugin!`, `load-plugin!`, `lsp-request!`, `lsp-notify!`, `after!`, `unpack-gz!`, and `unpack-zip!`.
+
 ### Commands
 - `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.
 

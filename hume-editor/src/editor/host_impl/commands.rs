@@ -10,7 +10,7 @@ impl<'a> EditorHostImpl<'a> {
     /// Shared guard behind `register_lazy_command`/`register_lazy_typed_command`:
     /// both claim `name` in the same registry namespace and differ only in
     /// what they insert on success. Returns `Ok(true)` when the caller should
-    /// go on to insert its stub, `Ok(false)` for a duplicate `declare-plugin`
+    /// go on to insert its stub, `Ok(false)` for a duplicate `declare-plugin!`
     /// call by the same plugin (first declaration wins, nothing to insert).
     fn claim_lazy_name(
         &self,

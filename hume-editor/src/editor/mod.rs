@@ -160,7 +160,7 @@ pub(crate) struct ConfigState {
         rustc_hash::FxHashMap<BufferId, rustc_hash::FxHashMap<Box<str>, Box<str>>>,
     /// Deferred Steel work: events enqueued during command dispatch
     /// (`EditorState::queue_event`) and specific-closure completions
-    /// (`EditorState::queue_steel_call`: an `lsp-request` callback, a timer
+    /// (`EditorState::queue_steel_call`: an `lsp-request!` callback, a timer
     /// thunk, a prompt callback), drained in FIFO order by `Editor::settle`.
     /// One queue, not two: see `event::PendingWork`'s doc for why a shared
     /// queue matters. No work item is ever evaluated inline during command
@@ -786,7 +786,7 @@ impl EditorState {
     /// Queue `(proc, args)` for evaluation at the next drain boundary,
     /// never called inline (LSP dispatch, timer fire, and minibuffer key
     /// handling all detect their completion from inside a borrow that can't
-    /// re-enter Steel). Shared delivery mechanism for the `lsp-request`
+    /// re-enter Steel). Shared delivery mechanism for the `lsp-request!`
     /// callback, timer thunks, and the prompt/menu/drawer/picker callbacks.
     /// Lives on `EditorState` (not `Editor`) so `picker::close_picker` and
     /// `EditorHostImpl`'s spawn-failure arm (which only hold `&mut
@@ -819,7 +819,7 @@ impl EditorState {
             });
     }
 
-    /// [`Self::queue_steel_call`]'s counterpart for an `lsp-request`
+    /// [`Self::queue_steel_call`]'s counterpart for an `lsp-request!`
     /// callback: carries the `ResponseAnchor` already checked once at LSP
     /// drain time, so `Editor::run_pending_batch` can re-check it at
     /// dequeue. See `PendingWork::Call`'s own doc for why the drain-time
@@ -866,7 +866,7 @@ pub(crate) struct Editor {
     /// Whether the one-shot "parse worker disconnected" message has been logged.
     parse_worker_disconnect_logged: bool,
     /// Nearest-deadline timer registry; Steel-visible via the
-    /// `after`/`debounce` builtins.
+    /// `after!`/`debounce` builtins.
     timer_wheel: timers::TimerWheel,
     /// `TimerId -> {Steel thunk, or native action}`, keeping `timers.rs`
     /// itself payload-agnostic. Entry removed on fire or cancel, never

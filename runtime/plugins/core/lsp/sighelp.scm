@@ -35,7 +35,7 @@
   (debounce 150
     (lambda (pane)
       (when (pane-live? pane)
-        (lsp-request pane "textDocument/signatureHelp" (lsp-position-params pane)
+        (lsp-request! pane "textDocument/signatureHelp" (lsp-position-params pane)
           (lambda (err res)
             (cond
               (err (lsp/report-error "signature help" err) (close-popup!))

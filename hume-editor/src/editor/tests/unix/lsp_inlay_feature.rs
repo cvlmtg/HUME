@@ -1,5 +1,5 @@
 // Inlay hints: debounced textDocument/inlayHint on viewport change and
-// diagnostics change, composing `lsp-request`, `lsp-capabilities`, debounce,
+// diagnostics change, composing `lsp-request!`, `lsp-capabilities`, debounce,
 // `set-inlay-hints!`, `on-viewport-change`, `on-diagnostics-changed`,
 // and rendering (not tested here, its own pinned snapshots cover that).
 // Named lsp_inlay_feature.rs because lsp_inlay_hints.rs already covers rendering
@@ -67,8 +67,8 @@ fn setup(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -608,8 +608,8 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -716,8 +716,8 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

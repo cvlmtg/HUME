@@ -134,10 +134,10 @@ fn fresh_raise_after_handler_return_propagates_cleanly_through_nested_levels() {
 }
 
 /// **Second known steel-core 0.8.3 limitation**: `dynamic-wind`'s
-/// `after` thunk is not guaranteed to run when its body raises through an
+/// `after!` thunk is not guaranteed to run when its body raises through an
 /// outer `with-handler`. Reproduces the panic-pinning test's failure,
 /// wrapped in `dynamic-wind` instead of catch-and-reraise. This would
-/// otherwise be a safe way to guarantee `declare-plugin`'s manifest
+/// otherwise be a safe way to guarantee `declare-plugin!`'s manifest
 /// cleanup (`%finish-manifest-declare!`) runs without an inner handler,
 /// but `cleanup-ran` never fires, which confirms cleanup-on-unwind stays in
 /// Rust (explicit push/pop), never Steel `dynamic-wind`. Pinned like the
@@ -164,7 +164,7 @@ fn known_limitation_dynamic_wind_cleanup_does_not_run_across_an_outer_handlers_u
     let result = host.eval_source(src, &mut null_host);
     let err = result.expect_err(
         "dynamic-wind's cleanup thunk unexpectedly ran across the outer handler's unwind; \
-         if steel-core fixed this, declare-plugin's manifest branch could use dynamic-wind \
+         if steel-core fixed this, declare-plugin!'s manifest branch could use dynamic-wind \
          instead of catch-and-reraise to avoid the panic pinned above",
     );
     assert!(

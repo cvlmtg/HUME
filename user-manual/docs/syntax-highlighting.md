@@ -10,8 +10,8 @@ PLUM is a plugin like any other, and it doesn't load by itself. Everything on th
 cleanup commands depend on:
 
 ```scheme
-(declare-plugin "core:stdlib")
-(declare-plugin "core:plum")
+(declare-plugin! "core:stdlib")
+(declare-plugin! "core:plum")
 ```
 
 Once a grammar is installed, though, PLUM is no longer in the picture: HUME registers every

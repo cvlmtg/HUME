@@ -142,7 +142,7 @@ impl Editor {
         // than the others: dropping it is the entire teardown. `PopupLayer`
         // likewise carries no Steel callback.
         self.lsp.reset_config();
-        // Only the Steel `after` thunks. Native `ViewportDebounce` timers
+        // Only the Steel `after!` thunks. Native `ViewportDebounce` timers
         // keep their wheel entries and their `viewport_debounce` back-index
         // intact, since nothing about them is Steel-VM-specific. Exhaustive
         // match, not `matches!`, so a future `TimerPayload` variant forces a

@@ -1,4 +1,4 @@
-// Code actions: `lsp-code-actions`, composing `lsp-request`,
+// Code actions: `lsp-code-actions`, composing `lsp-request!`,
 // `lsp-capabilities`, `diagnostics-for-buffer`'s `raw`
 // field (echoed back as context.diagnostics; servers gate diagnostic-
 // derived quickfixes on this), `apply-workspace-edit!`, `show-menu!`.
@@ -85,8 +85,8 @@ fn setup_with_capabilities(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp,
     );
     ed.scripting = Some(host);

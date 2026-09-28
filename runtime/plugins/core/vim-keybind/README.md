@@ -6,8 +6,8 @@ natively, and the visual-mode `o` flip alias.
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
-(load-plugin "core:vim-keybind" #:config (hash "change-to-eol" 'smart))
+(declare-plugin! "core:stdlib")
+(load-plugin! "core:vim-keybind" #:config (hash "change-to-eol" 'smart))
 ```
 
 - **Depends on:** `core:stdlib`: config validation (`"change-to-eol"`) calls

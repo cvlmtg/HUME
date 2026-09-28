@@ -1,4 +1,4 @@
-//! `bind-key!`, `load-plugin` path resolution, `configure-statusline!`,
+//! `bind-key!`, `load-plugin!` path resolution, `configure-statusline!`,
 //! `hume/yield!`, `command-plugin`, and `define-command!` tests.
 
 use super::*;
@@ -70,7 +70,7 @@ fn bind_key_invalid_key_sequence_errors() {
     assert!(!err.is_empty(), "expected error for unknown key 'boguskey'");
 }
 
-// ── load-plugin path resolution ────────────────────────────────────────────
+// ── load-plugin! path resolution ────────────────────────────────────────────
 
 #[test]
 fn load_plugin_missing_plugin_declared_not_loaded() {
@@ -78,7 +78,7 @@ fn load_plugin_missing_plugin_declared_not_loaded() {
     let mut mock = MockHost::new();
 
     // Eval #1: declare an absent plugin.
-    h.eval_source("(load-plugin \"user/nonexistent-repo\")", &mut mock)
+    h.eval_source("(load-plugin! \"user/nonexistent-repo\")", &mut mock)
         .unwrap();
 
     // Persistence check: the host field should contain the declared name even
@@ -115,7 +115,7 @@ fn load_plugin_malformed_name_errors() {
     let mut mock = MockHost::new();
 
     let err = h
-        .eval_source("(load-plugin \"just-a-name\")", &mut mock)
+        .eval_source("(load-plugin! \"just-a-name\")", &mut mock)
         .unwrap_err();
     assert!(!err.is_empty(), "expected error for malformed plugin name");
 }
@@ -132,7 +132,7 @@ fn declared_plugins_includes_core_plugins() {
     let mut mock = MockHost::new();
 
     h.eval_source(
-        r#"(declare-plugin "core:lsp" #:events '(on-lsp-attach))"#,
+        r#"(declare-plugin! "core:lsp" #:events '(on-lsp-attach))"#,
         &mut mock,
     )
     .unwrap();

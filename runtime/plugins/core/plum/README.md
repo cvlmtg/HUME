@@ -10,14 +10,14 @@ walking disk at the moment it's asked (see [Plugin discovery](#plugin-discovery)
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
-(declare-plugin "core:plum")
+(declare-plugin! "core:stdlib")
+(declare-plugin! "core:plum")
 ```
 
 - **Depends on:** `core:stdlib`: plugin/grammar/theme install and cleanup call
   `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`,
   `stdlib/list-subdirs`, `stdlib/run`, `stdlib/resolve-lang-arg` via `call!`.
-- **Activates on:** the first `:plum-*` command typed. `(load-plugin "core:plum")` also
+- **Activates on:** the first `:plum-*` command typed. `(load-plugin! "core:plum")` also
   works, loading it eagerly instead.
 - PLUM is not privileged. It's a plugin like any other, so disabling it only removes the
   management commands below. Anything already installed keeps working without it,

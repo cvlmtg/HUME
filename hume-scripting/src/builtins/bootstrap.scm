@@ -1,6 +1,6 @@
 (require-builtin steel/meta as hm.)
 
-(define (declare-plugin name #:commands       [commands       '()]
+(define (declare-plugin! name #:commands       [commands       '()]
                              #:typed-commands [typed-commands '()]
                              #:events         [events         '()]
                              #:languages      [languages      '()]
@@ -14,7 +14,7 @@
           (hume/yield!)))
       (%declare-plugin! name commands typed-commands events languages config)))
 
-(define (load-plugin name #:config [config (hash)])
+(define (load-plugin! name #:config [config (hash)])
   (%load-plugin! name config)
   (%activate-plugin-inline name))
 
@@ -69,10 +69,10 @@
                                         #:env [env '()])
   (%register-lsp-server! language command args root-markers init-options settings env))
 
-(define (lsp-request pane method params callback #:allow-stale [allow-stale #f]
+(define (lsp-request! pane method params callback #:allow-stale [allow-stale #f]
                                                    #:supersede [supersede #f]
                                                    #:require-focus [require-focus #f])
-  (%lsp-request pane method params callback allow-stale supersede require-focus))
+  (%lsp-request! pane method params callback allow-stale supersede require-focus))
 
 (define (debounce ms proc)
   (let ((pending (box #f)))
@@ -81,7 +81,7 @@
         (when prev (cancel-timer! prev)))
       (let ((my-id (box #f)))
         (set-box! my-id
-          (after ms (lambda ()
+          (after! ms (lambda ()
                       (when (equal? (unbox pending) (unbox my-id))
                         (set-box! pending #f))
                       (apply proc args))))
@@ -96,7 +96,7 @@
           (cancel-timer! (hash-ref table k)))
         (let ((my-id (box #f)))
           (set-box! my-id
-            (after ms (lambda ()
+            (after! ms (lambda ()
                         (let ((table (unbox pending)))
                           (when (and (hash-contains? table k)
                                      (equal? (hash-ref table k) (unbox my-id)))

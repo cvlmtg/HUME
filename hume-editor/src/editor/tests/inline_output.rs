@@ -251,7 +251,7 @@ fn timer_call_bang_to_inline_output_command_opens_the_gate() {
         r#"(define-command! "inner-probe" ""
              (lambda () (log! 'warn (if (%stdout-gate!) "gate-open" "gate-closed")))
              #:inline-output #t)
-           (define-typed-command! "start" "" (lambda () (after 0 (lambda () (call! "inner-probe")))))"#,
+           (define-typed-command! "start" "" (lambda () (after! 0 (lambda () (call! "inner-probe")))))"#,
     );
 
     type_cmd(&mut ed, ":start");

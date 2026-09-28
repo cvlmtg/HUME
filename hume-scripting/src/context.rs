@@ -76,10 +76,10 @@ pub(crate) struct SteelCtx<'a> {
     /// queued before this activation began. See `pop_effect_marks`.
     pub(crate) activation_effect_marks: Vec<usize>,
     /// Set for the duration of a `manifest.scm` eval driven by a zero-trigger
-    /// `(declare-plugin "id")`: the id being resolved. `%begin-manifest-declare!`
+    /// `(declare-plugin! "id")`: the id being resolved. `%begin-manifest-declare!`
     /// sets it, `%finish-manifest-declare!` clears it. Guards against a manifest
     /// declaring a different plugin than the one it was resolved for, and against
-    /// a manifest whose own `declare-plugin` is itself zero-trigger (which would
+    /// a manifest whose own `declare-plugin!` is itself zero-trigger (which would
     /// otherwise recurse into manifest resolution forever).
     pub(crate) manifest_resolving: Option<PluginId>,
     /// Plugin activations contained mid-session: `finish_lazy_activation`/
@@ -117,7 +117,7 @@ pub(crate) enum EvalSession {
 pub(crate) enum EvalMode {
     /// init.scm top level: `EvalSession::Init`, `plugin_stack` empty.
     Init,
-    /// Inside an eager `load-plugin` body during init: `EvalSession::Init`,
+    /// Inside an eager `load-plugin!` body during init: `EvalSession::Init`,
     /// `plugin_stack` non-empty.
     PluginLoad,
     /// Inside a lazily-activated plugin body at runtime: `EvalSession::Runtime`,
@@ -159,7 +159,7 @@ impl<'a> SteelCtx<'a> {
     ///
     /// Identical to `new_init` but with `session = EvalSession::Runtime`: native
     /// `(call! …)` calls inside the plugin body are allowed (they run synchronously
-    /// via `run_command_sync`), while `(load-plugin …)` and `(declare-plugin …)` are
+    /// via `run_command_sync`), while `(load-plugin! …)` and `(declare-plugin! …)` are
     /// rejected (registration verbs are init.scm top-level only; a plugin can never
     /// load another plugin).
     pub(super) fn new_activation(

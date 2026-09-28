@@ -37,7 +37,7 @@ Copy the bundled starter config to `~/.config/hume/init.scm` ([where to find it]
 |------|-----|------|
 | Uncomment line 20 (`core:buffer-words`) | `dt(` | `Ctrl-t` `(` `d` |
 | Delete lines 17 and 18 (`core:plum`, `core:git-diff`) | `:17` `2dd` | `:17` `2` `Ctrl-x` `d` |
-| Turn `declare-plugin` into `load-plugin` on line 16 | `:16` `l` `ciw` `load` `Esc` | `:16` `w` `c` `load` `Esc` |
+| Turn `declare-plugin!` into `load-plugin!` on line 16 | `:16` `l` `ciw` `load` `Esc` | `:16` `w` `c` `load` `Esc` |
 
 What each step shows:
 
@@ -219,7 +219,7 @@ Vim uses `[count]` before commands (e.g. `3dw`). HUME also supports count prefix
 
 ### Line motion
 
-Beyond the `g` keys above, `g s` goes to the first non-blank character (Vim's `^`). The vim keys `0` / `$` / `^` are not bound by default. Load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in your [`init.scm`](configuration.md) to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl-6` (see below). `G` is the case and rename prefix (`G L` / `G U` / `G C`, plus `G R` with `core:lsp`), and `core:vim-keybind` does not restore Vim's meaning; `g e` reaches the last line either way.
+Beyond the `g` keys above, `g s` goes to the first non-blank character (Vim's `^`). The vim keys `0` / `$` / `^` are not bound by default. Load `(load-plugin! "core:stdlib")` then `(load-plugin! "core:vim-keybind")` in your [`init.scm`](configuration.md) to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl-6` (see below). `G` is the case and rename prefix (`G L` / `G U` / `G C`, plus `G R` with `core:lsp`), and `core:vim-keybind` does not restore Vim's meaning; `g e` reaches the last line either way.
 
 | Vim | HUME (native) | HUME (`core:vim-keybind`) |
 |-----|----------------|---------------------------|

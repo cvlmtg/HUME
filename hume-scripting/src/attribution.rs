@@ -137,7 +137,7 @@ impl Hash for PluginId {
 /// The entity credited with a command registration.
 ///
 /// - Stack empty → [`Owner::User`] (top-level `init.scm`)
-/// - `stack.last()` → [`Owner::Plugin`] (inside a `(load-plugin …)` / plugin body)
+/// - `stack.last()` → [`Owner::Plugin`] (inside a `(load-plugin! …)` / plugin body)
 /// - [`Owner::Core`] is the fallback returned by `(command-plugin …)` for
 ///   built-in Rust commands that were never registered through Steel.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,7 +192,7 @@ impl PluginStack {
 
     /// The [`PluginId`] whose body is currently executing, if any.
     ///
-    /// Valid during both eager (`load-plugin`) and lazy (`declare-plugin`,
+    /// Valid during both eager (`load-plugin!`) and lazy (`declare-plugin!`,
     /// activated later) bodies, since both push here for the duration of the eval.
     pub(crate) fn current(&self) -> Option<&PluginId> {
         self.stack.last()

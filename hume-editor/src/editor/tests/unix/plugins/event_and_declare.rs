@@ -1,5 +1,5 @@
-//! Lazy plugin loading: event activations, and load-plugin /
-//! declare-plugin interaction (editor-level).
+//! Lazy plugin loading: event activations, and load-plugin! /
+//! declare-plugin! interaction (editor-level).
 
 use super::*;
 use crate::editor::registry::MappableCommand;
@@ -17,7 +17,7 @@ fn event_trigger_activates_on_first_fire() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:events '(on-buffer-save))"#,
+        r#"(declare-plugin! "user/tp" #:events '(on-buffer-save))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
@@ -78,7 +78,7 @@ fn event_trigger_idempotent_on_second_fire() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:events '(on-buffer-save))"#,
+        r#"(declare-plugin! "user/tp" #:events '(on-buffer-save))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (call! "move-right" (focused-pane))))"#,
     );
     let id = PluginId::User {
@@ -140,8 +140,8 @@ fn event_trigger_one_to_many_activates_all() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tp\"  #:events '(on-buffer-save))\n\
-         (declare-plugin \"user/tp2\" #:events '(on-buffer-save))",
+        "(declare-plugin! \"user/tp\"  #:events '(on-buffer-save))\n\
+         (declare-plugin! \"user/tp2\" #:events '(on-buffer-save))",
     )
     .unwrap();
 
@@ -203,7 +203,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:events '(on-buffer-save))"#,
+        r#"(declare-plugin! "user/tp" #:events '(on-buffer-save))"#,
         r#"(error "intentional plugin failure")"#,
     );
     let id = PluginId::User {
@@ -256,9 +256,9 @@ fn event_plugin_failure_marks_failed_no_retry() {
     );
 }
 
-// ── load-plugin / declare-plugin interaction (editor-level) ────────
+// ── load-plugin! / declare-plugin! interaction (editor-level) ────────
 
-/// `(declare-plugin "name")` with no activation entries is a hard error: the plugin
+/// `(declare-plugin! "name")` with no activation entries is a hard error: the plugin
 /// could never activate at runtime.
 #[test]
 fn declare_plugin_no_triggers_is_hard_error() {
@@ -271,7 +271,7 @@ fn declare_plugin_no_triggers_is_hard_error() {
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");
-    std::fs::write(&init_path, "(declare-plugin \"user/tp\")").unwrap();
+    std::fs::write(&init_path, "(declare-plugin! \"user/tp\")").unwrap();
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
@@ -282,11 +282,11 @@ fn declare_plugin_no_triggers_is_hard_error() {
     };
     assert!(
         result.is_err(),
-        "declare-plugin with no activation entries must abort init with an error"
+        "declare-plugin! with no activation entries must abort init with an error"
     );
 }
 
-/// Top-level `(load-plugin "user/tp")` with the plugin absent on disk → silent
+/// Top-level `(load-plugin! "user/tp")` with the plugin absent on disk → silent
 /// skip (PLUM-friendly bootstrap), no error, and the plugin is recorded in
 /// `declared-plugins` but absent from `loaded-plugins`.
 ///
@@ -297,7 +297,7 @@ fn load_plugin_absent_top_level_silently_skips() {
     let dir = safe_tempdir();
     // No plugin directory created: plugin is absent on disk.
     let init_path = dir.path().join("init.scm");
-    std::fs::write(&init_path, r#"(load-plugin "user/tp")"#).unwrap();
+    std::fs::write(&init_path, r#"(load-plugin! "user/tp")"#).unwrap();
 
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
@@ -306,7 +306,7 @@ fn load_plugin_absent_top_level_silently_skips() {
         let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
-    .expect("absent top-level load-plugin must not error");
+    .expect("absent top-level load-plugin! must not error");
 
     // Plugin was not inserted into lazy_registry (absent on disk).
     assert!(
@@ -317,7 +317,7 @@ fn load_plugin_absent_top_level_silently_skips() {
 
 /// A lazy plugin B can call another lazy plugin A's command via `(call! "a-cmd")`.
 /// The inline lazy-miss retry in `%dispatch-command` activates A on the fly and
-/// runs the command, with no `(load-plugin)` needed.
+/// runs the command, with no `(load-plugin!)` needed.
 ///
 /// Without the lazy-miss retry in `%dispatch-command`, `(call! "a-cmd")` would
 /// fall through to `%call-native!`, which does not know `a-cmd`, so it would log
@@ -336,7 +336,7 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     )
     .unwrap();
     // Plugin B: command activation entry; b-cmd's body calls "a-cmd" inline
-    // (no load-plugin), reached only once a keypress dispatches b-cmd itself.
+    // (no load-plugin!), reached only once a keypress dispatches b-cmd itself.
     let dir_b = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
@@ -347,8 +347,8 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tpa\" #:commands '(\"a-cmd\"))\n\
-         (declare-plugin \"user/tp\"  #:typed-commands '(\"b-cmd\"))",
+        "(declare-plugin! \"user/tpa\" #:commands '(\"a-cmd\"))\n\
+         (declare-plugin! \"user/tp\"  #:typed-commands '(\"b-cmd\"))",
     )
     .unwrap();
 
@@ -476,8 +476,8 @@ fn nested_activation_multi_file_via_real_editor_host() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tpa\" #:commands '(\"a-cmd\"))\n\
-         (load-plugin \"user/tpb\")",
+        "(declare-plugin! \"user/tpa\" #:commands '(\"a-cmd\"))\n\
+         (load-plugin! \"user/tpb\")",
     )
     .unwrap();
 
@@ -550,8 +550,8 @@ fn plugin_config_scoped_correctly_after_nested_activation() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        "(declare-plugin \"user/tpa\" #:commands '(\"a-cmd\") #:config (hash \"x\" 1))\n\
-         (declare-plugin \"user/tpb\" #:commands '(\"b-cmd\") #:config (hash \"y\" 2))",
+        "(declare-plugin! \"user/tpa\" #:commands '(\"a-cmd\") #:config (hash \"x\" 1))\n\
+         (declare-plugin! \"user/tpb\" #:commands '(\"b-cmd\") #:config (hash \"y\" 2))",
     )
     .unwrap();
 
@@ -585,7 +585,7 @@ fn native_command_survives_failed_shadowing_plugin() {
     let (mut ed, _dir) = setup_lazy_editor(
         // Eager command whose body triggers the lazy plugin via call!:
         // the in-Steel activation path (empty builtin_cmd_names).
-        r#"(declare-plugin "user/tp" #:commands '("bar"))
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))
            (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
         // Plugin body shadows a native command.
         r#"(define-command! "move-left" "doc" (lambda () (+ 1 0)))"#,
@@ -654,7 +654,7 @@ fn plugin_keybinding_rolled_back_on_failed_activation() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))
            (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
         r#"(bind-key! 'normal "Q" "some-cmd") (error "boom")"#,
     );
@@ -693,7 +693,7 @@ fn plugin_hook_rolled_back_on_failed_activation() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))
            (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) 0)) (error "boom")"#,
     );

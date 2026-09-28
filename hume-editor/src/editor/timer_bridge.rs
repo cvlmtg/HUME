@@ -1,4 +1,4 @@
-//! The Steel timer surface: `(after ms thunk)` / `(cancel-timer! id)`, and
+//! The Steel timer surface: `(after! ms thunk)` / `(cancel-timer! id)`, and
 //! the per-frame fire step that turns a due `TimerId` into either a queued
 //! Steel call or a native action. `timers.rs`'s `TimerWheel` stays
 //! payload-agnostic; the `TimerId -> TimerPayload` side table lives here
@@ -13,7 +13,7 @@ use steel::rvals::SteelVal;
 use super::Editor;
 use super::timers::TimerId;
 
-/// What firing a `TimerId` actually does: a Steel closure (the `after`
+/// What firing a `TimerId` actually does: a Steel closure (the `after!`
 /// builtin) or a native Rust action (the viewport-change debounce, which has no Steel
 /// closure to call: the fire site always reads the *current* visible range,
 /// not whatever it was when the timer was scheduled).

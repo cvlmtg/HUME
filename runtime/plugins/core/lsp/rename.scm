@@ -10,7 +10,7 @@
           (lambda (new-name)
             (when new-name
               (let ((gen (buffer-generation pane)))
-                (lsp-request pane "textDocument/rename"
+                (lsp-request! pane "textDocument/rename"
                   (hash-insert (lsp-position-params pane) "newName" new-name)
                   (lambda (err res)
                     (cond

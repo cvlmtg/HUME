@@ -630,7 +630,7 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
         tmp.path(),
         r#"(define stashed-edits (box #f))
            (define-typed-command! "stash" "" (lambda (bid)
-             (lsp-request bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
+             (lsp-request! bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
            (define-typed-command! "go" "" (lambda (bid)
              (apply-text-edits! bid (json-list (unbox stashed-edits)))))"#,
     );

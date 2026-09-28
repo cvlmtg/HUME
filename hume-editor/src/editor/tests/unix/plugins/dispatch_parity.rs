@@ -25,12 +25,12 @@ use crate::editor::registry::{MappableCommand, TypedBody};
 /// A lazy *mappable* command's first dispatch via keypress activates its
 /// plugin and runs the real body, the same invariant the typed path exercises
 /// in `lazy_typed_command_first_dispatch_via_command_line` below, covering
-/// the other half of `declare-plugin`'s two stub kinds
+/// the other half of `declare-plugin!`'s two stub kinds
 /// (`#:commands`/`#:typed-commands`).
 #[test]
 fn lazy_command_first_dispatch_via_keypress() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "" (lambda () (call! "delete" (focused-pane))) #:repeatable #t)"#,
     );
     let before = snapshot_bookkeeping(&ed);
@@ -60,7 +60,7 @@ fn lazy_command_first_dispatch_via_keypress() {
 #[test]
 fn lazy_typed_command_first_dispatch_via_command_line() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("echo-arg"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("echo-arg"))"#,
         r#"(define-typed-command! "echo-arg" "" (lambda (bid x) (when (string? x) (call! x bid))))"#,
     );
     let before = state(&ed);
@@ -105,7 +105,7 @@ fn lazy_typed_command_first_dispatch_via_command_line() {
 #[test]
 fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_one() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("stub-a" "stub-b"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("stub-a" "stub-b"))"#,
         r#"(error "intentional plugin failure")"#,
     );
     assert!(
@@ -154,7 +154,7 @@ fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_on
 #[test]
 fn plugin_status_shows_pending_command_from_live_registry_stubs() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 
@@ -183,7 +183,7 @@ fn plugin_status_shows_pending_command_from_live_registry_stubs() {
 #[test]
 fn plugin_status_shows_pending_typed_command_with_kind_tag() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
         r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 

@@ -1029,7 +1029,7 @@ fn statusline_seam_hides_a_confirm_buried_under_a_prompt() {
         &mut ed,
         script_tmp.path(),
         r#"(define-typed-command! "arm" "" (lambda (pane)
-             (after 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
+             (after! 0 (lambda () (prompt! pane "x: " (lambda (s) (void)))))))"#,
     );
     type_cmd(&mut ed, ":arm");
 

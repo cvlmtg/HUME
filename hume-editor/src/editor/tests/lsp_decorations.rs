@@ -88,7 +88,7 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
         &mut ed,
         &mut host,
         r#"(define-typed-command! "arm-hints-a" "" (lambda (bid)
-             (lsp-request bid "test/echo" (hash) (lambda (err res)
+             (lsp-request! bid "test/echo" (hash) (lambda (err res)
                (set-inlay-hints! "linter" bid
                  (list (list (lsp-position->offset bid res) "hint" 'after)))))))"#,
         tmp.path(),

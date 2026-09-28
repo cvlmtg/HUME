@@ -1,6 +1,6 @@
 // Goto definition family: `lsp-goto-definition` /
 // `-declaration` / `-type-definition` / `-implementation`, composing
-// `lsp-request`, `lsp-capabilities`, `goto-location!`,
+// `lsp-request!`, `lsp-capabilities`, `goto-location!`,
 // `show-drawer-list!` (via lib.scm's lsp/show-locations!). Loads the real
 // shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
@@ -77,8 +77,8 @@ fn setup(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp,
     );
     ed.scripting = Some(host);
@@ -481,8 +481,8 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

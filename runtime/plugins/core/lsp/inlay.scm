@@ -33,7 +33,7 @@
                    (lsp/supports? pane "inlayHintProvider"))
           (let ((params (lsp/inlay-hint-params pane (car range) (cdr range))))
             (when params
-              (lsp-request pane "textDocument/inlayHint" params
+              (lsp-request! pane "textDocument/inlayHint" params
                 (lambda (err res)
                   (unless err
                     (set-inlay-hints! "lsp-inlay-hints" pane

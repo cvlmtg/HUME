@@ -87,7 +87,7 @@ fn no_keymap_lint_warning_for_completion_trigger_without_plugins() {
     );
 }
 
-/// `(load-plugin …)` called from a plugin body during *runtime* activation
+/// `(load-plugin! …)` called from a plugin body during *runtime* activation
 /// (command activation) is rejected: registration verbs are top-level-only.
 /// The parent plugin is marked `Failed` and an `Error` is logged.
 #[test]
@@ -102,16 +102,16 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     std::fs::create_dir_all(&dep_dir).unwrap();
     std::fs::write(
         tp_dir.join("plugin.scm"),
-        // Plugin body calls (load-plugin) at runtime: hard error expected.
+        // Plugin body calls (load-plugin!) at runtime: hard error expected.
         r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))
-           (load-plugin "user/dep")"#,
+           (load-plugin! "user/dep")"#,
     )
     .unwrap();
     std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
     let init = dir.path().join("init.scm");
     std::fs::write(
         &init,
-        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("bar"))"#,
     )
     .unwrap();
 
@@ -137,14 +137,14 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
             ed.scripting.as_ref().unwrap().plugin_status(&tp_id),
             Some(PluginStatus::Failed)
         ),
-        "plugin must be Failed when body calls (load-plugin) at runtime"
+        "plugin must be Failed when body calls (load-plugin!) at runtime"
     );
     assert!(
         ed.state
             .message_log
             .entries()
             .any(|e| e.severity == Severity::Error),
-        "error must be logged when (load-plugin) is called from a runtime plugin body"
+        "error must be logged when (load-plugin!) is called from a runtime plugin body"
     );
 }
 
@@ -204,7 +204,7 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     // load time.  When "trigger-me" is dispatched, the plugin activates and the
     // body-level (call! "move-right" bid) should execute.
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:typed-commands '("trigger-me"))"#,
+        r#"(declare-plugin! "user/tp" #:typed-commands '("trigger-me"))"#,
         r#"(define-typed-command! "trigger-me" "doc" (lambda () (+ 1 0)))
            (call! "move-right" (focused-pane))"#,
     );
@@ -227,7 +227,8 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
 fn language_activation_lint_warns_on_unknown_language() {
     use crate::editor::Severity;
 
-    let (ed, _dirs) = setup_lang_lint_editor(r#"(declare-plugin "user/tp" #:languages '("rsut"))"#);
+    let (ed, _dirs) =
+        setup_lang_lint_editor(r#"(declare-plugin! "user/tp" #:languages '("rsut"))"#);
 
     assert!(
         ed.state
@@ -257,7 +258,7 @@ fn language_trigger_lint_silent_for_known_language() {
     // (the macro wrapper in languages.scm is absent in the test environment).
     let (ed, _dirs) = setup_lang_lint_editor(
         r#"(%define-language! "foo" '() '() '() #f)
-           (declare-plugin "user/tp" #:languages '("foo"))"#,
+           (declare-plugin! "user/tp" #:languages '("foo"))"#,
     );
 
     assert!(
@@ -274,7 +275,7 @@ fn language_trigger_lint_silent_for_known_language() {
     );
 }
 
-/// Forward-reference order-independence: `declare-plugin #:languages '("foo")`
+/// Forward-reference order-independence: `declare-plugin! #:languages '("foo")`
 /// appearing BEFORE `define-language! "foo"` in the same init.scm must not warn.
 ///
 /// A declare-time check would see "foo" absent from the live registry and falsely
@@ -284,9 +285,9 @@ fn language_trigger_lint_silent_for_known_language() {
 fn language_trigger_lint_silent_for_forward_defined_language() {
     use crate::editor::Severity;
 
-    // declare-plugin BEFORE define-language!: the forward-reference case.
+    // declare-plugin! BEFORE define-language!: the forward-reference case.
     let (ed, _dirs) = setup_lang_lint_editor(
-        r#"(declare-plugin "user/tp" #:languages '("foo"))
+        r#"(declare-plugin! "user/tp" #:languages '("foo"))
            (%define-language! "foo" '() '() '() #f)"#,
     );
 
@@ -314,7 +315,7 @@ fn language_trigger_lint_silent_for_forward_defined_language() {
 fn language_activation_lint_silent_for_wildcard() {
     use crate::editor::Severity;
 
-    let (ed, _dirs) = setup_lang_lint_editor(r#"(declare-plugin "user/tp" #:languages '("*"))"#);
+    let (ed, _dirs) = setup_lang_lint_editor(r#"(declare-plugin! "user/tp" #:languages '("*"))"#);
 
     assert!(
         !ed.state
@@ -331,7 +332,7 @@ fn language_activation_lint_silent_for_wildcard() {
 }
 
 /// A real core plugin with no `manifest.scm` of its own (`core:vim-keybind`) still
-/// hard-errors on a zero-trigger `(declare-plugin "core:vim-keybind")` against the
+/// hard-errors on a zero-trigger `(declare-plugin! "core:vim-keybind")` against the
 /// repo's actual `runtime/` tree. The manifest opt-in doesn't silently make
 /// every plugin support the zero-trigger form.
 ///
@@ -356,7 +357,7 @@ fn core_vim_keybind_has_no_manifest_scm_zero_trigger_declare_errors() {
     );
 
     let (ed, _dirs) = setup_editor_with_init_scripting(
-        r#"(declare-plugin "core:vim-keybind")"#,
+        r#"(declare-plugin! "core:vim-keybind")"#,
         Some(&runtime_dir),
     );
 

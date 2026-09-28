@@ -9,8 +9,8 @@ buffer; place it yourself, no config needed.
 ## Usage
 
 ```scheme
-(declare-plugin "core:stdlib")
-(declare-plugin "core:git-diff"
+(declare-plugin! "core:stdlib")
+(declare-plugin! "core:git-diff"
   #:config (hash "signs" #t "inline" #f "ref" "HEAD"))
 ```
 

@@ -7,7 +7,7 @@ fn declare_err(src: &str) -> String {
     let mut host = ScriptingHost::new();
     let mut editor_host = LazyStubHost::default();
     host.eval_source(src, &mut editor_host)
-        .expect_err("expected declare-plugin to error")
+        .expect_err("expected declare-plugin! to error")
 }
 
 #[test]
@@ -217,26 +217,26 @@ fn begin_lazy_activation_depth_cap_cleans_up_activation_entries_and_stub() {
 
 // ── Decode errors name the builtin ─────────────────────────────────────────
 
-/// `declare-plugin`'s argument decoders must name the builtin in their error,
+/// `declare-plugin!`'s argument decoders must name the builtin in their error,
 /// matching every other builtin's naming idiom, with one spelling
 /// (`#:commands`/`#:events`/`#:languages`) shared by all three.
 #[test]
 fn declare_plugin_bad_commands_names_the_builtin() {
-    let err = declare_err(r#"(declare-plugin "user/tp" #:commands '(1))"#);
+    let err = declare_err(r#"(declare-plugin! "user/tp" #:commands '(1))"#);
     assert!(
-        err.contains("declare-plugin #:commands"),
+        err.contains("declare-plugin! #:commands"),
         "error must name the builtin; got: {err}"
     );
 }
 
 /// Same naming requirement for `#:typed-commands`, the sibling decoder.
-/// Every other `declare-plugin` decode test in this file supplies
+/// Every other `declare-plugin!` decode test in this file supplies
 /// `#:commands` only.
 #[test]
 fn declare_plugin_bad_typed_commands_names_the_builtin() {
-    let err = declare_err(r#"(declare-plugin "user/tp" #:typed-commands '(1))"#);
+    let err = declare_err(r#"(declare-plugin! "user/tp" #:typed-commands '(1))"#);
     assert!(
-        err.contains("declare-plugin #:typed-commands"),
+        err.contains("declare-plugin! #:typed-commands"),
         "error must name the builtin; got: {err}"
     );
 }
@@ -245,9 +245,9 @@ fn declare_plugin_bad_typed_commands_names_the_builtin() {
 #[test]
 fn declare_plugin_unknown_hook_names_the_builtin() {
     let err =
-        declare_err(r#"(declare-plugin "user/tp" #:commands '("c") #:events '(not-a-real-hook))"#);
+        declare_err(r#"(declare-plugin! "user/tp" #:commands '("c") #:events '(not-a-real-hook))"#);
     assert!(
-        err.contains("declare-plugin #:events"),
+        err.contains("declare-plugin! #:events"),
         "error must name the builtin; got: {err}"
     );
 }
@@ -256,7 +256,7 @@ fn declare_plugin_unknown_hook_names_the_builtin() {
 /// enforces. A string entry hard-errors instead of being silently accepted.
 #[test]
 fn declare_plugin_rejects_string_event_names() {
-    let err = declare_err(r#"(declare-plugin "user/tp" #:events '("on-buffer-save"))"#);
+    let err = declare_err(r#"(declare-plugin! "user/tp" #:events '("on-buffer-save"))"#);
     assert!(
         err.contains("expected an event-name symbol"),
         "error must name the expected form; got: {err}"
@@ -277,7 +277,7 @@ fn declare_plugin_rejected_events_records_nothing() {
     let mut host = ScriptingHost::new();
     let mut editor_host = LazyStubHost::default();
     host.eval_source(
-        r#"(declare-plugin "user/tp" #:events '(not-a-real-hook))"#,
+        r#"(declare-plugin! "user/tp" #:events '(not-a-real-hook))"#,
         &mut editor_host,
     )
     .expect_err("unknown hook name must be rejected");
@@ -300,7 +300,7 @@ fn declare_plugin_rejected_events_records_nothing() {
 
 // ── Command-name character validation ─────────────────────────────────────
 
-/// `declare-plugin` hard-errors on a `#:commands` entry containing `"` or
+/// `declare-plugin!` hard-errors on a `#:commands` entry containing `"` or
 /// `\`, the same rule `define-command!` enforces.
 #[test]
 fn declare_plugin_command_name_with_quote_errors() {
@@ -310,7 +310,7 @@ fn declare_plugin_command_name_with_quote_errors() {
     let mut host = ScriptingHost::new();
     let mut editor_host = LazyStubHost::default();
     let result = host.eval_source(
-        r#"(declare-plugin "user/tp" #:commands '("bad\"name"))"#,
+        r#"(declare-plugin! "user/tp" #:commands '("bad\"name"))"#,
         &mut editor_host,
     );
     let err = result.expect_err("quoted command name must be rejected");
@@ -341,12 +341,12 @@ fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
     let mut host = ScriptingHost::new();
     // `core:nonexistent-plugin` cannot exist on disk in any test environment.
     let result = host.eval_source(
-        r#"(declare-plugin "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
+        r#"(declare-plugin! "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
         &mut NullHost,
     );
     assert!(
         result.is_ok(),
-        "absent-path declare-plugin must not error; got: {result:?}"
+        "absent-path declare-plugin! must not error; got: {result:?}"
     );
     assert!(
         !host.cmd_owners_for_test().contains_key("my-cmd"),
@@ -356,14 +356,14 @@ fn declare_plugin_absent_on_disk_does_not_seed_cmd_owners() {
 
 // ── Absent plugin logging ──────────────────────────────────────────────────
 
-/// `declare-plugin "core:X"` absent on disk → `Error` log (typo / broken
+/// `declare-plugin! "core:X"` absent on disk → `Error` log (typo / broken
 /// HUME_RUNTIME; PLUM never installs core: plugins so it can't catch this).
 #[test]
 fn declare_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
     let mut host = ScriptingHost::new();
     let result = host.eval_source(
-        r#"(declare-plugin "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
+        r#"(declare-plugin! "core:nonexistent-plugin" #:commands '("my-cmd"))"#,
         &mut NullHost,
     );
     assert!(
@@ -387,14 +387,14 @@ fn declare_plugin_core_absent_logs_error() {
     );
 }
 
-/// `declare-plugin "user/X"` absent on disk → `Info` log (not yet installed;
+/// `declare-plugin! "user/X"` absent on disk → `Info` log (not yet installed;
 /// PLUM will surface it on :plum-install-plugins; no change needed in HUME).
 #[test]
 fn declare_plugin_user_absent_logs_info() {
     use crate::{ScriptingHost, null_host::NullHost};
     let mut host = ScriptingHost::new();
     let result = host.eval_source(
-        r#"(declare-plugin "user/definitely-absent-99" #:commands '("my-cmd-2"))"#,
+        r#"(declare-plugin! "user/definitely-absent-99" #:commands '("my-cmd-2"))"#,
         &mut NullHost,
     );
     assert!(
@@ -410,12 +410,12 @@ fn declare_plugin_user_absent_logs_info() {
     );
 }
 
-/// `load-plugin "core:X"` absent on disk → `Error` log.
+/// `load-plugin! "core:X"` absent on disk → `Error` log.
 #[test]
 fn load_plugin_core_absent_logs_error() {
     use crate::{ScriptingHost, null_host::NullHost};
     let mut host = ScriptingHost::new();
-    let result = host.eval_source(r#"(load-plugin "core:nonexistent-plugin")"#, &mut NullHost);
+    let result = host.eval_source(r#"(load-plugin! "core:nonexistent-plugin")"#, &mut NullHost);
     assert!(
         result.is_ok(),
         "absent core: load must be non-fatal; got: {result:?}"
@@ -427,7 +427,7 @@ fn load_plugin_core_absent_logs_error() {
                 && msg.contains("unknown core plugin")
                 && msg.contains("core:nonexistent-plugin")
         }),
-        "must log Error for absent core: load-plugin; messages: {messages:?}"
+        "must log Error for absent core: load-plugin!; messages: {messages:?}"
     );
 }
 
@@ -447,7 +447,7 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
 
     let id = PluginId::parse("core:my-plugin").unwrap();
     let mut host = ScriptingHost::new();
-    // Simulate declare-plugin having claimed the name as a `Lazy` stub.
+    // Simulate declare-plugin! having claimed the name as a `Lazy` stub.
     let mut editor_host = LazyStubHost::default();
     editor_host
         .commands()
@@ -489,7 +489,7 @@ fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
 
     let id = PluginId::parse("core:my-plugin").unwrap();
     let mut host = ScriptingHost::new();
-    // Simulate declare-plugin having claimed the name as a typed `Lazy` stub.
+    // Simulate declare-plugin! having claimed the name as a typed `Lazy` stub.
     let mut editor_host = LazyStubHost::default();
     editor_host
         .commands()
@@ -585,7 +585,7 @@ fn plugin_config_outside_plugin_body_is_empty() {
 // ── Zero-trigger backstop (direct %declare-plugin! call) ──────────────────
 
 /// A direct `%declare-plugin!` call with all three activation lists empty must
-/// hard-error. This is the backstop the Scheme `declare-plugin` wrapper's
+/// hard-error. This is the backstop the Scheme `declare-plugin!` wrapper's
 /// zero-trigger routing sits in front of.
 #[test]
 fn declare_plugin_bang_direct_zero_trigger_call_errors() {
@@ -618,7 +618,7 @@ fn manifest_declare_absent_dir_soft_logs_and_records_declared_plugins() {
     host.set_data_dir(dir.path().to_path_buf());
 
     let result = host.eval_source(
-        r#"(declare-plugin "user/definitely-absent-mf")"#,
+        r#"(declare-plugin! "user/definitely-absent-mf")"#,
         &mut NullHost,
     );
     assert!(

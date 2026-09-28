@@ -1,4 +1,4 @@
-// Rename: `lsp-rename` composing `lsp-request`, `lsp-capabilities`,
+// Rename: `lsp-rename` composing `lsp-request!`, `lsp-capabilities`,
 // `apply-workspace-edit!`, `prompt!`, `symbol-under-cursor`. Loads the real
 // shipped `core:lsp` plugin in place
 // (`RealRuntimeGuard`).
@@ -81,8 +81,8 @@ fn setup(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
+        r#"(load-plugin! "core:stdlib")
+(load-plugin! "core:lsp")"#,
         tmp,
     );
     ed.scripting = Some(host);
