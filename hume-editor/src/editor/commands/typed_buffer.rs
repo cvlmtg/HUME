@@ -3,13 +3,13 @@ use hume_engine::pipeline::BufferId;
 use super::super::Editor;
 use super::super::Severity;
 use super::jump::{BufferStep, goto_buffer_in_order};
-use super::{FocusedPane, current_jump_entry, record_jump_if_moved};
+use super::{FocusedPane, current_jump_entry, jump_pane_to, record_jump_if_moved};
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::error::CommandError;
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
 
-/// `:e [path]`: open a file in the current window.
+/// `:e [path[:line[:col]]]`: open a file in the current window.
 ///
 /// - No `path`: reload current file from disk (`:e!` discards unsaved changes).
 ///   On a new-file buffer (`:e` on a path that doesn't exist yet, not written
@@ -18,6 +18,13 @@ use crate::editor::error::CommandError;
 /// - `path` given and not open: read from disk, open a new buffer, switch to it.
 ///   A `path` that doesn't exist on disk opens an empty buffer bound to it
 ///   instead of erroring: `:w` creates the file (Vim's `:e newfile` semantics).
+/// - `path` may carry a trailing `:line[:col]` position, the same shape and
+///   rules the CLI's `hume path:line:col` accepts (`cli::split_path_position`):
+///   1-based, `0` is an error, a lone trailing `:` is tolerated, and a
+///   literal path (an already-open buffer or one on disk, checked against
+///   `ed.state.cwd`) always wins over splitting. Landing on the position
+///   goes through `jump_pane_to`, so it records a jump entry (`Ctrl-o`
+///   returns) and centers the viewport, same as `:goto`/`goto-location!`.
 ///
 /// Dedup uses `find_by_path` (canonical path comparison, or best-effort for a
 /// not-yet-existing path; see `Editor::resolve_buffer_path`). `force` (`!`
@@ -32,31 +39,53 @@ pub(in crate::editor) fn typed_edit(
 ) -> Result<(), CommandError> {
     use std::path::Path;
 
-    if let Some(path_str) = arg {
+    if let Some(raw_arg) = arg {
+        let literal_exists = |candidate: &str| {
+            let expanded = hume_platform::path::expand(candidate);
+            find_buffer_by_path_arg(ed, expanded.as_ref()).is_some()
+                || std::fs::symlink_metadata(hume_platform::path::absolute_unresolved(
+                    Path::new(expanded.as_ref()),
+                    &ed.state.cwd,
+                ))
+                .is_ok()
+        };
+        let (path_str, pos) = crate::cli::split_path_position(raw_arg, literal_exists)
+            .map_err(CommandError::transient)?;
+
         let expanded = hume_platform::path::expand(path_str);
 
         // If a buffer is already open for this path, switch without re-reading.
         // Matches Vim semantics and covers the deleted-from-disk case.
-        if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
+        let bid = if let Some(bid) = find_buffer_by_path_arg(ed, expanded.as_ref()) {
             ed.enter_buffer(fp, bid);
-            return Ok(());
-        }
-
-        let (bid, is_new) = ed
-            .resolve_open_path(path_str)
-            .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
-        if is_new {
-            let buf = ed.state.buffers.get(bid);
-            let name = buf.display_name();
-            let msg = if buf.is_new_file() {
-                format!("{name} [new file]")
-            } else {
-                format!("Opened {name}")
-            };
-            ed.switch_to_buffer_with_jump(fp, bid);
-            ed.report(Severity::Info, msg);
+            bid
         } else {
-            ed.enter_buffer(fp, bid);
+            let (bid, is_new) = ed
+                .resolve_open_path(path_str)
+                .map_err(|e| CommandError::new(format!("{path_str}: {e}")))?;
+            if is_new {
+                let buf = ed.state.buffers.get(bid);
+                let name = buf.display_name();
+                let msg = if buf.is_new_file() {
+                    format!("{name} [new file]")
+                } else {
+                    format!("Opened {name}")
+                };
+                ed.switch_to_buffer_with_jump(fp, bid);
+                ed.report(Severity::Info, msg);
+            } else {
+                ed.enter_buffer(fp, bid);
+            }
+            bid
+        };
+
+        if let Some(pos) = pos {
+            let char_pos = crate::editor::pane_state::line_grapheme_to_char(
+                ed.state.buffers.get(bid).text(),
+                pos.line,
+                pos.grapheme_col,
+            );
+            jump_pane_to(&mut ed.state, &mut ed.view, fp.pane(), bid, char_pos);
         }
         Ok(())
     } else {

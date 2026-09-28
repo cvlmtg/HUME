@@ -13,6 +13,10 @@ Tab completion is available for file paths.
 
 `:e` with no argument reloads the current file from disk. If the file has been modified HUME will not reload it, unless you use `:e!`.
 
+### Opening at a position
+
+Append a line, or line and column, to jump straight there: `:e file.txt:42` or `:e file.txt:42:5`. Both numbers are 1-based, matching a `file:line:col` diagnostic from a compiler, linter, or `grep`, so you can paste one straight after `:e`. A path that exists exactly as typed, on disk or already open, always wins over splitting: a file genuinely named `notes:2024` still opens as itself.
+
 ### New files
 
 `:e filename` on a path that doesn't exist yet opens an empty buffer bound to it instead of failing. The file is created the first time you save, with `:w`. Until then, `:e` with no argument does nothing on that buffer: there's nothing on disk yet to reload. `:wa` saves it along with any other modified buffer. If something else creates a file at that path before you save, `:w` refuses to overwrite it; add `!` (`:w!`) to save anyway.

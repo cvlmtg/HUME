@@ -415,6 +415,139 @@ fn edit_relative_path_matches_existing_buffer() {
     );
 }
 
+// ── `:e path:line[:col]` ─────────────────────────────────────────────────
+
+#[test]
+fn edit_position_suffix_on_an_unopened_file_places_the_cursor() {
+    // "line one\n" is 9 chars, so line 1 (0-based) starts at char 9; column
+    // 6 (1-based, i.e. grapheme index 5) lands on the 't' of "two" (hand
+    // counted, same layout as `apply_startup_positions_places_focused_cursor`).
+    let f = safe_named_tempfile();
+    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let arg = format!("{}:2:6", canonical.display());
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(&arg)).unwrap();
+
+    assert_eq!(ed.doc().path(), Some(canonical.as_path()));
+    assert_eq!(ed.current_selections().primary().head(), co(14));
+}
+
+#[test]
+fn edit_position_suffix_on_an_open_non_focused_buffer_switches_and_places_cursor() {
+    let f1 = safe_named_tempfile();
+    let f2 = safe_named_tempfile();
+    std::fs::write(f1.path(), "line one\nline two\nline three\n").unwrap();
+    std::fs::write(f2.path(), "other\n").unwrap();
+    let canonical1 = std::fs::canonicalize(f1.path()).unwrap();
+    let canonical2 = std::fs::canonicalize(f2.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical1.clone()), std::sync::Arc::new(|| {})).unwrap();
+    ed.execute_typed("e", Some(canonical2.to_str().unwrap()))
+        .unwrap();
+    assert_eq!(
+        ed.doc().path(),
+        Some(canonical2.as_path()),
+        "sanity: focus is on the second file"
+    );
+
+    // Line 3 (1-based, no column) is `ContentLine` index 2, char 18: "line
+    // one\n" (9) + "line two\n" (9).
+    let arg = format!("{}:3", canonical1.display());
+    ed.execute_typed("e", Some(&arg)).unwrap();
+
+    assert_eq!(ed.doc().path(), Some(canonical1.as_path()));
+    assert_eq!(ed.current_selections().primary().head(), co(18));
+}
+
+#[test]
+fn edit_position_suffix_on_the_focused_buffer_records_a_jump_entry() {
+    let f = safe_named_tempfile();
+    std::fs::write(f.path(), "line one\nline two\nline three\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+
+    let mut ed = Editor::open(Some(canonical.clone()), std::sync::Arc::new(|| {})).unwrap();
+    let before = ed.current_selections().primary().head();
+
+    let arg = format!("{}:3", canonical.display());
+    ed.execute_typed("e", Some(&arg)).unwrap();
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        co(18),
+        "cursor must move to line 3"
+    );
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        before,
+        "Ctrl-o must return to the pre-:e position"
+    );
+}
+
+#[test]
+fn edit_a_disk_file_literally_named_with_a_colon_number_opens_without_splitting() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("weird:2");
+    std::fs::write(&path, "line one\nline two\nline three\n").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+
+    assert_eq!(
+        ed.doc().display_name(),
+        "weird:2",
+        "the literal path must win over splitting"
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        co(0),
+        "no position suffix was split off, so the cursor stays at the buffer start"
+    );
+}
+
+#[test]
+fn edit_an_open_buffer_literally_named_with_a_colon_number_switches_without_splitting() {
+    let dir = safe_tempdir();
+    let path = dir.path().join("notes:12"); // never written to disk
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let bid = ed
+        .open_extra_file(&path)
+        .expect("open_extra_file must open the new-file buffer");
+    assert_eq!(ed.state.buffers.len(), 2, "sanity: scratch + notes:12 only");
+
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid,
+        ":e must switch to the already-open buffer, not split its literal name"
+    );
+    assert_eq!(
+        ed.state.buffers.len(),
+        2,
+        "no extra buffer opened from a wrongly-split literal name"
+    );
+}
+
+#[test]
+fn edit_position_suffix_line_zero_errors() {
+    let f = safe_named_tempfile();
+    std::fs::write(f.path(), "hello\n").unwrap();
+    let canonical = std::fs::canonicalize(f.path()).unwrap();
+    let arg = format!("{}:0", canonical.display());
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let err = ed.execute_typed("e", Some(&arg)).unwrap_err();
+    assert!(
+        err.message().contains(crate::cli::LINE_NUMBERS_START_AT_1),
+        "got: {}",
+        err.message()
+    );
+}
+
 /// A new-file buffer opened while an intermediate directory was missing is
 /// keyed by `resolve_buffer_path`'s fully-lexical fallback (parent couldn't
 /// be canonicalized either). Once that directory appears, re-resolving the
@@ -487,7 +620,7 @@ fn open_extra_file_opens_the_path() {
 
 // ── CLI startup cursor positions ─────────────────────────────────────────
 
-use crate::cli::CliPosition;
+use crate::cli::PathPosition;
 use hume_rope::column::GraphemeCol;
 
 #[test]
@@ -505,7 +638,7 @@ fn apply_startup_positions_places_focused_cursor() {
     ed.sync_viewport_dims(80, 24);
     ed.queue_startup_position(
         bid,
-        CliPosition {
+        PathPosition {
             line: hume_rope::line::ContentLine::from_number(2).unwrap(),
             grapheme_col: GraphemeCol::from_number(6).unwrap(),
         },
@@ -536,7 +669,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     ed.sync_viewport_dims(80, 24); // 24 rows -> 23 usable after the statusline
     ed.queue_startup_position(
         bid,
-        CliPosition {
+        PathPosition {
             line: hume_rope::line::ContentLine::from_number(150).unwrap(),
             grapheme_col: GraphemeCol::from_number(1).unwrap(),
         },
@@ -575,7 +708,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     ed.sync_viewport_dims(80, 24);
     ed.queue_startup_position(
         extra_bid,
-        CliPosition {
+        PathPosition {
             line: hume_rope::line::ContentLine::from_number(3).unwrap(),
             grapheme_col: GraphemeCol::from_number(2).unwrap(),
         },
@@ -616,7 +749,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
     ed.sync_viewport_dims(80, 24);
     ed.queue_startup_position(
         bid,
-        CliPosition {
+        PathPosition {
             line: hume_rope::line::ContentLine::from_number(999).unwrap(),
             grapheme_col: GraphemeCol::from_number(1).unwrap(),
         },

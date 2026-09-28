@@ -40,7 +40,7 @@ Relative paths given to `:w` resolve against HUME's working directory (`:pwd`), 
 
 | Command | Effect |
 |---------|--------|
-| `:e <path>`, `:edit <path>` | Open a file |
+| `:e <path>`, `:edit <path>` | Open a file. `<path>` may end in `:line` or `:line:col` to jump there, e.g. `:e file.txt:42:5` |
 | `:e` | Reload the current file. Refuses if there are unsaved changes |
 | `:e!` | Reload, discarding unsaved changes |
 | `:checktime` | Check every open buffer against its file on disk right now, instead of waiting for the next automatic check (switching back to HUME, switching to the buffer) |

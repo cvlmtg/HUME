@@ -318,6 +318,35 @@ pub(super) fn record_jump_if_moved(
     }
 }
 
+/// Move `t`'s pane to `(bid, char_pos)`, recording a jump entry (only if it
+/// actually lands somewhere else) and centering the viewport by display
+/// line, the same way `zz` does. Shared tail of every navigation that jumps
+/// to an already-resolved buffer/position pair: `goto_location`
+/// (`lsp/edits.rs`) and `:e`'s own `path:line[:col]` suffix
+/// (`typed_buffer::typed_edit`).
+pub(super) fn jump_pane_to(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    bid: hume_engine::pipeline::BufferId,
+    char_pos: hume_rope::offset::CharOffset,
+) {
+    let entry = current_jump_entry(state, view, t);
+
+    let pid = t.pid();
+    crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
+    crate::editor::pane_state::write_cursor(
+        &mut state.panes.state,
+        &state.buffers,
+        &view.panes,
+        pid,
+        bid,
+        char_pos,
+    );
+    record_jump_if_moved(state, view, t, entry);
+    view_center(state, view, pid);
+}
+
 /// Replace `t`'s pane's selections for `t`'s buffer.
 pub(super) fn set_pane_selections(
     state: &mut EditorState,

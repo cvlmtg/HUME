@@ -581,23 +581,7 @@ pub(in crate::editor) fn goto_location(
     // grapheme boundary, so no snap is needed).
     let char_pos = char_pos.min(state.buffers.get(bid).text().last_char());
 
-    let entry = crate::editor::commands::current_jump_entry(state, view, t);
-
-    let pid = t.pid();
-    crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
-    pane_state::write_cursor(
-        &mut state.panes.state,
-        &state.buffers,
-        &view.panes,
-        pid,
-        bid,
-        char_pos,
-    );
-    crate::editor::commands::record_jump_if_moved(state, view, t, entry);
-
-    // Center by display line, the same way `zz` does, not by buffer line,
-    // which only agrees with it when nothing wraps.
-    crate::editor::commands::view_center(state, view, pid);
+    crate::editor::commands::jump_pane_to(state, view, t, bid, char_pos);
 
     Ok(())
 }

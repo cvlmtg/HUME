@@ -328,7 +328,7 @@ mod tests {
             got,
             vec![FileArg {
                 path: PathBuf::from("does-not-exist.rs"),
-                pos: Some(hume_editor::cli::CliPosition {
+                pos: Some(hume_editor::cli::PathPosition {
                     line: hume_rope::line::ContentLine::from_number(12).unwrap(),
                     grapheme_col: GraphemeCol::from_number(24).unwrap()
                 })

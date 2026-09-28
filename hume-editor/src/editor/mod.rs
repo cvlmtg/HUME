@@ -946,7 +946,7 @@ pub(crate) struct Editor {
     /// `OnLanguageSet` hooks still get to run first, late enough that the
     /// loop's first `sync_viewport_dims` has already replaced `Pane::new`'s
     /// 80x24 placeholder with the real terminal size centring needs.
-    startup_positions: Vec<(BufferId, crate::cli::CliPosition)>,
+    startup_positions: Vec<(BufferId, crate::cli::PathPosition)>,
 }
 
 impl Editor {

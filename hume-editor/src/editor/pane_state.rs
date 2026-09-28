@@ -315,11 +315,26 @@ pub(in crate::editor) fn write_cursor(
         .set_selections(SelectionSet::single(Selection::collapsed(char_pos)));
 }
 
+/// Resolves a 0-based `(line, grapheme_col)` to a char offset, clamping the
+/// line to `text`'s last content line. Shared by every caller that parks a
+/// cursor at a line/column pair: [`park_cursor_at`], and `:e`'s own
+/// `path:line[:col]` suffix (`commands::typed_buffer::typed_edit`), which
+/// needs the char offset before it can also record a jump entry via
+/// `commands::jump_pane_to`.
+pub(in crate::editor) fn line_grapheme_to_char(
+    text: &hume_editing::text::BufferText,
+    line0: hume_rope::line::ContentLine,
+    grapheme_col0: hume_rope::column::GraphemeCol,
+) -> CharOffset {
+    let line = line0.min(text.last_content_line());
+    hume_editing::lines::place_grapheme_column(text, line.into(), grapheme_col0)
+}
+
 /// Collapse `pane_state[pid][bid]`'s selection onto a 0-based
 /// `(line, grapheme_col)`, clamping the line to the buffer's last content
-/// line. Shared by every caller that parks a cursor at a line/column pair:
-/// a read-only view's opening position and a CLI startup position both
-/// reduce to this.
+/// line. Shared by every caller that parks a cursor at a line/column pair
+/// with no char position yet: a read-only view's opening position and a
+/// CLI startup position both reduce to this.
 pub(in crate::editor) fn park_cursor_at(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
@@ -329,9 +344,7 @@ pub(in crate::editor) fn park_cursor_at(
     line0: hume_rope::line::ContentLine,
     grapheme_col0: hume_rope::column::GraphemeCol,
 ) {
-    let text = buffers.get(bid).text();
-    let line = line0.min(text.last_content_line());
-    let char_pos = hume_editing::lines::place_grapheme_column(text, line.into(), grapheme_col0);
+    let char_pos = line_grapheme_to_char(buffers.get(bid).text(), line0, grapheme_col0);
     write_cursor(pane_state, buffers, panes, pid, bid, char_pos);
 }
 

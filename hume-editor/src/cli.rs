@@ -1,36 +1,37 @@
-//! Parses `hume`'s positional file arguments, each optionally suffixed with
-//! a `:line[:col]` startup cursor position (`hume foo.rs:12`,
-//! `hume foo.rs:12:24`), the shape most tools emit in `file:line:col`
-//! diagnostics, so it can be pasted straight onto the command line. Also
-//! holds [`ConfigSource`], the crate-wide-reachable type `run`/`run_keys`
-//! take for where a session's Steel config comes from.
+//! Parses a `path[:line[:col]]` argument, the shape most tools emit in
+//! `file:line:col` diagnostics: `hume`'s positional file arguments
+//! (`hume foo.rs:12`, `hume foo.rs:12:24`) and `:e`'s own argument
+//! (`typed_buffer::typed_edit`) both split on it, so it can be pasted
+//! straight onto the command line or after `:e`. Also holds
+//! [`ConfigSource`], the crate-wide-reachable type `run`/`run_keys` take for
+//! where a session's Steel config comes from.
 
 use std::path::{Path, PathBuf};
 
 use hume_rope::column::GraphemeCol;
 use hume_rope::line::ContentLine;
 
-/// Error text for a `0` in either position of a `:goto` target or a CLI
-/// `path:line[:col]` position. Both contracts are 1-based. Lives here
-/// (rather than beside `:goto` itself, `editor/commands/typed_misc.rs`)
-/// because this module is reachable crate-wide while `editor`'s internals
-/// are not; `typed_goto_line` imports it from here so the two error
-/// messages can't drift apart.
+/// Error text for a `0` in either position of a `:goto` target or a
+/// `path:line[:col]` position (CLI or `:e`). Both contracts are 1-based.
+/// Lives here (rather than beside `:goto` itself,
+/// `editor/commands/typed_misc.rs`) because this module is reachable
+/// crate-wide while `editor`'s internals are not; `typed_goto_line` imports
+/// it from here so the two error messages can't drift apart.
 pub(crate) const LINE_NUMBERS_START_AT_1: &str = "line numbers start at 1";
-/// Error text for a `0` column (a `CliPosition::grapheme_col`) in a CLI
+/// Error text for a `0` column (a [`PathPosition::grapheme_col`]) in a
 /// `path:line:col` position. No `:goto` counterpart to share with (`:goto`
-/// only ever takes a line), so this stays private to the CLI parser.
+/// only ever takes a line), so this stays private to this module.
 const GRAPHEME_COL_NUMBERS_START_AT_1: &str = "column numbers start at 1";
 
-/// A startup cursor position, in the units the statusline shows: `line`
-/// counts buffer lines, `grapheme_col` counts grapheme clusters within that
-/// line (see `hume_editing::lines::place_grapheme_column`), not chars, so
-/// it agrees with what the user read off a `file:line:col` diagnostic or the
-/// statusline itself. Both are 0-based: decoded from the 1-based CLI digits
-/// via `ContentLine::from_number`/`GraphemeCol::from_number` at parse time
-/// below.
+/// A startup or `:e` cursor position, in the units the statusline shows:
+/// `line` counts buffer lines, `grapheme_col` counts grapheme clusters
+/// within that line (see `hume_editing::lines::place_grapheme_column`), not
+/// chars, so it agrees with what the user read off a `file:line:col`
+/// diagnostic or the statusline itself. Both are 0-based: decoded from the
+/// 1-based digits via `ContentLine::from_number`/`GraphemeCol::from_number`
+/// at parse time below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CliPosition {
+pub struct PathPosition {
     pub line: ContentLine,
     pub grapheme_col: GraphemeCol,
 }
@@ -40,7 +41,7 @@ pub struct CliPosition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileArg {
     pub path: PathBuf,
-    pub pos: Option<CliPosition>,
+    pub pos: Option<PathPosition>,
 }
 
 /// Where a session's Steel config comes from: `--config` and `--no-config`
@@ -68,51 +69,75 @@ pub enum ConfigSource {
 /// argument and which number was rejected: `LINE_NUMBERS_START_AT_1`
 /// (matching `:goto`'s own contract) or `GRAPHEME_COL_NUMBERS_START_AT_1`.
 pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
-    let literal = || FileArg {
-        path: raw.to_path_buf(),
-        pos: None,
-    };
-
     // A non-UTF-8 path can't hold a parseable `:<digits>` suffix in any
     // sense this parser understands.
     let Some(s) = raw.to_str() else {
-        return Ok(literal());
+        return Ok(FileArg {
+            path: raw.to_path_buf(),
+            pos: None,
+        });
     };
 
     // Probes the *expanded* form (`~/weird:12` → `$HOME/weird:12`) so a
     // quoted tilde path is disambiguated the same way it will actually be
-    // opened, but returns the untransformed `raw` either way, the same
+    // opened, but returns the untransformed `raw`/`s` either way, the same
     // "display the typed form" convention `open_extra_file` follows.
     // `symlink_metadata`, not `.exists()`: this is a disambiguation probe,
     // not a pre-open gate, so a broken symlink still counts as "the user
     // meant this path", and a later TOCTOU race just falls through to the
     // other reading rather than lying about a check that already passed.
-    let expanded = hume_platform::path::expand(s);
-    if std::fs::symlink_metadata(expanded.as_ref()).is_ok() {
-        return Ok(literal());
+    let literal_exists = |candidate: &str| {
+        let expanded = hume_platform::path::expand(candidate);
+        std::fs::symlink_metadata(expanded.as_ref()).is_ok()
+    };
+
+    let (path_str, pos) = split_path_position(s, literal_exists)?;
+    Ok(FileArg {
+        path: PathBuf::from(path_str),
+        pos,
+    })
+}
+
+/// Splits `s` into a path and an optional trailing `:line[:col]` position,
+/// shared by [`parse_file_arg`] and `:e`'s argument
+/// (`typed_buffer::typed_edit`).
+///
+/// `literal_exists` decides whether `s` itself already names something the
+/// caller considers "the literal path wins": `parse_file_arg` probes the
+/// filesystem, `:e` also checks already-open buffers first (an unsaved
+/// new-file buffer literally named `notes:12` must stay reachable, the same
+/// way a file on disk does). When `literal_exists(s)` is true, splitting
+/// never happens at all, not even to try and fail: a file genuinely named
+/// `weird:12` must never have its suffix peeled off to probe a
+/// `weird:12:34` split.
+///
+/// Returns `(s, None)` unsplit whenever there's no trailing `:<digits>`
+/// suffix (see [`split_trailing_number`]) or `literal_exists` claims `s`.
+/// `0` in either position is an error naming `s` and which number was
+/// rejected.
+pub(crate) fn split_path_position<'a>(
+    s: &'a str,
+    literal_exists: impl Fn(&str) -> bool,
+) -> Result<(&'a str, Option<PathPosition>), String> {
+    if literal_exists(s) {
+        return Ok((s, None));
     }
 
     let trimmed = s.strip_suffix(':').unwrap_or(s);
     let Some((rest, last)) = split_trailing_number(trimmed) else {
-        return Ok(literal());
+        return Ok((s, None));
     };
     let (path_str, line, grapheme_col) = match split_trailing_number(rest) {
         Some((rest2, prev)) => (rest2, prev, last),
         None => (rest, last, 1),
     };
     let Some(line) = ContentLine::from_number(line) else {
-        return Err(format!("{}: {LINE_NUMBERS_START_AT_1}", raw.display()));
+        return Err(format!("{s}: {LINE_NUMBERS_START_AT_1}"));
     };
     let Some(grapheme_col) = GraphemeCol::from_number(grapheme_col) else {
-        return Err(format!(
-            "{}: {GRAPHEME_COL_NUMBERS_START_AT_1}",
-            raw.display()
-        ));
+        return Err(format!("{s}: {GRAPHEME_COL_NUMBERS_START_AT_1}"));
     };
-    Ok(FileArg {
-        path: PathBuf::from(path_str),
-        pos: Some(CliPosition { line, grapheme_col }),
-    })
+    Ok((path_str, Some(PathPosition { line, grapheme_col })))
 }
 
 /// Peels one trailing `:<digits>` group off `s`, returning `(remainder,

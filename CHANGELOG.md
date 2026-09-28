@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Commands
+- `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.
+
 ### Theming
 - `gruvbox_light`'s picker cursor now matches upstream's reversed style, instead of the parent theme's explicit colors.
 - A reversed cursor stays visible when it lands on an indent guide.

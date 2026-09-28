@@ -210,7 +210,7 @@ impl Editor {
     /// by [`Self::apply_startup_positions`] once `run`'s event loop reaches
     /// its first `settle()`. Called from `hume_editor::run` for every CLI
     /// file argument that carried a `:line[:col]` suffix.
-    pub(crate) fn queue_startup_position(&mut self, bid: BufferId, pos: crate::cli::CliPosition) {
+    pub(crate) fn queue_startup_position(&mut self, bid: BufferId, pos: crate::cli::PathPosition) {
         self.startup_positions.push((bid, pos));
     }
 
