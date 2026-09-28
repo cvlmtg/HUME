@@ -12,6 +12,7 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
 - Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder.
+- Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget.
 - A value from a fixed set of names (a mode, a hook name, a log level) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
@@ -240,7 +241,7 @@ These are editor-builtin commands any plugin can drive: a plugin opens a picker 
 | `(picker-replace! token items)` | Replace an open picker's items wholesale |
 | `(picker-source-spawn! token cmd args #:cwd #:nul #:ok-exit-codes)` | Stream a subprocess's stdout lines into an open picker as items |
 | `(picker-source-stop! token)` | Kill a picker's still-running spawned source |
-| `(picker-close! #:token)` | Close a picker; `#:token` makes the close a no-op if that picker has already closed or been replaced |
+| `(picker-close! token)` | Close the picker `token` names; a no-op if that picker has already closed or been replaced |
 
 Full walkthroughs (batch vs. streaming population, truncation direction, exit-code handling, live requery) are in [Custom pickers](plugins.md#custom-pickers) and [Live requery (live grep)](plugins.md#live-requery-live-grep).
 
@@ -249,12 +250,12 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | Call | Effect |
 |------|--------|
 | `(prompt! pane label on-confirm #:prefill)` | Open a minibuffer text prompt, only while `pane` is still the one you're looking at; `on-confirm` fires once, later, with the confirmed text or `#f` on cancel |
-| `(show-popup! pane text #:anchor #:kind #:lang)` | Show a text popup, only while `pane` is still the one you're looking at. `#:anchor` `'cursor` (default, floats near the cursor) or `'bottom` (docks above the statusline); `#:lang` for syntax highlighting. `#:kind` also sets how long it lives: `'sticky` (default) closes on its own as soon as you leave whatever mode you opened it in; `'scrollable` stays open (Ctrl-u/Ctrl-d scroll it) until any other key, paste, or mouse input closes it |
-| `(close-popup!)` | Close the open popup; idempotent, a no-op if none is open |
-| `(show-menu! pane items on-select)` | Show a selection menu over `items`, a list of strings, only while `pane` is still the one you're looking at |
-| `(close-menu!)` | Close the open menu; a no-op if none is open |
+| `(show-popup! pane text #:anchor #:kind #:lang)` | Show a text popup, only while `pane` is still the one you're looking at. `#:anchor` `'cursor` (default, floats near the cursor) or `'bottom` (docks above the statusline); `#:lang` for syntax highlighting. `#:kind` also sets how long it lives: `'sticky` (default) closes on its own as soon as you leave whatever mode you opened it in; `'scrollable` stays open (Ctrl-u/Ctrl-d scroll it) until any other key, paste, or mouse input closes it. Replaces any popup already showing. Returns a token for `close-popup!`, or `#f` if the popup didn't open |
+| `(close-popup! token)` | Close the popup `token` names; a no-op if it has already closed or been replaced |
+| `(show-menu! pane items on-select)` | Show a selection menu over `items`, a list of strings, only while `pane` is still the one you're looking at. Returns a token for `close-menu!`, or `#f` if the menu didn't open (the editor moved on before the call landed) |
+| `(close-menu! token)` | Close the menu `token` names without calling its `on-select`; a no-op if it has already closed or been replaced |
 | `(show-drawer-list! pane items on-select)` | Show a list in the bottom drawer, over `items`, a non-empty list of strings, only while `pane` is still the one you're looking at. Replaces any drawer already open, and the outgoing drawer's `on-select` fires with `#f` so its owner knows the drawer is gone. Errors on empty `items`; close (or never open) instead. Returns a token scoping `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this drawer (hold onto it), or `#f` if the drawer didn't open (the editor moved on before the call landed) |
-| `(close-drawer! token)` | Close the open drawer; a no-op if none is open or `token` doesn't match its own |
+| `(close-drawer! token)` | Close the drawer `token` names; a no-op if it has already closed or been replaced |
 | `(update-drawer-list! token items on-select selected)` | Replace the open drawer's rows in place, keeping the current selection unless `selected` names another row; returns `#t` when applied, `#f` when no drawer is open, `token` doesn't match its own, or `items` is empty. Close instead of clearing through an update |
 | `(drawer-selected-index token)` | The open drawer's selected row, or `#f` when no drawer is open or `token` doesn't match its own |
 

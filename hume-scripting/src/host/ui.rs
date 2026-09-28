@@ -152,6 +152,10 @@ pub trait UiHost {
     /// named `name` is registered, `text` is syntax-highlighted like a real
     /// buffer; otherwise (no grammar by that name, or `None`) it renders as
     /// plain text.
+    ///
+    /// Returns a token scoping [`Self::close_popup`] to *this* popup, or
+    /// `None` when the popup was dropped (no layer can hold it right now),
+    /// same shape as [`Self::show_drawer_list`]'s own return.
     fn show_popup(
         &mut self,
         pane: PaneHandle,
@@ -159,11 +163,12 @@ pub trait UiHost {
         kind: PopupKind,
         docked: bool,
         lang: Option<String>,
-    ) -> Result<(), String>;
+    ) -> Result<Option<u64>, String>;
 
-    /// `(close-popup!)` dismisses the popup. Idempotent: closing when none
-    /// is showing is not an error (only an unsupported *host* errors).
-    fn close_popup(&mut self) -> Result<(), String>;
+    /// `(close-popup! token)` dismisses the popup `token` names. Idempotent:
+    /// a no-op when no popup is showing or the showing one was opened by a
+    /// different `show-popup!` call (only an unsupported *host* errors).
+    fn close_popup(&mut self, token: u64) -> Result<(), String>;
 
     /// `(show-menu! items on-select)` opens a selection menu near the
     /// cursor. `on-select` fires exactly once: the chosen index, or `#f` on
@@ -181,20 +186,22 @@ pub trait UiHost {
     /// already open (its callback fires `#f`, same as any other dismissal)
     /// rather than being read as stale: a second response for the same
     /// request is a refresh, not staleness.
+    ///
+    /// Returns a token scoping [`Self::close_menu`] to *this* menu, or
+    /// `None` when the call was dropped as stale.
     fn show_menu(
         &mut self,
         pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<(), String>;
+    ) -> Result<Option<u64>, String>;
 
-    /// `(close-menu!)` dismisses the menu *without* invoking its callback
-    /// (caller-initiated close, distinct from the key-driven dismissal paths
-    /// which do call back with `#f`). Idempotent: a no-op if none is open.
+    /// `(close-menu! token)` dismisses the menu `token` names *without*
+    /// invoking its callback (caller-initiated close, distinct from the
+    /// key-driven dismissal paths which do call back with `#f`). Idempotent:
+    /// a no-op if none is open or the open one carries a different token.
     /// Closes a buried menu too (a scrollable popup can land above one).
-    /// There's no "wrong widget is active" error, since a menu is always
-    /// reachable to close regardless of what's currently on top of it.
-    fn close_menu(&mut self) -> Result<(), String>;
+    fn close_menu(&mut self, token: u64) -> Result<(), String>;
 
     /// `(show-drawer-list! items on-select)` opens a scrolling pick-list
     /// in the bottom chrome band. `items` are pre-formatted display strings;
@@ -374,17 +381,12 @@ pub trait UiHost {
     /// already exited, same as a re-spawn via `picker_source_spawn`.
     fn picker_source_stop(&mut self, token: u64) -> bool;
 
-    /// `(picker-close! #:token [token #f])` ends the open picker, if any,
-    /// firing its `on-select` with `#f` (unlike `close-menu!`/
-    /// `close-drawer!`, which drop the callback without invoking it, since the
-    /// picker's callback lifecycle guarantees exactly one fire per session
-    /// no matter how it ends). `token` scopes the close to a specific
-    /// session the same way `picker-push!`'s does: `Some(t)` is a no-op if
-    /// the open picker's token doesn't match `t` (someone else's session
-    /// has since taken over), the async-callback case `picker-push!`
-    /// already guards against. `#f`/omitted closes whatever picker is open,
-    /// unconditionally, for the synchronous "the user hit Esc" caller that
-    /// has no token to check against. Idempotent either way: closing when
-    /// none is open is not an error.
-    fn picker_close(&mut self, token: Option<u64>);
+    /// `(picker-close! token)` ends the picker `token` names, firing its
+    /// `on-select` with `#f` (unlike `close-menu!`/`close-drawer!`, which
+    /// drop the callback without invoking it, since the picker's callback
+    /// lifecycle guarantees exactly one fire per session no matter how it
+    /// ends). A no-op if no picker is open or the open one carries a
+    /// different token (someone else's session has since taken over), the
+    /// same guard `picker-push!` applies.
+    fn picker_close(&mut self, token: u64);
 }

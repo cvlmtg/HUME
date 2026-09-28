@@ -188,8 +188,6 @@
       (spawn-for token query))
     token))
 
-(define (picker-close! #:token [token #f])
-  (%picker-close! token))
 
 (define-syntax call!
   (syntax-rules ()

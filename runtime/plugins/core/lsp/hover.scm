@@ -27,18 +27,26 @@
 
 ;; ── Popup: cursor or docked ──────────────────────────────────────────────────
 
+(define lsp/*hover-popup* #f)
+
 (define (lsp/show-hover pane text lang)
   (let* ((threshold (quotient (lsp/visible-lines pane) 3))
          (lines (split-many text "\n")))
-    (if (<= (length lines) threshold)
-        (show-popup! pane text #:kind 'scrollable #:lang lang)
-        (show-popup! pane text #:kind 'scrollable #:lang lang #:anchor 'bottom))))
+    (set! lsp/*hover-popup*
+      (if (<= (length lines) threshold)
+          (show-popup! pane text #:kind 'scrollable #:lang lang)
+          (show-popup! pane text #:kind 'scrollable #:lang lang #:anchor 'bottom)))))
+
+(define (lsp/close-hover!)
+  (when lsp/*hover-popup*
+    (close-popup! lsp/*hover-popup*)
+    (set! lsp/*hover-popup* #f)))
 
 ;; ── Command ─────────────────────────────────────────────────────────────────
 
 (define-command! "lsp-hover" "Show hover info for the symbol under the cursor."
   (lambda (pane)
-    (close-popup!)
+    (lsp/close-hover!)
     (lsp/guard-capability pane "hoverProvider"
       (lambda ()
         (lsp-request! pane "textDocument/hover" (lsp-position-params pane)

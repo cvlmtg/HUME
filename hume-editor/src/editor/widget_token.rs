@@ -1,11 +1,11 @@
 //! One process-unique token counter, shared by every overlay widget that
 //! hands Steel an opaque handle scoping later mutation to the instance that
-//! minted it (`DrawerLayer`, `PickerSession`) and by every completion
-//! `Invocation` (a handle scoping a source's answer to the one call that
-//! asked for it): a late async callback racing a widget the user already
-//! closed or replaced, or a source answering a call a later keystroke
-//! superseded, reads as a silent no-op rather than reaching the wrong
-//! instance. A single global counter is a superset of several private
+//! minted it (`PopupLayer`, `MenuLayer`, `DrawerLayer`, `PickerSession`)
+//! and by every completion `Invocation` (a handle scoping a source's answer
+//! to the one call that asked for it): a late async callback racing a widget
+//! the user already closed or replaced, or a source answering a call a
+//! later keystroke superseded, reads as a silent no-op rather than reaching
+//! the wrong instance. A single global counter is a superset of several private
 //! ones: it still guarantees uniqueness (no two tokens minted anywhere, of
 //! any kind, are ever equal), so a value one widget mints can never alias
 //! another kind's live token either.

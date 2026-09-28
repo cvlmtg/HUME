@@ -907,13 +907,7 @@ mod tests {
     }
 
     fn popup_model(text: &str) -> PopupLayer {
-        PopupLayer {
-            text: text.to_string(),
-            scroll: 0,
-            syntax: None,
-            layout: hume_ui::popup::PopupLayout::Cursor,
-            content: None,
-        }
+        PopupLayer::new(text.to_string(), None, hume_ui::popup::PopupLayout::Cursor)
     }
 
     #[test]

@@ -80,7 +80,7 @@
                       (if (= exit-code 0)
                           (picker-push! token (pickers/parse-git-status stdout))
                           (begin
-                            (picker-close! #:token token)
+                            (picker-close! token)
                             (log! 'error (string-append "picker-git-modified: `git status` failed: " stderr)))))))))
 
 ;;; Test seam — see README's "Design decisions".

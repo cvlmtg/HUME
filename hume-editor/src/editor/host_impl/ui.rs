@@ -94,7 +94,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         kind: PopupKind,
         docked: bool,
         lang: Option<String>,
-    ) -> Result<(), String> {
+    ) -> Result<Option<u64>, String> {
         self.require_focused_pane(pane)?;
         let layout = if docked {
             hume_ui::popup::PopupLayout::Docked
@@ -102,13 +102,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             hume_ui::popup::PopupLayout::Cursor
         };
         let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
-        let model = PopupLayer {
-            text,
-            scroll: 0,
-            syntax,
-            layout,
-            content: None,
-        };
+        let model = PopupLayer::new(text, syntax, layout);
+        let token = model.token();
         match kind {
             PopupKind::Sticky => {
                 if self.state.input.sticky_popup_slot_mut().is_none() {
@@ -117,7 +112,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                         "show-popup!: no mode layer can hold a sticky popup right now, ignored"
                             .to_string(),
                     );
-                    return Ok(());
+                    return Ok(None);
                 }
                 self.state.input.clear_popups();
                 *self
@@ -139,22 +134,22 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                         Severity::Trace,
                         "show-popup!: a picker is open, ignored".to_string(),
                     );
-                    return Ok(());
+                    return Ok(None);
                 }
                 self.state.push_layer(self.view, model);
             }
         }
-        Ok(())
+        Ok(Some(token))
     }
 
-    /// Idempotent: clears whichever home currently holds a popup, or does
-    /// nothing if neither does, same as `close_menu`/`close_drawer` below: a
-    /// `Popup` layer is never buried (see `PopupLayer`'s `Layer` doc,
-    /// `input_stack/stack.rs`) and a `Sticky` popup's slot never occupies
-    /// `top()` at all, so this can never observe one it isn't allowed to
-    /// close.
-    fn close_popup(&mut self) -> Result<(), String> {
-        self.state.input.clear_popups();
+    /// Idempotent: a no-op if no popup is showing or the showing one
+    /// carries a different token, same as `close_menu`/`close_drawer`
+    /// below. Clearing both homes is sound because at most one popup is
+    /// ever showing: every popup opener clears both homes first.
+    fn close_popup(&mut self, token: u64) -> Result<(), String> {
+        if self.state.input.popup().is_some_and(|p| p.token() == token) {
+            self.state.input.clear_popups();
+        }
         Ok(())
     }
 
@@ -164,7 +159,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: PaneHandle,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<(), String> {
+    ) -> Result<Option<u64>, String> {
         self.require_focused_pane(pane)?;
         // Async staleness; see `EditorState::async_opener_stale`'s own doc.
         // `top` `Menu` is the self-replace exception below: a second
@@ -174,7 +169,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .state
             .async_opener_stale::<BaseLayer, MenuLayer>("show-menu!")
         {
-            return Ok(());
+            return Ok(None);
         }
         // Retires a prior `Menu` on the self-replace path, firing its
         // callback with `#f` explicitly (`take_firing_false`, shared with
@@ -184,18 +179,22 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if let Some(r) = self.state.input.ref_of::<MenuLayer>() {
             self.state.take_firing_false::<MenuLayer>(self.view, r);
         }
-        self.state
-            .push_layer(self.view, MenuLayer::new(items, callback));
-        Ok(())
+        let menu = MenuLayer::new(items, callback);
+        let token = menu.token();
+        self.state.push_layer(self.view, menu);
+        Ok(Some(token))
     }
 
-    /// Idempotent: a no-op if no menu is open. Excises at the menu's own
+    /// Idempotent: a no-op if no menu is open, or if `token` doesn't match
+    /// the open menu's own (the caller's menu was replaced since). Excises at the menu's own
     /// ref rather than only when it's `top()`: a `Popup` (non-modal) can now
     /// land above it, so being buried is an ordinary state, not a mistake.
     /// `MenuLayer::removal_scope` is `SelfOnly` for exactly this reason,
     /// same as `close_drawer` below.
-    fn close_menu(&mut self) -> Result<(), String> {
-        self.state.retire::<MenuLayer>(self.view);
+    fn close_menu(&mut self, token: u64) -> Result<(), String> {
+        if self.state.input.menu().is_some_and(|m| m.token() == token) {
+            self.state.retire::<MenuLayer>(self.view);
+        }
         Ok(())
     }
 
@@ -348,10 +347,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         crate::editor::picker_source::stop_source(self.state, token)
     }
 
-    fn picker_close(&mut self, token: Option<u64>) {
-        if let Some(token) = token
-            && picker::session_for_token(self.state, token).is_none()
-        {
+    fn picker_close(&mut self, token: u64) {
+        if picker::session_for_token(self.state, token).is_none() {
             return;
         }
         picker::close_picker(self.state, self.view, steel::rvals::SteelVal::BoolV(false));

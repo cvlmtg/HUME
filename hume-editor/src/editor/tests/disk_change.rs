@@ -882,13 +882,11 @@ fn confirm_still_opens_over_an_open_scrollable_popup() {
 
     ed.state.push_layer(
         &ed.view,
-        crate::editor::input_stack::PopupLayer {
-            text: "hello".to_string(),
-            scroll: 0,
-            syntax: None,
-            layout: hume_ui::popup::PopupLayout::Cursor,
-            content: None,
-        },
+        crate::editor::input_stack::PopupLayer::new(
+            "hello".to_string(),
+            None,
+            hume_ui::popup::PopupLayout::Cursor,
+        ),
     );
 
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);

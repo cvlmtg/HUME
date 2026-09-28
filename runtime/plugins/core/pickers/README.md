@@ -89,10 +89,10 @@ the editor's cwd, the plugin resolves the selected entry against the repo root
 even when `:pwd` is a subdirectory of the repo.
 
 A cwd outside any git repository raises an error before a picker ever opens. A `git
-status` failure logs `'error` and calls `picker-close! #:token token` rather than a bare
-`picker-close!`. The scoped form is a no-op if this picker has already closed or been
-replaced by the time a slow `git status` call fails, so it can't tear down a different
-picker the user has since opened. Dismissing without selecting cancels the outstanding
+status` failure logs `'error` and calls `picker-close!` with this picker's token, a
+no-op if this picker has already closed or been replaced by the time a slow `git
+status` call fails, so it can't tear down a different picker the user has since
+opened. Dismissing without selecting cancels the outstanding
 `git status` job.
 
 > [!NOTE]

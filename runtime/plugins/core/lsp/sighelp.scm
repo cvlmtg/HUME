@@ -21,15 +21,22 @@
                (text (lsp/param-text label (list-ref params idx))))
           (if text (string-append label "\n⟨" text "⟩") label)))))
 
+(define lsp/*sighelp-popup* #f)
+
+(define (lsp/close-sighelp!)
+  (when lsp/*sighelp-popup*
+    (close-popup! lsp/*sighelp-popup*)
+    (set! lsp/*sighelp-popup* #f)))
+
 (define (lsp/show-sighelp pane res)
   (let ((sigs (json-list (json-ref res "signatures"))))
     (if (null? sigs)
-        (close-popup!)
+        (lsp/close-sighelp!)
         (let* ((active-sig-idx (json-ref-or res 0 "activeSignature"))
                (idx (lsp/clamp-index active-sig-idx sigs))
                (sig (list-ref sigs idx))
                (active-param-idx (json-ref-or res #f "activeParameter")))
-          (show-popup! pane (lsp/sighelp-text sig active-param-idx))))))
+          (set! lsp/*sighelp-popup* (show-popup! pane (lsp/sighelp-text sig active-param-idx)))))))
 
 (define lsp/sighelp-request
   (debounce 150
@@ -38,14 +45,14 @@
         (lsp-request! pane "textDocument/signatureHelp" (lsp-position-params pane)
           (lambda (err res)
             (cond
-              (err (lsp/report-error "signature help" err) (close-popup!))
-              ((void? res) (close-popup!))
+              (err (lsp/report-error "signature help" err) (lsp/close-sighelp!))
+              ((void? res) (lsp/close-sighelp!))
               (else (lsp/show-sighelp pane res))))
           #:require-focus #t)))))
 
 (lsp/setup-trigger-chars! "signatureHelpProvider" "lsp-sighelp" (list ")")
   (lambda (pane ch)
     (if (equal? ch ")")
-        (close-popup!)
+        (lsp/close-sighelp!)
         (lsp/guard-capability pane "signatureHelpProvider"
           (lambda () (lsp/sighelp-request pane))))))

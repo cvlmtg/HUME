@@ -360,9 +360,10 @@ fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
 #[test]
 fn picker_close_bang_fires_false_once_and_is_idempotent() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-typed-command! "go" "" (lambda (pane)
-             (picker! pane (list (cons "one" "p1")) (lambda (x) (log! 'info (to-string x))))))
-           (define-command! "close-it" "" (lambda () (picker-close!)))"#,
+        r#"(define tok #f)
+           (define-typed-command! "go" "" (lambda (pane)
+             (set! tok (picker! pane (list (cons "one" "p1")) (lambda (x) (log! 'info (to-string x)))))))
+           (define-command! "close-it" "" (lambda () (picker-close! tok)))"#,
     );
     type_cmd(&mut ed, ":go");
     assert!(ed.state.input.picker().is_some());
@@ -400,7 +401,7 @@ fn picker_close_bang_fires_false_once_and_is_idempotent() {
     );
 }
 
-// ── picker-close! #:token: scoped close ignores a picker it didn't open ────
+// ── picker-close!: scoped close ignores a picker it didn't open ────
 
 #[test]
 fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
@@ -411,7 +412,7 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
           (set! tok-a (picker! pane (list (cons "a-item" "pa")) (lambda (x) (log! 'info (to-string "A:" x)))))))
         (define-command! "go-b" "" (lambda (pane)
           (picker! pane (list (cons "b-item" "pb")) (lambda (x) (log! 'info (to-string "B:" x))))))
-        (define-command! "close-a" "" (lambda () (picker-close! #:token tok-a)))
+        (define-command! "close-a" "" (lambda () (picker-close! tok-a)))
         "#,
     );
     type_cmd(&mut ed, ":go-a");
@@ -632,13 +633,13 @@ fn direct_host_impl_open_push_and_close_with_no_lsp_borrow() {
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.picker_close(None);
+    host.picker_close(token);
     assert!(ed.state.input.picker().is_none());
     assert_eq!(pending_calls(&ed).len(), 1);
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.picker_close(None);
+    host.picker_close(token);
     assert_eq!(
         pending_calls(&ed).len(),
         1,
@@ -666,7 +667,7 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.picker_close(Some(token + 1));
+    host.picker_close(token + 1);
     assert!(
         ed.state.input.picker().is_some(),
         "a mismatched token must not close the open picker"
@@ -675,7 +676,7 @@ fn direct_host_impl_picker_close_with_a_stale_token_is_a_no_op() {
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.picker_close(Some(token));
+    host.picker_close(token);
     assert!(
         ed.state.input.picker().is_none(),
         "the matching token must close it"
@@ -937,9 +938,9 @@ fn live_picker_token_scopes_picker_close() {
           (set! tok (live-picker! pane (lambda (x) (log! 'info (to-string x)))
             #:command (lambda (q) #f)))))
         (define-command! "close-stale" "" (lambda ()
-          (picker-close! #:token (+ tok 1))))
+          (picker-close! (+ tok 1))))
         (define-command! "close-real" "" (lambda ()
-          (picker-close! #:token tok)))
+          (picker-close! tok)))
         "#,
     );
     type_cmd(&mut ed, ":go");
@@ -1134,5 +1135,50 @@ fn picker_on_select_entering_insert_fires_on_mode_change_within_the_same_settle(
         mode_changed_count(&ed),
         before + 1,
         "on-mode-change must fire within the same settle() that ran on_select, not a frame later"
+    );
+}
+
+// ── Widget-token builtins treat an opener's `#f` (didn't open) as stale ───
+
+/// `show-popup!`/`show-menu!`/`show-drawer!`/`picker!` document returning
+/// `#f` when the open was dropped, and every closer/updater documents a
+/// stale token as a no-op (`plugin-api.md`'s "A stale token … is a no-op").
+/// `#f` is the stale case, so every one of these nine builtins must treat
+/// it the same way, not raise.
+#[test]
+fn widget_token_builtins_treat_a_false_token_as_stale_not_an_error() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdefghijklmnop\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda (pane)
+             (close-popup! #f)
+             (close-menu! #f)
+             (close-drawer! #f)
+             (picker-close! #f)
+             (call! "move-right" pane)
+             (when (not (update-drawer-list! #f (list "a") (lambda (x) x) 0))
+               (call! "move-right" pane))
+             (when (not (drawer-selected-index #f))
+               (call! "move-right" pane))
+             (when (not (picker-push! #f (list (cons "a" "p"))))
+               (call! "move-right" pane))
+             (when (not (picker-replace! #f (list (cons "a" "p"))))
+               (call! "move-right" pane))
+             (when (not (picker-source-spawn! #f "true" (list)))
+               (call! "move-right" pane))
+             (when (not (picker-source-stop! #f))
+               (call! "move-right" pane))))"#,
+    );
+
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    assert_eq!(
+        state(&ed),
+        "abcdefg-[h]>ijklmnop\n",
+        "none of the 9 builtins may raise on a stale/false token, and each \
+         of the 6 that return a value must answer the stale case, not a live one"
     );
 }

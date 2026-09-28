@@ -65,8 +65,9 @@ fn close_popup_clears_the_view() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello")))
-           (define-typed-command! "gone" "" (lambda () (close-popup!)))"#,
+        r#"(define tok #f)
+           (define-typed-command! "go" "" (lambda (pane) (set! tok (show-popup! pane "hello"))))
+           (define-command! "gone" "" (lambda () (close-popup! tok)))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -75,7 +76,7 @@ fn close_popup_clears_the_view() {
     ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
 
-    type_cmd(&mut ed, ":gone");
+    ed.execute_keymap_command("gone".into(), None, false);
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
@@ -83,6 +84,30 @@ fn close_popup_clears_the_view() {
         popup_view(&ed).is_none(),
         "must be cleared after close-popup!"
     );
+}
+
+#[test]
+fn close_popup_with_a_replaced_popups_token_leaves_the_newer_one() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define tok #f)
+           (define-typed-command! "first" "" (lambda (pane) (set! tok (show-popup! pane "first"))))
+           (define-typed-command! "second" "" (lambda (pane) (show-popup! pane "second")))
+           (define-command! "gone" "" (lambda () (close-popup! tok)))"#,
+    );
+    type_cmd(&mut ed, ":first");
+    type_cmd(&mut ed, ":second");
+    ed.execute_keymap_command("gone".into(), None, false);
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let (lines, _, _) = popup_view(&ed).expect("the second popup must still be showing");
+    assert_eq!(lines, vec!["second"]);
 }
 
 #[test]
@@ -203,8 +228,9 @@ fn close_popup_clears_the_band_view_too() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda (pane) (show-popup! pane "hello" #:anchor 'bottom)))
-           (define-typed-command! "gone" "" (lambda () (close-popup!)))"#,
+        r#"(define tok #f)
+           (define-typed-command! "go" "" (lambda (pane) (set! tok (show-popup! pane "hello" #:anchor 'bottom))))
+           (define-command! "gone" "" (lambda () (close-popup! tok)))"#,
     );
     type_cmd(&mut ed, ":go");
     let mut ctx = RenderContext::new();
@@ -213,7 +239,7 @@ fn close_popup_clears_the_band_view_too() {
     ed.prepare_frame(&mut ctx);
     assert!(popup_band_lines(&ed).is_some(), "sanity: showing");
 
-    type_cmd(&mut ed, ":gone");
+    ed.execute_keymap_command("gone".into(), None, false);
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);

@@ -426,11 +426,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Cursor-anchored popup widget.
         cmd "%show-popup!" ui::show_popup(pane: args::LivePane, text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);
-        cmd "close-popup!" ui::close_popup();
+        cmd "close-popup!" ui::close_popup(token: SteelVal);
 
         // Selection menu widget.
         cmd "show-menu!" ui::show_menu(pane: args::LivePane, items: SteelVal, on_select: SteelVal);
-        cmd "close-menu!" ui::close_menu();
+        cmd "close-menu!" ui::close_menu(token: SteelVal);
 
         // Bottom drawer.
         cmd "show-drawer-list!" ui::show_drawer_list(pane: args::LivePane, items: SteelVal, on_select: SteelVal);
@@ -445,7 +445,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "picker-replace!" ui::picker_replace(token: SteelVal, items: SteelVal);
         cmd "%picker-source-spawn!" ui::picker_source_spawn(token: SteelVal, cmd: SteelVal, args: SteelVal, cwd: SteelVal, nul: SteelVal, ok_exit_codes: SteelVal);
         cmd "picker-source-stop!" ui::picker_source_stop(token: SteelVal);
-        cmd "%picker-close!" ui::picker_close(token: SteelVal);
+        cmd "picker-close!" ui::picker_close(token: SteelVal);
         // Backs live-picker!'s #:command validation only. See args::is_callable's doc.
         plain "%callable?" args::is_callable(val: SteelVal);
 

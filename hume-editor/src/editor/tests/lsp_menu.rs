@@ -1,5 +1,5 @@
 // Selection menu widget: (show-menu! items
-// on-select) / (close-menu!), and the Normal/Extend-only input handling in
+// on-select) / (close-menu! token), and the Normal/Extend-only input handling in
 // `Editor::menu_input`.
 
 use hume_grid::Rect;
@@ -142,16 +142,25 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_menu(
-        pane,
-        vec!["a".to_string(), "b".to_string()],
-        steel::rvals::SteelVal::Void,
-    )
-    .unwrap();
+    let token = host
+        .show_menu(
+            pane,
+            vec!["a".to_string(), "b".to_string()],
+            steel::rvals::SteelVal::Void,
+        )
+        .unwrap()
+        .expect("a menu opened from Normal is not dropped");
     assert!(ed.state.input.menu().is_some(), "sanity: menu open");
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.close_menu().unwrap();
+    host.close_menu(token + 1).unwrap();
+    assert!(
+        ed.state.input.menu().is_some(),
+        "a token the open menu doesn't carry must leave it open"
+    );
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.close_menu(token).unwrap();
 
     assert!(ed.state.input.menu().is_none());
     assert!(

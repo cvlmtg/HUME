@@ -6,7 +6,7 @@ use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;
-use super::super::{Editor, EditorState};
+use super::super::{Editor, EditorState, widget_token};
 use super::placement::{focused_cursor_char, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
 
@@ -25,10 +25,15 @@ pub(in crate::editor) struct MenuLayer {
     pub(in crate::editor) rows: Vec<hume_ui::popup::MenuRow>,
     pub(in crate::editor) selected: usize,
     pub(in crate::editor) callback: steel::rvals::SteelVal,
+    /// Identifies which `show-menu!` call opened this menu; see
+    /// [`Self::token`]'s doc.
+    token: u64,
 }
 
 impl MenuLayer {
-    /// A fresh menu over single-column `items`, selection at row 0.
+    /// A fresh menu over single-column `items`, selection at row 0, with a
+    /// freshly minted token (the only minting site, same as
+    /// `DrawerLayer::new`).
     pub(in crate::editor) fn new(items: Vec<String>, callback: steel::rvals::SteelVal) -> Self {
         Self {
             rows: items
@@ -37,7 +42,14 @@ impl MenuLayer {
                 .collect(),
             selected: 0,
             callback,
+            token: widget_token::next(),
         }
+    }
+
+    /// `show-menu!`'s return value, checked by `close-menu!` so a caller
+    /// only ever closes the menu it opened. Mirrors `DrawerLayer::token`.
+    pub(in crate::editor) fn token(&self) -> u64 {
+        self.token
     }
 }
 

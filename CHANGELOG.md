@@ -7,6 +7,7 @@
 - `buffer-cursor-line` and `offset->line` now return 0-based lines, like every other position in the scripting API.
 - The `on-mode-change` hook now passes the old and new modes as symbols (`'insert`), not strings.
 - `spawn-async!` and `run-capture!` (and `stdlib/run`) take the working directory as an optional `#:cwd` keyword instead of a required positional argument: `(spawn-async! cmd args callback #:cwd dir)`, `(run-capture! cmd args #:cwd dir)`.
+- `show-popup!` and `show-menu!` return a token, and `close-popup!`, `close-menu!`, and `picker-close!` now require one, matching `show-drawer-list!`/`close-drawer!`: `(close-popup! token)`, `(close-menu! token)`, `(picker-close! token)`. A token for a widget that already closed or was replaced is a no-op.
 
 ### Commands
 - `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.

@@ -12,6 +12,7 @@ use hume_engine::types::{EditorMode, Scope};
 
 use super::super::Editor;
 use super::super::commands::half_page;
+use super::super::widget_token;
 use super::placement::{focused_cursor_char, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
@@ -51,9 +52,35 @@ pub(in crate::editor) struct PopupLayer {
     /// through), since the baked styles are the one input here that *can*
     /// change out from under an open popup, unlike `text`/`syntax`.
     pub(in crate::editor) content: Option<hume_ui::popup::PopupContent>,
+    /// Identifies which `show-popup!` call opened this popup; see
+    /// [`Self::token`]'s doc.
+    token: u64,
 }
 
 impl PopupLayer {
+    /// Mints a fresh token for this popup. The constructor is the only
+    /// minting site, same as `DrawerLayer::new`.
+    pub(in crate::editor) fn new(
+        text: String,
+        syntax: Option<super::super::popup_syntax::MarkupSyntax>,
+        layout: hume_ui::popup::PopupLayout,
+    ) -> Self {
+        Self {
+            text,
+            scroll: 0,
+            syntax,
+            layout,
+            content: None,
+            token: widget_token::next(),
+        }
+    }
+
+    /// `show-popup!`'s return value, checked by `close-popup!` so a caller
+    /// only ever closes the popup it opened. Mirrors `DrawerLayer::token`.
+    pub(in crate::editor) fn token(&self) -> u64 {
+        self.token
+    }
+
     /// [`Self::content`], building it on first call. `text`/`syntax` never
     /// change during a `PopupLayer`'s lifetime (a new `show-popup!` builds a
     /// fresh one), so building it once and caching it here is sound. The
