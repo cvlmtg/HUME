@@ -338,8 +338,9 @@ builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
 `apply-workspace-edit!`, …). `err` and `res` are never both set. Check `err` first and stop
 on it, the way every built-in feature does. `res` is a JSON handle: read a field with
 `json-ref`/`json-contains?`/`json-list`, not `hash-ref`; a `null` response arrives as void, not `#f`.
-`err`, when set, is an ordinary hashmap (`'code`, `'message`) or the string `"timeout"`; read
-it with `hash-ref`, not `json-ref`.
+`err`, when set, is an ordinary hashmap (`'code`, `'message`) or a plain string message (`"timeout"`
+for a request that timed out); check `(string? err)` before `hash-ref`. Read a hashmap with
+`hash-ref`, not `json-ref`.
 
 `lsp-request!` also takes three keyword args for requests that fire more than once, or whose answer might arrive after the moment it was asked for has passed. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key (the server gets `$/cancelRequest` and the old callback never fires), which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful. `#:require-focus #t` drops the callback entirely unless the exact pane you called it from is still the one you're looking at, still showing the same buffer, by the time the answer arrives. Hover, signature help, and code actions use it, so a slow answer never pops up over whatever you've moved on to, even if that's just a different split on the same file.
 

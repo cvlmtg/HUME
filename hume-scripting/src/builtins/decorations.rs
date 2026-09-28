@@ -3,8 +3,6 @@
 //! API. Not LSP-specific (any Steel plugin can populate these), but LSP is
 //! the first and heaviest client.
 
-use steel::HashMap as SteelHashMap;
-use steel::gc::Gc;
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
@@ -15,8 +13,8 @@ use crate::types::{PaneHandle, VirtualLineSpec};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, HashEntry, cons_pair, hash_list, int_arg, optional_pair_fields, optional_symbol_arg,
-    string_arg, symbol_enum_arg, usize_arg,
+    ArgPane, HashEntry, hash_list, int_arg, optional_hash_entry, optional_symbol_arg, string_arg,
+    symbol_enum_arg, symbol_hash,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -39,9 +37,9 @@ pub(crate) fn set_inlay_hints(
         "set-inlay-hints!",
         &["offset", "text", "side"],
         |entry| {
-            let pos = usize_arg(entry.required("offset")?, "set-inlay-hints! 'offset")?;
-            let text = string_arg(entry.required("text")?, "set-inlay-hints! 'text")?;
-            let before = side_arg(entry.required("side")?, "set-inlay-hints! 'side")?;
+            let pos = entry.usize("offset")?;
+            let text = entry.string("text")?;
+            let before = side_arg(entry.required("side")?, &entry.label("side"))?;
             Ok((pos, text, before))
         },
     )?;
@@ -94,7 +92,7 @@ pub(crate) fn set_signs(
     let bid = pane.buffer();
     let source = string_arg(source, "set-signs! source")?;
     let parsed = hash_list(signs, "set-signs!", LINE_TEXT_SCOPE, |entry| {
-        let text = string_arg(entry.required("text")?, "set-signs! 'text")?;
+        let text = entry.string("text")?;
         // A sign is a glyph in a fixed-width gutter lane: no control
         // character has a meaning there, and one would misalign the lane
         // rather than render. The gutter measures the text to right-align
@@ -106,13 +104,9 @@ pub(crate) fn set_signs(
         // lining up with the text.
         if text.contains(char::is_control) {
             steel::stop!(Generic =>
-                    "set-signs!: 'text must not contain a control character, got {:?}", text);
+                "set-signs!: 'text must not contain a control character, got {:?}", text);
         }
-        Ok((
-            usize_arg(entry.required("line")?, "set-signs! 'line")?,
-            text,
-            string_arg(entry.required("scope")?, "set-signs! 'scope")?,
-        ))
+        Ok((entry.usize("line")?, text, entry.string("scope")?))
     })?;
     require_cap(ctx.host.decorations(), "set-signs!")?
         .set_signs(source, bid, parsed)
@@ -156,8 +150,8 @@ fn virtual_line_specs(lines: SteelVal) -> Result<Vec<VirtualLineSpec>, SteelErr>
 }
 
 fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
-    let line = usize_arg(entry.required("line")?, "set-virtual-lines! 'line")?;
-    let text = string_arg(entry.required("text")?, "set-virtual-lines! 'text")?;
+    let line = entry.usize("line")?;
+    let text = entry.string("text")?;
     if text.contains(['\n', '\r']) {
         steel::stop!(Generic =>
             "set-virtual-lines!: 'text must not contain a newline (virtual lines render as a \
@@ -175,15 +169,11 @@ fn virtual_line_spec(entry: &HashEntry) -> Result<VirtualLineSpec, SteelErr> {
     // Leaving `text` untouched also keeps a caller's `'segments` offsets
     // (validated below) trivially aligned with it.
 
-    let before = match entry.optional("anchor") {
-        None => false,
-        Some(v) => side_arg(v, "set-virtual-lines! 'anchor")?,
-    };
+    let before = entry
+        .optional("anchor")
+        .map_or(Ok(false), |v| side_arg(v, &entry.label("anchor")))?;
 
-    let scope = entry
-        .optional("scope")
-        .map(|v| string_arg(v, "set-virtual-lines! 'scope"))
-        .transpose()?;
+    let scope = entry.optional_string("scope")?;
 
     let segments = match entry.optional("segments") {
         None => Vec::new(),
@@ -211,15 +201,9 @@ fn virtual_line_segments(segments: SteelVal) -> Result<Vec<(usize, usize, String
         START_END_SCOPE,
         |entry| {
             Ok((
-                usize_arg(
-                    entry.required("start")?,
-                    "set-virtual-lines! segment 'start",
-                )?,
-                usize_arg(entry.required("end")?, "set-virtual-lines! segment 'end")?,
-                string_arg(
-                    entry.required("scope")?,
-                    "set-virtual-lines! segment 'scope",
-                )?,
+                entry.usize("start")?,
+                entry.usize("end")?,
+                entry.string("scope")?,
             ))
         },
     )
@@ -250,9 +234,9 @@ pub(crate) fn set_eol_text(
     let source = string_arg(source, "set-eol-text! source")?;
     let parsed = hash_list(lines, "set-eol-text!", LINE_TEXT_SCOPE, |entry| {
         Ok((
-            usize_arg(entry.required("line")?, "set-eol-text! 'line")?,
-            string_arg(entry.required("text")?, "set-eol-text! 'text")?,
-            string_arg(entry.required("scope")?, "set-eol-text! 'scope")?,
+            entry.usize("line")?,
+            entry.string("text")?,
+            entry.string("scope")?,
         ))
     })?;
     require_cap(ctx.host.decorations(), "set-eol-text!")?
@@ -273,9 +257,9 @@ pub(crate) fn set_extra_highlights(
     let source = string_arg(source, "set-extra-highlights! source")?;
     let parsed = hash_list(spans, "set-extra-highlights!", START_END_SCOPE, |entry| {
         Ok((
-            usize_arg(entry.required("start")?, "set-extra-highlights! 'start")?,
-            usize_arg(entry.required("end")?, "set-extra-highlights! 'end")?,
-            string_arg(entry.required("scope")?, "set-extra-highlights! 'scope")?,
+            entry.usize("start")?,
+            entry.usize("end")?,
+            entry.string("scope")?,
         ))
     })?;
     require_cap(ctx.host.decorations(), "set-extra-highlights!")?
@@ -300,12 +284,7 @@ pub(crate) fn set_line_backgrounds(
         entries,
         "set-line-backgrounds!",
         &["line", "scope"],
-        |entry| {
-            Ok((
-                usize_arg(entry.required("line")?, "set-line-backgrounds! 'line")?,
-                string_arg(entry.required("scope")?, "set-line-backgrounds! 'scope")?,
-            ))
-        },
+        |entry| Ok((entry.usize("line")?, entry.string("scope")?)),
     )?;
     require_cap(ctx.host.decorations(), "set-line-backgrounds!")?
         .set_line_backgrounds(source, bid, parsed)
@@ -334,7 +313,7 @@ pub(crate) fn set_statusline_text(
 
 /// `(%diagnostics-for-buffer pane severity range)`: the `diagnostics-for-buffer`
 /// Scheme wrapper supplies `#:severity`/`#:range` defaults. `severity`: a
-/// symbol or `#f`. `range`: a `(start . end)` dotted pair or `#f`.
+/// symbol or `#f`. `range`: a `(hash 'start s 'end e)` or `#f`.
 pub(crate) fn diagnostics_for_buffer(
     ctx: &mut SteelCtx,
     pane: ArgPane,
@@ -343,12 +322,8 @@ pub(crate) fn diagnostics_for_buffer(
 ) -> SteelResult {
     let id = pane.0.buffer();
     let floor = optional_symbol_arg(severity, "diagnostics-for-buffer #:severity")?;
-    let range = optional_pair_fields(range, "diagnostics-for-buffer", "(start . end)")?
-        .map(|(start, end)| {
-            let start = usize_arg(start, "diagnostics-for-buffer range start")?;
-            let end = usize_arg(end, "diagnostics-for-buffer range end")?;
-            Ok::<_, SteelErr>((start, end))
-        })
+    let range = optional_hash_entry(range, "diagnostics-for-buffer #:range", &["start", "end"])?
+        .map(|range| Ok::<_, SteelErr>((range.usize("start")?, range.usize("end")?)))
         .transpose()?;
     let entries = match ctx.host.decorations() {
         Some(decorations) => decorations
@@ -367,43 +342,32 @@ pub(crate) fn diagnostics_for_buffer(
 /// `serde_json::Value` blob precisely so `'raw` can take that different
 /// path from every other field.
 fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
-    let mut hm = SteelHashMap::new();
-    let mut insert = |k: &'static str, v: SteelVal| {
-        hm.insert(SteelVal::SymbolV(k.into()), v);
-    };
-    insert("start", SteelVal::IntV(entry.start as isize));
-    insert("end", SteelVal::IntV(entry.end as isize));
-    insert("line", SteelVal::IntV(entry.line as isize));
-    insert("end-line", SteelVal::IntV(entry.end_line as isize));
-    insert("char-col", SteelVal::IntV(entry.char_col as isize));
-    insert("grapheme-col", SteelVal::IntV(entry.grapheme_col as isize));
-    insert("severity", SteelVal::SymbolV(entry.severity.into()));
-    insert(
-        "severity-rank",
-        SteelVal::IntV(entry.severity_rank as isize),
-    );
-    insert("message", SteelVal::StringV(entry.message.into()));
-    // `None` -> Void, matching json_to_steel's null mapping.
-    insert(
-        "code",
-        entry
-            .code
-            .map_or(SteelVal::Void, |c| SteelVal::StringV(c.into())),
-    );
-    insert(
-        "source",
-        entry
-            .source
-            .map_or(SteelVal::Void, |s| SteelVal::StringV(s.into())),
-    );
-    insert(
-        "raw",
-        to_steel_handle(entry.raw, WireOrigin::Server(entry.encoding)),
-    );
-    SteelVal::HashMapV(Gc::new(hm).into())
+    let optional_string =
+        |v: Option<String>| v.map_or(SteelVal::Void, |v| SteelVal::StringV(v.into()));
+    symbol_hash([
+        ("start", SteelVal::IntV(entry.start as isize)),
+        ("end", SteelVal::IntV(entry.end as isize)),
+        ("line", SteelVal::IntV(entry.line as isize)),
+        ("end-line", SteelVal::IntV(entry.end_line as isize)),
+        ("char-col", SteelVal::IntV(entry.char_col as isize)),
+        ("grapheme-col", SteelVal::IntV(entry.grapheme_col as isize)),
+        ("severity", SteelVal::SymbolV(entry.severity.into())),
+        (
+            "severity-rank",
+            SteelVal::IntV(entry.severity_rank as isize),
+        ),
+        ("message", SteelVal::StringV(entry.message.into())),
+        // `None` -> Void, matching json_to_steel's null mapping.
+        ("code", optional_string(entry.code)),
+        ("source", optional_string(entry.source)),
+        (
+            "raw",
+            to_steel_handle(entry.raw, WireOrigin::Server(entry.encoding)),
+        ),
+    ])
 }
 
-/// `(diagnostic-counts pane)` → `(errors . warnings)` dotted pair.
+/// `(diagnostic-counts pane)` → `(hash 'errors n 'warnings n)`.
 pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResult {
     let id = pane.0.buffer();
     let (errors, warnings) = ctx
@@ -411,10 +375,10 @@ pub(crate) fn diagnostic_counts(ctx: &mut SteelCtx, pane: ArgPane) -> SteelResul
         .decorations()
         .map(|d| d.diagnostic_counts(id))
         .unwrap_or((0, 0));
-    cons_pair(
-        SteelVal::IntV(errors as isize),
-        SteelVal::IntV(warnings as isize),
-    )
+    Ok(symbol_hash([
+        ("errors", SteelVal::IntV(errors as isize)),
+        ("warnings", SteelVal::IntV(warnings as isize)),
+    ]))
 }
 
 #[cfg(test)]

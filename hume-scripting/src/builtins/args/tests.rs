@@ -111,32 +111,7 @@ fn json_params_rejects_bool() {
     );
 }
 
-// ── checked_fields / tuple_list ──────────────────────────────────────────
-
-#[test]
-fn checked_fields_rejects_wrong_arity() {
-    let err = checked_fields(list_of(&["a"]), "f", 2..=2, "(a b)").unwrap_err();
-    assert!(
-        err.to_string().contains("each entry must be (a b)"),
-        "got: {err}"
-    );
-}
-
-#[test]
-fn checked_fields_accepts_arity_within_range() {
-    assert_eq!(
-        checked_fields(list_of(&["a", "b"]), "f", 2..=3, "(a b [c])")
-            .unwrap()
-            .len(),
-        2
-    );
-    assert_eq!(
-        checked_fields(list_of(&["a", "b", "c"]), "f", 2..=3, "(a b [c])")
-            .unwrap()
-            .len(),
-        3
-    );
-}
+// ── hash_entry ───────────────────────────────────────────────────────────
 
 fn symbol_hash(entries: &[(&str, &str)]) -> SteelVal {
     let mut hm = steel::HashMap::new();
@@ -223,19 +198,6 @@ fn pair_fields_rejects_proper_list() {
 fn pair_fields_rejects_non_pair_scalar() {
     let err = pair_fields(SteelVal::IntV(3), "position", "(line . character)").unwrap_err();
     assert!(err.to_string().contains("(line . character)"), "got: {err}");
-}
-
-#[test]
-fn optional_pair_fields_false_is_none_pair_is_some() {
-    assert_eq!(
-        optional_pair_fields(SteelVal::BoolV(false), "f", "(start . end)").unwrap(),
-        None
-    );
-    let pair = cons_pair(SteelVal::IntV(0), SteelVal::IntV(5)).unwrap();
-    assert_eq!(
-        optional_pair_fields(pair, "f", "(start . end)").unwrap(),
-        Some((SteelVal::IntV(0), SteelVal::IntV(5)))
-    );
 }
 
 // ── ArgPane ───────────────────────────────────────────────────────────────
@@ -453,4 +415,44 @@ fn single_key_arg_rejects_unparseable_naming_ctx() {
         .to_string();
     assert!(msg.contains("insert-key!"), "got: {msg}");
     assert!(msg.contains("invalid key spec"), "got: {msg}");
+}
+
+#[test]
+fn hash_entry_decodes_one_record() {
+    let entry = hash_entry(symbol_hash(&[("a", "1")]), "f", &["a", "b"]).unwrap();
+    assert_eq!(string_arg(entry.required("a").unwrap(), "f").unwrap(), "1");
+    assert_eq!(entry.optional("b"), None);
+}
+
+#[test]
+fn hash_entry_rejects_a_non_hashmap() {
+    let err = hash_entry(SteelVal::IntV(1), "f", &["a"])
+        .err()
+        .expect("a non-hashmap must be rejected");
+    assert!(
+        err.to_string()
+            .contains("f: expected a hashmap with keys from 'a"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn hash_entry_rejects_an_unknown_key() {
+    let err = hash_entry(symbol_hash(&[("c", "1")]), "f", &["a", "b"])
+        .err()
+        .expect("an unknown key must be rejected");
+    assert!(err.to_string().contains("unknown key 'c,"), "got: {err}");
+}
+
+#[test]
+fn optional_hash_entry_false_is_none_hash_is_some() {
+    assert!(
+        optional_hash_entry(SteelVal::BoolV(false), "f", &["a"])
+            .unwrap()
+            .is_none()
+    );
+    let entry = optional_hash_entry(symbol_hash(&[("a", "1")]), "f", &["a"])
+        .unwrap()
+        .expect("a hashmap decodes to Some");
+    assert_eq!(string_arg(entry.required("a").unwrap(), "f").unwrap(), "1");
 }

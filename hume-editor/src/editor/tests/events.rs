@@ -1260,7 +1260,7 @@ fn on_option_change_fires_key_and_value_after_a_set_global() {
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-option-change (lambda (key value)
-             (log! 'trace (string-append key "=" value))))"#,
+             (log! 'trace (string-append key "=" (if (equal? value #t) "on" "off")))))"#,
         &mut mock,
     )
     .unwrap();
@@ -1274,9 +1274,40 @@ fn on_option_change_fires_key_and_value_after_a_set_global() {
         ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == Severity::Trace && e.text == "lsp.inlay-hints=true"),
+            .any(|e| e.severity == Severity::Trace && e.text == "lsp.inlay-hints=on"),
         "on-option-change must fire with the changed key and its new value \
          after a successful :set global"
+    );
+}
+
+/// An enum option's new value reaches the hook as the symbol `get-option`
+/// returns, not the text `:set` was given.
+#[test]
+fn on_option_change_passes_an_enum_value_as_a_symbol() {
+    use crate::testing::MockHost;
+    use hume_scripting::ScriptingHost;
+
+    let mut ed = editor_from("-[a]>b\n");
+    let mut host = ScriptingHost::new();
+    let mut mock = MockHost::new();
+    host.eval_source(
+        r#"(register-hook! 'on-option-change (lambda (key value)
+             (log! 'trace (if (equal? value 'soft) "soft-symbol" "other"))))"#,
+        &mut mock,
+    )
+    .unwrap();
+    ed.scripting = Some(host);
+    ed.settle();
+
+    type_cmd(&mut ed, ":set global tab-style=soft");
+    ed.settle();
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Trace && e.text == "soft-symbol"),
+        "the hook must receive the enum value as a symbol"
     );
 }
 

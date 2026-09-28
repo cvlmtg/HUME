@@ -67,7 +67,7 @@
 
 (define (lsp/visible-lines pane)
   (let ((range (viewport-range pane)))
-    (- (cdr range) (car range))))
+    (- (hash-ref range 'end) (hash-ref range 'start))))
 
 ;; ── Location display + drawer ───────────────────────────────────────────────
 
@@ -75,9 +75,9 @@
   (string-append (number->string (+ 1 line)) ":" (number->string (+ 1 col))))
 
 (define (lsp/location-display part)
-  (let* ((path (path->display (car part)))
-         (line (cadr part))
-         (grapheme-col-or-wire (caddr part)))
+  (let* ((path (path->display (hash-ref part 'path)))
+         (line (hash-ref part 'line))
+         (grapheme-col-or-wire (hash-ref part 'grapheme-col-or-wire)))
     (string-append path ":"
       (if grapheme-col-or-wire
           (lsp/format-position line grapheme-col-or-wire)

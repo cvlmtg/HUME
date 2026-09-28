@@ -14,7 +14,7 @@ use crate::SteelCtx;
 use crate::log::LogLevel;
 
 use super::SteelResult;
-use super::args::{list_to_strings, optional_path_arg, string_arg, usize_arg};
+use super::args::{list_to_strings, optional_path_arg, string_arg, symbol_hash, usize_arg};
 use super::errors::require_cap;
 
 /// `(%spawn-async! cmd args cwd callback)`, wrapped by `spawn-async!`'s
@@ -61,14 +61,14 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
-/// `(%run-capture! cmd args cwd)` → `(stdout stderr exit-code)`, wrapped by
+/// `(%run-capture! cmd args cwd)` → `(hash 'stdout s 'stderr s 'exit code)`, wrapped by
 /// `run-capture!`'s `#:cwd` keyword in `bootstrap.scm`. Runs `cmd`
 /// with `args` (direct argv, no shell) in `cwd` (`#f` = the editor's own
 /// cwd), blocking the calling thread until it exits: the small-output,
 /// synchronous-with-the-TUI-still-up shape `stdlib/run!` is for; use
 /// `spawn-async!` instead for anything that shouldn't stall typing.
 ///
-/// `exit-code` is `#f` (never a sentinel int) for a spawn failure (`cmd`
+/// `'exit` is `#f` (never a sentinel int) for a spawn failure (`cmd`
 /// not found, bad `cwd`) or a signal-killed child, matching Steel's own
 /// `wait` (`ExitStatus::code()` is `None` in both shapes `run_capture`
 /// collapses into one `Err`, and in the signal-killed shape it returns
@@ -99,12 +99,12 @@ pub(crate) fn run_capture(
             ),
             Err(e) => (String::new(), format!("{cmd}: {e}"), None),
         };
-    Ok(SteelVal::ListV(
-        vec![
-            SteelVal::StringV(stdout.into()),
-            SteelVal::StringV(stderr.into()),
+    Ok(symbol_hash([
+        ("stdout", SteelVal::StringV(stdout.into())),
+        ("stderr", SteelVal::StringV(stderr.into())),
+        (
+            "exit",
             code.map_or(SteelVal::BoolV(false), |c| SteelVal::IntV(c as isize)),
-        ]
-        .into(),
-    ))
+        ),
+    ]))
 }

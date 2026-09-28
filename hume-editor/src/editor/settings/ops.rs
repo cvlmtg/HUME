@@ -52,9 +52,11 @@ pub(in crate::editor) fn apply_global(
     // this is the single write path all three funnel through (see the
     // module doc). A plugin owning one setting's policy (e.g. the LSP
     // inlay-hints plugin) needs exactly one hook, not one per write path.
+    let value = super::setting_value(key, &state.settings, None)
+        .expect("write_global only accepts keys setting_value reports");
     state.queue_event(crate::editor::event::EditorEvent::OnOptionChange {
         key: key.to_string(),
-        value: value.to_string(),
+        value,
     });
 
     Ok(())

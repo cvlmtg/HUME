@@ -12,9 +12,9 @@ This page is a lookup reference: tables of signatures and one-line effects. For 
 - A function whose call changes something (editor state, a registration, a process, a file) ends in `!`. Reads and functions that only build a value, like `debounce`, don't.
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only when showing a line number to the user.
 - Optional arguments are keywords with a default, like `#:cwd`, never a positional `#f` placeholder.
-- A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](#json-handles)).
+- A structured value you pass in or get back (a decoration entry, a diagnostic, a request error) is a hashmap with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. Values decoded from server JSON are JSON handles instead (see [JSON handles](#json-handles)). Picker items `(display . payload)`, picker `#:actions` `(key-spec . proc)`, and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records: the first two are per-row data on a hot path, the last a map.
 - Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, and every call that closes or changes that widget takes it. A stale token (the widget already closed or was replaced) is a no-op, so a late callback can never touch someone else's widget. `#f` — an opener's own answer when the open was dropped before it could happen — is stale by construction and a no-op the same way.
-- A value from a fixed set of names (a mode, a hook name, a log level) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
+- A value from a fixed set of names (a mode, a hook name, a log level, an enum option's value) is a symbol, like `'insert`. Compare symbols with `equal?`: Steel's `eq?` checks identity, so a symbol the editor hands you is never `eq?` to one you wrote.
 
 ## Settings & statusline
 
@@ -109,10 +109,10 @@ A closed buffer behaves differently depending on the call: most reads below (`bu
 | `(buffer-lines pane #:start #:end)` | Content as a list of lines, each with its ending stripped |
 | `(buffer-line-count pane)` | Content line count, cheaper than `(length (buffer-lines pane))` |
 | `(buffer-cursor-line pane)` | 0-based line of the primary cursor in `pane`'s own pane |
-| `(buffer-selections pane)` | List of `(anchor head primary?)` triples in `pane`'s own pane |
+| `(buffer-selections pane)` | List of `(hash 'anchor a 'head h 'primary p)`, one per selection in `pane`'s own pane |
 | `(offset->line pane idx)` | 0-based line containing 0-based char offset `idx` in the buffer's text |
 | `(line->offset pane line)` | 0-based char offset where 0-based content line `line` starts |
-| `(viewport-range pane)` | `(first-line . end-line)` currently visible in `pane`'s own pane, 0-based end-exclusive |
+| `(viewport-range pane)` | `(hash 'start first-line 'end end-line)` currently visible in `pane`'s own pane, 0-based end-exclusive |
 | `(open-buffer! path)` | Open `path`, returning a pane-less pane value for it |
 | `(close-buffer! pane)` | Close a buffer |
 | `(switch-to-buffer! pane target)` | Redirect `pane`'s own pane to `target`'s buffer |
@@ -130,7 +130,7 @@ A closed buffer behaves differently depending on the call: most reads below (`bu
 |------|--------|
 | `(apply-text-edits! pane edits #:expect-generation)` | Apply a list of edits to `pane`'s buffer, mapped through `pane`'s own selections, each entry a JSON handle onto a wire `TextEdit` (e.g. a `textDocument/formatting` response element, passed straight through) |
 | `(apply-workspace-edit! pane wsedit)` | Apply an LSP `WorkspaceEdit` (a JSON handle onto one, e.g. straight from an `lsp-request!` response) across every buffer it touches, mapping the hunk for `pane`'s own buffer (if any) through `pane`'s selections; returns the count of buffers modified |
-| `(goto-location! pane loc)` | Move `pane`'s own pane to `loc`: an LSP `Location`/`LocationLink` JSON handle, or `(list target line char-col)` with `target` a pane value, path, or `file://` URI and `line`/`char-col` char-indexed |
+| `(goto-location! pane loc)` | Move `pane`'s own pane to `loc`: an LSP `Location`/`LocationLink` JSON handle, or `(hash 'target t 'line l 'char-col c)` with `t` a pane value, path, or `file://` URI and `l`/`c` char-indexed |
 | `(insert-key! pane key)` | Run `key`'s normal Insert-mode behaviour (tab-style-aware Tab, auto-pairs, auto-indented Enter, …) on `pane`, as if it had no Insert-mode binding; `key` is one chord in `bind-key!`'s own syntax |
 
 `#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`apply-workspace-edit!`/`goto-location!`'s wire shape each decode their positions using the handle's own producing-server encoding. A plain hashmap you build by hand (not pulled from a response via `json-ref`/`json-list`) has no such encoding to decode with, and is rejected.
@@ -179,7 +179,7 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(lsp-show-status! pane)` | Open the `[lsp-status]` read-only view, only while `pane` is still the one you're looking at |
 | `(lsp-request! pane method params callback #:allow-stale #:supersede #:require-focus)` | Send a raw request to `pane`'s attached server; `callback` is `(lambda (err result) ...)`. A real response delivers as a JSON handle; read it with `json-ref`/`json-contains?`/`json-list`, or pass it straight to `completion-emit!`. `#:require-focus #t` drops the callback unless `pane` is still the exact pane you were looking at, still showing the same buffer, when the response arrives. It needs `pane` to carry a pane, not just a buffer |
 | `(lsp-notify! pane method params)` | Fire-and-forget notification to `pane`'s attached server, no callback |
-| `(register-lsp-notification-hook! methods proc)` | Call `proc` as `(lambda (server method params) ...)` only for server notifications whose method is `methods` (a string) or one of `methods` (a list of strings), so one `proc` can serve several methods. Any other method is still logged as unhandled. Like `register-hook!`: init or plugin load only, and removed if your plugin fails to load |
+| `(register-lsp-notification-hook! methods proc)` | Call `proc` as `(lambda (server method params) ...)` only for server notifications whose method is `methods` (a string) or one of `methods` (a list of strings), so one `proc` can serve several methods. Any other method is logged as unhandled, unless a plain `register-hook!` handler takes it. Like `register-hook!`: init or plugin load only, and removed if your plugin fails to load |
 | `(lsp-capabilities pane)` | A JSON handle onto `pane`'s attached server's `ServerCapabilities` (read with `json-ref`/`json-contains?`), or `#f` if unresolved or mid-handshake |
 | `(lsp-server-status)` | List of hashmaps with keys `'language`, `'root`, `'state` (`'starting`, `'running`, `'crashed`, or `'dead`), and `'pending`, one per registered server |
 | `(lsp-server-for-buffer pane)` | Registered language name attached to the buffer, or `#f` |
@@ -188,9 +188,9 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(lsp-primary-range-params pane)` | Same shape, `"range"` from the primary selection alone |
 | `(lsp-linewise-ranges-params pane)` | `{"textDocument" {"uri"} "ranges" [...]}`: one wire range per linewise selection in `pane`'s own pane (a run of touching selections coalesces into one), `"ranges"` empty if none are linewise; `#f` only for the same reasons `lsp-primary-range-params` returns `#f` |
 | `(lsp-position->offset pane position)` | The buffer's char offset for a wire `{"line" "character"}` hashmap, or `#f` |
-| `(lsp-range->offsets pane range)` | `(start . end)` char offsets for a wire `{"start" ... "end" ...}` range, or `#f` |
+| `(lsp-range->offsets pane range)` | `(hash 'start s 'end e)` char offsets for a wire `{"start" ... "end" ...}` range, or `#f` |
 | `(lsp-label-offsets->text label offsets)` | The slice of `label` a `ParameterInformation`-style `(start end)` wire offset pair names; `offsets` decodes with its own tagged producing-server encoding |
-| `(lsp-locations->display-parts locs)` | One `(path line grapheme-col-or-wire)` list per raw `Location`/`LocationLink` in `locs`, each decodes wire positions with its own tagged producing-server encoding |
+| `(lsp-locations->display-parts locs)` | One `(hash 'path p 'line l 'grapheme-col-or-wire c)` per raw `Location`/`LocationLink` in `locs`, each decodes wire positions with its own tagged producing-server encoding |
 
 `register-lsp-server!`, `lsp-request!`, and `lsp-notify!` are covered with examples in [Registering a language server](lsp.md#registering-a-language-server) and [Advanced: custom requests](lsp.md#advanced-custom-requests). `lsp-position->offset`/`lsp-range->offsets`/`lsp-label-offsets->text` convert LSP wire units (UTF-16 or byte offsets, depending on the server's negotiated encoding) to editor-native char offsets. Always go through these rather than assuming a 1:1 mapping. `lsp-locations->display-parts`'s column is an exact grapheme column when the target has an open buffer; otherwise it's the location's own wire `character` verbatim, since refining it would mean reading a file the user may never open.
 
@@ -200,7 +200,7 @@ Not LSP-specific (any plugin can populate these), but LSP diagnostics and inlay 
 
 | Call | Effect |
 |------|--------|
-| `(diagnostics-for-buffer pane #:severity #:range)` | Diagnostics for the buffer, optionally floored by severity symbol or restricted to a `(start . end)` char range |
+| `(diagnostics-for-buffer pane #:severity #:range)` | Diagnostics for the buffer, optionally floored by severity symbol or restricted to a `(hash 'start s 'end e)` char range. Each entry is a hash with `'start`, `'end`, `'line`, `'end-line`, `'char-col`, `'grapheme-col`, `'severity` (`'error`, `'warning`, `'info`, or `'hint`), `'severity-rank`, `'message`, `'code`, `'source`, and `'raw` (a JSON handle onto the wire diagnostic) |
 | `(diagnostic-counts pane)` | `(errors . warnings)` pair for the buffer |
 | `(set-inlay-hints! source pane hints)` | Replace `source`'s inlay hints for the buffer. `hints`: list of `(hash 'offset o 'text t 'side 'before)`, `'side` `'before` or `'after` |
 | `(register-sign-source! name pane priority)` | Reserve a gutter sign slot for `name` on the buffer, ranked by `(priority desc, name asc)` among every source registered for it |
@@ -274,7 +274,7 @@ Full walkthroughs (batch vs. streaming population, truncation direction, exit-co
 | `(spawn-async! cmd args callback #:cwd dir)` | Run `cmd` in the background, in `dir` (default: HUME's own working directory); `callback` (`(lambda (stdout stderr exit-code) ...)`) fires exactly once, later |
 | `(cancel-async! id)` | Kill a still-running `spawn-async!` job and drop its callback; idempotent |
 | `(run-inline-output! cmd args #:cwd)` | Run `cmd`, streaming output to the terminal inside an `#:inline-output` command; raises on nonzero exit |
-| `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's own working directory), blocking until it exits; returns `(stdout stderr exit-code)`. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
+| `(run-capture! cmd args #:cwd dir)` | Run `cmd` in `dir` (default: HUME's own working directory), blocking until it exits; returns `(hash 'stdout s 'stderr s 'exit code)`. `core:stdlib`'s `stdlib/run!` (see [Standard Library](standard-library.md)) is this call under its usual name |
 
 Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-processes).
 
@@ -284,7 +284,7 @@ Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-pr
 |------|--------|
 | `(diff-lines old-text new-text)` | Line-level hunks where `old-text`/`new-text` differ |
 | `(diff-buffer-lines pane ref-text)` | Same, but against the buffer's current unsaved content; avoids pulling the whole buffer through `buffer-text` first |
-| `(diff-words old-text new-text)` | `(hunks . too-long?)`: word-level hunks within a single changed line |
+| `(diff-words old-text new-text)` | `(hash 'hunks … 'deadline-hit …)`: word-level hunks within a single changed line |
 
 Covered with examples, including hunk shapes, in [Comparing text](plugins.md#comparing-text).
 

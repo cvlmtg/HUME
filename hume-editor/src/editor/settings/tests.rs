@@ -116,12 +116,38 @@ fn setting_value_usize_key_returns_int() {
 }
 
 #[test]
-fn setting_value_from_str_key_returns_str() {
+fn setting_value_enum_key_returns_symbol() {
     let global = EditorSettings::default();
     assert_eq!(
         setting_value("tab-style", &global, None),
-        Some(OptionValue::Str("hard".to_string()))
+        Some(OptionValue::Symbol("hard".to_string()))
     );
+}
+
+/// `wrap-mode` and `signcolumn` take `name:N` forms, so they are not closed
+/// sets and stay strings.
+#[test]
+fn setting_value_parameterized_keys_return_str() {
+    let global = EditorSettings::default();
+    assert!(matches!(
+        setting_value("wrap-mode", &global, None),
+        Some(OptionValue::Str(_))
+    ));
+    assert!(matches!(
+        setting_value("signcolumn", &global, None),
+        Some(OptionValue::Str(_))
+    ));
+}
+
+#[test]
+fn every_setting_key_has_a_value() {
+    let global = EditorSettings::default();
+    for key in all_setting_keys() {
+        assert!(
+            setting_value(key, &global, None).is_some(),
+            "no get-option value for '{key}'"
+        );
+    }
 }
 
 #[test]
@@ -175,11 +201,11 @@ fn setting_value_subfield_key_falls_back_to_global_whitespace() {
     global.whitespace.newline = true;
     assert_eq!(
         setting_value("whitespace-space", &global, None),
-        Some(OptionValue::Str("trailing".to_string()))
+        Some(OptionValue::Symbol("trailing".to_string()))
     );
     assert_eq!(
         setting_value("whitespace-newline", &global, None),
-        Some(OptionValue::Str("all".to_string()))
+        Some(OptionValue::Symbol("all".to_string()))
     );
 }
 
@@ -194,7 +220,7 @@ fn setting_value_whitespace_newline_round_trips_through_write_global() {
         write_global("whitespace-newline", wire, &mut s).unwrap();
         assert_eq!(
             setting_value("whitespace-newline", &s, None),
-            Some(OptionValue::Str(wire.to_string()))
+            Some(OptionValue::Symbol(wire.to_string()))
         );
     }
 }
@@ -208,7 +234,7 @@ fn setting_value_subfield_key_buffer_override_wins_over_global() {
     };
     assert_eq!(
         setting_value("whitespace-tab", &global, Some(&ov)),
-        Some(OptionValue::Str("all".to_string()))
+        Some(OptionValue::Symbol("all".to_string()))
     );
 }
 

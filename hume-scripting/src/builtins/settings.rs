@@ -7,28 +7,30 @@ use steel::rvals::SteelVal;
 use hume_engine::pipeline::BufferId;
 
 use crate::SteelCtx;
-use crate::host::{LANGUAGE_OPTION, OptionValue, language_option_value};
+use crate::host::{LANGUAGE_OPTION, language_option_value};
 use crate::types::{Effect, PaneHandle, QueuedEffect};
 
 use super::SteelResult;
 use super::errors::generic_err;
 
-/// Coerce a Steel string/bool/int settings value to the settings layer's
-/// string wire form. `ctx_name` names the calling builtin in the error.
+/// Coerce a Steel string/symbol/bool/int settings value to the settings
+/// layer's string wire form. `ctx_name` names the calling builtin in the
+/// error.
 fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
     match value {
         SteelVal::StringV(s) => Ok(s.to_string()),
+        SteelVal::SymbolV(s) => Ok(s.to_string()),
         SteelVal::BoolV(b) => Ok(b.to_string()),
         SteelVal::IntV(n) => Ok(n.to_string()),
         _ => steel::stop!(TypeMismatch =>
-            "{ctx_name}: value must be a string, bool, or integer, got {:?}", value),
+            "{ctx_name}: value must be a string, symbol, bool, or integer, got {:?}", value),
     }
 }
 
 /// `(set-option! key value)`
 ///
 /// Sets the global setting `key` to `value`. The value may be a Steel string,
-/// boolean, or integer. It is converted to a string and forwarded to the
+/// symbol, boolean, or integer. It is converted to a string and forwarded to the
 /// editor's settings layer, which is the single validating chokepoint
 /// (`editor::settings::ops::apply_global`) regardless of caller, so this is
 /// callable from any context: `init.scm`, plugin load, plugin activation, or
@@ -48,8 +50,8 @@ pub(crate) fn set_option(ctx: &mut SteelCtx, key: String, value: SteelVal) -> St
 
 /// `(set-buffer-option! pane key value)`
 ///
-/// Sets `key`'s per-buffer override on `pane`'s buffer to `value` (same string/bool/int
-/// coercion as `set-option!`). The override persists on the buffer until
+/// Sets `key`'s per-buffer override on `pane`'s buffer to `value` (same
+/// string/symbol/bool/int coercion as `set-option!`). The override persists on the buffer until
 /// overwritten, same as `:set buffer key=value`.
 ///
 /// `"language"` takes a string, `""` meaning no language, and is queued as
@@ -91,14 +93,6 @@ pub(crate) fn set_buffer_option(
     Ok(SteelVal::Void)
 }
 
-fn option_value_to_steel(value: OptionValue) -> SteelVal {
-    match value {
-        OptionValue::Bool(b) => SteelVal::BoolV(b),
-        OptionValue::Int(n) => SteelVal::IntV(n as isize),
-        OptionValue::Str(s) => SteelVal::StringV(s.into()),
-    }
-}
-
 /// `(get-option key)`: `key`'s global value, ignoring any buffer override
 /// even if one exists (mirrors `set-option!`, `open` kind: callable from
 /// any context, including `init.scm`). Use `(get-buffer-option pane key)`
@@ -107,7 +101,7 @@ pub(crate) fn get_option(ctx: &mut SteelCtx, key: String) -> SteelResult {
     ctx.host
         .settings()
         .get_global_option(&key)
-        .map(option_value_to_steel)
+        .map(SteelVal::from)
         .map_err(generic_err)
 }
 
@@ -132,7 +126,7 @@ pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, pane: PaneHandle, key: Strin
     ctx.host
         .settings()
         .get_buffer_option(&key, pane.buffer())
-        .map(option_value_to_steel)
+        .map(SteelVal::from)
         .map_err(generic_err)
 }
 

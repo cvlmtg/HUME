@@ -11,8 +11,8 @@ use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
-    checked_fields, json_arg, list_items, optional_usize_arg, single_key_arg, string_arg,
-    usize_arg, wire_text_edit_arg,
+    hash_entry, json_arg, list_items, optional_usize_arg, single_key_arg, string_arg,
+    wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -80,34 +80,25 @@ pub(crate) fn apply_workspace_edit(
 ///   request is in flight, which is exactly why the jump lands in `pane`,
 ///   not necessarily the focused one). Errors on an untagged (hand-built)
 ///   value, same as `apply-workspace-edit!`.
-/// - `(list target line char-col)`, already char-indexed: `target` is a
+/// - `(hash 'target t 'line l 'char-col c)`, already char-indexed: `t` is a
 ///   path string, a `file://` URI string, or a pane. This shape never
-///   touches server encoding.
+///   touches server encoding. Wire hashmaps have string keys, so a symbol
+///   `'target` key is what tells the two apart.
 pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal) -> SteelResult {
     match &loc {
-        SteelVal::HashMapV(_) | SteelVal::Custom(_) => {
-            let handle = json_arg(loc, "goto-location!")?;
-            let encoding = handle
-                .position_encoding("goto-location!")
-                .map_err(generic_err)?;
-            require_cap(ctx.host.edits(), "goto-location!")?
-                .goto_location_value(pane, handle.value(), encoding)
-                .map(|()| SteelVal::Void)
-                .map_err(generic_err)
-        }
-        SteelVal::ListV(_) => {
-            let fields = checked_fields(
+        SteelVal::HashMapV(map)
+            if map.iter().any(
+                |(k, _)| matches!(k, SteelVal::SymbolV(name) if name.as_str() == "target"),
+            ) =>
+        {
+            let fields = hash_entry(
                 loc.clone(),
                 "goto-location!",
-                3..=3,
-                "(target line char-col)",
+                &["target", "line", "char-col"],
             )?;
-            let target = fields[0].clone();
-            let line = hume_rope::line::RopeyLine::new(usize_arg(
-                fields[1].clone(),
-                "goto-location! line",
-            )?);
-            let char_col = usize_arg(fields[2].clone(), "goto-location! char-col")?;
+            let target = fields.required("target")?;
+            let line = hume_rope::line::RopeyLine::new(fields.usize("line")?);
+            let char_col = fields.usize("char-col")?;
             if let Some(handle) = super::ids::downcast_pane(&target) {
                 require_cap(ctx.host.edits(), "goto-location!")?
                     .goto_location_buffer(pane, handle.buffer(), line, char_col)
@@ -121,8 +112,18 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, pane: PaneHandle, loc: SteelVal)
                     .map_err(generic_err)
             }
         }
+        SteelVal::HashMapV(_) | SteelVal::Custom(_) => {
+            let handle = json_arg(loc, "goto-location!")?;
+            let encoding = handle
+                .position_encoding("goto-location!")
+                .map_err(generic_err)?;
+            require_cap(ctx.host.edits(), "goto-location!")?
+                .goto_location_value(pane, handle.value(), encoding)
+                .map(|()| SteelVal::Void)
+                .map_err(generic_err)
+        }
         _ => steel::stop!(TypeMismatch =>
-            "goto-location!: expected a Location hashmap/handle or (list target line char-col)"),
+            "goto-location!: expected a Location hashmap/handle or (hash 'target t 'line l 'char-col c)"),
     }
 }
 

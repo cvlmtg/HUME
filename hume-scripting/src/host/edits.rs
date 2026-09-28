@@ -84,7 +84,7 @@ pub trait EditHost {
         encoding: PositionEncoding,
     ) -> Result<(), String>;
 
-    /// `(goto-location! pane target)`, `(list target line char-col)` shape
+    /// `(goto-location! pane target)`, `(hash 'target 'line 'char-col)` shape
     /// with a path or `file://` URI string target, already char-indexed.
     /// `line` is minted trusted, unvalidated, by the one builtin
     /// (`goto-location!`) that calls this: there is no rope to validate
@@ -99,7 +99,7 @@ pub trait EditHost {
         char_col: usize,
     ) -> Result<(), String>;
 
-    /// `(goto-location! pane target)`, `(list target line char-col)` shape
+    /// `(goto-location! pane target)`, `(hash 'target 'line 'char-col)` shape
     /// with a buffer target, already char-indexed. See
     /// [`Self::goto_location_path`] for `line`'s trusted-mint rationale.
     fn goto_location_buffer(

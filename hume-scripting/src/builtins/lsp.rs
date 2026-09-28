@@ -14,8 +14,8 @@ use crate::{PendingLspServerReg, SteelCtx};
 
 use super::SteelResult;
 use super::args::{
-    ArgPane, bool_arg, callable_arg, cons_pair, json_arg, json_params, list_items,
-    list_to_env_pairs, list_to_strings, optional_json_arg, optional_string_arg, string_arg,
+    ArgPane, bool_arg, callable_arg, json_arg, json_params, list_items, list_to_env_pairs,
+    list_to_strings, optional_json_arg, optional_string_arg, string_arg, symbol_hash,
     wire_position,
 };
 use super::errors::generic_err;
@@ -264,24 +264,15 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
         .unwrap_or_default()
         .into_iter()
         .map(|e| {
-            let mut map = steel::HashMap::new();
-            map.insert(
-                SteelVal::SymbolV("language".into()),
-                SteelVal::StringV(e.language.into()),
-            );
-            map.insert(
-                SteelVal::SymbolV("root".into()),
-                SteelVal::StringV(e.root.to_string_lossy().into_owned().into()),
-            );
-            map.insert(
-                SteelVal::SymbolV("state".into()),
-                SteelVal::SymbolV(e.state.into()),
-            );
-            map.insert(
-                SteelVal::SymbolV("pending".into()),
-                SteelVal::IntV(e.pending as isize),
-            );
-            SteelVal::HashMapV(steel::gc::Gc::new(map).into())
+            symbol_hash([
+                ("language", SteelVal::StringV(e.language.into())),
+                (
+                    "root",
+                    SteelVal::StringV(e.root.to_string_lossy().into_owned().into()),
+                ),
+                ("state", SteelVal::SymbolV(e.state.into())),
+                ("pending", SteelVal::IntV(e.pending as isize)),
+            ])
         })
         .collect();
     Ok(SteelVal::ListV(entries.into()))
@@ -427,7 +418,7 @@ pub(crate) fn lsp_position_to_offset(
     )
 }
 
-/// `(lsp-range->offsets pane range)` → `(start . end)` half-open char
+/// `(lsp-range->offsets pane range)` → `(hash 'start s 'end e)` half-open char
 /// offsets for the wire `{"start" {"line" "character"} "end" {"line"
 /// "character"}}` hashmap `range`, same encoding rule as
 /// `lsp-position->offset`, decoded in `range`'s own tagged producing-server
@@ -460,7 +451,10 @@ pub(crate) fn lsp_range_to_offsets(
     ) else {
         return Ok(SteelVal::BoolV(false));
     };
-    cons_pair(SteelVal::IntV(start as isize), SteelVal::IntV(end as isize))
+    Ok(symbol_hash([
+        ("start", SteelVal::IntV(start as isize)),
+        ("end", SteelVal::IntV(end as isize)),
+    ]))
 }
 
 /// `(lsp-label-offsets->text label offsets)` → the slice of `label` that a
@@ -508,8 +502,8 @@ pub(crate) fn lsp_label_offsets_to_text(
     })
 }
 
-/// `(lsp-locations->display-parts locs)` → one `(path line
-/// grapheme-col-or-wire)` list per entry in `locs`, a list of raw
+/// `(lsp-locations->display-parts locs)` → one `(hash 'path p 'line l
+/// 'grapheme-col-or-wire c)` per entry in `locs`, a list of raw
 /// `Location`/`LocationLink` hashmaps/handles: the display-side
 /// counterpart to `goto-location!`'s wire conversion, decoded through the
 /// same shared decoder. Each entry reads its own tagged producing-server
@@ -536,17 +530,17 @@ pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal)
     let entries: Vec<SteelVal> = parts
         .into_iter()
         .map(|part| {
-            SteelVal::ListV(
-                vec![
-                    SteelVal::StringV(part.path.into()),
-                    SteelVal::IntV(part.line as isize),
+            symbol_hash([
+                ("path", SteelVal::StringV(part.path.into())),
+                ("line", SteelVal::IntV(part.line as isize)),
+                (
+                    "grapheme-col-or-wire",
                     match part.grapheme_col_or_wire {
                         Some(c) => SteelVal::IntV(c as isize),
                         None => SteelVal::BoolV(false),
                     },
-                ]
-                .into(),
-            )
+                ),
+            ])
         })
         .collect();
     Ok(SteelVal::ListV(entries.into()))

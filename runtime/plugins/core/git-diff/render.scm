@@ -18,9 +18,9 @@
 
 ;;; One `diff-buffer-lines` hunk -> a list of `(hash 'line 'text 'scope)` sign entries — see docs/rendering.md.
 (define (git-diff/hunk->signs hunk)
-  (let* ([old-count (list-ref hunk 1)]
-         [new-start (list-ref hunk 2)]
-         [new-count (list-ref hunk 3)])
+  (let* ([old-count (hash-ref hunk 'old-count)]
+         [new-start (hash-ref hunk 'new-start)]
+         [new-count (hash-ref hunk 'new-count)])
     (cond
       [(and (= new-count 0) (= new-start 0))
        (list (hash 'line 0 'text "▔" 'scope "diff.minus"))]
@@ -50,17 +50,17 @@
   (git-diff/virtual-line-hash old-line anchor '()))
 
 (define (git-diff/virtual-line-with-segments old-line anchor word-hunks)
-  (let* ([removals (filter (lambda (wh) (< (list-ref wh 0) (list-ref wh 1))) word-hunks)]
-         [segments (map (lambda (wh) (hash 'start (list-ref wh 0) 'end (list-ref wh 1) 'scope "diff.minus.word"))
+  (let* ([removals (filter (lambda (wh) (< (hash-ref wh 'old-start) (hash-ref wh 'old-end))) word-hunks)]
+         [segments (map (lambda (wh) (hash 'start (hash-ref wh 'old-start) 'end (hash-ref wh 'old-end) 'scope "diff.minus.word"))
                         removals)])
     (git-diff/virtual-line-hash old-line anchor segments)))
 
 ;;; `(hash 'start 'end 'scope)` spans in *buffer* char offsets — see docs/rendering.md.
 (define (git-diff/word-hunks->new-side-spans line-offset word-hunks)
-  (let ([additions (filter (lambda (wh) (< (list-ref wh 2) (list-ref wh 3))) word-hunks)])
+  (let ([additions (filter (lambda (wh) (< (hash-ref wh 'new-start) (hash-ref wh 'new-end))) word-hunks)])
     (map (lambda (wh)
-           (hash 'start (+ line-offset (list-ref wh 2))
-                 'end (+ line-offset (list-ref wh 3))
+           (hash 'start (+ line-offset (hash-ref wh 'new-start))
+                 'end (+ line-offset (hash-ref wh 'new-end))
                  'scope "diff.plus.word"))
          additions)))
 
@@ -75,8 +75,8 @@
 ;;; One paired (old-line . new-line) -> `(virtual-line . spans)` — see docs/rendering.md.
 (define (git-diff/paired-line->vl+spans old-line new-line line-offset anchor)
   (let* ([result (diff-words old-line new-line)]
-         [word-hunks (car result)]
-         [deadline-hit? (cdr result)])
+         [word-hunks (hash-ref result 'hunks)]
+         [deadline-hit? (hash-ref result 'deadline-hit)])
     (if deadline-hit?
         (cons (git-diff/plain-virtual-line old-line anchor) '())
         (cons (git-diff/virtual-line-with-segments old-line anchor word-hunks)
@@ -104,11 +104,11 @@
 
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!` — see docs/rendering.md.
 (define (git-diff/hunk-inline-data pane hunk)
-  (let* ([old-count (list-ref hunk 1)]
-         [new-start (list-ref hunk 2)]
-         [new-count (list-ref hunk 3)]
-         [old-lines (list-ref hunk 4)]
-         [new-lines (list-ref hunk 5)])
+  (let* ([old-count (hash-ref hunk 'old-count)]
+         [new-start (hash-ref hunk 'new-start)]
+         [new-count (hash-ref hunk 'new-count)]
+         [old-lines (hash-ref hunk 'old-lines)]
+         [new-lines (hash-ref hunk 'new-lines)])
     (if (= old-count 0)
         (cons '() '())
         (git-diff/hunk-old-lines->virtual+spans
@@ -126,9 +126,9 @@
 ;; ── Line background tint ─────────────────────────────────────────────────────
 
 (define (git-diff/hunk->line-bgs hunk)
-  (let* ([old-count (list-ref hunk 1)]
-         [new-start (list-ref hunk 2)]
-         [new-count (list-ref hunk 3)])
+  (let* ([old-count (hash-ref hunk 'old-count)]
+         [new-start (hash-ref hunk 'new-start)]
+         [new-count (hash-ref hunk 'new-count)])
     (if (= new-count 0)
         '()
         (let ([scope (if (= old-count 0) "diff.plus.line" "diff.delta.line")])

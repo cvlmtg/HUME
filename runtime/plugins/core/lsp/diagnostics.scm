@@ -27,7 +27,8 @@
     (if (null? before) (car (reverse diags)) (car (reverse before)))))
 
 (define (lsp/diag-jump-to! pane d)
-  (goto-location! (focused-pane) (list pane (hash-ref d 'line) (hash-ref d 'char-col))))
+  (goto-location! (focused-pane)
+                  (hash 'target pane 'line (hash-ref d 'line) 'char-col (hash-ref d 'char-col))))
 
 (define (lsp/diag-jump! pane direction)
   (let ((diags (diagnostics-for-buffer pane)))

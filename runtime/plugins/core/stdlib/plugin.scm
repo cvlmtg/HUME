@@ -1,16 +1,16 @@
 ;;; core:stdlib
 
 ;; ── Selection helpers (internal) ────────────────────────────────────────────
-;; Selections are opaque (anchor head primary?) triples — see README.md's "Selections".
+;; A selection is (hash 'anchor a 'head h 'primary p) — see README.md's "Selections".
 
 (define (stdlib/selection-anchor sel)
-  (and sel (car sel)))
+  (and sel (hash-ref sel 'anchor)))
 
 (define (stdlib/selection-head sel)
-  (and sel (cadr sel)))
+  (and sel (hash-ref sel 'head)))
 
 (define (stdlib/selection-primary? sel)
-  (and sel (caddr sel)))
+  (and sel (hash-ref sel 'primary)))
 
 (define (stdlib/primary-selection sels)
   (and sels
@@ -89,7 +89,7 @@
 
 (define (stdlib/run-stdout cmd args)
   (let ([result (stdlib/run! cmd args)])
-    (and (equal? (caddr result) 0) (trim (car result)))))
+    (and (equal? (hash-ref result 'exit) 0) (trim (hash-ref result 'stdout)))))
 
 (define (stdlib/git-repo?)
   (and (which "git")
@@ -185,19 +185,19 @@
 ;; ── call!-able commands (public API) ────────────────────────────────────────
 
 (define-command! "stdlib/selection-anchor"
-  "Anchor char offset of the given selection triple, or #f."
+  "Anchor char offset of the given selection, or #f."
   stdlib/selection-anchor)
 
 (define-command! "stdlib/selection-head"
-  "Head char offset of the given selection triple, or #f."
+  "Head char offset of the given selection, or #f."
   stdlib/selection-head)
 
 (define-command! "stdlib/selection-primary?"
-  "#t if the given selection triple is the primary selection, or #f."
+  "#t if the given selection is the primary selection, or #f."
   stdlib/selection-primary?)
 
 (define-command! "stdlib/primary-selection"
-  "The primary selection triple in the given list, or #f."
+  "The primary selection in the given list, or #f."
   stdlib/primary-selection)
 
 (define-command! "stdlib/all-single-char?"
@@ -237,7 +237,7 @@
   stdlib/safe-path-segment?)
 
 (define-command! "stdlib/run!"
-  "Spawn a command; blocks until exit. Returns (stdout stderr exit-code), exit-code #f on spawn/wait failure."
+  "Spawn a command; blocks until exit. Returns (hash 'stdout s 'stderr s 'exit code), 'exit #f on spawn/wait failure."
   stdlib/run!)
 
 (define-command! "stdlib/git-repo?"

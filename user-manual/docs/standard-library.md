@@ -17,12 +17,12 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 | `(call! "stdlib/single-selection?" sels)` | `#t` if `sels` holds exactly one selection |
 | `(call! "stdlib/all-single-char?" sels)` | `#t` if every selection in `sels` spans exactly one grapheme |
 | `(call! "stdlib/cursor-char-index" sels)` | 0-indexed head char offset of the primary selection in `sels`, or `#f` |
-| `(call! "stdlib/primary-selection" sels)` | The primary selection triple in `sels`, or `#f` |
-| `(call! "stdlib/selection-anchor" sel)` | Anchor char offset of the selection triple `sel`, or `#f` |
-| `(call! "stdlib/selection-head" sel)` | Head char offset of the selection triple `sel`, or `#f` |
-| `(call! "stdlib/selection-primary?" sel)` | `#t` if the selection triple `sel` is the primary selection, or `#f` |
+| `(call! "stdlib/primary-selection" sels)` | The primary selection in `sels`, or `#f` |
+| `(call! "stdlib/selection-anchor" sel)` | Anchor char offset of the selection `sel`, or `#f` |
+| `(call! "stdlib/selection-head" sel)` | Head char offset of the selection `sel`, or `#f` |
+| `(call! "stdlib/selection-primary?" sel)` | `#t` if the selection `sel` is the primary selection, or `#f` |
 
-`sels` is whatever `(buffer-selections pane)` returns: a list of opaque `(anchor head primary?)` triples, char offsets rather than grapheme ordinals. Go through these accessors instead of `car`/`cadr`/`caddr`; all seven pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(offset->line pane idx)` converts an offset to a line number when you need one.
+`sels` is whatever `(buffer-selections pane)` returns: a list of `(hash 'anchor a 'head h 'primary p)`, char offsets rather than grapheme ordinals. All seven pass a `#f` `sels`/`sel` straight through as `#f`, so a caller that got one from somewhere else with its own "nothing here" case doesn't need its own guard at every step. `(offset->line pane idx)` converts an offset to a line number when you need one.
 
 ## Filesystem
 
@@ -43,7 +43,7 @@ See [Core Plugins](core-plugins.md#core-stdlib) for why this call should stay ba
 |------|--------|
 | `(call! "stdlib/run!" cmd args #:cwd dir)` | Spawn `cmd`/`args` (in `dir`, or the inherited directory if omitted); blocks until exit |
 
-Returns `(stdout stderr exit-code)`. `exit-code` is `#f`, with the failure reason in `stderr`'s place, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run!` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
+Returns `(hash 'stdout s 'stderr s 'exit code)`. `'exit` is `#f`, with the failure reason in `'stderr`, if the command couldn't even be spawned or its exit couldn't be waited on. `stdlib/run!` blocks the whole editor until the command finishes, so it fits something quick (a `git rev-parse`) rather than anything that might take a moment while the user keeps typing. See [Filesystem and processes](plugins.md#filesystem-and-processes) for `run-inline-output!` and `spawn-async!`, the other two ways to run a subprocess.
 
 ## Git
 

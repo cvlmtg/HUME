@@ -18,13 +18,26 @@ pub fn language_option_value(value: &str) -> Option<&str> {
 /// A setting's effective value, typed just enough for `(get-option key)` to
 /// build the right `SteelVal`. `hume-scripting` has no dependency on
 /// `hume-editor`'s settings types, so the editor impl converts its own
-/// per-key parser kind (`bool`/`usize`/`from_str`/…) down to one of these
-/// three shapes at the trait boundary.
+/// per-key parser kind (`bool`/`usize`/`enum_str`/…) down to one of these
+/// four shapes at the trait boundary. `Symbol` is a closed set of names
+/// (`tab-style`'s `hard`/`soft`), `Str` free text or a `name:N` form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptionValue {
     Bool(bool),
     Int(i64),
     Str(String),
+    Symbol(String),
+}
+
+impl From<OptionValue> for steel::rvals::SteelVal {
+    fn from(value: OptionValue) -> Self {
+        match value {
+            OptionValue::Bool(b) => Self::BoolV(b),
+            OptionValue::Int(n) => Self::IntV(n as isize),
+            OptionValue::Str(s) => Self::StringV(s.into()),
+            OptionValue::Symbol(s) => Self::SymbolV(s.into()),
+        }
+    }
 }
 
 /// Global settings, statusline config, and the Steel eval budget,

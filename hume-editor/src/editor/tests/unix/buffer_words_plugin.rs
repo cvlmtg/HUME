@@ -317,7 +317,7 @@ fn reindex_via_option_change(ed: &mut Editor) {
     ed.state
         .queue_event(crate::editor::event::EditorEvent::OnOptionChange {
             key: "word-chars".into(),
-            value: "-".into(),
+            value: hume_scripting::host::OptionValue::Str("-".into()),
         });
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {

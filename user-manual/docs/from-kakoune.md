@@ -46,14 +46,14 @@ For a hands-on tour of everything else, type `:tutor` and press `Enter`: it open
 | Setting | Kakoune `kakrc` | HUME `init.scm` |
 |---|---|---|
 | Theme | `colorscheme onedark` | `(set-option! "theme" "onedark")` |
-| Line numbers | `add-highlighter global/numbers number-lines -relative` | `(set-option! "line-number-style" "relative")` |
+| Line numbers | `add-highlighter global/numbers number-lines -relative` | `(set-option! "line-number-style" 'relative)` |
 | Tab width | `set-option global tabstop 4` | `(set-option! "tab-width" 4)` |
 | Indent width | `set-option global indentwidth 4` | same as tab width: HUME has one `tab-width` option, not two |
-| Spaces vs tabs | `set-option global indentwidth 0` (tabs) | `(set-option! "tab-style" "soft")` (spaces) or `"hard"` (tabs) |
+| Spaces vs tabs | `set-option global indentwidth 0` (tabs) | `(set-option! "tab-style" 'soft)` (spaces) or `'hard` (tabs) |
 | Scroll padding | `set-option global scrolloff 5,0` | `(set-option! "scroll-margin" 5)` (lines only; HUME has no horizontal scroll margin) |
 | Extra word characters | `set-option global extra_word_chars '_'` | `(set-option! "word-chars" "_")` |
 | Reload on external change | `set-option global autoreload yes` | `(set-option! "auto-read" #t)` |
-| Whitespace indicators | `add-highlighter global/whitespace show-whitespaces` | `(set-option! "whitespace-space" "all")`<br>`(set-option! "whitespace-tab" "all")`<br>`(set-option! "whitespace-newline" "all")` |
+| Whitespace indicators | `add-highlighter global/whitespace show-whitespaces` | `(set-option! "whitespace-space" 'all)`<br>`(set-option! "whitespace-tab" 'all)`<br>`(set-option! "whitespace-newline" 'all)` |
 | Keybinding | `map global normal <c-j> ...` | `(bind-key! 'normal "ctrl-j" "move-down")` |
 
 Kakoune's `extra_word_chars` is usually set per filetype from a `hook`. HUME's equivalent is `on-language-set`:

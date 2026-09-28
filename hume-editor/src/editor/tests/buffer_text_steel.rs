@@ -206,10 +206,10 @@ fn buffer_lines_start_past_end_raises() {
 /// (`user-manual/docs/plugins.md`) must not raise on the common case of a
 /// buffer shorter than the pane, where the viewport's `end` sits at one past
 /// the buffer's last content line. Both ranges are 0-based and
-/// end-exclusive, so `#:end` takes `(cdr vr)` directly, no `+ 1` needed.
+/// end-exclusive, so `#:end` takes the range's `'end` directly, no `+ 1` needed.
 ///
 /// If `viewport-range` ended one past the ropey phantom line (two past the
-/// last content line), `#:end (cdr vr)` would fail `buffer-lines`' bounds
+/// last content line), that `#:end` would fail `buffer-lines`' bounds
 /// check and raise.
 #[test]
 fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
@@ -222,7 +222,7 @@ fn manual_viewport_range_recipe_reads_every_content_line_without_raising() {
         tmp.path(),
         r#"(let ((vr (viewport-range bid)))
              (equal? (buffer-lines bid
-                       #:start (car vr) #:end (cdr vr))
+                       #:start (hash-ref vr 'start) #:end (hash-ref vr 'end))
                      (list "a" "b" "c")))"#,
     );
     assert!(

@@ -177,7 +177,7 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 
 ### Reading selections
 
-`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of opaque `(anchor head primary?)` triples: char offsets, not grapheme ordinals. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. Don't index into the tuple directly; go through `core:stdlib`'s helpers instead, which is what they're for:
+`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of `(hash 'anchor a 'head h 'primary p)`: char offsets, not grapheme ordinals, `'primary` an `#t`/`#f` flag. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. `core:stdlib`'s helpers answer the common questions about the whole list:
 
 ```scheme
 (define-command! "example" "" (lambda (pane)
@@ -186,7 +186,7 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
   (call! "stdlib/cursor-char-index" (buffer-selections pane))))
 ```
 
-Those three read the whole list. To work with a single triple (the primary selection, say), use these accessors instead of `car`/`cadr`/`caddr`:
+Those three read the whole list. To work with a single selection (the primary one, say), use these accessors, which also pass a `#f` selection through as `#f`, or read the hash's own keys with `hash-ref`:
 
 ```scheme
 (call! "stdlib/primary-selection" (buffer-selections pane))
@@ -195,7 +195,7 @@ Those three read the whole list. To work with a single triple (the primary selec
 (call! "stdlib/selection-primary?" primary)
 ```
 
-`(offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since deriving it needs rope access a plain tuple doesn't have.
+`(offset->line pane idx)` converts a char offset to a line number when you need one. It's a separate call rather than a field on every selection, since deriving it needs rope access a plain hash doesn't have.
 
 See [Plugin API → Standard Library](plugin-api.md#selections) for the full list of selection helpers.
 
@@ -287,7 +287,7 @@ Available hooks and their lambda signatures. Every `pane` argument below is the 
 | `on-viewport-change` | The visible region of a pane changes | `(pane first-line end-line)`: 0-based, end-exclusive |
 | `on-trigger-char` | A registered trigger character is typed | `(pane char source)` |
 | `on-completion-accept` | A completion entry is accepted | `(pane item)` |
-| `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: both strings |
+| `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |
 | `on-text-changed` | A buffer's text changes | `(pane)` |
 
 `on-buffer-open` and `on-buffer-close` always fire as a pair for a given buffer: a buffer opened and closed within the same command never announces either one.
@@ -321,7 +321,7 @@ A few more examples:
 (get-buffer-option pane "option-name")
 ```
 
-`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value: its own override if one is set, else the global default. Pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name. `(get-buffer-option pane "language")` returns the buffer's language name, or `""` if it has none. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only: a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
+`(get-option "option-name")` returns the option's global value, ignoring any buffer override even if one exists. `(get-buffer-option pane "option-name")` returns `pane`'s buffer's effective value (a symbol for an option that takes a fixed set of names, like `tab-style`): its own override if one is set, else the global default. Pass the value explicitly (e.g. inside an `on-language-set` hook, whose handler receives it as an argument) rather than assuming "the buffer I care about" is whichever one is focused. Errors on an unknown option name. `(get-buffer-option pane "language")` returns the buffer's language name, or `""` if it has none. For `wrap-mode`, `get-buffer-option` reads the buffer/global level only: a pane pinned with `:set pane wrap-mode=…` can show a different style than what it reports.
 
 ```scheme
 (get-option "tab-width")           ; the global default tab-width
@@ -426,7 +426,7 @@ Returns the buffer's content as a list of lines, each with its line ending strip
 
 ```scheme
 (let ((vr (viewport-range pane)))
-  (buffer-lines pane #:start (car vr) #:end (cdr vr)))
+  (buffer-lines pane #:start (hash-ref vr 'start) #:end (hash-ref vr 'end)))
 ```
 
 If you're about to diff a buffer's content against another text, reach for `(diff-buffer-lines pane ref-text)` instead of `(buffer-text pane)`, especially from a hook that fires on every keystroke.
@@ -454,10 +454,10 @@ Two functions compute a line-level diff, useful for anything that shows what cha
 Splits both `old-text` and `new-text` into lines the same way HUME treats file content (every line ending becomes LF, and a missing trailing newline doesn't count as a change), then returns the list of hunks where they differ. Unchanged lines are left out entirely. Each hunk is:
 
 ```scheme
-(old-start old-count new-start new-count old-lines new-lines)
+(hash 'old-start s 'old-count n 'new-start s 'new-count n 'old-lines lines 'new-lines lines)
 ```
 
-`old-start`/`new-start` are 0-based line numbers, `old-count`/`new-count` are how many lines the hunk covers on each side, and `old-lines`/`new-lines` are the line contents themselves (no trailing newline). A pure insertion has `old-count` `0`; a pure deletion has `new-count` `0`. Either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
+`'old-start`/`'new-start` are 0-based line numbers, `'old-count`/`'new-count` are how many lines the hunk covers on each side, and `'old-lines`/`'new-lines` are the line contents themselves (no trailing newline). A pure insertion has `'old-count` `0`; a pure deletion has `'new-count` `0`. Either way, the zero-count side's line number is exactly where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!` with no adjustment.
 
 ```scheme
 (diff-buffer-lines pane ref-text)
@@ -471,7 +471,7 @@ For a finer-grained comparison inside a single changed line, highlighting exactl
 (diff-words old-text new-text)
 ```
 
-Returns `(hunks . too-long?)`. `hunks` is a list of `(old-start old-end new-start new-end old-text new-text)` tuples: 0-based character positions into `old-text`/`new-text`, with `old-text`/`new-text` on each hunk holding the actual changed words. A pure insertion has an empty `old-text` and `old-start` equal to `old-end`; a pure deletion mirrors that on the new side. `too-long?` is `#t` when the two texts were too large to compare word-by-word in time. Treat that as a signal to fall back to highlighting the whole line instead of individual words.
+Returns `(hash 'hunks hunks 'deadline-hit too-long?)`. `'hunks` is a list of `(hash 'old-start 'old-end 'new-start 'new-end 'old-text 'new-text)`: 0-based character positions into `old-text`/`new-text`, with `'old-text`/`'new-text` on each hunk holding the actual changed words. A pure insertion has an empty `'old-text` and `'old-start` equal to `'old-end`; a pure deletion mirrors that on the new side. `'deadline-hit` is `#t` when the two texts were too large to compare word-by-word in time. Treat that as a signal to fall back to highlighting the whole line instead of individual words.
 
 ### Custom pickers
 

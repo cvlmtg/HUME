@@ -5,6 +5,7 @@
 //! here (see `hume_scripting::host::EventHost`).
 
 use hume_engine::pipeline::BufferId;
+use hume_scripting::host::OptionValue;
 use hume_scripting::json::JsonHandle;
 use hume_scripting::{PaneHandle, SteelPane};
 use steel::rvals::SteelVal;
@@ -184,15 +185,11 @@ pub(in crate::editor) enum EditorEvent {
     /// Buffer-scoped overrides (`:set`/`set-buffer-option!` without
     /// `global`) don't raise this: the payload has no `BufferId` to name,
     /// and `apply_buffer` has no per-key resync effects to piggyback on (see
-    /// its doc). `value` is the raw string `:set`/`set-option!` was given,
-    /// not its parsed/coerced form (`write_global` discards the parsed value
-    /// after validating it); a plugin owning one setting's policy (e.g. the
-    /// LSP inlay-hints plugin reacting to `lsp.inlay-hints`) should re-read
-    /// `(get-option key)` for a typed value rather than pattern-match this
-    /// string.
+    /// its doc). `value` is the setting's new value as `(get-option key)`
+    /// reports it: a bool, integer, symbol for an enum option, or string.
     OnOptionChange {
         key: String,
-        value: String,
+        value: OptionValue,
     },
 }
 
@@ -404,7 +401,7 @@ impl EditorEvent {
             EditorEvent::OnOptionChange { key, value } => {
                 vec![
                     SteelVal::StringV(key.as_str().into()),
-                    SteelVal::StringV(value.as_str().into()),
+                    SteelVal::from(value.clone()),
                 ]
             }
             EditorEvent::OnLspNotification {

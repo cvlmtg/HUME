@@ -444,7 +444,7 @@ pub(in crate::editor) fn apply_workspace_edit(
 ///   `encoding`, the host trait layer's own read of the handle's tagged
 ///   producing-server encoding, resolved before this ever needing a `bid`
 ///   or live `LspState` lookup);
-/// - `(list target line char-col)`, already char-indexed: `target` is a path
+/// - `(hash 'target 'line 'char-col)`, already char-indexed: `target` is a path
 ///   string, a `file://` URI string, or a `bid`.
 pub(in crate::editor) enum GotoTarget {
     Wire {

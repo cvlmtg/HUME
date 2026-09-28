@@ -48,10 +48,8 @@ contributor touching this file does.
 `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`,
 `stdlib/cursor-char-index`.
 
-A selection is an opaque `(anchor head primary?)` triple. Its shape is this plugin's
-implementation detail, not a public contract, so callers pick it apart through these
-functions instead of raw `car`/`cadr`/`caddr`. All seven accept `#f` and answer `#f` in
-turn, so a caller building on a value that may itself be `#f` (a picker payload, an
+A selection is `(hash 'anchor a 'head h 'primary p)`, the shape `buffer-selections`
+returns. All seven accept `#f` and answer `#f` in turn, so a caller building on a value that may itself be `#f` (a picker payload, an
 optional match) only has to check once, at the call site.
 
 `(buffer-selections pane)` itself is not one of these seven. It raises rather than

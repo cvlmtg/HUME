@@ -596,7 +596,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
         &mut host,
         r#"(define *captured* #f)
            (register-hook! 'on-viewport-change
-             (lambda (bid first end) (set! *captured* (cons first end))))"#,
+             (lambda (bid first end) (set! *captured* (hash 'start first 'end end))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -625,7 +625,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
 /// overshoot `buffer-lines`' bounds check whenever the viewport reaches EOF.
 ///
 /// Clamping to `ropey_line_count()` rather than `content_line_count()` would
-/// report `(cdr vr)` one higher than this asserts.
+/// report an `'end` one higher than this asserts.
 #[test]
 fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
     let tmp = safe_tempdir();
@@ -635,7 +635,7 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (cdr (viewport-range bid)) 3)"#,
+        r#"(equal? (hash-ref (viewport-range bid) 'end) 3)"#,
     );
     assert!(
         fired,
@@ -789,7 +789,7 @@ fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
              (let* ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers))))
                     (hidden-pane (car (buffer-panes hidden)))
                     (range (viewport-range hidden-pane)))
-               (log! 'info (string-append "range: " (number->string (car range)) ".." (number->string (cdr range)))))))"#,
+               (log! 'info (string-append "range: " (number->string (hash-ref range 'start)) ".." (number->string (hash-ref range 'end)))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1116,7 +1116,7 @@ fn lsp_range_to_offsets_converts_both_endpoints_half_open() {
     let fired = run_tagged_probe(
         &mut ed,
         tmp.path(),
-        r#"(equal? (lsp-range->offsets bid res) (cons 0 1))"#,
+        r#"(equal? (lsp-range->offsets bid res) (hash 'start 0 'end 1))"#,
     );
     assert!(
         fired,
@@ -1150,7 +1150,7 @@ fn lsp_range_to_offsets_end_may_land_at_the_buffers_char_length() {
     let fired = run_tagged_probe(
         &mut ed,
         tmp.path(),
-        r#"(equal? (lsp-range->offsets bid res) (cons 0 5))"#,
+        r#"(equal? (lsp-range->offsets bid res) (hash 'start 0 'end 5))"#,
     );
     assert!(
         fired,

@@ -17,10 +17,10 @@ pub trait CursorHost {
     fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<usize, String>;
 
     /// `(buffer-selections pane)`: every selection in `pane`'s own pane, as
-    /// `(anchor, head, primary)` triples of raw 0-indexed char offsets,
+    /// `(anchor, head, primary)` tuples of raw 0-indexed char offsets,
     /// inclusive model (anchor == head is a 1-char selection), direction
     /// preserved (anchor > head for backward selections), sorted by
-    /// selection start, with exactly one triple flagged primary.
+    /// selection start, with exactly one tuple flagged primary.
     fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String>;
 
     /// `(offset->line bid idx)`: 0-indexed line containing the

@@ -47,16 +47,15 @@ fn core_stdlib_plugin_loads_eagerly() {
 /// straight through untouched: the same cross-plugin surface
 /// `core:vim-keybind` uses for its conditional `C` binding.
 ///
-/// Each assertion compares against a hand-written literal tuple, independent
+/// Each assertion compares against a hand-written literal, independent
 /// of the implementation. If any command computes the wrong result, its `unless`
 /// fires `(error ...)`, which propagates as an `Err`, caught by the assert
 /// below, failing the test with the offending assertion name.
 ///
-/// `stdlib`'s per-triple accessors (`selection-anchor`/`-head`/`-primary?`,
+/// `stdlib`'s per-selection accessors (`selection-anchor`/`-head`/`-primary?`,
 /// `primary-selection`) are `call!`-reachable public commands, same as the
-/// three list-level predicates. A plugin holding a single selection triple
-/// (not a list) needs them directly rather than picking it apart with raw
-/// `car`/`cadr`/`caddr`.
+/// three list-level predicates. A plugin holding a single selection
+/// (not a list) can use them for their `#f` passthrough.
 #[test]
 fn core_stdlib_selection_commands() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
@@ -70,33 +69,33 @@ fn core_stdlib_selection_commands() {
 (unless (equal? (call! "stdlib/selection-primary?" #f) #f) (error "selection-primary? #f passthrough"))
 (unless (equal? (call! "stdlib/primary-selection" #f) #f) (error "primary-selection #f passthrough"))
 
-(unless (equal? (call! "stdlib/single-selection?" (list (list 0 1 #t))) #t)
+(unless (equal? (call! "stdlib/single-selection?" (list (hash 'anchor 0 'head 1 'primary #t))) #t)
   (error "single-selection? true"))
-(unless (equal? (call! "stdlib/single-selection?" (list (list 0 1 #t) (list 2 3 #f))) #f)
+(unless (equal? (call! "stdlib/single-selection?" (list (hash 'anchor 0 'head 1 'primary #t) (hash 'anchor 2 'head 3 'primary #f))) #f)
   (error "single-selection? false"))
 
-(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 2 #t) (list 5 5 #f))) #t)
+(unless (equal? (call! "stdlib/all-single-char?" (list (hash 'anchor 2 'head 2 'primary #t) (hash 'anchor 5 'head 5 'primary #f))) #t)
   (error "all-single-char? true"))
-(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 3 #t))) #f)
+(unless (equal? (call! "stdlib/all-single-char?" (list (hash 'anchor 2 'head 3 'primary #t))) #f)
   (error "all-single-char? false"))
-(unless (equal? (call! "stdlib/all-single-char?" (list (list 2 2 #f) (list 5 6 #t))) #f)
+(unless (equal? (call! "stdlib/all-single-char?" (list (hash 'anchor 2 'head 2 'primary #f) (hash 'anchor 5 'head 6 'primary #t))) #f)
   (error "all-single-char? false when only a later selection is wide"))
 
-(unless (equal? (call! "stdlib/cursor-char-index" (list (list 0 0 #f) (list 7 4 #t))) 4)
+(unless (equal? (call! "stdlib/cursor-char-index" (list (hash 'anchor 0 'head 0 'primary #f) (hash 'anchor 7 'head 4 'primary #t))) 4)
   (error "cursor-char-index picks the primary's head"))
 
-(unless (equal? (call! "stdlib/selection-anchor" (list 3 9 #t)) 3)
-  (error "selection-anchor reads the triple's first field"))
-(unless (equal? (call! "stdlib/selection-head" (list 3 9 #t)) 9)
-  (error "selection-head reads the triple's second field"))
-(unless (equal? (call! "stdlib/selection-primary?" (list 3 9 #t)) #t)
+(unless (equal? (call! "stdlib/selection-anchor" (hash 'anchor 3 'head 9 'primary #t)) 3)
+  (error "selection-anchor reads the hash's 'anchor"))
+(unless (equal? (call! "stdlib/selection-head" (hash 'anchor 3 'head 9 'primary #t)) 9)
+  (error "selection-head reads the hash's 'head"))
+(unless (equal? (call! "stdlib/selection-primary?" (hash 'anchor 3 'head 9 'primary #t)) #t)
   (error "selection-primary? true"))
-(unless (equal? (call! "stdlib/selection-primary?" (list 3 9 #f)) #f)
+(unless (equal? (call! "stdlib/selection-primary?" (hash 'anchor 3 'head 9 'primary #f)) #f)
   (error "selection-primary? false"))
-(unless (equal? (call! "stdlib/primary-selection" (list (list 0 0 #f) (list 7 4 #t) (list 1 1 #f))) (list 7 4 #t))
-  (error "primary-selection picks the flagged triple out of a list"))
-(unless (equal? (call! "stdlib/primary-selection" (list (list 0 0 #f) (list 1 1 #f))) #f)
-  (error "primary-selection #f when no triple is flagged"))
+(unless (equal? (call! "stdlib/primary-selection" (list (hash 'anchor 0 'head 0 'primary #f) (hash 'anchor 7 'head 4 'primary #t) (hash 'anchor 1 'head 1 'primary #f))) (hash 'anchor 7 'head 4 'primary #t))
+  (error "primary-selection picks the flagged selection out of a list"))
+(unless (equal? (call! "stdlib/primary-selection" (list (hash 'anchor 0 'head 0 'primary #f) (hash 'anchor 1 'head 1 'primary #f))) #f)
+  (error "primary-selection #f when no selection is flagged"))
 "#;
 
     let result = {
@@ -343,19 +342,19 @@ fn core_stdlib_run_covers_success_failure_and_spawn_error() {
 
     let assertions = r#"
 (let ([r (call! "stdlib/run!" "echo" (list "hello-world"))])
-  (unless (and (string-contains? (car r) "hello-world") (equal? (caddr r) 0))
+  (unless (and (string-contains? (hash-ref r 'stdout) "hello-world") (equal? (hash-ref r 'exit) 0))
     (error (string-append "stdlib/run! success case: " (to-string r)))))
 
 (let ([r (call! "stdlib/run!" "sh" (list "-c" "echo err-msg 1>&2; exit 3"))])
-  (unless (and (string-contains? (cadr r) "err-msg") (equal? (caddr r) 3))
+  (unless (and (string-contains? (hash-ref r 'stderr) "err-msg") (equal? (hash-ref r 'exit) 3))
     (error (string-append "stdlib/run! nonzero-exit case: " (to-string r)))))
 
 (let ([r (call! "stdlib/run!" "hume-definitely-not-a-real-binary-xyz" '())])
-  (unless (not (caddr r))
+  (unless (not (hash-ref r 'exit))
     (error (string-append "stdlib/run! spawn-failure case: " (to-string r)))))
 
 (let ([r (call! "stdlib/run!" "pwd" '() #:cwd "/")])
-  (unless (equal? (trim (car r)) "/")
+  (unless (equal? (trim (hash-ref r 'stdout)) "/")
     (error (string-append "stdlib/run! #:cwd case: " (to-string r)))))
 "#;
 

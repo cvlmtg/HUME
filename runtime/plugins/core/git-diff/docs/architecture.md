@@ -24,7 +24,7 @@ a single `fresh-entry` source of truth, holds:
 |---|---|
 | `"signs?"` / `"inline?"` | The two independent enable flags |
 | `"ref-text"` | The fetch/diff cache (see the table below) |
-| `"hunks"` | The verbatim tuples `diff-buffer-lines` last returned, always kept in sync with what's actually painted |
+| `"hunks"` | The verbatim hunk hashes `diff-buffer-lines` last returned, always kept in sync with what's actually painted |
 | `"job"` | The in-flight diff-fetch `spawn-async!` id, or `#f` |
 | `"ref"` | `#f` (use the config default) or a runtime override string set via `:toggle-git-signs <ref>`/`:toggle-inline-diff <ref>` |
 | `"branch-job"` | The in-flight branch-fetch `spawn-async!` id, or `#f`; independent of `"job"` |

@@ -1,4 +1,5 @@
 use super::*;
+use crate::host::OptionValue;
 use crate::test_support::{SteelCtxTestHarness, default_pane};
 use hume_engine::pipeline::BufferId;
 use steel::rvals::IntoSteelVal as _;
@@ -392,5 +393,38 @@ fn set_buffer_option_reaches_host() {
     assert_eq!(
         host.calls,
         vec![("tab-width".to_string(), "8".to_string(), target)]
+    );
+}
+
+/// A symbol value is forwarded as its name, the same string `:set` would
+/// carry, so one parser decodes both spellings.
+#[test]
+fn set_buffer_option_forwards_a_symbol_as_its_name() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = RecordingBufferOptionHost::default();
+    let target = BufferId::default();
+    let mut ctx = h.ctx_with_host(&mut host);
+    set_buffer_option(
+        &mut ctx,
+        crate::types::PaneHandle::buffer_only(target),
+        "tab-style".into(),
+        SteelVal::SymbolV("soft".into()),
+    )
+    .expect("a symbol value must be accepted");
+    assert_eq!(
+        host.calls,
+        vec![("tab-style".to_string(), "soft".to_string(), target)]
+    );
+}
+
+#[test]
+fn an_enum_option_value_reads_back_as_a_symbol() {
+    assert_eq!(
+        SteelVal::from(OptionValue::Symbol("soft".to_string())),
+        SteelVal::SymbolV("soft".into())
+    );
+    assert_eq!(
+        SteelVal::from(OptionValue::Str("soft".to_string())),
+        SteelVal::StringV("soft".into())
     );
 }

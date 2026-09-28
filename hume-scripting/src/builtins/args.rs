@@ -15,7 +15,6 @@
 //! absent_marker_is_decoded_only_in_args_rs` (`arch-lints/tests/
 //! absent_decode.rs`).
 
-use std::ops::RangeInclusive;
 use std::path::PathBuf;
 
 use steel::rerrs::{ErrorKind, SteelErr};
@@ -341,81 +340,121 @@ pub(crate) fn optional_steel_error_arg(
     }
 }
 
-// ── Fixed-arity list decoders ────────────────────────────────────────────────
-
-/// Unpacks `val` as a list and errors unless its length falls in `arity`:
-/// the shared shape check every fixed-field entry (a position pair, a text
-/// edit) opens with.
-pub(crate) fn checked_fields(
-    val: SteelVal,
-    ctx_name: &str,
-    arity: RangeInclusive<usize>,
-    shape: &str,
-) -> Result<Vec<SteelVal>, SteelErr> {
-    let fields = list_items(val, ctx_name)?;
-    if !arity.contains(&fields.len()) {
-        steel::stop!(Generic => "{}: each entry must be {}", ctx_name, shape);
-    }
-    Ok(fields)
-}
-
 // ── Symbol-keyed hash entries ────────────────────────────────────────────────
 
-/// One entry of a hash-shaped list (a decoration setter's `(hash 'line …)`),
-/// its keys already checked against the caller's own key set by
-/// [`hash_list`].
+/// One symbol-keyed hashmap (a decoration setter's `(hash 'line …)`), its
+/// keys already checked against the caller's own key set by [`hash_entry`]. Values sit in slots parallel to that key set, so a lookup
+/// is a scan over a few short names rather than a hashmap probe.
 pub(crate) struct HashEntry<'a> {
-    map: steel::rvals::SteelHashMap,
+    keys: &'a [&'a str],
+    slots: Vec<Option<SteelVal>>,
     ctx_name: &'a str,
 }
 
 impl HashEntry<'_> {
+    /// `"<ctx_name> '<key>"`, the label a decoder reports a bad `key` under.
+    pub(crate) fn label(&self, key: &str) -> String {
+        format!("{} '{key}", self.ctx_name)
+    }
+
+    /// `key` must be one of the keys handed to [`hash_entry`]: asking for any
+    /// other is a bug in the caller, not bad user input.
+    fn slot(&self, key: &str) -> &Option<SteelVal> {
+        let i = self
+            .keys
+            .iter()
+            .position(|k| *k == key)
+            .expect("key is one of the keys passed to hash_entry");
+        &self.slots[i]
+    }
+
     pub(crate) fn optional(&self, key: &str) -> Option<SteelVal> {
-        self.map.get(&SteelVal::SymbolV(key.into())).cloned()
+        self.slot(key).clone()
     }
 
     pub(crate) fn required(&self, key: &str) -> Result<SteelVal, SteelErr> {
         self.optional(key)
             .ok_or_else(|| generic_err(format!("{}: missing '{key}", self.ctx_name)))
     }
+
+    pub(crate) fn usize(&self, key: &str) -> Result<usize, SteelErr> {
+        usize_arg(self.required(key)?, &self.label(key))
+    }
+
+    pub(crate) fn string(&self, key: &str) -> Result<String, SteelErr> {
+        string_arg(self.required(key)?, &self.label(key))
+    }
+
+    pub(crate) fn optional_string(&self, key: &str) -> Result<Option<String>, SteelErr> {
+        self.optional(key)
+            .map(|v| string_arg(v, &self.label(key)))
+            .transpose()
+    }
 }
 
-/// Decodes a Steel list of symbol-keyed hashmaps into `Vec<T>`: the shared
-/// skeleton every decoration setter opens with. Each entry must be a
-/// hashmap whose keys are all symbols drawn from `keys`; an unknown or
-/// non-symbol key errors, so a misspelled key is reported, not ignored. Which
-/// keys are required is `row`'s call, via [`HashEntry::required`].
-pub(crate) fn hash_list<T>(
+/// Decodes one symbol-keyed hashmap: the shared decode for a record a
+/// builtin takes (a decoration entry, a goto target). The hashmap's keys must
+/// all be symbols drawn from `keys`; an unknown or non-symbol key errors, so
+/// a misspelled key is reported, not ignored. Which keys are required is the
+/// caller's call, via [`HashEntry::required`].
+pub(crate) fn hash_entry<'a>(
     val: SteelVal,
-    ctx_name: &str,
-    keys: &[&str],
-    mut row: impl FnMut(&HashEntry) -> Result<T, SteelErr>,
-) -> Result<Vec<T>, SteelErr> {
+    ctx_name: &'a str,
+    keys: &'a [&'a str],
+) -> Result<HashEntry<'a>, SteelErr> {
     let expected = || {
         keys.iter()
             .map(|k| format!("'{k}"))
             .collect::<Vec<_>>()
             .join(" ")
     };
+    let SteelVal::HashMapV(map) = val else {
+        steel::stop!(TypeMismatch =>
+            "{}: expected a hashmap with keys from {}", ctx_name, expected());
+    };
+    let mut slots = vec![None; keys.len()];
+    for (key, value) in map.iter() {
+        let SteelVal::SymbolV(name) = key else {
+            steel::stop!(Generic =>
+                "{}: hashmap key must be a symbol, got {:?}", ctx_name, key);
+        };
+        let Some(i) = keys.iter().position(|k| *k == name.as_str()) else {
+            steel::stop!(Generic =>
+                "{}: unknown key '{}, expected one of {}", ctx_name, name, expected());
+        };
+        slots[i] = Some(value.clone());
+    }
+    Ok(HashEntry {
+        keys,
+        slots,
+        ctx_name,
+    })
+}
+
+/// [`hash_entry`] for an argument that may be `#f` (absent): the
+/// `optional_*`-family sibling, so the `#f` check lives in this file only.
+pub(crate) fn optional_hash_entry<'a>(
+    val: SteelVal,
+    ctx_name: &'a str,
+    keys: &'a [&'a str],
+) -> Result<Option<HashEntry<'a>>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        other => hash_entry(other, ctx_name, keys).map(Some),
+    }
+}
+
+/// Decodes a Steel list of symbol-keyed hashmaps into `Vec<T>`: the shared
+/// skeleton every decoration setter opens with, [`hash_entry`] per element.
+pub(crate) fn hash_list<'a, T>(
+    val: SteelVal,
+    ctx_name: &'a str,
+    keys: &'a [&'a str],
+    mut row: impl FnMut(&HashEntry) -> Result<T, SteelErr>,
+) -> Result<Vec<T>, SteelErr> {
     list_items(val, ctx_name)?
         .into_iter()
-        .map(|entry| {
-            let SteelVal::HashMapV(map) = entry else {
-                steel::stop!(TypeMismatch =>
-                    "{}: each entry must be a hashmap with keys from {}", ctx_name, expected());
-            };
-            for (key, _) in map.iter() {
-                let SteelVal::SymbolV(name) = key else {
-                    steel::stop!(Generic =>
-                        "{}: hashmap key must be a symbol, got {:?}", ctx_name, key);
-                };
-                if !keys.contains(&name.as_str()) {
-                    steel::stop!(Generic =>
-                        "{}: unknown key '{}, expected one of {}", ctx_name, name, expected());
-                }
-            }
-            row(&HashEntry { map, ctx_name })
-        })
+        .map(|entry| row(&hash_entry(entry, ctx_name, keys)?))
         .collect()
 }
 
@@ -435,6 +474,17 @@ pub(crate) fn string_list(items: impl IntoIterator<Item = String>) -> SteelVal {
     list_of(items.into_iter().map(|s| SteelVal::StringV(s.into())))
 }
 
+/// Builds a symbol-keyed Steel hashmap: the encode counterpart to
+/// [`hash_list`]'s decode. An absent optional value is the caller's to map to
+/// the convention its key documents.
+pub(crate) fn symbol_hash(pairs: impl IntoIterator<Item = (&'static str, SteelVal)>) -> SteelVal {
+    let map: steel::HashMap<SteelVal, SteelVal> = pairs
+        .into_iter()
+        .map(|(key, value)| (SteelVal::SymbolV(key.into()), value))
+        .collect();
+    SteelVal::HashMapV(steel::gc::Gc::new(map).into())
+}
+
 // ── Dotted-pair decoders/encoders ────────────────────────────────────────────
 
 /// Unpacks `val` as a dotted pair `(car . cdr)`: the shared decode for wire
@@ -451,20 +501,6 @@ pub(crate) fn pair_fields(
     }
 }
 
-/// A dotted-pair argument that may be `#f` (absent): `pair_fields`'s
-/// `optional_*`-family sibling; `ctx_name`/`shape` stay caller-supplied so a
-/// `None` decode reads no differently than `pair_fields`'s own error would.
-pub(crate) fn optional_pair_fields(
-    val: SteelVal,
-    ctx_name: &str,
-    shape: &str,
-) -> Result<Option<(SteelVal, SteelVal)>, SteelErr> {
-    match val {
-        SteelVal::BoolV(false) => Ok(None),
-        other => Ok(Some(pair_fields(other, ctx_name, shape)?)),
-    }
-}
-
 /// Builds a dotted pair `(a . b)`: the shared encode counterpart to
 /// `pair_fields`, via steel-core's public `cons` primitive (the only public
 /// pair-construction API; the `Pair` type itself is unnameable outside
@@ -472,8 +508,9 @@ pub(crate) fn optional_pair_fields(
 ///
 /// `b` must not be a list (including `'()`): steel's `cons` returns a proper
 /// `ListV` rather than a `Pair` when `b` is itself list-shaped, and
-/// `pair_fields` would then reject the round-trip. Every current caller's
-/// cdr is a scalar (`IntV`/position), so this holds in practice.
+/// `pair_fields` would then reject the round-trip. Every caller's cdr is a
+/// scalar.
+#[cfg(test)]
 pub(crate) fn cons_pair(mut a: SteelVal, mut b: SteelVal) -> Result<SteelVal, SteelErr> {
     steel::primitives::lists::cons(&mut a, &mut b)
 }

@@ -667,7 +667,7 @@ fn goto_location_same_buffer_char_indexed_shape() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (list bid 0 3))))"#,
+             (goto-location! bid (hash 'target bid 'line 0 'char-col 3))))"#,
     );
     let before = state(&ed);
     type_cmd(&mut ed, ":go");
@@ -690,7 +690,7 @@ fn goto_location_noop_does_not_clobber_forward_history() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (list bid 0 0))))"#,
+             (goto-location! bid (hash 'target bid 'line 0 'char-col 0))))"#,
     );
 
     // `%`: jump-flagged, moves elsewhere, records a jump.
@@ -740,7 +740,7 @@ fn goto_location_other_open_buffer_by_path_string() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (goto-location! bid (list {:?} 0 1))))"#,
+                 (goto-location! bid (hash 'target {:?} 'line 0 'char-col 1))))"#,
             file.to_str().unwrap()
         ),
     );
@@ -761,7 +761,7 @@ fn goto_location_unopened_path_opens_it() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-                 (goto-location! bid (list {:?} 0 2))))"#,
+                 (goto-location! bid (hash 'target {:?} 'line 0 'char-col 2))))"#,
             file.to_str().unwrap()
         ),
     );
@@ -778,7 +778,7 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (list bid 999 0))))"#,
+             (goto-location! bid (hash 'target bid 'line 999 'char-col 0))))"#,
     );
     type_cmd(&mut ed, ":go");
     let len_chars = ed.doc().text().end();
@@ -825,7 +825,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (list bid 20 0))))"#,
+             (goto-location! bid (hash 'target bid 'line 20 'char-col 0))))"#,
     );
     type_cmd(&mut ed, ":go");
 
@@ -860,7 +860,7 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (list {dir_target} 0 0))))"#
+             (goto-location! bid (hash 'target {dir_target} 'line 0 'char-col 0))))"#
         ),
     );
     let before = state(&ed);
@@ -919,7 +919,7 @@ fn goto_location_wire_shape_decodes_with_the_responses_encoding() {
     );
 }
 
-/// `(goto-location! bid (list path line char-col))` on a path that doesn't exist yet
+/// `(goto-location! bid (hash 'target path 'line line 'char-col char-col))` on a path that doesn't exist yet
 /// must open a new-file buffer and jump to it, the same tolerance `:e` has:
 /// `resolve_path_or_uri` shares `Editor::resolve_open_path`'s
 /// `Buffer::from_file_or_new` chokepoint.
@@ -934,7 +934,7 @@ fn goto_missing_path_opens_new_file_buffer() {
         tmp.path(),
         &format!(
             r#"(define-typed-command! "go" "" (lambda (bid)
-             (goto-location! bid (list {target_str} 0 0))))"#
+             (goto-location! bid (hash 'target {target_str} 'line 0 'char-col 0))))"#
         ),
     );
     let start_bid = ed.focused_buffer_id();

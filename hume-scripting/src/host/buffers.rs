@@ -122,7 +122,7 @@ pub trait BufferHost {
 
     /// The content-domain line range currently visible in `pane`'s own pane.
     /// Backs the Steel `(viewport-range pane)` builtin, which unwraps the
-    /// range to a `(first . end)` integer pair at the Steel boundary
+    /// range to a `(hash 'start first 'end end)` at the Steel boundary
     /// (0-based, end-exclusive). Pane geometry, not LSP state, so it doesn't need
     /// an attached server. Kind-B: raises if `pane` carries no pane, a
     /// closed one, one that no longer shows `pane`'s buffer, or one on a

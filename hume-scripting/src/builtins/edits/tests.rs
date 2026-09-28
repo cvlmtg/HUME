@@ -1,4 +1,5 @@
 use super::*;
+use crate::builtins::args::symbol_hash;
 use crate::json::JsonHandle;
 use crate::test_support::{SteelCtxTestHarness, default_pane};
 use hume_rope::position_encoding::PositionEncoding;
@@ -97,7 +98,7 @@ fn default_from() -> SteelVal {
 }
 
 /// A server-tagged `JsonHandle` onto a Location must dispatch through the
-/// same path a hashmap does, not the `(list target line char-col)` tuple
+/// same path a hashmap does, not the `(hash 'target 'line 'char-col)` record
 /// path, proven by reaching "no host" instead of a shape or encoding error.
 #[test]
 fn goto_location_accepts_a_tagged_json_handle() {
@@ -155,14 +156,18 @@ fn goto_location_wire_shape_requires_a_tagged_handle() {
     );
 }
 
-/// The `(list target line char-col)` shape never touches server encoding at
-/// all, and reaches the host regardless.
+/// The `(hash 'target 'line 'char-col)` shape never touches server encoding
+/// at all, and reaches the host regardless.
 #[test]
-fn goto_location_list_shape_never_touches_encoding() {
+fn goto_location_target_shape_never_touches_encoding() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    let list = SteelVal::ListV(vec![default_from(), SteelVal::IntV(0), SteelVal::IntV(0)].into());
-    let msg = goto_location(&mut ctx, default_pane(), list)
+    let target = symbol_hash([
+        ("target", default_from()),
+        ("line", SteelVal::IntV(0)),
+        ("char-col", SteelVal::IntV(0)),
+    ]);
+    let msg = goto_location(&mut ctx, default_pane(), target)
         .unwrap_err()
         .to_string();
     assert!(msg.contains("not supported by this host"), "got: {msg}");

@@ -9,15 +9,15 @@ use crate::host::{DiffHunk, WordDiffHunk};
 use crate::types::PaneHandle;
 
 use super::SteelResult;
-use super::args::{cons_pair, list_of, not_live_err, string_arg, string_list};
+use super::args::{list_of, not_live_err, string_arg, string_list, symbol_hash};
 use super::errors::require_cap;
 
-/// `(diff-lines old-text new-text)` → list of hunk tuples, oldest side
-/// first. Each hunk is `(old-start old-count new-start new-count old-lines
-/// new-lines)`, 0-based; `Equal` runs are dropped. See [`DiffHost`]'s doc
+/// `(diff-lines old-text new-text)` → list of hunk hashes, oldest side
+/// first. Each hunk is `(hash 'old-start 'old-count 'new-start 'new-count
+/// 'old-lines 'new-lines)`, 0-based; `Equal` runs are dropped. See [`DiffHost`]'s doc
 /// for the exact contract (both texts normalized as buffer content).
 /// `old-count`/`new-count` are `(length old-lines)`/`(length new-lines)`.
-/// [`DiffHunk`] carries no separate count field, so the Steel tuple derives
+/// [`DiffHunk`] carries no separate count field, so the Steel hash derives
 /// them at the boundary rather than duplicating state Rust-side.
 ///
 /// [`DiffHost`]: crate::host::DiffHost
@@ -56,19 +56,19 @@ fn hunks_to_steel(hunks: Vec<DiffHunk>) -> SteelVal {
 fn hunk_to_steel(hunk: DiffHunk) -> SteelVal {
     let old_count = hunk.old_lines.len();
     let new_count = hunk.new_lines.len();
-    list_of([
-        SteelVal::IntV(hunk.old_start.index() as isize),
-        SteelVal::IntV(old_count as isize),
-        SteelVal::IntV(hunk.new_start.index() as isize),
-        SteelVal::IntV(new_count as isize),
-        string_list(hunk.old_lines),
-        string_list(hunk.new_lines),
+    symbol_hash([
+        ("old-start", SteelVal::IntV(hunk.old_start.index() as isize)),
+        ("old-count", SteelVal::IntV(old_count as isize)),
+        ("new-start", SteelVal::IntV(hunk.new_start.index() as isize)),
+        ("new-count", SteelVal::IntV(new_count as isize)),
+        ("old-lines", string_list(hunk.old_lines)),
+        ("new-lines", string_list(hunk.new_lines)),
     ])
 }
 
-/// `(diff-words old-text new-text)` → `(hunks . deadline-hit?)`. `hunks` is
-/// a list of `(old-start old-end new-start new-end old-text new-text)`
-/// tuples, char offsets, `Equal` runs dropped. `deadline-hit?` is `#t` when
+/// `(diff-words old-text new-text)` → `(hash 'hunks … 'deadline-hit …)`.
+/// `'hunks` is a list of `(hash 'old-start 'old-end 'new-start 'new-end
+/// 'old-text 'new-text)`, char offsets, `Equal` runs dropped. `'deadline-hit` is `#t` when
 /// the underlying Myers pass timed out and returned a coarse result. See
 /// [`DiffHost::diff_words`]'s doc for how a caller should react.
 ///
@@ -78,17 +78,20 @@ pub(crate) fn diff_words(ctx: &mut SteelCtx, old: SteelVal, new: SteelVal) -> St
     let new = string_arg(new, "diff-words new-text")?;
     let (hunks, deadline_hit) = require_cap(ctx.host.diff(), "diff-words")?.diff_words(&old, &new);
     let hunks = list_of(hunks.into_iter().map(word_hunk_to_steel));
-    cons_pair(hunks, SteelVal::BoolV(deadline_hit))
+    Ok(symbol_hash([
+        ("hunks", hunks),
+        ("deadline-hit", SteelVal::BoolV(deadline_hit)),
+    ]))
 }
 
 fn word_hunk_to_steel(hunk: WordDiffHunk) -> SteelVal {
-    list_of([
-        SteelVal::IntV(hunk.old_start as isize),
-        SteelVal::IntV(hunk.old_end as isize),
-        SteelVal::IntV(hunk.new_start as isize),
-        SteelVal::IntV(hunk.new_end as isize),
-        SteelVal::StringV(hunk.old_text.into()),
-        SteelVal::StringV(hunk.new_text.into()),
+    symbol_hash([
+        ("old-start", SteelVal::IntV(hunk.old_start as isize)),
+        ("old-end", SteelVal::IntV(hunk.old_end as isize)),
+        ("new-start", SteelVal::IntV(hunk.new_start as isize)),
+        ("new-end", SteelVal::IntV(hunk.new_end as isize)),
+        ("old-text", SteelVal::StringV(hunk.old_text.into())),
+        ("new-text", SteelVal::StringV(hunk.new_text.into())),
     ])
 }
 

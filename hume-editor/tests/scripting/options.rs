@@ -82,23 +82,23 @@ fn get_option_reads_back_tab_width_as_int() {
 }
 
 #[test]
-fn get_option_reads_back_tab_style_as_string() {
+fn get_option_reads_back_tab_style_as_symbol() {
     let mut h = host();
     let mut mock = MockHost::new();
 
     h.eval_source(
         r#"(define-command! "check" "" (lambda ()
-             (unless (equal? (get-option "tab-style") "hard")
+             (unless (equal? (get-option "tab-style") 'hard)
                (error "unexpected tab-style"))))"#,
         &mut mock,
     )
     .unwrap();
     h.call_steel_cmd("check", None, vec![], &mut mock)
-        .expect("get-option must read back the default tab-style as a string");
+        .expect("get-option must read back the default tab-style as a symbol");
 }
 
 #[test]
-fn get_option_reads_back_whitespace_newline_as_string_and_round_trips() {
+fn get_option_reads_back_whitespace_newline_as_symbol_and_round_trips() {
     // The plugin save/restore pattern from the bug report: read the value,
     // then feed it straight back into set-option!. It must not error.
     let mut h = host();
@@ -106,16 +106,16 @@ fn get_option_reads_back_whitespace_newline_as_string_and_round_trips() {
 
     h.eval_source(
         r#"(define-command! "check" "" (lambda ()
-             (set-option! "whitespace-newline" "all")
+             (set-option! "whitespace-newline" 'all)
              (define saved (get-option "whitespace-newline"))
-             (unless (equal? saved "all")
+             (unless (equal? saved 'all)
                (error "unexpected whitespace-newline"))
              (set-option! "whitespace-newline" saved)))"#,
         &mut mock,
     )
     .unwrap();
     h.call_steel_cmd("check", None, vec![], &mut mock).expect(
-        "get-option must read back whitespace-newline as a string that set-option! accepts",
+        "get-option must read back whitespace-newline as a symbol that set-option! accepts",
     );
 }
 

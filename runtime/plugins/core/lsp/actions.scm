@@ -7,7 +7,7 @@
     (and primary
          (let ((a (call! "stdlib/selection-anchor" primary))
                (h (call! "stdlib/selection-head" primary)))
-           (cons (min a h) (+ (max a h) 1))))))
+           (hash 'start (min a h) 'end (+ (max a h) 1))))))
 
 (define (lsp/action-disabled? action)
   (not (equal? (json-ref-or action #f "disabled") #f)))

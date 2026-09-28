@@ -49,7 +49,7 @@ fn all_variants() -> Vec<EditorEvent> {
         },
         EditorEvent::OnOptionChange {
             key: "lsp.inlay-hints".to_string(),
-            value: "true".to_string(),
+            value: OptionValue::Bool(true),
         },
         EditorEvent::OnLspNotification {
             server_name: "rust-analyzer".to_string(),
@@ -303,10 +303,19 @@ fn on_lsp_notification_carries_server_method_and_params_handle() {
 fn on_option_change_carries_key_and_value_no_buffer_id() {
     let event = EditorEvent::OnOptionChange {
         key: "lsp.inlay-hints".to_string(),
-        value: "true".to_string(),
+        value: OptionValue::Bool(true),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 2, "payload is (key value), no buffer id");
     assert_eq!(steel_string(&args, 0), "lsp.inlay-hints");
-    assert_eq!(steel_string(&args, 1), "true");
+    assert_eq!(args[1], SteelVal::BoolV(true));
+}
+
+#[test]
+fn on_option_change_passes_an_enum_value_as_a_symbol() {
+    let event = EditorEvent::OnOptionChange {
+        key: "tab-style".to_string(),
+        value: OptionValue::Symbol("soft".to_string()),
+    };
+    assert_eq!(event.steel_args()[1], SteelVal::SymbolV("soft".into()));
 }

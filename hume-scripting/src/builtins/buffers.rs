@@ -9,7 +9,7 @@
 use steel::rvals::{IntoSteelVal, SteelVal};
 
 use super::SteelResult;
-use super::args::{ArgPane, cons_pair, not_live_err};
+use super::args::{ArgPane, not_live_err, symbol_hash};
 use super::errors::generic_err;
 use super::ids::{SteelBufferKey, SteelPane};
 use crate::SteelCtx;
@@ -316,8 +316,8 @@ pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelR
     ))
 }
 
-/// `(buffer-selections pane)` → list of `(anchor head primary?)` per
-/// selection in `pane`'s own pane: raw 0-indexed inclusive char offsets,
+/// `(buffer-selections pane)` → list of `(hash 'anchor a 'head h 'primary p)`
+/// per selection in `pane`'s own pane: raw 0-indexed inclusive char offsets,
 /// direction preserved (anchor > head when backward), sorted by selection
 /// start, exactly one `primary?` = `#t`.
 pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
@@ -329,15 +329,13 @@ pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
     let list: Vec<SteelVal> = sels
         .into_iter()
         .map(|(anchor, head, primary)| {
-            vec![
-                SteelVal::IntV(anchor as isize),
-                SteelVal::IntV(head as isize),
-                SteelVal::BoolV(primary),
-            ]
-            .into_steelval()
-            .map_err(generic_err)
+            symbol_hash([
+                ("anchor", SteelVal::IntV(anchor as isize)),
+                ("head", SteelVal::IntV(head as isize)),
+                ("primary", SteelVal::BoolV(primary)),
+            ])
         })
-        .collect::<Result<_, _>>()?;
+        .collect();
     list.into_steelval().map_err(generic_err)
 }
 
@@ -388,7 +386,7 @@ pub(crate) fn line_to_offset(ctx: &mut SteelCtx, pane: PaneHandle, line: usize) 
     Ok(SteelVal::IntV(offset as isize))
 }
 
-/// `(viewport-range pane)` → `(first-line . end-line)` currently visible in
+/// `(viewport-range pane)` → `(hash 'start first-line 'end end-line)` visible in
 /// `pane`'s own pane: 0-based, end-exclusive, matching `buffer-lines`'
 /// range convention. Raises when `pane` carries no pane, a closed one, or
 /// one that no longer shows `pane`'s buffer. Answers for a background-tab
@@ -402,10 +400,10 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResul
         .buffers()
         .viewport_range(pane)
         .map_err(generic_err)?;
-    cons_pair(
-        SteelVal::IntV(range.start.index() as isize),
-        SteelVal::IntV(range.end.index() as isize),
-    )
+    Ok(symbol_hash([
+        ("start", SteelVal::IntV(range.start.index() as isize)),
+        ("end", SteelVal::IntV(range.end.index() as isize)),
+    ]))
 }
 
 /// `(selections-linewise? pane)`.

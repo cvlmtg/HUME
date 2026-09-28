@@ -402,6 +402,9 @@ macro_rules! parse_setting {
     ($value:expr, $key:expr, from_str) => {
         $value.parse()
     };
+    ($value:expr, $key:expr, enum_str) => {
+        $value.parse()
+    };
     ($value:expr, $key:expr, string) => {
         Ok::<String, String>(($value).to_owned())
     };
@@ -417,12 +420,14 @@ macro_rules! parse_setting {
 /// [`hume_scripting::host::OptionValue`] shape. Mirrors [`parse_setting!`]'s
 /// kind table so every setting stays readable the moment it's declared:
 /// `bool` fields round-trip as `Bool`, integer-ish fields (`usize`,
-/// `usize_nonzero`, `tab_width`) as `Int`, everything else (`from_str`,
-/// `string`) via `Display`/`ToString` as `Str`. `from_str` types must
-/// therefore implement `Display` that round-trips through their own
+/// `usize_nonzero`, `tab_width`) as `Int`, and closed sets of names
+/// (`enum_str`) as `Symbol`. The remaining `from_str` and `string` fields go
+/// via `Display`/`ToString` as `Str`: `wrap-mode` and `signcolumn` take
+/// `name:N` forms, so they are not closed sets. `from_str` and `enum_str`
+/// types must implement `Display` that round-trips through their own
 /// `FromStr` (see `TabStyle`, `DiagSeverity`, `LineNumberStyle`, `WrapMode`).
 /// `show_newline` stores a plain `bool` but its wire format is `none`/`all`,
-/// so it round-trips as `Str` via [`format_show_newline`], the inverse of
+/// so it round-trips as `Symbol` via [`format_show_newline`], the inverse of
 /// [`parse_show_newline`].
 macro_rules! option_value {
     ($value:expr, bool) => {
@@ -440,11 +445,14 @@ macro_rules! option_value {
     ($value:expr, from_str) => {
         hume_scripting::host::OptionValue::Str($value.to_string())
     };
+    ($value:expr, enum_str) => {
+        hume_scripting::host::OptionValue::Symbol($value.to_string())
+    };
     ($value:expr, string) => {
         hume_scripting::host::OptionValue::Str($value)
     };
     ($value:expr, show_newline) => {
-        hume_scripting::host::OptionValue::Str(format_show_newline($value).to_string())
+        hume_scripting::host::OptionValue::Symbol(format_show_newline($value).to_string())
     };
     ($value:expr, word_chars) => {
         hume_scripting::host::OptionValue::Str($value.to_string())
@@ -506,8 +514,9 @@ macro_rules! buffer_accessor {
 /// | `usize_nonzero` | `parse_usize_nonzero(value, key)` |
 /// | `tab_width` | `parse_tab_width(value)` |
 /// | `from_str` | `value.parse()` (type inferred from field) |
+/// | `enum_str` | `value.parse()`, for a closed set of names; reads back as a symbol |
 /// | `string` | `value.to_owned()` |
-/// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format) |
+/// | `show_newline` | `parse_show_newline(value)` (`none`/`all` wire format, reads back as a symbol) |
 /// | `word_chars` | `parse_word_chars(value)` (validated, unlike `string`) |
 macro_rules! define_settings {
     (
@@ -754,10 +763,10 @@ define_settings! {
             parser: usize;
         "object-jump-align" => object_jump_align: ObjectJumpAlign = ObjectJumpAlign::Center,
             scope: [Scope::Global],
-            parser: from_str;
+            parser: enum_str;
         "cursor-shape-insert" => cursor_shape_insert: CursorShape = CursorShape::Bar,
             scope: [Scope::Global],
-            parser: from_str;
+            parser: enum_str;
         "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,
             scope: [Scope::Global],
             parser: usize;
@@ -815,7 +824,7 @@ define_settings! {
         // setting directly.
         "tabline" => tabline: TablineVisibility = TablineVisibility::default(),
             scope: [Scope::Global],
-            parser: from_str;
+            parser: enum_str;
         // Loads and applies the named theme immediately, rolling back to the
         // previous value on failure. See
         // `editor::settings::ops::resync_derived_state`.
@@ -850,7 +859,7 @@ define_settings! {
         // underline/extra-highlight and gutter-sign render write sides.
         "lsp.diagnostics-severity-floor" => lsp_diagnostics_severity_floor: crate::editor::lsp::diagnostics::DiagSeverity = crate::editor::lsp::diagnostics::DiagSeverity::Hint,
             scope: [Scope::Global],
-            parser: from_str;
+            parser: enum_str;
         // Gates the inlay-hint render write side. Off means the
         // `inlay_hints` store is untouched but nothing renders.
         "lsp.inlay-hints" => lsp_inlay_hints: bool = false,
@@ -878,10 +887,10 @@ define_settings! {
             parser: bool;
         "tab-style" => tab_style: TabStyle = TabStyle::Hard,
             scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: enum_str;
         "line-number-style" => line_number_style: LineNumberStyle = LineNumberStyle::Hybrid,
             scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: enum_str;
         "auto-pairs" => auto_pairs: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
@@ -947,10 +956,10 @@ define_settings! {
         // values for the others. Resolution in `BufferOverrides::whitespace`.
         "whitespace-space" => whitespace.space / whitespace_space : WhitespaceRender,
             scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: enum_str;
         "whitespace-tab" => whitespace.tab / whitespace_tab : WhitespaceRender,
             scope: [Scope::Global, Scope::Buffer],
-            parser: from_str;
+            parser: enum_str;
         "whitespace-newline" => whitespace.newline / whitespace_newline : bool,
             scope: [Scope::Global, Scope::Buffer],
             parser: show_newline;

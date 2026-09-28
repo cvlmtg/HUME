@@ -53,8 +53,8 @@ than set to `'()`, keeping the hash to what's used. A whole removed line with no
 word-level detail passes the old line straight through as `'text`; `set-virtual-lines!`
 accepts a literal tab and expands it itself.
 
-A removed line's word-deletion `'segments` come from `diff-words`' `(old-start old-end
-new-start new-end old-text new-text)` hunks, filtered to `old-start < old-end`: a pure
+A removed line's word-deletion `'segments` come from `diff-words`' hunks (`'old-start`, `'old-end`,
+`'new-start`, `'new-end`, `'old-text`, `'new-text`), filtered to `'old-start < 'old-end`: a pure
 insertion has nothing to underline on the old-side line, and a zero-width segment would
 raise (`set-virtual-lines!`'s `start < end` check). The new-side counterpart
 (`(hash 'start 'end 'scope)` spans in *buffer* char offsets, since `set-extra-highlights!`

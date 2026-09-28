@@ -5,13 +5,13 @@ use super::*;
 use crate::editor::message_log::Severity;
 use hume_scripting::ScriptingHost;
 
-/// `diff-lines` returns 0-based hunk tuples, oldest side first.
+/// `diff-lines` returns 0-based hunk hashes, oldest side first.
 ///
 /// This is the one test that pins the shape registered at the Steel
-/// boundary. Any change to field order, base, or list-vs-vector encoding
+/// boundary. Any change to a key name, the base, or the list encoding
 /// stops the probe from firing.
 #[test]
-fn diff_lines_returns_zero_based_hunk_tuples() {
+fn diff_lines_returns_zero_based_hunk_hashes() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\n");
 
@@ -20,7 +20,8 @@ fn diff_lines_returns_zero_based_hunk_tuples() {
         ScriptingHost::new(),
         tmp.path(),
         r#"(equal? (diff-lines "a\nb\nc\n" "a\nB\nc\n")
-                   (list (list 1 1 1 1 (list "b") (list "B"))))"#,
+                   (list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
+                              'old-lines (list "b") 'new-lines (list "B"))))"#,
     );
     assert!(fired, "diff-lines must return the expected hunk shape");
 }
@@ -45,7 +46,8 @@ fn diff_buffer_lines_diffs_the_live_buffer_against_the_ref() {
         ScriptingHost::new(),
         tmp.path(),
         r#"(equal? (diff-buffer-lines bid "a\nB\nc\n")
-                   (list (list 1 1 1 1 (list "B") (list "b"))))"#,
+                   (list (hash 'old-start 1 'old-count 1 'new-start 1 'new-count 1
+                              'old-lines (list "B") 'new-lines (list "b"))))"#,
     );
     assert!(
         fired,
@@ -99,16 +101,16 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     );
 }
 
-/// `diff-words` returns a `(hunks . deadline-hit?)` dotted pair of 6-element
-/// char-offset tuples.
+/// `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk a hash of
+/// char offsets and texts.
 ///
 /// This is the one test that pins the shape registered at the Steel
-/// boundary. Any change to field order, offset base, or the dotted-pair
-/// outer shape stops the probe from firing. Offsets
+/// boundary. Any change to a key name, the offset base, or the outer
+/// shape stops the probe from firing. Offsets
 /// worked out by hand from `split_word_bounds()`'s tokenization of "foo bar"
 /// (`"foo"`, `" "`, `"bar"`/`"baz"`: offsets `0,3,4,7`).
 #[test]
-fn diff_words_returns_a_hunks_and_deadline_hit_pair() {
+fn diff_words_returns_a_hunks_and_deadline_hit_hash() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>\n");
 
@@ -117,7 +119,9 @@ fn diff_words_returns_a_hunks_and_deadline_hit_pair() {
         ScriptingHost::new(),
         tmp.path(),
         r#"(equal? (diff-words "foo bar" "foo baz")
-                   (cons (list (list 4 7 4 7 "bar" "baz")) #f))"#,
+                   (hash 'hunks (list (hash 'old-start 4 'old-end 7 'new-start 4 'new-end 7
+                                        'old-text "bar" 'new-text "baz"))
+                         'deadline-hit #f))"#,
     );
     assert!(fired, "diff-words must return the expected hunk/pair shape");
 }
