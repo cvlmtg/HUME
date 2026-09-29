@@ -76,6 +76,10 @@ numbers directly.
   "Not yet" only for a gap the user has confirmed is planned.
 - **L25** — "No in-tree callers" doesn't make a user-facing API dead. Read why it
   was added and why its last caller left before proposing removal.
+- **L28** — Hiding one raw read does not make a model correct by construction
+  while its constructors still take the raw form. Design the model first: type
+  the values it is built from, pair it with the data it is valid for, and give
+  it one repair point. Callers adapt to the model, whatever the blast radius.
 
 ---
 
@@ -1325,3 +1329,23 @@ proposing to remove one, read the commit that added it and the commit
 that removed its last caller, and state both reasons in the plan. If an
 in-tree caller left for a fixable reason (cost, shape), fix that and keep
 the caller rather than dropping the API.
+
+---
+
+## L28 — A model hid one accessor and kept its raw constructors (2026-09-29)
+
+**Root cause:** L27's fix made `Selection::end()` crate-private and added
+typed reads, but `Selection::new`, `collapsed` and `directed` stayed public and
+took raw char offsets. Cluster alignment was still restored at runtime by five
+separate snap funnels, commands still assembled ranges and char counts from
+seven accessors, the engine kept its own selection type, and stored selections
+were translated by scattered code. A review found nine defects hiding behind
+the snaps. The first repair plan narrowed constructors but kept the second type,
+the count-based builder calls and an unenforced tie between a selection and its
+text, weighing each against its blast radius. The user rejected it.
+
+**Prevention rule:** When a model must be correct by construction, list every
+way to build, read and store it. Type the values it is built from so only the
+right primitives produce them, pair it with the data it is valid for, and give
+it exactly one repair point. One type per concept across crates. Blast radius
+is not a reason to keep an old shape; state the gaps no type can close instead.
