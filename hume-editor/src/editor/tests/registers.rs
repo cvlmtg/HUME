@@ -94,7 +94,7 @@ fn esc_cancels_register_prefix() {
     );
     assert_eq!(
         ed.state.kill_ring.head(),
-        Some(["hell".to_string()].as_slice()),
+        Some(ps(&["hell"]).as_slice()),
         "kill ring head populated"
     );
     assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
@@ -185,7 +185,7 @@ fn kill_ring_register_yank_pushes_ring_only() {
 
     assert_eq!(
         ed.state.kill_ring.head(),
-        Some(["hello".to_string()].as_slice()),
+        Some(ps(&["hello"]).as_slice()),
         "ring head set by \"ky"
     );
     assert!(
@@ -210,7 +210,7 @@ fn kill_ring_register_delete_pushes_ring() {
     );
     assert_eq!(
         ed.state.kill_ring.head(),
-        Some(["hello".to_string()].as_slice()),
+        Some(ps(&["hello"]).as_slice()),
         "ring head set by \"kd"
     );
 }

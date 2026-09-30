@@ -109,7 +109,7 @@ fn d_yanks_selection_into_register_before_deleting() {
     assert_eq!(ed.doc().text().to_string(), "o\n", "buffer after delete");
     assert_eq!(
         ed.state.kill_ring.head(),
-        Some(["hell".to_string()].as_slice()),
+        Some(ps(&["hell"]).as_slice()),
         "kill ring head after delete"
     );
 }
@@ -137,7 +137,7 @@ fn y_populates_register_without_changing_buffer() {
     );
     assert_eq!(
         ed.state.kill_ring.head(),
-        Some(["hell".to_string()].as_slice()),
+        Some(ps(&["hell"]).as_slice()),
         "kill ring head populated"
     );
 }

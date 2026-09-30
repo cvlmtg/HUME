@@ -8,11 +8,11 @@ use hume_editing::state::EditState;
 use hume_rope::offset::ExclusiveRange;
 
 use super::apply_edit;
-use crate::register;
+use crate::register::{Piece, Shape};
 
 /// `before` governs insert position for cursor (non-collapsed) selections:
 ///
-/// | `before` | charwise content           | linewise content (ends `\n`)   |
+/// | `before` | charwise piece             | linewise piece                 |
 /// |----------|----------------------------|--------------------------------|
 /// | `false`  | one past the cursor char, clamped to the line's own `\n` | start of the next line |
 /// | `true`   | at the cursor char         | start of the cursor's line     |
@@ -30,7 +30,7 @@ use crate::register;
 ///
 /// The replaced selection is discarded; it is never pushed to the kill ring or
 /// clipboard (rule: "when pasting over a selection the replaced text is not copied").
-fn paste_impl(state: EditState, values: &[String], before: bool) -> Edited {
+fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
     if values.is_empty() {
         return Edited::unchanged(state);
     }
@@ -38,15 +38,16 @@ fn paste_impl(state: EditState, values: &[String], before: bool) -> Edited {
     let n_sels = state.view().len();
     let n_vals = values.len();
 
-    // When counts mismatch, every selection gets the full joined content.
-    // Computed once so the closure can borrow it as `&str`.
-    let joined: String = if n_sels != n_vals {
-        values.join("")
+    // When counts mismatch, every selection gets the full joined content,
+    // pasting in the shape of the last piece. Computed once so the closure can
+    // borrow it.
+    let joined = if n_sels != n_vals {
+        let shape = values.last().map_or(Shape::Charwise, Piece::shape);
+        Piece::new(values.iter().map(Piece::text).collect::<String>(), shape)
     } else {
-        String::new()
+        Piece::new("", Shape::Charwise)
     };
-
-    let content_of = |i: usize| -> &str {
+    let piece_of = |i: usize| -> &Piece {
         if n_sels == n_vals {
             &values[i]
         } else {
@@ -63,18 +64,19 @@ fn paste_impl(state: EditState, values: &[String], before: bool) -> Edited {
             .map(|i| {
                 i > 0
                     && !sels[i - 1].is_cursor()
-                    && register::is_register_linewise(content_of(i - 1))
+                    && piece_of(i - 1).is_linewise()
                     && sels[i - 1].covered().end().offset() == sels[i].start().offset()
             })
             .collect()
     };
 
     apply_edit(state, |b, sel| {
-        let content = content_of(sel.index());
+        let piece = piece_of(sel.index());
+        let content = piece.text();
         let text = b.text();
 
         if sel.is_cursor() {
-            if register::is_register_linewise(content) {
+            if piece.is_linewise() {
                 // Linewise cursor paste: whole new line(s) above or below.
                 let line = sel.head_line();
                 let insert_at = if before {
@@ -99,7 +101,7 @@ fn paste_impl(state: EditState, values: &[String], before: bool) -> Edited {
             return Landing::covering(mark, Facing::Forward);
         }
 
-        if register::is_register_linewise(content) {
+        if piece.is_linewise() {
             // Linewise over a selection: the pasted lines replace the selected
             // fragment. Text before it on its line keeps its own line through
             // a leading '\n'; the pasted text's own '\n' pushes text after it
@@ -137,7 +139,7 @@ fn paste_impl(state: EditState, values: &[String], before: bool) -> Edited {
 /// **Multi-cursor:** `values.len() == sels.len()` → N-to-N (each selection
 /// gets its own slot); otherwise all values joined and applied at every
 /// selection. An empty `values` slice is a no-op.
-pub fn paste_after(state: EditState, values: &[String]) -> Edited {
+pub fn paste_after(state: EditState, values: &[Piece]) -> Edited {
     paste_impl(state, values, false)
 }
 
@@ -145,6 +147,6 @@ pub fn paste_after(state: EditState, values: &[String]) -> Edited {
 /// [`paste_after`]; the before/after distinction only applies to cursor
 /// selections (see `paste_impl`'s matrix). An empty `values` slice is a
 /// no-op.
-pub fn paste_before(state: EditState, values: &[String]) -> Edited {
+pub fn paste_before(state: EditState, values: &[Piece]) -> Edited {
     paste_impl(state, values, true)
 }

@@ -126,6 +126,24 @@ fn kill_ring_register_paste_seeds_cycle() {
     );
 }
 
+/// A cycle step that deletes the same span the previous paste deleted leaves
+/// the text as it is, and still has to hand back selections for that text.
+#[test]
+fn paste_cycle_step_repeating_the_previous_deletion_keeps_selections_valid() {
+    let mut ed = editor_from("-[hello]>world\n");
+    ed.state.registers.write_text('5', vec![String::new()]);
+    ed.state.kill_ring.push(vec![String::new()]);
+
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.feed_key(key('p'));
+    ed.feed_key(key('['));
+
+    assert_eq!(ed.doc().text().to_string(), "world\n");
+    ed.feed_key(key('u'));
+    assert_eq!(ed.doc().text().to_string(), "helloworld\n");
+}
+
 // ── Explicit register prefix vs the paste stamp ─────────────────────────────
 
 /// An explicit `"Xp` while a fresh paste stamp exists must still paste from
@@ -184,8 +202,8 @@ fn register_prefix_consumed_by_paste() {
         .state
         .registers
         .read('5')
-        .and_then(|r| r.as_text())
-        .map(|v| v.to_vec());
+        .and_then(|r| r.as_pieces())
+        .map(|v| v.iter().map(|p| p.text().to_owned()).collect::<Vec<_>>());
     assert_eq!(
         reg5,
         Some(vec!["REG5".to_string()]),
@@ -1588,4 +1606,16 @@ fn direct_edit_during_open_paste_session_commits_it_first() {
         "the direct edit must survive `[`, got {:?}",
         ed.doc().text().to_string()
     );
+}
+
+/// A selection that ends on a line break but does not start its line is
+/// charwise: pasting it goes inline, not onto its own line.
+#[test]
+fn yanking_a_selection_ending_on_a_break_pastes_inline() {
+    let mut ed = editor_from("a-[bc\n]>def\n");
+    ed.handle_key(key('y'));
+    ed.handle_key(key('j'));
+    ed.handle_key(key('p'));
+
+    assert_eq!(state(&ed), "abc\ndef-[bc\n]>\n");
 }

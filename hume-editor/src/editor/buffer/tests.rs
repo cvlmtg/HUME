@@ -7,7 +7,7 @@ use hume_ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, repeat_edit,
 };
-use hume_ops::register::yank_selections;
+use hume_ops::register::{Piece, yank_selections};
 use pretty_assertions::assert_eq;
 use test_fixtures::testing::{parse_state, serialize_state};
 
@@ -230,7 +230,7 @@ fn undo_delete_selection() {
 #[test]
 fn undo_paste_after() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|s| paste_after(s, &["XY".to_string()]));
+    d.apply_edit(|s| paste_after(s, &[Piece::from("XY")]));
     assert_eq!(state(&d), "h-[XY]>ello\n");
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");
@@ -241,7 +241,7 @@ fn undo_paste_after() {
 #[test]
 fn undo_paste_before() {
     let mut d = doc("-[h]>ello\n");
-    d.apply_edit(|s| paste_before(s, &["XY".to_string()]));
+    d.apply_edit(|s| paste_before(s, &[Piece::from("XY")]));
     assert_eq!(state(&d), "-[XY]>hello\n");
     d.undo();
     assert_eq!(state(&d), "-[h]>ello\n");

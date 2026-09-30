@@ -8,7 +8,7 @@ use hume_ops::edit::{
     align_selections, delete_selection, delete_selection_content, delete_word_backward,
     indent_lines, join_lines_select_spaces, replace_selections, unindent_lines,
 };
-use hume_ops::register::{CLIPBOARD_REGISTER, KILL_RING_REGISTER, yank_selections};
+use hume_ops::register::{CLIPBOARD_REGISTER, KILL_RING_REGISTER, Piece, yank_selections};
 use hume_ops::surround::wrap_each_selection;
 
 use super::super::{EditorState, Severity, doc_ops};
@@ -171,7 +171,7 @@ pub(in crate::editor) fn cmd_yank(
         super::pane_selections(state, view, t).clone(),
     ));
     let prefix = state.take_register_prefix();
-    if yanked.iter().all(String::is_empty) {
+    if yanked.iter().all(Piece::is_empty) {
         return Ok(());
     }
     match prefix {

@@ -360,7 +360,7 @@ fn macro_replay_of_text_register_is_noop() {
     let before = state(&ed);
 
     // Write text (not a macro) directly into register '0', then try to replay.
-    ed.state.registers.write_text('0', vec!["some text".into()]);
+    ed.state.registers.write_text('0', vec!["some text"]);
     ed.handle_key(key('q'));
     assert!(ed.state.macro_pending.is_some());
     ed.handle_key(key('0'));

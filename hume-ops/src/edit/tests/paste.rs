@@ -1,16 +1,22 @@
 use super::super::*;
-use crate::register::yank_selections;
+use crate::register::{Piece, Shape, yank_selections};
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
 
 // ── paste_after ───────────────────────────────────────────────────────────
 
+/// `values` as text from outside the selection model: linewise when it ends
+/// with a `\n`.
+fn pieces(values: &[String]) -> Vec<Piece> {
+    values.iter().cloned().map(Piece::from).collect()
+}
+
 fn pa(text: BufferText, sels: SelectionSet, values: &[String]) -> Edited {
-    paste_after(test_fixtures::testing::state(text, sels), values)
+    paste_after(test_fixtures::testing::state(text, sels), &pieces(values))
 }
 
 fn pb(text: BufferText, sels: SelectionSet, values: &[String]) -> Edited {
-    paste_before(test_fixtures::testing::state(text, sels), values)
+    paste_before(test_fixtures::testing::state(text, sels), &pieces(values))
 }
 
 #[test]
@@ -152,8 +158,32 @@ fn paste_after_mixed_cursor_and_selection() {
 #[test]
 fn paste_after_lines_on_the_last_line_then_over_a_range_reaching_its_break() {
     let state = hume_editing::marked::parse("-[a]>b -[cd]>\n");
-    let edited = paste_after(state, &["x\n".to_string(), "x\n".to_string()]);
+    let edited = paste_after(state, &pieces(&["x\n".to_string(), "x\n".to_string()]));
     assert_eq!(edited.state().text().rope().to_string(), "ab \nx\nx\n");
+}
+
+#[test]
+fn a_charwise_piece_ending_in_a_break_pastes_inline() {
+    assert_state!(
+        "-[a]>xyz\n",
+        |(text, sels)| paste_after(
+            test_fixtures::testing::state(text, sels),
+            &[Piece::new("bc\n", Shape::Charwise)]
+        ),
+        "a-[bc\n]>xyz\n"
+    );
+}
+
+#[test]
+fn a_linewise_piece_pastes_as_whole_lines() {
+    assert_state!(
+        "-[a]>xyz\n",
+        |(text, sels)| paste_after(
+            test_fixtures::testing::state(text, sels),
+            &[Piece::new("bc\n", Shape::Linewise)]
+        ),
+        "axyz\n-[bc\n]>"
+    );
 }
 
 #[test]
@@ -558,7 +588,7 @@ fn yank_then_paste_after_round_trip() {
         |(text, sels): (BufferText, SelectionSet)| {
             let values =
                 yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
-            pa(text, sels, &values)
+            paste_after(test_fixtures::testing::state(text, sels), &values)
         },
         "h-[h]>ello\n"
     );
@@ -575,7 +605,7 @@ fn yank_multi_cursor_then_paste_after_n_to_n() {
         |(text, sels): (BufferText, SelectionSet)| {
             let values =
                 yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
-            pa(text, sels, &values)
+            paste_after(test_fixtures::testing::state(text, sels), &values)
         },
         "h-[h]>ello-[o]>\n"
     );
@@ -605,7 +635,7 @@ fn an_empty_value_leaves_its_cursor_on_the_same_char_after_an_earlier_paste() {
         "-[a]>b-[c]>d\n",
         |(text, sels)| paste_after(
             test_fixtures::testing::state(text, sels),
-            &["XX".to_owned(), String::new()]
+            &[Piece::from("XX"), Piece::from("")]
         ),
         "a-[XX]>b-[c]>d\n"
     );

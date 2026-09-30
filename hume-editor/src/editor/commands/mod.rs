@@ -32,6 +32,7 @@ use super::search::SearchPattern;
 use super::{EditorState, Severity};
 use crate::editor::error::CommandError;
 use crate::editor::settings::EditorSettings;
+use hume_ops::register::Piece;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ impl EditorState {
     }
 
     /// Write `values` into `name`, routing `'c'` through the OS clipboard.
-    pub(super) fn write_register(&mut self, name: char, values: Vec<String>) {
+    pub(super) fn write_register(&mut self, name: char, values: Vec<Piece>) {
         if let Some(w) =
             register_ops::write_register(&mut self.registers, &mut self.clipboard, name, values)
         {
@@ -58,7 +59,7 @@ impl EditorState {
     /// ring; any other explicit register prefix routes through `write_register`.
     /// Returns `true` when the yank was captured to the ring (and stamped),
     /// `false` for an explicit-register route, which never stamps.
-    pub(in crate::editor::commands) fn route_kill(&mut self, yanked: Vec<String>) -> bool {
+    pub(in crate::editor::commands) fn route_kill(&mut self, yanked: Vec<Piece>) -> bool {
         match self.take_register_prefix() {
             None | Some(hume_ops::register::KILL_RING_REGISTER) => {
                 self.capture_to_ring(yanked);

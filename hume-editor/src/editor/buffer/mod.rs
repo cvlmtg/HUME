@@ -687,30 +687,39 @@ impl Buffer {
         };
 
         group.cs = Some(new_cs);
-        // `propagation_cs` identity means the buffer's *current* text already
-        // equals `new_text`: re-pasting identical content over itself on a
-        // later cycle. `new_cs` (mapping the original snapshot forward) isn't
-        // identity in that case, so `group.cs` above still needed updating;
-        // only the mutation against the live buffer is skipped.
-        if !propagation_cs.is_identity() {
-            // An identity `new_cs` hands back the snapshot itself, an earlier
-            // version than the live text. Reaching the same content from the
-            // live text keeps the version moving forward.
-            let new_text = if group.cs.as_ref().is_some_and(ChangeSet::is_identity) {
-                let live = propagation_cs
+        // The selections come back tagged for `new_text`. When the text this
+        // step leaves in the buffer has the same content under another
+        // version, they are carried across to it:
+        // - `propagation_cs` is identity when the previous step and this one
+        //   made the same pure deletion, so the live text already is the
+        //   result and nothing is installed.
+        // - `new_cs` is identity when this step reproduces the snapshot,
+        //   which is an earlier version than the live text. Reaching the same
+        //   content from the live text keeps the version moving forward.
+        let same_content = if propagation_cs.is_identity() {
+            Some(self.text.clone())
+        } else if group.cs.as_ref().is_some_and(ChangeSet::is_identity) {
+            Some(
+                propagation_cs
                     .apply(&self.text)
-                    .expect("the propagation changeset maps the live text");
-                // Same content, so the positions hold: carry them across.
+                    .expect("the propagation changeset maps the live text"),
+            )
+        } else {
+            None
+        };
+        let landed = match same_content {
+            Some(text) => {
                 new_sels.translate(&TextChange::new(
                     &new_text,
-                    &live,
-                    &ChangeSet::identity(live.len_chars()),
+                    &text,
+                    &ChangeSet::identity(text.len_chars()),
                 ));
-                live
-            } else {
-                new_text
-            };
-            self.install(id, stores, new_text, Change::Edit(&propagation_cs));
+                text
+            }
+            None => new_text,
+        };
+        if !propagation_cs.is_identity() {
+            self.install(id, stores, landed, Change::Edit(&propagation_cs));
         }
         (new_sels, propagation_cs)
     }

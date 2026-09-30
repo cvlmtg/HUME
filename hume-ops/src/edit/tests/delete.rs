@@ -810,7 +810,11 @@ fn removal(before: &str) -> (String, Vec<String>) {
     let removal = delete_selection(hume_editing::marked::parse(before));
     (
         hume_editing::marked::render(removal.edited.state().view()),
-        removal.yanked,
+        removal
+            .yanked
+            .iter()
+            .map(|piece| piece.text().to_string())
+            .collect(),
     )
 }
 

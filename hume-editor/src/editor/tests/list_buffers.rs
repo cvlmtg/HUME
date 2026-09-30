@@ -455,7 +455,11 @@ fn read_only_buffer_blocks_delete_kill() {
 
     // Populate the ring from the writable buffer.
     ed.handle_key(key('y'));
-    let ring_before = ed.state.kill_ring.head().map(<[String]>::to_vec);
+    let ring_before = ed
+        .state
+        .kill_ring
+        .head()
+        .map(<[hume_ops::register::Piece]>::to_vec);
     let ring_len_before = ed.state.kill_ring.len();
 
     ed.report(Severity::Warning, "test message".to_string());
@@ -476,7 +480,10 @@ fn read_only_buffer_blocks_delete_kill() {
         "d must report 'Buffer is read-only'"
     );
     assert_eq!(
-        ed.state.kill_ring.head().map(<[String]>::to_vec),
+        ed.state
+            .kill_ring
+            .head()
+            .map(<[hume_ops::register::Piece]>::to_vec),
         ring_before,
         "a refused d must not change the kill ring head"
     );
@@ -499,7 +506,11 @@ fn read_only_buffer_blocks_change_kill() {
     let mut ed = editor_from("-[hell]>o\n");
 
     ed.handle_key(key('y'));
-    let ring_before = ed.state.kill_ring.head().map(<[String]>::to_vec);
+    let ring_before = ed
+        .state
+        .kill_ring
+        .head()
+        .map(<[hume_ops::register::Piece]>::to_vec);
     let stamp_before = ed.state.paste_stamp;
 
     ed.report(Severity::Warning, "test message".to_string());
@@ -525,7 +536,10 @@ fn read_only_buffer_blocks_change_kill() {
         "a refused c must not enter Insert mode"
     );
     assert_eq!(
-        ed.state.kill_ring.head().map(<[String]>::to_vec),
+        ed.state
+            .kill_ring
+            .head()
+            .map(<[hume_ops::register::Piece]>::to_vec),
         ring_before,
         "a refused c must not change the kill ring head"
     );

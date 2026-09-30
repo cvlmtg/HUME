@@ -21,7 +21,7 @@ use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::state::EditState;
 use hume_ops::MotionMode;
 use hume_ops::edit::{paste_after, paste_before};
-use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER};
+use hume_ops::register::{BLACK_HOLE_REGISTER, CLIPBOARD_REGISTER, KILL_RING_REGISTER, Piece};
 
 use super::super::{EditorState, Severity, doc_ops, register_ops};
 use super::FocusedPane;
@@ -67,7 +67,7 @@ impl EditorState {
     /// breaks smart-paste routing, so no call site gets to do them
     /// separately. Never used for an explicit named register, which bare
     /// paste never reads. See [`PasteStamp`]'s doc for the full mechanism.
-    pub(in crate::editor) fn capture_to_ring(&mut self, yanked: Vec<String>) {
+    pub(in crate::editor) fn capture_to_ring(&mut self, yanked: Vec<Piece>) {
         self.kill_ring.push(yanked);
         self.paste_stamp = Some(PasteStamp {
             seq: self.buffers.edit_seq(),
@@ -108,10 +108,13 @@ impl EditorState {
 /// scripts get a predictable contract. The check is all-or-nothing: the paste
 /// op applies one mode to every selection, so partial agreement falls back to
 /// replace. Already-collapsed selections are unaffected either way.
-fn collapse_if_repeat(state: EditState, values: &[String], before: bool) -> EditState {
+fn collapse_if_repeat(state: EditState, values: &[Piece], before: bool) -> EditState {
     let view = state.view();
-    let repeats =
-        values.len() == view.len() && view.iter().zip(values).all(|(sel, v)| sel.slice() == *v);
+    let repeats = values.len() == view.len()
+        && view
+            .iter()
+            .zip(values)
+            .all(|(sel, v)| sel.slice() == v.text());
     if !repeats {
         return state;
     }
@@ -126,7 +129,7 @@ fn collapse_if_repeat(state: EditState, values: &[String], before: bool) -> Edit
 
 /// A resolved paste, ready for [`do_paste`] to execute.
 struct ResolvedPaste {
-    values: Vec<String>,
+    values: Vec<Piece>,
     /// Where the values came from. Drives the two things that depend on it
     /// after the fact: seeding `[`/`]`'s cycle position (`Ring` seeds it) and,
     /// for a bare paste only, stamping [`PasteStamp`] (see `do_paste`).

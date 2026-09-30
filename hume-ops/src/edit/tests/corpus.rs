@@ -3,6 +3,7 @@
 
 use super::super::*;
 use crate::auto_pairs::insert_pair_close;
+use crate::register::Piece;
 use crate::register::yank_selections;
 use crate::surround::wrap_each_selection;
 use test_fixtures::assert_state;
@@ -91,7 +92,7 @@ fn paste_after_lands_past_the_whole_cluster() {
             &format!("x\n-[{s}]>b\n"),
             |(text, sels)| paste_after(
                 test_fixtures::testing::state(text, sels),
-                &["Z".to_string()]
+                &[Piece::from("Z")]
             ),
             &format!("x\n{s}-[Z]>b\n")
         );
@@ -110,7 +111,7 @@ fn paste_before_selects_the_pasted_cluster() {
             &format!("x\n-[{s}]>b\n"),
             |(text, sels)| paste_before(
                 test_fixtures::testing::state(text, sels),
-                &["Z".to_string()]
+                &[Piece::from("Z")]
             ),
             &expected
         );

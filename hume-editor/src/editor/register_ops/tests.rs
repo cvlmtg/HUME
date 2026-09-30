@@ -1,6 +1,6 @@
 use super::read_register_text;
 use crate::editor::clipboard::SystemClipboard;
-use hume_ops::register::{CLIPBOARD_REGISTER, RegisterSet};
+use hume_ops::register::{CLIPBOARD_REGISTER, Piece, RegisterSet, Shape};
 
 fn seeded_registers(values: &[&str]) -> RegisterSet {
     let mut regs = RegisterSet::new();
@@ -87,6 +87,10 @@ fn write_cb<'a>(
     cb: &mut SystemClipboard,
     values: Vec<String>,
 ) -> &'a RegisterSet {
+    let values = values
+        .into_iter()
+        .map(hume_ops::register::Piece::from)
+        .collect();
     super::write_register(regs, cb, CLIPBOARD_REGISTER, values);
     regs
 }
@@ -144,6 +148,18 @@ fn write_register_mixed_linewise_then_charwise_no_double_newline() {
     let mut cb = SystemClipboard::new_unavailable();
     write_cb(&mut regs, &mut cb, vec!["foo\n".into(), "bar".into()]);
     assert_eq!(regs.clipboard_blob(), Some("foo\nbar"));
+}
+
+#[test]
+fn write_register_charwise_piece_ending_in_newline_gets_no_extra_separator() {
+    let mut regs = RegisterSet::new();
+    let mut cb = SystemClipboard::new_unavailable();
+    let values = vec![
+        Piece::new("bc\n", Shape::Charwise),
+        Piece::new("ef\n", Shape::Charwise),
+    ];
+    super::write_register(&mut regs, &mut cb, CLIPBOARD_REGISTER, values);
+    assert_eq!(regs.clipboard_blob(), Some("bc\nef\n"));
 }
 
 #[test]

@@ -136,7 +136,7 @@ fn change_kill_ring_excludes_trailing_newline() {
 
     assert_eq!(
         ed.state.kill_ring.head(),
-        Some(["bar".to_string()].as_slice()),
+        Some(ps(&["bar"]).as_slice()),
         "kill ring must hold content only, no trailing newline"
     );
 }
@@ -156,7 +156,7 @@ fn d_after_select_line_removes_entire_line() {
     );
     assert_eq!(
         ed.state.kill_ring.head(),
-        Some(["bar\n".to_string()].as_slice()),
+        Some(ps(&["bar\n"]).as_slice()),
         "kill ring holds full line including \\n"
     );
 }
@@ -181,7 +181,7 @@ fn d_on_blank_last_line_removes_it() {
     );
     assert_eq!(
         ed.state.kill_ring.head(),
-        Some(["\n".to_string()].as_slice()),
+        Some(ps(&["\n"]).as_slice()),
         "kill ring holds the blank line"
     );
 }

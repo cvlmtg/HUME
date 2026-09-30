@@ -484,8 +484,8 @@ fn steel_call_native_respects_register_prefix() {
         .state
         .registers
         .read('0')
-        .and_then(|r| r.as_text())
-        .map(|s| s.to_vec())
+        .and_then(|r| r.as_pieces())
+        .map(|s| s.iter().map(|p| p.text().to_owned()).collect())
         .unwrap_or_default();
     assert!(
         !contents.is_empty() && contents[0].contains("hello"),

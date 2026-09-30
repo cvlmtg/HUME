@@ -10,13 +10,14 @@ use hume_rope::offset::ExclusiveRange;
 
 use super::apply_edit;
 use crate::motion::prev_word_start;
+use crate::register::{Piece, Shape};
 
 /// What `d` or `c` did: the edit, and one register entry per selection, in
 /// document order, holding the text that selection took out of the buffer.
 /// An entry is empty for a selection that removed nothing.
 pub struct Removal {
     pub edited: Edited,
-    pub yanked: Vec<String>,
+    pub yanked: Vec<Piece>,
 }
 
 /// Delete every selection (normal-mode `d`), and report what each removed.
@@ -30,11 +31,16 @@ pub fn delete_selection(state: EditState) -> Removal {
     let mut yanked = Vec::new();
     let edited = apply_edit(state, |b, sel| match b.remove(sel) {
         Some(removed) => {
-            yanked.push(removed.text.to_string());
+            let shape = if sel.is_linewise() {
+                Shape::Linewise
+            } else {
+                Shape::Charwise
+            };
+            yanked.push(Piece::new(removed.text.to_string(), shape));
             removed.cursor
         }
         None => {
-            yanked.push(String::new());
+            yanked.push(Piece::new("", Shape::Charwise));
             Landing::kept(sel.selection())
         }
     });
@@ -128,11 +134,11 @@ pub fn delete_selection_content(state: EditState) -> Removal {
     let mut yanked = Vec::new();
     let edited = apply_edit(state, |b, sel| match b.remove_content(sel) {
         Some(removed) => {
-            yanked.push(removed.text.to_string());
+            yanked.push(Piece::new(removed.text.to_string(), Shape::Charwise));
             removed.cursor
         }
         None => {
-            yanked.push(String::new());
+            yanked.push(Piece::new("", Shape::Charwise));
             Landing::kept(sel.selection())
         }
     });

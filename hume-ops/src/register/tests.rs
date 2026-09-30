@@ -9,8 +9,8 @@ fn write_and_read() {
     let mut regs = RegisterSet::new();
     regs.write_text('"', vec!["hello".to_string()]);
     assert_eq!(
-        regs.read('"').unwrap().as_text(),
-        Some(vec!["hello".to_string()].as_slice())
+        regs.read('"').unwrap().as_pieces(),
+        Some(ps(&["hello"]).as_slice())
     );
 }
 
@@ -20,8 +20,8 @@ fn overwrite_replaces_previous() {
     regs.write_text('0', vec!["first".to_string()]);
     regs.write_text('0', vec!["second".to_string()]);
     assert_eq!(
-        regs.read('0').unwrap().as_text(),
-        Some(vec!["second".to_string()].as_slice())
+        regs.read('0').unwrap().as_pieces(),
+        Some(ps(&["second"]).as_slice())
     );
 }
 
@@ -32,8 +32,8 @@ fn write_text_normalizes_line_endings() {
     let mut regs = RegisterSet::new();
     regs.write_text('"', vec!["a\r\nb".to_string(), "c\rd".to_string()]);
     assert_eq!(
-        regs.read('"').unwrap().as_text(),
-        Some(vec!["a\nb".to_string(), "c\nd".to_string()].as_slice())
+        regs.read('"').unwrap().as_pieces(),
+        Some(ps(&["a\nb", "c\nd"]).as_slice())
     );
 }
 
@@ -66,12 +66,12 @@ fn named_registers_are_independent() {
     regs.write_text('1', vec!["one".to_string()]);
     regs.write_text('2', vec!["two".to_string()]);
     assert_eq!(
-        regs.read('1').unwrap().as_text(),
-        Some(vec!["one".to_string()].as_slice())
+        regs.read('1').unwrap().as_pieces(),
+        Some(ps(&["one"]).as_slice())
     );
     assert_eq!(
-        regs.read('2').unwrap().as_text(),
-        Some(vec!["two".to_string()].as_slice())
+        regs.read('2').unwrap().as_pieces(),
+        Some(ps(&["two"]).as_slice())
     );
 }
 
@@ -82,8 +82,8 @@ fn write_macro_and_read_back() {
     let keys = vec![KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE)];
     regs.write_macro('q', keys.clone());
     assert_eq!(regs.read('q').unwrap().as_macro(), Some(keys.as_slice()));
-    // as_text() returns None for a macro register
-    assert!(regs.read('q').unwrap().as_text().is_none());
+    // as_pieces() returns None for a macro register
+    assert!(regs.read('q').unwrap().as_pieces().is_none());
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn macro_overwrites_text_last_write_wins() {
     let keys = vec![KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE)];
     regs.write_macro('0', keys.clone());
     // now holds a macro, not text
-    assert!(regs.read('0').unwrap().as_text().is_none());
+    assert!(regs.read('0').unwrap().as_pieces().is_none());
     assert_eq!(regs.read('0').unwrap().as_macro(), Some(keys.as_slice()));
 }
 
@@ -108,8 +108,8 @@ fn text_overwrites_macro_last_write_wins() {
     // now holds text, not a macro
     assert!(regs.read('0').unwrap().as_macro().is_none());
     assert_eq!(
-        regs.read('0').unwrap().as_text(),
-        Some(vec!["text".to_string()].as_slice())
+        regs.read('0').unwrap().as_pieces(),
+        Some(ps(&["text"]).as_slice())
     );
 }
 
@@ -217,10 +217,55 @@ fn yank_of_a_selection_ending_on_the_final_newline_leaves_it_out() {
     assert_eq!(yank_selections(&EditState::bind(&text, sels)), vec!["o"]);
 }
 
+// ── Piece and Shape ───────────────────────────────────────────────────────
+
+fn shapes(input: &str) -> Vec<Shape> {
+    let (text, sels) = parse_state(input);
+    yank_selections(&EditState::bind(&text, sels))
+        .iter()
+        .map(Piece::shape)
+        .collect()
+}
+
+#[test]
+fn a_selection_of_whole_lines_yanks_linewise() {
+    assert_eq!(shapes("-[ab\n]>cd\n"), vec![Shape::Linewise]);
+}
+
+#[test]
+fn a_cursor_on_an_empty_line_yanks_linewise() {
+    assert_eq!(shapes("a\n-[\n]>b\n"), vec![Shape::Linewise]);
+}
+
+#[test]
+fn a_selection_ending_on_a_break_but_not_starting_a_line_yanks_charwise() {
+    assert_eq!(shapes("a-[bc\n]>def\n"), vec![Shape::Charwise]);
+}
+
+#[test]
+fn a_charwise_selection_yanks_charwise_on_the_last_line_too() {
+    assert_eq!(shapes("x\na-[bc\n]>"), vec![Shape::Charwise]);
+}
+
+#[test]
+fn text_from_outside_the_selection_model_is_linewise_when_it_ends_in_a_break() {
+    assert_eq!(Piece::from("ab\n").shape(), Shape::Linewise);
+    assert_eq!(Piece::from("ab").shape(), Shape::Charwise);
+}
+
+#[test]
+fn a_piece_normalizes_line_endings() {
+    assert_eq!(Piece::new("a\r\nb", Shape::Charwise).text(), "a\nb");
+}
+
 // ── KillRing ──────────────────────────────────────────────────────────────
 
-fn vs(s: &str) -> Vec<String> {
-    vec![s.to_string()]
+fn vs(s: &str) -> Vec<Piece> {
+    ps(&[s])
+}
+
+fn ps(values: &[&str]) -> Vec<Piece> {
+    values.iter().copied().map(Piece::from).collect()
 }
 
 #[test]
@@ -330,10 +375,7 @@ fn push_mixed_entry_not_overwritten() {
     ring.push(vec![" ".to_string(), "x".to_string()]);
     ring.push(vs("y"));
     assert_eq!(ring.head(), Some(vs("y").as_slice()));
-    assert_eq!(
-        ring.slot(1),
-        Some(vec![" ".to_string(), "x".to_string()].as_slice())
-    );
+    assert_eq!(ring.slot(1), Some(ps(&[" ", "x"]).as_slice()));
     assert_eq!(ring.len(), 2);
 }
 
@@ -410,10 +452,7 @@ fn push_dedupe_compares_whole_entry() {
     ring.push(vs("a"));
     ring.push(vec!["a".to_string(), "b".to_string()]); // equal to slot 1, not slot 0
     assert_eq!(ring.len(), 2);
-    assert_eq!(
-        ring.head(),
-        Some(vec!["a".to_string(), "b".to_string()].as_slice())
-    );
+    assert_eq!(ring.head(), Some(ps(&["a", "b"]).as_slice()));
     assert_eq!(ring.slot(1), Some(vs("a").as_slice()));
 }
 

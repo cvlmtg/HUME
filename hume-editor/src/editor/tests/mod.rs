@@ -602,13 +602,25 @@ fn scope_name(ed: &Editor, id: ScopeId) -> &str {
     ed.view.registry.name_of(id)
 }
 
+/// `values` as text from outside the selection model: linewise when it ends
+/// with a `\n`.
+fn ps(values: &[&str]) -> Vec<hume_ops::register::Piece> {
+    values
+        .iter()
+        .copied()
+        .map(hume_ops::register::Piece::from)
+        .collect()
+}
+
 fn reg(ed: &Editor, name: char) -> Vec<String> {
     ed.state
         .registers
         .read(name)
-        .and_then(|r| r.as_text())
+        .and_then(|r| r.as_pieces())
         .unwrap_or_default()
-        .to_vec()
+        .iter()
+        .map(|piece| piece.text().to_owned())
+        .collect()
 }
 
 /// Build a 20-line buffer with the cursor on a given line for jump list tests.

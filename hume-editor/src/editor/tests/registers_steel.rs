@@ -86,10 +86,7 @@ fn write_register_k_pushes_ring_and_stamps_paste() {
         tmp.path(),
     );
 
-    assert_eq!(
-        ed.state.kill_ring.head(),
-        Some(["x".to_string()].as_slice())
-    );
+    assert_eq!(ed.state.kill_ring.head(), Some(ps(&["x"]).as_slice()));
     assert!(
         ed.state.paste_stamp.is_some(),
         "write-register! \"k\" must stamp paste_stamp, same as \"ky"

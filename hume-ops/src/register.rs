@@ -72,18 +72,97 @@ pub fn is_valid_register_name(ch: char) -> bool {
         || ch == BLACK_HOLE_REGISTER
 }
 
+/// How a piece of register text pastes: as whole lines, or inline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    Charwise,
+    Linewise,
+}
+
+/// One selection's text in a register, with the shape it pastes in.
+///
+/// A yank takes its shape from the selection it came from. Text that did not
+/// come from a selection (the OS clipboard, a script, a test) has none
+/// recorded, so it converts with [`From`]: linewise when it ends with a `\n`,
+/// the only signal such text carries. The text is `\r`-free by construction
+/// (the same guarantee [`normalize_line_endings`] gives `BufferText`), so a
+/// register filled from the OS clipboard or a plugin can't smuggle a foreign
+/// line ending into a paste or a byte-exact repeat-paste comparison.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Piece {
+    text: String,
+    shape: Shape,
+}
+
+impl Piece {
+    pub fn new(text: impl Into<String>, shape: Shape) -> Self {
+        let text = text.into();
+        let text = match normalize_line_endings(&text) {
+            Cow::Owned(normalized) => normalized,
+            Cow::Borrowed(_) => text,
+        };
+        Self { text, shape }
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn shape(&self) -> Shape {
+        self.shape
+    }
+
+    pub fn is_linewise(&self) -> bool {
+        self.shape == Shape::Linewise
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+}
+
+/// A piece compares to text by its text alone, for tests that check what a
+/// register holds without naming a shape.
+#[cfg(any(test, feature = "test-util"))]
+impl PartialEq<&str> for Piece {
+    fn eq(&self, other: &&str) -> bool {
+        self.text == *other
+    }
+}
+
+#[cfg(any(test, feature = "test-util"))]
+impl PartialEq<String> for Piece {
+    fn eq(&self, other: &String) -> bool {
+        &self.text == other
+    }
+}
+
+impl From<String> for Piece {
+    fn from(text: String) -> Self {
+        let shape = if text.ends_with('\n') || text.ends_with("\r\n") {
+            Shape::Linewise
+        } else {
+            Shape::Charwise
+        };
+        Self::new(text, shape)
+    }
+}
+
+impl From<&str> for Piece {
+    fn from(text: &str) -> Self {
+        Self::from(text.to_owned())
+    }
+}
+
 /// The content of a register: either yanked text or a recorded macro.
 ///
 /// Registers are single-slot: the last write wins. Writing a macro to a register
 /// that previously held text replaces it (and vice-versa).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegisterContent {
-    /// Yanked text: one `String` per selection that was active at yank time,
+    /// Yanked text: one [`Piece`] per selection that was active at yank time,
     /// in document order. A single-cursor yank produces a `Vec` of length 1.
-    ///
-    /// The linewise-vs-charwise distinction is not tracked explicitly; at paste
-    /// time, content that ends with `\n` is treated as linewise.
-    Text(Vec<String>),
+    Text(Vec<Piece>),
     /// A recorded macro: the raw sequence of key events captured during recording.
     Macro(Vec<KeyEvent>),
 }
@@ -99,10 +178,10 @@ impl Register {
         Self { content }
     }
 
-    /// If this register holds text, borrow the string slice. Returns `None` for macro registers.
+    /// If this register holds text, borrow its pieces. Returns `None` for macro registers.
     ///
     /// Callers that try to paste a macro register get `None` and treat it as a no-op.
-    pub fn as_text(&self) -> Option<&[String]> {
+    pub fn as_pieces(&self) -> Option<&[Piece]> {
         match &self.content {
             RegisterContent::Text(v) => Some(v),
             RegisterContent::Macro(_) => None,
@@ -139,22 +218,6 @@ pub struct RegisterSet {
     clipboard_blob: Option<String>,
 }
 
-/// Normalizes every value to LF in place, replacing an element only when the
-/// normalizer had to allocate. Register text is `\r`-free by construction
-/// (the same guarantee [`normalize_line_endings`] gives `BufferText`/
-/// `ChangeSetBuilder::insert`), applied at the two funnels every in-memory
-/// register write goes through (`RegisterSet::write_text`, `KillRing::push`),
-/// so a register filled from the OS clipboard or a plugin can't smuggle a
-/// foreign line ending past `is_register_linewise` or a byte-exact
-/// repeat-paste comparison downstream.
-fn normalize_values(values: &mut [String]) {
-    for v in values {
-        if let Cow::Owned(normalized) = normalize_line_endings(v) {
-            *v = normalized;
-        }
-    }
-}
-
 impl RegisterSet {
     pub fn new() -> Self {
         Self::default()
@@ -171,12 +234,14 @@ impl RegisterSet {
         self.registers.get(&name)
     }
 
-    /// Write text to a register, replacing its previous contents.
+    /// Write text to a register, replacing its previous contents. `values`
+    /// are [`Piece`]s, or text from outside the selection model, which
+    /// converts as [`Piece`]'s `From` impls say.
     ///
     /// Writes to the black-hole register (`'b'`) are silently discarded.
-    pub fn write_text(&mut self, name: char, mut values: Vec<String>) {
-        normalize_values(&mut values);
-        self.write(name, RegisterContent::Text(values));
+    pub fn write_text<P: Into<Piece>>(&mut self, name: char, values: Vec<P>) {
+        let pieces = values.into_iter().map(Into::into).collect();
+        self.write(name, RegisterContent::Text(pieces));
     }
 
     /// Write a recorded macro to a register, replacing its previous contents.
@@ -206,9 +271,9 @@ impl RegisterSet {
     /// one-string-in-a-`Vec` encoding; callers deal in `&str`.
     pub fn search_register(&self) -> Option<&str> {
         self.read(SEARCH_REGISTER)
-            .and_then(Register::as_text)
+            .and_then(Register::as_pieces)
             .and_then(|v| v.first())
-            .map(String::as_str)
+            .map(Piece::text)
     }
 
     pub fn set_search_register(&mut self, pattern: String) {
@@ -231,7 +296,7 @@ impl RegisterSet {
 #[derive(Debug, Clone, Default)]
 pub struct KillRing {
     /// Entries newest-first; max `KILL_RING_DEPTH` entries.
-    entries: VecDeque<Vec<String>>,
+    entries: VecDeque<Vec<Piece>>,
     /// Active `[`/`]` cycle position.
     /// `None` = clipboard / named-register origin (conceptually "before slot 0").
     /// `Some(n)` = currently showing slot `n`.
@@ -259,8 +324,8 @@ impl KillRing {
     /// (every string, every char `is_whitespace`), the new entry overwrites
     /// it in place instead of taking a fresh slot. This keeps from filling the
     /// ring with entries you never want to cycle back to.
-    pub fn push(&mut self, mut values: Vec<String>) {
-        normalize_values(&mut values);
+    pub fn push<P: Into<Piece>>(&mut self, values: Vec<P>) {
+        let values: Vec<Piece> = values.into_iter().map(Into::into).collect();
         if let Some(pos) = self.entries.iter().position(|entry| *entry == values) {
             if pos == 0 {
                 return;
@@ -291,12 +356,12 @@ impl KillRing {
     }
 
     /// Borrow the head entry (most recently pushed), if any.
-    pub fn head(&self) -> Option<&[String]> {
+    pub fn head(&self) -> Option<&[Piece]> {
         self.entries.front().map(Vec::as_slice)
     }
 
     /// Borrow ring slot `n` (0-based), where 0 = head.
-    pub fn slot(&self, n: usize) -> Option<&[String]> {
+    pub fn slot(&self, n: usize) -> Option<&[Piece]> {
         self.entries.get(n).map(Vec::as_slice)
     }
 
@@ -310,7 +375,7 @@ impl KillRing {
     /// `None → 0`, `Some(n) → n+1`. Noop (returns `None`, leaves `cycle` unchanged)
     /// when the next slot would be out of bounds or the ring is empty (rule 27:
     /// every subsequent `[` past the oldest entry is a noop).
-    pub fn cycle_older(&mut self) -> Option<&[String]> {
+    pub fn cycle_older(&mut self) -> Option<&[Piece]> {
         let next = match self.cycle {
             None => 0,
             Some(n) => n + 1,
@@ -327,7 +392,7 @@ impl KillRing {
     /// Noop (returns `None`, leaves `cycle` unchanged) when `cycle` is `None` or
     /// `Some(0)`: there is nowhere newer to go (rule 28: every subsequent `]`
     /// at the head entry is a noop). Otherwise `Some(n) → Some(n-1)`.
-    pub fn cycle_newer(&mut self) -> Option<&[String]> {
+    pub fn cycle_newer(&mut self) -> Option<&[Piece]> {
         let prev = match self.cycle {
             None | Some(0) => return None,
             Some(n) => n - 1,
@@ -349,31 +414,20 @@ impl KillRing {
     }
 }
 
-/// Whether a kill-ring entry is pure whitespace: every string in the entry,
-/// every char `char::is_whitespace`.
-fn entry_is_whitespace(entry: &[String]) -> bool {
-    entry.iter().all(|s| s.chars().all(char::is_whitespace))
+/// Whether a kill-ring entry is pure whitespace: every piece, every char
+/// `char::is_whitespace`.
+fn entry_is_whitespace(entry: &[Piece]) -> bool {
+    entry
+        .iter()
+        .all(|piece| piece.text().chars().all(char::is_whitespace))
 }
 
 /// What `d` would put in the register for each selection, in document order,
 /// without changing the text: the one rule for what a selection's text is in
-/// a register. An entry is empty for a selection `d` would remove nothing
-/// from.
-pub fn yank_selections(state: &EditState) -> Vec<String> {
+/// a register, and the shape it pastes in. An entry is empty for a selection
+/// `d` would remove nothing from.
+pub fn yank_selections(state: &EditState) -> Vec<Piece> {
     crate::edit::delete_selection(state.clone()).yanked
-}
-
-/// Returns `true` if `text` represents linewise register content.
-///
-/// Linewise content always ends with `\n` because each selected line includes
-/// its trailing newline, and the buffer invariant ensures even the last line
-/// has one. Charwise/wordwise content does not.
-///
-/// This operates on *register/clipboard text* (paste time), not on a
-/// selection. For the selection-geometry predicate see
-/// `hume_editing::selection::SelectionView::is_linewise`.
-pub fn is_register_linewise(text: &str) -> bool {
-    text.ends_with('\n')
 }
 
 #[cfg(test)]

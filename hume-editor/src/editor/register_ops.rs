@@ -12,7 +12,7 @@ use std::borrow::Cow;
 
 use crate::editor::clipboard::SystemClipboard;
 use hume_editing::text::normalize_line_endings;
-use hume_ops::register::{CLIPBOARD_REGISTER, RegisterSet, is_register_linewise};
+use hume_ops::register::{CLIPBOARD_REGISTER, Piece, RegisterSet};
 
 /// Pending state for the two-keystroke `"<reg>` register-prefix sequence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,7 +25,7 @@ pub(crate) enum RegisterPrefix {
 
 /// Read text from an explicitly named register.
 ///
-/// Returns `(values, warning)` where `warning` is `Some(msg)` when the OS
+/// Returns `(pieces, warning)` where `warning` is `Some(msg)` when the OS
 /// clipboard was unavailable and the in-memory `'c'` mirror was used instead.
 ///
 /// - `'c'` → OS clipboard (in-memory fallback on failure).
@@ -37,16 +37,18 @@ pub(in crate::editor) fn read_register_text<'a>(
     registers: &'a RegisterSet,
     clipboard: &mut SystemClipboard,
     name: char,
-) -> (Option<Cow<'a, [String]>>, Option<String>) {
+) -> (Option<Cow<'a, [Piece]>>, Option<String>) {
     if name == CLIPBOARD_REGISTER {
         match clipboard.read() {
             Ok(text) => {
                 // When the OS clipboard matches what we last wrote, the in-memory
-                // 'c' register is in sync, so prefer its structured Vec<String>,
-                // which preserves multi-selection boundaries.  When they differ,
+                // 'c' register is in sync, so prefer its structured pieces, which
+                // keep multi-selection boundaries and each piece's shape.  When they differ,
                 // the clipboard was externally modified; use its content directly.
                 if registers.clipboard_blob() == Some(&text)
-                    && let Some(mem) = registers.read(CLIPBOARD_REGISTER).and_then(|r| r.as_text())
+                    && let Some(mem) = registers
+                        .read(CLIPBOARD_REGISTER)
+                        .and_then(|r| r.as_pieces())
                 {
                     return (Some(Cow::Borrowed(mem)), None);
                 }
@@ -55,13 +57,13 @@ pub(in crate::editor) fn read_register_text<'a>(
                 // normalizing before that check would break self-round-trip
                 // detection for a CRLF-bearing clipboard entry.
                 let text = normalize_line_endings(&text).into_owned();
-                (Some(Cow::Owned(vec![text])), None)
+                (Some(Cow::Owned(vec![Piece::from(text)])), None)
             }
             Err(e) => {
                 let warning = clipboard_warn(&e);
                 let fallback = registers
                     .read(CLIPBOARD_REGISTER)
-                    .and_then(|r| r.as_text())
+                    .and_then(|r| r.as_pieces())
                     .map(Cow::Borrowed);
                 (fallback, Some(warning))
             }
@@ -69,7 +71,7 @@ pub(in crate::editor) fn read_register_text<'a>(
     } else {
         let v = registers
             .read(name)
-            .and_then(|r| r.as_text())
+            .and_then(|r| r.as_pieces())
             .map(Cow::Borrowed);
         (v, None)
     }
@@ -83,20 +85,19 @@ pub(in crate::editor) fn write_register(
     registers: &mut RegisterSet,
     clipboard: &mut SystemClipboard,
     name: char,
-    values: Vec<String>,
+    values: Vec<Piece>,
 ) -> Option<String> {
     if name == CLIPBOARD_REGISTER {
         // Build the OS clipboard blob per-element: insert a '\n' separator
-        // only when the previous value does not already end in one (linewise).
-        // This matches how paste consumes each value independently and correctly
-        // handles mixed selections (e.g. ["line\n", "word"] → "line\nword",
-        // not "line\n\nword").
+        // only when the previous value's text does not already end in one,
+        // whatever its shape. Mixed selections (e.g. ["line\n", "word"])
+        // give "line\nword", not "line\n\nword".
         let mut blob = String::new();
         for (i, v) in values.iter().enumerate() {
-            if i > 0 && !is_register_linewise(&values[i - 1]) {
+            if i > 0 && !values[i - 1].text().ends_with('\n') {
                 blob.push('\n');
             }
-            blob.push_str(v);
+            blob.push_str(v.text());
         }
         let warning = clipboard.write(&blob).err().map(|e| clipboard_warn(&e));
         registers.write_text(CLIPBOARD_REGISTER, values);
