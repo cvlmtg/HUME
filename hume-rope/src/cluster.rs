@@ -6,8 +6,8 @@
 //! primitives, which find boundaries by segmenting the text, produce them.
 //! A position from a foreign coordinate system (a regex byte offset, a
 //! tree-sitter node, an LSP wire position, a char-by-char scan) enters
-//! through [`crate::grapheme::snap_to_cluster`], [`ClusterRange::covering`]
-//! or [`ClusterRange::within`].
+//! through [`crate::grapheme::snap_to_cluster`], [`ClusterRange::covering`],
+//! [`ClusterRange::covering_bytes`] or [`ClusterRange::within`].
 //!
 //! A value describes the text it was computed from. The type does not name
 //! that text; a caller holding one across an edit maps it through the edit
@@ -18,9 +18,14 @@
 //! [`crate::grapheme::prev_cluster`]), and [`ClusterStart::offset`] is a
 //! one-way escape to a plain [`CharOffset`] for ropey and foreign APIs.
 
+use std::ops::Range;
+
 use ropey::RopeSlice;
 
-use crate::grapheme::{ceil_boundary, cluster_end, floor_boundary, prev_cluster};
+use crate::grapheme::{
+    ceil_boundary, cluster_end, floor_with_prev_start, prev_cluster, snap_covering_bytes,
+    snap_to_cluster, text_end,
+};
 use crate::offset::{CharOffset, ExclusiveRange};
 
 /// The first char of a grapheme cluster: a position a cursor can sit on,
@@ -129,6 +134,16 @@ impl ClusterRange {
         )
     }
 
+    /// [`Self::covering`] for a byte range. A bound inside a codepoint moves
+    /// to that codepoint's start, as ropey's `byte_to_char` does.
+    ///
+    /// # Panics
+    /// Panics if either bound is past the slice.
+    pub fn covering_bytes(slice: RopeSlice<'_>, bytes: Range<usize>) -> Option<Self> {
+        let (first, last) = snap_covering_bytes(slice, bytes)?;
+        Some(Self::mint(first.start(), last.start(), last.end()))
+    }
+
     /// The most whole clusters lying inside `chars`: the start narrows forward
     /// to a boundary and the end narrows back to one. `chars` is clamped to
     /// the slice first. `None` when no whole cluster fits.
@@ -138,11 +153,18 @@ impl ClusterRange {
             return None;
         }
         let start = ceil_boundary(slice, chars.start);
-        let end = floor_boundary(slice, end);
+        let (end, last) = if end.index() < slice.len_chars() {
+            let (floor, last) = floor_with_prev_start(slice, end);
+            (ClusterBound::mint(floor), last)
+        } else {
+            let end = text_end(slice);
+            (end, prev_cluster(slice, end))
+        };
         if end <= start {
             return None;
         }
-        Self::between(slice, ClusterStart::mint(start.offset()), end)
+        let last = last.expect("a bound past a boundary has a cluster before it");
+        Some(Self::mint(ClusterStart::mint(start.offset()), last, end))
     }
 
     pub fn start(self) -> ClusterStart {

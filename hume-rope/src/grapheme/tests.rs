@@ -1,5 +1,5 @@
 use super::*;
-use crate::test_support::rope;
+use crate::test_support::{chunk_straddling_text, rope, segmentation_boundaries};
 use pretty_assertions::assert_eq;
 use ropey::Rope;
 
@@ -137,7 +137,35 @@ fn next_at_end_returns_len() {
     // "hi\n" is 3 chars. next(2) steps past '\n' to len_chars=3.
     let buf = rope("hi");
     assert_eq!(next_grapheme_boundary(buf.slice(..), co(2)), co(3)); // '\n' → one past it = len_chars
-    assert_eq!(next_grapheme_boundary(buf.slice(..), co(99)), co(3)); // past end, clamped to len_chars
+    assert_eq!(next_grapheme_boundary(buf.slice(..), co(3)), co(3));
+}
+
+#[test]
+#[should_panic(expected = "past the text end")]
+fn next_past_the_end_panics() {
+    let buf = rope("hi");
+    next_grapheme_boundary(buf.slice(..), co(4));
+}
+
+#[test]
+#[should_panic(expected = "past the text end")]
+fn prev_past_the_end_panics() {
+    let buf = rope("hi");
+    prev_grapheme_boundary(buf.slice(..), co(4));
+}
+
+#[test]
+fn floor_at_the_end_is_the_last_cluster() {
+    let buf = rope("ae\u{301}");
+    assert_eq!(floor_to_cluster_start(buf.slice(..), co(4)), co(3));
+    assert_eq!(floor_to_cluster_start(Rope::new().slice(..), co(0)), co(0));
+}
+
+#[test]
+#[should_panic(expected = "past the text end")]
+fn floor_past_the_end_panics() {
+    let buf = rope("hi");
+    floor_to_cluster_start(buf.slice(..), co(4));
 }
 
 #[test]
@@ -662,18 +690,6 @@ fn graphemes_at_keeps_a_flag_pair_together_across_a_chunk_boundary() {
 
 // ── Cluster boundaries and snapping ───────────────────────────────────────
 
-/// Char offsets of every cluster boundary in `text`, straight from
-/// `unicode-segmentation`.
-fn segmentation_boundaries(text: &str) -> Vec<usize> {
-    let mut out = vec![0];
-    let mut chars = 0;
-    for g in text.graphemes(true) {
-        chars += g.chars().count();
-        out.push(chars);
-    }
-    out
-}
-
 fn corpus_texts(sample: &str) -> [String; 4] {
     [
         format!("a{sample}b"),
@@ -778,52 +794,6 @@ fn str_boundaries_walk_every_corpus_cluster_both_ways() {
     }
 }
 
-/// Byte offsets where ropey ends a chunk that fall inside a grapheme cluster
-/// of `r`.
-fn straddled_chunk_ends(r: &Rope) -> Vec<usize> {
-    let text = r.to_string();
-    let cluster_starts: std::collections::HashSet<usize> = text
-        .grapheme_indices(true)
-        .map(|(i, _)| i)
-        .chain([text.len()])
-        .collect();
-    let mut byte = 0;
-    r.chunks()
-        .map(|chunk| {
-            byte += chunk.len();
-            byte
-        })
-        .filter(|b| !cluster_starts.contains(b))
-        .collect()
-}
-
-/// A rope of clusters whose runs are long enough to straddle ropey chunk
-/// boundaries, shifted by an ASCII prefix until one does, with every char
-/// offset a chunk boundary sits at (and its neighbours) as a probe.
-fn chunk_straddling_text() -> (Rope, Vec<usize>) {
-    for prefix in 0..4 {
-        let text = format!(
-            "{}{}{}",
-            "a".repeat(prefix),
-            test_fixtures::unicode::FLAG_RUN.repeat(600),
-            test_fixtures::unicode::COMBINING.repeat(600)
-        );
-        let r = Rope::from_str(&text);
-        if straddled_chunk_ends(&r).is_empty() {
-            continue;
-        }
-        let mut probes = Vec::new();
-        let mut byte = 0;
-        for chunk in r.chunks() {
-            byte += chunk.len();
-            let at = r.byte_to_char(byte.min(r.len_bytes()));
-            probes.extend((at.saturating_sub(4)..=(at + 4).min(r.len_chars())).filter(|&p| p > 0));
-        }
-        return (r, probes);
-    }
-    panic!("no prefix made a cluster straddle a chunk boundary");
-}
-
 #[test]
 fn prev_and_next_boundary_agree_with_segmentation_across_chunk_boundaries() {
     let (r, probes) = chunk_straddling_text();
@@ -843,6 +813,97 @@ fn prev_and_next_boundary_agree_with_segmentation_across_chunk_boundaries() {
                 "next at {pos}"
             );
         }
+    }
+}
+
+/// Asserts the cluster walk over `slice`, and `snap_to_cluster` and both
+/// boundary steppers at each of `probes`, against segmentation of the
+/// slice's own text.
+fn assert_queries_match_segmentation(
+    slice: RopeSlice<'_>,
+    probes: impl IntoIterator<Item = usize>,
+    label: &str,
+) {
+    let b = segmentation_boundaries(&slice.to_string());
+    let len = slice.len_chars();
+    let walked: Vec<usize> = graphemes_at(slice, ClusterBound::TEXT_START)
+        .map(|c| c.start.index())
+        .chain([len])
+        .collect();
+    assert_eq!(walked, b, "walk over {label}");
+    for pos in probes {
+        let floor = *b
+            .iter()
+            .rev()
+            .find(|&&x| x <= pos)
+            .expect("0 is a boundary");
+        let prev = b.iter().rev().find(|&&x| x < pos).copied().unwrap_or(0);
+        let next = b.iter().find(|&&x| x > pos).copied().unwrap_or(len);
+        if pos < len {
+            let cluster = snap_to_cluster(slice, co(pos)).expect("a non-empty slice");
+            assert_eq!(
+                (cluster.start, cluster.end, cluster.first),
+                (co(floor), co(next), slice.char(floor)),
+                "snap at {pos} in {label}"
+            );
+        }
+        assert_eq!(
+            prev_grapheme_boundary(slice, co(pos)),
+            co(prev),
+            "prev at {pos} in {label}"
+        );
+        assert_eq!(
+            next_grapheme_boundary(slice, co(pos)),
+            co(next),
+            "next at {pos} in {label}"
+        );
+    }
+}
+
+#[test]
+fn cluster_queries_on_a_sub_slice_match_segmentation_of_its_text() {
+    for sample in test_fixtures::unicode::ALL {
+        for text in corpus_texts(sample) {
+            let r = rope(&text);
+            let b = segmentation_boundaries(&r.to_string());
+            for (i, &from) in b.iter().enumerate() {
+                for &to in &b[i..] {
+                    let slice = r.slice(from..to);
+                    let label = format!("{:?}[{from}..{to}]", r.to_string());
+                    assert_queries_match_segmentation(slice, 0..=slice.len_chars(), &label);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn cluster_queries_on_a_sub_slice_across_chunk_boundaries_match_segmentation() {
+    let (r, probes) = chunk_straddling_text();
+    let b = segmentation_boundaries(&r.to_string());
+    let (from, to) = (b[b.len() / 4], b[3 * b.len() / 4]);
+    let slice = r.slice(from..to);
+    let local = probes
+        .into_iter()
+        .filter(|&p| from <= p && p <= to)
+        .map(|p| p - from);
+    assert_queries_match_segmentation(slice, local.chain([0, to - from]), "a sub-slice");
+    assert_queries_match_segmentation(r.slice(from..from), [0], "an empty sub-slice");
+}
+
+#[test]
+fn cluster_queries_keep_crlf_whole_at_chunk_edges() {
+    for unit in ["\r\n", "x\r\n"] {
+        let r = Rope::from_str(&unit.repeat(2000));
+        assert!(r.chunks().count() > 1, "the text must span several chunks");
+        let mut probes = Vec::new();
+        let mut byte = 0;
+        for chunk in r.chunks() {
+            byte += chunk.len();
+            let at = r.byte_to_char(byte);
+            probes.extend(at.saturating_sub(3)..=(at + 3).min(r.len_chars()));
+        }
+        assert_queries_match_segmentation(r.slice(..), probes, unit);
     }
 }
 

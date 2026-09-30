@@ -9,5 +9,10 @@ unicode-segmentation.workspace = true
 unicode-width.workspace = true
 
 [dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 pretty_assertions = "1.4.1"
 test-fixtures = { path = "../test-fixtures" }
+
+[[bench]]
+name = "cluster_queries"
+harness = false

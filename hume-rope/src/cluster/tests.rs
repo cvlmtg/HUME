@@ -1,28 +1,19 @@
 use pretty_assertions::assert_eq;
 use ropey::Rope;
-use unicode_segmentation::UnicodeSegmentation;
 
 use super::*;
 use crate::grapheme::{
     cluster_end, clusters_before, first_cluster, last_cluster, next_cluster, prev_cluster,
     snap_to_cluster, text_end,
 };
-use crate::test_support::rope;
+use crate::test_support::{chunk_straddling_text, rope, segmentation_boundaries};
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
 }
 
-/// Cluster boundaries of `text` as char offsets, 0 and the text end
-/// included, from `unicode-segmentation` over the whole text as one `&str`.
 fn boundaries(text: &Rope) -> Vec<usize> {
-    let mut out = vec![0];
-    let mut chars = 0;
-    for g in text.to_string().graphemes(true) {
-        chars += g.chars().count();
-        out.push(chars);
-    }
-    out
+    segmentation_boundaries(&text.to_string())
 }
 
 fn floor(b: &[usize], pos: usize) -> usize {
@@ -132,6 +123,22 @@ fn clusters_before_walks_the_forward_clusters_in_reverse() {
 }
 
 #[test]
+fn clusters_before_walks_back_across_chunk_boundaries() {
+    let (text, _) = chunk_straddling_text();
+    let b = boundaries(&text);
+    let slice = text.slice(..);
+    let backward: Vec<(usize, char)> = clusters_before(slice, text_end(slice))
+        .map(|c| (c.start().offset().index(), c.first()))
+        .collect();
+    let expected: Vec<(usize, char)> = b[..b.len() - 1]
+        .iter()
+        .rev()
+        .map(|&start| (start, text.char(start)))
+        .collect();
+    assert_eq!(backward, expected);
+}
+
+#[test]
 fn clusters_before_stops_at_the_bound_it_was_given() {
     let text = rope("abc");
     let slice = text.slice(..);
@@ -225,6 +232,33 @@ fn covering_clamps_past_the_end_and_rejects_empty_input() {
 }
 
 #[test]
+fn covering_bytes_widens_the_chars_its_bytes_fall_in() {
+    for text in corpus() {
+        let b = boundaries(&text);
+        let s = text.to_string();
+        let mut char_of_byte: Vec<usize> = s
+            .chars()
+            .enumerate()
+            .flat_map(|(i, ch)| std::iter::repeat_n(i, ch.len_utf8()))
+            .collect();
+        char_of_byte.push(text.len_chars());
+        for start in 0..=s.len() {
+            for end in start..=s.len() {
+                let got = ClusterRange::covering_bytes(text.slice(..), start..end);
+                let (first, past) = (char_of_byte[start], char_of_byte[end]);
+                let expected = (first < past)
+                    .then(|| ExclusiveRange::new(co(floor(&b, first)), co(ceil(&b, past))));
+                assert_eq!(
+                    got.map(ClusterRange::chars),
+                    expected,
+                    "{text:?} bytes {start}..{end}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn within_narrows_both_ends_to_whole_clusters() {
     for text in corpus() {
         let b = boundaries(&text);
@@ -243,6 +277,29 @@ fn within_narrows_both_ends_to_whole_clusters() {
             }
         }
     }
+}
+
+#[test]
+fn within_keeps_the_last_cluster_at_the_text_end_and_clamps_past_it() {
+    let text = rope("ae\u{301}");
+    let slice = text.slice(..);
+    for end in [4, 5, 99] {
+        let range = ClusterRange::within(slice, ExclusiveRange::new(co(1), co(end))).expect("fits");
+        assert_eq!(
+            range.chars(),
+            ExclusiveRange::new(co(1), co(4)),
+            "end {end}"
+        );
+        assert_eq!(range.last().offset(), co(3), "end {end}");
+    }
+    let newline =
+        ClusterRange::within(slice, ExclusiveRange::new(co(2), co(4))).expect("the break fits");
+    assert_eq!(newline.chars(), ExclusiveRange::new(co(3), co(4)));
+    assert_eq!(newline.last().offset(), co(3));
+    assert_eq!(
+        ClusterRange::within(slice, ExclusiveRange::new(co(2), co(3))),
+        None
+    );
 }
 
 #[test]

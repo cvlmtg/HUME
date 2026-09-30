@@ -39,6 +39,7 @@ pub mod width;
 #[cfg(test)]
 pub(crate) mod test_support {
     use ropey::Rope;
+    use unicode_segmentation::UnicodeSegmentation;
 
     /// Mirrors `hume_editing::text::BufferText::from`'s trailing-newline
     /// invariant, so the algorithms under test are exercised against the same
@@ -53,5 +54,65 @@ pub(crate) mod test_support {
             r.insert_char(r.len_chars(), '\n');
             r
         }
+    }
+
+    /// Char offsets of every cluster boundary in `text`, 0 and the text end
+    /// included, straight from `unicode-segmentation`.
+    pub(crate) fn segmentation_boundaries(text: &str) -> Vec<usize> {
+        let mut out = vec![0];
+        let mut chars = 0;
+        for g in text.graphemes(true) {
+            chars += g.chars().count();
+            out.push(chars);
+        }
+        out
+    }
+
+    /// Byte offsets where ropey ends a chunk that fall inside a grapheme cluster
+    /// of `r`.
+    fn straddled_chunk_ends(r: &Rope) -> Vec<usize> {
+        let text = r.to_string();
+        let cluster_starts: std::collections::HashSet<usize> = text
+            .grapheme_indices(true)
+            .map(|(i, _)| i)
+            .chain([text.len()])
+            .collect();
+        let mut byte = 0;
+        r.chunks()
+            .map(|chunk| {
+                byte += chunk.len();
+                byte
+            })
+            .filter(|b| !cluster_starts.contains(b))
+            .collect()
+    }
+
+    /// A rope of clusters whose runs are long enough to straddle ropey chunk
+    /// boundaries, shifted by an ASCII prefix until one does, with every char
+    /// offset a chunk boundary sits at (and its neighbours) as a probe.
+    pub(crate) fn chunk_straddling_text() -> (Rope, Vec<usize>) {
+        for prefix in 0..4 {
+            let text = format!(
+                "{}{}{}",
+                "a".repeat(prefix),
+                test_fixtures::unicode::FLAG_RUN.repeat(600),
+                test_fixtures::unicode::COMBINING.repeat(600)
+            );
+            let r = Rope::from_str(&text);
+            if straddled_chunk_ends(&r).is_empty() {
+                continue;
+            }
+            let mut probes = Vec::new();
+            let mut byte = 0;
+            for chunk in r.chunks() {
+                byte += chunk.len();
+                let at = r.byte_to_char(byte.min(r.len_bytes()));
+                probes.extend(
+                    (at.saturating_sub(4)..=(at + 4).min(r.len_chars())).filter(|&p| p > 0),
+                );
+            }
+            return (r, probes);
+        }
+        panic!("no prefix made a cluster straddle a chunk boundary");
     }
 }

@@ -205,10 +205,18 @@ pub fn line_range(rope: &Rope, line: ContentLine) -> ClusterRange {
 /// order.
 pub fn lines_range(rope: &Rope, first: ContentLine, last: ContentLine) -> ClusterRange {
     let (first, last) = (first.min(last), first.max(last));
+    debug_assert!(
+        last.index() < content_line_count(rope).get(),
+        "lines_range: line {} is not a real content line",
+        last.index()
+    );
+    let end = ropey_line_start(rope, RopeyLine::from(last).advance(1));
+    // The char before the next line's start is `last`'s `\n`, its own
+    // cluster.
     ClusterRange::mint(
         line_start(rope, first),
-        line_break(rope, last),
-        ropey_line_start(rope, RopeyLine::from(last).advance(1)),
+        ClusterStart::mint(end.offset().retreat(1)),
+        end,
     )
 }
 
@@ -371,8 +379,13 @@ pub fn is_empty_line(rope: &Rope, line: RopeyLine) -> bool {
 /// [`last_content_line`] before calling this, rather than this function
 /// silently answering with an illegal head.
 pub fn line_content_end(rope: &Rope, line: ContentLine) -> ClusterStart {
+    line_content_end_at(rope, line, line_start(rope, line))
+}
+
+/// [`line_content_end`] for a caller already holding `line`'s start.
+fn line_content_end_at(rope: &Rope, line: ContentLine, start: ClusterStart) -> ClusterStart {
     let break_pos = line_break(rope, line);
-    if break_pos == line_start(rope, line) {
+    if break_pos == start {
         break_pos // empty line: cursor on the `\n` itself
     } else {
         crate::grapheme::prev_cluster(rope.slice(..), break_pos.into())
@@ -409,8 +422,9 @@ pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: CharCol) -> Clu
     let Some(content_line) = line.to_content(rope) else {
         return line_break(rope, last_content_line(rope));
     };
-    let line_start = line_start(rope, content_line).offset();
-    let content_end = line_content_end(rope, content_line);
+    let line_start = line_start(rope, content_line);
+    let content_end = line_content_end_at(rope, content_line, line_start);
+    let line_start = line_start.offset();
     // `line_start + char_col`: `char_col` is a caller-supplied char count,
     // not yet grapheme-boundary-aligned. This deliberately may land
     // mid-cluster, which the `snap_to_grapheme_boundary` call below

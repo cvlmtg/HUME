@@ -72,7 +72,7 @@ Every buffer position — `Selection::anchor`/`head`, motion and text-object res
 
 `hume_rope::cluster` (`hume-rope/src/cluster.rs`): `ClusterStart` (a cluster starts here, below the text end — every selection end, motion result and engine cell position), `ClusterBound` (a cluster start or the text end — the bound of a half-open range), and `ClusterRange` (a non-empty run of whole clusters, carrying its `start`, its `last` cluster and its exclusive `end`, so the inclusive/exclusive ambiguity has no raw form).
 
-**Mints** — only `hume-rope`'s grapheme and line primitives (`graphemes_at`, `clusters_before`, `next_cluster`/`prev_cluster`, `line_start`, `line_break`, `line_range`, `line_content_end`, `place_char_column`, `char_pos_at_display_col`, `LineText`, …). A foreign offset (a wire position, a regex match, a tree-sitter node) enters only through `snap_to_cluster` or `ClusterRange::covering`/`within` (`BufferText::snap`/`covering`/`within`). No `new`, no `Default`, no arithmetic.
+**Mints** — only `hume-rope`'s grapheme and line primitives (`graphemes_at`, `clusters_before`, `next_cluster`/`prev_cluster`, `line_start`, `line_break`, `line_range`, `line_content_end`, `place_char_column`, `char_pos_at_display_col`, `LineText`, …). A foreign offset (a wire position, a regex match, a tree-sitter node) enters only through `snap_to_cluster` or `ClusterRange::covering`/`covering_bytes`/`within` (`BufferText::snap`/`covering`/`covering_bytes`/`within`). No `new`, no `Default`, no arithmetic.
 
 **Escape** — `offset()`/`chars()`, one way: a raw value never re-enters a selection.
 

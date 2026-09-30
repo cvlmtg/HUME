@@ -431,6 +431,11 @@ impl BufferText {
         ClusterRange::covering(self.full_slice(), chars)
     }
 
+    /// See [`ClusterRange::covering_bytes`].
+    pub fn covering_bytes(&self, bytes: std::ops::Range<usize>) -> Option<ClusterRange> {
+        ClusterRange::covering_bytes(self.full_slice(), bytes)
+    }
+
     /// See [`ClusterRange::within`].
     pub fn within(&self, chars: ExclusiveRange<CharOffset>) -> Option<ClusterRange> {
         ClusterRange::within(self.full_slice(), chars)

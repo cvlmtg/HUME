@@ -1,12 +1,17 @@
 use std::borrow::Cow;
+use std::ops::Range;
 
 use ropey::RopeSlice;
-use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::cluster::{ClusterBound, ClusterRange, ClusterStart};
 use crate::column::{BufferLineCol, GraphemeCol};
 use crate::line::ContentLine;
 use crate::offset::CharOffset;
+
+mod chunk_cursor;
+
+use chunk_cursor::ChunkCursor;
 
 /// One grapheme cluster yielded by [`graphemes_at`]: chars `[start, end)`,
 /// and the first of them, which is what classifies the cluster (a base
@@ -55,42 +60,71 @@ impl Cluster {
 ///
 /// Ropey stores the rope as a B-tree of `&str` chunks. Materializing the
 /// whole buffer into a single `String` just to walk it would be O(n) in
-/// space. `GraphemeCursor` takes the text a chunk at a time
-/// (`next_boundary` / `provide_context`), and the walk keeps its current chunk
-/// between clusters, so the rope is descended once per chunk, not per step.
+/// space. `GraphemeCursor` takes the text a chunk at a time, and the walk
+/// keeps its place in the chunk sequence, so the rope is descended once,
+/// when the walk starts.
 pub fn graphemes_at(slice: RopeSlice<'_>, from: ClusterBound) -> Graphemes<'_> {
     walk_from(slice, from.offset())
 }
 
-/// [`graphemes_at`] from any char offset: a start inside a cluster yields
-/// that cluster's tail as the first item. For the offset-based functions
-/// below, whose callers may hold such a position.
+/// [`graphemes_at`] from any char offset up to the text end: a start inside
+/// a cluster yields that cluster's tail as the first item. For the
+/// offset-based functions below, whose callers may hold such a position.
 fn walk_from(slice: RopeSlice<'_>, pos: CharOffset) -> Graphemes<'_> {
-    let char = pos.min(CharOffset::new(slice.len_chars()));
-    let byte = slice.char_to_byte(char.index());
+    let (cur, byte) = ChunkCursor::at_char(slice, pos.index());
     Graphemes {
-        slice,
-        chunk: "",
-        chunk_byte_start: byte,
+        cur,
         byte,
-        char,
+        char: pos,
     }
 }
 
 /// See [`graphemes_at`].
 pub struct Graphemes<'a> {
-    slice: RopeSlice<'a>,
-    chunk: &'a str,
-    chunk_byte_start: usize,
+    cur: ChunkCursor<'a>,
     byte: usize,
     char: CharOffset,
 }
 
-impl Graphemes<'_> {
-    fn load_chunk_at(&mut self, byte: usize) {
-        let (chunk, start, _, _) = self.slice.chunk_at_byte(byte);
-        self.chunk = chunk;
-        self.chunk_byte_start = start;
+impl<'a> Graphemes<'a> {
+    /// Steps over one cluster: the cluster, and its text when it lies inside
+    /// one chunk.
+    fn step(&mut self) -> Option<(Cluster, Option<&'a str>)> {
+        if self.byte == self.cur.slice().len_bytes() {
+            return None;
+        }
+        let first = self.cur.char_at(self.byte);
+        let (chunk, chunk_start) = (self.cur.chunk(), self.cur.chunk_byte_start());
+        let end_byte = self.cur.next_boundary(self.byte);
+        let text = chunk.get(self.byte - chunk_start..end_byte - chunk_start);
+        let end = match text {
+            // Trusted mint: this module is the grapheme-boundary authority.
+            Some(text) => CharOffset::new(self.char.index() + text.chars().count()),
+            None => CharOffset::new(self.cur.byte_to_char(end_byte)),
+        };
+        let cluster = Cluster {
+            start: self.char,
+            end,
+            first,
+        };
+        self.byte = end_byte;
+        self.char = end;
+        Some((cluster, text))
+    }
+
+    /// The next cluster with its text: the shape `width::grapheme_width`
+    /// needs, since `unicode-width`'s context-sensitive rules (a combining
+    /// mark folding into its base's width) need the whole cluster, not just
+    /// its first char. Borrowed from the rope unless the cluster straddles a
+    /// chunk boundary, which is rare: chunks run hundreds of bytes.
+    fn next_with_text(&mut self) -> Option<(Cluster, Cow<'a, str>)> {
+        let start = self.byte;
+        let (cluster, text) = self.step()?;
+        let text = match text {
+            Some(text) => Cow::Borrowed(text),
+            None => Cow::Owned(self.cur.slice().byte_slice(start..self.byte).to_string()),
+        };
+        Some((cluster, text))
     }
 }
 
@@ -98,69 +132,14 @@ impl Iterator for Graphemes<'_> {
     type Item = Cluster;
 
     fn next(&mut self) -> Option<Cluster> {
-        let len_bytes = self.slice.len_bytes();
-        if self.byte >= len_bytes {
-            return None;
-        }
-        if self.byte >= self.chunk_byte_start + self.chunk.len() {
-            self.load_chunk_at(self.byte);
-        }
-        // A fresh cursor per cluster: one carried over from the previous
-        // cluster splits a regional-indicator pair that straddles a chunk
-        // boundary.
-        let mut cursor = GraphemeCursor::new(self.byte, len_bytes, true);
-        let start_chunk_byte = self.chunk_byte_start;
-        let first = self.chunk[self.byte - start_chunk_byte..]
-            .chars()
-            .next()
-            .expect("byte < len_bytes lies inside the current chunk");
-        let end_byte = loop {
-            match cursor.next_boundary(self.chunk, self.chunk_byte_start) {
-                Ok(Some(b)) => break b,
-                Ok(None) => break len_bytes,
-                Err(GraphemeIncomplete::NextChunk) => {
-                    let next_byte = self.chunk_byte_start + self.chunk.len();
-                    if next_byte >= len_bytes {
-                        break len_bytes;
-                    }
-                    self.load_chunk_at(next_byte);
-                }
-                // The cursor needs context from *before* the current position
-                // to resolve a boundary that depends on a preceding codepoint
-                // (e.g. Regional Indicator pairs, ZWJ sequences).
-                Err(GraphemeIncomplete::PreContext(n)) => {
-                    let (ctx_chunk, ctx_start, _, _) = self.slice.chunk_at_byte(n - 1);
-                    cursor.provide_context(ctx_chunk, ctx_start);
-                }
-                // `next_boundary` only returns the three variants above.
-                Err(_) => unreachable!("unexpected GraphemeIncomplete variant"),
-            }
-        };
-        // A cluster inside one chunk counts its own chars; one straddling a
-        // chunk boundary (rare) asks the rope.
-        let end_char = if self.chunk_byte_start == start_chunk_byte {
-            let chars = self.chunk[self.byte - start_chunk_byte..end_byte - start_chunk_byte]
-                .chars()
-                .count();
-            // Trusted mint: this module is the grapheme-boundary authority.
-            CharOffset::new(self.char.index() + chars)
-        } else {
-            CharOffset::new(self.slice.byte_to_char(end_byte))
-        };
-        let cluster = Cluster {
-            start: self.char,
-            end: end_char,
-            first,
-        };
-        self.byte = end_byte;
-        self.char = end_char;
-        Some(cluster)
+        self.step().map(|(cluster, _)| cluster)
     }
 }
 
 /// Returns the char offset of the start of the *next* grapheme cluster after
-/// `char_offset`, or `slice.len_chars()` when already at (or past) the end:
-/// the first step of [`graphemes_at`], for a caller taking a single step.
+/// `char_offset`, or `slice.len_chars()` when already at the end: the first
+/// step of [`graphemes_at`], for a caller taking a single step. Panics past
+/// the end.
 pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
     walk_from(slice, char_offset)
         .next()
@@ -171,58 +150,55 @@ pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> 
 /// `char_offset`.
 ///
 /// Returns `0` when `char_offset` is already at the start of the slice.
+/// Panics past the end.
 pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
-    let char_offset = char_offset.index();
-    if char_offset == 0 {
+    let (mut cur, byte) = ChunkCursor::at_char(slice, char_offset.index());
+    if byte == 0 {
         return CharOffset::new(0);
     }
-
-    let len_bytes = slice.len_bytes();
-    let byte_offset = slice.char_to_byte(char_offset);
-
-    // Start one byte before `byte_offset` to land inside the preceding
-    // cluster. We want the chunk that *contains* the last byte of that
-    // cluster, not the chunk that starts exactly at `byte_offset`.
-    let (mut chunk, mut chunk_byte_start, _, _) = slice.chunk_at_byte(byte_offset - 1);
-
-    let mut gc = GraphemeCursor::new(byte_offset, len_bytes, true);
-
-    loop {
-        match gc.prev_boundary(chunk, chunk_byte_start) {
-            Ok(None) => return CharOffset::new(0),
-            Ok(Some(b)) => return CharOffset::new(slice.byte_to_char(b)),
-
-            // The cursor needs the previous chunk.
-            Err(GraphemeIncomplete::PrevChunk) => {
-                if chunk_byte_start == 0 {
-                    return CharOffset::new(0);
-                }
-                let (c, s, _, _) = slice.chunk_at_byte(chunk_byte_start - 1);
-                chunk = c;
-                chunk_byte_start = s;
-            }
-
-            Err(GraphemeIncomplete::PreContext(n)) => {
-                let (ctx_chunk, ctx_start, _, _) = slice.chunk_at_byte(n - 1);
-                gc.provide_context(ctx_chunk, ctx_start);
-            }
-
-            Err(_) => unreachable!("unexpected GraphemeIncomplete variant"),
-        }
-    }
+    let prev = cur.prev_boundary(byte);
+    CharOffset::new(cur.byte_to_char(prev))
 }
 
 /// Floor `char_offset` to the start of its own grapheme cluster: a no-op
 /// when it's already a cluster start, otherwise the start of the cluster it
-/// sits inside.
+/// sits inside. At the end, the start of the last cluster. Panics past the
+/// end.
 ///
-/// `next` then `prev` rather than `prev` alone: [`prev_grapheme_boundary`]
-/// answers "where does the *preceding* cluster start," which is one cluster
-/// too far back when `char_offset` is already a boundary. Advancing to the
-/// next boundary first (identity if already on one), then retreating, lands
-/// on the boundary that actually opens `char_offset`'s own cluster.
-fn floor_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
-    prev_grapheme_boundary(slice, next_grapheme_boundary(slice, char_offset))
+/// The boundary after `char_offset` first, then the one before that:
+/// stepping back from `char_offset` alone finds the *preceding* cluster's
+/// start when `char_offset` is already a boundary.
+pub(crate) fn floor_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
+    let at = char_offset.index();
+    let (mut cur, byte) = ChunkCursor::at_char(slice, at);
+    let end = if at == slice.len_chars() {
+        byte
+    } else {
+        cur.next_boundary(byte)
+    };
+    if end == 0 {
+        return CharOffset::new(0);
+    }
+    let start = cur.prev_boundary(end);
+    CharOffset::new(cur.byte_to_char(start))
+}
+
+/// The start of the cluster holding the char at `offset`, which must be
+/// below the text end, and the start of the cluster before that one, or
+/// `None` when the first is the text's first cluster.
+pub(crate) fn floor_with_prev_start(
+    slice: RopeSlice<'_>,
+    offset: CharOffset,
+) -> (CharOffset, Option<ClusterStart>) {
+    let (mut cur, byte) = ChunkCursor::at_char(slice, offset.index());
+    let end = cur.next_boundary(byte);
+    let floor = cur.prev_boundary(end);
+    let floor_char = CharOffset::new(cur.byte_to_char(floor));
+    let prev = (floor > 0).then(|| {
+        let prev = cur.prev_boundary(floor);
+        ClusterStart::mint(CharOffset::new(cur.byte_to_char(prev)))
+    });
+    (floor_char, prev)
 }
 
 /// The boundary after the cluster starting at `start`.
@@ -263,16 +239,62 @@ pub fn text_end(slice: RopeSlice<'_>) -> ClusterBound {
 /// a position from a foreign coordinate system.
 pub fn snap_to_cluster(slice: RopeSlice<'_>, offset: CharOffset) -> Option<Cluster> {
     let last = slice.len_chars().checked_sub(1)?;
-    let start = floor_to_cluster_start(slice, offset.min(CharOffset::new(last)));
-    walk_from(slice, start).next()
+    let at = offset.min(CharOffset::new(last));
+    let (mut cur, byte) = ChunkCursor::at_char(slice, at.index());
+    Some(snap_on_cursor(&mut cur, at, byte))
 }
 
-/// The boundary at or before `offset`, which must not be past the end.
-pub(crate) fn floor_boundary(slice: RopeSlice<'_>, offset: CharOffset) -> ClusterBound {
-    match snap_to_cluster(slice, offset) {
-        Some(cluster) if offset.index() < slice.len_chars() => cluster.start().into(),
-        _ => text_end(slice),
+/// The cluster holding the char at `at`, which starts at `byte`, read from
+/// `cur`.
+fn snap_on_cursor(cur: &mut ChunkCursor<'_>, at: CharOffset, byte: usize) -> Cluster {
+    // Every char that joins a cluster to its neighbour is non-ASCII, so a
+    // boundary between two ASCII chars is missing only inside "\r\n", which
+    // ropey never splits across chunks.
+    let breaks_between = |before: char, after: char| {
+        before.is_ascii() && after.is_ascii() && !(before == '\r' && after == '\n')
+    };
+    let here = cur.char_at(byte);
+    let after = byte + here.len_utf8();
+    let before = cur.char_before(byte);
+    let (end_byte, end) = match cur.char_after(after) {
+        Some(next) if !breaks_between(here, next) => {
+            let end_byte = cur.next_boundary(byte);
+            (end_byte, CharOffset::new(cur.byte_to_char(end_byte)))
+        }
+        _ => (after, CharOffset::new(at.index() + 1)),
+    };
+    let (start, first) = if before.is_none_or(|before| breaks_between(before, here)) {
+        (at, here)
+    } else {
+        let start_byte = cur.prev_boundary(end_byte);
+        let start = CharOffset::new(cur.byte_to_char(start_byte));
+        (start, cur.char_at(start_byte))
+    };
+    Cluster { start, end, first }
+}
+
+/// The first and last clusters covering the chars `bytes` fall in, or
+/// `None` when `bytes` holds no whole char. A bound inside a codepoint moves
+/// to that codepoint's start. Panics if either bound is past the slice.
+pub(crate) fn snap_covering_bytes(
+    slice: RopeSlice<'_>,
+    bytes: Range<usize>,
+) -> Option<(Cluster, Cluster)> {
+    let mut first = ChunkCursor::at_byte(slice, bytes.start);
+    let (first_char, first_byte) = first.char_holding(bytes.start);
+    let mut last = ChunkCursor::at_byte(slice, bytes.end);
+    let (end_char, end_byte) = last.char_holding(bytes.end);
+    if first_char >= end_char {
+        return None;
     }
+    if end_byte == last.chunk_byte_start() {
+        last.retreat();
+    }
+    let (last_char, last_byte) = last.char_holding(end_byte - 1);
+    Some((
+        snap_on_cursor(&mut first, CharOffset::new(first_char), first_byte),
+        snap_on_cursor(&mut last, CharOffset::new(last_char), last_byte),
+    ))
 }
 
 /// The boundary at or after `offset`, which must not be past the end.
@@ -290,28 +312,48 @@ pub(crate) fn ceil_boundary(slice: RopeSlice<'_>, offset: CharOffset) -> Cluster
 }
 
 /// The clusters of `slice` before `bound`, nearest first: the backward
-/// counterpart of [`graphemes_at`].
+/// counterpart of [`graphemes_at`], descending the rope once when the walk
+/// starts.
 pub fn clusters_before(slice: RopeSlice<'_>, bound: ClusterBound) -> ClustersBefore<'_> {
-    ClustersBefore { slice, bound }
+    let (cur, byte) = ChunkCursor::at_char(slice, bound.offset().index());
+    ClustersBefore {
+        cur,
+        byte,
+        char: bound.offset(),
+    }
 }
 
 /// See [`clusters_before`].
 pub struct ClustersBefore<'a> {
-    slice: RopeSlice<'a>,
-    bound: ClusterBound,
+    cur: ChunkCursor<'a>,
+    byte: usize,
+    char: CharOffset,
 }
 
 impl Iterator for ClustersBefore<'_> {
     type Item = Cluster;
 
     fn next(&mut self) -> Option<Cluster> {
-        let start = prev_cluster(self.slice, self.bound)?;
-        let cluster = Cluster {
-            start: start.offset(),
-            end: self.bound.offset(),
-            first: self.slice.char(start.offset().index()),
+        if self.byte == 0 {
+            return None;
+        }
+        let start_byte = self.cur.prev_boundary(self.byte);
+        let chunk_start = self.cur.chunk_byte_start();
+        let start = match self
+            .cur
+            .chunk()
+            .get(start_byte - chunk_start..self.byte - chunk_start)
+        {
+            Some(text) => self.char.retreat(text.chars().count()),
+            None => CharOffset::new(self.cur.byte_to_char(start_byte)),
         };
-        self.bound = start.into();
+        let cluster = Cluster {
+            start,
+            end: self.char,
+            first: self.cur.char_at(start_byte),
+        };
+        self.byte = start_byte;
+        self.char = start;
         Some(cluster)
     }
 }
@@ -381,29 +423,6 @@ pub fn grapheme_col_in_line(
     ))
 }
 
-/// Grapheme cluster `[start, end)` of `slice`, as text: the shape
-/// `width::grapheme_width` needs to measure it, since `unicode-width`'s
-/// context-sensitive rules (e.g. combining marks folding into a base
-/// character's width) need the whole cluster, not just its first char.
-///
-/// Borrowed with zero copy when the cluster lies entirely inside one rope
-/// chunk, true for the overwhelming majority of clusters, since chunks run
-/// hundreds of bytes and a cluster is rarely more than a handful of
-/// codepoints. Copied only for the rare cluster that straddles a chunk
-/// boundary.
-fn cluster_str(slice: RopeSlice<'_>, start: CharOffset, end: CharOffset) -> Cow<'_, str> {
-    let start_byte = slice.char_to_byte(start.index());
-    let end_byte = slice.char_to_byte(end.index());
-    let (chunk, chunk_byte_start, _, _) = slice.chunk_at_byte(start_byte);
-    let local_start = start_byte - chunk_byte_start;
-    let local_end = end_byte - chunk_byte_start;
-    if local_end <= chunk.len() {
-        Cow::Borrowed(&chunk[local_start..local_end])
-    } else {
-        Cow::Owned(slice.slice(start.index()..end.index()).to_string())
-    }
-}
-
 /// 0-based display column of `char_pos` within line `line_idx`, with `\t`
 /// expanded to tab stops of width `tab_width` and every other grapheme
 /// weighted by [`crate::width::grapheme_width`]. That is the same convention the
@@ -421,15 +440,12 @@ pub fn display_col_in_line(
 ) -> BufferLineCol {
     let line_start = crate::lines::slice_line_start_char(slice, line_idx.into());
     let mut display_col = BufferLineCol::new(0);
-    for cluster in walk_from(slice, line_start) {
+    let mut walk = walk_from(slice, line_start);
+    while let Some((cluster, text)) = walk.next_with_text() {
         if cluster.end > char_pos {
             break;
         }
-        let w = crate::width::grapheme_width(
-            &cluster_str(slice, cluster.start, cluster.end),
-            display_col.get() as usize,
-            tab_width,
-        );
+        let w = crate::width::grapheme_width(&text, display_col.get() as usize, tab_width);
         display_col = display_col.advance_saturating(w as u32);
     }
     display_col
@@ -471,7 +487,8 @@ pub fn char_pos_at_display_col(
     }
     let mut display_col = BufferLineCol::new(0);
     let mut pos = line_start;
-    for cluster in walk_from(slice, line_start) {
+    let mut walk = walk_from(slice, line_start);
+    while let Some((cluster, text)) = walk.next_with_text() {
         debug_assert!(
             cluster.first != '\r',
             "char_pos_at_display_col: text must be LF-normalized, found a '\\r'"
@@ -479,11 +496,7 @@ pub fn char_pos_at_display_col(
         if cluster.first == '\n' {
             break; // end of line: never walk onto the next line
         }
-        let w = crate::width::grapheme_width(
-            &cluster_str(slice, cluster.start, cluster.end),
-            display_col.get() as usize,
-            tab_width,
-        );
+        let w = crate::width::grapheme_width(&text, display_col.get() as usize, tab_width);
         let advanced = display_col.advance_saturating(w as u32);
         if advanced > target_display_col {
             break; // this grapheme would overshoot, stop here
