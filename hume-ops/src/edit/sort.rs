@@ -8,9 +8,9 @@
 //! per-line shell invocation to reorder against.
 
 use hume_editing::edit::Edited;
-use hume_editing::edit::{Landings, edit};
+use hume_editing::edit::{Landing, Landings, edit};
 use hume_editing::lines::{line_content_range, line_start};
-use hume_editing::selection::{EditView, UnboundSelection};
+use hume_editing::selection::EditView;
 use hume_editing::state::EditState;
 use hume_rope::line::ContentLine;
 use unicode_normalization::UnicodeNormalization;
@@ -111,7 +111,7 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
                     Some(&moved) if lines.start == lines.end => (moved, moved),
                     _ => (lines.start, lines.end),
                 };
-                UnboundSelection::at_lines(sel, first, last).into()
+                Landing::at_lines(sel, first, last)
             })
             .collect();
         Landings::new(landings, primary)

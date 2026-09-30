@@ -2,7 +2,7 @@ use pretty_assertions::assert_eq;
 
 use super::*;
 use crate::marked::{bound_at, clusters, parse, render};
-use crate::selection::{Facing, UnboundSelection};
+use crate::selection::{Facing, Selection};
 
 /// `f`'s edit of `input`, its one result selection covering `f`'s mark.
 fn marked(
@@ -148,17 +148,6 @@ fn keep_returns_what_a_range_became() {
 }
 
 #[test]
-fn kept_and_old_landings_map_through_the_plan() {
-    let state = parse("a-[b]>c\n");
-    let sel = state.view().primary().selection();
-    let edited = edit(&state, |b| {
-        b.insert(bound_at(b.text(), 0), "XY");
-        Landings::new(vec![UnboundSelection::kept(sel).into()], 0)
-    });
-    assert_eq!(render(edited.state().view()), "XYa-[b]>c\n");
-}
-
-#[test]
 fn an_anchor_inside_a_replaced_range_resolves_to_the_deletion_point() {
     let out = cursor_at("-[a]>bcd\n", |b| {
         b.replace(clusters(b.text(), 1, 3), "XY");
@@ -261,10 +250,7 @@ fn ops_at_distinct_positions_give_one_changeset_in_any_recording_order() {
             for &i in &order {
                 record[i](b);
             }
-            Landings::new(
-                vec![UnboundSelection::kept(state.view().primary().selection()).into()],
-                0,
-            )
+            Landings::new(vec![Landing::kept(state.view().primary().selection())], 0)
         });
         let outcome = format!("{:?}", edited.changes());
         match &seen {
@@ -332,4 +318,76 @@ fn cursor_ending_at_takes_the_cluster_before_the_position() {
 fn covering_an_empty_mark_is_a_cursor_at_it() {
     let out = marked("-[a]>b\n", |b| b.insert(bound_at(b.text(), 1), ""));
     assert_eq!(out, "a-[b]>\n");
+}
+
+/// `input` edited by `f`, which returns its one result landing.
+fn edited(
+    input: &str,
+    f: impl for<'a, 'id> FnOnce(&mut EditBuilder<'a, 'id>, Selection) -> Landing<'id>,
+) -> String {
+    let state = parse(input);
+    let sel = state.view().primary().selection();
+    let edited = edit(&state, |b| Landings::new(vec![f(b, sel)], 0));
+    render(edited.state().view())
+}
+
+#[test]
+fn kept_ends_follow_their_assoc_across_an_insertion() {
+    let before = edited("-[a]>b\n", |b, sel| {
+        b.insert(bound_at(b.text(), 0), "X");
+        Landing::kept_with(sel, Assoc::Before)
+    });
+    let after = edited("-[a]>b\n", |b, sel| {
+        b.insert(bound_at(b.text(), 0), "X");
+        Landing::kept(sel)
+    });
+    assert_eq!(before, "-[X]>ab\n");
+    assert_eq!(after, "X-[a]>b\n");
+}
+
+#[test]
+fn a_kept_end_left_inside_a_cluster_lands_on_its_start() {
+    let out = edited("a\n-[\u{301}]>b\n", |b, sel| {
+        b.delete(clusters(b.text(), 1, 2));
+        Landing::kept(sel)
+    });
+    assert_eq!(out, "-[a\u{301}]>b\n");
+}
+
+/// The primary selection of `input`, its ends moved to `first` and `last`
+/// (0-based lines of the same text), as the edit that changes nothing lands it.
+fn at_lines(input: &str, first: usize, last: usize) -> String {
+    let state = parse(input);
+    let sel = state.view().primary();
+    let edited = edit(&state, |_| {
+        let landing = Landing::at_lines(sel, ContentLine::new(first), ContentLine::new(last));
+        Landings::new(vec![landing], 0)
+    });
+    render(edited.state().view())
+}
+
+#[test]
+fn at_lines_keeps_each_ends_column_on_its_new_line() {
+    assert_eq!(at_lines("ab\nc-[d\nef]>\n", 0, 1), "a-[b\ncd]>\nef\n");
+}
+
+#[test]
+fn at_lines_clamps_a_column_to_the_last_content_cluster() {
+    assert_eq!(at_lines("x\nab-[c]>\n", 0, 0), "-[x]>\nabc\n");
+}
+
+#[test]
+fn at_lines_lands_a_column_on_an_empty_lines_break() {
+    assert_eq!(at_lines("\nab-[c]>\n", 0, 0), "-[\n]>abc\n");
+}
+
+#[test]
+fn at_lines_keeps_an_end_on_a_line_break_on_the_new_lines_break() {
+    assert_eq!(at_lines("xyz\n-[a\n]>", 0, 0), "-[xyz\n]>a\n");
+}
+
+#[test]
+#[should_panic(expected = "past the last line")]
+fn at_lines_refuses_a_line_past_the_text() {
+    at_lines("-[a]>\n", 3, 3);
 }

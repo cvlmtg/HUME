@@ -20,13 +20,15 @@
 
 use std::marker::PhantomData;
 
-use hume_rope::cluster::{ClusterBound, ClusterRange};
+use hume_rope::cluster::{ClusterBound, ClusterRange, ClusterStart};
+use hume_rope::column::CharCol;
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::Edited;
 use crate::changeset::{Assoc, ChangeSet, ChangeSetBuilder};
 use crate::edit::TextChange;
-use crate::selection::{Facing, Resolver, Selection, SelectionSet, UnboundSelection};
+use crate::selection::{Facing, Resolver, Selection, SelectionSet, SelectionView};
 use crate::state::EditState;
 use crate::text::{BufferText, LfText};
 
@@ -312,7 +314,9 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
 }
 
 /// One selection an edit leaves behind, described by positions its builder
-/// handed out or by a selection of the old text to carry through the edit.
+/// handed out, by a selection of the old text to carry through the edit, or
+/// by one moved to other lines. Resolving it lands every end on a cluster
+/// start of the new text.
 pub struct Landing<'id>(Kind<'id>);
 
 enum Kind<'id> {
@@ -320,7 +324,15 @@ enum Kind<'id> {
     CursorEndingAt(NewPos<'id>),
     Covering(Mark<'id>, Facing),
     LineStartOf(NewPos<'id>),
-    Old(UnboundSelection),
+    Kept {
+        sel: Selection,
+        assoc: Assoc,
+    },
+    AtLines {
+        sel: Selection,
+        first: LineEnd,
+        last: LineEnd,
+    },
 }
 
 impl<'id> Landing<'id> {
@@ -345,13 +357,36 @@ impl<'id> Landing<'id> {
 
     /// `sel` carried through the edit, each end past text inserted at it.
     pub fn kept(sel: Selection) -> Self {
-        UnboundSelection::kept(sel).into()
+        Self::kept_with(sel, Assoc::After)
     }
 
     /// `sel` carried through the edit, each end on `assoc`'s side of text
-    /// inserted at it.
+    /// inserted at it. One side for both ends keeps the selection's facing.
     pub fn kept_with(sel: Selection, assoc: Assoc) -> Self {
-        UnboundSelection::kept_with(sel, assoc).into()
+        Self(Kind::Kept {
+            sel: sel.without_sticky(),
+            assoc,
+        })
+    }
+
+    /// `sel` with its first end moved to line `first` of the new text and its
+    /// last end to line `last`. Each end keeps its column, clamped to its new
+    /// line's last content cluster; an end on its line's `\n` stays on the
+    /// new line's `\n`. For an edit that moves whole lines.
+    ///
+    /// # Panics
+    /// Panics if `first` is after `last`.
+    pub fn at_lines(sel: SelectionView<'_>, first: ContentLine, last: ContentLine) -> Self {
+        assert!(
+            first <= last,
+            "at_lines: the first end's line is after the last's"
+        );
+        let text = sel.text();
+        Self(Kind::AtLines {
+            sel: sel.selection().without_sticky(),
+            first: LineEnd::of(text, sel.start(), first),
+            last: LineEnd::of(text, sel.last(), last),
+        })
     }
 
     /// A cursor on the first cluster of the line holding `at`.
@@ -398,14 +433,53 @@ impl<'id> Landing<'id> {
                 let line = text.char_to_line(place(at));
                 Selection::cursor(text.snap(text.line_to_char(line.into())))
             }
-            Kind::Old(unbound) => resolver.selection(unbound),
+            Kind::Kept { sel, assoc } => resolver.carry(sel, assoc),
+            Kind::AtLines { sel, first, last } => {
+                sel.with_ends(first.resolve(text), last.resolve(text))
+            }
         }
     }
 }
 
-impl From<UnboundSelection> for Landing<'_> {
-    fn from(unbound: UnboundSelection) -> Self {
-        Self(Kind::Old(unbound))
+/// Where a selection end sits on a line of the new text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct LineEnd {
+    line: ContentLine,
+    place: LinePlace,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LinePlace {
+    Break,
+    Col(CharCol),
+}
+
+impl LineEnd {
+    /// `end`, a cluster of `text`, moved to `line` of the new text.
+    fn of(text: &BufferText, end: ClusterStart, line: ContentLine) -> Self {
+        let old = text.char_to_line(end.offset());
+        let place = if end == crate::lines::line_break(text, old) {
+            LinePlace::Break
+        } else {
+            LinePlace::Col(crate::lines::char_col_in_line(text, old, end.offset()))
+        };
+        Self { line, place }
+    }
+
+    /// The cluster of `text` this end names.
+    ///
+    /// # Panics
+    /// Panics if the line is past the last line of `text`.
+    fn resolve(self, text: &BufferText) -> ClusterStart {
+        assert!(
+            self.line <= text.last_content_line(),
+            "an end moved to line {}, past the last line of the text",
+            self.line.index()
+        );
+        match self.place {
+            LinePlace::Break => crate::lines::line_break(text, self.line),
+            LinePlace::Col(col) => crate::lines::place_char_column(text, self.line.into(), col),
+        }
     }
 }
 

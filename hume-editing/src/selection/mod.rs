@@ -1,14 +1,13 @@
 mod fit;
 mod recorded;
+mod resolver;
 mod single;
-mod unbound;
 mod view;
 
 pub(crate) use fit::{assert_fits, assert_positions, check_fit};
 pub use recorded::RecordedSelections;
+pub(crate) use resolver::Resolver;
 pub use single::{Facing, Selection, StickyDisplayCol};
-pub(crate) use unbound::Resolver;
-pub use unbound::UnboundSelection;
 pub use view::{EditView, LineSpan, SelectionView};
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
