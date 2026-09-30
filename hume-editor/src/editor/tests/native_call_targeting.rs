@@ -602,3 +602,42 @@ fn try_ensure_errors_for_a_closed_pane_whose_slot_is_not_reused() {
         "no ghost pane_state entry should be created for the closed pane"
     );
 }
+
+/// A `"<reg>` prefix armed before a `d` that is refused (another pane has an
+/// insert session open on the buffer) is cleared by the refusal, like a
+/// read-only refusal clears it, so it cannot redirect the next command. The
+/// register stays empty.
+#[test]
+fn a_refused_delete_clears_the_register_prefix_and_writes_nothing() {
+    let mut ed = editor_from("-[a]>aaa\n");
+    let pid_a = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+    live_host!(ed)
+        .run_command_sync(
+            "pane-vsplit",
+            PaneHandle::with_pane(bid, pid_a),
+            Some(1),
+            false,
+            None,
+        )
+        .expect("pane-vsplit must succeed");
+    let pid_b = ed.state.focus.id();
+    ed.state.focus.set_for_test(pid_a);
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+
+    ed.state.register_prefix = Some(crate::editor::register_ops::RegisterPrefix::Selected('3'));
+    let ran = live_host!(ed)
+        .run_command_sync(
+            "delete",
+            PaneHandle::with_pane(bid, pid_b),
+            Some(1),
+            false,
+            None,
+        )
+        .expect("a refused command is still a successful dispatch");
+
+    assert!(!ran, "setup: the delete must be refused");
+    assert_eq!(ed.state.register_prefix, None);
+    assert!(reg(&ed, '3').is_empty());
+}

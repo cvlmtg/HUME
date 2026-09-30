@@ -613,3 +613,22 @@ fn macro_and_search_registers_not_valid_for_prefix() {
         "'s' not prefix-accessible"
     );
 }
+
+#[test]
+fn yank_leaves_the_text_version_for_the_next_edit() {
+    let (text, sels) = parse_state("-[h]>ello\n");
+    let state = EditState::bind(&text, sels);
+    yank_selections(&state);
+    let (after, _) = crate::edit::insert_str(state, "x").into_parts();
+    assert_eq!(
+        after.text().version().generation(),
+        text.version().generation() + 1
+    );
+}
+
+#[test]
+fn text_ending_in_a_carriage_return_converts_to_a_linewise_piece() {
+    let piece = Piece::from("foo\r");
+    assert_eq!(piece.text(), "foo\n");
+    assert!(piece.is_linewise());
+}

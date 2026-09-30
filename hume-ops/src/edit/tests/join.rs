@@ -124,3 +124,30 @@ fn a_space_joined_after_a_prepend_char_selects_the_cluster_it_joins() {
         "a-[\u{600} ]>b\n"
     );
 }
+
+#[test]
+fn join_lines_on_an_empty_first_line_keeps_the_cursor_on_its_break() {
+    assert_state!(
+        "-[\n]>\n",
+        |(text, sels)| join_lines_select_spaces(test_fixtures::testing::state(text, sels)),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn join_lines_over_a_blank_line_after_an_empty_first_line_keeps_the_cursor_on_its_break() {
+    assert_state!(
+        "-[\n   \n]>x\n",
+        |(text, sels)| join_lines_select_spaces(test_fixtures::testing::state(text, sels)),
+        "-[\n]>x\n"
+    );
+}
+
+#[test]
+fn join_lines_on_an_empty_line_without_a_space_lands_on_that_lines_own_break() {
+    assert_state!(
+        "a\n-[\n]>\n\nb\n",
+        |(text, sels)| join_lines_select_spaces(test_fixtures::testing::state(text, sels)),
+        "a\n-[\n]>\nb\n"
+    );
+}

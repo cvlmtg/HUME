@@ -404,3 +404,29 @@ fn around_paren_covers_a_combining_mark_on_the_closing_paren() {
         "-[(hi)\u{301}]>x\n"
     );
 }
+
+#[test]
+fn inner_paren_from_an_open_paren_joined_to_a_prepend_mark() {
+    assert_state!(
+        "-[\u{600}(]>x)\n",
+        |(text, sels)| cmd_inner_paren(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
+        "\u{600}(-[x]>)\n"
+    );
+}
+
+#[test]
+fn inner_paren_from_a_close_paren_joined_to_a_prepend_mark() {
+    assert_state!(
+        "(x-[\u{600})]>\n",
+        |(text, sels)| cmd_inner_paren(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
+        "(-[x]>\u{600})\n"
+    );
+}

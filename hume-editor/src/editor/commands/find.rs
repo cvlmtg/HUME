@@ -1,7 +1,9 @@
 use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
-use hume_ops::motion::{find_char_backward, find_char_forward};
+use hume_ops::motion::{
+    find_char_backward, find_char_forward, repeat_find_char_backward, repeat_find_char_forward,
+};
 
 use super::super::EditorState;
 use crate::editor::error::CommandError;
@@ -134,7 +136,7 @@ pub(in crate::editor) fn cmd_repeat_find_forward(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    repeat_find(state, view, t, count, mode, find_char_forward);
+    repeat_find(state, view, t, count, mode, repeat_find_char_forward);
     Ok(())
 }
 pub(in crate::editor) fn cmd_repeat_find_backward(
@@ -144,6 +146,6 @@ pub(in crate::editor) fn cmd_repeat_find_backward(
     count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    repeat_find(state, view, t, count, mode, find_char_backward);
+    repeat_find(state, view, t, count, mode, repeat_find_char_backward);
     Ok(())
 }

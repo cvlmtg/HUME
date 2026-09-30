@@ -423,9 +423,7 @@ fn select_line_move_count_three_selects_three_lines() {
 fn select_line_backward_move_count_three_selects_three_lines() {
     // `3X` moves the same way three separate `X` presses would, landing on
     // "b" as a single-line selection, not growing a 3-line span (that's
-    // `Ctrl-3X`). Cursor is mid-line ("dd"'s second char), not at line
-    // start. A selection starting exactly at line start instead hits the
-    // jump-to-previous-line branch (see `select_line_backward_already_at_start_jumps_to_prev`).
+    // `Ctrl-3X`).
     assert_state!(
         "a\nb\nc\nd-[d]>\ne\n",
         |(text, sels)| cmd_select_line_backward(
@@ -535,5 +533,31 @@ fn extend_select_line_backward_huge_count_clamps_instantly() {
             MotionMode::Extend
         ),
         "<[a\nb\nc\n]-"
+    );
+}
+
+#[test]
+fn select_line_backward_from_a_cursor_at_line_start_selects_that_line() {
+    assert_state!(
+        "aaa\n-[b]>bb\nccc\n",
+        |(text, sels)| cmd_select_line_backward(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
+        "aaa\n<[bbb\n]-ccc\n"
+    );
+}
+
+#[test]
+fn select_line_from_a_cursor_on_the_line_break_selects_that_line() {
+    assert_state!(
+        "aaa-[\n]>bbb\n",
+        |(text, sels)| cmd_select_line(
+            test_fixtures::testing::state(text, sels),
+            1,
+            MotionMode::Move
+        ),
+        "-[aaa\n]>bbb\n"
     );
 }

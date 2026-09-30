@@ -234,10 +234,9 @@ fn r_then_tab_replaces_with_tab() {
 }
 
 /// `f<ret>` is accepted as a wait-char argument (the wait clears, unlike Esc)
-/// but never matches: `find_char_on_line_forward` (hume-ops/src/motion/find.rs)
-/// explicitly excludes '\n' as a structural line boundary, not content, by
-/// design, not a bug. This documents that "accepted argument" and "found on
-/// line" are separate questions, exactly like `fz` on a line with no 'z'.
+/// but never matches: the find scan in hume-ops/src/motion/find.rs excludes
+/// '\n' as a structural line boundary, not content. "Accepted argument" and
+/// "found on line" are separate questions, like `fz` on a line with no 'z'.
 #[test]
 fn f_then_enter_is_accepted_but_never_matches() {
     let mut ed = editor_from("-[h]>ello\n");

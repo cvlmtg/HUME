@@ -326,17 +326,14 @@ fn collect_selection_spans(
     *primary_sel_span = None;
 
     let gs = &graphemes[grapheme_range.clone()];
-    // This display line has real content only when it has graphemes at all,
-    // and its first and last don't collapse to the same empty point: an
-    // empty line's sole grapheme (the EOL sentinel) has an empty `byte_range`.
-    // The style stage never runs on a virtual display line (whose cells have
-    // no `Grapheme::pos`), so `first`/`last` carry genuine positions here.
-    let content = match (gs.first(), gs.last()) {
-        (Some(first), Some(last)) if first.byte_range.start < last.byte_range.end => {
-            first.pos.zip(last.pos)
-        }
-        _ => None,
-    };
+    // The clusters this display line shows, the end-of-line sentinel included
+    // as its line's `\n`. The style stage never runs on a virtual display
+    // line (whose cells have no `Grapheme::pos`), so `first`/`last` carry
+    // genuine positions here.
+    let content = gs
+        .first()
+        .zip(gs.last())
+        .and_then(|(first, last)| first.pos.zip(last.pos));
     let right_edge = gs.last().map_or(DisplayLineCol::new(0), |g| {
         g.display_col.advance_saturating(g.width as u32)
     });
@@ -369,10 +366,12 @@ fn collect_selection_spans(
         // from its left edge.
         let display_col_start =
             display_col_at(start, graphemes, grapheme_range).unwrap_or(DisplayLineCol::new(0));
-        // The span ends at the left edge of the first cell at or past `end`,
-        // the first cluster the selection does not cover, or runs to the
-        // display line's right edge when no such cell is on it.
-        let display_col_end = boundary_display_col(end, gs).unwrap_or(right_edge);
+        // The span ends at the right edge of the last covered cluster's cell,
+        // so inserts after it stay unselected, or runs to the display line's
+        // right edge when that cluster is on a later wrap segment.
+        let display_col_end =
+            resolve_grapheme_display_col(sel.covered.last(), graphemes, grapheme_range)
+                .map_or(right_edge, |(col, width)| col.advance_saturating(width));
         if display_col_end > display_col_start {
             out.push((display_col_start, display_col_end));
             if Some(idx) == primary_idx {
@@ -464,15 +463,6 @@ fn display_col_at(
     grapheme_range: &std::ops::Range<usize>,
 ) -> Option<DisplayLineCol> {
     resolve_grapheme_display_col(pos, graphemes, grapheme_range).map(|(display_col, _)| display_col)
-}
-
-/// Left edge of the first cell in `gs` at or past `end`: where a span that
-/// stops before `end` ends. An inline insert preceding the cluster at `end`
-/// is the first such cell, so the span stops before the insert too. `None`
-/// when every cell on the display line comes before `end`.
-fn boundary_display_col(end: ClusterBound, gs: &[Grapheme]) -> Option<DisplayLineCol> {
-    let idx = gs.partition_point(|g| g.pos.is_some_and(|p| ClusterBound::from(p) < end));
-    gs.get(idx).map(|g| g.display_col)
 }
 
 // ---------------------------------------------------------------------------

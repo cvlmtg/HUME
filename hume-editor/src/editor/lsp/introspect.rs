@@ -409,12 +409,14 @@ fn wire_pos_to_grapheme_col(
     if pos.line > text.last_content_line().index() {
         return None;
     }
-    let char_pos = hume_rope::position_encoding::wire_to_char(text.rope(), pos, encoding);
+    let target = super::wire_to_cluster(text, pos, encoding);
     // Trusted narrow: the bound check above already confirmed `line` names a
     // real content line.
     let line = hume_rope::line::ContentLine::new(pos.line);
     Some(hume_editing::grapheme::grapheme_col_in_line(
-        text, line, char_pos,
+        text,
+        line,
+        target.offset(),
     ))
 }
 

@@ -114,6 +114,20 @@ fn replace_around_cursors_normalizes_crlf_in_replacement() {
 }
 
 #[test]
+fn replace_around_cursors_over_the_last_break_with_a_newline_adds_no_blank_line() {
+    assert_state!(
+        "abc\nde-[f]>\n",
+        |(text, sels)| replace_around_cursors(
+            test_fixtures::testing::state(text, sels),
+            0,
+            2,
+            "x\n"
+        ),
+        "abc\ndex-[\n]>"
+    );
+}
+
+#[test]
 fn replace_around_cursors_zero_span_matches_insert_str() {
     // back=0 forward=0 degenerates to a pure multi-cursor insert.
     // insert_str is a separately implemented op, so
@@ -488,5 +502,14 @@ fn replace_around_cursors_forward_span_that_ends_inside_a_cluster_covers_it_whol
         "-[a]>be\u{301}c\n",
         |(text, sels)| replace_around_cursors(test_fixtures::testing::state(text, sels), 0, 3, "Z"),
         "Z-[c]>\n"
+    );
+}
+
+#[test]
+fn replace_a_prepend_led_open_paren_keeps_it_an_opener() {
+    assert_state!(
+        "-[\u{600}(]>x)\n",
+        |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), ']'),
+        "-[[]>x)\n"
     );
 }

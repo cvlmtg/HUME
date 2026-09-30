@@ -11,7 +11,6 @@
 use std::borrow::Cow;
 
 use crate::editor::clipboard::SystemClipboard;
-use hume_editing::text::normalize_line_endings;
 use hume_ops::register::{CLIPBOARD_REGISTER, Piece, RegisterSet};
 
 /// Pending state for the two-keystroke `"<reg>` register-prefix sequence.
@@ -52,11 +51,6 @@ pub(in crate::editor) fn read_register_text<'a>(
                 {
                     return (Some(Cow::Borrowed(mem)), None);
                 }
-                // Only past the blob-equality check above, which compares
-                // against the raw bytes HUME itself last wrote to the OS;
-                // normalizing before that check would break self-round-trip
-                // detection for a CRLF-bearing clipboard entry.
-                let text = normalize_line_endings(&text).into_owned();
                 (Some(Cow::Owned(vec![Piece::from(text)])), None)
             }
             Err(e) => {

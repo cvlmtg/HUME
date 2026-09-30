@@ -29,11 +29,12 @@ pub fn insert_char(state: EditState, ch: char) -> Edited {
 /// one `insert_char` call per character.
 pub fn insert_str(state: EditState, inserted: &str) -> Edited {
     apply_edit(state, |b, sel| {
-        if !sel.is_cursor() {
-            b.delete(sel.covered());
-        }
-        let mark = b.insert(sel.start(), inserted);
-        Landing::cursor(mark.end())
+        let mark = if sel.is_cursor() {
+            b.insert(sel.start(), inserted)
+        } else {
+            b.replace(sel.covered().chars(), inserted)
+        };
+        Landing::after(mark.end())
     })
 }
 
@@ -118,10 +119,10 @@ pub fn owned_blank_indent(
 /// indent). Computed on the pre-edit buffer.
 ///
 /// Cursor placement matches `insert_char`'s "stay on the original char" rule:
-/// collapsed cursor lands on the first char after the inserted indent (the
-/// original char at `start`, shifted down); non-collapsed selection has no
-/// original char to land on, so the cursor ends up on the structural `\n`
-/// left at the original position.
+/// the cursor lands on the first char after the inserted indent. For a
+/// collapsed cursor that is the char that was at `start`; for a selection,
+/// which the line break replaces, it is the char that followed the selection
+/// (the structural `\n` when the selection reached the end of the buffer).
 ///
 /// `allowed`: per-selection (by sorted index) range of whitespace some
 /// earlier auto-indent recorded as its own; see `is_owned_blank_line` (this
@@ -134,21 +135,22 @@ pub fn insert_newline_indent(state: EditState, allowed: &[ExclusiveRange<CharOff
     apply_edit(state, |b, sel| {
         let start = sel.start().offset();
         let line = line_indent_range(b.text(), start);
-        let vacates = sel.is_cursor()
-            && is_owned_blank_line(
+        let inserted = format!("\n{}", b.text().slice(line));
+        let mark = if sel.is_cursor() {
+            let vacates = is_owned_blank_line(
                 b.text(),
                 line.start,
                 line.end,
                 allowed.get(sel.index()).copied(),
             );
-        if vacates {
-            b.delete(line);
-        } else if !sel.is_cursor() {
-            b.delete(sel.covered());
-        }
-        let indent = b.text().slice(line).to_string();
-        let mark = b.insert(start, &format!("\n{indent}"));
-        Landing::cursor(mark.end())
+            if vacates {
+                b.delete(line);
+            }
+            b.insert(start, &inserted)
+        } else {
+            b.replace(sel.covered().chars(), &inserted)
+        };
+        Landing::after(mark.end())
     })
 }
 

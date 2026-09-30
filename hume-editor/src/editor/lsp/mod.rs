@@ -51,6 +51,22 @@ pub(in crate::editor) fn wire_range_to_chars(
     )
 }
 
+/// The cluster a wire position names in `text`, where goto lands: the line
+/// clamped to the text, the column placed on the line's content, so a column
+/// past the line's end lands on its last content cluster. Decoded through
+/// `place_char_column`, not `wire_to_char`, so a position between a base
+/// character and a combining mark lands on the cluster's start, as every
+/// other goto target does.
+pub(in crate::editor) fn wire_to_cluster(
+    text: &hume_editing::text::BufferText,
+    pos: hume_rope::position_encoding::WirePos,
+    encoding: hume_rope::position_encoding::PositionEncoding,
+) -> hume_rope::cluster::ClusterStart {
+    let (line, char_col) =
+        hume_rope::position_encoding::wire_to_line_char_col(text.rope(), pos, encoding);
+    hume_editing::lines::place_char_column(text, line, char_col)
+}
+
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never
 /// holds this: it only ever sees the `(ServerId, RequestId)` pair the
 /// editor keys its callback under, which `hume-lsp` already hands back from

@@ -407,6 +407,23 @@ fn structural_command_after_a_failed_parse_reparses_instead_of_reading_stale_lay
     );
 }
 
+/// A buffer over the syntax size cap is never reparsed on demand, so after an
+/// edit its layers describe the old text. A structural command then finds
+/// nothing rather than reading them.
+#[test]
+fn structural_command_over_the_size_cap_after_an_edit_is_a_no_op() {
+    let mut ed = rust_editor("fn target() {\n    -[l]>et y = 2;\n}\n");
+    ed.state.settings.syntax_highlight_max_bytes = 8;
+
+    ed.feed_key(key('x'));
+    ed.feed_key(key('d'));
+    let before = state(&ed);
+    for ch in "mif".chars() {
+        ed.feed_key(key(ch));
+    }
+    assert_eq!(state(&ed), before);
+}
+
 // ── Dot-repeat ───────────────────────────────────────────────────────────────
 
 /// `m a f` `d` deletes the function under the cursor; `.` replays both steps

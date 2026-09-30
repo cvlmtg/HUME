@@ -242,3 +242,17 @@ fn a_snippet_item_strips_the_default_range_text_too() {
         "foo"
     );
 }
+
+/// An item whose own `textEdit` is malformed keeps no edit at all: the list's
+/// default range is for items with none, and `insertText` stays the fallback.
+#[test]
+fn a_malformed_own_text_edit_does_not_take_the_default_range() {
+    let v = serde_json::json!({
+        "label": "foo",
+        "insertText": "foo_insert",
+        "textEdit": {"newText": "x"},
+    });
+    let item = from_json_with_default(v, Some(&default_range())).expect("well-formed item");
+    assert_eq!(item.text_edit, None);
+    assert_eq!(item.insert_text, "foo_insert");
+}

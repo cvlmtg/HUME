@@ -57,10 +57,16 @@ impl EditorState {
 
     /// Route a kill (`d`/`c`) yank: bare default and `"k` both go to the kill
     /// ring; any other explicit register prefix routes through `write_register`.
-    /// Returns `true` when the yank was captured to the ring (and stamped),
-    /// `false` for an explicit-register route, which never stamps.
+    /// The prefix is consumed even when nothing was removed, and an all-empty
+    /// yank writes nowhere. Returns `true` when the yank was captured to the
+    /// ring (and stamped), `false` for an explicit-register route or an empty
+    /// yank, which never stamp.
     pub(in crate::editor::commands) fn route_kill(&mut self, yanked: Vec<Piece>) -> bool {
-        match self.take_register_prefix() {
+        let prefix = self.take_register_prefix();
+        if yanked.iter().all(Piece::is_empty) {
+            return false;
+        }
+        match prefix {
             None | Some(hume_ops::register::KILL_RING_REGISTER) => {
                 self.capture_to_ring(yanked);
                 true

@@ -75,10 +75,19 @@ fn find_repeat_exclusive_kind_preserved() {
     ed.handle_key(key('a'));
     // cursor on the space before first 'a'
     assert_eq!(state(&ed), "hello-[ ]>a world a end\n");
-    // move past the first 'a' so `=` can find the second
-    ed.handle_key(key('l'));
-    ed.handle_key(key('l'));
+    // the adjacent 'a' is skipped; lands before the second 'a', not on it
     ed.handle_key(key('='));
-    // should land on the space before second 'a', not on 'a' itself
     assert_eq!(state(&ed), "hello a world-[ ]>a end\n");
+}
+
+/// `-` after `Ta` skips the adjacent 'a' and stops one grapheme after the
+/// previous one.
+#[test]
+fn find_repeat_backward_till_skips_the_adjacent_match() {
+    let mut ed = editor_from("start a world a en-[d]>\n");
+    ed.handle_key(key('T'));
+    ed.handle_key(key('a'));
+    assert_eq!(state(&ed), "start a world a-[ ]>end\n");
+    ed.handle_key(key('-'));
+    assert_eq!(state(&ed), "start a-[ ]>world a end\n");
 }

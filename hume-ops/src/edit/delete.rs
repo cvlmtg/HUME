@@ -10,7 +10,7 @@ use hume_rope::offset::ExclusiveRange;
 
 use super::apply_edit;
 use crate::motion::prev_word_start;
-use crate::register::{Piece, Shape};
+use crate::register::{Piece, Shape, removed_piece};
 
 /// What `d` or `c` did: the edit, and one register entry per selection, in
 /// document order, holding the text that selection took out of the buffer.
@@ -29,14 +29,27 @@ pub struct Removal {
 /// line with text removes nothing. See `EditBuilder::remove`.
 pub fn delete_selection(state: EditState) -> Removal {
     let mut yanked = Vec::new();
-    let edited = apply_edit(state, |b, sel| match b.remove(sel) {
+    let edited = remove_each(
+        state,
+        |b, sel| b.remove(sel),
+        |sel, removed| yanked.push(removed_piece(sel, removed)),
+    );
+    Removal { edited, yanked }
+}
+
+/// Remove what `remove` takes out of each selection. `on_removed` sees each
+/// selection with the text it removed, `None` when it removed nothing.
+fn remove_each(
+    state: EditState,
+    remove: impl for<'a, 'id> Fn(
+        &mut EditBuilder<'a, 'id>,
+        SelectionView<'a>,
+    ) -> Option<Removed<'a, 'id>>,
+    mut on_removed: impl FnMut(SelectionView<'_>, Option<RopeSlice<'_>>),
+) -> Edited {
+    apply_edit(state, |b, sel| match remove(b, sel) {
         Some(removed) => {
-            let shape = if sel.is_linewise() {
-                Shape::Linewise
-            } else {
-                Shape::Charwise
-            };
-            yanked.push(Piece::new(removed.text.to_string(), shape));
+            on_removed(sel, Some(removed.text));
             removed.cursor
         }
         None => {

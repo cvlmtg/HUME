@@ -72,7 +72,9 @@ pub use paragraph::{cmd_goto_next_paragraph, cmd_goto_prev_paragraph};
 mod line_select;
 pub use line_select::{cmd_select_line, cmd_select_line_backward};
 mod find;
-pub use find::{find_char_backward, find_char_forward};
+pub use find::{
+    find_char_backward, find_char_forward, repeat_find_char_backward, repeat_find_char_forward,
+};
 mod object;
 pub use object::apply_object_motion;
 

@@ -232,28 +232,18 @@ impl<'a, 'id> EditBuilder<'a, 'id> {
     /// `None` when nothing can be removed: a cursor on the structural `\n` of
     /// a line with text, or of the only line.
     pub fn remove(&mut self, sel: SelectionView<'a>) -> Option<Removed<'a, 'id>> {
-        let covered = sel.covered();
-        let removed = ExclusiveRange::new(
-            covered.start().offset(),
-            covered.end().offset().min(self.text.last_char()),
-        );
+        let (removed, text) = sel.removal()?;
         if sel.is_linewise() {
             let lines = sel.lines();
-            if removed.is_empty() && lines.start.index() == 0 {
-                return None;
-            }
             let index = self.record_delete(removed, Some((lines.start, lines.end)));
             return Some(Removed {
-                text: sel.slice(),
+                text,
                 cursor: Landing::line_start_of(self.pos(index, false)),
             });
         }
-        if removed.is_empty() {
-            return None;
-        }
         let index = self.record_delete(removed, None);
         Some(Removed {
-            text: self.text.slice(removed),
+            text,
             cursor: Landing::cursor(self.pos(index, false)),
         })
     }
@@ -359,6 +349,7 @@ pub struct Landing<'id>(Kind<'id>);
 
 enum Kind<'id> {
     Cursor(NewPos<'id>),
+    After(NewPos<'id>),
     CursorEndingAt(NewPos<'id>),
     Covering(Mark<'id>, Facing),
     LineStartOf(NewPos<'id>),
@@ -369,6 +360,12 @@ impl<'id> Landing<'id> {
     /// A cursor on the cluster holding `at`.
     pub fn cursor(at: NewPos<'id>) -> Self {
         Self(Kind::Cursor(at))
+    }
+
+    /// A cursor on the cluster after inserted text ending at `end`; the
+    /// structural `\n` when the text ends there.
+    pub fn after(end: NewPos<'id>) -> Self {
+        Self(Kind::After(end))
     }
 
     /// A cursor on the cluster that ends at `end`: the last cluster before it.
@@ -417,6 +414,7 @@ impl<'id> Landing<'id> {
                 debug_assert!(at < text.end(), "a cursor landed past the last cluster");
                 Selection::cursor(text.snap(at))
             }
+            Kind::After(end) => Selection::cursor(text.snap(place(end))),
             Kind::CursorEndingAt(end) => {
                 let end = place(end);
                 assert!(

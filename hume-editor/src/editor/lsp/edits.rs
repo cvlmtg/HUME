@@ -14,7 +14,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId, PanePool};
 use hume_lsp::codec::ResponseError;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-use hume_rope::position_encoding::{PositionEncoding, WirePos, wire_to_line_char_col};
+use hume_rope::position_encoding::{PositionEncoding, WirePos};
 
 use super::introspect;
 use crate::editor::Editor;
@@ -503,18 +503,7 @@ fn resolve_goto_target(
                 .map_err(|e| format!("cannot open {}: {e}", uri.as_str()))?;
             let bid = resolve_or_open(state, view, &path)?;
             let buf = state.buffers.get(bid);
-            // Decoded in two steps, not `wire_to_char` directly: a server
-            // naming a position between a base character and a combining
-            // mark must still land the cursor on the cluster's own start.
-            // `place_char_column` is what every other goto target already
-            // snaps through (`char_indexed_to_char_pos`), so the wire target
-            // gets the same grapheme-boundary guarantee instead of landing
-            // wherever the raw code-unit offset happens to fall.
-            let (line, char_col) = wire_to_line_char_col(buf.text().rope(), pos, encoding);
-            Ok((
-                bid,
-                hume_editing::lines::place_char_column(buf.text(), line, char_col),
-            ))
+            Ok((bid, super::wire_to_cluster(buf.text(), pos, encoding)))
         }
         GotoTarget::Path {
             path_or_uri,

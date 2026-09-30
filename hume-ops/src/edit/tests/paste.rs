@@ -640,3 +640,15 @@ fn an_empty_value_leaves_its_cursor_on_the_same_char_after_an_earlier_paste() {
         "a-[XX]>b-[c]>d\n"
     );
 }
+
+#[test]
+fn paste_charwise_ending_in_newline_over_the_last_line_adds_no_blank_line() {
+    assert_state!(
+        "abc\n-[def\n]>",
+        |(text, sels)| paste_after(
+            test_fixtures::testing::state(text, sels),
+            &[Piece::new("xyz\n".to_string(), Shape::Charwise)]
+        ),
+        "abc\n-[xyz\n]>"
+    );
+}

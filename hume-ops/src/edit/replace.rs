@@ -70,9 +70,8 @@ pub fn replace_span_around_cursors(
         let span = text
             .covering(chars)
             .map_or(ExclusiveRange::new(head, head), |range| range.chars());
-        b.delete(span);
-        let mark = b.insert(span.start, replacement);
-        Landing::cursor(mark.end())
+        let mark = b.replace(span, replacement);
+        Landing::after(mark.end())
     })
 }
 
@@ -118,7 +117,10 @@ pub fn replace_selections(state: EditState, ch: char) -> Edited {
         let text = b.text();
         // A cursor typing a pair char resolves open/close from what it sits
         // on; see `surround::smart_replace_char`.
-        let effective_ch = match text.char_at(sel.start().offset()) {
+        let current = crate::pair::delimiter_at(text, sel.start(), crate::surround::is_pair_char)
+            .map(|(_, ch)| ch)
+            .or_else(|| text.char_at(sel.start().offset()));
+        let effective_ch = match current {
             Some(current) if sel.is_cursor() => {
                 crate::surround::smart_replace_char(ch, current, sel.index())
             }

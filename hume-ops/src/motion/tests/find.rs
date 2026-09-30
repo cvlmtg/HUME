@@ -48,6 +48,39 @@ fn fwd_count(
         kind,
     )
 }
+fn bwd_count(
+    text: BufferText,
+    sels: SelectionSet,
+    ch: char,
+    kind: FindKind,
+    n: usize,
+) -> EditState {
+    find_char_backward(
+        test_fixtures::testing::state(text, sels),
+        n,
+        MotionMode::Move,
+        ch,
+        kind,
+    )
+}
+fn fwd_repeat(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+    repeat_find_char_forward(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move,
+        ch,
+        kind,
+    )
+}
+fn bwd_repeat(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+    repeat_find_char_backward(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move,
+        ch,
+        kind,
+    )
+}
 
 #[test]
 fn find_forward_inclusive_basic() {
@@ -256,5 +289,88 @@ fn find_forward_till_stops_before_a_multi_char_cluster() {
         "-[h]>ie\u{301}\n",
         |(text, sels)| fwd(text, sels, '\u{e9}', FindKind::Exclusive),
         "h-[i]>e\u{301}\n"
+    );
+}
+
+// ── Counts and repeats with till ──────────────────────────────────────────
+
+#[test]
+fn till_forward_count_lands_before_the_nth_match() {
+    assert_state!(
+        "-[h]>xa ya za\n",
+        |(text, sels)| fwd_count(text, sels, 'a', FindKind::Exclusive, 2),
+        "hxa -[y]>a za\n"
+    );
+}
+
+#[test]
+fn till_forward_count_counts_an_adjacent_first_match() {
+    assert_state!(
+        "-[h]>a ya\n",
+        |(text, sels)| fwd_count(text, sels, 'a', FindKind::Exclusive, 2),
+        "ha -[y]>a\n"
+    );
+}
+
+#[test]
+fn till_backward_count_lands_after_the_nth_match() {
+    assert_state!(
+        "ax ay a-[z]>\n",
+        |(text, sels)| bwd_count(text, sels, 'a', FindKind::Exclusive, 2),
+        "ax a-[y]> az\n"
+    );
+}
+
+#[test]
+fn till_backward_count_counts_an_adjacent_first_match() {
+    assert_state!(
+        "ax a-[z]>\n",
+        |(text, sels)| bwd_count(text, sels, 'a', FindKind::Exclusive, 2),
+        "a-[x]> az\n"
+    );
+}
+
+#[test]
+fn till_forward_count_past_the_last_match_is_a_noop() {
+    assert_state!(
+        "-[h]>xa ya\n",
+        |(text, sels)| fwd_count(text, sels, 'a', FindKind::Exclusive, 3),
+        "-[h]>xa ya\n"
+    );
+}
+
+#[test]
+fn till_forward_count_stops_before_a_multi_char_cluster() {
+    assert_state!(
+        "-[h]>e\u{301} ie\u{301}\n",
+        |(text, sels)| fwd_count(text, sels, '\u{e9}', FindKind::Exclusive, 2),
+        "he\u{301} -[i]>e\u{301}\n"
+    );
+}
+
+#[test]
+fn repeat_till_forward_skips_an_adjacent_match() {
+    assert_state!(
+        "-[h]>a ya\n",
+        |(text, sels)| fwd_repeat(text, sels, 'a', FindKind::Exclusive),
+        "ha -[y]>a\n"
+    );
+}
+
+#[test]
+fn repeat_till_backward_skips_an_adjacent_match() {
+    assert_state!(
+        "ax a-[z]>\n",
+        |(text, sels)| bwd_repeat(text, sels, 'a', FindKind::Exclusive),
+        "a-[x]> az\n"
+    );
+}
+
+#[test]
+fn repeat_find_forward_inclusive_matches_find() {
+    assert_state!(
+        "-[h]>a ya\n",
+        |(text, sels)| fwd_repeat(text, sels, 'a', FindKind::Inclusive),
+        "h-[a]> ya\n"
     );
 }

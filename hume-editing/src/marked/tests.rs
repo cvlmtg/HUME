@@ -91,3 +91,15 @@ fn notation_round_trips_over_every_corpus_cluster() {
 fn an_open_marker_inside_a_cluster_panics() {
     parse("ae-[\u{301}]>b\n");
 }
+
+#[test]
+#[should_panic(expected = "notation is LF-only")]
+fn parse_refuses_crlf_notation() {
+    parse("a\r\n-[b]>\n");
+}
+
+#[test]
+#[should_panic(expected = "a selection opened inside another")]
+fn parse_refuses_a_selection_opened_inside_another() {
+    parse("-[a-[b]>\n");
+}

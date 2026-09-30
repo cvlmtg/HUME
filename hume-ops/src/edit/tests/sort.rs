@@ -6,9 +6,7 @@ use test_fixtures::assert_state;
 
 #[test]
 fn sort_whole_lines_selected_as_one_multiline_span() {
-    // Multi-line selection: keeps its char range unchanged. The group's total
-    // length is invariant under a line permutation, so the same bracket
-    // positions still bound the (now reordered) block.
+    // A multi-line selection still wraps the whole reordered block.
     assert_state!(
         "-[banana\napple\ncherry\n]>",
         |(text, sels)| sort_lines(
@@ -285,8 +283,8 @@ fn sort_preserves_combining_grapheme_clusters_through_remap() {
 fn sort_blank_line_inside_a_run_gets_an_empty_key_and_sorts_first() {
     // One multi-line selection spans all three lines ("b", the blank line,
     // "a"). The blank line has no content to key on (its key is ""), so it
-    // sorts ahead of both letters. The selection spans multiple lines, so it
-    // keeps its char range unchanged and still wraps the whole reordered block.
+    // sorts ahead of both letters. The selection still wraps the whole
+    // reordered block.
     assert_state!(
         "-[b\n\na\n]>",
         |(text, sels)| sort_lines(

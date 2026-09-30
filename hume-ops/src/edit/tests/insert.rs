@@ -176,6 +176,24 @@ fn insert_str_replaces_backward_selection() {
 }
 
 #[test]
+fn insert_str_over_last_line_ending_in_newline_adds_no_blank_line() {
+    assert_state!(
+        "abc\n-[def\n]>",
+        |(text, sels)| insert_str(test_fixtures::testing::state(text, sels), "xyz\n"),
+        "abc\nxyz-[\n]>"
+    );
+}
+
+#[test]
+fn insert_str_over_middle_line_ending_in_newline_adds_no_blank_line() {
+    assert_state!(
+        "abc\n-[def\n]>ghi\n",
+        |(text, sels)| insert_str(test_fixtures::testing::state(text, sels), "xyz\n"),
+        "abc\nxyz\n-[g]>hi\n"
+    );
+}
+
+#[test]
 fn insert_str_two_cursors() {
     // Cursors at 0 and 3; "xy" inserted at both.
     assert_state!(
@@ -311,6 +329,18 @@ fn insert_tab_soft_after_tab_uses_current_display_col() {
         "\tx-[y]>\n",
         |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Soft, 4),
         "\tx   -[y]>\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_measures_a_later_cursor_against_the_line_the_deletion_left() {
+    // The first selection spans into line 1 and leaves "x" + 3 spaces + "d" on
+    // one line, so the cursor on "e" sits at display col 5 and needs 3 spaces,
+    // though "e" is at col 2 of its own line in the original text.
+    assert_state!(
+        "x-[ab\nc]>d-[e]>\n",
+        |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Soft, 4),
+        "x   -[d]>   -[e]>\n"
     );
 }
 
@@ -830,5 +860,32 @@ fn insert_tab_soft_counts_a_combining_cluster_as_one_column() {
         "e\u{301}-[x]>\n",
         |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Soft, 4),
         "e\u{301}   -[x]>\n"
+    );
+}
+
+#[test]
+fn insert_newline_indent_over_the_last_line_adds_no_blank_line() {
+    assert_state!(
+        "abc\n-[def\n]>",
+        |(text, sels)| insert_newline_indent_owning(text, sels),
+        "abc\n-[\n]>"
+    );
+}
+
+#[test]
+fn insert_newline_indent_over_an_indented_last_line_keeps_the_indent() {
+    assert_state!(
+        "  abc\n  -[def\n]>",
+        |(text, sels)| insert_newline_indent_owning(text, sels),
+        "  abc\n  \n  -[\n]>"
+    );
+}
+
+#[test]
+fn insert_newline_indent_over_a_middle_selection_lands_after_it() {
+    assert_state!(
+        "abc\n-[def\n]>ghi\n",
+        |(text, sels)| insert_newline_indent_owning(text, sels),
+        "abc\n\n-[g]>hi\n"
     );
 }

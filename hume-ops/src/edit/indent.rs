@@ -21,16 +21,18 @@ pub fn unindent_lines(state: EditState, style: TabStyle, tab_width: u8, levels: 
     shift_indent(state, style, tab_width, delta_display_col)
 }
 
-/// Clamp `levels` to the largest value `indent_stop(levels, tab_width)` can
-/// compute without overflowing its `u32` multiply. The editor's own
-/// dispatch caps `levels` (the count prefix) at `hume_engine::types::MAX_COUNT`
-/// (10,000) long before this matters, but `hume-ops`'s functions are a
-/// public API with no such guarantee. A direct caller passing
-/// `usize::MAX` must clamp here rather than overflow (debug-panic, or wrap
-/// to a wrong and possibly negative delta in release) inside `indent_stop`.
+/// The widest indent an indent command writes: a terminal is at most
+/// `u16::MAX` columns wide, so a wider indent could never be seen.
+const MAX_INDENT_WIDTH: u32 = u16::MAX as u32;
+
+/// Clamp `levels` so one shift moves an indent by at most
+/// [`MAX_INDENT_WIDTH`] columns: an unbounded count would build an indent
+/// string as large as the count.
 fn clamp_levels(levels: usize, tab_width: u8) -> u32 {
-    let tw = (tab_width as u64).max(1);
-    (levels as u64).min(u32::MAX as u64 / tw) as u32
+    let tw = u32::from(tab_width).max(1);
+    u32::try_from(levels).map_or(MAX_INDENT_WIDTH / tw, |levels| {
+        levels.min(MAX_INDENT_WIDTH / tw)
+    })
 }
 
 /// Render a leading-whitespace run of exactly `width` display columns in

@@ -421,10 +421,8 @@ fn collect_hulls(
         if start_byte >= end_byte {
             continue; // zero-width hull (MISSING nodes), not a real object
         }
-        // A stale tree (an edit recorded but not yet baked/reparsed) would
-        // let a node's byte range run past the live buffer's own length.
-        // `Syntax::ensure_current` makes that impossible by construction, so
-        // a violation here is a bug, not a case to paper over silently.
+        // Callers hand over only a tree parsed from `text`; a stale one
+        // could name bytes past its end.
         assert!(
             end_byte <= text.len_bytes(),
             "text-object span end {end_byte} exceeds buffer length {}: tree is stale",

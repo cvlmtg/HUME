@@ -162,3 +162,16 @@ fn inner_double_quote_starts_after_an_opening_quote_that_carries_a_combining_mar
         "\"\u{301}-[ab]>\"\n"
     );
 }
+
+#[test]
+fn inner_double_quote_from_a_quote_joined_to_a_prepend_mark() {
+    assert_state!(
+        "-[\u{600}\"]>x\"\n",
+        |(text, sels)| cmd_inner_double_quote(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
+        "\u{600}\"-[x]>\"\n"
+    );
+}

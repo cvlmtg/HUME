@@ -15,6 +15,22 @@ fn delimited(text: &BufferText, open: CharOffset, close: CharOffset) -> ClusterR
         .expect("an open delimiter precedes its close")
 }
 
+/// The first char of the cluster at `pos` that `is_delimiter` accepts, with
+/// its offset. A delimiter joined to a preceding prepend mark is not its
+/// cluster's first char.
+pub(crate) fn delimiter_at(
+    text: &BufferText,
+    pos: ClusterStart,
+    is_delimiter: impl Fn(char) -> bool,
+) -> Option<(CharOffset, char)> {
+    let len = hume_editing::grapheme::cluster_end(text, pos)
+        .offset()
+        .chars_since(pos.offset());
+    text.chars_at(pos.offset())
+        .take(len)
+        .find(|&(_, ch)| is_delimiter(ch))
+}
+
 // ---------------------------------------------------------------------------
 // Bracket pairs
 // ---------------------------------------------------------------------------
@@ -104,7 +120,9 @@ pub(crate) fn find_bracket_pair(
     open: char,
     close: char,
 ) -> Option<ClusterRange> {
-    let (open_pos, close_pos) = bracket_pair_chars(text, pos.offset(), open, close)?;
+    let at =
+        delimiter_at(text, pos, |ch| ch == open || ch == close).map_or(pos.offset(), |(at, _)| at);
+    let (open_pos, close_pos) = bracket_pair_chars(text, at, open, close)?;
     Some(delimited(text, open_pos, close_pos))
 }
 
@@ -199,8 +217,10 @@ pub(crate) fn find_tightest_bracket_pair(
     text: &BufferText,
     pos: ClusterStart,
 ) -> Option<ClusterRange> {
-    let pos = pos.offset();
-    let ch = text.char_at(pos)?;
+    let (pos, ch) = match delimiter_at(text, pos, |ch| bracket_role(ch).is_some()) {
+        Some(delimiter) => delimiter,
+        None => (pos.offset(), text.char_at(pos.offset())?),
+    };
     let role = bracket_role(ch);
 
     let mut opens: [Option<CharOffset>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
@@ -395,7 +415,7 @@ pub(crate) fn find_quote_pair(
     pos: ClusterStart,
     quote: char,
 ) -> Option<ClusterRange> {
-    let pos = pos.offset();
+    let pos = delimiter_at(text, pos, |ch| ch == quote).map_or(pos.offset(), |(at, _)| at);
     let line = line_range(text, text.char_to_line(pos)).chars();
 
     // Single pass: track the opening quote position; on every second hit we

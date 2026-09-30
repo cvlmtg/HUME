@@ -390,3 +390,15 @@ fn copy_prev_line_count_usize_max_returns_instantly() {
     run_copy(&mut ed, false, usize::MAX);
     assert_eq!(ed.current_view().len(), 5); // original + one copy per remaining line
 }
+
+// ── linewise selections ────────────────────────────────────────────────────
+
+#[test]
+fn copying_a_linewise_selection_down_copies_a_whole_line() {
+    assert_copy_state("-[ab\n]>cd\nef\n", true, 1, "-[ab\n]>-[cd\n]>ef\n");
+}
+
+#[test]
+fn copying_a_linewise_selection_onto_a_shorter_line_keeps_it_linewise() {
+    assert_copy_state("-[abc\n]>d\nef\n", true, 1, "-[abc\n]>-[d\n]>ef\n");
+}

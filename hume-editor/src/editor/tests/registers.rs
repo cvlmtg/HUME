@@ -328,3 +328,30 @@ fn register_prefix_persists_across_motion() {
     );
     assert!(reg(&ed, '"').is_empty(), "'\"' register untouched");
 }
+
+/// A `d` that removes nothing still consumes the `"<reg>` prefix.
+#[test]
+fn register_prefix_is_consumed_by_a_delete_that_removes_nothing() {
+    let mut ed = editor_from("hello-[\n]>");
+    ed.handle_key(key('"'));
+    ed.handle_key(key('5'));
+    ed.handle_key(key('d'));
+
+    assert!(ed.state.register_prefix.is_none(), "prefix consumed by d");
+    assert!(reg(&ed, '5').is_empty(), "register '5' untouched");
+}
+
+/// A `c` that removes nothing leaves the kill ring as it was.
+#[test]
+fn change_that_removes_nothing_leaves_the_kill_ring_alone() {
+    let mut ed = editor_from("-[hell]>o\n\n");
+    ed.handle_key(key('y'));
+    ed.handle_key(key('j'));
+    ed.handle_key(key('c'));
+
+    assert_eq!(
+        ed.state.kill_ring.head(),
+        Some(ps(&["hell"]).as_slice()),
+        "kill ring head still the earlier yank"
+    );
+}

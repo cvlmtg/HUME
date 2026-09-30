@@ -40,6 +40,11 @@ fn pair_for_char(ch: char) -> Option<(char, char)> {
     PAIRS.iter().find(|&&(o, c)| o == ch || c == ch).copied()
 }
 
+/// Whether `ch` is either delimiter of a surround pair.
+pub(crate) fn is_pair_char(ch: char) -> bool {
+    pair_for_char(ch).is_some()
+}
+
 fn is_opening(ch: char) -> bool {
     PAIRS.iter().any(|&(o, c)| o != c && o == ch)
 }

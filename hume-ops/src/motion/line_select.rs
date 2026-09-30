@@ -76,7 +76,7 @@ fn extend_line_span(sel: SelectionView<'_>, forward: bool) -> Selection {
 }
 
 /// One `x` press (`Move` mode): re-anchors to select the full current line,
-/// or, if `sel` already ends on the trailing `\n`, jumps to the next line.
+/// or, if `sel` already covers whole lines, jumps to the next line.
 /// Always produces a forward selection. `count` replays this exactly as if
 /// `x` were pressed `count` times in a row: it moves, landing on a single
 /// line, rather than growing a span (that's `Ctrl-x` / [`extend_line_span`]).
@@ -84,7 +84,7 @@ fn move_select_line(sel: SelectionView<'_>) -> Selection {
     let text = sel.text();
     let lines = sel.lines();
     let has_next = next_line_start(text, lines.end.into()) < text.end();
-    let target = if sel.ends_on_break() && has_next {
+    let target = if sel.is_linewise() && has_next {
         lines.end.advance(1)
     } else {
         lines.start
@@ -109,13 +109,13 @@ pub fn cmd_select_line(state: EditState, count: usize, mode: MotionMode) -> Edit
 
 /// One `X` press (`Move` mode): re-anchors to select the full current line
 /// backward (anchor on the trailing `\n`, head on line start), or, if `sel`
-/// already starts at a line boundary, jumps to the previous line. `count`
+/// already covers whole lines, jumps to the previous line. `count`
 /// replays this exactly as if `X` were pressed `count` times in a row: it
 /// moves, landing on a single line, rather than growing a span (that's
 /// `Ctrl-X` / [`extend_line_span`]).
 fn move_select_line_backward(sel: SelectionView<'_>) -> Selection {
     let top = sel.lines().start;
-    let target = if sel.starts_line() && top.index() > 0 {
+    let target = if sel.is_linewise() && top.index() > 0 {
         top.retreat_saturating(1)
     } else {
         top

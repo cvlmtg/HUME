@@ -106,18 +106,19 @@ fn indent_two_levels_at_once() {
 
 /// `hume-ops`'s functions are a public API: a caller (not just the
 /// editor's own count-prefix dispatch, which caps at `MAX_COUNT`) can pass
-/// an arbitrary `levels`. `indent_stop(levels as u32, tab_width)`'s `u32`
-/// multiply must not overflow for it. This must simply not panic (and not
-/// hang: the new width still saturates like any other huge indent).
+/// an arbitrary `levels`. The indent stops at the widest one a terminal can
+/// show: 16383 levels of 4 columns.
 #[test]
-fn indent_huge_levels_does_not_overflow() {
+fn indent_huge_levels_stops_at_the_widest_indent() {
     let (text, sels) = test_fixtures::testing::parse_state("-[f]>oo\n");
-    let _ = indent_lines(
+    let edited = indent_lines(
         test_fixtures::testing::state(text, sels),
         TabStyle::Soft,
         4,
         usize::MAX,
     );
+    let expected = format!("{}foo\n", " ".repeat(65532));
+    assert!(edited.state().text().to_string() == expected);
 }
 
 #[test]

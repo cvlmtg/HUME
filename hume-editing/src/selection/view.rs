@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_rope::grapheme::Cluster;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::{ExclusiveRange, InclusiveRange};
+use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 use ropey::RopeSlice;
 
 use super::{Facing, Selection, SelectionSet, assert_fits, check_positions};
@@ -256,11 +256,20 @@ impl<'a> SelectionView<'a> {
         self.text.slice(self.covered().chars())
     }
 
-    /// The text [`Self::content`] covers; empty when it is `None`.
-    pub fn content_slice(self) -> RopeSlice<'a> {
-        match self.content() {
-            Some(range) => self.text.slice(range.chars()),
-            None => self.text.full_slice().slice(0..0),
+    /// What `d` takes out for this selection: the range removed and the text
+    /// a register receives, or `None` when `d` removes nothing. The range
+    /// stops short of the structural `\n`; the text is the whole covered
+    /// text.
+    pub fn removal(self) -> Option<(ExclusiveRange<CharOffset>, RopeSlice<'a>)> {
+        let covered = self.covered();
+        let range = ExclusiveRange::new(
+            covered.start().offset(),
+            covered.end().offset().min(self.text.last_char()),
+        );
+        if self.is_linewise() {
+            (!range.is_empty() || self.lines().start.index() != 0).then(|| (range, self.slice()))
+        } else {
+            (!range.is_empty()).then(|| (range, self.text.slice(range)))
         }
     }
 

@@ -125,9 +125,8 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
             return Landing::covering(mark, Facing::Forward);
         }
 
-        // Charwise over a selection: delete it, insert in its place.
-        b.delete(sel.covered());
-        let mark = b.insert(sel.start(), content);
+        // Charwise over a selection: the content takes its place.
+        let mark = b.replace(sel.covered().chars(), content);
         Landing::covering(mark, Facing::Forward)
     })
 }

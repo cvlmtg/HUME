@@ -47,6 +47,8 @@
 - `d` and `y` put in the register exactly the text `d` removes. A selection ending on the file's last line break leaves that line break out, unless it covers whole lines. A cursor on the last line break of a line with text removes and copies nothing, and leaves the register as it was.
 - `>`/`<` in front of a line that starts with a combining mark, `J` after a line ending in a prepend character, and pasting an empty register entry beside another paste keep the cursor on whole characters in the right place.
 - Search highlights follow a paste while it can still be cycled with `[`/`]`.
+- `X` on a cursor at the start of a line selects that line instead of the one above, and `x` on a cursor on a line break selects that line instead of the one below.
+- `t`/`T` with a count stop against the counted match (`2ta` lands before the second `a`), and `=`/`-` after `t`/`T` go on to the next match instead of staying against the one they stopped at.
 
 ### Language servers
 - Completion items are filtered against the text their own edit range covers, and a list's default edit range is honored. A server whose completions replace more than the word before the cursor (`foo.ba`, `$ba`) keeps its items while you type, and accepting replaces that range. Such items need a `filterText` that includes the covered text, as the protocol expects.

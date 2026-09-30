@@ -41,11 +41,18 @@ fn selector_for(body: StructuralBody) -> SpanSelector {
 /// and the memo behind `for_selector` is why that stays true.
 ///
 /// An empty set (via `Arc<ObjectSpans>::default`) when the buffer has no
-/// syntax or no layers yet: `enclosing`/`adjacent` then answer "nothing here"
-/// through the same code path every other probe uses, making `Select`/`Goto`
-/// silent no-ops with no early return.
+/// syntax, no layers yet, or layers of an older text (a buffer over the size
+/// cap is never reparsed on demand): `enclosing`/`adjacent` then answer
+/// "nothing here" through the same code path every other probe uses, making
+/// `Select`/`Goto` no-ops with no early return.
 pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> Arc<ObjectSpans> {
-    let Some(layers) = buf.syntax.as_ref().and_then(Syntax::layers) else {
+    let generation = buf.text().version().generation();
+    let Some(layers) = buf
+        .syntax
+        .as_ref()
+        .filter(|syn| syn.is_current(generation))
+        .and_then(Syntax::layers)
+    else {
         return Arc::default();
     };
     ObjectSpans::for_selector(layers, buf.text(), selector_for(body))

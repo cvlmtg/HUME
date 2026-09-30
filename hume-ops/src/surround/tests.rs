@@ -75,6 +75,19 @@ fn surround_no_match_preserves_selection() {
 }
 
 #[test]
+fn surround_paren_from_a_cursor_on_a_prepend_led_open_paren() {
+    assert_state!(
+        "-[\u{600}(]>x)\n",
+        |(text, sels)| cmd_surround_paren(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move
+        ),
+        "-[\u{600}(]>x-[)]>\n"
+    );
+}
+
+#[test]
 fn surround_paren_open_joined_to_a_prepend_mark() {
     // U+0600 is a prepend mark, so `\u{600}(` is one cluster starting at 0.
     // The first cursor lands on that cluster's start, not inside it.
@@ -313,6 +326,33 @@ fn wrap_multi_line_selection() {
         "-[foo\nbar]> baz\n",
         |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '"', '"'),
         "\"foo\nbar-[\"]> baz\n"
+    );
+}
+
+#[test]
+fn wrap_a_selection_ending_on_a_line_break_closes_before_it() {
+    assert_state!(
+        "-[abc\n]>def\n",
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        "(abc-[)]>\ndef\n"
+    );
+}
+
+#[test]
+fn wrap_a_selection_ending_on_the_last_line_break_closes_before_it() {
+    assert_state!(
+        "abc\n-[def\n]>",
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        "abc\n(def-[)]>\n"
+    );
+}
+
+#[test]
+fn wrap_a_cursor_on_an_empty_line_leaves_it_alone() {
+    assert_state!(
+        "a\n-[\n]>b\n",
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        "a\n-[\n]>b\n"
     );
 }
 

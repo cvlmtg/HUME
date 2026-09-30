@@ -127,15 +127,14 @@ impl CompletionItem {
         } else {
             insert_text
         };
-        let text_edit = v
-            .get("textEdit")
-            .and_then(hume_lsp::completion_item::text_edit_from_json_lenient)
-            .or_else(|| {
-                default_range.map(|range| lsp_types::TextEdit {
-                    range: *range,
-                    new_text: string_or_label("textEditText"),
-                })
-            });
+        // A `null` `textEdit` counts as absent, like `additionalTextEdits`.
+        let text_edit = match v.get("textEdit").filter(|x| !x.is_null()) {
+            Some(own) => hume_lsp::completion_item::text_edit_from_json_lenient(own),
+            None => default_range.map(|range| lsp_types::TextEdit {
+                range: *range,
+                new_text: string_or_label("textEditText"),
+            }),
+        };
         let text_edit = text_edit.map(|te| strip_snippet_from_edit(te, is_snippet));
         // A `null` `additionalTextEdits` counts as absent, same as the key
         // being missing entirely. Only a genuine (possibly empty) array

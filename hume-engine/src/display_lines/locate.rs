@@ -178,7 +178,7 @@ impl<'a> DisplayLineMap<'a> {
                 .find(|g| target_display_col < g.display_col.advance_saturating(g.width as u32))
                 .unwrap_or_else(|| graphemes.last().expect("non-empty checked above"))
                 .pos
-                .unwrap_or(line_start),
+                .expect("a content display line's cells carry a position"),
             DisplayColTarget::NearestContent => {
                 // Eligibility by content type: `Grapheme` is real content,
                 // always eligible. `WidthContinuation` is excluded even

@@ -330,6 +330,28 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     );
 }
 
+/// A wire `character` past the line's end shows the column goto lands on:
+/// the line's last content cluster, `x` at grapheme col 2 (1-based 3), not
+/// its `\n`.
+#[test]
+fn a_column_past_the_line_end_shows_where_goto_lands() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path(), "main.rs");
+    let (mut ed, _guard, _sid) = setup_refs(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/references",
+            serde_json::json!([loc(&uri, 0, 50)]),
+        );
+    });
+
+    run_references(&mut ed);
+
+    let rows = drawer_rows(&ed);
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].ends_with("main.rs:1:3"), "got {:?}", rows[0]);
+}
+
 /// A location missing `range` entirely names no destination `goto-location!`
 /// could jump to either, so `lsp-locations->display-parts` must abort the
 /// whole batch rather than render an unselectable row for it. See

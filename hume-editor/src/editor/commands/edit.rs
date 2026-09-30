@@ -39,15 +39,13 @@ pub(in crate::editor) fn cmd_delete(
         return Ok(());
     }
     let mut yanked = Vec::new();
-    apply_pane_edit(state, view, t, |s| {
+    let edited = apply_pane_edit(state, view, t, |s| {
         let removal = delete_selection(s);
         yanked = removal.yanked;
         removal.edited
-    })?;
-    if yanked.iter().any(|entry| !entry.is_empty()) {
-        state.route_kill(yanked);
-    }
-    Ok(())
+    });
+    state.route_kill(yanked);
+    edited
 }
 
 /// Yank, delete, then enter insert mode, all in one undo group.

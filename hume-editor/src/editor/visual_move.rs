@@ -7,7 +7,7 @@
 //! (`C`), which needs the same display-column authority to land a duplicated
 //! selection under a tab or wide grapheme without wrap in play at all.
 
-use hume_editing::lines::line_range;
+use hume_editing::lines::{line_break, line_range};
 use hume_editing::selection::{Selection, StickyDisplayCol};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
@@ -238,6 +238,23 @@ pub(super) fn apply_visual_vertical(
 // Vertical selection copy
 // ---------------------------------------------------------------------------
 
+/// Where the copy of a selection end `end` lands on line `line`: the line's
+/// `\n` when `end` is on its own line's `\n`, so a copied whole line stays a
+/// whole line, otherwise the original's display column.
+fn copied_end(
+    dlm: &mut DisplayLineMap<'_>,
+    text: &BufferText,
+    end: ClusterStart,
+    display_col: BufferLineCol,
+    line: usize,
+) -> ClusterStart {
+    let line = hume_rope::line::ContentLine::new(line);
+    if end == line_break(text, text.char_to_line(end.offset())) {
+        return line_break(text, line);
+    }
+    dlm.char_at_buffer_line_col(line, display_col, DisplayColTarget::NearestContent)
+}
+
 /// Duplicate each selection onto each of the `count` lines below it (`down:
 /// true`) or above it, landing each copy on the original's display column.
 /// Needs a `DisplayLineMap`, so it lives here rather than in `hume-ops`.
@@ -306,15 +323,19 @@ fn copy_selection_vertically(
 
         for step in 1..=steps {
             let delta = step as isize * span * direction;
-            let new_anchor = dlm.char_at_buffer_line_col(
-                hume_rope::line::ContentLine::new((anchor_line + delta) as usize),
+            let new_anchor = copied_end(
+                dlm,
+                text,
+                sel.anchor(),
                 anchor_display_col,
-                DisplayColTarget::NearestContent,
+                (anchor_line + delta) as usize,
             );
-            let new_head = dlm.char_at_buffer_line_col(
-                hume_rope::line::ContentLine::new((head_line + delta) as usize),
+            let new_head = copied_end(
+                dlm,
+                text,
+                sel.head(),
                 head_display_col,
-                DisplayColTarget::NearestContent,
+                (head_line + delta) as usize,
             );
 
             if sel.is_primary() {

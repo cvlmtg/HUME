@@ -25,49 +25,111 @@ fn cluster_is(text: &BufferText, cluster: Cluster, ch: char) -> bool {
         .eq(std::iter::once(ch).nfc())
 }
 
-/// Scan forward on `head`'s line for `ch`, starting one grapheme after `head`.
-///
-/// Returns the first match, or `None` if not found before the line's
-/// terminating `\n`. The newline itself is never matched: it is a structural
-/// boundary, not content.
-pub(super) fn find_char_on_line_forward(
+/// Which press of a find/till this is. A repeated till steps over a match
+/// adjacent to the head, since the first press already stopped against it.
+#[derive(Clone, Copy)]
+enum Press {
+    First,
+    Repeat,
+}
+
+/// How many clusters next to `head` a scan passes over before matching: a
+/// repeated till passes over the adjacent one.
+fn adjacent_skipped(kind: FindKind, press: Press) -> usize {
+    match (kind, press) {
+        (FindKind::Exclusive, Press::Repeat) => 1,
+        _ => 0,
+    }
+}
+
+/// The `n`th match of `ch` after `head` on its line, 1-based, with the
+/// first `skipped` clusters after `head` passed over. The line's `\n` is
+/// never matched: it is a structural boundary, not content.
+fn nth_char_on_line_forward(
     text: &BufferText,
     head: ClusterStart,
     ch: char,
+    n: usize,
+    skipped: usize,
 ) -> Option<ClusterStart> {
     let newline = line_break(text, text.char_to_line(head.offset()));
     graphemes_at(text, head.into())
-        .skip(1)
+        .skip(1 + skipped)
         .take_while(|cluster| cluster.start() < newline)
-        .find(|&cluster| cluster_is(text, cluster, ch))
+        .filter(|&cluster| cluster_is(text, cluster, ch))
+        .nth(n.checked_sub(1)?)
         .map(|cluster| cluster.start())
 }
 
-/// Scan backward on `head`'s line for `ch`, starting one grapheme before
-/// `head`. Returns the first match, or `None` if not found before the line
-/// start.
-pub(super) fn find_char_on_line_backward(
+/// The `n`th match of `ch` before `head` on its line, nearest first,
+/// 1-based, with the first `skipped` clusters before `head` passed over.
+fn nth_char_on_line_backward(
     text: &BufferText,
     head: ClusterStart,
     ch: char,
+    n: usize,
+    skipped: usize,
 ) -> Option<ClusterStart> {
     let first = line_start(text, text.char_to_line(head.offset()));
     clusters_before(text, head.into())
+        .skip(skipped)
         .take_while(|cluster| cluster.start() >= first)
-        .find(|&cluster| cluster_is(text, cluster, ch))
+        .filter(|&cluster| cluster_is(text, cluster, ch))
+        .nth(n.checked_sub(1)?)
         .map(|cluster| cluster.start())
 }
 
-/// Find the next occurrence of `ch` on the current line (forward).
+fn find_forward(
+    state: EditState,
+    count: usize,
+    mode: MotionMode,
+    ch: char,
+    kind: FindKind,
+    press: Press,
+) -> EditState {
+    let skipped = adjacent_skipped(kind, press);
+    apply_motion(state, mode, 1, |s| {
+        let head = s.head();
+        match nth_char_on_line_forward(s.text(), head, ch, count, skipped) {
+            Some(pos) => match kind {
+                FindKind::Inclusive => pos,
+                FindKind::Exclusive => prev_cluster(s.text(), pos.into()).unwrap_or(pos),
+            },
+            None => head,
+        }
+    })
+}
+
+fn find_backward(
+    state: EditState,
+    count: usize,
+    mode: MotionMode,
+    ch: char,
+    kind: FindKind,
+    press: Press,
+) -> EditState {
+    let skipped = adjacent_skipped(kind, press);
+    apply_motion(state, mode, 1, |s| {
+        let head = s.head();
+        match nth_char_on_line_backward(s.text(), head, ch, count, skipped) {
+            Some(pos) => match kind {
+                FindKind::Inclusive => pos,
+                FindKind::Exclusive => next_cluster(s.text(), pos).unwrap_or(pos),
+            },
+            None => head,
+        }
+    })
+}
+
+/// Move to the `count`th occurrence of `ch` after the head on its line.
 ///
 /// `kind` controls cursor placement:
 /// - `Inclusive` (`f`): cursor lands ON `ch`.
-/// - `Exclusive` (`t`): cursor lands one grapheme *before* `ch`.
-///   If `ch` is exactly one grapheme ahead, the adjusted position equals `head`
-///   and the motion is a no-op. This matches Helix/Vim `t` behaviour.
+/// - `Exclusive` (`t`): cursor lands one grapheme *before* `ch`. A match
+///   adjacent to the head counts, so `ta` with `a` next to the cursor is a
+///   no-op and `2ta` lands before the `a` after it, as in Vim.
 ///
-/// `count` is supported via `apply_motion`'s fold: `3fa` skips to the 3rd `a`.
-/// No-op per selection if `ch` is not found.
+/// No-op per selection if there are fewer than `count` matches.
 pub fn find_char_forward(
     state: EditState,
     count: usize,
@@ -75,28 +137,17 @@ pub fn find_char_forward(
     ch: char,
     kind: FindKind,
 ) -> EditState {
-    apply_motion(state, mode, count, |s| {
-        let head = s.head();
-        match find_char_on_line_forward(s.text(), head, ch) {
-            Some(pos) => match kind {
-                FindKind::Inclusive => pos,
-                // One cluster back from the match. If that is the head (the
-                // char was adjacent), the motion is a no-op.
-                FindKind::Exclusive => prev_cluster(s.text(), pos.into()).unwrap_or(pos),
-            },
-            None => head, // not found, stay put
-        }
-    })
+    find_forward(state, count, mode, ch, kind, Press::First)
 }
 
-/// Find the previous occurrence of `ch` on the current line (backward).
+/// Move to the `count`th occurrence of `ch` before the head on its line.
 ///
 /// `kind` controls cursor placement:
 /// - `Inclusive` (`F`): cursor lands ON `ch`.
-/// - `Exclusive` (`T`): cursor lands one grapheme *after* `ch` (the cursor stays
-///   between the found char and its original position).
+/// - `Exclusive` (`T`): cursor lands one grapheme *after* `ch`. An adjacent
+///   match counts, as in [`find_char_forward`].
 ///
-/// No-op per selection if `ch` is not found.
+/// No-op per selection if there are fewer than `count` matches.
 pub fn find_char_backward(
     state: EditState,
     count: usize,
@@ -104,15 +155,30 @@ pub fn find_char_backward(
     ch: char,
     kind: FindKind,
 ) -> EditState {
-    apply_motion(state, mode, count, |s| {
-        let head = s.head();
-        match find_char_on_line_backward(s.text(), head, ch) {
-            Some(pos) => match kind {
-                FindKind::Inclusive => pos,
-                // One cluster past the match, between `ch` and the cursor.
-                FindKind::Exclusive => next_cluster(s.text(), pos).unwrap_or(pos),
-            },
-            None => head, // not found, stay put
-        }
-    })
+    find_backward(state, count, mode, ch, kind, Press::First)
+}
+
+/// [`find_char_forward`] for a repeated find. A till passes over a match
+/// adjacent to the head, so repeating `ta` reaches the next `a` instead of
+/// staying against the one it stopped at.
+pub fn repeat_find_char_forward(
+    state: EditState,
+    count: usize,
+    mode: MotionMode,
+    ch: char,
+    kind: FindKind,
+) -> EditState {
+    find_forward(state, count, mode, ch, kind, Press::Repeat)
+}
+
+/// [`find_char_backward`] for a repeated find, passing over an adjacent
+/// match the way [`repeat_find_char_forward`] does.
+pub fn repeat_find_char_backward(
+    state: EditState,
+    count: usize,
+    mode: MotionMode,
+    ch: char,
+    kind: FindKind,
+) -> EditState {
+    find_backward(state, count, mode, ch, kind, Press::Repeat)
 }

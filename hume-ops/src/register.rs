@@ -4,8 +4,10 @@ use std::collections::VecDeque;
 use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
+use hume_editing::selection::SelectionView;
 use hume_editing::state::EditState;
 use hume_editing::text::normalize_line_endings;
+use ropey::RopeSlice;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //
@@ -84,8 +86,8 @@ pub enum Shape {
 /// A yank takes its shape from the selection it came from. Text that did not
 /// come from a selection (the OS clipboard, a script, a test) has none
 /// recorded, so it converts with [`From`]: linewise when it ends with a `\n`,
-/// the only signal such text carries. The text is `\r`-free by construction
-/// (the same guarantee [`normalize_line_endings`] gives `BufferText`), so a
+/// the only signal such text carries, read after line endings are
+/// normalized. The text is always `\r`-free (the same guarantee [`normalize_line_endings`] gives `BufferText`), so a
 /// register filled from the OS clipboard or a plugin can't smuggle a foreign
 /// line ending into a paste or a byte-exact repeat-paste comparison.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,12 +141,15 @@ impl PartialEq<String> for Piece {
 
 impl From<String> for Piece {
     fn from(text: String) -> Self {
-        let shape = if text.ends_with('\n') || text.ends_with("\r\n") {
-            Shape::Linewise
+        let piece = Self::new(text, Shape::Charwise);
+        if piece.text.ends_with('\n') {
+            Self {
+                shape: Shape::Linewise,
+                ..piece
+            }
         } else {
-            Shape::Charwise
-        };
-        Self::new(text, shape)
+            piece
+        }
     }
 }
 
@@ -422,12 +427,28 @@ fn entry_is_whitespace(entry: &[Piece]) -> bool {
         .all(|piece| piece.text().chars().all(char::is_whitespace))
 }
 
+/// What `d` puts in the register for `sel`, given the text it removed:
+/// whole lines paste as lines, anything else as characters. Empty when `d`
+/// removed nothing.
+pub(crate) fn removed_piece(sel: SelectionView<'_>, removed: Option<RopeSlice<'_>>) -> Piece {
+    let shape = if removed.is_some() && sel.is_linewise() {
+        Shape::Linewise
+    } else {
+        Shape::Charwise
+    };
+    Piece::new(removed.map_or_else(String::new, |r| r.to_string()), shape)
+}
+
 /// What `d` would put in the register for each selection, in document order,
 /// without changing the text: the one rule for what a selection's text is in
 /// a register, and the shape it pastes in. An entry is empty for a selection
 /// `d` would remove nothing from.
 pub fn yank_selections(state: &EditState) -> Vec<Piece> {
-    crate::edit::delete_selection(state.clone()).yanked
+    state
+        .view()
+        .iter()
+        .map(|sel| removed_piece(sel, sel.removal().map(|(_, text)| text)))
+        .collect()
 }
 
 #[cfg(test)]

@@ -476,13 +476,12 @@ pub(in crate::editor) fn begin_edit_group(
 ///
 /// Snapshots the current selections as `post_sels` for the undo revision. It
 /// must `.clone()`, not `take`, since a still-open Insert session keeps
-/// reading `pre_sels` between keystrokes. Falls back to the group's own
-/// `pre_sels` when `pane_state` no longer has an entry for the session's
-/// `(pane, buffer)`: a replayed Steel body can close the pane or buffer a
-/// pre-opened session lives on before this ever runs; nothing moved the
-/// cursor from this session's own perspective past that point, so the
-/// pre-edit selection is the best available record, still worth recording
-/// rather than losing the revision entirely.
+/// reading `pre_sels` between keystrokes.
+///
+/// # Panics
+/// Panics if `pane_state` has no entry for the session's `(pane, buffer)`:
+/// closing a pane or buffer ends its sessions first, so an open session's
+/// state outlives it.
 pub(in crate::editor) fn commit_open_session(
     buffers: &mut BufferStore,
     pane_state: &SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -497,7 +496,7 @@ pub(in crate::editor) fn commit_open_session(
         .get(pane)
         .and_then(|m| m.get(buffer))
         .map(|pbs| pbs.selections().clone())
-        .unwrap_or_else(|| group.snapshot.clone().into_selections());
+        .expect("an open session's (pane, buffer) state outlives it");
     buffers.get_mut(buffer).commit_edit_group(group, post_sels);
 }
 

@@ -467,8 +467,10 @@ pub fn display_col_in_line(
 /// its removable-run cell target back to a char position, padding any
 /// resulting overshoot with spaces.
 ///
-/// The text must be LF-normalized: a `\r\n` is one grapheme cluster, so the
-/// walk could not tell where the line ends.
+/// The text must be LF-normalized and end with a `\n`, as every buffer
+/// does: a `\r\n` is one grapheme cluster, so the walk could not tell where
+/// the line ends, and a last line with no `\n` would let it run to the text
+/// end, which starts no cluster.
 ///
 /// The walk never leaves the line: a `target_display_col` beyond the line's
 /// width stops on the line's `\n`. A caller that wants a cursor position

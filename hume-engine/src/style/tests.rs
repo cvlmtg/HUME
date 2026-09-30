@@ -1299,6 +1299,48 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     );
 }
 
+/// "hello\n" wrapped at width 5: the second display line holds only the
+/// end-of-line sentinel. A selection ending before the `\n` leaves it
+/// unpainted.
+#[test]
+fn a_selection_ending_before_the_break_leaves_a_sentinel_only_wrap_line_unpainted() {
+    let rope = ropey::Rope::from_str("hello\n");
+    let mut graphemes = make_graphemes_with_sentinel(&rope);
+    graphemes[5].display_col = dc(0);
+    let lines = vec![
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
+                line_idx: RopeyLine::new(0),
+            },
+            graphemes: 0..5,
+        },
+        DisplayLine {
+            kind: DisplayLineKind::Wrap {
+                line_idx: RopeyLine::new(0),
+                wrap_index: 1,
+            },
+            graphemes: 5..6,
+        },
+    ];
+    let selections = vec![Sel { anchor: 0, head: 4 }];
+    let theme = theme_with([("ui.selection", bg(Rgb(0, 0, 255)))]);
+
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &lines,
+        &graphemes,
+        &selections,
+        EditorMode::Normal,
+        true,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    assert_eq!(scratch.styles[0].bg, Some(Rgb(0, 0, 255)));
+    assert_eq!(scratch.styles[5].bg, None);
+}
+
 // ── Inline-insert scope styling ─────────────────────────────────────────
 
 #[test]
@@ -1362,6 +1404,68 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
         scratch.styles[a_idx].fg, None,
         "neighbouring real grapheme must not inherit the insert's scope"
     );
+}
+
+#[test]
+fn a_selection_ending_on_the_line_break_leaves_end_of_line_inserts_unselected() {
+    let rope = ropey::Rope::from_str("ab\n");
+    let mut registry = crate::theme::ScopeRegistry::new();
+    let hint_scope = registry.intern("hint");
+    let inserts = vec![crate::providers::InlineInsert {
+        byte_offset: hume_rope::column::ByteCol::new(2),
+        text: "HINTXYZ".into(),
+        scope: hint_scope,
+    }];
+    let mut fmt = crate::format::LineFormat::new();
+    crate::format::format_buffer_line(
+        &rope,
+        RopeyLine::new(0),
+        4,
+        &crate::pane::WhitespaceConfig::default(),
+        &crate::pane::WrapMode::None,
+        None,
+        crate::format::FormatBound::Full,
+        &inserts,
+        &mut fmt,
+    );
+
+    let mut theme = theme_with([("ui.selection", bg(Rgb(255, 0, 0)))]);
+    theme.bake(&registry);
+
+    let selections = vec![Sel { anchor: 0, head: 2 }];
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &fmt.display_lines,
+        &fmt.graphemes,
+        &selections,
+        EditorMode::Normal,
+        true,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    let selected: Vec<bool> = fmt
+        .graphemes
+        .iter()
+        .zip(&scratch.styles)
+        .filter(|(g, _)| matches!(g.content, CellContent::Virtual { .. }) && g.display_col > dc(2))
+        .map(|(_, style)| style.bg == Some(Rgb(255, 0, 0)))
+        .collect();
+    assert!(
+        !selected.is_empty(),
+        "insert cells past the line break present"
+    );
+    assert!(
+        selected.iter().all(|s| !s),
+        "end-of-line insert cells past the line break must not be selected"
+    );
+    let a_idx = fmt
+        .graphemes
+        .iter()
+        .position(|g| g.pos == Some(at(&rope, 0)) && matches!(g.content, CellContent::Grapheme))
+        .expect("'a' grapheme present");
+    assert_eq!(scratch.styles[a_idx].bg, Some(Rgb(255, 0, 0)));
 }
 
 #[test]

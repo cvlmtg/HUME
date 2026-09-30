@@ -28,9 +28,16 @@ use crate::text::BufferText;
 /// The text and selections `input` describes. The first selection is primary.
 ///
 /// # Panics
-/// Panics on malformed notation: no selection, an empty or unterminated
-/// selection, a missing final `\n`, or a marker inside a cluster.
+/// Panics on malformed notation: no selection, an empty, unterminated or
+/// nested selection, a `\r`, a missing final `\n`, or a marker inside a
+/// cluster.
 pub fn parse(input: &str) -> EditState {
+    // Marker offsets count the notation's chars, and the text normalizes
+    // line endings, so a `\r` would shift every marker after it.
+    assert!(
+        !input.contains('\r'),
+        "marked::parse: {input:?} holds a `\\r`; notation is LF-only"
+    );
     let mut text = String::with_capacity(input.len());
     let mut chars_so_far = 0usize;
     // (open marker offset, close marker offset, facing)
@@ -48,6 +55,9 @@ pub fn parse(input: &str) -> EditState {
             (None, '<', Some('[')) => {
                 chars.next();
                 open = Some((chars_so_far, Facing::Backward));
+            }
+            (Some(_), '-' | '<', Some('[')) => {
+                panic!("marked::parse: a selection opened inside another in {input:?}")
             }
             (Some((start, Facing::Forward)), ']', Some('>'))
             | (Some((start, Facing::Backward)), ']', Some('-')) => {
