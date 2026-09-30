@@ -423,23 +423,21 @@ fn mii_reports_info_when_fully_backspaced_away() {
     assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
 }
 
-/// Any mutation after the session (including one that has nothing to do
-/// with inserting) changes the text version past the stash's stamp.
+/// An edit after the session that leaves the insertion alone carries it
+/// along, so `mii` still selects it.
 #[test]
-fn mii_stash_goes_stale_after_a_later_edit() {
+fn mii_follows_a_later_unrelated_edit() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
     assert_eq!(state(&ed), "-[x]>hello\n");
-    // Reposition off the just-typed "x" before the "unrelated" edit: Esc
-    // left it selected (`select-inserted-text`), so deleting it in place
-    // wouldn't distinguish "generation bumped" (the thing under test) from
-    // "the stashed text is simply gone" (a different, weaker guarantee).
+    // Reposition off the just-typed "x" first: Esc left it selected
+    // (`select-inserted-text`), so deleting in place would remove it.
     set_cursor(&mut ed, 2); // "e" of "ello"
-    ed.handle_key(key('d')); // unrelated edit, never touches the stashed "x"
+    ed.handle_key(key('d'));
     mii(&mut ed);
-    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
+    assert_eq!(state(&ed), "-[x]>hllo\n");
 }
 
 #[test]

@@ -25,7 +25,7 @@ use hume_engine::pipeline::{EngineView, PaneId};
 
 use super::buffer::Buffer;
 use super::doc_ops;
-use super::jump_list::JumpEntry;
+use super::jump_list::{JumpEntry, JumpRule, with_jump};
 use super::register_ops;
 use super::register_ops::RegisterPrefix;
 use super::search::SearchPattern;
@@ -112,10 +112,11 @@ pub(in crate::editor::commands) fn apply_pane_edit(
     let buf = t.bid(view);
     doc_ops::apply_doc_edit(
         &mut state.buffers,
-        &state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
             &mut state.input,
+            &mut state.buffer_positions,
+            &mut state.config.decorations,
         ),
         &mut state.active_session,
         t.pid(),
@@ -145,10 +146,11 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
     let buf = fp.bid(view);
     doc_ops::apply_doc_edit_grouped(
         &mut state.buffers,
-        &state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
             &mut state.input,
+            &mut state.buffer_positions,
+            &mut state.config.decorations,
         ),
         &mut state.active_session,
         fp.pid(),
@@ -312,27 +314,6 @@ pub(super) fn current_jump_entry(
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
-/// Push `pre` (a [`current_jump_entry`] snapshot taken before some
-/// navigation, however long ago) only if `t`'s buffer or its selections
-/// have actually changed since. `JumpList::push` truncates forward history
-/// unconditionally, so a caller that pushes unconditionally
-/// (`:42` already on line 42, `goto-definition` invoked on the definition
-/// itself, a search confirmed on the match already under the cursor) can
-/// wipe Ctrl-i history for a keypress that moved nothing. Mirrors the
-/// native command pipeline's own `moved` guard (`step_record_jump`) for the
-/// callers here that push directly instead of going through `CmdMeta`.
-pub(super) fn record_jump_if_moved(
-    state: &mut EditorState,
-    view: &EngineView,
-    t: CommandPane,
-    pre: JumpEntry,
-) {
-    let post_bid = t.bid(view);
-    if pre.buffer_id != post_bid || pre.selections != *pane_selections(state, view, t) {
-        state.panes.jumps[t.pid()].push(pre);
-    }
-}
-
 /// Move `t`'s pane to `(bid, char_pos)`, recording a jump entry (only if it
 /// actually lands somewhere else) and centering the viewport by display
 /// line, the same way `zz` does. Shared tail of every navigation that jumps
@@ -352,18 +333,18 @@ pub(super) fn jump_pane_to(
     bid: hume_engine::pipeline::BufferId,
     pos: hume_rope::cluster::ClusterStart,
 ) {
-    let entry = current_jump_entry(state, view, t);
     let pid = t.pid();
-    crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
-    crate::editor::pane_state::write_cursor(
-        &mut state.panes.state,
-        &state.buffers,
-        &view.panes,
-        pid,
-        bid,
-        pos,
-    );
-    record_jump_if_moved(state, view, t, entry);
+    with_jump(state, view, t, JumpRule::IfMoved, |state, view| {
+        crate::editor::buffer::lifecycle::switch_pane_to_buffer(state, view, pid, bid);
+        crate::editor::pane_state::write_cursor(
+            &mut state.panes.state,
+            &state.buffers,
+            &view.panes,
+            pid,
+            bid,
+            pos,
+        );
+    });
     view_center(state, view, pid);
 }
 

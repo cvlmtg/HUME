@@ -537,7 +537,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
 /// **Jump list**: an explicit-jump EditorCmd (`goto-last-line`) invoked
 /// via Steel must push a `JumpEntry` so Ctrl-o can return.
 ///
-/// The entry comes from the `step_capture_pre_jump` call in `commands::run`.
+/// The entry comes from the `with_jump` call in `commands::run`.
 /// Without it the jump list stays empty.
 #[test]
 fn steel_call_jump_cmd_records_jump_entry() {
@@ -1229,7 +1229,7 @@ fn parity_extend_exit_keypress_vs_steel() {
 /// **Parity: typed-run invalidation from Insert mode**: a motion reached
 /// while still in Insert mode must clear a pinned typed run identically via
 /// native dispatch and via a Steel `(call! "move-left" bid)` wrapper.
-/// `step_clear_typed_run` (`commands/pipeline.rs`) is the shared funnel this
+/// `with_jump` (`jump_list.rs`) is the shared funnel this
 /// pins on: every route into a native command (key press, Steel `call!`, a
 /// hook, `run_command_sync`) clears the run identically, so Esc never goes
 /// on to select across text a motion moved away from.

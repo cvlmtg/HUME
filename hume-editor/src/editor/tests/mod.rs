@@ -1339,7 +1339,7 @@ pub(super) struct BookkeepingSnapshot {
     /// clears `Base`'s Extend flag for selection-consuming edits.
     pub mode: Mode,
     /// Whether any (pane, buffer) pair has a pinned Insert-mode typed run
-    /// (`typed_run.is_some()`), cleared by `step_clear_typed_run` for any
+    /// (`typed_run.is_some()`), cleared by `with_jump` for any
     /// cursor-motion command reached while still in Insert mode, regardless
     /// of route (keypress, Steel `call!`, `run_command_sync`).
     pub typed_run_open: bool,

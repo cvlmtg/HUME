@@ -292,7 +292,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
     });
     ed.ingest_publish_diagnostics(old_sid, serde_json::from_value(params.clone()).unwrap());
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 0),
         "seed publish from the original server must land"
     );
@@ -315,7 +315,7 @@ fn lsp_restart_does_not_duplicate_diagnostics_after_a_republish() {
     ed.ingest_publish_diagnostics(new_sid, serde_json::from_value(params).unwrap());
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 0),
         "the old server's diagnostics must not coexist with the new server's republish"
     );

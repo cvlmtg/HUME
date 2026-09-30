@@ -34,8 +34,8 @@ pub struct SyntaxLayers {
     ///
     /// It lives here, rather than on `Syntax` keyed by a generation, because
     /// that placement is what makes invalidation total instead of careful.
-    /// `Syntax::install` replaces this whole struct and `clear_layers` drops
-    /// it, so both lose the memo for free; `Syntax::bake` is the only code
+    /// `Syntax::install` replaces this whole struct, so it loses the memo for
+    /// free; `Syntax::bake` is the only code
     /// that mutates layers in place, and it clears this explicitly. A
     /// `tree_gen` key could not do the same job: `bake` advances `tree_gen`
     /// to a generation and a later `install` for that *same* generation

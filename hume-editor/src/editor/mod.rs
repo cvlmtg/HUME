@@ -239,6 +239,8 @@ pub(in crate::editor) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
 pub(crate) struct EditorState {
     /// All open buffers. SSOT for buffer content, history, and file metadata.
     pub(crate) buffers: BufferStore,
+    /// Each buffer's diagnostics and last insertion, carried with its text.
+    pub(in crate::editor) buffer_positions: position_stores::BufferPositions,
     /// Config-owned state reset wholesale by `:reload-config`. See
     /// [`ConfigState`]'s doc for exactly what that means and why it's a
     /// separate struct.
@@ -484,6 +486,7 @@ impl Default for EditorState {
         let history_capacity = settings.history_capacity;
         Self {
             buffers: BufferStore::new(),
+            buffer_positions: position_stores::BufferPositions::default(),
             // `kitty_enabled: false` matches: the real probe result isn't known
             // until `set_kitty_support` runs, after `Editor::open`.
             config: ConfigState::new(false, 0),

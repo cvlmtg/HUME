@@ -93,7 +93,7 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
             // Through the full pipeline like any keypress: an edit composes
             // into the open insert-session group (`run_body` routes through
             // `apply_doc_edit_grouped`), a motion clears a pinned typed run
-            // (`step_clear_typed_run`), and `repeat_slot_owned` keeps
+            // (`with_jump`), and `repeat_slot_owned` keeps
             // a repeatable command from stamping over the session's owner.
             let fallback = InsertInput::Binding { name: cmd.name };
             ed.with_dot_capture(Some(fallback), |ed| {
@@ -151,10 +151,11 @@ impl Editor {
         let buf = self.focused_buffer_id();
         doc_ops::apply_doc_edit_grouped(
             &mut self.state.buffers,
-            &self.state.config.decorations,
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut self.state.panes,
                 &mut self.state.input,
+                &mut self.state.buffer_positions,
+                &mut self.state.config.decorations,
             ),
             &mut self.state.active_session,
             focused,

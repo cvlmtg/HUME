@@ -17,7 +17,6 @@ use crate::editor::edit_session::{self, EditSession, EditSessionKind};
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneBufferState;
 use crate::editor::position_stores::PositionStores;
-use hume_decorations::DecorationStores;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::edit::{Edited, TextChange};
 use hume_editing::selection::SelectionSet;
@@ -40,39 +39,18 @@ pub(in crate::editor) enum HistoryWalk {
     Took(usize),
 }
 
-/// No-op when `buf_id` has no grammar attached (`syntax` is `None`).
-/// Called immediately after every text mutation.
-fn record_syntax_edits(
-    buffers: &mut BufferStore,
-    buf_id: BufferId,
-    generation: u64,
-    cs: &ChangeSet,
-    rope_pre: &ropey::Rope,
-) {
-    if let Some(syn) = buffers.get_mut(buf_id).syntax.as_mut() {
-        syn.record_edit(generation, cs, rope_pre);
-    }
-}
-
-/// No-op when `buf_id` has no LSP server attached and no decorations, of
-/// any kind, that need to stay in sync with edits. Decorations are not
-/// LSP-owned, LSP is just their first client, so a buffer with e.g.
-/// `set-signs!`/`set-inlay-hints!` data but no attached server still needs
-/// its edits queued here. Called immediately after every text mutation,
-/// alongside `record_syntax_edits`: same chokepoint, same "text changed,
-/// notify the machinery" shape, queued for the LSP per-frame flush
-/// (`Editor::flush_lsp_pending_changes`, which also does the decoration
-/// remap) instead of dispatched inline.
+/// Queues the edit for the attached language server's `didChange`, sent at
+/// the LSP per-frame flush (`Editor::flush_lsp_pending_changes`) instead of
+/// inline. No-op when `buf_id` has no server attached.
 fn record_lsp_edits(
     buffers: &mut BufferStore,
-    decorations: &DecorationStores,
     buf_id: BufferId,
     generation: u64,
     cs: &ChangeSet,
     rope_pre: &ropey::Rope,
 ) {
     let buf = buffers.get_mut(buf_id);
-    if buf.lsp_server.is_some() || decorations.has_any(buf_id) {
+    if buf.lsp_server.is_some() {
         buf.lsp_pending
             .push(crate::editor::lsp::sync::LspPendingChange {
                 cs: cs.clone(),
@@ -83,12 +61,12 @@ fn record_lsp_edits(
 }
 
 /// Shared post-mutation bookkeeping for every text-mutating path: write
-/// `new_sels` back to the acting pane, bump the edit seq, and feed both the
-/// syntax and LSP/decoration remap streams. A path that forgets one of these
-/// steps would drift decorations or leave a stale syntax tree, with
-/// no compile error, so this is the one place that sequence is spelled out.
-/// Stored positions (other panes, jump lists, prompt snapshots) are not
-/// here: the `Buffer` mutator already carried them through the change.
+/// `new_sels` back to the acting pane, bump the edit seq, and feed the
+/// LSP `didChange` stream. A path that forgets one of these steps would
+/// desync the server, with no compile error, so this is the one place that
+/// sequence is spelled out. Stored positions (other panes, jump lists,
+/// prompt snapshots) and the syntax edit chain are not here: the `Buffer`
+/// mutator already carried them through the change.
 ///
 /// `rope_pre` is the pre-mutation rope, which the syntax and LSP streams map
 /// their positions from; this runs after the mutation, so it cannot re-derive
@@ -96,7 +74,6 @@ fn record_lsp_edits(
 #[allow(clippy::too_many_arguments)]
 fn finish_edit(
     buffers: &mut BufferStore,
-    decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_id: PaneId,
     buf_id: BufferId,
@@ -122,8 +99,7 @@ fn finish_edit(
     pane_state[pane_id][buf_id].reveal_pending = true;
     buffers.bump_edit_seq();
     let generation = buffers.get(buf_id).text().version().generation();
-    record_syntax_edits(buffers, buf_id, generation, cs, rope_pre);
-    record_lsp_edits(buffers, decorations, buf_id, generation, cs, rope_pre);
+    record_lsp_edits(buffers, buf_id, generation, cs, text_pre.rope());
 }
 
 /// `Err` when [`EditorState::active_session`](crate::editor::EditorState::active_session)
@@ -181,7 +157,6 @@ pub(in crate::editor) fn check_no_conflicting_session(
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_edit(
     buffers: &mut BufferStore,
-    decorations: &DecorationStores,
     stores: &mut PositionStores<'_>,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
@@ -196,15 +171,7 @@ pub(in crate::editor) fn apply_doc_edit(
         .as_ref()
         .is_some_and(|s| s.is_insert_at(pane_id, buf_id));
     if insert_session_open_here {
-        apply_doc_edit_grouped(
-            buffers,
-            decorations,
-            stores,
-            active_session,
-            pane_id,
-            buf_id,
-            cmd,
-        );
+        apply_doc_edit_grouped(buffers, stores, active_session, pane_id, buf_id, cmd);
         return Ok(());
     }
     // Scoped to this exact (pane, buffer): `commit_paste_group` alone would
@@ -227,7 +194,6 @@ pub(in crate::editor) fn apply_doc_edit(
         .apply_edit(buf_id, stores, sels, cmd);
     finish_edit(
         buffers,
-        decorations,
         stores.panes,
         pane_id,
         buf_id,
@@ -254,7 +220,6 @@ pub(in crate::editor) fn apply_doc_edit(
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
-    decorations: &DecorationStores,
     stores: &mut PositionStores<'_>,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
@@ -281,7 +246,6 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     let (new_sels, cs) = doc.apply_edit_grouped(buf_id, stores, sels, session.group_mut(), cmd);
     finish_edit(
         buffers,
-        decorations,
         stores.panes,
         pane_id,
         buf_id,
@@ -310,7 +274,6 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
-    decorations: &DecorationStores,
     stores: &mut PositionStores<'_>,
     active_session: &mut Option<EditSession>,
     pane_id: PaneId,
@@ -333,7 +296,6 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
         .apply_edit_regrouped(buf_id, stores, group, cmd);
     finish_edit(
         buffers,
-        decorations,
         stores.panes,
         pane_id,
         buf_id,
@@ -360,7 +322,6 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 #[allow(clippy::too_many_arguments)]
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
-    decorations: &DecorationStores,
     stores: &mut PositionStores<'_>,
     active_session: &Option<EditSession>,
     pane_id: PaneId,
@@ -383,7 +344,6 @@ pub(in crate::editor) fn apply_doc_history_walk(
     };
     finish_edit(
         buffers,
-        decorations,
         stores.panes,
         pane_id,
         buf_id,

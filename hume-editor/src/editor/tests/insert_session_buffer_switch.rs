@@ -120,6 +120,28 @@ fn goto_location_within_the_focused_buffer_leaves_insert_session_open() {
     );
 }
 
+/// The cursor jumps away from the text just typed, so Esc must not select
+/// across it: the typed run is invalidated like it is for a motion key.
+#[test]
+fn goto_location_within_the_focused_buffer_invalidates_the_typed_run() {
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let bid = ed.focused_buffer_id();
+
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, "Q");
+    assert!(
+        snapshot_bookkeeping(&ed).typed_run_open,
+        "sanity: run pinned"
+    );
+
+    let pane = focused_pane(&ed);
+    live_host!(ed)
+        .goto_location_buffer(pane, bid, hume_rope::line::RopeyLine::new(0), 3)
+        .expect("goto-location! must succeed");
+
+    assert!(!snapshot_bookkeeping(&ed).typed_run_open);
+}
+
 // ── close-buffer! ────────────────────────────────────────────────────────────
 
 #[test]
@@ -421,6 +443,8 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut ed.state.panes,
                 &mut ed.state.input,
+                &mut ed.state.buffer_positions,
+                &mut ed.state.config.decorations,
             ),
             1,
         )
@@ -435,6 +459,8 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut ed.state.panes,
                 &mut ed.state.input,
+                &mut ed.state.buffer_positions,
+                &mut ed.state.config.decorations,
             ),
             1,
         )
@@ -445,4 +471,60 @@ fn insert_teardown_commits_on_the_sessions_own_pane_not_current_focus() {
         test_fixtures::testing::serialize_state(&committed_text, &sels_a_at_commit),
         "the revision's post-selections must be A's, not the focused pane's"
     );
+}
+
+// ── jump entries across the teardown ────────────────────────────────────────
+
+/// An Insert session open on an auto-indented blank line: leaving the buffer
+/// trims that indent, which edits the buffer being left.
+fn insert_on_an_auto_indented_blank_line() -> (Editor, BufferId, BufferId) {
+    let mut ed = editor_from("  x-[\n]>");
+    let old_bid = ed.focused_buffer_id();
+    let new_bid = ed.open_buffer(Buffer::at_start(BufferText::from("xyz\n")));
+    ed.feed_key(key('i'));
+    ed.feed_key(key_enter());
+    assert_eq!(
+        state(&ed),
+        "  x\n  -[\n]>",
+        "sanity: the indent is inserted"
+    );
+    (ed, old_bid, new_bid)
+}
+
+#[test]
+fn goto_location_from_an_auto_indented_blank_line_records_a_jump_back() {
+    let (mut ed, old_bid, new_bid) = insert_on_an_auto_indented_blank_line();
+
+    let pane = focused_pane(&ed);
+    live_host!(ed)
+        .goto_location_buffer(pane, new_bid, hume_rope::line::RopeyLine::new(0), 1)
+        .expect("goto-location! must succeed");
+    assert_eq!(
+        ed.state.buffers.get(old_bid).text().to_string(),
+        "  x\n\n",
+        "sanity: leaving the buffer trimmed the indent"
+    );
+
+    ed.feed_key(key_ctrl('o'));
+    assert_eq!(ed.focused_buffer_id(), old_bid);
+    assert_eq!(state(&ed), "  x\n-[\n]>");
+}
+
+#[test]
+fn goto_next_buffer_from_an_auto_indented_blank_line_records_a_jump_back() {
+    let (mut ed, old_bid, new_bid) = insert_on_an_auto_indented_blank_line();
+
+    let pane = focused_pane(&ed);
+    live_host!(ed)
+        .run_command_sync("goto-next-buffer", pane, Some(1), false, None)
+        .expect("goto-next-buffer must not error");
+    assert_eq!(
+        ed.focused_buffer_id(),
+        new_bid,
+        "sanity: the buffer switched"
+    );
+
+    ed.feed_key(key_ctrl('o'));
+    assert_eq!(ed.focused_buffer_id(), old_bid);
+    assert_eq!(state(&ed), "  x\n-[\n]>");
 }

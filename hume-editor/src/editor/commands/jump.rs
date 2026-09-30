@@ -102,7 +102,7 @@ pub(super) enum BufferStep {
 ///
 /// Switches via `switch_pane_to_buffer` directly for the same reason as
 /// `cmd_goto_alternate_buffer` above: the mappable half carries `.jump()`, so
-/// `step_record_jump` already snapshots the outgoing position; the typed half
+/// `with_jump` already snapshots the outgoing position; the typed half
 /// has no `CmdMeta` to read and pushes its own entry instead. Needs no
 /// same-buffer guard: with one buffer open `next`/`prev` return it
 /// unchanged and the switch is inert, and both jump-recording paths gate on

@@ -29,6 +29,8 @@ fn many_lines_editor() -> Editor {
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &"a\n".repeat(50),
     );
@@ -78,6 +80,8 @@ fn buffer_tag_changes_across_a_set_view_content_refresh() {
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         "refreshed\n",
     );

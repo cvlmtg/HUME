@@ -179,10 +179,11 @@ fn do_paste(
     let paste_fn = if before { paste_before } else { paste_after };
     doc_ops::apply_doc_edit_regrouped(
         &mut state.buffers,
-        &state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
             &mut state.input,
+            &mut state.buffer_positions,
+            &mut state.config.decorations,
         ),
         &mut state.active_session,
         focused,
@@ -466,10 +467,11 @@ fn do_paste_cycle(
         let paste_fn = if before { paste_before } else { paste_after };
         doc_ops::apply_doc_edit_regrouped(
             &mut state.buffers,
-            &state.config.decorations,
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut state.panes,
                 &mut state.input,
+                &mut state.buffer_positions,
+                &mut state.config.decorations,
             ),
             &mut state.active_session,
             focused,

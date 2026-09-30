@@ -1,7 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::BufferId;
 
 use crate::editor::buffer::Buffer;
 use crate::editor::commands::FocusedPane;
@@ -9,11 +9,6 @@ use crate::editor::commands::FocusedPane;
 use super::lifecycle;
 use crate::editor::position_stores::PositionStores;
 use crate::editor::{Editor, Severity};
-use hume_editing::state::EditState;
-use hume_editing::text::BufferText;
-use hume_rope::cluster::ClusterStart;
-use hume_rope::column::CharCol;
-use hume_rope::line::ContentLine;
 
 impl Editor {
     // ── Working directory ─────────────────────────────────────────────────────
@@ -195,7 +190,7 @@ impl Editor {
     }
 
     /// Reload `fp`'s buffer with `new_doc`'s content in place, preserving the
-    /// undo tree and the primary cursor line/column across the reload.
+    /// undo tree.
     ///
     /// Unlike `set_view_content` (which discards `History` on a full
     /// `Buffer` swap), this delegates to [`Buffer::reload_from_text`]; see
@@ -203,27 +198,19 @@ impl Editor {
     ///
     /// The reload is an edit: `Buffer::reload_from_text` carries every stored
     /// position (every pane's selections for the buffer, jump lists, prompt
-    /// snapshots) through its line-diff `ChangeSet`. On top of that, each pane
-    /// that holds selections for the buffer, whether or not it shows it now,
-    /// has its primary cursor captured as `(line, char_col)` before the
-    /// reload and placed back against the new content: multi-selections
-    /// collapse to the primary (stale against fresh content), and a cursor
-    /// past the end of a shrunk file lands on the new last line, a column
-    /// past the line's end on its last content character.
-    ///
+    /// snapshots) through its line-diff `ChangeSet`, so each follows its text.
     /// Only `fp`'s pre/post selections are written into the history revision
     /// (undo/redo restore its cursor).
     ///
     /// Survives the reload: per-buffer search state (match cache rebuilds
-    /// lazily). Dropped as stale: in-progress edit groups/paste
-    /// sessions, the engine-side syntax tree, and saved scrolls.
+    /// lazily) and the syntax tree, which the reload's edit shifts like any
+    /// other. Dropped as stale: in-progress edit groups/paste sessions and
+    /// saved scrolls.
     pub(in crate::editor) fn reload_buffer_in_place(
         &mut self,
         fp: FocusedPane,
         mut new_doc: Buffer,
     ) {
-        use hume_editing::lines::{char_col_in_line, place_char_column};
-
         let id = fp.bid(&self.view);
         // End any open Insert/paste session the same way every other
         // buffer/focus-invalidating path does (`switch_pane_to_buffer`,
@@ -232,50 +219,6 @@ impl Editor {
         // `state.active_session` and the `Insert` mode layer pointing at a
         // session whose group no longer matches the buffer.
         crate::editor::focus::end_focus_sessions(&mut self.state, &self.view);
-
-        // Capture (line, char_col) per pane + focused pane's pre_sels. Every
-        // pane that holds selections for `id`: one showing it on another tab,
-        // or one that showed it and moved to another buffer, meets them again
-        // the moment it comes back.
-        let pane_ids: Vec<PaneId> = self
-            .state
-            .panes
-            .state
-            .iter()
-            .filter(|(_, buffers)| buffers.contains_key(id))
-            .map(|(pid, _)| pid)
-            .collect();
-        let focused = fp.pid();
-        let pre_sels = self.state.panes.state[focused][id].selections().clone();
-
-        let cursor_coords: Vec<(
-            PaneId,
-            hume_rope::line::ContentLine,
-            hume_rope::column::CharCol,
-        )> = {
-            let text = self.state.buffers.get(id).text();
-            pane_ids
-                .iter()
-                .map(|&pid| {
-                    let head = self.state.panes.state[pid][id].view(text).primary().head();
-                    let line = text.char_to_line(head.offset());
-                    let char_col = char_col_in_line(text, line, head.offset());
-                    (pid, line, char_col)
-                })
-                .collect()
-        }; // borrows on text and panes.state end here
-
-        // Each pane's (line, char_col), clamped against the reloaded text.
-        let place = |text: &BufferText, line: ContentLine, char_col: CharCol| -> ClusterStart {
-            place_char_column(text, line.min(text.last_content_line()).into(), char_col)
-        };
-        // `id` is `fp`'s own buffer, so `fp` is in `pane_ids` and thus in
-        // `cursor_coords`. A miss means an internal invariant broke, so fail
-        // loud rather than anchoring undo to char 0.
-        let &(_, focused_line, focused_col) = cursor_coords
-            .iter()
-            .find(|(pid, _, _)| *pid == focused)
-            .expect("focused pane must view the reloaded buffer");
 
         // History-preserving reload.
         // Refresh `file_meta` so save-time permission/ownership checks see
@@ -286,21 +229,17 @@ impl Editor {
         let new_file_meta = std::mem::take(&mut new_doc.file_meta);
         drop(new_doc);
 
-        let mutated = self
-            .state
-            .buffers
-            .get_mut(id)
-            .reload_from_text(
-                id,
-                &mut PositionStores::new(&mut self.state.panes, &mut self.state.input),
-                new_text,
-                pre_sels,
-                |text| {
-                    EditState::with_cursor(text.clone(), place(text, focused_line, focused_col))
-                        .into_selections()
-                },
-            )
-            .is_some();
+        let mutated = self.state.buffers.get_mut(id).reload_from_text(
+            id,
+            &mut PositionStores::new(
+                &mut self.state.panes,
+                &mut self.state.input,
+                &mut self.state.buffer_positions,
+                &mut self.state.config.decorations,
+            ),
+            new_text,
+            fp.pid(),
+        );
         self.state.buffers.get_mut(id).file_meta = new_file_meta;
         // Flush any didChange already queued for this buffer *before* the
         // whole-document one below. Otherwise, under macro replay (an edit
@@ -311,12 +250,11 @@ impl Editor {
         // recover from, permanently desyncing its copy of the document.
         self.flush_lsp_pending_changes();
         // Everything below discards state computed against the pre-reload
-        // text: diagnostics/decorations char offsets, the engine syntax
-        // tree, a whole-document didChange at a fresh version. A no-op
+        // text: diagnostics/decorations char offsets, and sends a
+        // whole-document didChange at a fresh version. A no-op
         // reload (`mutated == false`) never touched `self.text` or
-        // the text version, so that state is still valid against the (unchanged)
-        // current content, so skip discarding it rather than throw away
-        // perfectly good syntax highlighting/diagnostics for nothing.
+        // the text version, so that state is still valid against the
+        // unchanged content and is kept.
         if mutated {
             // `reload_from_text` changed the text version but produced no
             // *queued incremental* change the LSP pending-queue mechanism can
@@ -328,40 +266,16 @@ impl Editor {
             // content. The server republishes diagnostics shortly after seeing
             // the didChange above; nothing republishes decorations on its own,
             // so they simply stay cleared until a plugin sets them again.
-            if self.lsp.remove_buffer_diagnostics(id) {
+            if self.state.buffer_positions.diagnostics.remove_buffer(id) {
                 self.queue_diagnostics_changed(id);
             }
             self.state.config.decorations.remove_buffer(id);
-
-            // Drop the stale committed layers (they reference pre-reload
-            // content), keeping the grammar attachment and generation
-            // bookkeeping intact. The reload changed the text version, so
-            // `reparse_stale_buffers` will post a fresh full parse on the
-            // next tick.
-            if let Some(syn) = self.state.buffers.get_mut(id).syntax.as_mut() {
-                syn.clear_layers();
-            }
         }
         // `detect_and_set_language` handles a genuine language change
         // (shebang/extension) regardless of `mutated`, re-running setup via
         // `set_buffer_language` itself.
         self.detect_and_set_language(id);
 
-        // Reseed per-pane selections / scroll.
-        // Targeted, not `fresh_from_buf`: selections are restored to the clamped
-        // post-reload cursor. Any open session was already ended above, before
-        // this reload's own edit, so no per-pane group nulling needed here.
-        for &(pid, line, char_col) in &cursor_coords {
-            let head = place(self.state.buffers.get(id).text(), line, char_col);
-            crate::editor::pane_state::write_cursor(
-                &mut self.state.panes.state,
-                &self.state.buffers,
-                &self.view.panes,
-                pid,
-                id,
-                head,
-            );
-        }
         // Drop stale saved scrolls for the reloaded buffer on every pane:
         // `recall_scroll` clamps the top's line to the buffer's current last
         // line, but a saved top slot/`horizontal_offset` for a
@@ -444,7 +358,12 @@ impl Editor {
             // `[buffers]`) shares nothing but its id with the old content.
             self.state.buffers.get_mut(existing).set_view_content(
                 existing,
-                &mut PositionStores::new(&mut self.state.panes, &mut self.state.input),
+                &mut PositionStores::new(
+                    &mut self.state.panes,
+                    &mut self.state.input,
+                    &mut self.state.buffer_positions,
+                    &mut self.state.config.decorations,
+                ),
                 content,
             );
             lifecycle::forget_saved_views(&mut self.view, existing);

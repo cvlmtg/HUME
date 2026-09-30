@@ -92,7 +92,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             ed.state.registers.set_search_register(pattern);
             // Record the pre-search position in the jump list before
             // discarding it, unless the match confirmed is the position
-            // search started from (record_jump_if_moved). The `Confirm`
+            // search started from (`record_if_moved`). The `Confirm`
             // arm does its own accept work (taking the stash) before
             // truncating; teardown's `Search` arm restores it on every
             // *other* removal, so it's already gone here and would be a
@@ -101,11 +101,12 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 .state
                 .input
                 .at_mut::<SearchLayer>(r)
-                .and_then(|s| s.snap.take_selections());
-            if let Some((bid, sels)) = pre_sels {
+                .and_then(|s| Some((s.snap.pane(), s.snap.take_selections()?)));
+            if let Some((pane, (bid, sels))) = pre_sels
+                && let Some(t) = commands::CommandPane::existing(&ed.view, pane)
+            {
                 let entry = JumpEntry::new(sels, ed.state.buffers.get(bid).text(), bid);
-                let t = commands::FocusedPane::current(&ed.state).pane();
-                commands::record_jump_if_moved(&mut ed.state, &ed.view, t, entry);
+                crate::editor::jump_list::record_if_moved(&mut ed.state, &ed.view, t, entry);
             }
             // search_pattern stays alive on the buffer for immediate n/N
             // without recompile. The stash is already taken above, so

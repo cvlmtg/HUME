@@ -222,7 +222,12 @@ impl Editor {
 
                 let diag_spans = {
                     let mut raw = Vec::new();
-                    for d in self.lsp.diagnostics_for_range(bid, visible, floor) {
+                    for d in self
+                        .state
+                        .buffer_positions
+                        .diagnostics
+                        .for_range_unsorted(bid, visible, floor)
+                    {
                         let start = d.start.max(visible.start);
                         let end = d.end.min(visible.end);
                         // Priority = severity discriminant: Error(0) beats

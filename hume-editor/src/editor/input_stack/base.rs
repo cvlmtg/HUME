@@ -68,10 +68,11 @@ fn apply_normal_mode_paste(ed: &mut Editor, text: &str) {
     // has nowhere to report to but the statusline directly.
     if let Err(e) = super::super::doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
-        &ed.state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &mut ed.state.active_session,
         focused,

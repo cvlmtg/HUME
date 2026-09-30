@@ -206,6 +206,8 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &mut sels,
         r_reload,
@@ -252,6 +254,8 @@ fn p6_e_bang_inverse_is_fine_grained() {
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut ed.state.panes,
                 &mut ed.state.input,
+                &mut ed.state.buffer_positions,
+                &mut ed.state.config.decorations,
             ),
             1,
         )

@@ -1972,3 +1972,67 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
          line 1 gets 'def' from its own start (byte 0..3)"
     );
 }
+
+/// Opens a split on the same buffer, focuses the new pane, feeds `keys`
+/// there to open a minibuffer session, then closes that pane through the
+/// command path a hook or timer would use. Returns the surviving pane.
+fn close_pane_under_open_session(ed: &mut Editor, keys: &str) -> PaneId {
+    use hume_scripting::PaneHandle;
+    use hume_scripting::host::CommandHost;
+
+    let bid = ed.focused_buffer_id();
+    let pid_a = ed.state.focus.id();
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .expect("split must succeed");
+    ed.switch_focused_pane(pid_b);
+    for ch in keys.chars() {
+        ed.feed_key(key(ch));
+    }
+    live_host!(ed)
+        .run_command_sync(
+            "pane-close",
+            PaneHandle::with_pane(bid, pid_b),
+            None,
+            false,
+            None,
+        )
+        .expect("pane-close must succeed");
+    ed.settle();
+    pid_a
+}
+
+#[test]
+fn closing_the_pane_of_an_open_search_ends_the_search() {
+    let mut ed = editor_from("-[a]>bc abc\n");
+    let pid_a = close_pane_under_open_session(&mut ed, "/b");
+    assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
+    ed.feed_key(key_esc());
+    ed.feed_key(key('l'));
+    assert_eq!(ed.state.focus.id(), pid_a);
+    assert_eq!(state(&ed), "a-[b]>c abc\n");
+    assert!(
+        ed.state
+            .buffers
+            .get(ed.focused_buffer_id())
+            .search_pattern
+            .is_none(),
+        "the closed pane's live search is cleared from the buffer"
+    );
+}
+
+#[test]
+fn closing_the_pane_of_an_open_sift_ends_the_sift() {
+    let mut ed = editor_from("-[a]>bc abc\n");
+    let pid_a = close_pane_under_open_session(&mut ed, "%sb");
+    assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
+    ed.feed_key(key_esc());
+    ed.feed_key(key('l'));
+    assert_eq!(ed.state.focus.id(), pid_a);
+    assert_eq!(state(&ed), "a-[b]>c abc\n");
+}

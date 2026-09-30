@@ -130,15 +130,16 @@ fn reload_from_text_does_not_bump_edit_seq() {
     let id = make_id(&mut ev);
     store.open(id, make_buf());
     let before = store.edit_seq();
-    let pre_sels = store.get(id).initial_sels();
-    // This test asserts on `edit_seq`, not the returned ChangeSet.
-    let _ = store.get_mut(id).reload_from_text(
-        BufferId::default(),
-        &mut crate::editor::position_stores::DetachedStores::default().stores(),
-        BufferText::from("reloaded\n"),
-        pre_sels,
-        |text| hume_editing::state::EditState::at_text_start(text.clone()).into_selections(),
+    let (mut stores, pane, stored_as) = crate::editor::position_stores::DetachedStores::with_pane(
+        store.get(id),
+        store.get(id).initial_sels(),
     );
+    assert!(store.get_mut(id).reload_from_text(
+        stored_as,
+        &mut stores.stores(),
+        BufferText::from("reloaded\n"),
+        pane,
+    ));
     assert_eq!(
         store.edit_seq(),
         before,

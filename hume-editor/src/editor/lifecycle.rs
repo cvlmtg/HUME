@@ -128,6 +128,7 @@ impl Editor {
         let mut editor = Self {
             state: super::EditorState {
                 buffers,
+                buffer_positions: super::position_stores::BufferPositions::default(),
                 clipboard: clipboard::SystemClipboard::new(),
                 settings,
                 panes: {

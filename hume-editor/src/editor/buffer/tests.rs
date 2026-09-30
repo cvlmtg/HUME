@@ -110,22 +110,13 @@ impl DocHelper {
     }
 
     /// Reload the buffer text in place, preserving history. The current
-    /// selections become the stored `pre_sels` (undo restores them); a
-    /// cursor at the reloaded text's start becomes both the stored
-    /// post-reload selection and the helper's live `self.sels`.
+    /// selections are carried through the reload like any pane's, and the
+    /// history revision records them before and after.
     fn reload_from(&mut self, new_text: BufferText) {
-        let pre_sels = self.sels.clone();
-        let at_start = |text: &BufferText| EditState::at_text_start(text.clone()).into_selections();
-        // Helper's callers assert against `self.buf`/`self.sels` afterward,
-        // not the returned ChangeSet.
-        let _ = self.buf.reload_from_text(
-            BufferId::default(),
-            &mut DetachedStores::default().stores(),
-            new_text,
-            pre_sels,
-            at_start,
-        );
-        self.sels = at_start(self.buf.text());
+        let (mut stores, pane, id) = DetachedStores::with_pane(&self.buf, self.sels.clone());
+        self.buf
+            .reload_from_text(id, &mut stores.stores(), new_text, pane);
+        self.sels = stores.selections(pane, id);
     }
 
     fn text(&self) -> &BufferText {

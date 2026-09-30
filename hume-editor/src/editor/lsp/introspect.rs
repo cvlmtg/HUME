@@ -310,7 +310,6 @@ pub(in crate::editor) fn label_slice(
 /// cut.
 pub(in crate::editor) fn diagnostics_for_buffer(
     state: &EditorState,
-    lsp: &LspState,
     bid: BufferId,
     severity_floor: Option<&str>,
     range: Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>>,
@@ -333,7 +332,8 @@ pub(in crate::editor) fn diagnostics_for_buffer(
         hume_rope::offset::ExclusiveRange::new(hume_rope::offset::CharOffset::new(0), text.end())
     });
 
-    let entries = lsp
+    let entries = state
+        .buffer_positions
         .diagnostics
         .for_range(bid, range, floor)
         .take(CAP)
@@ -380,8 +380,8 @@ pub(in crate::editor) fn diagnostics_for_buffer(
 }
 
 /// `(diagnostic-counts bid)` → `(errors, warnings)`.
-pub(crate) fn diagnostic_counts(lsp: &LspState, bid: BufferId) -> (usize, usize) {
-    lsp.diagnostics.counts(bid)
+pub(crate) fn diagnostic_counts(state: &EditorState, bid: BufferId) -> (usize, usize) {
+    state.buffer_positions.diagnostics.counts(bid)
 }
 
 /// Current animation frame for the statusline loading spinner.
@@ -650,7 +650,7 @@ impl crate::editor::Editor {
             .iter()
             .filter_map(|(bid, buf)| {
                 buf.lsp_server.map(|_| {
-                    let (errors, warnings) = self.lsp.diagnostics.counts(bid);
+                    let (errors, warnings) = self.state.buffer_positions.diagnostics.counts(bid);
                     format!(
                         "  {}: {errors} error(s), {warnings} warning(s)",
                         buf.display_name()

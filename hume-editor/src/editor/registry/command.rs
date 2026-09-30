@@ -119,7 +119,7 @@ pub(in crate::editor) struct CmdMeta {
     /// Whether this command is a cursor motion (as opposed to a selection
     /// builder, edit, or editor action).
     ///
-    /// Feeds `step_capture_pre_jump`: motions, jump-flagged commands, and
+    /// Feeds `with_jump`: motions, jump-flagged commands, and
     /// visual-line commands all snapshot their pre-body cursor position so the
     /// jump list can record a threshold-exceeding move. Selection commands are
     /// excluded: staging a text-object is not deliberate navigation.
@@ -139,7 +139,7 @@ pub(in crate::editor) struct CmdMeta {
     /// than matching on the command variant.
     pub is_jump: bool,
     /// Whether this command is a visual-line motion (`move-down`/`move-up`).
-    /// Read only by `step_capture_pre_jump`, alongside `is_jump`/`is_motion`,
+    /// Read only by `moves_cursor`, alongside `is_jump`/`is_motion`,
     /// to decide whether to snapshot the pre-move selection for the jump
     /// list. It does not gate the sticky display column, which a
     /// `Selection` carries and clears by construction regardless of this
@@ -198,11 +198,10 @@ impl CmdMeta {
     /// Returns `true` if this command moved the cursor rather than editing:
     /// the disjunction of `is_motion`, `is_jump`, and `is_visual_move`.
     ///
-    /// Two pipeline steps want exactly this set and nothing else:
-    /// `step_capture_pre_jump` (snapshot the pre-body position for the jump
-    /// list) and `step_clear_typed_run` (invalidate a still-open Insert
-    /// session's pinned typed run, `commands/pipeline.rs`). Derived in one
-    /// place so the two can't drift apart on a future flag.
+    /// The pipeline runs exactly these commands inside `with_jump`, which
+    /// snapshots the pre-body position for the jump list and invalidates a
+    /// still-open Insert session's pinned typed run. Derived in one place so
+    /// the two can't drift apart on a future flag.
     ///
     /// **Blind spot**: [`MappableCommand::meta`] hardcodes all three flags
     /// `false` for `SteelBacked` and `Lazy`, since a Steel command has no way to

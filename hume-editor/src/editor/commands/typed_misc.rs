@@ -6,12 +6,11 @@ use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
 use super::super::{EditorState, Severity};
-use super::{
-    CommandPane, FocusedPane, cmd_redo, cmd_undo, current_jump_entry, record_jump_if_moved,
-};
+use super::{CommandPane, FocusedPane, cmd_redo, cmd_undo};
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
+use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::settings::THEME_KEY;
 use hume_ops::MotionMode;
 use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
@@ -501,22 +500,24 @@ pub(in crate::editor) fn typed_goto_line(
         .ok_or_else(|| CommandError::transient(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
     let t = fp.pane();
-    // Snapshot before moving so Ctrl-o can return here, pushed only if
-    // `:goto` actually lands somewhere else (record_jump_if_moved).
-    let entry = current_jump_entry(&ed.state, &ed.view, t);
-
-    let pid = t.pid();
-    let bid = t.bid(&ed.view);
-    crate::editor::pane_state::park_cursor_at(
-        &mut ed.state.panes.state,
-        &ed.state.buffers,
-        &ed.view.panes,
-        pid,
-        bid,
-        line0,
-        hume_rope::column::GraphemeCol::new(0),
+    with_jump(
+        &mut ed.state,
+        &mut ed.view,
+        t,
+        JumpRule::IfMoved,
+        |state, view| {
+            let (pid, bid) = (t.pid(), t.bid(view));
+            crate::editor::pane_state::park_cursor_at(
+                &mut state.panes.state,
+                &state.buffers,
+                &view.panes,
+                pid,
+                bid,
+                line0,
+                hume_rope::column::GraphemeCol::new(0),
+            );
+        },
     );
-    record_jump_if_moved(&mut ed.state, &ed.view, t, entry);
     Ok(())
 }
 

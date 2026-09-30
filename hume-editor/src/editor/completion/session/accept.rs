@@ -359,10 +359,11 @@ impl BufferSession {
         let cs_cursors = match &item.text_edit {
             Some(_) => crate::editor::doc_ops::apply_doc_edit_grouped(
                 &mut state.buffers,
-                &state.config.decorations,
                 &mut crate::editor::position_stores::PositionStores::new(
                     &mut state.panes,
                     &mut state.input,
+                    &mut state.buffer_positions,
+                    &mut state.config.decorations,
                 ),
                 &mut state.active_session,
                 pid,
@@ -371,10 +372,11 @@ impl BufferSession {
             ),
             None => crate::editor::doc_ops::apply_doc_edit_grouped(
                 &mut state.buffers,
-                &state.config.decorations,
                 &mut crate::editor::position_stores::PositionStores::new(
                     &mut state.panes,
                     &mut state.input,
+                    &mut state.buffer_positions,
+                    &mut state.config.decorations,
                 ),
                 &mut state.active_session,
                 pid,

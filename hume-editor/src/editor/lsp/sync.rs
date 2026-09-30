@@ -110,18 +110,9 @@ impl Editor {
     /// Converts and sends every pending change recorded since the last
     /// flush, one `didChange` notification per entry, in order, draining
     /// `Buffer.lsp_pending`. Called from the LSP per-frame drain
-    /// (`drain_lsp`), before the diagnostics remap consumes the same entries
-    /// for diagnostics (same source, both consumers; the entries aren't
-    /// cleared until every consumer of this drain pass has run).
-    ///
-    /// `lsp_pending` isn't LSP-exclusive: `record_lsp_edits` (`doc_ops.rs`)
-    /// also queues entries for a buffer with no attached server but with
-    /// char-offset decorations (`set-inlay-hints!`/`set-extra-highlights!`)
-    /// that still need to track edits. This drains and remaps *every*
-    /// buffer with pending entries; sending a `didChange` is the one part
-    /// gated on actually having a server, path, and URI to send it to:
-    /// missing any of those skips the send but never skips the remap, so a
-    /// decoration-only buffer's positions don't silently drift.
+    /// (`drain_lsp`). Diagnostics and decorations are not remapped here:
+    /// `Buffer::install` carries them with the text. A buffer with no
+    /// server, path or URI has its entries dropped unsent.
     pub(in crate::editor) fn flush_lsp_pending_changes(&mut self) {
         flush_lsp_pending_changes(&mut self.state, &mut self.lsp);
     }
@@ -143,9 +134,8 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
     for bid in with_pending {
         let buf = state.buffers.get(bid);
         // Resolved *before* taking the queue below, from the buffer's
-        // state at this instant: a missing server/path/URI just means
-        // there's nothing to send, not that the entries should be
-        // dropped unremapped.
+        // state at this instant: a missing server/path/URI means there's
+        // nothing to send.
         let send_target = buf
             .lsp_server
             .and_then(|sid| Some((sid, hume_lsp::uri::path_to_uri(buf.path()?).ok()?)));
@@ -159,15 +149,8 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
         let buf = state.buffers.get_mut(bid);
         let pending = std::mem::take(&mut buf.lsp_pending);
 
-        // Manual field split: the loop below interleaves a diagnostics
-        // remap with a client-routed send, so `servers`/`backend`/
-        // `diagnostics` all need to be borrowed independently out of
-        // `lsp` rather than through method calls on the whole struct.
         let LspState {
-            servers,
-            backend,
-            diagnostics,
-            ..
+            servers, backend, ..
         } = lsp;
 
         // A FULL-sync server ignores `range` entirely and treats each
@@ -179,17 +162,6 @@ pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp:
         let mut full_doc_pending = false;
 
         for change in pending {
-            // Same source as the didChange conversion below: remap
-            // stored diagnostics through the identical ChangeSet before
-            // it's consumed, so both consumers see the exact
-            // same edit stream, including undo/redo. The char-offset
-            // decoration stores (inlay hints, extra highlights) go
-            // through the same chokepoint for the same reason, done
-            // unconditionally, whether or not this buffer has anywhere
-            // to send a didChange.
-            diagnostics.remap_through(bid, &change.cs);
-            state.config.decorations.remap_through(bid, &change.cs);
-
             let Some((server_id, uri)) = &send_target else {
                 continue; // no attached server (or no path/URI yet): nothing to send
             };

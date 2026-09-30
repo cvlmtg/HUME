@@ -127,7 +127,7 @@ pub(super) enum ExitCursor {
 ///
 /// Every later text change carries the pinned run
 /// (`PaneBufferState::carry`); a cursor-motion command during the session
-/// clears it (`step_clear_typed_run`, `commands/pipeline.rs`); a fresh
+/// clears it (`with_jump`, `jump_list.rs`); a fresh
 /// `begin_edit_group` clears it (and resets `step_back_on_exit`) too, so a
 /// later session never inherits a stale run or a stale step-back flag: the
 /// entry command dispatched from inside an already-open session (a Steel
@@ -300,10 +300,11 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     if has_blank_line_cursor(pbs.view(state.buffers.get(bid).text()), &allowed) {
         doc_ops::apply_doc_edit_grouped(
             &mut state.buffers,
-            &state.config.decorations,
             &mut crate::editor::position_stores::PositionStores::new(
                 &mut state.panes,
                 &mut state.input,
+                &mut state.buffer_positions,
+                &mut state.config.decorations,
             ),
             &mut state.active_session,
             pid,
@@ -357,8 +358,8 @@ pub(in crate::editor) fn tear_down_insert(state: &mut EditorState) {
     if let Some(spans) = &spans {
         let stashed: Vec<ClusterRange> = spans.iter().flatten().copied().collect();
         if !stashed.is_empty() {
-            let buf = state.buffers.get_mut(bid);
-            buf.last_insert = Some(Tracked::new(stashed, buf.text()));
+            let last = Tracked::new(stashed, state.buffers.get(bid).text());
+            state.buffer_positions.last_inserts.insert(bid, last);
         }
     }
 

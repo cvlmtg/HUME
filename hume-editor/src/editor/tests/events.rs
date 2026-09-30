@@ -1500,10 +1500,11 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     let before_gen = ed.state.buffers.get(bid).text().version().generation();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
-        &ed.state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &mut ed.state.active_session,
         focused,
@@ -1776,10 +1777,11 @@ fn identity_edit_fires_no_on_text_changed() {
     let before_edit_seq = ed.state.buffers.edit_seq();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
-        &ed.state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &mut ed.state.active_session,
         focused,
@@ -1837,10 +1839,11 @@ fn identity_edit_records_no_undo_revision() {
     let focused = ed.state.focus.id();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
-        &ed.state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &mut ed.state.active_session,
         focused,

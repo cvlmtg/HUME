@@ -151,7 +151,7 @@ fn end_line_equals_line_for_single_line_and_diverges_for_multiline() {
     let bid = ed.focused_buffer_id();
 
     let entries =
-        crate::editor::lsp::introspect::diagnostics_for_buffer(&ed.state, &ed.lsp, bid, None, None)
+        crate::editor::lsp::introspect::diagnostics_for_buffer(&ed.state, bid, None, None)
             .expect("diagnostics-for-buffer must not error");
     let find = |msg: &str| {
         entries
@@ -377,7 +377,7 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
     } = setup_diagnostics("one two three four five six\n", &[diag]);
     let bid = ed.focused_buffer_id();
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 0),
         "seed diagnostic must land before the reload"
     );
@@ -387,7 +387,7 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
     ed.settle();
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (0, 0),
         "reload must clear diagnostics computed against the pre-reload text"
     );

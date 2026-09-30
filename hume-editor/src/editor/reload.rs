@@ -287,7 +287,9 @@ impl Editor {
         // buffer's diagnostics that only `:lsp-restart` would otherwise
         // bring back.
         let diagnostic_bids: Vec<BufferId> = self
-            .lsp
+            .state
+            .buffer_positions
+            .diagnostics
             .buffers_with_diagnostics()
             .filter(|&bid| snapshot.survives(bid, &self.state.buffers))
             .collect();

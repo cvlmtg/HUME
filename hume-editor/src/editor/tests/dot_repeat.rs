@@ -2114,10 +2114,11 @@ fn dot_repeat_ignores_a_foreign_edit_made_while_a_picker_is_open() {
     let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
     crate::editor::doc_ops::apply_doc_edit_grouped(
         &mut ed.state.buffers,
-        &ed.state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &mut ed.state.active_session,
         pid,
@@ -2193,10 +2194,11 @@ fn dot_repeat_drops_a_pick_whose_capture_already_held_an_edit_when_a_foreign_edi
     let (pid, bid) = (fp.pid(), fp.bid(&ed.view));
     crate::editor::doc_ops::apply_doc_edit_grouped(
         &mut ed.state.buffers,
-        &ed.state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &mut ed.state.active_session,
         pid,
@@ -2869,4 +2871,44 @@ fn picker_torn_down_by_a_reload_fires_on_select_and_drops_its_capture() {
         "the pending capture resolved against a session that no longer exists; nothing \
          can be recorded for it: {inputs:?}"
     );
+}
+
+/// An edit before the last insertion moves it; `mii` follows it.
+#[test]
+fn mii_follows_the_insertion_when_text_before_it_changes() {
+    let mut ed = editor_from("abc-[d]>ef\n");
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key('Y'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "abcXYdef\n");
+
+    set_cursor(&mut ed, 0);
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "bcXYdef\n");
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key('i'));
+    assert_eq!(state(&ed), "bc-[XY]>def\n");
+}
+
+/// Deleting the last insertion outright leaves nothing for `mii` to select.
+#[test]
+fn mii_refuses_once_the_insertion_is_deleted() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "Xabc\n");
+
+    set_cursor(&mut ed, 0);
+    ed.feed_key(key('d'));
+    assert_eq!(ed.doc().text().to_string(), "abc\n");
+    let before = state(&ed);
+
+    ed.feed_key(key('m'));
+    ed.feed_key(key('i'));
+    ed.feed_key(key('i'));
+    assert_eq!(state(&ed), before, "no insertion is left to select");
 }

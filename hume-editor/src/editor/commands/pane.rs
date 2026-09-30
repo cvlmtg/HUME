@@ -112,12 +112,13 @@ pub(in crate::editor) fn open_pane_as_new_tab(
 
 /// Remove every per-pane state map entry for a detached pane (`panes`,
 /// per-buffer state, jump list, render handles): the inverse of
-/// `open_pane`'s seeding. Takes a `DetachedPane` rather than a bare
+/// `open_pane`'s seeding. Input layers bound to the pane are retired first. Takes a `DetachedPane` rather than a bare
 /// `PaneId`: the token is proof the pane is already unreachable from every
 /// layout tree (see `DetachedPane`'s own doc), so this can never be called
 /// on a pane a tree still references.
 pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pane: DetachedPane) {
     let pid = pane.pane_id();
+    state.retire_bound_to(view, pid);
     view.remove_pane(pane);
     state.panes.state.remove(pid);
     state.panes.jumps.remove(pid);

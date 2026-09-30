@@ -444,6 +444,72 @@ fn translate_in_place_shifts_offset_and_primary_line() {
     );
 }
 
+/// A pending entry is carried through an edit made while it is held, and
+/// comes back naming the text it was captured from.
+#[test]
+fn a_pending_entry_is_carried_through_an_edit() {
+    let (bid, _other) = two_buffer_ids();
+    let text_pre = BufferText::from("aaaa\nbbbb\ncccc");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    let pending = jl.begin_pending(entry_in(&text_pre, 7, bid));
+
+    let mut b = ChangeSetBuilder::new(text_pre.end());
+    b.insert("XX");
+    let cs = b.finish();
+    let text_post = cs.apply(&text_pre).expect("built for text_pre");
+    jl.translate_in_place(bid, &TextChange::new(&text_pre, &text_post, &cs));
+
+    let e = jl.end_pending(pending).expect("entry survives the edit");
+    assert_eq!(head(&text_post, &e), co(9));
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(1));
+    assert_eq!(jl.len(), 0, "a pending entry is not history");
+}
+
+/// Ending an outer pending entry drops inner ones begun after it, and ending
+/// an inner one leaves the outer one held.
+#[test]
+fn pending_entries_nest() {
+    let (bid, _other) = two_buffer_ids();
+    let text = BufferText::from("aaaa\nbbbb");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    let outer = jl.begin_pending(entry_in(&text, 1, bid));
+    let inner = jl.begin_pending(entry_in(&text, 6, bid));
+
+    assert_eq!(head(&text, &jl.end_pending(inner).unwrap()), co(6));
+    assert_eq!(head(&text, &jl.end_pending(outer).unwrap()), co(1));
+}
+
+/// A clone copies the history, not the captures of navigations running
+/// against the original.
+#[test]
+fn a_clone_holds_no_pending_entries() {
+    let (bid, _other) = two_buffer_ids();
+    let text = BufferText::from("aaaa\nbbbb");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    jl.push(entry_in(&text, 6, bid));
+    let pending = jl.begin_pending(entry_in(&text, 1, bid));
+
+    let mut copy = jl.clone();
+
+    assert_eq!(copy.len(), 1);
+    assert!(copy.end_pending(pending).is_none());
+}
+
+/// A pending entry for a buffer whose text was replaced reads as absent.
+#[test]
+fn a_pending_entry_is_dropped_when_its_buffer_is_pruned() {
+    let (bid, other) = two_buffer_ids();
+    let text = BufferText::from("aaaa\nbbbb");
+    let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
+    let kept = jl.begin_pending(entry_in(&text, 1, other));
+    let pruned = jl.begin_pending(entry_in(&text, 2, bid));
+
+    jl.prune_buffer(bid);
+
+    assert!(jl.end_pending(pruned).is_none());
+    assert!(jl.end_pending(kept).is_some());
+}
+
 /// An entry tagged with a different buffer is untouched by a remap targeting
 /// another buffer. The jump list is cross-buffer, so a call must only ever
 /// touch entries for the buffer that was actually edited.

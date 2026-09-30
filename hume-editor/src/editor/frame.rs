@@ -585,17 +585,16 @@ impl Editor {
     /// snapshot `prepare_frame` already computed for its other steps rather
     /// than recomputing it here too.
     pub(in crate::editor) fn sync_all_pane_mirrors(&mut self, active: &[PaneId]) {
-        let state = &mut self.state;
+        let state = &self.state;
         let view = &mut self.view;
         for &pid in active {
             let pane = &mut view.panes[pid];
-            if let Some(pbs) = state.panes.buffer_state(pid, pane.buffer_id) {
-                write_pane_mirror(
-                    pane,
-                    state.buffers.get(pane.buffer_id).text(),
-                    pbs.selections(),
-                );
-            }
+            let bid = pane.buffer_id;
+            write_pane_mirror(
+                pane,
+                state.buffers.get(bid).text(),
+                state.panes.state[pid][bid].selections(),
+            );
         }
     }
 

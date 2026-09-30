@@ -115,7 +115,7 @@ impl RangeAnchored for StoredDiag {
 /// severity/range filter, `counts`) stay here since no decoration kind
 /// needs them.
 #[derive(Default)]
-pub(in crate::editor::lsp) struct DiagnosticsStore {
+pub(in crate::editor) struct DiagnosticsStore {
     store: SourceStore<ServerId, StoredDiag>,
 }
 
@@ -134,21 +134,18 @@ impl DiagnosticsStore {
         self.store.set(server, bid, diags);
     }
 
-    /// Remaps every stored range for `bid` through `cs`. Must be called
-    /// for every `ChangeSet` applied to an attached buffer, including
-    /// undo/redo (same chokepoint as `flush_lsp_pending_changes`,
-    /// consuming the same `Buffer.lsp_pending` entries: same source, both
-    /// consumers). A range collapsed to empty by a covering deletion is
-    /// dropped, not kept as a zero-width entry (`SourceStore::remap_ranges`'
-    /// shared policy, the same one `ExtraHighlightEntry` uses).
+    /// Remaps every stored range for `bid` through `cs`: `PositionStores`
+    /// calls this for every change to the buffer's text. A range collapsed
+    /// to empty by a covering deletion is dropped, not kept as a zero-width
+    /// entry (`SourceStore::remap_ranges`' shared policy, the same one
+    /// `ExtraHighlightEntry` uses).
     pub(in crate::editor) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
         self.store.remap_ranges(bid, cs);
     }
 
     /// Drops every `StoredDiag` published by `server`. Called when a
     /// server is stopped (`lsp_stop_one`) so its diagnostics don't survive
-    /// the stop (drifting silently, since `remap_through` only runs for
-    /// buffers still attached to a server) or duplicate a fresh instance's
+    /// the stop or duplicate a fresh instance's
     /// entry after `:lsp-restart` (a new `ServerId` would otherwise coexist
     /// with the old, frozen one via `replace`'s "push if no matching sid"
     /// path). A buffer left with no remaining server entry is dropped
@@ -218,11 +215,25 @@ impl DiagnosticsStore {
         out.into_iter()
     }
 
+    /// Every stored diagnostic's `(start, end)` for `bid`, in order.
+    #[cfg(test)]
+    pub(in crate::editor) fn spans_for_test(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.for_range(
+            bid,
+            ExclusiveRange::new(CharOffset::new(0), CharOffset::new(usize::MAX)),
+            DiagSeverity::Hint,
+        )
+        .map(|d| (d.start.index(), d.end.index()))
+    }
+
     /// [`Self::for_range`] without the cross-server ordering pass, for a
     /// caller whose own result doesn't depend on the order it sees these in
     /// (the sign bridge folds them into a per-line winner; the underline
     /// bridge re-sorts what it builds). Lazy, so it never collects at all.
-    pub(in crate::editor::lsp) fn for_range_unsorted(
+    pub(in crate::editor) fn for_range_unsorted(
         &self,
         bid: BufferId,
         range: ExclusiveRange<CharOffset>,
@@ -374,7 +385,10 @@ impl Editor {
             })
             .collect();
 
-        self.lsp.diagnostics.replace(server_id, bid, stored);
+        self.state
+            .buffer_positions
+            .diagnostics
+            .replace(server_id, bid, stored);
         Some(bid)
     }
 }

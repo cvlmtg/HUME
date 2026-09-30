@@ -352,7 +352,7 @@ impl HumeStatusline<'_> {
     }
 
     pub(in crate::statusline) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
-        crate::editor::lsp::introspect::diagnostic_counts(self.lsp, bid)
+        crate::editor::lsp::introspect::diagnostic_counts(self.state, bid)
     }
 
     pub(in crate::statusline) fn lsp_activity(

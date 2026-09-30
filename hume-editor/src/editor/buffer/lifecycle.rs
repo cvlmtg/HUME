@@ -9,18 +9,17 @@
 //! The `impl Editor` choke-points (`open_buffer`, `close_buffer`,
 //! `switch_to_buffer_with_jump`) are thin delegators; all logic lives here.
 
-use slotmap::SecondaryMap;
-
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::commands::CommandPane;
 use crate::editor::event::EditorEvent;
-use crate::editor::jump_list::{JumpEntry, JumpLists};
+use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::lsp::LspState;
-use crate::editor::pane_state::{self, PaneBufferState};
-use crate::editor::tracked_positions::TrackedPositions;
+use crate::editor::pane_state;
+use crate::editor::position_stores::PositionStores;
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
 
@@ -163,19 +162,12 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
     pid: PaneId,
     target: BufferId,
 ) {
-    let current_buffer_id = ev.panes[pid].buffer_id;
-    if current_buffer_id != target {
-        let sels = state.panes.state[pid][current_buffer_id]
-            .selections()
-            .clone();
-        let entry = JumpEntry::new(
-            sels,
-            state.buffers.get(current_buffer_id).text(),
-            current_buffer_id,
-        );
-        state.panes.jumps[pid].push(entry);
-    }
-    switch_pane_to_buffer(state, ev, pid, target);
+    let Some(t) = CommandPane::existing(ev, pid).filter(|t| t.bid(ev) != target) else {
+        return;
+    };
+    with_jump(state, ev, t, JumpRule::IfMoved, |state, ev| {
+        switch_pane_to_buffer(state, ev, pid, target);
+    });
 }
 
 /// Remove buffer `id`. Every pane showing it (active tab or not) redirects
@@ -223,13 +215,7 @@ pub(in crate::editor) fn close_buffer(
     }
     state.buffers.close(id);
     ev.buffers.remove(id);
-    forget_buffer_in_all_panes(
-        ev,
-        &mut state.panes.state,
-        &mut state.panes.jumps,
-        &mut state.panes.tracked,
-        id,
-    );
+    forget_closed_buffer(state, ev, id);
     opened
 }
 
@@ -261,22 +247,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
         // Must run before the slot is freed below: needs the buffer's path
         // and lsp_server to build the didClose notification.
         crate::editor::lsp::sync::lsp_did_close(state, lsp, id);
-        // Purely a leak fix. `id` is a versioned slotmap key, so a future
-        // reused slot can never alias with these stale entries, but there
-        // is no other chokepoint that ever frees them.
-        lsp.remove_buffer_diagnostics(id);
     }
-    state.config.decorations.remove_buffer(id);
-    state.config.statusline_text.remove(&id);
-    // A reload confirm naming `id` would otherwise outlive its subject; the
-    // slot is always freed below, whether or not another buffer existed to
-    // replace it. `reload_buffer_from_disk` would bail on `try_get` and the
-    // user's `r` would do nothing. Retire the question rather than leave one
-    // that can't be answered; with `can_open_confirm`'s no-other-overlay
-    // guard, leaving it would also block every later prompt until some stray
-    // key happened to dismiss it. See `EditorState::retire_stale_confirm`
-    // for why this is a retirement (`excise_layer`), not a `truncate_layers`.
-    state.retire_stale_confirm(ev, |c| c.targets_buffer(id));
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;
     let opened = close_buffer(state, ev, id);
@@ -305,20 +276,22 @@ pub(in crate::editor::buffer) fn forget_saved_views(ev: &mut EngineView, id: Buf
     }
 }
 
-fn forget_buffer_in_all_panes(
-    ev: &mut EngineView,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
-    tracked: &mut TrackedPositions,
-    id: BufferId,
-) {
-    // Every pane must forget `id`, active tab or not.
-    for (_, pane) in ev.panes.every_pane_across_all_tabs_mut() {
-        pane.forget_buffer(id);
-    }
-    for buf_state in pane_state.values_mut() {
-        buf_state.remove(id);
-    }
-    pane_jumps.prune_buffer(id);
-    tracked.prune_buffer(id);
+/// Drops every `EditorState`/`EngineView` store keyed by the closed buffer
+/// `id`.
+///
+/// A reload confirm naming `id` is retired, not left open: its `r` answer
+/// would find no buffer, and an unanswerable confirm blocks every later
+/// prompt. See `EditorState::retire_stale_confirm` for why that is an
+/// `excise_layer`, not a `truncate_layers`.
+fn forget_closed_buffer(state: &mut EditorState, ev: &mut EngineView, id: BufferId) {
+    state.config.statusline_text.remove(&id);
+    state.retire_stale_confirm(ev, |c| c.targets_buffer(id));
+    forget_saved_views(ev, id);
+    PositionStores::new(
+        &mut state.panes,
+        &mut state.input,
+        &mut state.buffer_positions,
+        &mut state.config.decorations,
+    )
+    .forget_buffer(id);
 }

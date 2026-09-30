@@ -900,3 +900,44 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
          not just panes that were viewing it at refresh time"
     );
 }
+
+/// A click can move focus while a search is open. Confirming records the
+/// pre-search position in the jump list of the pane the search started in.
+#[test]
+fn search_confirm_records_the_jump_in_the_pane_the_search_started_in() {
+    let mut ed = jump_editor(0);
+    let pid_left = ed.state.focus.id();
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_right = ed.state.focus.id();
+    assert_ne!(pid_left, pid_right, "setup: the split moves focus");
+
+    ed.handle_key(key('/'));
+    // Click into the left pane: the search layer stays open above it.
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    ed.handle_input(mouse_left_down(0, 0));
+    ed.settle();
+    assert_eq!(
+        ed.state.focus.id(),
+        pid_left,
+        "setup: the click moved focus"
+    );
+
+    for ch in "line 15".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(
+        ed.state.panes.jumps[pid_right].len(),
+        1,
+        "the pane the search started in records the jump"
+    );
+    assert_eq!(
+        ed.state.panes.jumps[pid_left].len(),
+        0,
+        "the pane that only took the click does not"
+    );
+}

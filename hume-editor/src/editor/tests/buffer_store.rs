@@ -375,89 +375,41 @@ fn p6_reload_clamps_cursor_to_last_line() {
     );
 }
 
-/// `reload_buffer_in_place` clamps a char col that exceeds the new line
-/// length to the line's last content character (the vim/helix
-/// stick-to-content convention `place_char_column` uses), never onto the
-/// line's terminating `\n`.
+/// A reload is an edit: the cursor follows its text through the line diff,
+/// so a line added above leaves it on the same characters.
 #[test]
-fn p6_reload_clamps_char_col_to_line_end() {
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("hello world\n")));
-    let bid = ed.focused_buffer_id();
-    let focused = ed.state.focus.id();
+fn p6_reload_cursor_follows_its_line_when_a_line_is_added_above() {
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("abc\ndef\n")));
+    set_cursor(&mut ed, 5);
 
-    // Cursor at col 10 ('d' in "hello world\n"). head=10.
-    doc_ops::apply_doc_motion(
-        &ed.state.buffers,
-        &mut ed.state.panes.state,
-        focused,
-        bid,
-        |st| {
-            let cursor = test_fixtures::testing::cursor(st.text(), 10);
-            st.with_selections(vec![cursor], 0)
-        },
-    );
-
-    // Reload with a shorter line "hi\n" (h=0,i=1,\n=2).
-    let replacement = Buffer::at_start(BufferText::from("hi\n"));
+    let replacement = Buffer::at_start(BufferText::from("new\nabc\ndef\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
-    // last content char='i' (char 1); overshooting col 10 clamps there, not
-    // onto the '\n' at char 2.
-    assert_eq!(
-        ed.current_view().primary().head().offset(),
-        co(1),
-        "cursor clamped to the last content char when col exceeds new line length",
-    );
+    assert_eq!(state(&ed), "new\nabc\nd-[e]>f\n");
 }
 
-/// `reload_buffer_in_place` snaps a char col that lands inside a grapheme
-/// cluster back to the cluster's start.
+/// A cursor on a line the reload rewrote lands where that line starts.
 #[test]
-fn p6_reload_snaps_char_col_to_grapheme_boundary() {
-    // Replacement "caf" + é (U+0065 U+0301, two chars) + "\n" → len_chars=6.
-    // Grapheme boundaries: 0,1,2,3,5,6; é occupies chars 3..5.
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("cafee\n")));
+fn p6_reload_cursor_on_a_rewritten_line_lands_at_its_start() {
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("abc\nhello world\n")));
+    set_cursor(&mut ed, 14);
 
-    // Cursor at char col 4, the second 'e': a cluster start before the
-    // reload, the combining acute U+0301 inside é after it.
-    set_cursor(&mut ed, 4);
-
-    let replacement = Buffer::at_start(BufferText::from("caf\u{0065}\u{0301}\n"));
+    let replacement = Buffer::at_start(BufferText::from("abc\nhi\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
-    // Col 4 is mid-cluster in the new text, so it lands at 3 (start of é).
-    assert_eq!(
-        ed.current_view().primary().head().offset(),
-        co(3),
-        "cursor snapped back to grapheme cluster start",
-    );
+    assert_eq!(state(&ed), "abc\n-[h]>i\n");
 }
 
-/// `reload_buffer_in_place` collapses multi-cursor selections to the primary.
+/// Every selection follows its text, not only the primary.
 #[test]
-fn p6_reload_collapses_multi_selection_to_primary() {
-    // "line0\nline1\nline2\n": line 0 starts at 0, line 1 at 6, line 2 at 12.
-    let content = "line0\nline1\nline2\n";
-    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from(content)));
-
-    // Two selections: primary at line 1 (head=6), secondary at line 2 (head=12).
+fn p6_reload_keeps_every_selection() {
+    let mut ed = Editor::for_testing(Buffer::at_start(BufferText::from("line0\nline1\nline2\n")));
     select(&mut ed, &[(6, 6), (12, 12)], 0);
-    assert_eq!(ed.current_view().len(), 2, "sanity: two selections set");
 
-    let replacement = Buffer::at_start(BufferText::from(content));
+    let replacement = Buffer::at_start(BufferText::from("top\nline0\nline1\nline2\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
-    let sels = ed.current_view();
-    assert_eq!(
-        sels.len(),
-        1,
-        "multi-selection collapsed to single after reload"
-    );
-    assert_eq!(
-        sels.primary().head().offset(),
-        co(6),
-        "primary cursor preserved at line 1 col 0",
-    );
+    assert_eq!(state(&ed), "top\nline0\n-[l]>ine1\n-[l]>ine2\n");
 }
 
 // ── :e! undo-retention ──────────────────────────────────────────────────────

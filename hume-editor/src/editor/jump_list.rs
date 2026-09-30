@@ -13,13 +13,16 @@
 
 use std::collections::VecDeque;
 
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
 use hume_editing::edit::TextChange;
-use hume_editing::selection::{EditView, SelectionSet};
+use hume_editing::selection::{EditView, Selection, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
+
+use super::commands::CommandPane;
+use super::{EditorState, Mode};
 
 /// Default capacity, used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
@@ -46,6 +49,18 @@ impl JumpEntry {
         EditView::bind(text, selections).primary().head_line()
     }
 
+    /// The primary selection, read against `text`, the text these selections
+    /// belong to.
+    pub(in crate::editor) fn primary_selection(&self, text: &BufferText) -> Selection {
+        EditView::bind(text, &self.selections).primary().selection()
+    }
+
+    /// Carry this entry through `change`, keeping `primary_line` in step.
+    fn translate(&mut self, change: &TextChange<'_>) {
+        self.selections.translate(change);
+        self.primary_line = Self::primary_line_of(&self.selections, change.after());
+    }
+
     /// Build a jump entry from selections of `text`, the buffer's current
     /// text, deriving `primary_line` from it so callers don't have to.
     pub(in crate::editor) fn new(
@@ -69,14 +84,38 @@ impl JumpEntry {
 /// is "at the present": no backward navigation is active. Navigating backward
 /// decrements cursor; navigating forward increments it. A new `push` truncates
 /// any forward history (entries after cursor) before appending.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(in crate::editor) struct JumpList {
     entries: VecDeque<JumpEntry>,
     /// Current position. `cursor == entries.len()` means "at the present".
     cursor: usize,
     /// Maximum number of entries. Oldest entry is dropped when exceeded.
     capacity: usize,
+    /// Entries captured before a navigation that may edit their buffer, one
+    /// per open [`PendingJump`], innermost last. They are carried through
+    /// edits like `entries`, but belong to no history until pushed.
+    pending: Vec<Option<JumpEntry>>,
 }
+
+/// A clone is a history snapshot: the pending captures belong to navigations
+/// running against the original, and their handles index the original's
+/// list.
+impl Clone for JumpList {
+    fn clone(&self) -> Self {
+        Self {
+            entries: self.entries.clone(),
+            cursor: self.cursor,
+            capacity: self.capacity,
+            pending: Vec::new(),
+        }
+    }
+}
+
+/// A position captured before a navigation, held by its [`JumpList`] until
+/// [`JumpList::end_pending`] takes it back.
+#[must_use = "a pending jump stays in its list until `end_pending` takes it"]
+#[derive(Debug)]
+struct PendingJump(usize);
 
 impl JumpList {
     /// Create a new jump list with the given capacity limit.
@@ -93,6 +132,7 @@ impl JumpList {
             entries: VecDeque::new(),
             cursor: 0,
             capacity,
+            pending: Vec::new(),
         }
     }
 
@@ -146,6 +186,28 @@ impl JumpList {
             .cursor
             .saturating_sub(removed_before)
             .min(self.entries.len());
+        for slot in &mut self.pending {
+            if slot.as_ref().is_some_and(|e| e.buffer_id == id) {
+                *slot = None;
+            }
+        }
+    }
+
+    /// Hold `entry` until the navigation it precedes is over. The list carries
+    /// it through any edit that navigation makes, so it still names the text
+    /// it was captured from when [`Self::end_pending`] returns it.
+    fn begin_pending(&mut self, entry: JumpEntry) -> PendingJump {
+        self.pending.push(Some(entry));
+        PendingJump(self.pending.len() - 1)
+    }
+
+    /// The entry `pending` held, carried through every edit since; `None` when
+    /// its buffer was replaced meanwhile. Also drops any pending entry begun
+    /// after it and never ended.
+    fn end_pending(&mut self, pending: PendingJump) -> Option<JumpEntry> {
+        let entry = self.pending.get_mut(pending.0).and_then(Option::take);
+        self.pending.truncate(pending.0);
+        entry
     }
 
     /// Remap every entry for `buf_id` through an edit, keeping stored
@@ -172,6 +234,12 @@ impl JumpList {
         buf_id: BufferId,
         change: &TextChange<'_>,
     ) {
+        for entry in self.pending.iter_mut().flatten() {
+            if entry.buffer_id == buf_id {
+                entry.translate(change);
+            }
+        }
+
         let mut write = 0usize;
         let mut removed_before_cursor = 0usize;
         // (buffer_id, pre-remap line, post-remap line, original index) of the
@@ -187,9 +255,7 @@ impl JumpList {
             let bid = self.entries[read].buffer_id;
             let pre_line = self.entries[read].primary_line;
             if bid == buf_id {
-                let entry = &mut self.entries[read];
-                entry.selections.translate(change);
-                entry.primary_line = JumpEntry::primary_line_of(&entry.selections, change.after());
+                self.entries[read].translate(change);
             }
             let post_line = self.entries[read].primary_line;
 
@@ -267,6 +333,113 @@ impl JumpList {
     pub(in crate::editor) fn entries_for_buffer(&self, id: BufferId) -> bool {
         self.entries.iter().any(|e| e.buffer_id == id)
     }
+}
+
+/// When a navigation's starting position is recorded in the pane's jump
+/// list.
+#[derive(Clone, Copy)]
+pub(in crate::editor) enum JumpRule {
+    /// The whole selection set, whenever the pane's buffer or selections
+    /// changed.
+    IfMoved,
+    /// The primary selection only, when it changed and either `is_jump` or
+    /// its line moved further than `EditorSettings::jump_line_threshold`.
+    /// Selection commands are left out of this rule by their callers: a
+    /// large text-object selection is a select-then-act staging step, not
+    /// deliberate navigation.
+    Threshold { is_jump: bool },
+}
+
+/// Runs `body`, a navigation of `t`'s pane, and records where it started in
+/// the pane's jump list according to `rule`. Returns `body`'s result and
+/// whether the pane moved (its buffer or, under `Threshold`, its primary
+/// selection changed).
+///
+/// The start is held by the jump list while `body` runs, so an edit the
+/// navigation makes to that buffer (leaving Insert trims auto-indent)
+/// carries it and it still names the text it was captured from. `moved`
+/// guards every push: `JumpList::push` truncates forward history
+/// unconditionally, so a navigation that turned out to be a no-op (`:42`
+/// already on line 42, `goto-first-line` already on line 1, a search confirmed
+/// on the match already under the cursor) must not push at all. The whole
+/// `Selection` is compared, not just its head: `select-all` from the buffer's
+/// own last char moves only the anchor.
+///
+/// An Insert-mode typed run in the focused pane is invalidated before `body`
+/// runs: it would otherwise select across text the cursor jumped away from
+/// once Insert exits. The mode is read before the body, since an entry
+/// command (`i`/`a`/`o`/`c`) is already back in Insert by the time its own
+/// body returns and would wipe the pins `begin_typed_run` just installed.
+/// A pane `body` closed has no list left to record in.
+pub(in crate::editor) fn with_jump<R>(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    rule: JumpRule,
+    body: impl FnOnce(&mut EditorState, &mut EngineView) -> R,
+) -> (R, bool) {
+    let pid = t.pid();
+    let pre_bid = t.bid(view);
+    let text = state.buffers.get(pre_bid).text();
+    let selections = t.state(&state.panes.state, view).selections().clone();
+    let entry = match rule {
+        JumpRule::IfMoved => JumpEntry::new(selections, text, pre_bid),
+        JumpRule::Threshold { .. } => JumpEntry::new(
+            EditState::bind(text, selections)
+                .keep_primary()
+                .into_selections(),
+            text,
+            pre_bid,
+        ),
+    };
+    if state.mode() == Mode::Insert && state.focus.id() == pid {
+        t.state_mut(&mut state.panes.state, view).typed_run = None;
+    }
+    let pending = state.panes.jumps[pid].begin_pending(entry);
+    let result = body(state, view);
+    let Some(t) = CommandPane::existing(view, pid) else {
+        return (result, false);
+    };
+    let entry = state.panes.jumps[pid].end_pending(pending);
+    let post_bid = t.bid(view);
+    let moved = match (rule, entry) {
+        (JumpRule::IfMoved, Some(entry)) => record_if_moved(state, view, t, entry),
+        (JumpRule::Threshold { is_jump }, Some(entry)) => {
+            let text = state.buffers.get(post_bid).text();
+            let post = t.state(&state.panes.state, view).view(text).primary();
+            let moved = post_bid != pre_bid
+                || entry.primary_selection(state.buffers.get(pre_bid).text()) != post.selection();
+            if moved
+                && (is_jump
+                    || entry.primary_line.abs_diff(post.head_line())
+                        > state.settings.jump_line_threshold)
+            {
+                state.panes.jumps[pid].push(entry);
+            }
+            moved
+        }
+        (_, None) => post_bid != pre_bid,
+    };
+    (result, moved)
+}
+
+/// Pushes `pre`, a position captured before some navigation however long
+/// ago, when `t`'s buffer or selections have changed since. Returns whether
+/// they did. [`with_jump`]'s `IfMoved` rule, and the one entry point for a
+/// navigation whose start was captured outside a single call (a search
+/// confirmed after many keystrokes).
+pub(in crate::editor) fn record_if_moved(
+    state: &mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+    pre: JumpEntry,
+) -> bool {
+    let moved = pre.buffer_id != t.bid(view)
+        || pre.selections != *t.state(&state.panes.state, view).selections();
+    if moved {
+        state.panes.jumps[t.pid()].push(pre);
+    }
+    moved
 }
 
 /// Every pane's [`JumpList`], keyed by `PaneId`.

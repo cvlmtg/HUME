@@ -332,7 +332,11 @@ impl Editor {
         // covers a request whose response arrived but was never drained
         // before the client was dropped, so no id ever leaks past its server.
         self.lsp.supersede.retain(|(sid, _), _| *sid != server_id);
-        let diag_touched = self.lsp.diagnostics.remove_server(server_id);
+        let diag_touched = self
+            .state
+            .buffer_positions
+            .diagnostics
+            .remove_server(server_id);
 
         let bids: Vec<BufferId> = self
             .state

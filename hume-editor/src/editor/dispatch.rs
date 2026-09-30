@@ -114,7 +114,7 @@ impl Editor {
         if repeatable || self.state.selection_recipe_writes == pre_writes {
             self.state.selection_recipe.clear();
         }
-        // Outer Steel commands skip step_record_jump, step_clear_extend, and
+        // Outer Steel commands skip with_jump, step_clear_extend, and
         // step_align_view: their meta hardcodes is_jump = clears_extend =
         // aligns_view = false. An inner native (call! …) still fires all three
         // because it routes through `commands::run` with its own meta.

@@ -12,11 +12,9 @@ use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::{RecordedSelections, SelectionSet};
 use hume_editing::state::EditState;
 use hume_editing::text::{BufferText, TextVersion};
-use hume_editing::tracked::Tracked;
 use hume_editing::transaction::Transaction;
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, PaneId};
 use hume_platform::io::FileMeta;
-use hume_rope::cluster::ClusterRange;
 
 mod disk;
 // Sibling buffer submodules (`file_open::enter_buffer`,
@@ -133,15 +131,6 @@ pub(crate) struct Buffer {
     /// edits (`doc_ops.rs`'s five apply functions); drained by the LSP
     /// per-frame flush. Always empty when `lsp_server` is `None`.
     pub(in crate::editor) lsp_pending: Vec<super::lsp::sync::LspPendingChange>,
-    /// The clusters typed during the most recently completed insert session,
-    /// one range per selection that typed something, sorted by start, for
-    /// `mii` (`select-last-insertion`). `None` before any session completes.
-    /// Any mutation that moves text (an edit, or an undo/redo whose net
-    /// `ChangeSet` isn't identity) makes it read as absent rather than being
-    /// remapped. A net-identity undo/redo walk keeps the text version (see
-    /// `apply_transactions`), which is sound here: identity moves no
-    /// character, so the ranges stay correct.
-    pub(in crate::editor) last_insert: Option<Tracked<Vec<ClusterRange>>>,
     /// True from chokepoint open (`lifecycle::open_buffer_and_notify`, or
     /// `lifecycle::close_buffer_and_notify`'s own `queue_open_announcement`
     /// call for the fresh scratch buffer a last-buffer close allocates)
@@ -205,7 +194,6 @@ impl Buffer {
             label: None,
             lsp_server: None,
             lsp_pending: Vec::new(),
-            last_insert: None,
             open_hook_pending: false,
             disk_state: disk::DiskState::InSync,
         }
@@ -348,7 +336,8 @@ impl Buffer {
         let before = std::mem::replace(&mut self.text, text);
         match change {
             Change::Edit(changes) => {
-                stores.carry(id, &TextChange::new(&before, &self.text, changes));
+                let change = TextChange::new(&before, &self.text, changes);
+                stores.carry(id, &change);
             }
             Change::Replace => stores.reset(id, || crate::editor::pane_state::fresh_from_buf(self)),
         }
@@ -456,23 +445,19 @@ impl Buffer {
     /// delete-all + insert-all. `saved_revision` is bumped after recording so
     /// the reloaded buffer is `!is_dirty()`.
     ///
-    /// Returns the forward `ChangeSet` if the text actually changed
-    /// (`install` ran, the version moved), `None` for an identical-to-disk
-    /// no-op. The caller uses this both to decide whether state computed
-    /// against the pre-reload content (the engine syntax tree, LSP
-    /// diagnostics/decorations, the `didChange` wire message) is still valid
-    /// or needs discarding, and to remap jump-list entries through the
-    /// reload: `reload_from_text` is the only place that already knows
-    /// which branch ran and already has the CS in hand.
-    #[must_use]
+    /// The reload is an edit: `install` carries every stored position through
+    /// its line diff. The history revision records `focused`'s selections for
+    /// the buffer before and after.
+    ///
+    /// Returns whether the text changed (`install` ran, the version moved),
+    /// `false` for an identical-to-disk no-op.
     pub(in crate::editor::buffer) fn reload_from_text(
         &mut self,
         id: BufferId,
         stores: &mut PositionStores<'_>,
         new_text: BufferText,
-        pre_sels: SelectionSet,
-        post_sels: impl FnOnce(&BufferText) -> SelectionSet,
-    ) -> Option<ChangeSet> {
+        focused: PaneId,
+    ) -> bool {
         // Reloading from disk is, by definition, catching up to whatever is
         // there now, so clear regardless of which branch below runs.
         self.disk_state = disk::DiskState::InSync;
@@ -486,11 +471,10 @@ impl Buffer {
         // `new_text`, so skip `install` entirely rather than change the version
         // (and fire `on-text-changed` plus a spurious tree-sitter reparse) for
         // a no-op. Just re-anchor `saved_revision`: the buffer now matches
-        // disk. `pre_sels` is dropped and `post_sels` never runs, as there is
-        // nothing to undo to.
+        // disk. Nothing is recorded, as there is nothing to undo to.
         if forward.is_identity() {
             self.saved_revision = Some(self.history.current_id());
-            return None;
+            return false;
         }
 
         // Applying the diff keeps the buffer's lineage, so the reload is the
@@ -504,17 +488,20 @@ impl Buffer {
             reloaded, new_text,
             "reload: the line diff must reproduce the file"
         );
-        let pre_sels = EditState::bind(&self.text, pre_sels).recorded();
+        let recorded = |text: &BufferText, stores: &PositionStores<'_>| {
+            EditState::bind(text, stores.panes[focused][id].selections().clone()).recorded()
+        };
+        let pre_sels = recorded(&self.text, stores);
         self.install(
             id,
             stores,
             reloaded.with_line_ending(new_text.line_ending()),
             Change::Edit(&forward),
         );
-        let post_sels = EditState::bind(&self.text, post_sels(&self.text)).recorded();
-        self.record_revision(forward.clone(), inverse, pre_sels, post_sels);
+        let post_sels = recorded(&self.text, stores);
+        self.record_revision(forward, inverse, pre_sels, post_sels);
         self.saved_revision = Some(self.history.current_id());
-        Some(forward)
+        true
     }
 
     /// `true` if the buffer has unsaved changes.
@@ -894,6 +881,20 @@ impl Buffer {
             *sels = new_sels;
         }
     }
+}
+
+/// Retag `sels`, computed for `from`, as selections of `to`, another version
+/// of the same content.
+fn rebind_to_same_content(sels: &mut SelectionSet, from: &BufferText, to: &BufferText) {
+    debug_assert!(
+        from.rope() == to.rope(),
+        "rebind: the two texts must hold the same content"
+    );
+    sels.translate(&TextChange::new(
+        from,
+        to,
+        &ChangeSet::identity(to.len_chars()),
+    ));
 }
 
 #[cfg(test)]

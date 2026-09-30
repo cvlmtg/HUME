@@ -105,8 +105,8 @@ pub(in crate::editor) fn cmd_change(
 /// discarding it, matching the `.extendable()` contract.
 ///
 /// Refuses (leaving selections untouched) if there is no stashed insertion,
-/// or if a later mutation (any edit, undo, or redo) has moved the buffer's
-/// text (see `Buffer::last_insert`).
+/// or if the buffer's text was replaced since (see
+/// `BufferPositions::last_inserts`).
 pub(in crate::editor) fn cmd_select_last_insertion(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -115,9 +115,10 @@ pub(in crate::editor) fn cmd_select_last_insertion(
     mode: MotionMode,
 ) -> Result<(), CommandError> {
     let buf = doc(state, view, t);
-    let fresh = buf
-        .last_insert
-        .as_ref()
+    let fresh = state
+        .buffer_positions
+        .last_inserts
+        .get(t.bid(view))
         .and_then(|last| last.get(buf.text()))
         .cloned();
     let Some(spans) = fresh else {
@@ -202,8 +203,12 @@ fn history_step(
     let buf = t.bid(view);
     let result = doc_ops::apply_doc_history_walk(
         &mut state.buffers,
-        &state.config.decorations,
-        &mut PositionStores::new(&mut state.panes, &mut state.input),
+        &mut PositionStores::new(
+            &mut state.panes,
+            &mut state.input,
+            &mut state.buffer_positions,
+            &mut state.config.decorations,
+        ),
         &state.active_session,
         t.pid(),
         buf,

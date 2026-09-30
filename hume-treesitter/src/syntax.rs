@@ -82,8 +82,8 @@ pub struct Syntax {
     in_flight: Option<u64>,
     /// Scratch for the overlap flattener, reused across `spans_for_line`
     /// calls. Lives here (not per-frame in the engine) because it survives
-    /// `install`/`clear_layers`: `SyntaxLayers` is rebuilt wholesale on
-    /// every install, `Syntax` is not.
+    /// `install`: `SyntaxLayers` is rebuilt wholesale on every install,
+    /// `Syntax` is not.
     span_scratch: Mutex<FlattenScratch>,
 }
 
@@ -284,8 +284,8 @@ impl Syntax {
 
     /// Bake `pending_edits` into the committed `layers`. No-op (and no
     /// `ChainBreak`) when there is no committed tree yet or nothing pending,
-    /// checked *before* the chain-contiguity test so a reloaded buffer (layers
-    /// cleared, stale pending) never trace-logs or clears pending here.
+    /// checked *before* the chain-contiguity test so edits recorded before
+    /// the first parse lands never trace-log or clear pending here.
     ///
     /// On a complete chain (`tree_gen + 1 ..= generation`, no gaps): applies
     /// every recorded `InputEdit` to every layer's tree, refreshes injected
@@ -445,13 +445,6 @@ impl Syntax {
     /// Committed layers for the renderer. `None` until the first install.
     pub fn layers(&self) -> Option<&SyntaxLayers> {
         self.layers.as_ref()
-    }
-
-    /// Drop the committed layers, keeping the attachment and generations
-    /// (buffer reload: content replaced wholesale). The next `frame_tick`
-    /// full-reparses (`tree_gen != generation` → `old_tree = None`).
-    pub fn clear_layers(&mut self) {
-        self.layers = None;
     }
 
     /// The attached root grammar bundle, read by `sweep_buffers_for_grammars`

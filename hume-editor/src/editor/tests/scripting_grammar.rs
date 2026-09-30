@@ -461,17 +461,14 @@ fn reparse_reattaches_after_shrink_under_cap() {
 /// `reload_buffer_in_place` (`:e!`) must keep syntax highlighting alive across
 /// a reload when the buffer's language is unchanged.
 ///
-/// Mechanism: `reload_from_text` leaves `state.syntax` (the highlighter) intact
-/// and changes the text version. `reparse_stale_buffers` sees `syntax.is_some()` + a
-/// gen mismatch → posts a fresh full parse (no pending edits, so no incremental
-/// baking) → second tick drains and installs the new tree.
+/// Mechanism: the reload is an edit, so the committed tree stays and the
+/// reload's line diff is recorded as a pending edit. `reparse_stale_buffers`
+/// sees the gen mismatch, bakes the edit into the tree and posts an
+/// incremental parse; the second tick drains and installs the new tree.
 ///
 /// The `end_byte()` assertion catches the reparse loop failing to post or
 /// install a request against the new content.  `state.syntax.is_some()` would
 /// fail if `detect_and_set_language` incorrectly cleared the language on reload.
-/// One thing the test cannot probe: that `Syntax::clear_layers` was called
-/// immediately on reload; that prevents a one-frame stale-tree in the renderer
-/// but is invisible to `InlineParseBackend`.
 #[test]
 fn reload_buffer_in_place_keeps_syntax_highlighting() {
     use crate::editor::buffer::Buffer;
@@ -524,6 +521,17 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
     let mut replacement = Buffer::at_start(BufferText::from(new_text));
     replacement.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
+    assert!(
+        ed.state
+            .buffers
+            .get(bid)
+            .syntax
+            .as_ref()
+            .unwrap()
+            .layers()
+            .is_some(),
+        "the committed tree must stay until the reparse replaces it"
+    );
     // Two ticks: first `reparse_stale_buffers` sees the gen mismatch and posts the
     // parse request (InlineParseBackend completes synchronously into the done queue);
     // the second drains and installs the tree. The real run loop does the same across
@@ -553,10 +561,7 @@ fn reload_buffer_in_place_keeps_syntax_highlighting() {
 
     // A second reload with byte-identical content: `reload_from_text`'s
     // `forward.is_identity()` branch returns `false` (no mutation) without
-    // touching the text version. `reload_buffer_in_place` must not call
-    // `clear_layers` on that no-mutation path: doing so would drop the tree
-    // just installed above with no the text version bump to trigger a reparse,
-    // leaving the buffer unhighlighted until the next real edit.
+    // touching the text version, and the tree installed above stays.
     let mut identical = Buffer::at_start(BufferText::from(new_text));
     identical.set_path(Some(std::path::PathBuf::from("data.json")));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), identical);

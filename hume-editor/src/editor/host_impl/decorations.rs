@@ -240,9 +240,6 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         severity_floor: Option<&str>,
         range: Option<(usize, usize)>,
     ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
-        let Some(lsp) = self.lsp.as_deref() else {
-            return Ok(Vec::new());
-        };
         // Converted immediately at the Steel/LSP host seam: `range` arrives
         // as the raw `(usize, usize)` tuple the FFI boundary decodes Steel's
         // `#:range` argument into (see `CharOffset`'s doc on this one carve-out)
@@ -252,7 +249,6 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         });
         crate::editor::lsp::introspect::diagnostics_for_buffer(
             self.state,
-            lsp,
             bid,
             severity_floor,
             range,
@@ -260,10 +256,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
     }
 
     fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
-        let Some(lsp) = self.lsp.as_deref() else {
-            return (0, 0);
-        };
-        crate::editor::lsp::introspect::diagnostic_counts(lsp, bid)
+        crate::editor::lsp::introspect::diagnostic_counts(self.state, bid)
     }
 }
 

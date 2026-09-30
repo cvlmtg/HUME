@@ -46,6 +46,25 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
     );
 }
 
+/// A prompt's snapshot names the buffer it was taken from. Closing that
+/// buffer drops the snapshot, so the prompt keeps working on the buffer the
+/// pane moved to instead of indexing a pane state that no longer exists.
+#[test]
+fn closing_the_buffer_a_search_prompt_snapshotted_leaves_the_prompt_usable() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let closed = ed.focused_buffer_id();
+    ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    ed.handle_key(key('/'));
+    assert_eq!(ed.state.mode(), Mode::Search, "setup: search is open");
+
+    ed.close_buffer(closed);
+    ed.handle_key(key('o'));
+    ed.handle_key(key_esc());
+
+    assert_ne!(ed.focused_buffer_id(), closed);
+    assert_eq!(ed.state.mode(), Mode::Normal);
+}
+
 /// Sift snapshots the selections it will restore on cancel. An edit that
 /// lands while the prompt is open (a workspace edit from a language server)
 /// carries the snapshot to the new text, so cancelling restores the same
@@ -238,4 +257,45 @@ fn an_unknown_or_released_token_answers_absent() {
         ),
         None
     );
+}
+
+// ── Decorations ─────────────────────────────────────────────────────────────
+
+/// A decoration set right after an edit, against the edited text, stays where
+/// it was set: the edit already moved the decorations stored before it.
+#[test]
+fn a_decoration_set_after_an_edit_is_not_moved_by_that_edit() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let bid = ed.focused_buffer_id();
+    let hint = |pos| hume_decorations::InlayHintEntry {
+        pos: co(pos),
+        text: "!".to_string(),
+        before: false,
+    };
+    ed.state
+        .config
+        .decorations
+        .set_inlay_hints("test".to_string(), bid, vec![hint(2)]);
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "Xabc\n",
+        "setup: the edit landed"
+    );
+    ed.state
+        .config
+        .decorations
+        .set_inlay_hints("test".to_string(), bid, vec![hint(3)]);
+    ed.settle();
+
+    let positions: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .inlay_hints_for_buffer(bid)
+        .map(|h| h.pos)
+        .collect();
+    assert_eq!(positions, vec![co(3)]);
 }

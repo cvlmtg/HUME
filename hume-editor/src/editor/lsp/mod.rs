@@ -30,7 +30,6 @@ use hume_lsp::transport::WakeCallback;
 
 use super::Editor;
 use super::async_source::AsyncSource;
-use diagnostics::{DiagSeverity, DiagnosticsStore, StoredDiag};
 use progress::{ProgressTask, SpinnerClock};
 use registry::{LanguageName, LspServerConfig};
 
@@ -155,7 +154,6 @@ pub(crate) struct LspState {
     callbacks: FxHashMap<(ServerId, RequestId), CallbackEntry>,
     /// Config recorded by `register-lsp-server!`, keyed by language.
     configs: FxHashMap<LanguageName, LspServerConfig>,
-    diagnostics: DiagnosticsStore,
     /// Drives the statusline loading spinner's animation frame. Advanced
     /// (at most) once per `drain_lsp` call, gated on its own interval so
     /// the animation speed doesn't depend on the event loop's wake cadence.
@@ -178,7 +176,6 @@ impl LspState {
             servers: FxHashMap::default(),
             callbacks: FxHashMap::default(),
             configs: FxHashMap::default(),
-            diagnostics: DiagnosticsStore::default(),
             spinner: SpinnerClock::default(),
             supersede: FxHashMap::default(),
         }
@@ -248,16 +245,6 @@ impl LspState {
                 Some((bid, entry.language.clone()?))
             })
             .collect()
-    }
-
-    /// Every buffer with a cached diagnostic, from any server, alive or
-    /// crashed; see `DiagnosticsStore::buffers_with_diagnostics`. Unlike
-    /// `running_attached_buffers`, this is not filtered by server state:
-    /// `:reload-config`'s resync uses it to replay `OnDiagnosticsChanged`
-    /// from the surviving cache regardless of whether the server that
-    /// published it is still `Running`.
-    pub(super) fn buffers_with_diagnostics(&self) -> impl Iterator<Item = BufferId> + '_ {
-        self.diagnostics.buffers_with_diagnostics()
     }
 
     /// Production constructor: one real server process per registration.
@@ -403,11 +390,6 @@ impl LspState {
         self.servers.len()
     }
 
-    #[cfg(test)]
-    pub(in crate::editor) fn diagnostic_counts_for_test(&self, bid: BufferId) -> (usize, usize) {
-        self.diagnostics.counts(bid)
-    }
-
     /// The most recent active `$/progress` task's title for `server`. Lets
     /// tests assert the begin/report merge machine (title persists across a
     /// `report` that omits it) without going through `LspActivity`, which
@@ -435,46 +417,6 @@ impl LspState {
     #[cfg(test)]
     pub(in crate::editor) fn supersede_count_for_test(&self) -> usize {
         self.supersede.len()
-    }
-
-    /// Diagnostics visible in `range` (buffer-wide char offsets) for `bid`,
-    /// at or above `floor` severity: the render write side reads this
-    /// directly (no JSON round-trip; that's
-    /// `introspect::diagnostics_for_buffer`'s job for Steel).
-    ///
-    /// Unordered: both render callers impose their own structure on the
-    /// result (a per-line severity winner, a re-sorted highlight span list),
-    /// so neither pays for the cross-server sort.
-    pub(in crate::editor) fn diagnostics_for_range(
-        &self,
-        bid: BufferId,
-        range: hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>,
-        floor: DiagSeverity,
-    ) -> impl Iterator<Item = &StoredDiag> {
-        self.diagnostics.for_range_unsorted(bid, range, floor)
-    }
-
-    /// Drops every diagnostic for `bid`, across every server. Returns
-    /// whether anything was actually removed.
-    pub(in crate::editor) fn remove_buffer_diagnostics(&mut self, bid: BufferId) -> bool {
-        self.diagnostics.remove_buffer(bid)
-    }
-
-    #[cfg(test)]
-    pub(in crate::editor) fn diagnostics_for_test(
-        &self,
-        bid: BufferId,
-    ) -> impl Iterator<Item = (usize, usize)> + '_ {
-        self.diagnostics
-            .for_range(
-                bid,
-                hume_rope::offset::ExclusiveRange::new(
-                    hume_rope::offset::CharOffset::new(0),
-                    hume_rope::offset::CharOffset::new(usize::MAX),
-                ),
-                diagnostics::DiagSeverity::Hint,
-            )
-            .map(|d| (d.start.index(), d.end.index()))
     }
 
     /// Disjoint-borrow accessor for callers that need to drive a client and
@@ -557,7 +499,7 @@ impl Editor {
     /// callers outside it, like `statusline`, go through this).
     #[cfg(test)]
     pub(in crate::editor) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
-        introspect::diagnostic_counts(&self.lsp, bid)
+        introspect::diagnostic_counts(&self.state, bid)
     }
 
     /// `bid`'s attached server's lifecycle/loading state: the statusline's

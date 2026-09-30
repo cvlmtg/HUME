@@ -5,8 +5,6 @@
 
 use std::borrow::Cow;
 
-use hume_editing::selection::Selection;
-use hume_editing::state::EditState;
 use hume_editing::tracked::Tracked;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_scripting::PaneHandle;
@@ -16,7 +14,7 @@ use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneBufferState;
 
 use crate::editor::dispatch::CmdCtx;
-use crate::editor::jump_list::JumpEntry;
+use crate::editor::jump_list::{JumpRule, with_jump};
 use crate::editor::registry::{
     CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, MappableCommand, PaneCmdFn, SelectionBody,
     SelectionTracking,
@@ -41,7 +39,7 @@ use super::{apply_pane_edit, apply_pane_motion, effective_word_chars, pane_selec
 ///
 /// `bid` is read live rather than cached at resolution time: a jump or
 /// `goto-*-buffer` body switches the pane's own buffer, and the AFTER steps
-/// (`step_record_jump`, `step_align_view`) must see that switch, not the
+/// (`with_jump`, `step_align_view`) must see that switch, not the
 /// buffer the target was resolved for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::editor) struct CommandPane(PaneId);
@@ -68,6 +66,12 @@ impl CommandPane {
             return Err(TargetError::PaneShowsOther);
         }
         Ok(Self(pid))
+    }
+
+    /// `pid` as a target if that pane still exists: for a session that
+    /// recorded its own pane when it opened, which focus may have left since.
+    pub(in crate::editor) fn existing(view: &EngineView, pid: PaneId) -> Option<Self> {
+        view.panes.contains_key(pid).then_some(Self(pid))
     }
 
     pub(in crate::editor) fn pid(self) -> PaneId {
@@ -567,97 +571,6 @@ pub(in crate::editor) fn step_paste_commit(state: &mut EditorState, defers: bool
 
 // ── Native-only pre-body steps ─────────────────────────────────────────────────
 
-/// Capture pre-jump cursor position for jump-list recording.
-///
-/// Selection commands are excluded: a large text-object selection is a
-/// select-then-act staging step, not deliberate navigation, so it must not
-/// pollute the jump list on a threshold-exceeding extent. Jump-flagged
-/// selections (e.g. `%` select-all, `jump: true`) still record via the
-/// `meta.is_jump` arm.
-pub(in crate::editor::commands::pipeline) fn step_capture_pre_jump(
-    state: &EditorState,
-    view: &EngineView,
-    t: CommandPane,
-    meta: &CmdMeta,
-) -> Option<PreJump> {
-    meta.moves_cursor().then(|| {
-        let (primary, line, bid) = jump_position(state, view, t);
-        let text = state.buffers.get(bid).text();
-        let only_primary =
-            EditState::bind(text, t.state(&state.panes.state, view).selections().clone())
-                .keep_primary()
-                .into_selections();
-        PreJump {
-            primary,
-            line,
-            bid,
-            entry: Tracked::new(JumpEntry::new(only_primary, text, bid), text),
-        }
-    })
-}
-
-/// The cursor before a cursor-moving command's body ran, for
-/// [`step_record_jump`]: the position compared against and the jump entry
-/// pushed if the body moved far enough. The entry reads as absent when the
-/// body also changed the buffer's text, since its positions belong to the
-/// text before.
-pub(in crate::editor::commands::pipeline) struct PreJump {
-    primary: Selection,
-    line: hume_rope::line::ContentLine,
-    bid: BufferId,
-    entry: Tracked<JumpEntry>,
-}
-
-/// Invalidate a still-open Insert-mode typed run before a cursor-motion
-/// command runs. It would otherwise select across text the cursor jumped
-/// away from once Insert exits. Covers every route into a native command: a
-/// key press, a Steel `call!`, a hook, `run_command_sync`.
-///
-/// Gated on `state.mode() == Mode::Insert`, checked in BEFORE against the
-/// *pre-body* mode. `exit-insert` itself needs no special-casing: it
-/// registers with no `.jump()`/`.visual_move()` (`registry/defaults/
-/// editor_cmds.rs`), so `moves_cursor()` is `false` and it never reaches
-/// here. But placing this check in AFTER instead would read the *post-body*
-/// mode, which is already `Insert` again for every entry command
-/// (`i`/`a`/`o`/`c`/…) by the time their own body returns, and would wipe
-/// the pins `begin_typed_run` just installed (same hazard `step_clear_extend`
-/// documents for its own AFTER placement).
-///
-/// One route into a native command bypasses this pipeline entirely, and is
-/// already safe without it: dot-repeat replay (`replay.rs`) calls
-/// `run_body` directly, but reopens an edit group first, which clears the
-/// pins itself
-/// (`doc_ops::begin_edit_group`). See `CmdMeta::moves_cursor`'s doc for the
-/// `SteelBacked`/`Lazy` blind spot this inherits unchanged: a user-bound
-/// Steel motion still leaves the pins in place.
-pub(in crate::editor::commands::pipeline) fn step_clear_typed_run(
-    state: &mut EditorState,
-    view: &EngineView,
-    fp: FocusedPane,
-    meta: &CmdMeta,
-) {
-    if state.mode() != Mode::Insert || !meta.moves_cursor() {
-        return;
-    }
-    fp.pane().state_mut(&mut state.panes.state, view).typed_run = None;
-}
-
-/// The primary selection, its line, and `t`'s buffer: what a jump entry is
-/// built from and what `step_record_jump` compares against, before and after
-/// a command runs. Reads `t`'s pane directly, not the focused pane: a
-/// dispatch through a non-focused pane's jump list belongs to the pane it
-/// actually ran in.
-fn jump_position(
-    state: &EditorState,
-    view: &EngineView,
-    t: CommandPane,
-) -> (Selection, hume_rope::line::ContentLine, BufferId) {
-    let bid = t.bid(view);
-    let text = state.buffers.get(bid).text();
-    let primary = t.state(&state.panes.state, view).view(text).primary();
-    (primary.selection(), primary.head_line(), bid)
-}
-
 /// Snapshot selection recipe before body for dot-repeat recording.
 ///
 /// The snapshot captures the selection extent the user built before the edit,
@@ -676,49 +589,12 @@ pub(in crate::editor::commands::pipeline) fn step_snapshot_recipe(
 
 // ── AFTER (native steps) ────────────────────────────────────────────────────
 
-/// Record jump list entry if the command is a jump or the cursor moved
-/// past the threshold. Returns whether the cursor actually moved: `false`
-/// for a command with no pre-jump snapshot at all (`step_capture_pre_jump`
-/// returned `None`, i.e. `meta.moves_cursor()` was false) as well as for a
-/// snapshotted one that turned out to be a no-op.
-///
-/// `moved` guards both branches: `JumpList::push` truncates forward history
-/// unconditionally, so a `jump: true` command that happens to be a no-op on
-/// this press (e.g. `#` on plain text, `goto-first-line` already on line 1)
-/// must not push at all, not just skip the threshold check. Compares the
-/// whole `Selection`, not just `head`. The entry being guarded stores the
-/// whole thing (anchor included), and `select-all` from the buffer's own
-/// last char moves only the anchor, leaving `head` unchanged.
-///
-/// `step_align_view` reuses this same `moved` rather than recomputing
-/// `jump_position` a second time.
-pub(in crate::editor::commands::pipeline) fn step_record_jump(
-    state: &mut EditorState,
-    view: &EngineView,
-    pre_jump: Option<PreJump>,
-    is_jump: bool,
-    t: CommandPane,
-) -> bool {
-    let Some(pre) = pre_jump else {
-        return false;
-    };
-    let (post_primary, post_line, post_bid) = jump_position(state, view, t);
-    let moved = post_bid != pre.bid || post_primary != pre.primary;
-    if moved
-        && (is_jump || pre.line.abs_diff(post_line) > state.settings.jump_line_threshold)
-        && let Some(entry) = pre.entry.into_inner(state.buffers.get(pre.bid).text())
-    {
-        state.panes.jumps[t.pid()].push(entry);
-    }
-    moved
-}
-
 /// Re-align the viewport after a forward object jump (`}`,
 /// `goto-next-<kind>`), per `EditorSettings::object_jump_align`.
 ///
 /// `Top`/`Center` delegate to `view_top`/`view_center` verbatim (the same
 /// primitives `z k`/`z z` call), so there is exactly one implementation of
-/// "put the head at this viewport row". `moved` is `step_record_jump`'s
+/// "put the head at this viewport row". `moved` is `with_jump`'s
 /// result: a `}` press already on the last paragraph is a no-op on the
 /// selection and must not yank the viewport around on every repeated press.
 pub(in crate::editor::commands::pipeline) fn step_align_view(
@@ -901,11 +777,9 @@ pub(in crate::editor) fn run(
 
     // BEFORE
     state.command_refused = false;
-    if let Some(fp) = focused {
+    if focused.is_some() {
         step_paste_commit(state, meta.defers_paste_commit);
-        step_clear_typed_run(state, view, fp, &meta);
     }
-    let pre_jump = step_capture_pre_jump(state, view, pane, &meta);
     let char_arg = state.pending_char;
     let pre_recipe = focused.and_then(|_| step_snapshot_recipe(state, meta.repeatable));
     // Only snapshot the selection when step_update_recipe could push a step:
@@ -916,15 +790,33 @@ pub(in crate::editor) fn run(
     // focused pane's dot-repeat state (see this fn's own doc).
     let needs_selection_snapshot = meta.selection_tracking != SelectionTracking::Untracked
         && (ctx.extend || meta.selection_tracking != SelectionTracking::Extends);
-    let pre_sels = focused
-        .filter(|_| needs_selection_snapshot)
-        .map(|fp| pane_selections(state, view, fp.pane()).clone());
+    let pre_sels = focused.filter(|_| needs_selection_snapshot).map(|fp| {
+        let t = fp.pane();
+        let text = state.buffers.get(t.bid(view)).text();
+        Tracked::new(pane_selections(state, view, t).clone(), text)
+    });
 
     // BODY: bound moved in; meta + name captured above so no further clone needed.
-    run_body(state, view, bound, &ctx);
+    // A cursor-moving command runs inside the jump list's capture. Selection
+    // commands are excluded from that rule: a large text-object selection is
+    // a select-then-act staging step, so only jump-flagged ones record.
+    let moved = if meta.moves_cursor() {
+        with_jump(
+            state,
+            view,
+            pane,
+            JumpRule::Threshold {
+                is_jump: meta.is_jump,
+            },
+            |state, view| run_body(state, view, bound, &ctx),
+        )
+        .1
+    } else {
+        run_body(state, view, bound, &ctx);
+        false
+    };
 
     // AFTER
-    let moved = step_record_jump(state, view, pre_jump, meta.is_jump, pane);
     step_align_view(state, view, pane, meta.aligns_view, moved);
     if let Some(fp) = focused {
         // A refused/errored body has nothing new to repeat; see
@@ -940,7 +832,11 @@ pub(in crate::editor) fn run(
         // A command whose own snapshot is `None` never reaches the `!selection_changed`
         // early return in step_update_recipe, so `true` here is inert filler.
         let selection_changed = match &pre_sels {
-            Some(pre) => *pre != *pane_selections(state, view, fp.pane()),
+            Some(pre) => {
+                let t = fp.pane();
+                let text = state.buffers.get(t.bid(view)).text();
+                pre.get(text) != Some(pane_selections(state, view, t))
+            }
             None => true,
         };
         step_update_recipe(state, &meta, &name, &ctx, selection_changed);

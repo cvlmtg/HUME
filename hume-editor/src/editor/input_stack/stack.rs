@@ -19,7 +19,7 @@ use std::any::Any;
 
 use termina::event::{KeyEvent, MouseEvent};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, PaneId};
 use hume_engine::types::EditorMode;
 
 use super::super::event::mode_name;
@@ -29,8 +29,8 @@ use super::base::BaseLayer;
 use super::completion::{BufferCompletionLayer, MinibufCompletionLayer};
 use super::popup::PopupLayer;
 
-/// Addresses one layer by position: minted only by [`InputStack::push`] and
-/// [`InputStack::top`], read back by every other method. `depth` alone would
+/// Addresses one layer by position: minted only by [`InputStack`]'s own
+/// lookups, read back by every other method. `depth` alone would
 /// alias: truncating at `depth` and pushing a new layer puts a *different*
 /// layer at the same index. `id` is the tiebreaker; see
 /// [`InputStack::is_live`].
@@ -381,6 +381,18 @@ impl InputStack {
             .rev()
             .find(|(_, (_, layer))| layer.is::<L>())
             .map(|(depth, (id, _))| LayerRef { depth, id: *id })
+    }
+
+    /// The topmost layer whose pane snapshot was taken in `pane`.
+    pub(in crate::editor) fn topmost_bound_to(&mut self, pane: PaneId) -> Option<LayerRef> {
+        let depth = self
+            .layers
+            .iter_mut()
+            .rposition(|(_, layer)| layer.snapshot_mut().is_some_and(|snap| snap.pane() == pane))?;
+        Some(LayerRef {
+            depth,
+            id: self.layers[depth].0,
+        })
     }
 
     /// The topmost layer of concrete type `L`, its payload. The read half
@@ -825,15 +837,31 @@ impl EditorState {
     /// being open, in-place removal ([`Self::excise_layer`]) when it's merely
     /// stacked over `L` by coincidence (`DrawerLayer`, `MenuLayer`).
     pub(in crate::editor) fn retire<L: Layer>(&mut self, view: &EngineView) {
-        let Some(r) = self.input.ref_of::<L>() else {
-            return;
-        };
-        match self
+        if let Some(r) = self.input.ref_of::<L>() {
+            self.retire_at(view, r);
+        }
+    }
+
+    /// Retires every layer whose pane snapshot was taken in `pane`, each by
+    /// its own [`Layer::removal_scope`]: a closing pane takes its search
+    /// or sift session with it. Runs while `pane`'s state still exists, so
+    /// each layer's `tear_down` finds the pane it restores into.
+    pub(in crate::editor) fn retire_bound_to(&mut self, view: &EngineView, pane: PaneId) {
+        while let Some(r) = self.input.topmost_bound_to(pane) {
+            self.retire_at(view, r);
+        }
+    }
+
+    /// Retires the live layer at `r` by its own [`Layer::removal_scope`].
+    fn retire_at(&mut self, view: &EngineView, r: LayerRef) {
+        let scope = self
             .input
-            .at::<L>(r)
-            .expect("ref_of found L at r")
-            .removal_scope()
-        {
+            .layers
+            .get(r.depth)
+            .filter(|(id, _)| *id == r.id)
+            .map(|(_, layer)| layer.removal_scope())
+            .expect("retire_at names a live layer");
+        match scope {
             RemovalScope::Stack => self.truncate_layers(view, r),
             RemovalScope::SelfOnly => self.excise_layer(view, r),
         }

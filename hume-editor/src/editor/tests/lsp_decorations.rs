@@ -985,7 +985,7 @@ fn diagnostics_for_buffer_and_diagnostic_counts_reflect_the_published_batch() {
     ed.drain_lsp();
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 1),
         "counts must tally exactly the one error and one warning"
     );

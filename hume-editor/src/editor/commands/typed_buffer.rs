@@ -3,9 +3,10 @@ use hume_engine::pipeline::BufferId;
 use super::super::Editor;
 use super::super::Severity;
 use super::jump::{BufferStep, goto_buffer_in_order};
-use super::{FocusedPane, current_jump_entry, jump_pane_to, record_jump_if_moved};
+use super::{FocusedPane, jump_pane_to};
 use crate::editor::buffer::DiskCheckTrigger;
 use crate::editor::error::CommandError;
+use crate::editor::jump_list::{JumpRule, with_jump};
 
 // ── Multi-buffer typed commands ───────────────────────────────────────────────
 
@@ -367,9 +368,15 @@ fn typed_buffer_step(
     step: BufferStep,
 ) -> Result<(), CommandError> {
     let t = fp.pane();
-    let pre = current_jump_entry(&ed.state, &ed.view, t);
-    goto_buffer_in_order(&mut ed.state, &mut ed.view, t, step);
-    record_jump_if_moved(&mut ed.state, &ed.view, t, pre);
+    with_jump(
+        &mut ed.state,
+        &mut ed.view,
+        t,
+        JumpRule::IfMoved,
+        |state, view| {
+            goto_buffer_in_order(state, view, t, step);
+        },
+    );
     Ok(())
 }
 

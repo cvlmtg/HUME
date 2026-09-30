@@ -32,7 +32,8 @@ fn editor_state_fields_are_classified() {
             // language + overrides; content, undo history, and
             // everything else survive
             buffers: _,
-            config: _, // exempt; see ConfigState's own doc
+            buffer_positions: _, // preserved
+            config: _,           // exempt; see ConfigState's own doc
             // config: reset_config_state → input.truncate_to_base() (drops
             // every mode layer's minibuf/completion/prompt-callback payload
             // along with the six overlay widgets, confirm/picker/menu/

@@ -84,8 +84,10 @@ fn ingest_converts_utf16_positions_across_an_emoji() {
     ed.drain_lsp();
 
     let stored: Vec<(usize, usize)> = ed
-        .lsp
-        .diagnostics_for_test(bid)
+        .state
+        .buffer_positions
+        .diagnostics
+        .spans_for_test(bid)
         .map(|d| (d.0, d.1))
         .collect();
     assert_eq!(stored.len(), 1);
@@ -131,7 +133,7 @@ fn two_publishes_in_one_drain_batch_coalesce_to_the_last() {
     ed.drain_lsp();
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (0, 1),
         "only the second (later) publish in the batch must survive"
     );
@@ -228,7 +230,7 @@ fn publish_with_matching_version_is_ingested() {
     ed.ingest_publish_diagnostics(sid, params);
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 0),
         "a publish whose version matches the buffer's current generation must be ingested"
     );
@@ -255,11 +257,7 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
         Some(current_gen),
     ));
     ed.ingest_publish_diagnostics(sid, seed);
-    assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
-        (1, 0),
-        "seed publish must land"
-    );
+    assert_eq!(ed.diagnostic_counts(bid), (1, 0), "seed publish must land");
 
     // A later publish computed against a version we've already moved past
     // (the server hasn't caught up with our own edits yet) must be dropped,
@@ -272,7 +270,7 @@ fn publish_with_a_stale_version_is_dropped_and_does_not_disturb_stored_diagnosti
     ed.ingest_publish_diagnostics(sid, stale);
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 0),
         "a stale-versioned publish must be dropped, leaving the prior stored diagnostics untouched"
     );
@@ -324,7 +322,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
         }],
     );
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 0),
         "seed diagnostic must land"
     );
@@ -341,7 +339,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
     ed.close_buffer(bid);
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (0, 0),
         "diagnostics for a closed buffer must not linger forever"
     );
@@ -396,7 +394,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         }],
     );
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 0),
         "seed diagnostic must land"
     );
@@ -432,7 +430,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     ed.settle();
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (0, 0),
         "diagnostics for a closed buffer must not linger forever"
     );
@@ -484,18 +482,14 @@ fn lsp_stop_clears_stored_diagnostics_for_the_detached_buffer() {
         Some(current_gen),
     ));
     ed.ingest_publish_diagnostics(sid, params);
-    assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
-        (1, 0),
-        "seed publish must land"
-    );
+    assert_eq!(ed.diagnostic_counts(bid), (1, 0), "seed publish must land");
 
     ed.lsp_stop(&hume_scripting::LspServerTarget::Language(
         "rust".to_string(),
     ));
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (0, 0),
         "diagnostics from the stopped server must not survive the stop"
     );
@@ -591,12 +585,16 @@ fn zero_width_diagnostic_on_minimal_buffer_is_widened_onto_the_newline() {
     ed.ingest_publish_diagnostics(sid, params);
 
     assert_eq!(
-        ed.lsp.diagnostic_counts_for_test(bid),
+        ed.diagnostic_counts(bid),
         (1, 0),
         "an unwidenable zero-width diagnostic must widen onto the newline and be counted"
     );
     assert_eq!(
-        ed.lsp.diagnostics_for_test(bid).collect::<Vec<_>>(),
+        ed.state
+            .buffer_positions
+            .diagnostics
+            .spans_for_test(bid)
+            .collect::<Vec<_>>(),
         vec![(0, 1)],
         "the widened diagnostic must also be visible to for_range, not just counts"
     );

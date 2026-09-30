@@ -151,10 +151,11 @@ fn commit_changeset(
     let cs_for_return = cs.clone();
     doc_ops::apply_doc_edit(
         &mut state.buffers,
-        &state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut state.panes,
             &mut state.input,
+            &mut state.buffer_positions,
+            &mut state.config.decorations,
         ),
         &mut state.active_session,
         pid,

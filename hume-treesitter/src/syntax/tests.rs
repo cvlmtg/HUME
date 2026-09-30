@@ -217,8 +217,6 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
         "a baked contiguous chain must produce an old_tree for incremental parse"
     );
 
-    // clear_layers drops the committed tree, so the next tick must full-reparse.
-    syn.clear_layers();
     syn.install(parse_done_for(&bundle, bid, 1, "{\"a\":1}\n"), 1);
     assert!(syn.layers().is_some());
     // Force a chain break: pending edit gen does not follow tree_gen+1.
@@ -868,40 +866,5 @@ fn install_discards_a_result_for_an_already_installed_generation() {
     assert!(
         !syn.is_in_flight(),
         "the redundant result must still be treated as answering any in-flight request"
-    );
-}
-
-// ── clear_layers ──────────────────────────────────────────────────────────
-
-#[test]
-fn clear_layers_keeps_attachment_next_tick_full_reparses() {
-    require_grammars(&["json"]);
-    let bundle = make_bundle("json", "tree_sitter_json");
-    let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
-    );
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
-    assert!(syn.layers().is_some());
-
-    syn.clear_layers();
-    assert!(
-        syn.layers().is_none(),
-        "clear_layers must drop committed layers"
-    );
-    assert_eq!(
-        syn.bundle().config_gen,
-        bundle.config_gen,
-        "attachment must survive clear_layers"
-    );
-
-    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{\"a\":1}\n"), &empty_langs());
-    assert!(
-        outcome.request.unwrap().old_tree.is_none(),
-        "with layers cleared, the next tick must request a full reparse"
     );
 }

@@ -617,7 +617,12 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     ed.drain_lsp();
 
-    let before: Vec<(usize, usize)> = ed.lsp.diagnostics_for_test(bid).collect();
+    let before: Vec<(usize, usize)> = ed
+        .state
+        .buffer_positions
+        .diagnostics
+        .spans_for_test(bid)
+        .collect();
     assert_eq!(
         before,
         vec![(6, 11)],
@@ -647,7 +652,12 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
         "a NONE-sync server must get no didChange, got: {:?}",
         log.borrow()
     );
-    let after: Vec<(usize, usize)> = ed.lsp.diagnostics_for_test(bid).collect();
+    let after: Vec<(usize, usize)> = ed
+        .state
+        .buffer_positions
+        .diagnostics
+        .spans_for_test(bid)
+        .collect();
     assert_eq!(
         after,
         vec![(7, 12)],

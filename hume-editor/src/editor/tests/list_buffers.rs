@@ -377,10 +377,11 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
     let bid = ed.focused_buffer_id();
     let result = doc_ops::apply_doc_history_walk(
         &mut ed.state.buffers,
-        &ed.state.config.decorations,
         &mut crate::editor::position_stores::PositionStores::new(
             &mut ed.state.panes,
             &mut ed.state.input,
+            &mut ed.state.buffer_positions,
+            &mut ed.state.config.decorations,
         ),
         &ed.state.active_session,
         focused,
