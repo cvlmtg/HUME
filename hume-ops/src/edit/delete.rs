@@ -12,7 +12,7 @@ use ropey::RopeSlice;
 
 use super::apply_edit;
 use crate::motion::prev_word_start;
-use crate::register::{Piece, Shape, removed_piece};
+use crate::register::{Piece, Shape};
 
 /// What `d` or `c` did: the edit, and one register entry per selection, in
 /// document order, holding the text that selection took out of the buffer.
@@ -31,11 +31,9 @@ pub struct Removal {
 /// See [`remove`].
 pub fn delete_selection(state: EditState) -> Removal {
     let mut yanked = Vec::new();
-    let edited = remove_each(
-        state,
-        remove,
-        |sel, removed| yanked.push(removed_piece(sel, removed)),
-    );
+    let edited = remove_each(state, remove, |sel, removed| {
+        yanked.push(removed_piece(sel, removed))
+    });
     Removal { edited, yanked }
 }
 
@@ -125,17 +123,27 @@ pub fn delete_char_forward(state: EditState) -> Edited {
 ///   cursor moves back onto what follows it. No-op at the buffer start.
 /// - **Selection**: removed as [`delete_selection`] removes it.
 pub fn delete_char_backward(state: EditState) -> Edited {
+    delete_back_to(state, |sel| prev_cluster(sel.text(), sel.head().into()))
+}
+
+/// The backward deletes' shared shape: each cursor deletes back from its
+/// head to where `start_of` says, and keeps its place when there is nothing
+/// to delete; each selection is removed as [`delete_selection`] removes it.
+fn delete_back_to(
+    state: EditState,
+    start_of: impl Fn(SelectionView<'_>) -> Option<hume_rope::cluster::ClusterStart>,
+) -> Edited {
     apply_edit(state, |b, sel| {
         if !sel.is_cursor() {
             return remove(b, sel).cursor;
         }
         let head = sel.head();
-        let Some(range) = prev_cluster(b.text(), head.into())
-            .and_then(|prev| ClusterRange::between(b.text().full_slice(), prev, head.into()))
-        else {
-            return Landing::kept(sel.selection());
-        };
-        Landing::cursor(b.delete(range))
+        match start_of(sel)
+            .and_then(|start| ClusterRange::between(b.text().full_slice(), start, head.into()))
+        {
+            Some(range) => Landing::cursor(b.delete(range)),
+            None => Landing::kept(sel.selection()),
+        }
     })
 }
 
@@ -147,25 +155,19 @@ pub fn delete_char_backward(state: EditState) -> Edited {
 /// handled by walking the line forward with tab expansion to locate the char
 /// offset at the target column ([`char_pos_at_display_col`]).
 pub fn dedent_tab_backward(state: EditState, tab_width: u8) -> Edited {
-    apply_edit(state, |b, sel| {
-        debug_assert!(
-            sel.is_cursor(),
-            "dedent_tab_backward called on non-collapsed selection"
-        );
-        let text = b.text();
-        let p = sel.head().offset();
+    debug_assert!(
+        state.view().iter().all(|sel| sel.is_cursor()),
+        "dedent_tab_backward called on non-collapsed selection"
+    );
+    delete_back_to(state, |sel| {
+        let text = sel.text();
         let line_idx = sel.head_line();
-        let display_col = display_col_in_line(text, line_idx, p, tab_width);
+        let display_col = display_col_in_line(text, line_idx, sel.head().offset(), tab_width);
         let prev_stop = hume_rope::column::BufferLineCol::new(hume_rope::width::prev_tab_stop(
             display_col.get() as usize,
             tab_width,
         ) as u32);
-        let target = char_pos_at_display_col(text, line_idx, prev_stop, tab_width);
-        let head = sel.head();
-        match ClusterRange::between(text.full_slice(), target.min(head), head.into()) {
-            Some(range) => Landing::cursor(b.delete(range)),
-            None => Landing::cursor(b.at(head)),
-        }
+        Some(char_pos_at_display_col(text, line_idx, prev_stop, tab_width).min(sel.head()))
     })
 }
 
@@ -177,16 +179,13 @@ pub fn dedent_tab_backward(state: EditState, tab_width: u8) -> Edited {
 ///
 /// Non-yanking: Ctrl-w is readline-style word-rubout, not a kill.
 pub fn delete_word_backward(state: EditState, chars: WordChars<'_>) -> Edited {
-    apply_edit(state, |b, sel| {
-        if !sel.is_cursor() {
-            return remove(b, sel).cursor;
-        }
-        let p = sel.head();
-        let word_start = prev_word_start(b.text(), p, is_word_boundary, chars);
-        let Some(range) = ClusterRange::between(b.text().full_slice(), word_start, p.into()) else {
-            return Landing::kept(sel.selection());
-        };
-        Landing::cursor(b.delete(range))
+    delete_back_to(state, |sel| {
+        Some(prev_word_start(
+            sel.text(),
+            sel.head(),
+            is_word_boundary,
+            chars,
+        ))
     })
 }
 
@@ -199,15 +198,38 @@ pub fn delete_word_backward(state: EditState, chars: WordChars<'_>) -> Edited {
 /// nothing, like `i`.
 pub fn delete_selection_content(state: EditState) -> Removal {
     let mut yanked = Vec::new();
-    let edited = remove_each(
-        state,
-        remove_content,
-        |_, removed| {
-            yanked.push(Piece::new(
-                removed.map_or_else(String::new, |r| r.to_string()),
-                Shape::Charwise,
-            ));
-        },
-    );
+    let edited = remove_each(state, remove_content, |_, removed| {
+        yanked.push(piece(removed, Shape::Charwise));
+    });
     Removal { edited, yanked }
+}
+
+/// What `d` puts in the register for `sel`, given the text it removed:
+/// whole lines paste as lines, anything else as characters. Empty when `d`
+/// removed nothing.
+fn removed_piece(sel: SelectionView<'_>, removed: Option<RopeSlice<'_>>) -> Piece {
+    let shape = if removed.is_some() && sel.is_linewise() {
+        Shape::Linewise
+    } else {
+        Shape::Charwise
+    };
+    piece(removed, shape)
+}
+
+/// The register entry for `removed`, pasting as `shape`; empty when nothing
+/// was removed.
+fn piece(removed: Option<RopeSlice<'_>>, shape: Shape) -> Piece {
+    Piece::new(removed.map_or_else(String::new, |r| r.to_string()), shape)
+}
+
+/// What `d` would put in the register for each selection, in document order,
+/// without changing the text: the one rule for what a selection's text is in
+/// a register, and the shape it pastes in. An entry is empty for a selection
+/// `d` would remove nothing from.
+pub fn yank_selections(state: &EditState) -> Vec<Piece> {
+    state
+        .view()
+        .iter()
+        .map(|sel| removed_piece(sel, removal(sel)))
+        .collect()
 }

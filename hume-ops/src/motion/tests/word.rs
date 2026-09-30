@@ -460,13 +460,13 @@ fn select_next_word_multi_cursor() {
     // Cursor 1 at 'h'(0): next word is "foo"(6..8).
     // Cursor 2 at 'f'(6): next word is "bar"(10..12).
     assert_state!(
-        "-[h]>ello -[f]>oo bar\n",
+        "-{h}>ello -[f]>oo bar\n",
         |(text, sels)| cmd_select_next_word(
             test_fixtures::testing::state(text, sels),
             1,
             WordCtx::bare(MotionMode::Move)
         ),
-        "hello -[foo]> -[bar]>\n"
+        "hello -{foo}> -[bar]>\n"
     );
 }
 
@@ -477,13 +477,13 @@ fn select_prev_word_multi_cursor() {
     // Cursor 2 on "world" (head=14) → prev word "hello" → [4,8].
     // No merging because [0,2] and [4,8] are disjoint.
     assert_state!(
-        "foo -[hello]> -[world]> bar\n",
+        "foo -{hello}> -[world]> bar\n",
         |(text, sels)| cmd_select_prev_word(
             test_fixtures::testing::state(text, sels),
             1,
             WordCtx::bare(MotionMode::Move)
         ),
-        "-[foo]> -[hello]> world bar\n"
+        "-{foo}> -[hello]> world bar\n"
     );
 }
 
@@ -696,13 +696,13 @@ fn select_next_word_around_multi_cursor_adjacent_cursors_stay_disjoint() {
     // separate selections rather than merging.
     // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,'\n'=11.
     assert_state!(
-        "-[f]>oo -[b]>ar baz\n",
+        "-{f}>oo -[b]>ar baz\n",
         |(text, sels)| cmd_select_next_word(
             test_fixtures::testing::state(text, sels),
             1,
             WordCtx::around(MotionMode::Move)
         ),
-        "foo-[ bar]>-[ baz]>\n"
+        "foo-{ bar}>-[ baz]>\n"
     );
 }
 
@@ -1138,13 +1138,13 @@ fn extend_select_next_word_multi_cursor() {
     // cursor2 at 'b'(8): anchor unit "baz"(8,10); select_next_word(head=8) → "qux"(12,14) → grows to "baz qux".
     // Results (0,6) and (8,14) are disjoint, so no merge.
     assert_state!(
-        "-[f]>oo bar -[b]>az qux\n",
+        "-{f}>oo bar -[b]>az qux\n",
         |(text, sels)| cmd_select_next_word(
             test_fixtures::testing::state(text, sels),
             1,
             WordCtx::bare(MotionMode::Extend)
         ),
-        "-[foo bar]> -[baz qux]>\n"
+        "-{foo bar}> -[baz qux]>\n"
     );
 }
 
@@ -1446,7 +1446,7 @@ fn extend_select_prev_word_multi_cursor_shrink_causes_merge() {
     // selection spanning "foo bar baz".
     // "foo bar baz\n": f=0..2,' '=3,b=4..6,' '=7,b=8..10,'\n'=11.
     assert_state!(
-        "foo -[bar]> -[b]>az\n",
+        "foo -{bar}> -[b]>az\n",
         |(text, sels)| cmd_select_prev_word(
             test_fixtures::testing::state(text, sels),
             1,

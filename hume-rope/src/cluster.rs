@@ -71,18 +71,6 @@ impl From<ClusterStart> for ClusterBound {
     }
 }
 
-impl From<ClusterStart> for CharOffset {
-    fn from(start: ClusterStart) -> Self {
-        start.0
-    }
-}
-
-impl From<ClusterBound> for CharOffset {
-    fn from(bound: ClusterBound) -> Self {
-        bound.0
-    }
-}
-
 /// One or more whole clusters, in order. Both faces of the far end are
 /// carried: [`Self::last`] is the start of the last covered cluster (where a
 /// cursor on it sits) and [`Self::end`] is the boundary after it (where a
@@ -99,6 +87,11 @@ impl ClusterRange {
     /// in `slice`, with `start <= last` and `end` the boundary after `last`.
     pub(crate) fn mint(start: ClusterStart, last: ClusterStart, end: ClusterBound) -> Self {
         Self { start, last, end }
+    }
+
+    /// The one cluster starting at `cluster`.
+    pub fn of(slice: RopeSlice<'_>, cluster: ClusterStart) -> Self {
+        Self::mint(cluster, cluster, cluster_end(slice, cluster))
     }
 
     /// The clusters from `first` through `last`, both included. `None` when
@@ -193,12 +186,6 @@ impl ClusterRange {
             (self.last, self.end)
         };
         Self::mint(self.start.min(other.start), last, end)
-    }
-}
-
-impl From<ClusterRange> for ExclusiveRange<CharOffset> {
-    fn from(range: ClusterRange) -> Self {
-        range.chars()
     }
 }
 

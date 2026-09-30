@@ -225,7 +225,7 @@ fn capital_s_splits_selection_on_newlines() {
 
     ed.handle_key(key('S'));
 
-    assert_eq!(state(&ed), "-[foo]>\n-[bar]>\n-[baz]>\n");
+    assert_eq!(state(&ed), "-{foo}>\n-[bar]>\n-[baz]>\n");
 }
 
 // ── `ctrl-,` removes the primary selection ────────────────────────────────────
@@ -234,7 +234,7 @@ fn capital_s_splits_selection_on_newlines() {
 /// leaving all other cursors intact. Plain `,` must still keep only the primary.
 #[test]
 fn ctrl_comma_removes_primary_selection() {
-    let mut ed = editor_from_kitty("-[h]>ello -[w]>orld\n");
+    let mut ed = editor_from_kitty("-{h}>ello -[w]>orld\n");
 
     ed.handle_key(key_ctrl(','));
 
@@ -244,7 +244,7 @@ fn ctrl_comma_removes_primary_selection() {
 
 #[test]
 fn plain_comma_still_keeps_primary_selection() {
-    let mut ed = editor_from("-[h]>ello -[w]>orld\n");
+    let mut ed = editor_from("-{h}>ello -[w]>orld\n");
 
     ed.handle_key(key(','));
 

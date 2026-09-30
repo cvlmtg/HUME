@@ -108,7 +108,7 @@ fn around_line_empty_line() {
 fn inner_line_multi_cursor_same_line_merges() {
     // Two cursors on the same line both select that line's content, then merge.
     assert_state!(
-        "-[h]>el-[l]>o\n",
+        "-{h}>el-[l]>o\n",
         |(text, sels)| cmd_inner_line(
             test_fixtures::testing::state(text, sels),
             0,
@@ -121,25 +121,25 @@ fn inner_line_multi_cursor_same_line_merges() {
 #[test]
 fn inner_line_multi_cursor_different_lines() {
     assert_state!(
-        "-[h]>ello\n-[w]>orld\n",
+        "-{h}>ello\n-[w]>orld\n",
         |(text, sels)| cmd_inner_line(
             test_fixtures::testing::state(text, sels),
             0,
             MotionMode::Move
         ),
-        "-[hello]>\n-[world]>\n"
+        "-{hello}>\n-[world]>\n"
     );
 }
 
 #[test]
 fn around_line_multi_cursor_different_lines() {
     assert_state!(
-        "-[h]>ello\n-[w]>orld\n",
+        "-{h}>ello\n-[w]>orld\n",
         |(text, sels)| cmd_around_line(
             test_fixtures::testing::state(text, sels),
             0,
             MotionMode::Move
         ),
-        "-[hello\n]>-[world\n]>"
+        "-{hello\n}>-[world\n]>"
     );
 }

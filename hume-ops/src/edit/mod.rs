@@ -18,9 +18,8 @@ pub use align::align_selections;
 pub use case::{make_text_capitalized, make_text_lowercase, make_text_uppercase};
 pub use delete::{
     Removal, dedent_tab_backward, delete_char_backward, delete_char_forward, delete_selection,
-    delete_selection_content, delete_word_backward,
+    delete_selection_content, delete_word_backward, yank_selections,
 };
-pub(crate) use delete::removal;
 pub use indent::{indent_lines, unindent_lines};
 pub use insert::{
     clear_blank_line_indent, insert_char, insert_newline_indent, insert_str, insert_tab,
@@ -47,7 +46,7 @@ pub fn repeat_edit(count: usize, state: EditState, cmd: impl Fn(EditState) -> Ed
 /// selection, and returns where that selection lands; the primary stays on
 /// the primary's result. The builder applies its operations in position
 /// order, so the order `f` records them in does not matter.
-pub fn apply_edit<F>(state: EditState, mut f: F) -> Edited
+pub(crate) fn apply_edit<F>(state: EditState, mut f: F) -> Edited
 where
     F: for<'a, 'id> FnMut(&mut EditBuilder<'a, 'id>, SelectionView<'a>) -> Landing<'id>,
 {

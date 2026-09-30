@@ -409,7 +409,7 @@ fn p6_reload_keeps_every_selection() {
     let replacement = Buffer::at_start(BufferText::from("top\nline0\nline1\nline2\n"));
     ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
 
-    assert_eq!(state(&ed), "top\nline0\n-[l]>ine1\n-[l]>ine2\n");
+    assert_eq!(state(&ed), "top\nline0\n-{l}>ine1\n-[l]>ine2\n");
 }
 
 // ── :e! undo-retention ──────────────────────────────────────────────────────

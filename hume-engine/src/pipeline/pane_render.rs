@@ -165,7 +165,13 @@ pub(crate) fn render_pane(
             }
             _ => {
                 let line = line.get_or_insert_with(|| {
-                    LineStyle::enter(pos.line, last_content_line, pane_ctx, style)
+                    LineStyle::enter(
+                        pos.line,
+                        last_content_line,
+                        compose_ctx.primary_head_line,
+                        pane_ctx,
+                        style,
+                    )
                 });
                 style
                     .styles
@@ -238,6 +244,7 @@ impl LineStyle {
     fn enter(
         line_idx: hume_rope::line::ContentLine,
         last_content_line: hume_rope::line::ContentLine,
+        primary_head_line: hume_rope::line::ContentLine,
         pane_ctx: &PaneRenderCtx,
         style: &mut super::StyleScratch,
     ) -> Self {
@@ -258,15 +265,10 @@ impl LineStyle {
         );
         let start_char = hume_rope::lines::line_start_char(pane_ctx.rope, line_idx.into());
         let end_char = hume_rope::lines::next_line_start(pane_ctx.rope, line_idx.into());
-        let chars = ExclusiveRange::new(start_char, end_char);
-        // Cursorline highlights only the primary cursor's line.
-        let is_head_line = style
-            .primary_idx_in_sorted
-            .and_then(|i| style.sorted_sels.get(i))
-            .is_some_and(|s| chars.contains(s.cursor.offset()));
         Self {
-            chars,
-            is_head_line,
+            chars: ExclusiveRange::new(start_char, end_char),
+            // Cursorline highlights only the primary cursor's line.
+            is_head_line: line_idx == primary_head_line,
             tint,
         }
     }

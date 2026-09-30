@@ -445,3 +445,10 @@ fn truncate_to_width_never_splits_a_cluster() {
     let s = format!("{ZWJ_FAMILY}b");
     assert_eq!(truncate_to_width(&s, 1, 4), ("", 0));
 }
+
+/// A space carrying a combining mark is one blank cluster, as
+/// `leading_indent` measures it, so the tab after it still counts.
+#[test]
+fn indent_depth_measures_a_space_with_a_combining_mark_as_one_blank_cluster() {
+    assert_eq!(indent_depth(" \u{301}\tx", 4), 1);
+}

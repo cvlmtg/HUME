@@ -177,14 +177,6 @@ fn builder_insert_char_normalizes_a_lone_cr() {
 }
 
 #[test]
-#[should_panic(expected = "old_pos (CharOffset(3)) != doc_len (CharOffset(10))")]
-fn builder_finish_consumed_panics_on_unconsumed() {
-    let mut b = ChangeSetBuilder::new(co(10));
-    b.retain(3);
-    b.finish_consumed(); // should panic: 7 chars unconsumed
-}
-
-#[test]
 fn is_identity_true_for_identity() {
     let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();

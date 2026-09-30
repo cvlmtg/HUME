@@ -349,6 +349,17 @@ pub(in crate::editor) enum JumpRule {
     Threshold { is_jump: bool },
 }
 
+/// Snapshot `t`'s pane's current selections as a `JumpEntry`.
+pub(in crate::editor) fn current_jump_entry(
+    state: &EditorState,
+    view: &EngineView,
+    t: CommandPane,
+) -> JumpEntry {
+    let bid = t.bid(view);
+    let sels = t.state(&state.panes.state, view).selections().clone();
+    JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
+}
+
 /// Runs `body`, a navigation of `t`'s pane, and records where it started in
 /// the pane's jump list according to `rule`. Returns `body`'s result and
 /// whether the pane moved (its buffer or, under `Threshold`, its primary
@@ -379,17 +390,19 @@ pub(in crate::editor) fn with_jump<R>(
 ) -> (R, bool) {
     let pid = t.pid();
     let pre_bid = t.bid(view);
-    let text = state.buffers.get(pre_bid).text();
-    let selections = t.state(&state.panes.state, view).selections().clone();
     let entry = match rule {
-        JumpRule::IfMoved => JumpEntry::new(selections, text, pre_bid),
-        JumpRule::Threshold { .. } => JumpEntry::new(
-            EditState::bind(text, selections)
-                .keep_primary()
-                .into_selections(),
-            text,
-            pre_bid,
-        ),
+        JumpRule::IfMoved => current_jump_entry(state, view, t),
+        JumpRule::Threshold { .. } => {
+            let text = state.buffers.get(pre_bid).text();
+            let selections = t.state(&state.panes.state, view).selections().clone();
+            JumpEntry::new(
+                EditState::bind(text, selections)
+                    .keep_primary()
+                    .into_selections(),
+                text,
+                pre_bid,
+            )
+        }
     };
     if state.mode() == Mode::Insert && state.focus.id() == pid {
         t.state_mut(&mut state.panes.state, view).typed_run = None;

@@ -284,22 +284,22 @@ fn backspace_at_char_col_zero_plain_delete() {
 #[test]
 fn backspace_dedent_two_cursors() {
     // Two lines, each "  x", cursor on 'x' (col 2) → dedent each to col 0.
-    let mut ed = editor_from("  -[x]>\n  -[y]>\n");
+    let mut ed = editor_from("  -{x}>\n  -[y]>\n");
     ed.handle_key(key('i'));
     ed.handle_key(key_backspace());
-    assert_eq!(state(&ed), "-[x]>\n-[y]>\n");
+    assert_eq!(state(&ed), "-{x}>\n-[y]>\n");
 }
 
 #[test]
 fn backspace_dedent_all_or_nothing() {
     // One cursor in leading ws, one in content → all fall back to plain
     // backspace (the leading-ws cursor does NOT dedent).
-    let mut ed = editor_from("  -[x]>\nab-[c]>\n");
+    let mut ed = editor_from("  -{x}>\nab-[c]>\n");
     ed.handle_key(key('i'));
     ed.handle_key(key_backspace());
     // Cursor 0 (on 'x', col 2): plain backspace deletes ' ' before it → " x".
     // Cursor 1 (on 'c', col 2): plain backspace deletes 'b' before it → "ac".
-    assert_eq!(state(&ed), " -[x]>\na-[c]>\n");
+    assert_eq!(state(&ed), " -{x}>\na-[c]>\n");
 }
 
 #[test]

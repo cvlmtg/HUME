@@ -202,13 +202,13 @@ fn extend_around_paragraph_grows_past_current() {
 #[test]
 fn inner_paragraph_multi_cursor_distinct_paragraphs() {
     assert_state!(
-        "-[h]>ello\n\n-[w]>orld\n",
+        "-{h}>ello\n\n-[w]>orld\n",
         |(text, sels)| cmd_inner_paragraph(
             test_fixtures::testing::state(text, sels),
             0,
             MotionMode::Move
         ),
-        "-[hello]>\n\n-[world]>\n"
+        "-{hello}>\n\n-[world]>\n"
     );
 }
 

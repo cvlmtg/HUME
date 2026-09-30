@@ -571,7 +571,7 @@ fn search_n_after_sift_within_uses_original_search() {
     ed.handle_key(key('n'));
     let st = state(&ed);
     assert!(
-        st.contains("-[ab]>") || st.contains("<[ab]-"),
+        st.contains("-{ab}>") || st.contains("<{ab}-"),
         "expected primary on 'ab', got: {st}"
     );
 }

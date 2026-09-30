@@ -343,9 +343,7 @@ fn nearest_bracket(sel: SelectionView<'_>) -> Option<(CharOffset, char, char)> {
     let span: ExclusiveRange<CharOffset> = if lines.start == lines.end {
         sel.covered().chars()
     } else {
-        ClusterRange::through(text.full_slice(), sel.head(), sel.head())
-            .expect("one cluster")
-            .chars()
+        ClusterRange::of(text.full_slice(), sel.head()).chars()
     };
     if sel.head().offset() == span.start {
         text.chars_at(span.start)

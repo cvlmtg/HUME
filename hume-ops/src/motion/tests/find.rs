@@ -229,9 +229,9 @@ fn find_forward_multi_cursor() {
     // cursor1 at 'h'(0) → next 'a' at 1.
     // cursor2 at 'a'(4) → skips it, next 'a' at 8.
     assert_state!(
-        "-[h]>a b-[a]> c a\n",
+        "-{h}>a b-[a]> c a\n",
         |(text, sels)| fwd(text, sels, 'a', FindKind::Inclusive),
-        "h-[a]> ba c -[a]>\n"
+        "h-{a}> ba c -[a]>\n"
     );
 }
 

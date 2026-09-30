@@ -3,20 +3,16 @@
 
 use super::super::*;
 use crate::auto_pairs::insert_pair_close;
+use crate::edit::yank_selections;
 use crate::register::Piece;
-use crate::register::yank_selections;
 use crate::surround::wrap_each_selection;
 use test_fixtures::assert_state;
 use test_fixtures::testing::parse_state;
-use test_fixtures::unicode::{ALL, LONE_MARK};
+use test_fixtures::unicode::{ALL, LONE_MARK, single_clusters};
 use unicode_segmentation::UnicodeSegmentation;
 
 fn clusters(s: &str) -> usize {
     s.graphemes(true).count()
-}
-
-fn single_cluster_samples() -> impl Iterator<Item = &'static str> {
-    ALL.iter().copied().filter(|s| clusters(s) == 1)
 }
 
 #[test]
@@ -32,7 +28,7 @@ fn delete_selection_removes_exactly_the_sample() {
 
 #[test]
 fn delete_char_forward_removes_exactly_one_cluster() {
-    for s in single_cluster_samples() {
+    for s in single_clusters() {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
             |(text, sels)| delete_char_forward(test_fixtures::testing::state(text, sels)),
@@ -43,7 +39,7 @@ fn delete_char_forward_removes_exactly_one_cluster() {
 
 #[test]
 fn delete_char_backward_removes_exactly_one_cluster() {
-    for s in single_cluster_samples() {
+    for s in single_clusters() {
         assert_state!(
             &format!("x\n{s}-[b]>\n"),
             |(text, sels)| delete_char_backward(test_fixtures::testing::state(text, sels)),
@@ -87,7 +83,7 @@ fn insert_char_replaces_a_selection_ending_on_the_sample() {
 
 #[test]
 fn paste_after_lands_past_the_whole_cluster() {
-    for s in single_cluster_samples() {
+    for s in single_clusters() {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
             |(text, sels)| paste_after(
@@ -101,7 +97,7 @@ fn paste_after_lands_past_the_whole_cluster() {
 
 #[test]
 fn paste_before_selects_the_pasted_cluster() {
-    for s in single_cluster_samples() {
+    for s in single_clusters() {
         let expected = if s == LONE_MARK {
             "x\n-[Z\u{301}]>b\n".to_string()
         } else {

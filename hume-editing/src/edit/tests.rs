@@ -78,7 +78,7 @@ fn then_refuses_an_edit_of_another_text() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "the changes do not lead to `after`")]
 fn a_text_change_refuses_texts_its_changes_do_not_map() {
     let before = BufferText::from("ab");
     let after = BufferText::from("abc");

@@ -141,9 +141,7 @@ pub fn expand_word_unit(
     let at_bol = hit_eol || (ClusterBound::from(run_start) == min_start && min_start_is_bol);
 
     if run_start < range.start() && !at_bol {
-        return range.hull(
-            ClusterRange::through(text.full_slice(), run_start, run_start).expect("one cluster"),
-        );
+        return range.hull(ClusterRange::of(text.full_slice(), run_start));
     }
 
     // Trailing fallback: first word of a line, punctuation immediately
@@ -217,7 +215,7 @@ pub(crate) fn anchor_unit(
     chars: WordChars<'_>,
 ) -> ClusterRange {
     if is_blank_at(text, anchor) {
-        ClusterRange::through(text.full_slice(), anchor, anchor).expect("one cluster")
+        ClusterRange::of(text.full_slice(), anchor)
     } else {
         inner_word_impl(text, anchor, is_boundary, chars).expect("a cluster start")
     }

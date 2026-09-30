@@ -394,13 +394,13 @@ fn select_uppercase_word_around_move_spans_punctuation_and_whitespace() {
 #[test]
 fn inner_word_multi_cursor_different_words() {
     assert_state!(
-        "-[h]>ello -[w]>orld\n",
+        "-{h}>ello -[w]>orld\n",
         |(text, sels)| cmd_inner_word(
             test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
-        "-[hello]> -[world]>\n"
+        "-{hello}> -[world]>\n"
     );
 }
 
@@ -408,7 +408,7 @@ fn inner_word_multi_cursor_different_words() {
 fn inner_word_multi_cursor_same_word_merges() {
     // Two cursors in the same word: both select "hello", merge to one selection.
     assert_state!(
-        "-[h]>el-[l]>o world\n",
+        "-{h}>el-[l]>o world\n",
         |(text, sels)| cmd_inner_word(
             test_fixtures::testing::state(text, sels),
             0,
@@ -422,13 +422,13 @@ fn inner_word_multi_cursor_same_word_merges() {
 fn around_word_multi_cursor() {
     // "hello world foo\n": cursor 0 on 'h'(0) → "hello "(0..5); cursor 1 on 'f'(12) → " foo"(11..14).
     assert_state!(
-        "-[h]>ello world-[ ]>foo\n",
+        "-{h}>ello world-[ ]>foo\n",
         |(text, sels)| cmd_around_word(
             test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
-        "-[hello ]>world-[ foo]>\n"
+        "-{hello }>world-[ foo]>\n"
     );
 }
 
@@ -436,13 +436,13 @@ fn around_word_multi_cursor() {
 #[allow(non_snake_case)]
 fn inner_uppercase_word_multi_cursor() {
     assert_state!(
-        "-[h]>ello.world -[f]>oo\n",
+        "-{h}>ello.world -[f]>oo\n",
         |(text, sels)| cmd_inner_uppercase_word(
             test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
-        "-[hello.world]> -[foo]>\n"
+        "-{hello.world}> -[foo]>\n"
     );
 }
 
@@ -519,13 +519,13 @@ fn around_uppercase_word_cursor_on_whitespace_extends_to_next_uppercase_word() {
 fn around_uppercase_word_multi_cursor() {
     // "hello world foo\n": cursor on 'h'(0) → "hello "(0..5); cursor on 'f'(12) → " foo"(11..14).
     assert_state!(
-        "-[h]>ello world-[ ]>foo\n",
+        "-{h}>ello world-[ ]>foo\n",
         |(text, sels)| cmd_around_uppercase_word(
             test_fixtures::testing::state(text, sels),
             0,
             WordCtx::bare(MotionMode::Move)
         ),
-        "-[hello ]>world-[ foo]>\n"
+        "-{hello }>world-[ foo]>\n"
     );
 }
 

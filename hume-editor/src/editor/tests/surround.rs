@@ -10,7 +10,7 @@ fn surround_select_paren() {
     for ch in "ms(".chars() {
         ed.handle_key(key(ch));
     }
-    assert_eq!(state(&ed), "-[(]>hello-[)]>\n");
+    assert_eq!(state(&ed), "-{(}>hello-[)]>\n");
 }
 
 /// `ms(` → `d` deletes the surrounding parens, leaving two cursors.
@@ -23,7 +23,7 @@ fn surround_delete_paren() {
     ed.handle_key(key('d'));
     // Two cursors remain: one where `(` was (now `h`), one where `)` was
     // (now the structural `\n`).
-    assert_eq!(state(&ed), "-[h]>ello-[\n]>");
+    assert_eq!(state(&ed), "-{h}>ello-[\n]>");
 }
 
 /// `ms(` → `r[` replaces `()` with `[]` via smart replace.
@@ -35,7 +35,7 @@ fn surround_replace_paren_with_bracket() {
     }
     ed.handle_key(key('r'));
     ed.handle_key(key('['));
-    assert_eq!(state(&ed), "-[[]>hello-[]]>\n");
+    assert_eq!(state(&ed), "-{[}>hello-[]]>\n");
 }
 
 /// `ms"` → `r(` replaces `""` with `()` (symmetric → asymmetric).
@@ -47,7 +47,7 @@ fn surround_replace_quote_with_paren() {
     }
     ed.handle_key(key('r'));
     ed.handle_key(key('('));
-    assert_eq!(state(&ed), "-[(]>hello-[)]>\n");
+    assert_eq!(state(&ed), "-{(}>hello-[)]>\n");
 }
 
 // ── surround-add (`mw`) ───────────────────────────────────────────────────────
@@ -92,11 +92,11 @@ fn mw_wraps_unknown_char_symmetric() {
 
 #[test]
 fn mw_wraps_multi_cursor() {
-    let mut ed = editor_from("-[ab]>c-[de]>f\n");
+    let mut ed = editor_from("-{ab}>c-[de]>f\n");
     ed.handle_key(key('m'));
     ed.handle_key(key('w'));
     ed.handle_key(key('('));
-    assert_eq!(state(&ed), "(ab-[)]>c(de-[)]>f\n");
+    assert_eq!(state(&ed), "(ab-{)}>c(de-[)]>f\n");
 }
 
 #[test]

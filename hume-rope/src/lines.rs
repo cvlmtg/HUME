@@ -133,7 +133,7 @@ pub fn strip_line_break(line: &str) -> &str {
 /// break was actually removed: the one signal a caller needs to tell a line
 /// that ended in a break from one that didn't, without re-deriving the break
 /// rule itself via a separate `ends_with('\n')`.
-pub fn truncate_line_break(buf: &mut String) -> bool {
+pub(crate) fn truncate_line_break(buf: &mut String) -> bool {
     let stripped_len = strip_line_break(buf).len();
     let had_break = stripped_len != buf.len();
     buf.truncate(stripped_len);
@@ -263,9 +263,8 @@ pub fn is_space_char(ch: char) -> bool {
 }
 
 /// [`leading_whitespace_end`], plus the leading whitespace run's display
-/// width in `tab_width`, one scan instead of two. The run is clusters whose
-/// first char is a [`is_space_char`], so a space carrying a combining mark
-/// stays whole.
+/// width in `tab_width`, one scan instead of two. The run is measured by
+/// `width::blank_advance`'s rule, the one indent guides use too.
 ///
 /// The width is a [`BufferLineCol`]: display cells from the buffer line's
 /// start, which is exactly where a leading run sits. So indent math uses
@@ -277,16 +276,14 @@ pub fn leading_indent(
 ) -> (ClusterStart, BufferLineCol) {
     let mut display_width = BufferLineCol::new(0);
     for cluster in crate::grapheme::graphemes_at(rope.slice(..), line_start(rope, line).into()) {
-        if !is_space_char(cluster.first) {
-            return (cluster.start(), display_width);
-        }
         // `width` is origin-agnostic (see its own doc), so this is the
         // sanctioned `.get()` crossing into it.
-        display_width = display_width.advance_saturating(crate::width::space_advance(
-            cluster.first,
-            display_width.get() as usize,
-            tab_width,
-        ) as u32);
+        let Some(advance) =
+            crate::width::blank_advance(cluster.first, display_width.get() as usize, tab_width)
+        else {
+            return (cluster.start(), display_width);
+        };
+        display_width = display_width.advance_saturating(advance as u32);
     }
     // Every content line ends in a '\n', which the loop stops on.
     (line_break(rope, line), display_width)
@@ -499,12 +496,6 @@ impl LineText {
 
     pub fn as_str(&self) -> &str {
         &self.buf
-    }
-
-    /// Whether the loaded line ended in a `\n` (every line but the phantom
-    /// one past the structural `\n`).
-    pub fn had_break(&self) -> bool {
-        self.break_pos.is_some()
     }
 
     /// The loaded line's `\n`, when it has one.

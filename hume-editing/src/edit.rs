@@ -129,8 +129,16 @@ impl<'a> TextChange<'a> {
     /// # Panics
     /// Panics if `changes` does not map `before`'s length to `after`'s.
     pub fn new(before: &'a BufferText, after: &'a BufferText, changes: &'a ChangeSet) -> Self {
-        assert_eq!(changes.len_before(), before.len_chars());
-        assert_eq!(changes.len_after(), after.len_chars());
+        assert_eq!(
+            changes.len_before(),
+            before.len_chars(),
+            "TextChange: the changes do not start from `before`"
+        );
+        assert_eq!(
+            changes.len_after(),
+            after.len_chars(),
+            "TextChange: the changes do not lead to `after`"
+        );
         Self {
             before,
             after,

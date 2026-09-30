@@ -33,8 +33,7 @@ fn run_copy(ed: &mut Editor, down: bool, count: usize) {
 /// Build an editor from `initial`, run the copy command, and compare the
 /// resulting buffer+selections against `expected`, the `Editor`-driven
 /// counterpart of `assert_state!` for a command whose `DisplayLineMap` dependency
-/// keeps it out of `test-fixtures`' pure-fn signature. Used for cases
-/// that don't need to distinguish which selection ends up primary.
+/// keeps it out of `test-fixtures`' pure-fn signature.
 fn assert_copy_state(initial: &str, down: bool, count: usize, expected: &str) {
     let mut ed = copy_test_editor(initial);
     run_copy(&mut ed, down, count);
@@ -119,7 +118,7 @@ fn copy_next_multiple_cursors() {
     // Two cursors on line 0 at cols 1 and 2. Both get copied to line 1.
     // "foo\nbar\n": f(0),o(1),o(2),\n(3),b(4),a(5),r(6),\n(7).
     // Col 1 → offset 5 ('a'), col 2 → offset 6 ('r').
-    assert_copy_state("f-[o]>-[o]>\nbar\n", true, 1, "f-[o]>-[o]>\nb-[a]>-[r]>\n");
+    assert_copy_state("f-{o}>-[o]>\nbar\n", true, 1, "f-[o]>-[o]>\nb-{a}>-[r]>\n");
 }
 
 #[test]
@@ -130,7 +129,7 @@ fn copy_next_line_count_3() {
         "-[a]>\nb\nc\nd\ne\n",
         true,
         3,
-        "-[a]>\n-[b]>\n-[c]>\n-[d]>\ne\n",
+        "-[a]>\n-[b]>\n-[c]>\n-{d}>\ne\n",
     );
 }
 
@@ -138,7 +137,7 @@ fn copy_next_line_count_3() {
 fn copy_next_line_count_exceeds_buffer_clamps() {
     // Only 2 lines exist below the cursor's line: a count of 10 clamps at
     // the last real line instead of erroring.
-    assert_copy_state("-[a]>\nb\nc\n", true, 10, "-[a]>\n-[b]>\n-[c]>\n");
+    assert_copy_state("-[a]>\nb\nc\n", true, 10, "-[a]>\n-[b]>\n-{c}>\n");
 }
 
 #[test]
@@ -149,7 +148,7 @@ fn copy_next_line_count_3_range_selection() {
         "-[hello]>\nworld\nfoo!!\nbar!!\n",
         true,
         3,
-        "-[hello]>\n-[world]>\n-[foo!!]>\n-[bar!!]>\n",
+        "-[hello]>\n-[world]>\n-[foo!!]>\n-{bar!!}>\n",
     );
 }
 
@@ -158,10 +157,10 @@ fn copy_next_line_count_3_multiple_cursors() {
     // Two cursors on line 0 at cols 1 and 2; count=3 gives each 3 copies (6
     // new selections total), landing on the correct columns of lines 1-3.
     assert_copy_state(
-        "f-[o]>-[o]>\nbar\nbaz\nqux\n",
+        "f-{o}>-[o]>\nbar\nbaz\nqux\n",
         true,
         3,
-        "f-[o]>-[o]>\nb-[a]>-[r]>\nb-[a]>-[z]>\nq-[u]>-[x]>\n",
+        "f-[o]>-[o]>\nb-[a]>-[r]>\nb-[a]>-[z]>\nq-{u}>-[x]>\n",
     );
 }
 
@@ -183,7 +182,7 @@ fn copy_next_line_count_3_does_not_equal_three_presses() {
         "hell-[o]>\nhi\nworld\n",
         true,
         3,
-        "hell-[o]>\nh-[i]>\nworl-[d]>\n",
+        "hell-[o]>\nh-[i]>\nworl-{d}>\n",
     );
 }
 
@@ -209,7 +208,7 @@ fn copy_next_line_count_usize_max_returns_instantly() {
 fn copy_next_line_range_selection() {
     // Forward range selection covering "hello" (0..4). Copy to next line:
     // anchor=6 ('w'), head=10 ('d'), selecting "world". Both selections exist.
-    assert_copy_state("-[hello]>\nworld\n", true, 1, "-[hello]>\n-[world]>\n");
+    assert_copy_state("-[hello]>\nworld\n", true, 1, "-[hello]>\n-{world}>\n");
 }
 
 #[test]
@@ -265,7 +264,7 @@ fn copy_next_multi_line_selection_lands_below_itself() {
         "-[hello\nw]>orld\nfoo\nbar\n",
         true,
         1,
-        "-[hello\nw]>orld\n-[foo\nb]>ar\n",
+        "-[hello\nw]>orld\n-{foo\nb}>ar\n",
     );
 }
 
@@ -275,7 +274,7 @@ fn copy_next_line_onto_empty_target_line_lands_on_its_own_newline() {
     // `admit_eol` fallback is what lands a copy there on the line's own '\n'
     // instead of failing to find a content cell that doesn't exist, mirroring
     // `9j`'s own `explicit_count_move_down_to_empty_line`.
-    assert_copy_state("-[a]>\n\nworld\n", true, 1, "-[a]>\n-[\n]>world\n");
+    assert_copy_state("-[a]>\n\nworld\n", true, 1, "-[a]>\n-{\n}>world\n");
 }
 
 #[test]
@@ -366,14 +365,14 @@ fn copy_prev_line_count_3() {
         "a\nb\nc\nd\n-[e]>\n",
         false,
         3,
-        "a\n-[b]>\n-[c]>\n-[d]>\n-[e]>\n",
+        "a\n-{b}>\n-[c]>\n-[d]>\n-[e]>\n",
     );
 }
 
 #[test]
 fn copy_prev_line_count_exceeds_buffer_clamps() {
     // Mirror: only 2 lines exist above the cursor's line.
-    assert_copy_state("a\nb\n-[c]>\n", false, 10, "-[a]>\n-[b]>\n-[c]>\n");
+    assert_copy_state("a\nb\n-[c]>\n", false, 10, "-{a}>\n-[b]>\n-[c]>\n");
 }
 
 #[test]
@@ -395,10 +394,10 @@ fn copy_prev_line_count_usize_max_returns_instantly() {
 
 #[test]
 fn copying_a_linewise_selection_down_copies_a_whole_line() {
-    assert_copy_state("-[ab\n]>cd\nef\n", true, 1, "-[ab\n]>-[cd\n]>ef\n");
+    assert_copy_state("-[ab\n]>cd\nef\n", true, 1, "-[ab\n]>-{cd\n}>ef\n");
 }
 
 #[test]
 fn copying_a_linewise_selection_onto_a_shorter_line_keeps_it_linewise() {
-    assert_copy_state("-[abc\n]>d\nef\n", true, 1, "-[abc\n]>-[d\n]>ef\n");
+    assert_copy_state("-[abc\n]>d\nef\n", true, 1, "-[abc\n]>-{d\n}>ef\n");
 }

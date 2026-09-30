@@ -2,12 +2,10 @@ use super::read_register_text;
 use crate::editor::clipboard::SystemClipboard;
 use hume_ops::register::{CLIPBOARD_REGISTER, Piece, RegisterSet, Shape};
 
+/// Registers after HUME wrote `values` to the clipboard.
 fn seeded_registers(values: &[&str]) -> RegisterSet {
     let mut regs = RegisterSet::new();
-    regs.write_text(
-        CLIPBOARD_REGISTER,
-        values.iter().map(|s| s.to_string()).collect(),
-    );
+    regs.write_clipboard(values.iter().map(|&s| Piece::from(s)).collect());
     regs
 }
 
@@ -19,8 +17,7 @@ fn mock_clipboard(content: &str) -> SystemClipboard {
 
 #[test]
 fn clipboard_in_sync_prefers_structured() {
-    let mut regs = seeded_registers(&["a", "b", "c"]);
-    regs.set_clipboard_blob("a\nb\nc".to_string());
+    let regs = seeded_registers(&["a", "b", "c"]);
     let mut cb = mock_clipboard("a\nb\nc");
 
     let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
@@ -33,8 +30,7 @@ fn clipboard_in_sync_prefers_structured() {
 
 #[test]
 fn clipboard_externally_modified_uses_clipboard() {
-    let mut regs = seeded_registers(&["a", "b", "c"]);
-    regs.set_clipboard_blob("a\nb\nc".to_string());
+    let regs = seeded_registers(&["a", "b", "c"]);
     let mut cb = mock_clipboard("xyz");
 
     let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
@@ -47,8 +43,7 @@ fn clipboard_externally_modified_uses_clipboard() {
 fn clipboard_externally_modified_with_crlf_normalizes() {
     // Text copied from outside HUME can carry any line-ending convention;
     // the value handed back must be LF like every other register.
-    let mut regs = seeded_registers(&["a", "b", "c"]);
-    regs.set_clipboard_blob("a\nb\nc".to_string());
+    let regs = seeded_registers(&["a", "b", "c"]);
     let mut cb = mock_clipboard("x\r\ny");
 
     let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
@@ -60,18 +55,6 @@ fn clipboard_externally_modified_with_crlf_normalizes() {
 #[test]
 fn clipboard_no_blob_fresh_session_uses_clipboard() {
     let regs = RegisterSet::new();
-    let mut cb = mock_clipboard("xyz");
-
-    let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);
-    let values = values.unwrap();
-    assert_eq!(values.len(), 1);
-    assert_eq!(values[0], "xyz");
-}
-
-#[test]
-fn clipboard_in_sync_in_memory_missing_falls_through() {
-    let mut regs = RegisterSet::new();
-    regs.set_clipboard_blob("xyz".to_string());
     let mut cb = mock_clipboard("xyz");
 
     let (values, _warn) = read_register_text(&regs, &mut cb, CLIPBOARD_REGISTER);

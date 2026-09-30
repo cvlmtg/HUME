@@ -313,7 +313,7 @@ impl ChangeSet {
     }
 
     /// Char length of the document this changeset produces.
-    pub fn len_after(&self) -> usize {
+    pub(crate) fn len_after(&self) -> usize {
         self.len_after
     }
 
@@ -508,7 +508,7 @@ impl ChangeSet {
     /// One O(ops) walk lets a caller check every selection's line against
     /// these ranges with a single forward-only cursor, instead of re-walking
     /// `self.ops` per selection.
-    pub fn edited_old_ranges(&self) -> Vec<ExclusiveRange<CharOffset>> {
+    pub(crate) fn edited_old_ranges(&self) -> Vec<ExclusiveRange<CharOffset>> {
         self.edited_regions().into_iter().map(|r| r.old).collect()
     }
 

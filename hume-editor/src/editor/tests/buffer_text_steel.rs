@@ -134,7 +134,9 @@ fn buffer_lines_start_only_defaults_end_to_the_line_count() {
 #[test]
 fn buffer_text_normalizes_crlf_to_lf() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>\r\nb\r\n");
+    let mut ed = Editor::for_testing(crate::editor::buffer::Buffer::at_start(BufferText::from(
+        "a\r\nb\r\n",
+    )));
 
     let fired = run_probe(
         &mut ed,
@@ -471,7 +473,7 @@ fn selections_linewise_true_for_a_multi_line_whole_line_selection() {
 fn selections_linewise_true_for_several_linewise_selections() {
     assert_selections_predicate(
         "selections-linewise?",
-        "-[abc\n]>-[def\n]>ghi\n",
+        "-{abc\n}>-[def\n]>ghi\n",
         true,
         "several selections that are each individually linewise must be linewise",
     );
@@ -481,7 +483,7 @@ fn selections_linewise_true_for_several_linewise_selections() {
 fn selections_linewise_false_when_one_of_several_selections_is_partial() {
     assert_selections_predicate(
         "selections-linewise?",
-        "-[abc\n]>-[de]>f\n",
+        "-{abc\n}>-[de]>f\n",
         false,
         "one non-linewise selection among several must make the whole set non-linewise",
     );
@@ -492,7 +494,7 @@ fn selections_linewise_false_when_one_of_several_selections_is_partial() {
 fn selections_charwise_false_for_a_mixed_selection_set() {
     assert_selections_predicate(
         "selections-charwise?",
-        "-[abc\n]>-[de]>f\n",
+        "-{abc\n}>-[de]>f\n",
         false,
         "one linewise selection among several partial ones must make the whole set not charwise",
     );
@@ -502,7 +504,7 @@ fn selections_charwise_false_for_a_mixed_selection_set() {
 fn selections_charwise_true_for_several_partial_selections() {
     assert_selections_predicate(
         "selections-charwise?",
-        "-[ab]>c-[de]>f\n",
+        "-{ab}>c-[de]>f\n",
         true,
         "several selections that are each individually partial must be charwise",
     );
@@ -515,7 +517,7 @@ fn selections_charwise_true_for_several_partial_selections() {
 fn selections_linewise_true_with_a_stray_collapsed_selection_on_a_blank_line() {
     assert_selections_predicate(
         "selections-linewise?",
-        "-[abc\n]>-[\n]>def\n",
+        "-{abc\n}>-[\n]>def\n",
         true,
         "a real linewise selection plus an unrelated blank-line cursor must still be linewise",
     );
@@ -525,7 +527,7 @@ fn selections_linewise_true_with_a_stray_collapsed_selection_on_a_blank_line() {
 fn selections_charwise_false_for_a_real_linewise_selection_plus_a_blank_line_selection() {
     assert_selections_predicate(
         "selections-charwise?",
-        "-[abc\n]>-[\n]>def\n",
+        "-{abc\n}>-[\n]>def\n",
         false,
         "a real linewise selection must not be masked into charwise by an unrelated blank-line cursor",
     );
@@ -535,7 +537,7 @@ fn selections_charwise_false_for_a_real_linewise_selection_plus_a_blank_line_sel
 fn selections_charwise_true_with_a_stray_collapsed_selection_on_a_blank_line() {
     assert_selections_predicate(
         "selections-charwise?",
-        "-[ab]>c\n-[\n]>def\n",
+        "-{ab}>c\n-[\n]>def\n",
         true,
         "a real partial-line selection plus an unrelated blank-line cursor must still be charwise",
     );
@@ -545,7 +547,7 @@ fn selections_charwise_true_with_a_stray_collapsed_selection_on_a_blank_line() {
 fn selections_linewise_false_for_a_real_charwise_selection_plus_a_blank_line_selection() {
     assert_selections_predicate(
         "selections-linewise?",
-        "-[ab]>c\n-[\n]>def\n",
+        "-{ab}>c\n-[\n]>def\n",
         false,
         "a real partial-line selection must not be masked into linewise by an unrelated blank-line cursor",
     );

@@ -4,10 +4,7 @@ use std::collections::VecDeque;
 use rustc_hash::FxHashMap;
 use termina::event::KeyEvent;
 
-use hume_editing::selection::SelectionView;
-use hume_editing::state::EditState;
 use hume_editing::text::normalize_line_endings;
-use ropey::RopeSlice;
 
 // ── Register name constants ────────────────────────────────────────────────────
 //
@@ -283,10 +280,6 @@ impl RegisterSet {
         self.clipboard_blob.as_deref()
     }
 
-    pub fn set_clipboard_blob(&mut self, blob: String) {
-        self.clipboard_blob = Some(blob);
-    }
-
     /// The last search pattern, or `None` when unset (or when the slot was
     /// overwritten with a macro). Single-source for the `'s'` register's
     /// one-string-in-a-`Vec` encoding; callers deal in `&str`.
@@ -441,30 +434,6 @@ fn entry_is_whitespace(entry: &[Piece]) -> bool {
     entry
         .iter()
         .all(|piece| piece.text().chars().all(char::is_whitespace))
-}
-
-/// What `d` puts in the register for `sel`, given the text it removed:
-/// whole lines paste as lines, anything else as characters. Empty when `d`
-/// removed nothing.
-pub(crate) fn removed_piece(sel: SelectionView<'_>, removed: Option<RopeSlice<'_>>) -> Piece {
-    let shape = if removed.is_some() && sel.is_linewise() {
-        Shape::Linewise
-    } else {
-        Shape::Charwise
-    };
-    Piece::new(removed.map_or_else(String::new, |r| r.to_string()), shape)
-}
-
-/// What `d` would put in the register for each selection, in document order,
-/// without changing the text: the one rule for what a selection's text is in
-/// a register, and the shape it pastes in. An entry is empty for a selection
-/// `d` would remove nothing from.
-pub fn yank_selections(state: &EditState) -> Vec<Piece> {
-    state
-        .view()
-        .iter()
-        .map(|sel| removed_piece(sel, crate::edit::removal(sel)))
-        .collect()
 }
 
 #[cfg(test)]

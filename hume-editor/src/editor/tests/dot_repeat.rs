@@ -904,7 +904,7 @@ fn dot_repeat_of_select_all_matches_deletes_content() {
     ed.feed_key(key('m'));
     ed.feed_key(key('/'));
 
-    assert_eq!(state(&ed), "-[foo]> bar baz -[foo]> bar baz\n");
+    assert_eq!(state(&ed), "-{foo}> bar baz -[foo]> bar baz\n");
     assert_eq!(
         ed.state.selection_recipe.len(),
         1,
@@ -2641,7 +2641,7 @@ fn dot_repeat_of_an_accept_with_additional_text_edits_replays_only_the_cursor_ed
 /// instead of erroring over the others.
 #[test]
 fn dot_repeat_of_a_multi_cursor_accept_replays_at_every_cursor() {
-    let mut ed = editor_from("-[foo]> -[bar]>\nfoo bar\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\nfoo bar\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
     open_completion_session(&mut ed, &["std"]);
@@ -2655,7 +2655,7 @@ fn dot_repeat_of_a_multi_cursor_accept_replays_at_every_cursor() {
     ed.feed_key(key_esc());
     assert_eq!(ed.doc().text().to_string(), "std! std!\nfoo bar\n");
 
-    select_marked(&mut ed, "std! std!\n-[foo]> -[bar]>\n");
+    select_marked(&mut ed, "std! std!\n-{foo}> -[bar]>\n");
     ed.feed_key(key('.'));
     assert_eq!(ed.doc().text().to_string(), "std! std!\nstd! std!\n");
 }

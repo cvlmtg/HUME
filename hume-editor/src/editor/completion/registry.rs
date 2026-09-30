@@ -91,6 +91,23 @@ impl BufferSourceEntry {
             std::borrow::Cow::Owned(format!("{word_chars}{}", self.token_chars))
         }
     }
+
+    /// Where this source's token ending at `head` starts in `text`, over the
+    /// buffer's `word_chars`: the one scan both invoking a source and
+    /// accepting its item without a `textEdit` use.
+    pub(in crate::editor) fn token_start(
+        &self,
+        text: &hume_editing::text::BufferText,
+        head: hume_rope::offset::CharOffset,
+        word_chars: &str,
+    ) -> hume_rope::offset::CharOffset {
+        let token_chars = self.token_chars_over(word_chars);
+        hume_ops::edit::word_start_before(
+            text,
+            head,
+            hume_editing::word::WordChars::new(&token_chars),
+        )
+    }
 }
 
 pub(in crate::editor) struct MinibufSourceEntry {

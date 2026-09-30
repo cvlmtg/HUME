@@ -172,7 +172,7 @@ fn inner_paren_multiline() {
 fn inner_paren_two_cursors_same_pair_merge() {
     // Both cursors inside the same parens map to the same range → merge.
     assert_state!(
-        "(-[h]>el-[l]>o)\n",
+        "(-{h}>el-[l]>o)\n",
         |(text, sels)| cmd_inner_paren(
             test_fixtures::testing::state(text, sels),
             0,

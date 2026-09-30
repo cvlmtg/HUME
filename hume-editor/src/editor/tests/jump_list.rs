@@ -941,3 +941,35 @@ fn search_confirm_records_the_jump_in_the_pane_the_search_started_in() {
         "the pane that only took the click does not"
     );
 }
+
+/// A navigation that closes the buffer it started in records no jump into
+/// it: the entry captured before the body is dropped with the buffer, and the
+/// pane moving to another buffer still counts as a move.
+#[test]
+fn a_pending_jump_into_a_buffer_the_navigation_closed_is_dropped() {
+    use crate::editor::buffer::Buffer;
+    use crate::editor::commands::CommandPane;
+    use crate::editor::jump_list::{JumpRule, with_jump};
+
+    let mut ed = editor_from("-[a]>\n");
+    let pid = ed.state.focus.id();
+    let closing = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    ed.execute_typed("bn", None).unwrap();
+    assert_eq!(ed.focused_buffer_id(), closing, "setup: the pane shows it");
+    let before = ed.state.panes.jumps[pid].len();
+
+    let t = CommandPane::existing(&ed.view, pid).expect("the pane exists");
+    let ((), moved) = with_jump(
+        &mut ed.state,
+        &mut ed.view,
+        t,
+        JumpRule::IfMoved,
+        |state, view| {
+            crate::editor::buffer::lifecycle::close_buffer(state, view, closing);
+        },
+    );
+
+    assert!(moved, "the pane now shows another buffer");
+    assert_eq!(ed.state.panes.jumps[pid].len(), before);
+    assert!(!ed.state.panes.jumps[pid].entries_for_buffer(closing));
+}

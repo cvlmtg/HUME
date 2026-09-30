@@ -34,8 +34,6 @@ use hume_editing::state::EditState;
 /// starts of the clusters they wrap: `a-[e\u{301}]>b\n` is a cursor on the
 /// whole accented letter. A marker inside a cluster panics.
 use hume_editing::text::BufferText;
-use hume_rope::cluster::ClusterStart;
-use hume_rope::offset::CharOffset;
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
 
@@ -49,17 +47,9 @@ use hume_rope::offset::CharOffset;
 /// - **Mutating** (edits): take an `EditState`, return `Edited`, whose text is
 ///   the edited one.
 ///
-/// This trait lets `assert_state!` accept both families without change, plus
-/// the bare pairs a test helper may build.
+/// This trait lets `assert_state!` accept both families without change.
 pub trait IntoTestResult {
     fn into_test_result(self) -> (BufferText, SelectionSet);
-}
-
-/// `(BufferText, SelectionSet)` pair — emitted by internal helpers that don't produce a `ChangeSet`.
-impl IntoTestResult for (BufferText, SelectionSet) {
-    fn into_test_result(self) -> (BufferText, SelectionSet) {
-        self
-    }
 }
 
 /// Edit commands on the typed model.
@@ -99,17 +89,7 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
 
 // ── Typed positions from char offsets ─────────────────────────────────────────
 
-/// The cluster starting at char `n` of `text`. Panics when `n` is not a
-/// cluster start, so a test's literal offset names the position it means.
-pub fn at(text: &BufferText, n: usize) -> ClusterStart {
-    let pos = text.snap(CharOffset::new(n));
-    assert_eq!(
-        pos.offset(),
-        CharOffset::new(n),
-        "char {n} is not a cluster start"
-    );
-    pos
-}
+pub use hume_editing::marked::start_at as at;
 
 /// A selection of `text` from char `anchor` to char `head`, both cluster
 /// starts.

@@ -3,7 +3,6 @@
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
-use hume_editing::word::WordChars;
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 
@@ -17,7 +16,7 @@ use crate::editor::lsp::{
     LspCallback, LspState, ResponseAnchor, edits, introspect, wire_range_to_chars,
 };
 use crate::editor::{EditorState, Severity};
-use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
+use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors};
 
 impl BufferSession {
     /// Applies the ranked candidate at `idx`'s `textEdit` (falling back to `insertText`
@@ -218,21 +217,16 @@ impl BufferSession {
         // every cursor (LSP spec: the server's range always contains the
         // request position); the `insertText` fallback has no such
         // guarantee for a non-primary cursor, so each gets its own
-        // `word_start_before` scan from its own head instead.
+        // token-start scan from its own head instead.
         let per_cursor_back: Vec<usize> = match &item.text_edit {
             Some(_) => heads_now.iter().map(|_| back).collect(),
             None => {
                 let live_text = state.buffers.get(bid).text();
                 let base = state.buffers.get(bid).overrides.word_chars(&state.settings);
-                let token_chars = state
-                    .config
-                    .completion_sources
-                    .buffer_get(source)
-                    .token_chars_over(base);
-                let word_chars = WordChars::new(&token_chars);
+                let entry = state.config.completion_sources.buffer_get(source);
                 heads_now
                     .iter()
-                    .map(|&head| head.chars_since(word_start_before(live_text, head, word_chars)))
+                    .map(|&head| head.chars_since(entry.token_start(live_text, head, base)))
                     .collect()
             }
         };

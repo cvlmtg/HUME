@@ -3,11 +3,12 @@ use crate::editor::position_stores::DetachedStores;
 use crate::editor::tests::co;
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
+use hume_ops::edit::yank_selections;
 use hume_ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, repeat_edit,
 };
-use hume_ops::register::{Piece, yank_selections};
+use hume_ops::register::Piece;
 use pretty_assertions::assert_eq;
 use test_fixtures::testing::{parse_state, serialize_state};
 
@@ -260,11 +261,11 @@ fn undo_restores_backward_selection() {
 
 #[test]
 fn undo_multi_cursor_delete() {
-    let mut d = doc("-[h]>el-[l]>o\n");
+    let mut d = doc("-{h}>el-[l]>o\n");
     d.apply_edit(delete_char_forward);
-    assert_eq!(state(&d), "-[e]>l-[o]>\n");
+    assert_eq!(state(&d), "-{e}>l-[o]>\n");
     d.undo();
-    assert_eq!(state(&d), "-[h]>el-[l]>o\n");
+    assert_eq!(state(&d), "-{h}>el-[l]>o\n");
 }
 
 // ── repeat_edit produces single undo step ─────────────────────────────────

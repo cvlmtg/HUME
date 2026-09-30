@@ -189,7 +189,7 @@ fn shift_c_with_selection_copies_to_next_line() {
         "hello\nworld\n",
         "buffer must be unchanged: C must not edit text when the selection spans more than one char"
     );
-    assert_eq!(state(&ed), "-[hello]>\n-[world]>\n");
+    assert_eq!(state(&ed), "-[hello]>\n-{world}>\n");
     assert_eq!(ed.state.mode(), Mode::Normal);
 }
 

@@ -57,9 +57,9 @@ fn auto_close_symmetric_quote() {
 fn auto_close_multi_cursor() {
     // Two cursors both get auto-closed independently.
     assert_state!(
-        "-[a]>b-[c]>d\n",
+        "-{a}>b-[c]>d\n",
         |(text, sels)| insert_pair_close(test_fixtures::testing::state(text, sels), '(', ')'),
-        "(-[)]>ab(-[)]>cd\n"
+        "(-{)}>ab(-[)]>cd\n"
     );
 }
 
@@ -78,7 +78,7 @@ fn delete_pair_parens() {
 #[test]
 fn delete_pair_of_two_cursors_sharing_a_quote_deletes_all_three_quotes() {
     assert_state!(
-        "\"-[\"]>-[\"]>\n",
+        "\"-{\"}>-[\"]>\n",
         |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
         "-[\n]>"
     );
@@ -114,7 +114,7 @@ fn delete_pair_quote() {
 #[test]
 fn delete_pair_multi_cursor() {
     assert_state!(
-        "(-[)]>(-[)]>\n",
+        "(-{)}>(-[)]>\n",
         |(text, sels)| delete_pair(test_fixtures::testing::state(text, sels)),
         "-[\n]>"
     );

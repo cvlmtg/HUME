@@ -179,7 +179,8 @@ impl<'a> SelectionView<'a> {
         if self.ends_on_break() {
             self.sel.last()
         } else {
-            self.text.snap(self.covered().end().offset())
+            crate::grapheme::next_cluster(self.text, self.sel.last())
+                .expect("a cluster other than the final `\\n` has a successor")
         }
     }
 

@@ -31,14 +31,14 @@ fn replace_around_cursors_two_cursors_uniform_spacing() {
     // The op-level shape of multi-cursor completion: two cursors,
     // each right after its own typed "st", both get the same replacement.
     assert_state!(
-        "st-[ ]>st-[\n]>",
+        "st-{ }>st-[\n]>",
         |(text, sels)| replace_around_cursors(
             test_fixtures::testing::state(text, sels),
             2,
             0,
             "XY"
         ),
-        "XY-[ ]>XY-[\n]>"
+        "XY-{ }>XY-[\n]>"
     );
 }
 
@@ -78,9 +78,9 @@ fn replace_around_cursors_clamps_when_cursors_are_closer_than_back() {
     // first edit's end instead of erroring: the second cursor still gets
     // "Z", it just eats one char ('c') instead of two ("b","c").
     assert_state!(
-        "ab-[c]>-[d]>ef\n",
+        "ab-{c}>-[d]>ef\n",
         |(text, sels)| replace_around_cursors(test_fixtures::testing::state(text, sels), 2, 0, "Z"),
-        "Z-[Z]>-[d]>ef\n"
+        "Z-{Z}>-[d]>ef\n"
     );
 }
 
@@ -339,9 +339,9 @@ fn replace_whole_line() {
 fn replace_two_cursors() {
     // Two cursors; each independently replaced.
     assert_state!(
-        "-[h]>ell-[o]>\n",
+        "-{h}>ell-[o]>\n",
         |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), 'x'),
-        "-[x]>ell-[x]>\n"
+        "-{x}>ell-[x]>\n"
     );
 }
 
@@ -349,9 +349,9 @@ fn replace_two_cursors() {
 fn replace_two_selections() {
     // Two non-overlapping selections each get all their chars replaced.
     assert_state!(
-        "-[he]>l-[lo]>\n",
+        "-{he}>l-[lo]>\n",
         |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), 'x'),
-        "-[xx]>l-[xx]>\n"
+        "-{xx}>l-[xx]>\n"
     );
 }
 
@@ -409,9 +409,9 @@ fn replace_selection_including_structural_trailing_newline_preserves_newline() {
 fn smart_replace_opening_bracket_to_opening() {
     // Two cursors on `(` and `)`, replace with `[` → `[` and `]`.
     assert_state!(
-        "-[(]>hello-[)]>\n",
+        "-{(}>hello-[)]>\n",
         |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), '['),
-        "-[[]>hello-[]]>\n"
+        "-{[}>hello-[]]>\n"
     );
 }
 
@@ -419,9 +419,9 @@ fn smart_replace_opening_bracket_to_opening() {
 fn smart_replace_asym_to_sym() {
     // `(` and `)` replaced with `"` → both become `"`.
     assert_state!(
-        "-[(]>hello-[)]>\n",
+        "-{(}>hello-[)]>\n",
         |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), '"'),
-        "-[\"]>hello-[\"]>\n"
+        "-{\"}>hello-[\"]>\n"
     );
 }
 
@@ -429,9 +429,9 @@ fn smart_replace_asym_to_sym() {
 fn smart_replace_sym_to_asym_uses_index() {
     // Two cursors on `"` and `"`, replace with `(` → `(` and `)`.
     assert_state!(
-        "-[\"]>hello-[\"]>\n",
+        "-{\"}>hello-[\"]>\n",
         |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), '('),
-        "-[(]>hello-[)]>\n"
+        "-{(}>hello-[)]>\n"
     );
 }
 
@@ -439,9 +439,9 @@ fn smart_replace_sym_to_asym_uses_index() {
 fn smart_replace_sym_to_sym() {
     // Two cursors on `"` and `"`, replace with `'` → both `'`.
     assert_state!(
-        "-[\"]>hello-[\"]>\n",
+        "-{\"}>hello-[\"]>\n",
         |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), '\''),
-        "-[']>hello-[']>\n"
+        "-{'}>hello-[']>\n"
     );
 }
 
@@ -469,9 +469,9 @@ fn smart_replace_range_selection_no_smart_logic() {
 fn smart_replace_non_pair_replacement_is_literal() {
     // Replacement is not a pair char: always literal, even on delimiters.
     assert_state!(
-        "-[(]>hello-[)]>\n",
+        "-{(}>hello-[)]>\n",
         |(text, sels)| replace_selections(test_fixtures::testing::state(text, sels), 'x'),
-        "-[x]>hello-[x]>\n"
+        "-{x}>hello-[x]>\n"
     );
 }
 

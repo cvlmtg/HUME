@@ -108,9 +108,7 @@ impl<'a> WordChars<'a> {
     pub fn validate(s: &str) -> Result<(), String> {
         for ch in s.chars() {
             if ch.is_whitespace() {
-                return Err(format!(
-                    "word-chars cannot contain whitespace or newline: {ch:?}"
-                ));
+                return Err(format!("cannot contain whitespace or newline: {ch:?}"));
             }
         }
         Ok(())

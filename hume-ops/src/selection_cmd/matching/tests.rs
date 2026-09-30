@@ -399,7 +399,7 @@ fn split_keeps_a_combining_mark_at_the_end_of_a_line() {
             0,
             MotionMode::Move
         ),
-        "-[e\u{301}]>\n-[b]>\n"
+        "-{e\u{301}}>\n-[b]>\n"
     );
 }
 

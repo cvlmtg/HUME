@@ -336,15 +336,10 @@ impl Buffer {
         let before = std::mem::replace(&mut self.text, text);
         match change {
             Change::Edit(changes) => {
-                if let Some(syn) = self.syntax.as_mut() {
-                    syn.record_edit(
-                        before.version().generation(),
-                        self.text.version().generation(),
-                        changes,
-                        before.rope(),
-                    );
-                }
                 let change = TextChange::new(&before, &self.text, changes);
+                if let Some(syn) = self.syntax.as_mut() {
+                    syn.record_edit(&change);
+                }
                 stores.carry(id, &change);
             }
             Change::Replace => stores.reset(id, || crate::editor::pane_state::fresh_from_buf(self)),

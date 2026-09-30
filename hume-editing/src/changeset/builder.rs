@@ -150,22 +150,14 @@ impl ChangeSetBuilder {
 
     /// Keep the rest of the old document and return the finished
     /// `ChangeSet`.
-    pub fn finish(mut self) -> ChangeSet {
-        self.retain_rest();
-        self.finish_consumed()
-    }
-
-    /// Return the finished `ChangeSet`.
     ///
     /// # Panics
-    /// Panics if the builder hasn't consumed the entire old document
-    /// (`old_pos != doc_len`). This catches bugs where the caller forgot
-    /// to `retain_rest()`.
-    pub(crate) fn finish_consumed(self) -> ChangeSet {
+    /// Panics if the builder consumed past the end of the old document.
+    pub fn finish(mut self) -> ChangeSet {
+        self.retain_rest();
         assert_eq!(
             self.old_pos, self.doc_len,
-            "ChangeSetBuilder::finish: old_pos ({:?}) != doc_len ({:?}). \
-             Did you forget to call retain_rest()?",
+            "ChangeSetBuilder::finish: old_pos ({:?}) != doc_len ({:?})",
             self.old_pos, self.doc_len,
         );
         ChangeSet {

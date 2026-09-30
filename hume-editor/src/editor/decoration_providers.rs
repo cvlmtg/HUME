@@ -165,18 +165,11 @@ impl Editor {
         if !in_insert && self.state.panes.render.contains_key(self.state.focus.id()) {
             let focused = self.state.focus.id();
             let text = self.doc().text();
-            let sels = self.state.panes.state[focused][self.focused_buffer_id()].selections();
-            if let Some(match_pos) =
-                matching_bracket(hume_editing::selection::EditView::bind(text, sels).primary())
-            {
+            let pbs = &self.state.panes.state[focused][self.focused_buffer_id()];
+            if let Some(match_pos) = matching_bracket(pbs.view(text).primary()) {
                 let (line, byte) = char_to_line_byte(text, match_pos.offset());
                 // The whole cluster holding the partner bracket.
-                let cluster = hume_rope::cluster::ClusterRange::through(
-                    text.full_slice(),
-                    match_pos,
-                    match_pos,
-                )
-                .expect("one cluster");
+                let cluster = hume_rope::cluster::ClusterRange::of(text.full_slice(), match_pos);
                 let byte_end = byte.advance_saturating(text.slice(cluster.chars()).len_bytes());
                 // Trusted narrow: a bracket match is always a real
                 // selection position, never the buffer's phantom line.

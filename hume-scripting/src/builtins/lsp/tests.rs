@@ -939,21 +939,35 @@ fn register_lsp_notification_hook_attributes_the_running_plugin() {
     );
 }
 
+/// The token builtins are `cmd`-gated through the real registration: called
+/// from init.scm, each raises naming itself.
 #[test]
-fn the_tracking_builtins_reject_init_context() {
+fn the_tracking_token_builtins_reject_init_context() {
     for name in [
-        "track-position!",
         "tracked-position-params",
         "untrack-position!",
         "keep-tracked-position!",
     ] {
-        let mut h = SteelCtxTestHarness::new();
-        let mut ctx = h.ctx();
-        ctx.session = crate::context::EvalSession::Init;
-        let err = super::super::errors::require_cmd(&ctx, name).unwrap_err();
+        let mut host = crate::ScriptingHost::new();
+        let mut null_host = crate::null_host::NullHost;
+        let err = host
+            .eval_source(&format!("({name} #f)"), &mut null_host)
+            .expect_err("a cmd builtin must be rejected during init.scm eval");
         assert!(
-            err.to_string().contains("not available during init"),
+            err.contains(&format!("{name}: not available during init")),
             "{name}: got: {err}"
         );
     }
+}
+
+#[test]
+fn a_token_argument_that_is_not_an_integer_raises() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let err = untrack_position(&mut ctx, "not-a-token".into_steelval().unwrap())
+        .expect_err("a string is no token");
+    assert!(
+        err.to_string().contains("untrack-position! token"),
+        "got: {err}"
+    );
 }

@@ -269,28 +269,28 @@ fn indent_backward_selection_keeps_direction() {
 #[test]
 fn indent_two_cursors_same_line_indent_once() {
     assert_state!(
-        "f-[o]>o -[b]>ar\n",
+        "f-{o}>o -[b]>ar\n",
         |(text, sels)| indent_lines(
             test_fixtures::testing::state(text, sels),
             TabStyle::Soft,
             4,
             1
         ),
-        "    f-[o]>o -[b]>ar\n"
+        "    f-{o}>o -[b]>ar\n"
     );
 }
 
 #[test]
 fn indent_two_disjoint_selections_each_shift_own_lines() {
     assert_state!(
-        "-[one]>\ntwo\n-[three]>\n",
+        "-{one}>\ntwo\n-[three]>\n",
         |(text, sels)| indent_lines(
             test_fixtures::testing::state(text, sels),
             TabStyle::Soft,
             4,
             1
         ),
-        "    -[one]>\ntwo\n    -[three]>\n"
+        "    -{one}>\ntwo\n    -[three]>\n"
     );
 }
 
@@ -378,18 +378,13 @@ fn indent_then_unindent_round_trips() {
     assert_state!(
         "  -[f]>oo\n",
         |(text, sels)| {
-            let (text, sels, _) = test_fixtures::testing::parts(indent_lines(
-                test_fixtures::testing::state(text, sels),
-                TabStyle::Soft,
-                4,
-                1,
-            ));
-            unindent_lines(
+            indent_lines(
                 test_fixtures::testing::state(text, sels),
                 TabStyle::Soft,
                 4,
                 1,
             )
+            .then(|s| unindent_lines(s, TabStyle::Soft, 4, 1))
         },
         "  -[f]>oo\n"
     );
@@ -403,18 +398,13 @@ fn indent_then_unindent_round_trips_under_hard_style() {
     assert_state!(
         "  -[f]>oo\n",
         |(text, sels)| {
-            let (text, sels, _) = test_fixtures::testing::parts(indent_lines(
-                test_fixtures::testing::state(text, sels),
-                TabStyle::Hard,
-                4,
-                1,
-            ));
-            unindent_lines(
+            indent_lines(
                 test_fixtures::testing::state(text, sels),
                 TabStyle::Hard,
                 4,
                 1,
             )
+            .then(|s| unindent_lines(s, TabStyle::Hard, 4, 1))
         },
         "  -[f]>oo\n"
     );
@@ -430,18 +420,13 @@ fn unindent_then_indent_does_not_round_trip_below_one_level() {
     assert_state!(
         "  -[f]>oo\n",
         |(text, sels)| {
-            let (text, sels, _) = test_fixtures::testing::parts(unindent_lines(
-                test_fixtures::testing::state(text, sels),
-                TabStyle::Soft,
-                4,
-                1,
-            ));
-            indent_lines(
+            unindent_lines(
                 test_fixtures::testing::state(text, sels),
                 TabStyle::Soft,
                 4,
                 1,
             )
+            .then(|s| indent_lines(s, TabStyle::Soft, 4, 1))
         },
         "    -[f]>oo\n"
     );

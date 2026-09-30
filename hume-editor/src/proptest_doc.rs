@@ -19,10 +19,11 @@ mod tests {
     use crate::editor::tests::co;
     use hume_editing::edit::Edited;
     use hume_editing::grapheme::{first_cluster, graphemes_at};
-    use hume_editing::selection::{EditView, Selection, SelectionSet};
+    use hume_editing::selection::{EditView, SelectionSet};
     use hume_editing::state::EditState;
     use hume_editing::text::BufferText;
     use hume_engine::pipeline::BufferId;
+    use hume_ops::edit::yank_selections;
     use hume_ops::edit::{
         delete_char_backward, delete_char_forward, delete_selection, insert_char,
     };
@@ -31,7 +32,6 @@ mod tests {
         cmd_select_next_uppercase_word, cmd_select_next_word, cmd_select_prev_uppercase_word,
         cmd_select_prev_word,
     };
-    use hume_ops::register::yank_selections;
     use hume_ops::selection_cmd::{
         cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
         cmd_flip_selections, cmd_keep_primary_selection,
@@ -40,7 +40,6 @@ mod tests {
         cmd_around_word, cmd_inner_line, cmd_inner_word, cmd_select_uppercase_word,
     };
     use hume_ops::{MotionMode, WordCtx};
-    use test_fixtures::testing::{sel, set};
 
     // ── DocHelper — thin wrapper keeping sels alongside Buffer ────────────────
 
@@ -191,30 +190,13 @@ mod tests {
             .prop_map(|atoms| BufferText::from(atoms.concat().as_str()))
     }
 
-    /// The char offset of every grapheme cluster start in `text`.
-    fn cluster_starts(text: &BufferText) -> Vec<usize> {
-        graphemes_at(text, first_cluster(text).into())
-            .map(|cluster| cluster.start().offset().index())
-            .collect()
-    }
-
     /// Generate a `SelectionSet` for `text` with 1..=`max_sels` selections
-    /// whose anchors and heads are drawn from its cluster starts, merged into
-    /// a valid set.
+    /// whose anchors and heads are picked among its cluster starts, merged
+    /// into a valid set.
     fn arb_selection_set(text: BufferText, max_sels: usize) -> impl Strategy<Value = SelectionSet> {
-        let starts = cluster_starts(&text);
-        let n_starts = starts.len();
-        (1..=max_sels)
-            .prop_flat_map(move |n| {
-                let starts = starts.clone();
-                let text = text.clone();
-                proptest::collection::vec((0..n_starts, 0..n_starts), n).prop_map(move |picks| {
-                    let sels: Vec<Selection> = picks
-                        .into_iter()
-                        .map(|(a, b)| sel(&text, starts[a], starts[b]))
-                        .collect();
-                    set(&text, sels, 0)
-                })
+        proptest::collection::vec((0usize..1024, 0usize..1024), 1..=max_sels)
+            .prop_map(move |picks| {
+                EditState::from_cluster_indices(text.clone(), &picks, 0).into_selections()
             })
             .boxed()
     }

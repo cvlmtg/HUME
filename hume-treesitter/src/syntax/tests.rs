@@ -1,7 +1,8 @@
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-use hume_editing::changeset::ChangeSetBuilder;
+use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_engine::providers::SyntaxSpans;
@@ -62,6 +63,28 @@ fn parse_done_for(
     }
 }
 
+/// `before` with `inserted` added at char `at`, as the next text of its
+/// lineage, and the change that makes it.
+fn insert_into(before: &BufferText, at: usize, inserted: &str) -> (BufferText, ChangeSet) {
+    let mut b = ChangeSetBuilder::new(before.end());
+    b.retain_to(CharOffset::new(at));
+    b.insert(inserted);
+    let cs = b.finish();
+    let after = cs
+        .apply(before)
+        .expect("an insertion applies to its own text");
+    (after, cs)
+}
+
+/// Record the edit from `before` to `after` on `syn`.
+fn record(syn: &mut Syntax, before: &BufferText, after: &BufferText, cs: &ChangeSet) {
+    syn.record_edit(&TextChange::new(before, after, cs));
+}
+
+fn generation(text: &BufferText) -> u64 {
+    text.version().generation()
+}
+
 // ── attach ────────────────────────────────────────────────────────────────
 
 // No test exercises the `text.len_bytes() == 0` short-circuit branch in
@@ -76,7 +99,7 @@ fn attach_nonempty_text_returns_request_and_sets_in_flight() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (syn, req) = Syntax::attach(bundle, bid, 0, &BufferText::from("{}\n"), &empty_langs());
+    let (syn, req) = Syntax::attach(bundle, bid, &BufferText::from("{}\n"), &empty_langs());
     assert!(
         req.is_some(),
         "non-empty text must produce a full-parse request"
@@ -129,15 +152,10 @@ fn frame_tick_up_to_date_returns_no_request() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from(""),
-        &empty_langs(),
-    );
-    // parsed_gen == generation (0) already: up to date.
-    let outcome = syn.frame_tick(bid, 0, &BufferText::from(""), &empty_langs());
+    let text = BufferText::from("");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
+    // parsed_gen == the text's generation already: up to date.
+    let outcome = syn.frame_tick(bid, &text, &empty_langs());
     assert!(
         outcome.request.is_none(),
         "up-to-date buffer must not re-request"
@@ -149,17 +167,12 @@ fn frame_tick_dedups_while_in_flight_at_same_gen() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        1,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
-    );
+    let text = BufferText::from("{}\n");
+    let (mut syn, req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
     assert!(req.is_some());
-    // parsed_gen is still 0 (attach doesn't install), generation is 1, so
-    // frame_tick must see the existing in-flight request and dedup.
-    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{}\n"), &empty_langs());
+    // Nothing is parsed yet (attach doesn't install), so frame_tick must see
+    // the existing in-flight request for this text and dedup.
+    let outcome = syn.frame_tick(bid, &text, &empty_langs());
     assert!(
         outcome.request.is_none(),
         "a request already in flight for this generation must not be re-posted"
@@ -171,20 +184,16 @@ fn frame_tick_reposts_after_further_edit() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        1,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
-    );
-    // Text advances to gen 2 before the gen-1 result arrives.
-    let outcome = syn.frame_tick(bid, 2, &BufferText::from("{\"a\":1}\n"), &empty_langs());
+    let text = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
+    // The text moves on before the first result arrives.
+    let (next, _) = insert_into(&text, 1, "\"a\":1");
+    let outcome = syn.frame_tick(bid, &next, &empty_langs());
     assert!(
         outcome.request.is_some(),
         "a newer generation than the in-flight one must trigger a fresh request"
     );
-    assert_eq!(outcome.request.unwrap().generation, 2);
+    assert_eq!(outcome.request.unwrap().generation, generation(&next));
 }
 
 #[test]
@@ -192,42 +201,35 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    let done = parse_done_for(&bundle, bid, 0, "{}\n");
-    syn.install(done, 0);
     assert!(syn.layers().is_some(), "install must populate layers");
 
     // Record a contiguous edit and tick: chain bakes, tree_gen catches
     // up to generation, so old_tree must be Some.
-    let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("\"a\":1");
-    let cs = b.finish();
-    syn.record_edit(0, 1, &cs, &rope_pre);
-    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{\"a\":1}\n"), &empty_langs());
+    let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &t1, &cs);
+    let outcome = syn.frame_tick(bid, &t1, &empty_langs());
     assert!(
         outcome.request.unwrap().old_tree.is_some(),
         "a baked contiguous chain must produce an old_tree for incremental parse"
     );
 
-    syn.install(parse_done_for(&bundle, bid, 1, "{\"a\":1}\n"), 1);
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t1), "{\"a\":1}\n"),
+        generation(&t1),
+    );
     assert!(syn.layers().is_some());
-    // Force a chain break: pending edit gen does not follow tree_gen+1.
-    let rope2 = ropey::Rope::from_str("{\"a\":1}\n");
-    let mut b2 = ChangeSetBuilder::new(CharOffset::new(rope2.len_chars()));
-    b2.retain_to(CharOffset::new(1));
-    b2.insert("x");
-    let cs2 = b2.finish();
-    // Start the edit from a text the tree never saw (2, not the tree's 1).
-    syn.record_edit(2, 3, &cs2, &rope2);
-    let outcome2 = syn.frame_tick(bid, 3, &BufferText::from("{x\"a\":1}\n"), &empty_langs());
+    // Force a chain break: the recorded edit starts from a text the tree
+    // never saw.
+    let (unseen, _) = insert_into(&t1, 1, "y");
+    let (t3, cs3) = insert_into(&unseen, 1, "x");
+    record(&mut syn, &unseen, &t3, &cs3);
+    let outcome2 = syn.frame_tick(bid, &t3, &empty_langs());
     assert!(
         outcome2.chain_break.is_some(),
         "a gapped chain must be reported as a break"
@@ -245,32 +247,26 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
-    assert_eq!(syn.tree_gen(), 0);
+    assert_eq!(syn.tree_gen(), generation(&t0));
 
-    let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("\"a\":1");
-    let cs = b.finish();
-    syn.record_edit(0, 1, &cs, &rope_pre);
+    let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &t1, &cs);
     assert_eq!(syn.pending_edits().len(), 1);
 
-    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{\"a\":1}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, &t1, &empty_langs());
     assert!(
         outcome.chain_break.is_none(),
         "contiguous chain must not report a break"
     );
     assert_eq!(
         syn.tree_gen(),
-        1,
+        generation(&t1),
         "tree_gen must advance to the baked generation"
     );
     assert!(
@@ -290,34 +286,28 @@ fn bake_accepts_a_chain_whose_generations_skip_numbers() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
-    let rope0 = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope0.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("\"a\":1");
-    let first = b.finish();
-    let rope1 = ropey::Rope::from_str("{\"a\":1}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope1.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("b");
-    let second = b.finish();
-    syn.record_edit(0, 3, &first, &rope0);
-    syn.record_edit(3, 5, &second, &rope1);
+    // A text computed and dropped uses up a generation between each pair.
+    let _dropped = insert_into(&t0, 1, "z");
+    let (t1, first) = insert_into(&t0, 1, "\"a\":1");
+    let _dropped = insert_into(&t1, 1, "z");
+    let (t2, second) = insert_into(&t1, 1, "b");
+    assert!(generation(&t1) > generation(&t0) + 1 && generation(&t2) > generation(&t1) + 1);
+    record(&mut syn, &t0, &t1, &first);
+    record(&mut syn, &t1, &t2, &second);
 
-    let outcome = syn.frame_tick(bid, 5, &BufferText::from("{b\"a\":1}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, &t2, &empty_langs());
     assert!(
         outcome.chain_break.is_none(),
         "edits that each start where the previous one ended form a chain"
     );
-    assert_eq!(syn.tree_gen(), 5);
+    assert_eq!(syn.tree_gen(), generation(&t2));
     assert!(outcome.request.unwrap().old_tree.is_some());
 }
 
@@ -326,32 +316,32 @@ fn bake_mid_chain_gap_rejected() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
-    // Fabricate a broken link directly: the first edit ends at 1 and the
-    // second starts at 2, though both endpoints match tree_gen(=0) and
-    // generation(=3).
-    let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("x");
-    let cs = b.finish();
-    syn.record_edit(0, 1, &cs, &rope_pre);
-    syn.record_edit(2, 3, &cs, &rope_pre);
+    // A broken link: the first edit ends at `t1` and the second starts at a
+    // text never recorded, though the chain's two ends match the tree's
+    // generation and the current one.
+    let (t1, first) = insert_into(&t0, 1, "x");
+    let (unseen, _) = insert_into(&t1, 1, "y");
+    let (t3, second) = insert_into(&unseen, 1, "z");
+    record(&mut syn, &t0, &t1, &first);
+    record(&mut syn, &unseen, &t3, &second);
 
-    let outcome = syn.frame_tick(bid, 3, &BufferText::from("{x}\n"), &empty_langs());
+    let outcome = syn.frame_tick(bid, &t3, &empty_langs());
     assert!(
         outcome.chain_break.is_some(),
         "gapped chain must be rejected"
     );
-    assert_eq!(syn.tree_gen(), 0, "gapped chain must NOT advance tree_gen");
+    assert_eq!(
+        syn.tree_gen(),
+        generation(&t0),
+        "gapped chain must NOT advance tree_gen"
+    );
     assert!(
         syn.pending_edits().is_empty(),
         "broken chain must still clear pending_edits so the caller falls back to a full reparse"
@@ -383,13 +373,8 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
 
     let bid = fresh_bid();
     let source = "```rust\nfn main() {}\n```\n";
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&markdown),
-        bid,
-        0,
-        &BufferText::from(source),
-        &langs,
-    );
+    let t0 = BufferText::from(source);
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&markdown), bid, &t0, &langs);
 
     // Parse root + resolve injections directly (mirrors `do_parse` in
     // `parse_worker.rs`, inlined so the test controls the exact result).
@@ -415,24 +400,20 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     syn.install(
         ParseDone {
             bid,
-            generation: 0,
+            generation: generation(&t0),
             bundle: Arc::clone(&markdown),
             outcome: ParseOutcome::Ok(ParsedLayers { root, injected }),
         },
-        0,
+        generation(&t0),
     );
 
     // Insert text before the fenced code block. The rust layer's byte
     // range must shift forward by the inserted length once baked.
     let prefix = "more text\n";
-    let rope_pre = rope;
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.insert(prefix);
-    let cs = b.finish();
-    syn.record_edit(0, 1, &cs, &rope_pre);
+    let (t1, cs) = insert_into(&t0, 0, prefix);
+    record(&mut syn, &t0, &t1, &cs);
 
-    let new_source = format!("{prefix}{source}");
-    let outcome = syn.frame_tick(bid, 1, &BufferText::from(new_source.as_str()), &langs);
+    let outcome = syn.frame_tick(bid, &t1, &langs);
     assert!(
         outcome.chain_break.is_none(),
         "contiguous chain must not report a break"
@@ -464,7 +445,6 @@ fn install_stale_generation_discarded() {
     let (mut syn, _req) = Syntax::attach(
         Arc::clone(&bundle),
         bid,
-        0,
         &BufferText::from("{}\n"),
         &empty_langs(),
     );
@@ -491,7 +471,6 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
     let (mut syn, _req) = Syntax::attach(
         Arc::clone(&new_bundle),
         bid,
-        1,
         &BufferText::from("{}\n"),
         &empty_langs(),
     );
@@ -519,43 +498,30 @@ fn install_config_gen_mismatch_discarded_without_clearing_newer_in_flight() {
 /// Edits recorded while the very first parse is still in flight can't be
 /// baked (`bake`'s early-out never clears pending when `layers` is still
 /// `None`), so they survive until the first successful install, which
-/// must drain them. A done can only install when `done.generation` equals
-/// the *current* generation, and pending edits always end at or before the
-/// current generation at record time, so `retain(to > generation)` always
-/// empties the list on a real successful install; there is no reachable case
-/// where it retains an entry.
+/// must drain them.
 #[test]
 fn install_matching_done_clears_in_flight_and_drains_pending() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req0) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
-    );
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req0) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
     assert!(
         syn.is_in_flight(),
         "attach must post the initial full-parse request"
     );
 
-    // An edit lands while the initial parse (gen 0) is still in flight.
-    let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("x");
-    let cs = b.finish();
-    syn.record_edit(0, 1, &cs, &rope_pre);
+    // An edit lands while the initial parse is still in flight.
+    let (t1, cs) = insert_into(&t0, 1, "x");
+    record(&mut syn, &t0, &t1, &cs);
 
     // frame_tick at the new gen: bake early-outs (layers still None from
     // the in-flight initial parse), so pending_edits survives; a fresh
-    // request for gen 1 is posted and recorded as in-flight.
-    let outcome = syn.frame_tick(bid, 1, &BufferText::from("{x}\n"), &empty_langs());
+    // request for the new gen is posted and recorded as in-flight.
+    let outcome = syn.frame_tick(bid, &t1, &empty_langs());
     assert!(
         outcome.request.is_some(),
-        "gen-1 edit must trigger a fresh request"
+        "the edit must trigger a fresh request"
     );
     assert_eq!(
         syn.pending_edits().len(),
@@ -563,12 +529,15 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
         "bake must not clear pending while layers is None"
     );
 
-    // The gen-1 request's done arrives and matches the current gen.
-    syn.install(parse_done_for(&bundle, bid, 1, "{x}\n"), 1);
+    // The new request's done arrives and matches the current gen.
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t1), "{x}\n"),
+        generation(&t1),
+    );
 
     assert!(!syn.is_in_flight(), "a matching done must clear in_flight");
-    assert_eq!(syn.parsed_gen(), Some(1));
-    assert_eq!(syn.tree_gen(), 1);
+    assert_eq!(syn.parsed_gen(), Some(generation(&t1)));
+    assert_eq!(syn.tree_gen(), generation(&t1));
     assert!(
         syn.pending_edits().is_empty(),
         "a successful install must drain pending edits at or below the installed gen"
@@ -584,7 +553,6 @@ fn install_parse_failed_advances_parsed_gen_only() {
     let (mut syn, _req) = Syntax::attach(
         Arc::clone(&bundle),
         bid,
-        0,
         &BufferText::from("{}\n"),
         &empty_langs(),
     );
@@ -626,7 +594,6 @@ fn install_recovers_from_a_parse_failed_for_the_same_generation() {
     let (mut syn, _req) = Syntax::attach(
         Arc::clone(&bundle),
         bid,
-        0,
         &BufferText::from("{}\n"),
         &empty_langs(),
     );
@@ -671,40 +638,35 @@ fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    // The first text lands: layers installed, tree_gen == parsed_gen.
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    // Gen 0 lands: layers installed, tree_gen == parsed_gen == 0.
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
-    assert!(syn.is_current(0), "gen 0 is genuinely current");
+    assert!(syn.is_current(generation(&t0)), "the first text is current");
 
-    // An edit moves the text to gen 1, then gen 1's parse fails.
-    let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("\"a\":1");
-    syn.record_edit(0, 1, &b.finish(), &rope_pre);
+    // An edit moves the text on, then the new text's parse fails.
+    let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &t1, &cs);
     syn.install(
         ParseDone {
             bid,
-            generation: 1,
+            generation: generation(&t1),
             bundle: Arc::clone(&bundle),
             outcome: ParseOutcome::ParseFailed,
         },
-        1,
+        generation(&t1),
     );
 
-    // `parsed_gen` alone would now claim gen 1 is current...
-    assert_eq!(syn.parsed_gen(), Some(1));
-    // ...but the committed layers still describe gen 0.
-    assert_eq!(syn.tree_gen(), 0);
+    // `parsed_gen` alone would now claim the new text is current...
+    assert_eq!(syn.parsed_gen(), Some(generation(&t1)));
+    // ...but the committed layers still describe the first.
+    assert_eq!(syn.tree_gen(), generation(&t0));
     assert!(
-        !syn.is_current(1),
-        "layers predate gen 1: is_current must not report it as current"
+        !syn.is_current(generation(&t1)),
+        "layers predate the new text: is_current must not report it as current"
     );
 }
 
@@ -715,15 +677,10 @@ fn ensure_current_parses_a_never_parsed_attachment() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
-    );
+    let text = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &text, &empty_langs());
 
-    let outcome = syn.ensure_current(bid, 0, &BufferText::from("{}\n"), &empty_langs());
+    let outcome = syn.ensure_current(bid, &text, &empty_langs());
     assert!(
         outcome.is_none(),
         "the first-ever parse is not a chain break"
@@ -752,26 +709,19 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
-    // Record an edit but deliberately skip frame_tick: ensure_current must
-    // bake and reparse on its own, with no async round trip.
-    let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("\"a\":1");
-    let cs = b.finish();
-    syn.record_edit(0, 1, &cs, &rope_pre);
+    // Record an edit but skip frame_tick: ensure_current must bake and
+    // reparse on its own, with no async round trip.
+    let (new_text, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &new_text, &cs);
 
-    let new_text = BufferText::from("{\"a\":1}\n");
-    let outcome = syn.ensure_current(bid, 1, &new_text, &empty_langs());
+    let outcome = syn.ensure_current(bid, &new_text, &empty_langs());
     assert!(outcome.is_none(), "a contiguous chain is not a break");
 
     // Computed from the new string, not the tree.
@@ -785,8 +735,8 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
             .end_byte(),
         expected_end_byte
     );
-    assert_eq!(syn.parsed_gen(), Some(1));
-    assert_eq!(syn.tree_gen(), 1);
+    assert_eq!(syn.parsed_gen(), Some(generation(&new_text)));
+    assert_eq!(syn.tree_gen(), generation(&new_text));
     assert!(syn.pending_edits().is_empty());
 }
 
@@ -795,20 +745,24 @@ fn ensure_current_up_to_date_does_not_reparse() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
-    // Pass a text that would parse to a different tree if ensure_current
-    // actually reparsed. Proves the gen-gate short-circuits before that.
-    let outcome = syn.ensure_current(bid, 0, &BufferText::from("{\"a\":1}\n"), &empty_langs());
+    // A text of the same generation that would parse to a different tree if
+    // ensure_current actually reparsed: the gen-gate short-circuits first.
+    let other = BufferText::from("{\"a\":1}\n");
+    assert_eq!(generation(&other), generation(&t0));
+    let outcome = syn.ensure_current(bid, &other, &empty_langs());
     assert!(outcome.is_none());
-    assert_eq!(syn.tree_gen(), 0, "up-to-date attachment must not reparse");
+    assert_eq!(
+        syn.tree_gen(),
+        generation(&t0),
+        "up-to-date attachment must not reparse"
+    );
     assert_eq!(
         syn.layers()
             .unwrap()
@@ -826,28 +780,22 @@ fn ensure_current_reports_a_broken_chain_and_full_reparses() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
 
-    // Record an edit that starts at 2, a text the tree (at 0) never saw.
-    let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("x");
-    let cs = b.finish();
-    syn.record_edit(2, 3, &cs, &rope_pre);
+    // Record an edit that starts at a text the tree never saw.
+    let (unseen, _) = insert_into(&t0, 1, "y");
+    let (new_text, cs) = insert_into(&unseen, 1, "x");
+    record(&mut syn, &unseen, &new_text, &cs);
 
-    let new_text = BufferText::from("{x}\n");
-    let outcome = syn.ensure_current(bid, 3, &new_text, &empty_langs());
+    let outcome = syn.ensure_current(bid, &new_text, &empty_langs());
     let brk = outcome.expect("a gapped chain must be reported");
-    assert_eq!(brk.tree_gen, 0);
-    assert_eq!(brk.generation, 3);
+    assert_eq!(brk.tree_gen, generation(&t0));
+    assert_eq!(brk.generation, generation(&new_text));
     assert_eq!(
         syn.layers()
             .unwrap()
@@ -855,10 +803,10 @@ fn ensure_current_reports_a_broken_chain_and_full_reparses() {
             .unwrap()
             .root_node()
             .end_byte(),
-        "{x}\n".len(),
+        "{xy}\n".len(),
         "a broken chain must still land on a full reparse of the new text"
     );
-    assert_eq!(syn.parsed_gen(), Some(3));
+    assert_eq!(syn.parsed_gen(), Some(generation(&new_text)));
 }
 
 #[test]
@@ -866,29 +814,23 @@ fn install_discards_a_result_for_an_already_installed_generation() {
     require_grammars(&["json"]);
     let bundle = make_bundle("json", "tree_sitter_json");
     let bid = fresh_bid();
-    let (mut syn, _req) = Syntax::attach(
-        Arc::clone(&bundle),
-        bid,
-        0,
-        &BufferText::from("{}\n"),
-        &empty_langs(),
+    let t0 = BufferText::from("{}\n");
+    let (mut syn, _req) = Syntax::attach(Arc::clone(&bundle), bid, &t0, &empty_langs());
+    // Reach the next text synchronously, as a structural command would.
+    syn.install(
+        parse_done_for(&bundle, bid, generation(&t0), "{}\n"),
+        generation(&t0),
     );
-    // Reach gen 1 synchronously, as a structural command would.
-    syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
-    let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
-    b.retain_to(CharOffset::new(1));
-    b.insert("\"a\":1");
-    let cs = b.finish();
-    syn.record_edit(0, 1, &cs, &rope_pre);
-    syn.ensure_current(bid, 1, &BufferText::from("{\"a\":1}\n"), &empty_langs());
-    assert_eq!(syn.parsed_gen(), Some(1));
+    let (t1, cs) = insert_into(&t0, 1, "\"a\":1");
+    record(&mut syn, &t0, &t1, &cs);
+    syn.ensure_current(bid, &t1, &empty_langs());
+    assert_eq!(syn.parsed_gen(), Some(generation(&t1)));
 
     // A late asynchronous result for the SAME generation, built from
     // different (shorter) text, must not overwrite what ensure_current
     // already installed.
-    let late_done = parse_done_for(&bundle, bid, 1, "{}\n");
-    syn.install(late_done, 1);
+    let late_done = parse_done_for(&bundle, bid, generation(&t1), "{}\n");
+    syn.install(late_done, generation(&t1));
 
     assert_eq!(
         syn.layers()

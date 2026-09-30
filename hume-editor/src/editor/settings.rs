@@ -1122,7 +1122,7 @@ fn parse_tab_width(value: &str) -> Result<u8, String> {
 /// `WordChars::validate`), so it gets its own parser kind instead of the
 /// generic unvalidated string one.
 fn parse_word_chars(value: &str) -> Result<String, String> {
-    hume_editing::word::WordChars::validate(value)?;
+    hume_editing::word::WordChars::validate(value).map_err(|e| format!("word-chars {e}"))?;
     Ok(value.to_owned())
 }
 

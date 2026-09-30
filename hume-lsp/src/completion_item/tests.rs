@@ -207,3 +207,19 @@ fn item_defaults_edit_range_is_absent_without_defaults_and_for_a_bare_array() {
     );
     assert_eq!(item_defaults_edit_range(&serde_json::json!([])), None);
 }
+
+#[test]
+fn a_default_edit_range_missing_its_end_is_none() {
+    let list =
+        serde_json::json!({"itemDefaults": {"editRange": {"start": {"line": 0, "character": 1}}}});
+    assert_eq!(item_defaults_edit_range(&list), None);
+}
+
+#[test]
+fn a_default_insert_replace_pair_with_a_malformed_insert_half_is_none() {
+    let list = serde_json::json!({"itemDefaults": {"editRange": {
+        "insert": {"start": {"line": 0}},
+        "replace": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 2}},
+    }}});
+    assert_eq!(item_defaults_edit_range(&list), None);
+}

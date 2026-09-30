@@ -767,7 +767,7 @@ fn paste_before_repeat_over_backward_selection_collapses_to_start() {
 /// cursor appends.
 #[test]
 fn paste_multi_cursor_all_match_appends_each() {
-    let mut ed = editor_from("-[ab]>x-[cd]>\n");
+    let mut ed = editor_from("-{ab}>x-[cd]>\n");
     ed.state
         .kill_ring
         .push(vec!["ab".to_string(), "cd".to_string()]);
@@ -789,7 +789,7 @@ fn paste_multi_cursor_all_match_appends_each() {
 /// whole set replaces, not a mix of append and replace.
 #[test]
 fn paste_multi_cursor_partial_match_replaces_all() {
-    let mut ed = editor_from("-[ab]>x-[cd]>\n");
+    let mut ed = editor_from("-{ab}>x-[cd]>\n");
     ed.state
         .kill_ring
         .push(vec!["ab".to_string(), "ZZ".to_string()]); // 2nd doesn't match "cd"
@@ -814,7 +814,7 @@ fn paste_multi_cursor_partial_match_replaces_all() {
 /// even be evaluated per-selection when the op joins values across the board.
 #[test]
 fn paste_value_count_mismatch_replaces() {
-    let mut ed = editor_from("-[ab]>x-[cd]>\n");
+    let mut ed = editor_from("-{ab}>x-[cd]>\n");
     ed.state.kill_ring.push(vec!["Z".to_string()]); // 1 value, 2 selections
     ed.feed_key(key('p'));
     let buf = ed.doc().text().to_string();

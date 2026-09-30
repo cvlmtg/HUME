@@ -85,9 +85,9 @@ fn dedent_tab_width_8() {
 fn dedent_two_cursors_in_leading_ws() {
     // Two lines, each "  x", cursor on 'x' (col 2). prev_stop 0. Delete 2 each.
     assert_state!(
-        "  -[x]>\n  -[y]>\n",
+        "  -{x}>\n  -[y]>\n",
         |(text, sels)| dedent_tab_backward(test_fixtures::testing::state(text, sels), 4),
-        "-[x]>\n-[y]>\n"
+        "-{x}>\n-[y]>\n"
     );
 }
 
@@ -108,9 +108,9 @@ fn dedent_two_cursors_same_line_independent() {
     // deletes back to the stop at col 4, [4,5). The ranges are disjoint, so
     // "  \n" is left.
     assert_state!(
-        "  -[ ]>  -[\n]>",
+        "  -{ }>  -[\n]>",
         |(text, sels)| dedent_tab_backward(test_fixtures::testing::state(text, sels), 4),
-        "-[ ]> -[\n]>"
+        "-{ }> -[\n]>"
     );
 }
 
@@ -121,7 +121,7 @@ fn dedent_two_cursors_same_line_target_overlap() {
     // to the stop at col 4 too, [4,6). The union [4,6) goes, so 4 spaces
     // remain and both cursors land at col 4.
     assert_state!(
-        "     -[ ]>-[\n]>",
+        "     -{ }>-[\n]>",
         |(text, sels)| dedent_tab_backward(test_fixtures::testing::state(text, sels), 4),
         "    -[\n]>"
     );
@@ -133,7 +133,7 @@ fn dedent_two_cursors_same_line_same_target() {
     // stop at col 0, [0,3) and [0,4): the union goes, so all 4 spaces are
     // deleted.
     assert_state!(
-        "   -[ ]>-[\n]>",
+        "   -{ }>-[\n]>",
         |(text, sels)| dedent_tab_backward(test_fixtures::testing::state(text, sels), 4),
         "-[\n]>"
     );
@@ -207,9 +207,9 @@ fn delete_forward_two_cursors() {
     // Changeset: Delete(1), Retain(1), Delete(1), Retain(2).
     // Result: "elo", cursors at 0 and 1.
     assert_state!(
-        "-[h]>e-[l]>lo\n",
+        "-{h}>e-[l]>lo\n",
         |(text, sels)| delete_char_forward(test_fixtures::testing::state(text, sels)),
-        "-[e]>-[l]>o\n"
+        "-{e}>-[l]>o\n"
     );
 }
 
@@ -217,7 +217,7 @@ fn delete_forward_two_cursors() {
 fn delete_forward_adjacent_cursors_merge() {
     // Cursors at 2 and 3. Both delete forward; both land at 2 → merge.
     assert_state!(
-        "he-[l]>-[l]>o\n",
+        "he-{l}>-[l]>o\n",
         |(text, sels)| delete_char_forward(test_fixtures::testing::state(text, sels)),
         "he-[o]>\n"
     );
@@ -290,9 +290,9 @@ fn delete_backward_two_cursors() {
     // Changeset: Retain(1), Delete(1), Retain(1), Delete(1), Retain(1).
     // Result: "hlo", cursors at 1 and 2.
     assert_state!(
-        "he-[l]>l-[o]>\n",
+        "he-{l}>l-[o]>\n",
         |(text, sels)| delete_char_backward(test_fixtures::testing::state(text, sels)),
-        "h-[l]>-[o]>\n"
+        "h-{l}>-[o]>\n"
     );
 }
 
@@ -312,7 +312,7 @@ fn delete_backward_adjacent_cursors_merge() {
     // Cursors at 2 and 3. Backspace at 2: delete offset 1. Backspace at 3:
     // delete offset 2 in original. Both cursors land at 1 → merge.
     assert_state!(
-        "he-[l]>-[l]>o\n",
+        "he-{l}>-[l]>o\n",
         |(text, sels)| delete_char_backward(test_fixtures::testing::state(text, sels)),
         "h-[l]>o\n"
     );
@@ -401,12 +401,12 @@ fn delete_word_backward_two_cursors() {
     // Cursors at offsets 5 and 11 in "hello world". First deletes "hello"
     // (offsets 0..5), second deletes "world" (offsets 6..11).
     assert_state!(
-        "hello-[\n]>world-[\n]>",
+        "hello-{\n}>world-[\n]>",
         |(text, sels)| delete_word_backward(
             test_fixtures::testing::state(text, sels),
             WordChars::default()
         ),
-        "-[\n]>-[\n]>"
+        "-{\n}>-[\n]>"
     );
 }
 
@@ -416,7 +416,7 @@ fn delete_word_backward_two_cursors_same_word() {
     // back to the word start, [0,2) and [0,5), so their union goes and both
     // cursors land on what follows it.
     assert_state!(
-        "fo-[o]>ba-[r]>\n",
+        "fo-{o}>ba-[r]>\n",
         |(text, sels)| delete_word_backward(
             test_fixtures::testing::state(text, sels),
             WordChars::default()
@@ -472,7 +472,7 @@ fn delete_word_backward_two_cursors_in_one_word_chars_run() {
     // [0,6) goes. Under the default word rule the second cursor's range would
     // start at 4 instead, and "ba" alone would go.
     assert_state!(
-        "fo-[o]>-ba-[r]>\n",
+        "fo-{o}>-ba-[r]>\n",
         |(text, sels)| delete_word_backward(
             test_fixtures::testing::state(text, sels),
             WordChars::new("-")
@@ -547,9 +547,9 @@ fn delete_selection_multi_char_backward() {
 fn delete_selection_two_cursors() {
     // Cursors on 'h' (pos 0) and 'l' (pos 2), both deleted independently.
     assert_state!(
-        "-[h]>el-[l]>o\n",
+        "-{h}>el-[l]>o\n",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
-        "-[e]>l-[o]>\n"
+        "-{e}>l-[o]>\n"
     );
 }
 
@@ -558,7 +558,7 @@ fn delete_selection_adjacent_selections_merge_cursors() {
     // Cursors on 'h' (0) and 'e' (1). After deleting both, cursors both
     // land at 0 and merge into one.
     assert_state!(
-        "-[h]>-[e]>llo\n",
+        "-{h}>-[e]>llo\n",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
         "-[l]>lo\n"
     );
@@ -622,7 +622,7 @@ fn delete_selection_of_a_line_before_the_last_lands_on_the_next_line() {
 #[test]
 fn delete_selection_of_touching_last_lines_leaves_no_blank_line() {
     assert_state!(
-        "a\n-[b\n]>-[c\n]>",
+        "a\n-{b\n}>-[c\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
         "-[a]>\n"
     );
@@ -631,7 +631,7 @@ fn delete_selection_of_touching_last_lines_leaves_no_blank_line() {
 #[test]
 fn delete_selection_of_a_last_line_split_across_two_selections_removes_the_line() {
     assert_state!(
-        "a\n-[b]>-[\n]>",
+        "a\n-{b}>-[\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
         "a-[\n]>"
     );
@@ -640,7 +640,7 @@ fn delete_selection_of_a_last_line_split_across_two_selections_removes_the_line(
 #[test]
 fn delete_selection_of_cursors_on_the_last_empty_lines_leaves_no_blank_line() {
     assert_state!(
-        "a\n-[\n]>-[\n]>",
+        "a\n-{\n}>-[\n]>",
         |(text, sels)| delete_selection(test_fixtures::testing::state(text, sels)),
         "-[a]>\n"
     );
@@ -844,7 +844,10 @@ fn d_yanks_what_it_deletes() {
         ("-[ab\n]>", "-[\n]>", &["ab\n"]),
         ("ab-[\n]>", "ab-[\n]>", &[""]),
         ("-[\n]>", "-[\n]>", &[""]),
-        ("-[a]>b-[\n]>", "-[b]>-[\n]>", &["a", ""]),
+        ("-{a}>b-[\n]>", "-{b}>-[\n]>", &["a", ""]),
+        // Whole lines to the end: the register gets both lines while the
+        // text keeps its final `\n`.
+        ("-{a\n}>-[\n]>", "-[\n]>", &["a\n", "\n"]),
     ];
     for &(before, after, yanked) in cases {
         let (text, yank) = removal(before);

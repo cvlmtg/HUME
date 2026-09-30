@@ -251,6 +251,20 @@ fn function_around_on_an_attributed_function_includes_the_attributes() {
     );
 }
 
+/// A node that ends inside a cluster widens to the whole cluster: the
+/// combining mark after the closing brace joins it.
+#[test]
+fn a_function_ending_inside_a_cluster_covers_the_whole_cluster() {
+    let source = "fn foo() {\n    1\n}\u{301}\n";
+    let (syn, text) = rust_syntax(source);
+    let layers = syn.layers().expect("layers installed");
+    let pos = text.snap(text.byte_to_char(source.find('1').unwrap()));
+
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Around);
+    let span = around.enclosing(pos).expect("function.around at the body");
+    assert_eq!(span_text(&text, span), "fn foo() {\n    1\n}\u{301}");
+}
+
 #[test]
 fn parameter_around_probed_at_a_non_last_argument_includes_its_trailing_comma() {
     let source = "fn add(a: i32, b: i32) -> i32 { a + b }\n";
@@ -645,13 +659,15 @@ fn for_selector_cache_does_not_survive_a_bake() {
     // and hands back a reparse request we deliberately drop, leaving the
     // layers edited-in-place and *not* replaced by an install.
     let edited = format!("// lead\n{source}");
-    let rope_pre = ropey::Rope::from_str(source);
-    let mut b = ChangeSetBuilder::new(co(rope_pre.len_chars()));
+    let mut b = ChangeSetBuilder::new(text.end());
     b.insert("// lead\n");
-    // `attach_sync` installs at generation 1, so the edit leads from 1 to 2.
-    syn.record_edit(1, 2, &b.finish(), &rope_pre);
-    let text = BufferText::from(edited.as_str());
-    let _req = syn.frame_tick(fresh_bid(), 2, &text, &empty_langs());
+    let cs = b.finish();
+    let original = text;
+    let text = cs
+        .apply(&original)
+        .expect("an insertion applies to its own text");
+    syn.record_edit(&hume_editing::edit::TextChange::new(&original, &text, &cs));
+    let _req = syn.frame_tick(fresh_bid(), &text, &empty_langs());
 
     let layers = syn.layers().expect("layers installed");
     let after = ObjectSpans::for_selector(layers, &text, sel);

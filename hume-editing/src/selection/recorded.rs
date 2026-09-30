@@ -18,7 +18,7 @@ pub struct RecordedSelections {
 impl RecordedSelections {
     /// # Panics
     /// Panics if `selections` is empty or `primary` is out of range.
-    pub fn new(selections: Vec<Selection>, primary: usize) -> Self {
+    pub(crate) fn new(selections: Vec<Selection>, primary: usize) -> Self {
         assert!(
             !selections.is_empty(),
             "recorded selections must not be empty"

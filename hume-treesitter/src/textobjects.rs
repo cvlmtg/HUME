@@ -417,9 +417,6 @@ fn collect_hulls(
         let Some((start_byte, end_byte)) = capture_hull(m, capture_idx) else {
             continue;
         };
-        if start_byte >= end_byte {
-            continue; // zero-width hull (MISSING nodes), not a real object
-        }
         // Callers hand over only a tree parsed from `text`; a stale one
         // could name bytes past its end.
         assert!(
@@ -427,6 +424,7 @@ fn collect_hulls(
             "text-object span end {end_byte} exceeds buffer length {}: tree is stale",
             text.len_bytes()
         );
+        // A zero-width hull (a MISSING node) covers no cluster.
         out.extend(text.covering_bytes(start_byte..end_byte));
     }
 }

@@ -1,23 +1,11 @@
-use hume_rope::cluster::ClusterStart;
 use hume_rope::column::BufferLineCol;
-use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 
 use super::*;
 use crate::changeset::{ChangeSet, ChangeSetBuilder};
+use crate::marked::start_at;
 use crate::marked::{parse, render};
 use crate::state::EditState;
-
-fn co(n: usize) -> CharOffset {
-    CharOffset::new(n)
-}
-
-/// The cluster starting at char `n` of an ASCII test text.
-fn at(state: &EditState, n: usize) -> ClusterStart {
-    let pos = state.text().snap(co(n));
-    assert_eq!(pos.offset(), co(n), "char {n} is not a cluster start");
-    pos
-}
 
 /// Every latch here is `BufferLine`: these tests pin merge and translation,
 /// not the variants, which `hume-ops` and `hume-editor` cover.
@@ -32,7 +20,7 @@ fn sticky(display_col: u32) -> StickyDisplayCol {
 fn with(state: EditState, ends: &[(usize, usize)]) -> EditState {
     let sels = ends
         .iter()
-        .map(|&(a, h)| Selection::new(at(&state, a), at(&state, h)))
+        .map(|&(a, h)| Selection::new(start_at(state.text(), a), start_at(state.text(), h)))
         .collect();
     state.with_selections(sels, 0)
 }
@@ -46,7 +34,7 @@ fn shown(state: &EditState) -> String {
 #[test]
 fn disjoint_selections_stay_apart() {
     let state = with(parse("-[a]>bcdefghij\n"), &[(0, 3), (5, 8)]);
-    assert_eq!(shown(&state), "-[abcd]>e-[fghi]>j\n");
+    assert_eq!(shown(&state), "-{abcd}>e-[fghi]>j\n");
 }
 
 #[test]
@@ -64,7 +52,7 @@ fn selections_sharing_their_edge_cluster_merge() {
 #[test]
 fn selections_touching_without_sharing_a_cluster_stay_apart() {
     let state = with(parse("-[a]>bcdefghij\n"), &[(0, 2), (3, 6)]);
-    assert_eq!(shown(&state), "-[abc]>-[defg]>hij\n");
+    assert_eq!(shown(&state), "-{abc}>-[defg]>hij\n");
 }
 
 #[test]
@@ -90,15 +78,17 @@ fn a_merge_extended_by_a_backward_selection_faces_backward() {
 #[test]
 fn unsorted_selections_are_sorted() {
     let state = with(parse("-[a]>bcdefghij\n"), &[(6, 7), (0, 1)]);
-    assert_eq!(shown(&state), "-[ab]>cdef-[gh]>ij\n");
-    assert_eq!(state.view().primary().start(), at(&state, 6));
+    assert_eq!(shown(&state), "-[ab]>cdef-{gh}>ij\n");
+    assert_eq!(state.view().primary().start(), start_at(state.text(), 6));
 }
 
 #[test]
 fn a_merge_that_extends_a_selection_clears_its_sticky_column() {
     let state = parse("-[a]>bcdefghij\n");
-    let a = Selection::new(at(&state, 0), at(&state, 5)).with_sticky(sticky(42));
-    let b = Selection::new(at(&state, 3), at(&state, 8)).with_sticky(sticky(99));
+    let a = Selection::new(start_at(state.text(), 0), start_at(state.text(), 5))
+        .with_sticky(sticky(42));
+    let b = Selection::new(start_at(state.text(), 3), start_at(state.text(), 8))
+        .with_sticky(sticky(99));
     let merged = state.with_selections(vec![a, b], 0);
     assert_eq!(merged.view().len(), 1);
     assert_eq!(
@@ -111,13 +101,13 @@ fn a_merge_that_extends_a_selection_clears_its_sticky_column() {
 fn the_primary_follows_the_selection_that_holds_it_through_a_merge() {
     let state = parse("-[a]>bcdefghij\n");
     let sels = vec![
-        Selection::new(at(&state, 8), at(&state, 9)),
-        Selection::new(at(&state, 0), at(&state, 2)),
-        Selection::new(at(&state, 1), at(&state, 4)),
+        Selection::new(start_at(state.text(), 8), start_at(state.text(), 9)),
+        Selection::new(start_at(state.text(), 0), start_at(state.text(), 2)),
+        Selection::new(start_at(state.text(), 1), start_at(state.text(), 4)),
     ];
     let merged = state.with_selections(sels, 2);
-    assert_eq!(merged.view().primary().start(), at(&merged, 0));
-    assert_eq!(merged.view().primary().last(), at(&merged, 4));
+    assert_eq!(merged.view().primary().start(), start_at(merged.text(), 0));
+    assert_eq!(merged.view().primary().last(), start_at(merged.text(), 4));
 }
 
 #[test]
@@ -132,7 +122,7 @@ fn an_empty_selection_list_panics() {
 #[should_panic(expected = "primary index out of bounds")]
 fn a_primary_past_the_list_panics() {
     let state = parse("-[a]>\n");
-    let cursor = Selection::cursor(at(&state, 0));
+    let cursor = Selection::cursor(start_at(state.text(), 0));
     state.with_selections(vec![cursor], 1).into_selections();
 }
 
@@ -161,16 +151,16 @@ fn translate(state: &EditState, cs: &ChangeSet) -> EditState {
 fn translation_moves_selections_and_keeps_sticky_columns_only_on_untouched_lines() {
     let state = parse("aaa\nbbb\nccc\n-[x]>\n");
     let sels = vec![
-        Selection::cursor(at(&state, 1)).with_sticky(sticky(5)),
-        Selection::new(at(&state, 5), at(&state, 6)).with_sticky(sticky(9)),
-        Selection::cursor(at(&state, 9)).with_sticky(sticky(7)),
+        Selection::cursor(start_at(state.text(), 1)).with_sticky(sticky(5)),
+        Selection::new(start_at(state.text(), 5), start_at(state.text(), 6)).with_sticky(sticky(9)),
+        Selection::cursor(start_at(state.text(), 9)).with_sticky(sticky(7)),
     ];
     let state = state.with_selections(sels, 0);
     let cs = replace(state.text(), 4, 7, "XY");
 
     let out = translate(&state, &cs);
 
-    assert_eq!(shown(&out), "a-[a]>a\n-[X]>Y\nc-[c]>c\nx\n");
+    assert_eq!(shown(&out), "a-{a}>a\n-[X]>Y\nc-[c]>c\nx\n");
     let stickies: Vec<_> = out
         .view()
         .iter()
@@ -183,8 +173,8 @@ fn translation_moves_selections_and_keeps_sticky_columns_only_on_untouched_lines
 fn an_insertion_at_a_line_start_touches_that_line() {
     let state = parse("-[a]>a\nbb\n");
     let sels = vec![
-        Selection::cursor(at(&state, 1)).with_sticky(sticky(5)),
-        Selection::cursor(at(&state, 4)).with_sticky(sticky(9)),
+        Selection::cursor(start_at(state.text(), 1)).with_sticky(sticky(5)),
+        Selection::cursor(start_at(state.text(), 4)).with_sticky(sticky(9)),
     ];
     let state = state.with_selections(sels, 0);
     let out = translate(&state, &replace(state.text(), 3, 3, "X"));
@@ -205,7 +195,7 @@ fn a_backward_selection_stays_backward_through_a_translation() {
 
 #[test]
 fn selections_folded_onto_one_point_merge() {
-    let state = parse("a-[b]>cd-[e]>f\n");
+    let state = parse("a-{b}>cd-[e]>f\n");
     let out = translate(&state, &replace(state.text(), 0, 6, ""));
     assert_eq!(shown(&out), "-[\n]>");
 }

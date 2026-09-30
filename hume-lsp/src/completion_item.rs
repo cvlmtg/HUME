@@ -56,10 +56,7 @@ pub fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::T
     let range = v.get("range").or_else(|| v.get("insert"))?;
     let new_text = v.get("newText")?.as_str()?.to_string();
     Some(lsp_types::TextEdit {
-        range: lsp_types::Range {
-            start: crate::position::position_from_json(range.get("start")?)?,
-            end: crate::position::position_from_json(range.get("end")?)?,
-        },
+        range: crate::position::range_from_json(range)?,
         new_text,
     })
 }
@@ -71,11 +68,7 @@ pub fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::T
 /// list without `itemDefaults`, or a malformed range.
 pub fn item_defaults_edit_range(v: &serde_json::Value) -> Option<lsp_types::Range> {
     let range = v.get("itemDefaults")?.get("editRange")?;
-    let range = range.get("insert").unwrap_or(range);
-    Some(lsp_types::Range {
-        start: crate::position::position_from_json(range.get("start")?)?,
-        end: crate::position::position_from_json(range.get("end")?)?,
-    })
+    crate::position::range_from_json(range.get("insert").unwrap_or(range))
 }
 
 /// Lenient `additionalTextEdits` reader, shared by a completion item's own

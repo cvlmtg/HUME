@@ -9,13 +9,10 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::{Landings, edit};
-use hume_editing::lines::{line_break, line_start};
+use hume_editing::lines::{line_content_range, line_start};
 use hume_editing::selection::{EditView, UnboundSelection};
 use hume_editing::state::EditState;
-use hume_editing::text::BufferText;
-use hume_rope::cluster::ClusterRange;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::ExclusiveRange;
 use unicode_normalization::UnicodeNormalization;
 
 /// Flags accepted by `:sort`.
@@ -55,7 +52,7 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
     let groups = group_adjacent(&entries);
 
     let mut any_group = false;
-    // Each moved slot's old content range, and the content that lands there.
+    // Each moved line, and the content that lands on it.
     let mut moves: Vec<(ContentLine, String)> = Vec::new();
     // Old line -> new line, only for entries that move.
     let mut line_map = rustc_hash::FxHashMap::<ContentLine, ContentLine>::default();
@@ -82,7 +79,8 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
             }
             let target = entries[group[slot]].line;
             let source = entries[group[local]].line;
-            let content = text.slice(line_content(text, source)).to_string();
+            let content = line_content_range(text, source)
+                .map_or_else(String::new, |range| text.slice(range.chars()).to_string());
             moves.push((target, content));
         }
     }
@@ -97,15 +95,9 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
     let primary = view.primary().index();
     Ok(edit(&state, |b| {
         for (target, content) in &moves {
-            let start = line_start(text, *target);
-            let old_content = ClusterRange::between(
-                text.full_slice(),
-                start,
-                line_break(text, *target).into(),
-            );
-            match old_content {
+            match line_content_range(text, *target) {
                 Some(range) => b.replace(range, content),
-                None => b.insert(start, content),
+                None => b.insert(line_start(text, *target), content),
             };
         }
         // A selection on one moved line follows the line to its new place. A
@@ -124,17 +116,6 @@ pub fn sort_lines(state: EditState, opts: SortOpts) -> Result<Edited, SortRefusa
             .collect();
         Landings::new(landings, primary)
     }))
-}
-
-/// `line` without its `\n`.
-fn line_content(
-    text: &BufferText,
-    line: ContentLine,
-) -> ExclusiveRange<hume_rope::offset::CharOffset> {
-    ExclusiveRange::new(
-        line_start(text, line).offset(),
-        line_break(text, line).offset(),
-    )
 }
 
 /// Walk every selection and build one [`SortEntry`] per distinct line it

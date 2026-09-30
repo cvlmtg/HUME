@@ -32,13 +32,13 @@ enum Kind {
 
 impl UnboundSelection {
     /// `sel` carried through the edit, each end past text inserted at it.
-    pub fn kept(sel: Selection) -> Self {
+    pub(crate) fn kept(sel: Selection) -> Self {
         Self::kept_with(sel, Assoc::After)
     }
 
     /// `sel` carried through the edit, each end on `assoc`'s side of text
     /// inserted at it. One side for both ends keeps the selection's facing.
-    pub fn kept_with(sel: Selection, assoc: Assoc) -> Self {
+    pub(crate) fn kept_with(sel: Selection, assoc: Assoc) -> Self {
         Self(Kind::Kept {
             sel: sel.without_sticky(),
             assoc,

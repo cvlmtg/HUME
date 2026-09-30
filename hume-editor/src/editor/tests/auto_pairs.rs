@@ -113,10 +113,10 @@ fn auto_pairs_disabled() {
 #[test]
 fn auto_pairs_skip_close_mixed_cursors() {
     // cursor 1 on `)`, cursor 2 on `b`: not all cursors match skip-close.
-    let mut ed = editor_from("(-[)]>a-[b]>c\n");
+    let mut ed = editor_from("(-{)}>a-[b]>c\n");
     ed.handle_key(key('i'));
     ed.handle_key(key(')')); // fallback: inserts `)` at both positions
-    assert_eq!(state(&ed), "()-[)]>a)-[b]>c\n");
+    assert_eq!(state(&ed), "()-{)}>a)-[b]>c\n");
 }
 
 /// Multi-cursor delete-pair is all-or-nothing: if one cursor is between a pair
@@ -124,10 +124,10 @@ fn auto_pairs_skip_close_mixed_cursors() {
 #[test]
 fn auto_pairs_auto_delete_mixed_cursors() {
     // cursor 1 between `()`, cursor 2 between `a`+`b` (not a pair).
-    let mut ed = editor_from("(-[)]>a-[b]>c\n");
+    let mut ed = editor_from("(-{)}>a-[b]>c\n");
     ed.handle_key(key('i'));
     ed.handle_key(key_backspace()); // fallback: each cursor deletes one char backward
-    assert_eq!(state(&ed), "-[)]>-[b]>c\n");
+    assert_eq!(state(&ed), "-{)}>-[b]>c\n");
 }
 
 // ── Normal-mode pair chars ────────────────────────────────────────────────────

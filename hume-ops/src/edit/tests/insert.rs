@@ -116,9 +116,9 @@ fn insert_char_two_cursors() {
     // Changeset: Insert("x"), Retain(3), Insert("x"), Retain(4).
     // Result: "xfoox bar", cursors at 1 and 5.
     assert_state!(
-        "-[f]>oo-[ ]>bar\n",
+        "-{f}>oo-[ ]>bar\n",
         |(text, sels)| insert_char(test_fixtures::testing::state(text, sels), 'x'),
-        "x-[f]>oox-[ ]>bar\n"
+        "x-{f}>oox-[ ]>bar\n"
     );
 }
 
@@ -197,9 +197,9 @@ fn insert_str_over_middle_line_ending_in_newline_adds_no_blank_line() {
 fn insert_str_two_cursors() {
     // Cursors at 0 and 3; "xy" inserted at both.
     assert_state!(
-        "-[f]>oo-[ ]>bar\n",
+        "-{f}>oo-[ ]>bar\n",
         |(text, sels)| insert_str(test_fixtures::testing::state(text, sels), "xy"),
-        "xy-[f]>ooxy-[ ]>bar\n"
+        "xy-{f}>ooxy-[ ]>bar\n"
     );
 }
 
@@ -286,9 +286,9 @@ fn insert_tab_hard_replaces_selection() {
 #[test]
 fn insert_tab_hard_two_cursors() {
     assert_state!(
-        "-[f]>oo-[ ]>bar\n",
+        "-{f}>oo-[ ]>bar\n",
         |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Hard, 4),
-        "\t-[f]>oo\t-[ ]>bar\n"
+        "\t-{f}>oo\t-[ ]>bar\n"
     );
 }
 
@@ -338,9 +338,9 @@ fn insert_tab_soft_measures_a_later_cursor_against_the_line_the_deletion_left() 
     // one line, so the cursor on "e" sits at display col 5 and needs 3 spaces,
     // though "e" is at col 2 of its own line in the original text.
     assert_state!(
-        "x-[ab\nc]>d-[e]>\n",
+        "x-{ab\nc}>d-[e]>\n",
         |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Soft, 4),
-        "x   -[d]>   -[e]>\n"
+        "x   -{d}>   -[e]>\n"
     );
 }
 
@@ -371,9 +371,9 @@ fn insert_tab_soft_two_cursors_different_lines() {
     // Line 0: cursor on 'c' (col 2) → 2 spaces to reach col 4.
     // Line 1: cursor on 'z' (col 2) → 2 spaces to reach col 4.
     assert_state!(
-        "ab-[c]>\nxy-[z]>\n",
+        "ab-{c}>\nxy-[z]>\n",
         |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Soft, 4),
-        "ab  -[c]>\nxy  -[z]>\n"
+        "ab  -{c}>\nxy  -[z]>\n"
     );
 }
 
@@ -389,9 +389,9 @@ fn insert_tab_soft_two_cursors_same_line() {
     // After cursor 0's 2 spaces, 'z' sits at col 8; next stop = 12;
     // spaces needed = 4.
     assert_state!(
-        "ab-[c]> xy-[z]>\n",
+        "ab-{c}> xy-[z]>\n",
         |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Soft, 4),
-        "ab  -[c]> xy    -[z]>\n"
+        "ab  -{c}> xy    -[z]>\n"
     );
 }
 
@@ -407,9 +407,9 @@ fn insert_tab_soft_two_cursors_same_line_not_on_stop() {
     // After cursor 0's 1 space, 'h' is at col 9; next stop at col 12;
     // spaces needed = 3.
     assert_state!(
-        "abc-[d]>e fg-[h]>\n",
+        "abc-{d}>e fg-[h]>\n",
         |(text, sels)| insert_tab(test_fixtures::testing::state(text, sels), TabStyle::Soft, 4),
-        "abc -[d]>e fg   -[h]>\n"
+        "abc -{d}>e fg   -[h]>\n"
     );
 }
 
@@ -532,9 +532,9 @@ fn newline_indent_two_cursors_different_indents() {
     // Two cursors on differently-indented lines get their own indent.
     // Line 0 "  a" (cursor on 'a'), line 1 "\tb" (cursor on 'b').
     assert_state!(
-        "  -[a]>\n\t-[b]>\n",
+        "  -{a}>\n\t-[b]>\n",
         |(text, sels)| insert_newline_indent_owning(text, sels),
-        "  \n  -[a]>\n\t\n\t-[b]>\n"
+        "  \n  -{a}>\n\t\n\t-[b]>\n"
     );
 }
 
@@ -608,9 +608,9 @@ fn newline_indent_two_cursors_same_blank_line_each_open_a_line() {
     // Two collapsed cursors on the same whitespace-only line: both vacate the
     // line and each opens its own indented line.
     assert_state!(
-        "-[ ]> -[ ]>\n",
+        "-{ }> -[ ]>\n",
         |(text, sels)| insert_newline_indent_owning(text, sels),
-        "\n   -[\n]>   -[\n]>"
+        "\n   -{\n}>   -[\n]>"
     );
 }
 
@@ -620,9 +620,9 @@ fn newline_indent_two_cursors_second_on_blank_line_newline() {
     // cursors vacate "  \n" and each opens its own line with the copied
     // indent.
     assert_state!(
-        "-[ ]> -[\n]>",
+        "-{ }> -[\n]>",
         |(text, sels)| insert_newline_indent_owning(text, sels),
-        "\n  -[\n]>  -[\n]>"
+        "\n  -{\n}>  -[\n]>"
     );
 }
 
@@ -671,9 +671,9 @@ fn open_line_above_second_line_leaves_first_untouched() {
 #[test]
 fn open_line_above_two_cursors_different_indents() {
     assert_state!(
-        "\t-[a]>\n  -[b]>\n",
+        "\t-{a}>\n  -[b]>\n",
         |(text, sels)| open_line_above(test_fixtures::testing::state(text, sels)),
-        "\t-[\n]>\ta\n  -[\n]>  b\n"
+        "\t-{\n}>\ta\n  -[\n]>  b\n"
     );
 }
 
@@ -761,9 +761,9 @@ fn clear_blank_line_indent_multi_cursor_only_clears_blank_line() {
     // the blank line's whitespace is cleared; the content-line cursor is an
     // identity edit.
     assert_state!(
-        "-[f]>oo\n -[ ]>\n",
+        "-{f}>oo\n -[ ]>\n",
         |(text, sels)| clear_blank_line_indent_owning(text, sels),
-        "-[f]>oo\n-[\n]>"
+        "-{f}>oo\n-[\n]>"
     );
 }
 
@@ -772,7 +772,7 @@ fn clear_blank_line_indent_two_cursors_same_line_merge() {
     // Two cursors on the same blank line: both clear it and land on the same
     // spot, so the selections merge into one.
     assert_state!(
-        "-[ ]> -[ ]>\n",
+        "-{ }> -[ ]>\n",
         |(text, sels)| clear_blank_line_indent_owning(text, sels),
         "-[\n]>"
     );
@@ -783,7 +783,7 @@ fn clear_blank_line_indent_second_cursor_on_blank_line_newline() {
     // The second cursor sits on the blank line's structural '\n'. Both
     // cursors clear the line and land on the same spot, so they merge.
     assert_state!(
-        "-[ ]> -[\n]>",
+        "-{ }> -[\n]>",
         |(text, sels)| clear_blank_line_indent_owning(text, sels),
         "-[\n]>"
     );
@@ -797,9 +797,9 @@ fn clear_blank_line_indent_preserves_non_collapsed_selection() {
     // its head. "foo\n \nbar\n" (line1 is a single-space blank line);
     // selection B covers "ar" in "bar" on line2.
     assert_state!(
-        "foo\n-[ ]>\nb-[ar]>\n",
+        "foo\n-{ }>\nb-[ar]>\n",
         |(text, sels)| clear_blank_line_indent_owning(text, sels),
-        "foo\n-[\n]>b-[ar]>\n"
+        "foo\n-{\n}>b-[ar]>\n"
     );
 }
 

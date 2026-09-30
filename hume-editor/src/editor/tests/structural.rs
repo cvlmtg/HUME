@@ -279,7 +279,7 @@ fn goto_next_argument_selects_the_trimmed_argument_with_no_comma() {
 
 #[test]
 fn inner_function_two_cursors_in_two_functions_selects_both() {
-    let mut ed = rust_editor("fn one() {\n    -[1]>;\n}\n\nfn two() {\n    -[2]>;\n}\n");
+    let mut ed = rust_editor("fn one() {\n    -{1}>;\n}\n\nfn two() {\n    -[2]>;\n}\n");
     for ch in "mif".chars() {
         ed.handle_key(key(ch));
     }
@@ -292,7 +292,7 @@ fn inner_function_two_cursors_in_two_functions_selects_both() {
 
 #[test]
 fn inner_function_two_cursors_in_one_function_merge() {
-    let mut ed = rust_editor("fn merge_target() {\n    let -[a]> = 1;\n    let -[b]> = 2;\n}\n");
+    let mut ed = rust_editor("fn merge_target() {\n    let -{a}> = 1;\n    let -[b]> = 2;\n}\n");
     for ch in "mif".chars() {
         ed.handle_key(key(ch));
     }

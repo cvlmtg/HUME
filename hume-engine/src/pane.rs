@@ -570,14 +570,6 @@ impl Pane {
         self.saved_scrolls.remove(id);
         self.wraps.remove(id);
     }
-
-    /// Line index of the primary selection head, resolved via the rope.
-    ///
-    /// See [`primary_head_line`]. This is the whole-pane spelling, for
-    /// callers that hold a `&Pane` rather than its split-out fields.
-    pub fn primary_head_line(&self, rope: &Rope) -> ContentLine {
-        primary_head_line(&self.selections, rope)
-    }
 }
 
 /// Line index of the primary selection head, resolved via the rope.

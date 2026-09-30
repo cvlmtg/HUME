@@ -1,5 +1,5 @@
 use super::MotionMode;
-use hume_editing::lines::{line_range, lines_range, next_line_start};
+use hume_editing::lines::{line_range, lines_range};
 use hume_editing::selection::{Facing, Selection, SelectionView};
 use hume_editing::state::EditState;
 
@@ -59,7 +59,7 @@ fn extend_line_span(sel: SelectionView<'_>, forward: bool) -> Selection {
     let anchor_line = text.char_to_line(sel.anchor().offset());
     let head_line = sel.head_line();
     let new_head_line = if forward {
-        if next_line_start(text, head_line.into()) >= text.end() {
+        if head_line == text.last_content_line() {
             return sel.selection(); // head already on the last line: clamp
         }
         head_line.advance(1)
@@ -83,7 +83,7 @@ fn extend_line_span(sel: SelectionView<'_>, forward: bool) -> Selection {
 fn move_select_line(sel: SelectionView<'_>) -> Selection {
     let text = sel.text();
     let lines = sel.lines();
-    let has_next = next_line_start(text, lines.end.into()) < text.end();
+    let has_next = lines.end < text.last_content_line();
     let target = if sel.is_linewise() && has_next {
         lines.end.advance(1)
     } else {

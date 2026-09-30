@@ -1,5 +1,6 @@
 use super::super::*;
-use crate::register::{Piece, Shape, yank_selections};
+use crate::edit::yank_selections;
+use crate::register::{Piece, Shape};
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
 
@@ -87,9 +88,9 @@ fn paste_before_cursor_on_empty_line_stays_on_that_line() {
 fn paste_after_two_cursors_n_to_n() {
     // Two cursors (pos 0 and 4); two values, each cursor gets its own slot.
     assert_state!(
-        "-[h]>ell-[o]>\n",
+        "-{h}>ell-[o]>\n",
         |(text, sels)| pa(text, sels, &["AB".to_string(), "CD".to_string()]),
-        "h-[AB]>ello-[CD]>\n"
+        "h-{AB}>ello-[CD]>\n"
     );
 }
 
@@ -97,9 +98,9 @@ fn paste_after_two_cursors_n_to_n() {
 fn paste_after_count_mismatch_uses_joined() {
     // 2 cursors, 1 value → both cursors get the full "XY".
     assert_state!(
-        "-[h]>ell-[o]>\n",
+        "-{h}>ell-[o]>\n",
         |(text, sels)| pa(text, sels, &["XY".to_string()]),
-        "h-[XY]>ello-[XY]>\n"
+        "h-{XY}>ello-[XY]>\n"
     );
 }
 
@@ -138,9 +139,9 @@ fn paste_after_replace_multi_cursor_n_to_n() {
     // Two non-cursor selections; two values, each replaced independently.
     // "-[he]>l-[lo]>\n": "he" replaced by "AB", "lo" replaced by "CD".
     assert_state!(
-        "-[he]>l-[lo]>\n",
+        "-{he}>l-[lo]>\n",
         |(text, sels)| pa(text, sels, &["AB".to_string(), "CD".to_string()]),
-        "-[AB]>l-[CD]>\n"
+        "-{AB}>l-[CD]>\n"
     );
 }
 
@@ -149,15 +150,15 @@ fn paste_after_mixed_cursor_and_selection() {
     // One cursor (inserts) + one multi-char selection (replaces).
     // "-[h]>el-[lo]>\n": cursor at 'h' inserts "AB" after it; "lo" is replaced by "CD".
     assert_state!(
-        "-[h]>el-[lo]>\n",
+        "-{h}>el-[lo]>\n",
         |(text, sels)| pa(text, sels, &["AB".to_string(), "CD".to_string()]),
-        "h-[AB]>el-[CD]>\n"
+        "h-{AB}>el-[CD]>\n"
     );
 }
 
 #[test]
 fn paste_after_lines_on_the_last_line_then_over_a_range_reaching_its_break() {
-    let state = hume_editing::marked::parse("-[a]>b -[cd]>\n");
+    let state = hume_editing::marked::parse("-{a}>b -[cd]>\n");
     let edited = paste_after(state, &pieces(&["x\n".to_string(), "x\n".to_string()]));
     assert_eq!(edited.state().text().rope().to_string(), "ab \nx\nx\n");
 }
@@ -189,18 +190,18 @@ fn a_linewise_piece_pastes_as_whole_lines() {
 #[test]
 fn paste_after_a_charwise_cursor_then_a_linewise_range_touching_it() {
     assert_state!(
-        "-[a]>-[bc]>\n",
+        "-{a}>-[bc]>\n",
         |(text, sels)| pa(text, sels, &["Y".to_string(), "X\n".to_string()]),
-        "a-[Y]>\n-[X\n]>"
+        "a-{Y}>\n-[X\n]>"
     );
 }
 
 #[test]
 fn paste_after_linewise_over_two_touching_ranges_adds_no_blank_line() {
     assert_state!(
-        "-[he]>-[llo]>\n",
+        "-{he}>-[llo]>\n",
         |(text, sels)| pa(text, sels, &["X\n".to_string()]),
-        "-[X\n]>-[X\n]>"
+        "-{X\n}>-[X\n]>"
     );
 }
 
@@ -251,9 +252,9 @@ fn paste_before_two_cursors_n_to_n() {
     // Two cursors; two values, each cursor gets its own slot.
     // Text after: AB + hell + CD + o + \n; each selection covers its value.
     assert_state!(
-        "-[h]>ell-[o]>\n",
+        "-{h}>ell-[o]>\n",
         |(text, sels)| pb(text, sels, &["AB".to_string(), "CD".to_string()]),
-        "-[AB]>hell-[CD]>o\n"
+        "-{AB}>hell-[CD]>o\n"
     );
 }
 
@@ -261,9 +262,9 @@ fn paste_before_two_cursors_n_to_n() {
 fn paste_before_count_mismatch_uses_joined() {
     // 2 cursors, 1 value → both cursors get the full "XY".
     assert_state!(
-        "-[h]>ell-[o]>\n",
+        "-{h}>ell-[o]>\n",
         |(text, sels)| pb(text, sels, &["XY".to_string()]),
-        "-[XY]>hell-[XY]>o\n"
+        "-{XY}>hell-[XY]>o\n"
     );
 }
 
@@ -472,15 +473,15 @@ fn paste_after_linewise_two_selections_same_line_each_replaced() {
     // pasted '\n'. Both pasted ranges are selected; they are distinct, so no
     // merge occurs.
     assert_state!(
-        "-[he]>l-[lo]>\n",
+        "-{he}>l-[lo]>\n",
         |(text, sels)| pa(text, sels, &["X\n".to_string()]),
-        "-[X\n]>l\n-[X\n]>"
+        "-{X\n}>l\n-[X\n]>"
     );
     // Two-line buffer: same invariant; "world" line untouched.
     assert_state!(
-        "-[he]>l-[lo]>\nworld\n",
+        "-{he}>l-[lo]>\nworld\n",
         |(text, sels)| pa(text, sels, &["X\n".to_string()]),
-        "-[X\n]>l\n-[X\n]>world\n"
+        "-{X\n}>l\n-[X\n]>world\n"
     );
 }
 
@@ -535,9 +536,9 @@ fn paste_before_linewise_two_selections_same_line_each_replaced() {
     // the before/after distinction only applies to cursor selections, so the result
     // is identical to paste_after for non-collapsed selections.
     assert_state!(
-        "-[he]>l-[lo]>\n",
+        "-{he}>l-[lo]>\n",
         |(text, sels)| pb(text, sels, &["X\n".to_string()]),
-        "-[X\n]>l\n-[X\n]>"
+        "-{X\n}>l\n-[X\n]>"
     );
 }
 
@@ -596,18 +597,18 @@ fn yank_then_paste_after_round_trip() {
 
 #[test]
 fn yank_multi_cursor_then_paste_after_n_to_n() {
-    let (text, sels) = test_fixtures::testing::parse_state("-[h]>ell-[o]>\n");
+    let (text, sels) = test_fixtures::testing::parse_state("-{h}>ell-[o]>\n");
     let yanked = yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
     assert_eq!(yanked, vec!["h", "o"]);
 
     assert_state!(
-        "-[h]>ell-[o]>\n",
+        "-{h}>ell-[o]>\n",
         |(text, sels): (BufferText, SelectionSet)| {
             let values =
                 yank_selections(&hume_editing::state::EditState::bind(&text, sels.clone()));
             paste_after(test_fixtures::testing::state(text, sels), &values)
         },
-        "h-[h]>ello-[o]>\n"
+        "h-{h}>ello-[o]>\n"
     );
 }
 
@@ -632,12 +633,12 @@ fn paste_before_selects_the_pasted_cluster() {
 #[test]
 fn an_empty_value_leaves_its_cursor_on_the_same_char_after_an_earlier_paste() {
     assert_state!(
-        "-[a]>b-[c]>d\n",
+        "-{a}>b-[c]>d\n",
         |(text, sels)| paste_after(
             test_fixtures::testing::state(text, sels),
             &[Piece::from("XX"), Piece::from("")]
         ),
-        "a-[XX]>b-[c]>d\n"
+        "a-{XX}>b-[c]>d\n"
     );
 }
 

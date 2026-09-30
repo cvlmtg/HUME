@@ -83,7 +83,7 @@ fn surround_paren_from_a_cursor_on_a_prepend_led_open_paren() {
             0,
             MotionMode::Move
         ),
-        "-[\u{600}(]>x-[)]>\n"
+        "-{\u{600}(}>x-[)]>\n"
     );
 }
 
@@ -98,7 +98,7 @@ fn surround_paren_open_joined_to_a_prepend_mark() {
             0,
             MotionMode::Move
         ),
-        "-[\u{600}(]>x-[)]>\n"
+        "-{\u{600}(}>x-[)]>\n"
     );
 }
 
@@ -312,9 +312,9 @@ fn wrap_partial_word() {
 #[test]
 fn wrap_multi_cursor_selections() {
     assert_state!(
-        "-[ab]>c-[de]>f\n",
+        "-{ab}>c-[de]>f\n",
         |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
-        "(ab-[)]>c(de-[)]>f\n"
+        "(ab-{)}>c(de-[)]>f\n"
     );
 }
 
@@ -360,10 +360,7 @@ fn wrap_a_cursor_on_an_empty_line_leaves_it_alone() {
 
 #[test]
 fn surround_paren_selects_both_parens_around_every_corpus_sample() {
-    for s in test_fixtures::unicode::ALL
-        .iter()
-        .filter(|&&s| s != test_fixtures::unicode::LONE_MARK)
-    {
+    for s in test_fixtures::unicode::standalone() {
         assert_state!(
             &format!("x\n(-[{s}]>)\n"),
             |(text, sels)| cmd_surround_paren(
@@ -371,7 +368,7 @@ fn surround_paren_selects_both_parens_around_every_corpus_sample() {
                 0,
                 MotionMode::Move
             ),
-            &format!("x\n-[(]>{s}-[)]>\n")
+            &format!("x\n-{{(}}>{s}-[)]>\n")
         );
     }
 }

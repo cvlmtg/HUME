@@ -52,7 +52,7 @@ fn collapse_backward_selection() {
 fn collapse_merges_coincident_heads() {
     // Two cursors at different positions stay separate after collapse:
     // they only merge if their heads land on the exact same position.
-    let (text, sels) = parse_state("-[h]>el-[l]>o\n");
+    let (text, sels) = parse_state("-{h}>el-[l]>o\n");
     let result = cmd_collapse_selection_to_head(
         test_fixtures::testing::state(text, sels),
         0,
@@ -171,7 +171,7 @@ fn select_all_empty_buffer() {
 fn keep_primary_drops_all_others() {
     // Three cursors; primary (first yielded by DSL) is at 0. Others dropped.
     assert_state!(
-        "-[h]>el-[l]>-[o]>\n",
+        "-{h}>el-[l]>-[o]>\n",
         |(text, sels)| cmd_keep_primary_selection(
             test_fixtures::testing::state(text, sels),
             0,
@@ -214,7 +214,7 @@ fn remove_primary_two_selections() {
     // Two cursors at 0 and 4. Primary is first (index 0).
     // After removal: only the cursor at 4 remains, becomes primary.
     assert_state!(
-        "-[h]>ell-[o]>\n",
+        "-{h}>ell-[o]>\n",
         |(text, sels)| cmd_remove_primary_selection(
             test_fixtures::testing::state(text, sels),
             1,
@@ -229,7 +229,7 @@ fn remove_primary_two_selections() {
 #[test]
 fn cycle_forward_advances_primary() {
     // Three cursors. After cycling forward, primary should be the next one.
-    let (text, sels) = parse_state("-[h]>el-[l]>o\n"); // two cursors, primary at 0
+    let (text, sels) = parse_state("-{h}>el-[l]>o\n"); // two cursors, primary at 0
     assert_eq!(
         hume_editing::selection::EditView::bind(&text, &sels)
             .primary()
@@ -252,7 +252,7 @@ fn cycle_forward_advances_primary() {
 
 #[test]
 fn cycle_backward_wraps_to_last() {
-    let (text, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at 0
+    let (text, sels) = parse_state("-{h}>el-[l]>o\n"); // primary at 0
     let sels = cmd_cycle_primary_backward(
         test_fixtures::testing::state(text, sels),
         0,
@@ -370,13 +370,13 @@ fn collapse_two_selections_same_head_merges() {
 fn flip_multiple_selections() {
     // Two forward selections both flip to backward.
     assert_state!(
-        "-[hell]>o -[worl]>d\n",
+        "-{hell}>o -[worl]>d\n",
         |(text, sels)| cmd_flip_selections(
             test_fixtures::testing::state(text, sels),
             0,
             MotionMode::Move
         ),
-        "<[hell]-o <[worl]-d\n"
+        "<{hell}-o <[worl]-d\n"
     );
 }
 
@@ -385,7 +385,7 @@ fn flip_multiple_selections() {
 #[test]
 fn keep_primary_when_primary_is_not_first() {
     // Cycle primary to the second cursor, then keep: should keep that one.
-    let (text, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at index 0 (head=0)
+    let (text, sels) = parse_state("-{h}>el-[l]>o\n"); // primary at index 0 (head=0)
     let sels = cmd_cycle_primary_forward(
         test_fixtures::testing::state(text, sels),
         0,
@@ -405,7 +405,7 @@ fn keep_primary_when_primary_is_not_first() {
 fn remove_primary_at_end_wraps_to_first() {
     // Three cursors at 0, 3, 6. Cycle to last, then remove: should wrap
     // to the first remaining cursor (index 0 of the new set).
-    let (text, sels) = parse_state("-[h]>el-[l]>o-[\n]>"); // 3 cursors, primary at 0
+    let (text, sels) = parse_state("-{h}>el-[l]>o-[\n]>"); // 3 cursors, primary at 0
     let sels = cmd_cycle_primary_backward(
         test_fixtures::testing::state(text, sels),
         0,
@@ -453,18 +453,14 @@ fn split_on_newlines_keeps_every_corpus_sample_whole() {
                 0,
                 MotionMode::Move
             ),
-            &format!("-[{s}]>\n-[b]>\n")
+            &format!("-{{{s}}}>\n-[b]>\n")
         );
     }
 }
 
 #[test]
 fn trim_whitespace_keeps_every_non_blank_corpus_sample_whole() {
-    use test_fixtures::unicode::{IDEO_SPACE, LONE_MARK, NBSP};
-    for s in test_fixtures::unicode::ALL
-        .iter()
-        .filter(|&&s| s != LONE_MARK && s != NBSP && s != IDEO_SPACE)
-    {
+    for s in test_fixtures::unicode::non_blank() {
         assert_state!(
             &format!("-[ {s} ]>\n"),
             |(text, sels)| cmd_trim_selection_whitespace(

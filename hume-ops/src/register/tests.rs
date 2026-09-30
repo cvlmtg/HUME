@@ -1,4 +1,5 @@
 use super::*;
+use crate::edit::yank_selections;
 use hume_editing::state::EditState;
 use test_fixtures::testing::parse_state;
 
@@ -170,7 +171,7 @@ fn yank_backward_selection_same_text() {
 #[test]
 fn yank_multi_cursor_document_order() {
     // Two cursors: one on 'h', one on 'o'. Returned in document order.
-    let (text, sels) = parse_state("-[h]>ell-[o]>\n");
+    let (text, sels) = parse_state("-{h}>ell-[o]>\n");
     let yanked = yank_selections(&EditState::bind(&text, sels));
     assert_eq!(yanked, vec!["h", "o"]);
 }

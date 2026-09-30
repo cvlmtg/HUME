@@ -26,9 +26,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use super::Edited;
 use crate::changeset::{Assoc, ChangeSet, ChangeSetBuilder};
 use crate::edit::TextChange;
-use crate::selection::{
-    Facing, Resolver, Selection, SelectionSet, UnboundSelection,
-};
+use crate::selection::{Facing, Resolver, Selection, SelectionSet, UnboundSelection};
 use crate::state::EditState;
 use crate::text::{BufferText, LfText};
 
@@ -72,7 +70,9 @@ struct Item {
 #[derive(Debug)]
 enum ItemKind {
     /// Removes `key..end`.
-    Delete { end: CharOffset },
+    Delete {
+        end: CharOffset,
+    },
     Insert(LfText),
     /// Marks a place in the new text without changing it.
     Anchor,
@@ -86,6 +86,22 @@ pub struct EditBuilder<'a, 'id> {
 }
 
 /// Records the edit `build` describes for `state`'s text and applies it.
+///
+/// A position one edit hands out cannot land a selection of another:
+///
+/// ```compile_fail
+/// use hume_editing::edit::{Landing, Landings, edit};
+/// use hume_editing::state::EditState;
+/// use hume_editing::text::BufferText;
+/// use hume_rope::cluster::ClusterBound;
+///
+/// let state = EditState::at_text_start(BufferText::from("ab\n"));
+/// edit(&state, |outer| {
+///     let pos = outer.at(ClusterBound::TEXT_START);
+///     edit(&state, |_inner| Landings::new(vec![Landing::cursor(pos)], 0));
+///     Landings::new(vec![Landing::cursor(pos)], 0)
+/// });
+/// ```
 pub fn edit<'a>(
     state: &'a EditState,
     build: impl for<'id> FnOnce(&mut EditBuilder<'a, 'id>) -> Landings<'id>,

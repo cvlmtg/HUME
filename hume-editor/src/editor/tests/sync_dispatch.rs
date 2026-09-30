@@ -1898,7 +1898,7 @@ fn buffer_selections_end_covers_a_whole_multi_char_cluster() {
 fn buffer_selections_sorted_multi_cursor() {
     // "-[ab]>c -[de]>f\n": text "abc def\n": selection 1 anchor=0 head=1,
     // selection 2 anchor=4 head=5 (hand-counted from the annotated buffer).
-    let mut ed = editor_from("-[ab]>c -[de]>f\n");
+    let mut ed = editor_from("-{ab}>c -[de]>f\n");
     let _bid = ed.focused_buffer_id();
     let pane = focused_pane(&ed);
     let host = live_host!(ed);

@@ -25,7 +25,7 @@ use hume_engine::pipeline::{EngineView, PaneId};
 
 use super::buffer::Buffer;
 use super::doc_ops;
-use super::jump_list::{JumpEntry, JumpRule, with_jump};
+use super::jump_list::{JumpRule, with_jump};
 use super::register_ops;
 use super::register_ops::RegisterPrefix;
 use super::search::SearchPattern;
@@ -142,7 +142,7 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
     view: &EngineView,
     fp: FocusedPane,
     cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
-) -> hume_editing::changeset::ChangeSet {
+) {
     let buf = fp.bid(view);
     doc_ops::apply_doc_edit_grouped(
         &mut state.buffers,
@@ -156,7 +156,7 @@ pub(in crate::editor) fn apply_focused_edit_grouped(
         fp.pid(),
         buf,
         cmd,
-    )
+    );
 }
 
 /// Refuse an edit-mode command on a read-only buffer: report why and return
@@ -301,17 +301,6 @@ pub(super) fn pane_display_lines<'a>(
     } = pane;
     let dlm = DisplayLineMap::new(doc.text().rope(), providers, content_width, key, line_store);
     (dlm, viewport)
-}
-
-/// Snapshot `t`'s pane's current cursor as a `JumpEntry`.
-pub(super) fn current_jump_entry(
-    state: &EditorState,
-    view: &EngineView,
-    t: CommandPane,
-) -> JumpEntry {
-    let bid = t.bid(view);
-    let sels = t.state(&state.panes.state, view).selections().clone();
-    JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
 /// Move `t`'s pane to `(bid, char_pos)`, recording a jump entry (only if it

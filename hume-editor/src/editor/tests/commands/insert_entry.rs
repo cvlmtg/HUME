@@ -379,12 +379,12 @@ fn capital_a_esc_with_nothing_typed_steps_back() {
 /// `i` on two cursors: each typed run is selected independently on Esc.
 #[test]
 fn i_multi_cursor_selects_each_typed_run() {
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key('y'));
     ed.handle_key(key_esc());
-    assert_eq!(state(&ed), "-[xy]>foo -[xy]>bar\n");
+    assert_eq!(state(&ed), "-{xy}>foo -[xy]>bar\n");
 }
 
 // ── `o` / `O` step-back on Esc ───────────────────────────────────────────────
@@ -490,7 +490,7 @@ fn o_esc_on_empty_line_does_not_step_to_previous_line() {
 /// identical collapsed selections, a `SelectionSet` invariant violation.
 #[test]
 fn a_multi_cursor_clamp_collision_merges_to_one() {
-    let mut ed = editor_from("ab-[c]>-[\n]>");
+    let mut ed = editor_from("ab-{c}>-[\n]>");
     ed.handle_key(key('a'));
 
     assert_eq!(ed.state.mode(), Mode::Insert);
@@ -506,10 +506,10 @@ fn a_esc_newline_cursor_stays_on_its_line() {
     // `a`: \n(2) → stays 2 (it is a \n); c(3) → next(3)=4. Cursors at 2, 4.
     // Esc step-back: head=2, line_start=0, 2>0 → prev(2)=1 (b).
     //                head=4, line_start=3, 4>3 → prev(4)=3 (c).
-    let mut ed = editor_from("ab-[\n]>-[c]>d\n");
+    let mut ed = editor_from("ab-{\n}>-[c]>d\n");
     ed.handle_key(key('a'));
     ed.handle_key(key_esc());
 
     assert_eq!(ed.state.mode(), Mode::Normal);
-    assert_eq!(state(&ed), "a-[b]>\n-[c]>d\n");
+    assert_eq!(state(&ed), "a-{b}>\n-[c]>d\n");
 }

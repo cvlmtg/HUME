@@ -408,7 +408,7 @@ fn goto_next_paragraph_multi_cursor_merges_when_target_overlaps() {
     // The 'w' cursor's target ("foo") fully contains the 'f' cursor's own
     // unchanged position (no paragraph below it), so the two merge.
     assert_state!(
-        "hello\n\n-[w]>orld\n\n-[f]>oo\n",
+        "hello\n\n-{w}>orld\n\n-[f]>oo\n",
         |(text, sels)| cmd_goto_next_paragraph(
             test_fixtures::testing::state(text, sels),
             1,
@@ -421,13 +421,13 @@ fn goto_next_paragraph_multi_cursor_merges_when_target_overlaps() {
 #[test]
 fn goto_prev_paragraph_multi_cursor() {
     assert_state!(
-        "hello\n\n-[w]>orld\n\n-[f]>oo\n",
+        "hello\n\n-{w}>orld\n\n-[f]>oo\n",
         |(text, sels)| cmd_goto_prev_paragraph(
             test_fixtures::testing::state(text, sels),
             1,
             MotionMode::Move
         ),
-        "<[hello\n\n]-<[world\n\n]-foo\n"
+        "<{hello\n\n}-<[world\n\n]-foo\n"
     );
 }
 

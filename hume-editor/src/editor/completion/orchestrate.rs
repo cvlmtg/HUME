@@ -447,12 +447,7 @@ fn invoke_buffer_sources(
     ids.iter()
         .map(|&id| {
             let entry = sources.buffer_get(id);
-            let token_chars = entry.token_chars_over(word_chars);
-            let start = hume_ops::edit::word_start_before(
-                text,
-                head,
-                hume_editing::word::WordChars::new(&token_chars),
-            );
+            let start = entry.token_start(text, head, word_chars);
             let invocation = Invocation::buffer(text.rope().clone(), start);
             let prefix = invocation.prefix(text, head);
             let invocation_id = session.invoke(id, invocation);

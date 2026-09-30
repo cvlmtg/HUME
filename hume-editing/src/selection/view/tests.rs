@@ -28,7 +28,7 @@ fn covered_runs_to_the_end_of_the_last_cluster() {
 
 #[test]
 fn the_slice_is_exactly_the_covered_text() {
-    let state = parse("x-[a\u{308}\u{301}]>y-[\u{1f468}\u{200d}\u{1f469}]>z\n");
+    let state = parse("x-{a\u{308}\u{301}}>y-[\u{1f468}\u{200d}\u{1f469}]>z\n");
     let slices: Vec<String> = state.view().iter().map(|v| v.slice().to_string()).collect();
     assert_eq!(
         slices,
@@ -38,7 +38,7 @@ fn the_slice_is_exactly_the_covered_text() {
 
 #[test]
 fn ends_on_break_reads_the_last_covered_cluster() {
-    let state = parse("-[ab\n]>c-[d]>\n");
+    let state = parse("-{ab\n}>c-[d]>\n");
     let ends: Vec<bool> = state.view().iter().map(|v| v.ends_on_break()).collect();
     assert_eq!(ends, vec![true, false]);
     assert!(parse("ab-[\n]>").view().primary().ends_on_break());

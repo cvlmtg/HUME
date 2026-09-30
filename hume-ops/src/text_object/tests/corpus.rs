@@ -3,17 +3,11 @@
 
 use super::super::*;
 use test_fixtures::assert_state;
-use test_fixtures::unicode::{ALL, LONE_MARK};
-
-/// Samples that keep their own cluster boundaries next to a delimiter: a bare
-/// combining mark would attach to it.
-fn delimited_samples() -> impl Iterator<Item = &'static str> {
-    ALL.iter().copied().filter(|&s| s != LONE_MARK)
-}
+use test_fixtures::unicode::{ALL, standalone};
 
 #[test]
 fn inner_paren_selects_exactly_the_sample() {
-    for s in delimited_samples() {
+    for s in standalone() {
         assert_state!(
             &format!("x\n(-[{s}]>)\n"),
             |(text, sels)| cmd_inner_paren(
@@ -28,7 +22,7 @@ fn inner_paren_selects_exactly_the_sample() {
 
 #[test]
 fn around_paren_selects_the_delimiters_and_the_sample() {
-    for s in delimited_samples() {
+    for s in standalone() {
         assert_state!(
             &format!("x\n(-[{s}]>)\n"),
             |(text, sels)| cmd_around_paren(
@@ -43,7 +37,7 @@ fn around_paren_selects_the_delimiters_and_the_sample() {
 
 #[test]
 fn inner_double_quote_selects_exactly_the_sample() {
-    for s in delimited_samples() {
+    for s in standalone() {
         assert_state!(
             &format!("x\n\"-[{s}]>\"\n"),
             |(text, sels)| cmd_inner_double_quote(
@@ -58,7 +52,7 @@ fn inner_double_quote_selects_exactly_the_sample() {
 
 #[test]
 fn around_double_quote_selects_the_quotes_and_the_sample() {
-    for s in delimited_samples() {
+    for s in standalone() {
         assert_state!(
             &format!("x\n\"-[{s}]>\"\n"),
             |(text, sels)| cmd_around_double_quote(
@@ -109,7 +103,7 @@ fn is_word_sample(s: &str) -> bool {
 
 #[test]
 fn inner_word_groups_a_sample_with_its_neighbours_only_when_it_is_a_word_char() {
-    for s in delimited_samples() {
+    for s in standalone() {
         let input = format!("x\nab-[{s}]>cd\n");
         let expected = if is_word_sample(s) {
             format!("x\n-[ab{s}cd]>\n")
@@ -130,7 +124,7 @@ fn inner_word_groups_a_sample_with_its_neighbours_only_when_it_is_a_word_char() 
 
 #[test]
 fn select_next_word_lands_on_the_whole_sample() {
-    for s in delimited_samples().filter(|s| {
+    for s in standalone().filter(|s| {
         !s.chars()
             .next()
             .is_some_and(|c| c.is_whitespace() || c == '\u{3000}')

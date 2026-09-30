@@ -732,28 +732,6 @@ fn cjk_character_produces_width_continuation() {
     assert_eq!(graphemes[1].display_col, dc(2));
 }
 
-// ── truncate_line_break ─────────────────────────────────────────────────
-//
-// The break-set contract itself (LF only; CRLF keeps its CR; other Unicode
-// breaks are content) belongs to `hume-rope` and is pinned there
-// (`hume-rope/src/lines/tests.rs`). These two just cover what
-// `truncate_line_break` adds over `strip_line_break`: in-place truncation
-// and reporting whether a break was actually removed.
-
-#[test]
-fn truncate_line_break_removes_newline_and_reports_true() {
-    let mut buf = "hello\n".to_string();
-    assert!(hume_rope::lines::truncate_line_break(&mut buf));
-    assert_eq!(buf, "hello");
-}
-
-#[test]
-fn truncate_line_break_no_newline_unchanged_and_reports_false() {
-    let mut buf = "hello".to_string();
-    assert!(!hume_rope::lines::truncate_line_break(&mut buf));
-    assert_eq!(buf, "hello");
-}
-
 // ── h_window clipping ─────────────────────────────────────────────────
 
 fn do_format_windowed(

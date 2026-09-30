@@ -631,7 +631,7 @@ fn accept_fires_on_completion_accept_with_a_synthesized_label_for_a_plain_item()
 
 #[test]
 fn accepting_lands_at_every_cursor_not_just_the_primary() {
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
     open_completion_session(&mut ed, &["std"]);
@@ -651,7 +651,7 @@ fn accepting_lands_at_every_cursor_not_just_the_primary() {
 #[test]
 fn accepting_consumes_each_cursors_own_word_run_not_a_uniform_count() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[foo]> abc-[bar]>\n");
+    let mut ed = editor_from("-{foo}> abc-[bar]>\n");
     ed.state.settings.word_chars = "-".into();
     ed.feed_key(key('c'));
     type_chars(&mut ed, "x-");
@@ -682,7 +682,7 @@ fn accepting_consumes_each_cursors_own_word_run_not_a_uniform_count() {
 #[test]
 fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
     let head = ed.current_view().primary().head().offset().index();
@@ -751,7 +751,7 @@ fn a_non_resolve_sources_text_edit_decodes_character_as_a_char_count() {
 #[test]
 fn additional_text_edits_land_once_not_once_per_cursor() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
     run(
@@ -776,7 +776,7 @@ fn additional_text_edits_land_once_not_once_per_cursor() {
 
 #[test]
 fn multi_cursor_accept_is_one_undo_step_in_insert_mode() {
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "st");
     open_completion_session(&mut ed, &["std"]);
@@ -794,7 +794,7 @@ fn multi_cursor_accept_is_one_undo_step_in_insert_mode() {
 #[test]
 fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef gh-[i]>jkl\n");
+    let mut ed = editor_from("-{a}>bcdef gh-[i]>jkl\n");
     raw_insert_with_source(
         &mut ed,
         tmp.path(),
@@ -823,7 +823,7 @@ fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
 #[test]
 fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[foo]> abc-[bar]>\n");
+    let mut ed = editor_from("-{foo}> abc-[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "xy");
     // Buffer "xy abcxy\n": cursor1 (primary) at char 2. Per-cursor word
@@ -897,7 +897,7 @@ fn accepting_never_retreats_a_shorter_cursor_across_a_line_boundary() {
 /// the primary, not drifted text.
 #[test]
 fn token_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() {
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.feed_key(key('c'));
     let heads: Vec<_> = ed
         .current_view()

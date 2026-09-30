@@ -1,7 +1,7 @@
 //! Word/WORD text objects (`iw`/`aw`, `iW`/`aW`) and the position-based
 //! `mm`/`MM`/nearest-word-on-line family they share with visual-move.
 
-use hume_editing::grapheme::{first_cluster, graphemes_at};
+use hume_editing::grapheme::graphemes_at;
 use hume_editing::lines::line_range;
 use hume_editing::selection::{Facing, Selection, SelectionView};
 use hume_editing::state::EditState;
@@ -149,7 +149,7 @@ fn around_unit(
     is_boundary: IsBoundary,
     chars: WordChars<'_>,
 ) -> Option<ClusterRange> {
-    word_unit_at(text, pos, is_boundary, first_cluster(text).into(), chars)
+    word_unit_at(text, pos, is_boundary, ClusterBound::TEXT_START, chars)
 }
 
 /// Shared dispatch for the four word-object commands below: resolves the

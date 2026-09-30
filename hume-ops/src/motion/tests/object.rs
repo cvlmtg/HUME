@@ -220,7 +220,7 @@ fn multi_cursor_convergence_merges() {
     // Both cursors' forward search lands on OBJ1, so `map`'s always-merge
     // collapses the two resulting selections into one.
     assert_state!(
-        "-[a]>-[b]>cdefghijklmnopqrstuvwxyz\n",
+        "-{a}>-[b]>cdefghijklmnopqrstuvwxyz\n",
         |(text, sels)| cmd_goto(
             test_fixtures::testing::state(text, sels),
             1,

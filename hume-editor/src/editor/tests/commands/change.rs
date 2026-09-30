@@ -74,12 +74,12 @@ fn c_type_ctrl_w_esc_selects_surviving_typed_run() {
 
 #[test]
 fn c_multi_cursor_selects_each_replacement() {
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.handle_key(key('c'));
     ed.handle_key(key('x'));
     ed.handle_key(key('y'));
     ed.handle_key(key_esc());
-    assert_eq!(state(&ed), "-[xy]> -[xy]>\n");
+    assert_eq!(state(&ed), "-{xy}> -[xy]>\n");
 }
 
 #[test]
@@ -301,13 +301,13 @@ fn mii_after_insert_with_ctrl_w_selects_surviving_typed_run() {
 
 #[test]
 fn mii_multi_cursor_selects_each_span_primary_is_last() {
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    let mut ed = editor_from("-{foo}> -[bar]>\n");
     ed.handle_key(key('c'));
     ed.handle_key(key('x'));
     ed.handle_key(key('y'));
     ed.handle_key(key_esc());
     mii(&mut ed);
-    assert_eq!(state(&ed), "-[xy]> -[xy]>\n");
+    assert_eq!(state(&ed), "-[xy]> -{xy}>\n");
     // Primary must have relocated to the last (rightmost) span.
     ed.handle_key(key(','));
     assert_eq!(state(&ed), "xy -[xy]>\n");
@@ -334,7 +334,7 @@ fn mii_extend_mode_keeps_adjacent_current_selection_as_separate() {
     assert_eq!(state(&ed), "hi-[h]>ello\n"); // setting off: plain collapsed cursor
     ed.state.input.set_extend(true);
     mii(&mut ed);
-    assert_eq!(state(&ed), "-[hi]>-[h]>ello\n");
+    assert_eq!(state(&ed), "-[hi]>-{h}>ello\n");
 }
 
 /// With `select-inserted-text` on (the default), Esc already leaves the
@@ -395,7 +395,7 @@ fn mii_extend_mode_adds_disjoint_selection_and_keeps_current_primary() {
 
     ed.state.input.set_extend(true);
     mii(&mut ed);
-    assert_eq!(state(&ed), "h-[XY]>ello -[world]>\n");
+    assert_eq!(state(&ed), "h-[XY]>ello -{world}>\n");
 
     // Primary must have stayed on the pre-existing selection ("world"), not
     // jumped to the newly-unioned insertion span.
@@ -455,7 +455,7 @@ fn mii_stash_goes_stale_after_undo() {
 /// drops the pins entirely: `mii` must find nothing stashed.
 #[test]
 fn mii_reports_info_when_cursors_merge_mid_session() {
-    let mut ed = editor_from("-[a]>-[b]>\n");
+    let mut ed = editor_from("-{a}>-[b]>\n");
     ed.handle_key(key('i'));
     ed.handle_key(key_backspace());
     ed.handle_key(key_esc());

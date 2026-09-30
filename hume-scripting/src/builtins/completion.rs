@@ -118,9 +118,8 @@ pub(crate) fn register_completion_source(
         steel::stop!(Generic =>
             "register-completion-source! #:token-chars: only a 'buffer source can set this");
     }
-    if let Err(e) = hume_editing::word::WordChars::validate(&token_chars) {
-        steel::stop!(Generic => "register-completion-source! #:token-chars: {}", e);
-    }
+    hume_editing::word::WordChars::validate(&token_chars)
+        .map_err(|e| generic_err(format!("register-completion-source! #:token-chars: {e}")))?;
     ctx.push_effect(Effect::RegisterCompletionSource(
         crate::host::PendingCompletionSource {
             name,

@@ -159,8 +159,8 @@ fn edits_adjacent_to_multi_byte_and_emoji_chars() {
                 b.retain_to(CharOffset::new(1)); // after 'h', before 'é'
                 b.delete_to(CharOffset::new(2)); // remove 'é'
                 b.insert("E");
-                b.retain_to(CharOffset::new(7)); // "lo " + up to just before 😀
-                b.delete_to(CharOffset::new(8)); // remove 😀
+                b.retain_to(CharOffset::new(6)); // "llo " up to just before 😀
+                b.delete_to(CharOffset::new(7)); // remove 😀
                 b.insert("!!");
             },
             enc,

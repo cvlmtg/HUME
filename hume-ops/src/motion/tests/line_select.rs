@@ -207,13 +207,13 @@ fn select_line_multi_cursor() {
     // Two cursors on different lines each independently select their full line.
     // The resulting line selections are non-overlapping and stay separate.
     assert_state!(
-        "hello -[w]>orld\nfoo -[b]>ar\nbaz\n",
+        "hello -{w}>orld\nfoo -[b]>ar\nbaz\n",
         |(text, sels)| cmd_select_line(
             test_fixtures::testing::state(text, sels),
             1,
             MotionMode::Move
         ),
-        "-[hello world\n]>-[foo bar\n]>baz\n"
+        "-{hello world\n}>-[foo bar\n]>baz\n"
     );
 }
 
@@ -222,7 +222,7 @@ fn select_line_multi_cursor_same_line_merges() {
     // Two cursors on the same line both produce identical line selections,
     // which `map` (which always merges) collapses to a single selection.
     assert_state!(
-        "hell-[o]> -[w]>orld\nfoo\n",
+        "hell-{o}> -[w]>orld\nfoo\n",
         |(text, sels)| cmd_select_line(
             test_fixtures::testing::state(text, sels),
             1,
@@ -241,7 +241,7 @@ fn extend_select_line_multi_cursor_merges() {
     // sel2 (-[foo\n]>)         end=15 → extends to line 2 → (12,19)
     // (0,15) and (12,19) overlap → merged to (0,19)
     assert_state!(
-        "-[hello world\n]>-[foo\n]>bar\n",
+        "-{hello world\n}>-[foo\n]>bar\n",
         |(text, sels)| cmd_select_line(
             test_fixtures::testing::state(text, sels),
             1,

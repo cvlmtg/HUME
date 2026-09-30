@@ -83,7 +83,10 @@ fn a_deletion_never_reaches_the_structural_break() {
 
 #[test]
 fn text_without_a_final_break_lands_before_the_structural_one() {
-    assert_eq!(marked("-[a]>b\n", |b| b.insert(bound_at(b.text(), 3), "X")), "ab-[X]>\n");
+    assert_eq!(
+        marked("-[a]>b\n", |b| b.insert(bound_at(b.text(), 3), "X")),
+        "ab-[X]>\n"
+    );
 }
 
 #[test]
@@ -195,6 +198,32 @@ fn a_deletion_of_the_structural_break_alone_changes_nothing() {
 }
 
 #[test]
+fn deleting_the_only_break_of_an_empty_text_changes_nothing() {
+    assert_eq!(text_after_deleting("-[\n]>", &[(0, 1)]), "\n");
+}
+
+#[test]
+fn text_inserted_at_the_end_of_an_empty_text_lands_before_its_break() {
+    assert_eq!(
+        marked("-[\n]>", |b| b.insert(bound_at(b.text(), 1), "x")),
+        "-[x]>\n"
+    );
+}
+
+#[test]
+fn cursor_ending_at_the_text_end_sits_on_the_structural_break() {
+    let out = {
+        let state = parse("-[a]>\n");
+        let edited = edit(&state, |b| {
+            let end = b.at(bound_at(b.text(), 2));
+            Landings::new(vec![Landing::cursor_ending_at(end)], 0)
+        });
+        render(edited.state().view())
+    };
+    assert_eq!(out, "a-[\n]>");
+}
+
+#[test]
 fn a_deletion_reaching_the_end_keeps_a_final_break() {
     assert_eq!(text_after_deleting("-[a]>bc\n", &[(1, 4)]), "a\n");
 }
@@ -283,7 +312,9 @@ fn cursor_ending_at_a_line_start_stays_on_that_line() {
 #[test]
 fn a_cursor_lands_on_the_cluster_holding_its_position() {
     // The inserted mark joins the `a` before it.
-    let out = cursor_at("-[a]>b\n", |b| b.insert(bound_at(b.text(), 1), "\u{301}").start());
+    let out = cursor_at("-[a]>b\n", |b| {
+        b.insert(bound_at(b.text(), 1), "\u{301}").start()
+    });
     assert_eq!(out, "-[a\u{301}]>b\n");
 }
 

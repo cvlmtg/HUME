@@ -32,20 +32,20 @@ fn with_cursor_and_at_text_start() {
 fn from_cluster_indices_counts_clusters_and_wraps() {
     let text = BufferText::from("ae\u{301}b\n");
     let state = EditState::from_cluster_indices(text, &[(1, 2), (7, 7)], 1);
-    assert_eq!(shown(&state), "a-[e\u{301}b]>-[\n]>");
+    assert_eq!(shown(&state), "a-[e\u{301}b]>-{\n}>");
     assert_eq!(state.view().primary().index(), 1);
 }
 
 #[test]
 fn map_replaces_each_selection_and_merges() {
-    let state = parse("-[a]>b-[c]>d\n");
+    let state = parse("-{a}>b-[c]>d\n");
     let collapsed = state.map(|v| Selection::cursor(v.text().snap(CharOffset::new(0))));
     assert_eq!(shown(&collapsed), "-[a]>bcd\n");
 }
 
 #[test]
 fn flat_map_can_split_and_drop_selections() {
-    let state = parse("-[ab]>c-[d]>\n");
+    let state = parse("-{ab}>c-[d]>\n");
     let split = state.flat_map(|v| {
         if v.index() == 0 {
             v.clusters()
@@ -55,13 +55,13 @@ fn flat_map_can_split_and_drop_selections() {
             Vec::new()
         }
     });
-    assert_eq!(shown(&split), "-[a]>-[b]>cd\n");
+    assert_eq!(shown(&split), "-{a}>-[b]>cd\n");
     assert_eq!(split.view().primary().index(), 0);
 }
 
 #[test]
 fn flat_map_moves_the_primary_to_the_first_selection_it_produced() {
-    let state = parse("-[a]>b-[cd]>\n").cycle_primary(1);
+    let state = parse("-{a}>b-[cd]>\n").cycle_primary(1);
     let split = state.flat_map(|v| {
         v.clusters()
             .map(|c| Selection::cursor(c.start()))
@@ -72,13 +72,13 @@ fn flat_map_moves_the_primary_to_the_first_selection_it_produced() {
 
 #[test]
 fn keep_primary_drops_the_others() {
-    let state = parse("-[a]>b-[c]>d\n").cycle_primary(1).keep_primary();
+    let state = parse("-{a}>b-[c]>d\n").cycle_primary(1).keep_primary();
     assert_eq!(shown(&state), "ab-[c]>d\n");
 }
 
 #[test]
 fn replace_primary_merges_with_its_neighbours() {
-    let state = parse("-[a]>b-[c]>d\n");
+    let state = parse("-{a}>b-[c]>d\n");
     let text = state.text().clone();
     let wide = Selection::new(text.snap(CharOffset::new(0)), text.snap(CharOffset::new(2)));
     assert_eq!(shown(&state.replace_primary(wide)), "-[abc]>d\n");
@@ -86,7 +86,7 @@ fn replace_primary_merges_with_its_neighbours() {
 
 #[test]
 fn remove_moves_the_primary_along() {
-    let three = || parse("-[a]>b-[c]>d-[e]>\n");
+    let three = || parse("-{a}>b-[c]>d-[e]>\n");
     let primary = |s: EditState| s.view().primary().index();
     assert_eq!(primary(three().cycle_primary(1).remove(0)), 0);
     assert_eq!(primary(three().cycle_primary(1).remove(1)), 1);
@@ -98,7 +98,7 @@ fn remove_moves_the_primary_along() {
 #[test]
 fn cycle_primary_wraps_both_ways() {
     let primary = |delta| {
-        parse("-[a]>b-[c]>d-[e]>\n")
+        parse("-{a}>b-[c]>d-[e]>\n")
             .cycle_primary(delta)
             .view()
             .primary()
@@ -112,6 +112,6 @@ fn cycle_primary_wraps_both_ways() {
 
 #[test]
 fn all_cursors_is_false_once_one_selection_has_extent() {
-    assert!(parse("-[a]>b-[c]>\n").view().all_cursors());
-    assert!(!parse("-[a]>b-[cd]>\n").view().all_cursors());
+    assert!(parse("-{a}>b-[c]>\n").view().all_cursors());
+    assert!(!parse("-{a}>b-[cd]>\n").view().all_cursors());
 }

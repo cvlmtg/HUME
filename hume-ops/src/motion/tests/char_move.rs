@@ -58,13 +58,13 @@ fn move_right_empty_buffer() {
 #[test]
 fn move_right_multi_cursor() {
     assert_state!(
-        "-[h]>-[e]>llo\n",
+        "-{h}>-[e]>llo\n",
         |(text, sels)| cmd_move_right(
             test_fixtures::testing::state(text, sels),
             1,
             MotionMode::Move
         ),
-        "h-[e]>-[l]>lo\n"
+        "h-{e}>-[l]>lo\n"
     );
 }
 
@@ -143,7 +143,7 @@ fn move_left_grapheme_cluster() {
 fn move_left_multi_cursor_merge() {
     // Cursors at 0 and 1. Both move left: 0→0 and 1→0. Same position → merge.
     assert_state!(
-        "-[a]>-[b]>c\n",
+        "-{a}>-[b]>c\n",
         |(text, sels)| cmd_move_left(
             test_fixtures::testing::state(text, sels),
             1,
@@ -298,13 +298,13 @@ fn extend_right_multi_cursor() {
     // cursor1 anchor=0,head=0 → head=2 → "-[foo]>"
     // cursor2 anchor=4,head=4 → head=6 → "-[bar]>"
     assert_state!(
-        "-[f]>oo -[b]>ar\n",
+        "-{f}>oo -[b]>ar\n",
         |(text, sels)| cmd_move_right(
             test_fixtures::testing::state(text, sels),
             2,
             MotionMode::Extend
         ),
-        "-[foo]> -[bar]>\n"
+        "-{foo}> -[bar]>\n"
     );
 }
 
@@ -365,7 +365,7 @@ fn goto_first_line_empty_buffer() {
 #[test]
 fn goto_first_line_multi_cursor() {
     assert_state!(
-        "-[a]>bc\ndef\nghi-[j]>\n",
+        "-{a}>bc\ndef\nghi-[j]>\n",
         |(text, sels)| cmd_goto_first_line(
             test_fixtures::testing::state(text, sels),
             1,
@@ -433,7 +433,7 @@ fn goto_last_line_multi_line() {
 fn goto_last_line_multi_cursor() {
     // Both cursors converge to the same position: merged into one.
     assert_state!(
-        "-[a]>aa\nbbb\n-[c]>cc\n",
+        "-{a}>aa\nbbb\n-[c]>cc\n",
         |(text, sels)| cmd_goto_last_line(
             test_fixtures::testing::state(text, sels),
             1,
@@ -552,12 +552,12 @@ fn multi_cursor_count_independent_movement() {
     // Cursor 0: 0→1→2→3 (second 'l'). Cursor 2: 2→3→4→5 ('\n').
     // No merge: different positions.
     assert_state!(
-        "-[h]>el-[l]>o\n",
+        "-{h}>el-[l]>o\n",
         |(text, sels)| cmd_move_right(
             test_fixtures::testing::state(text, sels),
             3,
             MotionMode::Move
         ),
-        "hel-[l]>o-[\n]>"
+        "hel-{l}>o-[\n]>"
     );
 }

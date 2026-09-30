@@ -238,13 +238,13 @@ fn inner_argument_object_fields() {
 #[test]
 fn inner_argument_multi_cursor() {
     assert_state!(
-        "foo(-[a]>aa, bbb, -[c]>cc)\n",
+        "foo(-{a}>aa, bbb, -[c]>cc)\n",
         |(text, sels)| cmd_inner_argument(
             test_fixtures::testing::state(text, sels),
             0,
             MotionMode::Move
         ),
-        "foo(-[aaa]>, bbb, -[ccc]>)\n"
+        "foo(-{aaa}>, bbb, -[ccc]>)\n"
     );
 }
 
@@ -617,11 +617,7 @@ fn around_argument_after_a_comma_that_carries_a_combining_mark_starts_on_the_nex
 
 #[test]
 fn inner_argument_selects_exactly_each_corpus_sample() {
-    use test_fixtures::unicode::{ALL, IDEO_SPACE, LONE_MARK, NBSP};
-    for s in ALL
-        .iter()
-        .filter(|&&s| s != LONE_MARK && s != NBSP && s != IDEO_SPACE)
-    {
+    for s in test_fixtures::unicode::non_blank() {
         assert_state!(
             &format!("f(a, -[{s}]>, c)\n"),
             |(text, sels)| cmd_inner_argument(

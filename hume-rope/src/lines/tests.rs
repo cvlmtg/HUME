@@ -926,11 +926,9 @@ fn line_text_strips_the_break_and_reports_it() {
     let mut line = LineText::new();
     line.load(&r, RopeyLine::new(0));
     assert_eq!(line.as_str(), "ab");
-    assert!(line.had_break());
     assert_eq!(line.break_pos(), Some(line_break(&r, cl(0))));
     line.load(&r, RopeyLine::new(2));
     assert_eq!(line.as_str(), "");
-    assert!(!line.had_break());
     assert_eq!(line.break_pos(), None);
 }
 
@@ -960,4 +958,21 @@ fn line_text_clusters_match_rope_segmentation_over_the_corpus() {
         }
         assert_eq!(from_lines, whole, "{text:?}");
     }
+}
+
+// What `truncate_line_break` adds over `strip_line_break`: in-place
+// truncation and reporting whether a break was actually removed.
+
+#[test]
+fn truncate_line_break_removes_newline_and_reports_true() {
+    let mut buf = "hello\n".to_string();
+    assert!(truncate_line_break(&mut buf));
+    assert_eq!(buf, "hello");
+}
+
+#[test]
+fn truncate_line_break_no_newline_unchanged_and_reports_false() {
+    let mut buf = "hello".to_string();
+    assert!(!truncate_line_break(&mut buf));
+    assert_eq!(buf, "hello");
 }

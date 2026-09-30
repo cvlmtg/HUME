@@ -78,17 +78,30 @@ pub const ALL: &[&str] = &[
     PREPEND,
 ];
 
+/// The samples that are one grapheme cluster on their own.
+pub fn single_clusters() -> impl Iterator<Item = &'static str> {
+    ALL.iter().copied().filter(|s| clusters(s) == 1)
+}
+
+/// The samples that keep their own cluster boundary after a char other than
+/// a newline: every one but [`LONE_MARK`], which would attach to it.
+pub fn standalone() -> impl Iterator<Item = &'static str> {
+    ALL.iter().copied().filter(|&s| s != LONE_MARK)
+}
+
+/// The [`standalone`] samples that are not blank: all but [`NBSP`] and
+/// [`IDEO_SPACE`].
+pub fn non_blank() -> impl Iterator<Item = &'static str> {
+    standalone().filter(|&s| s != NBSP && s != IDEO_SPACE)
+}
+
+fn clusters(s: &str) -> usize {
+    unicode_segmentation::UnicodeSegmentation::graphemes(s, true).count()
+}
+
 #[cfg(test)]
 mod tests {
-    use hume_rope::grapheme::graphemes_at;
-    use ropey::Rope;
-
     use super::*;
-
-    fn clusters(s: &str) -> usize {
-        let rope = Rope::from_str(s);
-        graphemes_at(rope.slice(..), hume_rope::cluster::ClusterBound::TEXT_START).count()
-    }
 
     #[test]
     fn each_sample_has_the_cluster_and_char_count_its_doc_states() {
@@ -112,6 +125,9 @@ mod tests {
             (PREPEND, 1, 2),
         ];
         assert_eq!(expected.len(), ALL.len());
+        assert_eq!(single_clusters().count(), ALL.len() - 1, "all but FLAG_RUN");
+        assert_eq!(standalone().count(), ALL.len() - 1, "all but LONE_MARK");
+        assert_eq!(non_blank().count(), ALL.len() - 3, "and not the two spaces");
         for &(sample, cluster_count, char_count) in expected {
             assert!(ALL.contains(&sample), "{sample:?} missing from ALL");
             assert_eq!(clusters(sample), cluster_count, "clusters in {sample:?}");

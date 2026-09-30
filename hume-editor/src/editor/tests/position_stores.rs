@@ -42,7 +42,7 @@ fn reload_carries_the_selections_of_a_pane_showing_another_buffer() {
     assert_eq!(
         state(&ed),
         "-[s]>hort\n",
-        "the pane's cursor on line 4 clamps to the reloaded text's last line"
+        "the pane's cursor lands where the reload replaced its line"
     );
 }
 
@@ -63,6 +63,11 @@ fn closing_the_buffer_a_search_prompt_snapshotted_leaves_the_prompt_usable() {
 
     assert_ne!(ed.focused_buffer_id(), closed);
     assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(
+        ed.current_view().check(),
+        Ok(()),
+        "the pane's selections fit the buffer it moved to"
+    );
 }
 
 /// Sift snapshots the selections it will restore on cancel. An edit that
@@ -235,6 +240,7 @@ fn a_tracked_position_is_dropped_when_its_buffer_closes() {
         ed.state.panes.tracked.position(token, &ed.state.buffers),
         None
     );
+    assert_eq!(ed.state.panes.tracked.len(), 0, "the entry itself goes");
 }
 
 /// A token nobody minted, or already released, answers absent.

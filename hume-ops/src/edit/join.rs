@@ -6,8 +6,8 @@ use hume_editing::edit::{Landing, Landings, edit};
 use hume_editing::lines::{leading_whitespace_end, line_break};
 use hume_editing::selection::Facing;
 use hume_editing::state::EditState;
-use hume_rope::line::ContentLine;
 use hume_rope::cluster::ClusterRange;
+use hume_rope::line::ContentLine;
 
 /// Join lines inside each selection and select the inserted spaces.
 ///

@@ -232,26 +232,26 @@ fn goto_first_nonblank_all_blank_line() {
 #[test]
 fn goto_line_start_multi_cursor() {
     assert_state!(
-        "hel-[l]>o\nwor-[l]>d\n",
+        "hel-{l}>o\nwor-[l]>d\n",
         |(text, sels)| cmd_goto_line_start(
             test_fixtures::testing::state(text, sels),
             1,
             MotionMode::Move
         ),
-        "-[h]>ello\n-[w]>orld\n"
+        "-{h}>ello\n-[w]>orld\n"
     );
 }
 
 #[test]
 fn goto_line_end_multi_cursor() {
     assert_state!(
-        "-[h]>ello\n-[w]>orld\n",
+        "-{h}>ello\n-[w]>orld\n",
         |(text, sels)| cmd_goto_line_end(
             test_fixtures::testing::state(text, sels),
             1,
             MotionMode::Move
         ),
-        "hell-[o]>\nworl-[d]>\n"
+        "hell-{o}>\nworl-[d]>\n"
     );
 }
 
@@ -259,13 +259,13 @@ fn goto_line_end_multi_cursor() {
 fn goto_first_nonblank_multi_cursor() {
     // Both cursors are mid-line; each jumps to the first non-blank of its line.
     assert_state!(
-        "  hel-[l]>o\n  wor-[l]>d\n",
+        "  hel-{l}>o\n  wor-[l]>d\n",
         |(text, sels)| cmd_goto_first_nonblank(
             test_fixtures::testing::state(text, sels),
             1,
             MotionMode::Move
         ),
-        "  -[h]>ello\n  -[w]>orld\n"
+        "  -{h}>ello\n  -[w]>orld\n"
     );
 }
 

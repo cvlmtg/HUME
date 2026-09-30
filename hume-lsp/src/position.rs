@@ -1,12 +1,12 @@
 //! `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range`, plus
 //! `WirePos` → the protocol's raw JSON object shape (outbound only: nothing
 //! in this crate decodes JSON back into a `WirePos`). [`position_from_json`]
-//! is the one inbound decoder here, and decodes into `lsp_types::Position`
-//! rather than `WirePos`: it serves a *lenient* caller
-//! (`completion_item::text_edit_from_json_lenient`) that wants `None` on a
-//! malformed field, not the per-field error text `location::decode_location`
-//! needs. That decoder reads the same JSON shape by hand instead of
-//! sharing this one.
+//! and [`range_from_json`] are the inbound decoders here, and decode into
+//! `lsp_types` rather than `WirePos`: they serve *lenient* callers
+//! (`completion_item`'s text edit and default edit range) that want `None`
+//! on a malformed field, not the per-field error text
+//! `location::decode_location` needs. That decoder reads the same JSON shape
+//! by hand instead of sharing these.
 //!
 //! `hume-rope` deliberately has no `lsp-types` dependency (see
 //! `position_encoding`'s module doc), so the crossing lives here as free
@@ -72,6 +72,15 @@ pub fn position_from_json(v: &serde_json::Value) -> Option<lsp_types::Position> 
     Some(lsp_types::Position {
         line: u32::try_from(v.get("line")?.as_u64()?).ok()?,
         character: u32::try_from(v.get("character")?.as_u64()?).ok()?,
+    })
+}
+
+/// The protocol's `{"start": …, "end": …}` object → `lsp_types::Range`, by
+/// [`position_from_json`]'s lenient rules.
+pub fn range_from_json(v: &serde_json::Value) -> Option<lsp_types::Range> {
+    Some(lsp_types::Range {
+        start: position_from_json(v.get("start")?)?,
+        end: position_from_json(v.get("end")?)?,
     })
 }
 

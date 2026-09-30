@@ -274,7 +274,8 @@ pub(crate) fn snap_covering_bytes(
     ))
 }
 
-/// The boundary at or after `offset`, which must not be past the end.
+/// The boundary at or after `offset`: the text end for an offset at or past
+/// it.
 pub(crate) fn ceil_boundary(slice: RopeSlice<'_>, offset: CharOffset) -> ClusterBound {
     match snap_to_cluster(slice, offset) {
         Some(cluster) if offset.index() < slice.len_chars() => {

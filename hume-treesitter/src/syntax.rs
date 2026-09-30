@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::highlight::layer_highlights_for_line;
 use crate::layers::{SyntaxLayer, SyntaxLayers};
-use hume_editing::changeset::ChangeSet;
+use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_engine::types::ScopeId;
@@ -33,13 +33,13 @@ pub(crate) struct FlattenScratch {
 pub struct ChainBreak {
     pub tree_gen: u64,
     pub generation: u64,
-    pub first: Option<u64>,
-    pub last: Option<u64>,
+    pub first: u64,
+    pub last: u64,
 }
 
 /// The `InputEdit`s of one text mutation and the two text generations it
 /// leads between.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PendingEdit {
     from: u64,
     to: u64,
@@ -114,17 +114,17 @@ impl Syntax {
         }
     }
 
-    /// Create a fresh attachment. Empty text short-circuits: `parsed_gen` is
-    /// set to `generation` immediately, no request is built, `in_flight` stays
-    /// `None`. Otherwise returns the initial full-parse request; the caller
-    /// MUST post it to the parse backend.
+    /// Create a fresh attachment for `text`. Empty text short-circuits:
+    /// `parsed_gen` is set to its generation immediately, no request is
+    /// built, `in_flight` stays `None`. Otherwise returns the initial
+    /// full-parse request; the caller MUST post it to the parse backend.
     pub fn attach(
         bundle: Arc<GrammarBundle>,
         bid: BufferId,
-        generation: u64,
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> (Self, Option<ParseRequest>) {
+        let generation = text.version().generation();
         let mut syn = Self::detached(Arc::clone(&bundle));
 
         if text.len_bytes() == 0 {
@@ -166,18 +166,17 @@ impl Syntax {
             return syn;
         }
 
-        syn.ensure_current(BufferId::default(), 1, text, langs);
+        syn.ensure_current(BufferId::default(), text, langs);
         syn
     }
 
-    /// Record the `InputEdit`s translated from a `ChangeSet` against the
-    /// pre-edit rope, for a mutation from text generation `from` to `to`.
+    /// Record the `InputEdit`s of `change`, translated against its old text.
     /// Must be recorded after every text mutation.
-    pub fn record_edit(&mut self, from: u64, to: u64, cs: &ChangeSet, rope_pre: &ropey::Rope) {
+    pub fn record_edit(&mut self, change: &TextChange<'_>) {
         self.pending_edits.push(PendingEdit {
-            from,
-            to,
-            edits: input_edits_from_changeset(cs, rope_pre),
+            from: change.before().version().generation(),
+            to: change.after().version().generation(),
+            edits: input_edits_from_changeset(change.changes(), change.before().rope()),
         });
     }
 
@@ -189,10 +188,10 @@ impl Syntax {
     pub fn frame_tick(
         &mut self,
         bid: BufferId,
-        generation: u64,
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> FrameTickOutcome {
+        let generation = text.version().generation();
         if self.parsed_gen == Some(generation) {
             return FrameTickOutcome {
                 request: None,
@@ -279,10 +278,10 @@ impl Syntax {
     pub fn ensure_current(
         &mut self,
         bid: BufferId,
-        generation: u64,
         text: &BufferText,
         langs: &Arc<FxHashMap<String, Arc<GrammarBundle>>>,
     ) -> Option<ChainBreak> {
+        let generation = text.version().generation();
         // See `is_current` for why `parsed_gen` alone is the wrong gate here.
         if self.is_current(generation) {
             return None;
@@ -326,8 +325,6 @@ impl Syntax {
             && self.pending_edits.windows(2).all(|w| w[1].from == w[0].to);
 
         if chain_ok {
-            let edits: Vec<&tree_sitter::InputEdit> =
-                self.pending_edits.iter().flat_map(|e| &e.edits).collect();
             let installed = self.layers.as_mut().expect("checked above");
             // Every span the text-object memo holds was collected from these
             // trees at their pre-edit positions. This is the one path that
@@ -335,7 +332,7 @@ impl Syntax {
             // that has to say so.
             installed.clear_textobject_memo();
             for layer in installed.layers.iter_mut() {
-                for edit in &edits {
+                for edit in self.pending_edits.iter().flat_map(|e| &e.edits) {
                     layer.tree.edit(edit);
                 }
                 // `ranges` is a separate cached copy (consulted by
@@ -353,8 +350,12 @@ impl Syntax {
             let break_info = ChainBreak {
                 tree_gen,
                 generation,
-                first: self.pending_edits.first().map(|e| e.from),
-                last: self.pending_edits.last().map(|e| e.to),
+                first: self.pending_edits[0].from,
+                last: self
+                    .pending_edits
+                    .last()
+                    .expect("checked non-empty above")
+                    .to,
             };
             self.pending_edits.clear();
             Some(break_info)
@@ -445,7 +446,9 @@ impl Syntax {
                     });
                 }
                 self.layers = Some(SyntaxLayers::new(layers));
-                self.pending_edits.retain(|e| e.to > generation);
+                // Every recorded edit ends at or before the current
+                // generation, which this result is for.
+                self.pending_edits.clear();
                 self.tree_gen = generation;
             }
             ParseOutcome::ParseFailed => {

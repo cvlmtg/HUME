@@ -334,7 +334,6 @@ fn contains_and_hull() {
         ClusterRange::through(slice, at(0), at(3)).expect("ordered")
     );
     assert_eq!(cd.hull(ab), hull);
-    assert_eq!(ExclusiveRange::from(hull), hull.chars());
 }
 
 #[test]
@@ -351,6 +350,5 @@ fn a_start_widens_to_the_same_bound() {
     let text = rope("ab");
     let b = snap_to_cluster(text.slice(..), co(1)).expect("b").start();
     assert_eq!(ClusterBound::from(b).offset(), b.offset());
-    assert_eq!(CharOffset::from(b), co(1));
     assert_eq!(ClusterBound::TEXT_START.offset(), co(0));
 }

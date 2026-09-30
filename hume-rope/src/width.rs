@@ -223,23 +223,28 @@ pub fn str_width(s: &str, start_display_col: usize, tab_width: u8) -> usize {
     display_col - start_display_col
 }
 
-/// Display columns the blank char `ch` (see [`crate::lines::is_space_char`])
-/// occupies when rendered at `display_col`.
-pub(crate) fn space_advance(ch: char, display_col: usize, tab_width: u8) -> usize {
-    grapheme_width(ch.encode_utf8(&mut [0; 4]), display_col, tab_width)
+/// Display columns a cluster of a line's leading whitespace occupies at
+/// `display_col`, or `None` when `first`, the cluster's first char, is not
+/// blank (see [`crate::lines::is_space_char`]): the one rule a line's indent
+/// is measured by. A blank char carrying a combining mark is one blank
+/// cluster, as wide as the char alone.
+pub(crate) fn blank_advance(first: char, display_col: usize, tab_width: u8) -> Option<usize> {
+    crate::lines::is_space_char(first)
+        .then(|| grapheme_width(first.encode_utf8(&mut [0; 4]), display_col, tab_width))
 }
 
 /// Number of indent levels in `line`'s leading whitespace. One indent level
-/// is `tab_width` display columns (a run of blank chars or a tab stop).
+/// is `tab_width` display columns (a run of blank clusters or a tab stop).
 /// `tab_width < 1` is clamped to 1.
 pub fn indent_depth(line: &str, tab_width: u8) -> u8 {
     let tw = (tab_width as usize).max(1);
     let mut display_col = 0usize;
-    for ch in line
-        .chars()
-        .take_while(|&ch| crate::lines::is_space_char(ch))
-    {
-        display_col += space_advance(ch, display_col, tab_width);
+    for g in line.graphemes(true) {
+        let first = g.chars().next().expect("a grapheme is never empty");
+        let Some(advance) = blank_advance(first, display_col, tab_width) else {
+            break;
+        };
+        display_col += advance;
     }
     (display_col / tw).min(u8::MAX as usize) as u8
 }
