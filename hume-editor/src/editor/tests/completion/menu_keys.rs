@@ -501,6 +501,66 @@ fn skip_close_dismisses_the_session_instead_of_leaving_a_stale_token() {
     assert_eq!(ed.doc().text().to_string(), ")\n");
 }
 
+// ── Typing at the end of the token ──────────────────────────────────────────
+
+/// With no word typed yet the token is empty and follows the cursor, so each
+/// typed character narrows the list.
+#[test]
+fn typing_into_an_empty_token_narrows_the_list() {
+    let mut ed = editor_from("-[\n]>");
+    ed.feed_key(key('i'));
+    open_completion_session(&mut ed, &["foo", "grape", "grid"]);
+
+    type_chars(&mut ed, "gr");
+
+    assert_eq!(labels(&ed), vec!["grape", "grid"]);
+}
+
+/// A character outside the token's class typed at its end leaves the token.
+#[test]
+fn typing_a_non_word_char_after_a_word_dismisses_the_session() {
+    let mut ed = editor_from("-[\n]>");
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, "fo");
+    open_completion_session(&mut ed, &["foo"]);
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
+
+    ed.feed_key(key(' '));
+
+    assert!(ed.state.input.buffer_completion().is_none());
+    assert_eq!(ed.doc().text().to_string(), "fo \n");
+}
+
+/// With no word typed yet, a character outside the token's class is still
+/// outside it: the answer no longer applies.
+#[test]
+fn typing_a_non_word_char_into_an_empty_token_dismisses_the_session() {
+    let mut ed = editor_from("-[\n]>");
+    ed.feed_key(key('i'));
+    open_completion_session(&mut ed, &["foo"]);
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
+
+    ed.feed_key(key(';'));
+
+    assert!(ed.state.input.buffer_completion().is_none());
+}
+
+/// An auto-paired closer inserted at the token's end is not part of the
+/// token: the cursor now sits inside the pair, past the token.
+#[test]
+fn an_auto_paired_closer_at_the_token_end_dismisses_the_session() {
+    let mut ed = editor_from("-[\n]>");
+    ed.feed_key(key('i'));
+    type_chars(&mut ed, "foo");
+    open_completion_session(&mut ed, &["foobar"]);
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
+
+    ed.feed_key(key('('));
+
+    assert!(ed.state.input.buffer_completion().is_none());
+    assert_eq!(ed.doc().text().to_string(), "foo()\n");
+}
+
 // ── Regression: typing after accept must not desync the edit group ──────────
 
 #[test]
@@ -527,10 +587,9 @@ fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
 
 // ── Out-of-band buffer changes are caught at settle ─────────────────────────
 
-/// A `:e!` reload bypasses `observe_edit` entirely and leaves every token
-/// pointing at a document that no longer exists. `dismiss_invalid_
-/// completion` catches the generation mismatch at the next settle, and the
-/// render fail-safe covers a frame drawn before it.
+/// A `:e!` reload replaces the text with no change to carry the session's
+/// tokens through. The next settle dismisses the session, and the render
+/// fail-safe covers a frame drawn before it.
 #[test]
 fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -562,20 +621,19 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
     assert!(ed.state.views.completion_menu.read().is_none());
 }
 
-/// A Steel edit that bypasses `observe_edit` (a raw `apply-text-edits!`)
-/// with the same length as before still bumps the generation, caught at
-/// settle, with no keystroke's length check needed first.
+/// A Steel edit above the token (a raw `apply-text-edits!`) leaves the
+/// session open and shifts its token, so accepting still lands at the cursor.
 #[test]
-fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
+fn an_edit_above_the_token_from_a_script_keeps_the_session_and_shifts_its_token() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut ed = editor_from("a -[c]>def\n");
     super::super::lsp_bridge::setup_with(&mut ed, |backend, _sid| {
         // `apply-text-edits!` now only accepts a server-tagged wire edit
         // (via a real response); this canned response is what `:stash`
         // (dispatched below, before Insert mode) turns into one.
         backend.respond_to(
             "test/textEdits",
-            serde_json::json!([{"range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 6}}, "newText": "BCDEF"}]),
+            serde_json::json!([{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 0}}, "newText": "Q"}]),
         );
     });
     run(
@@ -588,7 +646,8 @@ fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
                (define-typed-command! "stash" "" (lambda (bid)
                  (lsp-request! bid "test/textEdits" (hash) (lambda (err res) (set-box! stashed-edits res)))))
                (define-command! "corrupt" "" (lambda (bid)
-                 (apply-text-edits! bid (json-list (unbox stashed-edits)))))"#
+                 (apply-text-edits! bid (json-list (unbox stashed-edits)))))
+               (define-command! "finish" "" (lambda () (completion-accept! 0)))"#
         ),
     );
     type_cmd(&mut ed, ":stash");
@@ -601,5 +660,7 @@ fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
 
     ed.execute_keymap_command("corrupt".into(), None, false);
     ed.settle();
-    assert!(ed.state.input.buffer_completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_some());
+    ed.execute_keymap_command("finish".into(), None, false);
+    assert_eq!(ed.doc().text().to_string(), "Qa xcdef\n");
 }

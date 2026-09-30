@@ -46,6 +46,61 @@ fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
     assert_eq!(status(&ed), "prefix:ki|bid-ok:yes");
 }
 
+/// Each source's token is the buffer's word characters plus its own
+/// `#:token-chars`, so two sources triggered together read different
+/// prefixes off the same text.
+#[test]
+fn each_source_is_handed_a_prefix_read_with_its_own_token_chars() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("foo-ki-[x]>\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "dashed"
+             (lambda (id bid prefix)
+               (log! 'warn (string-append "dashed:" prefix))
+               (completion-emit! id '()))
+             #:target 'buffer #:token-chars "-")
+           (register-completion-source! "plain"
+             (lambda (id bid prefix)
+               (log! 'warn (string-append "plain:" prefix))
+               (completion-emit! id '()))
+             #:target 'buffer)"#,
+    );
+    let logged: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        logged.iter().any(|t| t == "dashed:foo-ki"),
+        "got: {logged:?}"
+    );
+    assert!(logged.iter().any(|t| t == "plain:ki"), "got: {logged:?}");
+}
+
+/// Typing a `#:token-chars` character extends the token instead of leaving
+/// it, so the menu stays open and narrows to the dashed candidate.
+#[test]
+fn typing_a_token_char_keeps_the_menu_open_and_narrows_it() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        &completion_source(
+            "dashed",
+            &completion_labels(&["foo-bar", "foo-baz", "other"]),
+            "#:token-chars \"-\"",
+        ),
+    );
+    for ch in "foo-ba".chars() {
+        ed.feed_key(key(ch));
+    }
+    assert_eq!(labels(&ed), vec!["foo-bar", "foo-baz"]);
+}
+
 #[test]
 fn ctrl_space_outside_insert_mode_only_reports() {
     let tmp = safe_tempdir();
@@ -632,8 +687,9 @@ fn top_carries_the_contributing_source_name() {
 
 /// A trigger char invokes the `Buffer` source registered under its name
 /// (via `set-completion-triggers!`) into the open session. The other
-/// source's slot survives, shown again once the typed char is backspaced
-/// away.
+/// source's token does not include the typed char, so its answer is dropped;
+/// backspacing the char away crosses the trigger source's new token and
+/// leaves the session with nothing.
 #[test]
 fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
     let tmp = safe_tempdir();
@@ -669,16 +725,14 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
     assert_eq!(
         labels(&ed),
         vec!["dot2"],
-        "the dot source answered afresh at the new cursor; \"other\"'s token now \
-         holds \".\" and matches nothing"
+        "the dot source answered afresh at the new cursor; \"other\"'s token would \
+         hold \".\", so its answer is dropped"
     );
     ed.feed_key(key_backspace());
     ed.settle();
-    assert_eq!(
-        labels(&ed),
-        vec!["other"],
-        "\"other\"'s slot survived the trigger: its token is empty again; the dot \
-         source's token (the cursor after \".\") was crossed and dropped"
+    assert!(
+        ed.state.input.buffer_completion().is_none(),
+        "the dot source's token (the cursor after \".\") was crossed and dropped"
     );
 }
 
@@ -875,8 +929,7 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
     ed.settle();
     assert!(
         ed.state.input.buffer_completion().is_none(),
-        "dismiss_invalid_completion must dismiss the session once its pane shows \
-         a different buffer"
+        "settling must dismiss the session once its pane shows a different buffer"
     );
 }
 

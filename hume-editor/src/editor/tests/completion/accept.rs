@@ -1,4 +1,4 @@
-//! What accepting a candidate writes: `CompletionSession::accept`
+//! What accepting a candidate writes: `BufferSession::accept`
 //! (`completion/session/accept.rs`): the `insertText` fallback over the
 //! source's token, a server `textEdit` decoded against the invocation's
 //! own snapshot, `additionalTextEdits`, undo grouping, the preconditions
@@ -68,6 +68,32 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
     assert_eq!(ed.doc().text().to_string(), "foo-bar bar\n");
 }
 
+/// The fallback replaces the accepted source's own token: `#:token-chars`
+/// extends the run the same way the buffer's `word-chars` would.
+#[test]
+fn accept_with_no_text_edit_replaces_the_run_of_the_sources_token_chars() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("foo-ba-[ ]>bar\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            "{}\n{ACCEPT_0}",
+            completion_source(
+                "dashed",
+                r#"(list (hash "label" "foo-bar" "insertText" "foo-bar"))"#,
+                "#:token-chars \"-\"",
+            )
+        ),
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("completion-trigger".into(), None, false);
+    ed.settle();
+    accept_via_steel(&mut ed);
+    assert_eq!(ed.doc().text().to_string(), "foo-bar bar\n");
+}
+
 // ── A server textEdit, decoded against the invocation's snapshot ──────────
 
 /// The server's range was computed against the document at request time
@@ -94,19 +120,44 @@ fn accept_with_a_text_edit_extends_the_range_over_chars_typed_since() {
     assert_eq!(ed.doc().text().to_string(), "format! \n");
 }
 
+/// A list's `itemDefaults.editRange` is the edit range of every item that
+/// has no `textEdit` of its own, with `textEditText` as the new text: here
+/// it covers ".fo", wider than the word before the cursor.
+#[test]
+fn accept_over_a_list_default_edit_range() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("x.fo-[ ]>\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        &completion_source(
+            "test",
+            r#"(hash "isIncomplete" #f
+                     "itemDefaults" (hash "editRange" (hash "start" (hash "line" 0 "character" 1)
+                                                            "end" (hash "line" 0 "character" 4)))
+                     "items" (list (hash "label" "format!" "filterText" ".format!"
+                                         "textEditText" "->format!")))"#,
+            "",
+        ),
+    );
+    ed.feed_key(key_enter());
+    assert_eq!(ed.doc().text().to_string(), "x->format! \n");
+}
+
 /// A range that doesn't contain the cursor is off-spec (LSP: the completion
 /// range always contains the request position), so accept errors with the
-/// buffer untouched rather than guessing at the server's intent.
+/// buffer untouched rather than guessing at the server's intent. Here the
+/// range ends before the cursor; one that starts after it is never shown.
 #[test]
 fn accept_with_an_off_spec_text_edit_range_errors_and_leaves_the_buffer_untouched() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
+    let mut ed = editor_from("abc-[d]>ef\n");
     raw_insert_with_source(
         &mut ed,
         tmp.path(),
-        r#"(list (hash "label" "x" "insertText" "ignored-fallback"
+        r#"(list (hash "label" "bcx" "insertText" "ignored-fallback"
                        "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 1)
-                                                    "end" (hash "line" 0 "character" 4))
+                                                    "end" (hash "line" 0 "character" 2))
                                    "newText" "XYZ")))"#,
         ACCEPT_0,
     );
@@ -184,10 +235,10 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
     );
 }
 
-/// An edit through a path the session never observed (a raw
-/// `apply-text-edits!`) bumps the generation, so accept refuses.
+/// An edit that does not touch the token (a raw `apply-text-edits!` at the
+/// end of the line) is carried into the session, so accept still lands.
 #[test]
-fn a_buffer_edit_the_session_never_saw_invalidates_it() {
+fn a_buffer_edit_outside_the_token_does_not_invalidate_the_session() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     super::super::lsp_bridge::setup_with(&mut ed, |backend, _sid| {
@@ -220,12 +271,7 @@ fn a_buffer_edit_the_session_never_saw_invalidates_it() {
     ed.drain_lsp();
     ed.settle();
     accept_via_steel(&mut ed);
-    assert_eq!(
-        ed.doc().text().to_string(),
-        "abcdefQ\n",
-        "only the raw edit landed"
-    );
-    assert!(status(&ed).contains("changed"), "got {:?}", status(&ed));
+    assert_eq!(ed.doc().text().to_string(), "zabcdefQ\n");
 }
 
 #[test]
@@ -252,16 +298,17 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
     );
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
-    // Nothing dismisses a session on a focused-pane change synchronously:
+    // No synchronous dismiss runs on a focused-pane change:
     // `pane_state::ensure` would otherwise fabricate a cursor at char 0 for
     // pane B. A raw `set_for_test`: `switch_focused_pane`'s Normal-mode
-    // precondition doesn't hold here on purpose.
+    // precondition doesn't hold here on purpose. Taking the session for
+    // accept reconciles it first, which dismisses it.
     ed.state.focus.set_for_test(pid_b);
 
     accept_via_steel(&mut ed);
     assert_eq!(ed.doc().text().to_string(), "abcdef\n");
     assert!(
-        status(&ed).contains("no longer focused"),
+        status(&ed).contains("no active completion session"),
         "got {:?}",
         status(&ed)
     );

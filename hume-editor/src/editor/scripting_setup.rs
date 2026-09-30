@@ -330,7 +330,11 @@ impl Editor {
         loop {
             self.detect_buffer_enter();
             self.detect_mode_change();
-            self.dismiss_invalid_completion();
+            // A pane switch, a closed buffer or an edit from any path leaves
+            // the session stale with no write site to hang a dismiss on, so
+            // it is reconciled on every pass, like `detect_buffer_enter`'s
+            // focus check. A `Minibuf` session watches no buffer.
+            self.state.reconcile_completion(&self.view);
             // Inside the fixpoint, not outside it like `drain_async_sources`:
             // a *synchronous* handler that reacts to its own buffer's edit
             // (auto-format, trim-on-change) is a feedback loop, and only
@@ -427,29 +431,6 @@ impl Editor {
             self.state.last_observed_mode = now;
             self.state
                 .queue_event(EditorEvent::OnModeChange { from, to: now });
-        }
-    }
-
-    /// Dismisses an open `Buffer`-target completion session once it no
-    /// longer matches live state: a pane switching to a different buffer,
-    /// losing focus, closing the buffer, or the buffer changing through a
-    /// path `observe_edit` never witnessed (an LSP `workspace/applyEdit`,
-    /// `:e!`, or any other out-of-band edit, same-length ones included;
-    /// see `BufferSession::observe_edit`'s own doc for why a length-changing
-    /// one is already caught sooner, by the next keystroke's length check)
-    /// all leave the session silently stale, and none of them has a single
-    /// write-site chokepoint to hang a synchronous dismiss on, the same shape
-    /// `detect_buffer_enter`'s own doc describes for `focused_buffer_id()`.
-    /// Run every pass of `drain_pending_work`'s loop, not just once before
-    /// it, so a handler-driven change is caught by the very next pass. A
-    /// `Minibuf`-target session has nothing to invalidate here: it isn't
-    /// watching a buffer.
-    fn dismiss_invalid_completion(&mut self) {
-        let Some(session) = self.state.input.buffer_completion() else {
-            return;
-        };
-        if !session.still_valid(&self.state, &self.view) {
-            self.state.dismiss_completion(&self.view);
         }
     }
 

@@ -75,7 +75,8 @@ pub(crate) fn set_hook_triggers(
     Ok(SteelVal::Void)
 }
 
-/// `(%register-completion-source! name proc target match priority resolve)`:
+/// `(%register-completion-source! name proc target match priority resolve
+/// token-chars)`:
 /// the `register-completion-source!` Scheme wrapper supplies `#:match`/
 /// `#:priority`/`#:resolve`'s defaults; `#:target` has none (every source
 /// states its choice explicitly). `proc` is called as `(proc id bid
@@ -88,7 +89,11 @@ pub(crate) fn set_hook_triggers(
 /// buffer's attached LSP server (`accept.rs`'s `maybe_send_resolve`, the
 /// only reader of this flag, is itself `Buffer`-target only), so a
 /// `'minibuf` source claiming it is a caller error, not a silently-ignored
-/// no-op.
+/// no-op. `#:token-chars` is refused there for the same reason: a
+/// `'minibuf` source's token is its own argument span.
+// Each param is a positional arg the `builtins!` table maps 1:1 from the
+// `%register-completion-source!` wrapper call.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn register_completion_source(
     ctx: &mut SteelCtx,
     name: String,
@@ -97,6 +102,7 @@ pub(crate) fn register_completion_source(
     match_kind: SteelVal,
     priority: SteelVal,
     resolve: SteelVal,
+    token_chars: SteelVal,
 ) -> SteelResult {
     let proc = callable_arg(proc, "register-completion-source! proc")?;
     let target = target_arg(target)?;
@@ -107,6 +113,14 @@ pub(crate) fn register_completion_source(
         steel::stop!(Generic =>
             "register-completion-source! #:resolve: only a 'buffer source can set this");
     }
+    let token_chars = string_arg(token_chars, "register-completion-source! #:token-chars")?;
+    if !token_chars.is_empty() && target != CompletionSourceTarget::Buffer {
+        steel::stop!(Generic =>
+            "register-completion-source! #:token-chars: only a 'buffer source can set this");
+    }
+    if let Err(e) = hume_editing::word::WordChars::validate(&token_chars) {
+        steel::stop!(Generic => "register-completion-source! #:token-chars: {}", e);
+    }
     ctx.push_effect(Effect::RegisterCompletionSource(
         crate::host::PendingCompletionSource {
             name,
@@ -115,6 +129,7 @@ pub(crate) fn register_completion_source(
             match_kind,
             priority,
             resolve,
+            token_chars,
         },
     ));
     Ok(SteelVal::Void)

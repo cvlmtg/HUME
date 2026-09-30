@@ -26,6 +26,7 @@
 - `on-lsp-notification` is now a hook: `(register-hook! 'on-lsp-notification (lambda (server method params) ...))`, called for every notification HUME doesn't handle itself, with the method as a new second argument. Like any hook, a plugin that fails to load has its handlers removed. To handle only specific methods, use `(register-lsp-notification-hook! '("method/a" "method/b") (lambda (server method params) ...))`; a single method can be passed as a plain string.
 
 ### Plugins
+- `register-completion-source!` takes `#:token-chars`, extra characters that belong to a `'buffer` source's token on top of the buffer's `word-chars`: `#:token-chars "-"` makes `foo-ba` one token for that source, so its `prefix` argument holds it, typing `-` keeps the menu open, and accepting an item replaces it.
 - `buffer-selections` reports each `'anchor` and `'head` as the start of a character (a base letter with its combining marks, an emoji sequence, or a flag counts as one).
 - `core:buffer-words` now indexes 100 lines on each side of the cursor per background step by default, instead of 200, halving the pause a step can cause in a file with very long lines.
 
@@ -45,6 +46,10 @@
 - `d` and `y` put in the register exactly the text `d` removes. A selection ending on the file's last line break leaves that line break out, unless it covers whole lines. A cursor on the last line break of a line with text removes and copies nothing, and leaves the register as it was.
 - `>`/`<` in front of a line that starts with a combining mark, `J` after a line ending in a prepend character, and pasting an empty register entry beside another paste keep the cursor on whole characters in the right place.
 - Search highlights follow a paste while it can still be cycled with `[`/`]`.
+
+### Language servers
+- Completion items are filtered against the text their own edit range covers, and a list's default edit range is honored. A server whose completions replace more than the word before the cursor (`foo.ba`, `$ba`) keeps its items while you type, and accepting replaces that range. Such items need a `filterText` that includes the covered text, as the protocol expects.
+- The completion menu stays open when text elsewhere in the buffer changes (a script's edit, an auto-format) and still accepts at the cursor. It closes as soon as a character outside the completed word is typed, including right after the menu opens on nothing (a `(` typed after `.`); before, it stayed open with no matches.
 
 ### Theming
 - `gruvbox_light`'s picker cursor now matches upstream's reversed style, instead of the parent theme's explicit colors.

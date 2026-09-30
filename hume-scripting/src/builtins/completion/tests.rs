@@ -26,6 +26,17 @@ fn register_with_resolve(
     priority: isize,
     resolve: bool,
 ) -> SteelResult {
+    register_full(ctx, target, match_kind, priority, resolve, "")
+}
+
+fn register_full(
+    ctx: &mut SteelCtx,
+    target: &str,
+    match_kind: &str,
+    priority: isize,
+    resolve: bool,
+    token_chars: &str,
+) -> SteelResult {
     register_completion_source(
         ctx,
         "src".into(),
@@ -34,6 +45,7 @@ fn register_with_resolve(
         sym(match_kind),
         SteelVal::IntV(priority),
         SteelVal::BoolV(resolve),
+        SteelVal::StringV(token_chars.into()),
     )
 }
 
@@ -129,6 +141,7 @@ fn register_rejects_a_non_callable_proc() {
         sym("fuzzy"),
         SteelVal::IntV(0),
         SteelVal::BoolV(false),
+        SteelVal::StringV("".into()),
     )
     .expect_err("a string is not callable")
     .to_string();
@@ -193,4 +206,47 @@ fn emit_is_blocked_during_init() {
     let result = super::super::errors::require_cmd(&h.ctx_init(), "%completion-emit!");
     let msg = result.expect_err("must error during init").to_string();
     assert!(msg.contains("completion-emit!"), "got: {msg}");
+}
+
+/// `#:token-chars` decodes straight through on a `'buffer` source and
+/// defaults to empty.
+#[test]
+fn register_decodes_token_chars_on_a_buffer_source() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    register_full(&mut ctx, "buffer", "fuzzy", 0, false, "-$").expect("valid registration");
+    register(&mut ctx, "buffer", "fuzzy", 0).expect("valid registration");
+    drop(ctx);
+    let effects = effects(&h);
+    let (Effect::RegisterCompletionSource(with), Effect::RegisterCompletionSource(without)) =
+        (effects[0], effects[1])
+    else {
+        panic!("expected two RegisterCompletionSource effects");
+    };
+    assert_eq!(with.token_chars, "-$");
+    assert_eq!(without.token_chars, "");
+}
+
+/// A whitespace token char would leave a token with no terminator, same as
+/// `word-chars`.
+#[test]
+fn register_rejects_whitespace_token_chars() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = register_full(&mut ctx, "buffer", "fuzzy", 0, false, "- ")
+        .expect_err("whitespace is not a token char")
+        .to_string();
+    assert!(err.contains("#:token-chars"), "got: {err}");
+}
+
+/// The token is a buffer notion: a `'minibuf` source's token is its own
+/// argument span.
+#[test]
+fn register_rejects_token_chars_on_a_minibuf_source() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = register_full(&mut ctx, "minibuf", "fuzzy", 0, false, "-")
+        .expect_err("token-chars is buffer-only")
+        .to_string();
+    assert!(err.contains("#:token-chars"), "got: {err}");
 }

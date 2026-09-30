@@ -758,8 +758,13 @@ impl EditorState {
         self.retire::<input_stack::MinibufCompletionLayer>(view);
     }
 
-    /// [`Self::dismiss_completion`]'s variant for the two accept paths,
-    /// which need the session *by value* rather than merely retired.
+    /// [`Self::dismiss_completion`]'s variant for the two accept paths and
+    /// the trigger that reuses an open session, which need the session *by
+    /// value* rather than merely retired. The session is reconciled with
+    /// the buffer first, so a session that no longer applies is dismissed
+    /// (`None`) instead of handed out. A session held by value is not
+    /// carried through text changes: the caller edits with it in hand only
+    /// to drop it, or puts it back before the next edit.
     /// [`Self::take_layer`] handles the truncate-and-pull-out; this clears
     /// the menu view directly rather than through the layer's own
     /// `tear_down` (`take_layer` never runs it, only whatever was pushed
@@ -769,6 +774,7 @@ impl EditorState {
         &mut self,
         view: &EngineView,
     ) -> Option<completion::BufferSession> {
+        self.reconcile_completion(view);
         let r = self.input.ref_of::<input_stack::BufferCompletionLayer>()?;
         let completion = self.take_layer::<input_stack::BufferCompletionLayer>(view, r);
         self.views.completion_menu.set(None);

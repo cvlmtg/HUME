@@ -10,7 +10,7 @@ use hume_rope::position_encoding::PositionEncoding;
 use lsp_types::{
     ClientCapabilities, ClientInfo, CodeActionClientCapabilities, CodeActionKind,
     CodeActionKindLiteralSupport, CodeActionLiteralSupport, CompletionClientCapabilities,
-    CompletionItemCapability, DidChangeConfigurationClientCapabilities,
+    CompletionItemCapability, CompletionListCapability, DidChangeConfigurationClientCapabilities,
     DidChangeConfigurationParams, FailureHandlingKind, GeneralClientCapabilities, GotoCapability,
     HoverClientCapabilities, InitializeParams, InitializeResult, InitializedParams, MarkupKind,
     ParameterInformationSettings, PositionEncodingKind, PublishDiagnosticsClientCapabilities,
@@ -810,6 +810,9 @@ fn build_client_capabilities() -> ClientCapabilities {
                     // v1 strips snippet placeholders to plain text.
                     snippet_support: Some(false),
                     ..Default::default()
+                }),
+                completion_list: Some(CompletionListCapability {
+                    item_defaults: Some(vec!["editRange".to_string()]),
                 }),
                 ..Default::default()
             }),

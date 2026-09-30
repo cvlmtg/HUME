@@ -3,8 +3,9 @@
 //! stores through the change itself, so no text change can leave one behind.
 //!
 //! Stores that are only valid for the text they were computed against (the
-//! search match cache, the last insertion, completion and dot-repeat anchors)
-//! are not here: they are `Tracked`, and read as absent once the text moves.
+//! search match cache, the last insertion, the completion menu anchor and
+//! dot-repeat anchors) are not here: they are `Tracked`, and read as absent
+//! once the text moves.
 
 use hume_editing::edit::TextChange;
 use hume_engine::pipeline::{BufferId, PaneId};
@@ -32,7 +33,8 @@ impl<'a> PositionStores<'a> {
 
     /// Carry every position stored for `buffer` through `change`: the
     /// selections of each pane that has shown the buffer, whether or not it
-    /// shows it now, every jump list, and every open prompt's snapshot.
+    /// shows it now, every jump list, every open prompt's snapshot, and the
+    /// open completion session.
     pub(in crate::editor) fn carry(&mut self, buffer: BufferId, change: &TextChange<'_>) {
         for buffers in self.panes.values_mut() {
             if let Some(state) = buffers.get_mut(buffer) {
@@ -43,12 +45,15 @@ impl<'a> PositionStores<'a> {
         for snapshot in self.input.snapshots_mut() {
             snapshot.carry(buffer, change);
         }
+        if let Some(session) = self.input.buffer_completion_mut() {
+            session.carry(buffer, change);
+        }
     }
 
     /// Reset every position stored for `buffer`, whose text was replaced
     /// with no change to carry them through: each pane that holds state for
-    /// it starts over from `fresh`, and jump entries and prompt snapshots for
-    /// it are dropped.
+    /// it starts over from `fresh`, jump entries and prompt snapshots for it
+    /// are dropped, and an open completion session on it is marked dead.
     pub(in crate::editor) fn reset(
         &mut self,
         buffer: BufferId,
@@ -62,6 +67,9 @@ impl<'a> PositionStores<'a> {
         self.jumps.prune_buffer(buffer);
         for snapshot in self.input.snapshots_mut() {
             snapshot.forget(buffer);
+        }
+        if let Some(session) = self.input.buffer_completion_mut() {
+            session.forget(buffer);
         }
     }
 }

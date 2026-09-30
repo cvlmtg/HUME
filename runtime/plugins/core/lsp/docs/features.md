@@ -80,7 +80,7 @@ a null/void response.
 ## Completion
 
 The plugin is a *source*, not the driver: it registers `"lsp"` (a buffer-target source:
-every buffer source's token is the identifier before the cursor, so the editor seeds the
+its token is the identifier before the cursor, so the editor seeds the
 filter from it and accept replaces it) with `#:resolve #t`, its claim that its items are
 wire items from the buffer's own attached server, licensing `completionItem/resolve` on
 accept, and `#:priority 10`), and the editor calls it: on `Ctrl-Space`, on a server
@@ -88,6 +88,11 @@ trigger character (registered as this source's own trigger chars at attach, so t
 editor invokes the source directly with no hook round trip), and again after each
 keystroke while the last answer said incomplete. The source declines with an empty answer
 when the buffer's server has no completion provider.
+
+Each item's own edit range, or the list's default `itemDefaults.editRange`, says where
+its token starts: the item is filtered against the text from there to the cursor, so a
+server whose range covers `foo.ba` (with a `filterText` that includes it) keeps its
+items while you type, and accept replaces that range.
 
 This source never reads a field of its own response. It hands the response straight to
 the store, which reads the incomplete flag and items itself. Snippet stripping happens at

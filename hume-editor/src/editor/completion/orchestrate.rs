@@ -14,13 +14,12 @@
 //! (`rank`) stays here in Rust and only a source flagged `isIncomplete` is
 //! called again as the user types.
 
-use hume_editing::text::TextVersion;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_rope::offset::CharOffset;
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
-use super::session::{BufferSession, Invocation, LiveDoc, MinibufSession};
+use super::session::{BufferSession, Invocation, LiveDoc, MinibufSession, Reconciled};
 use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{
@@ -100,11 +99,13 @@ impl EditorState {
             return;
         };
         let mut session = match self.take_buffer_completion(view) {
-            Some(open) if open.still_valid(self, view) => open,
-            _ => {
-                let buf = self.buffers.get(bid);
-                BufferSession::open(bid, pid, buf.text().version(), buf.text().len_chars())
-            }
+            Some(open) => open,
+            None => BufferSession::open(
+                bid,
+                pid,
+                self.buffers.get(bid).text().version(),
+                head.offset(),
+            ),
         };
         if let Trigger::Explicit = trigger {
             session.mark_explicit_trigger();
@@ -133,61 +134,65 @@ impl EditorState {
         self.push_layer(view, BufferCompletionLayer { session });
     }
 
-    /// Records an Insert-mode edit that landed on `bid`. Re-ranks against
-    /// the tokens' new text, dismisses a session the cursor has typed out
-    /// of, and calls again every source that flagged its last answer
-    /// `isIncomplete` (or is still pending against the document before this
-    /// edit).
-    pub(in crate::editor) fn completion_observe_edit(
-        &mut self,
-        view: &EngineView,
-        bid: BufferId,
-        cs: &hume_editing::changeset::ChangeSet,
-        version: TextVersion,
-    ) {
-        let Some(head) = self
-            .focused_buffer_state(bid)
-            .map(|pbs| pbs.view(self.buffers.get(bid).text()).primary().head())
-        else {
+    /// Brings the open `Buffer` session in line with the buffer's current
+    /// text and the primary cursor, whatever changed them: dismisses it when
+    /// its pane or buffer is gone or its text was replaced, drops the
+    /// answers whose token the cursor has left, calls again every source
+    /// that flagged its last answer `isIncomplete` (or is still pending
+    /// against an older document) once the text changed, and re-ranks.
+    /// Idempotent, so every path that needs a current session calls it
+    /// without coordinating with the others: the Insert keystroke handler,
+    /// each settle pass, and taking the session out of the input stack.
+    pub(in crate::editor) fn reconcile_completion(&mut self, view: &EngineView) {
+        let Some(session) = self.input.buffer_completion() else {
             return;
         };
-        // Computed before `session` borrows `self.input` mutably, needed
-        // only to classify a newly-included end-of-token slice
-        // (`Invocation::observe`'s own doc).
-        let buf = self.buffers.get(bid);
-        let chars = crate::editor::commands::effective_word_chars(buf, &self.settings);
-        let text = buf.text();
-        let Some(session) = self.input.buffer_completion_mut() else {
-            return;
-        };
-        if session.bid() != bid {
-            return;
-        }
-        if !session.observe_edit(
-            &self.config.completion_sources,
-            cs,
-            version,
-            head.offset(),
-            text,
-            chars,
-        ) {
+        let (bid, pid) = (session.bid(), session.pane_id());
+        let shown = self.focus.id() == pid && view.panes.get(pid).map(|p| p.buffer_id) == Some(bid);
+        let Some(buf) = self.buffers.try_get(bid).filter(|_| shown) else {
             self.dismiss_completion(view);
             return;
-        }
-        let to_reinvoke = session.sources_to_reinvoke();
-        let calls = invoke_buffer_sources(
+        };
+        let Some(head) = self
+            .focused_buffer_state(bid)
+            .map(|pbs| pbs.view(buf.text()).primary().head().offset())
+        else {
+            self.dismiss_completion(view);
+            return;
+        };
+        let word_chars = buf.overrides.word_chars(&self.settings);
+        let session = self
+            .input
+            .buffer_completion_mut()
+            .expect("found above and not removed since");
+        let outcome = session.reconcile(
             &self.config.completion_sources,
-            &self.buffers,
-            &self.settings,
-            session,
-            &to_reinvoke,
-            bid,
-            head.offset(),
+            buf.text(),
+            head,
+            word_chars,
         );
-        self.queue_steel_calls(calls);
-        // Typed out of every token, and nothing on its way: silent, since the
-        // user left, nothing "failed".
-        self.settle_buffer_completion(view, false);
+        match outcome {
+            Reconciled::Dismiss => self.dismiss_completion(view),
+            Reconciled::Unchanged => {}
+            Reconciled::Changed { text_changed } => {
+                if text_changed {
+                    let to_reinvoke = session.sources_to_reinvoke();
+                    let calls = invoke_buffer_sources(
+                        &self.config.completion_sources,
+                        &self.buffers,
+                        &self.settings,
+                        session,
+                        &to_reinvoke,
+                        bid,
+                        head,
+                    );
+                    self.queue_steel_calls(calls);
+                }
+                // Typed out of every token, and nothing on its way: silent,
+                // since the user left, nothing "failed".
+                self.settle_buffer_completion(view, false);
+            }
+        }
     }
 
     // ── Minibuffer target ────────────────────────────────────────────────────
@@ -377,7 +382,7 @@ impl EditorState {
 
     /// Re-ranks the open `Buffer` session and dismisses it if it's now
     /// spent. Every path that lands new information into it (`contribute`,
-    /// `completion_observe_edit`, a failed call batch) ends here.
+    /// `reconcile_completion`, a failed call batch) ends here.
     /// `report_empty`: report "no completions" if the session dismisses as
     /// spent and was ever explicitly triggered. Only `contribute` wants
     /// this: a raw edit narrowing to nothing, or a call-batch failure,
@@ -421,7 +426,8 @@ impl EditorState {
 }
 
 /// Mints one invocation per source in `ids` into `session` and returns the
-/// Steel calls to queue. Every `Buffer` source is Steel, by design (see
+/// Steel calls to queue. Each source's token is the run before the cursor
+/// of its own token characters (`BufferSourceEntry::token_chars_over`). Every `Buffer` source is Steel, by design (see
 /// `registry.rs`'s module doc). Takes the fields it needs rather than
 /// `&mut EditorState` so a caller can hand it a session still borrowed
 /// from the input stack.
@@ -436,18 +442,19 @@ fn invoke_buffer_sources(
 ) -> Vec<SteelCall> {
     let buf = buffers.get(bid);
     let text = buf.text();
-    // Every source shares one token: the word before the cursor. Computed
-    // once here rather than per source in the loop below: neither
-    // `effective_word_chars` nor the `word_start_before` scan depends on
-    // which source is being invoked.
-    let chars = crate::editor::commands::effective_word_chars(buf, settings);
-    let live = hume_ops::edit::word_start_before(text, head, chars)..head;
+    let word_chars = buf.overrides.word_chars(settings);
     let pane = hume_scripting::PaneHandle::with_pane(bid, session.pane_id());
     ids.iter()
         .map(|&id| {
             let entry = sources.buffer_get(id);
-            let invocation = Invocation::buffer(text.rope().clone(), live.clone());
-            let prefix = invocation.prefix(text);
+            let token_chars = entry.token_chars_over(word_chars);
+            let start = hume_ops::edit::word_start_before(
+                text,
+                head,
+                hume_editing::word::WordChars::new(&token_chars),
+            );
+            let invocation = Invocation::buffer(text.rope().clone(), start);
+            let prefix = invocation.prefix(text, head);
             let invocation_id = session.invoke(id, invocation);
             (
                 entry.proc.clone(),

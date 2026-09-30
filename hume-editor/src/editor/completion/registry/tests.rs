@@ -7,6 +7,7 @@ fn steel_buffer_entry(name: &str) -> BufferSourceEntry {
         priority: 0,
         proc: SteelVal::Void,
         resolve: false,
+        token_chars: "".into(),
         trigger_chars: rustc_hash::FxHashMap::default(),
     }
 }

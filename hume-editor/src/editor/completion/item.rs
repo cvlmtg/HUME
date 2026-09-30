@@ -35,6 +35,11 @@ pub(in crate::editor) struct CompletionItem {
     /// empty list; only the key's absence means resolve might have more to
     /// offer. See `BufferSession::accept`'s resolve gate.
     pub(super) has_additional_text_edits: bool,
+    /// Which of the invocation's edit-range starts is this item's own token
+    /// start, set when the answer lands (`BufferSession::contribute`). `None`
+    /// for an item with no edit range: it is filtered against the source's
+    /// own token.
+    pub(super) token_group: Option<u32>,
     /// The full response item, unparsed: a child handle sharing the
     /// original response's root `Arc`, handed to `on-completion-accept` so
     /// Steel can read `data` or any other field this store doesn't parse,
@@ -67,12 +72,15 @@ impl CompletionItem {
             text_edit: None,
             additional_text_edits: Vec::new(),
             has_additional_text_edits: false,
+            token_group: None,
             raw: None,
         }
     }
 
     /// Parses one item, tolerant of an off-spec shape anywhere but `label`
-    /// itself: every other field already defaults sensibly (falling back
+    /// itself. An item with no `textEdit` of its own takes `default_range`,
+    /// its list's `itemDefaults.editRange`, with `textEditText` (else the
+    /// label) as the new text: every other field already defaults sensibly (falling back
     /// to `label`, or absent). `None` only when `label` is missing or
     /// non-string; callers skip the item and report a Trace line rather
     /// than fabricating a placeholder. Reads `v` by reference throughout:
@@ -89,6 +97,7 @@ impl CompletionItem {
     pub(in crate::editor) fn from_json(
         v: &serde_json::Value,
         raw_item: JsonHandle,
+        default_range: Option<&lsp_types::Range>,
     ) -> Option<Self> {
         use serde::Deserialize;
 
@@ -120,7 +129,13 @@ impl CompletionItem {
         };
         let text_edit = v
             .get("textEdit")
-            .and_then(hume_lsp::completion_item::text_edit_from_json_lenient);
+            .and_then(hume_lsp::completion_item::text_edit_from_json_lenient)
+            .or_else(|| {
+                default_range.map(|range| lsp_types::TextEdit {
+                    range: *range,
+                    new_text: string_or_label("textEditText"),
+                })
+            });
         let text_edit = text_edit.map(|te| strip_snippet_from_edit(te, is_snippet));
         // A `null` `additionalTextEdits` counts as absent, same as the key
         // being missing entirely. Only a genuine (possibly empty) array
@@ -138,8 +153,31 @@ impl CompletionItem {
             text_edit,
             additional_text_edits,
             has_additional_text_edits,
+            token_group: None,
             raw: Some(raw_item),
         })
+    }
+
+    /// The encoding this item's wire positions were counted in. A
+    /// `may_resolve` source's items are real server items: the encoding is
+    /// read off the item's own response tag, since the server that answered
+    /// may have restarted or detached since. Any other source's positions
+    /// count chars (`Utf32`, LSP 3.17's own encoding for "no server
+    /// involved"). `ctx_name` prefixes the error.
+    pub(super) fn wire_encoding(
+        &self,
+        may_resolve: bool,
+        ctx_name: &str,
+    ) -> Result<hume_rope::position_encoding::PositionEncoding, String> {
+        if !may_resolve {
+            return Ok(hume_rope::position_encoding::PositionEncoding::Utf32);
+        }
+        match &self.raw {
+            Some(raw) => raw.position_encoding(ctx_name),
+            None => Err(format!(
+                "{ctx_name}: a #:resolve source's item has no wire payload to decode positions from"
+            )),
+        }
     }
 
     /// Whether this item names a directory to descend into. The `:` line's

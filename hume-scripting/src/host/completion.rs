@@ -43,6 +43,10 @@ pub struct PendingCompletionSource {
     /// before this is ever constructed (see `builtins/completion.rs`'s
     /// `register_completion_source`).
     pub resolve: bool,
+    /// `#:token-chars`: characters that belong to this source's token on
+    /// top of the buffer's word characters. `Buffer`-target only, like
+    /// `resolve`; empty for a `'minibuf` source.
+    pub token_chars: String,
 }
 
 /// Completion session orchestration, accessed through

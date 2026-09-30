@@ -333,6 +333,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
                 "textDocument/completion",
                 serde_json::json!([{
                     "label": "bar",
+                    "filterText": ".bar",
                     "textEdit": {
                         "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 5}},
                         "newText": ".bar"
@@ -388,6 +389,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
                 "textDocument/completion",
                 serde_json::json!([{
                     "label": "bar",
+                    "filterText": ".bar",
                     "textEdit": {
                         "range": {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 7}},
                         "newText": ".bar"
@@ -442,6 +444,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
                 "textDocument/completion",
                 serde_json::json!([{
                     "label": "bar",
+                    "filterText": ".bar",
                     "textEdit": {
                         "range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 5}},
                         "newText": ".bar"

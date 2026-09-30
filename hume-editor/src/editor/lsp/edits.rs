@@ -181,26 +181,9 @@ pub(in crate::editor) fn apply_text_edits(
     expect_gen: Option<u64>,
     encoding: PositionEncoding,
 ) -> Result<(), String> {
-    apply_text_edits_returning_cs(state, panes, pid, bid, edits, expect_gen, encoding)?;
-    Ok(())
-}
-
-/// Same as [`apply_text_edits`] but hands back the applied `ChangeSet`:
-/// completion's accept path needs it to map a subsequent
-/// `completionItem/resolve` response's positions (computed against the
-/// pre-accept document) forward onto the buffer as it stands after this
-/// edit landed.
-pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
-    state: &mut EditorState,
-    panes: &PanePool,
-    pid: PaneId,
-    bid: BufferId,
-    edits: Vec<lsp_types::TextEdit>,
-    expect_gen: Option<u64>,
-    encoding: PositionEncoding,
-) -> Result<ChangeSet, String> {
     let cs = build_edit_changeset(state, bid, &edits, expect_gen, encoding)?;
-    commit_changeset(state, panes, pid, bid, cs)
+    commit_changeset(state, panes, pid, bid, cs)?;
+    Ok(())
 }
 
 /// Decodes `edits` (wire positions, computed by the server against the

@@ -10,7 +10,7 @@
 use super::super::item::CompletionItem;
 use super::super::registry::{BufferSourceId, MinibufSourceId, SourceRegistry};
 use super::MatchKind;
-use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
+use crate::editor::fuzzy::{FuzzyMatcher, FuzzyPattern, FuzzyProfile};
 use crate::editor::widget_token;
 
 enum InvocationState {
@@ -135,22 +135,66 @@ struct ScoreCtx<'a> {
     dedup_hidden: Option<&'a rustc_hash::FxHashSet<(u32, u32)>>,
 }
 
-/// Scores every item in `items` against `filter` per `match_kind`, dropping
-/// a no-op item first, and pushes `(score, priority, s, i)` into
-/// `ctx.rank_scratch` for each survivor. Returns whether anything survived:
-/// [`SlotSet::rank_with`]'s own signal to fold this slot's token start
-/// into the menu anchor.
-fn score_slot(
+/// The filter texts one slot's items are scored against, each with the
+/// "anchor" value (the live token start, in whatever unit the caller's `A`
+/// is) that folds into the menu anchor when an item scored against it
+/// survives.
+pub(super) struct SlotTokens<A> {
+    /// For an item with no token of its own. `None` skips those items (an
+    /// out-of-range token against the live document, say).
+    pub(super) base: Option<(String, A)>,
+    /// One per invocation edit-range start, indexed by an item's
+    /// `token_group`. `None` skips that group's items.
+    pub(super) groups: Vec<Option<(String, A)>>,
+}
+
+impl<A> SlotTokens<A> {
+    /// A slot whose items all share one token.
+    pub(super) fn single(filter: String, anchor: A) -> Self {
+        Self {
+            base: Some((filter, anchor)),
+            groups: Vec::new(),
+        }
+    }
+}
+
+/// A token's filter text, its parsed pattern and its anchor.
+fn parse_token<'t, A: Copy>(
+    matcher: &mut FuzzyMatcher,
+    token: &'t Option<(String, A)>,
+) -> Option<(&'t str, FuzzyPattern, A)> {
+    let (filter, anchor) = token.as_ref()?;
+    Some((filter.as_str(), matcher.parse(filter), *anchor))
+}
+
+/// Scores every item in `items` against its own token's filter per
+/// `match_kind`, dropping a no-op item first, and pushes `(score, priority,
+/// s, i)` into `ctx.rank_scratch` for each survivor. Returns the leftmost
+/// anchor among the surviving items: [`SlotSet::rank_with`]'s own signal to
+/// fold this slot's token start into the menu anchor.
+fn score_slot<A: Ord + Copy>(
     ctx: &mut ScoreCtx<'_>,
     s: u32,
     items: &[CompletionItem],
-    filter: &str,
+    tokens: &SlotTokens<A>,
     match_kind: MatchKind,
     priority: i64,
-) -> bool {
-    let pattern = ctx.matcher.parse(filter);
-    let mut contributed = false;
+) -> Option<A> {
+    let base = parse_token(ctx.matcher, &tokens.base);
+    let groups: Vec<_> = tokens
+        .groups
+        .iter()
+        .map(|token| parse_token(ctx.matcher, token))
+        .collect();
+    let mut anchor: Option<A> = None;
     for (i, item) in items.iter().enumerate() {
+        let token = match item.token_group {
+            Some(g) => groups.get(g as usize).and_then(Option::as_ref),
+            None => base.as_ref(),
+        };
+        let Some((filter, pattern, item_anchor)) = token else {
+            continue;
+        };
         if item.is_noop_for(filter) {
             continue;
         }
@@ -161,7 +205,7 @@ fn score_slot(
             continue;
         }
         let score = match match_kind {
-            MatchKind::Fuzzy => ctx.matcher.score(&pattern, &item.filter_text),
+            MatchKind::Fuzzy => ctx.matcher.score(pattern, &item.filter_text),
             MatchKind::String { case_sensitive } => {
                 super::prefix_matches(&item.filter_text, filter, case_sensitive).then_some(0)
             }
@@ -173,10 +217,10 @@ fn score_slot(
         };
         if let Some(score) = score {
             ctx.rank_scratch.push((score, priority, s, i as u32));
-            contributed = true;
+            anchor = Some(anchor.map_or(*item_anchor, |cur| cur.min(*item_anchor)));
         }
     }
-    contributed
+    anchor
 }
 
 /// The generic core both completion targets share: every participating
@@ -241,11 +285,14 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
     /// latest call of any slot here: a superseded or already-replaced
     /// invocation, expected-normal for a late async source, never an
     /// error.
+    /// `prepare` sees the answering source, the invocation's span and the
+    /// items before they are stored.
     pub(super) fn contribute(
         &mut self,
         id: u64,
-        items: Vec<CompletionItem>,
+        mut items: Vec<CompletionItem>,
         incomplete: bool,
+        prepare: impl FnOnce(Id, &mut S, &mut [CompletionItem]),
     ) -> bool {
         let Some(slot) = self.slots.iter_mut().find(|s| s.latest_id() == Some(id)) else {
             return false;
@@ -257,6 +304,7 @@ impl<Id: Copy + PartialEq, S> SlotSet<Id, S> {
                 .take()
                 .expect("latest_id came from one of the two"),
         };
+        prepare(slot.source, &mut invocation.span, &mut items);
         invocation.state = InvocationState::Shown { items, incomplete };
         slot.shown = Some(invocation);
         true
@@ -403,17 +451,16 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
     /// items' `sort_text` field holds; then slot and item index (sortText
     /// is very often duplicated across a server's items).
     ///
-    /// `token_of` returns this invocation's own filter text and an "anchor"
-    /// value (the live token start, in whatever unit the caller's `A` is)
-    /// for a slot that should be scored at all. `None` skips it (an
-    /// out-of-range token against the live document, say). Resets
+    /// `token_of` returns the filter texts and anchors this invocation's
+    /// items are scored against ([`SlotTokens`]), or `None` to skip the
+    /// whole slot (no live document to read a token from). Resets
     /// [`Self::selected`] to `0` and returns the leftmost anchor among
     /// contributing slots, or `None` with nothing ranked.
     pub(super) fn rank_with<A: Ord + Copy>(
         &mut self,
         sources: &SourceRegistry,
         hidden: Option<&rustc_hash::FxHashSet<(u32, u32)>>,
-        mut token_of: impl FnMut(&Invocation<S>) -> Option<(String, A)>,
+        mut token_of: impl FnMut(&Invocation<S>) -> Option<SlotTokens<A>>,
     ) -> Option<A> {
         let Self {
             slots,
@@ -430,7 +477,7 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
         let mut anchor: Option<A> = None;
         for (s, slot) in slots.iter().enumerate() {
             let Some(inv) = &slot.shown else { continue };
-            let Some((filter, a)) = token_of(inv) else {
+            let Some(tokens) = token_of(inv) else {
                 continue;
             };
             let (_, match_kind, priority) = slot.source.facts(sources);
@@ -438,11 +485,11 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
                 &mut ctx,
                 s as u32,
                 inv.items(),
-                &filter,
+                &tokens,
                 match_kind,
                 priority,
             );
-            if contributed {
+            if let Some(a) = contributed {
                 anchor = Some(anchor.map_or(a, |cur: A| cur.min(a)));
             }
         }

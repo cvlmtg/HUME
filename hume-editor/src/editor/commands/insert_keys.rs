@@ -8,9 +8,7 @@
 //! `&mut EditorState` + `&mut EngineView` (see `host_impl.rs`'s own doc),
 //! never a whole `&mut Editor`.
 
-use hume_editing::edit::Edited;
 use hume_editing::lines::leading_whitespace_end;
-use hume_editing::state::EditState;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use hume_engine::pipeline::EngineView;
@@ -64,11 +62,13 @@ pub(in crate::editor) fn insert_default_key(
                         inserted = false;
                     } else if should_auto_pair(state, view, fp, pair, ap_pairs) {
                         // Context is clear: insert open+close or wrap selection.
-                        apply_insert_edit(state, view, fp, |s| insert_pair_close(s, open, close));
+                        apply_focused_edit_grouped(state, view, fp, |s| {
+                            insert_pair_close(s, open, close)
+                        });
                     } else {
                         // Next char is a word char (or symmetric prev is word char):
                         // insert only the typed character.
-                        apply_insert_edit(state, view, fp, |s| insert_char(s, ch));
+                        apply_focused_edit_grouped(state, view, fp, |s| insert_char(s, ch));
                     }
                 } else if ap_pairs.iter().any(|p| p.close == ch && !p.is_symmetric())
                     && should_skip_close(state, view, fp, ch)
@@ -77,10 +77,10 @@ pub(in crate::editor) fn insert_default_key(
                     skip_over_close(state, view, fp);
                     inserted = false;
                 } else {
-                    apply_insert_edit(state, view, fp, |s| insert_char(s, ch));
+                    apply_focused_edit_grouped(state, view, fp, |s| insert_char(s, ch));
                 }
             } else {
-                apply_insert_edit(state, view, fp, |s| insert_char(s, ch));
+                apply_focused_edit_grouped(state, view, fp, |s| insert_char(s, ch));
             }
             if inserted {
                 let buf = fp.bid(view);
@@ -125,7 +125,7 @@ pub(in crate::editor) fn insert_default_key(
         // Soft inserts spaces to the next tab stop (width from `tab-width`).
         KeyCode::Tab => {
             let (style, tw) = tab_format(doc(state, view, fp.pane()), &state.settings);
-            apply_insert_edit(state, view, fp, move |s| insert_tab(s, style, tw));
+            apply_focused_edit_grouped(state, view, fp, move |s| insert_tab(s, style, tw));
             true
         }
 
@@ -144,7 +144,9 @@ pub(in crate::editor) fn insert_default_key(
                 fp.pane().state(&state.panes.state, view),
                 doc(state, view, fp.pane()).text(),
             );
-            apply_insert_edit(state, view, fp, move |s| insert_newline_indent(s, &allowed));
+            apply_focused_edit_grouped(state, view, fp, move |s| {
+                insert_newline_indent(s, &allowed)
+            });
             arm_autoindent(state, view, fp);
             true
         }
@@ -164,16 +166,16 @@ pub(in crate::editor) fn insert_default_key(
                 // Dedent: snap every cursor in leading whitespace back to
                 // the previous tab stop. All-or-nothing: if any cursor
                 // isn't in leading ws, the whole batch falls back.
-                apply_insert_edit(state, view, fp, move |s| dedent_tab_backward(s, tw));
+                apply_focused_edit_grouped(state, view, fp, move |s| dedent_tab_backward(s, tw));
             } else if ap_enabled && is_between_pair(state, view, fp, ap_pairs) {
-                apply_insert_edit(state, view, fp, delete_pair);
+                apply_focused_edit_grouped(state, view, fp, delete_pair);
             } else {
-                apply_insert_edit(state, view, fp, delete_char_backward);
+                apply_focused_edit_grouped(state, view, fp, delete_char_backward);
             }
             true
         }
         KeyCode::Delete => {
-            apply_insert_edit(state, view, fp, delete_char_forward);
+            apply_focused_edit_grouped(state, view, fp, delete_char_forward);
             true
         }
 
@@ -181,40 +183,16 @@ pub(in crate::editor) fn insert_default_key(
     }
 }
 
-// ── Edit application ─────────────────────────────────────────────────────────
-
-/// Applies a grouped edit on `fp`'s (pane, buffer) and, if a completion
-/// session is open on that same buffer, tells it
-/// (`EditorState::completion_observe_edit`: remap every token, re-rank,
-/// re-invoke incomplete sources, dismiss if typed out of): the chokepoint
-/// every keystroke handler above that edits the buffer directly goes
-/// through, so no such call site needs its own record-or-not decision.
-fn apply_insert_edit(
-    state: &mut EditorState,
-    view: &EngineView,
-    fp: FocusedPane,
-    cmd: impl FnOnce(EditState) -> Edited,
-) {
-    let buf = fp.bid(view);
-    let cs = apply_focused_edit_grouped(state, view, fp, cmd);
-    // Read after `apply_focused_edit_grouped` returns, so text version reflects
-    // the edit just applied, not the buffer's state before it.
-    let version = state.buffers.get(buf).text().version();
-    state.completion_observe_edit(view, buf, &cs, version);
-}
+// ── Skip-close ───────────────────────────────────────────────────────────────
 
 /// Moves the cursor right past an existing closer instead of inserting a
 /// duplicate: both auto-pair skip-close branches above (`"` typed while
 /// sitting on a `"`, `)` typed while sitting on a `)`). A motion, not an
-/// edit. It bypasses `apply_insert_edit`, so `completion_observe_edit` never
-/// runs and a live session's token would go untracked. Dismiss rather than
-/// reintroduce a keystroke-driven refilter for a motion path that carries
-/// no `ChangeSet` to remap.
+/// edit.
 fn skip_over_close(state: &mut EditorState, view: &EngineView, fp: FocusedPane) {
     apply_pane_motion(state, view, fp.pane(), |st| {
         cmd_move_right(st, 1, MotionMode::Move)
     });
-    state.dismiss_completion(view);
 }
 
 // ── Auto-pair helpers ─────────────────────────────────────────────────────────

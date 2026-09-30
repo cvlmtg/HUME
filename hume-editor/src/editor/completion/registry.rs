@@ -65,6 +65,9 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// other synthetic-item source) never has a resolve request sent for
     /// its items, however the buffer's own LSP server capabilities read.
     pub(in crate::editor) resolve: bool,
+    /// `#:token-chars`: characters that belong to this source's token on top
+    /// of the buffer's word characters ([`Self::token_chars_over`]).
+    pub(in crate::editor) token_chars: Box<str>,
     /// This source's own trigger characters, per language, set by
     /// `(set-completion-triggers! name language chars)`
     /// ([`SourceRegistry::set_buffer_trigger_chars`]), not at registration
@@ -72,6 +75,22 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// it attaches). Empty until then; an empty `chars` for a language
     /// removes that language's entry rather than leaving a stale empty one.
     pub(in crate::editor) trigger_chars: rustc_hash::FxHashMap<String, Vec<char>>,
+}
+
+impl BufferSourceEntry {
+    /// The characters classified as `Word` while scanning this source's
+    /// token: the buffer's `word_chars` plus this source's own
+    /// `token_chars`. Borrows `word_chars` when the source adds none.
+    pub(in crate::editor) fn token_chars_over<'a>(
+        &'a self,
+        word_chars: &'a str,
+    ) -> std::borrow::Cow<'a, str> {
+        if self.token_chars.is_empty() {
+            std::borrow::Cow::Borrowed(word_chars)
+        } else {
+            std::borrow::Cow::Owned(format!("{word_chars}{}", self.token_chars))
+        }
+    }
 }
 
 pub(in crate::editor) struct MinibufSourceEntry {

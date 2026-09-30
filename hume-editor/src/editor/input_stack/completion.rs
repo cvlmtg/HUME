@@ -107,8 +107,8 @@ impl Editor {
         // An edit that bypasses the session (an LSP applyEdit, a file
         // reload) or a pane switch can leave the anchor behind the text, or
         // the session on a buffer that isn't the one on screen, in the narrow
-        // window before `Editor::dismiss_invalid_completion`'s next
-        // settle-time pass catches the mismatch (`scripting_setup.rs`). The
+        // window before the next settle-time `reconcile_completion` pass
+        // catches the mismatch (`scripting_setup.rs`). The
         // anchor reads as absent against a text it was not ranked on, and the
         // buffer check below covers the other case.
         //
@@ -177,11 +177,9 @@ impl super::stack::InputStack {
 /// should intercept a key: Esc must leave Insert in one press and Enter
 /// must insert a newline, exactly as if no session were open. Every
 /// other key resolves through the Insert keymap: a bound command (a
-/// motion, or an edit command that bypasses `apply_insert_edit`, the one
-/// chokepoint keeping every token in sync) dismisses the session
-/// outright; anything else falls through, and `apply_insert_edit` itself
-/// resyncs the session against the buffer's new state once the edit
-/// lands; there is no post-step here to do it a second way.
+/// motion or an edit command) dismisses the session outright; anything
+/// else falls through and the session is reconciled with the buffer's new
+/// state.
 fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
@@ -194,12 +192,8 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             ed.fall_through(r, InputEvent::Paste(text));
             return;
         }
-        // A mouse event has no token position to refilter against, so it
-        // falls straight through to `Insert`, which either moves the
-        // cursor within the buffer (no post-step to run: unlike a key,
-        // there's nothing here to re-check the session's tokens against)
-        // or, via `focus_pane`, ends Insert outright and takes this
-        // layer with it.
+        // A click ends Insert outright via `focus_pane` and takes this layer
+        // with it; any other mouse event leaves the cursor and text alone.
         InputEvent::Mouse(mouse) => {
             ed.fall_through(r, InputEvent::Mouse(mouse));
             return;
@@ -240,16 +234,17 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
         WalkResult::Leaf(_)
     );
     ed.fall_through(r, InputEvent::Key(key));
-    // The callee may have taken this layer with it (`apply_insert_edit`
-    // dismissing on a stale `ChangeSet`, a `completion-trigger` re-pushing
-    // the session as a fresh layer, or Insert itself exiting and tearing
-    // this layer down as part of the same truncate). `r`'s id check catches
-    // all three: skip rather than write through a stale ref.
+    // The callee may have taken this layer with it (a `completion-trigger`
+    // re-pushing the session as a fresh layer, or Insert itself exiting and
+    // tearing this layer down as part of the same truncate). `r`'s id check
+    // catches both: skip rather than write through a stale ref.
     if !ed.state.input.is_live(r) {
         return;
     }
     if is_command {
         ed.state.dismiss_completion(&ed.view);
+    } else {
+        ed.state.reconcile_completion(&ed.view);
     }
 }
 

@@ -9,7 +9,7 @@ use std::ops::Range;
 
 use super::super::item::CompletionItem;
 use super::super::registry::{MinibufSourceId, SourceRegistry};
-use super::slots::{Invocation, SlotSet};
+use super::slots::{Invocation, SlotSet, SlotTokens};
 
 /// Byte range in [`MinibufSession`]'s own `input` that a `Minibuf`
 /// invocation answered for. Never moves: nothing can edit the `:` line
@@ -79,7 +79,7 @@ impl MinibufSession {
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> bool {
-        self.core.contribute(id, items, incomplete)
+        self.core.contribute(id, items, incomplete, |_, _, _| {})
     }
 
     pub(in crate::editor) fn is_pending(&self) -> bool {
@@ -106,7 +106,7 @@ impl MinibufSession {
         } = self;
         *menu_anchor = core.rank_with(sources, None, |inv| {
             let start = inv.span.bytes.start;
-            Some((input[start..*cursor].to_owned(), start))
+            Some(SlotTokens::single(input[start..*cursor].to_owned(), start))
         });
     }
 

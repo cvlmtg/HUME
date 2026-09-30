@@ -2,7 +2,8 @@
 //! and [`minibuf::MinibufSession`] (the `:` line). Each stores what every
 //! participating source answered and ranks it per keystroke against that
 //! source's own token. `orchestrate.rs` opens sessions, invokes sources, and
-//! reports edits; this module knows only what a source said and where.
+//! reconciles the buffer session with its text; this module knows only what
+//! a source said and where.
 //!
 //! Ranking and menu bookkeeping are shared in [`slots::SlotSet`], generic over
 //! each target's id and span types. What differs (accepting as a buffer edit
@@ -21,7 +22,7 @@ mod slots;
 
 use std::ops::Range;
 
-pub(in crate::editor) use buffer::{BufferSession, LiveDoc};
+pub(in crate::editor) use buffer::{BufferSession, LiveDoc, Reconciled};
 pub(in crate::editor) use minibuf::MinibufSession;
 pub(in crate::editor) use slots::Invocation;
 

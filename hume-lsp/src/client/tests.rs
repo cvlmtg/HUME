@@ -41,13 +41,19 @@ fn initialize_params_advertise_the_v1_capability_set() {
         ])
     );
     let td = caps.text_document.unwrap();
+    let completion = td.completion.unwrap();
     assert_eq!(
-        td.completion
-            .unwrap()
-            .completion_item
-            .unwrap()
-            .snippet_support,
+        completion.completion_item.unwrap().snippet_support,
         Some(false)
+    );
+    // Without this no server sends a list-wide `editRange`, and every item
+    // then has to carry its own `textEdit`.
+    assert_eq!(
+        completion
+            .completion_list
+            .expect("completion_list capability must be declared")
+            .item_defaults,
+        Some(vec!["editRange".to_string()])
     );
     assert_eq!(
         td.hover.unwrap().content_format,

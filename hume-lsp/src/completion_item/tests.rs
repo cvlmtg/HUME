@@ -158,3 +158,52 @@ fn completion_response_items_rejects_a_scalar() {
     assert!(completion_response_items(&serde_json::json!("not a response")).is_none());
     assert!(completion_response_items(&serde_json::Value::Null).is_none());
 }
+
+fn range(sl: u32, sc: u32, el: u32, ec: u32) -> lsp_types::Range {
+    lsp_types::Range {
+        start: lsp_types::Position::new(sl, sc),
+        end: lsp_types::Position::new(el, ec),
+    }
+}
+
+#[test]
+fn item_defaults_edit_range_reads_a_plain_range() {
+    let v = serde_json::json!({
+        "isIncomplete": false,
+        "itemDefaults": {"editRange": {
+            "start": {"line": 1, "character": 2},
+            "end": {"line": 1, "character": 5},
+        }},
+        "items": [],
+    });
+    assert_eq!(item_defaults_edit_range(&v), Some(range(1, 2, 1, 5)));
+}
+
+/// The insert half of an `{insert, replace}` pair: the same half
+/// `text_edit_from_json_lenient` takes.
+#[test]
+fn item_defaults_edit_range_reads_the_insert_half_of_an_insert_replace_pair() {
+    let v = serde_json::json!({
+        "itemDefaults": {"editRange": {
+            "insert": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 3}},
+            "replace": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 6}},
+        }},
+        "items": [],
+    });
+    assert_eq!(item_defaults_edit_range(&v), Some(range(0, 1, 0, 3)));
+}
+
+#[test]
+fn item_defaults_edit_range_is_absent_without_defaults_and_for_a_bare_array() {
+    assert_eq!(
+        item_defaults_edit_range(&serde_json::json!({"items": []})),
+        None
+    );
+    assert_eq!(
+        item_defaults_edit_range(
+            &serde_json::json!({"itemDefaults": {"commitCharacters": ["."]}, "items": []})
+        ),
+        None
+    );
+    assert_eq!(item_defaults_edit_range(&serde_json::json!([])), None);
+}

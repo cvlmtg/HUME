@@ -261,9 +261,8 @@ fn an_edit_refreshes_the_index() {
 /// re-emitting under the same id and resetting the selection again. The
 /// global `word-chars` option change is the trigger: `'on-option-change`
 /// reindexes every open buffer without touching this buffer's own text or
-/// cursor, so it can't also disturb the session through
-/// `completion_observe_edit`'s own token tracking. The one thing under
-/// test here is `bw/push-finished-answer!` itself.
+/// cursor, so it can't also disturb the session's tokens. The one thing
+/// under test here is `bw/push-finished-answer!` itself.
 #[test]
 fn a_second_background_finish_does_not_reset_the_menu_selection() {
     let tmp = safe_tempdir();

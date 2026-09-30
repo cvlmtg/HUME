@@ -2,11 +2,10 @@
 
 Design record for the completion system: one model in which a *source*
 (native Rust, or Steel-registered — `core:lsp` is one) is registered once
-against one of two targets (Insert mode, or the `:` command line — each
-with its own fixed token rule, not the source's own choice), invoked by one
-orchestrator, and answers a specific *invocation* that carries its own
-document snapshot and span. Several sources rank together in one menu, each
-against its own target's token.
+against one of two targets (Insert mode, or the `:` command line), invoked
+by one orchestrator, and answers a specific *invocation* that carries its own
+document snapshot and token start. Several sources rank together in one menu,
+each against its own token.
 
 The sibling fuzzy-finder (picker) shipped as `core:pickers` (roadmap for
 what's left: `docs/FUZZY-FINDERS.md`). The two share the "Rust store, Steel
@@ -66,7 +65,7 @@ can never run, and an outside caller's own type (`&BufferSession` vs.
 | Concept | Type | Where |
 |---|---|---|
 | **Source** — a named producer of candidates, with its static facts: how its items score, its priority, and its body (a native fn or a Steel proc). Two separate namespaces, one per target — a name in one has no bearing on the same name in the other | `BufferSourceEntry`/`MinibufSourceEntry` in `SourceRegistry` (`buffer`/`minibuf` fields, `BufferSourceId`/`MinibufSourceId` index them) | `registry.rs`; the registry lives on `ConfigState.completion_sources`, so `:reload-config` rebuilds it from the natives by construction |
-| **Invocation** — one call of one source for one trigger: the id the source answers to, the document snapshot it saw (`rope` + every edit observed since, composed, `Buffer`-target only), its token span in live coordinates, and its answer once it has one | `Invocation<S>` (generic over the span shape, `BufferSpan`/`MinibufSpan`) | `session/slots.rs` (the generic base), `session/buffer.rs`/`session/minibuf.rs` (each target's own constructor) |
+| **Invocation** — one call of one source for one trigger: the id the source answers to, the document snapshot it saw (`rope` + every change carried since, composed, `Buffer`-target only), its token start in live coordinates, and its answer once it has one | `Invocation<S>` (generic over the span shape, `BufferSpan`/`MinibufSpan`) | `session/slots.rs` (the generic base), `session/buffer.rs`/`session/minibuf.rs` (each target's own constructor) |
 | **Slot core** — one `SourceSlot<Id, S>` per participating source (its latest `shown` invocation and, if re-invoked since, the newer `inflight` one), the ranked `(slot, item)` index, the matcher, the menu's selected row | `SlotSet<Id, S>` | `session/slots.rs` |
 | **Session** — one per target: the slot core plus whatever is genuinely that target's own (`BufferSession` adds the buffer/pane/generation it's tracking and the cross-source dedup mask; `MinibufSession` adds the `:` line input every source saw) | `BufferSession`, `MinibufSession` | `session/buffer.rs`, `session/minibuf.rs`; `session/accept.rs` applies `BufferSession`'s accepted item |
 | **Orchestrator** — the one driver for both targets: picks the sources a trigger applies to, mints invocations, runs them, lands answers, reacts to edits, applies the `:` line's eager policy | `impl EditorState` | `orchestrate.rs` |
@@ -89,10 +88,10 @@ Every `Buffer` source is Steel, by design — there is no native `Buffer`
 shape to have a body enum over; the buffer-words source
 (`runtime/plugins/core/buffer-words/`) dogfoods this plugin-facing API
 rather than the Rust-internal machinery the six native minibuffer sources
-already validate. A `Buffer` source's own token is always the identifier
-before the cursor, a `Minibuf` source's always the whitespace-delimited
-argument — the rule belongs to the *target*, not a per-source choice, so
-there is no separate token keyword to decode.
+already validate. A `Buffer` source's token is the run of word characters
+before the cursor: the buffer's `word-chars` plus the source's own
+`#:token-chars`. A `Minibuf` source's is the whitespace-delimited argument,
+so `#:token-chars` is refused there.
 
 The six native minibuffer sources (`command`, `buffer-name`, `theme` —
 `NativeUniverse`; `path`, `path-dirs-only`, `set` — `NativeDelegated`) are
@@ -100,13 +99,15 @@ compiled in. `TypedCommand.completer` (`Option<Cow<'static, str>>`) names any
 entry by name — a built-in's `&'static str` constant, or the runtime string
 `define-typed-command! … #:complete "name"` hands over.
 
-**Every buffer source's token is the identifier before the cursor; every
-minibuffer source's is the whitespace-delimited argument the cursor is in —
-except `NativeDelegated`, which computes its own span.** The editor resolves
-a `Buffer` source's token *before* the source runs, against the invocation's
-own snapshot: `hume_ops::edit::word_start_before(text, head,
-word_chars)..head` (the seeded filter is that text, handed to the proc as
-its `prefix` argument). A `Minibuf` source's token is likewise resolved
+**A buffer source's token is the run of its token characters before the
+cursor; every minibuffer source's is the whitespace-delimited argument the
+cursor is in — except `NativeDelegated`, which computes its own span.** The
+editor resolves a `Buffer` source's token *before* the source runs, against
+the invocation's own snapshot: `hume_ops::edit::word_start_before(text, head,
+chars)..head`, where `chars` is the buffer's `word-chars` extended with the
+source's `#:token-chars` (the seeded filter is that text, handed to the proc
+as its `prefix` argument). Two sources invoked together can therefore read
+different prefixes off the same text. A `Minibuf` source's token is likewise resolved
 upfront, via `arg_prefix`/`token_end_at` (the framework's own command-line
 grammar) — except `NativeDelegated`, whose candidate universe *is* the live
 input, so the orchestrator calls its function first and takes the span it
@@ -140,51 +141,77 @@ text) until the new one lands, so the menu never blinks empty.
 
 ### Edits
 
-`Editor::apply_insert_edit` — the chokepoint every Insert-mode keystroke that
-lands an edit goes through — calls `EditorState::completion_observe_edit`,
-which:
+Every text change on the buffer is carried into the session by
+`PositionStores::carry`, the same chokepoint that carries selections, jump
+lists and prompt snapshots (`BufferSession::carry`). For every invocation,
+shown and in-flight alike, it composes the `ChangeSet` into `cs_since` and
+maps the token's `start` with `Assoc::Before` (text inserted exactly at the
+start belongs to the token). It also records whether the character *before*
+the start was deleted, detected via `PosMapCursor::map_anchor`'s
+`anchor_deleted` on `start - 1`, which answers "was the token's own start
+character deleted?" directly, rather than inferring it from two positions
+mapping to the same spot (a deletion elsewhere, a second cursor's, say,
+cannot trigger it). A text replaced with no change to carry (`PositionStores::
+reset`) marks the session dead. Carrying decides nothing.
 
-1. composes the `ChangeSet` into *every* invocation's `cs_since` (shown and
-   in-flight alike) and remaps each live span — `start` with `Assoc::Before`
-   (text inserted exactly at the token's start belongs to the token), `end`
-   with `Assoc::After` (text typed at its end extends it);
-2. drops a slot's answer if the cursor left its token (`head ∉ [start,
-   end]`) or the character *before* the token was deleted — detected via
-   `PosMapCursor::map_anchor`'s `anchor_deleted` on `start - 1`, which
-   answers "was the token's own start character deleted?" directly, rather
-   than inferring it from two positions mapping to the same spot (a
-   deletion elsewhere, a second cursor's, say, cannot trigger it). Deleting
-   the token's own first char stays inside it; a slot narrowed to zero *matches*
-   is still live (Backspace brings its items back). A dropped slot also
-   rebuilds the cross-source dedup mask (Q-A1, below) — the item set it
-   compared against changed;
-3. re-ranks (`SlotSet::rank_with`: score desc, source priority desc,
+What a change means for the menu is decided by `EditorState::
+reconcile_completion`, against the buffer's current text and the primary
+cursor. It is idempotent, and every path that needs a current session calls
+it: the Insert keystroke handler after a key falls through, every pass of
+`drain_pending_work`, and `take_buffer_completion` (accept, and a trigger that
+reuses the open session). It:
+
+1. dismisses the session when its pane lost focus, no longer shows the
+   buffer, or its text was replaced;
+2. drops a slot's answer when the token was crossed, the cursor sits before
+   its start, or a character between the start and the cursor is outside the
+   source's token class. The token end is the cursor. Deleting the token's own
+   first char stays inside it, and a slot narrowed to zero *matches* is still
+   live (Backspace brings its items back). A dropped slot rebuilds the
+   cross-source dedup mask (Q-A1, below), since the item set it compared
+   against changed;
+3. when the text changed, re-invokes every source whose last answer was
+   `isIncomplete` or that is still pending against the previous document;
+4. re-ranks (`SlotSet::rank_with`: score desc, source priority desc,
    sortText asc, index asc — each shown item scored against *its own* slot's
    token text with its source's `MatchKind`, after skipping a no-op item and
    any item the dedup mask already hid), resetting the menu selection as
    part of the same call — every path that rebuilds the ranked list gets
-   this for free rather than having to remember a separate reset step;
-4. re-invokes every source whose last answer was `isIncomplete` or that is
-   still pending against the pre-edit document; and
+   this for free rather than having to remember a separate reset step; and
 5. dismisses the session, silently, once no slot has an answer with items
    and nothing is in flight.
 
-Auto-pair skip-close — typing a closer the cursor already sits on just moves
-past it, via a motion rather than an edit — is the one Insert-mode keystroke
-that bypasses this chokepoint entirely: with no `ChangeSet` to remap a
-session's tokens against, it dismisses the session outright instead.
+An edit that does not touch a token (a script's edit elsewhere, an
+auto-format) leaves the session open with its tokens shifted. Auto-pair
+skip-close, typing a closer the cursor already sits on, moves past it; the
+closer is outside the token class, so the next reconcile dismisses the
+session.
 
-A `ChangeSet` not built against the session's tracked length is an edit the
-session never saw; `observe_edit` refuses it and the session is dismissed.
-Edits that bypass the chokepoint entirely (an LSP `applyEdit`, `:e!`) are
-caught by `Editor::dismiss_invalid_completion`'s settle-time generation check.
+### Item edit ranges
+
+A server says where each item's token starts: its `textEdit` range, or, for
+an item without one, the list's `itemDefaults.editRange` (the client
+advertises `completionList.itemDefaults: ["editRange"]`; the item's new text
+is `textEditText`, else the label). When an answer lands
+(`BufferSession::contribute`), the items are grouped by the start of that
+range, decoded against the invocation's snapshot and mapped through the
+changes carried since; the distinct starts are stored on the invocation and
+carried through edits like the token start. Ranking scores each group
+against the text from its start to the cursor, and an item with no range
+keeps the source's token. The menu anchors at the leftmost start among the
+items that survive. A server's `filterText` is matched against the text in
+its own range, so a range covering more than the word before the cursor
+(`foo.ba` for a member access) needs a `filterText` that includes it. An item
+whose range starts after the cursor is not shown. The policy that drops a
+slot when the cursor leaves its token is unchanged: it follows the source's
+token class.
 
 ### Accept
 
 `BufferSession::accept` reads everything from the *selected item's own*
 invocation: a server `textEdit` (and `additionalTextEdits`) decodes against
 that invocation's `rope` and maps through its `cs_since`; the `insertText`
-fallback replaces its live token span. Both land as one undo step at every
+fallback replaces the token from its carried start to the cursor. Both land as one undo step at every
 cursor, with the uniform `(back, forward)` distance model and containment
 check `session/accept.rs` documents. `completionItem/resolve` follows when
 the item's own source declared `#:resolve #t` at registration, it lacked
@@ -295,7 +322,7 @@ edits is never hidden this way — accepting it does something a
 duplicate-*looking* plain item wouldn't, e.g. an auto-import buffer-words
 could never offer. This only compares *shown* answers, and only recomputes
 when the shown item set changes (an answer lands, a slot is dropped by
-`observe_edit`), not every keystroke — `rank_with` reads the precomputed
+`reconcile`), not every keystroke — `rank_with` reads the precomputed
 result. Computed in one pass over every item's highest-priority-carrying
 `filter_text`, not an all-pairs scan across slots, so a large `MatchKind::
 String` slot (buffer-words) sitting alongside a large `Fuzzy` one (LSP)

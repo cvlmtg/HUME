@@ -3,6 +3,7 @@
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
+use hume_editing::word::WordChars;
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 
@@ -20,7 +21,7 @@ use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_s
 
 impl BufferSession {
     /// Applies the ranked candidate at `idx`'s `textEdit` (falling back to `insertText`
-    /// over its own source's live token span when absent) at *every* cursor
+    /// over its own source's token when absent) at *every* cursor
     /// in the session's pane, as if the completion had been typed at each.
     /// A conforming server's completion range always contains the request
     /// position (LSP spec, `item.rs`'s `CompletionItem` doc), so the
@@ -28,10 +29,10 @@ impl BufferSession {
     /// live head, is the same span typing would have consumed at any
     /// cursor. `additionalTextEdits` have no cursor of their own and are
     /// applied once, document-wide. Both land as one undo step, gen-checked
-    /// against the last edit this session observed.
+    /// against the last state this session reconciled.
     ///
     /// Every position here is decoded against the *selected item's own*
-    /// invocation snapshot and mapped through the edits observed since it.
+    /// invocation snapshot and mapped through the changes carried since it.
     /// A second source, or the same source re-invoked against a later
     /// document, has its own snapshot, so no contributor's positions are
     /// ever read against another's document.
@@ -64,41 +65,14 @@ impl BufferSession {
         let (source, invocation, item) = self
             .ranked(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
-        let BufferSpan { doc, live } = &invocation.span;
+        let BufferSpan { doc, start, .. } = &invocation.span;
         let bid = self.bid();
         // Copied out now: a plain `bool`, so there's no reason to keep the
         // registry borrow (or `source`) alive across the `&mut state` uses
         // below just to read it again at the bottom.
         let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
         edits::checked_buffer(state, bid, Some(self.version.generation()))?;
-        // A source that hasn't declared `#:resolve` isn't claiming to be
-        // genuine LSP-server-origin (that flag's own doc), so its own
-        // `textEdit`/`additionalTextEdits` have no wire encoding to honor.
-        // `Utf32` (LSP 3.17's own third `PositionEncodingKind`: `character`
-        // counts chars, never code units) is the spec-defined choice for
-        // "no server involved." A `#:resolve` item reads its encoding off
-        // its own `raw` response tag instead of the buffer's *currently*
-        // attached server: the response may have been produced by a server
-        // since restarted or detached, which could negotiate differently.
-        let encoding = if may_resolve {
-            match &item.raw {
-                Some(raw) => raw.position_encoding("completion-accept!")?,
-                // Not assumed impossible (same discipline as
-                // `maybe_send_resolve`'s own `raw` check below): a
-                // #:resolve source's items are always real LSP items in
-                // practice, but this function's contract doesn't get to
-                // lean on "in practice."
-                None => {
-                    return Err(
-                        "completion-accept!: a #:resolve source's item has no wire payload to \
-                         decode positions from"
-                            .to_string(),
-                    );
-                }
-            }
-        } else {
-            hume_rope::position_encoding::PositionEncoding::Utf32
-        };
+        let encoding = item.wire_encoding(may_resolve, "completion-accept!")?;
 
         // The session's pane may no longer be live: the Steel
         // `completion-accept!` builtin firing from a different pane than the
@@ -164,10 +138,10 @@ impl BufferSession {
                 }
                 // Decoded once against the frozen request-time snapshot
                 // above, then mapped forward through every edit this
-                // invocation actually observed (`Assoc::Before` on the start
-                // so it stays pinned to the token even if an observed
+                // invocation carried (`Assoc::Before` on the start
+                // so it stays pinned to the token even if a carried
                 // insertion landed exactly there; `Assoc::After` on the end
-                // so an observed insertion at or inside the range extends it
+                // so a carried insertion at or inside the range extends it
                 // rather than being left stranded next to the completion
                 // text): exact position tracking through the intervening
                 // keystrokes, not a scalar-drift guess. Two single-position
@@ -185,32 +159,28 @@ impl BufferSession {
                     "textEdit range",
                 )
             }
-            // No server-provided range: replace this source's own live
-            // token uniformly at every cursor, same as the `textEdit` arm
-            // just above. Any prefix typed *before* triggering completion
-            // (e.g. "fo" before the popup opened) is otherwise left
-            // untouched, duplicating it ahead of `insert_text`. The token is
-            // the source's own declared span (`registry.rs`'s token rule),
-            // tracked through every keystroke since; there is no well-defined
-            // *per-cursor* token independent of it to fall back to, so this
-            // is the one span every cursor gets.
+            // No server-provided range: replace the token from this
+            // source's carried start to the cursor, as if the completion had
+            // been typed at each cursor. Any prefix typed *before*
+            // triggering completion (e.g. "fo" before the popup opened) is
+            // otherwise left untouched, duplicating it ahead of
+            // `insert_text`.
             None => (
-                live.start,
-                live.end,
+                *start,
+                head_now.offset(),
                 item.insert_text.clone(),
                 "insertText token",
             ),
         };
         // The delta model below rests entirely on this containment: a
         // conforming server's completion range always contains the request
-        // position (LSP spec), and the `insertText` fallback's token rests
-        // on the same guarantee via the session's own tracking (`observe_
-        // edit` drops a slot the cursor has left). A cursor that has since
-        // moved outside the span by a path the session never saw breaks
-        // that assumption. Erroring here, buffer untouched, is safer than
-        // silently computing a span from a stale reference point. This also
-        // keeps the `chars_since` calls below from tripping their inversion
-        // assert.
+        // position (LSP spec), and the `insertText` fallback's span ends at
+        // the cursor, so it holds unless the cursor sits before the carried
+        // start (`reconcile` drops such a slot). A cursor outside a server's
+        // span breaks that assumption. Erroring here, buffer untouched, is
+        // safer than silently computing a span from a stale reference
+        // point. This also keeps the `chars_since` calls below from
+        // tripping their inversion assert.
         if !contains_cursor(&(start_now..end_now), head_now.offset()) {
             return Err(format!(
                 "completion-accept!: {what} does not contain the cursor"
@@ -253,10 +223,13 @@ impl BufferSession {
             Some(_) => heads_now.iter().map(|_| back).collect(),
             None => {
                 let live_text = state.buffers.get(bid).text();
-                let word_chars = crate::editor::commands::effective_word_chars(
-                    state.buffers.get(bid),
-                    &state.settings,
-                );
+                let base = state.buffers.get(bid).overrides.word_chars(&state.settings);
+                let token_chars = state
+                    .config
+                    .completion_sources
+                    .buffer_get(source)
+                    .token_chars_over(base);
+                let word_chars = WordChars::new(&token_chars);
                 heads_now
                     .iter()
                     .map(|&head| head.chars_since(word_start_before(live_text, head, word_chars)))

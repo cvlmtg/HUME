@@ -9,8 +9,8 @@ use super::super::registry::{
 };
 use super::*;
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::edit::TextChange;
 use hume_editing::text::BufferText;
-use hume_editing::word::WordChars;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::cluster::ClusterStart;
 use hume_rope::offset::CharOffset;
@@ -35,6 +35,7 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
             priority: *priority,
             proc: SteelVal::Void,
             resolve: false,
+            token_chars: "".into(),
             trigger_chars: rustc_hash::FxHashMap::default(),
         });
     }
@@ -68,35 +69,31 @@ fn text(s: &str) -> BufferText {
     BufferText::from(s)
 }
 
-/// A `Buffer` session over `content`. The store never consults the
-/// buffer/pane ids except through `still_valid`, unused here, so the null
-/// keys do.
+/// A `Buffer` session over `content` with the cursor at its start. The
+/// store never consults the buffer/pane ids beyond matching a carried
+/// change to its own buffer, so the null keys do.
 fn buffer_session(content: &str) -> (BufferSession, BufferText) {
     let text = text(content);
     let session = BufferSession::open(
         BufferId::default(),
         PaneId::default(),
         text.version(),
-        text.len_chars(),
+        CharOffset::new(0),
     );
     (session, text)
 }
 
-/// One `Word`-rule invocation with token `start..head`, answered with
-/// `labels` at once.
+/// One invocation whose token starts at `start`, answered with `labels` at
+/// once.
 fn invoke_and_answer(
     session: &mut BufferSession,
     reg: &SourceRegistry,
     source: BufferSourceId,
     text: &BufferText,
     start: usize,
-    head: usize,
     labels: &[&str],
 ) {
-    let inv = Invocation::buffer(
-        text.rope().clone(),
-        CharOffset::new(start)..CharOffset::new(head),
-    );
+    let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(start));
     let id = session.invoke(source, inv);
     session.contribute(reg, id, items(labels), false);
 }
@@ -132,6 +129,23 @@ fn edit(text: &BufferText, from: usize, to: usize, with: &str) -> (ChangeSet, Bu
     (cs, BufferText::from(s.as_str()))
 }
 
+/// One edit on the session's buffer: `from..to` of `text` replaced by
+/// `with`, carried into the session the way `PositionStores::carry` does,
+/// then reconciled with the cursor at `head`. Returns the new text and what
+/// the reconcile found.
+fn change(
+    session: &mut BufferSession,
+    reg: &SourceRegistry,
+    text: BufferText,
+    (from, to, with): (usize, usize, &str),
+    head: usize,
+) -> (BufferText, Reconciled) {
+    let (cs, after) = edit(&text, from, to, with);
+    session.carry(BufferId::default(), &TextChange::new(&text, &after, &cs));
+    let outcome = session.reconcile(reg, &after, CharOffset::new(head), "");
+    (after, outcome)
+}
+
 // ── Per-source tokens ────────────────────────────────────────────────────────
 
 /// Two sources with different token starts each rank against their own
@@ -146,7 +160,6 @@ fn each_slot_ranks_against_its_own_token() {
         id_of(&reg, "word"),
         &text,
         2,
-        4,
         &["foobar", "./x"],
     );
     invoke_and_answer(
@@ -155,7 +168,6 @@ fn each_slot_ranks_against_its_own_token() {
         id_of(&reg, "dir"),
         &text,
         0,
-        4,
         &["./foo.txt", "bar"],
     );
     session.rank(&reg, live(&text, 4));
@@ -181,7 +193,6 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
         id_of(&reg, "word"),
         &text,
         2,
-        4,
         &["foobar"],
     );
     invoke_and_answer(
@@ -190,7 +201,6 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
         id_of(&reg, "dir"),
         &text,
         0,
-        4,
         &["./foo.txt"],
     );
     session.rank(&reg, live(&text, 4));
@@ -201,15 +211,7 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
 
     // "b" narrows the dir slot out ("./foo.txt" has no 'b') but not the
     // word slot, so the anchor moves to the word token's start.
-    let (cs, text) = edit(&text, 4, 4, "b");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(5),
-        &text,
-        WordChars::default()
-    ));
+    let (text, _) = change(&mut session, &reg, text, (4, 4, "b"), 5);
     session.rank(&reg, live(&text, 5));
     assert_eq!(ranked_labels(&session, &reg), vec!["foobar"]);
     assert_eq!(
@@ -222,8 +224,8 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
 fn priority_breaks_a_score_tie_before_sort_text() {
     let reg = registry(&[("lo", 0), ("hi", 10)]);
     let (mut session, text) = buffer_session("\n");
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "lo"), &text, 0, 0, &["aaa"]);
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "hi"), &text, 0, 0, &["zzz"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "lo"), &text, 0, &["aaa"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "hi"), &text, 0, &["zzz"]);
     session.rank(&reg, live(&text, 0));
     assert_eq!(ranked_labels(&session, &reg), vec!["zzz", "aaa"]);
 }
@@ -242,8 +244,8 @@ fn ranked_sources(session: &BufferSession, reg: &SourceRegistry) -> Vec<String> 
 fn a_higher_priority_duplicate_hides_the_lower_priority_plain_item() {
     let reg = registry(&[("lo", 0), ("hi", 10)]);
     let (mut session, text) = buffer_session("\n");
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "lo"), &text, 0, 0, &["dup"]);
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "hi"), &text, 0, 0, &["dup"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "lo"), &text, 0, &["dup"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "hi"), &text, 0, &["dup"]);
     session.rank(&reg, live(&text, 0));
     assert_eq!(
         ranked_labels(&session, &reg),
@@ -261,8 +263,8 @@ fn a_higher_priority_duplicate_hides_the_lower_priority_plain_item() {
 fn equal_priority_duplicates_are_not_deduplicated() {
     let reg = registry(&[("a", 0), ("b", 0)]);
     let (mut session, text) = buffer_session("\n");
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "a"), &text, 0, 0, &["dup"]);
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "b"), &text, 0, 0, &["dup"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "a"), &text, 0, &["dup"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "b"), &text, 0, &["dup"]);
     session.rank(&reg, live(&text, 0));
     assert_eq!(
         ranked_labels(&session, &reg),
@@ -282,7 +284,7 @@ fn an_item_with_edits_is_never_hidden_as_a_duplicate() {
     let reg = registry(&[("lo", 0), ("hi", 10)]);
     let (mut session, text) = buffer_session("\n");
     let head = CharOffset::new(0);
-    let inv = Invocation::buffer(text.rope().clone(), head..head);
+    let inv = Invocation::buffer(text.rope().clone(), head);
     let id = session.invoke(id_of(&reg, "lo"), inv);
     assert!(session.contribute(
         &reg,
@@ -294,7 +296,7 @@ fn an_item_with_edits_is_never_hidden_as_a_duplicate() {
         )],
         false,
     ));
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "hi"), &text, 0, 0, &["dup"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "hi"), &text, 0, &["dup"]);
     session.rank(&reg, live(&text, 0));
     let mut ranked = ranked_labels(&session, &reg);
     ranked.sort();
@@ -328,6 +330,7 @@ fn item_with_edits(
         text_edit,
         additional_text_edits,
         has_additional_text_edits,
+        token_group: None,
         raw: None,
     }
 }
@@ -337,6 +340,105 @@ fn some_edit(new_text: &str) -> lsp_types::TextEdit {
         range: lsp_types::Range::default(),
         new_text: new_text.into(),
     }
+}
+
+fn edit_over(start: (u32, u32), end: (u32, u32), new_text: &str) -> lsp_types::TextEdit {
+    lsp_types::TextEdit {
+        range: lsp_types::Range {
+            start: lsp_types::Position::new(start.0, start.1),
+            end: lsp_types::Position::new(end.0, end.1),
+        },
+        new_text: new_text.into(),
+    }
+}
+
+/// A `MatchKind::String` source over "> foo.ba" whose token (the word before
+/// the cursor) is "ba", answering `foo.bar` with an edit range that starts
+/// before it and a plain `bar`.
+fn dotted_session() -> (BufferSession, SourceRegistry, BufferText) {
+    let mut reg = SourceRegistry::with_defaults();
+    reg.register_buffer(BufferSourceEntry {
+        name: "s".into(),
+        match_kind: MatchKind::String {
+            case_sensitive: true,
+        },
+        priority: 0,
+        proc: SteelVal::Void,
+        resolve: false,
+        token_chars: "".into(),
+        trigger_chars: rustc_hash::FxHashMap::default(),
+    });
+    let (mut session, text) = buffer_session("> foo.ba\n");
+    let id = session.invoke(
+        id_of(&reg, "s"),
+        Invocation::buffer(text.rope().clone(), CharOffset::new(6)),
+    );
+    assert!(session.contribute(
+        &reg,
+        id,
+        vec![
+            item_with_edits(
+                "foo.bar",
+                Some(edit_over((0, 2), (0, 8), "foo.bar")),
+                Vec::new()
+            ),
+            item("bar"),
+        ],
+        false,
+    ));
+    (session, reg, text)
+}
+
+/// The server's edit range, not the editor's word token, says what the
+/// user has typed of an item: `foo.ba` for the dotted item, `ba` for the
+/// plain one.
+#[test]
+fn an_item_is_filtered_against_the_text_from_its_own_edit_range_start() {
+    let (mut session, reg, text) = dotted_session();
+    session.rank(&reg, live(&text, 8));
+    let mut ranked = ranked_labels(&session, &reg);
+    ranked.sort();
+    assert_eq!(ranked, vec!["bar", "foo.bar"]);
+    assert_eq!(
+        session.menu_anchor(&text).map(ClusterStart::offset),
+        Some(CharOffset::new(2)),
+        "the menu anchors at the start of the text the dotted item replaces"
+    );
+}
+
+/// An edit range starting after the cursor cannot be what the user has
+/// typed of the item: it is not shown, while its neighbours still are.
+#[test]
+fn an_item_whose_edit_range_starts_after_the_cursor_is_not_shown() {
+    let (mut session, reg, text) = dotted_session();
+    let mut items = vec![item_with_edits(
+        "ahead",
+        Some(edit_over((0, 2), (0, 8), "ahead")),
+        Vec::new(),
+    )];
+    items.push(item("bar"));
+    let id = session.invoke(
+        id_of(&reg, "s"),
+        Invocation::buffer(text.rope().clone(), CharOffset::new(0)),
+    );
+    assert!(session.contribute(&reg, id, items, false));
+    session.rank(&reg, live(&text, 0));
+    assert_eq!(ranked_labels(&session, &reg), vec!["bar"]);
+}
+
+/// A change before the edit range moves its start with it.
+#[test]
+fn an_items_edit_range_start_follows_a_change_before_it() {
+    let (mut session, reg, text) = dotted_session();
+    let (text, _) = change(&mut session, &reg, text, (0, 0, "x"), 9);
+    session.rank(&reg, live(&text, 9));
+    let mut ranked = ranked_labels(&session, &reg);
+    ranked.sort();
+    assert_eq!(ranked, vec!["bar", "foo.bar"]);
+    assert_eq!(
+        session.menu_anchor(&text).map(ClusterStart::offset),
+        Some(CharOffset::new(3))
+    );
 }
 
 #[test]
@@ -349,7 +451,6 @@ fn rank_drops_an_item_that_exactly_matches_what_was_typed() {
         id_of(&reg, "s"),
         &text,
         0,
-        3,
         &["cat", "category"],
     );
     session.rank(&reg, live(&text, 3));
@@ -370,7 +471,6 @@ fn backspacing_past_the_dropped_word_brings_it_back() {
         id_of(&reg, "s"),
         &text,
         0,
-        3,
         &["cat", "category"],
     );
     session.rank(&reg, live(&text, 3));
@@ -379,15 +479,7 @@ fn backspacing_past_the_dropped_word_brings_it_back() {
     // Backspace: "cat" -> "ca". The item list is unchanged (the source
     // wasn't re-invoked); only the live token narrows, so "cat" is no
     // longer an exact match and reappears.
-    let (cs, text) = edit(&text, 2, 3, "");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(2),
-        &text,
-        WordChars::default()
-    ));
+    let (text, _) = change(&mut session, &reg, text, (2, 3, ""), 2);
     session.rank(&reg, live(&text, 2));
     let mut ranked = ranked_labels(&session, &reg);
     ranked.sort();
@@ -398,7 +490,7 @@ fn backspacing_past_the_dropped_word_brings_it_back() {
 fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("cat\n");
-    let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(0)..CharOffset::new(3));
+    let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(0));
     let id = session.invoke(id_of(&reg, "s"), inv);
     assert!(session.contribute(
         &reg,
@@ -418,7 +510,7 @@ fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
 fn an_item_with_additional_text_edits_is_kept_even_if_its_insert_text_matches() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("cat\n");
-    let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(0)..CharOffset::new(3));
+    let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(0));
     let id = session.invoke(id_of(&reg, "s"), inv);
     assert!(session.contribute(
         &reg,
@@ -446,8 +538,8 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
     let (mut session, text) = buffer_session("\n");
     let src = id_of(&reg, "s");
     let head = CharOffset::new(0);
-    let first = session.invoke(src, Invocation::buffer(text.rope().clone(), head..head));
-    let second = session.invoke(src, Invocation::buffer(text.rope().clone(), head..head));
+    let first = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
+    let second = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
     assert!(!session.contribute(&reg, first, items(&["stale"]), false));
     assert!(session.contribute(&reg, second, items(&["fresh"]), false));
     session.rank(&reg, live(&text, 0));
@@ -460,7 +552,7 @@ fn a_repeated_answer_for_the_latest_invocation_replaces_it() {
     let (mut session, text) = buffer_session("\n");
     let src = id_of(&reg, "s");
     let head = CharOffset::new(0);
-    let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head..head));
+    let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
     assert!(session.contribute(&reg, id, items(&["x", "y"]), false));
     assert!(session.contribute(&reg, id, items(&["x", "z"]), false));
     session.rank(&reg, live(&text, 0));
@@ -475,7 +567,7 @@ fn pending_and_live_track_each_slots_latest_call() {
     let head = CharOffset::new(0);
     assert!(!session.is_pending());
     assert!(!session.has_live_sources());
-    let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head..head));
+    let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head));
     assert!(session.is_pending());
     assert!(session.contribute(&reg, id, items(&["x"]), true));
     assert!(!session.is_pending());
@@ -504,18 +596,9 @@ fn typing_at_the_tokens_end_extends_it() {
         id_of(&reg, "s"),
         &text,
         0,
-        2,
         &["foobar", "fox", "bar"],
     );
-    let (cs, text) = edit(&text, 2, 2, "o");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(3),
-        &text,
-        WordChars::default()
-    ));
+    let (text, _) = change(&mut session, &reg, text, (2, 2, "o"), 3);
     session.rank(&reg, live(&text, 3));
     assert_eq!(ranked_labels(&session, &reg), vec!["foobar"]);
 }
@@ -530,24 +613,8 @@ fn typing_at_the_tokens_end_extends_it() {
 fn a_non_word_char_at_the_tokens_end_does_not_extend_it() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("fo\n");
-    invoke_and_answer(
-        &mut session,
-        &reg,
-        id_of(&reg, "s"),
-        &text,
-        0,
-        2,
-        &["foobar"],
-    );
-    let (cs, text) = edit(&text, 2, 2, "(");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(3),
-        &text,
-        WordChars::default()
-    ));
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, &["foobar"]);
+    change(&mut session, &reg, text, (2, 2, "("), 3);
     assert!(
         !session.has_live_sources(),
         "the '(' must not have joined the token; the cursor past it is outside \
@@ -563,27 +630,11 @@ fn a_non_word_char_at_the_tokens_end_does_not_extend_it() {
 fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("x fo\n");
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 2, 4, &["foo"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 2, &["foo"]);
 
     // Backspace twice: "o", then "f", the token's own chars.
-    let (cs, text) = edit(&text, 3, 4, "");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(3),
-        &text,
-        WordChars::default()
-    ));
-    let (cs, text) = edit(&text, 2, 3, "");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(2),
-        &text,
-        WordChars::default()
-    ));
+    let (text, _) = change(&mut session, &reg, text, (3, 4, ""), 3);
+    let (text, _) = change(&mut session, &reg, text, (2, 3, ""), 2);
     assert!(
         session.has_live_sources(),
         "an empty token is still a token"
@@ -592,15 +643,7 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
     assert_eq!(ranked_labels(&session, &reg), vec!["foo"]);
 
     // A third Backspace deletes the space before the token.
-    let (cs, text) = edit(&text, 1, 2, "");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(1),
-        &text,
-        WordChars::default()
-    ));
+    change(&mut session, &reg, text, (1, 2, ""), 1);
     assert!(!session.has_live_sources(), "crossed the token's start");
 }
 
@@ -610,16 +653,8 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
 fn a_deletion_elsewhere_shifts_the_token_without_dropping_it() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("abc fo\n");
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 4, 6, &["foo"]);
-    let (cs, text) = edit(&text, 0, 1, "");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(5),
-        &text,
-        WordChars::default()
-    ));
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 4, &["foo"]);
+    let (text, _) = change(&mut session, &reg, text, (0, 1, ""), 5);
     assert!(session.has_live_sources());
     session.rank(&reg, live(&text, 5));
     assert_eq!(ranked_labels(&session, &reg), vec!["foo"]);
@@ -633,68 +668,101 @@ fn a_deletion_elsewhere_shifts_the_token_without_dropping_it() {
 fn a_cursor_outside_the_token_drops_the_slot() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("fo bar\n");
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, 2, &["foo"]);
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, &["foo"]);
     // No edit: the cursor just moved (an out-of-band motion).
-    let cs = ChangeSet::identity(text.len_chars());
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(5),
-        &text,
-        WordChars::default()
+    let outcome = session.reconcile(&reg, &text, CharOffset::new(5), "");
+    assert!(matches!(
+        outcome,
+        Reconciled::Changed {
+            text_changed: false
+        }
     ));
     assert!(!session.has_live_sources());
 }
 
+/// The same text and cursor reconciled twice: the second finds nothing to
+/// do.
 #[test]
-fn an_edit_the_session_never_saw_is_refused() {
+fn reconcile_is_idempotent() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("fo\n");
-    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, 2, &["foo"]);
-    let longer = BufferText::from("fooooo\n");
-    let cs = ChangeSet::identity(longer.len_chars());
-    assert!(
-        !session.observe_edit(
-            &reg,
-            &cs,
-            text.version(),
-            CharOffset::new(2),
-            &text,
-            WordChars::default()
-        ),
-        "a changeset built against a different length is an unseen edit"
-    );
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, &["foo"]);
+    let (text, first) = change(&mut session, &reg, text, (2, 2, "o"), 3);
+    assert!(matches!(first, Reconciled::Changed { text_changed: true }));
+    let second = session.reconcile(&reg, &text, CharOffset::new(3), "");
+    assert!(matches!(second, Reconciled::Unchanged));
 }
 
-/// Each invocation composes the edits observed since *its own* call: a
+/// A buffer whose text was replaced has no change to carry positions
+/// through, so nothing in the session means anything.
+#[test]
+fn a_replaced_text_dismisses_the_session() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("fo\n");
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, &["foo"]);
+    session.forget(BufferId::default());
+    let outcome = session.reconcile(&reg, &text, CharOffset::new(2), "");
+    assert!(matches!(outcome, Reconciled::Dismiss));
+}
+
+/// A change to another buffer is none of the session's business.
+#[test]
+fn a_change_to_another_buffer_is_not_carried() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("fo\n");
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, &["foo"]);
+    session.reconcile(&reg, &text, CharOffset::new(2), "");
+    let mut buffers = slotmap::SlotMap::<BufferId, ()>::with_key();
+    let other = buffers.insert(());
+    let (cs, after) = edit(&text, 0, 0, "zzz");
+    session.carry(other, &TextChange::new(&text, &after, &cs));
+    let outcome = session.reconcile(&reg, &text, CharOffset::new(2), "");
+    assert!(matches!(outcome, Reconciled::Unchanged));
+    assert!(session.has_live_sources());
+}
+
+/// A source's own token characters extend the token: `-` typed at its end
+/// belongs to the token of a source that declares it, and leaves the token
+/// of one that doesn't.
+#[test]
+fn a_sources_token_chars_decide_what_typing_at_the_end_does() {
+    let mut reg = registry(&[("plain", 0)]);
+    reg.register_buffer(BufferSourceEntry {
+        name: "dashed".into(),
+        match_kind: MatchKind::Fuzzy,
+        priority: 0,
+        proc: SteelVal::Void,
+        resolve: false,
+        token_chars: "-".into(),
+        trigger_chars: rustc_hash::FxHashMap::default(),
+    });
+    let (mut session, text) = buffer_session("fo\n");
+    invoke_and_answer(&mut session, &reg, id_of(&reg, "plain"), &text, 0, &["foo"]);
+    invoke_and_answer(
+        &mut session,
+        &reg,
+        id_of(&reg, "dashed"),
+        &text,
+        0,
+        &["foo-bar"],
+    );
+    let (text, _) = change(&mut session, &reg, text, (2, 2, "-"), 3);
+    session.rank(&reg, live(&text, 3));
+    assert_eq!(ranked_labels(&session, &reg), vec!["foo-bar"]);
+}
+
+/// Each invocation composes the changes carried since *its own* call: a
 /// second call minted after a keystroke starts from a fresh snapshot.
 #[test]
 fn a_later_invocation_starts_from_its_own_snapshot() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("fo\n");
     let src = id_of(&reg, "s");
-    invoke_and_answer(&mut session, &reg, src, &text, 0, 2, &["foo"]);
-    let (cs, text) = edit(&text, 2, 2, "o");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(3),
-        &text,
-        WordChars::default()
-    ));
+    invoke_and_answer(&mut session, &reg, src, &text, 0, &["foo"]);
+    let (text, _) = change(&mut session, &reg, text, (2, 2, "o"), 3);
     // Re-invoked against the post-edit document.
-    invoke_and_answer(&mut session, &reg, src, &text, 0, 3, &["foobar"]);
-    let (cs, text) = edit(&text, 3, 3, "b");
-    assert!(session.observe_edit(
-        &reg,
-        &cs,
-        text.version(),
-        CharOffset::new(4),
-        &text,
-        WordChars::default()
-    ));
+    invoke_and_answer(&mut session, &reg, src, &text, 0, &["foobar"]);
+    let (text, _) = change(&mut session, &reg, text, (3, 3, "b"), 4);
     session.rank(&reg, live(&text, 4));
     assert_eq!(ranked_labels(&session, &reg), vec!["foobar"]);
     assert_eq!(

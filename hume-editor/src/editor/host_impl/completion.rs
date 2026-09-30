@@ -52,6 +52,7 @@ impl crate::editor::Editor {
                     priority: reg.priority,
                     proc: reg.proc,
                     resolve: reg.resolve,
+                    token_chars: reg.token_chars.into(),
                     trigger_chars: rustc_hash::FxHashMap::default(),
                 }),
             host::CompletionSourceTarget::Minibuf => self
@@ -118,6 +119,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                     );
                 }
             };
+        let default_range = hume_lsp::completion_item::item_defaults_edit_range(response.value());
         // A malformed item (missing the spec-required `label`) is skipped,
         // not fatal to the whole batch: one bad item from a misbehaving
         // server must not silently drop every good one.
@@ -126,7 +128,11 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             let raw_item = response
                 .indexed_child(items_key, i)
                 .expect("index i is within items, already resolved from response.value()");
-            match crate::editor::completion::CompletionItem::from_json(v, raw_item) {
+            match crate::editor::completion::CompletionItem::from_json(
+                v,
+                raw_item,
+                default_range.as_ref(),
+            ) {
                 Some(item) => parsed.push(item),
                 None => self.state.report(
                     Severity::Trace,

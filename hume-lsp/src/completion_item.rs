@@ -64,6 +64,20 @@ pub fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::T
     })
 }
 
+/// A `CompletionList`'s `itemDefaults.editRange`: the edit range of every
+/// item that has no `textEdit` of its own. Either a plain range or an
+/// `{insert, replace}` pair, of which the insert half is read, matching
+/// [`text_edit_from_json_lenient`]. `None` for a bare `CompletionItem[]`, a
+/// list without `itemDefaults`, or a malformed range.
+pub fn item_defaults_edit_range(v: &serde_json::Value) -> Option<lsp_types::Range> {
+    let range = v.get("itemDefaults")?.get("editRange")?;
+    let range = range.get("insert").unwrap_or(range);
+    Some(lsp_types::Range {
+        start: crate::position::position_from_json(range.get("start")?)?,
+        end: crate::position::position_from_json(range.get("end")?)?,
+    })
+}
+
 /// Lenient `additionalTextEdits` reader, shared by a completion item's own
 /// off-spec fallback parse and a `completionItem/resolve` response handler
 /// (which never goes through strict deserialize at all: a resolved item
