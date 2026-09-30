@@ -1,7 +1,7 @@
 ;;; core:stdlib
 
 ;; ── Selection helpers (internal) ────────────────────────────────────────────
-;; A selection is (hash 'anchor a 'head h 'primary p) — see README.md's "Selections".
+;; A selection is (hash 'anchor a 'head h 'start s 'end e 'primary p) — see README.md's "Selections".
 
 (define (stdlib/selection-anchor sel)
   (and sel (hash-ref sel 'anchor)))

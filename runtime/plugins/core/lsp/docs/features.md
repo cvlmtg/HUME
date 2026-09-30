@@ -16,6 +16,7 @@ by side is more useful than reading each feature's own paragraph in isolation:
 | Completion | | | ✓ `"completion"` | A stale completion response should be replaced by a fresher one, not shown. The editor drops a response to a call it has since superseded anyway |
 | Formatting (all three shapes) | | ✓ | | Same as the code-action follow-ups: the generation check guards correctness, so staleness alone isn't worth dropping a formatting result over |
 | Rename | | ✓ | | Same reasoning as formatting |
+| Locations drawer refresh | | ✓ | ✓ `"lsp-locations"` | Repeats the goto/references request after an edit. It must complete even if the user jumped to another file from the drawer, and a newer refresh replaces an older one still in flight |
 
 ## Goto and references
 
@@ -32,6 +33,8 @@ expects a list, unlike goto's "take me there") and reuses the same cascade rathe
 reimplementing it, so its single-`Location` branch is simply unreached:
 `textDocument/references` only ever returns `Location[] | null` per spec, never a bare
 `Location`.
+
+While the drawer is open it follows edits. It remembers where the symbol was asked about with `track-position!`, and once the line count of the origin buffer or a listed buffer changes and typing pauses (300 ms), it repeats the request at that position and swaps the rows, keeping the selected row. An answer with nothing in it closes the drawer with the same message the original request would have shown; an error keeps the rows; a closed or replaced drawer is left alone and its position released. Edits that keep the line count are ignored, so a reference on the edited line can sit a few columns off until the next line-count change.
 
 Every jump in the cascade lands on `(focused-pane)`, not a captured invocation pane: the
 response's own tagged encoding already carries what it needs to decode correctly, so the

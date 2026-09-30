@@ -138,6 +138,7 @@ impl Editor {
                     PaneView {
                         state: pane_buf_state,
                         jumps,
+                        tracked: Default::default(),
                         render,
                     }
                 },

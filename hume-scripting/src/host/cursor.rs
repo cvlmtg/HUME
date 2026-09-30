@@ -4,6 +4,22 @@ use hume_engine::pipeline::BufferId;
 
 use crate::types::PaneHandle;
 
+/// One selection as a script reads it: raw 0-indexed char offsets.
+///
+/// `anchor` and `head` are the cluster starts the selection is drawn between,
+/// direction preserved (`anchor > head` when backward). `start` is the first
+/// covered char and `end` the exclusive end of the last covered cluster, so
+/// `start..end` is exactly what the selection covers, whatever the length of
+/// its clusters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SelectionInfo {
+    pub anchor: usize,
+    pub head: usize,
+    pub start: usize,
+    pub end: usize,
+    pub primary: bool,
+}
+
 /// Live cursor/selection reads, accessed through [`EditorHost::cursor`](super::EditorHost::cursor).
 ///
 /// Every method but [`Self::offset_to_line`] is kind-B (see `docs/LSP.md`'s
@@ -17,11 +33,9 @@ pub trait CursorHost {
     fn buffer_cursor_line(&self, pane: PaneHandle) -> Result<usize, String>;
 
     /// `(buffer-selections pane)`: every selection in `pane`'s own pane, as
-    /// `(anchor, head, primary)` tuples of raw 0-indexed char offsets,
-    /// inclusive model (anchor == head is a 1-char selection), direction
-    /// preserved (anchor > head for backward selections), sorted by
-    /// selection start, with exactly one tuple flagged primary.
-    fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String>;
+    /// [`SelectionInfo`]s sorted by selection start, with exactly one flagged
+    /// primary.
+    fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<SelectionInfo>, String>;
 
     /// `(offset->line bid idx)`: 0-indexed line containing the
     /// 0-indexed char offset `idx` in `bid`'s live text. Pure text math, not

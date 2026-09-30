@@ -527,6 +527,7 @@ impl BufferSession {
             version: gen_after,
             allow_stale: false,
             require_focus: None,
+            tracked: None,
         };
         lsp.register_callback(server_id, id, anchor, callback);
     }

@@ -256,6 +256,9 @@ pub struct PendingLspRequest {
     /// `#:require-focus` with no pane, so a request whose only purpose is
     /// opening cursor-anchored UI always carries one here.
     pub require_focus: Option<PaneId>,
+    /// `#:tracked`: a tracked position this request holds, released once its
+    /// callback has run or will never run, unless the callback kept it.
+    pub tracked: Option<crate::host::WidgetToken>,
 }
 
 // Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the
@@ -270,6 +273,7 @@ impl std::fmt::Debug for PendingLspRequest {
             .field("allow_stale", &self.allow_stale)
             .field("supersede", &self.supersede)
             .field("require_focus", &self.require_focus)
+            .field("tracked", &self.tracked)
             .finish()
     }
 }

@@ -23,6 +23,7 @@ use termina::event::KeyEvent;
 
 use hume_engine::pipeline::BufferId;
 
+use crate::host::WidgetToken;
 use crate::keys::parse_key_sequence;
 use crate::types::PaneHandle;
 
@@ -166,6 +167,23 @@ pub(crate) fn optional_usize_arg(val: SteelVal, ctx_name: &str) -> Result<Option
         SteelVal::BoolV(false) => Ok(None),
         other => Ok(Some(usize_arg(other, ctx_name)?)),
     }
+}
+
+/// A widget opener's result: the new widget's token, or `#f` when the open
+/// was dropped.
+pub(crate) fn token_or_false(token: Option<WidgetToken>) -> SteelVal {
+    token.map_or(SteelVal::BoolV(false), WidgetToken::to_steel)
+}
+
+/// `token_or_false`'s inverse: decodes a closer/updater's own `token`
+/// argument, which is `#f` either because the opener that produced it
+/// already returned `#f` (the open was dropped) or because the widget it
+/// named has since closed. Both are the same stale case, so `#f` decodes to
+/// [`WidgetToken::NONE`], which the host treats as any other stale token
+/// rather than raising.
+pub(crate) fn token_arg(val: SteelVal, ctx_name: &str) -> Result<WidgetToken, SteelErr> {
+    Ok(optional_usize_arg(val, ctx_name)?
+        .map_or(WidgetToken::NONE, |n| WidgetToken::from_raw(n as u64)))
 }
 
 pub(crate) fn int_arg(val: SteelVal, ctx_name: &str) -> Result<i64, SteelErr> {
@@ -720,14 +738,15 @@ pub(crate) fn wire_position(
     v: &serde_json::Value,
     what: &str,
 ) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
-    match (
-        v.get("line").and_then(serde_json::Value::as_u64),
-        v.get("character").and_then(serde_json::Value::as_u64),
-    ) {
-        (Some(line), Some(character)) => Ok(hume_rope::position_encoding::WirePos {
-            line: line as usize,
-            character: character as usize,
-        }),
+    let field = |key| {
+        v.get(key)
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|n| usize::try_from(n).ok())
+    };
+    match (field("line"), field("character")) {
+        (Some(line), Some(character)) => {
+            Ok(hume_rope::position_encoding::WirePos { line, character })
+        }
         _ => Err(generic_err(format!(
             "{what}: position must be a hashmap with numeric 'line' and 'character' keys, got {v}"
         ))),

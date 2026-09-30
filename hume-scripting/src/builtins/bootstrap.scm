@@ -71,8 +71,9 @@
 
 (define (lsp-request! pane method params callback #:allow-stale [allow-stale #f]
                                                    #:supersede [supersede #f]
-                                                   #:require-focus [require-focus #f])
-  (%lsp-request! pane method params callback allow-stale supersede require-focus))
+                                                   #:require-focus [require-focus #f]
+                                                   #:tracked [tracked #f])
+  (%lsp-request! pane method params callback allow-stale supersede require-focus tracked))
 
 (define (debounce ms proc)
   (let ((pending (box #f)))

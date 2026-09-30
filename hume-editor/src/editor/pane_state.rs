@@ -359,10 +359,12 @@ pub(in crate::editor) fn park_cursor_at(
 /// Groups the three per-pane maps that live on [`super::EditorState`].
 ///
 /// Bundles `state` (per-(pane,buffer) selections/groups), `jumps` (cursor
-/// history), and `render` (per-pane highlight/sign/inlay-hint/virtual-line
-/// handles, bundled in [`hume_decorations::PaneDecorationHandles`] since
-/// `build_pane` always allocates and `drop_pane_state` always drops them
-/// together) so `EditorState` exposes one field instead of three. The map
+/// history), `tracked` (positions scripts asked the editor to remember,
+/// keyed by buffer rather than pane), and `render` (per-pane
+/// highlight/sign/inlay-hint/virtual-line handles, bundled in
+/// [`hume_decorations::PaneDecorationHandles`] since `build_pane` always
+/// allocates and `drop_pane_state` always drops them together) so
+/// `EditorState` exposes one field instead of four. The map
 /// types and keying are unchanged; NLL still allows simultaneous mutable
 /// borrows of different fields (e.g. `panes.state` and `panes.jumps` in
 /// `buffer::lifecycle::switch_to_buffer_with_jump`).
@@ -370,6 +372,7 @@ pub(in crate::editor) fn park_cursor_at(
 pub(crate) struct PaneView {
     pub(in crate::editor) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pub(in crate::editor) jumps: super::jump_list::JumpLists,
+    pub(in crate::editor) tracked: super::tracked_positions::TrackedPositions,
     pub(in crate::editor) render: SecondaryMap<PaneId, hume_decorations::PaneDecorationHandles>,
 }
 

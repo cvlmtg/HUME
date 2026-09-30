@@ -316,10 +316,12 @@ pub(crate) fn buffer_cursor_line(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelR
     ))
 }
 
-/// `(buffer-selections pane)` → list of `(hash 'anchor a 'head h 'primary p)`
-/// per selection in `pane`'s own pane: raw 0-indexed inclusive char offsets,
-/// direction preserved (anchor > head when backward), sorted by selection
-/// start, exactly one `primary?` = `#t`.
+/// `(buffer-selections pane)` → list of
+/// `(hash 'anchor a 'head h 'start s 'end e 'primary p)` per selection in
+/// `pane`'s own pane: raw 0-indexed char offsets, direction preserved
+/// (anchor > head when backward), sorted by selection start, exactly one
+/// `primary?` = `#t`. `start`..`end` is exactly what the selection covers,
+/// `end` exclusive.
 pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
     let sels = ctx
         .host
@@ -328,11 +330,13 @@ pub(crate) fn buffer_selections(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelRe
         .map_err(generic_err)?;
     let list: Vec<SteelVal> = sels
         .into_iter()
-        .map(|(anchor, head, primary)| {
+        .map(|sel| {
             symbol_hash([
-                ("anchor", SteelVal::IntV(anchor as isize)),
-                ("head", SteelVal::IntV(head as isize)),
-                ("primary", SteelVal::BoolV(primary)),
+                ("anchor", SteelVal::IntV(sel.anchor as isize)),
+                ("head", SteelVal::IntV(sel.head as isize)),
+                ("start", SteelVal::IntV(sel.start as isize)),
+                ("end", SteelVal::IntV(sel.end as isize)),
+                ("primary", SteelVal::BoolV(sel.primary)),
             ])
         })
         .collect();

@@ -511,11 +511,39 @@ fn lsp_request_queues_the_supersede_key() {
         SteelVal::BoolV(false),
         "completion".into_steelval().unwrap(),
         SteelVal::BoolV(false),
+        SteelVal::BoolV(false),
     );
     assert!(result.is_ok());
     let requests = lsp_requests(&ctx);
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].supersede, Some("completion".to_string()));
+}
+
+#[test]
+fn lsp_request_queues_the_tracked_token_and_none_for_false() {
+    for (tracked, expected) in [
+        (
+            SteelVal::IntV(7),
+            Some(crate::host::WidgetToken::from_raw(7)),
+        ),
+        (SteelVal::BoolV(false), None),
+    ] {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        lsp_request(
+            &mut ctx,
+            default_pane(),
+            "textDocument/definition".into_steelval().unwrap(),
+            list_of(&[]),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+            SteelVal::BoolV(false),
+            tracked,
+        )
+        .expect("a well-formed request queues");
+        assert_eq!(lsp_requests(&ctx)[0].tracked, expected);
+    }
 }
 
 #[test]
@@ -527,6 +555,7 @@ fn lsp_request_with_false_supersede_queues_none() {
         default_pane(),
         "textDocument/hover".into_steelval().unwrap(),
         list_of(&[]),
+        SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
@@ -551,6 +580,7 @@ fn lsp_request_decodes_require_focus() {
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         SteelVal::BoolV(true),
+        SteelVal::BoolV(false),
     );
     assert!(result.is_ok());
     let requests = lsp_requests(&ctx);
@@ -907,4 +937,23 @@ fn register_lsp_notification_hook_attributes_the_running_plugin() {
         h.registries.hooks.handlers_for("on-lsp-notification")[0].owner,
         Some(id)
     );
+}
+
+#[test]
+fn the_tracking_builtins_reject_init_context() {
+    for name in [
+        "track-position!",
+        "tracked-position-params",
+        "untrack-position!",
+        "keep-tracked-position!",
+    ] {
+        let mut h = SteelCtxTestHarness::new();
+        let mut ctx = h.ctx();
+        ctx.session = crate::context::EvalSession::Init;
+        let err = super::super::errors::require_cmd(&ctx, name).unwrap_err();
+        assert!(
+            err.to_string().contains("not available during init"),
+            "{name}: got: {err}"
+        );
+    }
 }

@@ -20,7 +20,7 @@ use crate::types::PaneHandle;
 /// closer/updater to the instance that minted it: a late callback racing a
 /// widget the user already closed or replaced names a token no live widget
 /// holds, and reads as a no-op. Crosses the Steel boundary as an integer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WidgetToken(u64);
 
 impl WidgetToken {

@@ -14,11 +14,13 @@ use slotmap::SecondaryMap;
 use super::input_stack::InputStack;
 use super::jump_list::JumpLists;
 use super::pane_state::{PaneBufferState, PaneView};
+use super::tracked_positions::TrackedPositions;
 
 pub(crate) struct PositionStores<'a> {
     pub(in crate::editor) panes:
         &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pub(in crate::editor) jumps: &'a mut JumpLists,
+    tracked: &'a mut TrackedPositions,
     input: &'a mut InputStack,
 }
 
@@ -27,14 +29,15 @@ impl<'a> PositionStores<'a> {
         Self {
             panes: &mut panes.state,
             jumps: &mut panes.jumps,
+            tracked: &mut panes.tracked,
             input,
         }
     }
 
     /// Carry every position stored for `buffer` through `change`: the
     /// selections of each pane that has shown the buffer, whether or not it
-    /// shows it now, every jump list, every open prompt's snapshot, and the
-    /// open completion session.
+    /// shows it now, every jump list, every position a script is tracking,
+    /// every open prompt's snapshot, and the open completion session.
     pub(in crate::editor) fn carry(&mut self, buffer: BufferId, change: &TextChange<'_>) {
         for buffers in self.panes.values_mut() {
             if let Some(state) = buffers.get_mut(buffer) {
@@ -42,6 +45,7 @@ impl<'a> PositionStores<'a> {
             }
         }
         self.jumps.translate(buffer, change);
+        self.tracked.carry(buffer, change);
         for snapshot in self.input.snapshots_mut() {
             snapshot.carry(buffer, change);
         }
@@ -65,6 +69,7 @@ impl<'a> PositionStores<'a> {
             }
         }
         self.jumps.prune_buffer(buffer);
+        self.tracked.prune_buffer(buffer);
         for snapshot in self.input.snapshots_mut() {
             snapshot.forget(buffer);
         }

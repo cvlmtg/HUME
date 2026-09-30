@@ -196,6 +196,8 @@ impl Editor {
         // overlay without firing its callback: same "outgoing engine,
         // nothing left to observe the fire" reasoning as the comment above.
         self.state.input.truncate_to_base();
+        // The scripts that held these tokens went with the outgoing engine.
+        self.state.panes.tracked.clear();
         // Re-baseline immediately after: the fresh hooks `init_scripting`
         // is about to register must never see a phantom transition for a
         // mode change they didn't observe (e.g. an Insert session the

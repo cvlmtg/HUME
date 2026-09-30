@@ -27,7 +27,7 @@ pub use async_process::AsyncProcessHost;
 pub use buffers::BufferHost;
 pub use commands::CommandHost;
 pub use completion::{CompletionHost, CompletionSourceTarget, MatchKind, PendingCompletionSource};
-pub use cursor::CursorHost;
+pub use cursor::{CursorHost, SelectionInfo};
 pub use decorations::{DecorationHost, DiagnosticEntry};
 pub use diff::{DiffHost, DiffHunk, WordDiffHunk};
 pub use edits::{EditHost, WireTextEdit};

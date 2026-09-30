@@ -368,7 +368,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "lsp-restart!" lsp::lsp_restart(target: args::LspTargetArg);
         cmd "lsp-show-status!" lsp::lsp_show_status(pane: args::LivePane);
         // Generic LSP bridge: any protocol method reachable from Steel.
-        cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal);
+        cmd "%lsp-request!" lsp::lsp_request(pane: args::LivePane, method: SteelVal, params: SteelVal, callback: SteelVal, allow_stale: SteelVal, supersede: SteelVal, require_focus: SteelVal, tracked: SteelVal);
         cmd "lsp-notify!" lsp::lsp_notify(pane: args::LivePane, method: SteelVal, params: SteelVal);
         config "register-lsp-notification-hook!" lsp::register_lsp_notification_hook(methods: SteelVal, proc: SteelVal);
         // Introspection
@@ -377,6 +377,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd  "lsp-server-for-buffer" lsp::lsp_server_for_buffer(pane: args::ArgPane);
         open "lsp-registered-for-language?" lsp::lsp_registered_for_language(language: SteelVal);
         cmd "lsp-position-params" lsp::lsp_position_params(pane: args::LivePane);
+        cmd "track-position!" lsp::track_position(pane: args::LivePane);
+        cmd "tracked-position-params" lsp::tracked_position_params(token: SteelVal);
+        cmd "untrack-position!" lsp::untrack_position(token: SteelVal);
+        cmd "keep-tracked-position!" lsp::keep_tracked_position(token: SteelVal);
         cmd "lsp-primary-range-params" lsp::lsp_primary_range_params(pane: args::LivePane);
         cmd "lsp-linewise-ranges-params" lsp::lsp_linewise_ranges_params(pane: args::LivePane);
         cmd "lsp-position->offset" lsp::lsp_position_to_offset(pane: args::LivePane, position: SteelVal);

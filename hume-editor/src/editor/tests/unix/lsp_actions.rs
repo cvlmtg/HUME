@@ -18,8 +18,12 @@ use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
 
 fn write_fixture_file(file_dir: &Path) -> (PathBuf, String) {
+    write_fixture_file_containing(file_dir, "fn main() {\n    let x = 1;\n}\n")
+}
+
+fn write_fixture_file_containing(file_dir: &Path, content: &str) -> (PathBuf, String) {
     let file = file_dir.join("main.rs");
-    std::fs::write(&file, "fn main() {\n    let x = 1;\n}\n").unwrap();
+    std::fs::write(&file, content).unwrap();
     let canonical = std::fs::canonicalize(&file).unwrap();
     let uri = hume_lsp::uri::path_to_uri(&canonical)
         .unwrap()
@@ -366,6 +370,35 @@ fn context_diagnostics_echoes_the_raw_diagnostic_overlapping_the_cursor() {
         diags[0].get("start").is_none(),
         "must be the raw wire Diagnostic, not the flat shape"
     );
+}
+
+#[test]
+fn context_diagnostics_covers_a_selection_over_a_multi_char_cluster() {
+    // The cursor sits on "e" + U+0301, one cluster of two chars. A diagnostic
+    // on the combining mark alone overlaps what the cursor covers.
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file_containing(file_dir.path(), "e\u{301}x\n");
+    let (mut ed, _guard, sid, requests) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to("textDocument/codeAction", serde_json::Value::Null);
+    });
+    ed.ingest_publish_diagnostics(
+        sid,
+        serde_json::from_value(serde_json::json!({"uri": uri, "diagnostics": [
+            {"range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 2}},
+             "severity": 4, "message": "on the mark", "code": "mark"}
+        ]}))
+        .unwrap(),
+    );
+
+    run_actions(&mut ed);
+
+    let params = last_request_params(&requests, "textDocument/codeAction");
+    let diags = params["context"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics must be an array");
+    assert_eq!(diags.len(), 1, "got: {diags:?}");
+    assert_eq!(diags[0]["message"], "on the mark");
 }
 
 #[test]

@@ -8,7 +8,8 @@ helpers), `registration.scm` (catalog, receipts, the install scan), and `servers
 
 | File | Owns | Doc |
 |---|---|---|
-| `lib.scm` | Capability checks, error reporting, location-drawer helper | this file |
+| `lib.scm` | Capability checks, error reporting | this file |
+| `locations.scm` | Locations drawer and its refresh session | this file |
 | `registration.scm` | Seeded catalog, receipt/path helpers, the registration scan | `servers.md` |
 | `servers.scm` | Install/uninstall pipeline, install lock, discovery hint | `servers.md` |
 | `diagnostics.scm` | Diagnostics navigation, EOL summary, gutter signs | `decorations.md` |
@@ -77,9 +78,20 @@ Every feature file shares these:
   there's no column. The one exception: a goto/references target with no open buffer
   renders the location's own raw wire character offset rather than reading the file to
   convert it to a grapheme column, since the file may never be opened and counting
-  graphemes in it isn't worth a disk read. `lsp/show-locations!` opens the drawer on
-  `(focused-pane)`, not the request's own invocation pane: `lsp/goto-response`'s callers
-  deliberately skip `#:require-focus` so a slow goto/references response still completes
-  even if the user looked elsewhere meanwhile, and the drawer should open wherever the
-  user actually is once the response lands rather than raise when the original pane is no
-  longer focused or has since closed.
+  graphemes in it isn't worth a disk read. `lsp/show-locations!` (`locations.scm`) opens the drawer on
+  `(focused-pane)`, not the request's own invocation pane: the goto family skips
+  `#:require-focus` so a slow response still completes after the user looked elsewhere,
+  and the drawer opens wherever the user is once it lands. Nothing on that path reads the
+  invocation pane live: the request records its position with `track-position!` before
+  it is sent and hands it over with `#:tracked`, so the editor forgets it once the
+  callback is done, whatever the outcome, unless the drawer opened and called
+  `keep-tracked-position!`.
+- **Locations session**: the drawer's rows hold the server's wire positions, which edits
+  make wrong, so the plugin never keeps them across an edit. `locations.scm` keeps one
+  session (the drawer is one slot): the request, the `track-position!` token recorded when
+  it was sent, and each listed buffer's last line count, keyed by `buffer-key` and
+  found through the `'buffer` key of `lsp-locations->display-parts` because matching URIs
+  to buffers in Scheme is not reliable. An `on-text-changed` hook compares line counts and
+  a debounced refresh re-asks at `tracked-position-params`. A row callback carries its
+  session's id, so the `#f` an outgoing drawer receives when another list replaces it
+  cannot end the new session.

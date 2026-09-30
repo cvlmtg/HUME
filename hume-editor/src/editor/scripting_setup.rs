@@ -523,6 +523,7 @@ impl Editor {
                         if self.anchor_admits(&anchor) {
                             self.run_call_batch(vec![(proc, args)]);
                         }
+                        self.release_request_position(&anchor);
                         continue;
                     }
                     if let Some(cap) = dot_capture {

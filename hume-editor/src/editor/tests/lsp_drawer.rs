@@ -1019,10 +1019,6 @@ fn ctrl_u_clamps_at_the_first_item() {
     assert_eq!(drawer.scroll, 0);
 }
 
-fn key_shift_down() -> KeyEvent {
-    KeyEvent::new(KeyCode::Down, Modifiers::SHIFT)
-}
-
 fn key_shift_up() -> KeyEvent {
     KeyEvent::new(KeyCode::Up, Modifiers::SHIFT)
 }

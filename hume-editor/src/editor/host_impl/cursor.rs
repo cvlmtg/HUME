@@ -7,7 +7,7 @@ use crate::editor::commands::effective_word_chars;
 
 use super::EditorHostImpl;
 use hume_scripting::PaneHandle;
-use hume_scripting::host::CursorHost;
+use hume_scripting::host::{CursorHost, SelectionInfo};
 
 impl<'a> EditorHostImpl<'a> {
     /// `t`'s buffer and selections, as tracked in `t`'s own pane. Shared by
@@ -63,17 +63,20 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
             .expect("resolved CommandPane's own head offset is always in range"))
     }
 
-    fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String> {
+    fn buffer_selections(&self, pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
         let t = self.command_pane(pane)?;
         let (_, sels) = self.buffer_and_selections(t);
         Ok(sels
             .iter()
             .map(|sel| {
-                (
-                    sel.anchor().offset().index(),
-                    sel.head().offset().index(),
-                    sel.is_primary(),
-                )
+                let covered = sel.covered().chars();
+                SelectionInfo {
+                    anchor: sel.anchor().offset().index(),
+                    head: sel.head().offset().index(),
+                    start: covered.start.index(),
+                    end: covered.end.index(),
+                    primary: sel.is_primary(),
+                }
             })
             .collect())
     }

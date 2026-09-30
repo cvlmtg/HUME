@@ -272,6 +272,12 @@ plain `j`/`k` and the arrow keys, reaches the buffer underneath instead: the dra
 open while you keep editing, so you can browse a long references list and edit at the same
 time without losing your place in either.
 
+The list follows your edits: when the number of lines in a file it lists changes, HUME asks
+the language server again about the same symbol once you pause typing, wherever your cursor
+is, and replaces the rows. If nothing is found any more the drawer closes with a message.
+A change that keeps the line count doesn't refresh it, so a row on the very line you edited
+can sit a few columns off until the next line is added or removed.
+
 Typing while a completion menu is open narrows it. `Tab` and `Down` move to the next entry,
 `Shift-Tab` and `Up` to the previous, `Enter` accepts the highlighted one, and `Esc`
 dismisses the menu. Signature help pops up automatically as you type an argument list for a

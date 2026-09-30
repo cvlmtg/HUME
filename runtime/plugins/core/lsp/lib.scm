@@ -2,7 +2,7 @@
 ;;; docs/architecture.md.
 
 (provide lsp/supports? lsp/guard-capability lsp/report-error!
-         lsp/visible-lines lsp/show-locations! lsp/resolve-pane
+         lsp/visible-lines lsp/resolve-pane
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
@@ -69,20 +69,7 @@
   (let ((range (viewport-range pane)))
     (- (hash-ref range 'end) (hash-ref range 'start))))
 
-;; ── Location display + drawer ───────────────────────────────────────────────
+;; ── Position formatting ─────────────────────────────────────────────────────
 
 (define (lsp/format-position line col)
   (string-append (number->string (+ 1 line)) ":" (number->string (+ 1 col))))
-
-(define (lsp/location-display part)
-  (let* ((path (path->display (hash-ref part 'path)))
-         (line (hash-ref part 'line))
-         (grapheme-col-or-wire (hash-ref part 'grapheme-col-or-wire)))
-    (string-append path ":"
-      (if grapheme-col-or-wire
-          (lsp/format-position line grapheme-col-or-wire)
-          (number->string (+ 1 line))))))
-
-(define (lsp/show-locations! locs)
-  (show-drawer-list! (focused-pane) (map lsp/location-display (lsp-locations->display-parts locs))
-    (lambda (idx) (when idx (goto-location! (focused-pane) (list-ref locs idx))))))

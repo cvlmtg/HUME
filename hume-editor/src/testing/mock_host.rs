@@ -20,7 +20,7 @@ use hume_engine::pipeline::BufferId;
 use hume_scripting::PaneHandle;
 use hume_scripting::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
-    SettingsHost,
+    SelectionInfo, SettingsHost,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, count, extend,
@@ -369,7 +369,7 @@ impl CursorHost for MockHost {
     fn buffer_cursor_line(&self, _pane: PaneHandle) -> Result<usize, String> {
         Err("MockHost: buffer_cursor_line not available".into())
     }
-    fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String> {
+    fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
         Err("MockHost: buffer_selections not available".into())
     }
     fn offset_to_line(&self, _bid: BufferId, _idx: usize) -> Option<usize> {

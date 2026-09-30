@@ -50,7 +50,9 @@ impl Editor {
         if let Some(key) = &req.supersede
             && let Some(old_id) = self.lsp.supersede.remove(&(server_id, key.clone()))
         {
-            self.lsp.callbacks.remove(&(server_id, old_id.clone()));
+            if let Some(old) = self.lsp.callbacks.remove(&(server_id, old_id.clone())) {
+                self.release_request_position(&old.anchor);
+            }
             if let Some((client, backend)) = self.lsp.client_and_backend(server_id) {
                 client.cancel(backend, old_id);
             }
@@ -61,6 +63,7 @@ impl Editor {
             version,
             allow_stale: req.allow_stale,
             require_focus: req.require_focus,
+            tracked: req.tracked,
         };
         // Cloned (SteelVal is Rc-based, cheap): the send-failure branch
         // below needs its own copy of the callback to fire immediately,
@@ -89,6 +92,7 @@ impl Editor {
             let msg = format!("no client tracked for the server sending '{}'", req.method);
             self.report(Severity::Error, format!("lsp-request!: {msg}"));
             self.fail_lsp_request_callback(req.callback, &msg);
+            self.release_request_position(&anchor);
             return;
         };
         if let Some(key) = req.supersede {

@@ -344,10 +344,20 @@ impl Editor {
         }
 
         if !self.anchor_admits(&entry.anchor) {
+            self.release_request_position(&entry.anchor);
             return;
         }
 
         (entry.callback)(self, server_id, outcome);
+    }
+
+    /// Releases the position `anchor`'s request holds, unless its callback
+    /// kept it: every place a request's callback has run, or is dropped
+    /// without running, calls this.
+    pub(in crate::editor) fn release_request_position(&mut self, anchor: &super::ResponseAnchor) {
+        if let Some(token) = anchor.tracked {
+            self.state.panes.tracked.release_unless_kept(token);
+        }
     }
 
     /// Whether a completed request's callback should actually fire, per its

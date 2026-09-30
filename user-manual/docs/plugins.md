@@ -177,7 +177,7 @@ When forwarding a `count` argument to another command, a count of `0` means "as 
 
 ### Reading selections
 
-`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of `(hash 'anchor a 'head h 'primary p)`: char offsets, not grapheme ordinals, each the start of a character (a letter with its combining marks is one), `'primary` an `#t`/`#f` flag. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. `core:stdlib`'s helpers answer the common questions about the whole list:
+`(buffer-selections pane)` returns the selections in `pane`'s own pane, as a list of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`: char offsets, not grapheme ordinals, `'anchor` and `'head` each the start of a character (a letter with its combining marks is one), `'start` and `'end` bounding what the selection covers with `'end` exclusive, `'primary` an `#t`/`#f` flag. A command body reading its own buffer's selections declares a leading `pane` parameter and passes that. `core:stdlib`'s helpers answer the common questions about the whole list:
 
 ```scheme
 (define-command! "example" "" (lambda (pane)

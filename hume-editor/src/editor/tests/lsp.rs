@@ -37,6 +37,7 @@ fn no_drop_anchor(ed: &Editor) -> ResponseAnchor {
         version: ed.doc().text().version(),
         allow_stale: true,
         require_focus: None,
+        tracked: None,
     }
 }
 
@@ -189,6 +190,7 @@ fn stale_response_is_dropped_when_buffer_moved_past_its_text_version() {
             version: sent_version,
             allow_stale: false,
             require_focus: None,
+            tracked: None,
         },
         Box::new(move |_ed, _server_id, _outcome| {
             *fired_in_closure.borrow_mut() = true;
@@ -235,6 +237,7 @@ fn allow_stale_delivers_despite_buffer_moving_past_its_text_version() {
             version: sent_version,
             allow_stale: true,
             require_focus: None,
+            tracked: None,
         },
         Box::new(move |_ed, _server_id, _outcome| {
             *fired_in_closure.borrow_mut() = true;

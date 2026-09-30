@@ -13,16 +13,14 @@ use termina::event::KeyEvent;
 use hume_engine::types::TruncateEnd;
 
 use crate::SteelCtx;
-use crate::host::{
-    LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, WidgetToken,
-};
+use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
 use crate::types::PaneHandle;
 
 use super::SteelResult;
 use super::args::{
     bool_arg, callable_arg, list_items, list_to_i32s, list_to_strings, optional_path_arg,
-    optional_string_arg, optional_usize_arg, pair_fields, single_key_arg, string_arg,
-    symbol_enum_arg, usize_arg,
+    optional_string_arg, pair_fields, single_key_arg, string_arg, symbol_enum_arg, token_arg,
+    token_or_false, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -97,23 +95,6 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
         .close_menu(token)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
-}
-
-/// A widget opener's result: the new widget's token, or `#f` when the open
-/// was dropped.
-fn token_or_false(token: Option<WidgetToken>) -> SteelVal {
-    token.map_or(SteelVal::BoolV(false), WidgetToken::to_steel)
-}
-
-/// `token_or_false`'s inverse: decodes a closer/updater's own `token`
-/// argument, which is `#f` either because the opener that produced it
-/// already returned `#f` (the open was dropped) or because the widget it
-/// named has since closed. Both are the same stale case, so `#f` decodes to
-/// [`WidgetToken::NONE`], which the host treats as any other stale token
-/// rather than raising.
-fn token_arg(val: SteelVal, ctx_name: &str) -> Result<WidgetToken, SteelErr> {
-    Ok(optional_usize_arg(val, ctx_name)?
-        .map_or(WidgetToken::NONE, |n| WidgetToken::from_raw(n as u64)))
 }
 
 /// `(show-drawer-list! pane items on-select)`: no keyword defaults, so this

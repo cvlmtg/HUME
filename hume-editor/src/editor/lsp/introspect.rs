@@ -182,14 +182,27 @@ pub(in crate::editor) fn position_params(
     t: crate::editor::commands::CommandPane,
 ) -> Option<serde_json::Value> {
     let id = t.bid(view);
-    let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let text = state.buffers.get(id).text();
     let head = t
         .state(&state.panes.state, view)
         .view(text)
         .primary()
         .head();
-    let pos = hume_rope::position_encoding::char_to_wire(text.rope(), head.offset(), encoding);
+    offset_params(state, lsp, id, head.offset())
+}
+
+/// [`position_params`] for `offset` of `id`'s live text instead of a pane's
+/// cursor. `None` when `id` is closed, has no path, or has no attached
+/// server.
+pub(in crate::editor) fn offset_params(
+    state: &EditorState,
+    lsp: &LspState,
+    id: BufferId,
+    offset: hume_rope::offset::CharOffset,
+) -> Option<serde_json::Value> {
+    let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
+    let text = state.buffers.try_get(id)?.text();
+    let pos = hume_rope::position_encoding::char_to_wire(text.rope(), offset, encoding);
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
         "position": hume_lsp::position::to_json_position(pos),
@@ -472,6 +485,7 @@ pub(in crate::editor) fn location_display_parts(
                 path: display_path,
                 line: wl.pos.line,
                 grapheme_col_or_wire,
+                buffer: open_bid,
             })
         })
         .collect()

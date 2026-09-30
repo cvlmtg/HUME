@@ -651,6 +651,7 @@ mod lsp_format;
 mod lsp_goto;
 mod lsp_hover;
 mod lsp_inlay_feature;
+mod lsp_locations_refresh;
 mod lsp_packaging;
 mod lsp_references;
 mod lsp_rename;

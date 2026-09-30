@@ -15,11 +15,12 @@ use crate::{PendingLspServerReg, SteelCtx};
 use super::SteelResult;
 use super::args::{
     ArgPane, bool_arg, callable_arg, json_arg, json_params, list_items, list_to_env_pairs,
-    list_to_strings, optional_json_arg, optional_string_arg, string_arg, symbol_hash,
-    wire_position,
+    list_to_strings, optional_json_arg, optional_string_arg, string_arg, symbol_hash, token_arg,
+    token_or_false, wire_position,
 };
 use super::errors::generic_err;
 use super::hooks::{register_entry, require_known_event};
+use super::ids::SteelPane;
 
 /// `Some(json)` → decoded to a Steel hashmap; `None` (unresolvable, no
 /// attached server, handshake incomplete, …) → `#f`. Every field these
@@ -137,7 +138,7 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
 }
 
 /// `(%lsp-request! pane method params callback allow-stale supersede
-/// require-focus)`, behind the `lsp-request!` wrapper (BOOTSTRAP), which
+/// require-focus tracked)`, behind the `lsp-request!` wrapper (BOOTSTRAP), which
 /// supplies the keyword defaults. Pushes an `Effect::LspRequest` that
 /// `Editor::send_one_lsp_request` sends after this eval, since `SteelCtx` has
 /// no route to the transport. The server is resolved from `pane`'s buffer at
@@ -148,6 +149,10 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResu
 /// the response arrives: for cursor-anchored UI (hover, signature help, code
 /// actions), not background requests. It raises at once if `pane` carries no
 /// pane.
+///
+/// `#:tracked` names a `track-position!` token the request holds: the editor
+/// releases it once the callback has run, raised, or will never run, unless
+/// the callback kept it with `keep-tracked-position!`.
 // Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
 // `lsp-request!`'s own Steel signature, same rationale as
 // `register_lsp_server`'s own `#[allow]`, just above in this file.
@@ -161,6 +166,7 @@ pub(crate) fn lsp_request(
     allow_stale: SteelVal,
     supersede: SteelVal,
     require_focus: SteelVal,
+    tracked: SteelVal,
 ) -> SteelResult {
     let method = string_arg(method, "lsp-request! method")?;
     let params = json_params(params, "lsp-request! params")?;
@@ -174,6 +180,10 @@ pub(crate) fn lsp_request(
             })
         })
         .transpose()?;
+    let tracked = match tracked {
+        SteelVal::BoolV(false) => None,
+        token => Some(token_arg(token, "lsp-request! #:tracked")?),
+    };
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
         bid: pane.buffer(),
         method,
@@ -182,6 +192,7 @@ pub(crate) fn lsp_request(
         allow_stale,
         supersede,
         require_focus,
+        tracked,
     }));
     Ok(SteelVal::Void)
 }
@@ -352,6 +363,52 @@ pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: PaneHandle) -> Steel
     params_result(ctx.host.lsp().map(|lsp| lsp.lsp_position_params(pane)))
 }
 
+/// `(track-position! pane)` → a token naming the primary cursor head in
+/// `pane`'s own pane, carried through every edit, or `#f` when the host
+/// tracks nothing. Raises (kind-B fail-fast) when `pane` carries no pane, a
+/// closed one, or one that no longer shows its buffer.
+pub(crate) fn track_position(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
+    match ctx.host.lsp().map(|lsp| lsp.track_position(pane)) {
+        None => Ok(SteelVal::BoolV(false)),
+        Some(Err(e)) => Err(generic_err(e)),
+        Some(Ok(token)) => Ok(token_or_false(Some(token))),
+    }
+}
+
+/// `(tracked-position-params token)` → the `lsp-position-params` shape for
+/// where the tracked position is now, or `#f` for a released or unknown
+/// token, a closed or replaced buffer, or a buffer with no attached server.
+/// A `#f` token is that same stale case; only a non-integer raises.
+pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
+    let token = token_arg(token, "tracked-position-params token")?;
+    Ok(json_or_false(
+        ctx.host
+            .lsp()
+            .and_then(|lsp| lsp.tracked_position_params(token)),
+    ))
+}
+
+/// `(keep-tracked-position! token)`: keeps a position an `lsp-request!`
+/// holds through `#:tracked` past its callback; the caller releases it with
+/// `untrack-position!`. A `#f`, released or unknown token is a no-op.
+pub(crate) fn keep_tracked_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
+    let token = token_arg(token, "keep-tracked-position! token")?;
+    if let Some(lsp) = ctx.host.lsp() {
+        lsp.keep_tracked_position(token);
+    }
+    Ok(SteelVal::Void)
+}
+
+/// `(untrack-position! token)`: releases the position. A `#f`, released or
+/// unknown token is a no-op.
+pub(crate) fn untrack_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
+    let token = token_arg(token, "untrack-position! token")?;
+    if let Some(lsp) = ctx.host.lsp() {
+        lsp.untrack_position(token);
+    }
+    Ok(SteelVal::Void)
+}
+
 /// `(lsp-primary-range-params pane)` → same shape but a `"range"` from the
 /// primary selection alone.
 pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: PaneHandle) -> SteelResult {
@@ -378,11 +435,13 @@ pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: PaneHandle) -
 /// `serde_json::Value` rather than decoded through a `SteelVal` arg (see
 /// `super::args::usize_arg`'s Steel-side counterpart).
 fn json_usize(v: &serde_json::Value, ctx_name: &str) -> Result<usize, SteelErr> {
-    v.as_u64().map(|n| n as usize).ok_or_else(|| {
-        generic_err(format!(
-            "{ctx_name}: expected a non-negative integer, got {v}"
-        ))
-    })
+    v.as_u64()
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or_else(|| {
+            generic_err(format!(
+                "{ctx_name}: expected a non-negative integer, got {v}"
+            ))
+        })
 }
 
 /// `(lsp-position->offset pane position)` → `pane`'s buffer's char offset
@@ -503,7 +562,7 @@ pub(crate) fn lsp_label_offsets_to_text(
 }
 
 /// `(lsp-locations->display-parts locs)` → one `(hash 'path p 'line l
-/// 'grapheme-col-or-wire c)` per entry in `locs`, a list of raw
+/// 'grapheme-col-or-wire c 'buffer b)` per entry in `locs`, a list of raw
 /// `Location`/`LocationLink` hashmaps/handles: the display-side
 /// counterpart to `goto-location!`'s wire conversion, decoded through the
 /// same shared decoder. Each entry reads its own tagged producing-server
@@ -512,7 +571,9 @@ pub(crate) fn lsp_label_offsets_to_text(
 /// when it's an open buffer whose line is out of range, and otherwise the
 /// location's own wire `character` verbatim; this function never reads a
 /// target file to refine that last case. `path`/`line` are always present,
-/// since they come from the location itself. See
+/// since they come from the location itself. `buffer` is a buffer-only
+/// pane handle for the open buffer the target is, `#f` when the file is not
+/// open. See
 /// `LspHost::lsp_locations_display_parts`'s doc for the full column-unit
 /// rule and why a location that can't be decoded (or isn't tagged) at all
 /// aborts the whole call rather than producing a degraded entry.
@@ -537,6 +598,13 @@ pub(crate) fn lsp_locations_to_display_parts(ctx: &mut SteelCtx, locs: SteelVal)
                     "grapheme-col-or-wire",
                     match part.grapheme_col_or_wire {
                         Some(c) => SteelVal::IntV(c as isize),
+                        None => SteelVal::BoolV(false),
+                    },
+                ),
+                (
+                    "buffer",
+                    match part.buffer {
+                        Some(bid) => SteelPane(PaneHandle::buffer_only(bid)).into_steel_val(),
                         None => SteelVal::BoolV(false),
                     },
                 ),

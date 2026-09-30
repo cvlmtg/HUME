@@ -12,11 +12,11 @@
 - `diagnostics-for-buffer` entries, `lsp-server-status` entries, and `lsp-request!`'s `err` use symbol keys: `(hash-ref d 'message)`, not `(hash-ref d "message")`. A diagnostic's `'severity` is a symbol (`'error`), and a server status's `'state` is a lowercase symbol (`'running`).
 - Builtins that returned a positional list or pair now return a symbol-keyed hashmap, and `goto-location!` and `diagnostics-for-buffer #:range` take one:
   - `diagnostic-counts` returns `(hash 'errors n 'warnings n)`.
-  - `buffer-selections` returns a list of `(hash 'anchor a 'head h 'primary p)`.
+  - `buffer-selections` returns a list of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, where `'start` and `'end` bound exactly what the selection covers and `'end` is exclusive.
   - `run-capture!` and `stdlib/run!` return `(hash 'stdout s 'stderr s 'exit code)`.
   - `viewport-range`, `lsp-range->offsets`, and the `#:range` of `diagnostics-for-buffer` use `(hash 'start s 'end e)`.
   - `diff-lines` and `diff-buffer-lines` hunks are `(hash 'old-start 'old-count 'new-start 'new-count 'old-lines 'new-lines)`. `diff-words` returns `(hash 'hunks … 'deadline-hit …)`, each hunk `(hash 'old-start 'old-end 'new-start 'new-end 'old-text 'new-text)`.
-  - `lsp-locations->display-parts` entries are `(hash 'path p 'line l 'grapheme-col-or-wire c)`.
+  - `lsp-locations->display-parts` entries are `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b)`, where `'buffer` is the open buffer the location is in, or `#f` when the file is not open.
   - `goto-location!` takes `(hash 'target t 'line l 'char-col c)` instead of `(list t l c)`.
 - Options renamed: `scrolloff` → `scroll-margin`, `autoread` → `auto-read`, `mouse-enabled` → `mouse`, `auto-pairs-enabled` → `auto-pairs`.
 - `configure-statusline!` rejects an empty element name inside a section (`'("Mode" "")`); it was skipped before.
@@ -27,6 +27,7 @@
 
 ### Plugins
 - `register-completion-source!` takes `#:token-chars`, extra characters that belong to a `'buffer` source's token on top of the buffer's `word-chars`: `#:token-chars "-"` makes `foo-ba` one token for that source, so its `prefix` argument holds it, typing `-` keeps the menu open, and accepting an item replaces it.
+- `track-position!`, `tracked-position-params` and `untrack-position!` let a plugin remember a position in a buffer through edits and ask for the language-server request params for where it is now. `lsp-request!`'s `#:tracked` hands a request such a position, forgotten once the request is done with it unless its callback calls `keep-tracked-position!`.
 - `buffer-selections` reports each `'anchor` and `'head` as the start of a character (a base letter with its combining marks, an emoji sequence, or a flag counts as one).
 - `core:buffer-words` now indexes 100 lines on each side of the cursor per background step by default, instead of 200, halving the pause a step can cause in a file with very long lines.
 
@@ -50,6 +51,7 @@
 ### Language servers
 - Completion items are filtered against the text their own edit range covers, and a list's default edit range is honored. A server whose completions replace more than the word before the cursor (`foo.ba`, `$ba`) keeps its items while you type, and accepting replaces that range. Such items need a `filterText` that includes the covered text, as the protocol expects.
 - The completion menu stays open when text elsewhere in the buffer changes (a script's edit, an auto-format) and still accepts at the cursor. It closes as soon as a character outside the completed word is typed, including right after the menu opens on nothing (a `(` typed after `.`); before, it stayed open with no matches.
+- The list `z r` (and a goto with several matches) opens follows your edits. When the number of lines in a file it lists changes, HUME asks the language server again about the same symbol once you pause typing, wherever your cursor is, and replaces the rows, so `Enter` lands on the right line. If nothing is found any more the list closes with a message.
 
 ### Theming
 - `gruvbox_light`'s picker cursor now matches upstream's reversed style, instead of the parent theme's explicit colors.

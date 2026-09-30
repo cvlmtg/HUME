@@ -1196,3 +1196,105 @@ fn lsp_locations_display_parts_untagged_handle_errors() {
         "error must name the actual problem (no server tag); got: {err}"
     );
 }
+
+/// Each display row names the open buffer its location is in, or `#f` when
+/// the file is not open, so a script never matches URIs to buffers itself.
+#[test]
+fn lsp_locations_display_parts_name_the_open_buffer_of_each_row() {
+    let tmp = safe_tempdir();
+    let dir = safe_tempdir();
+    let file = dir.path().join("open.rs");
+    std::fs::write(&file, "abc\ndef\n").unwrap();
+    let canonical = std::fs::canonicalize(&file).unwrap();
+    let uri = hume_lsp::uri::path_to_uri(&canonical)
+        .unwrap()
+        .as_str()
+        .to_string();
+    let loc = |uri: &str, line: u64| {
+        serde_json::json!({
+            "uri": uri,
+            "range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 0}},
+        })
+    };
+    let mut ed = editor_from("-[a]>bc\ndef\n");
+    ed.doc_mut().set_path(Some(canonical));
+    attach_running_server_with_echo(
+        &mut ed,
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!([loc(&uri, 1), loc("file:///nowhere/other.rs", 0)]),
+    );
+
+    let fired = run_tagged_probe(
+        &mut ed,
+        tmp.path(),
+        r#"(let ((parts (lsp-locations->display-parts (json-list res))))
+             (and (> (buffer-line-count (hash-ref (car parts) 'buffer)) 0)
+                  (equal? (hash-ref (cadr parts) 'buffer) #f)))"#,
+    );
+    assert!(fired);
+}
+
+// ── track-position! / tracked-position-params / untrack-position! ────────────
+
+const TRACKING_COMMANDS: &str = r#"
+(define *tok* #f)
+(define-typed-command! "arm" "" (lambda (bid) (set! *tok* (track-position! bid))))
+(define-typed-command! "disarm" "" (lambda (bid) (untrack-position! *tok*)))
+(define-typed-command! "report" ""
+  (lambda (bid)
+    (let ((p (tracked-position-params *tok*)))
+      (log! 'info (if p (number->string (hash-ref (hash-ref p "position") "line")) "none")))))
+"#;
+
+fn tracked_editor(tmp: &std::path::Path) -> Editor {
+    let mut ed = editor_from("abc\nd-[e]>f\n");
+    ed.doc_mut().set_path(Some(tmp.join("fake-tracked.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    install_source(&mut ed, ScriptingHost::new(), TRACKING_COMMANDS, tmp);
+    type_cmd(&mut ed, ":arm");
+    ed
+}
+
+/// The params name the tracked symbol's line after lines were inserted above
+/// it, wherever the cursor is.
+#[test]
+fn tracked_position_params_follow_lines_inserted_above() {
+    let tmp = safe_tempdir();
+    let mut ed = tracked_editor(tmp.path());
+    type_cmd(&mut ed, ":report");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("1"), "setup: line 1");
+
+    set_cursor(&mut ed, 0);
+    ed.handle_key(key('O'));
+    ed.handle_key(key_esc());
+    assert_eq!(ed.doc().text().to_string(), "\nabc\ndef\n");
+
+    type_cmd(&mut ed, ":report");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("2"));
+}
+
+#[test]
+fn a_released_position_answers_false() {
+    let tmp = safe_tempdir();
+    let mut ed = tracked_editor(tmp.path());
+    type_cmd(&mut ed, ":disarm");
+
+    type_cmd(&mut ed, ":report");
+    assert_eq!(ed.state.status_msg.as_deref(), Some("none"));
+}
+
+#[test]
+fn a_false_token_answers_false_and_never_raises() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.doc_mut()
+        .set_path(Some(tmp.path().join("fake-false.rs")));
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        "(and (equal? (tracked-position-params #f) #f) (begin (untrack-position! #f) #t))",
+    );
+    assert!(fired);
+}

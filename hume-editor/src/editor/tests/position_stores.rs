@@ -102,3 +102,140 @@ fn undoing_a_repeated_smart_paste_restores_the_selection_it_was_made_from() {
     ed.feed_key(key('u'));
     assert_eq!(state(&ed), "-[ae\u{301}]>\n");
 }
+
+// ── Tracked positions ───────────────────────────────────────────────────────
+
+/// A position a script asked the editor to remember follows the text.
+#[test]
+fn a_tracked_position_follows_an_insertion_above_it() {
+    let mut ed = editor_from("abc\nd-[e]>f\n");
+    let pid = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+    let head = ed.current_view().primary().head();
+    let text = ed.doc().text().clone();
+    let token = ed.state.panes.tracked.track(bid, &text, head);
+    assert_eq!(
+        ed.state.panes.tracked.position(token, &ed.state.buffers),
+        Some((bid, co(5))),
+        "setup: the position is the cursor's"
+    );
+
+    let insert_line = lsp_types::TextEdit {
+        range: lsp_types::Range::new(
+            lsp_types::Position::new(0, 0),
+            lsp_types::Position::new(0, 0),
+        ),
+        new_text: "X\n".to_string(),
+    };
+    crate::editor::lsp::edits::apply_text_edits(
+        &mut ed.state,
+        &ed.view.panes,
+        pid,
+        bid,
+        vec![insert_line],
+        None,
+        hume_rope::position_encoding::PositionEncoding::Utf8,
+    )
+    .expect("the edit applies");
+    assert_eq!(ed.doc().text().to_string(), "X\nabc\ndef\n");
+
+    assert_eq!(
+        ed.state.panes.tracked.position(token, &ed.state.buffers),
+        Some((bid, co(7)))
+    );
+}
+
+/// A reload carries it through the line diff, like every other stored position.
+#[test]
+fn a_tracked_position_follows_a_reload() {
+    let mut ed = editor_from("one\ntwo\n-[t]>hree\n");
+    let bid = ed.focused_buffer_id();
+    let head = ed.current_view().primary().head();
+    let text = ed.doc().text().clone();
+    let token = ed.state.panes.tracked.track(bid, &text, head);
+
+    let replacement = Buffer::at_start(BufferText::from("zero\none\ntwo\nthree\n"));
+    ed.reload_buffer_in_place(FocusedPane::current(&ed.state), replacement);
+
+    assert_eq!(
+        ed.state.panes.tracked.position(token, &ed.state.buffers),
+        Some((bid, co(13)))
+    );
+}
+
+/// A buffer whose text is replaced with no change to carry has no position
+/// left to answer for.
+#[test]
+fn a_tracked_position_is_dropped_when_its_buffer_is_replaced() {
+    let mut ed = editor_from("-[a]>\n");
+    let fp = FocusedPane::current(&ed.state);
+    let view = ed.open_read_only_view(fp, "[tracked]", "one\ntwo\n", None);
+    let head = ed.state.buffers.get(view).text().snap(co(0));
+    let token = ed
+        .state
+        .panes
+        .tracked
+        .track(view, ed.state.buffers.get(view).text(), head);
+    assert!(
+        ed.state
+            .panes
+            .tracked
+            .position(token, &ed.state.buffers)
+            .is_some(),
+        "setup: tracked in the view buffer"
+    );
+
+    ed.open_read_only_view(
+        FocusedPane::current(&ed.state),
+        "[tracked]",
+        "other\n",
+        None,
+    );
+
+    assert_eq!(
+        ed.state.panes.tracked.position(token, &ed.state.buffers),
+        None
+    );
+}
+
+/// Closing the buffer releases its positions.
+#[test]
+fn a_tracked_position_is_dropped_when_its_buffer_closes() {
+    let mut ed = editor_from("-[a]>\n");
+    let other = ed.open_buffer(Buffer::at_start(BufferText::from("other\n")));
+    let head = ed.state.buffers.get(other).text().snap(co(0));
+    let token = ed
+        .state
+        .panes
+        .tracked
+        .track(other, ed.state.buffers.get(other).text(), head);
+
+    ed.close_buffer(other);
+
+    assert_eq!(
+        ed.state.panes.tracked.position(token, &ed.state.buffers),
+        None
+    );
+}
+
+/// A token nobody minted, or already released, answers absent.
+#[test]
+fn an_unknown_or_released_token_answers_absent() {
+    let mut ed = editor_from("-[a]>\n");
+    let bid = ed.focused_buffer_id();
+    let head = ed.current_view().primary().head();
+    let text = ed.doc().text().clone();
+    let token = ed.state.panes.tracked.track(bid, &text, head);
+    ed.state.panes.tracked.untrack(token);
+    assert_eq!(
+        ed.state.panes.tracked.position(token, &ed.state.buffers),
+        None
+    );
+    assert_eq!(
+        ed.state.panes.tracked.position(
+            hume_scripting::host::WidgetToken::from_raw(u64::MAX),
+            &ed.state.buffers
+        ),
+        None
+    );
+}

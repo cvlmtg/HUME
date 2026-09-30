@@ -48,8 +48,8 @@ contributor touching this file does.
 `stdlib/primary-selection`, `stdlib/all-single-char?`, `stdlib/single-selection?`,
 `stdlib/cursor-char-index`.
 
-A selection is `(hash 'anchor a 'head h 'primary p)`, the shape `buffer-selections`
-returns. All seven accept `#f` and answer `#f` in turn, so a caller building on a value that may itself be `#f` (a picker payload, an
+A selection is `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, the shape
+`buffer-selections` returns. All seven accept `#f` and answer `#f` in turn, so a caller building on a value that may itself be `#f` (a picker payload, an
 optional match) only has to check once, at the call site.
 
 `(buffer-selections pane)` itself is not one of these seven. It raises rather than

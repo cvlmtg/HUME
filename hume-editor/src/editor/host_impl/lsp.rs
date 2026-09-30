@@ -4,7 +4,7 @@ use hume_engine::pipeline::BufferId;
 
 use super::EditorHostImpl;
 use hume_scripting::PaneHandle;
-use hume_scripting::host::{LocationDisplay, LspHost};
+use hume_scripting::host::{LocationDisplay, LspHost, WidgetToken};
 
 impl<'a> LspHost for EditorHostImpl<'a> {
     fn lsp_capabilities(&self, bid: BufferId) -> Option<std::sync::Arc<serde_json::Value>> {
@@ -37,6 +37,36 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         Ok(crate::editor::lsp::introspect::position_params(
             self.state, self.view, lsp, t,
         ))
+    }
+
+    fn track_position(&mut self, pane: PaneHandle) -> Result<WidgetToken, String> {
+        let t = self.command_pane(pane)?;
+        let bid = t.bid(self.view);
+        let text = self.state.buffers.get(bid).text().clone();
+        let head = t
+            .state(&self.state.panes.state, self.view)
+            .view(&text)
+            .primary()
+            .head();
+        Ok(self.state.panes.tracked.track(bid, &text, head))
+    }
+
+    fn tracked_position_params(&self, token: WidgetToken) -> Option<serde_json::Value> {
+        let lsp = self.lsp.as_deref()?;
+        let (bid, offset) = self
+            .state
+            .panes
+            .tracked
+            .position(token, &self.state.buffers)?;
+        crate::editor::lsp::introspect::offset_params(self.state, lsp, bid, offset)
+    }
+
+    fn untrack_position(&mut self, token: WidgetToken) {
+        self.state.panes.tracked.untrack(token);
+    }
+
+    fn keep_tracked_position(&mut self, token: WidgetToken) {
+        self.state.panes.tracked.keep(token);
     }
 
     fn lsp_primary_range_params(

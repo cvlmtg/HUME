@@ -109,7 +109,7 @@ A closed buffer behaves differently depending on the call: most reads below (`bu
 | `(buffer-lines pane #:start #:end)` | Content as a list of lines, each with its ending stripped |
 | `(buffer-line-count pane)` | Content line count, cheaper than `(length (buffer-lines pane))` |
 | `(buffer-cursor-line pane)` | 0-based line of the primary cursor in `pane`'s own pane |
-| `(buffer-selections pane)` | List of `(hash 'anchor a 'head h 'primary p)`, one per selection in `pane`'s own pane; `'anchor` and `'head` are each the start of a character (a letter with its combining marks counts as one) |
+| `(buffer-selections pane)` | List of `(hash 'anchor a 'head h 'start s 'end e 'primary p)`, one per selection in `pane`'s own pane; `'anchor` and `'head` are each the start of a character (a letter with its combining marks counts as one), and `'start`..`'end` (exclusive) is exactly what the selection covers |
 | `(offset->line pane idx)` | 0-based line containing 0-based char offset `idx` in the buffer's text |
 | `(line->offset pane line)` | 0-based char offset where 0-based content line `line` starts |
 | `(viewport-range pane)` | `(hash 'start first-line 'end end-line)` currently visible in `pane`'s own pane, 0-based end-exclusive |
@@ -177,7 +177,7 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(unregister-lsp-server! language)` | Queue removing `language`'s registration and shutting down its running clients; idempotent |
 | `(lsp-stop! target)`, `(lsp-restart! target)` | Queue stopping / stopping-then-respawning a server: `target` is a pane value (that buffer's attached server) or a language-name string (every server registered for it) |
 | `(lsp-show-status! pane)` | Open the `[lsp-status]` read-only view, only while `pane` is still the one you're looking at |
-| `(lsp-request! pane method params callback #:allow-stale #:supersede #:require-focus)` | Send a raw request to `pane`'s attached server; `callback` is `(lambda (err result) ...)`. A real response delivers as a JSON handle; read it with `json-ref`/`json-contains?`/`json-list`, or pass it straight to `completion-emit!`. `#:require-focus #t` drops the callback unless `pane` is still the exact pane you were looking at, still showing the same buffer, when the response arrives. It needs `pane` to carry a pane, not just a buffer |
+| `(lsp-request! pane method params callback #:allow-stale #:supersede #:require-focus #:tracked)` | Send a raw request to `pane`'s attached server; `callback` is `(lambda (err result) ...)`. A real response delivers as a JSON handle; read it with `json-ref`/`json-contains?`/`json-list`, or pass it straight to `completion-emit!`. `#:require-focus #t` drops the callback unless `pane` is still the exact pane you were looking at, still showing the same buffer, when the response arrives. It needs `pane` to carry a pane, not just a buffer. `#:tracked token` hands the request a `track-position!` token: it is forgotten once the callback has run, even if it raised, or once the request ends without calling it, unless the callback calls `keep-tracked-position!` |
 | `(lsp-notify! pane method params)` | Fire-and-forget notification to `pane`'s attached server, no callback |
 | `(register-lsp-notification-hook! methods proc)` | Call `proc` as `(lambda (server method params) ...)` only for server notifications whose method is `methods` (a string) or one of `methods` (a list of strings), so one `proc` can serve several methods. Any other method is logged as unhandled, unless a plain `register-hook!` handler takes it. Like `register-hook!`: init or plugin load only, and removed if your plugin fails to load |
 | `(lsp-capabilities pane)` | A JSON handle onto `pane`'s attached server's `ServerCapabilities` (read with `json-ref`/`json-contains?`), or `#f` if unresolved or mid-handshake |
@@ -185,12 +185,16 @@ These are editor-builtin commands any LSP plugin can drive: an LSP plugin regist
 | `(lsp-server-for-buffer pane)` | Registered language name attached to the buffer, or `#f` |
 | `(lsp-registered-for-language? language)` | `#t` if a server is registered for `language` |
 | `(lsp-position-params pane)` | `{"textDocument" {"uri"} "position" {"line" "character"}}` from the primary cursor in `pane`'s own pane, or `#f` |
+| `(track-position! pane)` | Remember the primary cursor in `pane`'s own pane through every edit, and return a token for it |
+| `(tracked-position-params token)` | The `lsp-position-params` shape for where the remembered position is now, or `#f` if it was released, its buffer closed or was replaced, or the buffer has no server. A `#f` or released token answers `#f` |
+| `(untrack-position! token)` | Forget the position; a released token is a no-op |
+| `(keep-tracked-position! token)` | Keep a position handed to `lsp-request!` with `#:tracked` after its callback; forget it later with `untrack-position!`. A released token is a no-op |
 | `(lsp-primary-range-params pane)` | Same shape, `"range"` from the primary selection alone |
 | `(lsp-linewise-ranges-params pane)` | `{"textDocument" {"uri"} "ranges" [...]}`: one wire range per linewise selection in `pane`'s own pane (a run of touching selections coalesces into one), `"ranges"` empty if none are linewise; `#f` only for the same reasons `lsp-primary-range-params` returns `#f` |
 | `(lsp-position->offset pane position)` | The buffer's char offset for a wire `{"line" "character"}` hashmap, or `#f` |
 | `(lsp-range->offsets pane range)` | `(hash 'start s 'end e)` char offsets for a wire `{"start" ... "end" ...}` range, or `#f` |
 | `(lsp-label-offsets->text label offsets)` | The slice of `label` a `ParameterInformation`-style `(start end)` wire offset pair names; `offsets` decodes with its own tagged producing-server encoding |
-| `(lsp-locations->display-parts locs)` | One `(hash 'path p 'line l 'grapheme-col-or-wire c)` per raw `Location`/`LocationLink` in `locs`, each decodes wire positions with its own tagged producing-server encoding |
+| `(lsp-locations->display-parts locs)` | One `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b)` per raw `Location`/`LocationLink` in `locs`, each decodes wire positions with its own tagged producing-server encoding; `'buffer` is the open buffer the location is in, or `#f` when the file is not open |
 
 `register-lsp-server!`, `lsp-request!`, and `lsp-notify!` are covered with examples in [Registering a language server](lsp.md#registering-a-language-server) and [Advanced: custom requests](lsp.md#advanced-custom-requests). `lsp-position->offset`/`lsp-range->offsets`/`lsp-label-offsets->text` convert LSP wire units (UTF-16 or byte offsets, depending on the server's negotiated encoding) to editor-native char offsets. Always go through these rather than assuming a 1:1 mapping. `lsp-locations->display-parts`'s column is an exact grapheme column when the target has an open buffer; otherwise it's the location's own wire `character` verbatim, since refining it would mean reading a file the user may never open.
 

@@ -20,7 +20,7 @@ use hume_engine::pipeline::BufferId;
 use crate::attribution::PluginId;
 use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
-    OutputHost, SettingsHost,
+    OutputHost, SelectionInfo, SettingsHost,
 };
 use crate::types::{GrammarReg, PaneHandle, SteelCmdDef, SteelTypedCmdDef};
 
@@ -226,7 +226,7 @@ impl CursorHost for NullHost {
     fn buffer_cursor_line(&self, _pane: PaneHandle) -> Result<usize, String> {
         Err("NullHost: buffer_cursor_line not available".into())
     }
-    fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<(usize, usize, bool)>, String> {
+    fn buffer_selections(&self, _pane: PaneHandle) -> Result<Vec<SelectionInfo>, String> {
         Err("NullHost: buffer_selections not available".into())
     }
     fn offset_to_line(&self, _bid: BufferId, _idx: usize) -> Option<usize> {

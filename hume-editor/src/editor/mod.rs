@@ -67,6 +67,7 @@ pub(crate) mod tab;
 mod theme;
 mod timer_bridge;
 mod timers;
+mod tracked_positions;
 mod visual_move;
 mod widget_token;
 

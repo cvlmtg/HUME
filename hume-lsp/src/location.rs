@@ -55,12 +55,13 @@ pub fn decode_location(loc: &serde_json::Value, caller: &str) -> Result<WireLoca
     let line = range
         .pointer("/start/line")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| format!("{caller}: missing range.start.line"))? as usize;
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or_else(|| format!("{caller}: missing range.start.line"))?;
     let character = range
         .pointer("/start/character")
         .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| format!("{caller}: missing range.start.character"))?
-        as usize;
+        .and_then(|n| usize::try_from(n).ok())
+        .ok_or_else(|| format!("{caller}: missing range.start.character"))?;
     let uri = lsp_types::Uri::from_str(uri).map_err(|_| format!("{caller}: bad uri {uri:?}"))?;
     Ok(WireLocation {
         uri,

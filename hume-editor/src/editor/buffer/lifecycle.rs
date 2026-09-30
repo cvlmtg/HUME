@@ -20,6 +20,7 @@ use crate::editor::event::EditorEvent;
 use crate::editor::jump_list::{JumpEntry, JumpLists};
 use crate::editor::lsp::LspState;
 use crate::editor::pane_state::{self, PaneBufferState};
+use crate::editor::tracked_positions::TrackedPositions;
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
 
@@ -222,7 +223,13 @@ pub(in crate::editor) fn close_buffer(
     }
     state.buffers.close(id);
     ev.buffers.remove(id);
-    forget_buffer_in_all_panes(ev, &mut state.panes.state, &mut state.panes.jumps, id);
+    forget_buffer_in_all_panes(
+        ev,
+        &mut state.panes.state,
+        &mut state.panes.jumps,
+        &mut state.panes.tracked,
+        id,
+    );
     opened
 }
 
@@ -302,6 +309,7 @@ fn forget_buffer_in_all_panes(
     ev: &mut EngineView,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_jumps: &mut JumpLists,
+    tracked: &mut TrackedPositions,
     id: BufferId,
 ) {
     // Every pane must forget `id`, active tab or not.
@@ -312,4 +320,5 @@ fn forget_buffer_in_all_panes(
         buf_state.remove(id);
     }
     pane_jumps.prune_buffer(id);
+    tracked.prune_buffer(id);
 }

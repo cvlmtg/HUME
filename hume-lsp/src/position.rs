@@ -65,13 +65,13 @@ pub fn to_json_range(range: ExclusiveRange<WirePos>) -> serde_json::Value {
 }
 
 /// The protocol's `{"line": N, "character": M}` object → `lsp_types::Position`.
-/// `None` on a missing or non-numeric field; a lenient caller's own fallback
+/// `None` on a missing, non-numeric or out-of-`u32` field; a lenient caller's own fallback
 /// applies from there. See this module's doc for why `location::decode_location`
 /// doesn't share this decoder.
 pub fn position_from_json(v: &serde_json::Value) -> Option<lsp_types::Position> {
     Some(lsp_types::Position {
-        line: v.get("line")?.as_u64()? as u32,
-        character: v.get("character")?.as_u64()? as u32,
+        line: u32::try_from(v.get("line")?.as_u64()?).ok()?,
+        character: u32::try_from(v.get("character")?.as_u64()?).ok()?,
     })
 }
 

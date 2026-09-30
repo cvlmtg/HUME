@@ -1,7 +1,7 @@
 // Goto definition family: `lsp-goto-definition` /
 // `-declaration` / `-type-definition` / `-implementation`, composing
 // `lsp-request!`, `lsp-capabilities`, `goto-location!`,
-// `show-drawer-list!` (via lib.scm's lsp/show-locations!). Loads the real
+// `show-drawer-list!` (via locations.scm's lsp/show-locations!). Loads the real
 // shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
@@ -532,6 +532,31 @@ fn wire_response_decodes_with_the_requesting_buffers_encoding_not_live_focus() {
     drop(guard);
 }
 
+/// Several targets arriving after the requesting pane moved to another buffer
+/// still open the drawer.
+#[test]
+fn multi_element_response_after_a_buffer_switch_opens_the_drawer() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4), loc(&uri, 2, 0)]),
+        );
+    });
+
+    ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
+    let other = file_dir.path().join("other.rs");
+    std::fs::write(&other, "\n").unwrap();
+    ed.execute_typed("e", Some(other.to_str().unwrap()))
+        .unwrap();
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(drawer_rows(&ed).len(), 3);
+}
+
 /// A target whose path genuinely can't be opened (here: it's a directory,
 /// not a file; `Buffer::from_file_or_new` only tolerates `NotFound`) must
 /// still error and leave the cursor untouched.
@@ -713,4 +738,68 @@ fn goto_into_another_file_raises_exactly_one_on_buffer_enter() {
         entered, 1,
         "a goto-definition switch into another file must raise exactly one OnBufferEnter"
     );
+}
+
+// ── The request's tracked position ──────────────────────────────────────────
+
+/// A reply whose locations cannot be listed raises in the callback, and the
+/// position the request tracked is released anyway.
+#[test]
+fn a_malformed_multi_location_reply_releases_the_tracked_position() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([loc(&uri, 0, 0), {"uri": uri}]),
+        );
+    });
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    assert_eq!(ed.state.panes.tracked.len(), 0);
+}
+
+/// A reply dropped because the text changed after the request never reaches
+/// the callback, and the position the request tracked is released.
+#[test]
+fn a_reply_dropped_as_stale_releases_the_tracked_position() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4)]),
+        );
+    });
+
+    ed.execute_keymap_command("lsp-goto-definition".into(), Some(1), false);
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(ed.state.panes.tracked.len(), 0);
+}
+
+/// The drawer keeps the position for its refresh.
+#[test]
+fn an_opened_drawer_keeps_the_tracked_position() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (file, uri) = write_fixture_file(file_dir.path());
+    let (mut ed, _guard, _sid) = setup(&file, tmp.path(), |backend, _sid| {
+        backend.respond_to(
+            "textDocument/definition",
+            serde_json::json!([loc(&uri, 0, 0), loc(&uri, 1, 4)]),
+        );
+    });
+
+    run_goto(&mut ed, ":lsp-goto-definition");
+
+    assert_eq!(drawer_rows(&ed).len(), 2);
+    assert_eq!(ed.state.panes.tracked.len(), 1);
 }

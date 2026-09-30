@@ -95,6 +95,10 @@ pub(in crate::editor) struct ResponseAnchor {
     /// showing it, not the exact one the request was made from). `None` for
     /// a request whose delivery doesn't depend on focus.
     pub(in crate::editor) require_focus: Option<PaneId>,
+    /// `#:tracked`: a tracked position the request holds, released once its
+    /// callback has run or will never run (`Editor::release_request_position`),
+    /// unless the callback kept it.
+    pub(in crate::editor) tracked: Option<hume_scripting::host::WidgetToken>,
 }
 
 struct CallbackEntry {

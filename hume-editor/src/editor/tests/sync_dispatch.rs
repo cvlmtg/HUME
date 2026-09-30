@@ -1859,6 +1859,37 @@ fn steel_dispatch_consumes_pending_char() {
 
 // ── buffer_selections / offset_to_line ───────────────────────────────────
 
+fn sel_info(
+    anchor: usize,
+    head: usize,
+    start: usize,
+    end: usize,
+    primary: bool,
+) -> hume_scripting::host::SelectionInfo {
+    hume_scripting::host::SelectionInfo {
+        anchor,
+        head,
+        start,
+        end,
+        primary,
+    }
+}
+
+/// `buffer_selections` reports the exclusive `end` of a selection over a
+/// multi-char cluster past all of its chars, so a script never adds 1 to a
+/// head.
+#[test]
+fn buffer_selections_end_covers_a_whole_multi_char_cluster() {
+    // "e" + U+0301 is one cluster of two chars: anchor = head = 0, end = 2.
+    let mut ed = editor_from("-[e\u{301}]>x\n");
+    let pane = focused_pane(&ed);
+    let host = live_host!(ed);
+    let sels = host
+        .buffer_selections(pane)
+        .expect("pane state must be seeded");
+    assert_eq!(sels, vec![sel_info(0, 0, 0, 2, true)]);
+}
+
 /// `buffer_selections` returns all selections sorted by start, one per cursor.
 ///
 /// A hardcoded single-element result would pass for one cursor but fail
@@ -1876,7 +1907,7 @@ fn buffer_selections_sorted_multi_cursor() {
         .expect("pane state must be seeded");
     assert_eq!(
         sels,
-        vec![(0, 1, true), (4, 5, false)],
+        vec![sel_info(0, 1, 0, 2, true), sel_info(4, 5, 4, 6, false)],
         "selections must be sorted by start, primary flagged on the first"
     );
 }
@@ -1895,7 +1926,7 @@ fn buffer_selections_preserves_backward_direction() {
         .expect("pane state must be seeded");
     assert_eq!(
         sels,
-        vec![(1, 0, true)],
+        vec![sel_info(1, 0, 0, 2, true)],
         "backward selection must report anchor > head, not normalized"
     );
 }
@@ -1914,7 +1945,7 @@ fn buffer_selections_primary_flag_follows_primary_index() {
         .expect("pane state must be seeded");
     assert_eq!(
         sels,
-        vec![(0, 0, false), (4, 4, true)],
+        vec![sel_info(0, 0, 0, 1, false), sel_info(4, 4, 4, 5, true)],
         "primary flag must follow primary_index, not selection order"
     );
 }
@@ -1994,7 +2025,7 @@ fn buffer_selections_steel_roundtrip() {
     host.eval_source(
         r#"(define-command! "probe-selections-roundtrip" ""
              (lambda (bid)
-               (unless (equal? (buffer-selections bid) (list (hash 'anchor 0 'head 0 'primary #t)))
+               (unless (equal? (buffer-selections bid) (list (hash 'anchor 0 'head 0 'start 0 'end 1 'primary #t)))
                  (call! "delete" bid 1))))"#,
         &mut init_host,
     )
@@ -2006,6 +2037,6 @@ fn buffer_selections_steel_roundtrip() {
     assert_eq!(
         state(&ed),
         "-[a]>bc\n",
-        "buffer must be untouched: (buffer-selections bid) must equal a list of one hash with 'anchor 0, 'head 0, 'primary #t"
+        "buffer must be untouched: (buffer-selections bid) must equal a list of one hash with 'anchor 0, 'head 0, 'start 0, 'end 1, 'primary #t"
     );
 }

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use hume_engine::pipeline::BufferId;
 use hume_rope::position_encoding::PositionEncoding;
 
+use super::ui::WidgetToken;
 use crate::types::PaneHandle;
 
 /// LSP server introspection, accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
@@ -39,6 +40,28 @@ pub trait LspHost {
     /// when `pane` carries no pane, a closed one, or one that no longer
     /// shows `pane`'s buffer.
     fn lsp_position_params(&self, pane: PaneHandle) -> Result<Option<serde_json::Value>, String>;
+
+    /// `(track-position! pane)`: remembers the primary cursor head in
+    /// `pane`'s own pane, carried through every edit, and returns the token
+    /// naming it. `Err` (kind-B fail-fast) when `pane` carries no pane, a
+    /// closed one, or one that no longer shows `pane`'s buffer.
+    fn track_position(&mut self, pane: PaneHandle) -> Result<WidgetToken, String>;
+
+    /// `(tracked-position-params token)`: the
+    /// [`lsp_position_params`](Self::lsp_position_params) shape for where the
+    /// tracked position is now. `None` for a released or unknown token, a
+    /// closed buffer or one whose text was replaced, or a buffer with no
+    /// path or no attached server; never an error.
+    fn tracked_position_params(&self, token: WidgetToken) -> Option<serde_json::Value>;
+
+    /// `(untrack-position! token)`: releases the position. A released or
+    /// unknown token is a no-op.
+    fn untrack_position(&mut self, token: WidgetToken);
+
+    /// `(keep-tracked-position! token)`: keeps a position an `lsp-request!`
+    /// holds through `#:tracked` past its callback. A released or unknown
+    /// token is a no-op.
+    fn keep_tracked_position(&mut self, token: WidgetToken);
 
     /// Same as [`lsp_position_params`](Self::lsp_position_params) but a
     /// `{"textDocument" {"uri"} "range" {"start" "end"}}` shape from the
@@ -166,4 +189,7 @@ pub struct LocationDisplay {
     /// possible units, not just the common one. See CLAUDE.md's "Line/buffer
     /// columns" invariant's one sanctioned exception.
     pub grapheme_col_or_wire: Option<usize>,
+    /// The open buffer the location's target is, or `None` when the file is
+    /// not open.
+    pub buffer: Option<BufferId>,
 }

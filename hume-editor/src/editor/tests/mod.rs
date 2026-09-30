@@ -388,6 +388,10 @@ fn key_tab() -> KeyEvent {
     KeyEvent::new(KeyCode::Tab, Modifiers::NONE)
 }
 
+fn key_shift_down() -> KeyEvent {
+    KeyEvent::new(KeyCode::Down, Modifiers::SHIFT)
+}
+
 fn key_shift_tab() -> KeyEvent {
     KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT)
 }
@@ -805,6 +809,7 @@ impl Editor {
                     PaneView {
                         state: pane_buf_state,
                         jumps,
+                        tracked: Default::default(),
                         render: SecondaryMap::new(),
                     }
                 },
