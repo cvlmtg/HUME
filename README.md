@@ -35,8 +35,6 @@ HUME is my daily editor, driven by curiosity and the pure joy of hacking. Feel f
 - **Paste that does the obvious thing**. `p` reaches for what you most likely meant.
 - **Comfortable with real text**. Emoji, accents, and other multi-byte characters are treated as single characters, the way you'd expect.
 
----
-
 ## Quick start
 
 Grab the archive for your platform from the [latest release](https://github.com/cvlmtg/HUME/releases/latest):
