@@ -258,3 +258,41 @@ fn extend_around_paren_no_outer_pair_is_noop() {
         "-[(a b)]>\n"
     );
 }
+
+// ── Clusters around the delimiters ────────────────────────────────────────
+
+#[test]
+fn inner_paren_starts_after_an_opening_paren_that_carries_a_combining_mark() {
+    assert_state!(
+        "(\u{301}-[h]>i)\n",
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
+        "(\u{301}-[hi]>)\n"
+    );
+}
+
+#[test]
+fn inner_paren_ends_on_a_cluster_with_a_combining_mark() {
+    assert_state!(
+        "(-[h]>i\u{301})\n",
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
+        "(-[hi\u{301}]>)\n"
+    );
+}
+
+#[test]
+fn inner_paren_stops_before_a_prepend_char_that_joins_the_closing_paren() {
+    assert_state!(
+        "(-[h]>i\u{600})\n",
+        |(text, sels)| cmd_inner_paren(&text, sels, 0, MotionMode::Move),
+        "(-[hi]>\u{600})\n"
+    );
+}
+
+#[test]
+fn around_paren_covers_a_combining_mark_on_the_closing_paren() {
+    assert_state!(
+        "(-[h]>i)\u{301}x\n",
+        |(text, sels)| cmd_around_paren(&text, sels, 0, MotionMode::Move),
+        "-[(hi)\u{301}]>x\n"
+    );
+}

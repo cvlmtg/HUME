@@ -139,7 +139,11 @@ where
     let new_text = cs
         .apply(&text)
         .expect("edit operation produced an invalid changeset: this is a bug");
-    let new_sel_set = SelectionSet::from_vec(new_sels, primary_idx);
+    // Positions in `new_sels` are in the edited text, whose cluster
+    // boundaries the closure cannot see: an inserted combining mark can merge
+    // with the char before it, and a run ending on a mark ends inside its
+    // cluster.
+    let new_sel_set = SelectionSet::from_vec_snapped(new_sels, primary_idx, &new_text);
     new_sel_set.debug_assert_valid(&new_text);
     (new_text, new_sel_set, cs)
 }

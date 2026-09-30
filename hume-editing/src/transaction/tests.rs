@@ -98,3 +98,22 @@ fn transaction_apply_rejects_length_mismatch() {
         "unexpected error: {err}"
     );
 }
+
+#[test]
+fn transaction_apply_snaps_a_selection_left_on_a_combining_mark() {
+    // "ab\n" + U+0301 inserted after 'b' makes "ab\u{301}\n"; a plugin-built
+    // selection still pointing at the mark's offset must come back on the
+    // cluster start.
+    let text = BufferText::from("ab");
+    let mut b = ChangeSetBuilder::new(co(3));
+    b.retain(2);
+    b.insert("\u{301}");
+    b.retain_rest();
+    let cs = b.finish();
+
+    let txn = Transaction::new(cs, SelectionSet::single(Selection::collapsed(co(2))));
+    let (new_text, new_sels) = txn.apply(&text).unwrap();
+
+    assert_eq!(new_text.to_string(), "ab\u{301}\n");
+    assert_eq!(new_sels.primary().head, co(1));
+}

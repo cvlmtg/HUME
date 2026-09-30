@@ -287,3 +287,28 @@ fn wrap_multi_line_selection() {
         "\"foo\nbar-[\"]> baz\n"
     );
 }
+
+// ── Corpus ────────────────────────────────────────────────────────────────
+
+#[test]
+fn surround_paren_selects_both_parens_around_every_corpus_sample() {
+    for s in test_fixtures::unicode::ALL
+        .iter()
+        .filter(|&&s| s != test_fixtures::unicode::LONE_MARK)
+    {
+        assert_state!(
+            &format!("x\n(-[{s}]>)\n"),
+            |(text, sels)| cmd_surround_paren(&text, sels, 0, MotionMode::Move),
+            &format!("x\n-[(]>{s}-[)]>\n")
+        );
+    }
+}
+
+#[test]
+fn wrap_each_selection_wraps_a_multi_cluster_selection_whole() {
+    assert_state!(
+        "-[e\u{301}\u{1f468}\u{200d}\u{1f469}]>x\n",
+        |(text, sels)| wrap_each_selection(text, sels, '[', ']'),
+        "[e\u{301}\u{1f468}\u{200d}\u{1f469}-[]]>x\n"
+    );
+}

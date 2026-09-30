@@ -185,3 +185,50 @@ fn find_backward_at_line_start_noop() {
         "-[h]>ello\n"
     );
 }
+
+// ── Normalization and clusters ────────────────────────────────────────────
+
+#[test]
+fn find_forward_matches_a_precomposed_target_against_a_decomposed_cluster() {
+    assert_state!(
+        "-[h]>i e\u{301}x\n",
+        |(text, sels)| fwd(text, sels, '\u{e9}', FindKind::Inclusive),
+        "hi -[e\u{301}]>x\n"
+    );
+}
+
+#[test]
+fn find_forward_bare_base_char_skips_a_cluster_that_carries_a_mark() {
+    assert_state!(
+        "-[h]>e\u{301}e\n",
+        |(text, sels)| fwd(text, sels, 'e', FindKind::Inclusive),
+        "he\u{301}-[e]>\n"
+    );
+}
+
+#[test]
+fn find_backward_matches_a_precomposed_target_against_a_decomposed_cluster() {
+    assert_state!(
+        "e\u{301}xy-[z]>\n",
+        |(text, sels)| bwd(text, sels, '\u{e9}', FindKind::Inclusive),
+        "-[e\u{301}]>xyz\n"
+    );
+}
+
+#[test]
+fn find_forward_matches_a_char_that_normalizes_to_the_target() {
+    assert_state!(
+        "-[a]>\u{212a}\n",
+        |(text, sels)| fwd(text, sels, 'K', FindKind::Inclusive),
+        "a-[\u{212a}]>\n"
+    );
+}
+
+#[test]
+fn find_forward_till_stops_before_a_multi_char_cluster() {
+    assert_state!(
+        "-[h]>ie\u{301}\n",
+        |(text, sels)| fwd(text, sels, '\u{e9}', FindKind::Exclusive),
+        "h-[i]>e\u{301}\n"
+    );
+}

@@ -159,10 +159,10 @@ fn commit_changeset(
         bid,
         move |text, mut sels| {
             let text_pre = text.clone();
-            sels.translate_in_place(&cs, &text_pre);
             let new_text = cs
                 .apply(&text)
                 .expect("cs built from this buffer's own rope, just above");
+            sels.translate_in_place(&cs, &text_pre, &new_text);
             (new_text, sels, cs)
         },
     )

@@ -15,7 +15,7 @@ fn inner_quote(
     quote: char,
 ) -> Option<InclusiveRange<CharOffset>> {
     let pair = find_quote_pair(text, pos, quote)?;
-    inner_of_pair(pair)
+    inner_of_pair(text, pair)
 }
 
 macro_rules! quote_cmds {

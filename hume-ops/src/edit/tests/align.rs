@@ -303,3 +303,35 @@ fn align_extras_on_same_line_pass_through() {
         "foo -[x]>\na   -[b]> -[c]>\n"
     );
 }
+
+// ── Wide chars, tabs and clusters ─────────────────────────────────────────
+
+#[test]
+fn align_counts_a_wide_char_as_two_columns() {
+    // '=' after "漢" sits at col 2; '=' after "a" at col 1 needs one space.
+    assert_state!(
+        "\u{6f22}-[=]>1\na-[=]>2\n",
+        |(text, sels)| align_selections(text, sels, 4),
+        "\u{6f22}-[=]>1\na -[=]>2\n"
+    );
+}
+
+#[test]
+fn align_counts_a_combining_cluster_as_one_column() {
+    // "e◌́" is one column, so "e◌́=" and "a=" are already aligned.
+    assert_state!(
+        "e\u{301}-[=]>1\na-[=]>2\n",
+        |(text, sels)| align_selections(text, sels, 4),
+        "e\u{301}-[=]>1\na-[=]>2\n"
+    );
+}
+
+#[test]
+fn align_measures_a_tab_before_a_wide_char_by_display_column() {
+    // "\t漢=" puts '=' at col 6 with tab_width 4; "abcdef=" at col 6: aligned.
+    assert_state!(
+        "\t\u{6f22}-[=]>1\nabcdef-[=]>2\n",
+        |(text, sels)| align_selections(text, sels, 4),
+        "\t\u{6f22}-[=]>1\nabcdef-[=]>2\n"
+    );
+}

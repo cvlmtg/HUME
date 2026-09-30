@@ -105,3 +105,12 @@ fn around_backtick_basic() {
         "-[`hello`]>\n"
     );
 }
+
+#[test]
+fn inner_double_quote_starts_after_an_opening_quote_that_carries_a_combining_mark() {
+    assert_state!(
+        "\"\u{301}-[a]>b\"\n",
+        |(text, sels)| cmd_inner_double_quote(&text, sels, 0, MotionMode::Move),
+        "\"\u{301}-[ab]>\"\n"
+    );
+}

@@ -1,5 +1,4 @@
 use super::super::*;
-use hume_rope::offset::InclusiveRange;
 use test_fixtures::assert_state;
 
 // `inner_argument`/`around_argument` register from `register_structural`
@@ -371,8 +370,8 @@ fn cmd_around_from_inner(
     _mode: MotionMode,
 ) -> SelectionSet {
     sels.map(|sel| {
-        let range = around_from_inner(text, InclusiveRange::new(sel.start(), sel.end()));
-        Selection::new(range.start, range.end)
+        let range = around_from_inner(text, sel.span(text));
+        Selection::from_span(range, true, text)
     })
 }
 
@@ -446,5 +445,47 @@ fn extend_inner_argument_basic() {
         "foo(aaa, -[b]>bb, ccc)\n",
         |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Extend),
         "foo(aaa, -[bbb]>, ccc)\n"
+    );
+}
+
+#[test]
+fn inner_argument_ending_on_a_combining_mark_covers_the_whole_cluster() {
+    assert_state!(
+        "f(-[a\u{301}]>, b)\n",
+        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        "f(-[a\u{301}]>, b)\n"
+    );
+}
+
+#[test]
+fn around_argument_after_a_comma_that_carries_a_combining_mark_starts_on_the_next_arg() {
+    assert_state!(
+        "f(a,\u{301} -[b]>)\n",
+        |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+        "f(a,\u{301} -[b]>)\n"
+    );
+}
+
+#[test]
+fn inner_argument_selects_exactly_each_corpus_sample() {
+    use test_fixtures::unicode::{ALL, IDEO_SPACE, LONE_MARK, NBSP};
+    for s in ALL
+        .iter()
+        .filter(|&&s| s != LONE_MARK && s != NBSP && s != IDEO_SPACE)
+    {
+        assert_state!(
+            &format!("f(a, -[{s}]>, c)\n"),
+            |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),
+            &format!("f(a, -[{s}]>, c)\n")
+        );
+    }
+}
+
+#[test]
+fn around_argument_takes_the_separator_and_keeps_a_wide_argument_whole() {
+    assert_state!(
+        "f(a, -[\u{6f22}\u{5b57}]>, c)\n",
+        |(text, sels)| cmd_around_argument(&text, sels, 0, MotionMode::Move),
+        "f(a-[, \u{6f22}\u{5b57}]>, c)\n"
     );
 }

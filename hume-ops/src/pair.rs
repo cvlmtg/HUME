@@ -303,7 +303,7 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
         Some((i, o, c))
     };
     let head = sel.head();
-    let span = if text.char_to_line(sel.start()) == text.char_to_line(sel.end()) {
+    let span = if text.char_to_line(sel.start()) == text.char_to_line(sel.end_inclusive(text)) {
         ExclusiveRange::new(sel.start(), sel.end_exclusive(text))
     } else {
         ExclusiveRange::new(head, next_grapheme_boundary(text, head))

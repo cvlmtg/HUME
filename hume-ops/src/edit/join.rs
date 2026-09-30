@@ -2,7 +2,7 @@
 //! the inserted spaces.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{line_break_char, next_line_start};
+use hume_editing::lines::{leading_whitespace_end, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
@@ -57,19 +57,8 @@ pub fn join_lines_select_spaces(
         for line_idx in start_line.index()..end_line.index() {
             let line = ContentLine::new(line_idx);
             let nl_pos = line_break_char(text, line);
-            let next_start = next_line_start(text, line.into());
             let next_end_excl = next_line_start(text, line.advance(1).into());
-
-            let content_start = {
-                let mut p = next_start;
-                while p < next_end_excl {
-                    match text.char_at(p) {
-                        Some(c) if c == ' ' || c == '\t' => p = p.shift(1),
-                        _ => break,
-                    }
-                }
-                p
-            };
+            let content_start = leading_whitespace_end(text, line.advance(1));
 
             let is_blank = content_start >= next_end_excl.retreat(1);
 

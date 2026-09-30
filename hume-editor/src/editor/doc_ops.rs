@@ -116,7 +116,7 @@ fn finish_edit(
     text_pre: &BufferText,
     rope_pre: &ropey::Rope,
 ) {
-    pane_state[pane_id][buf_id].set_selections(new_sels);
+    pane_state[pane_id][buf_id].set_selections(new_sels, buffers.get(buf_id).text());
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
     // `set_text` for it directly, and `commit_edit_group` never records it as
     // a revision for `undo`/`redo` to later replay, so `text_gen` did not
@@ -137,8 +137,16 @@ fn finish_edit(
     // otherwise rebuild the same `Vec` from `cs` (once per sibling pane here,
     // once per pane per jump-list entry there).
     let edits = cs.edited_old_ranges();
-    propagate_cs_to_panes(pane_state, pane_id, buf_id, &edits, cs, text_pre);
     let buf = buffers.get(buf_id);
+    propagate_cs_to_panes(
+        pane_state,
+        pane_id,
+        buf_id,
+        &edits,
+        cs,
+        text_pre,
+        buf.text(),
+    );
     let text_gen = buf.text_gen;
     pane_jumps.translate(buf_id, &edits, cs, text_pre, buf.text());
     record_syntax_edits(buffers, buf_id, text_gen, cs, rope_pre);
@@ -480,7 +488,7 @@ pub(in crate::editor) fn apply_doc_motion(
         let sels = pane_state[pane_id][buf_id].take_selections();
         f(text, sels)
     };
-    pane_state[pane_id][buf_id].restore_selections(new_sels, old_head);
+    pane_state[pane_id][buf_id].restore_selections(new_sels, old_head, buffers.get(buf_id).text());
 }
 
 /// Open an Insert-kind session on `(pane_id, buf_id)`, always the focused
@@ -611,6 +619,8 @@ pub(in crate::editor) fn commit_edit_group(
 /// `text_pre` must be the buffer text **before** the edit. `translate_in_place_with`
 /// uses it to identify which line each head was on pre-edit, which governs
 /// whether `Selection.sticky_display_col` is reset after the translation.
+/// `text_post` is the text after the edit, which the mapped selections are
+/// snapped against.
 /// `edits` must be `cs.edited_old_ranges()`; see `finish_edit` for why it's
 /// computed there instead of here.
 ///
@@ -625,6 +635,7 @@ pub(in crate::editor::doc_ops) fn propagate_cs_to_panes(
     edits: &[ExclusiveRange<CharOffset>],
     cs: &ChangeSet,
     text_pre: &hume_editing::text::BufferText,
+    text_post: &hume_editing::text::BufferText,
 ) {
     // Collect IDs first; can't iterate and mutate the same SecondaryMap.
     let affected: Vec<PaneId> = pane_state
@@ -634,6 +645,6 @@ pub(in crate::editor::doc_ops) fn propagate_cs_to_panes(
         })
         .collect();
     for pid in affected {
-        pane_state[pid][buf_id].translate_selections_in_place(edits, cs, text_pre);
+        pane_state[pid][buf_id].translate_selections_in_place(edits, cs, text_pre, text_post);
     }
 }

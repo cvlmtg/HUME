@@ -47,12 +47,12 @@ impl Transaction {
         let new_text = self.changes.apply(text)?;
         self.selection.validate(new_text.len_chars())?;
         // Canonicalize before handing the set to the editor: a plugin-built
-        // Transaction can carry unsorted or overlapping selections, which
-        // downstream code only debug-asserts against. Identity on sets that
-        // are already canonical (every internally-built one), so undo/redo
-        // round-trips are unaffected.
+        // Transaction can carry unsorted, overlapping or cluster-splitting
+        // selections, which downstream code only debug-asserts against.
+        // Identity on sets that are already canonical (every internally-built
+        // one), so undo/redo round-trips are unaffected.
         let mut sels = self.selection.clone();
-        sels.merge_overlapping_in_place();
+        sels.snap_to_clusters(&new_text);
         Ok((new_text, sels))
     }
 

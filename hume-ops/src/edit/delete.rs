@@ -208,7 +208,7 @@ pub fn delete_selection(
 pub fn change_span(text: &BufferText, sel: &Selection) -> ExclusiveRange<CharOffset> {
     let start = sel.start();
     let stop = if sel.ends_on_newline(text) {
-        sel.end() // stop before the '\n': `c` clears line content but keeps the line
+        sel.end_inclusive(text) // stop before the '\n': `c` clears line content but keeps the line
     } else {
         sel.end_exclusive(text)
     };

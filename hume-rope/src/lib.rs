@@ -17,7 +17,11 @@
 //!
 //! Ropey is compiled without `cr_lines` and `unicode_lines`, so lines split on
 //! `\n` alone and `\r` (like VT, FF, NEL, LS, PS) is ordinary content. Line
-//! terminator logic here is therefore single-char.
+//! terminator logic here is therefore single-char. `BufferText` normalizes
+//! every line ending to `\n`, so a `\r` never reaches the functions that
+//! resolve a line's last grapheme cluster (`line_last_char`,
+//! `char_pos_at_display_col`): a `\r\n` cluster would straddle the
+//! terminator, and they debug-assert against it.
 
 #![deny(rustdoc::broken_intra_doc_links)]
 

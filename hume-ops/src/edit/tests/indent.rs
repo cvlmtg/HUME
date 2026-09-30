@@ -300,3 +300,22 @@ fn unindent_then_indent_does_not_round_trip_below_one_level() {
         "    -[f]>oo\n"
     );
 }
+
+#[test]
+fn indent_replaces_a_non_breaking_space_indent_by_its_display_width() {
+    // Two NBSP are two columns; one more soft level of 4 makes six spaces.
+    assert_state!(
+        "\u{a0}\u{a0}-[f]>oo\n",
+        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        "      -[f]>oo\n"
+    );
+}
+
+#[test]
+fn indent_treats_a_space_with_a_combining_mark_as_one_indent_column() {
+    assert_state!(
+        " \u{301}-[f]>oo\n",
+        |(text, sels)| indent_lines(text, sels, TabStyle::Soft, 4, 1),
+        "     -[f]>oo\n"
+    );
+}

@@ -45,7 +45,7 @@ fn repeat_motion(
 fn extend_line_span(text: &BufferText, sel: Selection, forward: bool) -> Selection {
     if !is_selection_linewise(text, &sel) {
         let top_line = text.char_to_line(sel.start());
-        let bottom_line = text.char_to_line(sel.end());
+        let bottom_line = text.char_to_line(sel.end_inclusive(text));
         let end = line_break_char(text, bottom_line);
         return Selection::directed(text.line_to_char(top_line.into()), end, forward);
     }
@@ -80,7 +80,7 @@ fn extend_line_span(text: &BufferText, sel: Selection, forward: bool) -> Selecti
 /// `x` were pressed `count` times in a row: it moves, landing on a single
 /// line, rather than growing a span (that's `Ctrl-x` / [`extend_line_span`]).
 fn move_select_line(text: &BufferText, sel: Selection) -> Selection {
-    let bottom_line = text.char_to_line(sel.end());
+    let bottom_line = text.char_to_line(sel.end_inclusive(text));
     let end_excl = next_line_start(text, bottom_line.into());
     // If selection already ends on the trailing `\n`, jump to the next line.
     let target_line = if sel.ends_on_newline(text) && end_excl < text.end() {

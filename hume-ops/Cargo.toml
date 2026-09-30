@@ -19,6 +19,8 @@ regex-syntax = "0.8"
 unicode-segmentation.workspace = true
 rustc-hash.workspace = true
 termina = "0.4.0"
+unicode-normalization = "0.1.25"
+unicode_titlecase = "2.5.0"
 
 [dev-dependencies]
 test-fixtures = { path = "../test-fixtures" }

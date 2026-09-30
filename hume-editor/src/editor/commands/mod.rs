@@ -367,8 +367,9 @@ pub(super) fn set_pane_selections(
     t: CommandPane,
     sels: SelectionSet,
 ) {
+    let text = state.buffers.get(t.bid(view)).text();
     t.state_mut(&mut state.panes.state, view)
-        .set_selections(sels);
+        .set_selections(sels, text);
 }
 
 /// Replace the primary selection in `t`'s pane (merging overlaps).
@@ -378,11 +379,12 @@ pub(super) fn set_primary_selection(
     t: CommandPane,
     new_sel: hume_editing::selection::Selection,
 ) {
+    let text = state.buffers.get(t.bid(view)).text();
     let pbs = t.state_mut(&mut state.panes.state, view);
     let idx = pbs.selections().primary_index();
     let old_head = pbs.selections().primary().head();
     let sels = pbs.take_selections();
-    pbs.restore_selections(sels.replace(idx, new_sel), old_head);
+    pbs.restore_selections(sels.replace(idx, new_sel), old_head, text);
 }
 
 mod edit;

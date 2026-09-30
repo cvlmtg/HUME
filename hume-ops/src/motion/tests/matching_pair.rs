@@ -477,13 +477,13 @@ fn goto_matching_pair_abruptly_closed_comment_one_dash() {
 #[test]
 fn goto_matching_pair_lands_on_grapheme_boundary_not_mid_cluster() {
     // U+0600 (ARABIC NUMBER SIGN) is a `GC_Prepend` codepoint that joins
-    // forward with the following ')' into one grapheme cluster. The raw
-    // partner offset falls on the ')' itself (one char into that cluster),
-    // so it must snap back to the cluster's start rather than land inside it.
+    // forward with the following ')' into one grapheme cluster. The partner
+    // offset falls on the ')' itself (one char into that cluster), so the
+    // cursor lands on the cluster's start.
     assert_state!(
         "-[(]>\u{0600})\n",
         |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
-        "(-[\u{0600}]>)\n"
+        "(-[\u{0600})]>\n"
     );
 }
 
@@ -513,5 +513,59 @@ fn goto_matching_pair_ignores_count() {
         "-[(]>hello)\n",
         |(text, sels)| cmd_goto_matching_pair(&text, sels, 2, MotionMode::Move),
         "(hello-[)]>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_with_an_accented_name() {
+    assert_state!(
+        "-[<]>caf\u{e9}>x</caf\u{e9}>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<caf\u{e9}>x-[<]>/caf\u{e9}>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_with_a_decomposed_accent_in_its_name() {
+    assert_state!(
+        "-[<]>cafe\u{301}>x</cafe\u{301}>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<cafe\u{301}>x-[<]>/cafe\u{301}>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_with_a_cjk_name() {
+    assert_state!(
+        "-[<]>\u{65e5}\u{672c}>x</\u{65e5}\u{672c}>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<\u{65e5}\u{672c}>x-[<]>/\u{65e5}\u{672c}>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_self_closing_with_a_non_breaking_space_before_the_gt() {
+    assert_state!(
+        "-[<]>a><a/\u{a0}></a>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<a><a/\u{a0}>-[<]>/a>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_with_non_ascii_text_and_attributes_between() {
+    assert_state!(
+        "-[<]>p title=\"caf\u{e9}>\">\u{6f22}\u{5b57}e\u{301}</p>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "<p title=\"caf\u{e9}>\">\u{6f22}\u{5b57}e\u{301}-[<]>/p>\n"
+    );
+}
+
+#[test]
+fn goto_matching_pair_tag_close_to_open_over_a_multi_codepoint_cluster() {
+    assert_state!(
+        "<p>\u{1f468}\u{200d}\u{1f469}-[<]>/p>\n",
+        |(text, sels)| cmd_goto_matching_pair(&text, sels, 1, MotionMode::Move),
+        "-[<]>p>\u{1f468}\u{200d}\u{1f469}</p>\n"
     );
 }

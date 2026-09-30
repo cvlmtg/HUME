@@ -8,10 +8,10 @@
 //! no language at all. It's the same trade [`crate::pair`]'s lexical bracket and
 //! quote scans already make.
 //!
-//! Scans ASCII markup characters only, one char at a time via `chars_at`
-//! (never grapheme boundaries): the same sanctioned exception `pair.rs`
-//! uses, since no grapheme cluster can be mistaken for `<`, `>`, `/`, or a
-//! quote.
+//! Scans one char at a time via `chars_at` (never grapheme boundaries): the
+//! same sanctioned exception `pair.rs` uses, since no grapheme cluster can be
+//! mistaken for `<`, `>`, `/`, or a quote. Tag names are Unicode letters,
+//! digits and combining marks, plus `_ : . -`.
 //!
 //! Tag names are compared case-sensitively (XML/JSX semantics). HUME has no
 //! per-buffer markup-language config to decide HTML's case-insensitive
@@ -20,6 +20,7 @@
 use hume_editing::text::BufferText;
 use hume_rope::cursor::CharCursor;
 use hume_rope::offset::{CharOffset, InclusiveRange};
+use unicode_normalization::char::is_combining_mark;
 
 /// One parsed `<name…>`, `<name…/>`, or `</name>` construct.
 struct Tag {
@@ -35,11 +36,10 @@ fn same_name(
     a: InclusiveRange<CharOffset>,
     b: InclusiveRange<CharOffset>,
 ) -> bool {
-    // Names are ASCII-only (`parse_tag` only accepts ascii_alphanumeric plus
-    // `_`/`:`/`.`/`-`), so char length equals byte length: an exact,
-    // zero-cost rejection that skips two `RopeSlice` tree walks (`slice`'s
-    // `PartialEq` only short-circuits on `len_bytes` *after* building both)
-    // for the common case of hunting one tag name through many others.
+    // Equal names have equal char counts: a zero-cost rejection that skips
+    // two `RopeSlice` tree walks (`slice`'s `PartialEq` only short-circuits on
+    // `len_bytes` *after* building both) for the common case of hunting one
+    // tag name through many others.
     a.end.chars_since(a.start) == b.end.chars_since(b.start)
         && text.slice(a.to_exclusive()) == text.slice(b.to_exclusive())
 }
@@ -96,14 +96,18 @@ fn parse_tag(
     if closing {
         (i, ch) = cursor.next()?;
     }
-    if !(ch.is_ascii_alphabetic() || ch == '_') {
+    if !(ch.is_alphabetic() || ch == '_') {
         return None;
     }
     let name_start = i;
     let mut name_end = i;
     let (mut i, mut ch) = loop {
         match cursor.next()? {
-            (j, c) if c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '.' | '-') => {
+            (j, c)
+                if c.is_alphanumeric()
+                    || is_combining_mark(c)
+                    || matches!(c, '_' | ':' | '.' | '-') =>
+            {
                 name_end = j;
             }
             next => break next,
@@ -142,7 +146,7 @@ fn parse_tag(
                     gt_pos: i,
                 });
             }
-            c if !c.is_ascii_whitespace() => last_significant = Some(c),
+            c if !c.is_whitespace() => last_significant = Some(c),
             _ => {}
         }
         (i, ch) = cursor.next()?;

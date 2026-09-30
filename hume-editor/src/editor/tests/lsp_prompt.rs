@@ -361,9 +361,9 @@ fn symbol_under_cursor_on_a_word_char_returns_the_whole_word() {
 }
 
 #[test]
-fn symbol_under_cursor_on_a_trailing_combining_mark_returns_the_whole_word() {
+fn symbol_under_cursor_on_a_word_ending_in_a_combining_mark_returns_the_whole_word() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("foo cafe-[\u{0301}]> baz\n");
+    let mut ed = editor_from("foo caf-[e\u{0301}]> baz\n");
     assert_eq!(
         log_probe(&mut ed, tmp.path(), "(symbol-under-cursor bid)"),
         "cafe\u{0301}"

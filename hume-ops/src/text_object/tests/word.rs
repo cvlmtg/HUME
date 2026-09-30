@@ -116,10 +116,10 @@ fn inner_word_includes_combining_grapheme() {
 }
 
 #[test]
-fn inner_word_from_a_head_on_the_combining_mark_selects_the_whole_word() {
-    // The head sits on the trailing codepoint of {e◌́}, where `w` leaves it.
+fn inner_word_from_the_last_cluster_of_a_word_ending_in_a_combining_mark_selects_the_whole_word() {
+    // The head sits on the last cluster {e◌́}, where `w` leaves it.
     assert_state!(
-        "cafe-[\u{0301}]> world\n",
+        "caf-[e\u{0301}]> world\n",
         |(text, sels)| cmd_inner_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
         "-[cafe\u{0301}]> world\n"
     );
@@ -799,5 +799,50 @@ fn nearest_word_on_line_with_extra_word_char_selects_whole_run() {
             WordCtx::bare(MotionMode::Move).with_chars(WordChars::new("-"))
         ),
         "-[foo-bar]>\n"
+    );
+}
+
+#[test]
+fn nearest_word_measures_distance_in_clusters_not_chars() {
+    // A five-char family emoji cluster one cluster left of the cursor is
+    // closer than "x" two clusters to its right.
+    assert_state!(
+        "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}-[ ]> x\n",
+        |(text, sels)| cmd_select_word_nearest_on_line(
+            &text,
+            sels,
+            0,
+            WordCtx::bare(MotionMode::Move)
+        ),
+        "-[\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}]>  x\n"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn inner_uppercase_word_takes_a_whole_token_of_marked_cjk_and_emoji() {
+    assert_state!(
+        "-[c]>afe\u{301}.\u{6f22}\u{1f600} z\n",
+        |(text, sels)| cmd_inner_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        "-[cafe\u{301}.\u{6f22}\u{1f600}]> z\n"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn around_uppercase_word_takes_a_leading_no_break_space_run() {
+    assert_state!(
+        "a\u{a0}-[c]>afe\u{301}\n",
+        |(text, sels)| cmd_around_uppercase_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        "a-[\u{a0}cafe\u{301}]>\n"
+    );
+}
+
+#[test]
+fn around_word_first_on_line_takes_its_trailing_space_after_a_combining_mark() {
+    assert_state!(
+        "-[c]>afe\u{301} x\n",
+        |(text, sels)| cmd_around_word(&text, sels, 0, WordCtx::bare(MotionMode::Move)),
+        "-[cafe\u{301} ]>x\n"
     );
 }

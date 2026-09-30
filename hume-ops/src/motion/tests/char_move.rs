@@ -95,7 +95,7 @@ fn move_left_grapheme_cluster() {
     assert_state!(
         "e\u{0301}-[x]>\n",
         |(text, sels)| cmd_move_left(&text, sels, 1, MotionMode::Move),
-        "-[e]>\u{0301}x\n"
+        "-[e\u{0301}]>x\n"
     );
 }
 

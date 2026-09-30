@@ -28,6 +28,11 @@ pub fn snap_to_cluster_start(text: &BufferText, char_offset: CharOffset) -> Char
     hume_rope::grapheme::snap_to_cluster_start(text.full_slice(), char_offset)
 }
 
+/// See [`hume_rope::grapheme::is_cluster_boundary`].
+pub fn is_cluster_boundary(text: &BufferText, char_offset: CharOffset) -> bool {
+    hume_rope::grapheme::is_cluster_boundary(text.full_slice(), char_offset)
+}
+
 /// See [`hume_rope::grapheme::cluster_last_char`].
 pub fn cluster_last_char(text: &BufferText, cluster_start: CharOffset) -> CharOffset {
     hume_rope::grapheme::cluster_last_char(text.full_slice(), cluster_start)

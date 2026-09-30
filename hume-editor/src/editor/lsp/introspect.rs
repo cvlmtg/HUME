@@ -512,11 +512,7 @@ pub(in crate::editor) fn primary_range_params(
     let text = state.buffers.get(id).text();
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
-        "range": char_range_to_wire(
-            text,
-            encoding,
-            hume_rope::offset::InclusiveRange::new(sel.start(), sel.end()),
-        ),
+        "range": char_range_to_wire(text, encoding, sel.span(text)),
     }))
 }
 
@@ -556,7 +552,10 @@ pub(in crate::editor) fn linewise_ranges_params(
             char_range_to_wire(
                 text,
                 encoding,
-                hume_rope::offset::InclusiveRange::new(run[0].start(), run[run.len() - 1].end()),
+                hume_rope::offset::InclusiveRange::new(
+                    run[0].start(),
+                    run[run.len() - 1].end_inclusive(text),
+                ),
             )
         })
         .collect();

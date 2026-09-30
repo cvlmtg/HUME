@@ -17,6 +17,7 @@ mod tests {
     use crate::editor::buffer::Buffer;
     use crate::editor::tests::co;
     use hume_editing::changeset::ChangeSet;
+    use hume_editing::grapheme::{graphemes_at, is_cluster_boundary};
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     use hume_ops::edit::{
@@ -27,6 +28,7 @@ mod tests {
         cmd_select_next_uppercase_word, cmd_select_next_word, cmd_select_prev_uppercase_word,
         cmd_select_prev_word,
     };
+    use hume_ops::register::yank_selections;
     use hume_ops::selection_cmd::{
         cmd_collapse_selection_to_head, cmd_cycle_primary_backward, cmd_cycle_primary_forward,
         cmd_flip_selections, cmd_keep_primary_selection,
@@ -107,7 +109,18 @@ mod tests {
             );
         }
 
-        // SelectionSet invariant 3: sorted ascending by start().
+        // SelectionSet invariant 3: every anchor and head is a cluster start.
+        for sel in sels.iter_sorted() {
+            assert!(
+                is_cluster_boundary(text, sel.anchor()) && is_cluster_boundary(text, sel.head()),
+                "selection ({:?}, {:?}) splits a grapheme cluster of {:?}",
+                sel.anchor(),
+                sel.head(),
+                text.to_string()
+            );
+        }
+
+        // SelectionSet invariant 4: sorted ascending by start().
         let starts: Vec<_> = sels.iter_sorted().map(|s| s.start()).collect();
         for w in starts.windows(2) {
             assert!(
@@ -118,7 +131,7 @@ mod tests {
             );
         }
 
-        // SelectionSet invariant 4: no overlapping or adjacent selections.
+        // SelectionSet invariant 5: no overlapping or adjacent selections.
         // Adjacent means one ends where the next begins; both are merged.
         let mut prev_end: Option<hume_rope::offset::CharOffset> = None;
         for sel in sels.iter_sorted() {
@@ -130,70 +143,60 @@ mod tests {
                     sel.start()
                 );
             }
-            prev_end = Some(sel.end());
+            prev_end = Some(sel.end_inclusive(text));
         }
     }
 
     // ── Strategies ────────────────────────────────────────────────────────────
 
-    /// Generate a random BufferText with content up to `max_len` chars.
-    ///
-    /// Uses a small ASCII alphabet plus spaces and newlines. `BufferText::from`
-    /// normalises every line ending to LF and appends the structural trailing
-    /// `\n` if missing, so every generated buffer already satisfies the
-    /// buffer invariant.
-    fn arb_buffer(max_len: usize) -> impl Strategy<Value = BufferText> {
-        proptest::collection::vec(
-            prop_oneof![
-                3 => b'a'..=b'z',  // letters are most common
-                1 => Just(b' '),
-                1 => Just(b'\n'),
-                1 => Just(b'.'),   // punctuation for word-boundary tests
-            ],
-            0..=max_len,
-        )
-        .prop_map(|bytes| BufferText::from(String::from_utf8(bytes).unwrap().as_str()))
+    /// One piece of buffer text: an ASCII letter, blank, punctuation, or a
+    /// unicode-corpus sample (combining marks, ZWJ emoji, flags, CJK, NBSP…).
+    fn arb_atom() -> impl Strategy<Value = String> {
+        prop_oneof![
+            6 => (b'a'..=b'z').prop_map(|b| char::from(b).to_string()),
+            2 => Just(" ".to_string()),
+            2 => Just("\n".to_string()),
+            1 => Just(".".to_string()),
+            1 => Just("\t".to_string()),
+            1 => Just("\r\n".to_string()),
+            5 => proptest::sample::select(test_fixtures::unicode::ALL).prop_map(str::to_string),
+        ]
     }
 
-    /// Generate a `SelectionSet` with 1..=`max_sels` valid, non-overlapping
-    /// selections inside a buffer of length `buf_len`.
+    /// Generate a random BufferText of up to `max_atoms` atoms.
     ///
-    /// Every position is in `0..buf_len`. Positions are paired into selections
-    /// with random directionality, then sorted and de-overlapped via
-    /// `merge_overlapping`.
-    fn arb_selection_set(buf_len: usize, max_sels: usize) -> impl Strategy<Value = SelectionSet> {
-        // With only 1 valid position (a single-char buffer of just '\n'), we
-        // can only produce a single cursor at position 0.
-        if buf_len <= 1 {
-            return Just(SelectionSet::single(Selection::collapsed(co(0)))).boxed();
-        }
+    /// `BufferText::from` normalises every line ending to LF and appends the
+    /// structural trailing `\n` if missing, so every generated buffer already
+    /// satisfies the buffer invariant.
+    fn arb_buffer(max_atoms: usize) -> impl Strategy<Value = BufferText> {
+        proptest::collection::vec(arb_atom(), 0..=max_atoms)
+            .prop_map(|atoms| BufferText::from(atoms.concat().as_str()))
+    }
 
-        let n_sels = 1..=max_sels;
-        let max_pos = buf_len - 1;
+    /// The char offset of every grapheme cluster start in `text`.
+    fn cluster_starts(text: &BufferText) -> Vec<usize> {
+        graphemes_at(text, co(0))
+            .map(|cluster| cluster.start.index())
+            .collect()
+    }
 
-        n_sels
+    /// Generate a `SelectionSet` with 1..=`max_sels` selections whose anchors
+    /// and heads are drawn from `starts` (every one a cluster start),
+    /// merged into a valid set.
+    fn arb_selection_set(
+        starts: Vec<usize>,
+        max_sels: usize,
+    ) -> impl Strategy<Value = SelectionSet> {
+        let n_starts = starts.len();
+        (1..=max_sels)
             .prop_flat_map(move |n| {
-                // Generate 2*n positions in 0..buf_len and pair them up.
-                proptest::collection::vec(0..buf_len, 2 * n).prop_flat_map(move |positions| {
-                    let _ = max_pos;
-                    proptest::collection::vec(proptest::bool::ANY, n).prop_map(move |flips| {
-                        let sels: Vec<Selection> = positions
-                            .chunks(2)
-                            .zip(flips.iter())
-                            .map(|(pair, &flip)| {
-                                let (a, b) = (pair[0].min(max_pos), pair[1].min(max_pos));
-                                // Ensure anchor != head when possible so we get real
-                                // selections, but a cursor (anchor == head) is also valid.
-                                if flip {
-                                    Selection::new(co(a), co(b))
-                                } else {
-                                    Selection::new(co(b), co(a))
-                                }
-                            })
-                            .collect();
-                        // Use index 0 as primary; merge_overlapping adjusts it.
-                        SelectionSet::from_vec(sels, 0)
-                    })
+                let starts = starts.clone();
+                proptest::collection::vec((0..n_starts, 0..n_starts), n).prop_map(move |picks| {
+                    let sels: Vec<Selection> = picks
+                        .into_iter()
+                        .map(|(a, b)| Selection::new(co(starts[a]), co(starts[b])))
+                        .collect();
+                    SelectionSet::from_vec(sels, 0)
                 })
             })
             .boxed()
@@ -202,8 +205,7 @@ mod tests {
     /// Generate a random `(BufferText, SelectionSet)` pair.
     fn arb_initial_state(max_buf_len: usize) -> impl Strategy<Value = (BufferText, SelectionSet)> {
         arb_buffer(max_buf_len).prop_flat_map(|text| {
-            let buf_len = text.len_chars();
-            arb_selection_set(buf_len, 3).prop_map(move |sels| (text.clone(), sels))
+            arb_selection_set(cluster_starts(&text), 3).prop_map(move |sels| (text.clone(), sels))
         })
     }
 
@@ -221,14 +223,24 @@ mod tests {
         Redo,
     }
 
+    /// A typed char: ASCII, or a char that joins or extends a cluster
+    /// (combining mark, ZWJ, variation selector, regional indicator) or is
+    /// wide (CJK, emoji).
+    fn arb_insert_char() -> impl Strategy<Value = char> {
+        prop_oneof![
+            4 => prop_oneof![Just('a'), Just('b'), Just('c'), Just(' '), Just('\n')],
+            3 => prop_oneof![
+                Just('\u{301}'), Just('\u{200d}'), Just('\u{fe0f}'), Just('\u{1f1ee}'),
+                Just('\u{1f1f9}'), Just('\u{e9}'), Just('\u{6f22}'), Just('\u{1f600}'),
+                Just('\u{a0}'),
+            ],
+        ]
+    }
+
     fn arb_edit_op() -> impl Strategy<Value = EditOp> {
         prop_oneof![
             // Edits weighted higher than undo/redo so the history grows first.
-            4 => prop_oneof![
-                Just(b'a'), Just(b'b'), Just(b'c'),
-                Just(b' '), Just(b'\n'),
-            ]
-            .prop_map(|b| EditOp::InsertChar(b as char)),
+            4 => arb_insert_char().prop_map(EditOp::InsertChar),
             4 => Just(EditOp::DeleteCharForward),
             4 => Just(EditOp::DeleteCharBackward),
             4 => Just(EditOp::DeleteSelection),
@@ -416,9 +428,7 @@ mod tests {
         fn prop_undo_reverses_single_edit(
             (text, sels) in arb_initial_state(30),
             op in prop_oneof![
-                prop_oneof![
-                    Just(b'a'), Just(b'b'), Just(b'c'), Just(b' '), Just(b'\n'),
-                ].prop_map(|b| EditOp::InsertChar(b as char)),
+                arb_insert_char().prop_map(EditOp::InsertChar),
                 Just(EditOp::DeleteCharForward),
                 Just(EditOp::DeleteCharBackward),
                 Just(EditOp::DeleteSelection),
@@ -441,9 +451,7 @@ mod tests {
         fn prop_undo_redo_identity(
             (text, sels) in arb_initial_state(30),
             op in prop_oneof![
-                prop_oneof![
-                    Just(b'a'), Just(b'b'), Just(b'c'), Just(b' '), Just(b'\n'),
-                ].prop_map(|b| EditOp::InsertChar(b as char)),
+                arb_insert_char().prop_map(EditOp::InsertChar),
                 Just(EditOp::DeleteCharForward),
                 Just(EditOp::DeleteCharBackward),
                 Just(EditOp::DeleteSelection),
@@ -470,9 +478,7 @@ mod tests {
             // Only plain edits (no undo/redo), so undo count == edit count.
             ops in proptest::collection::vec(
                 prop_oneof![
-                    prop_oneof![
-                        Just(b'a'), Just(b'b'), Just(b'c'), Just(b' '), Just(b'\n'),
-                    ].prop_map(|b| EditOp::InsertChar(b as char)),
+                    arb_insert_char().prop_map(EditOp::InsertChar),
                     Just(EditOp::DeleteCharForward),
                     Just(EditOp::DeleteCharBackward),
                     Just(EditOp::DeleteSelection),
@@ -495,6 +501,48 @@ mod tests {
 
             prop_assert_eq!(doc.text().to_string(), original_content);
             prop_assert_eq!(doc.sels.clone(), original_sels);
+        }
+
+        /// Snapping arbitrary positions to clusters gives a valid,
+        /// cluster-aligned set, and snapping it again changes nothing.
+        #[test]
+        fn prop_snap_to_clusters_is_valid_and_idempotent(
+            text in arb_buffer(30),
+            picks in proptest::collection::vec((0usize..500, 0usize..500), 1..=3),
+        ) {
+            let len = text.len_chars();
+            let raw: Vec<Selection> = picks
+                .into_iter()
+                .map(|(a, b)| Selection::new(co(a % len), co(b % len)))
+                .collect();
+            let mut set = SelectionSet::from_vec_unchecked(raw, 0);
+            set.snap_to_clusters(&text);
+            assert_invariants(&text, &set);
+            let mut again = set.clone();
+            again.snap_to_clusters(&text);
+            prop_assert_eq!(again, set);
+        }
+
+        /// Yanking returns the grapheme clusters each selection
+        /// covers, in sorted order.
+        #[test]
+        fn prop_yank_returns_the_covered_clusters(
+            (text, sels) in arb_initial_state(30),
+        ) {
+            let clusters: Vec<_> = graphemes_at(&text, co(0)).collect();
+            let chars: Vec<char> = text.to_string().chars().collect();
+            let expected: Vec<String> = sels
+                .iter_sorted()
+                .map(|sel| {
+                    let last = sel.end_inclusive(&text);
+                    clusters
+                        .iter()
+                        .filter(|c| c.start >= sel.start() && c.start <= last)
+                        .flat_map(|c| chars[c.start.index()..c.end.index()].iter())
+                        .collect()
+                })
+                .collect();
+            prop_assert_eq!(yank_selections(&text, &sels), expected);
         }
 
         /// Interleaved edits and undos must never violate invariants at any

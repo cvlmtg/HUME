@@ -3,7 +3,7 @@ use regex_cursor::engines::meta::Regex;
 use crate::MotionMode;
 use crate::search::find_matches_in_range;
 use crate::text_object::trim_blank;
-use hume_editing::lines::line_content_end;
+use hume_editing::lines::line_last_char;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::offset::InclusiveRange;
@@ -34,10 +34,9 @@ pub fn cmd_split_selection_on_newlines(
     let mut piece_start: Vec<usize> = Vec::new();
 
     for sel in sels.iter_sorted() {
-        let start = sel.start();
-        let end = sel.end();
-        let start_line = text.char_to_line(start);
-        let end_line = text.char_to_line(end);
+        let span = sel.span(text);
+        let start_line = text.char_to_line(span.start);
+        let end_line = text.char_to_line(span.end);
         let forward = sel.anchor() <= sel.head();
 
         let first_piece_idx = new_sels.len();
@@ -47,8 +46,9 @@ pub fn cmd_split_selection_on_newlines(
             new_sels.push(*sel);
         } else {
             // First line piece: from selection start to end of line content.
-            let first_end = line_content_end(text, start_line);
-            let sel = Selection::directed(start, first_end, forward);
+            let first_end = line_last_char(text, start_line);
+            let sel =
+                Selection::from_span(InclusiveRange::new(span.start, first_end), forward, text);
             new_sels.push(sel);
 
             // Middle lines: full lines. Bare-`usize` range, `ContentLine`
@@ -59,14 +59,14 @@ pub fn cmd_split_selection_on_newlines(
             for line_idx in start_line.advance(1).index()..end_line.index() {
                 let line = hume_rope::line::ContentLine::new(line_idx);
                 let ls = text.line_to_char(line.into());
-                let le = line_content_end(text, line);
-                let sel = Selection::directed(ls, le, forward);
+                let le = line_last_char(text, line);
+                let sel = Selection::from_span(InclusiveRange::new(ls, le), forward, text);
                 new_sels.push(sel);
             }
 
             // Last line piece: from line start to selection end.
             let last_ls = text.line_to_char(end_line.into());
-            let sel = Selection::directed(last_ls, end, forward);
+            let sel = Selection::from_span(InclusiveRange::new(last_ls, span.end), forward, text);
             new_sels.push(sel);
         }
 
@@ -112,7 +112,7 @@ pub fn sift_matches_within(
         );
 
         for span in matches {
-            new_sels.push(Selection::new(span.start, span.end));
+            new_sels.push(Selection::from_span(span, true, text));
         }
 
         // Primary = first match within the original primary selection.
@@ -149,8 +149,8 @@ pub fn cmd_trim_selection_whitespace(
     let new_sels = sels.map(|sel| {
         let forward = sel.anchor() <= sel.head();
 
-        match trim_blank(text, InclusiveRange::new(sel.start(), sel.end())) {
-            Some(range) => Selection::directed(range.start, range.end, forward),
+        match trim_blank(text, sel.span(text)) {
+            Some(range) => Selection::from_span(range, forward, text),
             None => Selection::collapsed(sel.head()),
         }
     });

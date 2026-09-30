@@ -1342,3 +1342,35 @@ fn word_runs_matches_a_plain_string_segmentation_on_unicode_text() {
         }
     }
 }
+
+// ── WORD motions over clusters ────────────────────────────────────────────
+
+#[test]
+#[allow(non_snake_case)]
+fn select_next_uppercase_word_takes_a_whole_token_of_accented_cjk_and_emoji() {
+    assert_state!(
+        "-[a]> e\u{301}.\u{6f22}\u{1f600} z\n",
+        |(text, sels)| cmd_select_next_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::bare(MotionMode::Move)
+        ),
+        "a -[e\u{301}.\u{6f22}\u{1f600}]> z\n"
+    );
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn select_prev_uppercase_word_takes_a_whole_token_ending_in_a_combining_mark() {
+    assert_state!(
+        "x.e\u{301} -[b]>\n",
+        |(text, sels)| cmd_select_prev_uppercase_word(
+            &text,
+            sels,
+            1,
+            WordCtx::bare(MotionMode::Move)
+        ),
+        "-[x.e\u{301}]> b\n"
+    );
+}

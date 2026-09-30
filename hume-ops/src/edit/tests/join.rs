@@ -76,3 +76,21 @@ fn join_lines_cursor_on_last_line_noop() {
         "1\n2\n3\n4\n-[5]>\n"
     );
 }
+
+#[test]
+fn join_lines_skips_an_indent_cluster_made_of_a_space_and_a_combining_mark() {
+    assert_state!(
+        "-[a]>\n \u{301}b\n",
+        |(text, sels)| join_lines_select_spaces(text, sels),
+        "a-[ ]>b\n"
+    );
+}
+
+#[test]
+fn join_lines_drops_a_non_breaking_space_indent() {
+    assert_state!(
+        "-[a]>\n\u{a0}\u{3000}b\n",
+        |(text, sels)| join_lines_select_spaces(text, sels),
+        "a-[ ]>b\n"
+    );
+}

@@ -193,13 +193,12 @@ fn sort_compound_key_from_two_selections_on_one_line() {
 
 #[test]
 fn sort_preserves_combining_grapheme_clusters_through_remap() {
-    // `sel.end_inclusive` extends a collapsed cursor on 'e' through the
-    // combining acute accent that follows it, so the key ("e\u{0301}") and
-    // the post-sort remap both cover the whole grapheme, not just 'e'.
+    // A cursor on {e\u{0301}} covers the whole cluster, so the key
+    // ("e\u{0301}") and the post-sort remap include the accent.
     assert_state!(
-        "-[e]>\u{0301}\n-[a]>\n",
+        "-[e\u{0301}]>\n-[a]>\n",
         |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
-        "-[a]>\n-[e]>\u{0301}\n"
+        "-[a]>\n-[e\u{0301}]>\n"
     );
 }
 
@@ -213,5 +212,36 @@ fn sort_blank_line_inside_a_run_gets_an_empty_key_and_sorts_first() {
         "-[b\n\na\n]>",
         |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[\na\nb\n]>"
+    );
+}
+
+#[test]
+fn sort_orders_a_line_with_a_trailing_combining_mark_after_its_bare_twin() {
+    assert_state!(
+        "-[e\u{301}\ne]>\n",
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        "-[e\ne\u{301}]>\n"
+    );
+}
+
+#[test]
+fn sort_treats_precomposed_and_decomposed_text_as_equal_keys() {
+    assert_state!(
+        "-[\u{e9}\ne\u{301}\na]>\n",
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
+        "-[a\n\u{e9}\ne\u{301}]>\n"
+    );
+}
+
+#[test]
+fn sort_insensitive_treats_a_capital_and_a_decomposed_lowercase_as_equal_keys() {
+    let opts = SortOpts {
+        insensitive: true,
+        ..SortOpts::default()
+    };
+    assert_state!(
+        "-[\u{c9}\ne\u{301}\na]>\n",
+        |(text, sels)| sort_lines(text, sels, opts).unwrap(),
+        "-[a\n\u{c9}\ne\u{301}]>\n"
     );
 }

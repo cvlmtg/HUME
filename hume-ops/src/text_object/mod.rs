@@ -1,4 +1,6 @@
-use hume_editing::grapheme::{graphemes_at, next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{
+    cluster_last_char, graphemes_at, prev_grapheme_boundary, snap_to_cluster_start,
+};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::blank_class;
@@ -52,7 +54,7 @@ pub(crate) fn apply_text_object(
     text_object: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
 ) -> SelectionSet {
     let result = sels.map(|sel| match text_object(text, sel.head()) {
-        Some(range) => Selection::new(range.start, range.end),
+        Some(range) => Selection::from_span(range, true, text),
         None => sel,
     });
     result.debug_assert_valid(text);
@@ -81,19 +83,19 @@ pub(crate) fn apply_text_object_extend(
 
         // First try from head (correct for initial extend from a cursor).
         if let Some(found) = text_object(text, sel.head()) {
-            let grown = sel.union_span(found, forward);
-            if grown.start() != sel.start() || grown.end() != sel.end() {
+            let grown = sel.union_span(found, forward, text);
+            if grown.span(text) != sel.span(text) {
                 return grown;
             }
         }
 
         // Result was a subset (no growth). Retry from one past the selection end so
         // bracket/quote searches find the enclosing pair rather than the current one.
-        let past_end = next_grapheme_boundary(text, sel.end());
+        let past_end = sel.end_exclusive(text);
         if past_end < text.end()
             && let Some(found) = text_object(text, past_end)
         {
-            return sel.union_span(found, forward);
+            return sel.union_span(found, forward, text);
         }
 
         sel
@@ -126,8 +128,14 @@ pub fn apply_text_object_by_mode(
 #[cfg(test)]
 mod tests;
 
+/// The last char before the cluster holding the closing delimiter at `close`.
+pub(super) fn before_delimiter(text: &BufferText, close: CharOffset) -> CharOffset {
+    snap_to_cluster_start(text, close).retreat(1)
+}
+
 /// Shrinks `range` inward until both ends sit on non-blank chars (per
-/// [`blank_class`]). `None` if the whole range is blank.
+/// [`blank_class`]). `None` if the whole range is blank. The result's end is
+/// the last char of its last cluster.
 pub(crate) fn trim_blank(
     text: &BufferText,
     range: InclusiveRange<CharOffset>,
@@ -138,9 +146,9 @@ pub(crate) fn trim_blank(
     if start > range.end {
         return None;
     }
-    let mut end = range.end;
-    while end > start && text.char_at(end).is_some_and(|c| blank_class(c).is_some()) {
-        end = prev_grapheme_boundary(text, end);
+    let mut last = snap_to_cluster_start(text, range.end);
+    while last > start && text.char_at(last).is_some_and(|c| blank_class(c).is_some()) {
+        last = prev_grapheme_boundary(text, last);
     }
-    Some(InclusiveRange::new(start, end))
+    Some(InclusiveRange::new(start, cluster_last_char(text, last)))
 }

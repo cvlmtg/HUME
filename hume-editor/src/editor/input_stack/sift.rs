@@ -33,7 +33,8 @@ impl Layer for SiftLayer {
         self.snap.capture(state, view);
     }
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
-        self.snap.take_restore(&mut state.panes.state, view);
+        self.snap
+            .take_restore(&mut state.panes.state, &state.buffers, view);
         // Sift has no history ring of its own (`begin_session_all`
         // only touches the command/search rings, so this is a no-op
         // for Sift), but every other minibuf-backed mode's teardown
@@ -130,5 +131,6 @@ fn restore_sift_snapshot(ed: &mut Editor, r: LayerRef) {
     let Some(sift) = ed.state.input.at::<SiftLayer>(r) else {
         return;
     };
-    sift.snap.restore(&mut ed.state.panes.state, &ed.view);
+    sift.snap
+        .restore(&mut ed.state.panes.state, &ed.state.buffers, &ed.view);
 }

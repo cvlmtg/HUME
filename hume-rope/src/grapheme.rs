@@ -207,6 +207,24 @@ pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> C
     prev_grapheme_boundary(slice, next_grapheme_boundary(slice, char_offset))
 }
 
+/// Whether `char_offset` is a cluster boundary: the start of a cluster, or the
+/// end of the slice.
+///
+/// Two adjacent ASCII chars are always a boundary except for `\r\n`, which
+/// answers without a grapheme walk. Any non-ASCII neighbour takes the walk:
+/// a Prepend char before an ASCII base glues to it.
+pub fn is_cluster_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> bool {
+    if char_offset.index() == 0 || char_offset.index() >= slice.len_chars() {
+        return true;
+    }
+    let prev = slice.char(char_offset.retreat(1).index());
+    let next = slice.char(char_offset.index());
+    if prev.is_ascii() && next.is_ascii() {
+        return !(prev == '\r' && next == '\n');
+    }
+    snap_to_cluster_start(slice, char_offset) == char_offset
+}
+
 /// Last codepoint of the grapheme cluster starting at `cluster_start`: the
 /// inverse of [`snap_to_cluster_start`], and the inclusive counterpart to
 /// [`next_grapheme_boundary`]'s exclusive one.
@@ -359,6 +377,9 @@ pub fn display_col_in_line(
 /// its removable-run cell target back to a char position, padding any
 /// resulting overshoot with spaces.
 ///
+/// The text must be LF-normalized: a `\r\n` is one grapheme cluster, so the
+/// walk could not tell where the line ends.
+///
 /// The walk never leaves the line: a `target_display_col` beyond the line's
 /// width stops on the line's `\n`. A caller that wants a cursor position
 /// clamped back onto the last real character instead (vertical motion's
@@ -377,6 +398,10 @@ pub fn char_pos_at_display_col(
     let mut display_col = BufferLineCol::new(0);
     let mut pos = line_start;
     for cluster in graphemes_at(slice, line_start) {
+        debug_assert!(
+            cluster.first != '\r',
+            "char_pos_at_display_col: text must be LF-normalized, found a '\\r'"
+        );
         if cluster.first == '\n' {
             break; // end of line: never walk onto the next line
         }

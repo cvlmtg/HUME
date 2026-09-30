@@ -26,10 +26,17 @@
 - `on-lsp-notification` is now a hook: `(register-hook! 'on-lsp-notification (lambda (server method params) ...))`, called for every notification HUME doesn't handle itself, with the method as a new second argument. Like any hook, a plugin that fails to load has its handlers removed. To handle only specific methods, use `(register-lsp-notification-hook! '("method/a" "method/b") (lambda (server method params) ...))`; a single method can be passed as a plain string.
 
 ### Plugins
+- `buffer-selections` reports each `'anchor` and `'head` as the start of a character (a base letter with its combining marks, an emoji sequence, or a flag counts as one).
 - `core:buffer-words` now indexes 100 lines on each side of the cursor per background step by default, instead of 200, halving the pause a step can cause in a file with very long lines.
 
 ### Commands
 - `:e path:line[:col]` jumps to a position on open, matching `hume path:line:col` on the command line.
+- A selection never ends between a letter and its combining mark, or inside an emoji sequence or a flag: text objects, motions, edits, search matches, `:sort`, join, paste and undo all keep whole characters. This fixes `mi(`/`mi"` next to a delimiter that carries a mark, `J` over an indent that carries a mark, `:sort` dropping a trailing mark from its key, and argument objects after a comma that carries a mark.
+- `f`/`t`/`F`/`T` match a typed character against both its composed and decomposed forms (`é` finds `e` followed by a combining accent), and a typed `e` skips an accented one.
+- `:sort` treats composed and decomposed text as equal.
+- `G C` capitalizes with title case (`ǆ` becomes `ǅ`, `ﬁ` becomes `Fi`).
+- `#` matches tags whose names contain non-ASCII letters, and tags with a no-break space before the closing `>`.
+- No-break and ideographic spaces count as indentation for `g s`, `J`, auto-indent, and `>`/`<`, which rewrite such an indent with spaces or tabs.
 
 ### Theming
 - `gruvbox_light`'s picker cursor now matches upstream's reversed style, instead of the parent theme's explicit colors.

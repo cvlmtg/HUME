@@ -387,3 +387,61 @@ fn truncate_suffix_to_width_drops_a_whole_wide_cluster_that_would_overshoot() {
 fn truncate_suffix_to_width_zero_budget_is_empty() {
     assert_eq!(truncate_suffix_to_width("abc", 0), ("", 0));
 }
+
+#[test]
+fn indent_depth_counts_non_breaking_and_ideographic_spaces() {
+    assert_eq!(indent_depth("\u{a0}\u{a0}\u{a0}\u{a0}x", 4), 1);
+    assert_eq!(indent_depth("\u{3000}\u{3000}x", 4), 1);
+}
+
+// ── Corpus coverage ───────────────────────────────────────────────────────
+
+#[test]
+fn grapheme_width_of_single_cluster_samples() {
+    use test_fixtures::unicode::*;
+    for (sample, expected) in [
+        (PRECOMPOSED, 1),
+        (COMBINING, 1),
+        (STACKED, 1),
+        (CJK, 2),
+        (FULLWIDTH, 2),
+        (ASTRAL, 2),
+        (FLAG_IT, 2),
+        (ZWJ_FAMILY, 2),
+        (SKIN_TONE, 2),
+        (NBSP, 1),
+        (IDEO_SPACE, 2),
+    ] {
+        assert_eq!(grapheme_width(sample, 0, 4), expected, "{sample:?}");
+    }
+}
+
+#[test]
+fn str_width_sums_clusters_not_chars() {
+    use test_fixtures::unicode::*;
+    assert_eq!(str_width(&format!("{COMBINING}x"), 0, 4), 2);
+    assert_eq!(str_width(&format!("{ZWJ_FAMILY}x"), 0, 4), 3);
+    assert_eq!(str_width(&format!("{FLAG_RUN}x"), 0, 4), 5);
+    assert_eq!(str_width(&format!("{CJK}{FULLWIDTH}"), 0, 4), 4);
+}
+
+#[test]
+fn truncate_suffix_to_width_never_splits_a_cluster() {
+    use test_fixtures::unicode::*;
+    let s = format!("ab{COMBINING}");
+    assert_eq!(truncate_suffix_to_width(&s, 1), (COMBINING, 1));
+    let s = format!("ab{ZWJ_FAMILY}");
+    assert_eq!(truncate_suffix_to_width(&s, 2), (ZWJ_FAMILY, 2));
+    assert_eq!(truncate_suffix_to_width(&s, 1), ("", 0));
+    let s = format!("x{CJK}");
+    assert_eq!(truncate_suffix_to_width(&s, 1), ("", 0));
+}
+
+#[test]
+fn truncate_to_width_never_splits_a_cluster() {
+    use test_fixtures::unicode::*;
+    let s = format!("{COMBINING}bc");
+    assert_eq!(truncate_to_width(&s, 2, 4), (&s[..s.len() - 1], 2));
+    let s = format!("{ZWJ_FAMILY}b");
+    assert_eq!(truncate_to_width(&s, 1, 4), ("", 0));
+}

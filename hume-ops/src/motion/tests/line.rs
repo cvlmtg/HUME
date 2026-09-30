@@ -120,7 +120,7 @@ fn goto_first_nonblank_from_middle() {
 #[test]
 fn goto_first_nonblank_steps_over_a_marked_space_as_one_cluster() {
     assert_state!(
-        "-[ ]>\u{301}x\n",
+        "-[ \u{301}]>x\n",
         |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
         " \u{301}-[x]>\n"
     );
@@ -259,5 +259,32 @@ fn extend_first_nonblank_from_indent() {
         "-[ ]> hello\n",
         |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Extend),
         "-[  h]>ello\n"
+    );
+}
+
+#[test]
+fn goto_first_nonblank_skips_non_breaking_and_ideographic_spaces() {
+    assert_state!(
+        "-[\u{a0}]>\u{3000}x\n",
+        |(text, sels)| cmd_goto_first_nonblank(&text, sels, 1, MotionMode::Move),
+        "\u{a0}\u{3000}-[x]>\n"
+    );
+}
+
+#[test]
+fn goto_line_newline_lands_on_the_newline_after_a_cluster() {
+    assert_state!(
+        "-[a]>e\u{301}\n",
+        |(text, sels)| cmd_goto_line_newline(&text, sels, 1, MotionMode::Move),
+        "ae\u{301}-[\n]>"
+    );
+}
+
+#[test]
+fn goto_line_end_lands_on_the_start_of_a_multi_codepoint_last_cluster() {
+    assert_state!(
+        "-[a]>\u{1f468}\u{200d}\u{1f469}\n",
+        |(text, sels)| cmd_goto_line_end(&text, sels, 1, MotionMode::Move),
+        "a-[\u{1f468}\u{200d}\u{1f469}]>\n"
     );
 }

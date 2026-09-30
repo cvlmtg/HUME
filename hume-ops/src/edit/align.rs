@@ -3,7 +3,7 @@
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::{char_pos_at_display_col, display_col_in_line};
-use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::column::BufferLineCol;
 use hume_rope::line::ContentLine;
@@ -207,7 +207,6 @@ pub fn align_selections(
     apply_edit(text, sels, |b, text, i, sel, new_sels| {
         let sel_start = sel.start();
         let content_len = sel.end_exclusive(text).chars_since(sel_start);
-        let forward = sel.anchor() <= sel.head();
         let start_line = text.char_to_line(sel_start);
 
         if Some(start_line) != current_line {
@@ -223,9 +222,7 @@ pub fn align_selections(
                 b.retain(sel_start.chars_since(b.old_pos()));
                 let delta = b.new_pos().index() as isize - b.old_pos().index() as isize;
                 b.retain(content_len);
-                let new_anchor = sel.anchor().shift(delta);
-                let new_head = sel.head().shift(delta);
-                new_sels.push(Selection::new(new_anchor, new_head));
+                new_sels.push(sel.map_ends(|pos| pos.shift(delta)));
             }
             Some(slot) => {
                 let target = targets[slot];
@@ -282,13 +279,10 @@ pub fn align_selections(
                 }
 
                 // b.old_pos() is now at sel_start. Record the mapped start, retain
-                // content, then push the new selection preserving direction.
-                let new_start = b.new_pos();
+                // content, then push the selection shifted onto it.
+                let delta = b.new_pos().index() as isize - sel_start.index() as isize;
                 b.retain(content_len);
-                // Use sel.end() (not end_inclusive) so anchor/head land on the
-                // grapheme boundary rather than on a trailing combining codepoint.
-                let new_end = new_start.shift(sel.end().chars_since(sel_start) as isize);
-                new_sels.push(Selection::directed(new_start, new_end, forward));
+                new_sels.push(sel.map_ends(|pos| pos.shift(delta)));
             }
         }
     })

@@ -187,3 +187,58 @@ fn roundtrip_two_cursors() {
 fn roundtrip_newline_only_buffer() {
     assert_eq!(round_trip("-[\n]>"), "-[\n]>");
 }
+
+// ── Grapheme clusters ─────────────────────────────────────────────────────
+
+#[test]
+fn parse_cursor_on_a_combining_cluster_sits_on_its_start() {
+    let (_, sels) = parse_state("a-[e\u{301}]>b\n");
+    let sel = sels.primary();
+    assert_eq!((sel.anchor(), sel.head()), (co(1), co(1)));
+}
+
+#[test]
+fn parse_forward_selection_ending_on_a_cluster_heads_at_its_start() {
+    let (_, sels) = parse_state("-[ae\u{301}]>b\n");
+    let sel = sels.primary();
+    assert_eq!((sel.anchor(), sel.head()), (co(0), co(1)));
+}
+
+#[test]
+fn parse_backward_selection_over_a_cluster_anchors_at_its_start() {
+    let (_, sels) = parse_state("<[ae\u{301}]-b\n");
+    let sel = sels.primary();
+    assert_eq!((sel.anchor(), sel.head()), (co(1), co(0)));
+}
+
+#[test]
+fn serialize_cursor_on_a_cluster_closes_after_its_last_char() {
+    let buf = BufferText::from("ae\u{301}b\n");
+    let sels = SelectionSet::single(Selection::collapsed(co(1)));
+    assert_eq!(serialize_state(&buf, &sels), "a-[e\u{301}]>b\n");
+}
+
+#[test]
+fn roundtrip_over_every_corpus_cluster() {
+    for sample in crate::unicode::ALL {
+        for input in [
+            format!("\n-[{sample}]>b\n"),
+            format!("-[\n{sample}]>b\n"),
+            format!("<[\n{sample}]-b\n"),
+        ] {
+            assert_eq!(round_trip(&input), input);
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "splits a grapheme cluster")]
+fn parse_rejects_an_open_marker_inside_a_cluster() {
+    parse_state("ae-[\u{301}]>b\n");
+}
+
+#[test]
+#[should_panic(expected = "splits a grapheme cluster")]
+fn parse_rejects_a_close_marker_inside_a_cluster() {
+    parse_state("-[ae]>\u{301}b\n");
+}

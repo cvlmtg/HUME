@@ -13,3 +13,4 @@ hume-rope = { path = "../hume-rope" }
 [dev-dependencies]
 pretty_assertions = "1.4.1"
 proptest = "1.11.0"
+test-fixtures = { path = "../test-fixtures" }

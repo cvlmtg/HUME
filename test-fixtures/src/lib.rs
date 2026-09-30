@@ -14,6 +14,7 @@
 use std::path::{Path, PathBuf};
 
 pub mod testing;
+pub mod unicode;
 
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

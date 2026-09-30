@@ -216,7 +216,7 @@ impl JumpList {
                 let entry = &mut self.entries[read];
                 entry
                     .selections
-                    .translate_in_place_with(edits, cs, text_pre);
+                    .translate_in_place_with(edits, cs, text_pre, text_post);
                 entry.primary_line = JumpEntry::primary_line_of(&entry.selections, text_post);
             }
             let post_line = self.entries[read].primary_line;

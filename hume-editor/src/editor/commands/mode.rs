@@ -137,9 +137,9 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
         let max = b.last_char();
         sels.map(|sel| {
             let pos = if sel.ends_on_newline(b) {
-                sel.end() // selection ends on '\n': insert before it, not past it
+                sel.end_inclusive(b) // selection ends on '\n': insert before it, not past it
             } else {
-                next_grapheme_boundary(b, sel.end())
+                sel.end_exclusive(b)
             };
             Selection::collapsed(pos.min(max))
         })

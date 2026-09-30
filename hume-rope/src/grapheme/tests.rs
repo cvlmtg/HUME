@@ -652,3 +652,244 @@ fn graphemes_at_keeps_a_flag_pair_together_across_a_chunk_boundary() {
         "some flag pair must straddle a chunk boundary for this test to cover that path"
     );
 }
+
+// ── is_cluster_boundary / snap_to_cluster_start ───────────────────────────
+
+/// Char offsets of every cluster boundary in `text`, straight from
+/// `unicode-segmentation`.
+fn segmentation_boundaries(text: &str) -> Vec<usize> {
+    let mut out = vec![0];
+    let mut chars = 0;
+    for g in text.graphemes(true) {
+        chars += g.chars().count();
+        out.push(chars);
+    }
+    out
+}
+
+fn corpus_texts(sample: &str) -> [String; 4] {
+    [
+        format!("a{sample}b"),
+        format!("{sample}{sample}"),
+        format!("\n{sample}\n"),
+        format!("{sample}\u{301}x"),
+    ]
+}
+
+#[test]
+fn is_cluster_boundary_matches_segmentation_over_the_corpus() {
+    for sample in test_fixtures::unicode::ALL {
+        for text in corpus_texts(sample) {
+            let r = rope(&text);
+            let boundaries = segmentation_boundaries(&r.to_string());
+            for pos in 0..=r.len_chars() {
+                assert_eq!(
+                    is_cluster_boundary(r.slice(..), co(pos)),
+                    boundaries.contains(&pos),
+                    "{:?} at {pos}",
+                    r.to_string()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn snap_to_cluster_start_floors_to_the_segmentation_boundary_over_the_corpus() {
+    for sample in test_fixtures::unicode::ALL {
+        for text in corpus_texts(sample) {
+            let r = rope(&text);
+            let boundaries = segmentation_boundaries(&r.to_string());
+            for pos in 0..r.len_chars() {
+                let floor = boundaries
+                    .iter()
+                    .rev()
+                    .find(|&&b| b <= pos)
+                    .expect("0 is a boundary");
+                assert_eq!(
+                    snap_to_cluster_start(r.slice(..), co(pos)),
+                    co(*floor),
+                    "{:?} at {pos}",
+                    r.to_string()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn is_cluster_boundary_keeps_crlf_together() {
+    let r = Rope::from_str("a\r\nb");
+    assert!(is_cluster_boundary(r.slice(..), co(1)));
+    assert!(!is_cluster_boundary(r.slice(..), co(2)));
+    assert!(is_cluster_boundary(r.slice(..), co(3)));
+}
+
+#[test]
+fn is_cluster_boundary_is_false_between_a_prepend_char_and_its_base() {
+    let r = rope("\u{600}x");
+    assert!(!is_cluster_boundary(r.slice(..), co(1)));
+}
+
+// ── LF-normalized text ────────────────────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "LF-normalized")]
+fn char_pos_at_display_col_rejects_a_carriage_return() {
+    let r = Rope::from_str("ab\r\ncd\n");
+    char_pos_at_display_col(r.slice(..), ContentLine::new(0), dc(10), 4);
+}
+
+// ── Corpus coverage ───────────────────────────────────────────────────────
+
+#[test]
+fn str_boundaries_walk_every_corpus_cluster_both_ways() {
+    for sample in test_fixtures::unicode::ALL {
+        let text = format!("a{sample}b");
+        let expected: Vec<usize> = text
+            .grapheme_indices(true)
+            .map(|(i, _)| i)
+            .chain([text.len()])
+            .collect();
+
+        let mut forward = vec![0];
+        while *forward.last().unwrap() < text.len() {
+            forward.push(next_str_boundary(&text, *forward.last().unwrap()));
+        }
+        assert_eq!(forward, expected, "forward over {text:?}");
+
+        let mut backward = vec![text.len()];
+        while *backward.last().unwrap() > 0 {
+            backward.push(prev_str_boundary(&text, *backward.last().unwrap()));
+        }
+        backward.reverse();
+        assert_eq!(backward, expected, "backward over {text:?}");
+    }
+}
+
+/// Byte offsets where ropey ends a chunk that fall inside a grapheme cluster
+/// of `r`.
+fn straddled_chunk_ends(r: &Rope) -> Vec<usize> {
+    let text = r.to_string();
+    let cluster_starts: std::collections::HashSet<usize> = text
+        .grapheme_indices(true)
+        .map(|(i, _)| i)
+        .chain([text.len()])
+        .collect();
+    let mut byte = 0;
+    r.chunks()
+        .map(|chunk| {
+            byte += chunk.len();
+            byte
+        })
+        .filter(|b| !cluster_starts.contains(b))
+        .collect()
+}
+
+/// A rope of clusters whose runs are long enough to straddle ropey chunk
+/// boundaries, shifted by an ASCII prefix until one does, with every char
+/// offset a chunk boundary sits at (and its neighbours) as a probe.
+fn chunk_straddling_text() -> (Rope, Vec<usize>) {
+    for prefix in 0..4 {
+        let text = format!(
+            "{}{}{}",
+            "a".repeat(prefix),
+            test_fixtures::unicode::FLAG_RUN.repeat(600),
+            test_fixtures::unicode::COMBINING.repeat(600)
+        );
+        let r = Rope::from_str(&text);
+        if straddled_chunk_ends(&r).is_empty() {
+            continue;
+        }
+        let mut probes = Vec::new();
+        let mut byte = 0;
+        for chunk in r.chunks() {
+            byte += chunk.len();
+            let at = r.byte_to_char(byte.min(r.len_bytes()));
+            probes.extend((at.saturating_sub(4)..=(at + 4).min(r.len_chars())).filter(|&p| p > 0));
+        }
+        return (r, probes);
+    }
+    panic!("no prefix made a cluster straddle a chunk boundary");
+}
+
+#[test]
+fn prev_and_next_boundary_agree_with_segmentation_across_chunk_boundaries() {
+    let (r, probes) = chunk_straddling_text();
+    let boundaries = segmentation_boundaries(&r.to_string());
+    for pos in probes {
+        let expected_prev = boundaries.iter().rev().find(|&&b| b < pos).copied();
+        let expected_next = boundaries.iter().find(|&&b| b > pos).copied();
+        assert_eq!(
+            prev_grapheme_boundary(r.slice(..), co(pos)),
+            co(expected_prev.unwrap_or(0)),
+            "prev at {pos}"
+        );
+        if let Some(next) = expected_next {
+            assert_eq!(
+                next_grapheme_boundary(r.slice(..), co(pos)),
+                co(next),
+                "next at {pos}"
+            );
+        }
+    }
+}
+
+#[test]
+fn graphemes_at_from_every_position_matches_segmentation_over_the_corpus() {
+    for sample in test_fixtures::unicode::ALL {
+        for text in corpus_texts(sample) {
+            let r = rope(&text);
+            for pos in 0..=r.len_chars() {
+                assert_eq!(
+                    walk(&r, pos),
+                    segmentation_clusters(&r, pos),
+                    "{:?} from {pos}",
+                    r.to_string()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn char_pos_at_display_col_walks_combining_wide_and_astral_clusters() {
+    use test_fixtures::unicode::{ASTRAL, CJK, COMBINING, ZWJ_FAMILY};
+    let at = |text: &str, col: u32| {
+        let r = rope(text);
+        char_pos_at_display_col(r.slice(..), ContentLine::new(0), dc(col), 4)
+    };
+    // `e◌́` is one cell wide.
+    let t = format!("a{COMBINING}b");
+    assert_eq!((at(&t, 1), at(&t, 2), at(&t, 3)), (co(1), co(3), co(4)));
+    // A two-cell cluster is skipped whole and never split by an odd target.
+    for wide in [CJK, ASTRAL] {
+        let t = format!("a{wide}b");
+        let after = 1 + wide.chars().count();
+        assert_eq!(at(&t, 1), co(1), "{wide:?}");
+        assert_eq!(at(&t, 2), co(1), "{wide:?}: target inside the cluster");
+        assert_eq!(at(&t, 3), co(after), "{wide:?}");
+    }
+    let t = format!("a{ZWJ_FAMILY}b");
+    assert_eq!((at(&t, 2), at(&t, 3)), (co(1), co(6)));
+}
+
+#[test]
+fn display_col_in_line_matches_str_width_across_chunk_boundaries() {
+    let (r, probes) = chunk_straddling_text();
+    let text = r.to_string();
+    let boundaries = segmentation_boundaries(&text);
+    let chars: Vec<char> = text.chars().collect();
+    let slice = r.slice(..);
+    let mut checked = 0;
+    for pos in probes.into_iter().filter(|p| boundaries.contains(p)) {
+        let prefix: String = chars[..pos].iter().collect();
+        assert_eq!(
+            display_col_in_line(slice, ContentLine::new(0), co(pos), 4),
+            dc(crate::width::str_width(&prefix, 0, 4) as u32),
+            "at {pos}"
+        );
+        checked += 1;
+    }
+    assert!(checked > 0);
+}

@@ -180,9 +180,9 @@ pub fn line_break_char(rope: &Rope, line: ContentLine) -> CharOffset {
     line_terminator_start(rope, line.into())
 }
 
-/// Char offset one past the last content char on `line`: the offset the
-/// byte-domain wire helpers in [`crate::position_encoding`] use, expressed
-/// in bytes instead of chars.
+/// Byte offset of the start of the line after `line`, or the rope's byte
+/// length for the last line: the byte-domain counterpart of
+/// [`next_line_start`], for the wire helpers in [`crate::position_encoding`].
 pub fn next_line_start_byte(rope: &Rope, line: RopeyLine) -> usize {
     let next = line.advance(1);
     if next.index() < ropey_line_count(rope).get() {
@@ -204,10 +204,17 @@ pub fn leading_whitespace_end(rope: &Rope, line: ContentLine) -> CharOffset {
     leading_indent(rope, line, 1).0
 }
 
+/// Whether `ch` is inline blank space: a space, a tab, a no-break space or an
+/// ideographic space. The one definition of the blank chars a line's leading
+/// whitespace and a word boundary treat as space.
+pub fn is_space_char(ch: char) -> bool {
+    matches!(ch, ' ' | '\t' | '\u{a0}' | '\u{3000}')
+}
+
 /// [`leading_whitespace_end`], plus the leading whitespace run's display
 /// width in `tab_width`, one scan instead of two. The run is clusters whose
-/// first char is `' '` or `'\t'`, so a space carrying a combining mark stays
-/// whole.
+/// first char is a [`is_space_char`], so a space carrying a combining mark
+/// stays whole.
 ///
 /// The width is a [`BufferLineCol`]: display cells from the buffer line's
 /// start, which is exactly where a leading run sits. So indent math uses
@@ -220,18 +227,16 @@ pub fn leading_indent(
     let line_start = CharOffset::new(rope.line_to_char(line.index()));
     let mut display_width = BufferLineCol::new(0);
     for cluster in crate::grapheme::graphemes_at(rope.slice(..), line_start) {
-        match cluster.first {
-            ' ' => display_width = display_width.advance_saturating(1),
-            // `width` is origin-agnostic (see its own doc), so this is
-            // the sanctioned `.get()` crossing into it.
-            '\t' => {
-                display_width = display_width.advance_saturating(crate::width::tab_advance(
-                    display_width.get() as usize,
-                    tab_width,
-                ) as u32);
-            }
-            _ => return (cluster.start, display_width),
+        if !is_space_char(cluster.first) {
+            return (cluster.start, display_width);
         }
+        // `width` is origin-agnostic (see its own doc), so this is the
+        // sanctioned `.get()` crossing into it.
+        display_width = display_width.advance_saturating(crate::width::space_advance(
+            cluster.first,
+            display_width.get() as usize,
+            tab_width,
+        ) as u32);
     }
     (next_line_start(rope, line.into()), display_width)
 }
@@ -334,8 +339,8 @@ pub fn line_content_end(rope: &Rope, line: ContentLine) -> CharOffset {
     }
 }
 
-/// The last char a selection may cover on `line`: the last codepoint of its
-/// final grapheme cluster (so a trailing combining mark is never orphaned),
+/// The last char a selection may cover on `line`, in LF-normalized text: the
+/// last codepoint of its final grapheme cluster (so a trailing combining mark is never orphaned),
 /// or the line's own `\n` when the line is empty.
 ///
 /// [`line_content_end`] answers with that cluster's *start* (where a cursor
@@ -343,7 +348,12 @@ pub fn line_content_end(rope: &Rope, line: ContentLine) -> CharOffset {
 /// last codepoint; an identity on the single-codepoint clusters most text is
 /// made of, the `\n` of an empty line included.
 pub fn line_last_char(rope: &Rope, line: ContentLine) -> CharOffset {
-    crate::grapheme::cluster_last_char(rope.slice(..), line_content_end(rope, line))
+    let content_end = line_content_end(rope, line);
+    debug_assert!(
+        rope.char(content_end.index()) != '\r',
+        "line_last_char: text must be LF-normalized, found a '\\r'"
+    );
+    crate::grapheme::cluster_last_char(rope.slice(..), content_end)
 }
 
 /// 0-based char column of `char_pos` within `line`: `char_pos` minus the

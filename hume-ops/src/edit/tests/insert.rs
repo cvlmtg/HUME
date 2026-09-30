@@ -88,13 +88,10 @@ fn insert_char_replaces_forward_selection() {
 
 #[test]
 fn insert_char_replaces_selection_grapheme_base() {
-    // Selection head lands on the base codepoint 'e' of {e\u{0301}} = é.
-    // The delete extends to include the combining mark, so typing
-    // 'Z' fully replaces "café" rather than leaving an orphaned accent.
-    // Text: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
-    // Result: chars 0-4 deleted, 'Z' inserted → "Z x\n", cursor at 1 (' ').
+    // The selection's last cluster is {e\u{0301}} = é, so typing 'Z' replaces
+    // all of "café" and leaves no orphaned accent: "Z x\n", cursor on ' '.
     assert_state!(
-        "-[cafe]>\u{0301} x\n",
+        "-[cafe\u{0301}]> x\n",
         |(text, sels)| insert_char(text, sels, 'Z'),
         "Z-[ ]>x\n"
     );
@@ -802,5 +799,53 @@ fn insert_char_combining_codepoint() {
         "-[h]>ello\n",
         |(text, sels)| insert_char(text, sels, '\u{0301}'),
         "\u{0301}-[h]>ello\n"
+    );
+}
+
+// ── Clusters, wide chars and unicode indent ───────────────────────────────
+
+#[test]
+fn insert_newline_indent_copies_a_space_and_combining_mark_indent_whole() {
+    assert_state!(
+        " \u{301}-[x]>\n",
+        |(text, sels)| insert_newline_indent(text, sels, &[]),
+        " \u{301}\n \u{301}-[x]>\n"
+    );
+}
+
+#[test]
+fn insert_newline_indent_copies_a_non_breaking_space_indent() {
+    assert_state!(
+        "\u{a0}\u{3000}-[x]>\n",
+        |(text, sels)| insert_newline_indent(text, sels, &[]),
+        "\u{a0}\u{3000}\n\u{a0}\u{3000}-[x]>\n"
+    );
+}
+
+#[test]
+fn open_line_above_copies_a_non_breaking_space_indent() {
+    assert_state!(
+        "\u{a0}-[b]>ar\n",
+        |(text, sels)| open_line_above(text, sels),
+        "\u{a0}-[\n]>\u{a0}bar\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_counts_a_wide_char_as_two_columns() {
+    // Cursor after one 2-cell CJK char sits at display col 2: two spaces to col 4.
+    assert_state!(
+        "\u{6f22}-[x]>\n",
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
+        "\u{6f22}  -[x]>\n"
+    );
+}
+
+#[test]
+fn insert_tab_soft_counts_a_combining_cluster_as_one_column() {
+    assert_state!(
+        "e\u{301}-[x]>\n",
+        |(text, sels)| insert_tab(text, sels, TabStyle::Soft, 4),
+        "e\u{301}   -[x]>\n"
     );
 }

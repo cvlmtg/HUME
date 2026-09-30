@@ -1,4 +1,6 @@
 # hume-rope
+### Depends on
+- test-fixtures *(dev-only)*
 ### Used by
 - hume-editing
 - hume-engine
@@ -38,6 +40,7 @@ Platform abstraction layer: terminal control, frame presentation, process spawni
 # hume-editing
 ### Depends on
 - hume-rope
+- test-fixtures *(dev-only)*
 ### Used by
 - hume-ops
 - hume-lsp
@@ -111,11 +114,13 @@ Tree-sitter integration: language/grammar registry, incremental parsing, syntax 
 - hume-editing
 - hume-rope
 ### Used by
+- hume-rope *(dev-only)*
+- hume-editing *(dev-only)*
 - hume-ops *(dev-only)*
 - hume-treesitter *(dev-only)*
 - hume-editor *(dev-only)*
 ## Description
-Shared test infrastructure: a marker-annotated buffer/selection parsing DSL for editing-command tests, plus grammar-fixture paths and gating for suites that need real tree-sitter grammars. Dev-dependency only; never part of a production build.
+Shared test infrastructure: a marker-annotated buffer/selection parsing DSL for editing-command tests, a corpus of Unicode text samples (`unicode`), plus grammar-fixture paths and gating for suites that need real tree-sitter grammars. Dev-dependency only; never part of a production build. `hume-rope` and `hume-editing` use it too, a dev-only cycle: their unit tests link a second copy of themselves through it, so they take only plain `&str` samples from it, never its DSL types.
 
 # hume-ui
 ### Depends on

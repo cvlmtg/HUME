@@ -215,15 +215,16 @@ pub(super) fn apply_word_select(
             };
             match motion(text, origin) {
                 Some(range) => {
-                    current = Selection::new(range.start, range.end);
+                    current = Selection::from_span(range, true, text);
                     moved = true;
                 }
                 None => break, // no more words: stop early, keep last selection
             }
         }
         if around && moved {
-            let range = expand_word_unit(text, current.start(), current.end(), CharOffset::new(0));
-            current = Selection::new(range.start, range.end);
+            let span = current.span(text);
+            let range = expand_word_unit(text, span.start, span.end, CharOffset::new(0));
+            current = Selection::from_span(range, true, text);
         }
         current
     });
@@ -276,7 +277,11 @@ pub(super) fn apply_word_select_extend(
                         anchor_unit(text, current.anchor(), is_boundary, chars)
                     };
                     current = if target.start > unit.end {
-                        Selection::new(unit.start, target.end) // target beyond anchor: grow forward
+                        Selection::from_span(
+                            InclusiveRange::new(unit.start, target.end),
+                            true,
+                            text,
+                        ) // target beyond anchor: grow forward
                     } else if target.end < unit.start {
                         let head = if around {
                             expand_word_unit(text, target.start, target.end, CharOffset::new(0))
@@ -284,9 +289,9 @@ pub(super) fn apply_word_select_extend(
                         } else {
                             target.start
                         };
-                        Selection::new(unit.end, head) // target behind anchor: grow backward
+                        Selection::from_span(InclusiveRange::new(head, unit.end), false, text) // target behind anchor: grow backward
                     } else {
-                        Selection::new(unit.start, unit.end) // target is the anchor's own unit
+                        Selection::from_span(unit, true, text) // target is the anchor's own unit
                     };
                 }
                 None => break,

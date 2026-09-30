@@ -223,19 +223,23 @@ pub fn str_width(s: &str, start_display_col: usize, tab_width: u8) -> usize {
     display_col - start_display_col
 }
 
+/// Display columns the blank char `ch` (see [`crate::lines::is_space_char`])
+/// occupies when rendered at `display_col`.
+pub(crate) fn space_advance(ch: char, display_col: usize, tab_width: u8) -> usize {
+    grapheme_width(ch.encode_utf8(&mut [0; 4]), display_col, tab_width)
+}
+
 /// Number of indent levels in `line`'s leading whitespace. One indent level
-/// is `tab_width` display columns (a run of spaces or a tab stop).
-/// `tab_width < 1` is clamped to 1. Leading whitespace is always ASCII
-/// (space/tab), so a byte scan is safe and faster than grapheme iteration.
+/// is `tab_width` display columns (a run of blank chars or a tab stop).
+/// `tab_width < 1` is clamped to 1.
 pub fn indent_depth(line: &str, tab_width: u8) -> u8 {
     let tw = (tab_width as usize).max(1);
     let mut display_col = 0usize;
-    for b in line.bytes() {
-        match b {
-            b' ' => display_col += 1,
-            b'\t' => display_col += tab_advance(display_col, tab_width),
-            _ => break,
-        }
+    for ch in line
+        .chars()
+        .take_while(|&ch| crate::lines::is_space_char(ch))
+    {
+        display_col += space_advance(ch, display_col, tab_width);
     }
     (display_col / tw).min(u8::MAX as usize) as u8
 }

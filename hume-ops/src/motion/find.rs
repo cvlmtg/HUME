@@ -3,9 +3,26 @@ use hume_editing::grapheme::{graphemes_at, next_grapheme_boundary, prev_grapheme
 use hume_editing::lines::line_break_char;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
+use hume_rope::grapheme::Cluster;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
+use unicode_normalization::UnicodeNormalization;
 
 // ── Find/till character motions ───────────────────────────────────────────────
+
+/// Whether `cluster` is the character `ch`: the cluster's text and `ch` are
+/// equal after NFC normalization, so a typed `é` finds both `é` and `e` +
+/// U+0301, and a typed `e` skips the accented one. A single ASCII char on
+/// both sides answers without allocating.
+fn cluster_is(text: &BufferText, cluster: Cluster, ch: char) -> bool {
+    let single_char = cluster.end == cluster.start.shift(1);
+    if single_char && cluster.first.is_ascii() && ch.is_ascii() {
+        return cluster.first == ch;
+    }
+    text.slice(ExclusiveRange::new(cluster.start, cluster.end))
+        .to_string()
+        .nfc()
+        .eq(std::iter::once(ch).nfc())
+}
 
 /// Scan forward on `head`'s line for `ch`, starting one grapheme after `head`.
 ///
@@ -23,7 +40,7 @@ pub(super) fn find_char_on_line_forward(
     graphemes_at(text, head)
         .skip(1)
         .take_while(|cluster| cluster.start < newline)
-        .find(|cluster| cluster.first == ch)
+        .find(|&cluster| cluster_is(text, cluster, ch))
         .map(|cluster| cluster.start)
 }
 
@@ -43,7 +60,10 @@ pub(super) fn find_char_on_line_backward(
     }
     let mut pos = prev_grapheme_boundary(text, head);
     loop {
-        if text.char_at(pos) == Some(ch) {
+        let cluster = graphemes_at(text, pos)
+            .next()
+            .expect("pos < head lies inside the buffer");
+        if cluster_is(text, cluster, ch) {
             return Some(pos);
         }
         if pos == line_start {

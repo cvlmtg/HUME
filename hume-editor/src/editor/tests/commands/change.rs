@@ -485,14 +485,8 @@ fn mii_reports_info_on_read_only_buffer() {
     assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
 }
 
-/// The span's end must land on a grapheme boundary, never mid-cluster:
-/// `prev_grapheme_boundary` on a base+combining-mark run steps back to the
-/// start of the whole cluster (position 0), not to the invalid position
-/// between the base char and its combining mark. The resulting selection
-/// covers the base char only (HUME's "1-char selection" is one `char`
-/// (codepoint), not one rendered grapheme). This is the exact formula
-/// `end_insert_session`'s own select-on-exit path already uses, reused
-/// unchanged here.
+/// The span ends on a cluster boundary: a typed base char and combining mark
+/// are selected together as one cluster.
 #[test]
 fn mii_span_end_never_lands_mid_grapheme_cluster() {
     let mut ed = editor_from("-[\n]>");
@@ -501,7 +495,7 @@ fn mii_span_end_never_lands_mid_grapheme_cluster() {
     ed.handle_key(key('\u{301}')); // combining acute accent
     ed.handle_key(key_esc());
     mii(&mut ed);
-    assert_eq!(state(&ed), "-[e]>\u{301}\n");
+    assert_eq!(state(&ed), "-[e\u{301}]>\n");
 }
 
 /// A typed combining mark can merge with a PRE-EXISTING base char (not one
@@ -515,9 +509,9 @@ fn esc_after_combining_mark_merges_with_pre_existing_char_selects_nothing() {
     ed.handle_key(key('\u{301}')); // combining acute accent merges with 'e'
     ed.handle_key(key_esc());
     // No typed run to select: the empty-run fallback steps the cursor back
-    // one grapheme (`a` sets `step_back_on_exit`), and the whole merged
-    // cluster is one grapheme, so it steps all the way back to 'e'.
-    assert_eq!(state(&ed), "-[e]>\u{301}\n");
+    // one grapheme (`a` sets `step_back_on_exit`), and the merged cluster is
+    // one grapheme, so the cursor lands on the whole cluster.
+    assert_eq!(state(&ed), "-[e\u{301}]>\n");
     mii(&mut ed);
     assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
 }

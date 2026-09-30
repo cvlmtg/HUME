@@ -422,8 +422,10 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         .get(bid)
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(15));
-    ed.state.panes.state[pid_a][bid]
-        .set_selections(SelectionSet::single(Selection::collapsed(head_a)));
+    ed.state.panes.state[pid_a][bid].set_selections(
+        SelectionSet::single(Selection::collapsed(head_a)),
+        ed.state.buffers.get(bid).text(),
+    );
 
     let head_b_before = ed.state.panes.state[pid_b][bid]
         .selections()
@@ -495,8 +497,10 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
         .get(bid)
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(10));
-    ed.state.panes.state[pid_b][bid]
-        .set_selections(SelectionSet::single(Selection::collapsed(head_b)));
+    ed.state.panes.state[pid_b][bid].set_selections(
+        SelectionSet::single(Selection::collapsed(head_b)),
+        ed.state.buffers.get(bid).text(),
+    );
 
     // Row 24 is the statusline (usable pane height is 24 after its
     // reservation), outside every pane's rect, same row

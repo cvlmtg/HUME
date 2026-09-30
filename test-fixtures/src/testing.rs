@@ -1,4 +1,5 @@
 use hume_editing::changeset::ChangeSet;
+use hume_editing::grapheme::{is_cluster_boundary, next_grapheme_boundary, snap_to_cluster_start};
 use hume_editing::selection::{Selection, SelectionSet};
 /// Test DSL for HUME editing operations.
 ///
@@ -27,6 +28,10 @@ use hume_editing::selection::{Selection, SelectionSet};
 /// (anchor and head both included); `-` always marks anchor, `>`/`<` always
 /// marks head, and the arrow direction shows which way the selection faces.
 /// Multiple selections in one string: `-[he]>llo -[wor]>ld\n`
+///
+/// Markers sit on grapheme-cluster boundaries and the head and anchor are the
+/// starts of the clusters they wrap: `a-[e\u{301}]>b\n` is a cursor on the
+/// whole accented letter. A marker inside a cluster panics.
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
 
@@ -89,14 +94,18 @@ fn char_count(s: &str) -> usize {
 ///
 /// The markers are stripped from the returned buffer. Panics with a
 /// descriptive message if the string contains no selection markers, or if a
-/// marker is malformed (e.g. a `-[` with no matching `]>`).
+/// marker is malformed (e.g. a `-[` with no matching `]>`), or if a marker sits
+/// inside a grapheme cluster. The head and anchor of a parsed selection are the
+/// starts of the clusters it covers, so `-[e\u{301}]>` is a cursor on the
+/// whole accented letter.
 pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
     // Single pass, tracking whether we're inside `-[…]>` or `<[…]-` (see
     // `State` below). Any char not starting one of the four two-char tokens
     // (recognised by peeking one char ahead) is literal text.
 
     let mut text = String::with_capacity(input.len());
-    let mut selections: Vec<Selection> = Vec::new();
+    // (open marker offset, close marker offset, forward)
+    let mut spans: Vec<(usize, usize, bool)> = Vec::new();
 
     #[derive(Debug)]
     enum State {
@@ -142,11 +151,7 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
                      a selection must cover at least one character",
                     input
                 );
-                let head = count - 1; // last char written is the head
-                selections.push(Selection::new(
-                    CharOffset::new(*anchor_offset),
-                    CharOffset::new(head),
-                ));
+                spans.push((*anchor_offset, count, true));
                 state = State::Normal;
             }
 
@@ -160,11 +165,7 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
                      a selection must cover at least one character",
                     input
                 );
-                let anchor = count - 1; // last char written is the anchor
-                selections.push(Selection::new(
-                    CharOffset::new(anchor),
-                    CharOffset::new(*head_offset),
-                ));
+                spans.push((*head_offset, count, false));
                 state = State::Normal;
             }
 
@@ -206,7 +207,7 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
     }
 
     assert!(
-        !selections.is_empty(),
+        !spans.is_empty(),
         "parse_state: no selection markers found in input: {:?}\n\
          Add at least one `-[x]>` cursor or `-[text]>` / `<[text]-` selection.",
         input
@@ -222,8 +223,19 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
     );
 
     let buf = BufferText::from(text.as_str());
-    let sel_set = SelectionSet::from_vec(selections, 0);
-    (buf, sel_set)
+    let selections = spans
+        .into_iter()
+        .map(|(open, close, forward)| {
+            let (open, close) = (CharOffset::new(open), CharOffset::new(close));
+            assert!(
+                is_cluster_boundary(&buf, open) && is_cluster_boundary(&buf, close),
+                "parse_state: a selection marker splits a grapheme cluster in {input:?}"
+            );
+            let last = snap_to_cluster_start(&buf, close.retreat(1));
+            Selection::directed(open, last, forward)
+        })
+        .collect();
+    (buf, SelectionSet::from_vec(selections, 0))
 }
 
 /// Serialize `(BufferText, SelectionSet)` back to the marker format.
@@ -235,8 +247,7 @@ pub fn serialize_state(text: &BufferText, sels: &SelectionSet) -> String {
     // Include the structural trailing \n in the serialized output so that
     // DSL strings are explicit about buffer content. Every valid buffer ends
     // with \n, so every serialized string ends with \n too.
-    let text = &full;
-    let chars: Vec<char> = text.chars().collect();
+    let chars: Vec<char> = full.chars().collect();
     let n = chars.len();
 
     // Build a lookup: char_offset → what markers to insert before this char.
@@ -251,18 +262,18 @@ pub fn serialize_state(text: &BufferText, sels: &SelectionSet) -> String {
     for sel in sels.iter_sorted() {
         if sel.anchor() <= sel.head() {
             // Forward selection (including cursor where anchor == head).
-            // `-[` at anchor, `]>` one past head.
+            // `-[` at anchor, `]>` after the head's cluster.
             markers[sel.anchor().index()].push("-[");
-            markers[(sel.head().index() + 1).min(n)].push("]>");
+            markers[next_grapheme_boundary(text, sel.head()).index()].push("]>");
         } else {
             // Backward selection (anchor > head).
-            // `<[` at head, `]-` one past anchor.
+            // `<[` at head, `]-` after the anchor's cluster.
             markers[sel.head().index()].push("<[");
-            markers[(sel.anchor().index() + 1).min(n)].push("]-");
+            markers[next_grapheme_boundary(text, sel.anchor()).index()].push("]-");
         }
     }
 
-    let mut out = String::with_capacity(text.len() + sels.len() * 8);
+    let mut out = String::with_capacity(full.len() + sels.len() * 8);
     for i in 0..=n {
         for &marker in &markers[i] {
             out.push_str(marker);
@@ -315,12 +326,14 @@ macro_rules! assert_state {
         use $crate::testing::{parse_state, serialize_state};
 
         let (text, sels) = parse_state($initial);
+        sels.debug_assert_valid(&text);
         // Clone before the op: non-mutating commands return only `SelectionSet`,
         // so `IntoTestResult` re-pairs it with this clone. Mutating commands
         // return a new buffer and ignore the clone. Rope clones are O(log n).
         let text_copy = text.clone();
         let (result_text, result_sels) =
             $crate::testing::IntoTestResult::into_test_result($op((text, sels)), text_copy);
+        result_sels.debug_assert_valid(&result_text);
         let (expected_text, expected_sels) = parse_state($expected);
 
         assert_eq!(

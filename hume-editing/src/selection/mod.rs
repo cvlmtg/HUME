@@ -8,6 +8,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::changeset::{Assoc, ChangeSet, PosMapCursor};
 use crate::error::ValidationError;
+use crate::grapheme::is_cluster_boundary;
 use crate::text::BufferText;
 
 /// The complete selection state for one buffer.
@@ -17,9 +18,12 @@ use crate::text::BufferText;
 /// 2. Selections are sorted in ascending order of `start()`.
 /// 3. No two selections overlap. Adjacent selections (where one ends exactly
 ///    where the next begins) are merged.
+/// 4. Every `anchor` and `head` is the start of a grapheme cluster.
 ///
 /// Invariants 2 and 3 are enforced by [`SelectionSet::merge_overlapping_in_place`],
 /// which must be called after any operation that might violate them.
+/// Invariant 4 is restored by [`SelectionSet::snap_to_clusters`] and checked
+/// by [`SelectionSet::debug_assert_valid`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectionSet {
     /// The sorted, non-overlapping selections.
@@ -156,6 +160,16 @@ impl SelectionSet {
         result
     }
 
+    /// Build a `SelectionSet` for `text` from selections whose positions may
+    /// sit inside a cluster of `text`: each is floored to its cluster start,
+    /// then the set is sorted and merged. For results computed before `text`
+    /// existed, such as the selections of an edit's output.
+    pub fn from_vec_snapped(selections: Vec<Selection>, primary: usize, text: &BufferText) -> Self {
+        let mut result = Self::from_vec_unchecked(selections, primary);
+        result.snap_to_clusters(text);
+        result
+    }
+
     /// Build a `SelectionSet` from a raw `Vec<Selection>` **without**
     /// sorting or merging.
     ///
@@ -258,6 +272,16 @@ impl SelectionSet {
                 "Selection {i}: anchor {:?} >= buf_len {buf_len}: anchor is past the end of the buffer",
                 sel.anchor,
             );
+            debug_assert!(
+                is_cluster_boundary(text, sel.head),
+                "Selection {i}: head {:?} splits a grapheme cluster",
+                sel.head,
+            );
+            debug_assert!(
+                is_cluster_boundary(text, sel.anchor),
+                "Selection {i}: anchor {:?} splits a grapheme cluster",
+                sel.anchor,
+            );
         }
     }
 
@@ -353,6 +377,15 @@ impl SelectionSet {
         self.primary = new_primary;
     }
 
+    /// Floor every selection's `anchor` and `head` to their cluster starts,
+    /// then merge selections that now overlap.
+    pub fn snap_to_clusters(&mut self, text: &BufferText) {
+        for sel in &mut self.selections {
+            *sel = sel.snap_to_clusters(text);
+        }
+        self.merge_overlapping_in_place();
+    }
+
     /// Propagate a `ChangeSet` through all selections in place.
     ///
     /// This is the non-acting-pane propagation primitive. For each selection:
@@ -360,12 +393,14 @@ impl SelectionSet {
     /// - Resets `sticky_display_col` to `None` if the edit touched the head's
     ///   pre-edit line (the display column is stale when the line's content
     ///   changed).
-    /// - After all selections are mapped, calls `merge_overlapping_in_place` so
-    ///   the no-overlap invariant is restored (a deletion spanning multiple
-    ///   selections can collapse them).
+    /// - After all selections are mapped, calls [`Self::snap_to_clusters`]
+    ///   against `text_post`: an edit can leave a position inside a cluster
+    ///   (a deleted base char orphans its combining mark), and a deletion
+    ///   spanning multiple selections can collapse them.
     ///
     /// `text_pre` must be the buffer text **before** the edit: the pre-edit line
     /// map is needed to identify which line each head resided on before mapping.
+    /// `text_post` is the text after applying `cs`.
     ///
     /// Runs in O(selections + ops) rather than O(selections × ops): selections
     /// are sorted and non-overlapping, so both the line-touch check and the
@@ -376,8 +411,13 @@ impl SelectionSet {
     /// Thin wrapper over [`Self::translate_in_place_with`] for a caller
     /// translating a single `SelectionSet`; see that method for a caller
     /// translating many.
-    pub fn translate_in_place(&mut self, cs: &ChangeSet, text_pre: &BufferText) {
-        self.translate_in_place_with(&cs.edited_old_ranges(), cs, text_pre);
+    pub fn translate_in_place(
+        &mut self,
+        cs: &ChangeSet,
+        text_pre: &BufferText,
+        text_post: &BufferText,
+    ) {
+        self.translate_in_place_with(&cs.edited_old_ranges(), cs, text_pre, text_post);
     }
 
     /// Same as [`Self::translate_in_place`], but takes `cs`'s edited ranges
@@ -392,6 +432,7 @@ impl SelectionSet {
         edits: &[ExclusiveRange<CharOffset>],
         cs: &ChangeSet,
         text_pre: &BufferText,
+        text_post: &BufferText,
     ) {
         let mut edit_idx = 0usize;
         let mut mapper = PosMapCursor::new(cs.ops());
@@ -447,9 +488,7 @@ impl SelectionSet {
                 sel.head = lo;
             }
         }
-        if self.selections.len() > 1 {
-            self.merge_overlapping_in_place();
-        }
+        self.snap_to_clusters(text_post);
     }
 }
 

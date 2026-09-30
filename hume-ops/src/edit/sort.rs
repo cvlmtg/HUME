@@ -8,12 +8,12 @@
 //! per-line shell invocation to reorder against.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::grapheme::prev_grapheme_boundary;
-use hume_editing::lines::{char_col_in_line, line_break_char, next_line_start};
+use hume_editing::lines::{char_col_in_line, line_break_char, line_last_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{ExclusiveRange, InclusiveRange};
+use unicode_normalization::UnicodeNormalization;
 
 /// Flags accepted by `:sort`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -135,9 +135,7 @@ fn collect_entries(text: &BufferText, sels: &SelectionSet) -> Vec<SortEntry> {
                 // the line actually selected; on lines in between (a
                 // multi-line span), the whole line's content qualifies.
                 let seg_start = sel.start().max(line_start);
-                let seg_end_incl = sel
-                    .end_inclusive(text)
-                    .min(prev_grapheme_boundary(text, nl));
+                let seg_end_incl = sel.end_inclusive(text).min(line_last_char(text, line));
                 if seg_start <= seg_end_incl {
                     text.slice(InclusiveRange::new(seg_start, seg_end_incl).to_exclusive())
                         .to_string()
@@ -204,9 +202,9 @@ fn classify_keys(entries: &[SortEntry], group: &[usize], insensitive: bool) -> K
         .iter()
         .map(|s| {
             if insensitive {
-                s.to_lowercase()
+                s.to_lowercase().nfc().collect()
             } else {
-                s.to_string()
+                s.nfc().collect()
             }
         })
         .collect();
@@ -294,5 +292,5 @@ fn remap_selections(
         };
         new_sels.push(moved.unwrap_or(*sel));
     }
-    SelectionSet::from_vec(new_sels, sels.primary_index())
+    SelectionSet::from_vec_snapped(new_sels, sels.primary_index(), new_text)
 }

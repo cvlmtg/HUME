@@ -573,7 +573,8 @@ fn translate_in_place_remaps_positions_and_resets_sticky_display_col_only_on_tou
     b.retain_rest();
     let cs = b.finish();
 
-    set.translate_in_place(&cs, &text_pre);
+    let text_post = cs.apply(&text_pre).expect("cs built for text_pre");
+    set.translate_in_place(&cs, &text_pre, &text_post);
 
     assert_eq!(set.len(), 3, "no selection should merge here");
 
@@ -613,7 +614,8 @@ fn translate_in_place_insert_exactly_at_line_start_touches_that_line() {
     b.retain_rest();
     let cs = b.finish();
 
-    set.translate_in_place(&cs, &text_pre);
+    let text_post = cs.apply(&text_pre).expect("cs built for text_pre");
+    set.translate_in_place(&cs, &text_pre, &text_post);
 
     let s0 = set.iter_sorted().next().unwrap();
     assert_eq!(
@@ -644,7 +646,8 @@ fn translate_in_place_backward_selection_keeps_direction() {
     b.retain_rest();
     let cs = b.finish();
 
-    set.translate_in_place(&cs, &text_pre);
+    let text_post = cs.apply(&text_pre).expect("cs built for text_pre");
+    set.translate_in_place(&cs, &text_pre, &text_post);
 
     let s = set.primary();
     assert_eq!(s.anchor(), co(6)); // was 4, shifted by 2
@@ -667,7 +670,8 @@ fn translate_in_place_merges_selections_collapsed_onto_same_point() {
     b.retain_rest(); // keep the structural trailing \n
     let cs = b.finish();
 
-    set.translate_in_place(&cs, &text_pre);
+    let text_post = cs.apply(&text_pre).expect("cs built for text_pre");
+    set.translate_in_place(&cs, &text_pre, &text_post);
 
     assert_eq!(set.len(), 1, "both selections collapse onto the same point");
     let s = set.primary();
@@ -677,4 +681,157 @@ fn translate_in_place_merges_selections_collapsed_onto_same_point() {
         None,
         "merged selection's line was edited"
     );
+}
+
+// ── cluster alignment ─────────────────────────────────────────────────────
+
+/// Clusters: `a`(0) `e◌́`(1..3) `b`(3) `\n`(4).
+fn accented_text() -> BufferText {
+    BufferText::from("ae\u{301}b\n")
+}
+
+#[test]
+fn snap_to_clusters_moves_a_head_on_a_combining_mark_to_its_cluster_start() {
+    let text = accented_text();
+    let forward = Selection::new(co(0), co(2)).snap_to_clusters(&text);
+    assert_eq!((forward.anchor(), forward.head()), (co(0), co(1)));
+}
+
+#[test]
+fn snap_to_clusters_keeps_direction_and_sticky_column() {
+    let text = accented_text();
+    let backward = Selection::with_sticky_display_col(co(2), co(0), sticky(7));
+    let snapped = backward.snap_to_clusters(&text);
+    assert_eq!((snapped.anchor(), snapped.head()), (co(1), co(0)));
+    assert_eq!(snapped.sticky_display_col(), Some(sticky(7)));
+}
+
+#[test]
+fn snap_to_clusters_leaves_an_aligned_selection_unchanged() {
+    let text = accented_text();
+    let sel = Selection::new(co(1), co(3));
+    assert_eq!(sel.snap_to_clusters(&text), sel);
+}
+
+#[test]
+fn set_snap_to_clusters_merges_cursors_that_land_on_the_same_cluster() {
+    let text = accented_text();
+    let mut set = SelectionSet::from_vec_unchecked(
+        vec![Selection::collapsed(co(1)), Selection::collapsed(co(2))],
+        0,
+    );
+    set.snap_to_clusters(&text);
+    assert_eq!(set.len(), 1);
+    assert_eq!(set.primary(), Selection::collapsed(co(1)));
+}
+
+#[test]
+#[should_panic(expected = "splits a grapheme cluster")]
+fn debug_assert_valid_rejects_a_head_on_a_combining_mark() {
+    let text = accented_text();
+    SelectionSet::single(Selection::collapsed(co(2))).debug_assert_valid(&text);
+}
+
+#[test]
+#[should_panic(expected = "splits a grapheme cluster")]
+fn debug_assert_valid_rejects_an_anchor_on_a_combining_mark() {
+    let text = accented_text();
+    SelectionSet::single(Selection::new(co(2), co(3))).debug_assert_valid(&text);
+}
+
+#[test]
+fn debug_assert_valid_accepts_cluster_starts() {
+    let text = accented_text();
+    SelectionSet::single(Selection::new(co(1), co(3))).debug_assert_valid(&text);
+}
+
+#[test]
+fn translate_in_place_snaps_an_end_left_on_an_orphaned_combining_mark() {
+    let text_pre = BufferText::from("abc\u{301}\n");
+    let mut set = SelectionSet::single(Selection::new(co(0), co(2)));
+    let mut b = ChangeSetBuilder::new(co(5));
+    b.retain(2);
+    b.delete(1);
+    b.retain_rest();
+    let cs = b.finish();
+    let text_post = cs.apply(&text_pre).expect("cs built for text_pre");
+
+    set.translate_in_place(&cs, &text_pre, &text_post);
+
+    let sel = set.primary();
+    assert_eq!((sel.anchor(), sel.head()), (co(0), co(1)));
+}
+
+#[test]
+fn from_vec_snapped_floors_positions_and_merges_the_result() {
+    let text = accented_text();
+    let set = SelectionSet::from_vec_snapped(
+        vec![Selection::collapsed(co(2)), Selection::new(co(0), co(1))],
+        0,
+        &text,
+    );
+    assert_eq!(set.len(), 1);
+    assert_eq!(
+        (set.primary().anchor(), set.primary().head()),
+        (co(0), co(1))
+    );
+}
+
+// ── Alignment under edits ─────────────────────────────────────────────────
+
+mod alignment_props {
+    use super::*;
+    use crate::grapheme::graphemes_at;
+    use proptest::prelude::*;
+
+    fn arb_text() -> impl Strategy<Value = String> {
+        proptest::collection::vec(
+            prop_oneof![
+                4 => (b'a'..=b'z').prop_map(|b| char::from(b).to_string()),
+                1 => Just("\n".to_string()),
+                4 => proptest::sample::select(test_fixtures::unicode::ALL).prop_map(str::to_string),
+            ],
+            0..=20,
+        )
+        .prop_map(|atoms| atoms.concat())
+    }
+
+    proptest! {
+        /// Whatever an edit inserts or deletes (a lone mark next to a base
+        /// char, half of a flag pair, a ZWJ), mapping cluster-aligned
+        /// selections through it leaves them cluster-aligned.
+        #[test]
+        fn translate_in_place_keeps_every_selection_on_a_cluster_start(
+            text in arb_text(),
+            picks in proptest::collection::vec((0usize..500, 0usize..500), 1..=4),
+            at in 0usize..500,
+            del in 0usize..4,
+            inserted in proptest::option::of(proptest::sample::select(test_fixtures::unicode::ALL)),
+        ) {
+            let text_pre = BufferText::from(text.as_str());
+            let starts: Vec<CharOffset> = graphemes_at(&text_pre, co(0)).map(|c| c.start).collect();
+            let sels: Vec<Selection> = picks
+                .iter()
+                .map(|&(a, b)| Selection::new(starts[a % starts.len()], starts[b % starts.len()]))
+                .collect();
+            let mut set = SelectionSet::from_vec(sels, 0);
+
+            // The structural trailing '\n' is never edited.
+            let content = text_pre.len_chars() - 1;
+            let pos = at % (content + 1);
+            let del = del.min(content - pos);
+            let mut b = ChangeSetBuilder::new(co(text_pre.len_chars()));
+            b.retain(pos);
+            b.delete(del);
+            if let Some(s) = inserted {
+                b.insert(s);
+            }
+            b.retain_rest();
+            let cs = b.finish();
+            let text_post = cs.apply(&text_pre).unwrap();
+
+            set.translate_in_place(&cs, &text_pre, &text_post);
+            set.debug_assert_valid(&text_post);
+        }
+    }
 }

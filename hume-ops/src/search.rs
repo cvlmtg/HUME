@@ -459,7 +459,12 @@ impl MatchScan<'_> {
             }
         }
 
-        last_match.map(|span| (search_sel(span, anchor, self.direction), any_wrapped))
+        last_match.map(|span| {
+            (
+                search_sel(self.text, span, anchor, self.direction),
+                any_wrapped,
+            )
+        })
     }
 
     /// Advance every selection in `sels` independently, merging any that
@@ -492,6 +497,7 @@ impl MatchScan<'_> {
 /// the match edge that faces the search direction.
 /// `anchor = None`, move mode: cover the matched text exactly.
 fn search_sel(
+    text: &BufferText,
     span: InclusiveRange<CharOffset>,
     anchor: Option<CharOffset>,
     direction: SearchDirection,
@@ -503,8 +509,9 @@ fn search_sel(
                 SearchDirection::Forward => span.end,
                 SearchDirection::Backward => span.start,
             },
-        ),
-        None => Selection::new(span.start, span.end),
+        )
+        .snap_to_clusters(text),
+        None => Selection::from_span(span, true, text),
     }
 }
 

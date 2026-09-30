@@ -41,3 +41,43 @@ fn fresh_from_buf_seeds_stable_initial_sels_across_promotion() {
     let state = fresh_from_buf(&buf);
     assert_eq!(state.selections, expected);
 }
+
+// ── cluster alignment ─────────────────────────────────────────────────────
+
+fn accented_text() -> hume_editing::text::BufferText {
+    hume_editing::text::BufferText::from("ae\u{301}b\n")
+}
+
+#[test]
+fn set_selections_snaps_a_head_on_a_combining_mark_to_its_cluster_start() {
+    let mut state = PaneBufferState::default();
+    state.set_selections(
+        SelectionSet::single(hume_editing::selection::Selection::collapsed(co(2))),
+        &accented_text(),
+    );
+    assert_eq!(state.selections.primary().head(), co(1));
+}
+
+#[test]
+fn restore_selections_compares_the_snapped_head_against_the_old_one() {
+    let mut state = PaneBufferState {
+        reveal_pending: false,
+        ..PaneBufferState::default()
+    };
+    state.restore_selections(
+        SelectionSet::single(hume_editing::selection::Selection::collapsed(co(2))),
+        co(1),
+        &accented_text(),
+    );
+    assert!(!state.reveal_pending);
+}
+
+#[test]
+fn fresh_from_buf_snaps_the_initial_selection() {
+    use crate::editor::buffer::Buffer;
+    let buf = Buffer::new(
+        accented_text(),
+        SelectionSet::single(hume_editing::selection::Selection::collapsed(co(2))),
+    );
+    assert_eq!(fresh_from_buf(&buf).selections.primary().head(), co(1));
+}

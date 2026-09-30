@@ -65,10 +65,15 @@ pub fn nearest_word_on_line(
         (None, Some(n)) => unit(n),
         (Some(p), Some(n)) => {
             // Pick the word whose nearest edge is closer to `head`; tie → prev.
-            // `p` is the last char of the prev word's run (nearest edge = p itself).
-            // `n` is the first char of the next word's run (nearest edge = n itself).
-            let dist_prev = head.chars_since(p);
-            let dist_next = n.chars_since(head);
+            // `p` is the last cluster of the prev word's run (nearest edge = p itself).
+            // `n` is the first cluster of the next word's run (nearest edge = n itself).
+            let clusters_between = |from, to| {
+                graphemes_at(text, from)
+                    .take_while(|cluster| cluster.start < to)
+                    .count()
+            };
+            let dist_prev = clusters_between(p, head);
+            let dist_next = clusters_between(head, n);
             let anchor = if dist_next < dist_prev { n } else { p };
             unit(anchor)
         }
@@ -80,6 +85,7 @@ pub fn nearest_word_on_line(
 ///
 /// Returns `sel` unchanged when `found` is `None` (no candidate word in bounds).
 pub fn apply_nearest_word_result(
+    text: &BufferText,
     sel: Selection,
     found: Option<InclusiveRange<CharOffset>>,
     mode: MotionMode,
@@ -88,13 +94,16 @@ pub fn apply_nearest_word_result(
         return sel;
     };
     match mode {
-        MotionMode::Move => match sel.sticky_display_col() {
-            Some(sticky) => Selection::with_sticky_display_col(range.start, range.end, sticky),
-            None => Selection::new(range.start, range.end),
-        },
+        MotionMode::Move => {
+            let s = Selection::from_span(range, true, text);
+            match sel.sticky_display_col() {
+                Some(sticky) => Selection::with_sticky_display_col(s.anchor(), s.head(), sticky),
+                None => s,
+            }
+        }
         MotionMode::Extend => {
             let forward = sel.anchor() <= sel.head();
-            let s = sel.union_span(range, forward);
+            let s = sel.union_span(range, forward, text);
             match sel.sticky_display_col() {
                 Some(sticky) => Selection::with_sticky_display_col(s.anchor(), s.head(), sticky),
                 None => s,
@@ -136,7 +145,7 @@ pub fn cmd_select_word_nearest_on_line(
             ctx.around,
             ctx.chars,
         );
-        apply_nearest_word_result(sel, found, ctx.mode)
+        apply_nearest_word_result(text, sel, found, ctx.mode)
     });
     result.debug_assert_valid(text);
     result

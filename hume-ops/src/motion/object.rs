@@ -45,15 +45,15 @@ pub fn apply_object_motion(
         for _ in 0..count {
             let origin = match mode {
                 MotionMode::Move if backward => current.start(),
-                MotionMode::Move => current.end(),
+                MotionMode::Move => current.end_inclusive(text),
                 MotionMode::Extend => current.head(),
             };
             let Some(span) = finder(origin) else {
                 break;
             };
             current = match mode {
-                MotionMode::Move => Selection::new(span.end, span.start),
-                MotionMode::Extend => current.union_span(span, !backward),
+                MotionMode::Move => Selection::from_span(span, false, text),
+                MotionMode::Extend => current.union_span(span, !backward, text),
             };
         }
         current

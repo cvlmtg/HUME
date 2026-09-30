@@ -838,3 +838,66 @@ fn word_search_pattern_over_matches_a_wider_word_chars_run() {
     assert_eq!(matches.len(), 1, "the anchors hold inside the longer run");
     assert_eq!(matches[0], ir(0, 6)); // inclusive end: 'r' is char index 6
 }
+
+// ── Corpus ────────────────────────────────────────────────────────────────
+
+#[test]
+fn find_next_match_spans_every_corpus_sample_exactly() {
+    for s in test_fixtures::unicode::ALL {
+        let text = BufferText::from(format!("x\n{s}b\n").as_str());
+        let regex = regex_cursor::engines::meta::Regex::new(&regex_syntax::escape(s)).unwrap();
+        let (span, _) = find_next_match(&text, &regex, co(0), SearchDirection::Forward)
+            .unwrap_or_else(|| panic!("no match for {s:?}"));
+        assert_eq!(span, ir(2, 1 + s.chars().count()), "{s:?}");
+    }
+}
+
+#[test]
+fn smart_case_uppercase_accented_letter_is_sensitive() {
+    let r = compile_search_regex("\u{c9}").expect("valid pattern");
+    let b = buf("\u{e9} \u{c9}\n");
+    assert_eq!(find_all_matches(&b, &r), vec![ir(2, 2)]);
+}
+
+#[test]
+fn smart_case_lowercase_accented_letter_matches_both_cases() {
+    let r = compile_search_regex("\u{e9}").expect("valid pattern");
+    let b = buf("\u{e9} \u{c9}\n");
+    assert_eq!(find_all_matches(&b, &r), vec![ir(0, 0), ir(2, 2)]);
+}
+
+#[test]
+fn smart_case_lowercase_sigma_matches_capital_and_final_sigma() {
+    let r = compile_search_regex("\u{3c3}").expect("valid pattern");
+    let b = buf("\u{3a3} \u{3c3} \u{3c2}\n");
+    assert_eq!(find_all_matches(&b, &r), vec![ir(0, 0), ir(2, 2), ir(4, 4)]);
+}
+
+#[test]
+fn find_next_match_from_a_char_offset_after_multi_byte_text() {
+    let r = compile_search_regex("a").expect("valid pattern");
+    let b = buf("\u{e9}\u{6f22}\u{1f600}ab a\n");
+    let at = |from, dir| find_next_match(&b, &r, co(from), dir).map(|(span, _)| span);
+    assert_eq!(at(3, SearchDirection::Forward), Some(ir(3, 3)));
+    assert_eq!(at(4, SearchDirection::Forward), Some(ir(6, 6)));
+    assert_eq!(at(6, SearchDirection::Backward), Some(ir(3, 3)));
+}
+
+#[test]
+fn match_scan_steps_over_multi_byte_text_between_matches() {
+    let text = buf("ab\u{1f600}ab\n");
+    let regex = compile_search_regex("ab").expect("valid pattern");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::PastSelection,
+    };
+    let (sel, wrapped) = scan
+        .advance(Selection::new(co(0), co(1)), 1)
+        .expect("a second match");
+    assert!(!wrapped);
+    assert_eq!((sel.anchor(), sel.head()), (co(3), co(4)));
+}

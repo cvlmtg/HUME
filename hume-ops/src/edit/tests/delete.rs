@@ -1,7 +1,7 @@
 use super::super::*;
 use hume_editing::selection::Selection;
 use hume_editing::word::WordChars;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
 
@@ -557,9 +557,9 @@ fn delete_selection_adjacent_selections_merge_cursors() {
 #[test]
 fn delete_selection_grapheme_cluster() {
     // "e\u{0301}" is 2 chars (e + combining acute) but one grapheme cluster.
-    // Cursor on 'e' (pos 0) deletes the entire cluster (both chars).
+    // A cursor on the cluster deletes both chars.
     assert_state!(
-        "-[e]>\u{0301}x\n",
+        "-[e\u{0301}]>x\n",
         |(text, sels)| delete_selection(text, sels),
         "-[x]>\n"
     );
@@ -567,14 +567,10 @@ fn delete_selection_grapheme_cluster() {
 
 #[test]
 fn delete_selection_multi_char_ends_at_grapheme_base() {
-    // Multi-char selection whose head (sel.end()) lands on the base codepoint
-    // 'e' of the grapheme {e\u{0301}} = é. The delete extends to include the
-    // combining mark at position 4, so no orphaned accent remains.
-    // Text: "cafe\u{0301} x\n". Selection anchor=0, head=3 ('e').
-    // Chars 0-4 are deleted, leaving " x\n". Stopping at char 3 would leave
-    // "\u{0301} x\n" with an orphaned accent.
+    // The selection's last cluster is {e\u{0301}} = é. The delete covers both
+    // of its chars (0-4), leaving " x\n" with no orphaned accent.
     assert_state!(
-        "-[cafe]>\u{0301} x\n",
+        "-[cafe\u{0301}]> x\n",
         |(text, sels)| delete_selection(text, sels),
         "-[ ]>x\n"
     );
@@ -713,5 +709,63 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
         new_sels.primary().head(),
         CharOffset::new(0),
         "cursor must land at merged-line start"
+    );
+}
+
+// ── Clusters and wide chars ───────────────────────────────────────────────
+
+#[test]
+fn delete_word_backward_removes_a_word_ending_in_a_combining_mark() {
+    assert_state!(
+        "cafe\u{301}-[ ]>x\n",
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
+        "-[ ]>x\n"
+    );
+}
+
+#[test]
+fn delete_word_backward_removes_a_cjk_word() {
+    assert_state!(
+        "\u{6f22}\u{5b57}-[ ]>x\n",
+        |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
+        "-[ ]>x\n"
+    );
+}
+
+#[test]
+fn change_span_covers_the_whole_last_cluster() {
+    let (text, _) = test_fixtures::testing::parse_state("-[cafe\u{301}]>\n");
+    let sel = Selection::new(CharOffset::new(0), CharOffset::new(3));
+    assert_eq!(
+        change_span(&text, &sel),
+        ExclusiveRange::new(CharOffset::new(0), CharOffset::new(5))
+    );
+}
+
+#[test]
+fn change_span_stops_before_a_trailing_newline_after_a_cluster() {
+    let (text, _) = test_fixtures::testing::parse_state("-[cafe\u{301}\n]>");
+    let sel = Selection::new(CharOffset::new(0), CharOffset::new(5));
+    assert_eq!(
+        change_span(&text, &sel),
+        ExclusiveRange::new(CharOffset::new(0), CharOffset::new(5))
+    );
+}
+
+#[test]
+fn delete_selection_content_removes_a_cluster_selection_and_keeps_the_newline() {
+    assert_state!(
+        "-[cafe\u{301}\n]>",
+        |(text, sels)| delete_selection_content(text, sels),
+        "-[\n]>"
+    );
+}
+
+#[test]
+fn delete_selection_content_removes_a_wide_char_selection() {
+    assert_state!(
+        "a-[\u{6f22}\u{5b57}]>b\n",
+        |(text, sels)| delete_selection_content(text, sels),
+        "a-[b]>\n"
     );
 }

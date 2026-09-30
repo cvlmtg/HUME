@@ -5,6 +5,7 @@
 
 use hume_rope::offset::CharOffset;
 
+use crate::grapheme::{is_cluster_boundary, snap_to_cluster_start};
 use crate::selection::{Selection, SelectionSet};
 use crate::text::BufferText;
 
@@ -16,9 +17,12 @@ fn char_count(s: &str) -> usize {
 ///
 /// Marker syntax: `-[anchor…head]>` (forward), `<[head…anchor]-` (backward).
 /// Every DSL string must end with `\n` and contain at least one selection.
+/// Both markers of a selection must sit on cluster boundaries; the head and
+/// anchor of the parsed selection are the starts of the clusters they cover.
 pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
     let mut text = String::with_capacity(input.len());
-    let mut selections: Vec<Selection> = Vec::new();
+    // (open marker offset, close marker offset, forward)
+    let mut spans: Vec<(usize, usize, bool)> = Vec::new();
 
     #[derive(Debug)]
     enum State {
@@ -51,10 +55,7 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
                     count > *anchor_offset,
                     "parse_state: empty selection in {input:?}"
                 );
-                selections.push(Selection::new(
-                    CharOffset::new(*anchor_offset),
-                    CharOffset::new(count - 1),
-                ));
+                spans.push((*anchor_offset, count, true));
                 state = State::Normal;
             }
             (State::InBackward { head_offset }, ']') if chars.peek() == Some(&'-') => {
@@ -64,25 +65,32 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
                     count > *head_offset,
                     "parse_state: empty selection in {input:?}"
                 );
-                selections.push(Selection::new(
-                    CharOffset::new(count - 1),
-                    CharOffset::new(*head_offset),
-                ));
+                spans.push((*head_offset, count, false));
                 state = State::Normal;
             }
             (_, c) => text.push(c),
         }
     }
     assert!(
-        !selections.is_empty(),
+        !spans.is_empty(),
         "parse_state: no selection markers in {input:?}"
     );
     assert!(
         text.ends_with('\n'),
         "parse_state: buffer must end with '\\n'"
     );
-    (
-        BufferText::from(text.as_str()),
-        SelectionSet::from_vec(selections, 0),
-    )
+    let buf = BufferText::from(text.as_str());
+    let selections = spans
+        .into_iter()
+        .map(|(open, close, forward)| {
+            let (open, close) = (CharOffset::new(open), CharOffset::new(close));
+            assert!(
+                is_cluster_boundary(&buf, open) && is_cluster_boundary(&buf, close),
+                "parse_state: a selection marker splits a grapheme cluster in {input:?}"
+            );
+            let last = snap_to_cluster_start(&buf, close.retreat(1));
+            Selection::directed(open, last, forward)
+        })
+        .collect();
+    (buf, SelectionSet::from_vec(selections, 0))
 }

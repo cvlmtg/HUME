@@ -168,3 +168,39 @@ fn capitalize_resolves_word_final_sigma_by_context() {
         "-[Οος]>\n"
     );
 }
+
+#[test]
+fn lowercase_of_dotted_capital_i_selects_the_resulting_cluster() {
+    assert_state!(
+        "-[\u{130}]>x\n",
+        |(text, sels)| make_text_lowercase(text, sels),
+        "-[i\u{307}]>x\n"
+    );
+}
+
+#[test]
+fn capitalize_titlecases_a_digraph_instead_of_uppercasing_it() {
+    assert_state!(
+        "-[\u{1c6}\u{1c6}]>\n",
+        |(text, sels)| make_text_capitalized(text, sels),
+        "-[\u{1c5}\u{1c6}]>\n"
+    );
+}
+
+#[test]
+fn capitalize_expands_a_ligature_to_its_titlecase_letters() {
+    assert_state!(
+        "-[\u{fb01}ne]>\n",
+        |(text, sels)| make_text_capitalized(text, sels),
+        "-[Fine]>\n"
+    );
+}
+
+#[test]
+fn capitalize_keeps_a_combining_mark_on_the_capitalized_letter() {
+    assert_state!(
+        "-[e\u{301}cole]>\n",
+        |(text, sels)| make_text_capitalized(text, sels),
+        "-[E\u{301}cole]>\n"
+    );
+}

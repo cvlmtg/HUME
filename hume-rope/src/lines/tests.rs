@@ -261,6 +261,22 @@ fn leading_whitespace_end_skips_marked_and_plain_spaces() {
 // ── leading_indent ────────────────────────────────────────────────────────
 
 #[test]
+fn leading_indent_counts_non_breaking_and_ideographic_spaces() {
+    // NBSP is 1 cell, U+3000 is 2, then a tab from column 3 to the stop at 4.
+    let buf = rope("\u{a0}\u{3000}\tx\n");
+    assert_eq!(
+        leading_indent(&buf, ContentLine::new(0), 4),
+        (co(3), BufferLineCol::new(4))
+    );
+}
+
+#[test]
+fn leading_whitespace_end_keeps_a_marked_non_breaking_space_whole() {
+    let buf = rope("\u{a0}\u{301}x\n");
+    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(2));
+}
+
+#[test]
 fn leading_indent_agrees_with_leading_whitespace_end() {
     // The `.0` half must match the standalone function on every case above.
     // It's a thin wrapper over this, not an independent implementation.
@@ -745,4 +761,85 @@ fn line_segments_skips_a_line_the_range_only_touches_at_its_own_newline() {
         .map(|(l, s, e)| (l.index(), s.index(), e.index()))
         .collect();
     assert_eq!(segs, vec![(1, 0, 2)]);
+}
+
+#[test]
+#[should_panic(expected = "LF-normalized")]
+fn line_last_char_rejects_a_carriage_return() {
+    let buf = rope("ab\r\ncd\n");
+    line_last_char(&buf, ContentLine::new(0));
+}
+
+// ── next_line_start_byte ──────────────────────────────────────────────────
+
+#[test]
+fn next_line_start_byte_counts_utf8_bytes_of_multi_byte_lines() {
+    // "é\n" is 3 bytes, "漢\n" is 4, "😀\n" is 5.
+    let buf = rope("\u{e9}\n\u{6f22}\n\u{1f600}\n");
+    assert_eq!(next_line_start_byte(&buf, RopeyLine::new(0)), 3);
+    assert_eq!(next_line_start_byte(&buf, RopeyLine::new(1)), 7);
+    assert_eq!(next_line_start_byte(&buf, RopeyLine::new(2)), 12);
+}
+
+// ── Multi-byte and cluster coverage ───────────────────────────────────────
+
+#[test]
+fn place_char_column_snaps_a_column_inside_a_cluster_back_to_its_start() {
+    let buf = rope("ae\u{301}b\n");
+    let at = |col| place_char_column(&buf, RopeyLine::new(0), CharCol::new(col));
+    assert_eq!((at(1), at(2), at(3)), (co(1), co(1), co(3)));
+}
+
+#[test]
+fn place_char_column_counts_chars_not_bytes_over_multi_byte_text() {
+    let buf = rope("\u{e9}\u{6f22}\u{1f600}x\n");
+    for col in 0..4 {
+        assert_eq!(
+            place_char_column(&buf, RopeyLine::new(0), CharCol::new(col)),
+            co(col)
+        );
+    }
+}
+
+#[test]
+fn advance_byte_point_counts_utf8_bytes() {
+    assert_eq!(
+        advance_byte_point(0, ByteCol::new(1), "\u{e9}\u{6f22}"),
+        (0, ByteCol::new(6))
+    );
+    assert_eq!(
+        advance_byte_point(2, ByteCol::new(9), "\u{e9}\n\u{6f22}\u{1f600}"),
+        (3, ByteCol::new(7))
+    );
+}
+
+#[test]
+fn char_to_line_byte_gives_a_line_relative_utf8_offset() {
+    let buf = rope("\u{e9}\n\u{6f22}x\n");
+    assert_eq!(
+        char_to_line_byte(&buf, co(3)),
+        (RopeyLine::new(1), ByteCol::new(3))
+    );
+}
+
+#[test]
+fn line_segments_report_utf8_byte_columns_per_line() {
+    let buf = rope("\u{e9}\u{6f22}\n\u{1f600}x\n");
+    let got: Vec<_> = line_segments(&buf, ExclusiveRange::new(co(0), co(5))).collect();
+    assert_eq!(
+        got,
+        vec![
+            (ContentLine::new(0), ByteCol::new(0), ByteCol::new(5)),
+            (ContentLine::new(1), ByteCol::new(0), ByteCol::new(5)),
+        ]
+    );
+}
+
+#[test]
+fn leading_indent_measures_a_marked_no_break_space_as_one_cell() {
+    let buf = rope("\u{a0}\u{301}x\n");
+    assert_eq!(
+        leading_indent(&buf, ContentLine::new(0), 4),
+        (co(2), BufferLineCol::new(1))
+    );
 }

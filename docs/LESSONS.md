@@ -80,6 +80,12 @@ numbers directly.
   while its constructors still take the raw form. Design the model first: type
   the values it is built from, pair it with the data it is valid for, and give
   it one repair point. Callers adapt to the model, whatever the blast radius.
+- **L26** — A text primitive whose tests use only ASCII is untested for the
+  Unicode claims the editor makes. Cover every class relevant to it from the
+  shared corpus, and let the fuzzers draw from it.
+- **L27** — An invariant about how a value is read or built is enforced by
+  removing the raw accessor and providing the typed conversion, not by an
+  audit or a comment. Propose the compile-time form in the plan.
 
 ---
 
@@ -1349,3 +1355,41 @@ way to build, read and store it. Type the values it is built from so only the
 right primitives produce them, pair it with the data it is valid for, and give
 it exactly one repair point. One type per concept across crates. Blast radius
 is not a reason to keep an old shape; state the gaps no type can close instead.
+
+---
+
+## L26 — A combining-mark bug hid behind ASCII-only tests (2026-09-29)
+
+**Root cause:** A refactor of the word primitives fixed a bug where a
+cursor on a trailing combining mark was mishandled. Nothing had caught it
+because the tests around word motions, text objects, edits and the rope
+primitives used ASCII text, or one recycled `cafe\u{301}` literal, while the
+editor claims to handle grapheme clusters. The generators behind the
+proptests drew from `a-z`, space and newline, and the selection generator
+picked arbitrary char offsets, so no test could produce a selection that
+split a cluster or notice one.
+
+**Prevention rule:** A test of a text-sensitive primitive or command that
+uses only ASCII is a coverage gap. Draw its inputs from
+`test_fixtures::unicode` for the classes that primitive can mishandle
+(precomposed and combining letters, ZWJ and flag sequences, wide and
+astral chars, no-break and ideographic spaces, a chunk-straddling rope for
+anything that walks clusters). Generators for property tests draw from the
+same corpus, and their invariant checker asserts cluster alignment.
+
+---
+
+## L27 — An invariant kept by convention was audited, not enforced (2026-09-29)
+
+**Root cause:** The audit found selection ends sitting on a cluster's last
+codepoint in some commands and on its first in others, because
+`Selection::end()` was a `CharOffset` that could be used as a range bound,
+a position or a line lookup. The first plan fixed each producer and
+proposed an audit of the raw reads. The user asked for the compiler to
+enforce it instead.
+
+**Prevention rule:** When a value must be read or built in one way, make the
+raw form unreachable (`pub(crate)` accessor) and add the typed conversion
+(`span`, `from_span`, `end_exclusive`). Then the compiler lists every
+outside site, and a new command cannot reintroduce the bug. Offer that
+form in the plan's altitude line before proposing a grep-based audit.

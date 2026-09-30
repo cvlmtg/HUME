@@ -80,3 +80,12 @@ fn char_cursor_yields_codepoints_not_grapheme_clusters() {
         ]
     );
 }
+
+#[test]
+fn char_cursor_walks_an_astral_char_both_ways_as_one_codepoint() {
+    let buf = rope("a\u{1f600}b");
+    let mut c = chars_at(&buf, CharOffset::new(3));
+    assert_eq!(c.prev(), Some((CharOffset::new(2), 'b')));
+    assert_eq!(c.prev(), Some((CharOffset::new(1), '\u{1f600}')));
+    assert_eq!(c.next(), Some((CharOffset::new(1), '\u{1f600}')));
+}

@@ -1,12 +1,14 @@
 //! Inner/around argument (comma-separated item) text objects: function
 //! arguments, array items, object fields, or any comma list inside brackets.
 
-use hume_editing::grapheme::{graphemes_at, next_grapheme_boundary, prev_grapheme_boundary};
+use hume_editing::grapheme::{
+    graphemes_at, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
+};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, blank_class};
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
-use super::trim_blank;
+use super::{before_delimiter, trim_blank};
 use crate::pair::{bracket_role, find_tightest_bracket_pair};
 
 /// One comma segment's inclusive char range, leading and trailing whitespace
@@ -25,14 +27,13 @@ fn find_comma_segments(
     open_pos: CharOffset,
     close_pos: CharOffset,
 ) -> Vec<Segment> {
-    // Content zone: open_pos+1 ..= close_pos-1. Empty when brackets are adjacent.
-    if close_pos <= open_pos.shift(1) {
+    // Content zone: the clusters between the delimiters' own clusters. Empty
+    // when the delimiters are adjacent.
+    let content_start = next_grapheme_boundary(text, open_pos);
+    if snap_to_cluster_start(text, close_pos) <= content_start {
         return Vec::new();
     }
-    // `shift(1)` cannot panic: the check above proved `close_pos > open_pos + 1`,
-    // so `open_pos + 1` is a valid content-zone start.
-    let content_start = open_pos.shift(1);
-    let content_end = close_pos.shift(-1); // inclusive
+    let content_end = before_delimiter(text, close_pos); // inclusive
 
     let mut segments = Vec::new();
     let mut seg_start = content_start;
@@ -46,10 +47,13 @@ fn find_comma_segments(
             Some((_, true)) => depth += 1,
             Some((_, false)) => depth = depth.saturating_sub(1),
             None if ch == ',' && depth == 0 => {
-                // shift(-1) is safe: seg_start >= content_start >= 1, and this
+                // retreat(1) is safe: seg_start >= content_start >= 1, and this
                 // arm only fires once i has advanced past seg_start.
-                segments.push(InclusiveRange::new(seg_start, i.shift(-1)));
-                seg_start = i.shift(1);
+                segments.push(InclusiveRange::new(
+                    seg_start,
+                    snap_to_cluster_start(text, i).retreat(1),
+                ));
+                seg_start = next_grapheme_boundary(text, i);
             }
             None => {}
         }
@@ -101,9 +105,9 @@ fn locate_argument(
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
     let pos = if pos == open_pos {
-        open_pos.shift(1)
+        next_grapheme_boundary(text, open_pos)
     } else if pos == close_pos {
-        close_pos.shift(-1)
+        before_delimiter(text, close_pos)
     } else {
         pos
     };

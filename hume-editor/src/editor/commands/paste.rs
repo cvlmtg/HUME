@@ -170,7 +170,7 @@ fn do_paste(
     let ResolvedPaste { values, from, bare } = resolved;
 
     let pre_sels = sels.clone();
-    state.panes.state[focused][buf].set_selections(sels);
+    state.panes.state[focused][buf].set_selections(sels, state.buffers.get(buf).text());
     edit_session::open_or_retarget(
         &mut state.active_session,
         focused,

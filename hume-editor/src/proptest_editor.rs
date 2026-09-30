@@ -32,6 +32,18 @@ mod tests {
         // SelectionSet is non-empty.
         assert!(sels.len() > 0, "selection set must not be empty");
 
+        // Every anchor and head is a grapheme-cluster start.
+        for sel in sels.iter_sorted() {
+            assert!(
+                hume_editing::grapheme::is_cluster_boundary(text, sel.anchor())
+                    && hume_editing::grapheme::is_cluster_boundary(text, sel.head()),
+                "selection ({:?}, {:?}) splits a grapheme cluster of {:?}",
+                sel.anchor(),
+                sel.head(),
+                text.to_string()
+            );
+        }
+
         // All selection positions are within the buffer.
         let len = text.end();
         for sel in sels.iter_sorted() {
@@ -98,6 +110,14 @@ mod tests {
                 Just(' '), Just('.'), Just('/'), Just('?'),
                 Just('*'), Just('%'), Just(':'),
             ].prop_map(FuzzKey::Char),
+            // Chars that join or extend a cluster, or are wide: combining
+            // mark, ZWJ, variation selector, regional indicators, é, CJK,
+            // emoji, NBSP.
+            2 => prop_oneof![
+                Just('\u{301}'), Just('\u{200d}'), Just('\u{fe0f}'),
+                Just('\u{1f1ee}'), Just('\u{1f1f9}'), Just('\u{e9}'),
+                Just('\u{6f22}'), Just('\u{1f600}'), Just('\u{a0}'),
+            ].prop_map(FuzzKey::Char),
             // Digits: numeric prefixes (e.g. `3w`, `5j`)
             1 => prop_oneof![
                 Just('1'), Just('2'), Just('3'), Just('4'), Just('5'),
@@ -124,8 +144,11 @@ mod tests {
             Just("-[h]>ello world\n"),
             Just("-[f]>oo\nbar\nbaz\n"),
             Just("-[a]>bcde\nfghij\n"),
-            Just("-[x]>\n"),                 // single-char buffer
-            Just("-[a]>a bb cc aa bb cc\n"), // repeated words for search
+            Just("-[x]>\n"),                   // single-char buffer
+            Just("-[a]>a bb cc aa bb cc\n"),   // repeated words for search
+            Just("-[e\u{301}]>x y\u{301}z\n"), // combining marks
+            Just("\u{1f1ee}\u{1f1f9}\u{1f1eb}\u{1f1f7} -[a]>\n"), // flag pairs
+            Just("-[\u{6f22}]>\u{5b57} \u{1f468}\u{200d}\u{1f469}\n"), // CJK and ZWJ
         ]
         .prop_map(|s| {
             let (text, sels) = parse_state(s);

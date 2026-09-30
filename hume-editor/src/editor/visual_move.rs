@@ -506,7 +506,7 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
                     around,
                     chars,
                 );
-                apply_nearest_word_result(sel, found, mode)
+                apply_nearest_word_result(text, sel, found, mode)
             });
             new_sels.debug_assert_valid(text);
             new_sels

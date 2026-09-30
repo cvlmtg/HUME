@@ -307,7 +307,7 @@ fn replace_grapheme_cluster_cursor() {
     // Cursor on 'é' (e + U+0301, 2 codepoints). Replaced with 'x' (1 codepoint).
     // Text shrinks by 1 char; cursor lands on 'x'.
     assert_state!(
-        "caf-[e]>\u{0301}z\n",
+        "caf-[e\u{0301}]>z\n",
         |(text, sels)| replace_selections(text, sels, 'x'),
         "caf-[x]>z\n"
     );
@@ -419,5 +419,35 @@ fn smart_replace_non_pair_replacement_is_literal() {
         "-[(]>hello-[)]>\n",
         |(text, sels)| replace_selections(text, sels, 'x'),
         "-[x]>hello-[x]>\n"
+    );
+}
+
+// ── Word start and cluster edges ──────────────────────────────────────────
+
+#[test]
+fn word_start_before_walks_back_over_a_word_ending_in_a_combining_mark() {
+    let (text, _) = test_fixtures::testing::parse_state("x cafe\u{301}-[ ]>y\n");
+    assert_eq!(
+        word_start_before(&text, CharOffset::new(7), WordChars::default()),
+        CharOffset::new(2)
+    );
+}
+
+#[test]
+fn word_start_before_walks_back_over_cjk_chars() {
+    let (text, _) = test_fixtures::testing::parse_state("x \u{6f22}\u{5b57}-[ ]>y\n");
+    assert_eq!(
+        word_start_before(&text, CharOffset::new(4), WordChars::default()),
+        CharOffset::new(2)
+    );
+}
+
+#[test]
+fn replace_around_cursors_forward_span_that_ends_inside_a_cluster_covers_it_whole() {
+    // Three chars from 'a' end on the 'e' of {e◌́}; the whole cluster goes.
+    assert_state!(
+        "-[a]>be\u{301}c\n",
+        |(text, sels)| replace_around_cursors(text, sels, 0, 3, "Z"),
+        "Z-[c]>\n"
     );
 }

@@ -75,11 +75,11 @@ fn star_on_cursor_expands_to_word() {
     assert!(ed.search_pattern().is_some());
 }
 
-/// `*` with the head on a word's trailing combining mark expands to the whole
-/// word, as it does from any other char of it.
+/// `*` with the head on the last cluster of a word ending in a combining mark
+/// expands to the whole word, as it does from any other cluster of it.
 #[test]
-fn star_on_a_trailing_combining_mark_expands_to_the_whole_word() {
-    let mut ed = editor_from("cafe-[\u{0301}]> world\n");
+fn star_on_a_word_ending_in_a_combining_mark_expands_to_the_whole_word() {
+    let mut ed = editor_from("caf-[e\u{0301}]> world\n");
     ed.handle_key(key('*'));
     assert_eq!(state(&ed), "-[cafe\u{0301}]> world\n");
 }

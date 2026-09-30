@@ -21,6 +21,7 @@ use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::text::BufferText;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// The span typed since an open insert session's entry command positioned the
@@ -166,9 +167,9 @@ impl PaneBufferState {
     /// iff the primary head actually moved. The ordinary write path for a
     /// caller that already holds the new value (as opposed to
     /// [`PaneBufferState::take_selections`]'s destructive-read pattern).
-    pub(in crate::editor) fn set_selections(&mut self, new: SelectionSet) {
+    pub(in crate::editor) fn set_selections(&mut self, new: SelectionSet, text: &BufferText) {
         let old_head = self.selections.primary().head();
-        self.restore_selections(new, old_head);
+        self.restore_selections(new, old_head, text);
     }
 
     /// Take ownership of the current selections, replacing them with the
@@ -195,9 +196,11 @@ impl PaneBufferState {
     /// `self.selections` at its transient default.
     pub(in crate::editor) fn restore_selections(
         &mut self,
-        new: SelectionSet,
+        mut new: SelectionSet,
         old_head: CharOffset,
+        text: &BufferText,
     ) {
+        new.snap_to_clusters(text);
         if new.primary().head() != old_head {
             self.reveal_pending = true;
         }
@@ -215,9 +218,11 @@ impl PaneBufferState {
         &mut self,
         edits: &[hume_rope::offset::ExclusiveRange<CharOffset>],
         cs: &hume_editing::changeset::ChangeSet,
-        text_pre: &hume_editing::text::BufferText,
+        text_pre: &BufferText,
+        text_post: &BufferText,
     ) {
-        self.selections.translate_in_place_with(edits, cs, text_pre);
+        self.selections
+            .translate_in_place_with(edits, cs, text_pre, text_post);
     }
 }
 
@@ -228,8 +233,10 @@ impl PaneBufferState {
 /// directly, so that adding a new field with a non-default initialiser requires
 /// only one edit here.
 pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
+    let mut selections = buf.initial_sels();
+    selections.snap_to_clusters(buf.text());
     PaneBufferState {
-        selections: buf.initial_sels(),
+        selections,
         ..PaneBufferState::default()
     }
 }
@@ -309,8 +316,10 @@ pub(in crate::editor) fn write_cursor(
     bid: BufferId,
     char_pos: CharOffset,
 ) {
-    ensure(pane_state, buffers, panes, pid, bid)
-        .set_selections(SelectionSet::single(Selection::collapsed(char_pos)));
+    ensure(pane_state, buffers, panes, pid, bid).set_selections(
+        SelectionSet::single(Selection::collapsed(char_pos)),
+        buffers.get(bid).text(),
+    );
 }
 
 /// Resolves a 0-based `(line, grapheme_col)` to a char offset, clamping the

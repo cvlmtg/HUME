@@ -30,7 +30,7 @@ pub enum CharClass {
 pub(crate) fn classify_char(ch: char) -> CharClass {
     if ch == '\n' {
         CharClass::Eol
-    } else if matches!(ch, ' ' | '\t' | '\u{A0}' | '\u{3000}') {
+    } else if hume_rope::lines::is_space_char(ch) {
         CharClass::Space
     } else if ch.is_alphanumeric() || ch == '_' {
         CharClass::Word

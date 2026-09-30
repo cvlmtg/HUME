@@ -132,7 +132,8 @@ fn d4b_sticky_display_col_is_per_selection() {
     b.retain_rest();
     let cs = b.finish();
 
-    sels.translate_in_place(&cs, &text);
+    let text_post = cs.apply(&text).expect("cs built for text");
+    sels.translate_in_place(&cs, &text, &text_post);
     // Head moved from 4 to 5 (past the inserted 'X'), sticky_display_col
     // preserved.
     assert_eq!(sels.primary().head(), co(5), "head mapped past insert");
@@ -166,7 +167,8 @@ fn d4b_sticky_display_col_is_per_selection() {
     b2.retain_rest();
     let cs2 = b2.finish();
 
-    sels2.translate_in_place(&cs2, &text2);
+    let text2_post = cs2.apply(&text2).expect("cs2 built for text2");
+    sels2.translate_in_place(&cs2, &text2, &text2_post);
     // Head moved past insert; sticky_display_col must be reset because line
     // 1 was touched.
     assert_eq!(

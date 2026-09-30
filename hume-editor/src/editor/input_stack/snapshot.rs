@@ -17,6 +17,7 @@ use hume_editing::selection::SelectionSet;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use super::super::EditorState;
+use super::super::buffer::store::BufferStore;
 use super::super::pane_state::PaneBufferState;
 
 /// `pane`'s selections as they were the moment this session opened, plus the
@@ -83,13 +84,14 @@ impl PaneSnapshot {
     pub(in crate::editor) fn restore(
         &self,
         pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+        buffers: &BufferStore,
         view: &EngineView,
     ) {
         let Some(sels) = self.pre_sels.clone() else {
             return;
         };
         let bid = self.buffer_id(view);
-        pane_state[self.pane][bid].set_selections(sels);
+        pane_state[self.pane][bid].set_selections(sels, buffers.get(bid).text());
     }
 
     /// `restore`'s consuming counterpart, for `Layer::tear_down`: writes the
@@ -100,11 +102,12 @@ impl PaneSnapshot {
     pub(in crate::editor) fn take_restore(
         &mut self,
         pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+        buffers: &BufferStore,
         view: &EngineView,
     ) -> Option<BufferId> {
         let sels = self.pre_sels.take()?;
         let bid = self.buffer_id(view);
-        pane_state[self.pane][bid].set_selections(sels);
+        pane_state[self.pane][bid].set_selections(sels, buffers.get(bid).text());
         Some(bid)
     }
 }

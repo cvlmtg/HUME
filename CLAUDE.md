@@ -41,7 +41,9 @@ See `CONTRIBUTING.md`'s "strongest tool that fits" bullet for why some invariant
 
 ### Selections
 
-Selections live in a `SelectionSet` (`hume-editing/src/selection/mod.rs`) — `Vec<Selection>` plus a `primary: usize` index, kept sorted by start, non-overlapping, non-empty. All edit operations iterate over selections. Selections are always inclusive: `anchor == head` is a 1-char selection covering the character at that index, never a zero-width point.
+Selections live in a `SelectionSet` (`hume-editing/src/selection/mod.rs`) — `Vec<Selection>` plus a `primary: usize` index, kept sorted by start, non-overlapping, non-empty. All edit operations iterate over selections. Selections are always inclusive: `anchor == head` is a one-cluster selection covering the grapheme cluster that starts at that index, never a zero-width point.
+
+Every `anchor` and `head` is the start of a grapheme cluster. `SelectionSet::debug_assert_valid` checks it, and the test DSL (`-[e\u{301}]>` is a cursor on the whole accented letter; a marker inside a cluster panics) cannot express a split cluster. `Selection::end()` is crate-private: outside `hume-editing` a selection's extent is read with `span`, `end_inclusive`, `end_exclusive` or `slice`, all of which cover the whole last cluster, and a char range (a finder's result, a trimmed span) becomes a selection only through `Selection::from_span`, which snaps its ends to cluster starts. Selections computed against text that does not exist yet (an edit's result, positions mapped through a `ChangeSet`) are snapped with `SelectionSet::from_vec_snapped` or `snap_to_clusters`; `apply_edit`, `translate_in_place`, `Transaction::apply` and the editor's `PaneBufferState` writers do it once for every command.
 
 ### Grapheme clusters
 
@@ -52,7 +54,7 @@ All motions, selections, and edit operations work on grapheme clusters (`unicode
 | **Forbidden** | Stepping a buffer position by a raw `+ 1`/`- 1` in motion or selection code — skips over combining sequences (`é` = U+0065 + U+0301) or ZWJ emoji instead of advancing a full cluster. |
 | **Required** | `next_grapheme_boundary`/`prev_grapheme_boundary` (`hume-editing/src/grapheme.rs`, thin `&BufferText` wrappers over the `RopeSlice`-based implementations in `hume-rope/src/grapheme.rs`) for every position advance in motion/selection logic. A loop walking forward cluster by cluster iterates `graphemes_at` (same files) instead: `next_grapheme_boundary` is its first step, so both are the same stepper, but a per-step call re-seeks the rope every time. |
 | **Allowed** | `line += 1` for line-level iteration; `i += 1` in bracket/delimiter scanning (ASCII only). |
-| **Enforced** | The compiler, via `CharOffset` — see that entry below. One hazard no type reaches: `s.chars().next_back()`/`.last()` return `s`'s last *codepoint*, not the base char of its last cluster (a trailing combining mark) — `hume_rope::grapheme::prev_str_boundary` is the fix. No automated check for this one; relies on ordinary review. |
+| **Enforced** | The compiler, via `CharOffset` — see that entry below — and, for selections, `debug_assert_valid` plus the crate-private `Selection::end()` (see "Selections"). One hazard no type reaches: `s.chars().next_back()`/`.last()` return `s`'s last *codepoint*, not the base char of its last cluster (a trailing combining mark) — `hume_rope::grapheme::prev_str_boundary` is the fix. No automated check for this one; relies on ordinary review. |
 
 ### Buffer char offsets
 

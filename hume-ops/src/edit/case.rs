@@ -2,11 +2,11 @@
 //! applied to each selection as a whole string.
 
 use hume_editing::changeset::ChangeSet;
-use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::offset::ExclusiveRange;
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_titlecase::TitleCase;
 
 use super::apply_edit;
 
@@ -14,7 +14,7 @@ use super::apply_edit;
 enum CaseTransform {
     Lower,
     Upper,
-    /// Title Case: uppercase the first letter of each word, lowercase the
+    /// Title Case: titlecase the first letter of each word, lowercase the
     /// rest. See [`capitalize_words`] for what counts as a word.
     Capitalize,
 }
@@ -37,7 +37,7 @@ fn transform_case(
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let sel_start = sel.start();
-        let sel_end = next_grapheme_boundary(text, sel.end()); // exclusive
+        let sel_end = sel.end_exclusive(text);
 
         b.retain(sel_start.chars_since(b.old_pos()));
         let new_sel_start = b.new_pos();
@@ -60,12 +60,12 @@ fn transform_case(
     })
 }
 
-/// Capitalize every alphanumeric word run in `text`: uppercase the first
-/// grapheme, lowercase the rest, each as one `str` operation, not
-/// grapheme-by-grapheme, so context-sensitive mappings stay correct (Greek
-/// sigma lowercases to `ς` at a word's end, `σ` elsewhere). Non-word runs
-/// (spaces, punctuation, newlines) pass through unchanged and reset the word
-/// boundary, so consecutive words each get their own capital.
+/// Capitalize every alphanumeric word run in `text`: titlecase the first
+/// char of the first grapheme, lowercase the rest, each as one `str`
+/// operation, not grapheme-by-grapheme, so context-sensitive mappings stay
+/// correct (Greek sigma lowercases to `ς` at a word's end, `σ` elsewhere).
+/// Non-word runs (spaces, punctuation, newlines) pass through unchanged and
+/// reset the word boundary, so consecutive words each get their own capital.
 ///
 /// A "word" is a maximal run of alphanumeric graphemes: the simplest
 /// definition that gives sensible results without a full word-motion
@@ -87,13 +87,17 @@ fn capitalize_words(text: &str) -> String {
     out
 }
 
-/// Append `word` to `out` with its first grapheme uppercased and the rest
-/// lowercased. No-op if `word` is empty.
+/// Append `word` to `out` with its first char titlecased, the rest of its
+/// first grapheme kept, and the remainder lowercased. No-op if `word` is
+/// empty.
 fn push_capitalized(out: &mut String, word: &str) {
     let Some(first) = word.graphemes(true).next() else {
         return;
     };
-    out.push_str(&first.to_uppercase());
+    let mut chars = first.chars();
+    let base = chars.next().expect("a grapheme has at least one char");
+    out.extend(TitleCase::to_titlecase(base));
+    out.push_str(chars.as_str());
     out.push_str(&word[first.len()..].to_lowercase());
 }
 

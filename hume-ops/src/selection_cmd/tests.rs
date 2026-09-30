@@ -300,3 +300,60 @@ fn remove_primary_at_end_wraps_to_first() {
     assert_eq!(sels_out.len(), 2);
     assert_eq!(sels_out.primary().head(), CharOffset::new(0)); // wrapped to first
 }
+
+#[test]
+fn collapse_to_head_and_anchor_land_on_the_last_cluster_start() {
+    assert_state!(
+        "-[cafe\u{301}]> x\n",
+        |(text, sels)| cmd_collapse_selection_to_head(&text, sels, 0, MotionMode::Move),
+        "caf-[e\u{301}]> x\n"
+    );
+    assert_state!(
+        "<[a\u{301}fe\u{301}]-\n",
+        |(text, sels)| cmd_collapse_selection_to_anchor(&text, sels, 0, MotionMode::Move),
+        "a\u{301}f-[e\u{301}]>\n"
+    );
+}
+
+// ── Corpus ────────────────────────────────────────────────────────────────
+
+#[test]
+fn split_on_newlines_keeps_every_corpus_sample_whole() {
+    for s in test_fixtures::unicode::ALL {
+        assert_state!(
+            &format!("-[{s}\nb]>\n"),
+            |(text, sels)| cmd_split_selection_on_newlines(&text, sels, 0, MotionMode::Move),
+            &format!("-[{s}]>\n-[b]>\n")
+        );
+    }
+}
+
+#[test]
+fn trim_whitespace_keeps_every_non_blank_corpus_sample_whole() {
+    use test_fixtures::unicode::{IDEO_SPACE, LONE_MARK, NBSP};
+    for s in test_fixtures::unicode::ALL
+        .iter()
+        .filter(|&&s| s != LONE_MARK && s != NBSP && s != IDEO_SPACE)
+    {
+        assert_state!(
+            &format!("-[ {s} ]>\n"),
+            |(text, sels)| cmd_trim_selection_whitespace(&text, sels, 0, MotionMode::Move),
+            &format!(" -[{s}]> \n")
+        );
+    }
+}
+
+#[test]
+fn sift_matches_selects_each_corpus_sample_whole() {
+    for s in test_fixtures::unicode::ALL {
+        let (text, sels) = parse_state(&format!("-[y\n{s}\nz]>\n"));
+        let regex = regex_cursor::engines::meta::Regex::new(&regex_syntax::escape(s)).unwrap();
+        let result = sift_matches_within(&text, &sels, &regex).unwrap();
+        let (expected_text, expected) = parse_state(&format!("y\n-[{s}]>\nz\n"));
+        assert_eq!(
+            test_fixtures::testing::serialize_state(&text, &result),
+            test_fixtures::testing::serialize_state(&expected_text, &expected),
+            "{s:?}"
+        );
+    }
+}

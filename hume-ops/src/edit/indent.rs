@@ -181,14 +181,7 @@ fn shift_indent(
             } else {
                 Assoc::After
             };
-            let forward = sel.anchor() <= sel.head();
-            let lo = mapper.map(sel.start(), assoc);
-            let hi = mapper.map(sel.end(), assoc);
-            if forward {
-                Selection::new(lo, hi)
-            } else {
-                Selection::new(hi, lo)
-            }
+            sel.map_ends(|pos| mapper.map(pos, assoc))
         })
         .collect();
     let new_sel_set = SelectionSet::from_vec(new_sels, sels.primary_index());

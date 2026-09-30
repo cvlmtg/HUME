@@ -71,7 +71,7 @@ fn content_end_combining_grapheme() {
     // sel collapsed at 0: end_inclusive = next_grapheme_boundary(0) - 1 = 2 - 1 = 1.
     // last_content_char = len_chars() - 2 = 1.
     // content_end = min(1, 1) = 1; the combiner is still content, not the structural '\n'.
-    let (text, _) = parse_state("-[e]>\u{0301}\n");
+    let (text, _) = parse_state("-[e\u{0301}]>\n");
     let sel = Selection::collapsed(co(0));
     // Chars 0 and 1 are content; char 2 is the structural '\n'.
     // content_end must equal 1 (includes the combining codepoint, stops before '\n').
@@ -95,7 +95,7 @@ fn end_exclusive_combining_grapheme() {
     // sits on a 2-codepoint cluster, so the exclusive bound is one past the
     // whole cluster (char 2), not one past 'e' alone (char 1), the case
     // the raw `end() + 1` idiom this method replaces would get wrong.
-    let (text, _) = parse_state("-[e]>\u{0301}\n");
+    let (text, _) = parse_state("-[e\u{0301}]>\n");
     let sel = Selection::collapsed(co(0));
     assert_eq!(sel.end_exclusive(&text), co(2));
 }
@@ -285,4 +285,108 @@ fn directed_cursor_is_same_regardless_of_direction() {
     assert!(fwd.is_collapsed());
     assert!(bwd.is_collapsed());
     assert_eq!(fwd, bwd);
+}
+
+// ── span / from_span ──────────────────────────────────────────────────────
+
+/// Clusters: `a`(0) `e◌́`(1..3) `b`(3) `\n`(4).
+fn accented() -> BufferText {
+    BufferText::from("ae\u{301}b\n")
+}
+
+#[test]
+fn span_covers_the_whole_last_cluster() {
+    let text = accented();
+    let sel = Selection::new(co(0), co(1));
+    assert_eq!(sel.span(&text), InclusiveRange::new(co(0), co(2)));
+}
+
+#[test]
+fn from_span_snaps_an_end_on_a_combining_mark_to_its_cluster_start() {
+    let text = accented();
+    let span = InclusiveRange::new(co(0), co(2));
+    let forward = Selection::from_span(span, true, &text);
+    assert_eq!((forward.anchor(), forward.head()), (co(0), co(1)));
+    let backward = Selection::from_span(span, false, &text);
+    assert_eq!((backward.anchor(), backward.head()), (co(1), co(0)));
+}
+
+#[test]
+fn from_span_snaps_a_start_on_a_combining_mark_to_its_cluster_start() {
+    let text = accented();
+    let sel = Selection::from_span(InclusiveRange::new(co(2), co(3)), true, &text);
+    assert_eq!((sel.anchor(), sel.head()), (co(1), co(3)));
+}
+
+#[test]
+fn span_and_from_span_round_trip_over_every_cluster_pair_in_the_corpus() {
+    for sample in test_fixtures::unicode::ALL {
+        let text = BufferText::from(format!("a{sample}b").as_str());
+        let starts: Vec<CharOffset> = crate::grapheme::graphemes_at(&text, co(0))
+            .map(|c| c.start)
+            .collect();
+        for (i, &lo) in starts.iter().enumerate() {
+            for &hi in &starts[i..] {
+                let forward = Selection::new(lo, hi);
+                assert_eq!(
+                    Selection::from_span(forward.span(&text), true, &text),
+                    forward,
+                    "{:?} forward {lo:?}..{hi:?}",
+                    text.to_string()
+                );
+                let backward = Selection::new(hi, lo);
+                if lo != hi {
+                    assert_eq!(
+                        Selection::from_span(backward.span(&text), false, &text),
+                        backward,
+                        "{:?} backward {lo:?}..{hi:?}",
+                        text.to_string()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn union_span_covers_a_nested_cluster_without_shrinking() {
+    let text = accented();
+    let sel = Selection::new(co(0), co(3));
+    let grown = sel.union_span(InclusiveRange::new(co(1), co(2)), true, &text);
+    assert_eq!(grown, sel);
+}
+
+#[test]
+fn union_span_extends_over_a_found_range_ending_on_a_mark() {
+    let text = accented();
+    let sel = Selection::new(co(0), co(0));
+    let grown = sel.union_span(InclusiveRange::new(co(1), co(2)), true, &text);
+    assert_eq!((grown.anchor(), grown.head()), (co(0), co(1)));
+}
+
+// ── map_ends ──────────────────────────────────────────────────────────────
+
+#[test]
+fn map_ends_visits_the_start_before_the_end_and_keeps_direction() {
+    let mut visited = Vec::new();
+    let forward = Selection::new(co(1), co(4)).map_ends(|p| {
+        visited.push(p);
+        p.shift(10)
+    });
+    assert_eq!(visited, vec![co(1), co(4)]);
+    assert_eq!((forward.anchor(), forward.head()), (co(11), co(14)));
+
+    visited.clear();
+    let backward = Selection::new(co(4), co(1)).map_ends(|p| {
+        visited.push(p);
+        p.shift(10)
+    });
+    assert_eq!(visited, vec![co(1), co(4)]);
+    assert_eq!((backward.anchor(), backward.head()), (co(14), co(11)));
+}
+
+#[test]
+fn map_ends_on_a_cursor_stays_a_cursor() {
+    let sel = Selection::collapsed(co(2)).map_ends(|p| p.shift(3));
+    assert_eq!((sel.anchor(), sel.head()), (co(5), co(5)));
 }

@@ -458,3 +458,29 @@ fn wire_offsets_to_byte_range_orders_a_reversed_pair_into_an_empty_range() {
     assert!(range.is_empty());
     assert_eq!(&LABEL[range], "");
 }
+
+// ── 3-byte and cluster coverage ───────────────────────────────────────────
+
+#[test]
+fn char_to_wire_three_byte_char_diverges_utf8_vs_utf16() {
+    let text = Rope::from_str("a\u{6f22}b\n");
+    assert_eq!(char_to_wire(&text, co(2), PositionEncoding::Utf8), wp(0, 4));
+    assert_eq!(
+        char_to_wire(&text, co(2), PositionEncoding::Utf16),
+        wp(0, 2)
+    );
+    assert_eq!(wire_to_char(&text, wp(0, 4), PositionEncoding::Utf8), co(2));
+    assert_eq!(
+        wire_to_char(&text, wp(0, 2), PositionEncoding::Utf16),
+        co(2)
+    );
+}
+
+#[test]
+fn wire_to_char_does_not_snap_a_position_inside_a_cluster() {
+    let text = Rope::from_str("ae\u{301}b\n");
+    assert_eq!(
+        wire_to_char(&text, wp(0, 2), PositionEncoding::Utf16),
+        co(2)
+    );
+}

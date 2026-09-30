@@ -195,11 +195,13 @@ impl DisplayLineKind {
 // ---------------------------------------------------------------------------
 
 /// An editor selection: an anchor and a head, both as absolute char offsets
-/// from the start of the buffer.
+/// from the start of the buffer, each the start of a grapheme cluster.
 ///
-/// Anchor == head is a single-character selection covering the char at that
-/// index (the editor's inclusive selection invariant). The selection spans
-/// [min(anchor, head), max(anchor, head)] inclusive.
+/// Anchor == head is a single-cluster selection covering the cluster that
+/// starts at that index (the editor's inclusive selection invariant). The
+/// selection covers the clusters starting at min(anchor, head) through
+/// max(anchor, head), so the far end of [`Selection::range`] is the start of
+/// the last covered cluster, not its last char.
 ///
 /// Using char offsets avoids per-frame rope lookups at the editor→engine
 /// boundary: the editor simply copies its char-offset selections directly.

@@ -47,7 +47,10 @@ impl Layer for SearchLayer {
         self.snap.capture(state, view);
     }
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
-        if let Some(bid) = self.snap.take_restore(&mut state.panes.state, view) {
+        if let Some(bid) = self
+            .snap
+            .take_restore(&mut state.panes.state, &state.buffers, view)
+        {
             search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
         }
         state.history.begin_session_all();
@@ -248,5 +251,7 @@ fn restore_search_snapshot(ed: &mut Editor, r: LayerRef) {
     let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
         return;
     };
-    search.snap.restore(&mut ed.state.panes.state, &ed.view);
+    search
+        .snap
+        .restore(&mut ed.state.panes.state, &ed.state.buffers, &ed.view);
 }

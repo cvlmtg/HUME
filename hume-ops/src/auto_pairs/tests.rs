@@ -306,3 +306,56 @@ fn auto_pair_symmetric_prev_extra_word_char_rejects() {
         WordChars::new("-")
     ));
 }
+
+// ── Clusters and non-ASCII neighbours ─────────────────────────────────────
+
+/// `should_auto_pair_at` for `pair` with the cursor at the end of `before`,
+/// where `after` follows it.
+fn auto_pairs_between(before: &str, after: &str, pair: &Pair) -> bool {
+    let text = BufferText::from(format!("{before}{after}").as_str());
+    should_auto_pair_at(
+        &text,
+        CharOffset::new(before.chars().count()),
+        pair,
+        &default_pairs(),
+        WordChars::default(),
+    )
+}
+
+#[test]
+fn auto_pair_quote_after_a_word_ending_in_a_combining_mark_is_rejected() {
+    assert!(!auto_pairs_between("cafe\u{301}", " ", &quote()));
+}
+
+#[test]
+fn auto_pair_quote_after_a_cjk_char_is_rejected() {
+    assert!(!auto_pairs_between("\u{6f22}", " ", &quote()));
+}
+
+#[test]
+fn auto_pair_quote_after_an_emoji_cluster_is_accepted() {
+    assert!(auto_pairs_between(
+        test_fixtures::unicode::ZWJ_FAMILY,
+        " ",
+        &quote()
+    ));
+}
+
+#[test]
+fn auto_pair_paren_before_a_non_breaking_space_is_accepted() {
+    assert!(auto_pairs_between("a", "\u{a0}", &paren()));
+}
+
+#[test]
+fn auto_pair_paren_before_an_accented_letter_is_rejected() {
+    assert!(!auto_pairs_between("a", "e\u{301}", &paren()));
+}
+
+#[test]
+fn delete_pair_removes_a_close_delimiter_that_carries_a_combining_mark() {
+    assert_state!(
+        "(-[)\u{301}]>\n",
+        |(text, sels)| delete_pair(text, sels),
+        "-[\n]>"
+    );
+}

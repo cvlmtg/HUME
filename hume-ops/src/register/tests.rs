@@ -184,9 +184,9 @@ fn yank_full_line_including_newline() {
 #[test]
 fn yank_grapheme_cluster() {
     // "e\u{0301}" is two chars (e + combining acute) but one grapheme cluster.
-    // A cursor on 'e' (pos 0) covers that grapheme, so yank must include the
-    // combining mark so the yanked text is the complete grapheme "é".
-    let (text, sels) = parse_state("-[e]>\u{0301}x\n");
+    // A cursor on the cluster covers it whole, so the yanked text is the
+    // complete grapheme "é".
+    let (text, sels) = parse_state("-[e\u{0301}]>x\n");
     assert_eq!(yank_selections(&text, &sels), vec!["e\u{0301}"]);
 }
 

@@ -555,3 +555,21 @@ fn yank_multi_cursor_then_paste_after_n_to_n() {
         "h-[h]>ello-[o]>\n"
     );
 }
+
+#[test]
+fn paste_after_a_cursor_on_a_cluster_lands_past_the_whole_cluster() {
+    assert_state!(
+        "-[e\u{301}]>x\n",
+        |(text, sels)| pa(text, sels, &["Z".to_string()]),
+        "e\u{301}-[Z]>x\n"
+    );
+}
+
+#[test]
+fn paste_before_selects_the_pasted_cluster() {
+    assert_state!(
+        "-[x]>\n",
+        |(text, sels)| pb(text, sels, &["e\u{301}".to_string()]),
+        "-[e\u{301}]>x\n"
+    );
+}

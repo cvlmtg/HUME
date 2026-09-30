@@ -1,4 +1,5 @@
 mod char_move;
+mod corpus;
 mod find;
 mod line;
 mod line_select;

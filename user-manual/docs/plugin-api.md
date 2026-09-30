@@ -109,7 +109,7 @@ A closed buffer behaves differently depending on the call: most reads below (`bu
 | `(buffer-lines pane #:start #:end)` | Content as a list of lines, each with its ending stripped |
 | `(buffer-line-count pane)` | Content line count, cheaper than `(length (buffer-lines pane))` |
 | `(buffer-cursor-line pane)` | 0-based line of the primary cursor in `pane`'s own pane |
-| `(buffer-selections pane)` | List of `(hash 'anchor a 'head h 'primary p)`, one per selection in `pane`'s own pane |
+| `(buffer-selections pane)` | List of `(hash 'anchor a 'head h 'primary p)`, one per selection in `pane`'s own pane; `'anchor` and `'head` are each the start of a character (a letter with its combining marks counts as one) |
 | `(offset->line pane idx)` | 0-based line containing 0-based char offset `idx` in the buffer's text |
 | `(line->offset pane line)` | 0-based char offset where 0-based content line `line` starts |
 | `(viewport-range pane)` | `(hash 'start first-line 'end end-line)` currently visible in `pane`'s own pane, 0-based end-exclusive |

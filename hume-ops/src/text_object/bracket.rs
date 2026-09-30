@@ -1,10 +1,11 @@
 //! Inner/around bracket-pair text objects: `()`, `[]`, `{}`, `<>`.
 
+use hume_editing::grapheme::{next_grapheme_boundary, snap_to_cluster_start};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
-use super::apply_text_object_by_mode;
+use super::{apply_text_object_by_mode, before_delimiter};
 use crate::MotionMode;
 use crate::pair::find_bracket_pair;
 
@@ -12,12 +13,14 @@ use crate::pair::find_bracket_pair;
 /// the pair is empty (no inner content in the inclusive selection model).
 /// Shared with quote.rs's `inner_quote`.
 pub(super) fn inner_of_pair(
+    text: &BufferText,
     pair: InclusiveRange<CharOffset>,
 ) -> Option<InclusiveRange<CharOffset>> {
-    if pair.start.shift(1) > pair.end.shift(-1) {
+    let start = next_grapheme_boundary(text, pair.start);
+    if start >= snap_to_cluster_start(text, pair.end) {
         return None;
     }
-    Some(InclusiveRange::new(pair.start.shift(1), pair.end.shift(-1)))
+    Some(InclusiveRange::new(start, before_delimiter(text, pair.end)))
 }
 
 fn inner_bracket(
@@ -27,7 +30,7 @@ fn inner_bracket(
     close: char,
 ) -> Option<InclusiveRange<CharOffset>> {
     let pair = find_bracket_pair(text, pos, open, close)?;
-    inner_of_pair(pair)
+    inner_of_pair(text, pair)
 }
 
 macro_rules! bracket_cmds {

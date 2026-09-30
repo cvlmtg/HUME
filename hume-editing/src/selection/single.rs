@@ -1,7 +1,9 @@
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
-use crate::grapheme::{cluster_last_char, next_grapheme_boundary};
+use crate::grapheme::{
+    cluster_last_char, is_cluster_boundary, next_grapheme_boundary, snap_to_cluster_start,
+};
 use crate::lines::is_line_start;
 use crate::text::BufferText;
 
@@ -49,10 +51,14 @@ pub enum StickyDisplayCol {
 /// sequence of Unicode scalar values. The cursor (the moving end that the user
 /// sees blinking) is always at `head`.
 ///
-/// When `anchor == head`, the selection covers a single character, the one at
-/// index `head`. This is the smallest possible selection, not a zero-width
-/// point. The cursor block sits on that character, matching Helix/Kakoune's
-/// inclusive model.
+/// When `anchor == head`, the selection covers a single grapheme cluster, the
+/// one starting at index `head`. This is the smallest possible selection, not
+/// a zero-width point. The cursor block sits on that cluster, matching
+/// Helix/Kakoune's inclusive model.
+///
+/// `anchor` and `head` are always cluster starts, so a cluster of several
+/// chars (`e` + U+0301) is addressed by its first char and covered whole by
+/// [`Self::end_inclusive`] and [`Self::end_exclusive`].
 ///
 /// `head` must always be a valid char index (`< text.len_chars()`). Since every
 /// buffer always ends with a trailing `\n`, there is always at least one
@@ -100,6 +106,23 @@ impl Selection {
         }
     }
 
+    /// This selection with `anchor` and `head` floored to the start of the
+    /// cluster each sits in. Direction and the sticky column are kept.
+    pub fn snap_to_clusters(self, text: &BufferText) -> Self {
+        let floor = |pos: CharOffset| {
+            if is_cluster_boundary(text, pos) {
+                pos
+            } else {
+                snap_to_cluster_start(text, pos)
+            }
+        };
+        Self {
+            anchor: floor(self.anchor),
+            head: floor(self.head),
+            ..self
+        }
+    }
+
     /// A directional selection with a preserved sticky display column.
     ///
     /// Carries the column across consecutive vertical moves, or passes an
@@ -139,7 +162,7 @@ impl Selection {
     }
 
     /// This selection's extent unioned with `span` (`min` of both starts,
-    /// `max` of both ends), built with [`Self::directed`] so the caller
+    /// `max` of both ends), built with [`Self::from_span`] so the caller
     /// controls which end becomes the anchor.
     ///
     /// Shared by every "extend to cover a newly found match" path.
@@ -149,10 +172,46 @@ impl Selection {
     /// replacement would shrink the selection when the found range nests
     /// inside what's already selected; the union absorbs it with no visible
     /// change instead.
-    pub fn union_span(&self, span: InclusiveRange<CharOffset>, forward: bool) -> Self {
-        let new_start = self.start().min(span.start);
-        let new_end = self.end().max(span.end);
-        Self::directed(new_start, new_end, forward)
+    pub fn union_span(
+        &self,
+        span: InclusiveRange<CharOffset>,
+        forward: bool,
+        text: &BufferText,
+    ) -> Self {
+        let own = self.span(text);
+        Self::from_span(
+            InclusiveRange::new(own.start.min(span.start), own.end.max(span.end)),
+            forward,
+            text,
+        )
+    }
+
+    /// The chars this selection covers: from its first char to the last char
+    /// of its last cluster.
+    pub fn span(&self, text: &BufferText) -> InclusiveRange<CharOffset> {
+        InclusiveRange::new(self.start(), self.end_inclusive(text))
+    }
+
+    /// The selection covering `span`, facing forward or backward. The one
+    /// conversion from a char range (a finder's result, a trimmed span) to
+    /// the cluster-start `anchor` and `head` a selection stores: an end on a
+    /// combining mark becomes the start of its cluster.
+    pub fn from_span(span: InclusiveRange<CharOffset>, forward: bool, text: &BufferText) -> Self {
+        Self::directed(span.start, span.end, forward).snap_to_clusters(text)
+    }
+
+    /// This selection with `f` applied to its start and then its end, in that
+    /// order, so a forward-only position mapper can be threaded through.
+    /// Direction is kept; the sticky column is dropped. `f` must return
+    /// cluster starts.
+    pub fn map_ends(&self, mut f: impl FnMut(CharOffset) -> CharOffset) -> Self {
+        let lo = f(self.start());
+        let hi = f(self.end());
+        if self.anchor <= self.head {
+            Self::new(lo, hi)
+        } else {
+            Self::new(hi, lo)
+        }
     }
 
     /// The stationary end (the end that stays put when the user extends).
@@ -170,7 +229,7 @@ impl Selection {
         self.sticky_display_col
     }
 
-    /// Is this a single-character selection (anchor == head)?
+    /// Is this a single-cluster selection (anchor == head)?
     pub fn is_collapsed(&self) -> bool {
         self.anchor == self.head
     }
@@ -180,29 +239,20 @@ impl Selection {
         self.anchor.min(self.head)
     }
 
-    /// The larger of the two offsets: the far end of the selected range.
-    ///
-    /// Returns the **start** of the grapheme cluster at that position. For
-    /// single-codepoint graphemes (the common case) this equals the last char
-    /// in the selection. For multi-codepoint clusters (e.g. `e + \u{0301}`)
-    /// the combining codepoints that follow are NOT included. Use
-    /// [`Self::end_inclusive`] when computing deletion or slice bounds.
-    ///
-    /// In the inclusive cursor model this char IS part of the selection (the
-    /// cursor or anchor sits on it). This is NOT an exclusive bound.
-    pub fn end(&self) -> CharOffset {
+    /// The larger of the two offsets: the start of the selection's last
+    /// cluster, not a range bound. A multi-codepoint cluster (`e` + U+0301)
+    /// extends past it, so range and position reads from outside this crate
+    /// go through [`Self::end_inclusive`] and [`Self::end_exclusive`].
+    pub(crate) fn end(&self) -> CharOffset {
         self.anchor.max(self.head)
     }
 
     /// The last char position covered by this selection, inclusive of any
-    /// combining codepoints that extend the grapheme at [`Self::end`].
+    /// combining codepoints that extend the last cluster.
     ///
-    /// For single-codepoint graphemes this equals `end()`. For multi-codepoint
-    /// clusters (e.g. `e + \u{0301}` = é) this extends to the last codepoint
-    /// so that delete and slice operations never orphan a combining mark.
-    ///
-    /// Use this (not `end()`) when computing char ranges for deletion or
-    /// buffer slices; all edit operations should use `end_inclusive`.
+    /// For a multi-codepoint cluster (e.g. `e + \u{0301}` = é) this is the
+    /// last codepoint, so that delete and slice operations never orphan a
+    /// combining mark. It is the end of [`Self::span`].
     pub fn end_inclusive(&self, text: &BufferText) -> CharOffset {
         cluster_last_char(text, self.end())
     }

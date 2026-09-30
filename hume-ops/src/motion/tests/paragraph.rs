@@ -349,3 +349,21 @@ fn goto_prev_paragraph_crosses_rope_chunk_boundaries() {
         expected.as_str()
     );
 }
+
+#[test]
+fn goto_next_paragraph_ending_in_a_combining_mark_covers_the_whole_last_cluster() {
+    assert_state!(
+        "-[a]>\n\nfoo\nba\u{301}\n",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        "a\n\n<[foo\nba\u{301}]-\n"
+    );
+}
+
+#[test]
+fn goto_prev_paragraph_starting_with_a_wide_char_selects_it_whole() {
+    assert_state!(
+        "\u{6f22}a\n\nfoo\n-[b]>ar\n",
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        "<[\u{6f22}a\n\n]-foo\nbar\n"
+    );
+}
