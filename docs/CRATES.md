@@ -50,7 +50,7 @@ Platform abstraction layer: terminal control, frame presentation, process spawni
 - hume-decorations
 - hume-scripting
 ## Description
-Core text-editing model: the document (`BufferText`, a rope of Unicode scalar values with a recorded line-ending style), the selection model (`Selection`/`SelectionSet`, read and changed only paired with their text as `EditView`/`EditState`), edits as data (`EditBuilder` producing `ChangeSet`s, invertible and composable), and the undo tree (`History`). A pure data-and-algorithm layer — no knowledge of the editor, keymaps, rendering, or scripting.
+Core text-editing model: the document (`BufferText`, a rope of Unicode scalar values with a recorded line-ending style), the selection model (`Selection`/`SelectionSet`, read and changed only paired with their text as `EditView`/`EditState`), edits as data (`EditBuilder` producing `ChangeSet`s, invertible and composable), and the undo tree (`History`). A pure data-and-algorithm layer — no knowledge of the editor, keymaps, rendering, or scripting. `hume-editing/src/README.md` maps how these fit together and where each invariant is enforced.
 
 # hume-engine
 ### Depends on
